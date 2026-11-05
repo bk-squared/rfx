@@ -39,9 +39,11 @@ def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
     sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
                      boundary="pec", cpml_layers=0)
     if body == "sheet":
-        sim.add_thin_conductor(Box((.004, .003, .004), (.006, .005, .004)))
+        sim.add_thin_conductor(Box(((4 - .35) * .001, (3 - .35) * .001, .004),
+                                   ((6 + .35) * .001, (5 + .35) * .001, .004)))
     elif body == "box_sheet":
-        sim.add(Box((.004, .003, .004), (.006, .005, .004)), material="pec")
+        sim.add(Box(((4 - .35) * .001, (3 - .35) * .001, .004),
+                                   ((6 + .35) * .001, (5 + .35) * .001, .004)), material="pec")
     elif body == "wire":
         sim.add(PolylineWire(points=[(.004, .004, .003), (.004, .004, .005)],
                              radius=0), material="pec")

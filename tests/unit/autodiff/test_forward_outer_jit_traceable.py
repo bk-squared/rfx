@@ -88,7 +88,7 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     has only a PEC *boundary* (separate grid path), which leaves ``pec_mask``
     empty — this exercises the non-trivial fallback branch."""
     s = Simulation(freq_max=6e9, domain=(27 * 1.5e-3, 14 * 1.5e-3, 14 * 1.5e-3), dx=1.5e-3, boundary="pec")  # solved length; #1887
-    s.add(Box((0.018, 0.006, 0.006), (0.024, 0.014, 0.014)), material="pec")
+    s.add(Box((12 * 1.5e-3, 4 * 1.5e-3, 4 * 1.5e-3), (16 * 1.5e-3, 9 * 1.5e-3, 9 * 1.5e-3)), material="pec")
     s.add_source((0.008, 0.01, 0.01), "ez",
                  waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")

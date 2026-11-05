@@ -14,9 +14,9 @@ from rfx.runners.nonuniform import assemble_materials_nu
 from tests.unit.materials.test_sheet_impedance import PlanarSheet
 
 
-def _sim(nonuniform, domain=(.008, .008, .008)):
+def _sim(nonuniform, domain=(.008, .008, .008), *, snap="strict"):
     sim = Simulation(domain=domain, dx=.001, freq_max=10e9,
-                     boundary="cpml", cpml_layers=2)
+                     boundary="cpml", cpml_layers=2, snap=snap)
     if nonuniform:
         sim._dz_profile = np.array([.001, .001, .0005, .0005, .001, .001, .001, .001, .001])
     return sim
@@ -130,7 +130,7 @@ def test_touching_or_tapered_face_stays_declared_and_reported(nonuniform, kind, 
     from rfx.geometry.smoothing import continued_conductor_shape
     shape = (Cylinder((.004, .004, .004), radius=.004, height=0., axis="z")
              if drawing == "disc" else _TaperedSheet())
-    sim = _sim(nonuniform)
+    sim = _sim(nonuniform, snap="declared")
     kw = {"surface_impedance_f0": 10e9} if kind == "leontovich" else {}
     sim.add_thin_conductor(shape, sigma_bulk=1e4 if kw else 5.8e7, **kw)
     grid = sim._build_nonuniform_grid() if nonuniform else sim._build_grid()
@@ -177,7 +177,7 @@ def test_host_sheet_forward_under_outer_jit_equals_box(kind):
     try:
         for shape in (Box((0., .006, .010), (.020, .014, .010)),
                       _NumpySheet(2, .010, (0., .006), (.020, .014))):
-            sim = Simulation(freq_max=6e9, domain=(.04, .02, .02), boundary="cpml", cpml_layers=4)
+            sim = Simulation(freq_max=6e9, domain=(.04, .02, .02), boundary="cpml", cpml_layers=4, snap="declared")
             kw = {"surface_impedance_f0": 5e9} if kind == "leontovich" else {}
             sim.add_thin_conductor(shape, sigma_bulk=1e4 if kw else 5.8e7, **kw)
             # Fractional bandwidth 0.8, tau = 20/15 steps so the 20-step record holds

@@ -237,8 +237,8 @@ def test_mixed_dz_only_raises():
     # one cell thick it would be a VOLUME: walls at z = H_SUB and
     # z = H_SUB + dx with Ez shorted between, a 0.25 mm solid bar where the
     # board carries copper foil.
-    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
-                (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
+    sim.add(Box((0.0, y_c - (1 + .35) * _DX, _H_SUB),
+                (lx, y_c + (1 + .35) * _DX, _H_SUB)), material="pec")
     sim.add_msl_port(position=(5.5e-3, y_c, 0.0), width=_W_TRACE,
                      height=_H_SUB, direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5))

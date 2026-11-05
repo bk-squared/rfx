@@ -291,7 +291,7 @@ def _stack_sim(patch_z_mm: float, ground_cells: int = 1):
     cavity is 2 mm against a declared 2.3 mm: -13.0% on both measures.
     """
     sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
-                     freq_max=10e9, boundary="cpml")
+                     freq_max=10e9, boundary="cpml", snap="declared")
     sim.add_material("core", eps_r=4.0)
     z_top = (2 + ground_cells) * MM
     sim.add(Box((2 * MM, 2 * MM, 2 * MM), (8 * MM, 8 * MM, z_top)),
@@ -542,7 +542,7 @@ class TestSheetSlotVacuum:
         """Vacuum on the plane with vacuum on at least one side is a sheet
         in air, not a slot: the check needs a dielectric on BOTH sides."""
         sim = Simulation(domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
-                         freq_max=10e9, boundary="cpml")
+                         freq_max=10e9, boundary="cpml", snap="declared")
         sim.add_material("diel_hi", eps_r=2.5)
         sim.add(Box((1 * MM, 1 * MM, 3.1 * MM), (7 * MM, 7 * MM, 5.0 * MM)),
                 material="diel_hi")
@@ -672,7 +672,7 @@ class TestOffLatticeCensus:
         from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
         sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=MM,
-                         freq_max=10e9, boundary="cpml")
+                         freq_max=10e9, boundary="cpml", snap="declared")
         sim.add(Box((lo * MM, 2 * MM, 2 * MM),
                     (hi * MM, 5 * MM, z_hi * MM)), material="pec")
         hits = sim.preflight().by_code(OFF_LATTICE_CODE)
@@ -740,7 +740,7 @@ class TestOffLatticeCensus:
         reading was 300 um). Its NORMAL axis has no extent and is reported by
         sheet_plane_realized instead -- the message says so."""
         sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=1 * MM,
-                         freq_max=10e9, boundary="cpml")
+                         freq_max=10e9, boundary="cpml", snap="declared")
         sim.add(Box((1.3 * MM, 2.0 * MM, 2.0 * MM),
                     (10.3 * MM, 5.0 * MM, 2.0 * MM)), material="pec")
         hits = sim.preflight().by_code(OFF_LATTICE_CODE)
@@ -1101,7 +1101,7 @@ def _build(dz_profile):
     h_sub = 1.5e-3
     sim = Simulation(
         freq_max=4e9, domain=(0.08, 0.075, 0), dx=1e-3,
-        dz_profile=dz_profile, cpml_layers=8,
+        dz_profile=dz_profile, cpml_layers=8, snap="declared",
     )
     sim.add_material("fr4", eps_r=4.3)
     z_sub_lo = 12e-3
@@ -1155,7 +1155,7 @@ def test_periodic_sheet_end_reports_the_unwrapped_node_span(axis, lo_mm):
     boundary = dict(x='pec', y='pec', z='pec')
     boundary['xyz'[axis]] = 'periodic'
     sim = Simulation(10e9, tuple(domain), dx=MM, cpml_layers=0,
-                     boundary=BoundarySpec(**boundary))
+                     boundary=BoundarySpec(**boundary), snap="declared")
     sim.add(Box(tuple(lo), tuple(hi)), material='pec')
     grid = sim._build_grid()
     before = sim._assemble_realized(grid, nonuniform=False).edges

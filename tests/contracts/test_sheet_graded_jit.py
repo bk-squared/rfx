@@ -21,13 +21,15 @@ def assert_trace_records(actual, expected):
 
 
 @pytest.mark.parametrize('shape', (
-    Box((.003, .003, .003), (.009, .007, .003)),
+    Box(((3 - .35) * .001, (3 - .35) * .001, .003),
+        ((9 + .35) * .001, (7 + .35) * .001, .003)),
     Cylinder((.006, .005, .003), radius=.002, height=0., axis='z'),
 ), ids=('box', 'disc'))
 def test_graded_sheet_run_under_user_jit(shape):
     profile = np.array([.001] * 4 + [.0009, .0011] * 2 + [.001] * 4)
     sim = Simulation(freq_max=10e9, domain=(.012, .010, .010), dx=.001,
-                     dx_profile=profile, boundary='pec')
+                     dx_profile=profile, boundary='pec',
+                     snap="strict" if isinstance(shape, Box) else "declared")
     sim.add_thin_conductor(shape)
     sim.add_source((.005, .005, .005), 'ez', amplitude_kind='current',
                    waveform=GaussianPulse(f0=5e9, bandwidth=.8))

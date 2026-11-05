@@ -741,7 +741,7 @@ def _y_runway_board(direction, **port_kw):
     axis is not graded, so the interval solve runs on it."""
     ny = 120
     ly, lx = ny * _RW_FINE, 10 * _RW_H
-    sim = Simulation(freq_max=20e9, domain=(lx, ly, _RW_H + 1.5e-3),
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(lx, ly, _RW_H + 1.5e-3),
                      dx=2 * _RW_FINE, cpml_layers=8,
                      dy_profile=np.full(ny, _RW_FINE))
     sim.add_material("sub", eps_r=_RW_EPS)

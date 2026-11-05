@@ -489,7 +489,7 @@ def test_sheet_box_spacing_boundary(monkeypatch, mesh, case, gap, refused):
 @pytest.mark.parametrize("mesh", NODES)
 def test_sheet_box_equal_shifts_preserve_spacing(monkeypatch, mesh):
     # 4.04 -> 4 and 6.04 -> 6: each shift/gap is 2%, but spacing error is 0.
-    sim = _sheet_over_block(mesh, 2, 0.04)
+    sim = _sheet_over_block(mesh, 2, 0.04, snap="declared")
     calls = _stub_runners(monkeypatch)
     assert not sim.preflight().by_code(CODE)
     with pytest.raises(_ReachedRunner):

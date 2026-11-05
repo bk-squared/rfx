@@ -231,7 +231,8 @@ def _run_manufactured_assembly(*, use_x64: bool):
         sim.add_material("substrate", eps_r=2.0)
         sim.add(Box((0, 0, 0), (40 * u, 12 * u, 2 * u)), material="substrate")
         sim.add(Box((0, 0, 0), (40 * u, 12 * u, 0)), material="pec")
-        sim.add(Box((0, 4 * u, 2 * u), (40 * u, 8 * u, 2 * u)), material="pec")
+        sim.add(Box((0, (4 - .35) * u, 2 * u),
+                    (40 * u, (8 + .35) * u, 2 * u)), material="pec")
         for feed, direction in ((2 * u, "+x"), (38 * u, "-x")):
             sim.add_msl_port(position=(feed, 6 * u, 0), width=4 * u, height=2 * u,
                              direction=direction, mode="uniform", eps_r_sub=2.0,

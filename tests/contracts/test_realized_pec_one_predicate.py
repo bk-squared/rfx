@@ -95,7 +95,9 @@ def test_floating_port_adjacent_pin(material, expected):
     sim = _floating_sim()
     name = _register(sim, material)
     sim.add(Box((0.004, 0.004, 0.001), (0.016, 0.016, 0.004)), material="substrate")
-    sim.add(Box((0.00973, 0.00961, 0.00113), (0.01047, 0.01029, 0.00207)), material=name)
+    pin = (Box((19 * .5e-3, 19 * .5e-3, 2 * .5e-3), (21 * .5e-3, 21 * .5e-3, 4 * .5e-3))
+           if material != "lossy" else Box((0.00973, 0.00961, 0.00113), (0.01047, 0.01029, 0.00207)))
+    sim.add(pin, material=name)
     sim.add_port(position=(0.0101, 0.0099, 0.0025), component="ez", impedance=50.0)
     assert len(_codes(sim, "floating_port")) == expected
 
@@ -108,7 +110,9 @@ def test_floating_port_enclosing_body_skips_conductors(material, expected):
     copper has eps_r 1, so its row gives 0 either way.)"""
     sim = _floating_sim()
     name = _register(sim, material, eps_r=3.0)
-    sim.add(Box((0.00413, 0.00427, 0.00113), (0.01571, 0.01583, 0.00387)), material=name)
+    body = (Box((8 * .5e-3, 9 * .5e-3, 2 * .5e-3), (31 * .5e-3, 32 * .5e-3, 8 * .5e-3))
+            if material != "lossy" else Box((0.00413, 0.00427, 0.00113), (0.01571, 0.01583, 0.00387)))
+    sim.add(body, material=name)
     sim.add_port(position=(0.0101, 0.0099, 0.0025), component="ez", impedance=50.0)
     assert len(_codes(sim, "floating_port")) == expected
 
@@ -145,7 +149,9 @@ def test_pec_faces_with_finite_pec(material, expected):
                      boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
                      cpml_layers=4)
     name = _register(sim, material)
-    sim.add(Box((.0063, .0071, .0072), (.0131, .0122, .0094)), material=name)
+    body = (Box((6 * .001, 7 * .001, 7 * .001), (13 * .001, 12 * .001, 9 * .001))
+            if material != "lossy" else Box((.0063, .0071, .0072), (.0131, .0122, .0094)))
+    sim.add(body, material=name)
     assert len(_codes(sim, "pec_faces_finite_pec")) == expected
 
 
@@ -196,7 +202,7 @@ def test_conductor_in_thin_absorber(material, expected):
 def test_mesh_pec_gap(material, expected):
     """Two bodies 1.6 cells apart along x: a gap between PEC structures for
     "pec" and "copper", no PEC gap for "lossy"."""
-    sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.001, boundary="pec")
+    sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.001, boundary="pec", snap="declared")
     name = _register(sim, material)
     sim.add(Box((.0043, .0061, .0072), (.0081, .0122, .0094)), material=name)
     sim.add(Box((.0097, .0061, .0072), (.0139, .0122, .0094)), material=name)
@@ -237,7 +243,9 @@ def test_ntff_small_ground_plane_census(material, expected):
     sim = Simulation(freq_max=3e9, domain=(.14, .135, .05), boundary="cpml",
                      cpml_layers=4, dx=2.5e-3)
     name = _register(sim, material)
-    sim.add(Box((.0400, .0400, .0100), (.1000, .0950, .01435)), material=name)
+    plate = (Box((16 * 2.5e-3, 16 * 2.5e-3, 4 * 2.5e-3), (40 * 2.5e-3, 38 * 2.5e-3, 6 * 2.5e-3))
+             if material != "lossy" else Box((.0400, .0400, .0100), (.1000, .0950, .01435)))
+    sim.add(plate, material=name)
     sim.add_port((.0613, .0671, .0156), "ez")
     sim.add_ntff_box(corner_lo=(.012, .012, .004), corner_hi=(.128, .123, .038),
                      freqs=(2.4e9,))

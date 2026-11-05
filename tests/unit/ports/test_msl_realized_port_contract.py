@@ -33,7 +33,7 @@ def _model(*, direction="+x", nonuniform=False, ground=6., top=10.,
         bc = BoundarySpec(x="cpml", y="cpml", z=("periodic" if domain_ground == "periodic"
                           else Boundary(lo=domain_ground, hi="cpml")))
     kwargs = dict(dx_profile=profiles[0], dy_profile=profiles[1], dz_profile=profiles[2]) if nonuniform else {}
-    sim = Simulation(freq_max=5e9, domain=domain, dx=DX, cpml_layers=0, boundary=bc, pec_occupancy_model=pec_occupancy_model, **kwargs)
+    sim = Simulation(freq_max=5e9, domain=domain, dx=DX, cpml_layers=0, boundary=bc, pec_occupancy_model=pec_occupancy_model, snap="declared", **kwargs)
     lo, hi = coord(2, ground), coord(2, top)
 
     def conductor(shape, kind):
@@ -363,6 +363,7 @@ def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeyp
     import rfx.probes.msl_wave_decomp as decomposition
 
     sim = Simulation(freq_max=5e9, domain=(32*DX, 32*DX, 48*DX),
+                     snap="declared",
                      dx=DX, cpml_layers=4, boundary="cpml")
     sim.add_material("substrate", eps_r=3.)
     sim.add(Box((0, 0, 16*DX), (32*DX, 32*DX, 20*DX)), material="substrate")
@@ -416,6 +417,7 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     from rfx.sources.coaxial_port import PEC_SIGMA, PTFE_EPS_R
     top = ground+4
     sim = Simulation(freq_max=5e9, domain=(32*DX, 24*DX, 40*DX),
+                     snap="declared",
                      dx=DX, cpml_layers=4, boundary="cpml")
     sim.add_material("substrate", eps_r=3., sigma=.02)
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, top*DX)), material="substrate")

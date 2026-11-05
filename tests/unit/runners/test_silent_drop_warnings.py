@@ -604,11 +604,12 @@ def test_nu_smoothing_refuses_a_shape_it_cannot_place():
 
 def _upml_sim(boundary):
     def build():
+        cell = 1e-3
         sim = Simulation(freq_max=10e9, domain=(0.014, 0.014, 0.014),
                          dx=1e-3, boundary=boundary, cpml_layers=4)
         sim.add(Box((0.0035, 0.0035, 0.0035), (0.0075, 0.0075, 0.0075)),
                 material="fr4")
-        sim.add(Cylinder((0.0095, 0.0095, 0.007), 0.0017, 0.008, axis="z"),
+        sim.add(Cylinder((9.5 * cell, 9.5 * cell, 7 * cell), 1.5 * cell, 8 * cell, axis="z"),
                 material="pec")
         sim.add_source((0.004, 0.010, 0.007), "ez", amplitude_kind="field")
         sim.add_probe((0.009, 0.004, 0.007), "ez")
@@ -656,12 +657,13 @@ def test_fidelity_report_names_the_nu_thin_conductor_refusal():
 
 def _uniform_sim(boundary="pec"):
     def build():
+        cell = 1e-3
         sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
                          dx=1e-3, boundary=boundary,
                          cpml_layers=4 if boundary == "cpml" else 0)
         sim.add(Box((0.003, 0.003, 0.003), (0.006, 0.006, 0.006)),
                 material="fr4")
-        sim.add(Cylinder((0.009, 0.009, 0.006), 0.0015, 0.008, axis="z"),
+        sim.add(Cylinder((9 * cell, 9 * cell, 6 * cell), cell, 8 * cell, axis="z"),
                 material="pec")
         sim.add_source((0.004, 0.009, 0.006), "ez")
         sim.add_probe((0.008, 0.004, 0.006), "ez")

@@ -162,9 +162,10 @@ def msl_response(lane, mode, *, mutation=False):
     # 2 mm open stub behind the port whose effective quarter wave (23.7 GHz) is within
     # 1.5x of the 0..20 GHz default read. The pinned V/w ratios are unchanged by this.
     from rfx.preflight.line_port_coverage import port_node_coordinate
-    sim.add(Box((.004, .005, .004), (.012, .009, .004)), material='pec')
-    sim.add(Box((port_node_coordinate(sim, (.006, .007, .004)), .005, .006),
-                (.012, .009, .006)), material='pec')
+    sim.add(Box(((4 - .35) * .001, (5 - .35) * .001, .004),
+                ((12 + .35) * .001, (9 + .35) * .001, .004)), material='pec')
+    sim.add(Box((port_node_coordinate(sim, (.006, .007, .004)), (5 - .35) * .001, .006),
+                ((12 + .35) * .001, (9 + .35) * .001, .006)), material='pec')
     sim.add_msl_port(position=(.006, .007, .004), width=.004, height=.002,
                      direction='+x', impedance=RESISTANCE, waveform=PULSE, mode=mode)
     probe_z = (.004, .0048) if lane == 'z_graded' else (.004, .005)

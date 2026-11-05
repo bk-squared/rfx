@@ -179,7 +179,8 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
     kw = {} if lane == 'uniform' else dict(dy_profile=np.array([.001, .0009, .0011, .001, .001, .001]))
     sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001, boundary=boundary, **kw)
     if sheet:
-        sim.add(Box((.004, .001, .001), (.004, .005, .003)), material='pec')
+        sim.add(Box((.004, (1 - .35) * .001, (1 - .35) * .001),
+                    (.004, (5 + .35) * .001, (3 + .35) * .001)), material='pec')
     sim.add_source((.002, .003, .002), 'ez')
     sim.add_probe((.006, .004, .002), 'ez')
     grid = sim._build_grid() if lane == 'uniform' else sim._build_nonuniform_grid()

@@ -536,6 +536,7 @@ def test_disjoint_research_lane_reports_its_vacuum_model(monkeypatch):
 @pytest.mark.parametrize("frozen", (False, True))
 def test_inplane_profile_preserves_drawn_wall_extent(frozen):
     sim = Simulation(freq_max=1e9, domain=(12*D, 10*D, 10*D), dx=D,
+                     snap="declared",
                      dx_profile=np.full(10, D), boundary="pec")
     if frozen:
         sim.freeze_mesh()

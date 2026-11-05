@@ -38,7 +38,7 @@ GRADED_SHEET_CELLS = [(5, 7, 3), (5, 7, 4),
 
 def model(lane='uniform', kind='r', component='ez'):
     kw = {'dy_profile': np.array([.001] + [.0009, .0011]*7 + [.001])} if lane == 'graded' else {}
-    sim = Simulation(freq_max=10e9, domain=(.016, .016, .012), dx=.001, boundary='pec', **kw)
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(.016, .016, .012), dx=.001, boundary='pec', **kw)
     if kind in ('r', 'rc', 'parallel'):
         sim.add_lumped_rlc((.008, .008, .004), component, R=50.,
             C=1e-13 if kind != 'r' else 0., topology='parallel' if kind == 'parallel' else 'series')

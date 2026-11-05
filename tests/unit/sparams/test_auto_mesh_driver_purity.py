@@ -18,8 +18,8 @@ class _StopBeforeSolve(RuntimeError):
     pass
 
 
-def _board():
-    sim = Simulation(freq_max=10e9, domain=(0.012, 0.006, 0.004),
+def _board(*, snap="strict"):
+    sim = Simulation(snap=snap, freq_max=10e9, domain=(0.012, 0.006, 0.004),
                      boundary="cpml", cpml_layers=2)
     sim.add(Box((0, 0, 0), (0.012, 0.006, 0.001)), material="fr4")
     return sim
@@ -61,7 +61,7 @@ def test_waveguide_driver_preserves_declared_mesh_on_solve_failure(monkeypatch, 
 
 
 def test_msl_driver_preserves_auto_mesh_on_solve_failure(monkeypatch):
-    sim = _board()
+    sim = _board(snap="declared")
     sim.add(Box((port_node_coordinate(sim, (0.003, 0.003, 0)), 0.002, 0.001), (0.012, 0.004, 0.001)), material="pec")
     sim.add_msl_port(position=(0.003, 0.003, 0), width=0.002, height=0.001,
                      direction="+x", impedance=50, n_probe_offset=3,

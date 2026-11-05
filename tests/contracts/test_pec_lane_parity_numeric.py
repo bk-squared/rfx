@@ -51,6 +51,9 @@ def _build(kind, **sim_kw):
                      **sim_kw)
     lo = (FOOT_LO[0], FOOT_LO[1], Z_PLANE)
     hi = (FOOT_HI[0], FOOT_HI[1], Z_PLANE)
+    if kind in ("sheet", "thin"):
+        lo = (FOOT_LO[0] - 0.35 * DX, FOOT_LO[1] - 0.35 * DX, Z_PLANE)
+        hi = (FOOT_HI[0] + 0.35 * DX, FOOT_HI[1] + 0.35 * DX, Z_PLANE)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if kind == "sheet":
@@ -229,8 +232,8 @@ def test_the_subgridded_lane_refuses_a_sheet_it_cannot_realize():
     sim = Simulation(freq_max=15e9, domain=DOMAIN, dx=DX, boundary="pec")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sim.add(Box((FOOT_LO[0], FOOT_LO[1], Z_PLANE),
-                    (FOOT_HI[0], FOOT_HI[1], Z_PLANE)), material="pec")
+        sim.add(Box((FOOT_LO[0] - 0.35 * DX, FOOT_LO[1] - 0.35 * DX, Z_PLANE),
+                    (FOOT_HI[0] + 0.35 * DX, FOOT_HI[1] + 0.35 * DX, Z_PLANE)), material="pec")
         sim.add_source(position=SRC, component="ez")
         # #1465: explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(6e-3, 14e-3), ratio=2, validation="research")

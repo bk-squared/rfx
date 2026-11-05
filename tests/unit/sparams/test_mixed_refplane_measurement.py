@@ -147,13 +147,35 @@ def test_refplane_split_half_is_already_inside():
 # T1 / T2 — plumbing guards on the real mixed lane (num_periods = 4)
 # ===========================================================================
 
+def _measurement_fixture(direction, n_probes):
+    lx, ly, lz = m._DOMAIN
+    sim = m.Simulation(
+        freq_max=m._FREQ_MAX, domain=(lx, ly, lz), dx=m._DX,
+        cpml_layers=m._CPML_LAYERS, snap="declared",
+        boundary=m.BoundarySpec(x="cpml", y="cpml",
+                                z=m.Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("sub", eps_r=m._EPS_R)
+    sim.add(m.Box((0., 0., 0.), (lx, ly, m._H_SUB)), material="sub")
+    y_c = ly / 2
+    sim.add(m.Box((0., y_c - m._W_TRACE / 2, m._H_SUB),
+                  (lx, y_c + m._W_TRACE / 2, m._H_SUB + m._DX)), material="pec")
+    sim.add_port(position=(m._X_FEED, y_c, 0.), component="ez",
+                 impedance=50., extent=m._H_SUB, direction=direction)
+    sim.add_msl_port(position=(m._X_MSL, y_c, 0.), width=m._W_TRACE,
+                     height=m._H_SUB, direction="-x", impedance=50.,
+                     waveform=m.GaussianPulse(f0=2.5e9, bandwidth=.5),
+                     n_probe_offset=10, n_probe_spacing=4, n_probes=n_probes)
+    return sim
+
+
 def _run_mixed(direction: str, n_probes: int, num_periods: float = 4.0):
     """One instrumented two-drive call; returns the result or raises."""
     import contextlib
     import io
 
-    sim = m.build_fixture(feed_direction=direction, n_probes=n_probes,
-                          register_extra_flux=False)
+    sim = _measurement_fixture(direction, n_probes)
+    # Preserve the diagnostic fixture's off-grid trace and measured ladders.
     with m.refplane_instrumentation(m._REFPLANE_N):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -201,8 +223,8 @@ def test_t2_crossing_guard_walks_msl_probe_ladders_n_probes_5_trips():
 def test_t2_crossing_guard_silent_at_n_probes_3():
     """The declared deviation: ladder 4.72 / 4.40 / 4.08 mm, all outboard of
     the 2N plane. Must run clean — and must actually register the planes."""
-    sim = m.build_fixture(feed_direction=m._FEED_DIRECTION,
-                          n_probes=m._N_PROBES, register_extra_flux=False)
+    # Keep the measured ladder on its declared off-grid board.
+    sim = _measurement_fixture(m._FEED_DIRECTION, m._N_PROBES)
     import contextlib
     import io
     with m.refplane_instrumentation(m._REFPLANE_N) as cap:
@@ -244,7 +266,7 @@ def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
     from rfx.sources.sources import GaussianPulse
 
     lx, ly, lz = m._DOMAIN
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=freq_max, domain=(lx, ly, lz), dx=m._DX,
         cpml_layers=m._CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -432,7 +454,7 @@ def test_msl_driver_rebuilt_entries_keep_n_probes(monkeypatch):
     from rfx.sources.sources import GaussianPulse
 
     lx, ly, lz = m._DOMAIN
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=m._FREQ_MAX, domain=(lx, ly, lz), dx=m._DX,
         cpml_layers=m._CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml",

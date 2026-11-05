@@ -14,7 +14,7 @@ from rfx.model import conductors as C
 def guide_board(width=.0015, *, graded=False, behind=False):
     profile = np.full(32, .00025)
     profile[2:4] = [.0002, .0003]
-    sim = Simulation(freq_max=10e9, domain=(.013, .008, .003), dx=.00025,
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(.013, .008, .003), dx=.00025,
         cpml_layers=6, boundary=BoundarySpec(x='cpml', y='cpml',
         z=Boundary(lo='pec', hi='cpml')),
         **({'dy_profile': profile} if graded else {}))

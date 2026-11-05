@@ -118,7 +118,7 @@ def _iris_sim(*, nonuniform: bool):
         cpml_layers=8, **kw,
     )
     sim.add_material("metal", eps_r=1.0, sigma=1e7)  # sigma > 1e6 -> PEC
-    xc = 0.5 * nx * dx
+    x_lo, x_hi = (nx // 2) * dx, (nx // 2 + 1) * dx
     fin = _FIN
     # #931: the fins are a VOLUME (a metal block through the guide), and
     # they are drawn ON node planes so drawn thickness == realized
@@ -129,10 +129,10 @@ def _iris_sim(*, nonuniform: bool):
     # centres. Nothing in this file is about the fin's thickness — it is a
     # strong-reflector witness — but an ambiguous drawing is what the
     # contract exists to remove.
-    half_t = 0.5 * dx
-    sim.add(Box((xc - half_t, 0.0, 0.0), (xc + half_t, fin, _B)),
+    y_hi = float(np.cumsum(kw["dy_profile"])[-1]) if nonuniform else 16 * dx
+    sim.add(Box((x_lo, 0.0, 0.0), (x_hi, fin, 7 * dx)),
             material="metal")
-    sim.add(Box((xc - half_t, _A - fin, 0.0), (xc + half_t, _A, _B)),
+    sim.add(Box((x_lo, _A - fin, 0.0), (x_hi, y_hi, 7 * dx)),
             material="metal")
     for x0, d, nm in ((0.015, "+x", "left"), (nx * dx - 0.015, "-x", "right")):
         sim.add_waveguide_port(

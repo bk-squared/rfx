@@ -292,8 +292,10 @@ def test_preflight_advises_on_a_sheet_landing_on_a_grading_step():
                 freq_max=10e9,
                 domain=(L, L, 0.0 if dz is not None else 8.0e-3),
                 dx=dx, dz_profile=dz, boundary="cpml", cpml_layers=6)
+            edge = 0.35 if kw.get("surface_impedance_f0") or kw["sigma_bulk"] > 1e6 else 0.0
             sim.add_thin_conductor(
-                Box((6 * dx, 6 * dx, zc), (18 * dx, 18 * dx, zc)), **kw)
+                Box(((6 - edge) * dx, (6 - edge) * dx, zc),
+                    ((18 + edge) * dx, (18 + edge) * dx, zc)), **kw)
             return " ".join(sim.preflight())
 
     lossy = dict(sigma_bulk=1.0e3, thickness=35e-6)

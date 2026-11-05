@@ -522,6 +522,7 @@ def test_refplane_requires_pec_trace_at_plane():
     """Planes pointing AWAY from the line (wrong direction) find no trace
     cross-section and must fail loudly, not measure vacuum."""
     sim = Simulation(
+        snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),

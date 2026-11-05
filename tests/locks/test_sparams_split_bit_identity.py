@@ -175,7 +175,7 @@ _MIXED_DX = _MIXED_H_SUB / 3.0
 
 def _mixed_result():
     lx, ly, lz = 8e-3, 3e-3, 754e-6
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=5e9, domain=(lx, ly, lz), dx=_MIXED_DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),

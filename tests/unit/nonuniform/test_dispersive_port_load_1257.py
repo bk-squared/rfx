@@ -136,7 +136,7 @@ def _board(port, disp, impedance, mesh):
         sim.add_material("sub", eps_r=3.0)
         sim.add(Box((0, 0, 3 * DX), (L, L, 5 * DX)), material="sub")
         sim.add(Box((0, 0, 3 * DX), (L, L, 3 * DX)), material="pec")
-        sim.add(Box((0, 7 * DX, 5 * DX), (L, 9 * DX, 5 * DX)), material="pec")
+        sim.add(Box((0, (7 - .35) * DX, 5 * DX), (L, (9 + .35) * DX, 5 * DX)), material="pec")
         sim.add_msl_port((4 * DX, 8 * DX, 3 * DX), width=2 * DX,
                          height=2 * DX, direction="+x", impedance=impedance,
                          waveform=PULSE)

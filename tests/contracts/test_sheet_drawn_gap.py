@@ -619,6 +619,7 @@ def test_drawn_carrier_and_copies(graded):
 @pytest.mark.parametrize('case', ['gap', 'touch', 'different_planes'])
 def test_f1_2d_run(kind, case):
     sim = Simulation(freq_max=30e9, domain=(.020, .020, .001), dx=.001,
+                     snap="declared",
                      boundary='pec', mode='2d_tmz')
     for i, (lo, hi) in enumerate(((.003, .008), (.008 if case == 'touch' else .009, .015))):
         x = .015 if case == 'different_planes' and i else .010

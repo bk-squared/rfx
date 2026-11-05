@@ -148,7 +148,7 @@ def build_p_msl(path):
     sim.add_material('sub', eps_r=2.2)
     sim.add(Box((0., 0., 0.), (.040, .020, .003)), material='sub')
     sim.add(Box((0., 0., 0.), (.040, .020, 0.)), material='pec')
-    sim.add(Box((.006, .010, .003), (.040, .014, .003)), material='pec')
+    sim.add(Box((.006, (10 - .35) * .001, .003), (.040, (14 + .35) * .001, .003)), material='pec')
     sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
                      direction='+x', impedance=50., eps_r_sub=2.2,
                      n_probe_offset=3, n_probe_spacing=2, n_probes=3)
@@ -209,11 +209,16 @@ def build_m_drude(path):
 
 
 def build_c_pecbox(path):
-    return base_scene(path).add(Box(BOX_LO, BOX_HI), material='pec')
+    lo_z, hi_z = ((sum(v * .001 for v in PROFILE[:3]), sum(v * .001 for v in (PROFILE[0],) * 4 + PROFILE[:10]) - 4 * PROFILE[0] * .001)
+                  if 'graded' in path else (3 * .001, 9 * .001))
+    return base_scene(path).add(Box((14 * .001, 7 * .001, lo_z),
+                                     (20 * .001, 14 * .001, hi_z)), material='pec')
 
 
 def build_c_sheet(path):
-    return base_scene(path).add_thin_conductor(Box((.014, .006, .004), (.020, .014, .004)))
+    return base_scene(path).add_thin_conductor(
+        Box(((14 - .35) * .001, (6 - .35) * .001, .004),
+            ((20 + .35) * .001, (14 + .35) * .001, .004)))
 
 
 def build_c_film(path):
