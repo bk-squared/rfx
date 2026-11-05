@@ -173,11 +173,14 @@ class _NumpySheet(PlanarSheet):
 @pytest.mark.parametrize("kind", ["pec", "leontovich"])
 def test_host_sheet_forward_under_outer_jit_equals_box(kind):
     import jax.numpy as jnp
+    cell = .002  # This fixture's auto mesh rounds to 2 mm cells.
     losses = []
     try:
-        for shape in (Box((0., .006, .010), (.020, .014, .010)),
-                      _NumpySheet(2, .010, (0., .006), (.020, .014))):
-            sim = Simulation(freq_max=6e9, domain=(.04, .02, .02), boundary="cpml", cpml_layers=4, snap="declared")
+        for shape in (Box((0., (3 - .35) * cell, 5 * cell),
+                          ((10 + .35) * cell, (7 + .35) * cell, 5 * cell)),
+                      _NumpySheet(2, 5 * cell, (0., (3 - .35) * cell),
+                                  ((10 + .35) * cell, (7 + .35) * cell))):
+            sim = Simulation(freq_max=6e9, domain=(.04, .02, .02), boundary="cpml", cpml_layers=4)
             kw = {"surface_impedance_f0": 5e9} if kind == "leontovich" else {}
             sim.add_thin_conductor(shape, sigma_bulk=1e4 if kw else 5.8e7, **kw)
             # Fractional bandwidth 0.8, tau = 20/15 steps so the 20-step record holds

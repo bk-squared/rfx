@@ -99,9 +99,10 @@ def test_zero_thickness_pec_box_is_a_sheet_and_draws_no_thickness_advice():
     mesh-quality check must not tell the user to give it a cell of
     thickness (that would turn a foil into a two-wall slab)."""
     sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
-                     cpml_layers=4, snap="declared")
+                     cpml_layers=4)
     sim.add_source((0.005, 0.005, 0.002), "ez")
-    sim.add(Box((0.003, 0.003, 0.005), (0.007, 0.007, 0.005)), material="pec")
+    sim.add(Box(((6 - .35) * .5e-3, (6 - .35) * .5e-3, 0.005),
+                ((14 + .35) * .5e-3, (14 + .35) * .5e-3, 0.005)), material="pec")
     from tests._realized_geometry import realized, node_index
 
     issues = _issues(sim)
