@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from rfx._host_limits import check_map_count
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike
@@ -333,6 +334,7 @@ def run_nonuniform_until_decay(
         ``max(min_steps, n_end)`` on, on this dict only (not on ``Result``),
         for a caller verifying the fire condition (rule R5).
     """
+    check_map_count()
     if check_interval < 1:
         raise ValueError(
             f"check_interval must be >= 1, got {check_interval}")

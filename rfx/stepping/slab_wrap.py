@@ -7,6 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
+from rfx._host_limits import check_map_count
 from rfx.core.yee import FDTDState
 from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
@@ -253,6 +254,7 @@ def reduce(records, state, layout, *, gather=True):
 def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, checkpoint_every,
               compile_loop=jax.jit, scan_loop=jax.lax.scan):
     """Drive canonical slab steps, including warmup and checkpoint segments."""
+    check_map_count()
     @compile_loop
     def run_fn(carry, invariants, waves, ranks):
         step = partial(advance, invariants=invariants, ranks=ranks)
