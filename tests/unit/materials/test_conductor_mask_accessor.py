@@ -226,7 +226,7 @@ def _refplane_thru(trace: str):
     from rfx.sources.sources import GaussianPulse
 
     sim = Simulation(
-        freq_max=10e9, domain=_RP_DOMAIN, dx=_RP_DX,
+        freq_max=10e9, domain=_RP_DOMAIN, dx=_RP_DX, snap="declared" if trace == "sheet" else "strict",
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,

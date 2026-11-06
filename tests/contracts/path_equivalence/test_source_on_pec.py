@@ -38,7 +38,8 @@ def model(path='uniform', kind='volume', *, adjacent=False, component='ez'):
         # Off-node declaration: only the realized x=6 plane owns the source.
         sim.add(Box(point(6.2, 3, 3), point(6.2, 5, 5)), material='pec')
     elif kind == 'wire':
-        sim.add(PolylineWire((point(6, 4, 3), point(6, 4, 5)), radius=0),
+        wire_lo = float(np.sum(kwargs['dz_profile'][:3])) if 'graded' in path else 3 * DX
+        sim.add(PolylineWire(((6 * DX, 4 * DX, wire_lo), point(6, 4, 5)), radius=0),
                 material='pec')
     position = point(5 if adjacent else 6, 4, 4)
     sim.add_source(position, 'ez', waveform=waveform, amplitude_kind='field')

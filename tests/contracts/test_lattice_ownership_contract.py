@@ -1100,7 +1100,7 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             sim = Simulation(
-                freq_max=30e9, domain=(10e-3, 10e-3, 10e-3), dx=dx,
+                snap="declared", freq_max=30e9, domain=(10e-3, 10e-3, 10e-3), dx=dx,
                 boundary=BoundarySpec(
                     x=Boundary(lo="pec", hi="pec"),
                     y=Boundary(lo="pec", hi="pec"),

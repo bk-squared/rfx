@@ -71,7 +71,7 @@ def _model(lane, material):
         kw["boundary"] = BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
                                       y=Boundary(lo="pmc", hi="cpml"), z="cpml")
     pass
-    sim = Simulation(freq_max=15e9, domain=(6e-3, 6e-3, 6e-3), dx=DX,
+    sim = Simulation(freq_max=15e9, domain=(float(np.sum(kw["dx_profile"])) if "dx_profile" in kw else 6 * DX, 6e-3, 6e-3), dx=DX,
                      cpml_layers=4, **kw)
     if material != "vacuum":
         mat = dict(eps_r=3.0, sigma=0.5 if material == "sigma" else 0.0)

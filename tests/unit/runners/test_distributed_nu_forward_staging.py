@@ -71,11 +71,14 @@ def _model(case="mixed", large=False):
     if case in ("mixed", "occupancy", "sigma", "lorentz"):
         poles["lorentz_poles"] = [lorentz_pole(1., 2 * np.pi * 3e9, 1e9)]
     sim.add_material("block", eps_r=4.4, sigma=.02, mu_r=1.5, **poles)
-    sim.add(Box((.3 * nx * 1e-3, .2 * ny * 1e-3, .2 * dz.sum()),
-                (.7 * nx * 1e-3, .8 * ny * 1e-3, .8 * dz.sum())), material="block")
     pec_z = np.cumsum(np.r_[np.full(2, dz[0]), dz]) - 2 * dz[0]
-    conductor = (Box((.45 * nx * 1e-3, .4 * ny * 1e-3, .4 * dz.sum()),
-                     (.55 * nx * 1e-3, .6 * ny * 1e-3, .6 * dz.sum())) if large else
+    block = (Box((12 * 1e-3, 5 * 1e-3, float(pec_z[7])),
+                 (28 * 1e-3, 19 * 1e-3, float(pec_z[21]))) if large else
+             Box((.3 * nx * 1e-3, .2 * ny * 1e-3, .2 * dz.sum()),
+                 (.7 * nx * 1e-3, .8 * ny * 1e-3, .8 * dz.sum())))
+    sim.add(block, material="block")
+    conductor = (Box((18 * 1e-3, 10 * 1e-3, float(pec_z[12])),
+                     (22 * 1e-3, 14 * 1e-3, float(pec_z[16]))) if large else
                  Box((5 * 1e-3, 3 * 1e-3, float(pec_z[4])),
                      (7 * 1e-3, 4 * 1e-3, float(pec_z[5]))))
     sim.add(conductor, material="pec")

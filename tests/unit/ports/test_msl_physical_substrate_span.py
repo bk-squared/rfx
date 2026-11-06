@@ -28,8 +28,8 @@ def _board(direction, n_sub, ground_cells, *, trace_cells=0, nonuniform=False):
     sim.add_material("substrate", eps_r=3.66)
     sim.add(Box((0, 0, lo), (32*dx, 32*dx, hi)), material="substrate")
     sim.add(Box((0, 0, lo), (32*dx, 32*dx, lo)), material="pec")
-    trace_lo = msl_physical_point(direction, 0, 8*dx, hi)
-    trace_hi = msl_physical_point(direction, 32*dx, 16*dx, hi+trace_cells*dx)
+    trace_lo = msl_physical_point(direction, 0, (8 - (.35 if trace_cells == 0 else 0))*dx, hi)
+    trace_hi = msl_physical_point(direction, 32*dx, (16 + (.35 if trace_cells == 0 else 0))*dx, hi+trace_cells*dx)
     sim.add(Box(trace_lo, trace_hi), material="pec")
     grid = sim._build_nonuniform_grid() if nonuniform else sim._build_grid()
     sheets, wires = [], []

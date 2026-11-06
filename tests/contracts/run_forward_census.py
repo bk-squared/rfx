@@ -150,7 +150,8 @@ def build_p_msl(path):
     sim.add_material('sub', eps_r=2.2)
     sim.add(Box((0., 0., 0.), (.040, .020, .003)), material='sub')
     sim.add(Box((0., 0., 0.), (.040, .020, 0.)), material='pec')
-    sim.add(Box((.006, (10 - .35) * .001, .003), (.040, (14 + .35) * .001, .003)), material='pec')
+    trace_z = sum(v * .001 for v in PROFILE[:3]) if path in ('graded', 'multi-device-graded') else 3 * .001
+    sim.add(Box((.006, (10 - .35) * .001, trace_z), (.040, (14 + .35) * .001, trace_z)), material='pec')
     sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
                      direction='+x', impedance=50., eps_r_sub=2.2,
                      n_probe_offset=3, n_probe_spacing=2, n_probes=3)

@@ -19,7 +19,7 @@ from tests.unit.nonuniform import test_traced_graded_axis_nominal_profile as boa
 
 def board_scene(delta, *, stale=False, inset=False, nominal=True, cpml=4):
     with patch.object(board, "CPML", cpml):
-        sim = board._board(delta * 0 if stale else delta)
+        sim = board._board(delta * 0 if stale else delta, snap="declared" if stale else "strict")
     if stale:
         if is_tracer(delta):
             sim._dx_profile = jnp.asarray(board.PROF, dtype=jnp.float32).at[-2].add(delta)
@@ -57,7 +57,7 @@ def test_a1_board_eager():
 
 def ring_scene(profile):
     nominal = {"z": np.ones(8)} if is_tracer(profile) else None
-    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+    sim = Simulation(snap="declared", domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=6, dz_profile=profile,
                      nominal_profiles=nominal, dt=1e-12, dt_min_cell=.5)
     sim.add(Box((0., 0., 2.), (7.9, 7.9, 3.)), material="pec")
@@ -106,7 +106,7 @@ def test_a4_clear_shape_is_identity_with_check(monkeypatch):
 def test_noncandidate_checks_realized_layer(k, delta, jit):
     def scene(d):
         with patch.object(board, "CPML", 4):
-            sim = board._board(d * 0)
+            sim = board._board(d * 0, snap="declared")
         if is_tracer(d):
             sim._dx_profile = jnp.asarray(board.PROF, dtype=jnp.float32).at[13:26].add(-d / 13)
         else:
@@ -304,7 +304,7 @@ def test_holed_impedance_sheet_refused(jit):
 def test_impedance_box_sheet_matches_concrete_and_checks_drift(inset):
     def scene(d):
         with patch.object(board, "CPML", 4):
-            sim = board._board(d * 0)
+            sim = board._board(d * 0, snap="declared")
         sim._ports = []
         if is_tracer(d):
             sim._dx_profile = jnp.asarray(board.PROF, dtype=jnp.float32).at[13:26].add(-d / 13)

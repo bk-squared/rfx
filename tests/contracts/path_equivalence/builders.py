@@ -187,8 +187,9 @@ def build(row, lane, *, graded=False, dt=None):
         kwargs['boundary'] = BoundarySpec(
             x=Boundary(lo='cpml', hi='cpml', lo_thickness=1, hi_thickness=2),
             y='pec', z='pec')
-    if "dz_profile" in kwargs:
-        kwargs["domain"] = (*kwargs["domain"][:2], float(np.sum(kwargs["dz_profile"])))
+    kwargs["domain"] = tuple(
+        float(np.sum(kwargs[f"d{axis}_profile"])) if f"d{axis}_profile" in kwargs else length
+        for axis, length in zip("xyz", kwargs["domain"]))
     sim = Simulation(**kwargs)
     sim.add_material('block', eps_r=2.5)
     if row == ('_tfsf', 'closed_box'):

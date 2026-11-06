@@ -30,7 +30,9 @@ def _build(case, lane, scale=1):
             x=Boundary(lo='cpml', hi='cpml', lo_thickness=3, hi_thickness=7),
             y=Boundary(lo='cpml', hi='cpml', lo_thickness=5, hi_thickness=8),
             z=Boundary(lo='pec', hi='cpml', hi_thickness=6))
-    sim = Simulation(freq_max=15e9, domain=domain, dx=1e-3,
+    profile = np.full(round(domain[0]/1e-3), 1e-3) if lane != 'uniform' else None
+    drawn = (float(np.sum(profile)), *(np.ceil(v / 1e-3) * 1e-3 for v in domain[1:])) if profile is not None else domain
+    sim = Simulation(freq_max=15e9, domain=drawn, dx=1e-3,
                      cpml_layers=8*scale, boundary=bc,
                      **({'dx_profile': np.full(round(domain[0]/1e-3), 1e-3)}
                         if lane != 'uniform' else {}))

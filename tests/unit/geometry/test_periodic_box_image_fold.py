@@ -137,7 +137,7 @@ def test_zero_width_sheet_on_the_seam_runs():
     from rfx import Box, Simulation
     from rfx.boundaries.spec import BoundarySpec
 
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                      boundary=BoundarySpec(x="pec", y="periodic", z="pec"))
     sim.add_thin_conductor(Box((0.01, 0.0, 0.005), (0.01, 0.0, 0.015)),
                            sigma_bulk=5.8e7, thickness=35e-6)

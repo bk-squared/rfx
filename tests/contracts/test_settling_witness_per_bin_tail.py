@@ -170,10 +170,10 @@ def issue_1451_scaled_cavity():
         boundary=BoundarySpec(x='pec', y='pec', z=Boundary(lo='cpml', hi='pec')),
         cpml_layers=20)
     z0, z1 = 96*fine, 98*fine
-    for lo, hi in [((-1, -1, z0), (13*fine, 1, z1)),
-                   ((23*fine, -1, z0), (1, 1, z1)),
-                   ((-1, -1, z0), (1, 3*fine, z1)),
-                   ((-1, 13*fine, z0), (1, 1, z1))]:
+    for lo, hi in [((-1, -1, z0), (6 * (2*fine), 1, z1)),
+                   ((11 * (2*fine), -1, z0), (1, 1, z1)),
+                   ((-1, -1, z0), (1, 1 * (2*fine), z1)),
+                   ((-1, 6 * (2*fine), z0), (1, 1, z1))]:
         sim.add(Box(lo, hi), material='pec')
     sim.add_waveguide_port(
         32*fine, direction='+z', mode=(1, 0), mode_type='TE', f0=10.3e9,

@@ -279,7 +279,7 @@ def test_traced_and_eager_graded_meshes_solve_the_same_strip():
         dy = ((jnp.full((ny,), DX) * scale).astype(jnp.float32) if is_tracer(scale)
               else np.full((ny,), DX) * float(scale))
         half = [1.25 * DX] * 4 + [DX] * 25
-        sim = Simulation(freq_max=10e9, domain=(NX * DX, ny * DX, nz * DX), dx=DX,
+        sim = Simulation(snap="declared", freq_max=10e9, domain=(NX * DX, ny * DX, nz * DX), dx=DX,
                          dy_profile=dy, dz_profile=np.array(half + half[::-1]),
                          boundary=BoundarySpec(x="pec", y="pmc", z="cpml"),
                          cpml_layers=8, dt=float(dt), dt_min_cell=float(0.9 * DX))

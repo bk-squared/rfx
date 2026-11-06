@@ -70,14 +70,14 @@ def _prof(delta, base=PROF):
     return d
 
 
-def _board(delta, *, nominal=PROF, base=PROF):
+def _board(delta, *, nominal=PROF, base=PROF, snap="strict"):
     kw = {}
     if nominal is not None and is_tracer(delta):
         kw["nominal_profiles"] = {"x": nominal}
     sim = Simulation(freq_max=40e9, domain=(LX, N_Y * DX, N_Z * DX), dx=DX,
                      cpml_layers=CPML, boundary="cpml",
                      dx_profile=_prof(delta, base), dt=float(DT_PIN),
-                     dt_min_cell=float(D_MIN), **kw)
+                     dt_min_cell=float(D_MIN), snap=snap, **kw)
     sim.add_material("sub", eps_r=3.38)
     sim.add(Box((0.0, 2 * DX, Z_G), (LX, 18 * DX, Z_P)), material="sub")
     sim.add_port(position=(X_PORT, Y_C, Z_G), component="ez", impedance=50.0,

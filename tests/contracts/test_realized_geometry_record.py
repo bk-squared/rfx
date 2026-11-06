@@ -448,7 +448,7 @@ def test_graded_waveguide_record_matches_runner_aperture(monkeypatch, normal, ra
     profile = np.concatenate((ramp, ramp[::-1]))
     domain = [.03, .02286, .02286]
     domain["xyz".index(graded_axis)] = float(profile.sum())
-    sim = Simulation(freq_max=20e9, domain=tuple(domain), dx=.001,
+    sim = Simulation(freq_max=20e9, domain=tuple(domain), dx=.001, snap="declared",
                      boundary=BoundarySpec(**{axis: "cpml" if axis == normal else "pec"
                                               for axis in "xyz"}),
                      cpml_layers=2, **{f"d{graded_axis}_profile": profile})

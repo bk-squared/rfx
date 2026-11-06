@@ -362,8 +362,8 @@ def test_finite_impedance_overlap_refused(coverage, compiled):
     z = float(DZ[:4].sum())
     # Cover: nodes 2..9. One-node overlap: f0 nodes x=7..9, y=3..7;
     # shared Ey edges at x=7, starting y=3..6, first padded (9,5,6).
-    lo, hi = ((.002, .002, z), (.009, .009, z)) if coverage == 'cover' else (
-        (.007, .003, z), (.009, .007, z))
+    lo, hi = (((2 - .35) * .001, (2 - .35) * .001, z), ((9 + .35) * .001, (9 + .35) * .001, z)) if coverage == 'cover' else (
+        ((7 - .35) * .001, (3 - .35) * .001, z), ((9 + .35) * .001, (7 + .35) * .001, z))
     sim.add_thin_conductor(Box(lo, hi), sigma_bulk=1e5,
                            thickness=35e-6, surface_impedance_f0=3e9)
     edge = r'ex\(5, 5, 6\)' if coverage == 'cover' else r'ey\(9, 5, 6\)'
