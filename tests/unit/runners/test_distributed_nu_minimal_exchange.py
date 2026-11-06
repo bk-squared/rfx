@@ -69,11 +69,11 @@ def _model(source_kind="field"):
     n_devices = len(jax.devices("cpu"))
     assert grid.nx == 17 and grid.nx % n_devices, grid.shape
     width = (grid.nx + n_devices - 1) // n_devices
-    edges = np.r_[0., np.cumsum(np.asarray(grid.dx_arr))]
+    # Declare seam nodes exactly; float32 cumulative roundoff crossed the high face.
     indices = sorted({i for rank in range(1, n_devices)
                       for i in (rank * width - 1, rank * width)})
     for i in indices:
-        pos = (float(edges[i] - edges[grid.pad_x_lo]), 2e-3, 2e-3)
+        pos = (float(grid.node_of("x", i)), 2e-3, 2e-3)
         assert position_to_index(grid, pos)[0] == i
         for component in ("ey", "ez"):
             sim.add_source(pos, component, amplitude_kind=source_kind,
@@ -84,7 +84,7 @@ def _model(source_kind="field"):
     # sample kept without its owner mask adds the other rank's live value. The
     # seam probes cannot show that; their aliases fall on rows that stay zero.
     for i in (4, 13):
-        pos = (float(edges[i] - edges[grid.pad_x_lo]), 2e-3, 2e-3)
+        pos = (float(grid.node_of("x", i)), 2e-3, 2e-3)
         assert position_to_index(grid, pos)[0] == i
         sim.add_probe(pos, "ez")
     sim.add_material("lossy_poles", eps_r=2.5, sigma=.03,

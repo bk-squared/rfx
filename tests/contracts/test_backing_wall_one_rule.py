@@ -313,7 +313,7 @@ def tube():
     sim.add_source((1.23*dx, 3*dx, 5*dx), 'ez', amplitude_kind='field',
                    waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
     sim.add_probe((dx, 3*dx, 5*dx), 'ez')
-    sim.add_probe(((nx+layers)*dx, 4*dx, 4*dx), 'ez')
+    sim.add_probe(((nx+layers)*dx, 4*dx, 4*dx), 'ez', allow_in_absorber=True)
     return sim
 
 

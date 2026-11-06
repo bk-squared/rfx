@@ -46,10 +46,10 @@ def _pad_sim(kind, axis, side):
     pos[axis] = -.001 if side < 0 else .009
     if kind in ('soft_current', 'soft_field'):
         sim.add_source(tuple(pos), 'ez', waveform=jnp.ones_like,
-                       amplitude_kind=kind[5:])
+                       amplitude_kind=kind[5:], allow_in_absorber=True)
     else:
         sim.add_port(tuple(pos), 'ez', waveform=jnp.ones_like,
-                     excite=kind != 'passive', extent=.001 if kind == 'wire' else None)
+                     excite=kind != 'passive', extent=.001 if kind == 'wire' else None, allow_in_absorber=True)
     return sim
 
 
@@ -102,8 +102,8 @@ def test_source_coefficient_is_the_upml_kernels_array(component):
 def test_cpml_pad_current_matches_plain_operator(lane):
     sim = _upml_sim('cpml')
     pos = (-.001, .004, .004)
-    sim.add_port(pos, 'ez', waveform=jnp.ones_like)
-    sim.add_probe(pos, 'ez')
+    sim.add_port(pos, 'ez', waveform=jnp.ones_like, allow_in_absorber=True)
+    sim.add_probe(pos, 'ez', allow_in_absorber=True)
     result = _solve_witness(sim, lane)
     dt = sim._build_grid().dt
     reference = dt / (EPS0 + 20 * dt / 2) * 20000

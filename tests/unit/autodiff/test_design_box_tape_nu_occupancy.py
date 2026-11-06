@@ -169,7 +169,7 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
     box_shape = tuple(box[2 * d + 1] - box[2 * d] for d in range(3))
     cpml_params, cpml_init = init_cpml(grid, field_dtype=field_dtype)
     src = position_to_index(grid, (0.004, 0.004, 0.004))
-    prb = position_to_index(grid, (0.005, 0.005, 0.006))
+    prb = position_to_index(grid, (0.005, 0.005, 0.005))
     t = np.arange(n_steps) * dt
     drive = jnp.asarray(
         np.exp(-((t - 1.0e-10) / 3e-11) ** 2) * np.sin(2 * np.pi * 10e9 * t),
@@ -433,7 +433,7 @@ def _nu_scan_case(n_steps=8):
     src = make_current_source(grid, src_idx, "ez",
                               GaussianPulse(f0=10e9, bandwidth=0.5),
                               n_steps, mats)
-    probe = position_to_index(grid, (5e-3, 5e-3, 6e-3)) + ("ez",)
+    probe = position_to_index(grid, (5e-3, 5e-3, 5e-3)) + ("ez",)
     return grid, mats, [src], [probe]
 
 
