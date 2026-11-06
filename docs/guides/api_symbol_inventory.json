@@ -2514,11 +2514,13 @@
       "excite",
       "direction",
       "reference_plane_cells",
-      "terminates"
+      "terminates",
+      "allow_in_absorber"
     ],
     "add_probe": [
       "position",
-      "component"
+      "component",
+      "allow_in_absorber"
     ],
     "add_refinement": [
       "z_range",
@@ -2532,7 +2534,8 @@
       "position",
       "component",
       "waveform",
-      "amplitude_kind"
+      "amplitude_kind",
+      "allow_in_absorber"
     ],
     "add_tfsf_source": [
       "f0",
