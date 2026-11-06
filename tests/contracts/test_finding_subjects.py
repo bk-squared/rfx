@@ -359,6 +359,7 @@ def test_traced_mesh_path(monkeypatch):
     import jax
     import jax.numpy as jnp
     from rfx import Box, GaussianPulse, Simulation
+    from rfx.preflight._subjects import _finding_view
     reports = []
 
     def evaluate(delta):
@@ -378,8 +379,12 @@ def test_traced_mesh_path(monkeypatch):
 
         monkeypatch.setattr(sim, '_run_preflight_gate', gate)
         result = sim.forward(n_steps=1, skip_preflight=False)
-        assert [row.label for row in result.realized_geometry.realization_table.rows] == [
+        record = result.realized_geometry
+        assert [row.label for row in record.realization_table.rows] == [
             'geometry[0]', 'domain', 'probe[0]']
+        labels = [row.label for row in _finding_view(sim, record).realization_table.rows]
+        assert 'port[0]' in labels
+        check_report(sim, reports[-1], unavailable_labels=labels)
         return jnp.sum(result.time_series)
 
     jax.grad(evaluate)(0.)
@@ -706,10 +711,50 @@ def test_unresolved_subject_is_only_a_contract_failure(monkeypatch, owner):
     report = sim.preflight()
     hit, = report.by_code('dielectric_at_absorber_seam')
     assert (str(hit), hit.severity) == ('original warning', 'warning')
+    assert hit.subjects == ('<unresolved finding subject>',)
     assert not report.by_code('uncoded')
     report.to_dict()
     with pytest.raises(AssertionError):
         check_report(sim, report)
+
+
+def test_missing_subjects_follow_resolved_labels_once():
+    from rfx import Box, Simulation
+    from rfx.preflight._common import PreflightIssue
+    from rfx.preflight._subjects import finding_subjects, resolve_findings
+    sim = Simulation(10e9, (.01,) * 3, dx=.001, boundary='pec')
+    sim.add(Box((.002, .002, .002), (.006, .006, .006)), material='pec')
+    finding = PreflightIssue('original warning', code='dielectric_at_absorber_seam',
+                             **finding_subjects(sim, objects=(
+                                 'missing[0]', 'domain', 'geometry[0]', 'missing[1]', 'missing[0]')))
+    resolve_findings([finding])
+    assert finding.subjects == ('geometry[0]', 'domain', '<unresolved finding subject>')
+    assert (finding.code, finding.severity, str(finding)) == (
+        'dielectric_at_absorber_seam', 'warning', 'original warning')
+
+
+def test_msl_sparameters_report_survives_mesh_change(monkeypatch):
+    from tests.unit.ports.test_msl_clearance_diagnostic import _base, _candidate
+    sim, _, _ = _base()
+    _candidate(sim, '+x', 18)
+    report = sim.preflight_sparameters(calculator='msl')
+    finding, = [i for i in report if i.source == 'preflight_sparameters']
+    assert finding.code == 'msl_port_geometry'
+    assert finding.subjects == ('geometry[3]', 'msl_port[0]')
+    before = (finding.subjects, finding.region)
+    assert before[1] is None
+    encoded = report.to_dict()
+    sim._dx /= 2
+    sim._resolved_mesh = None
+
+    def no_assembly():
+        pytest.fail('old MSL finding tried to assemble the changed model')
+
+    monkeypatch.setattr(sim, 'realized_geometry', no_assembly)
+    assert (finding.subjects, finding.region) == before
+    assert report.to_dict() == encoded
+    assert isinstance(finding._subjects, tuple)
+    assert finding._region is None
 
 
 def test_old_report_survives_mesh_change(monkeypatch):
@@ -772,6 +817,19 @@ def test_half_node_skips_internal_probe():
     sim.add(Box((.005, .005, .0035), (.015, .014, .0035)), material='pec')
     for x in (.012, .013):
         sim.add_probe((x, .009, .0035 + .95e-9), 'ex')
+    sim._internal_probe_indices = {0}
+    report = sim.preflight(check_ntff=False)
+    check_report(sim, report)
+    assert [i.subjects for i in report.by_code('half_node_split')] == [('geometry[0]', 'probe[1]')]
+
+
+def test_half_node_user_probe_at_internal_position():
+    from rfx import Box
+    from tests.unit.preflight.test_half_node_split import _sim
+    sim = _sim('uniform', dom=(.02, .019, .013))
+    sim.add(Box((.005, .005, .0035), (.015, .014, .0035)), material='pec')
+    for _ in range(2):
+        sim.add_probe((.012, .009, .0035 + .95e-9), 'ex')
     sim._internal_probe_indices = {0}
     report = sim.preflight(check_ntff=False)
     check_report(sim, report)

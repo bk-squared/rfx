@@ -93,7 +93,8 @@ class _Selection:
         result = tuple(row.label for row in rows if row.label in wanted)
         # Keep missing identities visible to the contract without changing the
         # original finding's code, severity, text or ordering.
-        result += tuple(key for key in self.keys if key not in result)
+        if wanted.difference(result):
+            result += ("<unresolved finding subject>",)
         return tuple(dict.fromkeys(result))
 
 
@@ -164,9 +165,12 @@ def resolve_findings(issues):
                     records[key] = _finding_view(selection.sim, selection.record())
                 selection.reader = lambda record=records[key]: record
             issue._subjects = selection.resolve()
+        except Exception:
+            issue._subjects = ("<unresolved finding subject>",)
+            issue._region = None
+        try:
             issue._region = issue._region.resolve() if issue._region is not None else None
         except Exception:
-            issue._subjects = (*selection.keys, "<unresolved finding subject>")
             issue._region = None
 
 

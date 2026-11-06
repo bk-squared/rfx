@@ -1006,6 +1006,8 @@ class _PreflightMixin:
             issues.extend(general)
             issues.flux_regions.extend(general.flux_regions)
 
+        from rfx.preflight._subjects import resolve_findings
+        resolve_findings(issues)
         _errors = issues.errors
         if strict and _errors:
             _advisory = len(issues) - len(_errors)
