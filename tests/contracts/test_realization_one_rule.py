@@ -1110,7 +1110,7 @@ def test_verdict_boundary(family, lane, miss, snap):
         return sim.run(compute_s_params=False, **solve_options)
 
     dielectric = family in ("dielectric_box", "magnetic_box", "lossy_box", "debye_box")
-    refuses = miss > .01 and snap == "strict" and not dielectric
+    refuses = miss > .01 and snap == "strict" and not dielectric and family != "port"
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         if refuses:
@@ -1120,7 +1120,7 @@ def test_verdict_boundary(family, lane, miss, snap):
             solve()
     codes = {"realization", "wall_axis_off_node", "dc_film_area", "sheet_effective_size", "sheet_cavity_spacing"}
     messages = [w.message for w in caught if getattr(w.message, "code", None) in codes]
-    if miss < .01:
+    if miss < .01 or family == "port":
         assert not messages
     elif not refuses:
         assert messages
@@ -1478,3 +1478,65 @@ def test_wire_span_includes_the_last_stepped_edge(case, monkeypatch):
         for transverse in set(range(3)) - {axis}:
             assert not masks[transverse].any()
             assert row.axes[transverse].bounds_m == pytest.approx((start[transverse]*dx,)*2)
+
+
+def test_port_built_conductors_leave_user_wire_verdict_intact(monkeypatch):
+    import warnings
+    from rfx import GaussianPulse
+    from rfx.errors import RfxRefusal
+    import rfx.sparams.coax as calculators
+
+    stamped = []
+    original = calculators.coax_kernel_conductors
+    def capture(*args, **kwargs):
+        root = original(*args, **kwargs)
+        stamped.append(root._realization_record)
+        return root
+    monkeypatch.setattr(calculators, "coax_kernel_conductors", capture)
+
+    # All three declarations use the same uniform grid and 0.23-cell offset.
+    dx = D / 4
+    def uniform():
+        return Simulation(freq_max=20e9, domain=(.01, .01, .02), dx=dx,
+                          boundary="cpml", cpml_layers=3, snap="strict")
+
+    wire = uniform()
+    start = (20.23*dx, 20.23*dx, 20.23*dx)
+    wire.add_port(start, component="ez", extent=4.38*dx, impedance=50., excite=False)
+    coax = uniform()
+    coax.add_coaxial_port((start[0], start[1], .01), face="top", pin_length=.005,
+                         pin_radius=2.13*dx, outer_radius=7.75*dx,
+                         waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        wire_result = wire.run(n_steps=1, compute_s_params=False, skip_preflight=True)
+        coax.compute_coaxial_line_reflection(
+            termination="matched", dut_impedance=50., n_steps=400,
+            freqs=np.array([8e9]), probe_count=3)
+    tables = (wire_result.realized_geometry.realization_table,
+              stamped[0].realization_table)
+    port = tables[0].row("port[0]")
+    assert port.axes[2].declared_span_m == pytest.approx(4.38*dx)
+    assert port.axes[2].realized_span_m == pytest.approx(5*dx)
+    # Node samples: pin x/y nodes 19..22 -> cell faces 19..23;
+    # shell wall is 1 mm = 4dx: radius 11.75dx, nodes 9..31 -> faces 9..32.
+    for name, drawn, realized in (("pin", 4.26*dx, 4*dx),
+                                  ("shell", 23.5*dx, 23*dx)):
+        row = tables[1].row(f"coaxial_port[0]/{name}")
+        for axis in row.axes[:2]:
+            assert axis.declared_span_m == pytest.approx(drawn)
+            assert axis.realized_span_m == pytest.approx(realized)
+            assert abs(axis.miss_percent) > 1.
+    for table in tables:
+        rows = [r for r in table.rows if r.label.startswith(("port[", "coaxial_port["))]
+        assert rows
+        for row in rows:
+            assert row.label in table.judged
+            assert row.status == "not judged here: port-built (judged by the port)"
+        assert not [f for f in table.findings if f.code == "realization"]
+    assert not [w for w in caught if getattr(w.message, "code", None) == "realization"]
+
+    user = uniform()
+    user.add(PolylineWire((start, (start[0], start[1], 24.61*dx)), radius=0.), material="pec")
+    with pytest.raises(RfxRefusal, match=r"realization geometry\[0\].*extent miss"):
+        user.run(n_steps=1, compute_s_params=False, skip_preflight=True)

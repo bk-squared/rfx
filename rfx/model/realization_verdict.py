@@ -8,12 +8,24 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 
+def _mark_port_built(table):
+    """Keep execution and diagnostic rows explicit about their port owner."""
+    from dataclasses import replace
+    port_labels = {row.label for row in table.rows
+                   if row.label.startswith(("port[", "coaxial_port["))}
+    object.__setattr__(table, "rows", tuple(
+        replace(row, status="not judged here: port-built (judged by the port)")
+        if row.label in port_labels else row for row in table.rows))
+    table.judged.update(port_labels)
+    return port_labels
+
+
 def judge_realization(table, snap):
     """Return findings for rows that have not yet been judged in this solve."""
     from rfx.preflight._common import PreflightIssue
-
     from dataclasses import replace
     findings = []
+    _mark_port_built(table)
     rows = list(table.rows) + list(getattr(table, "legacy_rows", ()))
     for row in table.rows:
         for region, axes in getattr(row, "regions", ()):
@@ -162,7 +174,10 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
     from rfx.grid import axis_kinds
     from rfx.boundaries.features import grid_face_depths
     table = conductors.realization_table
-    if table is None or table.report_only:
+    if table is None:
+        return
+    if table.report_only:
+        _mark_port_built(table)
         return
     if not finished:
         smoothing, conformal = options or (False, False)
