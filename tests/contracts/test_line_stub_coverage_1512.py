@@ -21,7 +21,21 @@ def converted_builder(case):
             build_simulation, case_geometry_params, enumerate_cases,
         )
         spec = next(spec for spec in enumerate_cases() if spec.case_id == case[6:])
-        return build_simulation(spec, case_geometry_params(spec))
+        # Preserve the measured boards whose realized trace endpoints this gate checks.
+        declared = case in {
+            "broad-ro4003c-high-open_stub-sub4",
+            "broad-ro4003c-high-open_stub-sub6",
+            "broad-ro4003c-high-thru-sub4",
+            "broad-ro4003c-low-open_stub-sub4",
+            "broad-ro4003c-low-open_stub-sub6",
+            "broad-ro4003c-low-thru-sub4",
+            "broad-teflon-high-open_stub-sub4",
+            "broad-teflon-high-open_stub-sub6",
+            "broad-teflon-high-thru-sub4",
+            "broad-teflon-high-thru-sub6",
+        }
+        return build_simulation(spec, case_geometry_params(spec),
+                                snap="declared" if declared else None)
     from tests.locks.test_patch_edgefed_resonance_harminv import _build
     return _build(True)[0]
 
