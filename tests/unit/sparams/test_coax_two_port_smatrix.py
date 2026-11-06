@@ -942,8 +942,20 @@ def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
 # CoaxialTwoPortResult and _assemble_coaxial_two_port_from_voltages for the
 # same finding recorded at the API level.
 @pytest.mark.slow_physics
-def test_matched_through_line_transmits_reciprocally():
+def test_matched_through_line_transmits_reciprocally(monkeypatch):
     sim = _sim()  # domain=(0.008, 0.008, 0.060), freq_max=40e9
+    import rfx.sparams.coax as coax
+
+    captures = []
+    original = coax.renormalize_power_waves
+
+    def record(s_params, line_impedances, reference_impedances):
+        captures.append(tuple(np.array(x, copy=True) for x in (
+            s_params, line_impedances, reference_impedances,
+        )))
+        return original(s_params, line_impedances, reference_impedances)
+
+    monkeypatch.setattr(coax, "renormalize_power_waves", record)
     import warnings
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -978,13 +990,40 @@ def test_matched_through_line_transmits_reciprocally():
     # 0.7372/0.7377 at 12 GHz, with margin down to 0.70).
     assert np.all(np.abs(s21) >= 0.70), np.abs(s21)
     assert np.all(np.abs(s12) >= 0.70), np.abs(s12)
-    # |S11|,|S22| <= 0.08: INHERITED from the validated 1-port
-    # matched-termination envelope (tests/unit/sparams/test_coaxial_line_reflection.py,
-    # 0.02-0.08), not pinned fresh from this run — it happens to coincide
-    # with this run's own max (measured 0.0502/0.0379 here) but the number
-    # itself is reused, not independently derived from this measurement.
-    assert np.all(np.abs(s11) <= 0.08), np.abs(s11)
-    assert np.all(np.abs(s22) <= 0.08), np.abs(s22)
+    assert len(captures) == 1
+    native, line_impedances, reference_impedances = captures[0]
+    # The 0.08 bar bounds the port's own reflection, inherited from the
+    # one-port envelope (tests/unit/sparams/test_coaxial_line_reflection.py).
+    # Root cause and numbers: rfx-archive, commit 561b480fa,
+    # rfx/records/20261107-coax-through-line-s11/RESULT.md: built 43.575 ohm
+    # versus drawn 48.591 ohm; native reflection <= 1.1e-5, but the
+    # staircased line's mismatch to 50 ohm raises returned |S11| to 0.1363.
+    assert np.all(np.abs(native[0, 0]) <= 0.08), np.abs(native[0, 0])
+    assert np.all(np.abs(native[1, 1]) <= 0.08), np.abs(native[1, 1])
+
+    np.testing.assert_array_equal(line_impedances, res.line_impedances)
+    np.testing.assert_array_equal(reference_impedances, [50.0, 50.0])
+    port = sim._coaxial_ports[0]
+    mu0, eps0, eps_r = 1.25663706212e-6, 8.8541878128e-12, 2.1
+    drawn_impedance = np.sqrt(mu0 / (eps0 * eps_r)) * np.log(
+        float(port.outer_radius) / float(port.pin_radius)
+    ) / (2.0 * np.pi)
+    assert np.all(np.abs(line_impedances - drawn_impedance) > 1.0), (
+        line_impedances, drawn_impedance,
+    )
+
+    # Kurokawa (1965), doi:10.1109/TMTT.1965.1125964, real references:
+    # S' = A^-1 (S - R)(I - R S)^-1 A. Independent NumPy-only model;
+    # do not use the implementation's renormalisation helper here.
+    rho_b = (50.0 - line_impedances) / (50.0 + line_impedances)
+    R = np.diag(rho_b)
+    A = np.diag(np.sqrt(1.0 - rho_b ** 2))
+    model = np.stack([
+        np.linalg.inv(A) @ (native[:, :, fi] - R)
+        @ np.linalg.inv(np.eye(2) - R @ native[:, :, fi]) @ A
+        for fi in range(len(BAND))
+    ], axis=-1)
+    np.testing.assert_allclose(S, model, rtol=0.0, atol=1e-3)
 
     # Reciprocity: both magnitude and phase (a mirror-symmetric through
     # line gives no reason to expect a calibration-scale or orientation
