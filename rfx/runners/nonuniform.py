@@ -790,7 +790,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(sim, conductors, n_steps=sizing_n, path=lane,
-                       frequencies=s_param_freqs, staggered_area=True,
+                       frequencies=(s_param_freqs if lane == 'fwd_nonuniform'
+                                    or compute_s_params is None or compute_s_params
+                                    or passive_diagnostic else None), staggered_area=True,
                        overrides={'eps_r': eps_override, 'sigma': sigma_override,
                                   'pec_mask': pec_mask_override,
                                   'pec_occupancy': pec_occupancy_override,

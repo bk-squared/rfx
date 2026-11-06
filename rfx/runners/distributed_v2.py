@@ -490,7 +490,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
-                       frequencies=s_param_freqs)
+                       frequencies=s_param_freqs if compute_s_params else None)
     from rfx._internal._grid_metric import field_index
     sources = PortSourceQueue()
     probes = []

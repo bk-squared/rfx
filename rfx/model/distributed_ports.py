@@ -13,7 +13,8 @@ from rfx.sources.port_drive import PortSourceQueue
 
 def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
              eps_override, sigma_override, pec_mask_override, pec_occupancy_override, debye_spec,
-             lorentz_spec, n_steps, lane, gather, diagnostics, s_param_freqs, mesh):
+             lorentz_spec, n_steps, lane, gather, diagnostics, s_param_freqs, mesh,
+             compute_s_params=False):
     """Apply overrides, stamp loads, release edges, then resolve ordered drives."""
     from rfx.api._source_semantics import needs_scale
     from rfx.model.source_coefficients import make_current_source, current_source_samples, current_source_volume
@@ -46,7 +47,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
         sheets, wires, periodic=(False,) * 3, root=conductors)
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
-                       frequencies=s_param_freqs,
+                       frequencies=s_param_freqs if lane == 'fwd_distributed_nu' or compute_s_params else None,
                        overrides={'eps_r': eps_override, 'sigma': sigma_override,
                                   'pec_mask': pec_mask_override,
                                   'pec_occupancy': pec_occupancy_override})
