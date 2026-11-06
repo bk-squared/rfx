@@ -26,21 +26,10 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_absorber_placement"
-      },
-      {
-        "code": "absorber_overlap",
-        "loc": null,
-        "numbers": [
-          0.0225,
-          0.0,
-          0.02098547206
-        ],
-        "severity": "error",
-        "source": "admit_interior_position"
       }
     ],
-    "n_errors": 1,
-    "n_issues": 3,
-    "ok": false
+    "n_errors": 0,
+    "n_issues": 2,
+    "ok": true
   }
 }

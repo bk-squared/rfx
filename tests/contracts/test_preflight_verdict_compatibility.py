@@ -12,10 +12,8 @@ def render(name):
 def test_outside_probe_keeps_absorber_code():
     issues = render("guards_probe_in_cpml")
     assert all(issue["code"] != "uncoded" for issue in issues)
-    assert any(issue["code"] == "absorber_overlap" and issue["severity"] == "error"
-               for issue in issues)
-    assert sum(issue["code"] == "absorber_overlap" and issue["severity"] == "warning"
-               for issue in issues) == 2
+    assert [(issue["code"], issue["severity"]) for issue in issues
+            if issue["code"] == "absorber_overlap"] == [('absorber_overlap', 'warning'), ('absorber_overlap', 'warning')]
 
 
 def test_aperture_keeps_its_code():

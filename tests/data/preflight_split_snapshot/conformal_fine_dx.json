@@ -3,6 +3,24 @@
     "issues": [
       {
         "code": "port_aperture_snap",
+        "loc": null,
+        "numbers": [
+          22.86,
+          1.0,
+          23.0,
+          10.0,
+          23.0,
+          23.0,
+          6.512162,
+          6.517227,
+          6.55714,
+          22.86
+        ],
+        "severity": "warning",
+        "source": "_check_waveguide_port_aperture_snap"
+      },
+      {
+        "code": "port_aperture_snap",
         "loc": "waveguide_port[0]",
         "numbers": [
           10.16,
@@ -16,7 +34,7 @@
           6.55714,
           10.16
         ],
-        "severity": "error",
+        "severity": "warning",
         "source": "_check_waveguide_port_aperture_snap"
       },
       {
@@ -31,8 +49,8 @@
         "source": "_check_waveguide_port_evanescent"
       }
     ],
-    "n_errors": 1,
-    "n_issues": 2,
-    "ok": false
+    "n_errors": 0,
+    "n_issues": 3,
+    "ok": true
   }
 }

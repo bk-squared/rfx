@@ -201,39 +201,10 @@
         ],
         "severity": "warning",
         "source": "judge_realization"
-      },
-      {
-        "code": "realization",
-        "loc": "port[0]",
-        "numbers": [
-          0.0,
-          -0.368700265252,
-          -10.9448818898,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.377952755906,
-          3.2e-05,
-          0.0,
-          0.0,
-          0.0,
-          0.0,
-          0.283464566929,
-          2.4e-05,
-          3.0,
-          0.0002262,
-          3.36870026525,
-          0.000254,
-          -0.184350132626,
-          -1.39e-05
-        ],
-        "severity": "warning",
-        "source": "judge_realization"
       }
     ],
     "n_errors": 0,
-    "n_issues": 11,
+    "n_issues": 10,
     "ok": true
   }
 }

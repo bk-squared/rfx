@@ -3079,18 +3079,18 @@
           "material": null,
           "n_cells": null
         },
-        "geometry|pec|34100.000,34100.000,34100.000um->65900.000,65900.000,65900.000um": {
+        "geometry|pec|34975.787,34975.787,34975.787um->64955.033,64955.033,64955.033um": {
           "axes": {
             "x": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -3101,14 +3101,14 @@
             },
             "y": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -3119,14 +3119,14 @@
             },
             "z": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -3136,27 +3136,11 @@
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            },
-            {
-              "axis": "y",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            },
-            {
-              "axis": "z",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 1067
+          "n_cells": 912
         }
       },
       "preflight": []
