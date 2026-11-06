@@ -1190,7 +1190,7 @@ def _check_msl_port_geometry(
                         + msl_text("reflector_bounds_remedy"),
                         subject=pe.name,
                     ),
-                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *(obj for item in _unevaluated for obj in item.objects))),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *(obj for item in _unevaluated for obj in getattr(item, "objects", ())))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
