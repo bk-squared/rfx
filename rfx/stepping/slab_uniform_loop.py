@@ -35,7 +35,7 @@ import jax.numpy as jnp
 
 def run_uniform_slab_loop(
     *,
-    SlabRecords,
+    records,
     _pmc_faces_frozen,
     cpml_params,
     cpml_state_sharded,
@@ -249,7 +249,6 @@ def run_uniform_slab_loop(
             px_prev=nl_pxp, py_prev=nl_pyp, pz_prev=nl_pzp)
         return new_st, new_db_st, new_lr_st, absorber
 
-    records = SlabRecords(sim, grid, nx_per, mesh, sharded_state.ex.dtype, n_steps, snapshot)
     from rfx.stepping import slab_tfsf
     tfsf_cfg, tfsf_line, tfsf_tables = slab_tfsf.prepare(sim, grid, n_steps, layout, mesh)
 

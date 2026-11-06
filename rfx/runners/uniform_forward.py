@@ -233,6 +233,11 @@ def _forward_from_materials(
     pec_mask_local = pec_mask
     pec_occupancy_local = pec_occupancy
     conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(self, conductors, n_steps=n_steps, path=lane or 'fwd_uniform',
+                       frequencies=port_s11_freqs,
+                       overrides={**(monitor_overrides or {}), 'design_box': design_box,
+                                  'design_occupancy': design_occupancy})
     _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
     from rfx.measurement import ordered_specs, register_lumped, register_wire
     port_record_specs = []

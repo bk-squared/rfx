@@ -9,7 +9,7 @@ from itertools import product
 import numpy as np
 import jax.numpy as jnp
 
-from .plan import Channel, Node, Owner, ReferencePlane, _frequencies
+from .plan import Channel, Node, Owner, ReferencePlane, _frequencies, _phase_values, _UNSET, _concrete_nodes
 
 
 def _metric_scalar(value):
@@ -85,7 +85,7 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
     channels = [replace(c, nodes=tuple(n for n in c.nodes
                 if isinstance(n.weight, Tracer) or n.weight != 0)) for c in channels]
     return Owner(f'port:{port_id}:mode:0', kind, tuple(channels),
-                 tuple(frequencies), tuple(reference_planes),
+                 _phase_values(frequencies), tuple(reference_planes),
                  known_differences=tuple(known_differences), availability=availability)
 
 
@@ -156,7 +156,7 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
         ('source', cfg.x_index, cfg.source_x_m), ('reference', cfg.ref_x, cfg.reference_x_m),
         ('probe', cfg.probe_x, cfg.probe_x_m)))
     return Owner(f'waveguide_port:{port_id}:mode:{mode_id}', 'waveguide', tuple(channels),
-                 tuple(float(f) for f in np.asarray(cfg.freqs)), refs, tuple(cfg.mode_indices),
+                 _phase_values(cfg.freqs), refs, tuple(cfg.mode_indices),
                  f'{cfg.mode_type}{tuple(cfg.mode_indices)}: config transverse profiles times aperture_dA',
                  ('record endpoint: one sample fewer because the final endpoint is excluded; retained samples use physical leapfrog timestamps at record slot n',))
 
@@ -208,7 +208,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
         refs.append(ReferencePlane('deembedding', prop, int(reference_index),
                                    float(grid.node_of(prop, int(reference_index)))))
     return Owner(f'msl_port:{port_id}:mode:0', 'msl', tuple(channels),
-                 tuple(float(f) for f in frequencies), tuple(refs),
+                 _phase_values(frequencies), tuple(refs),
                  mode_profile_reference='V: primal ladder; I: PEC trace planes and H stencil',
                  known_differences=('MSL calculator projector requires PEC trace',))
 
@@ -251,12 +251,12 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
         refs.append(ReferencePlane('deembedding', 2, int(reference_index),
                                    float(grid.node_of(2, int(reference_index)))))
     return Owner(f'coax_port:{port_id}:mode:0', 'coax', channels,
-                 tuple(float(f) for f in frequencies), tuple(refs),
+                 _phase_values(frequencies), tuple(refs),
                  mode_profile_reference='positive-x radial ray, bilinear interpolation, trapezoid',
                  known_differences=('coax calculator only; NU refused; I inferred from voltage fit',))
 
 
-def build_msl_owners(sim, grid, *, frequencies):
+def build_msl_owners(sim, grid, *, frequencies, pec_edges=_UNSET):
     """Build calculator observations from its resolved declarations and grid.
 
     Uses the calculator's plane-placement and realized-trace setup APIs, with
@@ -270,7 +270,8 @@ def build_msl_owners(sim, grid, *, frequencies):
     from rfx.probes.msl_wave_decomp import realized_trace_planes_on_column
     from rfx.model.graded_grid import NonUniformGrid
     from .plan import _pec_edges
-    edges = _pec_edges(sim, grid)
+    edges = _pec_edges(sim, grid) if pec_edges is _UNSET else pec_edges
+    _concrete_nodes(sim, edges)
     result = []
     for i, entry in enumerate(sim._resolve_msl_probe_entries(grid)):
         port = msl_port_from_entry(entry)

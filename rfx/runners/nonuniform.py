@@ -788,6 +788,15 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         _pec_sheets, _pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"), sheet_specs=_sheet_specs, root=conductors)
     pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=sizing_n, path=lane,
+                       frequencies=(s_param_freqs if lane == 'fwd_nonuniform'
+                                    or compute_s_params is None or compute_s_params
+                                    or passive_diagnostic else None), staggered_area=True,
+                       overrides={'eps_r': eps_override, 'sigma': sigma_override,
+                                  'pec_mask': pec_mask_override,
+                                  'pec_occupancy': pec_occupancy_override,
+                                  'design_box': design_box})
     from rfx.model.conductors import (
         refuse_layout_metal_consumers, refuse_layout_port_releases,
         refuse_layout_sheet_impedance,

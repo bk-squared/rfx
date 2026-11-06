@@ -240,7 +240,8 @@ def execute_from_materials(
         self, grid, materials, conductors, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
         eps_override=eps_override, sigma_override=sigma_override, pec_mask_override=pec_mask_override,
         pec_occupancy_override=pec_occupancy_override, debye_spec=debye_spec, lorentz_spec=lorentz_spec, n_steps=n_steps, lane=lane,
-        gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh)
+        gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh,
+        compute_s_params=compute_s_params)
     from rfx.stepping import prepared as prepared_step
     prepared_step.release_dense(stepping_product)
     del conductors
@@ -298,6 +299,8 @@ def execute_from_materials(
         records = SlabRecords(self, grid, sharded_grid.nx_per_rank, mesh,
                               sharded_materials.eps_r.dtype, n_steps, snapshot)
     _require_wrapped_records(records, sharded_grid.step_kind)
+    from rfx.measurement.prepared import finish_measurement
+    finish_measurement(stepping_product)
 
     # ---- Launch the sharded NU runner. ----
     prepared_step.stage(stepping_product, grid=sharded_grid, materials=sharded_materials, pec_edges=sharded_pec_mask)
