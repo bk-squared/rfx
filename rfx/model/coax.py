@@ -42,12 +42,12 @@ def coax_stamp_entities(grid, *, center, height, a, b, outer_radius,
 
 
 def stamp_check_findings(sim, conductors):
-    """Retain sheet findings for the conductor table's single admission.
+    """Read both validators against the owner; retain findings without judging.
 
-    Cylindrical volumes do not receive the sheet free-edge size rule;
-    the transition's declared board sheets do.
+    Cylindrical volumes do not receive the sheet free-edge size rule. The
+    transition's declared sheets can still produce a verdict. Record it here
+    rather than adding a new warning/refusal to a previously admitted lane.
     """
-    from rfx.preflight._common import PreflightWarning
     from rfx.model.pad_fill import check_pad_fill
     from rfx.preflight.realization import context_from_conductors
     from rfx.preflight.pec_geometry import _warn_sheet_effective_size
@@ -55,16 +55,9 @@ def stamp_check_findings(sim, conductors):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         _warn_sheet_effective_size(warnings, ctx, ctx.interior_pec_entries())
-    sheets = []
-    for finding in caught:
-        if isinstance(finding.message, PreflightWarning):
-            sheets.append(str(finding.message))
-        else:
-            warnings.warn_explicit(finding.message, finding.category,
-                finding.filename, finding.lineno, source=finding.source)
     pad = []
     check_pad_fill(sim, conductors.grid, (), record=pad, conductors=conductors)
-    return (('sheet-size', tuple(sheets)),
+    return (('sheet-size', tuple(str(w.message) for w in caught)),
             ('pad-fill', tuple(pad)))
 
 
