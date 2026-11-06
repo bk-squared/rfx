@@ -327,7 +327,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
 
 
 
-def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,
+def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1, lane='run_distributed',
                     _source_port_indices=None, _record_probes=None, preflight=None, assembly=None,
                     snapshot=None, _record_vref=True, s_param_freqs=None, compute_s_params=False, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
@@ -488,6 +488,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
     # Build sources and probes
     # ------------------------------------------------------------------
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
+                       frequencies=s_param_freqs)
     from rfx._internal._grid_metric import field_index
     sources = PortSourceQueue()
     probes = []

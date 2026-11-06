@@ -44,6 +44,12 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
         sheets, wires, periodic=(False,) * 3, root=conductors)
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
+                       frequencies=s_param_freqs,
+                       overrides={'eps_r': eps_override, 'sigma': sigma_override,
+                                  'pec_mask': pec_mask_override,
+                                  'pec_occupancy': pec_occupancy_override})
     # The distributed lane is outside declaration_setup (_dispatch.py), so an
     # outer jit would trace the port's host cell sizes; traced inputs stay recorded.
     with jax.ensure_compile_time_eval():

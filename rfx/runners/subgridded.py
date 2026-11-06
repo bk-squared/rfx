@@ -628,6 +628,13 @@ def _run_subgridded_once(
         (x_off, y_off, z_off), probe_indices_f)
     if _prepare_only:
         return conductors
+    from copy import copy
+    from rfx.measurement.prepared import attach_measurement
+    measurement_grid = copy(grid_coarse)
+    measurement_grid.dt = dt
+    attach_measurement(sim, conductors, grid=measurement_grid,
+                       n_steps=n_steps, path='run_subgridded',
+                       frequencies=diagnostic_lumped_sparam_freqs_override)
     from rfx.stepping.prepared import advance
     result = advance(conductors, _run_sg,
         grid_coarse,

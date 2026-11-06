@@ -167,6 +167,16 @@ def test_b2_points_and_planes(graded):
         plane_nodes(owner, cfg, grid)
 
 
+def test_b2_windowed_raw_plane():
+    sim = build(('_dft_planes', 'dft_plane'), 'run_uniform')
+    grid = sim._build_realized_grid()
+    plan = plan_for(sim, grid, dft_window='hann')
+    for owner, cfg in zip((o for o in plan.owners if o.kind == 'dft_plane'),
+                          build_planes(sim, grid, 12, dft_window='hann'), strict=True):
+        plane_nodes(owner, cfg, grid)
+        exact(owner.dft_window_alpha, cfg.window_alpha)
+
+
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_b2_wire_beside_pec(graded):
     sim = build(('_ports', 'wire_port'), 'run_nonuniform' if graded else 'run_uniform', graded=graded)

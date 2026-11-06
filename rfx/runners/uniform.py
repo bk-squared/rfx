@@ -239,6 +239,9 @@ def run_uniform(
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
         pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
     pec_edge_masks = conductors.pec_edges
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=sizing_n, path='run_uniform',
+                       frequencies=s_param_freqs)
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
     if sim._msl_ports and use_kottke_pec:
         from rfx.boundaries.pec import PEC_INV_THRESHOLD, kottke_fenced_edge_masks
