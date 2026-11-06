@@ -19,6 +19,7 @@ from rfx.farfield import _ntff_face_pads
 from rfx.farfield import _surface_currents
 from rfx.grid import C0
 from rfx.grid import Grid
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -272,6 +273,7 @@ def compute_far_field_jax(
     rdtype = jnp.finfo(cdtype).dtype
     theta = jnp.asarray(theta, dtype=rdtype)
     n_th_total = int(theta.shape[0])
+    chunk = max(1, n_th_total)
     if n_th_total > 1 and np.isfinite(max_phase_bytes):
         # Size from the actual face arrays. The first version of this
         # scanned for attributes starting with "J" — a name no NTFFData
@@ -299,20 +301,7 @@ def compute_far_field_jax(
             # can do, and it is still the difference between running and
             # dying.
             chunk = max(1, int(max_phase_bytes // per_theta))
-            if chunk < n_th_total:
-                parts = [
-                    compute_far_field_jax(
-                        ntff_data, box, grid, theta[i:i + chunk], phi,
-                        max_phase_bytes=float("inf"))
-                    for i in range(0, n_th_total, chunk)
-                ]
-                return FarFieldResult(
-                    E_theta=jnp.concatenate([p.E_theta for p in parts], axis=1),
-                    E_phi=jnp.concatenate([p.E_phi for p in parts], axis=1),
-                    theta=theta,
-                    phi=parts[0].phi,
-                    freqs=parts[0].freqs,
-                )
+            chunk = min(chunk, n_th_total)
     theta = jnp.asarray(theta, dtype=rdtype)
     phi = jnp.asarray(phi, dtype=rdtype)
     freqs = jnp.asarray(box.freqs, dtype=rdtype)
@@ -368,88 +357,108 @@ def compute_far_field_jax(
             return d_perp * dz_face  # (nk,)
         return _scalar_face_dS(axis, dx, dy, dx)
 
-    TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
-    sth, cth = jnp.sin(TH), jnp.cos(TH)
-    sph, cph = jnp.sin(PH), jnp.cos(PH)
+    @jax.checkpoint
+    def transform_chunk(theta):
+        TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
+        sth, cth = jnp.sin(TH), jnp.cos(TH)
+        sph, cph = jnp.sin(PH), jnp.cos(PH)
 
-    r_hat = jnp.stack([sth * cph, sth * sph, cth], axis=-1)
-    th_hat = jnp.stack([cth * cph, cth * sph, -sth], axis=-1)
-    ph_hat = jnp.stack([-sph, cph, jnp.zeros_like(sth)], axis=-1)
+        r_hat = jnp.stack([sth * cph, sth * sph, cth], axis=-1)
+        th_hat = jnp.stack([cth * cph, cth * sph, -sth], axis=-1)
+        ph_hat = jnp.stack([-sph, cph, jnp.zeros_like(sth)], axis=-1)
 
-    n_th, n_ph = theta.shape[0], phi.shape[0]
-    r_flat = r_hat.reshape(-1, 3)
-    n_dir = r_flat.shape[0]
+        n_th, n_ph = theta.shape[0], phi.shape[0]
+        r_flat = r_hat.reshape(-1, 3)
+        n_dir = r_flat.shape[0]
 
-    N_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
-    L_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
+        N_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
+        L_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
 
-    face_specs = [
-        (ntff_data.x_lo, 0, -1, i0, ((j0, j1), (k0, k1))),
-        (ntff_data.x_hi, 0, +1, i1, ((j0, j1), (k0, k1))),
-        (ntff_data.y_lo, 1, -1, j0, ((i0, i1), (k0, k1))),
-        (ntff_data.y_hi, 1, +1, j1, ((i0, i1), (k0, k1))),
-        (ntff_data.z_lo, 2, -1, k0, ((i0, i1), (j0, j1))),
-        (ntff_data.z_hi, 2, +1, k1, ((i0, i1), (j0, j1))),
-    ]
+        face_specs = [
+            (ntff_data.x_lo, 0, -1, i0, ((j0, j1), (k0, k1))),
+            (ntff_data.x_hi, 0, +1, i1, ((j0, j1), (k0, k1))),
+            (ntff_data.y_lo, 1, -1, j0, ((i0, i1), (k0, k1))),
+            (ntff_data.y_hi, 1, +1, j1, ((i0, i1), (k0, k1))),
+            (ntff_data.z_lo, 2, -1, k0, ((i0, i1), (j0, j1))),
+            (ntff_data.z_hi, 2, +1, k1, ((i0, i1), (j0, j1))),
+        ]
 
-    for face_dft, axis, sign, face_idx, other_ranges in face_specs:
-        face = jnp.asarray(face_dft)
-        n1, n2 = face.shape[1], face.shape[2]
-        if n1 == 0 or n2 == 0:
-            continue
+        for face_dft, axis, sign, face_idx, other_ranges in face_specs:
+            face = jnp.asarray(face_dft)
+            n1, n2 = face.shape[1], face.shape[2]
+            if n1 == 0 or n2 == 0:
+                continue
 
-        pos = _face_positions_jax(axis, face_idx, other_ranges, dx,
-                                  cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                                  dy=dy, z_edges=z_edges,
-                                  x_edges=x_edges, y_edges=y_edges,
-                                  centre=face_centre)
-        pos_flat = pos.reshape(-1, 3)
-        fields_flat = face.reshape(nf, -1, 4)
+            @jax.checkpoint
+            def face_contribution(face):
+                pos = _face_positions_jax(axis, face_idx, other_ranges, dx,
+                                          cpml_lo_x, cpml_lo_y, cpml_lo_z,
+                                          dy=dy, z_edges=z_edges,
+                                          x_edges=x_edges, y_edges=y_edges,
+                                          centre=face_centre)
+                pos_flat = pos.reshape(-1, 3)
+                fields_flat = face.reshape(nf, -1, 4)
 
-        J, M = _surface_currents_jax(fields_flat, axis, sign)
+                J, M = _surface_currents_jax(fields_flat, axis, sign)
 
-        if inplane_graded:
-            dS_flat = _face_dS_full_j(axis, other_ranges).reshape(-1)
-        else:
-            # Per-cell dS for non-uniform z on x/y faces
-            k_range = other_ranges[1] if axis in (0, 1) else None
-            if k_range is not None:
-                dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]), dtype=rdtype)
-                if dS_k.ndim > 0:
-                    dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
+                if inplane_graded:
+                    dS_flat = _face_dS_full_j(axis, other_ranges).reshape(-1)
                 else:
-                    dS_flat = dS_k
-            else:
-                dS_flat = _face_dS_jax(axis, 0, 0)
+                    # Per-cell dS for non-uniform z on x/y faces
+                    k_range = other_ranges[1] if axis in (0, 1) else None
+                    if k_range is not None:
+                        dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]), dtype=rdtype)
+                        if dS_k.ndim > 0:
+                            dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
+                        else:
+                            dS_flat = dS_k
+                    else:
+                        dS_flat = _face_dS_jax(axis, 0, 0)
 
-        dot = jnp.matmul(r_flat, pos_flat.T, precision=HIGHEST)  # (n_dir, nc)
+                dot = jnp.matmul(r_flat, pos_flat.T, precision=HIGHEST)  # (n_dir, nc)
 
-        phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
-        dS_flat = jnp.asarray(dS_flat, dtype=rdtype)  # may be Python float
-        if jnp.ndim(dS_flat) > 0:
-            J_w = J * dS_flat[None, :, None]
-            M_w = M * dS_flat[None, :, None]
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
-        else:
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J, precision=HIGHEST) * dS_flat
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M, precision=HIGHEST) * dS_flat
+                phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
+                dS_flat = jnp.asarray(dS_flat, dtype=rdtype)  # may be Python float
+                if jnp.ndim(dS_flat) > 0:
+                    J_w = J * dS_flat[None, :, None]
+                    M_w = M * dS_flat[None, :, None]
+                    N = jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
+                    L = jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
+                else:
+                    N = jnp.einsum("fdc,fcj->fdj", phase, J, precision=HIGHEST) * dS_flat
+                    L = jnp.einsum("fdc,fcj->fdj", phase, M, precision=HIGHEST) * dS_flat
+                return N, L
 
-    th_flat = th_hat.reshape(-1, 3)
-    ph_flat = ph_hat.reshape(-1, 3)
+            N, L = face_contribution(face)
+            N_total = N_total + N
+            L_total = L_total + L
 
-    N_th = jnp.sum(N_total * th_flat[None, :, :], axis=-1)
-    N_ph = jnp.sum(N_total * ph_flat[None, :, :], axis=-1)
-    L_th = jnp.sum(L_total * th_flat[None, :, :], axis=-1)
-    L_ph = jnp.sum(L_total * ph_flat[None, :, :], axis=-1)
+        th_flat = th_hat.reshape(-1, 3)
+        ph_flat = ph_hat.reshape(-1, 3)
 
-    jk = 1j * k_arr[:, None]  # (nf, 1)
-    E_theta = -jk / (4 * jnp.pi) * (L_ph + ETA_0 * N_th)
-    E_phi = jk / (4 * jnp.pi) * (L_th - ETA_0 * N_ph)
+        N_th = jnp.sum(N_total * th_flat[None, :, :], axis=-1)
+        N_ph = jnp.sum(N_total * ph_flat[None, :, :], axis=-1)
+        L_th = jnp.sum(L_total * th_flat[None, :, :], axis=-1)
+        L_ph = jnp.sum(L_total * ph_flat[None, :, :], axis=-1)
+
+        jk = 1j * k_arr[:, None]  # (nf, 1)
+        E_theta = -jk / (4 * jnp.pi) * (L_ph + ETA_0 * N_th)
+        E_phi = jk / (4 * jnp.pi) * (L_th - ETA_0 * N_ph)
+
+        return E_theta.reshape(nf, n_th, n_ph), E_phi.reshape(nf, n_th, n_ph)
+
+    # Equal shapes let the backward map rebuild one face-chunk phase at a
+    # time. Repeated end rows are discarded and receive zero cotangents.
+    padding = (-n_th_total) % chunk
+    theta_chunks = jnp.pad(theta, (0, padding), mode="edge").reshape((n_th_total + padding) // chunk, chunk)
+    E_theta, E_phi = jax.lax.map(transform_chunk, theta_chunks)
+
+    def unpad(field):
+        return field.transpose(1, 0, 2, 3).reshape(nf, n_th_total + padding, phi.shape[0])[:, :n_th_total, :]
 
     return FarFieldResult(
-        E_theta=E_theta.reshape(nf, n_th, n_ph),
-        E_phi=E_phi.reshape(nf, n_th, n_ph),
+        E_theta=unpad(E_theta),
+        E_phi=unpad(E_phi),
         theta=theta,
         phi=phi,
         freqs=freqs,
