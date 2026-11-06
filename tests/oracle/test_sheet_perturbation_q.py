@@ -83,7 +83,7 @@ _cache = {}
 
 
 def _build(mode, dft_freqs=None):
-    sim = Simulation(freq_max=40e9, domain=DOMAIN, dx=DX,
+    sim = Simulation(snap="declared", freq_max=40e9, domain=DOMAIN, dx=DX,
                      dz_profile=[DZ] * NZ, boundary="pec")
     kw = dict(sigma_bulk=SIGMA_BULK if mode == "f0" else 5.8e7)
     if mode == "f0":
