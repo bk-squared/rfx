@@ -215,6 +215,10 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
                 ('read-failed', (type(exc).__name__, str(exc))),))
         if ctx is not None:
             sim._coax_geometry = (ctx, root)
+    # A diagnostic stand-in can carry the recorded failure without a grid.
+    # There is no realization to summarize in that case.
+    if root.grid is None:
+        return root
     from rfx.model.realization_table import bind_table, finish_table
     from rfx.model.realization_verdict import admit_table
     bind_table(sim, root, lane="coax")

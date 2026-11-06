@@ -113,6 +113,7 @@ def capture(grid, shapes, fraction, owner, component, *, face=False):
 
 def read_rows(rows, grid, sim):
     from dataclasses import replace
+    geometry = getattr(sim, "_geometry", ())
     store = quantities(grid) or {}
     result = []
     for row in rows:
@@ -127,12 +128,13 @@ def read_rows(rows, grid, sim):
             group = store.get("groups", {}).get(index, (index,))
             if volume:
                 filled = volume.get(3, float(np.mean(list(volume.values()))))
-                drawn = _drawn_volume(sim._geometry[index].shape)
+                drawn = _drawn_volume(geometry[index].shape) if index < len(geometry) else None
                 row = replace(row, filled_volume_m3=filled, declared_volume_m3=drawn,
                               volume_equivalent_length_m=float(np.cbrt(filled)),
                               volume_miss_percent=None if not drawn else 100*(float(np.cbrt(filled/drawn))-1),
                               model="smoothed fill; union owner partition")
-                reference = _drawn_union_volume([sim._geometry[k].shape for k in group])
+                reference = (_drawn_union_volume([geometry[k].shape for k in group])
+                             if all(k < len(geometry) for k in group) else None)
                 if reference is not None and reference > 0:
                     total = sum(values.get(3, float(np.mean(list(values.values()))))
                                 for k in group if (values := store.get("filled", {}).get(k)))

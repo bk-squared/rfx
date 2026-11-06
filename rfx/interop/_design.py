@@ -891,6 +891,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
 #: transient, or run-time state — see the module docstring, rule 4.
 #: None of these attributes is set by the constructor.
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
+    "_realization_early_outcomes",  # derived findings; rebuilt from the declarations
     "_mesh_resolution",
     "_boundary_default_warned",
     # crop rectangles for the internal MSL DFT planes; exists only while
