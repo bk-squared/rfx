@@ -12,7 +12,7 @@ from tests.unit.runners import test_path_disposition_cells as paths
 
 def _scene(kind, on):
     widths = np.array([1, 1, 1, 1, 1, .5, 1.5, .5, 1.5, 1, 1, 1]) if kind in ('graded', 'cpml') else np.ones(12)
-    sim = paths._base('run_nonuniform', source=None,
+    sim = paths._base('run_nonuniform', source=None, snap='declared' if kind == 'pec' else 'strict',
                       interface_eps='dual_average' if on else 'sampled',
                       dx_profile=widths * 1e-3,
                       **(dict(boundary='cpml', cpml_layers=4) if kind == 'cpml' else {}))

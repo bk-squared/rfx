@@ -539,7 +539,7 @@ def _forward_scene(feature):
         )
     if feature == "graded":
         sim.add_thin_conductor(
-            Box((0.001, 0.002, 0.004), (0.003, 0.004, 0.004)),
+            Box(((1 - .35) * .001, (2 - .35) * .001, .004), ((3 + .35) * .001, (4 + .35) * .001, .004)),
             sigma_bulk=1e5,
             thickness=1e-5,
             surface_impedance_f0=5e9,

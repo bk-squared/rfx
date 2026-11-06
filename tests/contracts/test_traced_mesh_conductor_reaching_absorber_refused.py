@@ -23,6 +23,7 @@ PROFILE = np.full(8, DX)
 
 def _scene(dz, reaching, near_face=False):
     sim = Simulation(domain=(8*DX, 8*DX, 8*DX), dx=DX, freq_max=20e9,
+                     snap="declared" if near_face else "strict",
                      boundary="cpml", cpml_layers=2, dz_profile=dz,
                      nominal_profiles={"z": PROFILE} if is_tracer(dz) else None,
                      dt=1e-12, dt_min_cell=DX)
@@ -81,7 +82,7 @@ def test_e_three_dx_edge_cell_needs_nominal_at_one_point_two_dx(nominal):
     # z-lo is 1.2*DX from the face, inside its 3*DX edge cell.
     from tests.contracts.test_traced_mesh_conductor_matches_concrete import arrays, equal_arrays
     def assemble(dz):
-        sim = Simulation(domain=(8*DX, 8*DX, 24*DX), dx=DX, freq_max=20e9,
+        sim = Simulation(domain=(8*DX, 8*DX, 24*DX), dx=DX, freq_max=20e9, snap="declared",
                          boundary="cpml", cpml_layers=2, dz_profile=dz,
                          nominal_profiles={"z": np.full(8, 3*DX)} if nominal and is_tracer(dz) else None,
                          dt=1e-12, dt_min_cell=DX)
