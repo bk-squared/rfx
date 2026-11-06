@@ -456,8 +456,7 @@
               "position",
               "component",
               "waveform",
-              "amplitude_kind",
-              "allow_in_absorber"
+              "amplitude_kind"
             ],
             "properties": {
               "position": {
@@ -478,7 +477,8 @@
                 "$ref": "#/$defs/waveform_or_null"
               },
               "allow_in_absorber": {
-                "type": "boolean"
+                "type": "boolean",
+                "default": false
               }
             }
           }
@@ -498,8 +498,7 @@
               "extent",
               "excite",
               "direction",
-              "reference_plane_cells",
-              "allow_in_absorber"
+              "reference_plane_cells"
             ],
             "properties": {
               "terminates": {
@@ -529,7 +528,8 @@
                 "type": "boolean"
               },
               "allow_in_absorber": {
-                "type": "boolean"
+                "type": "boolean",
+                "default": false
               },
               "direction": {
                 "type": [
@@ -1058,8 +1058,7 @@
             "additionalProperties": false,
             "required": [
               "position",
-              "component",
-              "allow_in_absorber"
+              "component"
             ],
             "properties": {
               "position": {
@@ -1070,7 +1069,8 @@
                 "minLength": 1
               },
               "allow_in_absorber": {
-                "type": "boolean"
+                "type": "boolean",
+                "default": false
               }
             }
           }

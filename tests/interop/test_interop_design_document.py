@@ -1607,8 +1607,10 @@ def test_schema_entry_fields_match_the_emitter_registry(
     registry = getattr(_design, registry_name)
     node = _schema_at(published_schema, path)
 
-    # Radius is opt-in: old wire-port documents have no radius key.
+    # Older documents omit radius and the absorber opt-in keyword.
     optional = {"radius"} if path == "excitations.lumped_ports" else set()
+    if path in {"excitations.soft_sources", "excitations.lumped_ports", "observables.probes"}:
+        optional.add("allow_in_absorber")
     assert set(node["required"]) == set(registry) - optional, (
         f"{path}: schema required={sorted(node['required'])} but the emitter "
         f"records {sorted(registry)}"
@@ -2161,6 +2163,25 @@ def test_design_export_uses_current_entry_positions_for_terminations():
     rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
     assert int(np.asarray(sheets[0].footprint).sum()) == 169
     assert int(np.asarray(sheets[1].footprint).sum()) == 27
+
+
+def test_older_v2_document_defaults_absorber_opt_in_to_false(published_schema):
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
+    sim.add_probe((0.010, 0.010, 0.010), "ez", allow_in_absorber=True)
+    sim.add_source((0.005, 0.010, 0.010), "ez", allow_in_absorber=True)
+    sim.add_port((0.015, 0.010, 0.010), "ez", impedance=50.0, allow_in_absorber=True)
+    document = design_to_dict(sim)
+    del document["observables"]["probes"][0]["allow_in_absorber"]
+    del document["excitations"]["soft_sources"][0]["allow_in_absorber"]
+    del document["excitations"]["lumped_ports"][0]["allow_in_absorber"]
+
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._probes[0].allow_in_absorber is False
+    assert rebuilt._ports[0].allow_in_absorber is False
+    assert rebuilt._ports[1].allow_in_absorber is False
+
+    jsonschema = pytest.importorskip("jsonschema")
+    jsonschema.validate(instance=document, schema=published_schema)
 
 
 @pytest.mark.parametrize("kind", ["probe", "source", "lumped", "wire"])
