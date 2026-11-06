@@ -60,7 +60,7 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
     if lane in ("distributed_v2_run", "distributed_v2_forward"):
         shape = (11, 11, 11)  # whole-domain inputs to prepare_uniform
     elif lane == "distributed_v2_tfsf":
-        shape = (20, 15, 15)  # CPML slabs with two ghosts each
+        shape = (15, 15, 15)  # whole-domain CPML inputs to prepare_uniform
     elif lane.startswith("distributed_nu"):
         shape = (2, 9, 11, 11)  # rank, ceil(11/2) + three ghosts, y, z
     expected = {}

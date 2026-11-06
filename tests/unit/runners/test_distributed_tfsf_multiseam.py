@@ -238,7 +238,6 @@ def observe_line(records, *, multi):
     are compiled into the measured run.
     """
     from rfx.sources import tfsf
-    from rfx.stepping import slab_tfsf
 
     def capture(phase, step, *fields):
         records[phase, int(step)] = tuple(np.array(v, copy=True) for v in fields)
@@ -246,7 +245,7 @@ def observe_line(records, *, multi):
     def wrap(original, phase):
         def call(*args, **kwargs):
             result = original(*args, **kwargs)
-            line = result[1] if multi else result
+            line = result
             # H advance leaves step unchanged; E advance increments it.
             step = line.step + (1 if phase == "H" else 0)
             jax.debug.callback(lambda n, *v: capture(phase, n, *v), step,
@@ -254,8 +253,8 @@ def observe_line(records, *, multi):
             return result
         return call
 
-    module = slab_tfsf if multi else tfsf
-    hn, en = ("apply_h", "apply_e") if multi else ("update_tfsf_1d_h", "update_tfsf_1d_e")
+    module = tfsf
+    hn, en = "update_tfsf_1d_h", "update_tfsf_1d_e"
     with patch.object(module, hn, wrap(getattr(module, hn), "H")), \
          patch.object(module, en, wrap(getattr(module, en), "E")):
         yield

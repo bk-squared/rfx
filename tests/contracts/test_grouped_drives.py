@@ -39,7 +39,7 @@ def per_cell(state, drives, wave_t):
 _LAYOUT_MODULES = (
     'rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop',
     'rfx.stepping.graded_setup', 'rfx.vmap_sweep', 'rfx.stepping.vmap_scan',
-    'rfx.stepping.subgrid_jit', 'rfx.stepping.slab_uniform_loop',
+    'rfx.stepping.subgrid_jit',
     'rfx.stepping.slab_graded_legacy_loop', 'rfx.stepping.slab_update',
 )
 _INJECTOR_MODULES = ('rfx.simulation', 'rfx.stepping.graded')

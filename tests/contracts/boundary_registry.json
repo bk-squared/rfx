@@ -718,36 +718,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/stepping/slab_cpml.py",
-      "function": "_apply_cpml_e_shmap._cpml_e",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_cpml.py",
-      "function": "_apply_cpml_h_shmap._cpml_h",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/distributed_v2.py",
-      "function": "_init_cpml_sharded",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/distributed_v2.py",
-      "function": "run_distributed",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_uniform_loop.py",
-      "function": "run_uniform_slab_loop.step_fn_cpml",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_uniform_loop.py",
-      "function": "run_uniform_slab_loop.step_fn_pec",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/sources/coaxial_port.py",
       "function": "_coaxial_tem_edge_profile",
       "kind": "roll/diff"
@@ -795,11 +765,6 @@
     {
       "file": "rfx/stepping/graded.py",
       "function": "make_graded_step.pec",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_tfsf.py",
-      "function": "_apply.local",
       "kind": "boundary"
     },
     {
@@ -1026,6 +991,26 @@
       "file": "rfx/visualize.py",
       "function": "plot_stack_profile",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "_init_cpml_sharded",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_wrap_uniform.py",
+      "function": "prepare_uniform",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_wrap_uniform.py",
+      "function": "wrap_uniform.local.exchange.full",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_wrap_uniform.py",
+      "function": "wrap_uniform.local.tfsf_hx",
+      "kind": "boundary"
     }
   ]
 }
