@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 
-from rfx._internal._grid_metric import DECLARED_SPAN_TOL_M
+from rfx._internal._grid_metric import node_tie_tol
 from rfx.errors import RfxRefusal
 
 
@@ -20,10 +20,12 @@ def admit_axis(position, *, axis, lo, hi, cell_lo, cell_hi, pad_lo, pad_hi,
     side = "lo" if pos < lo else "hi"
     depth = (lo - pos) / cell_lo if side == "lo" else (pos - hi) / cell_hi
     pad = pad_lo if side == "lo" else pad_hi
+    tol_lo = node_tie_tol(pos, cell_lo)
+    tol_hi = node_tie_tol(pos, cell_hi)
     outside = (not math.isfinite(pos) or
-               pos < lo - pad_lo * cell_lo - DECLARED_SPAN_TOL_M or
-               pos > hi + pad_hi * cell_hi + DECLARED_SPAN_TOL_M)
-    in_pad = pos < lo - DECLARED_SPAN_TOL_M or pos > hi + DECLARED_SPAN_TOL_M
+               pos < lo - pad_lo * cell_lo - tol_lo or
+               pos > hi + pad_hi * cell_hi + tol_hi)
+    in_pad = pos < lo - tol_lo or pos > hi + tol_hi
     if not outside and (not in_pad or allow_in_absorber):
         return
     cells = "cell" if math.isclose(depth, 1.) else "cells"

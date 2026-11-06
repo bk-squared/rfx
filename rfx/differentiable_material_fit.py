@@ -528,6 +528,8 @@ def differentiable_material_fit(
         _require_supported_fixture(sim)
         if _validate_only:
             return None
+        from rfx.model.point_placement import admit_simulation_points
+        admit_simulation_points(sim, grid)
         _fit_pec_sheets: list = []
         _fit_pec_wires: list = []
         materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(

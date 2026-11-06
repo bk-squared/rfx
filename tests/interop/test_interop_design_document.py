@@ -2161,3 +2161,19 @@ def test_design_export_uses_current_entry_positions_for_terminations():
     rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
     assert int(np.asarray(sheets[0].footprint).sum()) == 169
     assert int(np.asarray(sheets[1].footprint).sum()) == 27
+
+
+@pytest.mark.parametrize("kind", ["probe", "source", "lumped", "wire"])
+def test_absorber_opt_in_survives_design_round_trip(kind):
+    sim = Simulation(freq_max=25e9, domain=(.01,) * 3, dx=.001, cpml_layers=8)
+    position = (-.001, .005, .005)
+    if kind == "probe":
+        sim.add_probe(position, allow_in_absorber=True)
+    elif kind == "source":
+        sim.add_source(position, amplitude_kind="field", allow_in_absorber=True)
+    else:
+        sim.add_port(position, extent=.002 if kind == "wire" else None,
+                     allow_in_absorber=True)
+    rebuilt = simulation_from_design(design_to_dict(sim))
+    entry = (rebuilt._probes if kind == "probe" else rebuilt._ports)[0]
+    assert entry.allow_in_absorber is True

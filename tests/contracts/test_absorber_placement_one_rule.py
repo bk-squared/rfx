@@ -153,3 +153,90 @@ def test_subgridded_absorbing_lid_placement(kind, allow):
                "1 cell into the z-hi CPML pad.*allow_in_absorber=True")
     with pytest.raises(ValueError, match=message):
         sim.run(n_steps=1, compute_s_params=False, skip_preflight=True)
+
+
+@pytest.mark.parametrize("lane", ["vmap_sweep", "material_fit"])
+@pytest.mark.parametrize("allow", [False, True])
+def test_material_paths_apply_pad_probe_rule(lane, allow, monkeypatch):
+    from rfx import Box, simulation, vmap_sweep
+    from rfx.differentiable_material_fit import differentiable_material_fit
+    from rfx.vmap_sweep import vmap_material_sweep
+
+    placed = []
+    make_probe = simulation.make_probe
+
+    def record_probe(*args, **kwargs):
+        placed.append(True)
+        return make_probe(*args, **kwargs)
+
+    monkeypatch.setattr(simulation, "make_probe", record_probe)
+    monkeypatch.setattr(vmap_sweep, "make_probe", record_probe)
+
+    def fixture(eps_inf=2., debye_poles=(), lorentz_poles=()):
+        sim = Simulation(freq_max=25e9, domain=(.004,) * 3, dx=.002,
+                         cpml_layers=2)
+        sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles,
+                         lorentz_poles=lorentz_poles)
+        sim.add(Box((0.,) * 3, (.004,) * 3), material="dut")
+        if lane == "vmap_sweep":
+            sim.add_source((.002,) * 3, amplitude_kind="field")
+        else:
+            sim.add_port((.002,) * 3)
+        kw = {"allow_in_absorber": True} if allow else {}
+        sim.add_probe((-.002, .002, .002), **kw)
+        return sim
+
+    def run():
+        if lane == "vmap_sweep":
+            result = vmap_material_sweep(fixture(), "dut.eps_r", np.array([2.]),
+                                         n_steps=1)
+            return result.time_series
+        result = differentiable_material_fit(
+            fixture, np.zeros((1, 1, 1), dtype=complex), np.array([10e9]),
+            n_debye_poles=0, n_iterations=1, verbose=False)
+        return result.final_s_params
+
+    if not allow:
+        with pytest.raises(ValueError, match=r"Probe\[0\].*1 cell into the x-lo CPML pad.*allow_in_absorber=True"):
+            run()
+        # A later kernel admission must not hide placement before refusal.
+        assert placed == []
+    else:
+        output = run()
+        assert output.shape == (1, 1, 1)
+        assert np.isfinite(output).all()
+
+
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
+@pytest.mark.parametrize("boundary", ["cpml", "pec"])
+def test_float32_domain_end_is_admitted(lane, boundary):
+    from rfx.model.point_placement import admit_simulation_points
+
+    end = .012  # float32 rounds this endpoint above the declared high face.
+    widths = np.array([1., .8, 1.2, 1.] * 3) * .001
+    profiles = {"dx_profile": widths} if lane == "graded" else {}
+    sim = Simulation(freq_max=25e9, domain=(end,) * 3, dx=.001,
+                     boundary=boundary, cpml_layers=8, **profiles)
+    sim.add_probe((float(np.float32(end)), .005, .005))
+    grid = sim._build_nonuniform_grid() if lane == "graded" else sim._build_grid()
+    admit_simulation_points(sim, grid)
+    assert sim._probes[0].allow_in_absorber is False
+    assert field_index(grid, sim._probes[0].position, "ez")[0] == (
+        20 if boundary == "cpml" else 12)
+    if boundary == "cpml":
+        sim.add_probe((end + .25 * .001, .005, .005))
+        with pytest.raises(ValueError, match="0.25 cells into the x-hi CPML pad.*allow_in_absorber=True"):
+            admit_simulation_points(sim, grid)
+
+
+def test_ringdown_default_probe_keeps_port_opt_in():
+    from rfx import GaussianPulse
+    from rfx.ringdown import RingdownSpec
+
+    sim = scene("uniform")
+    sim.add_port((-.001, .005, .005), extent=.002, allow_in_absorber=True,
+                 waveform=GaussianPulse(f0=25e9, bandwidth=1.))
+    result = sim.forward(n_steps=128, skip_preflight=True,
+                         port_s11_freqs=np.array([10e9]), ringdown=RingdownSpec())
+    assert result.time_series.shape == (128, 1)
+    assert sim._probes == []
