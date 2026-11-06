@@ -35,6 +35,24 @@ unproven bound: 56 independent `_linalg` sites remain concurrent in one build. I
 set `PJRT_NPROC=1` before JAX starts; that workaround's cost is unmeasured. jaxlib ≥ 0.11.1 keeps full speed.
 rfx's dependency range now installs jaxlib 0.11.1 on Python 3.12+; Python 3.11 installs jax 0.10.2.
 
+### One Python process that compiles many distinct grids can abort inside the JAX compiler on Linux hosts with the default vm.max_map_count
+
+Tracker: #2421
+
+The process can die with a segmentation fault or abort inside `backend_compile_and_load` (JAX's compiler),
+with no Python error and memory to spare. No wrong number is returned; unsaved results are lost.
+This was measured at about 151 distinct grid shapes compiled in one Python process at the Linux default
+limit of 65,530, for example a mesh or domain-size sweep in one notebook or script.
+Each new grid shape compiles new programs and JAX keeps them mapped. Reusing the same grid shape is
+expected not to add to the mapping count; not measured.
+
+Check the limit with `cat /proc/sys/vm/max_map_count` or `sysctl vm.max_map_count`; 65530 is the default
+on many distributions. Raise it with `sudo sysctl -w vm.max_map_count=262144`; to persist it, put
+`vm.max_map_count = 262144` in a file under `/etc/sysctl.d/`.
+Alternatively, inside the sweep call `jax.clear_caches()` and `gc.collect()` every few tens of grid
+shapes. The measured mapping count stayed below 23,000 when cleared every 50 shapes; later calls recompile.
+This limitation was measured on Linux. macOS, Windows and GPU backends were not measured.
+
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
 Tracker: #1373
