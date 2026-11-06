@@ -8,7 +8,7 @@ rfx.measurement: the conserved W from this loop's fields (one ``update_h``
 for H^(n+1/2)) at every count k * I, the drive end from this loop's own
 source tables, below when W < decay_by * ref, or W < 1e-12 * largest W so far
 and W >= 0.95 ** (I / 50) * W at the previous check.
-Point and flux checks keep their decisions at counts k * I.
+Closed boxes use the same energy check; flux checks stay at counts k * I.
 Retained DFT and S-parameter records follow the current runner interface.
 """
 
@@ -306,7 +306,6 @@ def run_until_decay_reference(
         p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
         return float(p)
 
-    peak_sq = 0.0
     peak_U = 0.0
     largest_W = 0.0
     previous_W = None
@@ -368,7 +367,7 @@ def run_until_decay_reference(
                         break
                 else:
                     flux_below = 0
-        elif use_absorbing:
+        else:
             if decay_by > 0 and n_end is not None and actual_steps % check_interval == 0:
                 U = _interior_energy(carry["fdtd"])
                 largest_W = max(largest_W, U)
@@ -381,18 +380,10 @@ def run_until_decay_reference(
                     if actual_steps >= min_steps and energy_below >= decay_energy_consecutive:
                         decayed_fired = True
                         break
-        else:
-            val_sq = float(monitor_val) ** 2
-            if val_sq > peak_sq:
-                peak_sq = val_sq
-            if (n_end is not None and actual_steps >= max(min_steps, n_end)
-                    and actual_steps % check_interval == 0 and (peak_sq > 0.0)):
-                if val_sq < decay_by * peak_sq:
-                    break
     if _reporter is not None and _reporter.last_reported != actual_steps:
         jax.block_until_ready(carry["fdtd"])
         _reporter.report(actual_steps)
-    if use_absorbing and (not decayed_fired) and (not use_flux_stop) and decay_by > 0:
+    if (not decayed_fired) and (not use_flux_stop) and decay_by > 0:
         static_remnant_advisory(carry["fdtd"], materials, grid,
                                 *((table_dc(sources), None) if advisory is None
                                   else (advisory["drives"], advisory["lossy"])))

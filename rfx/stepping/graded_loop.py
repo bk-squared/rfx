@@ -312,8 +312,8 @@ def run_nonuniform_until_decay(
     field is quasi-static (out of band), the record stays correct, and the stop
     record and the cap advisory say what ended the run.
 
-    On a closed domain (no absorbing pads) the interior energy does not decay
-    and this runs to ``max_steps``; ``run()`` refuses ``until_decay`` there.
+    On a lossless closed domain the energy does not decay, so this reaches
+    ``max_steps``; ``run()`` refuses ``until_decay`` there.
 
     Forward-only: a host loop, not reachable from ``forward()``/``optimize()``,
     no AD tape contract; ``checkpoint`` / ``checkpoint_every`` / ``n_warmup``
@@ -413,14 +413,14 @@ def run_nonuniform_until_decay(
     energy_stop, energy = make_decay_stop(
         grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
         consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
-        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf,
+        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(
             grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
-            max_steps=max_steps, flux=use_flux_stop, consecutive=decay_energy_consecutive,
+            max_steps=max_steps, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
             tfsf=tfsf, waveguide_ports=waveguide_ports)
     decayed_fired = False  # did the energy criterion fire (vs cap-hit)?

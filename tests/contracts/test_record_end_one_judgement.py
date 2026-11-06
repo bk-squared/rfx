@@ -799,7 +799,7 @@ def test_floquet_end_is_the_same_under_an_outer_jit():
     assert host is not None and seen == [host]
 
 
-# S2a: flux and point start at the same applied-drive end as energy.
+# S2a: flux starts at the same applied-drive end as energy.
 S2_BOX = ((.012, .012, .012), (.028, .028, .028))
 
 
@@ -814,10 +814,10 @@ def _s2_scene(graded=False, boundary="cpml"):
     return sim
 
 
-@pytest.mark.parametrize("kind", ["energy", "flux", "point"])
+@pytest.mark.parametrize("kind", ["energy", "flux"])
 @pytest.mark.parametrize("min_steps,n_d", [(50, 0), (300, 0), (50, 320)])
 def test_s2_rule_first_eligible_check(kind, min_steps, n_d, monkeypatch):
-    from rfx.measurement.decay import DecayStop, FluxStop, PointStop, finish_decay
+    from rfx.measurement.decay import DecayStop, FluxStop, finish_decay
 
     # Realized default pulse; the expected end uses this file's independent sum-free
     # table inspection, never record_end or a decay constructor/helper.
@@ -831,17 +831,15 @@ def test_s2_rule_first_eligible_check(kind, min_steps, n_d, monkeypatch):
     common = dict(thr=2., min_steps=min_steps, interval=interval, n_end=n_end, n_d=n_d)
     if kind == "energy":
         rule = DecayStop(**common, consecutive=consecutive)
-    elif kind == "flux":
-        rule = FluxStop(**common, consecutive=consecutive)
     else:
-        rule = PointStop(**common)
+        rule = FluxStop(**common, consecutive=consecutive)
     ceil_check = lambda n: math.ceil(n / interval) * interval
     first = ceil_check(max(min_steps, n_end, n_d))
     expected = (max(ceil_check(n_end) + (consecutive - 1) * interval,
                     ceil_check(max(min_steps, n_d))) if kind == "energy"
-                else first + (consecutive - 1) * interval if kind == "flux" else first)
+                else first + (consecutive - 1) * interval)
     for count in range(interval, 501, interval):
-        stopped = rule.check(count, np.ones(interval) if kind == "point" else lambda: 1.)
+        stopped = rule.check(count, lambda: 1.)
         if count < expected:
             assert stopped is None
         else:
@@ -878,8 +876,8 @@ def test_s2_run_waits_for_applied_drive(graded, boundary, monkeypatch, record_pr
     assert values["stop_step"] >= ends[0]
     assert values["drive_end_step"] == ends[0]
     assert values["criterion"] == "threshold"
-    assert values["quantity"] == ("radiated_flux" if flux else "point_field")
-    assert values["stop_step"] == (250 if flux else 200)
+    assert values["quantity"] == ("radiated_flux" if flux else "conserved_energy")
+    assert values["stop_step"] == 250
     record_property("s2_stop", dict(values))
 
 
@@ -931,8 +929,7 @@ def test_s2_direct_graded_loop_refuses_an_unused_flux_box(change, monkeypatch):
         original(*args, **{**kwargs, **change})
 
 
-@pytest.mark.parametrize("flux", [False, True])
-def test_s2_direct_constructor_and_still_on_cap(flux, monkeypatch):
+def test_s2_direct_constructor_and_still_on_cap(monkeypatch):
     from rfx.measurement.decay import make_field_decay_stop, finish_decay
 
     with monkeypatch.context() as patch:
@@ -940,23 +937,23 @@ def test_s2_direct_constructor_and_still_on_cap(flux, monkeypatch):
     grid, sources = args[0], kw["sources"]
     expected = max(_off(_table(src)) for src in sources)
     rule = make_field_decay_stop(grid, thr=2., min_steps=50, interval=50,
-                                max_steps=350, flux=flux, sources=sources)
+                                max_steps=350, sources=sources)
     assert rule.n_end == expected
     # A shorter cap cuts the pulse while it is still injecting. Peak tracking
-    # remains live, but neither rule may stop; the diagnostic names the drive.
+    # remains live, but the rule cannot stop; the diagnostic names the drive.
     capped = make_field_decay_stop(grid, thr=2., min_steps=0, interval=50,
-                                  max_steps=100, flux=flux, sources=sources)
+                                  max_steps=100, sources=sources)
     assert capped.n_end is None
     for count in (50, 100):
-        assert capped.check(count, (lambda: 1.) if flux else np.ones(50)) is None
+        assert capped.check(count, lambda: 1.) is None
     diagnostic = finish_decay(capped, 100)
     assert diagnostic.values["criterion"] == "cap"
     assert math.isnan(diagnostic.values["drive_end_step"])
     assert "source[0]" in diagnostic.message and "still injecting" in diagnostic.message
 
 
-def test_s2_peaks_keep_drive_checks_and_between_check_samples():
-    from rfx.measurement.decay import FluxStop, PointStop
+def test_s2_flux_peak_keeps_drive_checks():
+    from rfx.measurement.decay import FluxStop
 
     flux = FluxStop(.1, 0, 10, 2, 40, env_checks=2)
     for count, value in [(10, 100.), (20, 1.), (30, 1.), (40, 1.)]:
@@ -964,12 +961,7 @@ def test_s2_peaks_keep_drive_checks_and_between_check_samples():
     assert flux.peak == 100. and flux.below == 1
     assert flux.check(45, lambda: pytest.fail("off-interval flux read")) is None
     assert flux.check(50, lambda: 1.) == 50
-    point = PointStop(.1, 0, 10, 40)
-    assert point.check(10, [10., 1.]) is None
-    assert point.check(30, [1., 1.]) is None
-    assert point.check(39, [1.]) is None
-    assert point.peak == 100.
-    assert point.check(40, [1., 1.]) == 40
+
 
 
 @pytest.mark.parametrize("status", ["pass", "absent", "undetermined", "fail"])
