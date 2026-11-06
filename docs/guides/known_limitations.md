@@ -432,8 +432,9 @@ memory. No public call frees the arrays before `run()`. Deleting the `Simulation
 
 ### The staircased coax line can be 40–44 ohm for a drawn 48.6-ohm line.
 
-On these meshes the built coax line is 40–44 ohm for a drawn 48.6 ohm.
-The 50-ohm |S11| of the matched through-line test now reads up to about 0.14.
+Tracker: #2409
+
+On these meshes the built coax line is 40–44 ohm for a drawn 48.6 ohm, so the 50-ohm |S11| of a matched coax through-line reads up to about 0.14.
 The cause is the staircased line, not the port; `line_impedances` reports the built value.
 Setting `impedance=` to that value requests the line's own reference; it does not correct the built geometry.
 A finer mesh changes Z_built non-monotonically: 40.55 / 44.08 / 41.29 ohm at
