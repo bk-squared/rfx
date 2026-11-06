@@ -485,7 +485,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_geometry", "pec_wire"): _PEC_EDGES,
     ("_thin_conductors", "lossy_sheet"): _OTHER_RUNNERS - {"run_subgridded"},
     ("_thin_conductors", "pec_sheet"): _PEC_EDGES,
-    ("_thin_conductors", "surface_impedance"): _NO_SHEETS,
+    ("_thin_conductors", "surface_impedance"): _NO_SHEETS | {"run_distributed"} | _DISTRIBUTED_NU,
     ("_pinned_sheets", "pec_sheet"): _PEC_EDGES,
     ("_ports", "source"): _OTHER_RUNNERS,
     ("_ports", "amplitude_kind"): _OTHER_RUNNERS,

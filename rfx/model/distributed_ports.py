@@ -47,7 +47,8 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     if pec_mask_override is not None:
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
-        sheets, wires, periodic=(False,) * 3, root=conductors)
+        sheets, wires, periodic=(False,) * 3, root=conductors,
+        sheet_specs=conductors.sheet_impedance)
     from rfx.measurement.prepared import attach_measurement
     from rfx.measurement.port_s_contract import passive_record_diagnostic
     attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
@@ -130,8 +131,9 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     from rfx.stepping.prepared import stage
     conductors = stage(conductors, materials=materials)
     conductors, record = conductor_model.at_kernel(sim, conductors,
-        lane=lane, pec_edges=conductors.pec_edges)
-    return conductors._prepared_owner or conductors, materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
+        lane=lane, pec_edges=conductors.pec_edges,
+        sheet_operator=conductors.sheet_context(conductors.pec_edges))
+    return conductors._prepared_owner or conductors, materials, cells, conductors.pec_edges, conductors.sheet_operator, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
 
 
 def refuse_unsupported_distributed_features(sim, **kwargs):

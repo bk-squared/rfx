@@ -528,6 +528,7 @@ class SheetImpedanceSpec:
     drawn: tuple | None = None
 
 
+@jax.tree_util.register_dataclass
 @dataclass(frozen=True)
 class SheetImpedanceCtx:
     """Assembled runtime context for all f0 sheets of one run.
@@ -805,8 +806,8 @@ def has_f0_sheets(thin_conductors) -> bool:
         for tc in (thin_conductors or ()))
 
 
-def refuse_f0_sheets(thin_conductors, lane: str) -> None:
-    """Raise if ``thin_conductors`` contains an f0 sheet.
+def refuse_f0_sheets(thin_conductors, lane: str, *, context=None) -> None:
+    """Raise for an f0 declaration or a realized sheet ``context``.
 
     ``lane`` must be UNIQUE per call site: it is what
     ``tests/unit/materials/test_sheet_impedance.py`` matches on to tell which of the
@@ -814,7 +815,8 @@ def refuse_f0_sheets(thin_conductors, lane: str) -> None:
     also needs a row in that file's ``FENCE_REGISTRY`` and a test entering
     its lane — the inventory guard there fails otherwise.
     """
-    if has_f0_sheets(thin_conductors):
+    # Low-level runners receive the realized operator rather than declarations.
+    if context is not None or has_f0_sheets(thin_conductors):
         raise RfxRefusal(
             f"surface-impedance (surface_impedance_f0) thin conductors are "
             f"not supported on the {lane} lane: the sheet is realized by a "
