@@ -491,8 +491,9 @@ _GEOMETRY_FIELDS: dict[str, _F] = {
 # ``_PortEntry`` holds two physically different objects, discriminated only by
 # the ``impedance == 0`` sentinel that ``add_source`` stamps.  The document
 # splits them into ``soft_sources`` and ``lumped_ports``; a soft source records
-# only the three fields ``add_source`` can set.
+# only the fields ``add_source`` can set.
 _SOFT_SOURCE_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "position": _vec(3),
     "component": _STR,
     "waveform": _WAVEFORM,
@@ -550,6 +551,7 @@ def _ports_with_termination_indices(sim, ports):
 
 
 _LUMPED_PORT_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "terminates": _TERMINATES,
     "position": _vec(3),
     "component": _STR,
@@ -563,6 +565,7 @@ _LUMPED_PORT_FIELDS: dict[str, _F] = {
 }
 
 _PROBE_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "position": _vec(3),
     "component": _STR,
 }
@@ -1866,6 +1869,7 @@ def simulation_from_design(document: Any) -> Any:
         sim.add_source(
             values["position"], values["component"], waveform=values["waveform"],
             amplitude_kind=values["amplitude_kind"],
+            allow_in_absorber=values["allow_in_absorber"],
         )
         payload["amplitude_kind"] = sim._ports[-1].amplitude_kind
 
@@ -1936,7 +1940,8 @@ def simulation_from_design(document: Any) -> Any:
         values = _load_entry(
             payload, _PROBE_FIELDS, what=f"observables.probes[{index}]"
         )
-        sim.add_probe(values["position"], values["component"])
+        sim.add_probe(values["position"], values["component"],
+                      allow_in_absorber=values["allow_in_absorber"])
 
     for index, payload in enumerate(
         _entry_list(observables, "dft_planes", what="observables")

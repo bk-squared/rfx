@@ -2429,7 +2429,8 @@ class RingdownForward(RingdownRun):
         if self.lane == "uniform" and n_declared == 0:
             # forward()'s uniform lane records every port's own cell when the
             # model declares no probe; those columns stay first, as they were.
-            probes.extend(_ProbeEntry(position=pe.position, component=pe.component)
+            probes.extend(_ProbeEntry(position=pe.position, component=pe.component,
+                                      allow_in_absorber=pe.allow_in_absorber)
                           for pe in self.sim._ports)
         n_user = len(probes)
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),

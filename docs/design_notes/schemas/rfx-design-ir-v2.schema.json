@@ -448,7 +448,7 @@
       "properties": {
         "soft_sources": {
           "type": "array",
-          "description": "add_source() entries. Only the four fields add_source can set are recorded: an impedance-0 entry carrying extent / excite / direction / reference_plane_cells was not built through the public API and is refused at export.",
+          "description": "add_source() entries. Only the five fields add_source can set are recorded: an impedance-0 entry carrying extent / excite / direction / reference_plane_cells was not built through the public API and is refused at export.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -456,7 +456,8 @@
               "position",
               "component",
               "waveform",
-              "amplitude_kind"
+              "amplitude_kind",
+              "allow_in_absorber"
             ],
             "properties": {
               "position": {
@@ -475,6 +476,9 @@
               },
               "waveform": {
                 "$ref": "#/$defs/waveform_or_null"
+              },
+              "allow_in_absorber": {
+                "type": "boolean"
               }
             }
           }
@@ -494,7 +498,8 @@
               "extent",
               "excite",
               "direction",
-              "reference_plane_cells"
+              "reference_plane_cells",
+              "allow_in_absorber"
             ],
             "properties": {
               "terminates": {
@@ -521,6 +526,9 @@
                 ]
               },
               "excite": {
+                "type": "boolean"
+              },
+              "allow_in_absorber": {
                 "type": "boolean"
               },
               "direction": {
@@ -1050,7 +1058,8 @@
             "additionalProperties": false,
             "required": [
               "position",
-              "component"
+              "component",
+              "allow_in_absorber"
             ],
             "properties": {
               "position": {
@@ -1059,6 +1068,9 @@
               "component": {
                 "type": "string",
                 "minLength": 1
+              },
+              "allow_in_absorber": {
+                "type": "boolean"
               }
             }
           }
