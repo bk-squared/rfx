@@ -233,6 +233,11 @@ def bind_table(sim, conductors, *, lane, compact=True):
     from rfx.realized_geometry import record_from_conductors, RealizedGeometry
     from rfx.model.realization_reference import nominal_record, traced_inputs
     if conductors.realization_table is not None:
+        if not compact:
+            record = record_from_conductors(sim, conductors, lane=lane, compact=False)
+            if record is not None:
+                from rfx.realized_geometry import _conductor_view
+                return _conductor_view(replace(record, realization_table=conductors.realization_table), conductors)
         return conductors._realization_record
     inputs = traced_inputs(sim, conductors.grid)
     reader = sim

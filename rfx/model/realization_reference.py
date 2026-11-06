@@ -29,9 +29,10 @@ register_pytree_node(_DeclaredDomain, lambda domain: (tuple(domain), domain.decl
 
 
 def remember_kernel(sim, root, record):
-    """Keep only the primary execution's host rows and per-axis metadata."""
+    """Retain the kernel owner alongside the compact host rows."""
     from rfx._declarations import declaration_key
     from rfx.model.realization_integrals import quantities
+    object.__setattr__(record, "_conductors", root)
     if record.lane.startswith("fwd_") or any(row.traced_inputs for row in record.realization_table.rows):
         return
     store = quantities(root.grid)

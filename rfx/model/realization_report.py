@@ -34,7 +34,7 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
     record = record_from_conductors(reader, root, lane=solved.lane, compact=False)
     record = replace(record, realization_table=table, dt=solved.dt)
     object.__setattr__(root, "realization_table", table)
-    object.__setattr__(record, "_conductors", root)
+    object.__setattr__(record, "_conductors", solved.conductors if solved.conductors is not None else root)
     object.__setattr__(record, "_report_grid", root.grid)
     return record
 
