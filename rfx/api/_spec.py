@@ -1274,6 +1274,9 @@ class CoaxialLineReflectionResult(NamedTuple):
     high-frequency reflection degrades. ``status`` is ``"passed"``,
     ``"under_resolved"`` (annulus too coarse), or ``"contaminated"`` (recurrence
     residual exceeded the gate at one or more frequencies).
+    ``settling_db`` and ``settling_witness`` judge all plane-voltage records
+    and the witness probe against the two-port's -40 dB settling bar.
+    The ``eps_scale`` path returns nan and an undetermined witness.
     """
 
     s11: np.ndarray
@@ -1285,6 +1288,8 @@ class CoaxialLineReflectionResult(NamedTuple):
     z0_numerical_ohm: np.ndarray
     termination: str
     status: str
+    settling_db: float | None = None
+    settling_witness: dict | None = None
 
 
 @dataclass
