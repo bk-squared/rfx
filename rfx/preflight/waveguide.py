@@ -773,16 +773,18 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                 )
                 continue
             rasterized = rec["rasterized"]
-            from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready
+            # This existing diagnostic reports every snapped aperture axis,
+            # including moves below the realization verdict's refusal bar.
+            if abs(declared - rasterized) <= 1e-12:
+                continue
+            from rfx.model.realization_verdict import legacy_table_ready
             verdict = None
             if legacy_table_ready(self._campaign_ctx()):
                 table = self._campaign_ctx()._realized.realization_table
                 verdict = next((f for f in table.findings
                     if f.code == "port_aperture_snap" and f.loc == f"waveguide_port[{port_index}]"), None)
                 if verdict is None or axis_name not in verdict._realization_axes:
-                    continue
-            elif not legacy_mismatch((rasterized-declared)/declared, .01):
-                continue
+                    verdict = None
             note = (
                 ""
                 if rec["explicit"] else
