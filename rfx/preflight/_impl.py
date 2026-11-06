@@ -95,12 +95,10 @@ def _preflight_impl(
         self._collect_flux_regions(issues)
         try:
             if _conductors is None:
-                from rfx.model.realization_table import bind_table
                 from rfx.model.realization_verdict import admit_table
                 ctx = self._campaign_ctx()
-                root = ctx.realized() if ctx.grid is not None else None
+                root = ctx.bind_realization()
                 if root is not None:
-                    bind_table(self, root, lane=root.lane, compact=False)
                     admit_table(self, root, deliver=False)
                     admit_table(self, root, finished=True, deliver=False)
                     table = root.realization_table
@@ -239,6 +237,7 @@ def _preflight_impl(
         "pec_box_subcell", "pec_zero_cells", "pec_realization_refused",
         "dc_film_area", "dc_film_layers", "dc_film_unchecked",
         "source_decoupled", "declared-span-short-of-padded-face",
+        "port_aperture_unrasterizable",
     }
     if any(issue.code in assembly_codes for issue in issues):
         exc = self._campaign_ctx()._assembly_exception

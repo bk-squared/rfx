@@ -446,6 +446,19 @@ class _CampaignStaticsContext:
             raise self._assembly_exception
         return self._realized
 
+    def bind_realization(self):
+        """Keep record assembly failures in the diagnostic assembly channel."""
+        from rfx.model.realization_table import bind_table
+        root = self.realized() if self.grid is not None else None
+        if root is None or self._assembly_exception is not None:
+            return None
+        try:
+            bind_table(self.sim, root, lane=root.lane, compact=False)
+        except self._NARROW_EXCS as exc:
+            self._assembly_exception = exc
+            return None
+        return root
+
     def _emit_assembly_warnings(self):
         import warnings
         emitted = getattr(self, '_assembly_warnings', ())
