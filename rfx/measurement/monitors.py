@@ -10,12 +10,14 @@ from rfx.model.graded_admission import host_cells
 from itertools import product
 from functools import lru_cache
 from contextlib import nullcontext
+from copy import copy
+from dataclasses import replace
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .plan import Channel, Node, Owner
+from .plan import Channel, Node, Owner, _phase_values, _traced
 
 
 def default_frequency_grid(freq_max, n_freqs, *, host=False):
@@ -47,7 +49,7 @@ def _eager_frequency_grid(freq_max, n_freqs, x64):
     return result
 
 
-def monitor_owners(sim, grid):
+def monitor_owners(sim, grid, *, conductors=None, periodic=None, overrides=None):
     from rfx.current_moments import monitor_for_simulation
     from rfx.farfield import make_ntff_box
     owners = []
@@ -55,14 +57,25 @@ def monitor_owners(sim, grid):
         lo, hi, freqs = sim._ntff
         owners.append(ntff_owner(grid, make_ntff_box(grid, lo, hi, freqs)))
     if sim._current_moments is not None:
+        freqs = sim._current_moments[3]
+        declaration = sim
+        if _traced(freqs):
+            # Only geometry is frozen here. Frequency-dependent admission belongs
+            # to the run; its phase leaves do not determine the block stencil.
+            declaration = copy(sim)
+            spec = list(sim._current_moments)
+            spec[3] = np.zeros(freqs.shape, dtype=np.float32)
+            declaration._current_moments = tuple(spec)
         try:
-            monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
+            monitor = monitor_for_simulation(declaration, grid, sim._periodic_flags() if periodic is None else periodic,
+                                             conductors=conductors, overrides=overrides)
         except NotImplementedError as exc:
             owners.append(Owner('current_moment:0', 'current_moment', (),
-                                tuple(float(f) for f in sim._current_moments[3]),
+                                _phase_values(sim._current_moments[3]),
                                 availability=f'unavailable: {exc}'))
         else:
-            owners.append(current_moment_owner(grid, monitor))
+            owner = current_moment_owner(grid, monitor)
+            owners.append(replace(owner, frequencies=freqs) if _traced(freqs) else owner)
     return owners
 
 
@@ -94,7 +107,7 @@ def ntff_owner(grid, box):
                     nodes.append(Node(component, *idx, float(normal*transverse), area))
             channels.append(Channel(face+':'+component, kind, tuple(nodes),
                                     e_time_offset=0., h_time_offset=0.))
-    return Owner('ntff_box:0', 'ntff', tuple(channels), tuple(float(f) for f in box.freqs))
+    return Owner('ntff_box:0', 'ntff', tuple(channels), _phase_values(box.freqs))
 
 
 def current_moment_owner(grid, monitor):
@@ -102,7 +115,8 @@ def current_moment_owner(grid, monitor):
     from rfx.core.yee import EPS_0
     m = monitor
     dtype = np.asarray(m.w_ex).dtype
-    coef = dtype.type(EPS_0)/dtype.type(grid.dt)
+    coef = dtype.type(EPS_0)/(jnp.asarray(grid.dt, dtype=dtype) if _traced(grid.dt)
+                              else dtype.type(grid.dt))
     inverse = tuple(np.asarray(a) for a in (m.inv_dx_e, m.inv_dy_e, m.inv_dz_e))
     starts = (m.i_lo, m.j_lo, m.k_lo)
     curls = ((('hz', 1), ('hy', 2)), (('hx', 2), ('hz', 0)), (('hy', 0), ('hx', 1)))
@@ -117,7 +131,8 @@ def current_moment_owner(grid, monitor):
                     continue
                 value = weights[(w, *index)]
                 idx = tuple(p+q for p, q in zip(starts, index))
-                electric.append(Node('e'+'xyz'[c], *idx, float(-value*coef)))
+                weight = -value*coef
+                electric.append(Node('e'+'xyz'[c], *idx, weight if _traced(weight) else float(weight)))
                 for term, (component, axis) in enumerate(curls[c]):
                     weight = float(value*inverse[axis][index[axis]]*m.curl_signs[2*c+term])
                     back = list(idx)
@@ -132,4 +147,4 @@ def current_moment_owner(grid, monitor):
                 channels.append(Channel(prefix+name, 'H', nodes, sample_stage=stage,
                                         e_time_offset=0., h_time_offset=float(m.half_step)-.5))
     return Owner('current_moment:0', 'current_moment', tuple(channels),
-                 tuple(float(f) for f in m.freqs))
+                 _phase_values(m.freqs))
