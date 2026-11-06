@@ -20,6 +20,7 @@ from rfx import Box, PolylineWire, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.boundaries.tfsf import INJECTION_OPERANDS, injection_material_rule
 from rfx.core.yee import MaterialArrays
+from rfx.errors import RfxRefusal
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, drude_pole
 from rfx.sources.tfsf import tfsf_from_declaration
@@ -377,6 +378,32 @@ def test_material_leaf_classification_is_complete():
                     pytest.fail(f'unclassified spatial leaf: {path}')
     visit(MaterialArrays, 'materials')
     visit(KernelComponents, 'materials.components')
+
+
+@pytest.mark.parametrize('transform', ['grad', 'jit'])
+def test_oblique_forward_traced_eps_refuses(transform):
+    sim = Simulation(freq_max=10e9, domain=(0.016,) * 3, dx=0.002,
+                     boundary='cpml', cpml_layers=2)
+    sim.add_tfsf_source(f0=5e9, polarization='ez', direction='+x',
+                        margin=2, angle_deg=20, method='methodB')
+    sim.add_probe((0.0105, 0.0083, 0.0077), 'ez')
+    shape = sim._build_grid().shape
+
+    def objective(scale):
+        result = sim.forward(n_steps=4, checkpoint=False, skip_preflight=True,
+                             eps_override=jnp.ones(shape) * scale)
+        return jnp.sum(jnp.abs(result.time_series))
+
+    call = getattr(jax, transform)(objective)
+    # The same traced path admits vacuum: tracing itself is not refused.
+    assert np.isfinite(np.asarray(jax.block_until_ready(call(1.0)))).all()
+    # JIT wraps a callback's RfxRefusal in the backend runtime exception.
+    expected = RfxRefusal if transform == 'grad' else jax.errors.JaxRuntimeError
+    with pytest.raises(expected, match='requires vacuum') as caught:
+        jax.block_until_ready(call(1.5))
+    assert not isinstance(caught.value, jax.errors.TracerArrayConversionError)
+    print(json.dumps(dict(transform=transform, exception=type(caught.value).__name__,
+                          message=str(caught.value))), file=sys.stderr)
 
 
 @pytest.mark.parametrize('transform', ['jit', 'grad', 'vmap'])
