@@ -1,11 +1,11 @@
 """Object identities and grid regions carried by preflight findings.
 
-Selection is captured at the check site. Reading labels is deferred until a
-consumer asks for the fields, so annotation cannot reorder assembly warnings.
+Selection is captured at the check site and resolved after warning capture.
+Unresolvable subjects remain contract defects, never legality findings.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -91,8 +91,9 @@ class _Selection:
         rows = table.rows if table is not None else record.entities
         wanted = set(self.keys)
         result = tuple(row.label for row in rows if row.label in wanted)
-        for key in self.keys:
-            label(record, key)
+        # Keep missing identities visible to the contract without changing the
+        # original finding's code, severity, text or ordering.
+        result += tuple(key for key in self.keys if key not in result)
         return tuple(dict.fromkeys(result))
 
 
@@ -132,11 +133,62 @@ class _Region:
 def finding_subjects(ctx, *, objects=(), region=None):
     """Capture declarations or record rows, never message text or locations."""
     sim = getattr(ctx, "sim", ctx)
-    selection = _Selection(sim, tuple(dict.fromkeys(_key(sim, obj) for obj in objects)),
+    keys = []
+    for obj in objects:
+        try:
+            keys.append(_key(sim, obj))
+        except Exception:
+            keys.append("<unresolved finding subject>")
+    selection = _Selection(sim, tuple(dict.fromkeys(keys)),
                            getattr(sim, "_finding_record_reader", None))
     return {"scope": "object" if selection.keys else "place" if region is not None else "model",
             "subjects": selection,
             "region": _Region(selection, region) if region is not None or selection.keys else None}
+
+
+def resolve_findings(issues):
+    """Freeze plain values from the judged record, outside warning capture.
+
+    Annotation must never replace a finding or fail preflight. Missing labels
+    and resolution faults are exposed as invalid subjects to the contract.
+    """
+    records = {}
+    for issue in issues:
+        selection = issue._subjects
+        if not isinstance(selection, _Selection):
+            continue
+        try:
+            if selection.keys or issue._region is not None:
+                key = id(selection.sim)
+                if key not in records:
+                    records[key] = _finding_view(selection.sim, selection.record())
+                selection.reader = lambda record=records[key]: record
+            issue._subjects = selection.resolve()
+            issue._region = issue._region.resolve() if issue._region is not None else None
+        except Exception:
+            issue._subjects = (*selection.keys, "<unresolved finding subject>")
+            issue._region = None
+
+
+def _finding_view(sim, record):
+    """Add identity-only placements privately for traced and refused records."""
+    table = record.realization_table
+    domain = table.row("domain")
+    if domain.axes:
+        return record
+    from rfx.model.realization_placements import traced_placement_rows, label_rows
+    # Keep the identity reader's existing declaration order. The public traced
+    # table retains main's geometry/domain/probe rows, without these additions.
+    rows = tuple(row for row in table.rows if not row.label.startswith("probe["))
+    rows += tuple(traced_placement_rows(sim, domain.status, domain.traced_inputs))
+    rows += tuple(label_rows(sim))
+    return replace(record, realization_table=replace(table, rows=rows))
+
+
+def public_probes(sim):
+    """Exclude internal witnesses from user-facing placement findings."""
+    internal = getattr(sim, "_internal_probe_indices", None) or ()
+    return tuple(p for i, p in enumerate(sim._probes) if i not in internal)
 
 
 def absorber_region(sim, faces):

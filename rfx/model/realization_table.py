@@ -237,9 +237,8 @@ def _traced_table(prepared):
                               status=status, traced_inputs=inputs)
                 for i, _ in enumerate(sim._thin_conductors))
     rows.append(RealizationRow("domain", "domain", status=status, traced_inputs=inputs))
-    from rfx.model.realization_placements import label_rows, traced_placement_rows
-    rows.extend(traced_placement_rows(sim, status, inputs))
-    rows.extend(label_rows(sim))
+    rows.extend(RealizationRow(f"probe[{i}]", "probe", status=status,
+                              traced_inputs=inputs) for i, _ in enumerate(sim._probes))
     return RealizationTable(tuple(rows), prepared.lane, weakref.ref(prepared.conductors))
 
 

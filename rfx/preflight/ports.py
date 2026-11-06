@@ -51,7 +51,7 @@ which stay in the facade with the realization family. The third,
 
 from __future__ import annotations
 
-from rfx.preflight._subjects import SubjectMessage, finding_subjects
+from rfx.preflight._subjects import SubjectMessage, finding_subjects, public_probes
 
 from rfx._internal._grid_metric import field_index
 import math
@@ -866,7 +866,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     # share its key.
     points = []
     point_components = {}
-    point_owners = {id(p): p for p in (*sim._ports, *sim._probes)}
+    point_owners = {id(p): p for p in (*sim._ports, *public_probes(sim))}
     for pe in getattr(sim, "_ports", ()):
         pos = tuple(float(v) for v in pe.position)
         kind = ("add_source" if pe.is_soft_source
@@ -880,7 +880,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
             points.append((id(pe), f"the far end {tuple(end)} of add_port at "
                            f"{pos} (extent {float(pe.extent):g} m)",
                            tuple(end)))
-    for pr in getattr(sim, "_probes", ()):
+    for pr in public_probes(sim):
         pos = tuple(float(v) for v in pr.position)
         points.append((id(pr), f"add_probe at {pos}", pos))
         point_components[id(pr)] = pr.component

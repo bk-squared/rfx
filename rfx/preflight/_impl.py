@@ -257,6 +257,8 @@ def _preflight_impl(
         ):
             issues[:] = [issue for issue in issues if issue.code not in assembly_codes]
 
+    from rfx.preflight._subjects import resolve_findings
+    resolve_findings(issues)
     if strict and len(issues):   # PreflightReport refuses bool()
         # Aggregate-then-raise: escalate ALL findings at once. Preserves the
         # historical "strict escalates any issue to ValueError" contract,

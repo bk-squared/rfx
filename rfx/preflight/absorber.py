@@ -1095,7 +1095,7 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
         _w.warn(
             PreflightWarning(
                 message,
-                **finding_subjects(self, objects=(("_" + u.collection, idx),)),
+                **finding_subjects(self, objects=(("_thin_conductors" if u.collection == "thin_conductor" else "_geometry", idx),)),
                 code="dielectric_at_absorber_seam",
                 loc=f"{u.collection}[#{idx}] {axis_name}-{u.side}",
                 source="_validate_cfg_dielectric_at_absorber_seam",

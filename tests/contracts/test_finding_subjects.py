@@ -85,6 +85,8 @@ def check_report(sim, report, *, unavailable_labels=None):
     labels = ([row.label for row in record.realization_table.rows]
               if record is not None else unavailable_labels)
     for issue in report:
+        assert isinstance(issue._subjects, tuple)
+        assert issue._region is None or isinstance(issue._region, dict)
         expected = CODE_SCOPE[issue.code]
         assert issue.scope == expected or expected == 'mixed'
         assert issue.scope in ('model', 'place', 'object')
@@ -282,7 +284,6 @@ def test_unrasterizable_aperture_public_calls_raise(scene, monkeypatch):
     for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False)):
         with pytest.raises(error, match=match):
             read()
-    report = sim.preflight()
     from rfx.model import realization_unavailable
     builds = []
     original = realization_unavailable.identity_record
@@ -292,6 +293,8 @@ def test_unrasterizable_aperture_public_calls_raise(scene, monkeypatch):
         return original(*args)
 
     monkeypatch.setattr(realization_unavailable, 'identity_record', counted)
+    report = sim.preflight()
+    assert len(builds) == 1
     for _ in range(2):
         # A refused public record still names the finding's objects, built once.
         assert [i.subjects for i in report.by_code(code)] == expected
@@ -308,12 +311,13 @@ def test_unrasterizable_aperture_public_calls_raise(scene, monkeypatch):
 def test_off_lattice_place_region():
     from rfx import Simulation
     from rfx.preflight._common import PreflightIssue
-    from rfx.preflight._subjects import finding_subjects
+    from rfx.preflight._subjects import finding_subjects, resolve_findings
     sim = Simulation(10e9, (.02, .02, .02), dx=.001, boundary='pec')
     # Supply a physical region: geometry-row bounds have already been snapped
     # and cannot exercise a lower face lying strictly inside a grid cell.
     finding = PreflightIssue('Off-lattice region', **finding_subjects(
         sim, region=((.0042, .0062, .0062), (.0132, .0122, .0122))))
+    resolve_findings([finding])
     assert finding.scope == 'place' and finding.subjects == ()
     assert finding.region['cells'] == ((4, 14), (6, 13), (6, 13))
     np.testing.assert_allclose(finding.region['bounds_m'],
@@ -365,6 +369,7 @@ def test_traced_mesh_path(monkeypatch):
         sim.add_material('glass', eps_r=2.)
         sim.add(Box((.00223, .00237, .00219), (.00661, .00673, .00657)), material='glass')
         sim.add_source((.008, .007, .006), 'ez', waveform=GaussianPulse(f0=250e9, bandwidth=.8))
+        sim.add_probe((.007, .006, .006), 'ez')
         original = sim._run_preflight_gate
 
         def gate(report, **kwargs):
@@ -373,6 +378,8 @@ def test_traced_mesh_path(monkeypatch):
 
         monkeypatch.setattr(sim, '_run_preflight_gate', gate)
         result = sim.forward(n_steps=1, skip_preflight=False)
+        assert [row.label for row in result.realized_geometry.realization_table.rows] == [
+            'geometry[0]', 'domain', 'probe[0]']
         return jnp.sum(result.time_series)
 
     jax.grad(evaluate)(0.)
@@ -667,6 +674,108 @@ def test_dielectric_seam_subjects():
     sim.add_material('d', eps_r=4.)
     sim.add(_seam_sphere(), material='d')
     assert_target(sim, 'dielectric_at_absorber_seam', [('geometry[0]',)])
+
+
+def test_thin_conductor_seam_subjects():
+    from rfx import Box, Cylinder, Simulation
+    sim = Simulation(10e9, (.03, .02, .02), dx=.001, boundary='cpml', cpml_layers=8)
+    sim.add_material('d', eps_r=2.)
+    sim.add(Box((.010, .006, .006), (.014, .010, .010)), material='d')
+    sim.add_thin_conductor(Cylinder((.004, .010, .010), .004, 0., axis='z'),
+                           sigma_bulk=1e8, thickness=1e-6)
+    report = sim.preflight()
+    check_report(sim, report)
+    assert [(i.code, i.severity, i.subjects) for i in report.by_code('dielectric_at_absorber_seam')] == [
+        ('dielectric_at_absorber_seam', 'warning', ('thin_conductor[0]',))]
+    # The existing geometry-continuation warning remains uncoded on main.
+    assert all(i.severity == 'warning' for i in report.by_code('uncoded'))
+
+
+@pytest.mark.parametrize('owner', [('_unknown_collection', 0), 'missing[0]'])
+def test_unresolved_subject_is_only_a_contract_failure(monkeypatch, owner):
+    from rfx import Simulation
+    from rfx.preflight._common import PreflightWarning
+    from rfx.preflight._subjects import finding_subjects
+    sim = Simulation(10e9, (.01,) * 3, dx=.001, boundary='pec')
+
+    def emit(*args, **kwargs):
+        warnings.warn(PreflightWarning('original warning', code='dielectric_at_absorber_seam',
+                                      **finding_subjects(sim, objects=(owner,))))
+
+    monkeypatch.setattr(sim, '_validate_ntff_inverse_design', emit)
+    report = sim.preflight()
+    hit, = report.by_code('dielectric_at_absorber_seam')
+    assert (str(hit), hit.severity) == ('original warning', 'warning')
+    assert not report.by_code('uncoded')
+    report.to_dict()
+    with pytest.raises(AssertionError):
+        check_report(sim, report)
+
+
+def test_old_report_survives_mesh_change(monkeypatch):
+    from rfx import Box, Simulation
+    sim = Simulation(10e9, (.02,) * 3, boundary='cpml', cpml_layers=4)
+    sim.add_material('d', eps_r=2.)
+    sim.add(Box((.004, .006, .006), (.007, .012, .012)), material='d')
+    report = sim.preflight(check_ntff=False)
+    finding, = report.by_code('lossless_q')
+    assert finding.subjects == ('geometry[0]',)
+    before = (finding.subjects, finding.region)
+    assert before[1] is not None
+    encoded = report.to_dict()
+    old_dx = sim._dx
+    sim.add(Box((.014, .006, .006), (.016, .012, .012)), material='d')
+    sim.realized_geometry()
+    assert sim._dx != old_dx
+    assert (finding.subjects, finding.region) == before
+    assert report.to_dict() == encoded
+
+    def no_assembly():
+        pytest.fail('old finding tried to assemble the changed model')
+
+    monkeypatch.setattr(sim, 'realized_geometry', no_assembly)
+    assert (finding.subjects, finding.region) == before
+    assert report.to_dict() == encoded
+
+
+def test_ntff_nearest_owner_is_port():
+    from rfx import Box, Simulation
+    sim = Simulation(10e9, (.06,) * 3, dx=.002, boundary='cpml', cpml_layers=8)
+    sim.add(Box((.025,) * 3, (.035,) * 3), material='pec')
+    sim.add_port((.012, .03, .03), 'ez')
+    sim.add_ntff_box((.01,) * 3, (.05,) * 3)
+    report = sim.preflight()
+    check_report(sim, report)
+    assert [(i.severity, i.subjects) for i in report.by_code('ntff_near_field')] == [
+        ('warning', ('port[0]', 'ntff'))]
+
+
+def test_thickness_nearest_dielectric_is_second():
+    from rfx import Box, Simulation
+    sim = Simulation(30e9, (.004,) * 3, dx=.0002, boundary='pec', snap='declared')
+    sim.add_material('substrate', eps_r=3.4)
+    sim.add(Box((.0004, .0004, .003), (.0036, .0036, .0032)), material='substrate')
+    sim.add(Box((.0004, .0004, .0015), (.0036, .0036, .002)), material='substrate')
+    sim.add_thin_conductor(Box((.001, .001, .002), (.003, .003, .002)),
+                           sigma_bulk=5.8e7, thickness=50e-6)
+    report = assert_target(sim, 'thin_conductor_thickness_unmodelled', [
+        ('geometry[1]', 'thin_conductor[0]')])
+    hit, = report.by_code('thin_conductor_thickness_unmodelled')
+    assert hit.severity == 'warning'
+    assert 'h = 500µm' in str(hit) and 't/h = 10 %' in str(hit)
+
+
+def test_half_node_skips_internal_probe():
+    from rfx import Box
+    from tests.unit.preflight.test_half_node_split import _sim
+    sim = _sim('uniform', dom=(.02, .019, .013))
+    sim.add(Box((.005, .005, .0035), (.015, .014, .0035)), material='pec')
+    for x in (.012, .013):
+        sim.add_probe((x, .009, .0035 + .95e-9), 'ex')
+    sim._internal_probe_indices = {0}
+    report = sim.preflight(check_ntff=False)
+    check_report(sim, report)
+    assert [i.subjects for i in report.by_code('half_node_split')] == [('geometry[0]', 'probe[1]')]
 
 
 def test_declared_span_subjects(monkeypatch):
