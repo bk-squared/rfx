@@ -13,8 +13,6 @@ def _admit_waveguide_options(
     admit_conformal_floor(self, "waveguide_s_matrix", conformal_pec, smoothing=subpixel_smoothing)
     if conformal_pec is None:
         conformal_pec = bool(self._boundary_spec.conformal_faces())
-    if conformal_pec:
-        raise RfxUnsupported("Conformal realization is supported on uniform run() only.")
     if conformal_pec == "cut_cell_floor" and port_reference_sims is not None:
         raise NotImplementedError('conformal_pec="cut_cell_floor" cannot carry port_reference_sims; '
                                   'use the uniform boundary-wall reference')

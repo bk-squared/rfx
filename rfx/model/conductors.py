@@ -437,7 +437,8 @@ def _same_grid(a, b):
 
 
 
-def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1, realization_options=None, report_only=False):
+def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1, realization_options=None, report_only=False,
+                     realization_not_evaluated=None):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
     from rfx.model.source_admission import refuse_dead_soft_sources
@@ -450,6 +451,7 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1
     bind_table(sim, root, lane=root.lane)
     from rfx.model.realization_verdict import admit_table
     object.__setattr__(root.realization_table, "report_only", report_only)
+    object.__setattr__(root.realization_table, "not_evaluated_reason", realization_not_evaluated)
     if not report_only:
         admit_table(sim, root, options=realization_options)
     if preflight is not None:

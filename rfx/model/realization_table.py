@@ -75,6 +75,7 @@ class RealizationTable:
     delivered: set = field(default_factory=set, repr=False, compare=False)
     early_domain_axes: set = field(default_factory=set, repr=False, compare=False)
     report_only: bool = field(default=False, repr=False, compare=False)
+    not_evaluated_reason: str | None = field(default=None, repr=False, compare=False)
     active_axes: tuple = field(default=("x", "y", "z"), repr=False, compare=False)
     periods: dict = field(default_factory=dict, repr=False, compare=False)
 
@@ -310,7 +311,8 @@ def finish_table(sim, conductors, *, lane):
         object.__setattr__(conductors, "_realization_record", record)
         return record
     from rfx.model.realization_integrals import read_rows
-    object.__setattr__(table, "rows", read_rows(table.rows, conductors.grid, sim))
+    if table.not_evaluated_reason is None:
+        object.__setattr__(table, "rows", read_rows(table.rows, conductors.grid, sim))
     if conductors.refinements:
         object.__setattr__(table, "rows", _refined_rows(table, conductors.refinements, sim).rows)
     from rfx.core.jax_utils import is_tracer

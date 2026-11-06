@@ -1215,8 +1215,12 @@ class WaveguideSParamResult(NamedTuple):
     probe_plane: float
 
 
+@with_forward_geometry
 class WaveguideSMatrixResult(NamedTuple):
     """Waveguide scattering result assembled one driven port at a time.
+
+    ``realized_geometry`` carries the uniform solve's realization table and
+    its findings, including named outcomes for comparisons not evaluated.
 
     ``settling_db`` records the worst per-bin pole-tail amplitude share
     across modal V/I records for each drive. Paired extractions include

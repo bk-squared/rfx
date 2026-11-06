@@ -1531,3 +1531,34 @@ def test_conformal_zero_drawn_area_has_no_reference_on_nz_one():
     findings = [f for f in table.findings if f.code == "realization" and f.loc == row.label]
     assert len(findings) == 1
     assert "not judged: no reference" in str(findings[0])
+
+
+def test_conformal_waveguide_result_names_unevaluated_realization_once():
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    text = ("realization: not evaluated: conformal; geometric comparisons were skipped. "
+            "Evaluate on uniform run() to check the realized dimensions.")
+    def geometry():
+        sim = Simulation(10e9, (.06, .024, .012), dx=.002, cpml_layers=4,
+                         boundary=BoundarySpec(x="cpml", y=Boundary("pec", "pec", conformal=True),
+                                               z=Boundary("pec", "pec", conformal=True)),
+                         snap="declared")
+        sim.add(Box((.027, .009, .003), (.033, .015, .009)), material="pec")
+        return sim
+    sim = geometry()
+    sim.add_waveguide_port(.016, direction="+x", f0=8e9, freqs=[8e9], name="left")
+    sim.add_waveguide_port(.044, direction="-x", f0=8e9, freqs=[8e9], name="right")
+    result = sim.compute_waveguide_s_matrix(n_steps=200, normalize=True, skip_preflight=True)
+    table = result.realized_geometry.realization_table
+    findings = [f for f in table.findings if f.code == "realization"]
+    assert [(str(f), f.code, f.source) for f in findings] == [
+        (text, "realization", "judge_realization")]
+    assert table.row("geometry[0]").status == "not evaluated: conformal"
+    assert "geometry[0]" in table.judged
+
+    uniform = geometry().run(n_steps=1, compute_s_params=False, skip_preflight=True)
+    evaluated = uniform.realized_geometry.realization_table
+    row = evaluated.row("geometry[0]")
+    assert row.status == "evaluated"
+    assert row.integral_comparison is not None
+    assert row.label in evaluated.judged
+    assert not [f for f in evaluated.findings if "not evaluated: conformal" in str(f)]

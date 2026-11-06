@@ -25,7 +25,21 @@ def judge_realization(table, snap):
     from rfx.preflight._common import PreflightIssue
     from dataclasses import replace
     findings = []
-    _mark_port_built(table)
+    port_labels = _mark_port_built(table)
+    reason = getattr(table, "not_evaluated_reason", None)
+    if reason is not None:
+        object.__setattr__(table, "rows", tuple(
+            replace(row, status=f"not evaluated: {reason}")
+            if row.label not in port_labels else row for row in table.rows))
+        table.judged.update(row.label for row in table.rows)
+        if reason not in table.judged:
+            table.judged.add(reason)
+            findings.append(PreflightIssue(
+                f"realization: not evaluated: {reason}; geometric comparisons were skipped. "
+                "Evaluate on uniform run() to check the realized dimensions.",
+                code="realization", source="judge_realization"))
+        table.findings.extend(findings)
+        return tuple(findings)
     rows = list(table.rows) + list(getattr(table, "legacy_rows", ()))
     for row in table.rows:
         for region, axes in getattr(row, "regions", ()):
@@ -178,6 +192,11 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
         return
     if table.report_only:
         _mark_port_built(table)
+        return
+    if table.not_evaluated_reason is not None:
+        findings = judge_realization(table, sim._snap)
+        if deliver:
+            deliver_findings(table, findings)
         return
     if not finished:
         smoothing, conformal = options or (False, False)

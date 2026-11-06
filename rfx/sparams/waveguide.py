@@ -429,7 +429,9 @@ def compute_waveguide_s_matrix(
     _wg_pec_sheets: list = []
     _wg_pec_wires: list = []
     from rfx.model.conductors import solve_conductors, assembled_materials
-    conductors = solve_conductors(self, grid, realization_options=(subpixel_smoothing, False))
+    conductors = solve_conductors(
+        self, grid, realization_options=(subpixel_smoothing, conformal_pec),
+        realization_not_evaluated="conformal" if conformal_pec else None)
     base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
         conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
         pec_wires=_wg_pec_wires)
@@ -532,7 +534,7 @@ def compute_waveguide_s_matrix(
         reference_eps=float(reference_medium.eps_r))
 
     from rfx.model.realization_table import finish_table
-    finish_table(self, conductors, lane="waveguide_s_matrix")
+    realization_record = finish_table(self, conductors, lane="waveguide_s_matrix")
 
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(
@@ -552,6 +554,7 @@ def compute_waveguide_s_matrix(
             settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
             witnesses=settling_details_mm)
         _res_mm = WaveguideSMatrixResult(
+            realized_geometry=realization_record,
             s_params=s_params,
             freqs=jnp.asarray(freqs),
             port_names=tuple(port_names_mm),
@@ -713,6 +716,7 @@ def compute_waveguide_s_matrix(
         s_params, freqs, reference_planes, cfgs, normalize=normalize,
     )
     _res_sm = WaveguideSMatrixResult(
+        realized_geometry=realization_record,
         s_params=s_params,
         freqs=jnp.asarray(freqs),
         port_names=_port_names,
