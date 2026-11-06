@@ -1,7 +1,7 @@
 """The S reference of a line port: its declared ``impedance=``.
 
 Every S producer that admits an MSL or coax port forms its power waves at the
-analytic line impedance (Hammerstad-Jensen Z0 for MSL, TEM Z0 for coax) and
+line impedance (Hammerstad-Jensen Z0 for MSL, built TEM Z0 for coax) and
 then refers the matrix to each port's declared ``impedance=`` through
 :func:`renormalize_power_waves`, once, before the opt-in passivity projection.
 
@@ -134,7 +134,7 @@ def warn_line_reference_mismatch(extractor, ports, *, rel_tol=0.05):
             f"{extractor}: the registered {label} port impedance "
             f"({declared:.2f} ohm), which is the reference impedance of the "
             f"returned S, differs {abs(declared - line) / line * 100:.1f}% "
-            f"from the analytic {label} line Z0 ({line:.2f} ohm, "
+            f"from the {'built' if label == 'coax' else 'analytic'} {label} line Z0 ({line:.2f} ohm, "
             "line_impedances). S therefore includes the line-to-reference "
             f"mismatch at that port (|Gamma| = "
             f"{abs(declared - line) / (declared + line):.3f}). Pass a "
@@ -152,16 +152,20 @@ def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
     Returns ``(S_line, line_impedances)``. The wave split is a
     voltage-only ratio, so its waves sit at the impedance of the line under
     each probe ladder. Without ``eps_scale`` that is the stamped fill's
-    ``z_tem`` at both ends and ``S`` is returned as it is. ``eps_scale``
+    per-port ``z_tem`` from each source's solved TEM profile. ``eps_scale``
     multiplies the fill's permittivity, so the line under ladder ``i`` is
-    ``z_tem / sqrt(s_i)``, ``s_i`` the scale over the annulus cells of that
+    ``z_tem[i] / sqrt(s_i)``, ``s_i`` the scale over the annulus cells of that
     ladder's planes, and a voltage ratio between ladders on unequal lines
     becomes a power-wave ratio by ``sqrt(Z_driven / Z_receiver)``. A concrete
     scale that is not uniform over a ladder is refused (the ladder fit
     assumes one uniform line there); a traced one is averaged.
     """
+    z_tem = np.broadcast_to(np.asarray(z_tem, dtype=float), (len(ladders),))
     if eps_scale is None:
-        return S, np.full(len(ladders), float(z_tem))
+        root = np.sqrt(z_tem)
+        if np.all(z_tem == z_tem[0]):
+            return S, z_tem.copy()
+        return S * (root[None, :, None] / root[:, None, None]), z_tem.copy()
     # The fill's own cells: stamp_coaxial_line's Cylinder masks (node
     # coordinates), over the whole z extent.
     from rfx.geometry.csg import Cylinder
@@ -179,7 +183,7 @@ def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
         cells = scale[:, :, zs][annulus[:, :, zs]]
         concrete = _concrete(cells)
         if concrete is None:
-            z_line.append(float(z_tem) / jnp.sqrt(jnp.mean(cells)))
+            z_line.append(float(z_tem[i]) / jnp.sqrt(jnp.mean(cells)))
             continue
         if np.ptp(concrete) > 1e-6 * float(np.max(np.abs(concrete))):
             raise ValueError(
@@ -188,7 +192,7 @@ def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
                 f"{concrete.max():.6g}); the ladder reads one uniform line, "
                 "so keep eps_scale uniform over each probe ladder and put "
                 "the device between them.")
-        z_line.append(float(z_tem) / float(np.sqrt(concrete.mean())))
+        z_line.append(float(z_tem[i]) / float(np.sqrt(concrete.mean())))
     if all(isinstance(z, float) for z in z_line):
         z_line = np.asarray(z_line, dtype=np.float64)
         if np.all(z_line == z_line[0]):

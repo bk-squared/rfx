@@ -38,6 +38,7 @@ from rfx.grid import Grid
 from rfx.core.yee import EPS_0, MU_0
 from rfx.geometry.csg import Cylinder
 from rfx.sources._laplace import _solve_laplace_2d
+from rfx.sources.coax_impedance import coaxial_built_line_impedance
 from rfx.sources.sources import stamp_lumped_sigma
 
 
@@ -643,6 +644,7 @@ class CoaxialPlaneSourceSpec(NamedTuple):
     The lists carry the nonzero transverse edges of the realized TEM mode.
     The electric profile is the discrete gradient of a unit-voltage
     electrostatic potential on the staircased conductor cross-section.
+    ``z_tem_ohm`` is the built line impedance from that unit-voltage profile.
     """
 
     electric_sources: tuple
@@ -873,12 +875,6 @@ def build_coaxial_tem_plane_source_specs(
         h_sign = +1.0
         e_sign = -1.0
 
-    z0 = coaxial_tem_characteristic_impedance(
-        port.pin_radius,
-        port.outer_radius,
-        eps_r,
-    )
-
     # Local (intrinsic) impedance of the dielectric fill: η = sqrt(μ/ε).
     # In a coax TEM mode the LOCAL field ratio is E_r/H_φ = η, while
     # V/I = Z_TEM = η · log(b/a)/(2π) is the LINE impedance. The TFSF
@@ -939,6 +935,7 @@ def build_coaxial_tem_plane_source_specs(
     ex_profile, ey_profile = _coaxial_tem_edge_profile(
         grid, port, e_plane_idx, shell_inner_radius, pec_cell_mask,
     )
+    z0 = coaxial_built_line_impedance(grid, ex_profile, ey_profile, eps_r)
     source_cell_count = 0
     for i in range(grid.nx):
         for j in range(grid.ny):
