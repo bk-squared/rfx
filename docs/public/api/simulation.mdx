@@ -106,6 +106,13 @@ raises `TypeError`, because an advisory-only report is non-empty but fine.
 `strict=True` raises on any finding, warnings included; for an errors-only
 check call `report.raise_for_failure()` on a normal report.
 
+Each finding also carries `scope`: `object` for affected declarations, `place`
+for a grid region, or `model` for the whole configuration. `subjects` lists the
+affected realization labels in declaration order. When available, `region`
+contains metre `bounds_m` and half-open grid `cells`; it is `None` when no
+concrete box is available, including traced meshes. These fields are included
+in `to_dict()` and let a UI select objects or highlight cells.
+
 ## `run()`
 
 `run()` is the general entry point. It returns a `Result`; see

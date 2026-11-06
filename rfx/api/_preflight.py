@@ -1,43 +1,7 @@
-"""Preflight and configuration-validation methods for :class:`Simulation`.
+"""Preflight entry points and configuration-validation facade.
 
-Import contract (Part B Stage 1a refactor):
-  This module is a transitional mixin. It must import ONLY from
-  ``rfx.api._spec`` plus external ``rfx.*`` / stdlib / jax / numpy.
-  It must NEVER do ``from rfx.api import ...`` or ``from . import ...``
-  the package, to keep ``rfx/api/__init__.py`` the sole composition point.
-
-``Simulation`` inherits ``_PreflightMixin``, so every method below is
-bound on ``Simulation`` instances.
-
-This file is a facade and holds three things:
-
-1. The EXECUTION family, which stays here by design and is everything that
-   decides WHAT to run rather than checking a configuration: ``preflight``
-   and ``preflight_sparameters`` (the entry points), the run / forward
-   S-parameter request validators and the three per-calculator
-   ``_validate_*_sparameter_request_for_preflight`` routers,
-   ``_validate_simulation_config`` — which builds the shared context and
-   then iterates ``rfx/preflight/_registry.py``'s ``CORE_CONFIG_CHECKS``,
-   whose ORDER is the observable
-   ``tests/locks/test_preflight_split_snapshot.py`` pins —
-   ``_collect_flux_regions``, and the x64 / settling-witness
-   configuration checks.
-2. The module-level RE-EXPORT blocks. Every name any leg moved is re-bound
-   here, so the module namespace is exactly as wide as it was before the
-   split (55 names, pinned by set equality) and the 17 files that do
-   ``from rfx.api._preflight import <name>`` keep resolving. Classes are
-   re-exported, never redefined: one ``PreflightWarning``, one
-   ``_RealizedPEC``.
-3. The class-scoped REBINDS. Each moved check body is a module-level ``def``
-   in its leg module whose first parameter is still ``self``, imported back
-   into the ``_PreflightMixin`` class body AT THE POSITION it held, with
-   ``__qualname__`` restored at the leg module's foot and any
-   ``@staticmethod`` re-applied here.
-
-Every check family, the conductor-realization layer they all read, and the
-check REGISTRY that composes them live in ``rfx/preflight/`` — see that
-package's docstring for the nine modules. A new configuration check is added
-there and registered; it needs no edit to this file.
+Simulation binds checks from rfx.preflight in registry order. Public report
+types and legacy helper imports remain available from this module.
 """
 
 from __future__ import annotations
@@ -752,8 +716,10 @@ class _PreflightMixin:
         source = "_collect_flux_regions"
 
         def finding(entry, message, code, severity="warning"):
+            from rfx.preflight._subjects import finding_subjects
             report.append(PreflightIssue(
                 message, severity=severity, code=code,
+                **finding_subjects(self, objects=(entry,)),
                 loc=getattr(entry, "name", None), source=source,
             ))
 
@@ -1028,6 +994,9 @@ class _PreflightMixin:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
                         _inst,
+                        scope=getattr(_inst, "scope", "model"),
+                        subjects=getattr(_inst, "_subjects", ()),
+                        region=getattr(_inst, "_region", None),
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "msl_port_geometry"),
                         source=getattr(_inst, "source",
@@ -1049,6 +1018,9 @@ class _PreflightMixin:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
                         _inst,
+                        scope=getattr(_inst, "scope", "model"),
+                        subjects=getattr(_inst, "_subjects", ()),
+                        region=getattr(_inst, "_region", None),
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "uncoded"),
                         loc=getattr(_inst, "loc", None),

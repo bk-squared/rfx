@@ -48,6 +48,8 @@ acyclic. This module moves no module-level name, so
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import finding_subjects
+
 import math
 
 import numpy as np
@@ -78,7 +80,8 @@ def _validate_cfg_source_on_reflector_plane(
         for msg in wall_source_findings(self, ctx.grid,
                                        nonuniform=ctx.lane == 'nonuniform'):
             _w.warn(PreflightErrorWarning(
-                msg, code="source_decoupled",
+                msg, **finding_subjects(self, objects=msg.objects),
+                     code="source_decoupled",
                 source="_validate_cfg_source_on_reflector_plane"), stacklevel=3)
     # The reflector faces come from the CANONICAL BoundarySpec, not from
     # ``self._pec_faces``. ``self._pec_faces`` is populated only
@@ -186,6 +189,7 @@ def _validate_cfg_source_on_reflector_plane(
                     _w.warn(
                         PreflightWarning(
                             msg,
+                            **finding_subjects(self, objects=(pe, "domain")),
                             code="source_decoupled",
                             source="_validate_cfg_source_on_reflector_plane",
                         ),
@@ -332,6 +336,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
                     "bandwidth, and the bandwidth of a TF/SF source, "
                     "waveguide or Floquet port, is FRACTIONAL (e.g. 0.8), "
                     "not in Hz.",
+                    **finding_subjects(self, objects=(entry,)),
                     code="undriven_pulse", loc=loc,
                     source="_validate_cfg_unresolved_pulse")
         _w.warn(
@@ -343,6 +348,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
                 "one is expected; the discrete DC residue leaves "
                 "a static charge field CPML cannot absorb"
                 "",
+                **finding_subjects(self, objects=(entry,)),
                 code="unresolved_pulse",
                 loc=loc,
                 source="_validate_cfg_unresolved_pulse",

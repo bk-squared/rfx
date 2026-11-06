@@ -51,6 +51,8 @@ which stay in the facade with the realization family. The third,
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import SubjectMessage, finding_subjects
+
 from rfx._internal._grid_metric import field_index
 import math
 
@@ -198,6 +200,8 @@ def _check_coaxial_port_junction_aperture(self) -> None:
                 f"add_thin_conductor, or an annular volume); if this "
                 f"short is the intended calibration standard, no "
                 f"action is needed (report-only).",
+                **finding_subjects(self, objects=(port, *(e for e in self._campaign_ctx().entry_realizations()
+                    if e.is_pec and np.any(e.footprint_on_plane(axis, k, realized.periodic, grid.shape) & ring)))),
                 code="coaxial_port_junction_short",
                 source="_check_coaxial_port_junction_aperture",
                 loc=f"coaxial_port[{n}] face={port.face}",
@@ -258,6 +262,7 @@ def _validate_cfg_refplane_placement(self, _w) -> None:
                 "cells from every port — prefer "
                 "reference_plane_cells >= 10 when the line length "
                 "allows it.",
+                **finding_subjects(self, objects=near),
                 code="refplane_near_field",
                 source="_validate_cfg_refplane_placement",
             ),
@@ -272,6 +277,7 @@ def _validate_cfg_refplane_placement(self, _w) -> None:
                 "SILENTLY stay on the legacy port-cell path (only "
                 "pairs where BOTH ports opt in use the plane waves). "
                 "Opt in every wire port of the S-matrix, or none.",
+                **finding_subjects(self, objects=wire_ports),
                 code="refplane_partial_optin",
                 source="_validate_cfg_refplane_placement",
             ),
@@ -358,6 +364,15 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                 if e.name not in names:
                     names.append(e.name)
         return names or ["unknown"]
+
+    def _owner_entries(component, idx):
+        from rfx.preflight._common import _H_LOOP
+        offsets = ((("xyz".index(component[1]), 0, 0, 0),)
+                   if component.startswith("e") else _H_LOOP[component])
+        return tuple(e for e in entries if e.is_pec and any(
+            _component_is_dead(e.edges(ctx.periodic, shape), "e" + "xyz"[c],
+                               tuple(v + d for v, d in zip(idx, (di, dj, dk))))
+            for c, di, dj, dk in offsets))
 
     for pe in self._ports:
         if not getattr(pe, "extent", None):
@@ -459,6 +474,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     edge_index = list(end_node)
                     edge_index[axis] = beyond-(1 if step < 0 else 0)
                     adj_names = []
+                    adj_objects = []
                     for e in entries:
                         if not e.is_pec:
                             continue
@@ -466,9 +482,12 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                                                    shape):
                             foot = e.footprint_on_plane(
                                 axis, beyond, ctx.periodic, shape)
+                            if bool(foot[ij]):
+                                adj_objects.append(e)
                             if bool(foot[ij]) and e.name not in adj_names:
                                 adj_names.append(e.name)
                     if beyond in edge_nodes:
+                        adj_objects.extend(_owner_entries(pe.component, tuple(edge_index)))
                         for name in _owners(pe.component, tuple(edge_index)):
                             if name not in adj_names:
                                 adj_names.append(name)
@@ -499,6 +518,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                             f"position and extent together so its end node "
                             f"lands on that wall plane or conductor endpoint, "
                             f"or correct the conductor declaration.",
+                            **finding_subjects(self, objects=(pe, *adj_objects)),
                             code="wire_port_end_gap_to_conductor",
                             source="_validate_cfg_port_inside_pec",
                         ),
@@ -517,6 +537,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     f"on that mesh. Conductor overlap at an endpoint "
                     f"can be intentional; do not infer contact from "
                     f"the absence of this advisory.",
+                    **finding_subjects(self, objects=(pe,)),
                     code="wire_port_dead_cell_classification_unavailable",
                     source="_validate_cfg_port_inside_pec",
                 ),
@@ -539,6 +560,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     f"reverse |S12| = 1.06-1.15). Shorten/lengthen the extent or move "
                     f"the port so the midpoint cell sits in "
                     f"dielectric.",
+                    **finding_subjects(self, objects=(pe, *_owner_entries(pe.component, cells[mid_idx]))),
                     code="wire_port_midpoint_in_pec",
                     source="_validate_cfg_port_inside_pec",
                 ),
@@ -575,6 +597,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                     f"between its two faces, a sheet shorts only the "
                     f"edges IN its plane and leaves the normal edge "
                     f"through it live).",
+                    **finding_subjects(self, objects=(pe, *(e for i in dead_indices for e in _owner_entries(pe.component, cells[i])))),
                     code="wire_port_dead_extent_cells",
                     source="_validate_cfg_port_inside_pec",
                 ),
@@ -614,6 +637,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
                 f"Move it off the conductor, or drive/read a "
                 f"component the conductor leaves live (the normal E "
                 f"through a sheet plane; tangential H beside a sheet).",
+                **finding_subjects(self, objects=(pe, *_owner_entries(component, idx))),
                 code="port_in_pec",
                 source="_validate_cfg_port_inside_pec",
             ),
@@ -795,6 +819,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
                 f"couple to patch-antenna TM modes. Pass "
                 f"extent=<substrate_height> to create a WirePort spanning "
                 f"ground → patch plane.",
+                **finding_subjects(self, objects=(pe, enclosing)),
                 code="floating_port",
                 source="_validate_cfg_floating_single_cell_port",
             ),
@@ -841,6 +866,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     # share its key.
     points = []
     point_components = {}
+    point_owners = {id(p): p for p in (*sim._ports, *sim._probes)}
     for pe in getattr(sim, "_ports", ()):
         pos = tuple(float(v) for v in pe.position)
         kind = ("add_source" if pe.is_soft_source
@@ -935,6 +961,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     # Each is classified by the function assembly uses, so only what the run
     # realizes as a sheet or a filament is compared.
     conductors = []
+    conductor_owners = {id(entry): entry for _, entry, _ in candidates}
     for kind, entry, a in candidates:
         try:
             if kind == "thin":
@@ -998,7 +1025,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                 continue
             seen.add((pkey, ckey, a))
             ax = "xyz"[a]
-            findings.append(
+            findings.append(SubjectMessage(
                 f"{label} and {clabel} are both declared at {ax} = "
                 f"{_mm(c)}, midway between two nodes, and land on "
                 f"different ones: the point feature on {ax} node "
@@ -1009,7 +1036,8 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                 "coordinates a float step apart that straddle the half node "
                 "split the same way. The feature sits one cell off the "
                 "conductor it was drawn on and does not drive or sample it. "
-                "Move both off the half node (a quarter cell is enough).")
+                "Move both off the half node (a quarter cell is enough).",
+                (point_owners[pkey], conductor_owners[ckey[1]])))
     return findings
 
 
@@ -1084,12 +1112,12 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
             for dimension, a in enumerate(tangent):
                 first, last = int(occupied[dimension].min()), int(occupied[dimension].max())
                 if not first <= port_node[a] <= last:
-                    messages.append(
+                    messages.append(SubjectMessage(
                         f"Port at {pe.position} touches trace {name!r}, but its realized "
                         f"{'xyz'[a]} node {port_node[a]} is outside the trace footprint "
                         f"nodes {first}..{last}. Move the port and the trace end "
                         "onto the same mesh node, extend the trace past the port, "
-                        "or refine the mesh to put a node at the declared end.")
+                        "or refine the mesh to put a node at the declared end.", (pe, shape)))
     return messages
 
 
@@ -1105,6 +1133,7 @@ def _validate_cfg_half_node_split(self, _w) -> None:
         _w.warn(
             PreflightErrorWarning(
                 message,
+                **finding_subjects(self, objects=message.objects),
                 code="half_node_split",
                 source="_validate_cfg_half_node_split",
             ),
@@ -1115,6 +1144,7 @@ def _validate_cfg_half_node_split(self, _w) -> None:
         _w.warn(
             PreflightErrorWarning(
                 message,
+                **finding_subjects(self, objects=message.objects),
                 code="trace_port_footprint",
                 source="_validate_cfg_half_node_split",
             ),
@@ -1254,6 +1284,7 @@ def preflight_wire_port_radius(sim, warn) -> None:
         "locally uniform transverse cells at the port and uniform spacing "
         "along it, and is supported on single-device run()/forward(); "
         "elsewhere it refuses.",
+        **finding_subjects(sim, objects=tuple(("_ports", f["index"]) for f in findings)),
         code="wire_port_no_radius",
         severity="warning",
         source="preflight_wire_port_radius",

@@ -1,5 +1,6 @@
 """Source admission against geometry conductors and declared PEC walls."""
 
+from rfx.preflight._subjects import SubjectMessage
 from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx._warning_origin import user_stacklevel
 from rfx._internal._grid_metric import field_index
@@ -103,11 +104,11 @@ def _dead_sources(sim, conductors):
                 if coordinate < 0 or coordinate > length:
                     outside.append(f"Declared {axis} coordinate {coordinate} is outside "
                                    f"domain [0, {length}]. ")
-            yield (message + f"Declared PEC wall face(s): {', '.join(wall_faces)}. "
+            yield SubjectMessage(message + f"Declared PEC wall face(s): {', '.join(wall_faces)}. "
                    f"Realized driven indices: {cells}. "
                    "This declaration raises because its tangential E edges in a PEC wall are shorted. "
                    + ''.join(outside)
-                   + "Move it at least one cell inside the domain, off the wall.")
+                   + "Move it at least one cell inside the domain, off the wall.", (source, "domain"))
         else:
             if source.extent is not None:
                 # Keep the geometry-only wire guard and its live-cell message.

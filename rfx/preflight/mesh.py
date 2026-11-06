@@ -76,6 +76,8 @@ instead of leaving two different functions sharing one name.
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import finding_subjects, runway_region
+
 import math
 
 import numpy as np
@@ -165,6 +167,7 @@ def _validate_mesh_quality(self) -> None:
                         f"(~{2 * cell * 1e3:.3f} mm at dx={cell * 1e3:.3f} mm); it will "
                         f"be lost or staircased by rasterisation. Refine the mesh region "
                         f"(finer dx / subpixel smoothing) or thicken the feature.",
+                        **finding_subjects(self, objects=(entry,)),
                         code="mesh_import_underresolved", source="_validate_mesh_quality"))
             except (ValueError, AttributeError, TypeError):
                 pass
@@ -227,6 +230,7 @@ def _validate_mesh_quality(self) -> None:
                         f"at least one cell of thickness "
                         f"({_fmt_len(cell)}). (A zero-thickness PEC Box "
                         f"is the sheet declaration and is fine.)",
+                        **finding_subjects(self, objects=(entry,)),
                         code="mesh_resolution",
                         source="_validate_mesh_quality",
                     ),
@@ -259,6 +263,7 @@ def _validate_mesh_quality(self) -> None:
                         f"'{mat_name}' {axis_name}-extent {_fmt_len(dim)} = "
                         f"{cells_count:.1f} cells — below 1 cell resolution."
                         + hint,
+                        **finding_subjects(self, objects=(entry,)),
                         code="mesh_resolution",
                         source="_validate_mesh_quality",
                     ),
@@ -286,6 +291,7 @@ def _validate_mesh_quality(self) -> None:
                                 "curved/edge features need ≥5 cells; a "
                                 "1-2 cell slab is realized as drawn, "
                                 "with walls on both faces).",
+                                **finding_subjects(self, objects=(entry,)),
                                 code="mesh_resolution",
                                 source="_validate_mesh_quality",
                             ),
@@ -337,6 +343,7 @@ def _validate_mesh_quality(self) -> None:
                                 f"{threshold:.0f} cells/λ_eff for "
                                 f"phase-accurate propagation."
                                 f"{suffix}",
+                                **finding_subjects(self, objects=(entry,)),
                                 code="mesh_resolution",
                                 source="_validate_mesh_quality",
                             ),
@@ -363,6 +370,7 @@ def _validate_mesh_quality(self) -> None:
                                     f"{_fmt_len(gap)} = {gap/cell:.1f} cells "
                                     f"along {'xyz'[ax]} — coupling may be "
                                     f"under-resolved.",
+                                    **finding_subjects(self, objects=(pec_entries[i], pec_entries[j])),
                                     code="mesh_resolution",
                                     source="_validate_mesh_quality",
                                 ),
@@ -513,6 +521,7 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
                         f"radiation pattern may be corrupted. "
                         f"Put the metal plane on a preserved-region "
                         f"boundary or refine the neighbouring cell.",
+                        **finding_subjects(self, objects=(e,)),
                         code="thin_metal_nu_mesh",
                         source="_validate_thin_metal_on_nu_mesh",
                     ),
@@ -579,6 +588,7 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
                     "fine band — derive z coordinates from the actual "
                     "fine-band edges and assert the rasterized cell count"
                     "",
+                    **finding_subjects(self, objects=(entry,)),
                     code="graded_box_rasterization",
                     loc=f"z=[{z_lo}, {z_hi})",
                     source="_validate_cfg_graded_box_rasterization",
@@ -717,6 +727,7 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                         f"witness that SCORES an accuracy observable "
                         f"with an absorber present is added to that "
                         f"row.",
+                        **finding_subjects(self, region=runway_region(self, ax_name, side, runway)),
                         code="nu_grading_reaches_absorber",
                         source="_validate_cfg_multiband_grading",
                     ),
@@ -843,6 +854,7 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
                 f"mesh-sensitive: move the sheet onto a locally uniform "
                 f"node (or flatten the grading there) if its loss is "
                 f"claims-bearing.",
+                **finding_subjects(self, objects=(tc,)),
                 code="thin_conductor_graded_node",
                 source="_validate_cfg_thin_conductor_graded_node",
             ),
@@ -930,6 +942,7 @@ def _validate_cfg_source_on_graded_node(self, _w) -> None:
                     f"grading step is where the injected amplitude is "
                     f"most mesh-sensitive: move it onto a locally "
                     f"uniform node if its amplitude is claims-bearing.",
+                    **finding_subjects(self, objects=(pe,)),
                     code="source_on_graded_node",
                     source="_validate_cfg_source_on_graded_node",
                 ),
@@ -988,6 +1001,7 @@ def _validate_cfg_wire_port_on_graded_node(self, _w) -> None:
                     f"onto a locally uniform node (or flatten the "
                     f"grading there) if its S-parameters are "
                     f"claims-bearing.",
+                    **finding_subjects(self, objects=(pe,)),
                     code="wire_port_on_graded_node",
                     source="_validate_cfg_wire_port_on_graded_node",
                 ),

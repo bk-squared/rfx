@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from rfx.preflight._subjects import SubjectMessage
 from rfx.preflight.msl_codes import msl_text
 
 
@@ -153,17 +154,17 @@ def msl_nearest_downstream_reflector(
                 raise
             except Exception:  # noqa: BLE001 - recorded in unevaluated
                 unevaluated.append(
-                    f"geometry entry with material {material_name!r}: the "
+                    SubjectMessage(f"geometry entry with material {material_name!r}: the "
                     f"material could not be resolved, so its conductivity is "
-                    f"unknown")
+                    f"unknown", (owner,)))
                 return False
             if _is_tracer(getattr(mat, "sigma", None)):
                 # A traced sigma (material-as-design-variable) cannot be
                 # compared host-side.
                 unevaluated.append(
-                    f"geometry entry with material {material_name!r}: sigma is "
+                    SubjectMessage(f"geometry entry with material {material_name!r}: sigma is "
                     f"not a concrete number (traced design variable), so PEC "
-                    f"promotion cannot be decided host-side")
+                    f"promotion cannot be decided host-side", (owner,)))
                 return False
         return assembled_as_pec(_resolver, _NS(material_name=material_name))
 
@@ -175,8 +176,8 @@ def msl_nearest_downstream_reflector(
         bbox = getattr(shape, "bounding_box", None)
         if bbox is None:
             unevaluated.append(
-                f"{what} ({type(shape).__name__}): no corner_lo/corner_hi "
-                f"and no bounding_box(), so it cannot be placed on the line")
+                SubjectMessage(f"{what} ({type(shape).__name__}): no corner_lo/corner_hi "
+                f"and no bounding_box(), so it cannot be placed on the line", (owner,)))
             return None, None
         try:
             lo, hi = bbox()
@@ -184,28 +185,29 @@ def msl_nearest_downstream_reflector(
             raise
         except Exception as exc:  # noqa: BLE001 - recorded in unevaluated
             unevaluated.append(
-                f"{what} ({type(shape).__name__}): bounding_box() raised "
-                f"{type(exc).__name__}, so it cannot be placed on the line")
+                SubjectMessage(f"{what} ({type(shape).__name__}): bounding_box() raised "
+                f"{type(exc).__name__}, so it cannot be placed on the line", (owner,)))
             return None, None
         return lo, hi
 
     # (shape, label_prefix, is_bbox_derived) for every registered conductor.
     candidates: list = []
     for _gi, ge in enumerate(geometry):
+        owner = ge
         shape = getattr(ge, "shape", None)
         mat = getattr(ge, "material_name", "")
         if shape is None or not _is_conductor(mat):
             continue
         candidates.append((shape, f"conductor '{mat}'",
-                           not isinstance(shape, _Box)))
+                           not isinstance(shape, _Box), ge))
     for _ti, tc in enumerate(thin_conductors or ()):
         tshape = getattr(tc, "shape", None)
         if tshape is None:
             continue
         candidates.append((tshape, f"thin_conductor[{_ti}]",
-                           not isinstance(tshape, _Box)))
+                           not isinstance(tshape, _Box), tc))
 
-    for shape, _what, _from_bbox in candidates:
+    for shape, _what, _from_bbox, owner in candidates:
         lo, hi = _bounds(shape, _what)
         if lo is None or hi is None:
             continue
@@ -218,8 +220,8 @@ def msl_nearest_downstream_reflector(
             valid_bounds = False
         if not valid_bounds:
             unevaluated.append(
-                f"{_what} ({type(shape).__name__}): bounds are not finite, "
-                "ordered three-dimensional coordinates")
+                SubjectMessage(f"{_what} ({type(shape).__name__}): bounds are not finite, "
+                "ordered three-dimensional coordinates", (owner,)))
             continue
         # "x" = propagation axis, "y" = trace-width axis.
         box_x_lo, box_x_hi = float(lo[_ip]), float(hi[_ip])
@@ -262,7 +264,7 @@ def msl_nearest_downstream_reflector(
         if d < nearest_d:
             nearest_d = d
             _how = " (bounding box)" if _from_bbox else ""
-            nearest_label = msl_text(
+            nearest_label = SubjectMessage(msl_text(
                 "reflector_bounds",
                 owner=_what,
                 kind=_how,
@@ -272,6 +274,6 @@ def msl_nearest_downstream_reflector(
                 reflector_hi_m=box_x_hi,
                 reflector_width_lo_m=box_y_lo,
                 reflector_width_hi_m=box_y_hi,
-            )
+            ), (owner,))
 
     return nearest_d, nearest_label, unevaluated

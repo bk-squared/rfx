@@ -1,56 +1,7 @@
-"""MSL port-geometry preflight.
+"""MSL port-geometry checks and shared probe-clearance rules.
 
-Two things live here:
-
-* the MSL module block -- ``MSL_EPS_EFF_PROXY``,
-  ``msl_min_probe_clearance``, ``msl_source_near_field_standoff_cells``,
-  ``msl_nearest_downstream_reflector``, ``msl_probe_clearance_for_port``,
-  ``msl_absorber_compliant_offset_max``, and the five constants they and
-  MSL check 2c read;
-* the five ``_PreflightMixin`` methods of the MSL family
-  (``_msl_assemble_once``, ``_msl_declared_face_geometry``,
-  ``_msl_realized_substrate``, ``_msl_conductor_gap``, and the 887-line
-  ``_check_msl_port_geometry``), dedented by exactly four spaces and
-  otherwise untouched.
-
-The move is gated on the committed advisory-text snapshot every
-``sim.preflight()`` fixture renders
-(``tests/locks/test_preflight_split_snapshot.py``).
-
-The five methods are MODULE-LEVEL functions whose first parameter is still
-named ``self`` and is still the :class:`~rfx.api.Simulation` instance.
-``rfx/api/_preflight.py`` binds them back into the ``_PreflightMixin`` class
-body AT THEIR ORIGINAL POSITION, so ``sim._check_msl_port_geometry(...)``
-keeps its name, signature, ``__doc__`` and bound-method behaviour, and
-``_validate_simulation_config``'s ordered call sequence -- the observable
-the snapshot lock renders -- is unchanged. ``__qualname__`` is restored at
-the foot of this module for the reason ``rfx/sparams/msl.py`` spells out at
-its own restore.
-
-``self._assemble_realized``, ``_msl_assemble_once``'s one cross-family
-call, resolves through the composed ``Simulation`` MRO and so survives the
-move untouched; the realization block it belongs to stays in the facade.
-
-``rfx.api._preflight`` re-exports all 11 module-level names explicitly, so
-the sites that do ``from rfx.api._preflight import <name>`` -- among them
-``rfx/sparams/_common.py``, ``rfx/sparams/coax.py``,
-the preflight tests --
-keep working, and ``_validate_forward_sparameter_request``, which stays on
-the mixin and calls ``msl_source_near_field_standoff_cells`` by bare name,
-keeps resolving it as a global of the facade.
-
-``msl_probe_clearance_for_port`` is the one name read from HERE rather than
-through that re-export. ``_check_msl_port_geometry`` resolves it in THIS
-module's globals now that both live here, so ``rfx/sparams/msl.py`` and
-``rfx/sparams/mixed.py`` were pointed at this module as well: one patch
-point then covers the preflight reader and the S-matrix readers together,
-which is what ``tests/unit/ports/test_msl_clearance_diagnostic.py`` asserts
-in both directions.
-
-Import contract, inherited from ``rfx.api._preflight``: import ONLY external
-``rfx.*`` / stdlib / jax / numpy, never ``rfx.api`` -- that keeps
-``rfx/api/__init__.py`` the sole composition point and the import graph
-acyclic.
+The facade binds these functions as Simulation methods; checks retain the
+registry order and read the same assembled conductor and material products.
 """
 
 from __future__ import annotations
@@ -62,6 +13,8 @@ import numpy as np
 
 from rfx.preflight.msl_codes import msl_text, msl_diagnostic, msl_join, msl_value
 from rfx._internal._grid_metric import is_one_cell_size
+from rfx.preflight._subjects import finding_subjects
+from rfx.preflight._msl_subjects import conductor_owners, material_owners
 from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _fmt_len,
@@ -203,7 +156,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                 entries = list(resolver(grid))
         except (TypeError, ValueError, AttributeError):
             pass
-    for pe in entries:
+    for _port_index, pe in enumerate(entries):
         try:
             record = msl_probe_clearance_for_port(self, pe, grid)
         except (TimeoutError,):
@@ -222,6 +175,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                         subject=pe.name,
                         source="preflight_sparameters",
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="preflight_sparameters",
                 ),
@@ -244,6 +198,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                         subject=pe.name,
                         source="preflight_sparameters",
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="preflight_sparameters",
                 ),
@@ -275,6 +230,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                     subject=pe.name,
                     source="preflight_sparameters",
                 ),
+                **finding_subjects(self, objects=(("_msl_ports", _port_index), *record.reflector.objects)),
                 code="msl_port_geometry",
                 source="preflight_sparameters",
             ),
@@ -533,7 +489,8 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
         return dict(n=int(n), h_real=h_real, frac=face.get("frac"),
                     declared_n_above=face.get("declared_n_above"),
                     d_iface=face.get("d_iface"), nonuniform=bool(nonuniform),
-                    ground_cells=int(ground_cells))
+                    ground_cells=int(ground_cells),
+                    owners=material_owners(self, realized, idx, inr, k0, n))
     except (ValueError, NotImplementedError):
         return None
 
@@ -745,8 +702,9 @@ def _check_msl_port_geometry(
                 stacklevel=3,
             )
 
-    for pe in _probe_entries:
+    for _port_index, pe in enumerate(_probe_entries):
         _gap = None
+        _plane_owners = conductor_owners(self, pe, _msl_assembled)
         if _msl_assembled is None:
             _w.warn(
                 PreflightWarning(
@@ -758,6 +716,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_conductor_planes",
                     severity="error",
                     source="_check_msl_port_geometry",
@@ -777,6 +736,7 @@ def _check_msl_port_geometry(
                             ),
                             subject=pe.name,
                         ),
+                        **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners)),
                         code="msl_port_conductor_planes",
                         severity="error",
                         source="_check_msl_port_geometry",
@@ -904,6 +864,7 @@ def _check_msl_port_geometry(
                             ),
                             subject=pe.name,
                         ),
+                        **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -956,6 +917,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners, *(_real.get("owners", ()) if _real else ()))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1063,6 +1025,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners, *(_real.get("owners", ()) if _real else ()))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1091,6 +1054,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners, *(_real.get("owners", ()) if _real else ()))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1136,6 +1100,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1229,6 +1194,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1254,6 +1220,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1278,6 +1245,7 @@ def _check_msl_port_geometry(
                         + msl_text("reflector_bounds_remedy"),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *(obj for item in _unevaluated for obj in item.objects))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1349,6 +1317,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_clearance.reflector.objects)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1441,6 +1410,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1476,6 +1446,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1544,6 +1515,7 @@ def _check_msl_port_geometry(
                             ),
                             subject=pe.name,
                         ),
+                        **finding_subjects(self, objects=(("_msl_ports", _port_index), _other)),
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -1773,6 +1745,7 @@ def _check_msl_port_geometry(
                         _nf_msg,
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),

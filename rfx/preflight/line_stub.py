@@ -1,6 +1,7 @@
 """Band-scoped admission for open signal tails behind line ports."""
 from __future__ import annotations
 
+from rfx.preflight._subjects import SubjectMessage, finding_subjects
 from rfx.errors import RfxRefusal
 
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ class LineStubFinding:
     substrate_eps_r: float = 1.0
     declared_eps_r_sub: float | None = None
     end_extension_m: float = 0.0
+    owners: tuple = ()
 
     @property
     def effective_length_m(self):
@@ -97,7 +99,8 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
             # One shape the lattice cannot place must not switch the check off
             # for the conductors it can: skip this shape and say so.
             cache[key] = []
-            cache.setdefault("uninspectable", []).append(f"{type(shape).__name__}: {exc}")
+            cache.setdefault("uninspectable", []).append(SubjectMessage(
+                f"{type(shape).__name__}: {exc}", (cache["owners"][id(shape)],)))
     for mask, cell_axes in cache[key]:
         indices = []
         for a, values in enumerate(nodes):
@@ -155,15 +158,16 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
     from rfx.geometry.smoothing import continued_conductor_shape
-    cache = {}
+    cache = {"owners": {}}
     conductors = []
     for _, entry in entries:
         try:
             conductors.append(continued_conductor_shape(
                 sim, grid, entry.shape, entry=entry, unextendable=[]))
+            cache["owners"][id(conductors[-1])] = entry
         except NotImplementedError as exc:
             cache.setdefault("uninspectable", []).append(
-                f"{type(entry.shape).__name__}: {exc}")
+                SubjectMessage(f"{type(entry.shape).__name__}: {exc}", (entry,)))
     nodes = (coords.x, coords.y, coords.z)
     for sheet in getattr(sim, "_pinned_sheets", ()):
         tangents = [a for a in range(3) if a != sheet.normal_axis]
@@ -174,6 +178,7 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
             pad = int(getattr(grid, f"pad_{'xyz'[a]}_lo", 0))
             lower[a], upper[a] = float(nodes[a][lo + pad]), float(nodes[a][hi + pad])
         conductors.append(Box(tuple(lower), tuple(upper)))
+        cache["owners"][id(conductors[-1])] = sheet
     findings = []
     for collection in ("_msl_ports", "_coaxial_ports"):
         for index, port in enumerate(getattr(sim, collection)):
@@ -225,19 +230,20 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
                     rays.append((lo, hi))
             endpoints = []
             for lower_ray, upper_ray in rays:
-                intervals = sorted(interval for shape in signal_shapes
+                intervals = sorted(((*interval, (cache["owners"][id(shape)],)) for shape in signal_shapes
                                    for interval in _intervals(
                                        sim, grid, shape, coords, axis,
-                                       lower_ray, upper_ray, cache))
+                                       lower_ray, upper_ray, cache)), key=lambda item: item[:4])
                 merged = []
-                for lo, hi, declared_lo, declared_hi in intervals:
+                for lo, hi, declared_lo, declared_hi, owners in intervals:
                     if merged and lo <= merged[-1][1] + tol:
                         merged[-1][1] = max(merged[-1][1], hi)
                         merged[-1][2] = min(merged[-1][2], declared_lo)
                         merged[-1][3] = max(merged[-1][3], declared_hi)
+                        merged[-1][4] += owners
                     else:
-                        merged.append([lo, hi, declared_lo, declared_hi])
-                for lo, hi, declared_lo, declared_hi in merged:
+                        merged.append([lo, hi, declared_lo, declared_hi, owners])
+                for lo, hi, declared_lo, declared_hi, owners in merged:
                     if not lo - tol <= plane <= hi + tol:
                         continue
                     end = lo if sign > 0 else hi
@@ -249,9 +255,9 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
                             or (at_hi and not getattr(grid, f"pad_{'xyz'[axis]}_hi", 0))):
                         continue  # A closed/periodic face is not an absorber entrance.
                     if length > tol and -tol <= end <= domain + tol:
-                        endpoints.append((length, end, declared_length))
+                        endpoints.append((length, end, declared_length, owners))
             if endpoints:
-                length, end, declared_length = max(endpoints)
+                length, end, declared_length, owners = max(endpoints, key=lambda item: item[:3])
                 point[axis] = (plane + end) / 2
                 substrate_eps = _permittivity(
                     sim, port, point, grid, coords, cache,
@@ -269,9 +275,12 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
                     "xyz"[axis], end, length, float(eps),
                     299792458.0 / (4 * (length + extension) * math.sqrt(eps)),
                     declared_length, plane,
-                    substrate_eps, getattr(port, "eps_r_sub", None), extension))
+                    substrate_eps, getattr(port, "eps_r_sub", None), extension, owners))
     if uninspectable is not None:
-        uninspectable.extend(dict.fromkeys(cache.get("uninspectable", [])))
+        messages = {}
+        for item in cache.get("uninspectable", []):
+            messages.setdefault(str(item), []).extend(item.objects)
+        uninspectable.extend(SubjectMessage(message, objects) for message, objects in messages.items())
     return findings
 
 
@@ -340,7 +349,7 @@ def stub_message(finding, band=None):
     return stub_diagnostic(finding, band).message
 
 
-def _uninspectable_warning(skipped):
+def _uninspectable_warning(skipped, sim):
     from rfx.preflight._common import PreflightWarning
     return PreflightWarning(
         msl_diagnostic(
@@ -352,12 +361,13 @@ def _uninspectable_warning(skipped):
             ),
             source="line_stub_findings",
         ),
+        **finding_subjects(sim, objects=tuple(obj for item in skipped for obj in item.objects)),
         code="line_stub_inspection_unavailable",
         source="line_stub_findings",
     )
 
 
-def _warn_uninspectable(skipped):
+def _warn_uninspectable(skipped, sim):
     """Solve-entry warning attributed to the first frame outside the rfx package.
 
     Entries differ in depth (forward stages its declarations in one more frame),
@@ -375,7 +385,7 @@ def _warn_uninspectable(skipped):
             frame, level = frame.f_back, level + 1
     finally:
         del frame
-    warning = _uninspectable_warning(skipped)
+    warning = _uninspectable_warning(skipped, sim)
     warnings.warn(
         warning,
         stacklevel=level,
@@ -395,7 +405,7 @@ def require_no_resonant_line_stub(sim, freqs=None):
         except NotImplementedError as exc:
             # Unsupported inspection leaves admission to the owning lane, but not silently.
             findings = []
-            skipped.append(str(exc))
+            skipped.append(SubjectMessage(str(exc), tuple(entry for _, entry in conductor_entries(sim))))
         except ValueError as exc:
             msl_error(
                 msl_diagnostic(
@@ -410,7 +420,7 @@ def require_no_resonant_line_stub(sim, freqs=None):
             )
             raise
         if skipped:
-            _warn_uninspectable(skipped)
+            _warn_uninspectable(skipped, sim)
         for finding in findings:
             if resonant_odd_orders(finding, band) is not None:
                 raise msl_error(
@@ -443,7 +453,7 @@ def preflight_line_stubs(sim, warn):
         findings = line_stub_findings(sim, uninspectable=skipped)
     except NotImplementedError as exc:
         findings = []
-        skipped.append(str(exc))
+        skipped.append(SubjectMessage(str(exc), tuple(entry for _, entry in conductor_entries(sim))))
     except ValueError as exc:
         # Preserve the blocking realization error without aborting later checks.
         # Solve admission still raises it unconditionally, even with preflight off.
@@ -464,11 +474,12 @@ def preflight_line_stubs(sim, warn):
         )
         return
     if skipped:
-        warn.warn(_uninspectable_warning(skipped), stacklevel=3)
+        warn.warn(_uninspectable_warning(skipped, sim), stacklevel=3)
     for finding in findings:
         warn.warn(
             PreflightWarning(
                 stub_diagnostic(finding, band),
+                **finding_subjects(sim, objects=((finding.collection, finding.port_index), *finding.owners)),
                 code="line_stub_behind_port",
                 severity="warning",
                 source="line_stub_findings",

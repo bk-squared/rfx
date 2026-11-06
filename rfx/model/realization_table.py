@@ -237,8 +237,9 @@ def _traced_table(prepared):
                               status=status, traced_inputs=inputs)
                 for i, _ in enumerate(sim._thin_conductors))
     rows.append(RealizationRow("domain", "domain", status=status, traced_inputs=inputs))
-    rows.extend(RealizationRow(f"probe[{i}]", "probe", status=status,
-                              traced_inputs=inputs) for i, _ in enumerate(sim._probes))
+    from rfx.model.realization_placements import label_rows, traced_placement_rows
+    rows.extend(traced_placement_rows(sim, status, inputs))
+    rows.extend(label_rows(sim))
     return RealizationTable(tuple(rows), prepared.lane, weakref.ref(prepared.conductors))
 
 
@@ -276,8 +277,8 @@ def bind_table(sim, conductors, *, lane, compact=True):
         table = replace(table, rows=disjoint_rows(sim, table.rows, conductors.kernel_context[1]))
         record = replace(record, limitations=("disjoint vacuum stepper does not carry material declarations",))
     if inputs:
-        table = replace(table, rows=tuple(replace(row, traced_inputs=inputs,
-                        status="evaluated: nominal_profiles" if nominal else row.status)
+        table = replace(table, rows=tuple(replace(row, traced_inputs=() if row.status == "not represented" else inputs,
+                        status="evaluated: nominal_profiles" if nominal and row.status != "not represented" else row.status)
                                           for row in table.rows))
     object.__setattr__(conductors, "realization_table", table)
     conductors._realization_tables.append(table)
