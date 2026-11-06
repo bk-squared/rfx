@@ -261,7 +261,7 @@ def test_surface_impedance_smoothing_refusal_matches_run(monkeypatch, smoothing)
     messages = []
     for entry in ("run", "forward"):
         sim = sphere_sim()
-        sim.add_thin_conductor(Box(((2 - .35) * .001, (2 - .35) * .001, .009), ((10 + .35) * .001, (10 + .35) * .001, .009)),
+        sim.add_thin_conductor(Box((.002, .002, .009), (.010, .010, .009)),
                                sigma_bulk=1e4, surface_impedance_f0=10e9)
         with pytest.raises(ValueError, match="subpixel_smoothing") as info:
             getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=smoothing)

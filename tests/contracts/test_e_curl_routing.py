@@ -242,10 +242,7 @@ def test_cpml_driver_passes_realized_boundary(mesh, lane):
 def test_sheet_replacement_update_also_uses_shared_curl(mesh, lane):
     from rfx import Box
     sim = model(mesh=mesh, wall="pec")
-    profile = sim._dx_profile
-    x0 = float(sum(profile[:3]) - .35 * profile[2]) if mesh == "graded" else (2 - .35) * 1e-3
-    x1 = float(sum(profile[:8]) + .35 * profile[8]) if mesh == "graded" else (8 + .35) * 1e-3
-    sim.add_thin_conductor(Box((x0, (2 - .35) * 1e-3, 4e-3), (x1, (6 + .35) * 1e-3, 4e-3)),
+    sim.add_thin_conductor(Box((2e-3, 2e-3, 4e-3), (8e-3, 6e-3, 4e-3)),
                            sigma_bulk=1e4, surface_impedance_f0=12e9)
     kwargs = dict(n_steps=2, skip_preflight=True)
     if lane == "run":

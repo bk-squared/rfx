@@ -13,7 +13,7 @@ def wall_scene(graded=False):
                      boundary='pec', cpml_layers=0, **mesh)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        sim.add_thin_conductor(Box((0., (2 - .35) * .001, .004), (.013, (8 + .35) * .001, .004)),
+        sim.add_thin_conductor(Box((0., .002, .004), (.013, .008, .004)),
                                sigma_bulk=1e4, surface_impedance_f0=12e9)
     sim.add_source((.003, .005, .003), 'ey',
                    waveform=GaussianPulse(f0=12e9), amplitude_kind='field')

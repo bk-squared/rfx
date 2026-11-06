@@ -299,7 +299,7 @@ def test_nonvolume_operator_footprint_cannot_cross_source(entry, operator, on_fa
     sim = _sim()
     x = 0.003 if on_face else 0.009
     if operator == "surface_sheet":
-        sim.add_thin_conductor(Box((x, (6 - .35) * .001, (5 - .35) * .001), (x, (10 + .35) * .001, (9 + .35) * .001)),
+        sim.add_thin_conductor(Box((x, 0.006, 0.005), (x, 0.010, 0.009)),
                                surface_impedance_f0=15e9)
     else:
         sim.add_lumped_rlc((x, 0.008, 0.007), component="ez", L=1e-9,

@@ -470,7 +470,7 @@ def test_fence_sheet_inside_the_box():
     sim = _sim()
     with pytest.warns(UserWarning, match="Leontovich"):
         sim.add_thin_conductor(
-            Box(((5 - .35) * DX, (4 - .35) * DX, 8e-3), ((7 + .35) * DX, (6 + .35) * DX, 8e-3)),
+            Box((10e-3, 8e-3, 8e-3), (14e-3, 12e-3, 8e-3)),
             sigma_bulk=5.8e7, thickness=35e-6, surface_impedance_f0=F0)
     with pytest.raises(ValueError, match="surface_impedance_f0 sheet"):
         _forward_with_box(sim)
