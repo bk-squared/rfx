@@ -595,6 +595,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
 
     from rfx.runners._distributed_records import SlabRecords
+    from rfx.measurement.prepared import finish_measurement
     n_prb = len(probes)
     from rfx.stepping.slab_wrap_uniform import run_wrapped_uniform
     tfsf = None
@@ -605,6 +606,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     dispersion = [debye_spec, lorentz_spec]
     del materials, pec_edges, pec_mask, pec_shapes, debye_spec, lorentz_spec
     records = SlabRecords(sim, grid, nx_per, mesh, jnp.float32, n_steps, snapshot)
+    finish_measurement(stepping_product)
     final_carry, probe_ts, final_state_sharded, records = prepared_step.advance(
         stepping_product, run_wrapped_uniform, sources, probes, layout, mesh, records,
         _operand_layout="wrapped_uniform_slab", n_steps=n_steps,

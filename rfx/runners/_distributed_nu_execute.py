@@ -298,6 +298,8 @@ def execute_from_materials(
         records = SlabRecords(self, grid, sharded_grid.nx_per_rank, mesh,
                               sharded_materials.eps_r.dtype, n_steps, snapshot)
     _require_wrapped_records(records, sharded_grid.step_kind)
+    from rfx.measurement.prepared import finish_measurement
+    finish_measurement(stepping_product)
 
     # ---- Launch the sharded NU runner. ----
     prepared_step.stage(stepping_product, grid=sharded_grid, materials=sharded_materials, pec_edges=sharded_pec_mask)

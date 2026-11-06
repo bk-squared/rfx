@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx._traced_refusal import TracedStructureRefusal
 from rfx._internal._uniform_specs import resolve_periodic
 from rfx.measurement.flux_weights import build_flux_monitor_cfgs, monitor_periodic_flags
 from rfx.measurement.plan import build_measurement_plan
@@ -25,8 +26,18 @@ from tests._x64_compat import enable_x64
 PATHS = ('run_uniform', 'fwd_uniform', 'run_nonuniform', 'fwd_nonuniform',
          'run_distributed', 'fwd_distributed', 'run_distributed_nu',
          'fwd_distributed_nu', 'run_subgridded', 'msl_uniform', 'msl_nonuniform')
-MESSAGE = ('measurement plan needs concrete monitor arguments (positions, regions, PEC edges) '
-           'inside jax.jit: declare them outside the traced function.')
+MESSAGES = {
+    'probe': 'probe positions', 'port': 'port geometry',
+    'plane_position': 'DFT plane positions', 'plane_region': 'DFT plane regions',
+    'flux_position': 'flux monitor geometry', 'flux_region': 'flux monitor geometry',
+    'ntff_lo': 'NTFF box corners', 'ntff_hi': 'NTFF box corners',
+    'moment_position': 'current-moment monitor geometry',
+}
+MESSAGES = {kind: f'measurement plan needs concrete {name} inside jax.jit: '
+            'declare them outside the traced function.' for kind, name in MESSAGES.items()}
+MESSAGES['pec_edges'] = (
+    'port:0: wire port live cells depend on PEC geometry that is traced, '
+    'so they cannot be counted. Make that geometry concrete or remove the port.')
 
 
 def exact(actual, expected):
@@ -134,6 +145,44 @@ def test_b2_flux(case):
         assert carry_flags == monitor_periodic_flags(sim, grid)
         assert carry_flags == ((False, False, False) if case == '2d' else (True, True, False))
         assert flags == ((False, False, True) if case == '2d' else (True, True, False))
+
+
+@pytest.mark.parametrize('case', ['2d', 'periodic'])
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_p2_attached_flux_uses_runner_formation(case, entry):
+    from rfx.model.conductors import PreparedSolve
+
+    sim, _ = flux_scene(case)
+    prepared, formations = [], []
+    original_init = PreparedSolve.__init__
+
+    def remember(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        prepared.append(self)
+
+    def capture(simulation, grid, n_steps, **kwargs):
+        configs = build_flux_monitor_cfgs(simulation, grid, n_steps, **kwargs)
+        formations.append((grid, kwargs['periodic'], configs))
+        return configs
+
+    with patch.object(PreparedSolve, '__init__', remember), patch(
+            'rfx.runners.uniform.build_flux_monitor_cfgs', side_effect=capture):
+        options = dict(n_steps=12, skip_preflight=True)
+        if entry == 'run':
+            options['compute_s_params'] = False
+        else:
+            options['checkpoint'] = False
+        result = getattr(sim, entry)(**options)
+        jax.block_until_ready(result.time_series)
+
+    assert len(prepared) == len(formations) == 1
+    plan = prepared[0].measurement
+    assert plan.path == ('run_uniform' if entry == 'run' else 'fwd_uniform')
+    grid, flags, configs = formations[0]
+    owners = [owner for owner in plan.owners if owner.kind == 'flux']
+    assert len(owners) == len(configs) == 1
+    for owner, config in zip(owners, configs, strict=True):
+        flux_nodes(owner, config, grid, flags)
 
 
 def plane_nodes(owner, cfg, grid):
@@ -423,9 +472,9 @@ def test_b5_refuses_nodes(path, kind):
             setattr(declaration, attr, tuple(spec))
         build_measurement_plan(declaration, grid, n_steps=12, path=path, pec_edges=edges)
         return value
-    with pytest.raises(NotImplementedError) as error:
+    with pytest.raises(TracedStructureRefusal) as error:
         traced(jnp.asarray(DX))
-    assert str(error.value) == MESSAGE
+    assert str(error.value) == MESSAGES[kind]
 
 
 def test_unknown_path_names_token():

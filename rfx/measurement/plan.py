@@ -133,10 +133,6 @@ def _frequencies(sim, entry=None, freqs=None):
 
 
 _UNSET = object()
-_CONCRETE_MONITORS = (
-    'measurement plan needs concrete monitor arguments (positions, regions, PEC edges) '
-    'inside jax.jit: declare them outside the traced function.'
-)
 
 
 def _traced(value):
@@ -148,24 +144,37 @@ def _phase_values(value):
 
 
 def _concrete_nodes(sim, edges):
-    values = [edges, getattr(sim, '_dft_plane_regions', {})]
-    for attr, fields in (
-        ('_probes', ('position',)),
-        ('_ports', ('position', 'extent', 'reference_plane_cells')),
-        ('_dft_planes', ('coordinate',)),
-        ('_flux_monitors', ('coordinate', 'size', 'center')),
-        ('_waveguide_ports', ('x_position', 'x_range', 'y_range', 'z_range',
-                             'reference_plane', 'probe_plane', 'probe_offset', 'ref_offset')),
-        ('_msl_ports', ('position', 'width', 'height')),
+    from rfx._traced_refusal import TracedStructureRefusal
+
+    def concrete(kind, value):
+        if _traced(value):
+            raise TracedStructureRefusal(
+                f'measurement plan needs concrete {kind} inside jax.jit: '
+                'declare them outside the traced function.')
+
+    concrete('DFT plane regions', getattr(sim, '_dft_plane_regions', {}))
+    for attr, kind, fields in (
+        ('_probes', 'probe positions', ('position',)),
+        ('_ports', 'port geometry', ('position', 'extent', 'reference_plane_cells')),
+        ('_dft_planes', 'DFT plane positions', ('coordinate',)),
+        ('_flux_monitors', 'flux monitor geometry', ('coordinate', 'size', 'center')),
+        ('_waveguide_ports', 'waveguide port geometry',
+         ('x_position', 'x_range', 'y_range', 'z_range',
+          'reference_plane', 'probe_plane', 'probe_offset', 'ref_offset')),
+        ('_msl_ports', 'microstrip port geometry', ('position', 'width', 'height')),
     ):
-        values.extend(getattr(entry, field, None)
-                      for entry in getattr(sim, attr) for field in fields)
+        concrete(kind, [getattr(entry, field, None)
+                        for entry in getattr(sim, attr) for field in fields])
     if sim._ntff is not None:
-        values.extend(sim._ntff[:2])
+        concrete('NTFF box corners', sim._ntff[:2])
     if sim._current_moments is not None:
-        values.extend((*sim._current_moments[:3], sim._current_moments[5]))
-    if _traced(values):
-        raise NotImplementedError(_CONCRETE_MONITORS)
+        concrete('current-moment monitor geometry',
+                 (*sim._current_moments[:3], sim._current_moments[5]))
+    if _traced(edges):
+        index = next(i for i, p in enumerate(sim._ports) if p.impedance and p.extent is not None)
+        raise TracedStructureRefusal(
+            f'port:{index}: wire port live cells depend on PEC geometry that is traced, '
+            'so they cannot be counted. Make that geometry concrete or remove the port.')
 
 
 def _index(grid, position):

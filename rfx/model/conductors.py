@@ -556,6 +556,8 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
         # Keep the full-domain conductor view stable while its prepared owner
         # transfers operands to shards. This shares arrays, never reassembles.
         return replace(conductors, _prepared_owner=conductors), record
+    from rfx.measurement.prepared import finish_measurement
+    finish_measurement(conductors)
     return conductors, record
 
 
