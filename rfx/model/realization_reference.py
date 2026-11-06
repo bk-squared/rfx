@@ -1,6 +1,6 @@
 """Reference metadata for inputs whose live geometry cannot be read on host."""
 from dataclasses import fields, is_dataclass
-from weakref import WeakKeyDictionary
+from weakref import WeakKeyDictionary, ref
 
 
 # Host metadata follows simulation lifetime without becoming solve arguments.
@@ -29,10 +29,10 @@ register_pytree_node(_DeclaredDomain, lambda domain: (tuple(domain), domain.decl
 
 
 def remember_kernel(sim, root, record):
-    """Retain the kernel owner alongside the compact host rows."""
+    """Keep compact host rows and lend the live kernel owner without owning it."""
     from rfx._declarations import declaration_key
     from rfx.model.realization_integrals import quantities
-    object.__setattr__(record, "_conductors", root)
+    object.__setattr__(record, "_conductors", ref(root))
     if record.lane.startswith("fwd_") or any(row.traced_inputs for row in record.realization_table.rows):
         return
     store = quantities(root.grid)

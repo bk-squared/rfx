@@ -180,8 +180,10 @@ class RealizedGeometry(GeometryMetadata):
 
     @property
     def conductors(self):
-        """The source object of this view (outside the public record schema)."""
-        return getattr(self, '_conductors', None)
+        """The source object; compact records borrow it only while it is live."""
+        from weakref import ReferenceType
+        source = getattr(self, '_conductors', None)
+        return source() if isinstance(source, ReferenceType) else source
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
