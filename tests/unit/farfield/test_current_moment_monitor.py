@@ -1977,7 +1977,7 @@ def test_topology_design_region_inside_the_slab_runs():
 def _surface_impedance_sheet(sim, inside):
     from rfx import Box
     z = 12e-3 if inside else 20e-3
-    sim.add_thin_conductor(Box((10e-3, 10e-3, z), (14e-3, 14e-3, z)),
+    sim.add_thin_conductor(Box(((5 - .35) * DX, (5 - .35) * DX, z), ((7 + .35) * DX, (7 + .35) * DX, z)),
                            sigma_bulk=1e5, thickness=1e-5,
                            surface_impedance_f0=4e9)
 
