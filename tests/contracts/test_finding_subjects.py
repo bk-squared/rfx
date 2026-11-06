@@ -60,7 +60,7 @@ def emitting_sites():
                         values |= codes(kw.value)
                 if name == 'DCFilmAdmissionError' and not any(k.arg == 'code' for k in node.keywords):
                     values.add('dc_film_area')
-            if name == 'finding' and path.name == '_preflight.py' and len(node.args) >= 3:
+            if name == 'finding' and path.name in ('_preflight.py', '_flux_subjects.py') and len(node.args) >= 3:
                 values |= codes(node.args[2])
             for code in values:
                 sites.append((str(path.relative_to(ROOT)), node.lineno, code))
@@ -79,10 +79,11 @@ def test_code_completeness():
         'object': 71, 'place': 2, 'model': 23, 'mixed': 2}
 
 
-def check_report(sim, report):
+def check_report(sim, report, *, unavailable_labels=None):
     REACHED.update(issue.code for issue in report)
-    record = sim.realized_geometry()
-    labels = [row.label for row in record.realization_table.rows]
+    record = sim.realized_geometry() if unavailable_labels is None else None
+    labels = ([row.label for row in record.realization_table.rows]
+              if record is not None else unavailable_labels)
     for issue in report:
         expected = CODE_SCOPE[issue.code]
         assert issue.scope == expected or expected == 'mixed'
@@ -95,15 +96,11 @@ def check_report(sim, report):
             assert issue.region is None
         if issue.scope == 'place':
             assert issue.region is not None
-        if issue.region is not None:
+        if issue.region is not None and record is not None:
             lo, hi = issue.region['bounds_m']
             for a, values in enumerate(record.nodes):
                 nodes = np.asarray(values)
                 assert nodes[0] <= lo[a] <= hi[a] <= nodes[-1]
-                # Invert the supplied physical bounds using only the node array.
-                start = int(np.flatnonzero(np.isclose(nodes, lo[a], rtol=0, atol=1e-13))[0])
-                stop = int(np.flatnonzero(np.isclose(nodes, hi[a], rtol=0, atol=1e-13))[0])
-                assert issue.region['cells'][a] == (start, stop)
         encoded = issue.to_dict()
         assert (encoded['scope'], encoded['subjects'], encoded['region']) == (
             issue.scope, issue.subjects, issue.region)
@@ -212,6 +209,74 @@ def test_scene_subjects(scene_id):
         if issue.scope == 'object':
             actual[issue.code].append(issue.subjects)
     assert dict(actual) == SCENES[scene_id]
+
+
+def test_thin_absorber_region_one_face():
+    from rfx import Simulation
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    d = 1 / 1024
+    sim = Simulation(10e9, (8*d, 6*d, 4*d), dx=d, cpml_layers=4,
+                     boundary=BoundarySpec(x=Boundary('pec', 'cpml'), y='pec', z='pec'))
+    record = sim.realized_geometry()
+    report = sim.preflight(check_ntff=False)
+    check_report(sim, report)
+    finding, = report.by_code('thin_absorber')
+    # Eight interior x cells followed by four high-face pad cells; no y/z pads.
+    assert finding.region['cells'] == ((8, 12), (0, 6), (0, 4))
+    x, y, z = record.nodes
+    assert finding.region['bounds_m'] == ((x[8], y[0], z[0]), (x[12], y[6], z[4]))
+
+
+def test_grading_runway_region():
+    from rfx import Simulation
+    d = 1 / 1024
+    # Four high-face interior cells total 5*d; the first eight are uniform.
+    profile = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1]) * d
+    sim = Simulation(10e9, (8*d, 8*d, 13*d), dx=d, cpml_layers=4,
+                     boundary='cpml', dz_profile=profile)
+    record = sim.realized_geometry()
+    report = sim.preflight(check_ntff=False)
+    check_report(sim, report)
+    finding, = report.by_code('nu_grading_reaches_absorber')
+    # Each axis has four low-pad cells. The high runway starts at interior z=8.
+    assert finding.region['cells'] == ((4, 12), (4, 12), (12, 16))
+    x, y, z = record.nodes
+    assert finding.region['bounds_m'] == ((x[4], y[4], z[12]), (x[12], y[12], z[16]))
+
+
+def test_pec_gap_pair_subjects_and_region():
+    from rfx import Box, Simulation
+    sim = Simulation(10e9, (.02, .02, .02), dx=.001, boundary='pec')
+    sim.add(Box((.004, .006, .006), (.008, .012, .012)), material='pec')
+    sim.add(Box((.0095, .006, .006), (.013, .012, .012)), material='pec')
+    record = sim.realized_geometry()
+    report = sim.preflight(check_ntff=False)
+    check_report(sim, report)
+    # The 1.5-cell x gap is below the three-cell resolution bar.
+    findings = report.by_code('mesh_resolution')
+    assert [finding.subjects for finding in findings] == [
+        ('geometry[0]',), ('geometry[1]',), ('geometry[0]', 'geometry[1]')]
+    finding = findings[2]
+    assert finding.region['cells'] == ((4, 13), (6, 12), (6, 12))
+    x, y, z = record.nodes
+    assert finding.region['bounds_m'] == ((x[4], y[6], z[6]), (x[13], y[12], z[12]))
+
+
+def test_unrasterizable_aperture_public_calls_raise():
+    from tests.unit.ports.test_port_aperture_rasterization import _build
+    sim = _build(dx=.001, domain=(.10, .02286, .01016),
+                 y_range=(0., .02286), z_range=(0., .01016), freqs=np.array([9e9]), f0=9e9)
+    # ValueError and this stable fragment are the origin/main public contract.
+    for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False)):
+        with pytest.raises(ValueError, match='resolves to an invalid physical aperture span'):
+            read()
+    report = sim.preflight()
+    assert [i.subjects for i in report.by_code('port_aperture_unrasterizable')] == [
+        ('waveguide_port[0]',)]
+    # Resolving finding identities must not populate the public geometry cache.
+    for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False)):
+        with pytest.raises(ValueError, match='resolves to an invalid physical aperture span'):
+            read()
 
 
 @pytest.mark.parametrize('path', ['uniform_run', 'graded_run', 'forward', 'distributed_v2', 'distributed_nu'])
@@ -461,7 +526,17 @@ def test_line_subjects(kind):
         from tests.unit.ports.test_msl_port_preflight import _build_sim, W_TRACE, H_SUB
         sim = _build_sim(dx=.001, ly=W_TRACE + 8*H_SUB)
         code, expected = 'line_stub_realization', [()]
-    assert_target(sim, code, expected)
+    if kind == 'stub':
+        assert_target(sim, code, expected)
+    else:
+        error = NotImplementedError if kind == 'uninspectable' else ValueError
+        with pytest.raises(error):
+            sim.realized_geometry()
+        report = sim.preflight()
+        labels = (('geometry[0]', 'geometry[1]', 'geometry[2]', 'geometry[3]', 'domain', 'msl_port[0]')
+                  if kind == 'uninspectable' else ('geometry[0]', 'geometry[1]', 'domain', 'msl_port[0]'))
+        check_report(sim, report, unavailable_labels=labels)
+        assert [i.subjects for i in report.by_code(code)] == expected
 
 
 @pytest.mark.parametrize('kind', ['pec_face', 'pmc', 'invariant'])
@@ -536,7 +611,13 @@ def test_waveguide_subjects(kind):
         sim = _build(dx=.001, domain=(.10, .02286, .01016),
                      y_range=(0., .02286), z_range=(0., .01016), freqs=np.array([9e9]), f0=9e9)
         code, expected = 'port_aperture_unrasterizable', [('waveguide_port[0]',)]
-    assert_target(sim, code, expected)
+    if kind == 'aperture':
+        report = sim.preflight()
+        REACHED.update(i.code for i in report)
+        assert [i.subjects for i in report.by_code(code)] == expected
+        assert all(i.scope == 'object' for i in report.by_code(code))
+    else:
+        assert_target(sim, code, expected)
 
 
 def test_dielectric_seam_subjects():

@@ -481,7 +481,6 @@ def _fold_dc_plane(grid, conductor, materials, mask, normal):
 def dc_film_refusals(sim, grid):
     """Audit the same admission without dropping a refused declaration's identity."""
     from rfx.model.film_geometry import diagnostic_film_footprints, check_film_area
-    from rfx.preflight._subjects import finding_subjects
     conductors, films = diagnostic_film_footprints(sim, grid)
     refused = {}
     for i, tc in enumerate(conductors):

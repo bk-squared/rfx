@@ -501,24 +501,19 @@ def _ports(sim, ctx, assembled):
         pos[a] = pe.x_position
         k = int(locate(tuple(pos))[a])
         aperture = []
-        error = None
         for b, axis in enumerate('xyz'):
             if b == a:
                 aperture.append((k, k))
             else:
-                try:
-                    if ctx.lane == "nonuniform":
-                        from rfx.runners.nonuniform import _range_to_slice_nu
-                        sl, _ = _range_to_slice_nu(grid, axis, getattr(pe, f'{axis}_range'))
-                    else:
-                        sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
-                                                    grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b],
-                                                    getattr(grid, f"pad_{axis}_hi"))
-                except ValueError as exc:
-                    aperture, error = [], f"not represented: {exc}"
-                    break
+                if ctx.lane == "nonuniform":
+                    from rfx.runners.nonuniform import _range_to_slice_nu
+                    sl, _ = _range_to_slice_nu(grid, axis, getattr(pe, f'{axis}_range'))
+                else:
+                    sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
+                                                grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b],
+                                                getattr(grid, f"pad_{axis}_hi"))
                 aperture.append((int(sl[0]), int(sl[1] - 1)))
-        rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture), error))
+        rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
     for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
                        ("_floquet_ports", "floquet")):
         for i, _ in enumerate(getattr(sim, attr, ())):
@@ -546,21 +541,15 @@ def realized_geometry(sim):
         record = bind_table(sim, stamped[1], lane='coax', compact=False)
         sim._realized_geometry_record = key, record
         return record
-    try:
-        assembled = PreparedSolve(sim).realized(report_context=ctx)
-        if isinstance(assembled, RealizedConductors):
-            record = bind_table(
-                sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
-        else:
-            record = _build_record(sim, ctx)
-            from dataclasses import replace
-            table = realization_table(PreparedRealization(sim, record.conductors, ctx.lane, record))
-            record = _conductor_view(replace(record, realization_table=table), record.conductors)
-    except (ValueError, NotImplementedError) as exc:
-        if ctx.error is None and ctx._assembly_exception is None:
-            raise
-        from rfx.model.realization_unavailable import identity_record
-        record = identity_record(sim, ctx, str(exc))
+    assembled = PreparedSolve(sim).realized(report_context=ctx)
+    if isinstance(assembled, RealizedConductors):
+        record = bind_table(
+            sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
+    else:
+        record = _build_record(sim, ctx)
+        from dataclasses import replace
+        table = realization_table(PreparedRealization(sim, record.conductors, ctx.lane, record))
+        record = _conductor_view(replace(record, realization_table=table), record.conductors)
     sim._realized_geometry_record = key, record
     return record
 

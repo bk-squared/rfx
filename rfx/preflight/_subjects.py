@@ -54,6 +54,20 @@ def _key(sim, obj):
     raise ValueError("Finding object is not a declaration in this model")
 
 
+def finding_record(sim):
+    """Read labels for findings even when public geometry cannot be produced.
+
+    The identity-only fallback stays local to this reader: never publish it in
+    Simulation's public geometry cache or return it from a public API.
+    """
+    try:
+        return sim.realized_geometry()
+    except (ValueError, NotImplementedError) as exc:
+        ctx = sim._campaign_ctx()
+        from rfx.model.realization_unavailable import identity_record
+        return identity_record(sim, ctx, str(exc))
+
+
 @dataclass
 class _Selection:
     sim: object
@@ -61,7 +75,7 @@ class _Selection:
     reader: object = None
 
     def record(self):
-        return self.reader() if self.reader is not None else self.sim.realized_geometry()
+        return self.reader() if self.reader is not None else finding_record(self.sim)
 
     def resolve(self):
         if not self.keys:

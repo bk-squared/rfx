@@ -68,16 +68,17 @@ def _preflight_impl(
     # Selection information belongs outside the captured legality findings.
     # Resolve before any validator reads a profile or fallback spacing.
     self._resolve_mesh()
+    from rfx.preflight._subjects import finding_record
     issues = PreflightReport()
     verdict_findings = []
     if _conductors is not None:
-        self._finding_record_reader = lambda: _conductors._realization_record or self.realized_geometry()
+        self._finding_record_reader = lambda: _conductors._realization_record or finding_record(self)
         tables = _conductors._realization_tables
         issues._realization_reader = lambda: tables[-1] if tables else None
         if tables:
             verdict_findings.extend(tables[-1].findings)
     else:
-        issues._realization_reader = lambda: self.realized_geometry().realization_table
+        issues._realization_reader = lambda: finding_record(self).realization_table
 
     # Static geometry diagnostics must stay host-side under an outer
     # jit, just like mesh selection. Otherwise even a concrete Box's
