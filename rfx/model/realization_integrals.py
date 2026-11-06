@@ -146,8 +146,9 @@ def read_rows(rows, grid, sim):
                 row = replace(row, open_area_m2=tuple(area.get(a, 0.) for a in range(3)),
                               model="conformal open faces; union owner partition")
                 drawn = store.get("drawn_open", {}).get(index)
-                if drawn:
-                    declared, realized = sum(drawn.values()), sum(area.values())
+                declared = sum((drawn or {}).values())
+                if declared > 0:
+                    realized = sum(area.values())
                     cell = float(np.mean([a.cell_size_m for a in row.axes]))
                     row = replace(row, declared_area_m2=declared, realized_area_m2=realized,
                         declared_area_equivalent_length_m=float(np.sqrt(declared)),

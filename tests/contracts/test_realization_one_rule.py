@@ -1540,3 +1540,21 @@ def test_port_built_conductors_leave_user_wire_verdict_intact(monkeypatch):
     user.add(PolylineWire((start, (start[0], start[1], 24.61*dx)), radius=0.), material="pec")
     with pytest.raises(RfxRefusal, match=r"realization geometry\[0\].*extent miss"):
         user.run(n_steps=1, compute_s_params=False, skip_preflight=True)
+
+
+def test_conformal_zero_drawn_area_has_no_reference_on_nz_one():
+    sim = Simulation(20e9, (.012,) * 3, dx=D, boundary="cpml",
+                     cpml_layers=3, mode="2d_tez")
+    sim.add(Sphere((.006, .006, 0.), .0023), material="pec")
+    result = sim.run(n_steps=1, conformal_pec=True, skip_preflight=True,
+                     compute_s_params=False)
+    assert len(result.realized_geometry.cell_sizes[2]) == 1
+    table = result.realized_geometry.realization_table
+    row = table.row("geometry[0]")
+    assert row.open_area_m2 == (0., 0., 0.)
+    assert row.status == "not judged: no reference"
+    assert row.area_miss_percent is None
+    assert row.label in table.judged
+    findings = [f for f in table.findings if f.code == "realization" and f.loc == row.label]
+    assert len(findings) == 1
+    assert "not judged: no reference" in str(findings[0])
