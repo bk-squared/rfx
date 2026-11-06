@@ -59,13 +59,18 @@ def finding_record(sim):
 
     The identity-only fallback stays local to this reader: never publish it in
     Simulation's public geometry cache or return it from a public API.
+    A refusal of the public record (ValueError, NotImplementedError) admits this
+    fallback; the context owns it so repeated subject and region reads share one
+    stand-in.
     """
     try:
         return sim.realized_geometry()
     except (ValueError, NotImplementedError) as exc:
         ctx = sim._campaign_ctx()
         from rfx.model.realization_unavailable import identity_record
-        return identity_record(sim, ctx, str(exc))
+        if getattr(ctx, '_finding_identity_record', None) is None:
+            ctx._finding_identity_record = identity_record(sim, ctx, str(exc))
+        return ctx._finding_identity_record
 
 
 @dataclass

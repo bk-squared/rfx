@@ -6,6 +6,7 @@ def conductor_owners(sim, pe, assembled):
     if assembled is None:
         return ()
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
+    from rfx.preflight.realization import context_from_conductors
     grid = assembled[0]
     try:
         span = msl_cross_section_span(grid, msl_port_from_entry(pe))
@@ -14,7 +15,7 @@ def conductor_owners(sim, pe, assembled):
     normal, prop, width = (span[key] for key in ('normal_idx', 'prop_idx', 'width_idx'))
     tangent = [a for a in range(3) if a != normal]
     owners = []
-    for entry in sim._campaign_ctx().entry_realizations():
+    for entry in context_from_conductors(sim, assembled[-1]).entry_realizations():
         if not entry.is_pec:
             continue
         for k in (span['n_lo'], span['n_hi']):

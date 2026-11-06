@@ -262,21 +262,62 @@ def test_pec_gap_pair_subjects_and_region():
     assert finding.region['bounds_m'] == ((x[4], y[6], z[6]), (x[13], y[12], z[12]))
 
 
-def test_unrasterizable_aperture_public_calls_raise():
-    from tests.unit.ports.test_port_aperture_rasterization import _build
-    sim = _build(dx=.001, domain=(.10, .02286, .01016),
-                 y_range=(0., .02286), z_range=(0., .01016), freqs=np.array([9e9]), f0=9e9)
-    # ValueError and this stable fragment are the origin/main public contract.
+@pytest.mark.parametrize('scene', ['wr90-aperture', 'msl-no-bounds'])
+def test_unrasterizable_aperture_public_calls_raise(scene, monkeypatch):
+    if scene == 'wr90-aperture':
+        from tests.unit.ports.test_port_aperture_rasterization import _build
+        sim = _build(dx=.001, domain=(.10, .02286, .01016),
+                     y_range=(0., .02286), z_range=(0., .01016), freqs=np.array([9e9]), f0=9e9)
+        error, match = ValueError, 'resolves to an invalid physical aperture span'
+        code, expected = 'port_aperture_unrasterizable', [('waveguide_port[0]',)]
+    else:
+        from dataclasses import replace
+        from tests.unit.preflight.test_line_stub import make_sim
+        from tests.unit.ports.test_msl_reflector_scan_conductors import _NoBBox
+        sim = make_sim()
+        sim._geometry.append(replace(sim._geometry[-1], shape=_NoBBox()))
+        error, match = NotImplementedError, None
+        code, expected = 'line_stub_inspection_unavailable', [('geometry[3]',)]
+    # Exception types and the aperture fragment are origin/main's public contract.
     for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False)):
-        with pytest.raises(ValueError, match='resolves to an invalid physical aperture span'):
+        with pytest.raises(error, match=match):
             read()
     report = sim.preflight()
-    assert [i.subjects for i in report.by_code('port_aperture_unrasterizable')] == [
-        ('waveguide_port[0]',)]
-    # Resolving finding identities must not populate the public geometry cache.
-    for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False)):
-        with pytest.raises(ValueError, match='resolves to an invalid physical aperture span'):
+    from rfx.model import realization_unavailable
+    builds = []
+    original = realization_unavailable.identity_record
+
+    def counted(*args):
+        builds.append(None)
+        return original(*args)
+
+    monkeypatch.setattr(realization_unavailable, 'identity_record', counted)
+    for _ in range(2):
+        # A refused public record still names the finding's objects, built once.
+        assert [i.subjects for i in report.by_code(code)] == expected
+        for issue in report:
+            issue.to_dict()
+    assert len(builds) == 1
+    # Resolving finding identities must not populate any public geometry reader.
+    for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False),
+                 lambda: report.realization_table):
+        with pytest.raises(error, match=match):
             read()
+
+
+def test_off_lattice_place_region():
+    from rfx import Simulation
+    from rfx.preflight._common import PreflightIssue
+    from rfx.preflight._subjects import finding_subjects
+    sim = Simulation(10e9, (.02, .02, .02), dx=.001, boundary='pec')
+    # Supply a physical region: geometry-row bounds have already been snapped
+    # and cannot exercise a lower face lying strictly inside a grid cell.
+    finding = PreflightIssue('Off-lattice region', **finding_subjects(
+        sim, region=((.0042, .0062, .0062), (.0132, .0122, .0122))))
+    assert finding.scope == 'place' and finding.subjects == ()
+    assert finding.region['cells'] == ((4, 14), (6, 13), (6, 13))
+    np.testing.assert_allclose(finding.region['bounds_m'],
+                               ((.004, .006, .006), (.014, .013, .013)), rtol=0, atol=1e-15)
 
 
 @pytest.mark.parametrize('path', ['uniform_run', 'graded_run', 'forward', 'distributed_v2', 'distributed_nu'])
@@ -614,8 +655,8 @@ def test_waveguide_subjects(kind):
     if kind == 'aperture':
         report = sim.preflight()
         REACHED.update(i.code for i in report)
-        assert [i.subjects for i in report.by_code(code)] == expected
         assert all(i.scope == 'object' for i in report.by_code(code))
+        assert [i.subjects for i in report.by_code(code)] == expected
     else:
         assert_target(sim, code, expected)
 

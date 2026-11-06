@@ -78,7 +78,7 @@ def _preflight_impl(
         if tables:
             verdict_findings.extend(tables[-1].findings)
     else:
-        issues._realization_reader = lambda: finding_record(self).realization_table
+        issues._realization_reader = lambda: self.realized_geometry().realization_table
 
     # Static geometry diagnostics must stay host-side under an outer
     # jit, just like mesh selection. Otherwise even a concrete Box's
