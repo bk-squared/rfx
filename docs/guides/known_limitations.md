@@ -623,6 +623,17 @@ Each value's `settling_db`, `settling_witness` and `dt` come back per value and 
 What to do: pass `dx=` so every value shares one grid and time step; or use `parametric_sweep()`, which returns each
 value's full `Result`.
 
+### On the uniform mesh, `until_decay` in a closed box can stop while the box still rings.
+
+Tracker: #2223
+
+With no absorbing boundary and no `radiated_flux_box`, the uniform mesh stops `run(until_decay=...)` on the last
+sample of one field point, compared with a peak that includes the drive. The graded mesh stops the same request on
+the field energy left after the drive. Measured on a lossy dielectric cube (eps_r 6) in a PEC box, driven by a point
+current: at `until_decay=1e-3` the run stopped at step 400 with 98 % of the after-drive energy still in the box, and
+the probe spectrum over 5–14 GHz differed from a 20,000-step record by about one band peak. What to do until the fix
+lands: in a closed box on the uniform mesh, use a fixed `n_steps` long enough for the field to decay.
+
 ## Absorbing boundaries
 
 ### Magnetic faces require the single-device second-order Yee image.
