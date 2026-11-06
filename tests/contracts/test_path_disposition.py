@@ -58,7 +58,7 @@ KERNEL_CALLERS = {
         "extract_waveguide_s_matrix", "extract_waveguide_s_matrix_flux",
         "extract_waveguide_s_params_normalized", "extract_multimode_s_matrix",
         "extract_multimode_s_matrix_flux")},
-    "rfx/sparams/coax.py:compute_coaxial_line_reflection": "coaxial_line_reflection",
+    "rfx/sparams/_coax_oneport_record.py:run_reflection_record": "coaxial_line_reflection",
     "rfx/sparams/coax.py:compute_coaxial_two_port": "coaxial_two_port",
     "rfx/sparams/coax.py:compute_coax_msl_transition": "coax_msl_transition",
     "rfx/differentiable_material_fit.py:differentiable_material_fit": "material_fit",
