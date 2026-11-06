@@ -27,12 +27,12 @@ from rfx.measurement.plane_records import init_plane_records
 import jax
 import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout
-from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop
+from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop, warn_unused_decay_monitor
 from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
 from rfx.model import with_edge_keep
 import numpy as np
-from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
+from rfx.boundaries.axes import drop_periodic_axes, padded_axes, resolve_cpml_axes
 from rfx.grid import Grid
 from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary
@@ -819,10 +819,10 @@ def run_until_decay(
         the radiated-flux stop, smoothing the 2f0 Poynting oscillation. Default 4.
     monitor_component : str
         Legacy monitor component ("ez", "hy", etc.); does not select the
-        energy or radiated-flux stop.
+        energy or radiated-flux stop. Non-default values warn of deprecation.
     monitor_position : tuple or None
         Legacy monitor position (x, y, z); does not affect the stop.
-        If None, use the domain centre.
+        Non-default values warn of deprecation.
     checkpoint_segments : int or None
         **Not supported** (a host-driven early stop); a non-None value
         raises ``NotImplementedError``.
@@ -862,15 +862,9 @@ def run_until_decay(
          (out of band), the record stays correct, and the stop record and the
          cap advisory say what ended the run.
 
-       * **Closed / PEC boundaries** — domain energy does not decay in a
-         lossless closed cavity, so the stop falls back to the historical
-         *instantaneous* squared field at the single ``monitor_component`` cell
-         (``val_sq < decay_by * peak_sq``). This fallback retains the original
-         limitation: it is a valid decay witness only for lossy / radiating
-         structures with a clean ring-down envelope, and is **not** suitable
-         for flux / S-parameter / transmission gating on guided / low-loss
-         closed geometries — for those use a fixed ``n_steps`` via
-         :func:`run`.
+       * **Closed / PEC boundaries** — the same after-drive energy rule reads
+         the whole grid, including any allocated pads. A lossless closed
+         cavity retains its energy and reaches ``max_steps``.
     report_every : int or None
         When set, emit one ``  [PROGRESS] ...`` line every *N*
         steps, at the first decay-chunk boundary at or past the interval,
@@ -887,6 +881,7 @@ def run_until_decay(
     -------
     SimResult
     """
+    warn_unused_decay_monitor(monitor_component, monitor_position)
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if checkpoint_segments is not None:
         raise NotImplementedError(
@@ -1098,6 +1093,8 @@ def run_until_decay(
         grid, _setup.ctx_kwargs["materials"], thr=decay_by, min_steps=min_steps,
         interval=check_interval, consecutive=decay_energy_consecutive, n_end=n_end,
         criterion=not use_flux_stop, max_steps=max_steps, sources=sources,
+        absorbing=bool(boundary in ("cpml", "upml") and grid.cpml_layers > 0
+                       and padded_axes(grid, drop_periodic_axes(cpml_axes, _setup.periodic))),
         mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
         periodic=_setup.periodic, side_step=(lambda c, xs, inv: jax.lax.scan(lambda cc, x: step_fn(
             cc, x, inv), c, xs)[0], lambda n: one_step_xs(n, src_waveforms, mag_src_waveforms), _inv_args))

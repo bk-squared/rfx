@@ -489,6 +489,19 @@ def test_side_step_program_holds_no_grid_size_constant(mesh, monkeypatch):
     assert counts and counts[0] < 10_000, counts
 
 
+def _table(src):
+    return np.asarray(src.waveform if hasattr(src, "waveform") else src[4])
+
+
+def _off(table):
+    """Last sample above 1e-6 of the table peak, plus one (independent oracle)."""
+    w = np.abs(np.asarray(table).astype(np.complex128))
+    on = np.flatnonzero(w > 1e-6 * w.max())
+    off = int(on[-1]) + 1 if on.size else 0
+    assert off < len(w), "the closed-box fixture's drive must end before the cap"
+    return off
+
+
 # Closed boxes use the same after-drive rule, including on the uniform mesh.
 def _closed_box_energy_run(mesh, cap, monkeypatch):
     import time
@@ -504,9 +517,11 @@ def _closed_box_energy_run(mesh, cap, monkeypatch):
                    amplitude_kind="current")
     sim.add_probe((.0085, .0075, .0065), "ez")
     owner = graded_loop if mesh == "graded" else uniform_loop
-    original, rows = owner.make_decay_stop, []
+    original, rows, ends = owner.make_decay_stop, [], []
 
     def observe(*args, **kwargs):
+        # Inspect the applied tables independently of the production drive-end rule.
+        ends.append(max(_off(_table(src)) for src in kwargs["sources"]))
         rule, measure = original(*args, **kwargs)
         if measure is None:
             return rule, measure
@@ -527,19 +542,21 @@ def _closed_box_energy_run(mesh, cap, monkeypatch):
         result = (run_nonuniform_path(sim, n_steps=cap, **kwargs) if mesh == "graded"
                   else sim.run(skip_preflight=True, **kwargs))
         jax.block_until_ready(result.time_series)
-    return result, rows, time.perf_counter() - start
+    assert len(ends) == 1
+    return result, rows, ends[0], time.perf_counter() - start
 
 
 def test_closed_box_after_drive_energy_on_both_meshes(monkeypatch, record_property):
     stops = []
     for mesh in ("uniform", "graded"):
-        result, rows, elapsed = _closed_box_energy_run(mesh, 3000, monkeypatch)
+        result, rows, drive_end, elapsed = _closed_box_energy_run(mesh, 3000, monkeypatch)
         (diagnostic,) = [d for d in result.diagnostics if d.code == "until_decay.stop"]
         values = diagnostic.values
         record_property(mesh, dict(stop=dict(values), rows=rows, seconds=elapsed))
         assert values["quantity"] == "conserved_energy"
         assert values["criterion"] == "threshold"
-        after = [(count, w) for count, w in rows if count >= values["drive_end_step"]]
+        assert values["drive_end_step"] == drive_end
+        after = [(count, w) for count, w in rows if count >= drive_end]
         ref_test = max(w for _, w in after)
         stop = values["stop_step"]
         assert stop == len(result.time_series) == after[-1][0] < 3000
@@ -552,11 +569,12 @@ def test_closed_box_after_drive_energy_on_both_meshes(monkeypatch, record_proper
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_energy_cap_names_after_drive_fraction(mesh, monkeypatch, record_property):
-    result, rows, elapsed = _closed_box_energy_run(mesh, 300, monkeypatch)
+    result, rows, drive_end, elapsed = _closed_box_energy_run(mesh, 300, monkeypatch)
     (diagnostic,) = [d for d in result.diagnostics if d.code == "until_decay.stop"]
     values = diagnostic.values
     assert values["quantity"] == "conserved_energy" and values["criterion"] == "cap"
-    ref_test = max(w for count, w in rows if count >= values["drive_end_step"])
+    assert values["drive_end_step"] == drive_end
+    ref_test = max(w for count, w in rows if count >= drive_end)
     drive_peak = max(w for _, w in rows)
     expected = f"{ref_test / drive_peak:.3g}"
     assert f"; the after-drive reference is {expected} of the drive's peak energy" in diagnostic.message

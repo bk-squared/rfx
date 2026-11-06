@@ -7,7 +7,7 @@ program contains any of it.
 
 * ``drive_end`` (``rfx.measurement.record_end``): the step at which every
   built drive has ended, the source-end rule at distance zero.
-* ``boundary_energy``: the leapfrog-conserved interior energy
+* ``boundary_energy``: the leapfrog-conserved field energy
   ``W_c = sum((eps E^c . E^c + (mu0/eps0) mu H^(c-1/2) . H^(c+1/2)) dV)``.
   ``H^(c+1/2)`` comes from one side step of the loop's own chunk program on
   the boundary state (scan length 1); that step's output is discarded except
@@ -65,6 +65,16 @@ REMEDIES = (
     "zero); ModulatedGaussian keeps a DC part unless bandwidth <= 0.4, and even then "
     "some; radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator stops on "
     "the outgoing flux, which a static field does not carry; or run a fixed n_steps")
+
+
+def warn_unused_decay_monitor(component, position):
+    """One warning at the public call for the retired point-monitor options."""
+    if component != "ez" or position is not None:
+        import warnings
+        warnings.warn(
+            "decay_monitor_component/decay_monitor_position no longer affect until_decay; "
+            "the stop reads the field energy after the drive. They will be removed.",
+            DeprecationWarning, stacklevel=user_stacklevel())
 
 
 def known_drive_ready_step(waveguide_ports, interval):
@@ -201,7 +211,7 @@ def yee_volumes(grid, region):
     return e, h
 
 
-def boundary_energy(grid, materials, side_step, *, dx=None,
+def boundary_energy(grid, materials, side_step, *, dx=None, absorbing=True,
                     periodic=(False, False, False)):
     """``measure(carry, count) -> float``: W at the chunk boundary ``count``.
 
@@ -213,7 +223,8 @@ def boundary_energy(grid, materials, side_step, *, dx=None,
     updates read (the realized components, through ``rfx._internal._realized`` when it
     observes); dV is ``dx**3`` with the loop's cell size on the uniform mesh
     and each component's Yee control volume on the graded mesh (``yee_volumes``). The sum covers the
-    non-absorber interior. The per-cell arrays are arguments of the jitted
+    non-absorber interior for absorbing boundaries, and the whole grid (pads
+    included) for a closed box. The per-cell arrays are arguments of the jitted
     reduction, not constants.
     """
     from rfx._internal import _realized
@@ -226,7 +237,8 @@ def boundary_energy(grid, materials, side_step, *, dx=None,
     periodic = tuple(a in grid.periodic_axes for a in "xyz") if graded else tuple(periodic)
     materials = with_components(materials, grid, periodic=periodic)
     sizes = (grid.dx_arr, grid.dy_arr, grid.dz) if graded else None
-    region = tuple(slice(lo, hi) for lo, hi in _interior(grid))
+    bounds = _interior(grid) if absorbing else ((0, grid.nx), (0, grid.ny), (0, grid.nz))
+    region = tuple(slice(lo, hi) for lo, hi in bounds)
     axes = field_axes(grid)
     arrays, rebuild = split_loop_invariants(dict(materials=materials), (grid.nx, grid.ny, grid.nz))
     if graded:
@@ -401,7 +413,7 @@ def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
 
 
 def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
-                    criterion, max_steps, side_step, n_end=AUTO_END, rows=False, dx=None,
+                    criterion, max_steps, side_step, n_end=AUTO_END, rows=False, dx=None, absorbing=True,
                     sources=(), mag_sources=(), tfsf=None, waveguide_ports=(),
                     periodic=(False, False, False)):
     """The rule and its W measurement for one loop.
@@ -427,7 +439,8 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
     rule = DecayStop(thr, min_steps, interval, consecutive, n_end, enabled)
     if enabled:
         rule.n_d = known_drive_ready_step(waveguide_ports, interval)
-    measure = (boundary_energy(grid, materials, side_step, dx=dx, periodic=periodic)
+    measure = (boundary_energy(grid, materials, side_step, dx=dx,
+                               absorbing=absorbing, periodic=periodic)
                if n_end is not None else None)
     return rule, measure
 

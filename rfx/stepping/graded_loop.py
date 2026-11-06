@@ -413,7 +413,7 @@ def run_nonuniform_until_decay(
     energy_stop, energy = make_decay_stop(
         grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
         consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
-        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf,
+        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
     stop_rule = energy_stop
