@@ -541,7 +541,7 @@ def differentiable_material_fit(
                 position=pe.position,
                 component=pe.component,
                 impedance=pe.impedance,
-                excitation=pe.waveform,
+                excitation=pe.waveform, allow_in_absorber=pe.allow_in_absorber,
             )
             materials = setup_lumped_port(grid, lp, materials)
             loaded_ports.append(lp)

@@ -247,7 +247,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 end=tuple(end),
                 component=pe.component,
                 impedance=pe.impedance,
-                excitation=pe.waveform,
+                excitation=pe.waveform, allow_in_absorber=pe.allow_in_absorber,
             )
             port_cell_counts[idx] = _wire_port_live_cells(
                 grid, wp, _pec_edge_masks)[2]

@@ -250,6 +250,8 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
     ``default_probes`` are forward()'s ``(port index, position, component)``
     probes when no probe is declared.
     """
+    from rfx.model.point_placement import admit_simulation_points
+    admit_simulation_points(sim, grid)
     from rfx.model.graded_grid import NonUniformGrid
     if isinstance(n_steps, bool) or not isinstance(n_steps, (int, np.integer)) or n_steps < 0:
         raise ValueError('n_steps must be a nonnegative integer')
@@ -349,7 +351,7 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
             end = list(entry.position)
             end['xyz'.index(entry.component[1])] += entry.extent
             port = WirePort(entry.position, tuple(end), entry.component, entry.impedance,
-                            entry.waveform, radius=entry.radius)
+                            entry.waveform, radius=entry.radius, allow_in_absorber=entry.allow_in_absorber)
             cells, flags, _ = _wire_port_live_cells(grid, port, edges)
             live = tuple(tuple(int(v) for v in p) for p, flag in zip(cells, flags) if flag)
         if not live:

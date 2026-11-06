@@ -481,7 +481,7 @@ def _ports(sim, ctx, assembled):
             if ctx.lane == "uniform":
                 cells = tuple(tuple(int(k) for k in cell) for cell in _wire_port_cells(
                     grid, WirePort(start=pe.position, end=tuple(end), component=pe.component,
-                                   impedance=pe.impedance)))
+                                   impedance=pe.impedance, allow_in_absorber=pe.allow_in_absorber)))
             else:
                 from rfx._internal._periodic import interval_indices
                 start_idx, end_idx = interval_indices(grid, pe.position, tuple(end))

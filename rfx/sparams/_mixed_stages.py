@@ -284,7 +284,7 @@ def _prepare_mixed_anchors(
             wp = WirePort(
                 start=pe.position, end=tuple(end),
                 component=pe.component, impedance=pe.impedance,
-                excitation=pe.waveform,
+                excitation=pe.waveform, allow_in_absorber=pe.allow_in_absorber,
             )
             n_live_lw[idx] = _wire_port_live_cells(
                 grid, wp, _mx_pec_edge_masks)[2]
