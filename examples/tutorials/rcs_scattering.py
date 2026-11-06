@@ -44,8 +44,10 @@ CPML_LAYERS = 8
 # printed below); 800 steps cover it with room for the sphere's ring-down.
 N_STEPS = 800
 
-RADIUS = 15.9e-3
-CENTER = (DOMAIN / 2.0,) * 3
+# The grid uses DX on x, y and z: draw the sphere's axial extrema on
+# nodes 14 and 26, keeping its electrical size close to ka = 1.
+RADIUS = 6 * DX
+CENTER = (20 * DX,) * 3
 SPHERE = Sphere(center=CENTER, radius=RADIUS)
 
 THETA_OBS = np.asarray([np.pi / 2.0])
