@@ -641,16 +641,19 @@ Each value's `settling_db`, `settling_witness` and `dt` come back per value and 
 What to do: pass `dx=` so every value shares one grid and time step; or use `parametric_sweep()`, which returns each
 value's full `Result`.
 
-### On the uniform mesh, `until_decay` in a closed box can stop while the box still rings.
+### An open plane-wave scene runs `until_decay` to `decay_max_steps`.
 
-Tracker: #2223
+Tracker: #1839
 
-With no absorbing boundary and no `radiated_flux_box`, the uniform mesh stops `run(until_decay=...)` on the last
-sample of one field point, compared with a peak that includes the drive. The graded mesh stops the same request on
-the field energy left after the drive. Measured on a lossy dielectric cube (eps_r 6) in a PEC box, driven by a point
-current: at `until_decay=1e-3` the run stopped at step 400 with 98 % of the after-drive energy still in the box, and
-the probe spectrum over 5–14 GHz differed from a 20,000-step record by about one band peak. What to do until the fix
-lands: in a closed box on the uniform mesh, use a fixed `n_steps` long enough for the field to decay.
+On an open TF/SF scene the field energy left after the drive does not decay to the threshold: a remainder of
+1.5–2.7×10⁻⁹ of the drive's peak energy stays in the interior (in 3-D it is the incident-line absorber leak of #1839).
+The energy stop therefore runs to `decay_max_steps` and ends with a cap warning that states the after-drive reference
+as a fraction of the drive's peak energy. Measured on the slab tutorial's 2-D vacuum reference (drive end at step 406):
+the run took 50,000 steps (59 s on a Mac) where a fixed 506-step run took 0.64 s, and the probe spectra inside the
+total-field region changed by at most 3×10⁻⁶ of their band peak after step 500; over the open scenes measured the
+change was at most 1.5×10⁻⁵. The result is the same; the cost is 40–100 times the steps.
+What to do: on an open plane-wave scene, run a fixed `n_steps` (drive end plus the transit of the domain), or set a
+lower `decay_max_steps`.
 
 ## Absorbing boundaries
 
