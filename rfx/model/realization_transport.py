@@ -29,6 +29,9 @@ class GeometryMetadata:
     def __reduce__(self):
         attachments = {name: getattr(self, name) for name in self.__slots__
                        if hasattr(self, name)}
+        # A borrowed kernel owner is execution-local, like table.prepared.
+        if isinstance(attachments.get("_conductors"), weakref.ReferenceType):
+            attachments.pop("_conductors")
         return _restore_geometry, (type(self), vars(self), attachments)
 
 
