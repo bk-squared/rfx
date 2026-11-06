@@ -74,6 +74,29 @@ def _jacobi_energy_impedance(grid, port, k, cells):
     return np.sqrt(2.1) / (299792458.0 * 2 * energy)
 
 
+def _capture_independent_source_impedances(monkeypatch):
+    import rfx.sources.coaxial_port as source
+
+    build = source.build_coaxial_tem_plane_source_specs
+    references = []
+
+    def capture(**kwargs):
+        # Solve on the exact realized mask and plane passed to the source;
+        # neither reference reads its profile, its Z, or the returned result.
+        port = kwargs["port"]
+        built = _jacobi_energy_impedance(
+            kwargs["grid"], port, kwargs["plane_axial_index"],
+            kwargs["pec_cell_mask"])
+        closed = (np.log(port.outer_radius / port.pin_radius)
+                  * np.sqrt(4e-7 * np.pi / 8.8541878128e-12)
+                  / (2 * np.pi * np.sqrt(2.1)))
+        references.append((built, closed))
+        return build(**kwargs)
+
+    monkeypatch.setattr(source, "build_coaxial_tem_plane_source_specs", capture)
+    return references
+
+
 def test_sma_built_impedance_against_independent_laplace():
     grid, port, k, cells, ex, ey = _section(0.0004)
     expected = _jacobi_energy_impedance(grid, port, k, cells)
@@ -118,11 +141,16 @@ def test_two_port_returned_s11_uses_reported_built_impedance(monkeypatch):
     monkeypatch.setattr(runner, "run", run)
     monkeypatch.setattr(source, "coaxial_line_plane_voltage", lambda *a, **kw: np.zeros(3, complex))
     monkeypatch.setattr(lane, "_assemble_coaxial_two_port_from_voltages", assemble)
+    references = _capture_independent_source_impedances(monkeypatch)
     result = _build_small_two_port_sim().compute_coaxial_two_port(
         n_steps=10, freqs=np.array([6e9, 8e9, 10e9]), probe_count=3,
         probe_start_cells=4, probe_spacing_cells=2)
     assert np.all(result.reference_impedances == 50)
     np.testing.assert_allclose(result.line_impedances[0], result.line_impedances[1])
+    assert len(references) == 2
+    built, closed = np.asarray(references).T
+    np.testing.assert_allclose(result.line_impedances, built, rtol=1e-4, atol=0)
+    assert np.all(np.abs(result.line_impedances - closed) / closed > 0.01)
     rho = (50 - result.line_impedances[0]) / (50 + result.line_impedances[0])
     expected = rho * (t * t - 1) / (1 - rho * rho * t * t)
     np.testing.assert_allclose(result.s_params[0, 0], expected, rtol=1e-12, atol=1e-12)
