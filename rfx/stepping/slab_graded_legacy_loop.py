@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import partial
 from jax import lax
 from jax.sharding import PartitionSpec as P
+from rfx._host_limits import check_map_count
 from rfx._internal import _realized
 from rfx.boundaries.cpml import apply_cpml_e
 from rfx.boundaries.cpml import apply_cpml_h
@@ -92,6 +93,7 @@ def run_graded_legacy_slab_loop(
     use_dispersion,
     use_lorentz,
 ):
+    check_map_count()
     def _update_h_shmap(st, mat, spacings, *, ranks):
         (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
          inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]

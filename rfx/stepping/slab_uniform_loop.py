@@ -4,6 +4,7 @@ from __future__ import annotations
 from functools import partial
 from jax import lax
 from jax.sharding import PartitionSpec as P
+from rfx._host_limits import check_map_count
 from rfx.boundaries.cpml import cpml_grid_metadata
 from rfx.core.drives import drive_layout
 from rfx.core.yee import FDTDState
@@ -78,6 +79,7 @@ def run_uniform_slab_loop(
     src_waveforms,
     use_cpml,
 ):
+    check_map_count()
     _exchange_interval = int(exchange_interval)
 
     def _exchange(exchange, components, st, step_idx, *, ranks):
