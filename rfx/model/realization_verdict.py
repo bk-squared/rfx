@@ -11,8 +11,10 @@ from types import SimpleNamespace
 def _mark_port_built(table):
     """Keep execution and diagnostic rows explicit about their port owner."""
     from dataclasses import replace
+    # Soft point sources share port labels but do not build conductors.
     port_labels = {row.label for row in table.rows
-                   if row.label.startswith(("port[", "coaxial_port["))}
+                   if row.label.startswith(("port[", "coaxial_port["))
+                   and row.family != "soft_point"}
     object.__setattr__(table, "rows", tuple(
         replace(row, status="not judged here: port-built (judged by the port)")
         if row.label in port_labels else row for row in table.rows))
