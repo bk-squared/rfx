@@ -1864,6 +1864,7 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _SOFT_SOURCE_FIELDS,
             what=f"excitations.soft_sources[{index}]",
+            defaults={"allow_in_absorber": False},
         )
         # add_source validates/resolves None at the declaration storage site.
         sim.add_source(
@@ -1880,7 +1881,7 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _LUMPED_PORT_FIELDS,
             what=f"excitations.lumped_ports[{index}]",
-            defaults={"radius": None},
+            defaults={"radius": None, "allow_in_absorber": False},
         )
         values["terminates"] = _termination_inputs(sim, values["terminates"])
         sim.add_port(
@@ -1938,7 +1939,8 @@ def simulation_from_design(document: Any) -> Any:
         _entry_list(observables, "probes", what="observables")
     ):
         values = _load_entry(
-            payload, _PROBE_FIELDS, what=f"observables.probes[{index}]"
+            payload, _PROBE_FIELDS, what=f"observables.probes[{index}]",
+            defaults={"allow_in_absorber": False},
         )
         sim.add_probe(values["position"], values["component"],
                       allow_in_absorber=values["allow_in_absorber"])
@@ -2039,6 +2041,18 @@ def _first_difference(left: Any, right: Any, path: str = "") -> str | None:
 
 def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
+    # Older v2 entries omit the absorber opt-in keyword.
+    document = {**document}
+    for section, families in (
+        ("excitations", ("soft_sources", "lumped_ports")),
+        ("observables", ("probes",)),
+    ):
+        document[section] = {**document[section]}
+        for family in families:
+            document[section][family] = [
+                {"allow_in_absorber": False, **entry}
+                for entry in document[section][family]
+            ]
     # Older documents use defaults for optional solver keys they do not carry.
     document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
     if document["solver"]["solver"] == "yee" and "adi_cfl_factor" in document["solver"]:
