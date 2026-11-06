@@ -112,8 +112,8 @@ def judge_realization(table, snap):
             quantity = "; ".join(
                 f"{a.axis} extent miss {a.miss_cells:+.12g} cells ({a.miss_percent:+.12g} %)"
                 for a in axes if a.miss_percent is not None)
-        if ((row.family == "sheet" and row.shape_name == "Box") or
-                row.model in ("cell-centre footprint; node plane", "weighted f0 sheet end rows")):
+        if ((row.model == "solved sheet edges" and row.shape_name == "Box") or
+                row.model == "cell-centre footprint; node plane"):
             mismatch = False  # Existing film admission already judged its size.
         if not mismatch and not centroid:
             continue

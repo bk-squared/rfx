@@ -51,8 +51,11 @@ class ConductorWidthAxis:
 
 def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
                          f0_spec, bounds, sizes, nodes, interior, wire_edges=()):
-    """One record product: PEC solved spans, DC cells, or weighted f0 nodes."""
+    """One record product: PEC/f0 solved spans or DC cells."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
+    # rfx/records/20261105-1958-s2/f0-edge/: good-conductor f0 shares the PEC edge.
+    # Resistive f0 sheets are unmeasured; all f0 sheets use this model.
+    sheet = sheet if sheet is not None else f0_spec
     union, volume_edges = sheet_continuation_masks(interior, root.periodic, root.grid.shape)
     fed = (port_fed_nodes(sim, root)
            if sheet is not None and not hasattr(sheet, 'solved_spans') else None)
@@ -70,11 +73,6 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
             last_edge = int(np.where(wire_edges[a])[a].max())
             hi = float(nodes[a][max(i1, last_edge + 1)])
         comparison = free_ends = None
-        if f0_spec is not None and a != int(f0_spec.normal_axis):
-            i0, i1, lo, hi = _f0_solved_bounds(
-                mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
-                int(getattr(root.grid, f"pad_{'xyz'[a]}_lo")),
-                int(getattr(root.grid, f"pad_{'xyz'[a]}_hi")), periodic)
         if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
             span = (sheet.solved_spans[a] if hasattr(sheet, 'solved_spans') else
                     solved_sheet_span(mask, a, nodes[a], float(bounds[0][a]),
@@ -882,53 +880,6 @@ def forward_sheet_context(root, cells):
              realized_pec_edge_masks(cells, sheets=root.sheets, wires=root.wires,
                                      periodic=root.periodic))
     return root.sheet_context(edges)
-
-
-def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
-    """In-plane node range and ends of an f0 sheet as the sheet operator solves them.
-
-    A tangential row at node ``i`` loads its dual cell, half of the cell on
-    each side, times the row's weight on the sheet conductance: 1, or
-    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn face. The solved
-    end is therefore ``weight * dual - inside half`` beyond the end node
-    (zero at weight 0.5 between equal cells). On a non-periodic axis an end
-    on the domain face has no outside cell and stays on its node. A periodic
-    axis has no wall: the occupied rows are read as one run around the
-    period (a strip ending on the seam ends at node N, one that starts there
-    starts at node 0), and a sheet spanning the whole period has no end.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.materials.thin_conductor import END_ROW_WEIGHT
-    n = len(sizes)
-    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
-    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
-              else np.asarray(end_rows, dtype=bool))
-    i0, i1 = int(rows[0]), int(rows[-1])
-    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
-    if periodic:
-        occupied = np.zeros(n, dtype=bool)
-        occupied[rows % n] = True
-        if occupied.all():
-            return 0, n, float(nodes[0]), float(nodes[n])
-        # Where the one occupied run around the period begins: its rising edge,
-        # or node 0 when the run starts there without wrapping.
-        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
-        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
-            i0 = int(rising[0]) if rising.size else 0
-            i1 = i0 + int(occupied.sum()) - 1
-        free_lo = free_hi = True
-
-    def at(i):
-        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
-
-    lo, hi = at(i0), at(i1)
-    if free_lo:
-        w = END_ROW_WEIGHT if marked[i0 % n] else 1.0
-        lo -= w * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n]) - 0.5 * float(sizes[i0 % n])
-    if free_hi:
-        w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
-        hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
-    return i0, i1, lo, hi
 
 
 _SHEET_LAYOUT_REPORTS = (

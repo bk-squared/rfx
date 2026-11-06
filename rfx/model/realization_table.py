@@ -144,7 +144,7 @@ def realization_table(prepared) -> RealizationTable:
         elif entity.kind == "wire":
             model = "lattice edge envelope"
         elif entity.kind == "lossy" and realized is None:
-            model = "weighted f0 sheet end rows"
+            model = "solved sheet edges"
         if realized is not None and entity.plane is not None:
             normal, _, position = entity.plane
             axes = tuple(_axis(a.axis, a.declared_bounds_m, (position, position), a.cell_size_m)

@@ -260,6 +260,7 @@ def _build_record(sim, ctx, *, compact=False):
     sizes, nodes = _node_arrays(sim, ctx.grid, ctx.lane == "nonuniform")
     conductors = {e.label: e for e in ctx.entry_realizations()}
     interior = {e.label: e for e in ctx.interior_pec_entries()}
+    sheet_neighbors = [*interior.values(), *ctx.impedance_sheet_entries()]
     declarations = [(f"geometry[{i}]", e.material_name, e.shape)
                     for i, e in enumerate(sim._geometry)]
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
@@ -312,7 +313,7 @@ def _build_record(sim, ctx, *, compact=False):
         if mask is not None and mask.any():
             widths = assembled.width_axes(sim, mask, kind=kind, sheet=sheet,
                 node_based=node_based, f0_spec=f0_spec, bounds=bounds,
-                sizes=sizes, nodes=nodes, interior=interior.values(), wire_edges=raw_edges)
+                sizes=sizes, nodes=nodes, interior=sheet_neighbors, wire_edges=raw_edges)
             for a, width in enumerate(widths):
                 i0, i1, cell_range = width.first, width.last, width.cell_range
                 rlo, rhi = width.lo, width.hi
