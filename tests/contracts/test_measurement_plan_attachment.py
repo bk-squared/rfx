@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import jax
+import numpy as np
 import pytest
 
 from rfx.measurement.plan import MeasurementPlan
@@ -121,3 +122,15 @@ def test_b3_same_request(run, forward):
 @pytest.mark.parametrize('path', ['run_uniform', 'run_nonuniform'])
 def test_record_capacity_until_decay(path):
     capture(path, decay=True)
+
+
+@pytest.mark.parametrize('path', ['run_uniform', 'run_distributed_nu'])
+def test_passive_port_keeps_explicit_frequencies_with_s_off(path):
+    sim = build(('_ports', 'passive_port'), path, graded=path.endswith('_nu'))
+    ports = [port for port in sim._ports if port.impedance != 0.0]
+    assert len(ports) == 1 and not ports[0].excite and ports[0].extent is None
+    assert any(port.impedance == 0.0 for port in sim._ports)
+    plan = capture(path, sim=sim)
+    owners = [owner for owner in plan.owners if owner.kind == 'lumped']
+    assert len(owners) == 1
+    np.testing.assert_array_equal(owners[0].frequencies, FREQS)

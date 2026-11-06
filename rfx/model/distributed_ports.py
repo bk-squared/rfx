@@ -46,8 +46,9 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
         sheets, wires, periodic=(False,) * 3, root=conductors)
     from rfx.measurement.prepared import attach_measurement
+    from rfx.measurement.port_s_contract import passive_record_diagnostic
     attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
-                       frequencies=s_param_freqs if lane == 'fwd_distributed_nu' or compute_s_params else None,
+                       frequencies=s_param_freqs if lane == 'fwd_distributed_nu' or compute_s_params is not False or passive_record_diagnostic(sim) else None,
                        overrides={'eps_r': eps_override, 'sigma': sigma_override,
                                   'pec_mask': pec_mask_override,
                                   'pec_occupancy': pec_occupancy_override})
