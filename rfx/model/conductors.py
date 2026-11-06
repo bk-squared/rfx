@@ -74,6 +74,18 @@ def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, period
               else np.asarray(end_rows, dtype=bool))
     i0, i1 = int(rows[0]), int(rows[-1])
     free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
+    if periodic:
+        occupied = np.zeros(n, dtype=bool)
+        occupied[rows % n] = True
+        if occupied.all():
+            return 0, n, float(nodes[0]), float(nodes[n])
+        # Where the one occupied run around the period begins: its rising edge,
+        # or node 0 when the run starts there without wrapping.
+        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
+        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
+            i0 = int(rising[0]) if rising.size else 0
+            i1 = i0 + int(occupied.sum()) - 1
+        free_lo = free_hi = True
 
     def at(i):
         return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
@@ -121,6 +133,8 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
                         volume_edges=volume_edges, periodic=periodic, fed=fed, normal_axis=sheet.normal_axis))
             if span is not None:
                 lo, hi = span.lo, span.hi
+                if f0_spec is not None:
+                    i0, i1 = span.i0, span.i1
                 comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
                 free_ends = (span.free_lo, span.free_hi)
         result.append(ConductorWidthAxis(i0, i1, cell_range, lo, hi, comparison, free_ends))
