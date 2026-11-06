@@ -103,7 +103,7 @@ def _reference(patch, *, exchange=True, probes=True):
             original_wrap, original_step = runner.wrap_uniform, runner.make_uniform_step
             project = projector.project
 
-            def wrap(context, layout, mesh, *, table, port_table=None):
+            def wrap(context, layout, mesh, *, table, port_table=None, exchange_interval=1):
                 specs, owners = [None] * table.n_channels, [None] * table.n_channels
                 for term in table.components:
                     for channel, i, j, k, weight in zip(
@@ -127,7 +127,8 @@ def _reference(patch, *, exchange=True, probes=True):
                         return original_step(ctx, invariants, **kwargs)
 
                 p.setattr(runner, 'make_uniform_step', make_step)
-                return original_wrap(context, layout, mesh, table=table, port_table=port_table)
+                return original_wrap(context, layout, mesh, table=table, port_table=port_table,
+                                     exchange_interval=exchange_interval)
 
             p.setattr(runner, 'wrap_uniform', wrap)
         yield
