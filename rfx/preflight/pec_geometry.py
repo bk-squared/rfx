@@ -1396,8 +1396,8 @@ _SHEET_EFFECTIVE_SIZE_TOL = 1e-2
 
 
 def _sheet_solved_spans(ctx, boxes):
-    """``(entry, axis, SolvedSheetSpan)`` for every in-plane axis of every
-    sheet in ``boxes``, from :func:`rfx.mesh_edges.solved_sheet_span` -- the
+    """``(entry, axis, SolvedSheetSpan)`` for each in-plane axis of PEC and
+    PEC-like f0 sheets, from :func:`rfx.mesh_edges.solved_sheet_span` -- the
     one solved-edge model the sheet-size and census advisories share with
     ``fidelity_report``. The seam test reads realized sheets and PEC volume edges."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
@@ -1407,11 +1407,16 @@ def _sheet_solved_spans(ctx, boxes):
     fps = [interior_lattice_mask(e.sheet.footprint, ctx.grid) for e in sheets]
     union, volume_edges = sheet_continuation_masks(
         ctx.interior_pec_entries() + ctx.impedance_sheet_entries(), ctx.periodic, ctx.grid.shape)
-    from rfx.model.conductors import port_fed_nodes
+    from rfx.model.conductors import port_fed_nodes, f0_uses_solved_span
+    f0_specs = dict(zip((f'thin_conductor[{i}]' for i, tc in enumerate(ctx.sim._thin_conductors)
+                        if tc.surface_impedance_f0 is not None),
+                       getattr(ctx.realized(), 'sheet_impedance', ())))
     fed = (port_fed_nodes(ctx.sim, ctx.realized())
            if any(not hasattr(e.sheet, 'solved_spans') for e in sheets) else None)
     out = []
     for e, fp in zip(sheets, fps):
+        if e.name in f0_specs and not f0_uses_solved_span(f0_specs[e.name]):
+            continue  # No measured free-edge model for resistive f0 sheets.
         for a in range(3):
             if a == int(e.sheet.normal_axis):
                 continue
@@ -1431,7 +1436,7 @@ def _sheet_solved_spans(ctx, boxes):
 
 
 def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
-    """A PEC or f0 sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
+    """A PEC or PEC-like f0 sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
     in-plane end than the nodes it covers (measured:
     ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
     sees is ``covered node span + EDGE_OFFSET * (cell beyond each end)``.

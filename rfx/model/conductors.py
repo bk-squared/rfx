@@ -47,13 +47,51 @@ class ConductorWidthAxis:
     free_ends: object = None
 
 
+def f0_uses_solved_span(spec):
+    """D:c1d171: compare the assembled model's Rs = 1/G with 0.01 eta0."""
+    from rfx.core.yee import MU_0, EPS_0
+    return abs(1.0 / float(spec.g_sheet)) <= 1e-2 * np.sqrt(MU_0 / EPS_0)
+
+
+def f0_edge_note(spec):
+    if f0_uses_solved_span(spec):
+        return 'edge measured at σ 5.8e7 S/m; PEC-like regime up to 1e-2·η0 by rule, not measured between'
+    return 'edge not measured'
+
+
+def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
+    """Resistive f0 node span; no unmeasured physical edge offset.
+
+    Retain the operator's explicit end-row-weight perturbation for its width
+    control test. At the production weight 0.5 both ends stay on their nodes,
+    including graded cells and faces not coincident with a node row.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.materials.thin_conductor import END_ROW_WEIGHT
+    n = len(sizes)
+    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
+    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
+              else np.asarray(end_rows, dtype=bool))
+    i0, i1 = int(rows[0]), int(rows[-1])
+    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
+
+    def at(i):
+        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
+
+    lo, hi = at(i0), at(i1)
+    if free_lo and marked[i0 % n]:
+        lo -= (END_ROW_WEIGHT - 0.5) * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n])
+    if free_hi and marked[i1 % n]:
+        hi += (END_ROW_WEIGHT - 0.5) * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n])
+    return i0, i1, lo, hi
+
+
 def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
                          f0_spec, bounds, sizes, nodes, interior, wire_edges=()):
-    """One record product: PEC/f0 solved spans or DC cells."""
+    """One record product: PEC-like solved spans, resistive f0 nodes or DC cells."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
-    # rfx/records/20261105-1958-s2/f0-edge/: good-conductor f0 shares the PEC edge.
-    # Resistive f0 sheets are unmeasured; all f0 sheets use this model.
-    sheet = sheet if sheet is not None else f0_spec
+    if sheet is None and f0_spec is not None and f0_uses_solved_span(f0_spec):
+        sheet = f0_spec
     union, volume_edges = sheet_continuation_masks(interior, root.periodic, root.grid.shape)
     fed = (port_fed_nodes(sim, root)
            if sheet is not None and not hasattr(sheet, 'solved_spans') else None)
@@ -71,6 +109,11 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
             last_edge = int(np.where(wire_edges[a])[a].max())
             hi = float(nodes[a][max(i1, last_edge + 1)])
         comparison = free_ends = None
+        if sheet is None and f0_spec is not None and a != int(f0_spec.normal_axis):
+            i0, i1, lo, hi = _f0_solved_bounds(
+                mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
+                int(getattr(root.grid, f"pad_{'xyz'[a]}_lo")),
+                int(getattr(root.grid, f"pad_{'xyz'[a]}_hi")), periodic)
         if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
             span = (sheet.solved_spans[a] if hasattr(sheet, 'solved_spans') else
                     solved_sheet_span(mask, a, nodes[a], float(bounds[0][a]),

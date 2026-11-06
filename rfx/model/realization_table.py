@@ -60,6 +60,7 @@ class RealizationRow:
     wall_positions_m: tuple = ()
     domain_geometry: tuple = ()
     domain_face_cells_m: tuple = ()
+    edge_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +153,8 @@ def realization_table(prepared) -> RealizationTable:
             model = "cell-centre footprint; node plane"
         if entity.kind == "sheet":
             model = "solved sheet edges"
+        if entity.edge_note is not None:
+            model = ("node span" if entity.edge_note == "edge not measured" else "solved sheet edges")
         tangent = [a for i, a in enumerate(axes) if entity.plane is not None and i != entity.plane[0]]
         area_cell = float(np.sqrt(np.prod([a.cell_size_m for a in tangent]))) if len(tangent) == 2 else None
         if (entity.kind in ("sheet", "lossy") and realized is None and len(tangent) == 2
@@ -163,6 +166,7 @@ def realization_table(prepared) -> RealizationTable:
         rows.append(RealizationRow(
             entity.label, entity.kind, axes, entity.continued_faces,
             status=entity.error or entity.mask_error or "evaluated", model=model,
+            edge_note=entity.edge_note,
             declared_area_m2=declared, realized_area_m2=realized,
             area_equivalent_length_m=None if realized is None else float(np.sqrt(realized)),
             area_miss_percent=None if not declared or realized is None else

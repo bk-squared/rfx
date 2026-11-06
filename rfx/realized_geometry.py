@@ -66,6 +66,7 @@ class EntityGeometry:
     sampling: str | None = None
     realized_footprint_area_m2: float | None = None
     declared_footprint_area_m2: float | None = None
+    edge_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -367,6 +368,7 @@ def _build_record(sim, ctx, *, compact=False):
                     areas = dc_footprint_areas(shape, ctx.grid, mask, sheet_normal_axis(lo, hi))
             if tc_index in refused_tc:
                 kind = 'refused'
+        from rfx.model.conductors import f0_edge_note
         entities.append(EntityGeometry(
             label, name, kind, tuple(axes),
             int(mask.sum()) if mask is not None and kind not in ("sheet", "wire") else 0,
@@ -376,7 +378,8 @@ def _build_record(sim, ctx, *, compact=False):
             continued, mask_error, "diagnostic" if kind == "refused" else "solved",
             int(mask.sum()) if mask is not None and kind in ("sheet", "wire") else 0,
             edge_counts, edge_ranges, realized_footprint_area_m2=areas[0],
-            declared_footprint_area_m2=areas[1]))
+            declared_footprint_area_m2=areas[1],
+            edge_note=None if f0_spec is None else f0_edge_note(f0_spec)))
         if compact and e is not None:
             e._edges = None
     domain = []
