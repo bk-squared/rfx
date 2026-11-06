@@ -15,10 +15,8 @@ from rfx._declarations import release_declaration_caches
 
 import numpy as np
 
-from rfx.preflight._common import PreflightReport
 from rfx.preflight.realization import _RealizedPEC
 from rfx.boundaries.pec import SheetSpec
-from rfx.model.design_admission import with_design_diagnostics
 
 
 
@@ -184,7 +182,7 @@ def coax_declared_conductors(sim, grid):
 
 
 def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root=None,
-                           skip_preflight=False):
+                           skip_preflight=False, sheet_findings=None):
     """Own the stamp and union AFTER the calculator's existing port operations.
 
     The completed stamp is judged before the calculator starts stepping.
@@ -207,7 +205,8 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
             ctx = sim._campaign_ctx()
             if not skip_preflight:
                 root = replace(root, stamp_check_findings=stamp_check_findings(sim, root))
-        except (TimeoutError,): raise
+        except (TimeoutError,):
+            raise
         except Exception as exc:  # noqa: BLE001 - recorded in stamp_check_findings
             root = replace(root, stamp_check_findings=root.stamp_check_findings + (
                 ('read-failed', (type(exc).__name__, str(exc))),))
@@ -221,7 +220,8 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
     from rfx.model.realization_verdict import admit_table
     bind_table(sim, root, lane="coax")
     from rfx.preflight._common import PreflightIssue
-    previous = tuple(PreflightIssue(message, code="sheet_effective_size",
+    previous = sheet_findings if sheet_findings is not None else tuple(
+        PreflightIssue(message, code="sheet_effective_size",
         severity="warning" if sim._snap == "declared" else "error",
         source="_validate_cfg_off_lattice_design_edges")
         for name, messages in root.stamp_check_findings if name == "sheet-size"

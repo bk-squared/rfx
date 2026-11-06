@@ -1278,6 +1278,7 @@ def compute_coax_msl_transition(
     )
 
     _line_stub_scope = _line_stub_admit(self, freqs)
+    sheet_findings = None
     if not skip_preflight:
         # This lane owns its port checks; run only the shared sheet verdict.
         import warnings
@@ -1302,12 +1303,15 @@ def compute_coax_msl_transition(
                     finding.message, finding.category, finding.filename,
                     finding.lineno, source=finding.source,
                 )
-        self._run_preflight_gate(
-            [PreflightIssue(f.message, severity=f.message.severity,
-                            code=f.message.code, source=f.message.source)
-             for f in findings if isinstance(f.message, PreflightWarning)],
-            context="compute_coax_msl_transition",
-        )
+        issues = tuple(PreflightIssue(f.message, severity=f.message.severity,
+                                     code=f.message.code, source=f.message.source)
+                       for f in findings if isinstance(f.message, PreflightWarning))
+        self._run_preflight_gate(issues, context="compute_coax_msl_transition")
+        if ctx.error is None:
+            # Retain this gate's delivery state for the same board at admission.
+            sheet_findings = tuple(f for f in issues if f.code == "sheet_effective_size")
+            for finding in sheet_findings:
+                finding._realization_delivered = True
 
     from rfx.runners._admission import admit
     admit(self, "coax_msl_transition")
@@ -1492,7 +1496,7 @@ def compute_coax_msl_transition(
 
     conductors = coax_kernel_conductors(self, grid, materials, coax_pec_cells,
         _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors,
-        skip_preflight=skip_preflight)
+        skip_preflight=skip_preflight, sheet_findings=sheet_findings)
     for drive_idx in range(2):
         if drive_idx == 0:
             sources = list(spec_coax.electric_sources)

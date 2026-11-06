@@ -283,6 +283,8 @@ def deliver_findings(table, findings):
 
     errors = []
     for finding in findings:
+        if getattr(finding, "_realization_delivered", False):
+            continue
         table.delivered.add(id(finding))
         finding._realization_delivered = True
         if finding.severity == "error":
