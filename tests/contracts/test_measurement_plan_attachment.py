@@ -1,5 +1,6 @@
 """Prepared solves own one plan before entering any time-step loop."""
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import jax
@@ -17,6 +18,19 @@ PATHS = ('run_uniform', 'fwd_uniform', 'run_nonuniform', 'fwd_nonuniform',
 
 class AtStep(Exception):
     pass
+
+
+def test_replay_keeps_first_plan_without_building():
+    from rfx.measurement.prepared import attach_measurement
+
+    plan = object()
+    prepared = SimpleNamespace(measurement=plan)
+    conductors = SimpleNamespace(_prepared_solve=prepared)
+    with patch('rfx.measurement.prepared.build_measurement_plan') as builder:
+        attach_measurement(None, conductors, n_steps=12, path='run_uniform')
+    assert conductors._prepared_solve is prepared
+    assert prepared.measurement is plan
+    builder.assert_not_called()
 
 
 def capture(path, *, sim=None, decay=False):

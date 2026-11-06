@@ -11,7 +11,7 @@ def attach_measurement(sim, conductors, *, n_steps, path, grid=None, **inputs):
         prepared._taken = True
         object.__setattr__(conductors, '_prepared_solve', prepared)
     if prepared.measurement is not None:
-        raise RuntimeError('Prepared solve already carries a measurement plan')
+        return
     prepared.measurement = build_measurement_plan(
         sim, conductors.grid if grid is None else grid, n_steps=n_steps, path=path,
         conductors=conductors, pec_edges=conductors.pec_edges,
