@@ -165,7 +165,9 @@ def realization_table(prepared) -> RealizationTable:
             realized = float(np.prod([a.realized_span_m for a in tangent]))
         rows.append(RealizationRow(
             entity.label, entity.kind, axes, entity.continued_faces,
-            status=entity.error or entity.mask_error or "evaluated", model=model,
+            status=entity.error or entity.mask_error or (
+                "not judged: edge not measured" if entity.edge_note == "edge not measured"
+                else "evaluated"), model=model,
             edge_note=entity.edge_note,
             declared_area_m2=declared, realized_area_m2=realized,
             area_equivalent_length_m=None if realized is None else float(np.sqrt(realized)),

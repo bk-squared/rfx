@@ -58,6 +58,14 @@ def judge_realization(table, snap):
                     "Evaluate a concrete mesh and geometry to check the realized dimensions.",
                     code="realization", source="judge_realization"))
             continue
+        if row.status == "not judged: edge not measured":
+            # DESIGN.md D:c1d171 / D:8ea1e2: node span is not a measured edge.
+            table.judged.add(row.label)
+            findings.append(PreflightIssue(
+                f"realization {row.label} ({row.family}): not judged: edge not measured; "
+                "the node span is reported without a solved extent comparison.",
+                severity="warning", code="realization", loc=row.label, source="judge_realization"))
+            continue
         if row.status == "not judged: no reference":
             table.judged.add(row.label)
             findings.append(PreflightIssue(
