@@ -1,6 +1,6 @@
 """Tests for the field-decay-based stopping criterion (spec 6E2).
 
-Test 1: Decay stops after pulse exits (PEC cavity ring-down)
+Test 1: A lossless PEC cavity reaches the energy-stop cap
 Test 2: Decay produces better DFT than fixed short run
 Test 3: min_steps and max_steps are honored
 """
@@ -36,10 +36,10 @@ def _make_sources_and_probes(grid, n_steps):
     return [source], [probe], probe_pos
 
 
-class TestDecayStopsAfterPulseExits:
-    """Test 1: decay-based stopping terminates when pulse rings down."""
+class TestLosslessCavityReachesCap:
+    """Test 1: a point-field dip does not stop a lossless cavity."""
 
-    def test_decay_stops_after_pulse_exits(self):
+    def test_lossless_cavity_reaches_cap(self):
         grid, materials = _make_cavity()
         max_steps = 10000
         sources, probes, probe_pos = _make_sources_and_probes(grid, max_steps)
@@ -58,20 +58,12 @@ class TestDecayStopsAfterPulseExits:
 
         actual_steps = result.time_series.shape[0]
 
-        # Should have stopped before max_steps
-        assert actual_steps < max_steps, (
-            f"Expected early stop but ran {actual_steps} steps"
-        )
-
-        # Final |field|^2 / peak should be < decay_by
-        ts = np.array(result.time_series[:, 0])
-        sq = ts ** 2
-        peak_sq = np.max(sq)
-        final_sq = sq[-1]
-        assert peak_sq > 0, "Peak should be nonzero"
-        assert final_sq < 1e-2 * peak_sq, (
-            f"final_sq/peak_sq = {final_sq/peak_sq:.6e}, expected < 1e-2"
-        )
+        # A closed lossless box retains energy even when one probe is quiet.
+        assert actual_steps == max_steps
+        values = result.decay_stop.values
+        assert values["quantity"] == "conserved_energy"
+        assert values["criterion"] == "cap"
+        assert values["reached"] >= 1e-2
 
 
 class TestDecayProducesBetterDFT:

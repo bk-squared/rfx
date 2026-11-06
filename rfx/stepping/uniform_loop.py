@@ -785,7 +785,7 @@ def run_until_decay(
     Parameters
     ----------
     decay_by : float
-        Absorbing boundaries: stop once the conserved interior energy is below
+        Stop once the conserved interior energy is below
         ``decay_by`` times its reference (``rfx.measurement.decay``).
     n_end : int or None
         Step at which every drive has ended (None: still on at ``max_steps``,
@@ -800,9 +800,9 @@ def run_until_decay(
     max_steps : int
         Hard upper limit on steps.
     decay_energy_consecutive : int
-        Absorbing boundaries: consecutive sub-threshold checks before the
+        Consecutive sub-threshold checks before the
         energy stop. Values below 2 are refused (a single check stops on a
-        transient dip). No effect on closed/PEC boundaries.
+        transient dip). Applies to closed and absorbing boundaries.
     radiated_flux_box : tuple or None
         Opt-in RADIATED-FLUX stop for absorbing boundaries: a Huygens box
         ``((x_lo, y_lo, z_lo), (x_hi, y_hi, z_hi))`` in physical coordinates
@@ -818,11 +818,11 @@ def run_until_decay(
         Number of recent checks whose ``|flux|`` max forms the envelope used by
         the radiated-flux stop, smoothing the 2f0 Poynting oscillation. Default 4.
     monitor_component : str
-        Field component to monitor ("ez", "hy", etc.). Used only by the
-        closed/PEC point-field fallback stop.
+        Legacy monitor component ("ez", "hy", etc.); does not select the
+        energy or radiated-flux stop.
     monitor_position : tuple or None
-        Physical position (x, y, z) to monitor. If None, use center of
-        the domain.
+        Legacy monitor position (x, y, z); does not affect the stop.
+        If None, use the domain centre.
     checkpoint_segments : int or None
         **Not supported** (a host-driven early stop); a non-None value
         raises ``NotImplementedError``.
@@ -1080,8 +1080,6 @@ def run_until_decay(
     _run_tail_chunk = _make_chunk_runner(keep_previous=True)
 
     # ---- host chunk loop with decay check ----
-    use_absorbing = boundary in ("cpml", "upml")
-
     # opt-in RADIATED-FLUX stop: stop when the outgoing Poynting flux through a Huygens
     # box decays, instead of the interior energy. This is a *radiation-settling* criterion —
     # it ignores non-radiating trapped energy (the static soft-source charge that FLOORS the
@@ -1095,19 +1093,19 @@ def run_until_decay(
     if use_flux_stop:
         _bl = flux_box_bounds(grid, radiated_flux_box)
 
-    # The absorbing-boundary energy stop (rfx.measurement.decay), read at k * check_interval.
+    # The after-drive energy stop (rfx.measurement.decay), read at k * check_interval.
     energy_stop, energy = make_decay_stop(
         grid, _setup.ctx_kwargs["materials"], thr=decay_by, min_steps=min_steps,
         interval=check_interval, consecutive=decay_energy_consecutive, n_end=n_end,
-        criterion=use_absorbing and not use_flux_stop, max_steps=max_steps, sources=sources,
+        criterion=not use_flux_stop, max_steps=max_steps, sources=sources,
         mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
         periodic=_setup.periodic, side_step=(lambda c, xs, inv: jax.lax.scan(lambda cc, x: step_fn(
             cc, x, inv), c, xs)[0], lambda n: one_step_xs(n, src_waveforms, mag_src_waveforms), _inv_args))
     stop_rule = energy_stop
-    if use_flux_stop or not use_absorbing:
+    if use_flux_stop:
         stop_rule = make_field_decay_stop(
             grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
-            max_steps=max_steps, flux=use_flux_stop, consecutive=decay_energy_consecutive,
+            max_steps=max_steps, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
             mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports)
     decayed_fired = False  # did the energy criterion fire (vs silently cap-hit)?
@@ -1179,10 +1177,8 @@ def run_until_decay(
         if use_flux_stop:
             stopped = stop_rule.check(
                 actual_steps, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
-        elif use_absorbing:
-            stopped = stop_rule.check(actual_steps, lambda: energy(carry, actual_steps))
         else:
-            stopped = stop_rule.check(actual_steps, monitor_vals)
+            stopped = stop_rule.check(actual_steps, lambda: energy(carry, actual_steps))
         if stopped is not None:
             decayed_fired = True
             break

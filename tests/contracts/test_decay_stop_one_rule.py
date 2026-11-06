@@ -487,3 +487,77 @@ def test_side_step_program_holds_no_grid_size_constant(mesh, monkeypatch):
     monkeypatch.setattr(decay, "boundary_energy", spy)
     _cube(mesh).run(until_decay=1e-3, decay_max_steps=200, skip_preflight=True)
     assert counts and counts[0] < 10_000, counts
+
+
+# Closed boxes use the same after-drive rule, including on the uniform mesh.
+def _closed_box_energy_run(mesh, cap, monkeypatch):
+    import time
+    from rfx.runners.nonuniform import run_nonuniform_path
+    import rfx.stepping.graded_loop as graded_loop
+
+    graded = {"dz_profile": np.full(12, .001)} if mesh == "graded" else {}
+    sim = Simulation(domain=(.012, .012, .012), dx=.001, freq_max=14e9,
+                     boundary="pec", **graded)
+    sim.add_material("lossy", eps_r=6, sigma=.2)
+    sim.add(Box((0., 0., 0.), (.012, .012, .012)), material="lossy")
+    sim.add_source((.0035, .0045, .0055), "ez", waveform=GaussianPulse(**PULSE),
+                   amplitude_kind="current")
+    sim.add_probe((.0085, .0075, .0065), "ez")
+    owner = graded_loop if mesh == "graded" else uniform_loop
+    original, rows = owner.make_decay_stop, []
+
+    def observe(*args, **kwargs):
+        rule, measure = original(*args, **kwargs)
+        if measure is None:
+            return rule, measure
+
+        def read(carry, count):
+            w = float(measure(carry, count))
+            rows.append((count, w))
+            return w
+        return rule, read
+
+    kwargs = dict(until_decay=1e-3, decay_check_interval=20,
+                  decay_min_steps=20, decay_max_steps=cap, compute_s_params=False)
+    start = time.perf_counter()
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "make_decay_stop", observe)
+        # Public graded run() refuses closed-box until_decay; exercise its
+        # existing runner directly, leaving that admission policy intact.
+        result = (run_nonuniform_path(sim, n_steps=cap, **kwargs) if mesh == "graded"
+                  else sim.run(skip_preflight=True, **kwargs))
+        jax.block_until_ready(result.time_series)
+    return result, rows, time.perf_counter() - start
+
+
+def test_closed_box_after_drive_energy_on_both_meshes(monkeypatch, record_property):
+    stops = []
+    for mesh in ("uniform", "graded"):
+        result, rows, elapsed = _closed_box_energy_run(mesh, 3000, monkeypatch)
+        (diagnostic,) = [d for d in result.diagnostics if d.code == "until_decay.stop"]
+        values = diagnostic.values
+        record_property(mesh, dict(stop=dict(values), rows=rows, seconds=elapsed))
+        assert values["quantity"] == "conserved_energy"
+        assert values["criterion"] == "threshold"
+        after = [(count, w) for count, w in rows if count >= values["drive_end_step"]]
+        ref_test = max(w for _, w in after)
+        stop = values["stop_step"]
+        assert stop == len(result.time_series) == after[-1][0] < 3000
+        assert [count for count, _ in after[-2:]] == [stop - 20, stop]
+        assert all(w < 1e-3 * ref_test for _, w in after[-2:]), after[-2:]
+        assert values["reached"] == after[-1][1] / ref_test
+        stops.append(stop)
+    assert abs(stops[0] - stops[1]) <= 20, stops
+
+
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+def test_energy_cap_names_after_drive_fraction(mesh, monkeypatch, record_property):
+    result, rows, elapsed = _closed_box_energy_run(mesh, 300, monkeypatch)
+    (diagnostic,) = [d for d in result.diagnostics if d.code == "until_decay.stop"]
+    values = diagnostic.values
+    assert values["quantity"] == "conserved_energy" and values["criterion"] == "cap"
+    ref_test = max(w for count, w in rows if count >= values["drive_end_step"])
+    drive_peak = max(w for _, w in rows)
+    expected = f"{ref_test / drive_peak:.3g}"
+    assert f"; the after-drive reference is {expected} of the drive's peak energy" in diagnostic.message
+    record_property(mesh, dict(rows=rows, fraction=expected, seconds=elapsed))

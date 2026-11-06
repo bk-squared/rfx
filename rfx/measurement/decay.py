@@ -345,7 +345,7 @@ def refuse_radiated_flux_stop(box, until_decay, boundary):
         raise RfxRefusal(
             "radiated_flux_box selects the radiated-flux until_decay stop and requires "
             "cpml/upml; use an absorbing boundary, or omit the box to use the "
-            "closed-box point-field stop on the uniform mesh")
+            "after-drive energy stop")
 
 
 @dataclass
@@ -381,46 +381,17 @@ class FluxStop:
         return self.stop
 
 
-@dataclass
-class PointStop:
-    """Closed-box last-sample rule; every step contributes to the peak."""
-
-    thr: float
-    min_steps: int
-    interval: int
-    n_end: int | None
-    n_d: int = 0
-    peak: float = 0.0
-    value: float = 0.0
-    stop: int | None = None
-    drive_reason: str | None = None
-
-    def check(self, count, samples):
-        # One transfer per chunk; float64 squaring preserves the old point rule.
-        values_sq = np.asarray(samples, dtype=np.float64) ** 2
-        chunk_peak = np.max(values_sq, where=~np.isnan(values_sq), initial=0.0)
-        self.peak = max(self.peak, float(chunk_peak))
-        self.value = float(values_sq[-1])
-        if (self.n_end is not None and count % self.interval == 0
-                and count >= max(self.min_steps, self.n_end, self.n_d)
-                and self.peak > 0.0 and self.value < self.thr * self.peak and self.thr > 0
-                and self.stop is None):
-            self.stop = count
-        return self.stop
-
-
 def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
-                          flux=False, consecutive=2, env_checks=4, n_end=AUTO_END,
+                          consecutive=2, env_checks=4, n_end=AUTO_END,
                           sources=(), mag_sources=(), tfsf=None, waveguide_ports=()):
-    """Resolve the same applied-drive end for flux and closed-box point stops."""
+    """Resolve the applied-drive end for the radiated-flux stop."""
     drives = dict(sources=sources, mag_sources=mag_sources, tfsf=tfsf,
                   waveguide_ports=waveguide_ports)
     if n_end is AUTO_END:
         n_end = drive_end(grid, max_steps, **drives) if thr > 0 else None
     n_d = known_drive_ready_step(waveguide_ports, interval) if thr > 0 else 0
     common = dict(thr=thr, min_steps=min_steps, interval=interval, n_end=n_end, n_d=n_d)
-    rule = (FluxStop(**common, consecutive=consecutive, env_checks=env_checks) if flux
-            else PointStop(**common))
+    rule = FluxStop(**common, consecutive=consecutive, env_checks=env_checks)
     if n_end is None and thr > 0:
         from rfx.measurement.record_end import injection_end
         _, rule.drive_reason, _ = injection_end(
@@ -435,8 +406,8 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
                     periodic=(False, False, False)):
     """The rule and its W measurement for one loop.
 
-    ``criterion``: the energy criterion is this run's stop rule (absorbing
-    boundary, no flux box). ``rows``: the loop returns ``decay_checks``
+    ``criterion``: the energy criterion is this run's stop rule (no flux
+    box, on closed or absorbing boundaries). ``rows``: the loop returns ``decay_checks``
     (graded), so a ``thr = 0`` run still writes its rows. ``n_end`` is the
     runner's value; direct loop callers leave it to ``drive_end`` here.
     ``side_step = (program, xs_of, extra)``: one step of the loop's own chunk
@@ -463,18 +434,13 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
 
 # --- how the run ended ---------------------------------------------------------
 
-def _stop_record(rule, steps, *, fired, flux, point):
+def _stop_record(rule, steps, *, fired, flux):
     """(quantity, criterion, reached, floor_ratio) of one run end."""
     nan = float("nan")
-    if flux is not None or point is not None:
-        quantity = "radiated_flux" if flux is not None else "point_field"
-        if flux is not None:
-            history, checks, peak = flux
-            reached = max(history[-checks:]) / peak if history and peak > 0 else nan
-        else:
-            value, peak = point
-            reached = value / peak if peak > 0 else nan
-        return quantity, "threshold" if fired else "cap", reached, nan
+    if flux is not None:
+        history, checks, peak = flux
+        reached = max(history[-checks:]) / peak if history and peak > 0 else nan
+        return "radiated_flux", "threshold" if fired else "cap", reached, nan
     if rule.stop is not None:
         criterion = rule.criterion
     else:
@@ -485,17 +451,16 @@ def _stop_record(rule, steps, *, fired, flux, point):
     return "conserved_energy", criterion, w / ref, KAPPA * wmax / ref
 
 
-def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=None,
+def finish_decay(rule, steps, *, fired=False, flux=None, reporter=None,
            state=None, materials=None, grid=None, advisory=None, sources=()):
     """One ``until_decay.stop`` Diagnostic for a run that ended at ``steps``.
 
-    ``rule`` is the loop's DecayStop, FluxStop or PointStop. ``flux`` = (|P| history, envelope
+    ``rule`` is the loop's DecayStop or FluxStop. ``flux`` = (|P| history, envelope
     checks, peak) when the radiated-flux criterion was the stop rule;
-    ``point`` = (last squared sample, peak) for the closed-box point stop;
-    ``fired`` says whether either of them stopped the run. Data:
+    ``fired`` says whether the flux criterion stopped the run. Data:
     ``criterion`` ("threshold", "float32_floor" or "cap"),
     ``requested_threshold``, ``reached`` (W_c/ref at the stop, or at the last
-    boundary read for a cap; that rule's own ratio for flux and point),
+    boundary read for a cap; that rule's own ratio for flux),
     ``floor_ratio`` (KAPPA * Wmax_c / ref), ``stop_step``,
     ``drive_end_step`` and ``quantity``; NaN where a value does not exist.
     A float32-floor end also warns once (UserWarning). An energy "cap" end
@@ -513,11 +478,8 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
     if isinstance(rule, FluxStop):
         flux = (rule.history, rule.env_checks, rule.peak)
         fired = rule.stop is not None
-    elif isinstance(rule, PointStop):
-        point = (rule.value, rule.peak)
-        fired = rule.stop is not None
     quantity, criterion, reached, floor_ratio = _stop_record(
-        rule, steps, fired=fired, flux=flux, point=point)
+        rule, steps, fired=fired, flux=flux)
     nan = float("nan")
     head = f"until_decay ended at step {steps} ({quantity})"
     if criterion == "threshold":
@@ -539,6 +501,11 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
     else:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    f"last level reached {reached:.3g}")
+    if (criterion == "cap" and quantity == "conserved_energy"
+            and rule.last is not None and rule.last[2] > 0):
+        _, _, ref, wmax = rule.last
+        message += (f"; the after-drive reference is {ref / wmax:.3g} "
+                    "of the drive's peak energy")
     if criterion == "cap" and rule.n_d > steps:
         message += (f"; the drive's known tail exceeded 1e-2 of the in-record drive "
                     f"until step {rule.n_d}")
