@@ -34,7 +34,7 @@ def _scene(entry, source, *, pec=True, dt=None):
     boundary = (BoundarySpec(x="pec", y=Boundary("pec", "pec", conformal=True),
                              z="pec") if source == "B" else "pec")
     sim = Simulation(
-        freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary=boundary,
+        snap="declared", freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary=boundary,
         cpml_layers=0, mode="2d_tmz" if two_d else "3d",
         **({"dz_profile": np.full(12, .001)}
            if entry in ("graded", "distributed_nu") else {}))

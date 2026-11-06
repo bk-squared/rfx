@@ -9,12 +9,12 @@ from rfx import Box, DebyePole, Simulation, Sphere
 from rfx.sources.sources import GaussianPulse
 
 
-def sphere_sim(graded=False, radius=.0023, *, debye=False, chi3=0.0, solver="yee"):
+def sphere_sim(graded=False, radius=.0023, *, debye=False, chi3=0.0, solver="yee", snap="strict"):
     profile = np.array([.001] * 4 + [.0008] * 5 + [.001] * 4)
     sim = Simulation(freq_max=20e9, domain=(.012, .012, .012), dx=.001,
                      dz_profile=profile if graded else None,
                      boundary="cpml",
-                     cpml_layers=2, solver=solver)
+                     cpml_layers=2, solver=solver, snap=snap)
     sim.add_material("sphere", eps_r=4.0, chi3=chi3,
                      debye_poles=[DebyePole(delta_eps=1., tau=1e-11)] if debye else None)
     sim.add(Sphere((.00537, .00613, .00573), radius), material="sphere")
@@ -47,7 +47,7 @@ def test_kottke_pec_forward_keeps_fenced_pec_edges(body):
     # edges fractional, so forward() must not treat the Kottke tensor as
     # the smooth occupancy operator. Probes sit outside the metal.
     def build():
-        sim = sphere_sim()
+        sim = sphere_sim(snap="declared")
         if body == "sphere":
             sim.add(Sphere((.0085, .0043, .0068), .0016), material="pec")
         else:
@@ -261,7 +261,7 @@ def test_surface_impedance_smoothing_refusal_matches_run(monkeypatch, smoothing)
     messages = []
     for entry in ("run", "forward"):
         sim = sphere_sim()
-        sim.add_thin_conductor(Box((.002, .002, .009), (.010, .010, .009)),
+        sim.add_thin_conductor(Box(((2 - .35) * .001, (2 - .35) * .001, .009), ((10 + .35) * .001, (10 + .35) * .001, .009)),
                                sigma_bulk=1e4, surface_impedance_f0=10e9)
         with pytest.raises(ValueError, match="subpixel_smoothing") as info:
             getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=smoothing)

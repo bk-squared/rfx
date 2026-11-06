@@ -357,7 +357,7 @@ def test_traced_conductor_reach_uses_declared_edge_cell(axis, side, nominal, gap
     def assemble(profile):
         from rfx.core.jax_utils import is_tracer
         from tests.contracts.test_traced_mesh_conductor_matches_concrete import arrays
-        sim = Simulation(domain=(8., 8., 8.), dx=dx, freq_max=1e6,
+        sim = Simulation(domain=(8., 8., 8.), dx=dx, freq_max=1e6, snap="declared",
                          boundary="cpml", cpml_layers=2, dt=1e-12, dt_min_cell=.5,
                          nominal_profiles={name: nominal} if nominal is not None and is_tracer(profile) else None,
                          **{f"d{name}_profile": profile})

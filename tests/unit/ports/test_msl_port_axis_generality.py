@@ -559,14 +559,14 @@ def test_probe_span_absorber_check_fires_on_the_propagation_axis():
 
 def _thru(axis, n_freqs, num_periods):
     if axis == "x":
-        domain, sub = (L_PROP, L_LAT, LZ), (L_PROP, L_LAT, H_SUB)
+        domain, sub = (L_PROP, L_LAT, LZ), (166 * DX, 36 * DX, H_SUB)
         lat_c = L_LAT / 2.0
         tlo = (0.0, lat_c - W_TRACE / 2, H_SUB)
         thi = (L_PROP, lat_c + W_TRACE / 2, H_SUB)
         p0, p1, d0, d1 = ((PORT_MARGIN, lat_c, 0.0),
                           (PORT_MARGIN + L_LINE, lat_c, 0.0), "+x", "-x")
     else:
-        domain, sub = (L_LAT, L_PROP, LZ), (L_LAT, L_PROP, H_SUB)
+        domain, sub = (L_LAT, L_PROP, LZ), (36 * DX, 166 * DX, H_SUB)
         lat_c = L_LAT / 2.0
         tlo = (lat_c - W_TRACE / 2, 0.0, H_SUB)
         thi = (lat_c + W_TRACE / 2, L_PROP, H_SUB)

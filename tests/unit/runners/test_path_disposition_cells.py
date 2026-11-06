@@ -768,7 +768,7 @@ def _band_wire(lane, x_mm):
     filament band in 1 mm cells (0 < 0.3 < 0.5), a volume in the fine
     band (0.3 >= 0.125)."""
     profile = np.array([1e-3] * 3 + [0.25e-3] * 4 + [1e-3] * 8)
-    sim = _simulation(lane, (12, 12, 12), dx_profile=profile)
+    sim = _simulation(lane, (12, 12, 12), dx_profile=profile, snap="declared")
     sim.add(PolylineWire((mm(x_mm, 6.5, 3), mm(x_mm, 6.5, 9)), radius=0.3e-3), material="pec")
     sim.add_source(mm(8, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind="field")
     sim.add_probe(mm(6, 6, 6), "ez")

@@ -121,6 +121,7 @@ def _wr90_sim(*, conformal: bool):
     domain_z = 0.012  # > WR_90_B
     sim = Simulation(
         freq_max=10e9,
+        snap="declared",
         domain=(domain_x, domain_y, domain_z),
         dx=0.001,
         boundary=BoundarySpec(
@@ -155,6 +156,7 @@ def _rim_faced_sim(*, conformal: bool):
     """
     sim = Simulation(
         freq_max=10e9, domain=(0.06, 0.023, 0.010), dx=0.001,
+        snap="declared",
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec", conformal=conformal),

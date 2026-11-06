@@ -532,7 +532,7 @@ def _graded_pec_sim(nonuniform=True, pec=False):
         sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
                          dx=1e-3, boundary="pec", cpml_layers=0, **kw)
         if pec:
-            sim.add(Box((0.0085, 0.0085, 0.003), (0.0105, 0.0105, 0.009)),
+            sim.add(Box((8 * 1e-3, 8 * 1e-3, 3 * 1e-3), (10 * 1e-3, 10 * 1e-3, 9 * 1e-3)),
                     material="pec")
         sim.add_source((0.004, 0.006, 0.004), "ez", amplitude_kind="field")
         sim.add_probe((0.008, 0.006, 0.008), "ez")
