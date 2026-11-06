@@ -303,6 +303,7 @@ def test_the_known_lanes_are_all_covered():
         "compute_waveguide_s_matrix",
         "compute_msl_s_matrix",
         "compute_mixed_s_matrix",
+        "compute_coaxial_line_reflection",
         "compute_coaxial_two_port",
         "compute_coax_msl_transition",
         "attach_run_settling_witness",
