@@ -86,8 +86,8 @@ def _run(
     branch, driver, monkeypatch, *, cap=None, interval=17, snapshot_interval=7, report_every=None,
     record_dft=False,
 ):
-    cap = (1000 if branch in ("energy", "point", "flux") else 241) if cap is None else cap
-    sim = _loaded_sim("pec" if branch in ("point", "min-cap", "zero-cap") else "cpml")
+    cap = (1000 if branch in ("energy", "closed", "flux") else 241) if cap is None else cap
+    sim = _loaded_sim("pec" if branch in ("closed", "min-cap", "zero-cap") else "cpml")
     if record_dft:
         sim._time_recorded_dft_planes = {entry.name for entry in sim._dft_planes}
     freqs = np.array([2e9, 4e9])
@@ -255,13 +255,13 @@ def _assert_contract(got, ref, record_property):
             assert np.max(np.abs(api_b[name])) > 0, name
 
 
-@pytest.mark.parametrize("branch", ["point", "energy", "flux", "min-cap", "zero-cap"])
+@pytest.mark.parametrize("branch", ["closed", "energy", "flux", "min-cap", "zero-cap"])
 @pytest.mark.parametrize("snapshot_interval", [None, 7])
 @pytest.mark.parametrize("report_every", [None, 13])
 def test_decay_chunks_match_old_loop_per_stop_branch(
     branch, snapshot_interval, report_every, monkeypatch, record_property
 ):
-    interval = 37 if branch == "point" else 17
+    interval = 37 if branch == "closed" else 17
     ref = _run(
         branch,
         run_until_decay_reference,
@@ -285,12 +285,12 @@ def test_decay_chunks_match_old_loop_per_stop_branch(
     else:
         assert 35 <= n < 1000
         assert n % interval == 0
-        if branch == "point":
-            # The peak is read from every step of each chunk, not only at checks.
-            assert n == 296
+        if branch == "closed":
+            # Closed boundaries use two after-drive energy checks below threshold.
+            assert n == 481
 
 
-@pytest.mark.parametrize("branch,stop,interval", [("point", 296, 37), ("energy", 374, 17),
+@pytest.mark.parametrize("branch,stop,interval", [("closed", 481, 37), ("energy", 374, 17),
                                                 ("flux", 323, 17)])
 def test_decay_stops_before_absorbed_tail(branch, stop, interval, monkeypatch, record_property):
     kw = dict(cap=stop + 1, interval=interval, report_every=13)

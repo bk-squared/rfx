@@ -299,8 +299,8 @@ from rfx.model import design_box_bounds, resolve_design_box
 # their own setup code, then:
 #   * ``run()``           wraps ``core`` in a scan body that unpacks ``xs`` and
 #                         assembles the scan output tuple (probe + snapshot).
-#   * ``run_until_decay`` scans ``core`` in chunks and reads every step
-#                         of ``extras["monitor_val"]`` at chunk boundaries.
+#   * ``run_until_decay`` scans ``core`` in chunks and checks decay
+#                         against the after-drive energy at chunk boundaries.
 #
 # Every free variable of the old closures is passed explicitly via the context
 # (no capture of caller locals) so the builder is unit-testable.  Numerics,

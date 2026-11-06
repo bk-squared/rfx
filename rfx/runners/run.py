@@ -105,6 +105,9 @@ def run_after_admission(
         exchange_interval=exchange_interval,
     )
     n_steps = plan.n_steps
+    if plan.lane != "run_uniform" or until_decay is None:
+        from rfx.measurement.decay import warn_unused_decay_monitor
+        warn_unused_decay_monitor(decay_monitor_component, decay_monitor_position)
     if plan.lane == "run_subgridded":
         from rfx.subgridding._notice import require_experimental
         require_experimental(

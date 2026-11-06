@@ -201,8 +201,7 @@ class _ExecuteMixin:
         ``run_nonuniform_path`` only when the caller has already gated on
         absorbing boundaries. ``run()`` refuses ``until_decay`` for
         closed-boundary NU sims, where the interior energy does not decay. ``decay_monitor_component`` / ``decay_monitor_position``
-        are NOT threaded: they parameterize the uniform lane's
-        closed/PEC point-field fallback, which has no NU counterpart.
+        are legacy uniform monitor arguments and do not select the stop rule.
         """
         # Defense-in-depth: the NU runner does not honour stencil_order.
         self._check_stencil_order_supported()
@@ -1819,7 +1818,7 @@ class _ExecuteMixin:
             Timesteps for S-parameter simulation (may need more than
             the main simulation for frequency resolution).
         until_decay : float or None
-            When provided, overrides *n_steps*. On absorbing boundaries the
+            When provided, overrides *n_steps*. On the uniform mesh the
             run stops when the stored field energy left after the source has
             ended has decayed to this fraction of its value after the drive:
             the leapfrog-conserved interior energy
@@ -1829,8 +1828,8 @@ class _ExecuteMixin:
             structure the run is as long as the threshold asks. On a high-Q
             structure whose mode reaches the absorber, the stop can move by
             about 170 steps with the check phase while the spectra stay within
-            1e-2 of the band peak. Closed uniform boxes keep the instantaneous
-            point-field stop (see :func:`rfx.simulation.run_until_decay`).
+            1e-2 of the band peak. Closed uniform boxes use this same energy rule
+            (see :func:`rfx.simulation.run_until_decay`).
             **Non-uniform meshes:** the same rule on absorbing
             boundaries (per-cell dV); closed boundaries refuse ``until_decay``.
             On the decay path every step-sized buffer is allocated at
@@ -1857,7 +1856,7 @@ class _ExecuteMixin:
         decay_max_steps : int
             Hard upper limit on steps (default 50000).
         decay_energy_consecutive : int
-            Absorbing-boundary only: consecutive sub-threshold energy checks
+            Consecutive sub-threshold energy checks
             before stopping (default ``2``; values below 2 are refused).
         radiated_flux_box : tuple or None
             Physical lower/upper corners of a closed box enclosing the radiator,
@@ -1875,10 +1874,10 @@ class _ExecuteMixin:
         skip_preflight : bool
             Skip advisory preflight checks. Runtime admission guards still apply.
         decay_monitor_component : str
-            Field component to monitor (default ``"ez"``). Used only by the
-            closed/PEC point-field fallback stop.
+            Legacy uniform monitor component (default ``"ez"``); does not
+            affect the energy or radiated-flux stop.
         decay_monitor_position : tuple or None
-            Physical position to monitor. If None, use domain center.
+            Legacy uniform monitor position; does not affect the stop.
         conformal_pec : bool, str or None
             Cut-cell conformal PEC; None reads Boundary(conformal=True).
             "cut_cell_floor" uses true edges and a q**2 face-area floor on uniform Yee.

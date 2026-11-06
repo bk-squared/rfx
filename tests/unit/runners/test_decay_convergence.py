@@ -1,6 +1,6 @@
 """Tests for the field-decay-based stopping criterion (spec 6E2).
 
-Test 1: Decay stops after pulse exits (PEC cavity ring-down)
+Test 1: A lossless PEC cavity reaches the energy-stop cap
 Test 2: Decay produces better DFT than fixed short run
 Test 3: min_steps and max_steps are honored
 """
@@ -36,14 +36,27 @@ def _make_sources_and_probes(grid, n_steps):
     return [source], [probe], probe_pos
 
 
-class TestDecayStopsAfterPulseExits:
-    """Test 1: decay-based stopping terminates when pulse rings down."""
+class TestLosslessCavityReachesCap:
+    """Test 1: a point-field dip does not stop a lossless cavity."""
 
-    def test_decay_stops_after_pulse_exits(self):
+    def test_lossless_cavity_reaches_cap(self, monkeypatch, record_property):
         grid, materials = _make_cavity()
         max_steps = 10000
         sources, probes, probe_pos = _make_sources_and_probes(grid, max_steps)
 
+        import rfx.stepping.uniform_loop as loop
+        original, rows = loop.make_decay_stop, []
+
+        def observe(*args, **kwargs):
+            rule, measure = original(*args, **kwargs)
+
+            def read(carry, count):
+                w = measure(carry, count)
+                rows.append((count, w))
+                return w
+            return rule, read
+
+        monkeypatch.setattr(loop, "make_decay_stop", observe)
         result = run_until_decay(
             grid, materials,
             decay_by=1e-2,
@@ -58,20 +71,43 @@ class TestDecayStopsAfterPulseExits:
 
         actual_steps = result.time_series.shape[0]
 
-        # Should have stopped before max_steps
-        assert actual_steps < max_steps, (
-            f"Expected early stop but ran {actual_steps} steps"
-        )
+        # A closed lossless box retains energy even when one probe is quiet.
+        assert actual_steps == max_steps
+        values = result.decay_stop.values
+        assert values["quantity"] == "conserved_energy"
+        assert values["criterion"] == "cap"
+        after = np.array([w for count, w in rows if count >= values["drive_end_step"]])
+        flatness = dict(min=float(after.min()), max=float(after.max()),
+                        max_over_min=float(after.max() / after.min()))
+        record_property("after_drive_W", flatness)
+        assert flatness["max_over_min"] < 1.00001, flatness
+        assert values["reached"] >= .99
 
-        # Final |field|^2 / peak should be < decay_by
-        ts = np.array(result.time_series[:, 0])
-        sq = ts ** 2
-        peak_sq = np.max(sq)
-        final_sq = sq[-1]
-        assert peak_sq > 0, "Peak should be nonzero"
-        assert final_sq < 1e-2 * peak_sq, (
-            f"final_sq/peak_sq = {final_sq/peak_sq:.6e}, expected < 1e-2"
-        )
+
+def test_padded_graded_lossless_cavity_reaches_cap(record_property):
+    """Allocated pads remain part of a direct graded run with no absorber."""
+    from rfx.nonuniform import (
+        make_nonuniform_grid, make_current_source, position_to_index,
+        run_nonuniform_until_decay,
+    )
+
+    grid = make_nonuniform_grid((.008, .008), np.full(8, .001), .001, cpml_layers=4)
+    materials = init_materials((grid.nx, grid.ny, grid.nz))
+    index = position_to_index(grid, (.003, .004, .004))
+    source = make_current_source(
+        grid, index, "ez", GaussianPulse(f0=10e9, bandwidth=1., cutoff=5), 1000, materials)
+    result = run_nonuniform_until_decay(
+        grid, materials, cpml_axes="", sources=[source], probes=[index + ("ez",)],
+        check_interval=20, min_steps=20, max_steps=1000, decay_by=1e-2)
+    values = result["decay_stop"].values
+    after = np.array([w for count, w, _ in result["decay_checks"]
+                      if count >= values["drive_end_step"]])
+    flatness = dict(min=float(after.min()), max=float(after.max()),
+                    max_over_min=float(after.max() / after.min()))
+    record_property("after_drive_W", flatness)
+    assert flatness["max_over_min"] < 1.00001, flatness
+    assert values["criterion"] == "cap" and values["stop_step"] == 1000
+    assert values["reached"] >= .99
 
 
 class TestDecayProducesBetterDFT:
