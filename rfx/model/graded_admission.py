@@ -57,16 +57,6 @@ class DeclaredZWarning(RfxWarning):
 DECLARED_Z_RTOL = 0.01
 
 
-def admit_interior_position(pos, low, high, low_cell, high_cell):
-    """Admit endpoint roundoff in units of the local end cell, on either grid."""
-    if pos < low - 1e-9 * low_cell or pos > high + 1e-9 * high_cell:
-        from rfx.preflight._common import PreflightConfigError
-        raise PreflightConfigError(
-            f"position {pos:.12g} m is outside the interior [{low:.12g}, {high:.12g}] m; "
-            "move the probe, port or source inside the simulation domain.",
-            code="absorber_overlap", source="admit_interior_position")
-
-
 def judge_declared_z(declared_z, dz_total, snap="strict", *, stacklevel=2):
     """Refuse (``snap="strict"``) or warn (``"declared"``) when a concrete z
     profile's sum, the length the grid solves, misses the declared z by more

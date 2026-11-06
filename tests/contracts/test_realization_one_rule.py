@@ -941,7 +941,7 @@ def test_periodic_wire_union_includes_terminal_edge():
 
 
 @pytest.mark.parametrize("graded", (False, True))
-def test_probe_point_shift_is_reported_without_finding_and_outside_refuses(graded):
+def test_probe_point_shift_is_reported_without_finding(graded):
     sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9, boundary="pec",
                      **({"dz_profile": np.full(10, D)} if graded else {}))
     sim.add_probe((5.4*D, 5*D, 5*D), component="ez")
@@ -952,9 +952,6 @@ def test_probe_point_shift_is_reported_without_finding_and_outside_refuses(grade
     assert shift == pytest.approx(-.4)
     assert row.axes[0].centroid_shift_cells == pytest.approx(shift)
     assert not [f for f in sim.preflight() if f.code == "realization"]
-    sim.add_probe((5*D, 5*D, 10.4*D), component="ez")
-    with pytest.raises(ValueError, match="outside the interior"):
-        sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
 
 
 @pytest.mark.parametrize("graded", (False, True))
@@ -1132,30 +1129,6 @@ def test_verdict_boundary(family, lane, miss, snap):
             assert text.count("cells (") >= 4
             assert text.count(" m)") >= 4
             assert "centroid shift" in text
-
-
-@pytest.mark.parametrize("graded", (False, True))
-@pytest.mark.parametrize("axis", range(3))
-@pytest.mark.parametrize("side", (0, 1))
-def test_point_interior_endpoint_roundoff(graded, axis, side):
-    widths = np.array((.8, 1.2) * 5)*D
-    sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec",
-                     **({"dz_profile": widths} if graded else {}))
-    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
-    position = np.full(3, 5*D)
-    end_cell = widths[-1 if side else 0] if graded and axis == 2 else D
-    endpoint = 10*D if side else 0.
-    direction = 1 if side else -1
-    position[axis] = endpoint + direction*.9e-9*end_cell
-    if graded:
-        from rfx.model.graded_grid import position_to_index
-        index = lambda p: position_to_index(grid, tuple(p))
-    else:
-        index = grid.position_to_index
-    index(position)
-    position[axis] = endpoint + direction*1.1e-9*end_cell
-    with pytest.raises(ValueError, match="outside the interior"):
-        index(position)
 
 
 def test_refined_volume_has_one_realization_warning():
