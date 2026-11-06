@@ -297,6 +297,8 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
                         geometry_masks=(), assembly_entries=(),
                         pad_fill_findings=(), periodic=None, mode="solve", n_devices=1):
     """Build from production collectors, assembling only when none were supplied."""
+    from rfx.model.point_placement import admit_simulation_points
+    admit_simulation_points(sim, grid)
     from rfx.boundaries.pec import realized_pec_edge_masks
     if mode not in ("solve", "audit"):
         raise ValueError(f"Unknown conductor assembly mode: {mode}")

@@ -1102,15 +1102,14 @@ def _assert_traced_index_matches_realized(
     those columns; a deformation that moves a node line moves it by far more.
     """
     n_total = int(d_arr.shape[0])
-    pad_hi = total_pad - pad_lo
     if n_total - total_pad <= 0:
         return
-    interior = jnp.asarray(d_arr)[pad_lo:n_total - pad_hi]
-    edges = jnp.concatenate(
-        [jnp.zeros((1,), dtype=interior.dtype), jnp.cumsum(interior)])
+    cells = jnp.asarray(d_arr)
+    edges = jnp.concatenate([jnp.zeros((1,), dtype=cells.dtype), jnp.cumsum(cells[:-1])])
+    edges = edges - edges[pad_lo]
     dist = jnp.abs(edges - float(pos))
     nearest = jnp.argmin(dist)
-    nominal = min(int(nominal_idx), int(dist.shape[0]) - 1)
+    nominal = int(nominal_idx) + pad_lo
     tol = 16 * jnp.finfo(dist.dtype).eps * jnp.maximum(
         abs(float(pos)), edges[nearest])
     agrees = (nearest == nominal) | (
@@ -1159,23 +1158,7 @@ def _axis_position_to_index(
     pos: float,
     fallback_dx: float | None = None,
 ) -> int:
-    """Padded index of the node nearest ``pos`` on ``axis``, clamped.
-
-    The node is the one ``index_of`` names: ``nearest_node_index`` on the
-    node line the conductors are rasterized on, a tie to the lower node. Two legacy behaviours stay here and not in
-    ``index_of``:
-    a coordinate outside the interior CLAMPS to the end node, and a traced
-    axis answers from a nominal mesh.
-
-    When the axis's cell widths are a JAX tracer (mesh-as-design-variable
-    path) there is no host node line. If the caller declared the concrete
-    profile (``grid.nominal_cells``, from ``nominal_profiles=``) the index is
-    resolved on its node line ``[0, cumsum(w)]``; otherwise on a uniform
-    reference mesh of ``fallback_dx`` cells. Either way it is checked against
-    the realized mesh at run time (``_assert_traced_index_matches_realized``).
-    The traced cell sizes drive the FDTD physics downstream; only the
-    structural index is resolved from the nominal mesh, with the same rule.
-    """
+    """Nearest padded node; traced axes use the checked nominal mesh."""
     ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
     if _axis_name(ax) in grid.periodic_axes:
         return _periodic_index(grid, ax, pos)
@@ -1183,7 +1166,7 @@ def _axis_position_to_index(
     from rfx.model.graded_admission import nominal_cells
     widths = nominal_cells(grid, ax)
     if widths is not None:
-        idx = _nearest_on_line(np.concatenate([[0.0], np.cumsum(widths)]),
+        idx = _nearest_on_padded_line(grid, ax, np.concatenate([[0.0], np.cumsum(widths)]),
                                widths, pos)
         _assert_traced_index_matches_realized(
             store, pad_lo + pad_hi, pad_lo, float(pos), idx,
@@ -1198,14 +1181,14 @@ def _axis_position_to_index(
         last = n - pad_lo - pad_hi
         from rfx.geometry.rasterize_grid import _uniform_axis_nodes
         nominal = _uniform_axis_nodes(last + 1, 0, float(fallback_dx))
-        idx = _nearest_on_line(nominal, np.full(last, float(fallback_dx)),
+        idx = _nearest_on_padded_line(grid, ax, nominal, np.full(last, float(fallback_dx)),
                                pos)
         _assert_traced_index_matches_realized(
             store, pad_lo + pad_hi, pad_lo, float(pos), idx,
             _axis_name(ax))
         return idx + pad_lo
     nodes, cells = grid._node_line(ax)
-    return _nearest_on_line(nodes, cells, pos) + pad_lo
+    return _nearest_on_padded_line(grid, ax, nodes, cells, pos) + pad_lo
 
 
 def host_node_of(grid: NonUniformGrid, axis, i: int) -> float:
@@ -1226,7 +1209,12 @@ def host_node_of(grid: NonUniformGrid, axis, i: int) -> float:
     widths = nominal_cells(grid, ax)
     if widths is not None:
         nodes = np.concatenate([[0.0], np.cumsum(widths)])
-        return float(nodes[min(max(idx - pad_lo, 0), nodes.size - 1)])
+        local = idx - pad_lo
+        if local < 0:
+            return float(local * widths[0])
+        if local >= nodes.size:
+            return float(nodes[-1] + (local - nodes.size + 1) * widths[-1])
+        return float(nodes[local])
     from rfx.geometry.rasterize_grid import _uniform_axis_nodes
     fallback = _traced_fallback_width(grid, ax)
     return float(_uniform_axis_nodes(n, pad_lo, fallback)[idx])
@@ -1251,6 +1239,22 @@ def host_nominal_grid(grid: NonUniformGrid) -> NonUniformGrid:
     return grid._replace(**fields) if fields else grid
 
 
+def _nearest_on_padded_line(grid, axis, nodes, cells, pos) -> int:
+    """Interior-relative index including real low/high pad nodes."""
+    from rfx.model.point_placement import admit_axis
+    _, _, pad_lo, pad_hi = grid._axis_layout(axis)
+    admit_axis(pos, axis=_axis_name(axis), lo=float(nodes[0]), hi=float(nodes[-1]),
+               cell_lo=float(cells[0]), cell_hi=float(cells[-1]),
+               pad_lo=pad_lo, pad_hi=pad_hi, allow_in_absorber=True)
+    if nodes[0] <= pos <= nodes[-1]:
+        return _nearest_on_line(nodes, cells, pos)
+    padded = np.concatenate((nodes[0] - np.arange(pad_lo, 0, -1) * cells[0],
+                             nodes, nodes[-1] + np.arange(1, pad_hi + 1) * cells[-1]))
+    widths = np.concatenate((np.full(pad_lo, cells[0]), cells,
+                             np.full(pad_hi, cells[-1])))
+    return _nearest_on_line(padded, widths, pos) - pad_lo
+
+
 def _nearest_on_line(nodes, cells, pos) -> int:
     """``nearest_node_index`` on a node line, with the local cell the sheet
     snap uses (``_local_cell``). A coordinate outside the line gets its end
@@ -1260,17 +1264,12 @@ def _nearest_on_line(nodes, cells, pos) -> int:
                               _local_cell(nodes, cells, float(pos)))
 
 
-def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> tuple[int, int, int]:
-    """Convert physical (x, y, z) to grid indices for NonUniformGrid.
-
-    Accounts for per-face CPML padding (``pad_{axis}_lo`` leading offset).
-    Each axis resolves through ``_axis_position_to_index``: the node
-    ``index_of`` names, clamped into the interior. On a constant axis, for a
-    coordinate inside the interior that is not a tie, that is the uniform
-    ``Grid`` lookup. Both lanes take the lower node within the tie band. Outside the
-    interior this clamps to the end node, while the uniform grid returns a
-    pad index or refuses.
-    """
+def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float], *,
+                      allow_in_absorber=None) -> tuple[int, int, int]:
+    """Resolve coordinates on the full padded node line, without clamping."""
+    if allow_in_absorber is not None:
+        from rfx.model.point_placement import admit_point
+        admit_point(grid, pos, allow_in_absorber=allow_in_absorber)
     i = _axis_position_to_index(grid, "x", pos[0],
                                 fallback_dx=_traced_fallback_width(grid, "x"))
     j = _axis_position_to_index(grid, "y", pos[1],

@@ -285,7 +285,7 @@ def run_uniform(
                 start=pe.position, end=tuple(end),
                 component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
-                radius=pe.radius,
+                radius=pe.radius, allow_in_absorber=pe.allow_in_absorber,
             )
             wire_ports.append(wp)
             wire_port_excites.append(bool(pe.excite))
@@ -322,6 +322,7 @@ def run_uniform(
             lp = LumpedPort(
                 position=pe.position, component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
+                allow_in_absorber=pe.allow_in_absorber,
             )
             lumped_ports.append(lp)
             materials = setup_lumped_port(grid, lp, materials)

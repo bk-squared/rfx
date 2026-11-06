@@ -299,7 +299,7 @@ def _forward_from_materials(
                 component=pe.component,
                 impedance=pe.impedance,
                 excitation=_drive_waveform,
-                radius=pe.radius,
+                radius=pe.radius, allow_in_absorber=pe.allow_in_absorber,
             )
             # Capture the pre-clearing live-cell mask for the deferred drive.
             materials = setup_wire_port(
@@ -429,6 +429,7 @@ def _forward_from_materials(
             component=pe.component,
             impedance=pe.impedance,
             excitation=_drive_waveform,
+            allow_in_absorber=pe.allow_in_absorber,
         )
         materials = setup_lumped_port(grid, lp, materials)
         if _drive_this_port:

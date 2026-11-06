@@ -1127,12 +1127,14 @@ class _PortEntry(PortKind):
     terminates: tuple = ()
 
     radius: float | None = None
+    allow_in_absorber: bool = False
 
 
 @dataclass(frozen=True)
 class _ProbeEntry:
     position: tuple[float, float, float]
     component: str
+    allow_in_absorber: bool = False
 
 
 
