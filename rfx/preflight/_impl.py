@@ -314,11 +314,11 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         detail = "\n  - ".join(errors)
         from rfx._diagnostic_transport import diagnostic_refusal
         # Sheet-size rows are realization rows too: admitted on every lane (admit_sheet_sizes).
-        realization = sum(getattr(i, "source", None) == "judge_realization"
+        realized_refusals = sum(getattr(i, "source", None) == "judge_realization"
                           or getattr(i, "code", None) == "sheet_effective_size" for i in errors)
-        hint = ("pass skip_preflight=True to bypass" if not realization else
+        hint = ("pass skip_preflight=True to bypass" if not realized_refusals else
                 ("skip_preflight=True bypasses only the non-realization errors; "
-                 if realization < len(errors) else "") +
+                 if realized_refusals < len(errors) else "") +
                 "skip_preflight=True does not bypass a realization refusal: "
                 'use Simulation(..., snap="declared") to report it as a warning, '
                 "or apply the remedy in the message")
