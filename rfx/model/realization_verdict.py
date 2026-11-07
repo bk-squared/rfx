@@ -208,8 +208,8 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
         if deliver:
             deliver_findings(table, findings)
         return
+    smoothing, conformal = options or (False, False)
     if not finished:
-        smoothing, conformal = options or (False, False)
         for owner in (sim, conductors.grid, sim._unresolved_domain):
             for row, finding in early_outcomes(owner).values():
                 if row.label.startswith("legacy:film-entry:"):
@@ -233,53 +233,64 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
                      ((smoothing and row.family == "material") or
                       (conformal and row.family == "volume")))):
                 table.deferred.add(row.label)
-        if "legacy sheets" in table.judged:
-            legacy = []
-        elif legacy_findings is not None:
-            table.judged.add("legacy sheets")
-            for finding in legacy_findings:
-                table.findings.append(finding)
-                retain_sheet_outcome(table, finding)
-            legacy = list(legacy_findings)
-        elif not any(row.traced_inputs for row in table.rows):
-            from rfx.model.realization_context import context_from_conductors
-            from rfx.preflight.pec_geometry import _warn_sheet_effective_size, _warn_sheet_cavity_spacing
-            from rfx.geometry.csg import Box
-            from rfx.preflight._common import PreflightIssue
-            import numpy as np
-            ctx = context_from_conductors(sim, conductors)
-            ctx.cell_sizes = ctx.spacings
-            ctx.nodes = tuple(n[:conductors.grid.shape[a]] for a, n in enumerate(ctx.nodes))
-            from rfx.geometry.rasterize_grid import GridCoords
-            import copy
-            ctx.coords = GridCoords(*ctx.nodes, shape=conductors.grid.shape)
-            ctx.sim = copy.copy(sim)
-            ctx.sim._conformal_run_call = conformal
-            entries = [e for e in ctx.interior_pec_entries()
-                       if e.kind in ("volume", "sheet") and e.lo is not None]
-            legacy = []
-
-            def collect(warning):
-                legacy.append(PreflightIssue(str(warning), severity=warning.severity,
-                    code=warning.code, loc=warning.loc, source=warning.source))
-
-            collector = SimpleNamespace(warn=collect)
-            _warn_sheet_effective_size(collector, ctx, [e for e in entries if isinstance(e.shape, Box)])
-            pec = conductors.pec_mask
-            _warn_sheet_cavity_spacing(collector, ctx, entries,
-                                      np.zeros(conductors.grid.shape, dtype=bool) if pec is None else pec)
-            table.judged.add("legacy sheets")
-            table.findings.extend(legacy)
-            for finding in legacy:
-                retain_sheet_outcome(table, finding)
-        else:
-            legacy = []
     else:
         table.deferred.clear()
-        legacy = []
+    # Every lane's table passes here at least once (finish_table), whether or
+    # not skip_preflight ran: the sheet-size rows are admitted on the first pass.
+    legacy = admit_sheet_sizes(sim, conductors, legacy_findings, conformal)
     findings = tuple(legacy) + judge_realization(table, sim._snap)
     if deliver:
         deliver_findings(table, findings)
+
+
+def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
+    """Admit the PEC sheet and Box-sheet extent rows once per table.
+
+    ``legacy_findings`` are rows a caller already formed (and may already have
+    delivered); ``None`` means none were formed, so they are formed here.
+    """
+    table = conductors.realization_table
+    if "legacy sheets" in table.judged:
+        return []
+    if legacy_findings is not None:
+        table.judged.add("legacy sheets")
+        for finding in legacy_findings:
+            table.findings.append(finding)
+            retain_sheet_outcome(table, finding)
+        return list(legacy_findings)
+    if any(row.traced_inputs for row in table.rows):
+        return []
+    from rfx.model.realization_context import context_from_conductors
+    from rfx.preflight.pec_geometry import _warn_sheet_effective_size, _warn_sheet_cavity_spacing
+    from rfx.geometry.csg import Box
+    from rfx.preflight._common import PreflightIssue
+    import numpy as np
+    ctx = context_from_conductors(sim, conductors)
+    ctx.cell_sizes = ctx.spacings
+    ctx.nodes = tuple(n[:conductors.grid.shape[a]] for a, n in enumerate(ctx.nodes))
+    from rfx.geometry.rasterize_grid import GridCoords
+    import copy
+    ctx.coords = GridCoords(*ctx.nodes, shape=conductors.grid.shape)
+    ctx.sim = copy.copy(sim)
+    ctx.sim._conformal_run_call = conformal
+    entries = [e for e in ctx.interior_pec_entries()
+               if e.kind in ("volume", "sheet") and e.lo is not None]
+    legacy = []
+
+    def collect(warning):
+        legacy.append(PreflightIssue(str(warning), severity=warning.severity,
+            code=warning.code, loc=warning.loc, source=warning.source))
+
+    collector = SimpleNamespace(warn=collect)
+    _warn_sheet_effective_size(collector, ctx, [e for e in entries if isinstance(e.shape, Box)])
+    pec = conductors.pec_mask
+    _warn_sheet_cavity_spacing(collector, ctx, entries,
+                              np.zeros(conductors.grid.shape, dtype=bool) if pec is None else pec)
+    table.judged.add("legacy sheets")
+    table.findings.extend(legacy)
+    for finding in legacy:
+        retain_sheet_outcome(table, finding)
+    return legacy
 
 
 def deliver_findings(table, findings):

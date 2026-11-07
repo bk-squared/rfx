@@ -277,7 +277,9 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
     from rfx.model.realization_verdict import admit_table
     bind_table(sim, root, lane="coax")
     from rfx.preflight._common import PreflightIssue
-    previous = sheet_findings if sheet_findings is not None else tuple(
+    # Without the stamp checks (skip_preflight) the table admission forms the
+    # sheet-size rows itself; skip_preflight never drops them.
+    previous = sheet_findings if sheet_findings is not None else None if skip_preflight else tuple(
         PreflightIssue(message, code="sheet_effective_size",
         severity="warning" if sim._snap == "declared" else "error",
         source="_validate_cfg_off_lattice_design_edges")
