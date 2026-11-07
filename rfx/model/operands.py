@@ -169,11 +169,11 @@ def node_tensor_operands(nodes, *, periodic=(False, False, False)):
     result = {field.name: getattr(nodes, field.name)
               for field in fields(nodes) if field.name != "active"}
     reverse = nodes.cross if nodes.cross_reverse is None else nodes.cross_reverse
-    masked = {"forward": {}, "reverse": {}}
+    masked: dict[str, dict[int, dict[int, dict[int, object]]]] = {"forward": {}, "reverse": {}}
     for pair, (a, b) in enumerate(((0, 1), (0, 2), (1, 2))):
         for direction, coupling, output in (("forward", nodes.cross[pair], a),
                                              ("reverse", reverse[pair], b)):
-            ends = {}
+            ends: dict[int, dict[int, object]] = {}
             for sa in (0, 1):
                 ends[sa] = {}
                 for sb in (0, 1):
@@ -181,7 +181,7 @@ def node_tensor_operands(nodes, *, periodic=(False, False, False)):
                     if (sa if direction == "forward" else sb):
                         coefficient = jnp.roll(coefficient, -1, axis=output)
                         if not periodic[output]:
-                            last = [slice(None)] * 3
+                            last: list[slice | int] = [slice(None)] * 3
                             last[output] = -1
                             coefficient = coefficient.at[tuple(last)].set(0)
                     ends[sa][sb] = jnp.where(nodes.active[output], coefficient, 0)
