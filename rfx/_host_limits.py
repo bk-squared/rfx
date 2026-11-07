@@ -1,6 +1,5 @@
 """Advisory host limits checked before the first time-stepping scan."""
 
-import sys
 import warnings
 from pathlib import Path
 
@@ -15,8 +14,6 @@ class MapCountWarning(ConfigurationWarning):
 
 
 def _read_map_count() -> int | None:
-    if not sys.platform.startswith("linux"):
-        return None
     try:
         return int(Path("/proc/sys/vm/max_map_count").read_text())
     except (OSError, ValueError):
@@ -29,18 +26,18 @@ def check_map_count() -> None:
     if _checked:
         return
     _checked = True
-    try:
-        n = _read_map_count()
-        if n is not None and n < MAP_COUNT_ADVISED:
+    n = _read_map_count()
+    if n is not None and n < MAP_COUNT_ADVISED:
+        try:
             warnings.warn(
                 f"vm.max_map_count is {n}, below {MAP_COUNT_ADVISED:,}. "
                 "One Python process that compiles many distinct grid shapes can abort inside the JAX "
                 "compiler when it runs out of memory mappings; at the Linux default 65,530 this "
                 "happened at about 151 grid shapes. Raise the limit with "
                 "`sudo sysctl -w vm.max_map_count=262144`, or call `jax.clear_caches()` between "
-                "batches of grid shapes. See docs/guides/known_limitations.md (#2421).",
+                "batches of grid shapes. See docs/guides/known_limitations.md.",
                 MapCountWarning, stacklevel=2,
             )
-    except Exception:
-        # Host inspection and warning filters (including -W error) must not stop a solve.
-        pass
+        except MapCountWarning:
+            # Warning filters (including -W error) must not stop a solve.
+            pass
