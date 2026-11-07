@@ -62,14 +62,17 @@ class GrowingPoleJudgement(NamedTuple):
 
 
 def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
-                        bar=1e-2, significance=1e-4) -> GrowingPoleJudgement:
+                        bar=1e-2, significance=1e-4,
+                        horizon_denominator=None) -> GrowingPoleJudgement:
     """Judge kept non-static growing poles by their tail bound through ``2H``.
 
     ``H`` is at least the record length and covers a hundredfold decay of
     every significant resolved decaying pole. Unresolved poles of either sign
     receive the same bound as growing poles. ``denominator (nf, C)`` is the
     caller's plain DFT magnitude (``(nf,)`` for a one-channel record);
-    infinity marks an inactive channel.
+    infinity marks an inactive channel. ``horizon_denominator`` defaults to
+    that denominator; supply the unmasked values to preserve the model's
+    decay horizon when excluding individual entries from the tail bound.
     """
     from rfx.measurement.ringdown_tail import _pole_tails
     from rfx.ringdown import _static_pole
@@ -77,6 +80,12 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
     denominator = np.asarray(denominator, dtype=np.float64)
     if denominator.ndim == 1:
         denominator = denominator[:, None]
+    if horizon_denominator is None:
+        horizon_denominator = denominator
+    else:
+        horizon_denominator = np.asarray(horizon_denominator, dtype=np.float64)
+        if horizon_denominator.ndim == 1:
+            horizon_denominator = horizon_denominator[:, None]
     H, Hd, band = int(n_record), 0.0, math.nan
     share, worst = np.zeros(freqs.size), None
     positive_share = np.zeros(freqs.size)
@@ -90,7 +99,8 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
 
     if (not np.isfinite(model.s).all() or not np.isfinite(model.c).all()
             or not np.isfinite(freqs).all()
-            or not np.all(np.isfinite(denominator) | np.isposinf(denominator))):
+            or not np.all(np.isfinite(denominator) | np.isposinf(denominator))
+            or not np.all(np.isfinite(horizon_denominator) | np.isposinf(horizon_denominator))):
         return result("cannot judge", "non-finite poles, residues, bins or denominator")
     decaying, growing = [], []
     classes = pole_classes(model, unit_tol)
@@ -106,7 +116,7 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         if decaying:
             dec = replace(model, s=model.s[decaying], c=model.c[decaying])
-            own = np.abs(_pole_tails(dec, n_record - 1, freqs)) / denominator[:, None, :]
+            own = np.abs(_pole_tails(dec, n_record - 1, freqs)) / horizon_denominator[:, None, :]
             if not np.isfinite(own).all():
                 # The horizon only bounds a growing pole's tail; without one there is nothing to judge.
                 return (result("cannot judge", "non-finite decaying pole tail share") if growing
