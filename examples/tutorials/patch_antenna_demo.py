@@ -257,7 +257,7 @@ def realized_in_plane(sim, planes, feed):
         solved_span[k] = tuple(v for a in sheet.axes[:2] for v in a.bounds_m)
     substrate = next(e for e in record.entities if e.kind == "material")
     substrate = tuple(v for a in substrate.axes[:2] for v in a.bounds_m)
-    port = record.ports[0]
+    port = record.sources[0]
     i_f, j_f, _k = port.edges[0]
     return nodes_span, solved_span, substrate, (record.nodes[0][i_f], record.nodes[1][j_f])
 
