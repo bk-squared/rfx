@@ -4,10 +4,14 @@ answer (issue #727).
 The transform materializes a (n_freqs, n_directions, n_cells) phase array
 per face. On a board-scale box with a full sphere that reached 214 GB and
 killed a run AFTER an 8-hour solve. The sum over surface cells is
-independent per direction, so splitting theta is exact — this test is what
-makes "exact" a checked claim rather than an argument, and it also pins the
-memory bound as a real behaviour (a chunk actually happens when the budget
-is small).
+independent per direction, so splitting theta changes no term of any
+direction's sum. Split and unsplit calls compile the final projection onto
+E_theta, E_phi differently (fused inside the chunk map, op by op without
+it), so the two agree to rounding, not bitwise: each component's largest
+difference is held within 1e-4 of the field peak (the larger of max |E_theta|
+and max |E_phi| of the unsplit result), the scale the cross-trace bar uses
+for a summed quantity. This file also pins the memory bound as a real
+behaviour (a chunk actually happens when the budget is small).
 """
 from __future__ import annotations
 
@@ -17,14 +21,31 @@ from rfx import Box, Simulation, compute_far_field_jax
 from rfx.sources import GaussianPulse
 
 
+_REL_TOL = 1e-4
+
+
+def _assert_fields_match(whole, chunked):
+    """|whole - chunked| <= 1e-4 x field peak of whole, E_theta and E_phi."""
+    w_th, c_th = np.asarray(whole.E_theta), np.asarray(chunked.E_theta)
+    w_ph, c_ph = np.asarray(whole.E_phi), np.asarray(chunked.E_phi)
+    assert w_th.shape == c_th.shape and w_ph.shape == c_ph.shape
+    scale = max(float(np.max(np.abs(w_th))), float(np.max(np.abs(w_ph))))
+    assert scale > 0.0
+    for name, w, c in (("E_theta", w_th, c_th), ("E_phi", w_ph, c_ph)):
+        ratio = float(np.max(np.abs(w - c))) / scale
+        assert ratio <= _REL_TOL, (
+            f"chunking changed {name}: max |delta| / field peak = "
+            f"{ratio:.3e} > {_REL_TOL:.0e}")
+
+
 def _run():
     sim = Simulation(freq_max=20e9, domain=(6e-3, 6e-3, 6e-3), dx=300e-6,
                      boundary="cpml", cpml_layers=6)
     # a solid scatterer: a VOLUME (2 cells per axis, node to node), left one.
     # #931 §1.2 gives it walls on BOTH bounding planes of every axis, so its
     # absolute scattered field moved; this file's gate is chunked == whole
-    # BITWISE on the same run, which does not read that. Same cube as
-    # test_ntff_box_nu_pads.
+    # to rounding (1e-4 of the field peak) on the same run, which does not
+    # read that. Same cube as test_ntff_box_nu_pads.
     sim.add(Box((2.7e-3, 2.7e-3, 2.7e-3), (3.3e-3, 3.3e-3, 3.3e-3)),
             material="pec")
     sim.add_source(position=(3e-3, 3e-3, 2.4e-3), component="ez",
@@ -35,7 +56,9 @@ def _run():
     return sim.run(n_steps=300)
 
 
-def test_chunked_matches_single_shot_bitwise():
+def test_chunked_matches_single_shot_to_rounding():
+    """A budget that forces several passes gives the unsplit answer to
+    rounding at the field peak; theta is passed through, so it stays bitwise."""
     res = _run()
     th = np.radians(np.linspace(0.0, 180.0, 37))
     ph = np.radians(np.linspace(0.0, 350.0, 12))
@@ -46,11 +69,7 @@ def test_chunked_matches_single_shot_bitwise():
     chunked = compute_far_field_jax(res.ntff_data, res.ntff_box, res.grid,
                                     th, ph, max_phase_bytes=1e4)
 
-    assert np.asarray(whole.E_theta).shape == np.asarray(chunked.E_theta).shape
-    assert np.array_equal(np.asarray(whole.E_theta), np.asarray(chunked.E_theta)), (
-        "chunking changed E_theta: max |delta| = "
-        f"{np.max(np.abs(np.asarray(whole.E_theta) - np.asarray(chunked.E_theta))):.3e}")
-    assert np.array_equal(np.asarray(whole.E_phi), np.asarray(chunked.E_phi))
+    _assert_fields_match(whole, chunked)
     assert np.array_equal(np.asarray(whole.theta), np.asarray(chunked.theta))
 
 
@@ -66,7 +85,7 @@ def test_default_budget_leaves_small_problems_single_shot():
     assert np.array_equal(np.asarray(a.E_theta), np.asarray(b.E_theta))
 
 
-def test_default_budget_chunks_a_large_problem(monkeypatch):
+def test_default_budget_chunks_a_large_problem():
     """The sizing DECISION must work, not just the split.
 
     Two tests have now been written for this and neither caught the real
@@ -79,22 +98,19 @@ def test_default_budget_chunks_a_large_problem(monkeypatch):
     214 GB allocation this function exists to prevent, after an 8.5-hour
     solve.
 
-    So observe the decision directly: count how many times the function
-    re-enters itself. One call means no split.
+    Observe the realized scan length and theta chunk width in the traced
+    program: a mapped split no longer re-enters the public function. The
+    split result then matches the unsplit one to rounding at the field peak
+    (the projection is compiled differently on the two paths; see the module
+    docstring).
     """
     res = _run()
     th = np.radians(np.linspace(0.0, 180.0, 61))
     ph = np.radians(np.linspace(0.0, 350.0, 24))
 
+    import jax
     import rfx.measurement.farfield as _ff
     real = _ff.compute_far_field_jax
-    calls = {"n": 0}
-
-    def counting(*a, **kw):
-        calls["n"] += 1
-        return real(*a, **kw)
-
-    monkeypatch.setattr(_ff, "compute_far_field_jax", counting)
 
     n_cells = max(int(getattr(res.ntff_data, f).shape[1])
                   * int(getattr(res.ntff_data, f).shape[2])
@@ -104,19 +120,84 @@ def test_default_budget_chunks_a_large_problem(monkeypatch):
     assert per_theta > 0
 
     budget = per_theta * 5          # fits five directions, not sixty-one
-    calls["n"] = 0
-    chunked = counting(res.ntff_data, res.ntff_box, res.grid, th, ph,
-                       max_phase_bytes=budget)
-    n_passes = calls["n"] - 1       # the outer call plus one per chunk
-    assert n_passes >= 2, (
-        f"a {budget / 1e9:.2f} GB budget against {per_theta / 1e9:.3f} GB per "
-        f"direction and {len(th)} directions must split, but the function "
-        f"re-entered itself {n_passes} time(s) — the sizing did not fire")
+    expected_width = max(1, int(budget // per_theta))
+    expected_length = (len(th) + expected_width - 1) // expected_width
+    traced = jax.make_jaxpr(
+        lambda theta: real(res.ntff_data, res.ntff_box, res.grid, theta, ph,
+                           max_phase_bytes=budget)
+    )(th)
+
+    def scan_equations(program):
+        if hasattr(program, "jaxpr"):
+            yield from scan_equations(program.jaxpr)
+        elif hasattr(program, "eqns"):
+            for equation in program.eqns:
+                if equation.primitive.name == "scan":
+                    yield equation
+                yield from scan_equations(equation.params)
+        elif isinstance(program, dict):
+            for value in program.values():
+                yield from scan_equations(value)
+        elif isinstance(program, (tuple, list)):
+            for value in program:
+                yield from scan_equations(value)
+
+    def direction_chunk_maps(program):
+        """The scans whose scanned operand is built from theta.
+
+        The faces are also a scan (inside each chunk, or alone when the
+        budget does not split); its scanned operands are the face records,
+        not theta. The direction-chunk map is the scan whose scanned
+        operand descends from the traced theta input.
+        """
+        top = program.jaxpr
+        theta_var = top.invars[0]
+        producer = {}
+        for equation in top.eqns:
+            for out in equation.outvars:
+                producer[out] = equation
+
+        def from_theta(var, seen):
+            if var is theta_var:
+                return True
+            equation = producer.get(var)
+            if equation is None or id(equation) in seen:
+                return False
+            seen.add(id(equation))
+            return any(from_theta(v, seen) for v in equation.invars
+                       if not hasattr(v, "val"))
+
+        found = []
+        for scan in scan_equations(program):
+            first_x = scan.params["num_consts"] + scan.params["num_carry"]
+            if any(from_theta(v, set()) for v in scan.invars[first_x:]
+                   if not hasattr(v, "val")):
+                found.append(scan)
+        return found
+
+    scans = direction_chunk_maps(traced)
+    assert len(scans) == 1, "expected one direction-chunk map"
+    scan = scans[0]
+    assert scan.params["length"] == expected_length, (
+        f"realized {scan.params['length']} chunks; expected {expected_length}")
+    theta_operand = scan.invars[scan.params["num_consts"] + scan.params["num_carry"]]
+    chunk_shape = theta_operand.aval.shape[1:]  # remove the scan iteration axis
+    assert chunk_shape == (expected_width,), (
+        f"realized theta chunk shape {chunk_shape}; expected {(expected_width,)}")
+
+    # A budget that does not split theta enters no direction-chunk map.
+    unsplit = jax.make_jaxpr(
+        lambda theta: real(res.ntff_data, res.ntff_box, res.grid, theta, ph,
+                           max_phase_bytes=float("inf"))
+    )(th)
+    assert direction_chunk_maps(unsplit) == [], (
+        "an unsplit budget entered a direction-chunk map")
+    chunked = real(res.ntff_data, res.ntff_box, res.grid, th, ph,
+                   max_phase_bytes=budget)
 
     whole = real(res.ntff_data, res.ntff_box, res.grid, th, ph,
                  max_phase_bytes=float("inf"))
-    assert np.array_equal(np.asarray(whole.E_theta),
-                          np.asarray(chunked.E_theta))
+    _assert_fields_match(whole, chunked)
 
 
 def test_chunking_block_is_code_not_docstring():
@@ -147,3 +228,99 @@ def test_chunking_block_is_code_not_docstring():
     assert "x_lo" in flat, (
         "the face-name scan is not in the compiled body — sizing cannot run"
     )
+
+
+def _synthetic_ntff(seed=7271):
+    """Random complex faces on a 4 x 5 x 6-cell box, no FDTD.
+
+    Random tangential E and H on every face drive both polarizations, so
+    E_phi is not a cross-polar null as it is in ``_run()``'s fixture.
+    """
+    import jax.numpy as jnp
+    from rfx.farfield import NTFFBox, NTFFData
+    from rfx.grid import Grid
+
+    rng = np.random.default_rng(seed)
+    nx, ny, nz = 4, 5, 6
+    spans = {"x": (ny, nz), "y": (nx, nz), "z": (nx, ny)}
+    faces = []
+    for axis in "xxyyzz":
+        shape = (3, *spans[axis], 4)
+        faces.append(jnp.asarray((rng.normal(size=shape)
+                                  + 1j * rng.normal(size=shape))
+                                 .astype(np.complex64)))
+    grid = Grid(freq_max=40e9,
+                domain=tuple((n + 2) * 0.0005 for n in (nx, ny, nz)),
+                dx=0.0005, cpml_layers=0)
+    box = NTFFBox(1, nx + 1, 1, ny + 1, 1, nz + 1,
+                  jnp.asarray([20e9, 30e9, 40e9], dtype=jnp.float32))
+    return NTFFData(*faces), box, grid
+
+
+def test_split_matches_unsplit_with_both_polarizations_present():
+    """The far field in one direction is a sum over surface cells for that
+    direction alone, for E_theta and for E_phi; splitting theta into
+    chunks changes no term of either sum. On ``_run()``'s fixture E_phi is
+    a -110 dB cross-polar null, so an E_phi error on the split path is
+    invisible against the field-peak bar; here E_phi is within 20 dB of
+    E_theta (ratio asserted), so the same bar sees both components. 13
+    theta rows in chunks of 4 leave 3 padded rows."""
+    import jax
+
+    data, box, grid = _synthetic_ntff()
+    th = np.radians(np.linspace(3.0, 177.0, 13))
+    ph = np.radians(np.linspace(0.0, 340.0, 18))
+
+    n_cells = max(int(getattr(data, f).shape[1]) * int(getattr(data, f).shape[2])
+                  for f in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
+    per_theta = 3 * len(ph) * n_cells * 16.0   # the public budget's rule
+    width = 4
+    budget = width * per_theta
+    n_chunks = -(-len(th) // width)
+    assert len(th) % width != 0                # padding > 0
+
+    whole = compute_far_field_jax(data, box, grid, th, ph,
+                                  max_phase_bytes=float("inf"))
+    chunked = compute_far_field_jax(data, box, grid, th, ph,
+                                    max_phase_bytes=budget)
+
+    ratio = (float(np.max(np.abs(np.asarray(whole.E_phi))))
+             / float(np.max(np.abs(np.asarray(whole.E_theta)))))
+    # measured 0.944 (E_phi 0.2097, E_theta 0.2222); split vs unsplit
+    # differs by 3.7e-8 (E_theta) and 1.3e-7 (E_phi) of the field peak
+    assert ratio >= 0.1, f"E_phi/E_theta peak ratio {ratio:.3f} < 0.1"
+
+    # the budget realized a split: a scan of n_chunks steps over theta
+    def scan_lengths(program):
+        if hasattr(program, "jaxpr"):
+            yield from scan_lengths(program.jaxpr)
+        elif hasattr(program, "eqns"):
+            for equation in program.eqns:
+                if equation.primitive.name == "scan":
+                    yield equation.params["length"]
+                yield from scan_lengths(equation.params)
+        elif isinstance(program, dict):
+            for value in program.values():
+                yield from scan_lengths(value)
+        elif isinstance(program, (tuple, list)):
+            for value in program:
+                yield from scan_lengths(value)
+
+    traced = jax.make_jaxpr(lambda t: compute_far_field_jax(
+        data, box, grid, t, ph, max_phase_bytes=budget))(th)
+    assert n_chunks in set(scan_lengths(traced)), (
+        f"no {n_chunks}-step theta map; the budget did not split theta")
+
+    _assert_fields_match(whole, chunked)
+
+
+def test_none_face_is_refused():
+    """A face given as None is refused: dropping it would transform an
+    open surface and return a far field missing that face's radiation."""
+    import pytest
+
+    data, box, grid = _synthetic_ntff()
+    th = np.radians(np.linspace(0.0, 180.0, 5))
+    ph = np.radians(np.linspace(0.0, 270.0, 4))
+    with pytest.raises(ValueError, match="z_hi"):
+        compute_far_field_jax(data._replace(z_hi=None), box, grid, th, ph)
