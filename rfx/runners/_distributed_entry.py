@@ -173,6 +173,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         from rfx.runners.distributed_v2 import run_distributed
         _res = run_distributed(
             self,
+            lane=plan.lane,
             n_steps=n_steps,
             devices=devices,
             diagnostics=_diagnostics,

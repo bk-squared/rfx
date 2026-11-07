@@ -114,6 +114,8 @@ def run_disjoint_stage2_path(
     conductors, geometry_record = disjoint_kernel(sim, grid_coarse, config, contract)
     if _prepare_only:
         return conductors
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=n_steps, path='run_subgridded')
     from rfx.stepping import prepared as prepared_step
     for step in range(int(n_steps)):
         t = float(step * config.dt)
