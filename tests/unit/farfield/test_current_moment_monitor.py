@@ -1322,8 +1322,8 @@ def _runner_mutations(kind):
             (acc, ""),
             ("    attachments = {", "    def moved_current_moments(frame):\n"
              + acc + "\n    attachments = {"),
-            ("    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)",
-             "    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)\n"
+            ("    attachments[HookPoint.AFTER_SOURCES] = () if slab else (after_sources,)",
+             "    attachments[HookPoint.AFTER_SOURCES] = () if slab else (after_sources,)\n"
              "    attachments[HookPoint.BEFORE_SOURCES] = (moved_current_moments,)"),
         ]
     return {
