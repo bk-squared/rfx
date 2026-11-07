@@ -771,8 +771,10 @@ def normalize_inputs(value, path, location=()):
     if isinstance(value, dict):
         return {key: normalize_inputs(item, path, location + (key,))
                 for key, item in value.items()
-                # grid_key caches ids of grid arrays, not physical inputs.
-                if key != 'grid_key' and not (
+                # grid_key caches ids of grid arrays, not physical inputs. The
+                # attached plan names its entry and availability per entry; its
+                # run/forward equality is test_measurement_plan_attachment's.
+                if key != 'grid_key' and location + (key,) != ('arguments', 'measurement') and not (
                     path == 'multi-device-graded' and location == ('arguments',)
                     and key in DRIVER_OPTIONS)}
     if isinstance(value, (tuple, list)):
