@@ -4,10 +4,14 @@ answer (issue #727).
 The transform materializes a (n_freqs, n_directions, n_cells) phase array
 per face. On a board-scale box with a full sphere that reached 214 GB and
 killed a run AFTER an 8-hour solve. The sum over surface cells is
-independent per direction, so splitting theta is exact — this test is what
-makes "exact" a checked claim rather than an argument, and it also pins the
-memory bound as a real behaviour (a chunk actually happens when the budget
-is small).
+independent per direction, so splitting theta changes no term of any
+direction's sum. Split and unsplit calls compile the final projection onto
+E_theta, E_phi differently (fused inside the chunk map, op by op without
+it), so the two agree to rounding, not bitwise: each component's largest
+difference is held within 1e-4 of the field peak (the larger of max |E_theta|
+and max |E_phi| of the unsplit result), the scale the cross-trace bar uses
+for a summed quantity. This file also pins the memory bound as a real
+behaviour (a chunk actually happens when the budget is small).
 """
 from __future__ import annotations
 
@@ -17,14 +21,31 @@ from rfx import Box, Simulation, compute_far_field_jax
 from rfx.sources import GaussianPulse
 
 
+_REL_TOL = 1e-4
+
+
+def _assert_fields_match(whole, chunked):
+    """|whole - chunked| <= 1e-4 x field peak of whole, E_theta and E_phi."""
+    w_th, c_th = np.asarray(whole.E_theta), np.asarray(chunked.E_theta)
+    w_ph, c_ph = np.asarray(whole.E_phi), np.asarray(chunked.E_phi)
+    assert w_th.shape == c_th.shape and w_ph.shape == c_ph.shape
+    scale = max(float(np.max(np.abs(w_th))), float(np.max(np.abs(w_ph))))
+    assert scale > 0.0
+    for name, w, c in (("E_theta", w_th, c_th), ("E_phi", w_ph, c_ph)):
+        ratio = float(np.max(np.abs(w - c))) / scale
+        assert ratio <= _REL_TOL, (
+            f"chunking changed {name}: max |delta| / field peak = "
+            f"{ratio:.3e} > {_REL_TOL:.0e}")
+
+
 def _run():
     sim = Simulation(freq_max=20e9, domain=(6e-3, 6e-3, 6e-3), dx=300e-6,
                      boundary="cpml", cpml_layers=6)
     # a solid scatterer: a VOLUME (2 cells per axis, node to node), left one.
     # #931 §1.2 gives it walls on BOTH bounding planes of every axis, so its
     # absolute scattered field moved; this file's gate is chunked == whole
-    # BITWISE on the same run, which does not read that. Same cube as
-    # test_ntff_box_nu_pads.
+    # to rounding (1e-4 of the field peak) on the same run, which does not
+    # read that. Same cube as test_ntff_box_nu_pads.
     sim.add(Box((2.7e-3, 2.7e-3, 2.7e-3), (3.3e-3, 3.3e-3, 3.3e-3)),
             material="pec")
     sim.add_source(position=(3e-3, 3e-3, 2.4e-3), component="ez",
@@ -35,7 +56,9 @@ def _run():
     return sim.run(n_steps=300)
 
 
-def test_chunked_matches_single_shot_bitwise():
+def test_chunked_matches_single_shot_to_rounding():
+    """A budget that forces several passes gives the unsplit answer to
+    rounding at the field peak; theta is passed through, so it stays bitwise."""
     res = _run()
     th = np.radians(np.linspace(0.0, 180.0, 37))
     ph = np.radians(np.linspace(0.0, 350.0, 12))
@@ -46,11 +69,7 @@ def test_chunked_matches_single_shot_bitwise():
     chunked = compute_far_field_jax(res.ntff_data, res.ntff_box, res.grid,
                                     th, ph, max_phase_bytes=1e4)
 
-    assert np.asarray(whole.E_theta).shape == np.asarray(chunked.E_theta).shape
-    assert np.array_equal(np.asarray(whole.E_theta), np.asarray(chunked.E_theta)), (
-        "chunking changed E_theta: max |delta| = "
-        f"{np.max(np.abs(np.asarray(whole.E_theta) - np.asarray(chunked.E_theta))):.3e}")
-    assert np.array_equal(np.asarray(whole.E_phi), np.asarray(chunked.E_phi))
+    _assert_fields_match(whole, chunked)
     assert np.array_equal(np.asarray(whole.theta), np.asarray(chunked.theta))
 
 
@@ -80,7 +99,10 @@ def test_default_budget_chunks_a_large_problem():
     solve.
 
     Observe the realized scan length and theta chunk width in the traced
-    program: a mapped split no longer re-enters the public function.
+    program: a mapped split no longer re-enters the public function. The
+    split result then matches the unsplit one to rounding at the field peak
+    (the projection is compiled differently on the two paths; see the module
+    docstring).
     """
     res = _run()
     th = np.radians(np.linspace(0.0, 180.0, 61))
@@ -175,8 +197,7 @@ def test_default_budget_chunks_a_large_problem():
 
     whole = real(res.ntff_data, res.ntff_box, res.grid, th, ph,
                  max_phase_bytes=float("inf"))
-    assert np.array_equal(np.asarray(whole.E_theta),
-                          np.asarray(chunked.E_theta))
+    _assert_fields_match(whole, chunked)
 
 
 def test_chunking_block_is_code_not_docstring():
