@@ -559,6 +559,7 @@ def count(sources: Sources) -> dict:
     """Count named units and imports without importing any inspected module."""
     public = {package: public_names(sources, package) for package in LAYERS}
     files, outside, reverse, unit_counts, allowed = {}, {}, {}, {}, []
+    outside_ag = {}
     for path in sorted(sources.paths | set(FIVE_FILES)):
         selected = path in FIVE_FILES
         if not selected and any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS):
@@ -578,7 +579,10 @@ def count(sources: Sources) -> dict:
                     allowed.append((path, node.lineno, " ".join(source.splitlines())))
         elif rules["S"] or rules["M"]:
             outside[path] = {r: sorted(rules[r]) for r in ("S", "M")}
+        if not selected and (rules["A"] or rules["G"]):
+            outside_ag[path] = {r: rules[r] for r in ("A", "G")}
     return {"baseline": {"files": files, "outside": outside, "reverse": reverse},
+            "outside_ag": outside_ag,
             "caller_definitions": caller_definitions(sources, [
                 p for p in sorted(sources.paths)
                 if any(p.startswith(layer.replace(".", "/") + "/") for layer in LAYERS)]),
@@ -973,10 +977,27 @@ def report(result: dict):
 
 
 
-def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, list_allowed=False) -> int:
+def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, list_allowed=False,
+          report_outside_ag=False) -> int:
     sources = Sources(repo, head)
     result = count(sources)
     report(result)
+    if report_outside_ag:
+        print("outside the layer packages: model-assembly writes (A) and grid arithmetic (G) "
+              "— report only, not gated")
+        counts = {path: {r: len(names) for r, names in rules.items()}
+                  for path, rules in result["outside_ag"].items()}
+        packages = {}
+        for path, rules in counts.items():
+            package = "/".join(path.split("/")[:2])
+            totals = packages.setdefault(package, {"A": 0, "G": 0})
+            for rule in ("A", "G"):
+                totals[rule] += rules[rule]
+        for prefix, rows in (("outside-ag", counts), ("outside-ag package", packages)):
+            for path, rules in sorted(rows.items(), key=lambda item: (-sum(item[1].values()), item[0])):
+                print(f"{prefix} {path}: A={rules['A']} G={rules['G']}")
+        totals = {r: sum(v[r] for v in counts.values()) for r in ("A", "G")}
+        print(f"outside-ag totals: A={totals['A']} G={totals['G']}")
     if list_allowed:
         for path, line, source in result["allowed"]:
             print(f"{path}:{line}: {source}")
@@ -1008,10 +1029,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--head", default=os.environ.get("HEAD_SHA", ""))
     parser.add_argument("--write-baseline", action="store_true")
     parser.add_argument("--list-allowed", action="store_true")
+    parser.add_argument("--report-outside-ag", action="store_true")
     args = parser.parse_args(argv)
     try:
         return check(args.repo, args.base, args.head,
-                     write_baseline=args.write_baseline, list_allowed=args.list_allowed)
+                     write_baseline=args.write_baseline, list_allowed=args.list_allowed,
+                     report_outside_ag=args.report_outside_ag)
     except (OSError, ValueError, SyntaxError, subprocess.CalledProcessError) as exc:
         print(f"layer-structure ratchet failed: {exc}", file=sys.stderr)
         return 1
