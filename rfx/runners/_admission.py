@@ -224,7 +224,9 @@ def _thin(conductor) -> str:
 
 
 def _soft(port) -> bool:
-    return not is_tracer(port.impedance) and float(port.impedance) == 0.0
+    from rfx.api._port_kind import is_soft_source
+
+    return is_soft_source(port)
 
 
 def _ports(sim, *, extent: bool | None = None, excite: bool | None = None):
