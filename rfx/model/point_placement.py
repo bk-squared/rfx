@@ -15,11 +15,13 @@ from rfx.errors import RfxRefusal
 
 def admit_axis(position, *, axis, lo, hi, cell_lo, cell_hi, pad_lo, pad_hi,
                allow_in_absorber, label="Point"):
-    """Check physical bounds before rounding; the opt-in never admits OOB."""
+    """Check padded faces before rounding; unpadded faces use grid admission."""
     pos = float(position)
     side = "lo" if pos < lo else "hi"
-    depth = (lo - pos) / cell_lo if side == "lo" else (pos - hi) / cell_hi
     pad = pad_lo if side == "lo" else pad_hi
+    if pad == 0:
+        return  # Preserve the existing periodic / out-of-grid handling.
+    depth = (lo - pos) / cell_lo if side == "lo" else (pos - hi) / cell_hi
     tol_lo = node_tie_tol(pos, cell_lo)
     tol_hi = node_tie_tol(pos, cell_hi)
     outside = (not math.isfinite(pos) or
@@ -36,9 +38,6 @@ def admit_axis(position, *, axis, lo, hi, cell_lo, cell_hi, pad_lo, pad_hi,
               if outside else
               "Pass allow_in_absorber=True on this object to keep this pad position; "
               "its fields are absorber-attenuated.")
-    if outside and pad == 0:
-        remedy += (f" Declared {axis} coordinate {position} is outside domain [{lo:g}, {hi}]. "
-                   f"Boundary face {axis}_{side}: move it at least one cell inside the domain, off the wall.")
     raise RfxRefusal(f"{label} at {pos:g} m is {where}. {remedy}")
 
 
