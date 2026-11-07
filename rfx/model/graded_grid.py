@@ -897,9 +897,9 @@ def make_nonuniform_grid(
         nx_interior = realized_cells(domain_xy[0], dx, kinds["x"])
         dx_prof_phys = np.full(nx_interior, float(dx))
     elif is_tracer(dx_profile):
-        # With a nominal profile, ends follow the fixed-cell check outside
-        # declared windows and are free inside; agreement with dx is judged
-        # where a structure is resolved (rfx#2372).
+        # With a nominal profile the ends are not checked here: the fixed-cell
+        # check holds them outside a declared window (free inside, or with no
+        # window), and dx agreement is judged where a structure is resolved.
         dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
         if nominal_profiles is None or "x" not in nominal_profiles:
             _assert_boundary_cells(dx_prof_phys, dx, "x")
@@ -919,9 +919,9 @@ def make_nonuniform_grid(
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
-        # With a nominal profile, ends follow the fixed-cell check outside
-        # declared windows and are free inside; agreement with dx is judged
-        # where a structure is resolved (rfx#2372).
+        # With a nominal profile the ends are not checked here: the fixed-cell
+        # check holds them outside a declared window (free inside, or with no
+        # window), and dx agreement is judged where a structure is resolved.
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)
         if nominal_profiles is None or "y" not in nominal_profiles:
