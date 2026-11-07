@@ -17,7 +17,7 @@ they do not run at import time.
 
 from __future__ import annotations
 
-from rfx.sparams import _coax_msl_stages, _coax_oneport_record
+from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 from rfx.sparams._coax_status import coax_extraction_status
 
@@ -987,7 +987,7 @@ def compute_coaxial_two_port(
                 if _channels:
                     _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
                 settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
-                    _channels, source_end_index=source_end,
+                    _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes, n_bot),
                     dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True)
 
 
@@ -1567,7 +1567,7 @@ def compute_coax_msl_transition(
             if _channels:
                 _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
             settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
-                _channels, source_end_index=source_end,
+                _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes),
                 dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
 
 

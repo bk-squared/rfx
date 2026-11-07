@@ -189,6 +189,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
                       "witness probes are judged by their own driver: " + advice)
     named = []
     groups = {}
+    scale_groups = {}
     dominated_names = set()
     for item in info:
         # Two-tuple metadata has no source-dominated flag; score it with nothing
@@ -200,6 +201,8 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         label = _COMPONENTS[component] if 0 <= component < len(_COMPONENTS) else "?"
         name = f"probe{col}({label})"
         named.append((name, series[:, col]))
+        if label != "?":
+            scale_groups[name] = label
         # A rounding record's level is eps times the fields that cancel at
         # its own point, so its reference is the same-kind records there.
         cell = tuple(int(v) for v in item[3:6]) if len(item) > 5 else None
@@ -211,7 +214,8 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     selected = independent or named
     worst, detail = settling_db_from_named_records(
         selected, return_detail=True, dt=dt, freqs=freqs, freq_max=freq_max,
-        source_end_index=source_end_index, rounding_groups=groups)
+        source_end_index=source_end_index, rounding_groups=groups,
+        scale_groups=scale_groups)
     per_record = detail["per_record_db"]
     finite = {name: value for name, value in per_record.items() if np.isfinite(value)}
     qualifier = "" if independent else SOURCE_DOMINATED_QUALIFIER

@@ -49,6 +49,8 @@ def run_reflection_record(grid, materials, n_steps, *, spec, conductors, cpml_ax
                 channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
             settling_db, settling_witness = settling_db_from_named_records(
                 channels, source_end_index=source_end, dt=result.dt,
+                scale_groups={**{f"coax/plane{pi}/V": "coax/V" for pi in range(len(probes_z))},
+                              **{f"probe{i}": probe.component for i, probe in enumerate(witness_probes)}},
                 freqs=freqs, freq_max=freq_max, return_detail=True,
             )
     return result, settling_db, settling_witness

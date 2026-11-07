@@ -420,10 +420,14 @@ def _score_msl_record(
             ) if _plane_records else []
             _channels.extend((f"probe{i}", _ts_np[:, i])
                              for i in range(_ts_np.shape[1]))
+            from rfx.sparams._settling_groups import msl_column_groups
+            _groups, _labels = msl_column_groups(_channels)
+            _groups.update((f"probe{i}", "ez") for i in range(_ts_np.shape[1]))
             settling_db_runs[driven], settling_details[driven] = settling_db_from_named_records(
                 _channels, source_end_index=_source_end,
                 dt=getattr(_ts_result, "dt", None) or grid.dt,
-                freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
+                freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
+                scale_groups=_groups, _channel_labels=_labels)
     return settling_db_runs, settling_details
 
 
