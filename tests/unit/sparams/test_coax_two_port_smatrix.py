@@ -1023,7 +1023,7 @@ def test_matched_through_line_transmits_reciprocally(monkeypatch):
         @ np.linalg.inv(np.eye(2) - R @ native[:, :, fi]) @ A
         for fi in range(len(BAND))
     ], axis=-1)
-    np.testing.assert_allclose(S, model, rtol=0.0, atol=1e-3)
+    np.testing.assert_allclose(S, model, rtol=0.0, atol=1e-4)
 
     # Reciprocity: both magnitude and phase (a mirror-symmetric through
     # line gives no reason to expect a calibration-scale or orientation
