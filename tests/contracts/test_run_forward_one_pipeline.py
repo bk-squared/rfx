@@ -113,7 +113,9 @@ ASSEMBLY_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-wire', 'graded'),
     ('P-wire', 'uniform'),
+    ('P-wire-driven', 'graded'),
     ('P-wire-driven', 'uniform'),
     ('PW-A', 'graded'),
     ('PW-A', 'uniform'),
@@ -235,7 +237,12 @@ FIELD_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-wire', 'graded'),
+    ('P-wire', 'multi-device-graded'),
+    ('P-wire', 'multi-device-uniform'),
     ('P-wire', 'uniform'),
+    ('P-wire-driven', 'graded'),
+    ('P-wire-driven', 'multi-device-uniform'),
     ('P-wire-driven', 'uniform'),
     ('PW-A', 'uniform'),
     ('PW-B', 'uniform'),
@@ -469,7 +476,7 @@ def test_assembly(declaration, path, direction):
             {'arguments', 'result'} if capture_path == 'graded' and level == 'b' else {'arguments'})
         for cap in pair.values():
             assert set(cap['value']) == required, cap['seam_sites']
-        if path == 'graded' and declaration in ('P-lumped', 'P-lumped2', 'C-full-tensor'):
+        if path == 'graded' and declaration in ('P-lumped', 'P-lumped2', 'P-wire-driven', 'C-full-tensor'):
             # run's default bins arrive as the float64 host grid, forward's
             # request as float32; the runner solves on float32 bins either way
             # (result/sp_freqs is compared exactly below).
@@ -534,6 +541,7 @@ ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row 
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),
     ('P-wire-driven', 'uniform'),
+    ('P-wire-driven', 'multi-device-uniform'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
     ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))
@@ -695,7 +703,7 @@ def test_declaration_refusal_does_not_extend_to_unlisted_rows():
 
 
 @pytest.mark.parametrize('direction', ('a', 'b'))
-@pytest.mark.parametrize('declaration', ('P-lumped', 'P-lumped2'))
+@pytest.mark.parametrize('declaration', ('P-lumped', 'P-lumped2', 'P-wire-driven'))
 def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
     pair = equal_request_pair(declaration, 'multi-device-graded', direction, n_steps=16)
     assert all(item['outcome'] == 'admitted' for item in pair.values()), pair
@@ -705,7 +713,7 @@ def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
         np.testing.assert_array_equal(a.samples, b.samples)
 
 
-@pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2'])
+@pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2', 'P-wire-driven'])
 @pytest.mark.parametrize('path', ['uniform', 'graded', 'multi-device-graded'])
 def test_port_s_equal_requests(declaration, path):
     assert port_s_pair(declaration, path) is not None
