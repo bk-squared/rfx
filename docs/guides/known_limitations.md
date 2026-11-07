@@ -589,6 +589,43 @@ The stopband minima also move with the feed length: with longer feeds they are 5
 passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
 power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
 
+### Two or more excited waveguide ports in one record: uniform `forward()` and graded `run()`/`forward()` mix the other port's drive into each port's S11.
+
+Tracker: #2449
+
+Every waveguide port is driven at its declared amplitude (default 1.0), and each port's S11 is read from that one
+record, so the wave launched by the other port and transmitted through the structure adds to the reflection each port
+measures. Measured on a lossless WR-90 dielectric step (εr 2.2, ports on either side, 7.0–7.9 GHz): |S11| of the first
+port reads 1.60 at 7.0 GHz and 1.50 at 7.9 GHz with both ports driven, against 0.533 and 0.375 with the other port
+silenced, which match the closed-form step reflection 0.533 and 0.376; no warning is raised. Uniform `run()` refuses the
+same declaration. What to do: use `compute_waveguide_s_matrix()`, which drives one port per record. A port silenced with
+`amplitude=0.0` returns an S11 of its own that means nothing (received wave over a near-zero incident wave); read only
+the driven port's S11 from such a run.
+
+### A waveguide port with `f0` omitted on a graded mesh is driven at `freq_max/2`, which can lie below cutoff.
+
+Tracker: #2451
+
+On a uniform mesh an omitted waveguide `f0` resolves to the centre of the requested band; on a graded mesh the port
+still falls back to `freq_max/2`. For WR-90 that lies below the TE10 cutoff (6.557 GHz) whenever `freq_max` is below
+13.1 GHz, so the drive is mostly near or below cutoff, and its near-cutoff content keeps arriving after the record ends.
+Measured on an empty matched WR-90 guide read over 8.2–12.4 GHz with `freq_max` 12.4 GHz: |S11| 0.04–0.94 at 16 000
+steps and up to 2.0 at 32 000 steps on the graded mesh, against 0.0008–0.0012 on the uniform mesh and on the graded mesh
+with `f0` = 10.3 GHz. Preflight resolves the omitted `f0` to the band centre and does not see the low drive. What to do:
+on a graded mesh pass `f0` explicitly, at the centre of the band you read.
+
+### A wire port with `reference_plane_cells` returns a different S11 from `run()` than from `forward()`.
+
+Tracker: #2450
+
+The option is documented to change only the off-diagonal entries. With it, `run()` forms the port's S11 from the
+per-cell voltage at the reference plane, while `run()` without it and `forward()` (which ignores the option) use the
+whole-port voltage. Measured on a 16 mm microstrip thru between two 50 Ω wire ports, 3–7 GHz,
+`reference_plane_cells=3`: |S11 from `run()` − S11 from `forward()`| is 0.084 at 3 GHz and up to 0.238 at 6.5 GHz, the
+same at 4000 and 8000 steps; without the option the two are equal at every bin. Which of the two S11 values is right
+on that board has not been judged. What to do: read S11 from a run without `reference_plane_cells` (or from
+`forward()`), and take only the reference-plane S21 from the run with it.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
