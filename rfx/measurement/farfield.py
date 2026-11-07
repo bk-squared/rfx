@@ -251,17 +251,19 @@ def compute_far_field_jax(
 
     ``max_phase_bytes`` bounds the (n_freqs, n_directions, n_cells) phase
     array the transform materializes per face; the direction grid is
-    split to stay under it. Splitting theta is EXACT — the sum over
-    surface cells is independent per direction — and the chunked result
-    is bit-identical to the single-shot one. Pass ``float("inf")`` to
-    force a single pass.
+    split to stay under it. Splitting theta is exact in arithmetic — the
+    sum over surface cells is independent per direction — and the chunked
+    result equals the single-shot one to float rounding (the final
+    projection compiles differently). Pass ``float("inf")`` to force a
+    single pass.
     """
     # The transform below materializes a (n_freqs, n_directions, n_cells)
     # phase array per face. All three factors are unbounded, and a board
     # pattern run (13 freqs, 181x72 directions, 3.3e5 cells/face) asked for
     # 214 GB and died AFTER an 8-hour solve. The sum over
     # surface cells is independent per direction, so splitting theta is
-    # EXACT — the chunked and unchunked results agree to the bit (locked by
+    # exact in arithmetic — the chunked and unchunked results agree to
+    # rounding, 1e-4 of the field peak (locked by
     # tests/unit/farfield/test_farfield_chunking.py). max_phase_bytes bounds that array;
     # raise it to trade memory for fewer passes, or set it to inf to force
     # the single-shot path.
