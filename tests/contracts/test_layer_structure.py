@@ -743,6 +743,38 @@ def test_outside_report_blocks_and_count_order(synthetic, capsys):
     ]
 
 
+def test_report_outside_ag_counts_a_and_g_outside_layers(synthetic, capsys):
+    code = ("def assembly(x):\n    return x.at[0].set(1)\n"
+            "def grid(n):\n    return jnp.zeros(n + 1)\n"
+            "def allowed(x):\n    return jnp.asarray(x)\n")
+    write(synthetic, "rfx/outside_a.py", code)
+    write(synthetic, "rfx/model/inner.py", code)
+    write(synthetic, "rfx/simulation.py", "def assembly(x):\n    return x.at[0].set(1)\n")
+    result = gate.count(gate.Sources(synthetic))
+    assert result["outside_ag"] == {
+        "rfx/outside_a.py": {"A": ["assembly"], "G": ["grid"]},
+    }
+    assert "outside_ag" not in result["baseline"]
+    assert result["baseline"]["files"]["rfx/simulation.py"]["A"] == ["assembly"]
+    # Remove the gated five-file violation before checking the empty baseline.
+    write(synthetic, "rfx/simulation.py", "")
+    write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
+    assert gate.main(["--repo", str(synthetic)]) == 0
+    default = capsys.readouterr()
+    assert default.err == ""
+    assert "outside-ag" not in default.out
+    assert gate.main(["--repo", str(synthetic), "--report-outside-ag"]) == 0
+    reported = capsys.readouterr()
+    assert reported.err == ""
+    assert reported.out == default.out + (
+        "outside the layer packages: model-assembly writes (A) and grid arithmetic (G) "
+        "— report only, not gated\n"
+        "outside-ag rfx/outside_a.py: A=1 G=1\n"
+        "outside-ag package rfx/outside_a.py: A=1 G=1\n"
+        "outside-ag totals: A=1 G=1\n"
+    )
+
+
 def test_outside_head_and_base_use_named_git_snapshots(synthetic, monkeypatch, capsys):
     path = "rfx/runners/example.py"
     write(synthetic, path, "def old():\n    scan(f, c, xs)\n")
