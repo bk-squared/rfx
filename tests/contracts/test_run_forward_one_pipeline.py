@@ -766,3 +766,39 @@ def test_port_s_equal_requests(declaration, path):
 ])
 def test_port_s_refplane_equal_requests(declaration, path):
     assert port_s_pair(declaration, path) is not None
+
+
+def test_default_port_probes_equal_requests():
+    """forward() with ports and no probe equals run() with one probe at each port position.
+
+    The two plans' probe owners have equal nodes and weights; their ids differ
+    (``probe:port<i>`` against ``probe:<i>``) and are listed here.
+    """
+    from unittest.mock import patch
+    from rfx.model.conductors import PreparedSolve
+    from tests.contracts.path_equivalence.builders import build, FREQS
+
+    def entry(method, declare, **options):
+        sim = build(('_ports', 'lumped_port'), 'run_uniform')
+        sim._probes = []
+        for port in sim._ports if declare else ():
+            sim.add_probe(port.position, port.component)
+        prepared, original = [], PreparedSolve.__init__
+
+        def remember(self, *args, **kwargs):
+            original(self, *args, **kwargs)
+            prepared.append(self)
+        with patch.object(PreparedSolve, '__init__', remember):
+            result = getattr(sim, method)(n_steps=12, skip_preflight=True, **options)
+        owners = [o for o in prepared[0].measurement.owners if o.kind == 'probe']
+        return np.asarray(result.time_series), owners
+
+    forward, forward_owners = entry('forward', False, checkpoint=False, port_s11_freqs=FREQS)
+    run, run_owners = entry('run', True, compute_s_params=False)
+    assert forward.dtype == run.dtype and forward.shape == run.shape == (12, 1)
+    assert forward.tobytes() == run.tobytes()
+    assert [o.id for o in forward_owners] == ['probe:port0']
+    assert [o.id for o in run_owners] == ['probe:0']
+    for a, b in zip(forward_owners, run_owners, strict=True):
+        assert [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in a.channels] == \
+            [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in b.channels]

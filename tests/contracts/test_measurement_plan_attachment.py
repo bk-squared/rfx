@@ -114,8 +114,10 @@ def test_b3_same_request(run, forward):
                 'run_nonuniform' if graded else 'run_uniform', graded=graded)
     sim.add_flux_monitor(axis='x', coordinate=4/1024, freqs=FREQS)
     plans = [capture(path, sim=sim) for path in (run, forward)]
+    # The one listed exclusion: forward()'s default probes at port positions.
     normalized = [replace(plan, path='', owners=tuple(
-        replace(owner, availability='') for owner in plan.owners)) for plan in plans]
+        replace(owner, availability='') for owner in plan.owners
+        if not owner.id.startswith('probe:port'))) for plan in plans]
     assert normalized[0] == normalized[1]
 
 

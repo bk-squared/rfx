@@ -102,6 +102,7 @@ def run(
     stop_interval: int = 250,
     record_dft: bool | tuple[bool, ...] = False,
     port_record_specs: tuple | None = None,
+    measurement: object | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -377,7 +378,9 @@ def run(
         mon_idx=None,
         snapshot_extractor=_take_snapshot if snap_in_body else None,
     )
-    _core_step = make_core_step(_step_ctx)
+    # An attached plan supplies the probe and port tables (direct callers keep theirs).
+    _core_step = make_core_step(_step_ctx, invariants=core_step_invariants(
+        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype))
 
     def step_fn(carry, xs):
         _step_idx, src_vals, mag_src_vals = xs
@@ -775,6 +778,7 @@ def run_until_decay(
     record_dft: bool | tuple[bool, ...] = False,
     port_record_specs: tuple | None = None,
     advisory: dict | None = None,
+    measurement: object | None = None,
 ) -> SimResult:
     """Run until the field energy left after the drive has decayed.
 
@@ -1004,7 +1008,8 @@ def run_until_decay(
     # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
     _inv_args, _inv_rebuild = split_loop_invariants(
-        core_step_invariants(_step_ctx), tuple(grid.shape))
+        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype),
+        tuple(grid.shape))
 
     @jax.jit
     def _single_step(carry_in, step_idx, src_vals, mag_src_vals, inv_args):
