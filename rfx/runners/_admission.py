@@ -1157,11 +1157,23 @@ _COAX_ADVICE = {
 }
 
 
+def refuse_forward_reference_planes(sim) -> None:
+    """Reject the run-only plane declaration before forward lane dispatch."""
+    for index, port in enumerate(sim._ports):
+        if port.reference_plane_cells is not None:
+            raise ValueError(
+                "forward() does not form reference-plane S-parameters: "
+                f"add_port(reference_plane_cells=...) is set on port {index}; "
+                "use run(compute_s_params=True) for reference-plane S, "
+                "or remove the option for forward()")
+
+
 def refuse_coaxial_port(sim, entry: str) -> None:
     """The one coaxial-port refusal of ``run()`` and ``forward()``,
     raised before mesh planning while no time-stepping lane admits the row;
     ``entry`` selects the advice."""
     if entry == "forward":
+        refuse_forward_reference_planes(sim)
         admit_conformal_floor(sim, "fwd_uniform")
     row = ("_coaxial_ports", "coax_port")
     if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})

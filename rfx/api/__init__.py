@@ -1231,8 +1231,8 @@ class Simulation(
             deflation kappa(f) = 1.49-1.86.
             ``None`` (default) keeps the shipped port-cell behaviour,
             byte-identical. The DIAGONAL ``S_jj`` always stays on the
-            byte-frozen legacy path either way, so ``forward()`` /
-            1-port S11 results are unaffected. Requires a wire port
+            legacy path. ``forward()`` refuses this
+            option; use ``run(compute_s_params=True)``. Requires a wire port
             (``extent=``) with an explicit ``direction`` transverse to
             the port component, a PEC signal trace uniform across both
             planes, and the uniform-mesh ``run()`` lane: the
