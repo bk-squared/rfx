@@ -46,3 +46,39 @@ def test_forward_without_option_runs():
     result = _build_thru().forward(n_steps=64, port_s11_freqs=_FREQS,
                                   skip_preflight=True)
     assert np.isfinite(np.asarray(result.s_params)[:, 0]).all()
+
+
+@pytest.mark.parametrize("compute_s_params", [True, None])
+def test_run_partial_optin_refuses_before_time_loop(compute_s_params, monkeypatch):
+    sim = _build_thru(reference_plane_cells=3)
+    sim._ports[1] = replace(sim._ports[1], reference_plane_cells=None)
+    from rfx.stepping import prepared
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("partial opt-in run reached the time-loop entry")
+
+    monkeypatch.setattr(prepared, "advance", forbidden)
+    with pytest.raises(ValueError) as error:
+        sim.run(n_steps=1, compute_s_params=compute_s_params,
+                s_param_freqs=_FREQS, skip_preflight=True)
+    assert str(error.value) == (
+        "reference_plane_cells must be set on every wire port of the "
+        "S-parameter solve: set on port(s) 0, not on port(s) 1; "
+        "set it on all of them or on none")
+
+
+@pytest.mark.parametrize("compute_s_params", [True, None])
+def test_run_all_opted_reaches_time_loop(compute_s_params, monkeypatch):
+    from rfx.stepping import prepared
+
+    class ReachedLoop(Exception):
+        pass
+
+    def reached(*args, **kwargs):
+        raise ReachedLoop
+
+    monkeypatch.setattr(prepared, "advance", reached)
+    with pytest.raises(ReachedLoop):
+        _build_thru(reference_plane_cells=3).run(
+            n_steps=1, compute_s_params=compute_s_params,
+            s_param_freqs=_FREQS, skip_preflight=True)

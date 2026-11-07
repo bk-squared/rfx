@@ -1,6 +1,21 @@
-"""Conductor footprint for the API reference-plane trace scan."""
+"""Admission and geometry checks for wire reference planes."""
 import jax
 import jax.numpy as jnp
+
+
+def refuse_partial_wire_reference_planes(ports):
+    """Require all wire ports in S order to share the plane-wave opt-in."""
+    opted, not_opted = [], []
+    for index, port in enumerate(ports):
+        if port.extent is not None:
+            target = opted if port.reference_plane_cells is not None else not_opted
+            target.append(str(index))
+    if opted and not_opted:
+        raise ValueError(
+            "reference_plane_cells must be set on every wire port of the "
+            f"S-parameter solve: set on port(s) {', '.join(opted)}, "
+            f"not on port(s) {', '.join(not_opted)}; "
+            "set it on all of them or on none")
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):

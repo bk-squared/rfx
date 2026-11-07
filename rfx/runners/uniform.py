@@ -639,6 +639,9 @@ def run_uniform(
         diagnostics=diagnostics,
     )
     from rfx.runners._admission import admit_run_s_matrix
+    from rfx.api._refplane_checks import refuse_partial_wire_reference_planes
+    if compute_s_params is not False:
+        refuse_partial_wire_reference_planes(sim._port_sparameter_entries())
     admit_run_s_matrix(sim, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec)
     # the early stop reads the record so far through the scan's
