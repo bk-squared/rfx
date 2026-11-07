@@ -1,6 +1,7 @@
 """Record time-stepping scans across the declaration setup boundary."""
 import jax
 
+from rfx._host_limits import check_map_count
 from rfx.core.jax_utils import _REGION, compile_time_switch, is_tracer
 
 
@@ -86,6 +87,7 @@ def recorded_scan(f, init, xs=None, length=None, **kwargs):
     of the outer trace, which records it. A scan inside the body is a plain
     scan. Outside the region this is ``jax.lax.scan``.
     """
+    check_map_count()
     region = _REGION.get()
     switch = compile_time_switch()
     if region is None:

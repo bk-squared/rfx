@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+from rfx._host_limits import check_map_count
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
 from rfx.core.yee import MaterialArrays, init_state
 from rfx.measurement.accumulators import plane_metadata
@@ -59,6 +60,7 @@ def _build_vmap_scan_fn(
         accumulators in the SAME order as ``dft_probes`` (empty tuple if
         no planes were registered).
     """
+    check_map_count()
     dt = grid.dt
     dx = grid.dx
     sources = sources or []

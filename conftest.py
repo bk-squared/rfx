@@ -67,6 +67,10 @@ def pytest_configure(config):
             "Check that nothing imported jax before this conftest was loaded.",
             stacklevel=1,
         )
+    # The suite's hosts are managed; keep the one-time vm.max_map_count warning (#2421) out of
+    # order-dependent no-warning asserts. tests/contracts/test_map_count_warning.py resets it.
+    import rfx._host_limits
+    rfx._host_limits._checked = True
     _maybe_register_rss_reporter(config)
 
 

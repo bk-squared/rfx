@@ -51,6 +51,7 @@ on many distributions. Raise it with `sudo sysctl -w vm.max_map_count=262144`; t
 `vm.max_map_count = 262144` in a file under `/etc/sysctl.d/`.
 Alternatively, inside the sweep call `jax.clear_caches()` and `gc.collect()` every few tens of grid
 shapes. The measured mapping count stayed below 23,000 when cleared every 50 shapes; later calls recompile.
+rfx warns once per process (`MapCountWarning`) when the limit is below 262,144 on Linux.
 This limitation was measured on Linux. macOS, Windows and GPU backends were not measured.
 
 ### Graded lumped S: mixed records, periodic run requests and the run() default

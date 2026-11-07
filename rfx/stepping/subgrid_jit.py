@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+from rfx._host_limits import check_map_count
 from rfx.core.drives import drive_layout, inject_drives
 from rfx.core.yee import FDTDState
 from rfx.stepping import update_h, update_e
@@ -625,6 +626,7 @@ def _make_step_fn(ctx):
 
 
 def run_subgridded_scan(*, _step_ctx, carry_init, xs):
+    check_map_count()
     step_fn = _make_step_fn(_step_ctx)
     final_carry, probe_series = jax.lax.scan(step_fn, carry_init, xs)
     return final_carry, probe_series
