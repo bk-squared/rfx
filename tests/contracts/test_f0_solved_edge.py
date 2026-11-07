@@ -6,7 +6,7 @@ import pytest
 from rfx import Box, Simulation
 
 
-@pytest.mark.parametrize("sigma", [5.8e7, 100.])
+@pytest.mark.parametrize("sigma", [5.8e7, 1e4])  # 1.405 ohm/sq at 5 GHz, below 1e-2 eta0
 @pytest.mark.parametrize("aligned", [False, True])
 def test_f0_and_pec_share_solved_spans_and_one_verdict(sigma, aligned):
     dx = .001
