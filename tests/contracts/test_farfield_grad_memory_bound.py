@@ -11,7 +11,7 @@ import numpy as np
 
 from rfx.farfield import NTFFBox, NTFFData
 from rfx.grid import Grid
-from rfx.measurement.farfield import compute_far_field_jax
+from rfx.measurement.farfield import _stacked_face_inputs, compute_far_field_jax
 
 
 def _fixture(side):
@@ -62,6 +62,92 @@ def test_farfield_grad_memory_bound():
         print(f"temp={temp}, one_face={one_face}, analytic_small={small}")
         assert temp[16] <= 0.25 * temp[1], temp
         assert temp[1] <= 1.25 * (one_face + small), (temp, one_face, small)
+
+
+
+# A box of 8 x 12 x 16 cells: the x faces have 12 x 16 cells, the y faces
+# 8 x 16 and the z faces 8 x 12, three distinct face shapes.
+_BOX_CELLS = (8, 12, 16)
+
+
+def _box_fixture():
+    rng = np.random.default_rng(1483)
+    nx, ny, nz = _BOX_CELLS
+    spans = {"x": (ny, nz), "y": (nx, nz), "z": (nx, ny)}
+    faces = []
+    for axis in "xxyyzz":
+        shape = (3, *spans[axis], 4)
+        faces.append(jnp.asarray((rng.normal(size=shape) + 1j * rng.normal(size=shape))
+                                 .astype(np.complex64)))
+    grid = Grid(freq_max=40e9, domain=tuple((n + 2) * 0.0005 for n in _BOX_CELLS),
+                dx=0.0005, cpml_layers=0)
+    box = NTFFBox(1, nx + 1, 1, ny + 1, 1, nz + 1,
+                  jnp.asarray([20e9, 30e9, 40e9], dtype=jnp.float32))
+    return tuple(faces), box, grid
+
+
+def test_farfield_grad_memory_bound_non_cubic_box():
+    """With faces of unequal size, the face scan pads every face to the
+    largest one; the temp memory is then the largest face's factor."""
+    with jax.default_device(jax.devices("cpu")[0]):
+        faces, box, grid = _box_fixture()
+        theta = jnp.linspace(0, jnp.pi, 48, dtype=jnp.float32)
+        phi = jnp.linspace(0, 2 * jnp.pi, 72, endpoint=False, dtype=jnp.float32)
+        nf = faces[0].shape[0]
+        nd = theta.size * phi.size
+        cells = [f.shape[1] * f.shape[2] for f in faces]
+        nc_max = max(cells)
+        n_faces = len(faces)
+        cb = faces[0].dtype.itemsize
+        rb = theta.dtype.itemsize
+        # Four input-component cotangents per face at its own size; the
+        # stacked padded scan inputs at the largest size: J and M (six
+        # components) and their cotangents (six), positions (three real)
+        # and weights (one real); N/L and their cotangents (2 * 6
+        # components), two E outputs and their cotangents (2 * 2), direction
+        # unit vectors (3 * 3 real), angles and frequencies.
+        small = (sum(nf * nc * 4 * cb for nc in cells)
+                 + n_faces * nf * nc_max * (6 + 6) * cb
+                 + n_faces * nc_max * (3 + 1) * rb
+                 + nf * nd * (2 * 6 + 2 * 2) * cb
+                 + nd * 9 * rb + (theta.size + phi.size + nf) * rb)
+        largest_face = nf * nd * nc_max * cb
+        budget = theta.size * nf * phi.size * nc_max * 16   # c = 1
+
+        def objective(values):
+            ff = compute_far_field_jax(NTFFData(*values), box, grid, theta, phi,
+                                       max_phase_bytes=budget)
+            return jnp.sum(jnp.abs(ff.E_theta)**2 + jnp.abs(ff.E_phi)**2)
+
+        analysis = jax.jit(jax.grad(objective)).lower(faces).compile().memory_analysis()
+        assert analysis is not None
+        temp = analysis.temp_size_in_bytes
+        print(f"temp={temp}, largest_face={largest_face}, analytic_small={small}")
+        assert temp <= 1.25 * (largest_face + small), (temp, largest_face, small)
+
+
+def test_stacked_face_inputs_are_finite_and_padded_with_zero():
+    """A padded cell must add exactly zero: zero weight, zero currents and a
+    finite position (0.0), so no NaN or Inf enters the contraction."""
+    with jax.default_device(jax.devices("cpu")[0]):
+        faces, box, grid = _box_fixture()
+        cells = [f.shape[1] * f.shape[2] for f in faces]
+        nc_max = max(cells)
+        nf = faces[0].shape[0]
+        J, M, pos, w = _stacked_face_inputs(NTFFData(*faces), box, grid, jnp.float32)
+        assert J.shape == (len(faces), nf, nc_max, 3)
+        assert M.shape == (len(faces), nf, nc_max, 3)
+        assert pos.shape == (len(faces), nc_max, 3)
+        assert w.shape == (len(faces), nc_max)
+        for name, array in (("positions", pos), ("weights", w),
+                            ("J", J), ("M", M)):
+            assert bool(jnp.all(jnp.isfinite(array))), f"stacked {name} not finite"
+        for index, nc in enumerate(cells):
+            assert bool(jnp.all(w[index, nc:] == 0)), f"face {index}: padded weight"
+            assert bool(jnp.all(J[index, :, nc:] == 0)), f"face {index}: padded J"
+            assert bool(jnp.all(M[index, :, nc:] == 0)), f"face {index}: padded M"
+            assert bool(jnp.all(pos[index, nc:] == 0)), f"face {index}: padded position"
+            assert bool(jnp.all(w[index, :nc] > 0)), f"face {index}: real cell weight"
 
 
 def test_farfield_transform_compositions():

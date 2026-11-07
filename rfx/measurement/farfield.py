@@ -308,6 +308,108 @@ def compute_far_field_jax(
     nf = freqs.shape[0]
     k_arr = 2 * jnp.pi * freqs / C0
 
+    # The present faces, stacked on a leading face axis and padded to the
+    # largest face's cell count (built once; they do not depend on θ).
+    stacked = _stacked_face_inputs(ntff_data, box, grid, rdtype)
+
+    def transform_chunk(theta):
+        TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
+        sth, cth = jnp.sin(TH), jnp.cos(TH)
+        sph, cph = jnp.sin(PH), jnp.cos(PH)
+
+        r_hat = jnp.stack([sth * cph, sth * sph, cth], axis=-1)
+        th_hat = jnp.stack([cth * cph, cth * sph, -sth], axis=-1)
+        ph_hat = jnp.stack([-sph, cph, jnp.zeros_like(sth)], axis=-1)
+
+        n_th, n_ph = theta.shape[0], phi.shape[0]
+        r_flat = r_hat.reshape(-1, 3)
+        n_dir = r_flat.shape[0]
+
+        # The carry's dtype is cdtype; with x64 enabled and float64 cell
+        # positions it is the promoted type the face sums had before.
+        acc_dtype = cdtype if stacked is None else jnp.result_type(
+            cdtype, r_flat, k_arr, *stacked)
+        zeros = jnp.zeros((nf, n_dir, 3), dtype=acc_dtype)
+
+        # The six face terms have no data dependence on one another, so the
+        # compiler formed their phase factors together (and, under reverse
+        # mode, kept them together). One scan over the faces, with N and L
+        # carried from step to step, makes the faces take turns: one face's
+        # (n_f, n_dir, n_c) factor exists at a time, and the checkpointed
+        # step rebuilds it in the backward pass instead of keeping it.
+        # A padded cell has zero weight and zero currents, so it adds
+        # exactly zero.
+        @jax.checkpoint
+        def face_step(carry, face):
+            N_acc, L_acc = carry
+            J, M, pos, w = face
+            dot = jnp.matmul(r_flat, pos.T, precision=HIGHEST)  # (n_dir, nc)
+            phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
+            J_w = J * w[None, :, None]
+            M_w = M * w[None, :, None]
+            N_acc = N_acc + jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
+            L_acc = L_acc + jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
+            return (N_acc.astype(acc_dtype), L_acc.astype(acc_dtype)), None
+
+        if stacked is None:
+            N_total, L_total = zeros, zeros
+        else:
+            (N_total, L_total), _ = jax.lax.scan(
+                face_step, (zeros, zeros), stacked, unroll=1)
+
+        th_flat = th_hat.reshape(-1, 3)
+        ph_flat = ph_hat.reshape(-1, 3)
+
+        N_th = jnp.sum(N_total * th_flat[None, :, :], axis=-1)
+        N_ph = jnp.sum(N_total * ph_flat[None, :, :], axis=-1)
+        L_th = jnp.sum(L_total * th_flat[None, :, :], axis=-1)
+        L_ph = jnp.sum(L_total * ph_flat[None, :, :], axis=-1)
+
+        jk = 1j * k_arr[:, None]  # (nf, 1)
+        E_theta = -jk / (4 * jnp.pi) * (L_ph + ETA_0 * N_th)
+        E_phi = jk / (4 * jnp.pi) * (L_th - ETA_0 * N_ph)
+
+        return E_theta.reshape(nf, n_th, n_ph), E_phi.reshape(nf, n_th, n_ph)
+
+    if chunk >= n_th_total:
+        # The budget does not split θ: no direction-chunk map. A length-1
+        # map kept the forward factors as residuals; the face scan alone
+        # sequences the faces here.
+        E_theta, E_phi = transform_chunk(theta)
+    else:
+        # Equal shapes let the backward map rebuild one chunk at a time.
+        # Repeated end rows are discarded and receive zero cotangents.
+        padding = (-n_th_total) % chunk
+        theta_chunks = jnp.pad(theta, (0, padding), mode="edge").reshape(
+            (n_th_total + padding) // chunk, chunk)
+        E_theta, E_phi = jax.lax.map(jax.checkpoint(transform_chunk), theta_chunks)
+
+        def unpad(field):
+            return field.transpose(1, 0, 2, 3).reshape(
+                nf, n_th_total + padding, phi.shape[0])[:, :n_th_total, :]
+
+        E_theta, E_phi = unpad(E_theta), unpad(E_phi)
+
+    return FarFieldResult(
+        E_theta=E_theta,
+        E_phi=E_phi,
+        theta=theta,
+        phi=phi,
+        freqs=freqs,
+    )
+
+
+def _stacked_face_inputs(ntff_data, box, grid, rdtype):
+    """The present faces' currents, cell positions and cell areas, stacked.
+
+    Returns ``(J, M, pos, w)`` with shapes (n_faces, n_f, n_c,max, 3),
+    (n_faces, n_f, n_c,max, 3), (n_faces, n_c,max, 3) and
+    (n_faces, n_c,max), faces in the order x_lo, x_hi, y_lo, y_hi, z_lo,
+    z_hi, or ``None`` when no face is present. A face absent from
+    ``ntff_data`` (``None`` or empty) is not stacked. Each face is padded
+    on its cell axis to the largest face's cell count with zero currents,
+    zero weight and position 0.0, so a padded cell adds exactly zero.
+    """
     dx = grid.dx
     dy = getattr(grid, 'dy', dx)
     dz_arr = getattr(grid, 'dz', None)
@@ -357,112 +459,65 @@ def compute_far_field_jax(
             return d_perp * dz_face  # (nk,)
         return _scalar_face_dS(axis, dx, dy, dx)
 
-    @jax.checkpoint
-    def transform_chunk(theta):
-        TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
-        sth, cth = jnp.sin(TH), jnp.cos(TH)
-        sph, cph = jnp.sin(PH), jnp.cos(PH)
+    face_specs = [
+        ("x_lo", 0, -1, i0, ((j0, j1), (k0, k1))),
+        ("x_hi", 0, +1, i1, ((j0, j1), (k0, k1))),
+        ("y_lo", 1, -1, j0, ((i0, i1), (k0, k1))),
+        ("y_hi", 1, +1, j1, ((i0, i1), (k0, k1))),
+        ("z_lo", 2, -1, k0, ((i0, i1), (j0, j1))),
+        ("z_hi", 2, +1, k1, ((i0, i1), (j0, j1))),
+    ]
 
-        r_hat = jnp.stack([sth * cph, sth * sph, cth], axis=-1)
-        th_hat = jnp.stack([cth * cph, cth * sph, -sth], axis=-1)
-        ph_hat = jnp.stack([-sph, cph, jnp.zeros_like(sth)], axis=-1)
+    per_face = []
+    for name, axis, sign, face_idx, other_ranges in face_specs:
+        face_dft = getattr(ntff_data, name, None)
+        if face_dft is None:
+            continue
+        face = jnp.asarray(face_dft)
+        nf, n1, n2 = face.shape[0], face.shape[1], face.shape[2]
+        if n1 == 0 or n2 == 0:
+            continue
 
-        n_th, n_ph = theta.shape[0], phi.shape[0]
-        r_flat = r_hat.reshape(-1, 3)
-        n_dir = r_flat.shape[0]
+        pos = _face_positions_jax(axis, face_idx, other_ranges, dx,
+                                  cpml_lo_x, cpml_lo_y, cpml_lo_z,
+                                  dy=dy, z_edges=z_edges,
+                                  x_edges=x_edges, y_edges=y_edges,
+                                  centre=face_centre)
+        pos_flat = pos.reshape(-1, 3)
+        fields_flat = face.reshape(nf, -1, 4)
 
-        N_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
-        L_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
+        J, M = _surface_currents_jax(fields_flat, axis, sign)
 
-        face_specs = [
-            (ntff_data.x_lo, 0, -1, i0, ((j0, j1), (k0, k1))),
-            (ntff_data.x_hi, 0, +1, i1, ((j0, j1), (k0, k1))),
-            (ntff_data.y_lo, 1, -1, j0, ((i0, i1), (k0, k1))),
-            (ntff_data.y_hi, 1, +1, j1, ((i0, i1), (k0, k1))),
-            (ntff_data.z_lo, 2, -1, k0, ((i0, i1), (j0, j1))),
-            (ntff_data.z_hi, 2, +1, k1, ((i0, i1), (j0, j1))),
-        ]
-
-        for face_dft, axis, sign, face_idx, other_ranges in face_specs:
-            face = jnp.asarray(face_dft)
-            n1, n2 = face.shape[1], face.shape[2]
-            if n1 == 0 or n2 == 0:
-                continue
-
-            @jax.checkpoint
-            def face_contribution(face):
-                pos = _face_positions_jax(axis, face_idx, other_ranges, dx,
-                                          cpml_lo_x, cpml_lo_y, cpml_lo_z,
-                                          dy=dy, z_edges=z_edges,
-                                          x_edges=x_edges, y_edges=y_edges,
-                                          centre=face_centre)
-                pos_flat = pos.reshape(-1, 3)
-                fields_flat = face.reshape(nf, -1, 4)
-
-                J, M = _surface_currents_jax(fields_flat, axis, sign)
-
-                if inplane_graded:
-                    dS_flat = _face_dS_full_j(axis, other_ranges).reshape(-1)
+        if inplane_graded:
+            dS_flat = _face_dS_full_j(axis, other_ranges).reshape(-1)
+        else:
+            # Per-cell dS for non-uniform z on x/y faces
+            k_range = other_ranges[1] if axis in (0, 1) else None
+            if k_range is not None:
+                dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]), dtype=rdtype)
+                if dS_k.ndim > 0:
+                    dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
                 else:
-                    # Per-cell dS for non-uniform z on x/y faces
-                    k_range = other_ranges[1] if axis in (0, 1) else None
-                    if k_range is not None:
-                        dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]), dtype=rdtype)
-                        if dS_k.ndim > 0:
-                            dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
-                        else:
-                            dS_flat = dS_k
-                    else:
-                        dS_flat = _face_dS_jax(axis, 0, 0)
+                    dS_flat = dS_k
+            else:
+                dS_flat = _face_dS_jax(axis, 0, 0)
+        dS_flat = jnp.broadcast_to(jnp.asarray(dS_flat, dtype=rdtype), (n1 * n2,))
+        per_face.append((J, M, pos_flat, dS_flat))
 
-                dot = jnp.matmul(r_flat, pos_flat.T, precision=HIGHEST)  # (n_dir, nc)
+    if not per_face:
+        return None
+    n_max = max(int(p[3].shape[0]) for p in per_face)
 
-                phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
-                dS_flat = jnp.asarray(dS_flat, dtype=rdtype)  # may be Python float
-                if jnp.ndim(dS_flat) > 0:
-                    J_w = J * dS_flat[None, :, None]
-                    M_w = M * dS_flat[None, :, None]
-                    N = jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
-                    L = jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
-                else:
-                    N = jnp.einsum("fdc,fcj->fdj", phase, J, precision=HIGHEST) * dS_flat
-                    L = jnp.einsum("fdc,fcj->fdj", phase, M, precision=HIGHEST) * dS_flat
-                return N, L
+    def pad_cells(x, axis):
+        widths = [(0, 0)] * x.ndim
+        widths[axis] = (0, n_max - x.shape[axis])
+        return jnp.pad(x, widths, constant_values=0)
 
-            N, L = face_contribution(face)
-            N_total = N_total + N
-            L_total = L_total + L
-
-        th_flat = th_hat.reshape(-1, 3)
-        ph_flat = ph_hat.reshape(-1, 3)
-
-        N_th = jnp.sum(N_total * th_flat[None, :, :], axis=-1)
-        N_ph = jnp.sum(N_total * ph_flat[None, :, :], axis=-1)
-        L_th = jnp.sum(L_total * th_flat[None, :, :], axis=-1)
-        L_ph = jnp.sum(L_total * ph_flat[None, :, :], axis=-1)
-
-        jk = 1j * k_arr[:, None]  # (nf, 1)
-        E_theta = -jk / (4 * jnp.pi) * (L_ph + ETA_0 * N_th)
-        E_phi = jk / (4 * jnp.pi) * (L_th - ETA_0 * N_ph)
-
-        return E_theta.reshape(nf, n_th, n_ph), E_phi.reshape(nf, n_th, n_ph)
-
-    # Equal shapes let the backward map rebuild one face-chunk phase at a
-    # time. Repeated end rows are discarded and receive zero cotangents.
-    padding = (-n_th_total) % chunk
-    theta_chunks = jnp.pad(theta, (0, padding), mode="edge").reshape((n_th_total + padding) // chunk, chunk)
-    E_theta, E_phi = jax.lax.map(transform_chunk, theta_chunks)
-
-    def unpad(field):
-        return field.transpose(1, 0, 2, 3).reshape(nf, n_th_total + padding, phi.shape[0])[:, :n_th_total, :]
-
-    return FarFieldResult(
-        E_theta=unpad(E_theta),
-        E_phi=unpad(E_phi),
-        theta=theta,
-        phi=phi,
-        freqs=freqs,
-    )
+    J = jnp.stack([pad_cells(p[0], 1) for p in per_face])
+    M = jnp.stack([pad_cells(p[1], 1) for p in per_face])
+    pos = jnp.stack([pad_cells(p[2], 0) for p in per_face])
+    w = jnp.stack([pad_cells(p[3], 0) for p in per_face])
+    return J, M, pos, w
 
 
 def _scalar_face_dS(axis, dx, dy, dz):

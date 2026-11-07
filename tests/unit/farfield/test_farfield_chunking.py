@@ -120,7 +120,40 @@ def test_default_budget_chunks_a_large_problem():
             for value in program:
                 yield from scan_equations(value)
 
-    scans = list(scan_equations(traced))
+    def direction_chunk_maps(program):
+        """The scans whose scanned operand is built from theta.
+
+        The faces are also a scan (inside each chunk, or alone when the
+        budget does not split); its scanned operands are the face records,
+        not theta. The direction-chunk map is the scan whose scanned
+        operand descends from the traced theta input.
+        """
+        top = program.jaxpr
+        theta_var = top.invars[0]
+        producer = {}
+        for equation in top.eqns:
+            for out in equation.outvars:
+                producer[out] = equation
+
+        def from_theta(var, seen):
+            if var is theta_var:
+                return True
+            equation = producer.get(var)
+            if equation is None or id(equation) in seen:
+                return False
+            seen.add(id(equation))
+            return any(from_theta(v, seen) for v in equation.invars
+                       if not hasattr(v, "val"))
+
+        found = []
+        for scan in scan_equations(program):
+            first_x = scan.params["num_consts"] + scan.params["num_carry"]
+            if any(from_theta(v, set()) for v in scan.invars[first_x:]
+                   if not hasattr(v, "val")):
+                found.append(scan)
+        return found
+
+    scans = direction_chunk_maps(traced)
     assert len(scans) == 1, "expected one direction-chunk map"
     scan = scans[0]
     assert scan.params["length"] == expected_length, (
@@ -129,6 +162,14 @@ def test_default_budget_chunks_a_large_problem():
     chunk_shape = theta_operand.aval.shape[1:]  # remove the scan iteration axis
     assert chunk_shape == (expected_width,), (
         f"realized theta chunk shape {chunk_shape}; expected {(expected_width,)}")
+
+    # A budget that does not split theta enters no direction-chunk map.
+    unsplit = jax.make_jaxpr(
+        lambda theta: real(res.ntff_data, res.ntff_box, res.grid, theta, ph,
+                           max_phase_bytes=float("inf"))
+    )(th)
+    assert direction_chunk_maps(unsplit) == [], (
+        "an unsplit budget entered a direction-chunk map")
     chunked = real(res.ntff_data, res.ntff_box, res.grid, th, ph,
                    max_phase_bytes=budget)
 
