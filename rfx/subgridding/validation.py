@@ -544,7 +544,7 @@ def _local_xy_center_source_candidate_allowed(sim) -> bool:
         return False
     if sim._boundary != "pec" or int(getattr(sim, "_cpml_layers", 0)) != 0:
         return False
-    sources = [pe for pe in getattr(sim, "_ports", ()) if pe.impedance == 0.0]
+    sources = [pe for pe in getattr(sim, "_ports", ()) if pe.is_soft_source]
     if not sources:
         return False
     center_tol = 1e-12
@@ -893,7 +893,7 @@ def validate_subgrid_setup(
                             )
 
         for idx, pe in enumerate(getattr(sim, "_ports", ())):
-            label = "source" if pe.impedance == 0.0 else "port"
+            label = "source" if pe.is_soft_source else "port"
             if pe.impedance > 0.0:
                 port_allowed = (
                     mode == "production"

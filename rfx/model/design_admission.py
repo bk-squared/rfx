@@ -53,7 +53,7 @@ def publish_declarations(conductors, sim, design, sheet_operator=None, *, occupa
 def source_findings(sim, conductors, occupancy, design):
     """Geometry/presence only: identical for concrete and traced occupancies."""
     from rfx.model.conductors import publish_port_release
-    sources = [(i, entry) for i, entry in enumerate(sim._ports) if entry.impedance == 0]
+    sources = [(i, entry) for i, entry in enumerate(sim._ports) if entry.is_soft_source]
     if not sources:
         return ()
     explanation = ('its drive is weighted by the design metal on its edge and is '

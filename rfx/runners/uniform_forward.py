@@ -263,7 +263,7 @@ def _forward_from_materials(
         return _sparam_port_idx == _sparam_drive_idx
 
     for _port_index, pe in enumerate(self._ports):
-        if pe.impedance == 0.0:
+        if pe.is_soft_source:
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, n_steps,
                               field_dtype=self._resolve_field_dtype())
@@ -356,7 +356,7 @@ def _forward_from_materials(
                 _i_port = int(grid.position_to_index(pe.position)[_l_ax])
                 _i_far = _i_port + _sign * 2 * int(pe.reference_plane_cells)
                 for _other in self._ports:
-                    if _other is pe or _other.impedance == 0.0:
+                    if _other is pe or _other.is_soft_source:
                         continue
                     _oi = int(grid.position_to_index(
                         _other.position)[_l_ax])

@@ -407,7 +407,7 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
             cells = (_wire_port_cells(grid, wire_port_from_entry(port))
                      if port.extent is not None else
                      [field_index(grid, port.position, port.component)])
-            prescribed = (port.impedance == 0.0
+            prescribed = (port.is_soft_source
                           and port.amplitude_kind == "field")
             if prescribed or not getattr(port, "excite", True):
                 undriven.update((tuple(int(c) for c in cell), port.component)

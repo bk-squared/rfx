@@ -422,7 +422,7 @@ def _run_subgridded_once(
         return cells[len(cells) // 2]
 
     for pe in sim._ports:
-        if pe.impedance == 0.0:
+        if pe.is_soft_source:
             source_requests.append((pe, _pos_to_fine_idx(pe.position, pe.component), None))
             continue
 

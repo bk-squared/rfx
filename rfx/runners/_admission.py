@@ -1250,9 +1250,9 @@ def graded_lumped_default_s(sim):
     set with a wire port keeps the wire default. Never a refusal: the user did
     not ask for S (rfx-lead D:6b5bd8).
     """
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    ports = [p for p in sim._ports if p.is_port]
     if (not ports or any(p.extent is not None for p in ports)
-            or any(p.impedance == 0.0 for p in sim._ports) or sim._periodic_axes
+            or any(p.is_soft_source for p in sim._ports) or sim._periodic_axes
             or not any(p.excite for p in ports)):
         return False
     return require_isolated_s_drive(sim, implicit=True)
@@ -1269,13 +1269,13 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     require a driven impedance port, regardless of other excitations.
     Passive records remain available as termination diagnostics, without S.
     """
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    ports = [p for p in sim._ports if p.is_port]
     if main_record and ports:
         from rfx.measurement.port_s_contract import record_ports, require_driven_record_s
         if not require_driven_record_s(
                 (p.excite for p in record_ports(sim, default=implicit)), implicit=implicit):
             return False
-    if not ports or not any(p.impedance == 0.0 for p in sim._ports):
+    if not ports or not any(p.is_soft_source for p in sim._ports):
         return True
     reason = (
         "Lumped/wire S-matrix requests do not support plain sources / "
@@ -1303,7 +1303,7 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
         compute_s_params is None
         and sim._refinement is None
 
-        and any(pe.impedance != 0.0
+        and any(pe.is_port
                 and (not sim._uses_nonuniform_mesh or pe.extent is not None
                      or getattr(pe, "excite", True)) for pe in sim._ports)
     )
@@ -1316,7 +1316,7 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
         _one_device and sim._refinement is None
         and not _s_matrix_ports(sim))
     if (not _one_device and sim._uses_nonuniform_mesh
-            and any(p.impedance != 0.0 and not getattr(p, "excite", True) for p in sim._ports)):
+            and any(p.is_port and not getattr(p, "excite", True) for p in sim._ports)):
         reason = ("A passive port's S column needs a drive of its own: graded run() drives each "
                   "port in turn on one device; on several devices it reads S from one record. ")
         if compute_s_params is None and not requested:
@@ -1346,7 +1346,7 @@ def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
                        distributed=False):
     """Check the requested scan extraction before run() starts its field solve."""
     uses_scan = (False if distributed and sim._uses_nonuniform_mesh else
-                 any(p.impedance != 0.0 for p in sim._ports) if distributed else _s_matrix_ports(sim))
+                 any(p.is_port for p in sim._ports) if distributed else _s_matrix_ports(sim))
     if compute_s_params is not False:
         # Without the scan, S is read from the main run's own record.
         refuse_plain_sources_s_matrix(sim, main_record=not uses_scan)

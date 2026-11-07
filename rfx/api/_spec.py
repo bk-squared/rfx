@@ -27,7 +27,7 @@ from typing import Literal, Mapping, NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import EPS_0
+from rfx.api._port_kind import PortKind
 from rfx.geometry.csg import Shape
 from rfx.sources.sources import GaussianPulse
 from rfx.materials.debye import DebyePole
@@ -1090,7 +1090,7 @@ class _GeometryEntry:
 
 
 @dataclass(frozen=True)
-class _PortEntry:
+class _PortEntry(PortKind):
     position: tuple[float, float, float]
     component: str
     impedance: float

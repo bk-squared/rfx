@@ -585,11 +585,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     passive_diagnostic = passive_record_diagnostic(sim)  # all-passive set: V/I kept, as uniform
     # One excited lumped port alone reads S from the main record, as uniform run() does.
     single_lumped = (len(sim._ports) == 1 and sim._ports[0].extent is None
-                     and sim._ports[0].impedance != 0.0 and sim._ports[0].excite)
+                     and sim._ports[0].is_port and sim._ports[0].excite)
     scan = (lane == "run_nonuniform" and not _drive_scan and compute_s_params is not False
             and _s_matrix_ports(sim) and not single_lumped
             and (compute_s_params is True or s_param_freqs is not None
-                 or any(p.impedance != 0.0 and p.extent is not None for p in sim._ports)
+                 or any(p.is_port and p.extent is not None for p in sim._ports)
                  or graded_lumped_default_s(sim)))
     if scan:
         # The main record keeps its port records at the scan's bins; its S is not formed.
@@ -599,7 +599,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                          else default_frequency_grid(sim._freq_max, 50, host=True))
 
     if not scan and (lane == "run_nonuniform" and compute_s_params is not False
-            and any(p.impedance != 0.0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
+            and any(p.is_port and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
         from rfx.runners._admission import refuse_plain_sources_s_matrix
         if not refuse_plain_sources_s_matrix(sim, main_record=True,
                 implicit=passive_diagnostic and compute_s_params is None and s_param_freqs is None):
@@ -891,7 +891,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     for port_index, drive in ports.drives:
         drives_by_port.setdefault(port_index, []).append(drive)
     for port_index, pe in enumerate(sim._ports):
-        if pe.impedance == 0.0:
+        if pe.is_soft_source:
             idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
                    else field_index(grid, pe.position, pe.component))
             sources.defer(make_current_source,

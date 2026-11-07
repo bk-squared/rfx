@@ -103,7 +103,7 @@ def run_disjoint_stage2_path(
     source_entries = [
         (mapping, pe)
         for mapping, pe in zip(contract.source_mappings, sim._ports)
-        if pe.impedance == 0.0 and pe.waveform is not None
+        if pe.is_soft_source and pe.waveform is not None
     ]
     probe_entries = [
         (mapping, probe)
