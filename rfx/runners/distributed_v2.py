@@ -327,7 +327,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
 
 
 
-def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,
+def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1, lane='run_distributed',
                     _source_port_indices=None, _record_probes=None, preflight=None, assembly=None,
                     snapshot=None, _record_vref=True, s_param_freqs=None, compute_s_params=False, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
@@ -488,6 +488,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
     # Build sources and probes
     # ------------------------------------------------------------------
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
+                       frequencies=s_param_freqs if compute_s_params else None)
     from rfx._internal._grid_metric import field_index
     sources = PortSourceQueue()
     probes = []
@@ -592,6 +595,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
 
     from rfx.runners._distributed_records import SlabRecords
+    from rfx.measurement.prepared import finish_measurement
     n_prb = len(probes)
     from rfx.stepping.slab_wrap_uniform import run_wrapped_uniform
     tfsf = None
@@ -602,6 +606,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     dispersion = [debye_spec, lorentz_spec]
     del materials, pec_edges, pec_mask, pec_shapes, debye_spec, lorentz_spec
     records = SlabRecords(sim, grid, nx_per, mesh, jnp.float32, n_steps, snapshot)
+    finish_measurement(stepping_product)
     final_carry, probe_ts, final_state_sharded, records = prepared_step.advance(
         stepping_product, run_wrapped_uniform, sources, probes, layout, mesh, records,
         _operand_layout="wrapped_uniform_slab", n_steps=n_steps,

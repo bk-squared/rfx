@@ -239,6 +239,11 @@ def run_uniform(
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
         pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
     pec_edge_masks = conductors.pec_edges
+    from rfx.measurement.port_s_contract import passive_record_diagnostic
+    passive_diagnostic = passive_record_diagnostic(sim)
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=sizing_n, path='run_uniform',
+                       frequencies=s_param_freqs if compute_s_params is None or compute_s_params or passive_diagnostic else None)
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
     if sim._msl_ports and use_kottke_pec:
         from rfx.boundaries.pec import PEC_INV_THRESHOLD, kottke_fenced_edge_masks
@@ -346,8 +351,6 @@ def run_uniform(
     from rfx.measurement.port_registration import uniform_run_specs
     record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
 
-    from rfx.measurement.port_s_contract import passive_record_diagnostic
-    passive_diagnostic = passive_record_diagnostic(sim)
     if (passive_diagnostic and compute_s_params is None and s_param_freqs is None
             and len(wire_ports) == 1 and not lumped_ports):
         # Direct runner calls do not pass through run()'s request resolver.

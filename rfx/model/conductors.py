@@ -149,6 +149,7 @@ class RealizedConductors(_RealizedPEC):
     realization_table: object = field(default=None, compare=False, repr=False)
     _realization_tables: list = field(default_factory=list, compare=False, repr=False)
     _prepared_owner: object = field(default=None, compare=False, repr=False)
+    _prepared_solve: object = field(default=None, compare=False, repr=False)
     _realization_record: object = field(default=None, compare=False, repr=False)
     refinements: tuple = ()
     kernel_context: object = field(default=None, compare=False, repr=False)
@@ -449,6 +450,7 @@ class PreparedSolve:
         self._product = None
         self._taken = False
         self.diagnostics = ()
+        self.measurement = None
 
     def realized(self, *, n_devices=1, report_context=None):
         if self._taken:
@@ -465,6 +467,7 @@ class PreparedSolve:
 
     def take(self, *, n_devices=1):
         product = self.realized(n_devices=n_devices)
+        object.__setattr__(product, "_prepared_solve", self)
         self._product = None
         self._taken = True
         return product
@@ -515,6 +518,7 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
         refuse_dead_soft_sources(sim, obj)
     return (replace(obj, assembly_from_sim=False) if root is None else
             replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim,
+                    _prepared_solve=root._prepared_solve,
                     _realization_tables=root._realization_tables, realization_table=root.realization_table,
                     _realization_record=root._realization_record, _prepared_owner=root._prepared_owner or root))
 
@@ -552,6 +556,8 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
         # Keep the full-domain conductor view stable while its prepared owner
         # transfers operands to shards. This shares arrays, never reassembles.
         return replace(conductors, _prepared_owner=conductors), record
+    from rfx.measurement.prepared import finish_measurement
+    finish_measurement(conductors)
     return conductors, record
 
 

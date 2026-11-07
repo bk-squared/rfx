@@ -1,8 +1,8 @@
-"""Immutable, host-only snapshot of today's measurement conventions.
+"""Immutable measurement snapshot of today's measurement conventions.
 
 The shared DFT reads this physical clock. Call the builder once with
 its realized grid and retain the returned snapshot. There are no buffers,
-waveforms, material masks, or mutable array leaves in the result. Sampling
+waveforms or material masks in the result. Phase inputs may be traced leaves. Sampling
 weights and quadrature areas are separate: a raw DFT plane does not integrate
 its field, whereas a modal channel does.
 
@@ -26,6 +26,7 @@ from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, replace
 from itertools import product
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -70,17 +71,20 @@ class Owner:
     id: str
     kind: str
     channels: tuple[Channel, ...]
-    frequencies: tuple[float, ...] = ()
+    frequencies: object = ()
     reference_planes: tuple[ReferencePlane, ...] = ()
     mode: tuple[int, int] | None = None
     mode_profile_reference: str | None = None
     known_differences: tuple[str, ...] = ()
     availability: str = 'sampled'
+    dft_window: object = 'rect'
+    dft_window_alpha: object = 0.25
+    periodic: tuple[bool, bool, bool] | None = None
 
 
 @dataclass(frozen=True)
 class TimeBase:
-    dt: float
+    dt: object
     record_length: int
     e_offset: float = 1.0
     h_offset: float = 0.5
@@ -94,6 +98,8 @@ class TimeBase:
             raise TypeError('measurement step must be an integer')
         if kind not in ('E', 'H'):
             raise ValueError('channel kind must be E or H')
+        if _traced(self.dt):
+            return (n + (self.e_offset if kind == 'E' else self.h_offset)) * self.dt
         return float((np.float64(n) + (self.e_offset if kind == 'E' else self.h_offset))
                      * np.float64(self.dt))
 
@@ -123,7 +129,52 @@ def _frequencies(sim, entry=None, freqs=None):
         freqs = getattr(entry, 'freqs', None)
     if freqs is None:
         freqs = default_frequency_grid(sim._freq_max, getattr(entry, 'n_freqs', 50))
-    return tuple(float(v) for v in np.asarray(freqs))
+    return _phase_values(freqs)
+
+
+_UNSET = object()
+
+
+def _traced(value):
+    return any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(value))
+
+
+def _phase_values(value):
+    return value if _traced(value) else tuple(np.asarray(value))
+
+
+def _concrete_nodes(sim, edges):
+    from rfx._traced_refusal import TracedStructureRefusal
+
+    def concrete(kind, value):
+        if _traced(value):
+            raise TracedStructureRefusal(
+                f'measurement plan needs concrete {kind} inside jax.jit: '
+                'declare them outside the traced function.')
+
+    concrete('DFT plane regions', getattr(sim, '_dft_plane_regions', {}))
+    for attr, kind, fields in (
+        ('_probes', 'probe positions', ('position',)),
+        ('_ports', 'port geometry', ('position', 'extent', 'reference_plane_cells')),
+        ('_dft_planes', 'DFT plane positions', ('coordinate',)),
+        ('_flux_monitors', 'flux monitor geometry', ('coordinate', 'size', 'center')),
+        ('_waveguide_ports', 'waveguide port geometry',
+         ('x_position', 'x_range', 'y_range', 'z_range',
+          'reference_plane', 'probe_plane', 'probe_offset', 'ref_offset')),
+        ('_msl_ports', 'microstrip port geometry', ('position', 'width', 'height')),
+    ):
+        concrete(kind, [getattr(entry, field, None)
+                        for entry in getattr(sim, attr) for field in fields])
+    if sim._ntff is not None:
+        concrete('NTFF box corners', sim._ntff[:2])
+    if sim._current_moments is not None:
+        concrete('current-moment monitor geometry',
+                 (*sim._current_moments[:3], sim._current_moments[5]))
+    if _traced(edges):
+        index = next(i for i, p in enumerate(sim._ports) if p.impedance and p.extent is not None)
+        raise TracedStructureRefusal(
+            f'port:{index}: wire port live cells depend on PEC geometry that is traced, '
+            'so they cannot be counted. Make that geometry concrete or remove the port.')
 
 
 def _index(grid, position):
@@ -166,7 +217,29 @@ def _pec_edges(sim, grid):
 
 
 def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
-                           calculator_owners=()):
+                           calculator_owners=(), conductors=None, pec_edges=_UNSET,
+                           periodic=None, dft_window=_UNSET, staggered_area=False,
+                           overrides=None):
+    """Freeze measurement geometry using the run's realized inputs when supplied.
+
+    Omitted inputs retain the declaration-based convenience behavior. Explicit
+    ``pec_edges=None`` means no PEC edges, without material reassembly.
+    Frequencies, grid.dt and ``dft_window`` retain traced phase leaves.
+    """
+    wire = any(p.impedance and p.extent is not None for p in sim._ports)
+    edges = conductors.pec_edges if pec_edges is _UNSET and conductors is not None else pec_edges
+    _concrete_nodes(sim, edges if wire and edges is not _UNSET else None)
+    with jax.ensure_compile_time_eval():
+        return _build_measurement_plan(
+            sim, grid, n_steps=n_steps, path=path, frequencies=frequencies,
+            calculator_owners=calculator_owners, conductors=conductors,
+            pec_edges=edges, periodic=periodic, dft_window=dft_window,
+            staggered_area=staggered_area, overrides=overrides)
+
+
+def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
+                            calculator_owners, conductors, pec_edges, periodic,
+                            dft_window, staggered_area, overrides):
     """Build a frozen snapshot from a Simulation and the run's realized grid.
 
     ``path`` selects run/forward availability on the selected mesh. Optional
@@ -179,13 +252,15 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         raise ValueError('n_steps must be a nonnegative integer')
     nu = isinstance(grid, NonUniformGrid)
     path = path or ('run_nonuniform' if nu else 'run_uniform')
-    allowed = ('run_nonuniform', 'fwd_nonuniform') if nu else ('run_uniform', 'fwd_uniform')
+    allowed = (('run_nonuniform', 'fwd_nonuniform', 'run_distributed_nu', 'fwd_distributed_nu')
+               if nu else ('run_uniform', 'fwd_uniform', 'run_distributed', 'fwd_distributed',
+                           'run_subgridded'))
     if path == ('msl_nonuniform' if nu else 'msl_uniform'):
         from .ports import build_msl_owners
         if calculator_owners:
             raise ValueError('msl path builds its own calculator owners')
         bins = frequencies if frequencies is not None else jnp.linspace(sim._freq_max/10, sim._freq_max, 100)
-        calculator_owners = build_msl_owners(sim, grid, frequencies=bins)
+        calculator_owners = build_msl_owners(sim, grid, frequencies=bins, pec_edges=pec_edges)
     elif path not in allowed:
         raise ValueError(f'unsupported measurement path {path!r} for this grid; expected {allowed}')
     owners = []
@@ -210,7 +285,8 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     from .flux_weights import grid_flux_monitor, flux_regions, monitor_periodic_flags, normal_h_neighbor
     from rfx.boundaries.pec import resolve_wall_faces
     from rfx.boundaries.pmc import magnetic_image_faces
-    flux_periodic = monitor_periodic_flags(sim, grid) if sim._flux_monitors else (False, False, False)
+    flux_periodic = (periodic if periodic is not None else
+                     monitor_periodic_flags(sim, grid) if sim._flux_monitors else (False, False, False))
     for i, entry in enumerate(sim._flux_monitors):
         axis = 'xyz'.index(entry.axis)
         point = [0.0, 0.0, 0.0]
@@ -224,6 +300,9 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             bounds = tuple(v for span in region['cell_slices'] for v in span)
         cfg = grid_flux_monitor(grid, axis=axis, index=index, periodic=flux_periodic,
                                 freqs=jnp.asarray(_frequencies(sim, entry)),
+                                staggered_area=staggered_area, dft_total_steps=n_steps,
+                                dft_window=(entry.dft_window if dft_window is _UNSET else dft_window),
+                                dft_window_alpha=entry.dft_window_alpha,
                                 lo1=bounds[0], hi1=bounds[1], lo2=bounds[2], hi2=bounds[3],
                                 pmc_faces=(magnetic_image_faces(sim._boundary_spec.pmc_faces(), grid.shape)
                                            if nu else resolve_wall_faces(grid, flux_periodic)[1]))
@@ -243,11 +322,13 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                                     e_time_offset=0., h_time_offset=0.))
         owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
                             known_differences=(),
-                            availability='result missing' if path.startswith('fwd') else 'sampled'))
-    edges = _pec_edges(sim, grid) if any(p.impedance and p.extent is not None for p in sim._ports) else None
-    from rfx.core.jax_utils import is_tracer
-    from rfx.errors import RfxRefusal
-    edges_traced = edges is not None and any(is_tracer(mask) for mask in edges)
+                            availability='result missing' if path.startswith('fwd') else 'sampled',
+                            dft_window=cfg.window, dft_window_alpha=cfg.window_alpha,
+                            periodic=tuple(flux_periodic)))
+    edges = (_pec_edges(sim, grid) if pec_edges is _UNSET and
+             any(p.impedance and p.extent is not None for p in sim._ports) else
+             None if pec_edges is _UNSET else pec_edges)
+    _concrete_nodes(sim, edges if any(p.impedance and p.extent is not None for p in sim._ports) else None)
     from rfx.sources.sources import WirePort, _wire_port_live_cells
     from .ports import lumped_wire_owner
     for i, entry in enumerate(sim._ports):
@@ -255,11 +336,6 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             continue  # a soft source has no measurement owner
         live = (field_index(grid, entry.position, entry.component),)
         if entry.extent is not None:
-            if edges_traced:
-                raise RfxRefusal(
-                    f'port:{i}: wire port live cells depend on PEC geometry that is traced, '
-                    'so they cannot be counted. Make that geometry concrete or remove the port.'
-                )
             end = list(entry.position)
             end['xyz'.index(entry.component[1])] += entry.extent
             port = WirePort(entry.position, tuple(end), entry.component, entry.impedance,
@@ -280,10 +356,11 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                                for name, p in zip(('port', 'reference', 'impedance'), indices))
         owners.append(lumped_wire_owner(
                             grid, entry.component, live, nu=nu,
-                            pmc_faces=sim._boundary_spec.pmc_faces(), periodic=sim._periodic_flags(),
+                            pmc_faces=sim._boundary_spec.pmc_faces(), periodic=sim._periodic_flags() if periodic is None else periodic,
                             port_id=i, kind='wire' if entry.extent is not None else 'lumped',
-                            frequencies=_frequencies(sim, freqs=(np.asarray(frequencies, dtype=np.float32)
-                                                    if frequencies is not None else None)),
+                            frequencies=_frequencies(sim, freqs=((frequencies if _traced(frequencies) else
+                                                    jnp.asarray(frequencies, dtype=jnp.float32))
+                                                   if frequencies is not None else None)),
                             reference_planes=references,
                             known_differences=(('NU port weights retain solver-store float32 rounding',) if nu else ())
                             + (('wire reference planes belong to multi-drive scan, not diagonal forward',)
@@ -291,7 +368,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                             availability=(('V/I unavailable in main scan; sampled in second scan when compute_s_params is on'
                                            if not nu else 'V/I unavailable in run without wire extent')
                                           if entry.extent is None and path.startswith('run') else 'sampled')))
-        if entry.extent is None and edges is not None and not edges_traced:
+        if entry.extent is None and edges is not None:
             from rfx.boundaries.pec import clear_edges
             edges = clear_edges(edges, list(live), component=entry.component)
     from .ports import waveguide_owners
@@ -306,12 +383,17 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                                     else 'MSL calculator owns V ladder and PEC-anchored I stencil'),)))
     owners.extend(supplied.values())
     from .monitors import monitor_owners
-    owners.extend(monitor_owners(sim, grid))
+    owners.extend(monitor_owners(sim, grid, conductors=conductors, periodic=periodic, overrides=overrides))
+    if dft_window is not _UNSET:
+        owners = [replace(owner, dft_window=dft_window) for owner in owners]
+    if path == 'run_subgridded':
+        owners = [replace(owner, channels=(), availability='not on the plan; subgridded runner owns sampling')
+                  for owner in owners]
     owners = [with_clock_differences(owner) for owner in owners]
     ids = [o.id for o in owners]
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate measurement owner id')
-    return MeasurementPlan(path, TimeBase(float(grid.dt), int(n_steps)), tuple(owners),
+    return MeasurementPlan(path, TimeBase(grid.dt, int(n_steps)), tuple(owners),
                            known_differences=KERNEL_KNOWN_DIFFERENCES)
 
 
