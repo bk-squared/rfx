@@ -127,18 +127,38 @@ def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
     random-field cases of test_port_projector pin those weights against
     _ampere_loop / wire_port_current, which read h_neighbor (checked below
     by test_each_port_sample_reads_two_neighbors). What is left to route is
-    the boundary the step hands the table compiler.
+    the boundary the step hands the table compiler. The step compiles its
+    table from the attached plan's port owners, so the boundary is read where
+    the plan builds them: magnetic faces and periodic flags.
     """
+    import rfx.measurement.ports as ports
+    import rfx.measurement.prepared as prepared
     import rfx.measurement.projector as projector
+    from rfx.boundaries.pmc import magnetic_image_faces
     sim = model(feature, mesh)
-    tables, curls = [], []
-    real_table = projector.port_table
+    tables, curls, owners, built, inside = [], [], [], [], [False]
+    real_build, real_owner, real_tables = (
+        prepared.build_measurement_plan, ports.lumped_wire_owner, projector.plan_tables)
     helper = "curl_h_nu" if mesh == "graded" else "curl_h"
     real_curl = getattr(yee, helper)
 
-    def table_spy(grid, specs, **kwargs):
-        tables.append(kwargs["boundary"])
-        return real_table(grid, specs, **kwargs)
+    def build_spy(*args, **kwargs):
+        inside[0] = True
+        try:
+            built.append(real_build(*args, **kwargs))
+        finally:
+            inside[0] = False
+        return built[-1]
+
+    def owner_spy(grid, *args, **kwargs):
+        if inside[0]:
+            owners.append((magnetic_image_faces(kwargs["pmc_faces"], grid.shape, kwargs["periodic"]),
+                           tuple(kwargs["periodic"]), grid.shape))
+        return real_owner(grid, *args, **kwargs)
+
+    def table_spy(plan, **kwargs):
+        tables.append(plan)
+        return real_tables(plan, **kwargs)
 
     def curl_spy(*args, **kwargs):
         curls.append(kwargs.get("boundary"))
@@ -146,7 +166,9 @@ def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
 
     jax.clear_caches()
     with ExitStack() as stack:
-        stack.enter_context(patch.object(projector, "port_table", table_spy))
+        stack.enter_context(patch.object(prepared, "build_measurement_plan", build_spy))
+        stack.enter_context(patch.object(ports, "lumped_wire_owner", owner_spy))
+        stack.enter_context(patch.object(projector, "plan_tables", table_spy))
         for module in (yee, stepping_yee, uniform_setup, poles, debye, lorentz, upml):
             if hasattr(module, helper):
                 stack.enter_context(patch.object(module, helper, curl_spy))
@@ -157,11 +179,17 @@ def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
             sim.forward(n_steps=2, skip_preflight=True,
                         port_s11_freqs=jnp.array([12e9]))
     assert tables, "the scan never compiled a port table"
+    assert len(built) == 1 and all(plan is built[0] for plan in tables)
     assert curls and all(isinstance(b, yee.CurlBoundary) for b in curls)
-    assert set(tables) == set(curls) and len(set(curls)) == 1, (tables, curls)
-    # The model's x_lo face is magnetic: a table built on a default boundary
-    # would weight that face's current legs differently.
-    assert "x_lo" in tables[0].pmc_faces
+    assert len(set(curls)) == 1, curls
+    curl = curls[0]
+    assert owners
+    for faces, periodic, shape in owners:
+        assert periodic == tuple(curl.periodic), (periodic, curl)
+        assert faces == magnetic_image_faces(curl.pmc_faces, shape, curl.periodic), (faces, curl)
+        # The model's x_lo face is magnetic: a table built on a default boundary
+        # would weight that face's current legs differently.
+        assert "x_lo" in faces
 
 
 def kernel_inputs():

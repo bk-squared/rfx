@@ -1871,7 +1871,8 @@
         "stop_fn",
         "stop_interval",
         "record_dft",
-        "port_record_specs"
+        "port_record_specs",
+        "measurement"
       ]
     },
     "run_batch_with_manifest": {
@@ -1928,7 +1929,8 @@
         "aniso_eps",
         "sheet_impedance",
         "design_box",
-        "record_dft"
+        "record_dft",
+        "measurement"
       ]
     },
     "run_until_decay": {
@@ -1986,7 +1988,8 @@
         "sheet_impedance",
         "record_dft",
         "port_record_specs",
-        "advisory"
+        "advisory",
+        "measurement"
       ]
     },
     "save_experiment_report": {

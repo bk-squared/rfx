@@ -819,16 +819,18 @@ def _build_step_setup(
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,
-                   *, design_hook=None, hooks=None):
+                   *, design_hook=None, hooks=None, measurement=None, dtype=None):
     """Compose the uniform step; retain the runner and adjoint call signatures.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` yielding
     ``(new_carry, probe_out, extras)``. The design callback attaches immediately
     after the E update; optional hook attachments use the transient uniform frame.
+    An attached ``measurement`` plan supplies the probe and port tables.
     """
     from rfx.stepping.uniform import make_uniform_step
     if invariants is None:
-        invariants = core_step_invariants(ctx)
+        invariants = (core_step_invariants(ctx) if measurement is None else
+                      core_step_invariants(ctx, measurement=measurement, dtype=dtype))
     return make_uniform_step(invariants["ctx"], invariants,
                              design_hook=design_hook, hooks=hooks)
 

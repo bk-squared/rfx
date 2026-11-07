@@ -379,7 +379,7 @@ def run(
         snapshot_extractor=_take_snapshot if snap_in_body else None,
     )
     # An attached plan supplies the probe and port tables (direct callers keep theirs).
-    _core_step = make_core_step(_step_ctx, invariants=core_step_invariants(
+    _core_step = (make_core_step(_step_ctx) if measurement is None else make_core_step(
         _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype))
 
     def step_fn(carry, xs):
@@ -1008,6 +1008,7 @@ def run_until_decay(
     # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
     _inv_args, _inv_rebuild = split_loop_invariants(
+        core_step_invariants(_step_ctx) if measurement is None else
         core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype),
         tuple(grid.shape))
 
