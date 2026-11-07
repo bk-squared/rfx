@@ -1301,8 +1301,8 @@ def compute_coax_msl_transition(
         if ctx.error is None:
             # Retain this gate's delivery state for the same board at admission.
             sheet_findings = tuple(f for f in issues if f.code == "sheet_effective_size")
-            for finding in sheet_findings:
-                finding._realization_delivered = True
+            for sheet_finding in sheet_findings:
+                setattr(sheet_finding, "_realization_delivered", True)
 
     from rfx.runners._admission import admit
     admit(self, "coax_msl_transition")

@@ -255,6 +255,8 @@ def _assembly_impl(sim, ctx):
 
 
 def _build_record(sim, ctx, *, compact=False):
+    from typing import cast
+    from rfx.preflight.realization import _EntryRealization
     from rfx.preflight.realization import _shape_bounds
 
     assembled, refused, refused_tc, pad_findings = _assembly(sim, ctx)
@@ -325,8 +327,9 @@ def _build_record(sim, ctx, *, compact=False):
                 comparison, free_ends = width.comparison, width.free_ends
                 declared = None if bounds is None else (float(bounds[0][a]), float(bounds[1][a]))
                 residual = None if declared is None else (rlo - declared[0], rhi - declared[1])
-                intervals = ()
-                interval_mask = (e.edges(ctx.periodic, ctx.grid.shape)[a]
+                intervals: tuple[tuple[float, float], ...] = ()
+                # kind == "wire" comes from an existing entry, never from None.
+                interval_mask = (cast(_EntryRealization, e).edges(ctx.periodic, ctx.grid.shape)[a]
                                  if ctx.periodic[a] and kind == "wire" else mask)
                 if ctx.periodic[a] and (cell_range is not None or
                                         (kind == "wire" and np.any(interval_mask))):

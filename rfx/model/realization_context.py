@@ -14,7 +14,8 @@ def context_from_conductors(sim, conductors):
     ctx._realized, ctx._entries = conductors, []
     ctx.spacings, ctx.nodes = _node_arrays(sim, ctx.grid, ctx.lane == 'nonuniform')
     ctx.cell_sizes = ctx.spacings
-    ctx.coords = GridCoords(*(n[:ctx.grid.shape[a]] for a, n in enumerate(ctx.nodes)), shape=ctx.grid.shape)
+    x, y, z = (n[:ctx.grid.shape[a]] for a, n in enumerate(ctx.nodes))
+    ctx.coords = GridCoords(x, y, z, shape=ctx.grid.shape)
     products = {key: (cells, sheet, wire, shape)
                 for key, cells, sheet, wire, shape in conductors.assembly_entries}
     for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):

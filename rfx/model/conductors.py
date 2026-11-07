@@ -16,6 +16,7 @@ from rfx._declarations import release_declaration_caches
 import numpy as np
 
 from rfx.preflight.realization import _RealizedPEC
+from rfx.preflight._common import PreflightReport as PreflightReport
 from rfx.boundaries.pec import SheetSpec
 
 

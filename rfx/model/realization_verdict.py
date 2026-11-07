@@ -153,8 +153,8 @@ def judge_realization(table, snap):
             f"realization {row.label} ({row.family}): {quantity}; {detail}. {remedy}",
             severity=severity, code=("port_aperture_snap" if row.label.startswith("waveguide_port[") else "realization"),
             loc=row.label, source="judge_realization")
-        finding._realization_axes = tuple(a.axis for a in axes
-            if a.miss_percent is not None and abs(a.miss_percent) > 1.)
+        setattr(finding, "_realization_axes", tuple(a.axis for a in axes
+            if a.miss_percent is not None and abs(a.miss_percent) > 1.))
         base_label = row.label.split("/", 1)[0]
         previous = next((f for f in table.findings + findings
                          if f.code == "realization" and f.loc == base_label), None)
@@ -164,7 +164,7 @@ def judge_realization(table, snap):
             target = table.findings if previous in table.findings else findings
             target[target.index(previous)] = merged
             if getattr(previous, "_realization_delivered", False) and severity == "warning":
-                merged._realization_delivered = True
+                setattr(merged, "_realization_delivered", True)
             elif target is table.findings:
                 table.findings.remove(merged)
                 findings.append(merged)
@@ -271,7 +271,8 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
     ctx.nodes = tuple(n[:conductors.grid.shape[a]] for a, n in enumerate(ctx.nodes))
     from rfx.geometry.rasterize_grid import GridCoords
     import copy
-    ctx.coords = GridCoords(*ctx.nodes, shape=conductors.grid.shape)
+    x, y, z = ctx.nodes
+    ctx.coords = GridCoords(x, y, z, shape=conductors.grid.shape)
     ctx.sim = copy.copy(sim)
     ctx.sim._conformal_run_call = conformal
     entries = [e for e in ctx.interior_pec_entries()
@@ -324,7 +325,7 @@ def legacy_outcome(label, relative_miss, tolerance, message, code, source, *, lo
         traced_inputs=(), relative_miss=relative_miss, tolerance=tolerance,
         message=message, code=code)
     finding = PreflightIssue(message, code=code, source=source, loc=loc)
-    finding._realization_delivered = True
+    setattr(finding, "_realization_delivered", True)
     return row, finding
 
 

@@ -535,6 +535,9 @@ def compute_waveguide_s_matrix(
 
     from rfx.model.realization_table import finish_table
     realization_record = finish_table(self, conductors, lane="waveguide_s_matrix")
+    from typing import Callable, cast
+    # with_forward_geometry adds the metadata keyword to the tuple constructor.
+    realization_result = cast(Callable[..., WaveguideSMatrixResult], WaveguideSMatrixResult)
 
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(
@@ -553,7 +556,7 @@ def compute_waveguide_s_matrix(
         _warn_if_ringdown_truncated(
             settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
             witnesses=settling_details_mm)
-        _res_mm = WaveguideSMatrixResult(
+        _res_mm = realization_result(
             realized_geometry=realization_record,
             s_params=s_params,
             freqs=jnp.asarray(freqs),
@@ -715,7 +718,7 @@ def compute_waveguide_s_matrix(
     _ph_rms, _ph_meta = _waveguide_s21_phase_residual(
         s_params, freqs, reference_planes, cfgs, normalize=normalize,
     )
-    _res_sm = WaveguideSMatrixResult(
+    _res_sm = realization_result(
         realized_geometry=realization_record,
         s_params=s_params,
         freqs=jnp.asarray(freqs),

@@ -102,13 +102,15 @@ def _preflight_impl(
                     admit_table(self, root, deliver=False)
                     admit_table(self, root, finished=True, deliver=False)
                     table = root.realization_table
-                    issues._realization_reader = lambda: table
+                    setattr(issues, "_realization_reader", lambda: table)
                     verdict_findings.extend(table.findings)
-        except ValueError as exc:
-            if getattr(exc, "code", None) != "absorber_overlap":
+        except ValueError as overlap_error:
+            if getattr(overlap_error, "code", None) != "absorber_overlap":
                 raise
-            verdict_findings.append(PreflightIssue(str(exc), severity="error",
-                code=exc.code, source=exc.source))
+            from typing import cast
+            verdict_findings.append(PreflightIssue(str(overlap_error), severity="error",
+                code=cast(str, getattr(overlap_error, "code")),
+                source=cast(str | None, getattr(overlap_error, "source"))))
         try:
             from rfx.model.thin_conductors import warn_dc_films
             warn_dc_films(self, warnings)
