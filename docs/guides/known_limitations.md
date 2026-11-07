@@ -129,6 +129,21 @@ disc of radius 3 mm in a 40 × 15 × 30 mm metal cavity changed the cavity's dec
 from 0.5 to 0.25 mm, with its realized area right to 1 % on both meshes. The change comes from the staircased rim; its
 mechanism is not measured. Check a curved film's loss on three meshes before using it as a converged number.
 
+### A surface-impedance sheet with field space behind it gives no loss to a field whose E is normal to it
+
+Tracker: #2429
+
+A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) is a penetrable film: it carries current
+only through the tangential E on its edges. Where field space lies behind the sheet, a field with E normal to the sheet
+and H tangential passes into that space, and the sheet adds no conductor loss. Synthetic case: a closed 30 × 12 × 24 mm
+vacuum cavity, TE101 at 8.0 GHz, one wall pair replaced by f0 sheets one cell inside the PEC faces. With sheets on the
+y faces (E normal to them), the mode's field decay rate was 22,134 1/s against 25,108 1/s with PEC sheets in the same
+place; a Leontovich wall of the same resistance gives about 1.55×10⁷ 1/s. With sheets on the x or z faces (E
+tangential), the cavity Q matched the closed form within 4×10⁻³ at 1 mm cells (measured; record kept with the project). For a wall
+that must carry loss for every field orientation, use a PEC wall or a thick lossy Box. The case covers a sheet with a
+conductor close behind it; a sheet with no conductor behind it, such as a patch over a ground plane, is outside it and
+was not measured here.
+
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
 Tracker: #1958
