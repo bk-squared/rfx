@@ -270,7 +270,7 @@ def _build_record(sim, ctx, *, compact=False):
     f0_specs = _f0_specs_by_conductor(sim, assembled, refused_tc)
     for index, (label, name, shape) in enumerate(declarations):
         mask_error = None
-        node_based = False
+        node_based = traced_f0 = False
         f0_spec = None
         e = interior.get(label, conductors.get(label))
         bounds = _shape_bounds(shape)
@@ -292,6 +292,10 @@ def _build_record(sim, ctx, *, compact=False):
             # An f0 sheet's mask is its NODE footprint (the DC fold's is cells).
             node_based = sim._thin_conductors[index - len(sim._geometry)].surface_impedance_f0 is not None
             f0_spec = f0_specs.get(index - len(sim._geometry)) if node_based else None
+            from rfx.model.realization_reference import f0_traced_fields
+            # A traced f0 input leaves only this row unavailable: no host read.
+            if node_based and f0_traced_fields(sim._thin_conductors[index - len(sim._geometry)], f0_spec):
+                f0_spec, traced_f0 = None, True
         else:
             # Retain the refused declaration's diagnostic occupancy once.
             # It is explicitly NOT a solved conductor and contributes no edges.
@@ -311,7 +315,7 @@ def _build_record(sim, ctx, *, compact=False):
                 mask = None
                 mask_error = f"{type(exc).__name__}: {exc}"
         axes = []
-        if mask is not None and mask.any():
+        if mask is not None and mask.any() and not traced_f0:
             widths = assembled.width_axes(sim, mask, kind=kind, sheet=sheet,
                 node_based=node_based, f0_spec=f0_spec, bounds=bounds,
                 sizes=sizes, nodes=nodes, interior=sheet_neighbors, wire_edges=raw_edges)
@@ -598,9 +602,9 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     from dataclasses import replace
     from rfx.model.realization_context import context_from_conductors
     from rfx.core.jax_utils import is_tracer
-    from rfx.model.realization_reference import traced_inputs
+    from rfx.model.realization_reference import table_traced_inputs
     grid = conductors.grid
-    if traced_inputs(sim, grid, conductors):
+    if table_traced_inputs(sim, grid):
         return None
     if any(is_tracer(edge) for edge in conductors.pec_edges or ()):
         return None

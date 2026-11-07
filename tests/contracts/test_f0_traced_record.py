@@ -40,6 +40,62 @@ def test_f0_sigma_gradient_keeps_traced_verdict(sigma_scale, expected):
     assert row.axes == () and row.edge_note is None
     assert "thin_conductor[0].sigma_bulk" in row.traced_inputs
     assert "thin_conductor[0].g_sheet" in row.traced_inputs
-    assert record.entities == ()
+    # Only the traced sheet's row is unavailable: the record keeps its entities.
+    assert [entity.label for entity in record.entities] == ["thin_conductor[0]"]
+    assert record.entities[0].axes == ()
+    assert record.realization_table.row("domain").traced_inputs == ()
     assert any("not evaluated: traced" in str(finding)
                for finding in record.realization_table.findings)
+
+
+def test_traced_f0_sheet_leaves_concrete_box_judged(monkeypatch):
+    """Strict: a gradient through one f0 sheet's sigma must not hide a concrete box's miss."""
+    import re
+    from rfx import GaussianPulse
+    from rfx.model import realization_verdict
+    D = 1e-3
+    # Box y edges 7.8 and 12.2 mm on 2 mm cells: the nodes inside are 8, 10, 12 mm.
+    drawn, covered = 12.2*D - 7.8*D, 12*D - 8*D
+    percent = 100*(covered - drawn)/drawn
+    assert drawn == pytest.approx(4.4*D) and percent == pytest.approx(-9.0909, abs=1e-4)
+    tables = []
+    deliver = realization_verdict.deliver_findings
+
+    def recording(table, findings):
+        tables.append(table)
+        return deliver(table, findings)
+
+    def stepped(*args, **kwargs):
+        pytest.fail("a strict realization refusal must precede stepping")
+
+    monkeypatch.setattr(realization_verdict, "deliver_findings", recording)
+    monkeypatch.setattr("rfx.stepping.prepared.advance", stepped)
+
+    def loss(log_sigma):
+        sim = Simulation(freq_max=5e9, domain=(20*D,)*3, dx=2*D, boundary="pec", snap="strict")
+        sim.add_thin_conductor(Box((4*D, 4*D, 10*D), (16*D, 16*D, 10*D)),
+                               sigma_bulk=jnp.exp(log_sigma), thickness=35e-6,
+                               surface_impedance_f0=3e9)
+        sim.add(Box((4*D, 7.8*D, 14*D), (16*D, 12.2*D, 16*D)), material="pec")
+        sim.add_source((6*D, 6*D, 6*D), "ez", waveform=GaussianPulse(f0=3e9),
+                       amplitude_kind="field")
+        sim.add_probe((12*D, 12*D, 18*D), "ez")
+        return jnp.sum(sim.forward(n_steps=10, skip_preflight=True).time_series**2)
+
+    with pytest.raises(ValueError) as refusal:
+        jax.grad(loss)(jnp.float32(np.log(5.8e7)))
+    message = str(refusal.value)
+    # The box is the model's only geometry entry, so the table names it geometry[0].
+    line = next(text for text in message.splitlines() if text.startswith("realization geometry[0]"))
+    miss = re.search(r"y extent miss ([-+0-9.e]+) cells \(([-+0-9.e]+) %\)", line)
+    assert float(miss.group(2)) == pytest.approx(percent, rel=1e-6)
+    assert float(miss.group(1)) == pytest.approx((covered - drawn)/(2*D), rel=1e-6)
+    spans = re.search(r"y: realized [0-9.e]+ cells \(([0-9.e]+) m\), declared [0-9.e]+ cells "
+                      r"\(([0-9.e]+) m\)", line)
+    assert float(spans.group(1)) == pytest.approx(covered, rel=1e-9)
+    assert float(spans.group(2)) == pytest.approx(drawn, rel=1e-9)
+    table = tables[-1]
+    assert table.row("geometry[0]").status == "evaluated"
+    sheet = table.row("thin_conductor[0]")
+    assert sheet.status == "not evaluated: traced" and sheet.axes == () and sheet.edge_note is None
+    assert "thin_conductor[0].sigma_bulk" in sheet.traced_inputs

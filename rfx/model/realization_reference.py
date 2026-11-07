@@ -53,7 +53,8 @@ def kernel_view(sim):
     return rebuild_view(sim, record, smoothing, conformal)
 
 
-def traced_inputs(sim, grid, conductors=None):
+def table_traced_inputs(sim, grid):
+    """Mesh and geometry-shape tracers: no row of the table can be read on host."""
     import jax
     from rfx.core.jax_utils import is_tracer
     result = []
@@ -65,18 +66,40 @@ def traced_inputs(sim, grid, conductors=None):
         for f in fields(shape) if is_dataclass(shape) else ():
             if any(is_tracer(v) for v in jax.tree.leaves(getattr(shape, f.name))):
                 result.append(f"geometry[{i}].{f.name}")
-    # The f0 width regime is unavailable when either declaration or G is live.
+    return tuple(result)
+
+
+def f0_traced_fields(entry, spec):
+    """The f0 width regime is unavailable when either declaration or G is live."""
+    from rfx.core.jax_utils import is_tracer
+    return tuple(name for name, value in (
+        ("surface_impedance_f0", entry.surface_impedance_f0),
+        ("sigma_bulk", entry.sigma_bulk),
+        ("g_sheet", getattr(spec, "g_sheet", None))) if is_tracer(value))
+
+
+def sheet_traced_inputs(sim, conductors):
+    """``thin_conductor`` index -> its traced f0 material inputs (that row only)."""
     specs = iter(getattr(conductors, "sheet_impedance", ()))
+    result = {}
     for i, entry in enumerate(sim._thin_conductors):
         if entry.surface_impedance_f0 is None:
             continue
-        spec = next(specs, None)
-        for name, value in (("surface_impedance_f0", entry.surface_impedance_f0),
-                            ("sigma_bulk", entry.sigma_bulk),
-                            ("g_sheet", getattr(spec, "g_sheet", None))):
-            if is_tracer(value):
-                result.append(f"thin_conductor[{i}].{name}")
-    return tuple(result)
+        names = f0_traced_fields(entry, next(specs, None))
+        if names:
+            result[i] = tuple(f"thin_conductor[{i}].{name}" for name in names)
+    return result
+
+
+def table_wide(rows):
+    """Whether the whole table is unavailable, not only some f0 sheets' rows."""
+    return any(row.traced_inputs for row in rows if not row.label.startswith("thin_conductor["))
+
+
+def traced_inputs(sim, grid, conductors=None):
+    """Every traced input: table-wide ones, then each f0 sheet's own."""
+    sheets = sheet_traced_inputs(sim, conductors)
+    return table_traced_inputs(sim, grid) + tuple(n for i in sorted(sheets) for n in sheets[i])
 
 
 def nominal_record(sim, conductors, lane, *, compact):

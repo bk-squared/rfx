@@ -208,11 +208,20 @@ def realization_table(prepared) -> RealizationTable:
     from rfx.model.realization_integrals import read_rows
     quantity_grid = getattr(record, "_quantity_grid", prepared.conductors.grid)
     from rfx.model.realization_faces import interior_rows
-    return RealizationTable(interior_rows(read_rows(rows, quantity_grid, sim), record), prepared.lane,
+    rows = _traced_sheet_rows(interior_rows(read_rows(rows, quantity_grid, sim), record), sim, prepared.conductors)
+    return RealizationTable(rows, prepared.lane,
                             weakref.ref(prepared.conductors),
                             active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1),
                             periods={d.axis: d.length_m for d in record.domain
                                      if d.axis in getattr(prepared.conductors.grid, "periodic_axes", "")})
+
+
+def _traced_sheet_rows(rows, sim, conductors):
+    """Mark only the f0 sheets whose material input is traced; keep every other row."""
+    from rfx.model.realization_reference import sheet_traced_inputs
+    sheets = {f"thin_conductor[{i}]": names for i, names in sheet_traced_inputs(sim, conductors).items()}
+    return tuple(replace(row, status="not evaluated: traced", traced_inputs=sheets[row.label], axes=(),
+                         record_axes=(), edge_note=None) if row.label in sheets else row for row in rows)
 
 
 def _traced_table(prepared):
@@ -237,7 +246,7 @@ def bind_table(sim, conductors, *, lane, compact=True):
     """Bind metadata to the kernel product, including forward and traced lanes."""
     from rfx.model.conductors import _traced_product
     from rfx.realized_geometry import record_from_conductors, RealizedGeometry
-    from rfx.model.realization_reference import nominal_record, traced_inputs
+    from rfx.model.realization_reference import nominal_record, traced_inputs, table_traced_inputs
     if conductors.realization_table is not None:
         if not compact:
             record = record_from_conductors(sim, conductors, lane=lane, compact=False)
@@ -251,8 +260,10 @@ def bind_table(sim, conductors, *, lane, compact=True):
         import copy
         reader = copy.copy(sim)
         reader._geometry, reader._thin_conductors = [], []
-    record = (None if inputs or (not compact and _traced_product(conductors)) else
-              record_from_conductors(reader, conductors, lane=lane, compact=compact))
+    record = (None if table_traced_inputs(sim, conductors.grid) or (not compact and _traced_product(conductors))
+              else record_from_conductors(reader, conductors, lane=lane, compact=compact))
+    # With a record, a traced f0 sheet marks only its own row (realization_table).
+    inputs = inputs if record is None else ()
     nominal = False
     if record is None and inputs:
         record = nominal_record(sim, conductors, lane, compact=compact)
@@ -315,7 +326,8 @@ def finish_table(sim, conductors, *, lane):
         return None
     table = conductors.realization_table
     object.__setattr__(table, "lane", lane)
-    if any(row.traced_inputs for row in table.rows):
+    from rfx.model.realization_reference import table_wide
+    if table_wide(table.rows):
         # The reference record already holds nominal values, or no values.
         # Finalization must not replace them with live traced metrics.
         record = replace(record, lane=lane)
@@ -331,7 +343,7 @@ def finish_table(sim, conductors, *, lane):
                      dt=record.dt if is_tracer(conductors.grid.dt) else float(conductors.grid.dt))
     if lane == "run_subgridded" and not conductors.refinements and conductors.kernel_context is None:
         record = replace(record, limitations=("refined region not represented",))
-    if lane != "coax" and not any(row.traced_inputs for row in table.rows):
+    if lane != "coax" and not table_wide(table.rows):
         from rfx.model.realization_context import context_from_conductors
         from rfx.realized_geometry import _ports
         from rfx.model.realization_placements import placement_rows

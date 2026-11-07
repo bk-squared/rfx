@@ -258,7 +258,8 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
             table.findings.append(finding)
             retain_sheet_outcome(table, finding)
         return list(legacy_findings)
-    if any(row.traced_inputs for row in table.rows):
+    from rfx.model.realization_reference import table_wide
+    if table_wide(table.rows):
         return []
     from rfx.model.realization_context import context_from_conductors
     from rfx.preflight.pec_geometry import _warn_sheet_effective_size, _warn_sheet_cavity_spacing
