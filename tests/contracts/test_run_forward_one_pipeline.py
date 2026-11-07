@@ -113,6 +113,8 @@ ASSEMBLY_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-wire', 'uniform'),
+    ('P-wire-driven', 'uniform'),
     ('PW-A', 'graded'),
     ('PW-A', 'uniform'),
     ('PW-B', 'uniform'),
@@ -233,6 +235,8 @@ FIELD_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-wire', 'uniform'),
+    ('P-wire-driven', 'uniform'),
     ('PW-A', 'uniform'),
     ('PW-B', 'uniform'),
     ('PW-closed', 'multi-device-uniform'),
@@ -362,7 +366,8 @@ def parameters(rows, level, *, slow=False):
             found.append(pytest.mark.xfail(strict=True, reason=TWO_GUARD_REFUSALS[d, p]))
         return found
     return [pytest.param(d, p, direction, id=f'{d}-{p}' + (f'-{direction}' if direction else ''),
-                         marks=marks(d, p)) for d, p in rows for direction in directions(d)]
+                         marks=marks(d, p)) for d, p in rows for direction in directions(d)
+            if not (level in ('L1', 'L2') and (d, p, direction) in EQUAL_S_REFUSAL_ROWS)]
 
 
 def entry_options(declaration):
@@ -496,7 +501,7 @@ def test_assembly(declaration, path, direction):
 
 
 def check_fields(declaration, path, direction=None):
-    port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2') and path in ('uniform', 'graded')
+    port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2', 'P-wire-driven') and path in ('uniform', 'graded')
     if port_s:
         pair = port_s_pair(declaration, path)
     elif direction:
@@ -528,6 +533,7 @@ def check_fields(declaration, path, direction=None):
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),
+    ('P-wire-driven', 'uniform'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
     ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))

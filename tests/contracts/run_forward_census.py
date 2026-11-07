@@ -135,6 +135,10 @@ def build_p_wire(path):
     return base_scene(path).add_port((.008, .012, .003), 'ez', impedance=50., extent=.003)
 
 
+def build_p_wire_driven(path):
+    return base_scene(path, source=False).add_port(SOURCE, 'ez', impedance=50., extent=.003)
+
+
 def build_p_coax(path):
     # Arguments from tests/contracts/test_line_stub_refusal_1512.py:184.
     return base_scene(path).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
@@ -284,6 +288,7 @@ BUILDERS = {
     'PW-A': build_pw_a, 'PW-B': build_pw_b, 'PW-oblique': build_pw_oblique,
     'PW-closed': build_pw_closed, 'P-lumped': build_p_lumped,
     'P-lumped2': build_p_lumped2, 'P-wire': build_p_wire,
+    'P-wire-driven': build_p_wire_driven,
     'P-coax': build_p_coax, 'P-msl': build_p_msl,
     'P-waveguide': build_p_waveguide, 'P-waveguide-2mode': build_p_waveguide_2mode,
     'P-floquet': build_p_floquet,
