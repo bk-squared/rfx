@@ -379,8 +379,6 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     import rfx.api._spec as spec
     import rfx.measurement.waveguide_s as waveguide
 
-    if path == "uniform" and entry == "run" and case == "shared":
-        pytest.skip("uniform run refuses several waveguide ports at admission")
     frequencies = [np.array([9e9, 10e9, 11e9])]
     above = case in ("above", "lumped")
     reflections = [np.array([1.005, 1.02 if above else 1.005, .5], dtype=complex)]
@@ -391,13 +389,17 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
         transmissions[0][:] = 1.05j
     elif case == "shared":
         frequencies.append(frequencies[0].copy())
-        reflections.append(np.array([1.005, 1.04, .5], dtype=complex))
-        transmissions.append(np.full(len(frequencies[1]), .5, dtype=complex))
-        reflections[0][0] = 1.02
-        bins, diagonal = "2 of 3", " (diagonal-only lower bound of sigma_max)"
-        expected_count, worst = 1, 10
     before = [(s11.copy(), s21.copy()) for s11, s21 in zip(reflections, transmissions)]
     sim = _waveguide_scene(path, frequencies)
+    if case == "shared":
+        # #2449: two guide ports cannot return isolated S from one record.
+        with pytest.raises(ValueError) as caught:
+            getattr(sim, entry)(n_steps=1, skip_preflight=True)
+        assert str(caught.value) == (
+            "Simulation.run() supports only a single waveguide port; use "
+            "compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+        )
+        return
     if case == "lumped":
         from rfx import GaussianPulse
 
@@ -437,7 +439,7 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     assert len(notices) == expected_count
     if notices:
         assert notices[0].category is AccuracyWarning
-        peak = 1.04 if case == "shared" else 1.02
+        peak = 1.02
         assert str(notices[0].message) == (
             f"{entry}() waveguide_sparams: the returned S is not passive at {bins} "
             f"frequency bins, worst sigma_max = {peak}{diagonal} at {worst} GHz. "
@@ -458,12 +460,13 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
 
 
 @pytest.mark.parametrize("path", ["uniform", "graded"])
-def test_waveguide_forward_gradient_unchanged(monkeypatch, path):
+@pytest.mark.parametrize("n_ports", [1, 2])
+def test_waveguide_forward_gradient_unchanged(monkeypatch, path, n_ports):
     import rfx.measurement.declared as declared
     import rfx.measurement.waveguide_s as waveguide
     from rfx.core.jax_utils import is_tracer
 
-    sim = _waveguide_scene(path, [np.array([9e9, 10e9, 11e9])] * 2)
+    sim = _waveguide_scene(path, [np.array([9e9, 10e9, 11e9])] * n_ports)
     grid = sim._build_nonuniform_grid() if path == "graded" else sim._build_grid()
     eps = jnp.ones(grid.shape, dtype=jnp.float32)
     extract = waveguide.extract_waveguide_sparams
@@ -492,12 +495,19 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path):
 
     monkeypatch.setattr(waveguide, "extract_waveguide_sparams", capture)
     monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", check)
+    if n_ports > 1:
+        # #2449: refusal also precedes S extraction in a traced forward call.
+        with pytest.raises(ValueError, match="supports only a single waveguide port"):
+            jax.grad(loss)(eps)
+        assert not extracted
+        assert not helper_calls
+        return
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always")
         actual = np.asarray(jax.grad(loss)(eps))
         monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", lambda *a, **kw: None)
         expected = np.asarray(jax.grad(loss)(eps))
-    assert traced == [True] * 4
+    assert traced == [True] * 2
     assert not helper_calls
     assert not [w for w in seen if "waveguide_sparams" in str(w.message)]
     assert np.isfinite(actual).all()

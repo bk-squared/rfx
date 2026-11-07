@@ -1224,6 +1224,11 @@ def _warn_implicit_s(message):
 
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
+    # Waveguide S is always formed, including for an amplitude-zero entry.
+    if len(sim._waveguide_ports) > 1:
+        raise ValueError(
+            "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+        )
     excited = [(index, port) for index, port in enumerate(sim._ports)
                if port.impedance > 0 and port.excite]
     if len(excited) < 2:

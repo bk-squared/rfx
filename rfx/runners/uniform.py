@@ -211,10 +211,9 @@ def run_uniform(
         )
     from rfx.runners._admission import refuse_mixed_waveguide_sources
     refuse_mixed_waveguide_sources(sim)
-    if len(sim._waveguide_ports) > 1:
-        raise ValueError(
-            "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
-        )
+    if sim._waveguide_ports:
+        from rfx.runners._admission import require_isolated_s_drive
+        require_isolated_s_drive(sim)
     if sim._periodic_axes:
         periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
 

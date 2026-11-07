@@ -570,6 +570,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     """
     from rfx.runners._admission import refuse_mixed_waveguide_sources
     refuse_mixed_waveguide_sources(sim)
+    # The S-matrix calculator requests raw records, driving one port per run;
+    # ordinary run()/forward() instead form each port's S from this record.
+    if sim._waveguide_ports and not waveguide_reference_only:
+        from rfx.runners._admission import require_isolated_s_drive
+        require_isolated_s_drive(sim)
     from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
     wg_freqs = resolve_shared_waveguide_port_freqs(
         sim, route="graded forward()" if lane == "fwd_nonuniform" else "graded run()")
