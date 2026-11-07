@@ -305,6 +305,7 @@ ADMISSION_ROWS = (
 
 
 BOTH_REFUSE_ROWS = (
+    ('P-waveguide2', 'uniform'),
     ('C-full-tensor', 'multi-device-uniform'),
     ('C-full-tensor', 'multi-device-graded'),
     ('P-floquet', 'graded'),
@@ -371,12 +372,20 @@ TWO_GUARD_REFUSALS = {
 }
 
 
+OPEN_CAUSE_REFUSALS = {
+    ('P-waveguide2', 'uniform'): "#2449: uniform run() refuses two waveguide ports, forward() admits and drives both in one record",
+}
+
+
 def parameters(rows, level, *, slow=False):
     def marks(d, p):
         found = [pytest.mark.slow] if (
             slow or (level == 'L1' and p == 'multi-device-graded' and DISTRIBUTED_L1_SLOW)) else []
         if level == 'refusal' and (d, p) in TWO_GUARD_REFUSALS:
             found.append(pytest.mark.xfail(strict=True, reason=TWO_GUARD_REFUSALS[d, p]))
+        if level == 'refusal' and (d, p) in OPEN_CAUSE_REFUSALS:
+            found.append(pytest.mark.xfail(strict=True, raises=AssertionError,
+                                           reason=OPEN_CAUSE_REFUSALS[d, p]))
         return found
     return [pytest.param(d, p, direction, id=f'{d}-{p}' + (f'-{direction}' if direction else ''),
                          marks=marks(d, p)) for d, p in rows for direction in directions(d)
@@ -747,4 +756,13 @@ def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
 @pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2', 'P-wire-driven'])
 @pytest.mark.parametrize('path', ['uniform', 'graded', 'multi-device-graded'])
 def test_port_s_equal_requests(declaration, path):
+    assert port_s_pair(declaration, path) is not None
+
+
+@pytest.mark.parametrize('declaration,path', [
+    pytest.param('P-wire-refplane', 'uniform', marks=pytest.mark.xfail(
+        strict=True, raises=AssertionError,
+        reason="#2450: reference_plane_cells keeps run()'s wire S on the per-cell frame (no v_port); forward() uses the whole-port one")),
+])
+def test_port_s_refplane_equal_requests(declaration, path):
     assert port_s_pair(declaration, path) is not None
