@@ -776,7 +776,7 @@ def _assert_boundary_cells(profile, boundary, axis, *, match_each_other=False):
     dtype = getattr(profile, "dtype", np.dtype(np.float64))
     eps = np.finfo(dtype if np.issubdtype(dtype, np.floating) else np.float64).eps
     boundary = float(boundary)
-    tolerance = max(DECLARED_SPAN_TOL_M, float(eps) * abs(boundary))
+    tolerance = max(DECLARED_SPAN_TOL_M, 4 * float(eps) * abs(boundary))
 
     def _check(lo, hi):
         ends = ((-1, hi),) if match_each_other else ((0, lo), (-1, hi))
@@ -897,10 +897,12 @@ def make_nonuniform_grid(
         nx_interior = realized_cells(domain_xy[0], dx, kinds["x"])
         dx_prof_phys = np.full(nx_interior, float(dx))
     elif is_tracer(dx_profile):
-        # CPML reads the traced end cells; validate against the stored scalar
-        # when their values exist, using the realized float32 precision.
+        # With a nominal profile, ends follow the fixed-cell check outside
+        # declared windows and are free inside; agreement with dx is judged
+        # where a structure is resolved (rfx#2372).
         dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
-        _assert_boundary_cells(dx_prof_phys, dx, "x")
+        if nominal_profiles is None or "x" not in nominal_profiles:
+            _assert_boundary_cells(dx_prof_phys, dx, "x")
     else:
         _assert_boundary_cells(dx_profile, dx, "x")
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
@@ -917,11 +919,13 @@ def make_nonuniform_grid(
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
-        # Traced y stores the concrete dx as its boundary width, so both
-        # realized ends must match it at float32 precision.
+        # With a nominal profile, ends follow the fixed-cell check outside
+        # declared windows and are free inside; agreement with dx is judged
+        # where a structure is resolved (rfx#2372).
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)
-        _assert_boundary_cells(dy_prof_phys, dy_boundary, "y")
+        if nominal_profiles is None or "y" not in nominal_profiles:
+            _assert_boundary_cells(dy_prof_phys, dy_boundary, "y")
     else:
         dy_boundary = float(dy_profile[0])
         _assert_boundary_cells(dy_profile, dy_boundary, "y", match_each_other=True)

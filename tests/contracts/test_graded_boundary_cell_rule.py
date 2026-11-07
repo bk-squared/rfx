@@ -1,4 +1,4 @@
-"""T1–T6: concrete and traced graded end cells obey one precision-aware rule."""
+"""T1–T7: graded end cells respect precision and traced nominal declarations."""
 
 import jax
 import jax.numpy as jnp
@@ -78,3 +78,24 @@ def test_t6_traced_y_boundary_cells_checked():
     bad = profile.at[-1].set(1.001e-3)
     with pytest.raises(Exception, match=r"dy_profile\[-1\].*must equal boundary dx"):
         _jvp_cells(_y_cells, bad)
+
+
+def test_t7_traced_nominal_x_boundary_can_differ_from_dx():
+    profile = jnp.full(20, 1e-3, dtype=jnp.float32).at[0].set(2e-3)
+    nominal = np.asarray(profile, dtype=np.float64)
+
+    def build(cells):
+        # The nominal sum must match the declared extent, including f32 rounding.
+        grid = Simulation(
+            freq_max=20e9, domain=(float(nominal.sum()), 20e-3, 10e-3), dx=1e-3,
+            boundary="cpml", cpml_layers=4, dx_profile=cells,
+            nominal_profiles={"x": nominal},
+        )._build_nonuniform_grid()
+        assert grid.dx == 0.001
+        assert grid.nominal_cells["x"].dtype == np.dtype("float64")
+        assert grid.traced_cells is None
+        return grid.dx_arr[grid.pad_x_lo]
+
+    first = np.asarray(_jvp_cells(build, profile))
+    assert first.dtype == np.dtype("float32")
+    assert first == np.float32(2e-3)
