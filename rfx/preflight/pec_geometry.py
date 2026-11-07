@@ -1415,8 +1415,11 @@ def _sheet_solved_spans(ctx, boxes):
            if any(not hasattr(e.sheet, 'solved_spans') for e in sheets) else None)
     out = []
     for e, fp in zip(sheets, fps):
-        if e.name in f0_specs and not f0_uses_solved_span(f0_specs[e.name]):
-            continue  # No measured free-edge model for resistive f0 sheets.
+        if e.name in f0_specs:
+            from rfx.core.jax_utils import is_tracer
+            spec = f0_specs[e.name]
+            if is_tracer(spec.g_sheet) or not f0_uses_solved_span(spec):
+                continue  # Traced verdict or no measured resistive free-edge model.
         for a in range(3):
             if a == int(e.sheet.normal_axis):
                 continue

@@ -219,7 +219,7 @@ def _traced_table(prepared):
     """Keep unavailable geometry explicit without forcing a tracer to the host."""
     sim = prepared.sim
     from rfx.model.realization_reference import traced_inputs
-    inputs = traced_inputs(sim, prepared.conductors.grid)
+    inputs = traced_inputs(sim, prepared.conductors.grid, prepared.conductors)
     status = "not evaluated: traced" if inputs else "not represented: no readable per-object kernel record"
     rows = [RealizationRow(f"geometry[{i}]", type(e.shape).__name__,
                           status=status, traced_inputs=inputs)
@@ -245,7 +245,7 @@ def bind_table(sim, conductors, *, lane, compact=True):
                 from rfx.realized_geometry import _conductor_view
                 return _conductor_view(replace(record, realization_table=conductors.realization_table), conductors)
         return conductors._realization_record
-    inputs = traced_inputs(sim, conductors.grid)
+    inputs = traced_inputs(sim, conductors.grid, conductors)
     reader = sim
     if conductors.kernel_context is not None:
         import copy

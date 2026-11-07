@@ -53,7 +53,7 @@ def kernel_view(sim):
     return rebuild_view(sim, record, smoothing, conformal)
 
 
-def traced_inputs(sim, grid):
+def traced_inputs(sim, grid, conductors=None):
     import jax
     from rfx.core.jax_utils import is_tracer
     result = []
@@ -65,6 +65,17 @@ def traced_inputs(sim, grid):
         for f in fields(shape) if is_dataclass(shape) else ():
             if any(is_tracer(v) for v in jax.tree.leaves(getattr(shape, f.name))):
                 result.append(f"geometry[{i}].{f.name}")
+    # The f0 width regime is unavailable when either declaration or G is live.
+    specs = iter(getattr(conductors, "sheet_impedance", ()))
+    for i, entry in enumerate(sim._thin_conductors):
+        if entry.surface_impedance_f0 is None:
+            continue
+        spec = next(specs, None)
+        for name, value in (("surface_impedance_f0", entry.surface_impedance_f0),
+                            ("sigma_bulk", entry.sigma_bulk),
+                            ("g_sheet", getattr(spec, "g_sheet", None))):
+            if is_tracer(value):
+                result.append(f"thin_conductor[{i}].{name}")
     return tuple(result)
 
 
@@ -77,10 +88,10 @@ def nominal_record(sim, conductors, lane, *, compact):
     from rfx.errors import RfxRefusal
     from rfx.model.conductors import realized_conductors, preview_port_stages
     from rfx.realized_geometry import record_from_conductors
-    inputs = traced_inputs(sim, conductors.grid)
+    inputs = traced_inputs(sim, conductors.grid, conductors)
     nominal = getattr(conductors.grid, "nominal_cells", None) or {}
     axes = [name[-1] for name in inputs if name.startswith("mesh.")]
-    if not axes or any(name.startswith("geometry[") for name in inputs):
+    if not axes or any(not name.startswith("mesh.") for name in inputs):
         return None
     if any(axis not in nominal for axis in axes):
         return None

@@ -598,8 +598,9 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     from dataclasses import replace
     from rfx.model.realization_context import context_from_conductors
     from rfx.core.jax_utils import is_tracer
+    from rfx.model.realization_reference import traced_inputs
     grid = conductors.grid
-    if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
+    if traced_inputs(sim, grid, conductors):
         return None
     if any(is_tracer(edge) for edge in conductors.pec_edges or ()):
         return None
