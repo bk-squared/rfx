@@ -1230,9 +1230,9 @@ class Simulation(
             all bins; the plane path removes the drive-side |S21|
             deflation kappa(f) = 1.49-1.86.
             ``None`` (default) keeps the shipped port-cell behaviour,
-            byte-identical. The DIAGONAL ``S_jj`` always stays on the
-            legacy path. ``forward()`` refuses this
-            option; use ``run(compute_s_params=True)``. Requires a wire port
+            byte-identical. With the option ``S_jj`` is the per-cell diagonal,
+            unlike the default; ``forward()`` refuses the option, use
+            ``run(compute_s_params=True)``. Requires a wire port
             (``extent=``) with an explicit ``direction`` transverse to
             the port component, a PEC signal trace uniform across both
             planes, and the uniform-mesh ``run()`` lane: the
