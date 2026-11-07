@@ -1123,7 +1123,7 @@ def _assert_traced_index_matches_realized(
             "with nominal_profiles=.")
 
     def _check(realized, agrees):
-        realized = int(realized)
+        realized = int(realized) - pad_lo
         if not bool(agrees):
             raise ValueError(
                 f"position {pos:.9g} m on the traced {axis} axis resolves to "
