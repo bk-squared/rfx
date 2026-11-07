@@ -17,7 +17,7 @@ from rfx.model.operands import (
     OPERANDS as INJECTION_OPERANDS,
     OPERAND_RULES, OperandKind,
     material_rule as injection_material_rule,
-    operands_at, realized_operands,
+    node_tensor_operands, operands_at, realized_operands,
 )
 
 
@@ -89,7 +89,11 @@ def validate_source_boundary(sim, *, closed_box):
         raise ValueError("Closed-box TFSF requires boundary='cpml'")
 
 
-def _leaves(value, name):
+def _leaves(value, name, *, periodic=(False, False, False)):
+    from rfx.geometry.node_tensor import NodeTensor
+
+    if isinstance(value, NodeTensor):
+        value = node_tensor_operands(value, periodic=periodic)
     if value is None:
         return
     if hasattr(value, "shape"):
@@ -98,14 +102,14 @@ def _leaves(value, name):
         yield name, np.asarray(value)
     elif is_dataclass(value):
         for field in fields(value):
-            yield from _leaves(getattr(value, field.name), f"{name}.{field.name}")
+            yield from _leaves(getattr(value, field.name), f"{name}.{field.name}", periodic=periodic)
     elif isinstance(value, dict):
         for key, child in value.items():
-            yield from _leaves(child, f"{name}.{key}")
+            yield from _leaves(child, f"{name}.{key}", periodic=periodic)
     elif isinstance(value, (tuple, list)):
         names = getattr(value, "_fields", range(len(value)))
         for key, child in zip(names, value):
-            yield from _leaves(child, f"{name}.{key}")
+            yield from _leaves(child, f"{name}.{key}", periodic=periodic)
 
 
 class UnjudgedTFSFInvarianceWarning(AccuracyWarning):
@@ -125,14 +129,14 @@ def _without_duplicated_end_edge(name, host, axis, index):
     return host
 
 
-def invariant(value, axis, shape):
+def invariant(value, axis, shape, *, periodic=(False, False, False)):
     """Exact equality over each full spatial array, pads included.
 
     Unknown traced inputs return None; Addendum 5c(5) preserves their legacy
     operator and reports that invariance was not judged.
     """
     unjudged = ""
-    for name, array in _leaves(value, "update"):
+    for name, array in _leaves(value, "update", periodic=periodic):
         dims = tuple(array.shape)
         # ADE coefficients and states store poles before the three spatial
         # dimensions. A pole count equal to nx must not be mistaken for x.
@@ -231,7 +235,8 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
         for name, updates in localized:
             if updates is not None and len(updates):
                 _refuse(axis, name, nonuniform=nonuniform)
-        okay, feature = invariant(values, "xyz".index(axis), grid.shape)
+        okay, feature = invariant(values, "xyz".index(axis), grid.shape,
+                                  periodic=tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))
         if okay is None:
             operator = "existing graded" if nonuniform else "legacy periodic"
             warnings.warn(
