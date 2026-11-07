@@ -21,7 +21,7 @@ def test_low_map_count_warns_once(monkeypatch):
     assert len(caught) == 1
     assert caught[0].category is limits.MapCountWarning
     text = str(caught[0].message)
-    for expected in ("65530", "262,144", "262144", "sysctl", "#2421"):
+    for expected in ("65530", "262,144", "262144", "sysctl", "known_limitations"):
         assert expected in text
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -82,12 +82,16 @@ def test_public_until_decay_warns_once(monkeypatch):
     assert [w for w in caught if w.category is limits.MapCountWarning] == []
 
 
-@pytest.mark.parametrize("platform, contents, expected", [
-    ("darwin", "65530\n", None),
-    ("linux", "not an integer\n", None),
-    ("linux", "65530\n", 65530),
+@pytest.mark.parametrize("contents, expected", [
+    (OSError(), None),
+    ("abc", None),
+    ("65530\n", 65530),
 ])
-def test_read_map_count(monkeypatch, platform, contents, expected):
-    monkeypatch.setattr(limits.sys, "platform", platform)
-    monkeypatch.setattr(limits.Path, "read_text", lambda self: contents)
+def test_read_map_count(monkeypatch, contents, expected):
+    def read_text(self):
+        if isinstance(contents, OSError):
+            raise contents
+        return contents
+
+    monkeypatch.setattr(limits.Path, "read_text", read_text)
     assert limits._read_map_count() == expected
