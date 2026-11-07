@@ -119,6 +119,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         SIGNS, build_triplets, coefficients, matrices, triplet_weights,
     )
     from rfx.model.graded_grid import NonUniformGrid
+    from rfx.geometry.box_content import apply_box_scope, box_scope
 
     graded = isinstance(grid, NonUniformGrid)
     coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
@@ -130,6 +131,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
                             *(p for s, _ in shapes for p in smooth._shape_parameters(s)),
                             *masks.values())
     xp = np if host else jnp
+    scope = box_scope(grid, shapes, coords, lengths, background_eps, masks, host=host)
     field_dtype = jnp.float32 if field_dtype is None else field_dtype
     acc_dtype = np.float64 if host else field_dtype
     if graded:
@@ -192,12 +194,15 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
             xp, grid, supported, nodes, ns, eps, outside, matrices(xp, xi),
             signed_distance=signed_distance, cell_lengths=lengths)
         triplets = xp.where(touched[..., None, None], current, triplets)
+        if scope is not None:  # exact triplets (w = 1) replace the planar ones
+            touched = touched & ~scope.replaced
         guard_count = guard_count + xp.sum(guards & touched, dtype=xp.int32)
         bulk = xp.where(f > 0, ~interface, bulk)
         for axis, sample in enumerate(samples.values()):
             fm, _ = _union(xp, grid, supported, sample,
                            fill_length=mid_length[('ex', 'ey', 'ez')[axis]] if graded else None)
             mid_bulk[axis] = xp.where(fm > 0, fm >= 1, mid_bulk[axis])
+    triplets = apply_box_scope(triplets, scope)
     periodic = tuple(a in grid.periodic_axes or (a == 'z' and getattr(grid, 'is_2d', False))
                      for a in 'xyz')
     pad = np.zeros(grid.shape, dtype=bool)
