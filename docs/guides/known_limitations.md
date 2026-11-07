@@ -626,6 +626,18 @@ same at 4000 and 8000 steps; without the option the two are equal at every bin. 
 on that board has not been judged. What to do: read S11 from a run without `reference_plane_cells` (or from
 `forward()`), and take only the reference-plane S21 from the run with it.
 
+### `forward()` accepts `reference_plane_cells` on a wire port and does not use it, so its S21 phase differs from `run()`'s.
+
+Tracker: #2454
+
+With the option, `run()` forms S21 from the waves at the reference planes and moves their phase to the port plane;
+`forward()` registers no reference planes and returns the whole-port S21, with no refusal or warning. Measured on the
+16 mm microstrip thru between two 50 Ω wire ports above, 3–7 GHz, `reference_plane_cells=3` on both ports, 4000
+steps: |S21| from the two agrees within 0.2 dB, and the phase of `run()`'s S21 leads `forward()`'s by 13.6° at 3 GHz
+rising to 32.7° at 7 GHz, a pure delay of about 13.2 ps (|S21 from `run()` − S21 from `forward()`| up to 0.525). Which
+of the two phases is right on that board has not been judged. What to do: until the fix, take the de-embedded S21 from
+`run()`; a `forward()` objective or gradient on S21 phase or group delay reads the whole-port value.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
