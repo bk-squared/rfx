@@ -407,8 +407,8 @@ def _stacked_face_inputs(ntff_data, box, grid, rdtype):
     Returns ``(J, M, pos, w)`` with shapes (n_faces, n_f, n_c,max, 3),
     (n_faces, n_f, n_c,max, 3), (n_faces, n_c,max, 3) and
     (n_faces, n_c,max), faces in the order x_lo, x_hi, y_lo, y_hi, z_lo,
-    z_hi, or ``None`` when no face is present. A face absent from
-    ``ntff_data`` (``None`` or empty) is not stacked. Each face is padded
+    z_hi, or ``None`` when no face is present. An empty face is not
+    stacked; a ``None`` face raises ``ValueError``. Each face is padded
     on its cell axis to the largest face's cell count with zero currents,
     zero weight and position 0.0, so a padded cell adds exactly zero.
     """
@@ -474,7 +474,9 @@ def _stacked_face_inputs(ntff_data, box, grid, rdtype):
     for name, axis, sign, face_idx, other_ranges in face_specs:
         face_dft = getattr(ntff_data, name, None)
         if face_dft is None:
-            continue
+            # Refused, not dropped: skipping it would transform an open surface.
+            raise ValueError(f"NTFFData.{name} is None; the far-field transform "
+                             "needs every face's DFT record")
         face = jnp.asarray(face_dft)
         nf, n1, n2 = face.shape[0], face.shape[1], face.shape[2]
         if n1 == 0 or n2 == 0:

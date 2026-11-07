@@ -228,3 +228,99 @@ def test_chunking_block_is_code_not_docstring():
     assert "x_lo" in flat, (
         "the face-name scan is not in the compiled body — sizing cannot run"
     )
+
+
+def _synthetic_ntff(seed=7271):
+    """Random complex faces on a 4 x 5 x 6-cell box, no FDTD.
+
+    Random tangential E and H on every face drive both polarizations, so
+    E_phi is not a cross-polar null as it is in ``_run()``'s fixture.
+    """
+    import jax.numpy as jnp
+    from rfx.farfield import NTFFBox, NTFFData
+    from rfx.grid import Grid
+
+    rng = np.random.default_rng(seed)
+    nx, ny, nz = 4, 5, 6
+    spans = {"x": (ny, nz), "y": (nx, nz), "z": (nx, ny)}
+    faces = []
+    for axis in "xxyyzz":
+        shape = (3, *spans[axis], 4)
+        faces.append(jnp.asarray((rng.normal(size=shape)
+                                  + 1j * rng.normal(size=shape))
+                                 .astype(np.complex64)))
+    grid = Grid(freq_max=40e9,
+                domain=tuple((n + 2) * 0.0005 for n in (nx, ny, nz)),
+                dx=0.0005, cpml_layers=0)
+    box = NTFFBox(1, nx + 1, 1, ny + 1, 1, nz + 1,
+                  jnp.asarray([20e9, 30e9, 40e9], dtype=jnp.float32))
+    return NTFFData(*faces), box, grid
+
+
+def test_split_matches_unsplit_with_both_polarizations_present():
+    """The far field in one direction is a sum over surface cells for that
+    direction alone, for E_theta and for E_phi; splitting theta into
+    chunks changes no term of either sum. On ``_run()``'s fixture E_phi is
+    a -110 dB cross-polar null, so an E_phi error on the split path is
+    invisible against the field-peak bar; here E_phi is within 20 dB of
+    E_theta (ratio asserted), so the same bar sees both components. 13
+    theta rows in chunks of 4 leave 3 padded rows."""
+    import jax
+
+    data, box, grid = _synthetic_ntff()
+    th = np.radians(np.linspace(3.0, 177.0, 13))
+    ph = np.radians(np.linspace(0.0, 340.0, 18))
+
+    n_cells = max(int(getattr(data, f).shape[1]) * int(getattr(data, f).shape[2])
+                  for f in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
+    per_theta = 3 * len(ph) * n_cells * 16.0   # the public budget's rule
+    width = 4
+    budget = width * per_theta
+    n_chunks = -(-len(th) // width)
+    assert len(th) % width != 0                # padding > 0
+
+    whole = compute_far_field_jax(data, box, grid, th, ph,
+                                  max_phase_bytes=float("inf"))
+    chunked = compute_far_field_jax(data, box, grid, th, ph,
+                                    max_phase_bytes=budget)
+
+    ratio = (float(np.max(np.abs(np.asarray(whole.E_phi))))
+             / float(np.max(np.abs(np.asarray(whole.E_theta)))))
+    # measured 0.944 (E_phi 0.2097, E_theta 0.2222); split vs unsplit
+    # differs by 3.7e-8 (E_theta) and 1.3e-7 (E_phi) of the field peak
+    assert ratio >= 0.1, f"E_phi/E_theta peak ratio {ratio:.3f} < 0.1"
+
+    # the budget realized a split: a scan of n_chunks steps over theta
+    def scan_lengths(program):
+        if hasattr(program, "jaxpr"):
+            yield from scan_lengths(program.jaxpr)
+        elif hasattr(program, "eqns"):
+            for equation in program.eqns:
+                if equation.primitive.name == "scan":
+                    yield equation.params["length"]
+                yield from scan_lengths(equation.params)
+        elif isinstance(program, dict):
+            for value in program.values():
+                yield from scan_lengths(value)
+        elif isinstance(program, (tuple, list)):
+            for value in program:
+                yield from scan_lengths(value)
+
+    traced = jax.make_jaxpr(lambda t: compute_far_field_jax(
+        data, box, grid, t, ph, max_phase_bytes=budget))(th)
+    assert n_chunks in set(scan_lengths(traced)), (
+        f"no {n_chunks}-step theta map; the budget did not split theta")
+
+    _assert_fields_match(whole, chunked)
+
+
+def test_none_face_is_refused():
+    """A face given as None is refused: dropping it would transform an
+    open surface and return a far field missing that face's radiation."""
+    import pytest
+
+    data, box, grid = _synthetic_ntff()
+    th = np.radians(np.linspace(0.0, 180.0, 5))
+    ph = np.radians(np.linspace(0.0, 270.0, 4))
+    with pytest.raises(ValueError, match="z_hi"):
+        compute_far_field_jax(data._replace(z_hi=None), box, grid, th, ph)
