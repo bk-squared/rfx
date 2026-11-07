@@ -320,13 +320,49 @@ _PAD_REACH_TOL_CELLS = 1e-6
 _PAD_CONTINUE_CELLS = 2.0
 
 
+def medium_key(eps_r):
+    """The identity of a dielectric medium in the smoother's grouping.
+
+    Shapes with one key are one medium: smoothed against their union SDF, and
+    excluded from each other's "outside" sample. A concrete ``eps_r`` keys by
+    its float value, so shapes of equal permittivity merge exactly as they
+    always have. A JAX tracer has no value while the program is built, so it
+    keys by object identity: one material traced once is one tracer object
+    (``add_material`` stores it, ``_resolve_material`` returns it), and two
+    materials given the same tracer object are one medium. Two different
+    tracers are two media even if their values turn out equal.
+    """
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(eps_r):
+        return ("traced", id(eps_r))
+    return float(eps_r)
+
+
+def _medium_groups(shapes):
+    """``{medium_key: (eps_r, [shape, ...])}`` in first-declared order.
+
+    ``eps_r`` is the first shape's object, which the arithmetic uses."""
+    from collections import OrderedDict
+    groups: OrderedDict = OrderedDict()
+    for shape, eps_r in shapes:
+        groups.setdefault(medium_key(eps_r), (eps_r, []))[1].append(shape)
+    return groups
+
+
+def _concrete_eps(eps_r):
+    """``float(eps_r)``, or None for a JAX tracer (no value to report)."""
+    from rfx.core.jax_utils import is_tracer
+    return None if is_tracer(eps_r) else float(eps_r)
+
+
 class UnextendableShape(NamedTuple):
     """One (shape, axis, side) a pad continuation could not express.
 
     ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"`` (``"all"``
     when a traced mesh axis disables conductor continuation). It carries the
     shape's declared ``eps_r`` so a caller can say what the pad will hold
-    instead of what was drawn, without re-resolving the material.
+    instead of what was drawn, without re-resolving the material (None when
+    ``eps_r`` is a JAX tracer).
 
     ``entry_index`` and ``material_name`` identify the geometry entry, and
     they are FIELDS rather than something a caller recovers by identity.
@@ -350,7 +386,7 @@ class UnextendableShape(NamedTuple):
     axis: int
     side: str
     reason: str
-    eps_r: float = 1.0
+    eps_r: float | None = 1.0
     entry_index: int = -1
     material_name: str = "?"
     conductor: bool = False
@@ -389,7 +425,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
         return
     faces = ", ".join(
         f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} "
-        f"(eps_r {u.eps_r:g}; {u.reason})"
+        f"(eps_r {'traced' if u.eps_r is None else format(u.eps_r, 'g')}; {u.reason})"
         for u in unextendable)
     _w.warn(
         "subpixel smoothing: "
@@ -577,14 +613,14 @@ def extend_shapes_into_cpml_pad(
                         unextendable.append(UnextendableShape(
                             current, axis, side,
                             "a cylinder has no continuation across its axis",
-                            float(eps_r)))
+                            _concrete_eps(eps_r)))
                     else:
                         current = grown
                 else:
                     unextendable.append(UnextendableShape(
                         current, axis, side,
                         f"{type(current).__name__} has no pad continuation",
-                        float(eps_r)))
+                        _concrete_eps(eps_r)))
         out.append((current, eps_r))
     return out, unextendable
 
@@ -867,9 +903,12 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
     that touches only a near-equal host can be flagged too. Conductors (``sim``'s PEC
     conductivity threshold) are neither a subject nor part of the set.
     """
+    from rfx.core.jax_utils import is_tracer
     from rfx.geometry.csg import Cylinder, Sphere
 
     def value(eps_r):
+        if is_tracer(eps_r):
+            return None
         try:
             v = float(eps_r)
         except (TypeError, ValueError):
@@ -889,6 +928,23 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
             continue
         if any(max(v / o, o / v) >= contrast for o in others):
             curved.append(f"{type(declared).__name__} eps_r={v:g}")
+    # A traced eps_r has no value while the program is built, so its contrast
+    # cannot be judged; say so once instead of dropping it silently.
+    traced = [s_ for s_, e in pairs if is_tracer(e)]
+    if traced and any(isinstance(getattr(s_, "declared", s_), (Sphere, Cylinder))
+                      for s_, _ in pairs):
+        names = {} if sim is None else {id(e.shape): e.material_name for e in sim._geometry}
+        labels = dict.fromkeys(
+            names.get(id(getattr(s_, "declared", s_)),
+                      type(getattr(s_, "declared", s_)).__name__)
+            for s_ in traced)
+        import warnings as _w
+        _w.warn("subpixel_smoothing: the curved high-contrast check was not judged for the "
+                "traced material(s) " + ", ".join(f"'{n}'" for n in labels) + ": a traced "
+                "eps_r has no value while the program is built. A curved dielectric 10x or "
+                "more from vacuum or another dielectric converges first order under "
+                "subpixel_smoothing; see docs/guides/known_limitations.md.",
+                CurvedSmoothingWarning, stacklevel=user_stacklevel())
     if curved:
         import warnings as _w
         _w.warn("subpixel_smoothing on a curved high-contrast dielectric (" + ", ".join(curved)
@@ -1217,7 +1273,9 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
     retained. In the current group only the (SDF shape, periodic image)
     supplying the normal is excluded; the shape index counts SDF
     shapes only. Other images, shapes and mask-only bodies count. Neither
-    smoothed operands nor node tensors are read.
+    smoothed operands nor node tensors are read. ``groups`` is
+    :func:`_medium_groups`'s mapping and ``current`` the current group's
+    :func:`medium_key`.
     """
     from rfx._internal._periodic import periodic_sdf
     from rfx.geometry.rasterize_grid import (
@@ -1228,13 +1286,13 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
     points = tuple(p + offset * n for p, n in zip(coords, normal))
     outside = background
     indices = None
-    for eps_r, group in groups.items():
+    for key, (eps_r, group) in groups.items():
         sdf_index = 0
         for shape in group:
             if _has_sdf(shape):
                 mask = periodic_sdf(
                     grid, shape, points, _get_sdf_fn(shape), xp=xp,
-                    exclude_image=normal_image if eps_r == current else None,
+                    exclude_image=normal_image if key == current else None,
                     exclude_where=normal_source == sdf_index) <= 0
                 sdf_index += 1
             else:
@@ -1268,10 +1326,13 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
     ----------
     xp : numpy or jax.numpy
     shapes : list of (shape, eps_r)
-        Applied in order; later shapes overwrite earlier ones. Shapes sharing
-        an ``eps_r`` form one group and are smoothed against their union SDF
+        Applied in order; later shapes overwrite earlier ones. Shapes of one
+        medium form one group and are smoothed against their union SDF
         with the nearest shape's analytic normal, so overlapping same-material
-        bodies are not double-smoothed.
+        bodies are not double-smoothed. Grouping is by medium identity
+        (:func:`medium_key`): equal concrete ``eps_r`` values are one medium;
+        a traced ``eps_r`` is one medium per tracer object, so the
+        permittivity can be differentiated through the smoothed interfaces.
     sample_coords : {"ex" | "ey" | "ez": (X, Y, Z)}
         Broadcastable coordinate arrays at each component's Yee position.
     cell_len : scalar or dict of per-component (dx, dy, dz) arrays
@@ -1287,12 +1348,9 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
     """
     eps = dict(zip(("ex", "ey", "ez"), eps))
     background = eps.copy()
-    from collections import OrderedDict
-    groups: OrderedDict[float, list] = OrderedDict()
-    for shape, eps_r in shapes:
-        groups.setdefault(eps_r, []).append(shape)
+    groups = _medium_groups(shapes)
 
-    for eps_r, group_shapes in groups.items():
+    for key, (eps_r, group_shapes) in groups.items():
         sdf_shapes = [s for s in group_shapes if _has_sdf(s)]
 
         # Fallback shapes: staircased mask
@@ -1359,7 +1417,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             bnd = (f > 0.0) & (f < 1.0)
 
             outside = _bulk_outside(
-                xp, groups, eps_r, (Xc, Yc, Zc), sdf_union,
+                xp, groups, key, (Xc, Yc, Zc), sdf_union,
                 (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
                 normal_source=normal_source, normal_image=normal_image)
             kt = _kottke_tensor_eps(f, eps_r, outside, best_nx, best_ny, best_nz)

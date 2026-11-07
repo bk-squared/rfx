@@ -459,8 +459,8 @@ def test_lumped_two_port_really_uses_float64():
 def test_full_tensor_realized_float64(monkeypatch):
     """T6: inspect the host-built tensor handed to the actual timestep.
 
-    Public eps_r tracing is blocked by material grouping in _kottke_smooth;
-    traced radius admission is PR B scope. Keep this realized-storage judge.
+    A traced eps_r takes the traced smoother path, not this host-built one
+    (#2436); traced radius admission is PR B scope. Keep this realized-storage judge.
     """
     import rfx.simulation as core
     from tests.unit.runners.test_forward_subpixel_smoothing import sphere_sim
