@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx._host_limits import check_map_count
 from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
 
 
@@ -69,6 +70,7 @@ def scan_with_progress(
       and XLA's compile cost grows superlinearly in argument count — 232 s
       at 22,500 chunks, against 0.99 s grouped. See :func:`concat_chunks`.
     """
+    check_map_count()
     import jax
 
     if stop_fn is None:

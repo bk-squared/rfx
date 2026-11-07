@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from rfx._host_limits import check_map_count
 
 if TYPE_CHECKING:
     from numpy.typing import DTypeLike
@@ -881,6 +882,7 @@ def run_until_decay(
     -------
     SimResult
     """
+    check_map_count()
     warn_unused_decay_monitor(monitor_component, monitor_position)
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if checkpoint_segments is not None:
