@@ -223,6 +223,8 @@ class _AdMemoryMixin:
         Adjoint fields and backward working arrays remain whole-grid with a
         design box; the same workspace there is an unmeasured estimate.
 
+        The far-field transform adds at most one face-chunk phase factor under the gradient, outside this pre-solve estimate.
+
         Segments save one carry per active boundary and one live segment,
         independently of the per-step checkpoint flag.
         Balance K_active*carry_bytes against s*tape_step_bytes. Warmup

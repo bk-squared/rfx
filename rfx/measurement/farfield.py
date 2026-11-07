@@ -19,6 +19,7 @@ from rfx.farfield import _ntff_face_pads
 from rfx.farfield import _surface_currents
 from rfx.grid import C0
 from rfx.grid import Grid
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -250,17 +251,19 @@ def compute_far_field_jax(
 
     ``max_phase_bytes`` bounds the (n_freqs, n_directions, n_cells) phase
     array the transform materializes per face; the direction grid is
-    split to stay under it. Splitting theta is EXACT — the sum over
-    surface cells is independent per direction — and the chunked result
-    is bit-identical to the single-shot one. Pass ``float("inf")`` to
-    force a single pass.
+    split to stay under it. Splitting theta is exact in arithmetic — the
+    sum over surface cells is independent per direction — and the chunked
+    result equals the single-shot one to float rounding (the final
+    projection compiles differently). Pass ``float("inf")`` to force a
+    single pass.
     """
     # The transform below materializes a (n_freqs, n_directions, n_cells)
     # phase array per face. All three factors are unbounded, and a board
     # pattern run (13 freqs, 181x72 directions, 3.3e5 cells/face) asked for
     # 214 GB and died AFTER an 8-hour solve. The sum over
     # surface cells is independent per direction, so splitting theta is
-    # EXACT — the chunked and unchunked results agree to the bit (locked by
+    # exact in arithmetic — the chunked and unchunked results agree to
+    # rounding, 1e-4 of the field peak (locked by
     # tests/unit/farfield/test_farfield_chunking.py). max_phase_bytes bounds that array;
     # raise it to trade memory for fewer passes, or set it to inf to force
     # the single-shot path.
@@ -272,6 +275,7 @@ def compute_far_field_jax(
     rdtype = jnp.finfo(cdtype).dtype
     theta = jnp.asarray(theta, dtype=rdtype)
     n_th_total = int(theta.shape[0])
+    chunk = max(1, n_th_total)
     if n_th_total > 1 and np.isfinite(max_phase_bytes):
         # Size from the actual face arrays. The first version of this
         # scanned for attributes starting with "J" — a name no NTFFData
@@ -299,26 +303,115 @@ def compute_far_field_jax(
             # can do, and it is still the difference between running and
             # dying.
             chunk = max(1, int(max_phase_bytes // per_theta))
-            if chunk < n_th_total:
-                parts = [
-                    compute_far_field_jax(
-                        ntff_data, box, grid, theta[i:i + chunk], phi,
-                        max_phase_bytes=float("inf"))
-                    for i in range(0, n_th_total, chunk)
-                ]
-                return FarFieldResult(
-                    E_theta=jnp.concatenate([p.E_theta for p in parts], axis=1),
-                    E_phi=jnp.concatenate([p.E_phi for p in parts], axis=1),
-                    theta=theta,
-                    phi=parts[0].phi,
-                    freqs=parts[0].freqs,
-                )
+            chunk = min(chunk, n_th_total)
     theta = jnp.asarray(theta, dtype=rdtype)
     phi = jnp.asarray(phi, dtype=rdtype)
     freqs = jnp.asarray(box.freqs, dtype=rdtype)
     nf = freqs.shape[0]
     k_arr = 2 * jnp.pi * freqs / C0
 
+    # The present faces, stacked on a leading face axis and padded to the
+    # largest face's cell count (built once; they do not depend on θ).
+    stacked = _stacked_face_inputs(ntff_data, box, grid, rdtype)
+
+    def transform_chunk(theta):
+        TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
+        sth, cth = jnp.sin(TH), jnp.cos(TH)
+        sph, cph = jnp.sin(PH), jnp.cos(PH)
+
+        r_hat = jnp.stack([sth * cph, sth * sph, cth], axis=-1)
+        th_hat = jnp.stack([cth * cph, cth * sph, -sth], axis=-1)
+        ph_hat = jnp.stack([-sph, cph, jnp.zeros_like(sth)], axis=-1)
+
+        n_th, n_ph = theta.shape[0], phi.shape[0]
+        r_flat = r_hat.reshape(-1, 3)
+        n_dir = r_flat.shape[0]
+
+        # The carry's dtype is cdtype; with x64 enabled and float64 cell
+        # positions it is the promoted type the face sums had before.
+        acc_dtype = cdtype if stacked is None else jnp.result_type(
+            cdtype, r_flat, k_arr, *stacked)
+        zeros = jnp.zeros((nf, n_dir, 3), dtype=acc_dtype)
+
+        # The six face terms have no data dependence on one another, so the
+        # compiler formed their phase factors together (and, under reverse
+        # mode, kept them together). One scan over the faces, with N and L
+        # carried from step to step, makes the faces take turns: one face's
+        # (n_f, n_dir, n_c) factor exists at a time, and the checkpointed
+        # step rebuilds it in the backward pass instead of keeping it.
+        # A padded cell has zero weight and zero currents, so it adds
+        # exactly zero.
+        @jax.checkpoint
+        def face_step(carry, face):
+            N_acc, L_acc = carry
+            J, M, pos, w = face
+            dot = jnp.matmul(r_flat, pos.T, precision=HIGHEST)  # (n_dir, nc)
+            phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
+            J_w = J * w[None, :, None]
+            M_w = M * w[None, :, None]
+            N_acc = N_acc + jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
+            L_acc = L_acc + jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
+            return (N_acc.astype(acc_dtype), L_acc.astype(acc_dtype)), None
+
+        if stacked is None:
+            N_total, L_total = zeros, zeros
+        else:
+            (N_total, L_total), _ = jax.lax.scan(
+                face_step, (zeros, zeros), stacked, unroll=1)
+
+        th_flat = th_hat.reshape(-1, 3)
+        ph_flat = ph_hat.reshape(-1, 3)
+
+        N_th = jnp.sum(N_total * th_flat[None, :, :], axis=-1)
+        N_ph = jnp.sum(N_total * ph_flat[None, :, :], axis=-1)
+        L_th = jnp.sum(L_total * th_flat[None, :, :], axis=-1)
+        L_ph = jnp.sum(L_total * ph_flat[None, :, :], axis=-1)
+
+        jk = 1j * k_arr[:, None]  # (nf, 1)
+        E_theta = -jk / (4 * jnp.pi) * (L_ph + ETA_0 * N_th)
+        E_phi = jk / (4 * jnp.pi) * (L_th - ETA_0 * N_ph)
+
+        return E_theta.reshape(nf, n_th, n_ph), E_phi.reshape(nf, n_th, n_ph)
+
+    if chunk >= n_th_total:
+        # The budget does not split θ: no direction-chunk map. A length-1
+        # map kept the forward factors as residuals; the face scan alone
+        # sequences the faces here.
+        E_theta, E_phi = transform_chunk(theta)
+    else:
+        # Equal shapes let the backward map rebuild one chunk at a time.
+        # Repeated end rows are discarded and receive zero cotangents.
+        padding = (-n_th_total) % chunk
+        theta_chunks = jnp.pad(theta, (0, padding), mode="edge").reshape(
+            (n_th_total + padding) // chunk, chunk)
+        E_theta, E_phi = jax.lax.map(jax.checkpoint(transform_chunk), theta_chunks)
+
+        def unpad(field):
+            return field.transpose(1, 0, 2, 3).reshape(
+                nf, n_th_total + padding, phi.shape[0])[:, :n_th_total, :]
+
+        E_theta, E_phi = unpad(E_theta), unpad(E_phi)
+
+    return FarFieldResult(
+        E_theta=E_theta,
+        E_phi=E_phi,
+        theta=theta,
+        phi=phi,
+        freqs=freqs,
+    )
+
+
+def _stacked_face_inputs(ntff_data, box, grid, rdtype):
+    """The present faces' currents, cell positions and cell areas, stacked.
+
+    Returns ``(J, M, pos, w)`` with shapes (n_faces, n_f, n_c,max, 3),
+    (n_faces, n_f, n_c,max, 3), (n_faces, n_c,max, 3) and
+    (n_faces, n_c,max), faces in the order x_lo, x_hi, y_lo, y_hi, z_lo,
+    z_hi, or ``None`` when no face is present. An empty face is not
+    stacked; a ``None`` face raises ``ValueError``. Each face is padded
+    on its cell axis to the largest face's cell count with zero currents,
+    zero weight and position 0.0, so a padded cell adds exactly zero.
+    """
     dx = grid.dx
     dy = getattr(grid, 'dy', dx)
     dz_arr = getattr(grid, 'dz', None)
@@ -368,33 +461,24 @@ def compute_far_field_jax(
             return d_perp * dz_face  # (nk,)
         return _scalar_face_dS(axis, dx, dy, dx)
 
-    TH, PH = jnp.meshgrid(theta, phi, indexing="ij")
-    sth, cth = jnp.sin(TH), jnp.cos(TH)
-    sph, cph = jnp.sin(PH), jnp.cos(PH)
-
-    r_hat = jnp.stack([sth * cph, sth * sph, cth], axis=-1)
-    th_hat = jnp.stack([cth * cph, cth * sph, -sth], axis=-1)
-    ph_hat = jnp.stack([-sph, cph, jnp.zeros_like(sth)], axis=-1)
-
-    n_th, n_ph = theta.shape[0], phi.shape[0]
-    r_flat = r_hat.reshape(-1, 3)
-    n_dir = r_flat.shape[0]
-
-    N_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
-    L_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
-
     face_specs = [
-        (ntff_data.x_lo, 0, -1, i0, ((j0, j1), (k0, k1))),
-        (ntff_data.x_hi, 0, +1, i1, ((j0, j1), (k0, k1))),
-        (ntff_data.y_lo, 1, -1, j0, ((i0, i1), (k0, k1))),
-        (ntff_data.y_hi, 1, +1, j1, ((i0, i1), (k0, k1))),
-        (ntff_data.z_lo, 2, -1, k0, ((i0, i1), (j0, j1))),
-        (ntff_data.z_hi, 2, +1, k1, ((i0, i1), (j0, j1))),
+        ("x_lo", 0, -1, i0, ((j0, j1), (k0, k1))),
+        ("x_hi", 0, +1, i1, ((j0, j1), (k0, k1))),
+        ("y_lo", 1, -1, j0, ((i0, i1), (k0, k1))),
+        ("y_hi", 1, +1, j1, ((i0, i1), (k0, k1))),
+        ("z_lo", 2, -1, k0, ((i0, i1), (j0, j1))),
+        ("z_hi", 2, +1, k1, ((i0, i1), (j0, j1))),
     ]
 
-    for face_dft, axis, sign, face_idx, other_ranges in face_specs:
+    per_face = []
+    for name, axis, sign, face_idx, other_ranges in face_specs:
+        face_dft = getattr(ntff_data, name, None)
+        if face_dft is None:
+            # Refused, not dropped: skipping it would transform an open surface.
+            raise ValueError(f"NTFFData.{name} is None; the far-field transform "
+                             "needs every face's DFT record")
         face = jnp.asarray(face_dft)
-        n1, n2 = face.shape[1], face.shape[2]
+        nf, n1, n2 = face.shape[0], face.shape[1], face.shape[2]
         if n1 == 0 or n2 == 0:
             continue
 
@@ -421,39 +505,23 @@ def compute_far_field_jax(
                     dS_flat = dS_k
             else:
                 dS_flat = _face_dS_jax(axis, 0, 0)
+        dS_flat = jnp.broadcast_to(jnp.asarray(dS_flat, dtype=rdtype), (n1 * n2,))
+        per_face.append((J, M, pos_flat, dS_flat))
 
-        dot = jnp.matmul(r_flat, pos_flat.T, precision=HIGHEST)  # (n_dir, nc)
+    if not per_face:
+        return None
+    n_max = max(int(p[3].shape[0]) for p in per_face)
 
-        phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
-        dS_flat = jnp.asarray(dS_flat, dtype=rdtype)  # may be Python float
-        if jnp.ndim(dS_flat) > 0:
-            J_w = J * dS_flat[None, :, None]
-            M_w = M * dS_flat[None, :, None]
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
-        else:
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J, precision=HIGHEST) * dS_flat
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M, precision=HIGHEST) * dS_flat
+    def pad_cells(x, axis):
+        widths = [(0, 0)] * x.ndim
+        widths[axis] = (0, n_max - x.shape[axis])
+        return jnp.pad(x, widths, constant_values=0)
 
-    th_flat = th_hat.reshape(-1, 3)
-    ph_flat = ph_hat.reshape(-1, 3)
-
-    N_th = jnp.sum(N_total * th_flat[None, :, :], axis=-1)
-    N_ph = jnp.sum(N_total * ph_flat[None, :, :], axis=-1)
-    L_th = jnp.sum(L_total * th_flat[None, :, :], axis=-1)
-    L_ph = jnp.sum(L_total * ph_flat[None, :, :], axis=-1)
-
-    jk = 1j * k_arr[:, None]  # (nf, 1)
-    E_theta = -jk / (4 * jnp.pi) * (L_ph + ETA_0 * N_th)
-    E_phi = jk / (4 * jnp.pi) * (L_th - ETA_0 * N_ph)
-
-    return FarFieldResult(
-        E_theta=E_theta.reshape(nf, n_th, n_ph),
-        E_phi=E_phi.reshape(nf, n_th, n_ph),
-        theta=theta,
-        phi=phi,
-        freqs=freqs,
-    )
+    J = jnp.stack([pad_cells(p[0], 1) for p in per_face])
+    M = jnp.stack([pad_cells(p[1], 1) for p in per_face])
+    pos = jnp.stack([pad_cells(p[2], 0) for p in per_face])
+    w = jnp.stack([pad_cells(p[3], 0) for p in per_face])
+    return J, M, pos, w
 
 
 def _scalar_face_dS(axis, dx, dy, dz):
