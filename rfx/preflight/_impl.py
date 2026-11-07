@@ -313,7 +313,9 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         # skip_preflight=True remains the explicit escape hatch.
         detail = "\n  - ".join(errors)
         from rfx._diagnostic_transport import diagnostic_refusal
-        realization = sum(getattr(i, "source", None) == "judge_realization" for i in errors)
+        # Sheet-size rows are realization rows too: admitted on every lane (admit_sheet_sizes).
+        realization = sum(getattr(i, "source", None) == "judge_realization"
+                          or getattr(i, "code", None) == "sheet_effective_size" for i in errors)
         hint = ("pass skip_preflight=True to bypass" if not realization else
                 ("skip_preflight=True bypasses only the non-realization errors; "
                  if realization < len(errors) else "") +
