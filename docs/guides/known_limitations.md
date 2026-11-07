@@ -129,20 +129,23 @@ disc of radius 3 mm in a 40 × 15 × 30 mm metal cavity changed the cavity's dec
 from 0.5 to 0.25 mm, with its realized area right to 1 % on both meshes. The change comes from the staircased rim; its
 mechanism is not measured. Check a curved film's loss on three meshes before using it as a converged number.
 
-### A surface-impedance sheet with field space behind it gives no loss to a field whose E is normal to it
+### A surface-impedance sheet one cell in front of a PEC face gives no loss to a field whose E is normal to it
 
 Tracker: #2429
 
 A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) is a penetrable film: it carries current
-only through the tangential E on its edges. Where field space lies behind the sheet, a field with E normal to the sheet
-and H tangential passes into that space, and the sheet adds no conductor loss. Synthetic case: a closed 30 × 12 × 24 mm
-vacuum cavity, TE101 at 8.0 GHz, one wall pair replaced by f0 sheets one cell inside the PEC faces. With sheets on the
-y faces (E normal to them), the mode's field decay rate was 22,134 1/s against 25,108 1/s with PEC sheets in the same
-place; a Leontovich wall of the same resistance gives about 1.55×10⁷ 1/s. With sheets on the x or z faces (E
-tangential), the cavity Q matched the closed form within 4×10⁻³ at 1 mm cells (measured; record kept with the project). For a wall
-that must carry loss for every field orientation, use a PEC wall or a thick lossy Box. The case covers a sheet with a
-conductor close behind it; a sheet with no conductor behind it, such as a patch over a ground plane, is outside it and
-was not measured here.
+only through the tangential E on its edges. Two cases are measured. With a PEC face one cell behind the sheet, a field
+with E normal to the sheet and H tangential passes into the one-cell gap, and the sheet adds no conductor loss.
+Synthetic case: a closed 30 × 12 × 24 mm vacuum cavity, TE101 at 8.0 GHz, one wall pair replaced by f0 sheets one cell
+inside the PEC faces. With sheets on the y faces (E normal to them), the mode's field decay rate was 22,134 1/s against
+25,108 1/s with PEC sheets in the same place; a Leontovich wall of the same resistance gives about 1.55×10⁷ 1/s. With
+sheets on the x or z faces (E tangential), the cavity Q matched the closed form within 4×10⁻³ at 1 mm cells. With only
+air and the absorber behind the sheets, the sheets carry the conductor loss: a probe-fed patch and its ground plane,
+both f0 sheets (copper, and ten times copper's resistance), with the E between them mostly normal to them, lost
+1.17–1.22 times the cavity-model estimate in the sheets on the bins where |S11| is below −10 dB, at three meshes; input
+power equalled radiated, substrate and sheet power within 3×10⁻⁴ of the input (both measured; records kept with the
+project). Other spacings between a sheet and a lossless conductor behind it were not measured. For a wall one cell in
+front of a PEC face that must carry loss for every field orientation, use a PEC wall or a thick lossy Box.
 
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
@@ -628,7 +631,7 @@ mode for far longer than a plain record; the port is its only loss. On a plain r
 peak is the direct response, and the weakly coupled mode rings below it.
 On the same record, one-cell wire-port completion restores |S11| to 1 within 1e-3 with its early-window vs late-window comparisons passing
 (`tests/unit/sparams/test_sparam.py::test_wire_port_pec_cavity_s11_around_the_first_mode`).
-`run(ringdown=...)` currently refuses one-cell lumped ports.
+`run(ringdown=...)` and `forward(ringdown=...)` refuse one-cell lumped ports (`add_port` without `extent=`).
 What to do: record well past the slowest mode's decay, or use a one-cell wire port
 (`add_port(..., extent=dx)`) with `run(ringdown=...)`.
 #1255 was closed as a stated limit (decided 2026-10-01); this is a standing limitation.
