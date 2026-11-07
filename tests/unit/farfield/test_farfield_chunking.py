@@ -66,7 +66,7 @@ def test_default_budget_leaves_small_problems_single_shot():
     assert np.array_equal(np.asarray(a.E_theta), np.asarray(b.E_theta))
 
 
-def test_default_budget_chunks_a_large_problem(monkeypatch):
+def test_default_budget_chunks_a_large_problem():
     """The sizing DECISION must work, not just the split.
 
     Two tests have now been written for this and neither caught the real
@@ -79,22 +79,16 @@ def test_default_budget_chunks_a_large_problem(monkeypatch):
     214 GB allocation this function exists to prevent, after an 8.5-hour
     solve.
 
-    So observe the decision directly: count how many times the function
-    re-enters itself. One call means no split.
+    Observe the realized scan length and theta chunk width in the traced
+    program: a mapped split no longer re-enters the public function.
     """
     res = _run()
     th = np.radians(np.linspace(0.0, 180.0, 61))
     ph = np.radians(np.linspace(0.0, 350.0, 24))
 
+    import jax
     import rfx.measurement.farfield as _ff
     real = _ff.compute_far_field_jax
-    calls = {"n": 0}
-
-    def counting(*a, **kw):
-        calls["n"] += 1
-        return real(*a, **kw)
-
-    monkeypatch.setattr(_ff, "compute_far_field_jax", counting)
 
     n_cells = max(int(getattr(res.ntff_data, f).shape[1])
                   * int(getattr(res.ntff_data, f).shape[2])
@@ -104,14 +98,39 @@ def test_default_budget_chunks_a_large_problem(monkeypatch):
     assert per_theta > 0
 
     budget = per_theta * 5          # fits five directions, not sixty-one
-    calls["n"] = 0
-    chunked = counting(res.ntff_data, res.ntff_box, res.grid, th, ph,
-                       max_phase_bytes=budget)
-    n_passes = calls["n"] - 1       # the outer call plus one per chunk
-    assert n_passes >= 2, (
-        f"a {budget / 1e9:.2f} GB budget against {per_theta / 1e9:.3f} GB per "
-        f"direction and {len(th)} directions must split, but the function "
-        f"re-entered itself {n_passes} time(s) — the sizing did not fire")
+    expected_width = max(1, int(budget // per_theta))
+    expected_length = (len(th) + expected_width - 1) // expected_width
+    traced = jax.make_jaxpr(
+        lambda theta: real(res.ntff_data, res.ntff_box, res.grid, theta, ph,
+                           max_phase_bytes=budget)
+    )(th)
+
+    def scan_equations(program):
+        if hasattr(program, "jaxpr"):
+            yield from scan_equations(program.jaxpr)
+        elif hasattr(program, "eqns"):
+            for equation in program.eqns:
+                if equation.primitive.name == "scan":
+                    yield equation
+                yield from scan_equations(equation.params)
+        elif isinstance(program, dict):
+            for value in program.values():
+                yield from scan_equations(value)
+        elif isinstance(program, (tuple, list)):
+            for value in program:
+                yield from scan_equations(value)
+
+    scans = list(scan_equations(traced))
+    assert len(scans) == 1, "expected one direction-chunk map"
+    scan = scans[0]
+    assert scan.params["length"] == expected_length, (
+        f"realized {scan.params['length']} chunks; expected {expected_length}")
+    theta_operand = scan.invars[scan.params["num_consts"] + scan.params["num_carry"]]
+    chunk_shape = theta_operand.aval.shape[1:]  # remove the scan iteration axis
+    assert chunk_shape == (expected_width,), (
+        f"realized theta chunk shape {chunk_shape}; expected {(expected_width,)}")
+    chunked = real(res.ntff_data, res.ntff_box, res.grid, th, ph,
+                   max_phase_bytes=budget)
 
     whole = real(res.ntff_data, res.ntff_box, res.grid, th, ph,
                  max_phase_bytes=float("inf"))
