@@ -1211,14 +1211,14 @@ class Simulation(
             port's position (closest boundary face).
         reference_plane_cells : int or None
             Opt-in reference-plane port waves for the wire-port S-matrix
-            OFF-diagonal extraction. When set to an integer
+            opted-block extraction. When set to an integer
             N >= 1, ``run(compute_s_params=True)`` registers TWO line
             V/I reference planes for this port at N and 2N cells
             outboard (into the DUT along the line axis, i.e. opposite
             ``direction``): gap-voltage line integrals at integer Yee
             planes plus dual adjacent Ampere loops around the PEC signal
-            trace, accumulated in the production scan. Off-diagonal
-            ``S[i, j]`` entries whose ports BOTH opt in are then computed
+            trace, accumulated in the production scan. With >= 2 opted ports,
+            the whole opted block is computed as ``S = B A^-1`` over drive passes
             from the plane waves — forward/backward split with the
             MEASURED two-plane line impedance
             ``Zc^2 = (V1^2 - V2^2)/(I1^2 - I2^2)`` (never the nominal
@@ -1230,7 +1230,7 @@ class Simulation(
             all bins; the plane path removes the drive-side |S21|
             deflation kappa(f) = 1.49-1.86.
             ``None`` (default) keeps the shipped port-cell behaviour,
-            byte-identical. With the option ``S_jj`` is the per-cell diagonal,
+            byte-identical. Opted ``S_jj`` uses the same Re Zc plane waves as S21,
             unlike the default; ``forward()`` refuses the option, use
             ``run(compute_s_params=True)``. Requires a wire port
             (``extent=``) with an explicit ``direction`` transverse to

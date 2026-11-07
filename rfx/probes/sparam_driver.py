@@ -417,8 +417,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     if graded:
         S = np.stack([column for _, column in sorted(columns, key=lambda c: c[0])], axis=1)
     if wire_mode and plane_v is not None:
-        # reference-plane path: byte-frozen legacy diagonals +
-        # plane-wave off-diagonals where both ports opted in.  The V/I
+        # Reference-plane path: S = B A^-1 over the whole opted block;
+        # entries outside that block retain the legacy path. The V/I
         # replay dump schema has no plane-phasor fields — fail loudly
         # rather than return a dump whose replay cannot reproduce S.
         if return_vi_dump:

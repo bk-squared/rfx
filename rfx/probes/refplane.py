@@ -8,8 +8,8 @@ uniform line does — the zero-free-parameter conservation identity
 ``(|f|^2 - |b|^2)/Re(Zc)`` closed at +1.19% -> -0.28% at all 9 bins and the
 implied |S21| landed within ~2.5% of the box referee at all bins (shipped
 port-cell extractor: 33-47% off).  This module measures port waves at
-reference planes instead of at the port cells, for the OFF-DIAGONAL
-S-matrix entries only.
+reference planes instead of at the port cells, for the whole opted
+S-matrix block when at least two ports opt in.
 
 Method (conventions anchored by the closed-box flux measurement above):
 
@@ -41,10 +41,10 @@ Method (conventions anchored by the closed-box flux measurement above):
   same two planes (slow-wave beta/(w/c) = 1.048-1.061 measured on the
   canonical thru — far above numerical-dispersion class, so an analytic
   beta would be wrong).  Magnitude-neutral by construction.
-* Off-diagonals: ``S_ij = b_inc_plane(i) / a_fwd_plane(j)`` where both
-  ports opted in.  DIAGONAL ``S_jj`` always stays on the byte-frozen
-  legacy path (``decompose_wire_s_matrix`` — legacy per-cell conventions),
-  untouched.
+* Opted block: ``S = B A^-1`` over all opted drive passes, with incoming
+  and outgoing plane waves de-embedded and normalized by ``sqrt(Re Zc)``.
+  This removes the far termination's echo from the diagonal. Entries
+  outside the opted block retain the legacy per-cell conventions.
 
 The scan-side DFT accumulators mirror the coax plane-V/I machinery class
 (``extract_coaxial_plane_vi_from_dft`` and the wire/lumped
@@ -497,18 +497,18 @@ def decompose_wire_s_matrix_with_reference_planes(
     """Shared plane-aware wire S-matrix decomposition (driver + eager entry).
 
     Starts from the byte-frozen legacy decomposition
-    (:func:`rfx.probes.probes.decompose_wire_s_matrix` — diagonals AND any
-    off-diagonal whose port pair is not fully opted in), then replaces
-    ``S[i, j]`` (i != j, both ports opted in) with the reference-plane
+    (:func:`rfx.probes.probes.decompose_wire_s_matrix`), then replaces
+    the whole opted block when at least two ports opt in, using all
+    opted drive passes and the reference-plane
     waves::
 
-        a_j (drive)   = outgoing(plane j0) * exp(+j*beta_j*N_j*dx) / sqrt(Re Zc_j)
-        b_i (receive) = incoming(plane i0) * exp(-j*beta_i*N_i*dx) / sqrt(Re Zc_i)
-        S[i, j]       = b_i / a_j
+        A[i, j] = outgoing(plane i0, pass j) * exp(+j*beta_i*N_i*dx) / sqrt(Re Zc_i)
+        B[i, j] = incoming(plane i0, pass j) * exp(-j*beta_i*N_i*dx) / sqrt(Re Zc_i)
+        S_opted = B A^-1  (solved per frequency bin)
 
     Zc_p and beta_p are measured per port from its OWN drive pass (the
     strongest local signal; the two-plane invariant holds for any load).
-    Diagonals are never touched.
+    Entries outside the opted block retain the legacy decomposition.
 
     Parameters
     ----------
@@ -531,14 +531,15 @@ def decompose_wire_s_matrix_with_reference_planes(
         pairs and all slot-0 pairs are recorded).  These are the
         NON-de-embedded waves at the plane — the zero-free-parameter
         conservation identity ``(|out|^2 - |inc|^2)/Re(Zc)`` equals the
-        net line power there.
+        net line power there. ``gamma_far[(i, j)]`` records
+        ``abs(out_i/in_i * exp(+2j*beta_i*N_i*dx))`` in drive pass j.
     """
     from rfx.probes.probes import decompose_wire_s_matrix
 
     # np.array (copy): the jnp output buffer is read-only and the plane path
-    # overwrites opted off-diagonals in place. ``v_ref`` is the pre-injection
+    # overwrites the opted block in place. ``v_ref`` is the pre-injection
     # drive-sample reference; v_all contains physical post-injection samples.
-    # Legacy diagonals and non-opted per-cell off-diagonals retain their
+    # Entries outside the opted block retain their per-cell
     # calibrated reference. None selects v_all for callers whose data already
     # contains the pre-injection sample.
     S = np.array(
@@ -548,7 +549,7 @@ def decompose_wire_s_matrix_with_reference_planes(
     n_ports = S.shape[0]
     opted = [p for p in range(n_ports) if bool(plane_enabled[p])]
     diagnostics: dict = {"zc": {}, "beta": {}, "opted": tuple(opted),
-                         "plane_waves": {}}
+                         "plane_waves": {}, "gamma_far": {}}
     if len(opted) >= 2:
         zc = {}
         beta = {}
@@ -606,19 +607,10 @@ def decompose_wire_s_matrix_with_reference_planes(
             diagnostics["beta"][p] = beta[p]
             diagnostics["plane_waves"][(p, p, 0)] = (out1, in1)
             diagnostics["plane_waves"][(p, p, 1)] = (out2, in2)
-        for j in opted:
-            d_j = int(plane_offsets[j]) * float(dx)
-            vj = np.asarray(plane_v[j, j, 0], dtype=np.complex128)
-            ij = refplane_centered_current(
-                plane_im[j, j, 0], plane_ip[j, j, 0], freqs, dt)
-            out_j, _ = refplane_split(vj, ij, zc[j], outboard_signs[j])
-            a_port = (out_j * exp_j(beta[j], d_j)
-                      / np.sqrt(zc[j].real))
-            safe_a = np.where(np.abs(a_port) > 0.0, a_port,
-                              np.ones_like(a_port))
-            for i in opted:
-                if i == j:
-                    continue  # DIAGONAL: byte-frozen legacy path, always.
+        A = np.empty((S.shape[2], len(opted), len(opted)), dtype=np.complex128)
+        B = np.empty_like(A)
+        for jj, j in enumerate(opted):
+            for ii_opt, i in enumerate(opted):
                 d_i = int(plane_offsets[i]) * float(dx)
                 vi_ = np.asarray(plane_v[j, i, 0], dtype=np.complex128)
                 ii = refplane_centered_current(
@@ -626,9 +618,16 @@ def decompose_wire_s_matrix_with_reference_planes(
                 out_i, in_i = refplane_split(vi_, ii, zc[i],
                                              outboard_signs[i])
                 diagnostics["plane_waves"][(j, i, 0)] = (out_i, in_i)
-                b_port = (in_i * exp_j(beta[i], d_i, unit=-1j)
-                          / np.sqrt(zc[i].real))
-                S[i, j, :] = (b_port / safe_a).astype(S.dtype)
+                A[:, ii_opt, jj] = (out_i * exp_j(beta[i], d_i)
+                                    / np.sqrt(zc[i].real))
+                B[:, ii_opt, jj] = (in_i * exp_j(beta[i], d_i, unit=-1j)
+                                    / np.sqrt(zc[i].real))
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    diagnostics["gamma_far"][(i, j)] = np.abs(
+                        out_i / in_i * exp_j(beta[i], 2 * d_i))
+        # S A = B => A.T S.T = B.T; transpose, never conjugate or invert.
+        block = np.linalg.solve(A.swapaxes(-1, -2), B.swapaxes(-1, -2))
+        S[np.ix_(opted, opted, np.arange(S.shape[2]))] = block.transpose(2, 1, 0)
     if return_line_diagnostics:
         return S, diagnostics
     return S
