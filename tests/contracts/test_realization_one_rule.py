@@ -1048,7 +1048,7 @@ def test_verdict_boundary(family, lane, miss, snap):
         if family == "sheet":
             sim.add(Box(tuple(low), tuple(high)), material="pec")
         else:
-            sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=100.,
+            sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=1e4,
                                    thickness=35e-6, surface_impedance_f0=1e9)
     elif family == "dc_film":
         low[2] = high[2] = centre[2]
