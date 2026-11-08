@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax.numpy as jnp
 
@@ -641,7 +641,7 @@ def _build_nu_scan(
         _accumulate_cm=_accumulate_cm if use_current_moments else None,
         emit_time_series=emit_time_series,
     )
-    step = make_graded_step(ctx)
+    step: Any = make_graded_step(ctx)
     if plan_owners is not None:
         step.port_owners = plan_owners
 

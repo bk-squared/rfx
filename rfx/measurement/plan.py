@@ -273,9 +273,10 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
                                      (Node(entry.component, *field_index(grid, entry.position, entry.component), 1.0),),
                                      e_time_offset=0., h_time_offset=0.),)))
     for i, position, component in default_probes:
+        ni, nj, nk = field_index(grid, position, component)
         owners.append(Owner(f'probe:port{i}', 'probe',
                             (field_channel(component,
-                                     (Node(component, *field_index(grid, position, component), 1.0),),
+                                     (Node(component, ni, nj, nk, 1.0),),
                                      e_time_offset=0., h_time_offset=0.),),
                             known_differences=('forward-only default probes at port positions',)))
     for i, entry in enumerate(sim._dft_planes):
