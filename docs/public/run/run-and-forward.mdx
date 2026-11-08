@@ -74,8 +74,9 @@ against a longer run ([Checking a gradient](/rfx/check/gradients/)).
 | progress, snapshots | `report_every=`, `snapshot=` | no |
 | memory | `checkpoint=False` by default | `checkpoint=True` by default, for the backward pass; `forward(distributed=True)` on a uniform mesh does not checkpoint and refuses a `checkpoint` argument |
 
-Both run preflight unless you pass `skip_preflight=True`, and both refuse an
-input their solver path does not implement whether or not preflight runs
+Both run preflight by default. `skip_preflight=True` skips advisories only;
+realization refusals still apply. Both also refuse inputs their solver path
+does not implement whether or not advisories run
 ([Refused inputs](/rfx/check/refusals/)).
 
 Where the two calls still differ:

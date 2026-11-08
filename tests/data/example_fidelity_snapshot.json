@@ -813,6 +813,34 @@
           ],
           "severity": "warning",
           "source": "_validate_cfg_floating_single_cell_port"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            0.25,
+            6.0,
+            0.006,
+            6.0,
+            0.006,
+            0.0,
+            0.0,
+            6.0,
+            0.006,
+            6.0,
+            0.006,
+            0.0,
+            0.0,
+            1.0,
+            0.001,
+            1.0,
+            0.001,
+            -0.5,
+            -0.0005
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
         }
       ]
     },
@@ -1195,7 +1223,7 @@
                 0.0
               ],
               "mesh_extent_um": 30000.0,
-              "n_cells": 30,
+              "n_cells": 40,
               "realized_extent_um": 30000.0,
               "realized_um": [
                 0.0,
@@ -1246,31 +1274,25 @@
               "sub_cell": false
             },
             "z": {
-              "cell_um": 1000.0,
+              "cell_um": 750.0,
               "declared_extent_um": 1500.0,
               "declared_um": [
                 14250.0,
                 15750.0
               ],
               "face_residual_um": [
-                250.0,
-                250.0
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 2000.0,
+              "realized_extent_um": 1500.0,
               "realized_um": [
-                14000.0,
-                16000.0
+                14250.0,
+                15750.0
               ],
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "z",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": 0.0
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
@@ -1293,20 +1315,7 @@
           "n_cells": null
         }
       },
-      "preflight": [
-        {
-          "code": "mesh_import_underresolved",
-          "loc": null,
-          "numbers": [
-            1.5,
-            2.0,
-            2.0,
-            1.0
-          ],
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
-        }
-      ]
+      "preflight": []
     },
     "examples/tutorials/materials_and_dispersion.py::make_sim::default": {
       "fidelity": {
@@ -1712,6 +1721,39 @@
           "source": "_validate_cfg_lossless_resonator_in_absorber"
         },
         {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            -0.657908034361,
+            -1.05,
+            -0.648887254,
+            -1.14545454545,
+            0.0,
+            0.0,
+            62.0,
+            0.05937,
+            62.6579080344,
+            0.06,
+            -7.24627626819e-15,
+            -6.93889390391e-18,
+            56.0,
+            0.05437,
+            56.648887254,
+            0.055,
+            2.85876813404e-14,
+            2.77555756156e-17,
+            6.0,
+            0.0015,
+            6.0,
+            0.0015,
+            5.55111512313e-14,
+            1.38777878078e-17
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
           "code": "thin_conductor_thickness_unmodelled",
           "loc": "thin_conductors[1]",
           "numbers": [
@@ -2047,6 +2089,39 @@
           ],
           "severity": "warning",
           "source": "_validate_ntff_small_ground_plane"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            -0.716723549488,
+            -2.33333333333,
+            -0.716723549488,
+            -2.33333333333,
+            0.0,
+            0.0,
+            30.0,
+            0.0586,
+            30.7167235495,
+            0.06,
+            -4.26280171571e-14,
+            -8.32667268469e-17,
+            30.0,
+            0.0586,
+            30.7167235495,
+            0.06,
+            -1.42093390524e-14,
+            -2.77555756156e-17,
+            4.0,
+            0.001524,
+            4.0,
+            0.001524,
+            3.64246399155e-14,
+            1.38777878078e-17
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
         },
         {
           "code": "thin_conductor_thickness_unmodelled",
@@ -2721,6 +2796,39 @@
           "source": "_check_msl_port_geometry"
         },
         {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            -0.706684856753,
+            -0.945945945946,
+            -0.641221374046,
+            -1.75,
+            1.73472347598e-15,
+            4.33680868994e-14,
+            74.0,
+            0.018325,
+            74.7066848568,
+            0.0185,
+            4.20309535243e-14,
+            1.04083408559e-17,
+            36.0,
+            0.00835125,
+            36.641221374,
+            0.0085,
+            2.99117114852e-14,
+            6.93889390391e-18,
+            4.0,
+            0.001,
+            4.0,
+            0.001,
+            1.73472347598e-15,
+            4.33680868994e-19
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
           "code": "thin_absorber",
           "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
           "numbers": [
@@ -2952,18 +3060,18 @@
           "material": null,
           "n_cells": null
         },
-        "geometry|pec|34100.000,34100.000,34100.000um->65900.000,65900.000,65900.000um": {
+        "geometry|pec|34975.787,34975.787,34975.787um->64955.033,64955.033,64955.033um": {
           "axes": {
             "x": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -2974,14 +3082,14 @@
             },
             "y": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -2992,14 +3100,14 @@
             },
             "z": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -3009,27 +3117,11 @@
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            },
-            {
-              "axis": "y",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            },
-            {
-              "axis": "z",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 1067
+          "n_cells": 912
         }
       },
       "preflight": []
@@ -6638,6 +6730,39 @@
           "source": "_validate_cfg_multiband_grading"
         },
         {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            0.246913580247,
+            1.25,
+            3.46944695195e-15,
+            1.73472347598e-14,
+            0.0,
+            0.0,
+            20.0,
+            0.010125,
+            19.7530864198,
+            0.01,
+            0.123456790123,
+            6.25e-05,
+            20.0,
+            0.01,
+            20.0,
+            0.01,
+            3.46944695195e-15,
+            1.73472347598e-18,
+            3.0,
+            0.0015,
+            3.0,
+            0.0015,
+            0.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
           "code": "thin_absorber",
           "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
           "numbers": [
@@ -9877,6 +10002,62 @@
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            0.25,
+            262.0,
+            0.033274,
+            261.417322835,
+            0.0332,
+            0.291338582677,
+            3.7e-05,
+            163.0,
+            0.020701,
+            162.960629921,
+            0.020696,
+            0.0196850393701,
+            2.5e-06,
+            2.0,
+            0.000254,
+            2.0,
+            0.000254,
+            0.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[1]",
+          "numbers": [
+            1.0,
+            0.25,
+            261.0,
+            0.033147,
+            261.417322835,
+            0.0332,
+            -0.208661417323,
+            -2.65e-05,
+            4.7,
+            0.0005969,
+            4.72440944882,
+            0.0006,
+            -0.362204724409,
+            -4.6e-05,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
         }
       ]
     },

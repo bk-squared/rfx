@@ -3,6 +3,7 @@
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
 from rfx._warning_origin import user_stacklevel
 from dataclasses import dataclass, replace
+from rfx.model.realization_verdict import legacy_mismatch
 import warnings
 
 import jax
@@ -248,7 +249,7 @@ def dc_footprint_areas(shape, grid, mask, normal):
     return realized, declared
 
 
-def admit_dc_film(shape, grid, *, snap='strict', emit=True):
+def admit_dc_film(shape, grid, *, snap='strict', emit=True, judge_area=True):
     """DC area admission using cell-centred in-plane occupancy samples.
 
     The Box DC sampler owns layer selection. Only its normal-axis occupancy
@@ -271,7 +272,8 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
                     (lo, hi, _grid_coords(grid), mask))):
                 return DCFilmGeometry(mask, normal, None, None)
             realized, declared = dc_footprint_areas(shape, grid, mask, normal)
-        _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
+        if judge_area:
+            _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
         return DCFilmGeometry(mask, normal, realized, declared)
     if lo is None or hi is None:
         raise DCFilmAdmissionError(
@@ -342,7 +344,8 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
                 f'{name} DC film: {layers} occupied layers (empty or nonplanar); '
                 'a film requires exactly one nonempty layer.', code='dc_film_layers')
         realized, declared = dc_footprint_areas(shape, grid, mask, normal)
-    _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
+    if judge_area:
+        _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
     return DCFilmGeometry(jnp.asarray(mask), normal, realized, declared)
 
 
@@ -356,7 +359,7 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
     exponent = 'sqrt(A_r/A_d)' if k == 2 else f'(A_r/A_d)^(1/{k})'
     error = (None if declared is None or declared <= 0 or k == 0 else
              np.sqrt(realized / declared) - 1 if k == 2 else (realized / declared)**(1 / k) - 1)
-    if error is None or abs(error) > _SHEET_EFFECTIVE_SIZE_TOL:
+    if legacy_mismatch(error, _SHEET_EFFECTIVE_SIZE_TOL):
         clipped = any(
             'xyz'[a] not in getattr(grid, 'periodic_axes', '')
             and (lo[a] < float(coords[a][0]) or hi[a] > float(coords[a][-1]))
@@ -378,6 +381,10 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
         if snap != 'declared':
             raise DCFilmAdmissionError(message)
         if emit:
+            from rfx.model.realization_verdict import legacy_outcome, remember_legacy
+            remember_legacy(grid, ("film", id(shape)), legacy_outcome(
+                f"legacy:film:{id(shape)}", error, _SHEET_EFFECTIVE_SIZE_TOL,
+                message, "dc_film_area", "admit_dc_film"))
             warnings.warn(PreflightWarning(message, code='dc_film_area', severity='warning',
                                           source='admit_dc_film'), stacklevel=user_stacklevel())
 
@@ -497,6 +504,8 @@ def warn_dc_films(sim, warn):
                for tc in sim._thin_conductors):
         return
     grid = sim._build_realized_grid()
+    from rfx.model.realization_verdict import legacy_table_ready
+    prepared = legacy_table_ready(sim._campaign_ctx())
     from rfx.model.film_geometry import diagnostic_film_footprints, check_film_area
     conductors, films = diagnostic_film_footprints(sim, grid)
     for i, tc in enumerate(conductors):
@@ -508,7 +517,13 @@ def warn_dc_films(sim, warn):
             with warnings.catch_warnings(record=True) as findings:
                 warnings.simplefilter('always')
                 admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
-                if i in films:
+                if prepared:
+                    table = sim._campaign_ctx()._realized.realization_table
+                    for finding in table.findings:
+                        if finding.code == "dc_film_area" and finding.loc == f"thin_conductors[{i}]":
+                            warnings.warn(PreflightWarning(str(finding), code=finding.code,
+                                severity=finding.severity, source=finding.source, loc=finding.loc))
+                elif i in films:
                     check_film_area(tc.shape, grid, films[i], snap=sim._snap)
                 else:
                     admit_dc_film(tc.shape, grid, snap=sim._snap)
@@ -611,6 +626,15 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
         else:
             from rfx.model.film_geometry import check_film_area
             check_film_area(conductor.shape, grid, film, snap=snap)
+        if geometry_key is not None:
+            from rfx.model.realization_verdict import early_outcomes
+            from copy import copy
+            outcomes = early_outcomes(grid)
+            outcome = outcomes.pop(("film", id(conductor.shape)), None)
+            if outcome is not None:
+                row, finding = (copy(value) for value in outcome)
+                row.label = f"legacy:film-entry:{geometry_key}"
+                outcomes[("film-entry", geometry_key)] = row, finding
         mask, normal = film.mask, film.normal
         materials, mask = _fold_dc_plane(grid, conductor, materials, mask, normal)
         if geometry_masks is not None:

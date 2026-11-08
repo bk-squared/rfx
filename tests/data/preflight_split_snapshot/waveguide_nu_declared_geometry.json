@@ -76,10 +76,41 @@
         ],
         "severity": "warning",
         "source": "_check_waveguide_port_evanescent"
+      },
+      {
+        "code": "port_aperture_snap",
+        "loc": "waveguide_port[0]",
+        "numbers": [
+          0.0,
+          -0.24,
+          -1.57480314961,
+          0.226666666667,
+          3.34645669291,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          5.78241158659e-15,
+          8.67361737988e-18,
+          15.0,
+          0.0225,
+          15.24,
+          0.02286,
+          -0.12,
+          -0.00018,
+          7.0,
+          0.0105,
+          6.77333333333,
+          0.01016,
+          0.113333333333,
+          0.00017
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
       }
     ],
     "n_errors": 0,
-    "n_issues": 4,
+    "n_issues": 5,
     "ok": true
   }
 }

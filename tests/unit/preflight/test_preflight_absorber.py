@@ -360,6 +360,7 @@ def test_ntff_absorber_overlap_fires_when_corner_crosses_domain_edge():
 #: None)`` at its line 686, assigned at 690), so repeated checks in one
 #: preflight share one realization instead of rebuilding it per check.
 _PREFLIGHT_WRITES_WITH_A_READER = {
+    "_realization_early_outcomes": "rfx/model/realization_verdict.py: early_outcomes, consumed by admit_table",
     "_pf_campaign_ctx": "rfx/preflight/realization.py (keyed memo, same file)",
 }
 

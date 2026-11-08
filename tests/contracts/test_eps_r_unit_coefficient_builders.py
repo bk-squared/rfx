@@ -128,6 +128,9 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/floquet.py", "extract_floquet_modes"): _C0,
     ("rfx/lumped.py", "setup_rlc_materials"):
         "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
+    ("rfx/model/conductors.py", "f0_uses_solved_span"):
+        "host-only regime predicate (D:c1d171): EPS_0 forms eta0 = sqrt(MU_0/EPS_0) to compare a "
+        "concrete sheet Rs = 1/G with 1e-2 eta0; it builds no E coefficient and traced G never reaches it",
     ("rfx/model/source_coefficients.py", "current_source_cb"):
         "the drive Cb: its traced branch is already in eps_r units (#1317), "
         "its float branch is host arithmetic",
@@ -169,7 +172,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 50  # Shared modal formulas removed the initializer EPS_0 reader (#1994).
+ALLOWLIST_CEILING = 51  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate).
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {

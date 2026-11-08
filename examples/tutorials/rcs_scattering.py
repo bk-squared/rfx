@@ -13,6 +13,10 @@ helper is exposed by rfx, so the printed ``pi*r^2`` geometric-optics limit is
 only a scale check.  That limit describes spheres much larger than a
 wavelength; it is not an accurate value for this electrical size.
 
+The setup prints the drawn diameter and the solved x/y/z spans of the
+centre-sampled PEC sphere from its grid record. Quote those solved spans
+with the cell size when describing the sphere used by the setup check.
+
 One honest limitation: deep pattern nulls very close to the collection box
 carry larger errors.  This is a known limitation of near-field-to-far-field
 integration; do not tune the setup trying to remove it.
@@ -44,8 +48,10 @@ CPML_LAYERS = 8
 # printed below); 800 steps cover it with room for the sphere's ring-down.
 N_STEPS = 800
 
-RADIUS = 15.9e-3
-CENTER = (DOMAIN / 2.0,) * 3
+# The grid uses DX on x, y and z: draw the sphere's axial extrema on
+# nodes 14 and 26, keeping its electrical size close to ka = 1.
+RADIUS = 6 * DX
+CENTER = (20 * DX,) * 3
 SPHERE = Sphere(center=CENTER, radius=RADIUS)
 
 THETA_OBS = np.asarray([np.pi / 2.0])
@@ -133,6 +139,9 @@ def main() -> None:
     # radius, a wrong centre, a sphere that vanished — fails here instead of
     # showing up as a quiet 3 dB in the RCS.
     record = sim.realized_geometry()
+    solved_mm = tuple(axis.extent_m * 1e3 for axis in record.entities[0].axes)
+    print(f"Sphere drawn diameter: {2 * RADIUS * 1e3:.5f} mm; "
+          f"PEC solved spans x/y/z: {solved_mm} mm; cells: {grid.dx * 1e3:.5f} mm")
     n_pec = int(record.pec_mask.sum())
     n_sigma = int((np.asarray(materials.sigma) > 0.0).sum())
     n_analytic = (4.0 / 3.0) * np.pi * RADIUS**3 / DX**3

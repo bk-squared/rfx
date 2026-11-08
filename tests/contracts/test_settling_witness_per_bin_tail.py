@@ -165,8 +165,9 @@ def issue_1451_scaled_cavity():
     from rfx.geometry.csg import Box
 
     fine = .000635
+    # rfx-archive rfx/records/20261107-1958-s2-failing-ids/RESULT.md: use the built 65-cell length.
     sim = Simulation(
-        freq_max=12.4e9, domain=(36*fine, 16*fine, 129*fine), dx=2*fine,
+        freq_max=12.4e9, domain=(36*fine, 16*fine, 130*fine), dx=2*fine,
         boundary=BoundarySpec(x='pec', y='pec', z=Boundary(lo='cpml', hi='pec')),
         cpml_layers=20)
     z0, z1 = 96*fine, 98*fine

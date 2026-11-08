@@ -12,10 +12,38 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "realization",
+        "loc": "geometry[0]",
+        "numbers": [
+          0.0,
+          0.25,
+          25.0,
+          0.01,
+          25.0,
+          0.01,
+          -0.5,
+          -0.0002,
+          25.0,
+          0.01,
+          25.0,
+          0.01,
+          -0.5,
+          -0.0002,
+          25.0,
+          0.01,
+          25.0,
+          0.01,
+          -0.5,
+          -0.0002
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
       }
     ],
     "n_errors": 0,
-    "n_issues": 1,
+    "n_issues": 2,
     "ok": true
   }
 }

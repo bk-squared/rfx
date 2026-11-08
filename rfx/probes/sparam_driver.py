@@ -83,7 +83,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     freqs : array-like
         Frequencies (Hz) at which to extract the S-matrix.
     skip_preflight : bool
-        Skip shared preflight checks when True. Default False.
+        Skip advisories only when True; realization refusals still apply. Default False.
     n_steps : int or None
         Number of FDTD steps per drive.  Defaults to
         ``grid.num_timesteps(num_periods=30)`` (matching the eager

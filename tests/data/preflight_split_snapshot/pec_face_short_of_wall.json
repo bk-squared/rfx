@@ -125,10 +125,43 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
+      },
+      {
+        "code": "realization",
+        "loc": "geometry[0]",
+        "numbers": [
+          0.0,
+          0.0,
+          0.0,
+          0.14,
+          0.612423447069,
+          -0.16,
+          -1.57480314961,
+          2.0,
+          0.002,
+          2.0,
+          0.002,
+          0.0,
+          0.0,
+          23.0,
+          0.023,
+          22.86,
+          0.02286,
+          0.07,
+          7e-05,
+          10.0,
+          0.01,
+          10.16,
+          0.01016,
+          -0.08,
+          -8e-05
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
       }
     ],
     "n_errors": 0,
-    "n_issues": 7,
+    "n_issues": 8,
     "ok": true
   }
 }

@@ -62,6 +62,7 @@ DECLARATIONS = (
 
 # The literal reason "cache" is also the cache inventory for declaration copies.
 NOT_DECLARATIONS = (
+    ("_realization_early_outcomes", "derived: early_outcomes feeds the realization table"),
     ("_pf_campaign_ctx", "cache"),
     ("_realized_geometry_record", "cache"),
     ("_coax_geometry", "cache"),

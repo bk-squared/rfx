@@ -535,10 +535,10 @@ class _ExecuteMixin:
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
-        prepare=False, distributed=False, tfsf_material_overrides=(), conformal=None,
+        prepare=False, distributed=False, tfsf_material_overrides=(), conformal=None, realization_options=None,
     ) -> _conductors.PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
-        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides, conformal=conformal)
+        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides, conformal=conformal, realization_options=realization_options)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
@@ -1289,11 +1289,11 @@ class _ExecuteMixin:
             relief instead — it is exact regardless of placement, at the
             cost of recompute rather than gradient accuracy.
         skip_preflight : bool
-            Skip the consolidated :meth:`preflight` validation suite that
-            normally runs before the forward simulation (default False).
-            Use only when preflight has already been run by the caller
-            (e.g. :func:`rfx.optimize` runs it once at entry) or to bypass a
-            known-spurious warning on a deliberate configuration.
+            Skip advisory :meth:`preflight` checks only (default False).
+            Realization refusals and runtime admission guards still apply.
+            Use ``snap='declared'`` to warn on geometry size misses.
+            Skip advisories when already reviewed for the same model
+            (e.g. :func:`rfx.optimize` runs preflight once at entry).
         distributed : bool, optional
             Run on several devices: a uniform mesh uses the runner of
             ``run(devices=...)``, a graded mesh the graded multi-device runner;
@@ -1460,7 +1460,7 @@ class _ExecuteMixin:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override))
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override), realization_options=(subpixel_smoothing, False))
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=distributed)
@@ -1872,7 +1872,7 @@ class _ExecuteMixin:
             "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC occupancy rule.
         skip_preflight : bool
-            Skip advisory preflight checks. Runtime admission guards still apply.
+            Skip advisories only; realization refusals and runtime admission still apply.
         decay_monitor_component : str
             Legacy uniform monitor component (default ``"ez"``); does not
             affect the energy or radiated-flux stop.

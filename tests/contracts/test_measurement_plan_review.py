@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx.measurement import measurement_plan
-from tests.contracts.path_equivalence.builders import FREQS, build
+from tests.contracts.path_equivalence.builders import DX, FREQS, build
 from tests.contracts.test_measurement_plan import SetupCaptured, judge, setup
 
 
@@ -56,7 +56,9 @@ def test_review_metadata_mutations(row, change):
 
 def test_uniform_lumped_run_second_scan_availability():
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
-    sim = build(('_ports', 'lumped_port'), 'run_uniform')
+    with patch('tests.contracts.path_equivalence.builders.DOMAIN',
+               tuple(n * DX for n in (11, 8, 7))):
+        sim = build(('_ports', 'lumped_port'), 'run_uniform')
     actual = {}
     def stop(grid, *args, **kwargs):
         actual.update(kwargs, grid=grid)
