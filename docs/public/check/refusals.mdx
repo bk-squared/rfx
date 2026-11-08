@@ -48,6 +48,8 @@ try:
 except (NotImplementedError, ValueError) as err:
     print(type(err).__name__)
     print(err)
+else:
+    raise AssertionError("expected a refusal")
 ```
 
 ```text
