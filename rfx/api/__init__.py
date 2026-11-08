@@ -1210,8 +1210,8 @@ class Simulation(
             decomposition. When None, the runner auto-detects from the
             port's position (closest boundary face).
         reference_plane_cells : int or None
-            Opt-in reference-plane port waves for the wire-port S-matrix
-            opted-block extraction. When set to an integer
+            Opt-in reference-plane port waves for the wire-port S-matrix.
+            Fewer than two opted wire ports are refused. When set to an integer
             N >= 1, ``run(compute_s_params=True)`` registers TWO line
             V/I reference planes for this port at N and 2N cells
             outboard (into the DUT along the line axis, i.e. opposite

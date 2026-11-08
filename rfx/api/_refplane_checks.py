@@ -6,7 +6,7 @@ from rfx.errors import RfxRefusal
 
 
 def refuse_partial_wire_reference_planes(ports):
-    """Require all wire ports in S order to share the plane-wave opt-in."""
+    """Require a shared plane-wave opt-in on at least two wire ports in S order."""
     opted, not_opted = [], []
     for index, port in enumerate(ports):
         if port.extent is not None:
@@ -18,6 +18,11 @@ def refuse_partial_wire_reference_planes(ports):
             f"S-parameter solve: set on port(s) {', '.join(opted)}, "
             f"not on port(s) {', '.join(not_opted)}; "
             "set it on all of them or on none")
+    if opted and len(opted) + len(not_opted) < 2:
+        raise RfxRefusal(
+            "reference_plane_cells needs two or more wire ports in the S solve: "
+            f"set on port {', '.join(opted)}, the only wire port; remove it, "
+            "or add a second wire port with it")
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):

@@ -11,6 +11,66 @@ from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 from tests.locks.test_refplane_port_waves import _build_thru, _DOMAIN, _DX, _FREQS
 
 
+def test_run_one_wire_optin_refuses_before_time_loop(monkeypatch):
+    """run() refuses the one-port opt-in it previously ignored."""
+    sim = _build_thru(reference_plane_cells=3)
+    sim._ports.pop()
+    from rfx.stepping import prepared
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("one-wire opt-in run reached the time-loop entry")
+
+    monkeypatch.setattr(prepared, "advance", forbidden)
+    with pytest.raises(RfxRefusal) as error:
+        sim.run(n_steps=1, compute_s_params=True,
+                s_param_freqs=_FREQS, skip_preflight=True)
+    assert str(error.value) == (
+        "reference_plane_cells needs two or more wire ports in the S solve: "
+        "set on port 0, the only wire port; remove it, "
+        "or add a second wire port with it")
+
+
+def test_driver_one_wire_optin_refuses_before_time_loop(monkeypatch):
+    """The direct driver shares run()'s one-wire opt-in refusal."""
+    sim = _build_thru(reference_plane_cells=3)
+    sim._ports.pop()
+    from rfx.stepping import prepared
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("one-wire opt-in driver reached the time-loop entry")
+
+    monkeypatch.setattr(prepared, "advance", forbidden)
+    with pytest.raises(RfxRefusal) as error:
+        compute_lumped_wire_s_matrix_via_scan(
+            sim, _FREQS, n_steps=1, skip_preflight=True)
+    assert str(error.value) == (
+        "reference_plane_cells needs two or more wire ports in the S solve: "
+        "set on port 0, the only wire port; remove it, "
+        "or add a second wire port with it")
+
+
+def test_forward_one_wire_optin_refuses_before_dispatch(monkeypatch):
+    """forward() refuses the option outright and never reaches the shared check."""
+    sim = _build_thru(reference_plane_cells=3)
+    sim._ports.pop()
+    from rfx.api import _refplane_checks
+    from rfx.stepping import prepared
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("one-wire opt-in forward reached dispatch, shared check or time loop")
+
+    monkeypatch.setattr(sim, "_dispatch_plan", forbidden)
+    monkeypatch.setattr(_refplane_checks, "refuse_partial_wire_reference_planes", forbidden)
+    monkeypatch.setattr(prepared, "advance", forbidden)
+    with pytest.raises(RfxRefusal) as error:
+        sim.forward(n_steps=1, port_s11_freqs=_FREQS, skip_preflight=True)
+    assert str(error.value) == (
+        "forward() does not form reference-plane S-parameters: "
+        "add_port(reference_plane_cells=...) is set on port 0; "
+        "use run(compute_s_params=True) for reference-plane S, "
+        "or remove the option for forward()")
+
+
 @pytest.mark.parametrize("lane", ["uniform", "graded", "distributed", "distributed_graded"])
 @pytest.mark.parametrize("request_s", [False, True])
 @pytest.mark.parametrize("port_index", [0, 1])
