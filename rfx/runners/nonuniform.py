@@ -343,7 +343,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         return with_segment_declaration(init_multimode_waveguide_port(
             port, grid, freqs,
             n_modes=entry.n_modes,
-            f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
+            f0=sim._resolve_waveguide_f0(entry, freqs),
             bandwidth=entry.bandwidth,
             amplitude=entry.amplitude,
             probe_offset=entry.probe_offset,
@@ -355,7 +355,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         ), entry)
     return with_segment_declaration(init_waveguide_port(
         port, grid, freqs,
-        f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
+        f0=sim._resolve_waveguide_f0(entry, freqs),
         bandwidth=entry.bandwidth,
         amplitude=entry.amplitude,
         probe_offset=entry.probe_offset,
