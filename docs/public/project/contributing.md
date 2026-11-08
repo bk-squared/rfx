@@ -110,7 +110,7 @@ python scripts/changelog/assemble.py --check
   `UPPER_CASE` for module constants.
 - A change that affects users updates the matching page under `docs/public/`.
   A code block in a public page must run; check it with
-  `python scripts/check_public_docs_blocks.py --only guide/<page>`.
+  `python scripts/docs/check_public_docs_blocks.py --only guide/<page>`.
 
 ## Add a feature
 

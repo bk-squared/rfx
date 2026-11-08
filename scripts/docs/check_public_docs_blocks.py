@@ -29,11 +29,37 @@ running the snippet actually sees; ``--grep-deprecations`` surfaces any
 DeprecationWarning a page emits, which is how an API scheduled for removal
 becomes visible before it breaks the docs.
 
+Whole-tree job (``--output-dir DIR``)
+-------------------------------------
+Page order:
+
+- pages run in sorted order of their path relative to docs/public, compared as
+  plain strings;
+- each page runs in its own process; a page's blocks run in document order in
+  that one process;
+- a failing page never stops the next page;
+- within a page, blocks after the first failing block are not reached.
+
+``DIR/pages/<page path with / replaced by _>.json`` holds what
+``--only <page> --format json`` prints for that page; each is written as soon as
+its page ends, so a killed run keeps the finished pages. ``DIR/blocks.tsv`` has
+one row per python block with the columns ``page block doc_line result detail``;
+result is ``ran``, ``failed``, ``not reached`` or ``not runnable``.
+
+A timed-out process leaves no record of the block it was in, so every runnable
+block of a timed-out page is ``not reached`` and the first carries the detail
+``page timed out``. A page that fails with no traceback frame in its script
+(``sys.exit(1)``, a crash of the interpreter) is reported the same way, with
+``page failed, block unknown: ...`` as the detail. So is a page whose output
+cannot be decoded. A failing block is the one whose top-level statement raised,
+even when the exception came from a function an earlier block defined.
+
 Usage::
 
-    python3 scripts/check_public_docs_blocks.py
-    python3 scripts/check_public_docs_blocks.py --only measure/s-parameters
-    python3 scripts/check_public_docs_blocks.py --format json --strict
+    python3 scripts/docs/check_public_docs_blocks.py
+    python3 scripts/docs/check_public_docs_blocks.py --only measure/s-parameters
+    python3 scripts/docs/check_public_docs_blocks.py --format json --strict
+    python3 scripts/docs/check_public_docs_blocks.py --output-dir DIR --grep-deprecations
 """
 
 from __future__ import annotations
@@ -44,6 +70,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import asdict, dataclass, field
@@ -56,6 +83,8 @@ MARKER_RE = re.compile(r"^# ===== rfx-doc-block (\d+) \(doc line (\d+)\) =====$"
 FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})[ \t]*(\S*)")
 PLACEHOLDER_RE = re.compile(r"<[a-z_][a-z0-9_]*>", re.IGNORECASE)
 EXC_RE = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt|Warning)\b")
+TIMEOUT_RETURNCODE = 124
+TIMEOUT_HEAD_PREFIX = "TimeoutExpired: exceeded --timeout"
 
 
 @dataclass
@@ -82,6 +111,8 @@ class PageReport:
     first_failing_doc_line: int | None = None
     exception_head: list[str] = field(default_factory=list)
     deprecations: list[str] = field(default_factory=list)
+    # The block whose top-level statement raised, for blocks.tsv. Not part of the JSON.
+    raising_top_level_block: int | None = None
 
     @property
     def n_blocks(self) -> int:
@@ -128,7 +159,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--repo-root",
         type=Path,
-        default=Path(__file__).resolve().parents[1],
+        default=Path(__file__).resolve().parents[2],
         help="Path to research/rfx.",
     )
     parser.add_argument(
@@ -153,6 +184,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--format", choices=("text", "json"), default="text")
     parser.add_argument("--strict", action="store_true")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Run each page in sorted order and write DIR/pages/<page>.json after "
+        "each page, and DIR/blocks.tsv with one row per python block.",
+    )
     return parser.parse_args()
 
 
@@ -294,6 +333,13 @@ def find_deprecations(output: str) -> list[str]:
     return seen
 
 
+def _as_text(captured: str | bytes | None) -> str:
+    # TimeoutExpired carries bytes even under text=True, and None for an empty stream.
+    if isinstance(captured, bytes):
+        return captured.decode("utf-8", "replace")
+    return captured or ""
+
+
 def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> PageReport:
     report = build_page_report(page, public_root)
     if not report.runnable:
@@ -312,7 +358,7 @@ def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> Pa
         started = time.monotonic()
         try:
             completed = subprocess.run(
-                ["python3", str(script_path)],
+                [sys.executable, str(script_path)],
                 cwd=workdir,
                 env=env,
                 capture_output=True,
@@ -323,11 +369,9 @@ def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> Pa
             output = completed.stdout + completed.stderr
             report.returncode = completed.returncode
         except subprocess.TimeoutExpired as exc:
-            output = (exc.stdout or "") + (exc.stderr or "")
-            if isinstance(output, bytes):
-                output = output.decode("utf-8", "replace")
-            report.returncode = 124
-            report.exception_head = [f"TimeoutExpired: exceeded --timeout {timeout}s"]
+            output = _as_text(exc.stdout) + _as_text(exc.stderr)
+            report.returncode = TIMEOUT_RETURNCODE
+            report.exception_head = [f"{TIMEOUT_HEAD_PREFIX} {timeout}s"]
         report.wall_seconds = round(time.monotonic() - started, 1)
 
     report.deprecations = find_deprecations(output)
@@ -343,6 +387,9 @@ def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> Pa
         report.first_failing_block, report.first_failing_doc_line = block_for_line(
             script, int(frames[-1])
         )
+    top_level = re.findall(rf'File "{re.escape(str(script_path))}", line (\d+), in <module>', output)
+    if top_level:
+        report.raising_top_level_block = block_for_line(script, int(top_level[-1]))[0]
     return report
 
 
@@ -357,6 +404,98 @@ def make_report(repo_root: Path, args: argparse.Namespace) -> RunReport:
         if report.status == "no-python-blocks":
             continue
         pages.append(report)
+    return RunReport(repo_root=str(repo_root), timeout=args.timeout, pages=pages)
+
+
+def _timed_out(page: PageReport) -> bool:
+    return (
+        page.returncode == TIMEOUT_RETURNCODE
+        and bool(page.exception_head)
+        and page.exception_head[0].startswith(TIMEOUT_HEAD_PREFIX)
+    )
+
+
+def block_rows(page: PageReport) -> list[tuple[str, int, int, str, str]]:
+    """One (page, block, doc_line, result, detail) row per python block."""
+    timed_out = _timed_out(page)
+    failing = None if timed_out else page.raising_top_level_block
+    head = page.exception_head[0] if page.exception_head else ""
+    block_unknown = page.status == "FAIL" and failing is None
+    pending_note = ""
+    if timed_out:
+        pending_note = "page timed out"
+    elif block_unknown:
+        pending_note = f"page failed, block unknown: {head}"
+
+    rows: list[tuple[str, int, int, str, str]] = []
+    reached = not block_unknown
+    for block in page.blocks:
+        if block.is_fragment:
+            result, detail = "not runnable", block.fragment_reason or ""
+        elif block.number == failing:
+            result, detail = "failed", head
+            reached = False
+        elif reached:
+            result, detail = "ran", ""
+        else:
+            result, detail, pending_note = "not reached", pending_note, ""
+        rows.append((page.page, block.number, block.doc_line, result, detail))
+    return rows
+
+
+def _tsv_line(fields: tuple[object, ...]) -> str:
+    cells = (re.sub(r"[\t\r\n]+", " ", str(cell)) for cell in fields)
+    return "\t".join(cells) + "\n"
+
+
+def report_payload(report: RunReport, wall_seconds: float) -> dict:
+    payload = asdict(report)
+    for page in payload["pages"]:
+        del page["raising_top_level_block"]
+    payload["has_failures"] = report.has_failures
+    payload["wall_seconds"] = wall_seconds
+    return payload
+
+
+def _write_atomically(path: Path, content: str) -> None:
+    partial = path.with_name(path.name + ".partial")
+    partial.write_text(content, encoding="utf-8")
+    os.replace(partial, path)
+
+
+def run_to_output_dir(repo_root: Path, args: argparse.Namespace) -> RunReport:
+    """Run the selected pages one by one; see the module docstring for the order."""
+    public_root = repo_root / "docs" / "public"
+    pages_dir = args.output_dir / "pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    selected = [
+        page
+        for page in iter_doc_pages(public_root)
+        if not args.only or selects(page.relative_to(public_root).as_posix(), args.only)
+    ]
+    selected.sort(key=lambda page: page.relative_to(public_root).as_posix())
+
+    pages: list[PageReport] = []
+    with (args.output_dir / "blocks.tsv").open("w", encoding="utf-8", newline="") as tsv:
+        tsv.write(_tsv_line(("page", "block", "doc_line", "result", "detail")))
+        tsv.flush()
+        for page in selected:
+            started = time.monotonic()
+            try:
+                report = run_page(page, public_root, repo_root, args.timeout)
+            except UnicodeDecodeError as exc:
+                report = build_page_report(page, public_root)
+                report.status = "FAIL"
+                report.exception_head = [f"UnicodeDecodeError: {exc}"]
+            listed = [] if report.status == "no-python-blocks" else [report]
+            single = RunReport(repo_root=str(repo_root), timeout=args.timeout, pages=listed)
+            wall_seconds = round(time.monotonic() - started, 1)
+            name = report.page.replace("/", "_") + ".json"
+            _write_atomically(pages_dir / name, json.dumps(report_payload(single, wall_seconds), indent=2))
+            for row in block_rows(report):
+                tsv.write(_tsv_line(row))
+            tsv.flush()
+            pages.extend(listed)
     return RunReport(repo_root=str(repo_root), timeout=args.timeout, pages=pages)
 
 
@@ -402,14 +541,11 @@ def main() -> int:
         raise SystemExit(f"docs/public not found under {repo_root}")
 
     started = time.monotonic()
-    report = make_report(repo_root, args)
+    report = run_to_output_dir(repo_root, args) if args.output_dir else make_report(repo_root, args)
     elapsed = round(time.monotonic() - started, 1)
 
     if args.format == "json":
-        payload = asdict(report)
-        payload["has_failures"] = report.has_failures
-        payload["wall_seconds"] = elapsed
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(report_payload(report, elapsed), indent=2))
     else:
         print(format_text(report, show_deprecations=args.grep_deprecations))
         print(f"wall time: {elapsed}s")
