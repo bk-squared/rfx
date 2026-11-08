@@ -38,6 +38,11 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
         args[:2] = product.grid, product.materials
         if "pec_edge_masks" in kwargs:
             kwargs["pec_edge_masks"] = product.pec_edges
+        # One-device steps sample from the attached plan; the subgridded
+        # plan carries no channels (its runner owns sampling).
+        plan = getattr(getattr(product, "_prepared_solve", None), "measurement", None)
+        if plan is not None and plan.path != "run_subgridded":
+            kwargs["measurement"] = plan
     elif layout == "wrapped_uniform_slab":
         args.insert(0, [product.grid, product.materials, product.pec_edges])
         release_dense(product)

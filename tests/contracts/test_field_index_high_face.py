@@ -573,7 +573,7 @@ def test_c8_consumers(consumer, monkeypatch):
         class Captured(Exception):
             pass
 
-        def capture(ctx):
+        def capture(ctx, **kwargs):
             assert ctx.mon_idx == cell
             raise Captured
 

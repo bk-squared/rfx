@@ -334,31 +334,56 @@ def test_the_subgrid_runner_binds_the_shared_loop_not_a_local_copy():
     assert _jit._ampere_loop is _probes._ampere_loop
 
 
-def test_the_jit_scan_lane_compiles_the_shared_table_with_the_runs_periodic_flags(monkeypatch):
-    """The actual scan compiles its realized cells and curl boundary once."""
+@pytest.mark.parametrize('periodic_x', [False, True], ids=['cpml', 'periodic-x'])
+def test_the_jit_scan_lane_compiles_the_shared_table_with_the_runs_periodic_flags(monkeypatch, periodic_x):
+    """The actual scan compiles its realized cells and the run's periodic flags once.
+
+    The step's port table is compiled from the attached plan's owners; the
+    flags enter where the plan builds each port owner.
+    """
+    import rfx.measurement.ports as ports
+    import rfx.measurement.prepared as prepared
     import rfx.measurement.projector as projector
     from rfx import Simulation
-    from rfx.core.yee import CurlBoundary
+    from rfx.boundaries.spec import BoundarySpec
     from rfx.sources.sources import GaussianPulse
 
-    real = projector.port_table
-    calls = []
+    real_build, real_owner, real_tables = (prepared.build_measurement_plan,
+                                           ports.lumped_wire_owner, projector.plan_tables)
+    plans, owners, tables, inside = [], [], [], [False]
 
-    def spy(grid, specs, **kwargs):
-        specs = tuple(specs)
-        calls.append((specs, kwargs['boundary']))
-        return real(grid, specs, **kwargs)
+    def build(*args, **kwargs):
+        inside[0] = True
+        try:
+            plans.append(real_build(*args, **kwargs))
+        finally:
+            inside[0] = False
+        return plans[-1]
 
-    monkeypatch.setattr(projector, 'port_table', spy)
+    def owner(*args, **kwargs):
+        if inside[0]:  # the plan's own port owners only
+            owners.append(kwargs['periodic'])
+        return real_owner(*args, **kwargs)
+
+    def compile_tables(plan, **kwargs):
+        tables.append((plan, tuple(kwargs['port_specs'])))
+        return real_tables(plan, **kwargs)
+
+    monkeypatch.setattr(prepared, 'build_measurement_plan', build)
+    monkeypatch.setattr(ports, 'lumped_wire_owner', owner)
+    monkeypatch.setattr(projector, 'plan_tables', compile_tables)
+    boundary = BoundarySpec(x='periodic', y='cpml', z='cpml') if periodic_x else 'cpml'
     sim = Simulation(freq_max=5e9, domain=(0.06, 0.03, 0.02), dx=3e-3,
-                     boundary="cpml", cpml_layers=6)
+                     boundary=boundary, cpml_layers=6)
     sim.add_port(position=(0.03, 0.015, 0.01), component="ez",
                  impedance=50.0, waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
                  extent=0.006)
-    sim.run(n_steps=12, compute_s_params=True, skip_preflight=True)
-    assert len(calls) == 1
-    specs, boundary = calls[0]
-    assert isinstance(boundary, CurlBoundary)
-    assert boundary.periodic == sim._periodic_flags()
+    # S extraction refuses periodic axes; the main scan still records the port.
+    sim.run(n_steps=12, compute_s_params=not periodic_x, skip_preflight=True)
+    assert len(plans) == 1 and len(owners) == 1 and len(tables) == 1
+    assert tuple(owners[0]) == sim._periodic_flags()
+    assert sim._periodic_flags()[0] == periodic_x
+    plan, specs = tables[0]
+    assert plan is plans[0]
     assert specs[0][0] == 'ez'
     assert all(len(cell) == 3 for cell in specs[0][1])

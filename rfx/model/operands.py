@@ -41,7 +41,7 @@ OPERANDS = {
         "current_moments", "field_dtype", "stencil_order", "aniso_inv_eps_smooth",
         "wire_port_sparams", "lumped_port_sparams", "wire_refplane_sparams",
         "wire_ports", "s_param_freqs", "pec_faces", "pmc_faces", "emit_time_series",
-        "rlc_states")},
+        "rlc_states", "measurement")},
     "materials": ("leaves", "material", frozenset()),
     "debye": ("poles", "Debye pole medium", frozenset({OperandKind.DEBYE})),
     "lorentz": ("poles", "Drude/Lorentz pole medium", frozenset({OperandKind.LORENTZ, OperandKind.DRUDE})),
