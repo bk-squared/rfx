@@ -189,8 +189,11 @@ def test_reference_plane_wire_refusal_names_forward():
     sim.add_port((10e-3, 10e-3, 5e-3), "ez", impedance=50.0, extent=3e-3,
                  reference_plane_cells=1, direction="+x")
     sim.add_probe((10e-3, 10e-3, 14e-3), "ez")
-    with pytest.raises(NotImplementedError) as exc:
+    with pytest.raises(ValueError) as exc:
         sim.forward(n_steps=4, distributed=True, devices=host_devices(2),
                     skip_preflight=True)
-    assert ("Wire ports with reference_plane_cells are not supported with "
-            "distributed=True;") in str(exc.value)
+    assert str(exc.value) == (
+        "forward() does not form reference-plane S-parameters: "
+        "add_port(reference_plane_cells=...) is set on port 0; "
+        "use run(compute_s_params=True) for reference-plane S, "
+        "or remove the option for forward()")
