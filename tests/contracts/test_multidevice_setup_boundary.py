@@ -374,6 +374,11 @@ def test_uniform_port_s_jit_refusal(entry):
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])
 @pytest.mark.parametrize('transform', ['jit_run', 'jit_grad', 'grad', 'jvp', 'vmap', 'remat'])
 def test_source_amplitude_transforms(mesh, transform):
+    """Plain grad over multi-device: runs and is finite; its value is pinned
+    against one device by
+    tests/unit/runners/test_distributed_graded_records_gradient.py::test_gradient
+    and tests/unit/runners/test_distributed_edge_averaged_materials.py::test_the_permittivity_gradient_matches_one_device.
+    """
     def objective(amplitude):
         sim = scene('epsilon_box', mesh, amplitude=amplitude)
         return jnp.sum(call_sim(sim, 'run' if transform == 'jit_run' else 'forward', jax.devices('cpu')[:2]).time_series)
