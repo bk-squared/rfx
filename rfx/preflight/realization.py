@@ -446,6 +446,19 @@ class _CampaignStaticsContext:
             raise self._assembly_exception
         return self._realized
 
+    def bind_realization(self):
+        """Keep record assembly failures in the diagnostic assembly channel."""
+        from rfx.model.realization_table import bind_table
+        root = self.realized() if self.grid is not None else None
+        if root is None or self._assembly_exception is not None:
+            return None
+        try:
+            bind_table(self.sim, root, lane=root.lane, compact=False)
+        except self._NARROW_EXCS as exc:
+            self._assembly_exception = exc
+            return None
+        return root
+
     def _emit_assembly_warnings(self):
         import warnings
         emitted = getattr(self, '_assembly_warnings', ())
@@ -775,36 +788,8 @@ def _port_pec_mask(self, grid):
 
 
 def context_from_conductors(sim, conductors):
-    """Lend realized products to readers without reassembling declarations."""
-    from rfx.realized_geometry import _node_arrays
-    ctx = object.__new__(_CampaignStaticsContext)
-    ctx.sim, ctx.grid = sim, conductors.grid
-    ctx.lane, ctx.periodic = conductors.lane, conductors.periodic
-    ctx.error = ctx.assembly_error = ctx._assembly_exception = None
-    ctx._realized, ctx._entries = conductors, []
-    ctx.spacings, ctx.nodes = _node_arrays(sim, ctx.grid, ctx.lane == 'nonuniform')
-    products = {key: (cells, sheet, wire, shape)
-                for key, cells, sheet, wire, shape in conductors.assembly_entries}
-    for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):
-        for i, entry in enumerate(collection):
-            label = f'{prefix}[{i}]'
-            cells, sheet, wire, shape = products.get(id(entry), (None, None, None, entry.shape))
-            if id(entry) not in products and prefix == 'geometry':
-                continue
-            kind = 'volume' if cells is not None else 'sheet' if sheet is not None else 'wire' if wire is not None else 'lossy'
-            bounds = _shape_bounds(entry.shape)
-            ctx._entries.append(_EntryRealization(label=label,
-                name=getattr(entry, 'material_name', label), shape=entry.shape,
-                solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire,
-                lo=None if bounds is None else np.asarray(bounds[0]),
-                hi=None if bounds is None else np.asarray(bounds[1])))
-    for entity in conductors.stamped_entities:
-        if entity.kind != 'material':
-            lo, hi = entity.shape.bounding_box()
-            ctx._entries.append(_EntryRealization(label=entity.entity_id,
-                name=entity.entity_id, shape=entity.shape, kind=entity.kind,
-                cells=entity.cells, lo=np.asarray(lo), hi=np.asarray(hi)))
-    return ctx
+    from rfx.model.realization_context import context_from_conductors as prepared_context
+    return prepared_context(sim, conductors)
 
 
 def release_inspection(sim):

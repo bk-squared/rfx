@@ -28,7 +28,7 @@ def prepare_film_footprints(conductors, grid):
         for i, tc in enumerate(conductors):
             if tc.is_pec or tc.surface_impedance_f0 is not None:
                 continue
-            film = admit_dc_film(tc.shape, grid, snap='declared', emit=False)
+            film = admit_dc_film(tc.shape, grid, snap='declared', emit=False, judge_area=False)
             geometry[i] = film
             normal, plane = dc_film_plane(tc.shape, grid)
             lo, hi = sheet_bounds(tc.shape)

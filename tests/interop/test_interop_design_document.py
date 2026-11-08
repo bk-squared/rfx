@@ -461,7 +461,9 @@ def _canonical(value):
 def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None:
     """Diff two simulations attribute by attribute over the census inventory."""
     # #1373: canonical current declarations do not replay a None warning.
-    diagnostic_attrs = {"_amplitude_kind_warned"}
+    # Grid construction can populate realization diagnostics on either side;
+    # the document excludes them and preflight rebuilds them from declarations.
+    diagnostic_attrs = {"_amplitude_kind_warned", "_realization_early_outcomes"}
     assert set(vars(original)) - diagnostic_attrs == set(vars(rebuilt)) - diagnostic_attrs, (
         "the rebuilt simulation carries a different attribute set: "
         f"only in original={sorted(set(vars(original)) - set(vars(rebuilt)))}, "

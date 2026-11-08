@@ -805,7 +805,7 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
                                if declared is tc)
             film = films.get(declaration)
             if film is None:
-                film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False)
+                film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False, judge_area=False)
             hit = np.flatnonzero(np.asarray(film.mask).any(axis=_other))
             hit = hit - int(getattr(grid, f'pad_{"xyz"[n_axis]}_lo'))
         else:

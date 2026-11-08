@@ -57,10 +57,38 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "realization",
+        "loc": "geometry[0]",
+        "numbers": [
+          0.0,
+          0.25,
+          9.0,
+          0.009,
+          9.0,
+          0.009,
+          -0.3,
+          -0.0003,
+          3.0,
+          0.003,
+          3.0,
+          0.003,
+          0.0,
+          0.0,
+          3.0,
+          0.003,
+          3.0,
+          0.003,
+          0.0,
+          0.0
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
       }
     ],
     "n_errors": 0,
-    "n_issues": 4,
+    "n_issues": 5,
     "ok": true
   }
 }

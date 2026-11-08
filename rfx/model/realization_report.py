@@ -13,7 +13,7 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
     reader._pf_campaign_ctx = None
     reader._realized_geometry_record = None
     reader._coax_geometry = None
-    root = PreparedSolve(reader).take()
+    root = PreparedSolve(reader, report_only=True).take()
     if solved.lane == "run_subgridded":
         from rfx.runners.subgridded import _run_subgridded_once
         root.grid._prepared_conductors = root
@@ -34,7 +34,9 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
     record = record_from_conductors(reader, root, lane=solved.lane, compact=False)
     record = replace(record, realization_table=table, dt=solved.dt)
     object.__setattr__(root, "realization_table", table)
-    object.__setattr__(record, "_conductors", root)
+    # Preserve a live kernel's identity without promoting its borrowed reference.
+    object.__setattr__(record, "_conductors", getattr(solved, "_conductors")
+                       if solved.conductors is not None else root)
     object.__setattr__(record, "_report_grid", root.grid)
     return record
 

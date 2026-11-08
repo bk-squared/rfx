@@ -18,6 +18,7 @@ they do not run at import time.
 from __future__ import annotations
 
 from rfx.sparams import _coax_msl_stages
+from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 
 from rfx.errors import AccuracyWarning
 from rfx._internal._precision import resolve_field_dtype
@@ -1066,16 +1067,6 @@ def compute_coaxial_two_port(
     return completed
 
 
-# Appended to the shared passivity guard's message when THIS lane refuses, so
-# the exception a caller actually reads names the way back to the matrix. The
-# shared message (rfx/sparams/_common.py) is used by five extractors and is
-# left untouched; only this lane refuses by default.
-COAX_MSL_TRANSITION_REFUSAL_HINT = (
-    "compute_coax_msl_transition is an EXPERIMENTAL cross-family method and "
-    "refuses a non-passive S by default (strict_passivity=True); pass "
-    "strict_passivity=False to get the diagnostic matrix back with a "
-    "UserWarning instead of this error."
-)
 
 
 def compute_coax_msl_transition(
@@ -1160,9 +1151,9 @@ def compute_coax_msl_transition(
         Default ``True`` raises ``ValueError`` for a non-passive extracted S.
         ``False`` returns the diagnostic matrix with a ``UserWarning``.
     skip_preflight : bool, optional
-        Default ``False`` runs the shared sheet-size verdict before stepping:
-        ``snap="strict"`` blocks off-size sheets and ``snap="declared"`` warns.
-        Other preflight families are not run here.
+        Skip advisories only when True (default False); realization refusals
+        still apply: ``snap="strict"`` blocks off-size sheets and
+        ``snap="declared"`` warns. Other preflight families are not run here.
     extra_flux_monitors : list or None, optional
         Default ``None``. Supply monitor entries registered on a separate
         simulation with the same domain. Per-drive net Poynting-flux spectra
@@ -1278,6 +1269,7 @@ def compute_coax_msl_transition(
     )
 
     _line_stub_scope = _line_stub_admit(self, freqs)
+    sheet_findings = None
     if not skip_preflight:
         # This lane owns its port checks; run only the shared sheet verdict.
         import warnings
@@ -1302,12 +1294,15 @@ def compute_coax_msl_transition(
                     finding.message, finding.category, finding.filename,
                     finding.lineno, source=finding.source,
                 )
-        self._run_preflight_gate(
-            [PreflightIssue(f.message, severity=f.message.severity,
-                            code=f.message.code, source=f.message.source)
-             for f in findings if isinstance(f.message, PreflightWarning)],
-            context="compute_coax_msl_transition",
-        )
+        issues = tuple(PreflightIssue(f.message, severity=f.message.severity,
+                                     code=f.message.code, source=f.message.source)
+                       for f in findings if isinstance(f.message, PreflightWarning))
+        self._run_preflight_gate(issues, context="compute_coax_msl_transition")
+        if ctx.error is None:
+            # Retain this gate's delivery state for the same board at admission.
+            sheet_findings = tuple(f for f in issues if f.code == "sheet_effective_size")
+            for sheet_finding in sheet_findings:
+                setattr(sheet_finding, "_realization_delivered", True)
 
     from rfx.runners._admission import admit
     admit(self, "coax_msl_transition")
@@ -1492,7 +1487,7 @@ def compute_coax_msl_transition(
 
     conductors = coax_kernel_conductors(self, grid, materials, coax_pec_cells,
         _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors,
-        skip_preflight=skip_preflight)
+        skip_preflight=skip_preflight, sheet_findings=sheet_findings)
     for drive_idx in range(2):
         if drive_idx == 0:
             sources = list(spec_coax.electric_sources)

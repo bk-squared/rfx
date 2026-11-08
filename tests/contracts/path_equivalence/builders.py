@@ -63,7 +63,7 @@ def _metal(sim, *, volume=False, thin=False, f0=False):
              Box(point(5, 2 - .35, 1 - .35),
                  point(5, top + .35 * outside, top + .35 * outside)))
     if thin:
-        sim.add_thin_conductor(shape, **(dict(sigma_bulk=1e3, thickness=DX/10,
+        sim.add_thin_conductor(shape, **(dict(sigma_bulk=1e4, thickness=DX/10,
                                              surface_impedance_f0=5e9) if f0 else {}))
     else:
         sim.add(shape, material='pec')

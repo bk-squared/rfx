@@ -254,7 +254,16 @@ def test_graded_periodic_declaration_keeps_grid_axis_width(span):
     sim.add_thin_conductor(Box((2e-3, span[0]*1e-3, 5e-3), (7e-3, span[1]*1e-3, 5e-3)),
                            sigma_bulk=1e4, thickness=35e-6, surface_impedance_f0=9e9)
     axis = sim.realized_geometry().entities[0].axes[1]
-    assert axis.extent_m == pytest.approx((span[1]-span[0])*1e-3)
+    expected = (span[1]-span[0])*1e-3
+    if span == (5, 10):
+        # DESIGN.md D:c1d171 / D:8ea1e2: |Z_s| = 1.885 ohm/sq < 3.767 ohm/sq.
+        # The rule reports the solved span: nodes + 0.35 cell per free edge.
+        grid = sim._build_nonuniform_grid()
+        nodes = np.r_[0., np.cumsum(np.asarray(grid.cells(1), dtype=float))]
+        # The upper free edge wraps at node 10; its outside cell starts at node 0.
+        expected = nodes[10] - nodes[5] + .35 * (
+            nodes[5] - nodes[4] + nodes[1] - nodes[0])  # 0.0057 m
+    assert axis.extent_m == pytest.approx(expected)
 
 
 def _assert_context_equal(actual, expected):

@@ -15,10 +15,9 @@ from rfx._declarations import release_declaration_caches
 
 import numpy as np
 
-from rfx.preflight._common import PreflightReport
 from rfx.preflight.realization import _RealizedPEC
+from rfx.preflight._common import PreflightReport as PreflightReport
 from rfx.boundaries.pec import SheetSpec
-from rfx.model.design_admission import with_design_diagnostics
 
 
 
@@ -49,10 +48,63 @@ class ConductorWidthAxis:
     free_ends: object = None
 
 
+def f0_uses_solved_span(spec):
+    """D:c1d171: compare the assembled model's Rs = 1/G with 0.01 eta0."""
+    from rfx.core.yee import MU_0, EPS_0
+    return abs(1.0 / float(spec.g_sheet)) <= 1e-2 * np.sqrt(MU_0 / EPS_0)
+
+
+def f0_edge_note(spec):
+    if f0_uses_solved_span(spec):
+        return 'edge measured at σ 5.8e7 S/m; PEC-like regime up to 1e-2·η0 by rule, not measured between'
+    return 'edge not measured'
+
+
+def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
+    """Resistive f0 node span; no unmeasured physical edge offset.
+
+    Retain the operator's explicit end-row-weight perturbation for its width
+    control test. At the production weight 0.5 both ends stay on their nodes,
+    including graded cells and faces not coincident with a node row.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.materials.thin_conductor import END_ROW_WEIGHT
+    n = len(sizes)
+    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
+    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
+              else np.asarray(end_rows, dtype=bool))
+    i0, i1 = int(rows[0]), int(rows[-1])
+    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
+    if periodic:
+        occupied = np.zeros(n, dtype=bool)
+        occupied[rows % n] = True
+        if occupied.all():
+            return 0, n, float(nodes[0]), float(nodes[n])
+        # Where the one occupied run around the period begins: its rising edge,
+        # or node 0 when the run starts there without wrapping.
+        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
+        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
+            i0 = int(rising[0]) if rising.size else 0
+            i1 = i0 + int(occupied.sum()) - 1
+        free_lo = free_hi = True
+
+    def at(i):
+        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
+
+    lo, hi = at(i0), at(i1)
+    if free_lo and marked[i0 % n]:
+        lo -= (END_ROW_WEIGHT - 0.5) * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n])
+    if free_hi and marked[i1 % n]:
+        hi += (END_ROW_WEIGHT - 0.5) * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n])
+    return i0, i1, lo, hi
+
+
 def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
-                         f0_spec, bounds, sizes, nodes, interior):
-    """One record product: PEC solved spans, DC cells, or weighted f0 nodes."""
+                         f0_spec, bounds, sizes, nodes, interior, wire_edges=()):
+    """One record product: PEC-like solved spans, resistive f0 nodes or DC cells."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
+    if sheet is None and f0_spec is not None and f0_uses_solved_span(f0_spec):
+        sheet = f0_spec
     union, volume_edges = sheet_continuation_masks(interior, root.periodic, root.grid.shape)
     fed = (port_fed_nodes(sim, root)
            if sheet is not None and not hasattr(sheet, 'solved_spans') else None)
@@ -64,8 +116,13 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
         cell_range = None if kind in ('sheet', 'wire') or node_based else (i0, i1 + 1)
         lo = float(nodes[a][i0])
         hi = float(nodes[a][i1 if cell_range is None else i1 + 1])
+        if kind == 'wire' and np.any(wire_edges[a]):
+            # A component mask indexes edge starts. Include its end nodes,
+            # while retaining transverse nodes from the other components.
+            last_edge = int(np.where(wire_edges[a])[a].max())
+            hi = float(nodes[a][max(i1, last_edge + 1)])
         comparison = free_ends = None
-        if f0_spec is not None and a != int(f0_spec.normal_axis):
+        if sheet is None and f0_spec is not None and a != int(f0_spec.normal_axis):
             i0, i1, lo, hi = _f0_solved_bounds(
                 mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
                 int(getattr(root.grid, f"pad_{'xyz'[a]}_lo")),
@@ -77,6 +134,8 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
                         volume_edges=volume_edges, periodic=periodic, fed=fed, normal_axis=sheet.normal_axis))
             if span is not None:
                 lo, hi = span.lo, span.hi
+                if f0_spec is not None:
+                    i0, i1 = span.i0, span.i1
                 comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
                 free_ends = (span.free_lo, span.free_hi)
         result.append(ConductorWidthAxis(i0, i1, cell_range, lo, hi, comparison, free_ends))
@@ -182,10 +241,10 @@ def coax_declared_conductors(sim, grid):
 
 
 def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root=None,
-                           skip_preflight=False):
+                           skip_preflight=False, sheet_findings=None):
     """Own the stamp and union AFTER the calculator's existing port operations.
 
-    No classification, sampling, material update or new acceptance gate occurs.
+    The completed stamp is judged before the calculator starts stepping.
     A concrete solve lends its last kernel product to realized_geometry(); a
     traced solve must not leave a tracer in the simulation's diagnostic cache.
     """
@@ -205,12 +264,31 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
             ctx = sim._campaign_ctx()
             if not skip_preflight:
                 root = replace(root, stamp_check_findings=stamp_check_findings(sim, root))
-        except (TimeoutError,): raise
+        except (TimeoutError,):
+            raise
         except Exception as exc:  # noqa: BLE001 - recorded in stamp_check_findings
             root = replace(root, stamp_check_findings=root.stamp_check_findings + (
                 ('read-failed', (type(exc).__name__, str(exc))),))
         if ctx is not None:
             sim._coax_geometry = (ctx, root)
+    # A diagnostic stand-in can carry the recorded failure without a grid.
+    # There is no realization to summarize in that case.
+    if root.grid is None:
+        return root
+    from rfx.model.realization_table import bind_table, finish_table
+    from rfx.model.realization_verdict import admit_table
+    bind_table(sim, root, lane="coax")
+    from rfx.preflight._common import PreflightIssue
+    # Without the stamp checks (skip_preflight) the table admission forms the
+    # sheet-size rows itself; skip_preflight never drops them.
+    previous = sheet_findings if sheet_findings is not None else None if skip_preflight else tuple(
+        PreflightIssue(message, code="sheet_effective_size",
+        severity="warning" if sim._snap == "declared" else "error",
+        source="_validate_cfg_off_lattice_design_edges")
+        for name, messages in root.stamp_check_findings if name == "sheet-size"
+        for message in messages)
+    admit_table(sim, root, legacy_findings=previous)
+    finish_table(sim, root, lane="coax")
     return root
 
 
@@ -422,7 +500,8 @@ def _same_grid(a, b):
 
 
 
-def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1):
+def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1, realization_options=None, report_only=False,
+                     realization_not_evaluated=None):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
     from rfx.model.source_admission import refuse_dead_soft_sources
@@ -433,6 +512,11 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1
     root = replace(root)
     from rfx.model.realization_table import bind_table
     bind_table(sim, root, lane=root.lane)
+    from rfx.model.realization_verdict import admit_table
+    object.__setattr__(root.realization_table, "report_only", report_only)
+    object.__setattr__(root.realization_table, "not_evaluated_reason", realization_not_evaluated)
+    if not report_only:
+        admit_table(sim, root, options=realization_options)
     if preflight is not None:
         sim._auto_preflight(conductors=root, **preflight)
     return root
@@ -445,8 +529,10 @@ class PreparedSolve:
     The empty handoff can stay in dispatch frames without pinning dense arrays
     while a distributed runner stages and drops its full-domain products.
     """
-    def __init__(self, sim):
+    def __init__(self, sim, realization_options=None, *, report_only=False):
         self.sim = sim
+        self.realization_options = realization_options
+        self.report_only = report_only
         self._product = None
         self._taken = False
         self.diagnostics = ()
@@ -462,7 +548,8 @@ class PreparedSolve:
             nonuniform = self.sim._uses_nonuniform_mesh
             grid = (self.sim._build_nonuniform_grid() if nonuniform
                     else self.sim._build_grid())
-            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform, n_devices=n_devices)
+            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform, n_devices=n_devices,
+                                             realization_options=self.realization_options, report_only=self.report_only)
         return self._product
 
     def take(self, *, n_devices=1):
@@ -473,13 +560,13 @@ class PreparedSolve:
         return product
 
 
-def prepare_solve(sim, *, distributed=False):
+def prepare_solve(sim, *, distributed=False, realization_options=None):
     """Keep solve ownership local to this execution, never in audit caches."""
     from rfx.model.realization_reference import forget_kernel
     forget_kernel(sim)
     if distributed:
         release_declaration_caches(sim)
-    return PreparedSolve(sim)
+    return PreparedSolve(sim, realization_options)
 
 
 def assembled_materials(root, **collectors):
@@ -859,53 +946,6 @@ def forward_sheet_context(root, cells):
              realized_pec_edge_masks(cells, sheets=root.sheets, wires=root.wires,
                                      periodic=root.periodic))
     return root.sheet_context(edges)
-
-
-def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
-    """In-plane node range and ends of an f0 sheet as the sheet operator solves them.
-
-    A tangential row at node ``i`` loads its dual cell, half of the cell on
-    each side, times the row's weight on the sheet conductance: 1, or
-    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn face. The solved
-    end is therefore ``weight * dual - inside half`` beyond the end node
-    (zero at weight 0.5 between equal cells). On a non-periodic axis an end
-    on the domain face has no outside cell and stays on its node. A periodic
-    axis has no wall: the occupied rows are read as one run around the
-    period (a strip ending on the seam ends at node N, one that starts there
-    starts at node 0), and a sheet spanning the whole period has no end.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.materials.thin_conductor import END_ROW_WEIGHT
-    n = len(sizes)
-    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
-    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
-              else np.asarray(end_rows, dtype=bool))
-    i0, i1 = int(rows[0]), int(rows[-1])
-    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
-    if periodic:
-        occupied = np.zeros(n, dtype=bool)
-        occupied[rows % n] = True
-        if occupied.all():
-            return 0, n, float(nodes[0]), float(nodes[n])
-        # Where the one occupied run around the period begins: its rising edge,
-        # or node 0 when the run starts there without wrapping.
-        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
-        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
-            i0 = int(rising[0]) if rising.size else 0
-            i1 = i0 + int(occupied.sum()) - 1
-        free_lo = free_hi = True
-
-    def at(i):
-        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
-
-    lo, hi = at(i0), at(i1)
-    if free_lo:
-        w = END_ROW_WEIGHT if marked[i0 % n] else 1.0
-        lo -= w * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n]) - 0.5 * float(sizes[i0 % n])
-    if free_hi:
-        w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
-        hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
-    return i0, i1, lo, hi
 
 
 _SHEET_LAYOUT_REPORTS = (

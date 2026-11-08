@@ -58,6 +58,7 @@ exactly as wide after this leg as before it -- still 55.
 
 from __future__ import annotations
 
+from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready, replay_legacy_findings
 import math
 
 import numpy as np
@@ -342,6 +343,9 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
         return
     ctx = self._campaign_ctx()
     if ctx.error == "traced-mesh":
+        table = getattr(getattr(ctx, "_realized", None), "realization_table", None)
+        if table is not None and "traced" in table.judged:
+            return
         _w.warn(PreflightWarning(
             "The conductor-realization checks (PEC volume faces, the "
             "sheet-size verdict and the others) could NOT run on a traced "
@@ -992,6 +996,9 @@ def _cavity_wall_faces(ctx):
 
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     """Judge adjacent sheet/Box/wall faces independently of electrical columns."""
+    if legacy_table_ready(ctx):
+        replay_legacy_findings(_w, ctx, "sheet_cavity_spacing")
+        return
     conductors = [e for e in entries if e.kind == "sheet"
                   or (e.kind == "volume" and isinstance(e.shape, Box))]
     if not conductors:
@@ -1077,7 +1084,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     continue
                 if not touching:
                     rel = solved / drawn - 1.0
-                    if abs(rel) <= _CAVITY_THICKNESS_TOL:
+                    if not legacy_mismatch(rel, _CAVITY_THICKNESS_TOL):
                         continue
                     score = abs(rel)
                     spacing = (f"drawn spacing {_fmt_len(drawn)}, solved spacing "
@@ -1389,8 +1396,8 @@ _SHEET_EFFECTIVE_SIZE_TOL = 1e-2
 
 
 def _sheet_solved_spans(ctx, boxes):
-    """``(entry, axis, SolvedSheetSpan)`` for every in-plane axis of every
-    sheet in ``boxes``, from :func:`rfx.mesh_edges.solved_sheet_span` -- the
+    """``(entry, axis, SolvedSheetSpan)`` for each in-plane axis of PEC and
+    PEC-like f0 sheets, from :func:`rfx.mesh_edges.solved_sheet_span` -- the
     one solved-edge model the sheet-size and census advisories share with
     ``fidelity_report``. The seam test reads realized sheets and PEC volume edges."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
@@ -1400,11 +1407,19 @@ def _sheet_solved_spans(ctx, boxes):
     fps = [interior_lattice_mask(e.sheet.footprint, ctx.grid) for e in sheets]
     union, volume_edges = sheet_continuation_masks(
         ctx.interior_pec_entries() + ctx.impedance_sheet_entries(), ctx.periodic, ctx.grid.shape)
-    from rfx.model.conductors import port_fed_nodes
+    from rfx.model.conductors import port_fed_nodes, f0_uses_solved_span
+    f0_specs = dict(zip((f'thin_conductor[{i}]' for i, tc in enumerate(ctx.sim._thin_conductors)
+                        if tc.surface_impedance_f0 is not None),
+                       getattr(ctx.realized(), 'sheet_impedance', ())))
     fed = (port_fed_nodes(ctx.sim, ctx.realized())
            if any(not hasattr(e.sheet, 'solved_spans') for e in sheets) else None)
     out = []
     for e, fp in zip(sheets, fps):
+        if e.name in f0_specs:
+            from rfx.core.jax_utils import is_tracer
+            spec = f0_specs[e.name]
+            if is_tracer(spec.g_sheet) or not f0_uses_solved_span(spec):
+                continue  # Traced verdict or no measured resistive free-edge model.
         for a in range(3):
             if a == int(e.sheet.normal_axis):
                 continue
@@ -1424,7 +1439,7 @@ def _sheet_solved_spans(ctx, boxes):
 
 
 def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
-    """A PEC or f0 sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
+    """A PEC or PEC-like f0 sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
     in-plane end than the nodes it covers (measured:
     ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
     sees is ``covered node span + EDGE_OFFSET * (cell beyond each end)``.
@@ -1432,6 +1447,9 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     domain wall is a wall, not an edge, and adds nothing. At non-free ends,
     exclude their residual from the comparison (including seams and overlaps). This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
+    if legacy_table_ready(ctx):
+        replay_legacy_findings(_w, ctx, "sheet_effective_size")
+        return
     from rfx.mesh_edges import EDGE_OFFSET
     # f0 sheets join on the PEC rule's terms: Box drawings only (no analytic
     # face coordinates for other shapes; the 0.35-cell offset was measured on a fin).
@@ -1451,7 +1469,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         covered = float(nodes[span.i1] - nodes[span.i0])
         eff = span.hi - span.lo
         rel = (eff - ext) / ext
-        if abs(rel) > _SHEET_EFFECTIVE_SIZE_TOL:
+        if legacy_mismatch(rel, _SHEET_EFFECTIVE_SIZE_TOL):
             rows.append((abs(rel), rel, e, a, ext, covered, eff))
     if not rows:
         return

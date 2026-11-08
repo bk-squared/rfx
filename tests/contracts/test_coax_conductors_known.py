@@ -284,12 +284,21 @@ def test_diagnostic_failure_reaches_kernel_and_records_finding(monkeypatch, read
         _coax_line_result()
 
 
-def test_skip_preflight_has_no_findings_or_sheet_reads(monkeypatch):
+def test_skip_preflight_forms_sheet_rows_once_and_hands_the_kernel_its_edges(monkeypatch):
     import rfx.sparams.coax as calculators
-    seen = {}
+    from rfx.preflight.pec_geometry import _warn_sheet_effective_size
+    from tests._coax_msl_instrument_fixture import (
+        build_instrument_junction, instrument_kwargs,
+    )
 
-    def forbidden(*args, **kwargs):
-        pytest.fail('skip_preflight must not read sheet-size findings')
+    sim = build_instrument_junction()
+    sim._snap = "declared"
+    seen = {}
+    sheet_reads = []
+
+    def counted(*args, **kwargs):
+        sheet_reads.append(True)
+        return _warn_sheet_effective_size(*args, **kwargs)
 
     def handover(sim, *args, **kwargs):
         assert kwargs['skip_preflight'] is True
@@ -302,11 +311,12 @@ def test_skip_preflight_has_no_findings_or_sheet_reads(monkeypatch):
         assert kwargs['pec_edge_masks'] is seen['root'].pec_edges
         raise KernelInspected
 
-    monkeypatch.setattr('rfx.preflight.pec_geometry._warn_sheet_effective_size', forbidden)
+    monkeypatch.setattr('rfx.preflight.pec_geometry._warn_sheet_effective_size', counted)
     monkeypatch.setattr(calculators, 'coax_kernel_conductors', handover)
     monkeypatch.setattr('rfx.simulation.run', kernel)
     with pytest.raises(KernelInspected):
-        _coax_msl_result()
+        sim.compute_coax_msl_transition(**instrument_kwargs(200))
+    assert len(sheet_reads) == 1
 
 
 def test_traced_handover_does_not_publish_tracers():

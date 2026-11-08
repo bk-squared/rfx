@@ -115,7 +115,7 @@ def test_record_reads_kernel_after_port_clearing(monkeypatch, lane, kernel_objec
     monkeypatch.setattr(records, 'record_from_conductors', record_operand)
     result = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
     final = kernel_objects[-1]
-    assert result.realized_geometry.conductors is None
+    assert result.realized_geometry.conductors is final
     assert not final.edges[2][idx]
     assert final.provenance[-1].stage == 'port-edge-clearing'
     assert recorded[-1] is final

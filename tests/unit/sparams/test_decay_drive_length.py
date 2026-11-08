@@ -12,12 +12,13 @@ from rfx.sparams import _tail_witness
 
 
 def _box(mesh):
+    dx = 1e-3
     kwargs = (
         dict(dx_profile=np.r_[np.full(6, 1e-3), np.full(4, 0.6e-3),
                               np.full(6, 1e-3)], domain=(0, 12e-3, 10e-3))
-        if mesh == "graded" else dict(domain=(12.4e-3, 12e-3, 10e-3))
+        if mesh == "graded" else dict(domain=(13*dx, 12*dx, 10*dx))
     )
-    sim = Simulation(freq_max=12e9, dx=1e-3, boundary="cpml", cpml_layers=6,
+    sim = Simulation(freq_max=12e9, dx=dx, boundary="cpml", cpml_layers=6,
                      **kwargs)
     for n, x in enumerate((4e-3, 8e-3)):
         sim.add_port(position=(x, 6e-3, 4e-3), component="ez", impedance=50.,

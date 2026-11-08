@@ -84,7 +84,7 @@ def run_after_admission(
     _line_stub_scope = _line_stub_admit(self, s_param_freqs)
 
     _distributed_run = devices is not None and len(devices) > 1
-    _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run, conformal=bool(conformal_pec))
+    _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run, conformal=bool(conformal_pec), realization_options=(subpixel_smoothing, bool(conformal_pec)))
     _diagnostics = _solve_assembly.diagnostics
 
     # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----

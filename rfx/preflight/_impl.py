@@ -69,9 +69,12 @@ def _preflight_impl(
     # Resolve before any validator reads a profile or fallback spacing.
     self._resolve_mesh()
     issues = PreflightReport()
+    verdict_findings = []
     if _conductors is not None:
         tables = _conductors._realization_tables
         issues._realization_reader = lambda: tables[-1] if tables else None
+        if tables:
+            verdict_findings.extend(tables[-1].findings)
     else:
         issues._realization_reader = lambda: self.realized_geometry().realization_table
 
@@ -90,6 +93,24 @@ def _preflight_impl(
         from rfx.measurement import admit_waveguide_entries
         admit_waveguide_entries(self)
         self._collect_flux_regions(issues)
+        try:
+            if _conductors is None:
+                from rfx.model.realization_verdict import admit_table
+                ctx = self._campaign_ctx()
+                root = ctx.bind_realization()
+                if root is not None:
+                    admit_table(self, root, deliver=False)
+                    admit_table(self, root, finished=True, deliver=False)
+                    table = root.realization_table
+                    setattr(issues, "_realization_reader", lambda: table)
+                    verdict_findings.extend(table.findings)
+        except ValueError as overlap_error:
+            if getattr(overlap_error, "code", None) != "absorber_overlap":
+                raise
+            from typing import cast
+            verdict_findings.append(PreflightIssue(str(overlap_error), severity="error",
+                code=cast(str, getattr(overlap_error, "code")),
+                source=cast(str | None, getattr(overlap_error, "source"))))
         try:
             from rfx.model.thin_conductors import warn_dc_films
             warn_dc_films(self, warnings)
@@ -140,8 +161,12 @@ def _preflight_impl(
     dc_findings = {str(w.message) for w in caught
                    if getattr(w.message, 'source', None) == 'admit_dc_film'
                    and getattr(w.message, 'loc', None) is not None}
+    verdict_issues = tuple(issues)
     for w in caught:
         msg = str(w.message)
+        if any(issue.code == getattr(w.message, 'code', None) and str(issue) == msg
+               for issue in verdict_issues):
+            continue
         if (getattr(w.message, 'source', None) == 'admit_dc_film'
                 and getattr(w.message, 'loc', None) is None and msg in dc_findings):
             continue
@@ -175,6 +200,19 @@ def _preflight_impl(
             )
         )
 
+    # Existing diagnostics keep their call order. New rows follow them;
+    # legacy rows already replayed at their original sites are not duplicated.
+    for finding in verdict_findings:
+        if finding.code in {"sheet_effective_size", "sheet_cavity_spacing", "port_aperture_snap"}:
+            for index, issue in enumerate(issues):
+                if issue.code == finding.code and str(issue) == str(finding):
+                    # Preserve delivery state when replaying a legacy finding.
+                    issues[index] = finding
+            if any(issue.code == finding.code for issue in issues):
+                continue
+        if not any(issue.code == finding.code and str(issue) == str(finding) for issue in issues):
+            issues.append(finding)
+
     if check_ad_memory:
         if n_steps_for_memory is None:
             raise ValueError("check_ad_memory=True requires n_steps_for_memory")
@@ -201,6 +239,7 @@ def _preflight_impl(
         "pec_box_subcell", "pec_zero_cells", "pec_realization_refused",
         "dc_film_area", "dc_film_layers", "dc_film_unchecked",
         "source_decoupled", "declared-span-short-of-padded-face",
+        "port_aperture_unrasterizable",
     }
     if any(issue.code in assembly_codes for issue in issues):
         exc = self._campaign_ctx()._assembly_exception
@@ -252,7 +291,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
     The advisory names the first caller frame outside rfx, however many rfx frames lie between;
     ``stacklevel`` is accepted from older callers and not used.
     """
-    issues = PreflightReport(issues)
+    issues = PreflightReport(i for i in issues if not getattr(i, "_realization_delivered", False))
     if not len(issues):          # PreflightReport refuses bool()
         return
     import warnings
@@ -276,11 +315,20 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         # skip_preflight=True remains the explicit escape hatch.
         detail = "\n  - ".join(errors)
         from rfx._diagnostic_transport import diagnostic_refusal
+        # Sheet-size rows are realization rows too: admitted on every lane (admit_sheet_sizes).
+        realized_refusals = sum(getattr(i, "source", None) == "judge_realization"
+                          or getattr(i, "code", None) == "sheet_effective_size" for i in errors)
+        hint = ("pass skip_preflight=True to bypass" if not realized_refusals else
+                ("skip_preflight=True bypasses only the non-realization errors; "
+                 if realized_refusals < len(errors) else "") +
+                "skip_preflight=True does not bypass a realization refusal: "
+                'use Simulation(..., snap="declared") to report it as a warning, '
+                "or apply the remedy in the message")
 
         raise diagnostic_refusal(
             RfxRefusal(
                 f"[{context}] preflight found {len(errors)} blocking error(s) "
-                f"(pass skip_preflight=True to bypass):\n  - {detail}"
+                f"({hint}):\n  - {detail}"
             ),
             issues.diagnostics,
             causes=PreflightReport(errors).diagnostics,
@@ -289,7 +337,7 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
 
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
                    conductors=None, prepare=False, distributed=False, tfsf_material_overrides=(),
-                   conformal=None):
+                   conformal=None, realization_options=None):
     """Emit a UserWarning if preflight finds issues.
 
     Called automatically at the start of ``forward()``, ``optimize()``,
@@ -313,7 +361,7 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     skipped preflight it stays lazy until lane admission; otherwise checks
     read its assembled product before the selected runner takes ownership.
     """
-    assembly = prepare_solve(sim, distributed=distributed) if prepare else None
+    assembly = prepare_solve(sim, distributed=distributed, realization_options=realization_options) if prepare else None
     if skip:
         return assembly if prepare else PreflightReport()
     if assembly is not None:

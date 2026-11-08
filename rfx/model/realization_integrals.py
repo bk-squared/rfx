@@ -75,8 +75,15 @@ def capture(grid, shapes, fraction, owner, component, *, face=False):
     ids = store.get("owners", {})
     if not any(id(s) in ids for s in shapes):
         return
+    group = tuple(ids[id(s)] for s in shapes if id(s) in ids)
+    for key in group:
+        store.setdefault("groups", {})[key] = group
     weights = _weights(grid, component, face=face)
     values = np.asarray(fraction) * weights
+    reference = None
+    if face:
+        from rfx.model.realization_reference_area import drawn_open_fractions
+        reference = drawn_open_fractions(grid, shapes, component)
     for index, shape in enumerate(shapes):
         if id(shape) not in ids:
             continue
@@ -84,6 +91,13 @@ def capture(grid, shapes, fraction, owner, component, *, face=False):
         total = float(np.sum(np.where(selected, values, 0.)))
         key = ids[id(shape)]
         store.setdefault("open" if face else "filled", {}).setdefault(key, {})[component] = total
+        if face and reference is not None:
+            store.setdefault("drawn_open", {}).setdefault(key, {})[component] = float(
+                np.sum(np.where(selected, reference * weights, 0.)))
+            deviation = float(np.max(np.where(selected & (weights > 0),
+                np.abs(np.asarray(fraction)-reference), 0.)))
+            store.setdefault("owner_deviation", {})[key] = max(
+                store.get("owner_deviation", {}).get(key, 0.), deviation)
         if not face:
             occupied = selected & (np.asarray(fraction) > 0)
             faces = store.setdefault("smoothed_continued", {}).setdefault(key, {})
@@ -99,6 +113,7 @@ def capture(grid, shapes, fraction, owner, component, *, face=False):
 
 def read_rows(rows, grid, sim):
     from dataclasses import replace
+    geometry = getattr(sim, "_geometry", ())
     store = quantities(grid) or {}
     result = []
     for row in rows:
@@ -110,19 +125,45 @@ def read_rows(rows, grid, sim):
                     for face in store["continued"].get(index, ())))
             volume = store.get("filled", {}).get(index)
             area = store.get("open", {}).get(index)
+            group = store.get("groups", {}).get(index, (index,))
             if volume:
                 filled = volume.get(3, float(np.mean(list(volume.values()))))
-                drawn = _drawn_volume(sim._geometry[index].shape)
+                drawn = _drawn_volume(geometry[index].shape) if index < len(geometry) else None
                 row = replace(row, filled_volume_m3=filled, declared_volume_m3=drawn,
                               volume_equivalent_length_m=float(np.cbrt(filled)),
                               volume_miss_percent=None if not drawn else 100*(float(np.cbrt(filled/drawn))-1),
                               model="smoothed fill; union owner partition")
+                reference = (_drawn_union_volume([geometry[k].shape for k in group])
+                             if all(k < len(geometry) for k in group) else None)
+                if reference is not None and reference > 0:
+                    total = sum(values.get(3, float(np.mean(list(values.values()))))
+                                for k in group if (values := store.get("filled", {}).get(k)))
+                    row = replace(row, integral_comparison=("filled volume", reference, total, 3))
+                else:
+                    row = replace(row, status="not judged: no reference")
                 row = replace(row, continued_faces=tuple(
                     f"{'xyz'[face//2]}-{'hi' if face%2 else 'lo'}" for face in
                     sorted(store.get("smoothed_continued", {}).get(index, ()))))
             if area:
                 row = replace(row, open_area_m2=tuple(area.get(a, 0.) for a in range(3)),
                               model="conformal open faces; union owner partition")
+                drawn = store.get("drawn_open", {}).get(index)
+                declared = sum((drawn or {}).values())
+                if declared > 0:
+                    realized = sum(area.values())
+                    cell = float(np.mean([a.cell_size_m for a in row.axes]))
+                    row = replace(row, declared_area_m2=declared, realized_area_m2=realized,
+                        declared_area_equivalent_length_m=float(np.sqrt(declared)),
+                        area_equivalent_length_m=float(np.sqrt(realized)),
+                        area_miss_percent=100*(float(np.sqrt(realized/declared))-1),
+                        area_miss_cells=(float(np.sqrt(realized))-float(np.sqrt(declared)))/cell,
+                        max_owner_deviation=store["owner_deviation"][index])
+                    group_declared = sum(sum(store["drawn_open"][k].values()) for k in group)
+                    group_realized = sum(sum(store["open"][k].values()) for k in group)
+                    row = replace(row, integral_comparison=(
+                        "summed open area", group_declared, group_realized, 2))
+                else:
+                    row = replace(row, status="not judged: no reference")
         result.append(row)
     return tuple(result)
 
@@ -136,3 +177,29 @@ def _drawn_volume(shape):
     if isinstance(shape, Cylinder):
         return float(np.pi*shape.radius**2*shape.height)
     return None
+
+
+def _drawn_union_volume(shapes):
+    """Closed-form union of Boxes, or disjoint analytic primitive volumes."""
+    from rfx.geometry.csg import Box
+    if all(isinstance(s, Box) for s in shapes):
+        nodes = [np.unique([edge[a] for s in shapes for edge in (s.corner_lo, s.corner_hi)])
+                 for a in range(3)]
+        centres = np.meshgrid(*[(n[:-1]+n[1:])/2 for n in nodes], indexing="ij", sparse=True)
+        occupied = np.zeros(tuple(len(n)-1 for n in nodes), dtype=bool)
+        for s in shapes:
+            occupied |= ((centres[0] >= s.corner_lo[0]) & (centres[0] < s.corner_hi[0]) &
+                         (centres[1] >= s.corner_lo[1]) & (centres[1] < s.corner_hi[1]) &
+                         (centres[2] >= s.corner_lo[2]) & (centres[2] < s.corner_hi[2]))
+        weights = np.diff(nodes[0])[:, None, None]*np.diff(nodes[1])[None, :, None]*np.diff(nodes[2])[None, None, :]
+        return float(np.sum(weights*occupied))
+    volumes = [_drawn_volume(s) for s in shapes]
+    if any(v is None for v in volumes):
+        return None
+    for i, first in enumerate(shapes):
+        lo, hi = first.bounding_box()
+        for second in shapes[i+1:]:
+            other_lo, other_hi = second.bounding_box()
+            if all(min(hi[a], other_hi[a]) > max(lo[a], other_lo[a]) for a in range(3)):
+                return None
+    return sum(volumes)

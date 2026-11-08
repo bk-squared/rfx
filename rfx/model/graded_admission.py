@@ -9,6 +9,7 @@ keeps what it returns; the messages are the ones the constructor raised.
 from __future__ import annotations
 
 from rfx.errors import AccuracyWarning, RfxWarning
+from rfx.model.realization_verdict import legacy_mismatch
 import warnings
 from collections.abc import Mapping
 from typing import NamedTuple
@@ -63,7 +64,7 @@ def judge_declared_z(declared_z, dz_total, snap="strict", *, stacklevel=2):
     (periodic z, flux regions, thin conductors, RCS) would read a length the
     grid does not solve. ``stacklevel`` names the caller's line."""
     rel = abs(dz_total - declared_z) / declared_z
-    if rel <= DECLARED_Z_RTOL:
+    if not legacy_mismatch(rel, DECLARED_Z_RTOL):
         return
     message = (
         f"Declared domain z = {declared_z:.12g} m differs from "
@@ -73,6 +74,9 @@ def judge_declared_z(declared_z, dz_total, snap="strict", *, stacklevel=2):
         'take it from the profile, or use snap="declared".')
     if snap == "declared":
         warnings.warn(message, DeclaredZWarning, stacklevel=stacklevel)
+        from rfx.model.realization_verdict import legacy_outcome
+        return legacy_outcome("legacy:declared_z", rel, DECLARED_Z_RTOL,
+                              message, "declared_z", "judge_declared_z")
     else:
         raise ValueError(message)
 
@@ -90,6 +94,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     :class:`NominalProfile` declaration so admission is idempotent.
     """
     declared_domain = getattr(domain, "declared", domain)
+    early_outcome = None
     # Synthesize domain extents from axis profiles before validation.
     # dx_profile / dy_profile set x / y; dz_profile sets z.
     # Tracer-valued profiles require the caller to supply a concrete
@@ -132,7 +137,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
             if len(domain) < 3 or domain[2] <= 0:
                 domain = (domain[0], domain[1], dz_total)
             else:
-                judge_declared_z(domain[2], dz_total, snap, stacklevel=4)
+                early_outcome = judge_declared_z(domain[2], dz_total, snap, stacklevel=4)
     elif any(d <= 0 for d in domain):
         raise ValueError(f"domain dimensions must be positive, got {domain}")
 
@@ -147,7 +152,11 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
         warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
                             multiband_ratio_cap, inplane_ratio_cap)
     from rfx.model.realization_reference import retain_declared_domain
-    return retain_declared_domain(domain, declared_domain), nominal
+    result = retain_declared_domain(domain, list(declared_domain) if early_outcome else declared_domain)
+    if early_outcome is not None:
+        from rfx.model.realization_verdict import remember_legacy
+        remember_legacy(result, "z", early_outcome)
+    return result, nominal
 
 
 def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,

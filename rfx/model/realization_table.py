@@ -22,6 +22,8 @@ class RealizationAxis:
     miss_cells: float | None
     miss_percent: float | None
     centroid_shift_cells: float | None
+    declared_intervals_m: tuple = ()
+    realized_intervals_m: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class RealizationRow:
     family: str
     axes: tuple[RealizationAxis, ...] = ()
     continued_faces: tuple[str, ...] = ()
+    clipped_faces: tuple = ()
     status: str = "evaluated"
     model: str = "mask"
     declared_area_m2: float | None = None
@@ -47,6 +50,7 @@ class RealizationRow:
     volume_equivalent_length_m: float | None = None
     volume_miss_percent: float | None = None
     max_owner_deviation: float | None = None
+    integral_comparison: tuple | None = None
     name: str | None = None
     shape_name: str | None = None
     declared_bounds_m: tuple | None = None
@@ -56,6 +60,7 @@ class RealizationRow:
     wall_positions_m: tuple = ()
     domain_geometry: tuple = ()
     domain_face_cells_m: tuple = ()
+    edge_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,17 @@ class RealizationTable:
     rows: tuple[RealizationRow, ...]
     lane: str
     prepared: object = field(repr=False, compare=False)
+
+    findings: list = field(default_factory=list, repr=False, compare=False)
+    legacy_rows: list = field(default_factory=list, repr=False, compare=False)
+    judged: set = field(default_factory=set, repr=False, compare=False)
+    deferred: set = field(default_factory=set, repr=False, compare=False)
+    delivered: set = field(default_factory=set, repr=False, compare=False)
+    early_domain_axes: set = field(default_factory=set, repr=False, compare=False)
+    report_only: bool = field(default=False, repr=False, compare=False)
+    not_evaluated_reason: str | None = field(default=None, repr=False, compare=False)
+    active_axes: tuple = field(default=("x", "y", "z"), repr=False, compare=False)
+    periods: dict = field(default_factory=dict, repr=False, compare=False)
 
     def row(self, label):
         return next(row for row in self.rows if row.label == label)
@@ -127,9 +143,9 @@ def realization_table(prepared) -> RealizationTable:
                 declared_shape = sim._geometry[int(entity.label[9:-1])].shape
                 model = sampler.get("material_sampling", {}).get(id(declared_shape), model)
         elif entity.kind == "wire":
-            model = "lattice edge-start envelope"
+            model = "lattice edge envelope"
         elif entity.kind == "lossy" and realized is None:
-            model = "weighted f0 sheet end rows"
+            model = "solved sheet edges"
         if realized is not None and entity.plane is not None:
             normal, _, position = entity.plane
             axes = tuple(_axis(a.axis, a.declared_bounds_m, (position, position), a.cell_size_m)
@@ -137,11 +153,22 @@ def realization_table(prepared) -> RealizationTable:
             model = "cell-centre footprint; node plane"
         if entity.kind == "sheet":
             model = "solved sheet edges"
+        if entity.edge_note is not None:
+            model = ("node span" if entity.edge_note == "edge not measured" else "solved sheet edges")
         tangent = [a for i, a in enumerate(axes) if entity.plane is not None and i != entity.plane[0]]
         area_cell = float(np.sqrt(np.prod([a.cell_size_m for a in tangent]))) if len(tangent) == 2 else None
+        if (entity.kind in ("sheet", "lossy") and realized is None and len(tangent) == 2
+                and all(a.declared_span_m is not None for a in tangent)):
+            comparison = [getattr(a, "comparison_bounds_m", None) or a.declared_bounds_m
+                          for i, a in enumerate(entity.axes) if i != entity.plane[0]]
+            declared = float(np.prod([hi-lo for lo, hi in comparison]))
+            realized = float(np.prod([a.realized_span_m for a in tangent]))
         rows.append(RealizationRow(
             entity.label, entity.kind, axes, entity.continued_faces,
-            status=entity.error or entity.mask_error or "evaluated", model=model,
+            status=entity.error or entity.mask_error or (
+                "not judged: edge not measured" if entity.edge_note == "edge not measured"
+                else "evaluated"), model=model,
+            edge_note=entity.edge_note,
             declared_area_m2=declared, realized_area_m2=realized,
             area_equivalent_length_m=None if realized is None else float(np.sqrt(realized)),
             area_miss_percent=None if not declared or realized is None else
@@ -180,15 +207,28 @@ def realization_table(prepared) -> RealizationTable:
     rows.extend(placement_rows(sim, record, (r.label for r in rows)))
     from rfx.model.realization_integrals import read_rows
     quantity_grid = getattr(record, "_quantity_grid", prepared.conductors.grid)
-    return RealizationTable(read_rows(rows, quantity_grid, sim), prepared.lane,
-                            weakref.ref(prepared.conductors))
+    from rfx.model.realization_faces import interior_rows
+    rows = _traced_sheet_rows(interior_rows(read_rows(rows, quantity_grid, sim), record), sim, prepared.conductors)
+    return RealizationTable(rows, prepared.lane,
+                            weakref.ref(prepared.conductors),
+                            active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1),
+                            periods={d.axis: d.length_m for d in record.domain
+                                     if d.axis in getattr(prepared.conductors.grid, "periodic_axes", "")})
+
+
+def _traced_sheet_rows(rows, sim, conductors):
+    """Mark only the f0 sheets whose material input is traced; keep every other row."""
+    from rfx.model.realization_reference import sheet_traced_inputs
+    sheets = {f"thin_conductor[{i}]": names for i, names in sheet_traced_inputs(sim, conductors).items()}
+    return tuple(replace(row, status="not evaluated: traced", traced_inputs=sheets[row.label], axes=(),
+                         record_axes=(), edge_note=None) if row.label in sheets else row for row in rows)
 
 
 def _traced_table(prepared):
     """Keep unavailable geometry explicit without forcing a tracer to the host."""
     sim = prepared.sim
     from rfx.model.realization_reference import traced_inputs
-    inputs = traced_inputs(sim, prepared.conductors.grid)
+    inputs = traced_inputs(sim, prepared.conductors.grid, prepared.conductors)
     status = "not evaluated: traced" if inputs else "not represented: no readable per-object kernel record"
     rows = [RealizationRow(f"geometry[{i}]", type(e.shape).__name__,
                           status=status, traced_inputs=inputs)
@@ -206,17 +246,24 @@ def bind_table(sim, conductors, *, lane, compact=True):
     """Bind metadata to the kernel product, including forward and traced lanes."""
     from rfx.model.conductors import _traced_product
     from rfx.realized_geometry import record_from_conductors, RealizedGeometry
-    from rfx.model.realization_reference import nominal_record, traced_inputs
+    from rfx.model.realization_reference import nominal_record, traced_inputs, table_traced_inputs
     if conductors.realization_table is not None:
+        if not compact:
+            record = record_from_conductors(sim, conductors, lane=lane, compact=False)
+            if record is not None:
+                from rfx.realized_geometry import _conductor_view
+                return _conductor_view(replace(record, realization_table=conductors.realization_table), conductors)
         return conductors._realization_record
-    inputs = traced_inputs(sim, conductors.grid)
+    inputs = traced_inputs(sim, conductors.grid, conductors)
     reader = sim
     if conductors.kernel_context is not None:
         import copy
         reader = copy.copy(sim)
         reader._geometry, reader._thin_conductors = [], []
-    record = (None if inputs or (not compact and _traced_product(conductors)) else
-              record_from_conductors(reader, conductors, lane=lane, compact=compact))
+    record = (None if table_traced_inputs(sim, conductors.grid) or (not compact and _traced_product(conductors))
+              else record_from_conductors(reader, conductors, lane=lane, compact=compact))
+    # With a record, a traced f0 sheet marks only its own row (realization_table).
+    inputs = inputs if record is None else ()
     nominal = False
     if record is None and inputs:
         record = nominal_record(sim, conductors, lane, compact=compact)
@@ -279,14 +326,16 @@ def finish_table(sim, conductors, *, lane):
         return None
     table = conductors.realization_table
     object.__setattr__(table, "lane", lane)
-    if any(row.traced_inputs for row in table.rows):
+    from rfx.model.realization_reference import table_wide
+    if table_wide(table.rows):
         # The reference record already holds nominal values, or no values.
         # Finalization must not replace them with live traced metrics.
         record = replace(record, lane=lane)
         object.__setattr__(conductors, "_realization_record", record)
         return record
     from rfx.model.realization_integrals import read_rows
-    object.__setattr__(table, "rows", read_rows(table.rows, conductors.grid, sim))
+    if table.not_evaluated_reason is None:
+        object.__setattr__(table, "rows", read_rows(table.rows, conductors.grid, sim))
     if conductors.refinements:
         object.__setattr__(table, "rows", _refined_rows(table, conductors.refinements, sim).rows)
     from rfx.core.jax_utils import is_tracer
@@ -294,8 +343,8 @@ def finish_table(sim, conductors, *, lane):
                      dt=record.dt if is_tracer(conductors.grid.dt) else float(conductors.grid.dt))
     if lane == "run_subgridded" and not conductors.refinements and conductors.kernel_context is None:
         record = replace(record, limitations=("refined region not represented",))
-    if not any(row.traced_inputs for row in table.rows):
-        from rfx.preflight.realization import context_from_conductors
+    if lane != "coax" and not table_wide(table.rows):
+        from rfx.model.realization_context import context_from_conductors
         from rfx.realized_geometry import _ports
         from rfx.model.realization_placements import placement_rows
         ctx = context_from_conductors(sim, conductors)
@@ -308,4 +357,6 @@ def finish_table(sim, conductors, *, lane):
         object.__setattr__(table, "rows", disjoint_rows(sim, rows, conductors.kernel_context[1]))
         record = replace(record, limitations=("disjoint vacuum stepper does not carry material declarations",))
     object.__setattr__(conductors, "_realization_record", record)
+    from rfx.model.realization_verdict import admit_table
+    admit_table(sim, conductors, finished=True)
     return record

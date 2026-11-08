@@ -33,6 +33,7 @@ class AxisGeometry:
     # Sheet-size verdict excludes residuals at all non-free ends.
     comparison_bounds_m: tuple[float, float] | None = None
     free_ends: tuple[bool, bool] | None = None
+    occupied_intervals_m: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,7 @@ class EntityGeometry:
     sampling: str | None = None
     realized_footprint_area_m2: float | None = None
     declared_footprint_area_m2: float | None = None
+    edge_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -183,8 +185,10 @@ class RealizedGeometry(GeometryMetadata):
 
     @property
     def conductors(self):
-        """The source object of this view (outside the public record schema)."""
-        return getattr(self, '_conductors', None)
+        """The source object; compact records borrow it only while it is live."""
+        from weakref import ReferenceType
+        source = getattr(self, '_conductors', None)
+        return source() if isinstance(source, ReferenceType) else source
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
@@ -255,12 +259,15 @@ def _assembly_impl(sim, ctx):
 
 
 def _build_record(sim, ctx, *, compact=False):
+    from typing import cast
+    from rfx.preflight.realization import _EntryRealization
     from rfx.preflight.realization import _shape_bounds
 
     assembled, refused, refused_tc, pad_findings = _assembly(sim, ctx)
     sizes, nodes = _node_arrays(sim, ctx.grid, ctx.lane == "nonuniform")
     conductors = {e.label: e for e in ctx.entry_realizations()}
     interior = {e.label: e for e in ctx.interior_pec_entries()}
+    sheet_neighbors = [*interior.values(), *ctx.impedance_sheet_entries()]
     declarations = [(f"geometry[{i}]", e.material_name, e.shape)
                     for i, e in enumerate(sim._geometry)]
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
@@ -269,12 +276,13 @@ def _build_record(sim, ctx, *, compact=False):
     f0_specs = _f0_specs_by_conductor(sim, assembled, refused_tc)
     for index, (label, name, shape) in enumerate(declarations):
         mask_error = None
-        node_based = False
+        node_based = traced_f0 = False
         f0_spec = None
         e = interior.get(label, conductors.get(label))
         bounds = _shape_bounds(shape)
         sheet = None if e is None else e.sheet
         kind = "material" if e is None else e.kind
+        raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
         if e is None:
             mask = np.asarray(assembled.geometry_masks[id(sim._geometry[index])], dtype=bool)
         elif sheet is not None:
@@ -282,7 +290,7 @@ def _build_record(sim, ctx, *, compact=False):
         elif e.cells is not None:
             mask = e.cells
         elif e.kind == "wire":
-            mask = np.logical_or.reduce(e.edges(ctx.periodic, ctx.grid.shape))
+            mask = np.logical_or.reduce(raw_edges)
         elif e.kind == "lossy" and id(sim._thin_conductors[index - len(sim._geometry)]) in assembled.geometry_masks:
             from rfx.geometry.rasterize_grid import interior_lattice_mask
             mask = interior_lattice_mask(
@@ -290,6 +298,10 @@ def _build_record(sim, ctx, *, compact=False):
             # An f0 sheet's mask is its NODE footprint (the DC fold's is cells).
             node_based = sim._thin_conductors[index - len(sim._geometry)].surface_impedance_f0 is not None
             f0_spec = f0_specs.get(index - len(sim._geometry)) if node_based else None
+            from rfx.model.realization_reference import f0_traced_fields
+            # A traced f0 input leaves only this row unavailable: no host read.
+            if node_based and f0_traced_fields(sim._thin_conductors[index - len(sim._geometry)], f0_spec):
+                f0_spec, traced_f0 = None, True
         else:
             # Retain the refused declaration's diagnostic occupancy once.
             # It is explicitly NOT a solved conductor and contributes no edges.
@@ -309,21 +321,31 @@ def _build_record(sim, ctx, *, compact=False):
                 mask = None
                 mask_error = f"{type(exc).__name__}: {exc}"
         axes = []
-        if mask is not None and mask.any():
+        if mask is not None and mask.any() and not traced_f0:
             widths = assembled.width_axes(sim, mask, kind=kind, sheet=sheet,
                 node_based=node_based, f0_spec=f0_spec, bounds=bounds,
-                sizes=sizes, nodes=nodes, interior=interior.values())
+                sizes=sizes, nodes=nodes, interior=sheet_neighbors, wire_edges=raw_edges)
             for a, width in enumerate(widths):
                 i0, i1, cell_range = width.first, width.last, width.cell_range
                 rlo, rhi = width.lo, width.hi
                 comparison, free_ends = width.comparison, width.free_ends
                 declared = None if bounds is None else (float(bounds[0][a]), float(bounds[1][a]))
                 residual = None if declared is None else (rlo - declared[0], rhi - declared[1])
+                intervals: tuple[tuple[float, float], ...] = ()
+                # kind == "wire" comes from an existing entry, never from None.
+                interval_mask = (cast(_EntryRealization, e).edges(ctx.periodic, ctx.grid.shape)[a]
+                                 if ctx.periodic[a] and kind == "wire" else mask)
+                if ctx.periodic[a] and (cell_range is not None or
+                                        (kind == "wire" and np.any(interval_mask))):
+                    projection = np.any(interval_mask, axis=tuple(b for b in range(3) if b != a))
+                    starts = np.flatnonzero(np.diff(np.r_[False, projection, False].astype(int)) == 1)
+                    stops = np.flatnonzero(np.diff(np.r_[False, projection, False].astype(int)) == -1)
+                    intervals = tuple((float(nodes[a][lo]), float(nodes[a][hi]))
+                                      for lo, hi in zip(starts, stops))
                 axes.append(AxisGeometry(
                     'xyz'[a], (i0, i1 if cell_range is None else i1 + 1), cell_range,
                     declared, (rlo, rhi), rhi - rlo, residual,
-                    float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends))
-        raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
+                    float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends, intervals))
         edge_counts = tuple(int(m.sum()) for m in raw_edges)
         edge_ranges = tuple(_mask_ranges(m) for m in raw_edges)
         edges = () if compact else tuple(_readonly(m) for m in raw_edges)
@@ -357,6 +379,7 @@ def _build_record(sim, ctx, *, compact=False):
                     areas = dc_footprint_areas(shape, ctx.grid, mask, sheet_normal_axis(lo, hi))
             if tc_index in refused_tc:
                 kind = 'refused'
+        from rfx.model.conductors import f0_edge_note
         entities.append(EntityGeometry(
             label, name, kind, tuple(axes),
             int(mask.sum()) if mask is not None and kind not in ("sheet", "wire") else 0,
@@ -366,7 +389,8 @@ def _build_record(sim, ctx, *, compact=False):
             continued, mask_error, "diagnostic" if kind == "refused" else "solved",
             int(mask.sum()) if mask is not None and kind in ("sheet", "wire") else 0,
             edge_counts, edge_ranges, realized_footprint_area_m2=areas[0],
-            declared_footprint_area_m2=areas[1]))
+            declared_footprint_area_m2=areas[1],
+            edge_note=None if f0_spec is None else f0_edge_note(f0_spec)))
         if compact and e is not None:
             e._edges = None
     domain = []
@@ -585,10 +609,11 @@ def _mask_ranges(mask):
 def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     """Summarize the run's classifier outputs; never consult preflight caches."""
     from dataclasses import replace
-    from rfx.preflight.realization import context_from_conductors
+    from rfx.model.realization_context import context_from_conductors
     from rfx.core.jax_utils import is_tracer
+    from rfx.model.realization_reference import table_traced_inputs
     grid = conductors.grid
-    if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
+    if table_traced_inputs(sim, grid):
         return None
     if any(is_tracer(edge) for edge in conductors.pec_edges or ()):
         return None

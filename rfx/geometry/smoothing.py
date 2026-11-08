@@ -615,7 +615,7 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
                 paired = sum(not tc.is_pec and tc.surface_impedance_f0 is None
                              for tc in sim._thin_conductors) > 1
                 film = admit_dc_film(shape, grid, snap='declared' if paired else sim._snap,
-                                     emit=False)
+                                     emit=False, judge_area=False)
                 return [(np.asarray(film.mask), (False, False, False))]
             # Continuation must see the same cell-centred Box footprint as
             # assembly, on non-periodic axes as well as across a seam.

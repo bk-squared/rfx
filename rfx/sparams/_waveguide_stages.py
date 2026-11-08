@@ -301,8 +301,17 @@ def _prepare_waveguide_references(
             _ref_pec_sheets: list = []
             _ref_pec_wires: list = []
             _ref_sheet_specs: list = []
-            _ref_base, _ref_debye, _ref_lorentz, _ref_pec_mask, _, _, _ = _ref_sim._assemble_materials(
-                _ref_grid, pec_sheets=_ref_pec_sheets,
+            if any(tc.surface_impedance_f0 is not None for tc in _ref_sim._thin_conductors):
+                raise NotImplementedError(
+                    f"port_reference_sims[{_i}] declares a surface-impedance sheet "
+                    "(add_thin_conductor(..., surface_impedance_f0=...)); the reference "
+                    "run does not model sheet impedance and would run without it. "
+                    "Remove it from the reference simulation.")
+            from rfx.model.conductors import solve_conductors, assembled_materials
+            from rfx.model.realization_table import finish_table
+            reference = solve_conductors(_ref_sim, _ref_grid)
+            _ref_base, _ref_debye, _ref_lorentz, _ref_pec_mask, _, _, _ = assembled_materials(
+                reference, pec_sheets=_ref_pec_sheets,
                 pec_wires=_ref_pec_wires, sheet_specs=_ref_sheet_specs)
             # The reference run carries no sheet context: refuse, never drop.
             if _ref_sheet_specs:
@@ -327,6 +336,7 @@ def _prepare_waveguide_references(
                 _ref_edges_i = realized_pec_edge_masks(
                     _ref_pec_mask, sheets=tuple(_ref_pec_sheets),
                     wires=tuple(_ref_pec_wires))
+            finish_table(_ref_sim, reference, lane="waveguide_s_matrix_reference")
             ref_pec_edge_masks_per_port.append(_ref_edges_i)
     return ref_materials_per_port, ref_pec_edge_masks_per_port, ref_pec_masks
 

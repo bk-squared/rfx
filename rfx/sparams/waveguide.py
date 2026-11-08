@@ -106,7 +106,7 @@ def compute_waveguide_s_matrix(
     Parameters
     ----------
     skip_preflight : bool
-        Skip shared preflight checks when True. Default False.
+        Skip advisories only when True; realization refusals still apply. Default False.
     num_periods : float
         Length of the FDTD run (in source-period multiples) used to
         derive ``n_steps`` when ``n_steps`` is not given. The
@@ -428,8 +428,10 @@ def compute_waveguide_s_matrix(
     _wg_sheet_specs: list = []
     _wg_pec_sheets: list = []
     _wg_pec_wires: list = []
-    from rfx.model.conductors import realized_conductors, assembled_materials
-    conductors = realized_conductors(self, grid)
+    from rfx.model.conductors import solve_conductors, assembled_materials
+    conductors = solve_conductors(
+        self, grid, realization_options=(subpixel_smoothing, conformal_pec),
+        realization_not_evaluated="conformal" if conformal_pec else None)
     base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
         conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
         pec_wires=_wg_pec_wires)
@@ -531,6 +533,12 @@ def compute_waveguide_s_matrix(
         conformal_pec=conformal_pec,
         reference_eps=float(reference_medium.eps_r))
 
+    from rfx.model.realization_table import finish_table
+    realization_record = finish_table(self, conductors, lane="waveguide_s_matrix")
+    from typing import Callable, cast
+    # with_forward_geometry adds the metadata keyword to the tuple constructor.
+    realization_result = cast(Callable[..., WaveguideSMatrixResult], WaveguideSMatrixResult)
+
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
@@ -548,7 +556,8 @@ def compute_waveguide_s_matrix(
         _warn_if_ringdown_truncated(
             settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
             witnesses=settling_details_mm)
-        _res_mm = WaveguideSMatrixResult(
+        _res_mm = realization_result(
+            realized_geometry=realization_record,
             s_params=s_params,
             freqs=jnp.asarray(freqs),
             port_names=tuple(port_names_mm),
@@ -709,7 +718,8 @@ def compute_waveguide_s_matrix(
     _ph_rms, _ph_meta = _waveguide_s21_phase_residual(
         s_params, freqs, reference_planes, cfgs, normalize=normalize,
     )
-    _res_sm = WaveguideSMatrixResult(
+    _res_sm = realization_result(
+        realized_geometry=realization_record,
         s_params=s_params,
         freqs=jnp.asarray(freqs),
         port_names=_port_names,
