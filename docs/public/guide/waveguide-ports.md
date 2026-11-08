@@ -156,6 +156,9 @@ T-junction, branch or septum has interior PEC walls, and the empty reference
 then radiates into open space: every |S| inflates badly (max |S| near 10 on a
 compact T). For these, pass `normalize="flux"` with one reference simulation
 per port: the straight continuation of that port's guide, with no junction.
+Every port runs on each reference model. A port that the straight guide would
+bury in its wall needs a closed air pocket there, because a port inside a PEC
+block is refused.
 
 ```python
 from rfx import Box
@@ -181,14 +184,21 @@ def three_port(walls):
     return s
 
 
-horizontal = [((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
-              ((0.0, 0.08, 0.0), (0.12, 0.12, 0.02))]
-vertical = [((0.0, 0.0, 0.0), (0.04, 0.12, 0.02)),
-            ((0.08, 0.0, 0.0), (0.12, 0.12, 0.02))]
+tee_walls = [((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
+             ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
+             ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02))]
 
-tee = three_port([((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
-                  ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
-                  ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02))])
+# The main guide runs straight; a 4 mm wall closes the top arm into a pocket.
+horizontal = tee_walls + [((0.04, 0.08, 0.0), (0.08, 0.084, 0.02))]
+# The top arm runs straight; 4 mm walls close the left and right arms into pockets.
+vertical = [((0.0, 0.0, 0.0), (0.04, 0.04, 0.02)),
+            ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
+            ((0.036, 0.04, 0.0), (0.04, 0.08, 0.02)),
+            ((0.08, 0.0, 0.0), (0.12, 0.04, 0.02)),
+            ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02)),
+            ((0.08, 0.04, 0.0), (0.084, 0.08, 0.02))]
+
+tee = three_port(tee_walls)
 
 junction = tee.compute_waveguide_s_matrix(
     num_periods=20, normalize="flux",
