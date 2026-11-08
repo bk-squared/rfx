@@ -306,6 +306,7 @@ ADMISSION_ROWS = (
 
 BOTH_REFUSE_ROWS = (
     ('P-waveguide2', 'uniform'),
+    ('P-waveguide2', 'graded'),
     ('C-full-tensor', 'multi-device-uniform'),
     ('C-full-tensor', 'multi-device-graded'),
     ('P-floquet', 'graded'),
@@ -373,7 +374,6 @@ TWO_GUARD_REFUSALS = {
 
 
 OPEN_CAUSE_REFUSALS = {
-    ('P-waveguide2', 'uniform'): "#2449: uniform run() refuses two waveguide ports, forward() admits and drives both in one record",
 }
 
 
@@ -601,6 +601,8 @@ DECLARATION_REFUSAL_ROWS = {
 }
 
 MESSAGE_COMPARISON_ROWS = {
+    ('P-waveguide2', 'uniform'): 'Simulation.run() supports only a single waveguide port',
+    ('P-waveguide2', 'graded'): 'Simulation.run() supports only a single waveguide port',
     ('C-full-tensor', 'multi-device-uniform'): 'is supported on a single-device Yee mesh only',
     ('C-full-tensor', 'multi-device-graded'): 'is supported on a single-device Yee mesh only',
     ('P-floquet', 'graded'): DECLARATION_REFUSAL_ROWS['P-floquet', 'graded'],
