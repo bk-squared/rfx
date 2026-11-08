@@ -75,3 +75,25 @@ def test_preflight_judges_built_center_when_port_freqs_omitted(graded):
     match = re.search(r"f0=([\d.]+) GHz", source_findings[0])
     assert match is not None
     assert float(match.group(1)) * 1e9 == cfg.src_fcen
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_unresolved_pulse_judges_built_waveguide_center(graded, monkeypatch):
+    import rfx.sources.sources as sources
+
+    freqs = np.linspace(8.2e9, 12.4e9, 7)
+    sim = _scene(graded, freqs=freqs)
+    recorded = []
+    modulated_gaussian = sources.ModulatedGaussian
+
+    def record_pulse(*args, **kwargs):
+        recorded.append(kwargs["f0"])
+        return modulated_gaussian(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(sources, "ModulatedGaussian", record_pulse)
+        sim._validate_cfg_unresolved_pulse(warnings, sim._dx)
+
+    cfg, = _configs(sim, graded, freqs)
+    f0, = recorded
+    assert f0 == cfg.src_fcen == 10.3e9
