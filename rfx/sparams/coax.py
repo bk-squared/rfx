@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from rfx.sparams import _coax_msl_stages
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
+from rfx.sparams._coax_status import coax_extraction_status
 
 from rfx.errors import AccuracyWarning
 from rfx._internal._precision import resolve_field_dtype
@@ -412,14 +413,7 @@ def compute_coaxial_line_reflection(
                 if termination == "matched"
                 else jnp.asarray(np.nan + 1j * np.nan)
             )
-        # Status from concrete geometry only. NOTE: unlike the concrete path,
-        # the traced rec_resid>0.1 "contaminated" check is NOT evaluated here
-        # (can't Python-branch on a tracer), so ``"passed"`` on the eps_scale
-        # path means geometry-resolved, NOT fit-clean — inspect
-        # ``recurrence_residual`` (returned) if you need the contamination
-        # signal. ``"differentiable"`` flags the AD path so it is not confused
-        # with a fully-gated concrete ``"passed"``.
-        status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
+        status = coax_extraction_status(annulus_cells, traced=True)
         s11 = jnp.stack(s11_c)
         warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
         completed = CoaxialLineReflectionResult(
@@ -465,12 +459,7 @@ def compute_coaxial_line_reflection(
             G = out.reflection
             z0_num[fi] = R_dut * (1.0 - G) / (1.0 + G)
 
-    if annulus_cells < 3.5:
-        status = "under_resolved"
-    elif float(np.max(rec_resid)) > 0.1:
-        status = "contaminated"
-    else:
-        status = "passed"
+    status = coax_extraction_status(annulus_cells, rec_resid, traced=False)
 
     warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
     completed = CoaxialLineReflectionResult(
@@ -1015,22 +1004,14 @@ def compute_coaxial_two_port(
     )
 
     if _traced_eps:
-        # Status from concrete geometry only -- rec_resid is a jnp
-        # tracer here, so the Python-branching "contaminated" check below
-        # cannot run (mirrors the 1-port eps_scale branch's own status
-        # derivation). "differentiable" flags the AD path so it is not
-        # confused with a fully-gated concrete "passed".
-        status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
-    elif annulus_cells < 3.5:
-        status = "under_resolved"
-    elif float(np.max(rec_resid)) > 0.1:
-        status = "contaminated"
+        status = coax_extraction_status(annulus_cells, traced=True)
     else:
-        status = "passed"
+        status = coax_extraction_status(annulus_cells, rec_resid, traced=False)
 
     reference_planes = np.asarray([ref_top_m, ref_bot_m], dtype=float)
     # waves at each ladder's line impedance, referred to impedance=.
-    s_params, line_impedances = coax_two_port_line_waves(s_params, grid, eps_scale, z_tem,
+    s_params, line_impedances = coax_two_port_line_waves(
+        s_params, grid, eps_scale, (spec_top.z_tem_ohm, spec_bot.z_tem_ohm),
         center_xy=center_xy, pin_radius=a, outer_radius=b, ladders=(probes_top, probes_bot))
     reference_impedances = np.full(2, float(port.impedance))
     s_params = renormalize_power_waves(s_params, line_impedances, reference_impedances)
@@ -1174,7 +1155,7 @@ def compute_coax_msl_transition(
     -------
     CoaxMSLTransitionResult
         Power-wave S matrix referenced to the registered impedances, with
-        reference planes and the analytic line impedances,
+        reference planes and the built coax / analytic MSL line impedances,
         conditioning, reciprocity, fit and settling diagnostics, and the
         requested flux spectra and ladder data. See the result class for
         field definitions. The result is not differentiable.
@@ -1214,7 +1195,7 @@ def compute_coax_msl_transition(
     the stub stops below it and preserves the caller's materials at and
     above it. These checks do
     not certify connectivity or modal accuracy. Both ladders use a
-    matrix-pencil wave fit with analytic impedance normalization; this is
+    matrix-pencil wave fit with built coax / analytic MSL normalization; this is
     not a traceable or validated cross-family extraction.
     """
     resolve_field_dtype(self._precision)
@@ -1450,9 +1431,9 @@ def compute_coax_msl_transition(
     )
 
     # Registered impedance= is the S reference; waves are formed at
-    # the analytic z_tem / z0_msl. A gap > 5 % is said once per port.
+    # the built coax Z / analytic MSL Z. A gap > 5 % is said once per port.
     warn_line_reference_mismatch("compute_coax_msl_transition()", (
-        ("coax", port.impedance, z_tem), ("msl", msl_pe.impedance, z0_msl)))
+        ("coax", port.impedance, spec_coax.z_tem_ohm), ("msl", msl_pe.impedance, z0_msl)))
 
     xs_sorted = _coax_msl_stages._prepare_coax_msl_ladder(
         dz, grid, junction_x, msl_pe, msl_port_base, msl_probe_count, msl_probe_spacing_cells,
@@ -1605,7 +1586,7 @@ def compute_coax_msl_transition(
     # coaxial_line_reflection_from_plane_voltages` (Z0-free matrix-pencil
     # fit — see :class:`~rfx.api._spec.CoaxMSLTransitionResult` for why
     # this is used for the MSL side too, not the lane's own N-probe fit),
-    # converted to POWER waves via each port's own analytic reference
+    # converted to POWER waves via each port's own line reference
     # impedance, and assembled by
     # :func:`~rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes`
     # (the same generic two-drive solve :meth:`compute_coaxial_two_port`
@@ -1616,13 +1597,13 @@ def compute_coax_msl_transition(
             z_coax_planes_m=z_planes_coax_m, x_msl_planes_m=np.asarray(xs_sorted),
             ref_coax_m=ref_coax_m, ref_msl_m=float(junction_x),
             v_coax_by_drive=v_coax_by_drive, v_msl_by_drive=v_msl_by_drive,
-            z0_coax=float(z_tem), z0_msl=float(z0_msl), cond_warn=float(cond_warn),
+            z0_coax=spec_coax.z_tem_ohm, z0_msl=float(z0_msl), cond_warn=float(cond_warn),
         )
 
     reference_planes = np.asarray([ref_coax_m, float(junction_x)], dtype=float)
-    # waves formed at the analytic line impedances; s_params referred
+    # Waves formed at the built coax and analytic MSL impedances; s_params referred
     # to the registered impedance= of each port.
-    line_impedances = np.asarray([float(z_tem), float(z0_msl)], dtype=float)
+    line_impedances = np.asarray([spec_coax.z_tem_ohm, float(z0_msl)], dtype=float)
     z0_ref = np.asarray(
         [float(port.impedance), float(msl_pe.impedance)], dtype=float)
     s_params = renormalize_power_waves(s_params, line_impedances, z0_ref)

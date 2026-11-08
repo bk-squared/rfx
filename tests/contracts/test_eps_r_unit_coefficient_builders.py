@@ -140,6 +140,8 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sources/coaxial_port.py", "build_coaxial_tem_plane_source_specs"):
         _HOST + " (float(eps_r))",
     ("rfx/sources/coaxial_port.py", "coaxial_tem_capacitance_per_m"): _HOST,
+    ("rfx/sources/coax_impedance.py", "coaxial_built_line_impedance"):
+        _HOST + " (unit-voltage electrostatic energy; no traced coefficient)",
     ("rfx/sources/msl_port.py", "compute_msl_mode_profile._cap_per_metre"): _HOST,
     ("rfx/sources/tfsf_discrete_plane_wave.py", "_tables"): _VACUUM,
     ("rfx/stepping/tfsf.py", "apply_tfsf_e"): _VACUUM,

@@ -1295,7 +1295,7 @@ class CoaxialTwoPortResult:
     ``i`` is driven (standard S-matrix convention), referenced to each port's
     OWN reference plane (its feed resistor's axial plane — see
     ``reference_planes``) and impedance (``reference_impedances``: the
-    declared ``impedance=``; ``line_impedances`` is the analytic TEM Z0 the
+    declared ``impedance=``; ``line_impedances`` is the built TEM Z0 the
     wave ratio is formed at). ``cond_a`` is the condition number of
     the incident-wave matrix inverted by the two-drive solve: it bounds
     DEGENERACY of the two drives only, and is blind to a systematic
@@ -1725,7 +1725,7 @@ class CoaxMSLTransitionResult:
     amplitudes leaves S_ii (diagonal) exactly correct but scales each
     off-diagonal S_ij (i != j) by ``sqrt(Z0_i/Z0_j)`` relative to the true
     power-wave value — invisible on a coax-coax through line (equal Z0
-    cancels) but NOT invisible here, since the coax port's analytic TEM Z0
+    cancels) but NOT invisible here, since the coax port's built TEM Z0
     and the MSL port's Hammerstad-Jensen Zc are generally different. This is
     the pre-declared "impedance-convention mismatch" failure mode: getting
     this normalization wrong presents as spurious reflection/transmission
@@ -1894,8 +1894,8 @@ class CoaxMSLTransitionResult:
         registered coax and MSL ``impedance=``.
     line_impedances : (2,) float
         ``[z0_coax_ohm, z0_msl_ohm]`` the waves (and ``a_inc``/``b_out``) are
-        formed at: analytic coax TEM Z0
-        (:func:`rfx.sources.coaxial_port.coaxial_tem_characteristic_impedance`)
+        formed at: built coax TEM Z0 from the source's solved edge profile
+        (:func:`rfx.sources.coax_impedance.coaxial_built_line_impedance`)
         and analytic Hammerstad-Jensen microstrip Zc
         (:func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`).
     cond_a : (n_freqs,) float
