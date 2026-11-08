@@ -112,54 +112,32 @@ def traced_plane_scene(eps, *, on_plane=False):
     return sim
 
 
-def observe_plane_callbacks(monkeypatch):
-    import inspect
-    import jax
-    import rfx._traced_check as checks
+def test_r1_traced_nonzero_plane_coupling_raises():
+    """A traced eps on the injection plane reaches the plane check and is refused.
 
-    calls = []
-    original = checks.traced_check
-
-    def observed(feature, check_name, check, *operands, **kwargs):
-        traced = any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(operands))
-        metadata = inspect.getclosurevars(check).nonlocals.get('metadata', ())
-
-        def callback(*values):
-            if feature == 'TFSF slab' and traced:
-                calls.append(tuple((row[1], np.asarray(value)) for row, value in zip(metadata, values)))
-            return check(*values)
-
-        return original(feature, check_name, callback, *operands, **kwargs)
-
-    monkeypatch.setattr(checks, 'traced_check', observed)
-    return calls
-
-
-def test_r1_traced_nonzero_plane_coupling_raises(monkeypatch):
-    """Traced eps fails in the smoother before admission on main and head.
-
-    Amendment 2 records this as head = main: hashing a DynamicJaxprTracer
-    in _kottke_smooth prevents this physical scene from reaching a runtime
-    injection-plane callback, even with the curved face on the plane.
+    Until #2436 a traced eps stopped earlier, in the smoother (an unhashable
+    tracer in _kottke_smooth). The smoother now carries the trace, so the
+    curved face on the plane is judged by the TF/SF plane check at run time,
+    as a concrete eps is: the same named refusal, never a raw error. Smoothing
+    True: full_tensor refuses a traced eps at admission (#2441).
     """
-    import traceback
     import jax
     import jax.numpy as jnp
     import pytest
-
-    calls = observe_plane_callbacks(monkeypatch)
+    from rfx.errors import RfxRefusal
 
     def objective(eps):
         result = traced_plane_scene(eps, on_plane=True).forward(
-            n_steps=2, checkpoint=False, skip_preflight=True, subpixel_smoothing='full_tensor')
+            n_steps=2, checkpoint=False, skip_preflight=True, subpixel_smoothing=True)
         return jnp.sum(jnp.square(result.time_series))
 
-    with pytest.raises(TypeError, match="unhashable type: 'DynamicJaxprTracer'") as caught:
-        jax.jit(objective).lower(jnp.float32(4.)).compile()
-    frames = traceback.extract_tb(caught.value.__traceback__)
-    assert any(frame.name == '_kottke_smooth' and frame.filename.endswith('/geometry/smoothing.py')
-               for frame in frames), 'failure must originate in the smoother before admission'
-    assert not calls, 'the smoother fails before any injection-plane callback executes'
+    with pytest.raises(RfxRefusal, match='requires vacuum'):
+        objective(4.)
+    with pytest.raises(RfxRefusal, match='requires vacuum'):
+        jax.grad(objective)(4.)
+    # JIT wraps a callback's RfxRefusal in the backend runtime exception.
+    with pytest.raises(jax.errors.JaxRuntimeError, match='requires vacuum'):
+        jax.block_until_ready(jax.jit(objective)(jnp.float32(4.)))
 
 
 def test_masked_couplings_match_numpy_output_edges():
