@@ -30,7 +30,12 @@ def table_subjects(table, rows, *, axes=None):
 def bind_retained_subjects(finding, table):
     """Freeze a retained site's selection against its prepared table."""
     if isinstance(finding._subjects, _Selection):
-        selection = _selection(table, finding._subjects.keys)
-        finding._subjects = selection.resolve()
-        if isinstance(finding._region, _Region):
-            finding._region = _Region(selection, finding._region.bounds).resolve()
+        try:
+            selection = _selection(table, finding._subjects.keys)
+            finding._subjects = selection.resolve()
+            if isinstance(finding._region, _Region):
+                finding._region = _Region(selection, finding._region.bounds).resolve()
+        except Exception:
+            if isinstance(finding._subjects, _Selection):
+                finding._subjects = ("<unresolved finding subject>",)
+            finding._region = None

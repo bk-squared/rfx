@@ -29,7 +29,7 @@ OUTSIDE_GENERAL = {
 
 
 def emitting_sites():
-    """Census constructors, constant codes, defaults and the flux adapter."""
+    """Census constructors, retained outcomes, defaults and the flux adapter."""
     sites = []
     constructors = {'PreflightIssue', 'PreflightWarning', 'PreflightErrorWarning',
                     'PreflightConfigError', 'DCFilmAdmissionError'}
@@ -54,12 +54,14 @@ def emitting_sites():
                 continue
             name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, 'attr', '')
             values = set()
-            if name in constructors:
+            if name in constructors or name == 'legacy_outcome':
                 for kw in node.keywords:
                     if kw.arg == 'code':
                         values |= codes(kw.value)
                 if name == 'DCFilmAdmissionError' and not any(k.arg == 'code' for k in node.keywords):
                     values.add('dc_film_area')
+            if name == 'legacy_outcome' and len(node.args) >= 5:
+                values |= codes(node.args[4])
             if name == 'finding' and path.name in ('_preflight.py', '_flux_subjects.py') and len(node.args) >= 3:
                 values |= codes(node.args[2])
             for code in values:
@@ -74,10 +76,10 @@ def test_code_completeness():
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    # S2 adds realization; all previously registered codes keep their class.
-    assert len(CODE_SCOPE) == 99
+    # Retained outcomes add declared_z; existing codes keep their class.
+    assert len(CODE_SCOPE) == 100
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 72, 'place': 2, 'model': 23, 'mixed': 2}
+        'object': 72, 'place': 2, 'model': 24, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -1073,6 +1075,86 @@ def test_s2_lumped_label_rows_do_not_change_findings(monkeypatch):
     without_rows, after = findings()
     assert all(r.label != 'lumped_rlc[0]' for r in without_rows.rows)
     assert after == before
+
+
+@pytest.mark.parametrize('key', ['<unresolved finding subject>', 'absent[0]'])
+def test_bind_retained_unknown_key_keeps_finding(key):
+    from rfx.preflight._common import PreflightIssue
+    from rfx.preflight._subjects import _Selection, _Region
+    from rfx.preflight._realization_subjects import bind_retained_subjects
+    sim = _s2_subject_scene()
+    sim.preflight(check_ntff=False, check_resolution=False)
+    table = sim._campaign_ctx()._realized.realization_table
+    selection = _Selection(sim, (key,))
+    finding = PreflightIssue('retained sheet finding', code='sheet_effective_size',
+        severity='warning', scope='object', subjects=selection, region=_Region(selection, None))
+    bind_retained_subjects(finding, table)
+    assert (finding.code, finding.severity, str(finding)) == (
+        'sheet_effective_size', 'warning', 'retained sheet finding')
+    assert finding.scope == 'object'
+    assert finding.subjects == ('<unresolved finding subject>',)
+    assert finding.region is None
+
+
+def test_declared_z_model_scope():
+    from rfx import Box, Simulation
+    sim = Simulation(10e9, (.012, .011, .0105), dx=.001,
+                     dz_profile=np.full(10, .001), boundary='pec', snap='declared')
+    sim.add(Box((.002, .002, .002), (.008, .008, .008)), material='pec')
+    report = sim.preflight(check_ntff=False, check_resolution=False)
+    check_report(sim, report)
+    finding, = report.by_code('declared_z')
+    assert (finding.scope, finding.subjects, finding.region) == ('model', (), None)
+    assert finding.source == 'judge_declared_z'
+
+
+def _coax_stamp_findings(monkeypatch):
+    import rfx.sparams.coax as calculators
+    from tests._coax_msl_instrument_fixture import build_instrument_junction, instrument_kwargs
+    sim = build_instrument_junction()
+    original = calculators.coax_kernel_conductors
+    captured = []
+
+    class StampBuilt(Exception):
+        pass
+
+    def handover(*args, **kwargs):
+        root = original(*args, **kwargs)
+        captured.append(root.stamp_check_findings)
+        raise StampBuilt
+
+    monkeypatch.setattr(calculators, 'coax_kernel_conductors', handover)
+    kwargs = instrument_kwargs(n_steps=1)
+    kwargs['skip_preflight'] = False
+    with pytest.raises(StampBuilt):
+        sim.compute_coax_msl_transition(**kwargs)
+    return dict(captured[0])
+
+
+def test_coax_stamp_retains_sheet_subjects(monkeypatch):
+    findings = _coax_stamp_findings(monkeypatch)
+    assert 'read-failed' not in findings
+    finding, = findings['sheet-size']
+    assert finding.code == 'sheet_effective_size'
+    assert finding.scope == 'object'
+    # The ground tiles adjoining the clearance hole and the narrow trace.
+    assert finding.subjects == ('geometry[1]', 'geometry[3]', 'geometry[4]', 'geometry[5]')
+
+
+def test_coax_stamp_ignores_foreign_warning(monkeypatch):
+    from rfx.preflight import pec_geometry
+    original = pec_geometry._warn_sheet_effective_size
+
+    def with_foreign_warning(*args, **kwargs):
+        warnings.warn('x', UserWarning)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pec_geometry, '_warn_sheet_effective_size', with_foreign_warning)
+    findings = _coax_stamp_findings(monkeypatch)
+    assert 'read-failed' not in findings
+    finding, = findings['sheet-size']
+    assert (finding.code, finding.severity) == ('sheet_effective_size', 'warning')
+    assert '4 conductor sheet dimension(s)' in str(finding)
 
 
 def test_scene_code_coverage(request):

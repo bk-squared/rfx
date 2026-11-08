@@ -21,6 +21,7 @@ CODE_SCOPE = {
     'dc_film_pmc': 'object',
     'dc_film_unchecked': 'object',
     'declared-span-short-of-padded-face': 'object',
+    'declared_z': 'model',
     'dielectric_at_absorber_seam': 'object',
     'dispersive_pole_at_absorber_face': 'object',
     'floating_port': 'object',
