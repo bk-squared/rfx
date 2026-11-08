@@ -139,6 +139,33 @@ def build_p_wire_driven(path):
     return base_scene(path, source=False).add_port(SOURCE, 'ez', impedance=50., extent=.003)
 
 
+def build_p_wire_refplane(path):
+    # #2450: one opted-in port isolates the per-cell versus whole-port S frame.
+    if path != 'uniform':
+        raise NotImplementedError('P-wire-refplane is supported only on uniform')
+    from rfx.sources.sources import GaussianPulse
+    from tests.locks.test_refplane_port_waves import _DX, _DOMAIN, _H, _W, _X1, _X2, _Y_MID
+
+    snap = "declared"
+    sim = Simulation(snap=snap,
+        freq_max=10e9, domain=_DOMAIN, dx=_DX,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=8,
+    )
+    sim.add_thin_conductor(
+        Box((_X1 - _DX, _Y_MID - _W / 2, _H),
+            (_X2 + _DX, _Y_MID + _W / 2, _H)),
+        sigma_bulk=5.8e7,
+    )
+    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="-x", reference_plane_cells=3)
+    sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="+x", excite=False)
+    return sim
+
+
 def build_p_coax(path):
     # Arguments from tests/contracts/test_line_stub_refusal_1512.py:184.
     return base_scene(path).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
@@ -172,6 +199,12 @@ def build_p_waveguide_2mode(path):
     # drives the per-mode list, so run() and forward() refuse it (#2070).
     return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
         .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2, n_modes=2)
+
+
+def build_p_waveguide2(path):
+    # #2449: two driven waveguide ports expose run/forward admission disagreement.
+    return build_p_waveguide(path).add_waveguide_port(
+        .024, direction='-x', f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
 
 
 def build_p_floquet(path):
@@ -289,8 +322,10 @@ BUILDERS = {
     'PW-closed': build_pw_closed, 'P-lumped': build_p_lumped,
     'P-lumped2': build_p_lumped2, 'P-wire': build_p_wire,
     'P-wire-driven': build_p_wire_driven,
+    'P-wire-refplane': build_p_wire_refplane,
     'P-coax': build_p_coax, 'P-msl': build_p_msl,
     'P-waveguide': build_p_waveguide, 'P-waveguide-2mode': build_p_waveguide_2mode,
+    'P-waveguide2': build_p_waveguide2,
     'P-floquet': build_p_floquet,
     'M-diel': build_m_diel, 'M-lossy': build_m_lossy, 'M-mu': build_m_mu,
     'M-debye': build_m_debye, 'M-lorentz': build_m_lorentz,
