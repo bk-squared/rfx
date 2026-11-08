@@ -58,15 +58,16 @@ for n in (200, 300, 400):
 
 ```text
 200 undetermined nan dB
-300 pass -118.9 dB
-400 pass -98.0 dB
+300 pass -103.4 dB
+400 pass -96.1 dB
 ```
 
 At 200 steps the source pulse has not ended inside the run, so the check
 cannot be formed and says `undetermined` (its `reason` says the source end is
 unavailable, once for each signal judged). From 300 steps on it passes. Both
-values are far below −40 dB, and the second is not lower than the first: the
-dB figure does not measure convergence. Read the status, not the number.
+values are far below −40 dB. The 300-step value changes with the CPU: it read
+−103.4 dB on one and −71.8 dB on another. The dB figure does not measure
+convergence. Read the status, not the number.
 
 The four states:
 

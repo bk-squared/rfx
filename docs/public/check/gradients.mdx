@@ -61,7 +61,7 @@ for n in (200, 300, 400):
 ```
 
 ```text
-gradient record-length witness FAIL: 200 -> 400 steps moved the gradient by 5.75% in bin 1 (tol 5.00%), direction cos 1.0000, the value by 4.169%
+gradient record-length witness FAIL: 200 -> 400 steps moved the gradient by 5.77% in bin 1 (tol 5.00%), direction cos 1.0000, the value by 4.170%
 gradient record-length witness PASS: 300 -> 600 steps moved the gradient by 0.44% in bin 1 (tol 5.00%), direction cos 1.0000, the value by 0.042%
 gradient record-length witness PASS: 400 -> 800 steps moved the gradient by 0.37% in bin 2 (tol 5.00%), direction cos 1.0000, the value by 0.018%
 ```
@@ -111,10 +111,10 @@ print(jnp.abs(ad - fd) / jnp.abs(fd))
 ```
 
 ```text
-[4.8781332e-04 1.4756534e-04 9.4286908e-05]
+[5.2978587e-04 7.6487151e-05 2.3633518e-04]
 ```
 
-The two agree within 0.05 % at each frequency. rfx computes in float32 by
+The two agree within 0.06 % at each frequency. The printed values change between CPUs. rfx computes in float32 by
 default, and an objective summed over hundreds of time steps carries rounding
 well above float32's own precision. Choose `h` so the change of the objective,
 about 2 h |dL/dp|, is far above that rounding: a smaller `h` is not more

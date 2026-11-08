@@ -62,10 +62,10 @@ print(g_box.shape, float(jnp.max(jnp.abs(g_box - g_full)) / jnp.max(jnp.abs(g_fu
 
 ```text
 design cells (3, 3, 3)
-(3, 3, 3) 3.289985954779695e-07
+(3, 3, 3) 2.7416552939030225e-07
 ```
 
-The two gradients agree to float32 rounding. Both corners of the box are
+The two gradients agree to float32 rounding; the exact figure changes between CPUs. Both corners of the box are
 inclusive, so the design array has one entry per realized cell from the cell
 at `BOX_LO` to the cell at `BOX_HI`; compute its shape from the grid as above.
 Pass `checkpoint=False` with a design box: the default checkpointing saves the
