@@ -111,6 +111,11 @@ python scripts/changelog/assemble.py --check
 - A change that affects users updates the matching page under `docs/public/`.
   A code block in a public page must run; check it with
   `python scripts/docs/check_public_docs_blocks.py --only guide/<page>`.
+  A block broken by a defect in the code is marked on its fence, with an open
+  issue number and a reason: `` ```python xfail="#1234 what is broken" ``.
+  The page then stops failing, but later blocks on it do not run until the
+  defect is fixed. The check fails again as soon as the marked block runs, so the
+  mark is removed with the fix.
 
 ## Add a feature
 

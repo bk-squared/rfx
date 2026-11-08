@@ -44,7 +44,8 @@ Page order:
 ``--only <page> --format json`` prints for that page; each is written as soon as
 its page ends, so a killed run keeps the finished pages. ``DIR/blocks.tsv`` has
 one row per python block with the columns ``page block doc_line result detail``;
-result is ``ran``, ``failed``, ``not reached`` or ``not runnable``.
+result is ``ran``, ``failed``, ``xfail``, ``xpass``, ``not reached`` or
+``not runnable``.
 
 A timed-out process leaves no record of the block it was in, so every runnable
 block of a timed-out page is ``not reached`` and the first carries the detail
@@ -53,6 +54,34 @@ block of a timed-out page is ``not reached`` and the first carries the detail
 ``page failed, block unknown: ...`` as the detail. So is a page whose output
 cannot be decoded. A failing block is the one whose top-level statement raised,
 even when the exception came from a function an earlier block defined.
+
+Marking a block broken by a code defect
+---------------------------------------
+A python fence may carry ``xfail="#1234 one-line reason"``: double quotes, an
+issue number, whitespace, a non-empty reason. The contract is that of
+``xfail(strict=True)``:
+
+- a marked block that fails gives row ``xfail`` and page status ``XFAIL``, which
+  is not a failure;
+- a marked block that runs gives row ``xpass`` and page status ``XPASS``, which
+  counts as a failure, so it is red under ``--strict``. A page whose failure sits
+  in a marked block is still ``XPASS`` when an earlier marked block ran;
+- an unmarked failure is ``FAIL`` whatever is marked, and so is a failure with no
+  known block (a timeout, a crash, undecodable output): a mark never excuses an
+  unlocated failure;
+- a malformed mark, or a mark on a fragment, is refused: the page is ``FAIL`` and
+  nothing on it runs.
+
+Limit: blocks after a marked failing block on its page are not reached, so a mark
+hides them until the defect is fixed.
+
+On a page with a mark, the failing block comes from the exception that ended the
+process: one prelude line before the first block installs a ``sys.excepthook``
+that records the line of that exception's last top-level frame in a sidecar file.
+No record (``sys.exit``, an abort, a timeout) means no located exception, so the
+mark excuses nothing and the page is ``FAIL``; a block up to the last traceback
+the page printed is then reported as having been reached. A page with no mark
+runs its blocks with no prelude.
 
 Usage::
 
@@ -80,9 +109,23 @@ DOC_EXTS = {".md", ".mdx"}
 PYTHON_INFO_PREFIXES = ("python", "py")
 BLOCK_MARKER = "# ===== rfx-doc-block {number} (doc line {line}) ====="
 MARKER_RE = re.compile(r"^# ===== rfx-doc-block (\d+) \(doc line (\d+)\) =====$")
-FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})[ \t]*(\S*)")
+FENCE_RE = re.compile(r"^(\s*)(`{3,}|~{3,})[ \t]*(\S*)(.*)$")
+QUOTED_RE = re.compile(r"\"[^\"]*\"|'[^']*'")
+XFAIL_KEY_RE = re.compile(r"(?<![\w-])xfail(?![\w-])")
+XFAIL_ATTR_RE = re.compile(r'(?<=\s)xfail="([^"]*)"(?=\s|$)')
+XFAIL_VALUE_RE = re.compile(r"(#\d+)\s+(\S.*)")
 PLACEHOLDER_RE = re.compile(r"<[a-z_][a-z0-9_]*>", re.IGNORECASE)
 EXC_RE = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt|Warning)\b")
+XFAIL_SIDECAR_ENV = "RFX_DOC_BLOCK_EXCEPTION_LINE_FILE"
+XFAIL_PRELUDE = (
+    '(lambda sys, walk_tb, Path, script, sink, previous: setattr(sys, "excepthook", '
+    "lambda kind, value, tb: (lambda lines: (lines and Path(sink).write_text(str(lines[0])), "
+    "previous(kind, value, tb)))("
+    '[line for frame, line in walk_tb(tb) if frame.f_code.co_filename == script '
+    'and frame.f_code.co_name == "<module>"])))'
+    '(__import__("sys"), __import__("traceback").walk_tb, __import__("pathlib").Path, __file__, '
+    f'__import__("os").environ["{XFAIL_SIDECAR_ENV}"], __import__("sys").excepthook)'
+)
 TIMEOUT_RETURNCODE = 124
 TIMEOUT_HEAD_PREFIX = "TimeoutExpired: exceeded --timeout"
 
@@ -94,6 +137,9 @@ class BlockReport:
     info: str
     n_lines: int
     fragment_reason: str | None = None
+    xfail: str | None = None
+    # Why the block's xfail mark is refused. Not part of the JSON.
+    xfail_error: str | None = None
 
     @property
     def is_fragment(self) -> bool:
@@ -113,6 +159,9 @@ class PageReport:
     deprecations: list[str] = field(default_factory=list)
     # The block whose top-level statement raised, for blocks.tsv. Not part of the JSON.
     raising_top_level_block: int | None = None
+    # On a marked page with no located exception: the last block a printed traceback
+    # shows was reached, for blocks.tsv. Not part of the JSON.
+    last_seen_block: int | None = None
 
     @property
     def n_blocks(self) -> int:
@@ -135,7 +184,7 @@ class RunReport:
 
     @property
     def executed(self) -> list[PageReport]:
-        return [p for p in self.pages if p.status in {"PASS", "FAIL"}]
+        return [p for p in self.pages if p.status in {"PASS", "FAIL", "XFAIL", "XPASS"}]
 
     @property
     def n_pass(self) -> int:
@@ -146,12 +195,20 @@ class RunReport:
         return sum(1 for p in self.pages if p.status == "FAIL")
 
     @property
+    def n_xfail(self) -> int:
+        return sum(1 for p in self.pages if p.status == "XFAIL")
+
+    @property
+    def n_xpass(self) -> int:
+        return sum(1 for p in self.pages if p.status == "XPASS")
+
+    @property
     def n_fragment_only(self) -> int:
         return sum(1 for p in self.pages if p.status == "fragment-only")
 
     @property
     def has_failures(self) -> bool:
-        return self.n_fail > 0
+        return self.n_fail > 0 or self.n_xpass > 0
 
 
 def parse_args() -> argparse.Namespace:
@@ -222,10 +279,29 @@ def is_python_info(info: str) -> bool:
     return head in PYTHON_INFO_PREFIXES
 
 
-def extract_blocks(text: str) -> list[tuple[str, int, str]]:
-    """Return (info, doc_line_of_fence, code) for each python fenced block."""
+def parse_xfail(full_info: str) -> tuple[str | None, str | None]:
+    """Return (mark value, problem) for a python fence's full info string."""
+    # A quoted value of another attribute may contain the word; it is not a key.
+    keys = XFAIL_KEY_RE.findall(QUOTED_RE.sub('""', full_info))
+    if not keys:
+        return None, None
+    if len(keys) > 1:
+        return None, "more than one xfail key"
+    attr = XFAIL_ATTR_RE.search(full_info)
+    if attr is None:
+        return None, 'xfail must be written xfail="#<issue> <reason>" with double quotes'
+    value = attr.group(1).strip()
+    if not re.match(r"#\d+(\s|$)", value):
+        return None, f'xfail value "{value}" has no issue number (#<digits>)'
+    if XFAIL_VALUE_RE.fullmatch(value) is None:
+        return None, f'xfail value "{value}" has no reason'
+    return value, None
+
+
+def extract_blocks(text: str) -> list[tuple[str, int, str, str]]:
+    """Return (info, doc_line_of_fence, code, full_info) for each python fenced block."""
     lines = text.splitlines()
-    blocks: list[tuple[str, int, str]] = []
+    blocks: list[tuple[str, int, str, str]] = []
     i = 0
     while i < len(lines):
         match = FENCE_RE.match(lines[i])
@@ -240,7 +316,7 @@ def extract_blocks(text: str) -> list[tuple[str, int, str]]:
             body.append(lines[j])
             j += 1
         if is_python_info(info):
-            blocks.append((info, i + 1, "\n".join(body)))
+            blocks.append((info, i + 1, "\n".join(body), info + match.group(4)))
         i = j + 1
     return blocks
 
@@ -276,29 +352,39 @@ def classify_fragment(code: str) -> str | None:
 
 def build_page_report(page: Path, public_root: Path) -> PageReport:
     rel = page.relative_to(public_root).as_posix()
-    blocks = [
-        BlockReport(
-            number=n,
-            doc_line=doc_line,
-            info=info,
-            n_lines=len(code.splitlines()),
-            fragment_reason=classify_fragment(code),
+    blocks = []
+    for n, (info, doc_line, code, full_info) in enumerate(
+        extract_blocks(page.read_text(encoding="utf-8")), 1
+    ):
+        fragment_reason = classify_fragment(code)
+        xfail, problem = parse_xfail(full_info)
+        if xfail is not None and fragment_reason is not None:
+            problem = f"xfail mark is on a fragment ({fragment_reason}); a mark needs a runnable block"
+        blocks.append(
+            BlockReport(
+                number=n,
+                doc_line=doc_line,
+                info=info,
+                n_lines=len(code.splitlines()),
+                fragment_reason=fragment_reason,
+                xfail=xfail,
+                xfail_error=f"doc line {doc_line}: {problem}" if problem else None,
+            )
         )
-        for n, (info, doc_line, code) in enumerate(extract_blocks(page.read_text(encoding="utf-8")), 1)
-    ]
     return PageReport(page=rel, blocks=blocks)
 
 
 def concatenate(page: Path, public_root: Path, report: PageReport) -> str:
     codes = {
         n: code
-        for n, (_, _, code) in enumerate(extract_blocks(page.read_text(encoding="utf-8")), 1)
+        for n, (_, _, code, _) in enumerate(extract_blocks(page.read_text(encoding="utf-8")), 1)
     }
     parts = [
         BLOCK_MARKER.format(number=b.number, line=b.doc_line) + "\n" + codes[b.number]
         for b in report.runnable
     ]
-    return "\n".join(parts) + "\n"
+    prelude = [XFAIL_PRELUDE] if any(b.xfail for b in report.runnable) else []
+    return "\n".join(prelude + parts) + "\n"
 
 
 def block_for_line(script: str, lineno: int) -> tuple[int | None, int | None]:
@@ -342,6 +428,11 @@ def _as_text(captured: str | bytes | None) -> str:
 
 def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> PageReport:
     report = build_page_report(page, public_root)
+    refusals = [b.xfail_error for b in report.blocks if b.xfail_error]
+    if refusals:
+        report.status = "FAIL"
+        report.exception_head = refusals
+        return report
     if not report.runnable:
         report.status = "fragment-only" if report.blocks else "no-python-blocks"
         return report
@@ -351,10 +442,15 @@ def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> Pa
     env["PYTHONPATH"] = str(repo_root)
     env["JAX_PLATFORMS"] = "cpu"
     env["MPLBACKEND"] = "Agg"
+    marked = any(b.xfail for b in report.runnable)
+    terminating_line: int | None = None
 
     with tempfile.TemporaryDirectory(prefix="rfx-doc-blocks-") as workdir:
         script_path = Path(workdir) / "page_blocks.py"
         script_path.write_text(script, encoding="utf-8")
+        sidecar = Path(workdir) / "terminating_line"
+        if marked:
+            env[XFAIL_SIDECAR_ENV] = str(sidecar)
         started = time.monotonic()
         try:
             completed = subprocess.run(
@@ -373,10 +469,12 @@ def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> Pa
             report.returncode = TIMEOUT_RETURNCODE
             report.exception_head = [f"{TIMEOUT_HEAD_PREFIX} {timeout}s"]
         report.wall_seconds = round(time.monotonic() - started, 1)
+        if sidecar.exists():
+            terminating_line = int(sidecar.read_text(encoding="utf-8"))
 
     report.deprecations = find_deprecations(output)
     if report.returncode == 0:
-        report.status = "PASS"
+        report.status = "XPASS" if any(b.xfail for b in report.runnable) else "PASS"
         return report
 
     report.status = "FAIL"
@@ -388,8 +486,14 @@ def run_page(page: Path, public_root: Path, repo_root: Path, timeout: int) -> Pa
             script, int(frames[-1])
         )
     top_level = re.findall(rf'File "{re.escape(str(script_path))}", line (\d+), in <module>', output)
-    if top_level:
+    if marked:
+        if terminating_line is not None:
+            report.raising_top_level_block = block_for_line(script, terminating_line)[0]
+        elif top_level and not _timed_out(report):
+            report.last_seen_block = block_for_line(script, int(top_level[-1]))[0]
+    elif top_level:
         report.raising_top_level_block = block_for_line(script, int(top_level[-1]))[0]
+    report.status = _nonzero_exit_status(report)
     return report
 
 
@@ -415,8 +519,33 @@ def _timed_out(page: PageReport) -> bool:
     )
 
 
+def _nonzero_exit_status(page: PageReport) -> str:
+    """FAIL unless the failure is located in a marked block."""
+    failing = None if _timed_out(page) else page.raising_top_level_block
+    marked = [b.number for b in page.runnable if b.xfail]
+    if failing not in marked:
+        return "FAIL"
+    return "XPASS" if min(marked) < failing else "XFAIL"
+
+
+def _issue(block: BlockReport) -> str:
+    return (block.xfail or "").split()[0]
+
+
+def _refused_rows(page: PageReport) -> list[tuple[str, int, int, str, str]]:
+    note = page.exception_head[0]
+    rows: list[tuple[str, int, int, str, str]] = []
+    for block in page.blocks:
+        carries = not block.is_fragment or block.xfail is not None or block.xfail_error is not None
+        detail, note = (note, "") if carries else ("", note)
+        rows.append((page.page, block.number, block.doc_line, "not reached", detail))
+    return rows
+
+
 def block_rows(page: PageReport) -> list[tuple[str, int, int, str, str]]:
     """One (page, block, doc_line, result, detail) row per python block."""
+    if any(b.xfail_error for b in page.blocks):
+        return _refused_rows(page)
     timed_out = _timed_out(page)
     failing = None if timed_out else page.raising_top_level_block
     head = page.exception_head[0] if page.exception_head else ""
@@ -429,14 +558,17 @@ def block_rows(page: PageReport) -> list[tuple[str, int, int, str, str]]:
 
     rows: list[tuple[str, int, int, str, str]] = []
     reached = not block_unknown
+    seen_through = page.last_seen_block or 0
     for block in page.blocks:
         if block.is_fragment:
             result, detail = "not runnable", block.fragment_reason or ""
         elif block.number == failing:
-            result, detail = "failed", head
+            result, detail = ("xfail", f"{_issue(block)}: {head}") if block.xfail else ("failed", head)
             reached = False
-        elif reached:
-            result, detail = "ran", ""
+        elif reached or block.number <= seen_through:
+            result, detail = (
+                ("xpass", f"{_issue(block)}: ran; remove the mark") if block.xfail else ("ran", "")
+            )
         else:
             result, detail, pending_note = "not reached", pending_note, ""
         rows.append((page.page, block.number, block.doc_line, result, detail))
@@ -452,6 +584,9 @@ def report_payload(report: RunReport, wall_seconds: float) -> dict:
     payload = asdict(report)
     for page in payload["pages"]:
         del page["raising_top_level_block"]
+        del page["last_seen_block"]
+        for block in page["blocks"]:
+            del block["xfail_error"]
     payload["has_failures"] = report.has_failures
     payload["wall_seconds"] = wall_seconds
     return payload
@@ -525,7 +660,8 @@ def format_text(report: RunReport, *, show_deprecations: bool) -> str:
         [
             "-" * 110,
             f"pages executed: {len(report.executed)}   PASS: {report.n_pass}   "
-            f"FAIL: {report.n_fail}   fragment-only: {report.n_fragment_only}",
+            f"FAIL: {report.n_fail}   XFAIL: {report.n_xfail}   XPASS: {report.n_xpass}   "
+            f"fragment-only: {report.n_fragment_only}",
             f"total blocks: {sum(p.n_blocks for p in report.pages)}   "
             f"fragments: {sum(len(p.fragments) for p in report.pages)}",
         ]
