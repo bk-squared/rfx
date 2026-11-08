@@ -252,12 +252,23 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
         dt = float(grid.dt)
     from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
-    def _class_pulse(entry, waveform):
+    def _class_pulse(entry, waveform, *, waveguide=False):
         # A string-named incident (TF/SF, waveguide port) is judged by the
         # waveform class of the same name at the entry's f0 and bandwidth,
         # not by its inline copy.
         f0 = getattr(entry, "f0", None)
         f0 = float(self._freq_max) / 2.0 if f0 is None else float(f0)
+        if waveguide:
+            from rfx.preflight.waveguide import _waveguide_source_freqs
+
+            try:
+                freqs = _waveguide_source_freqs(self, entry)
+            except (TypeError, ValueError):
+                # Unresolvable bins keep the previous pulse check; the
+                # cutoff check and builders still own their bin refusals.
+                pass
+            else:
+                f0 = float(self._resolve_waveguide_f0(entry, freqs))
         bw, amp = float(entry.bandwidth), float(entry.amplitude)
         if not (f0 > 0.0 and bw > 0.0):
             return None
@@ -277,7 +288,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
         drives.append(("coaxial port", entry, getattr(entry, "excitation", None)))
     for entry in getattr(self, "_waveguide_ports", ()):
         drives.append(("waveguide port", entry,
-                       _class_pulse(entry, getattr(entry, "waveform", None))))
+                       _class_pulse(entry, getattr(entry, "waveform", None),
+                                    waveguide=True)))
     for entry in getattr(self, "_floquet_ports", ()):
         drives.append(("Floquet port", entry,
                        _class_pulse(entry, "differentiated_gaussian")))

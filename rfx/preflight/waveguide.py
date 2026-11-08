@@ -130,6 +130,15 @@ def resolve_shared_waveguide_port_freqs(sim, *, route):
     return freqs
 
 
+def _waveguide_source_freqs(sim, entry):
+    """The bins the waveguide source builder uses on this mesh."""
+    if any(getattr(sim, a, None) is not None
+           for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
+        return np.asarray(resolve_shared_waveguide_port_freqs(
+            sim, route="graded preflight for run()/forward()"), dtype=float)
+    return np.asarray(resolve_waveguide_port_freqs(sim, entry), dtype=float)
+
+
 def _transverse_cell_size(grid, axis_name) -> float:
     """Primal width on the constant transverse axis of the uniform lane.
 
@@ -876,12 +885,7 @@ def _emit_waveguide_port_cutoff_findings(
     # velocity: the extracted S is junk that GROWS with n_steps (the
     # in-band incident reference sits in the source spectral tail),
     # and below-cutoff DFT bins additionally NaN the gradient.
-    if any(getattr(self, a, None) is not None
-           for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
-        f_arr = np.asarray(resolve_shared_waveguide_port_freqs(
-            self, route="graded preflight for run()/forward()"), dtype=float)
-    else:
-        f_arr = np.asarray(resolve_waveguide_port_freqs(self, entry), dtype=float)
+    f_arr = _waveguide_source_freqs(self, entry)
     f_min = float(f_arr.min())
     f0_resolved = self._resolve_waveguide_f0(entry, f_arr)
     if f0_resolved <= fc_excited:
