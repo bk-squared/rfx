@@ -52,6 +52,9 @@ from rfx.api._sparams import (  # noqa: E402
     _assemble_coax_msl_transition_from_voltages,
 )
 from rfx.sparams._port_reference import renormalize_power_waves  # noqa: E402
+from tests.unit.sparams.test_coax_built_impedance import (  # noqa: E402
+    _capture_independent_source_impedances,
+)
 
 N_STEPS = 200
 
@@ -101,7 +104,13 @@ def _run(**extra):
 
 
 @pytest.fixture(scope="module")
-def _abc():
+def _coax_impedance_reference():
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        yield _capture_independent_source_impedances(monkeypatch)
+
+
+@pytest.fixture(scope="module")
+def _abc(_coax_impedance_reference):
     """(off, ladders-on, ladders+flux-on) on the aligned instrumentation fixture."""
     with pytest.warns(UserWarning):
         off = _run()
@@ -109,6 +118,13 @@ def _abc():
         both = _run(return_ladder_voltages=True,
                     extra_flux_monitors=_ladder_dump_scratch_flux_entries())
     return off, on, both
+
+
+def test_coax_reported_impedance_matches_independent_laplace(_abc, _coax_impedance_reference):
+    off, _, _ = _abc
+    built, closed = _coax_impedance_reference[0]
+    assert off.line_impedances[0] == pytest.approx(built, rel=1e-4)
+    assert abs(off.line_impedances[0] - closed) / closed > 0.01
 
 
 def _assert_witness_identical(a, b):

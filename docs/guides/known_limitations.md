@@ -119,21 +119,6 @@ preflight. Its drawn rectangle is clipped to the sampled tangential extent, incl
 on periodic axes). Non-Box films retain their existing admission rule. Surface-impedance sheets use the same
 `sheet_effective_size` check and solved-edge model as PEC sheets.
 
-### The coax two-port and coax-to-microstrip S are renormalized with the drawn-radius line impedance, not the built one
-
-Tracker: #2409
-
-The pin and shell the grid builds are staircased, and their line impedance is lower than the closed form of the declared
-radii (60/√εr · ln(b/a)). For an SMA line (a = 0.635 mm, b = 2.055 mm, εr = 2.1, closed form 48.63 Ω), the impedance of the
-built cross-section, from the capacitance of the solved TEM profile, is 45.90 / 47.54 / 48.03 / 48.35 Ω at 0.1 / 0.05 /
-0.025 / 0.0125 mm cells; at the 0.355-0.4 mm cells of the test fixtures it is 40.4-43.6 Ω. `compute_coaxial_two_port` and
-`compute_coax_msl_transition` convert their measured waves to the registered reference (50 Ω by default) as if the line had
-the closed-form impedance, so a returned S at that reference is computed for a line of the wrong impedance. The size of the
-resulting error in |S| is being measured. The one-port `compute_coaxial_line_reflection` returns its reflection in the
-line's own basis and does not do this conversion; its feed and load resistors are drawn on the same staircased annulus as the
-line. These conductors are built by the port, so the realization check of drawn geometry does not judge them. Until the
-conversion uses the built impedance, check a coax two-port or transition S at the registered reference on three meshes.
-
 ### A curved lossy film's absorption still changes with the mesh at its rim
 
 Tracker: #1958
@@ -429,6 +414,16 @@ memory. No public call frees the arrays before `run()`. Deleting the `Simulation
 `realized_geometry()` record is kept: the record holds the same arrays.
 
 ## Ports and extraction
+
+### The staircased coax line can be 40–44 ohm for a drawn 48.6-ohm line.
+
+Tracker: #1958
+
+On these meshes the built coax line is 40–44 ohm for a drawn 48.6 ohm, so the 50-ohm |S11| of a matched coax through-line reads up to about 0.14.
+The cause is the staircased line, not the port; `line_impedances` reports the built value.
+Setting `impedance=` to that value requests the line's own reference; it does not correct the built geometry.
+A finer mesh changes Z_built non-monotonically: 40.55 / 44.08 / 41.29 ohm at
+0.4 / 0.3 / 0.2 mm on the SMA line (rfx-archive, `rfx/records/20261106-coax-z0-fix`).
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
 
