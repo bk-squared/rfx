@@ -18,6 +18,7 @@ import re
 import warnings
 
 import numpy as np
+import pytest
 
 from rfx import GaussianPulse, Simulation
 
@@ -156,3 +157,44 @@ def test_an_extent_of_exactly_one_cell_is_reported():
                  waveform=GaussianPulse(f0=5.8e9, bandwidth=0.8))
     line = _port_line(str(_findings(sim)[0]), 0)
     assert _dX_of(line) == f"{_dX_literal(5.8e9, 0.25e-3):.3g}"
+
+
+def test_remedy_finest_mesh_radius_is_admitted_on_the_whole_ladder():
+    from rfx.sources.sources import setup_wire_port, wire_port_from_entry
+
+    def scene(d, radius=None):
+        sim = Simulation(freq_max=11.6e9, domain=(6 * MM,) * 3, dx=d,
+                         boundary="pec", cpml_layers=0)
+        sim.add_port((3 * MM, 2.5 * MM, 3 * MM), "ey", extent=1 * MM,
+                     radius=radius, waveform=GaussianPulse(f0=5.8e9, bandwidth=0.8))
+        return sim
+
+    def build_port(d, radius):
+        sim = scene(d, radius)
+        grid = sim._build_realized_grid()
+        materials = sim._assemble_materials(grid)[0]
+        # Stamp the declared port as the runner does, without time stepping.
+        return setup_wire_port(grid, wire_port_from_entry(sim._ports[0]), materials)
+
+    meshes = (0.5 * MM, 0.25 * MM)
+    bounds = []
+    for d, printed, expected in zip(meshes, ("100µm", "50µm"), (0.1 * MM, 0.05 * MM)):
+        findings = _findings(scene(d))
+        assert len(findings) == 1
+        text = str(findings[0])
+        assert ("at the finest transverse cell you will run "
+                "(one fixed a then serves every coarser mesh; "
+                "on this mesh 0.20*d = ") in text, text
+        match = re.search(r"on this mesh 0\.20\*d = ([0-9.]+)µm\)", text)
+        assert match, text
+        assert match.group(0) == f"on this mesh 0.20*d = {printed})"
+        bound = float(match.group(1)) * 1e-6
+        assert bound == pytest.approx(expected)
+        bounds.append(bound)
+
+    for d in meshes:
+        assert build_port(d, bounds[1]).mu_r_wire is not None
+    for old_radius in (bounds[0], 0.09925 * MM):
+        assert build_port(meshes[0], old_radius).mu_r_wire is not None
+        with pytest.raises(ValueError, match="exceeds the supported bound"):
+            build_port(meshes[1], old_radius)
