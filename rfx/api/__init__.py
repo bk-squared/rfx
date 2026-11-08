@@ -2000,15 +2000,15 @@ class Simulation(
 
     def add_vector_probe(
         self,
-        position: tuple[float, float, float],
+        position: tuple[float, float, float], *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a vector probe that records ALL 6 field components.
 
-        Records Ex, Ey, Ez, Hx, Hy, Hz at the same position.
+        Records Ex, Ey, Ez, Hx, Hy, Hz; allow_in_absorber opts into pad positions.
         Results accessible via result.time_series columns [0..5].
         """
         for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            self._probes.append(_ProbeEntry(position=position, component=comp))
+            self._probes.append(_ProbeEntry(position=position, component=comp, allow_in_absorber=allow_in_absorber))
         return self
 
     def _validate_declared_plane_coordinate(self, axis: str, coordinate: float) -> None:

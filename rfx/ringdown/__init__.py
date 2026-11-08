@@ -1101,8 +1101,9 @@ class RingdownRun:
         _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes)
+        # rfx attaches port channels; identification.py refuses pad probes earlier, and the port entry judges its position with the user's flag.
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp)
+                                  component=comp, allow_in_absorber=True)
                       for comp, idx in self.probe_keys)
         try:
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
@@ -1949,7 +1950,7 @@ class RingdownStop:
         n_user = len(probes)
         self.n_user = n_user
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp)
+                                  component=comp, allow_in_absorber=True)
                       for comp, idx in self.base.probe_keys)
         try:
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
@@ -2421,7 +2422,7 @@ class RingdownForward(RingdownRun):
                           for pe in self.sim._ports)
         n_user = len(probes)
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp)
+                                  component=comp, allow_in_absorber=True)
                       for comp, idx in self.probe_keys)
         try:
             result = call()
