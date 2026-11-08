@@ -100,12 +100,21 @@ def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
             raise ValueError(f'per-rank drive table: waves read on several ranks {shared}; '
                              'each rank block holds only the sources it owns')
     if per_rank and layout.n_devices > 1 and n_src > 0:
-        @partial(jax.shard_map, mesh=mesh,
-                 in_specs=(P(None, 'x'), P('x'), P('x')),
-                 out_specs=P(None, 'x'), check_vma=False)
-        def select(local, ids, valid):
-            return jnp.where(valid[None], local[:, ids], jnp.zeros((), local.dtype))
-        samples = select(waveforms, _place(selected_waves, mesh), _place(wave_valid, mesh))
+        if (not isinstance(waveforms, jax.core.Tracer)
+                and getattr(waveforms, 'is_fully_addressable', True)):
+            table = np.asarray(waveforms)
+            samples = np.zeros((table.shape[0], layout.n_devices, width), table.dtype)
+            for rank in range(layout.n_devices):
+                block = table[:, rank * n_src:(rank + 1) * n_src]
+                samples[:, rank, :] = np.where(
+                    wave_valid[rank], block[:, selected_waves[rank]], 0)
+        else:
+            @partial(jax.shard_map, mesh=mesh,
+                     in_specs=(P(None, 'x'), P('x'), P('x')),
+                     out_specs=P(None, 'x'), check_vma=False)
+            def select(local, ids, valid):
+                return jnp.where(valid[None], local[:, ids], jnp.zeros((), local.dtype))
+            samples = select(waveforms, _place(selected_waves, mesh), _place(wave_valid, mesh))
     else:
         samples = jnp.where(wave_valid[None, :, :], waveforms[:, selected_waves],
                             jnp.zeros((), waveforms.dtype))
@@ -271,7 +280,8 @@ def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, ch
             records = jnp.concatenate((warm, records))
         return carry, records
 
-    return run_fn(carry, invariants, waves, ranks)
+    from rfx.stepping.sharded import recorded_sharded_call
+    return recorded_sharded_call(run_fn, carry, invariants, waves, ranks)
 
 
 def validate_scan_controls(n_steps, n_warmup, checkpoint_every, *, path="slab_wrap"):

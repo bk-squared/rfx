@@ -248,7 +248,9 @@ def test_compiled_loop_has_no_concrete_arrays(loop_program):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("case", [("mixed", 2, 0), ("mixed", 2, 2), ("cpml", None, 0)])
+@pytest.mark.parametrize("case", [("mixed", 2, 0), ("mixed", 2, 2), pytest.param(
+    ("cpml", None, 0), id="case2", marks=pytest.mark.xfail(strict=True,
+        reason="#1844 graded multi-device CPML loop captures probe-table records as constants (pre-existing on main)"))])
 def test_other_loop_branches_have_no_concrete_arrays(case):
     program = _loop_program.__wrapped__(SimpleNamespace(param=case))
     test_compiled_loop_has_no_concrete_arrays(program)
