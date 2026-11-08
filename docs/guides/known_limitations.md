@@ -654,19 +654,6 @@ The stopband minima also move with the feed length: with longer feeds they are 5
 passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
 power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
 
-### A wire port with `reference_plane_cells` returns a different S11 from `run()` than from `forward()`.
-
-Tracker: #2450
-
-The option is documented to change only the off-diagonal entries. With it, `run()` forms the port's S11 from the
-per-cell voltage at the reference plane, while `run()` without it uses the whole-port voltage; `forward()` now refuses
-the option. Measured on a 16 mm microstrip thru between two 50 Ω wire ports, 3–7 GHz,
-`reference_plane_cells=3`, before `forward()` refused the option (it then ignored it and used the whole-port voltage):
-|S11 from `run()` − S11 from `forward()`| is 0.084 at 3 GHz and up to 0.238 at 6.5 GHz, the
-same at 4000 and 8000 steps; without the option the two are equal at every bin. Which of the two S11 values is right
-on that board has not been judged. What to do: read S11 from a run without `reference_plane_cells` (or from
-`forward()` without it), and take only the reference-plane S21 from the run with it.
-
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).

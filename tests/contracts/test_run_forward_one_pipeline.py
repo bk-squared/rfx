@@ -764,9 +764,7 @@ def test_port_s_equal_requests(declaration, path):
 # Both entries refuse partial opt-in for their own reason (forward() forms no reference-plane S; run() needs every wire port opted in), so raising lines differ by design and both_refused is not used.
 @pytest.mark.parametrize('entry', [
     pytest.param('forward', id='P-wire-refplane-uniform-forward'),
-    pytest.param('run', id='P-wire-refplane-uniform-run', marks=pytest.mark.xfail(
-        strict=True, raises=AssertionError,
-        reason="#2450: run() admits a partial reference_plane_cells opt-in and forms the per-cell S; forward() refuses the option (#2454)")),
+    pytest.param('run', id='P-wire-refplane-uniform-run'),
 ])
 def test_port_s_refplane_refusals(entry):
     record = run_l2(BUILDERS['P-wire-refplane'], entry, 'uniform', n_steps=1)
