@@ -44,6 +44,8 @@ try:
     Boundary(lo="periodic", hi="cpml")
 except ValueError as err:
     print(err)
+else:
+    raise AssertionError("expected a refusal")
 ```
 
 ```text

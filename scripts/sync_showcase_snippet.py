@@ -5,7 +5,8 @@ The excerpt is the inner ``J`` of ``make_objective`` in
 ``scripts/showcase/patch_sensitivity.py`` and the statement that calls
 ``jax.value_and_grad`` on it, copied line for line, after one ``...`` line
 naming what the full script sets up. That placeholder marks the block as an
-excerpt, so ``check_public_docs_blocks.py`` skips it instead of running it.
+excerpt, so ``scripts/docs/check_public_docs_blocks.py`` skips it instead of
+running it.
 Run with --check to report documentation drift without modifying files.
 """
 from __future__ import annotations
