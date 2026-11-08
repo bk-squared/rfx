@@ -8,7 +8,7 @@ from rfx import Simulation
 
 FMAX = 15e9
 PATHS = ("uniform-run", "uniform-forward", "graded-run", "graded-forward")
-SHARED_PATHS = PATHS[1:]
+SHARED_PATHS = PATHS
 
 
 def _scene(path, declarations):
@@ -79,23 +79,19 @@ def test_different_bins_refused_before_fields(path, difference, monkeypatch):
         declarations = [("input", {"n_freqs": 7}), ("output", {"n_freqs": 5})]
     with pytest.raises(ValueError) as caught:
         _solve(_scene(path, declarations), path)
-    message = str(caught.value)
-    assert path.replace("-", " ") + "()" in message
-    for name, bins in (("input", first), ("output", second)):
-        bins = bins.astype(np.float32)
-        assert f"port '{name}' has {bins.size} bins" in message
-        assert f"first={bins[0]:.9g} Hz, last={bins[-1]:.9g} Hz" in message
-    assert "Declare the same freqs, or the same n_freqs, on every port." in message
-    assert "compute_waveguide_s_matrix" not in message
+    # #2449: multiple ports cannot report isolated S from one record,
+    # regardless of whether their declared frequency grids match.
+    assert str(caught.value) == (
+        "Simulation.run() supports only a single waveguide port; use "
+        "compute_waveguide_s_matrix() for the multiport waveguide scattering workflow")
 
 
 @pytest.mark.parametrize("path", SHARED_PATHS)
-def test_equal_explicit_bins_on_both_ports(path):
+def test_equal_explicit_bins_on_both_ports_refused(path):
     expected = np.array([10e9, 12e9, 14e9])
     declarations = [(name, {"freqs": expected}) for name in ("input", "output")]
-    result = _solve(_scene(path, declarations), path)
-    for name, _ in declarations:
-        _assert_bins(result, name, expected, path)
+    with pytest.raises(ValueError, match="supports only a single waveguide port"):
+        _solve(_scene(path, declarations), path)
 
 
 def test_graded_calculator_s_uses_declared_bins():

@@ -79,7 +79,7 @@ def model(precision, entry):
         from dataclasses import replace
         sim._waveguide_ports = [replace(p, freqs=jnp.asarray([8e9, 9e9+100], dtype=precision))
                                 for p in sim._waveguide_ports]
-        if entry == 'run_waveguide':
+        if entry in ('run_waveguide', 'forward_waveguide'):
             sim._waveguide_ports.pop()
         return sim
     if entry == 'driver_refplane':

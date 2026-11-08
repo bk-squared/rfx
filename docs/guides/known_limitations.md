@@ -654,19 +654,6 @@ The stopband minima also move with the feed length: with longer feeds they are 5
 passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
 power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
 
-### Two or more excited waveguide ports in one record: uniform `forward()` and graded `run()`/`forward()` mix the other port's drive into each port's S11.
-
-Tracker: #2449
-
-Every waveguide port is driven at its declared amplitude (default 1.0), and each port's S11 is read from that one
-record, so the wave launched by the other port and transmitted through the structure adds to the reflection each port
-measures. Measured on a lossless WR-90 dielectric step (εr 2.2, ports on either side, 7.0–7.9 GHz): |S11| of the first
-port reads 1.60 at 7.0 GHz and 1.50 at 7.9 GHz with both ports driven, against 0.533 and 0.375 with the other port
-silenced, which match the closed-form step reflection 0.533 and 0.376; no warning is raised. Uniform `run()` refuses the
-same declaration. What to do: use `compute_waveguide_s_matrix()`, which drives one port per record. A port silenced with
-`amplitude=0.0` returns an S11 of its own that means nothing (received wave over a near-zero incident wave); read only
-the driven port's S11 from such a run.
-
 ### A wire port with `reference_plane_cells` returns a different S11 from `run()` than from `forward()`.
 
 Tracker: #2450

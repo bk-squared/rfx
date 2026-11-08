@@ -95,6 +95,9 @@ def _forward_from_materials(
         """
     from rfx.runners._admission import refuse_mixed_waveguide_sources
     refuse_mixed_waveguide_sources(self)
+    if self._waveguide_ports:
+        from rfx.runners._admission import require_isolated_s_drive
+        require_isolated_s_drive(self)
     from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
     wg_freqs = resolve_shared_waveguide_port_freqs(self, route="uniform forward()")
     if subpixel_smoothing and sheet_impedance is not None:
