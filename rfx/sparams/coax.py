@@ -1294,7 +1294,9 @@ def compute_coax_msl_transition(
                     finding.message, finding.category, finding.filename,
                     finding.lineno, source=finding.source,
                 )
+        from rfx.preflight._realization_subjects import retained_subjects
         issues = tuple(PreflightIssue(f.message, severity=f.message.severity,
+                                     **retained_subjects(f.message),
                                      code=f.message.code, source=f.message.source)
                        for f in findings if isinstance(f.message, PreflightWarning))
         self._run_preflight_gate(issues, context="compute_coax_msl_transition")

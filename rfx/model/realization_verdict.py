@@ -7,6 +7,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from rfx.preflight._realization_subjects import (
+    bind_retained_subjects, retained_subjects, table_subjects,
+)
+
 
 def _mark_port_built(table):
     """Keep execution and diagnostic rows explicit about their port owner."""
@@ -39,14 +43,15 @@ def judge_realization(table, snap):
             findings.append(PreflightIssue(
                 f"realization: not evaluated: {reason}; geometric comparisons were skipped. "
                 "Evaluate on uniform run() to check the realized dimensions.",
-                code="realization", source="judge_realization"))
+                code="realization", source="judge_realization",
+                **table_subjects(table, tuple(r for r in table.rows if r.model != "label only"))))
         table.findings.extend(findings)
         return tuple(findings)
-    rows = list(table.rows) + list(getattr(table, "legacy_rows", ()))
+    rows = [(row, row) for row in (*table.rows, *getattr(table, "legacy_rows", ()))]
     for row in table.rows:
         for region, axes in getattr(row, "regions", ()):
-            rows.append(replace(row, label=f"{row.label}/{region}", axes=axes, regions=()))
-    for row in rows:
+            rows.append((replace(row, label=f"{row.label}/{region}", axes=axes, regions=()), row))
+    for row, owner in rows:
         if row.label in table.judged or row.label in table.deferred:
             continue
         if row.status.startswith("not evaluated: traced") or row.traced_inputs:
@@ -56,7 +61,9 @@ def judge_realization(table, snap):
                 findings.append(PreflightIssue(
                     "realization: not evaluated: traced; geometric comparisons were skipped. "
                     "Evaluate a concrete mesh and geometry to check the realized dimensions.",
-                    code="realization", source="judge_realization"))
+                    code="realization", source="judge_realization",
+                    **table_subjects(table, tuple(r for r in table.rows
+                        if r.status.startswith("not evaluated: traced") or r.traced_inputs))))
             continue
         if row.status == "not judged: edge not measured":
             # DESIGN.md D:c1d171 / D:8ea1e2: node span is not a measured edge.
@@ -64,7 +71,8 @@ def judge_realization(table, snap):
             findings.append(PreflightIssue(
                 f"realization {row.label} ({row.family}): not judged: edge not measured; "
                 "the node span is reported without a solved extent comparison.",
-                severity="warning", code="realization", loc=row.label, source="judge_realization"))
+                severity="warning", code="realization", loc=row.label, source="judge_realization",
+                **table_subjects(table, (owner,), axes=row.axes)))
             continue
         if row.status == "not judged: no reference":
             table.judged.add(row.label)
@@ -72,7 +80,8 @@ def judge_realization(table, snap):
                 f"realization {row.label} ({row.family}): not judged: no reference; "
                 "the model integral is reported without a drawn integral comparison. "
                 "Use geometry with a supported analytic reference to judge its realization.",
-                code="realization", loc=row.label, source="judge_realization"))
+                code="realization", loc=row.label, source="judge_realization",
+                **table_subjects(table, (owner,), axes=row.axes)))
             continue
         if row.status != "evaluated":
             continue
@@ -152,7 +161,8 @@ def judge_realization(table, snap):
         finding = PreflightIssue(
             f"realization {row.label} ({row.family}): {quantity}; {detail}. {remedy}",
             severity=severity, code=("port_aperture_snap" if row.label.startswith("waveguide_port[") else "realization"),
-            loc=row.label, source="judge_realization")
+            loc=row.label, source="judge_realization",
+            **table_subjects(table, (owner,), axes=row.axes))
         setattr(finding, "_realization_axes", tuple(a.axis for a in axes
             if a.miss_percent is not None and abs(a.miss_percent) > 1.))
         base_label = row.label.split("/", 1)[0]
@@ -160,7 +170,8 @@ def judge_realization(table, snap):
                          if f.code == "realization" and f.loc == base_label), None)
         if previous is not None and row.family in ("material", "volume"):
             merged = PreflightIssue(f"{previous} {finding}", severity=severity,
-                code="realization", loc=base_label, source="judge_realization")
+                code="realization", loc=base_label, source="judge_realization",
+                **table_subjects(table, (owner,)))
             target = table.findings if previous in table.findings else findings
             target[target.index(previous)] = merged
             if getattr(previous, "_realization_delivered", False) and severity == "warning":
@@ -216,6 +227,11 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
                     key = int(row.label.rsplit(":", 1)[1])
                     finding.loc = next((f"thin_conductors[{i}]" for i, tc in
                                         enumerate(sim._thin_conductors) if id(tc) == key), None)
+                    owners = tuple(table.row(f"thin_conductor[{i}]") for i, tc in
+                                   enumerate(sim._thin_conductors) if id(tc) == key)
+                    annotations = table_subjects(table, owners)
+                    finding.scope = annotations["scope"]
+                    finding._subjects, finding._region = annotations["subjects"], annotations["region"]
                 if row.label not in table.judged:
                     table.legacy_rows.append(row)
                     table.judged.add(row.label)
@@ -255,6 +271,7 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
     if legacy_findings is not None:
         table.judged.add("legacy sheets")
         for finding in legacy_findings:
+            bind_retained_subjects(finding, table)
             table.findings.append(finding)
             retain_sheet_outcome(table, finding)
         return list(legacy_findings)
@@ -281,7 +298,9 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
 
     def collect(warning):
         legacy.append(PreflightIssue(str(warning), severity=warning.severity,
-            code=warning.code, loc=warning.loc, source=warning.source))
+            code=warning.code, loc=warning.loc, source=warning.source,
+            **retained_subjects(warning)))
+        bind_retained_subjects(legacy[-1], table)
 
     collector = SimpleNamespace(warn=collect)
     _warn_sheet_effective_size(collector, ctx, [e for e in entries if isinstance(e.shape, Box)])
@@ -312,7 +331,8 @@ def deliver_findings(table, findings):
             errors.append(str(finding))
         else:
             warnings.warn(PreflightWarning(str(finding), code=finding.code,
-                severity=finding.severity, loc=finding.loc, source=finding.source),
+                severity=finding.severity, loc=finding.loc, source=finding.source,
+                **retained_subjects(finding)),
                 stacklevel=user_stacklevel())
     if errors:
         raise RfxRefusal("\n".join(errors))
@@ -358,4 +378,5 @@ def replay_legacy_findings(warnings, ctx, code):
     for finding in ctx._realized.realization_table.findings:
         if finding.code == code:
             warnings.warn(PreflightWarning(str(finding), code=finding.code,
-                severity=finding.severity, loc=finding.loc, source=finding.source))
+                severity=finding.severity, loc=finding.loc, source=finding.source,
+                **retained_subjects(finding)))

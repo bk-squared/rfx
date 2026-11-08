@@ -66,6 +66,7 @@ CODE_SCOPE = {
     'port_source_below_cutoff': 'object',
     'precision_float64_without_x64': 'model',
     'precision_nonuniform_lane_unsupported': 'model',
+    'realization': 'object',
     'refplane_near_field': 'object',
     'refplane_partial_optin': 'object',
     'settling_witness_will_be_absent': 'model',

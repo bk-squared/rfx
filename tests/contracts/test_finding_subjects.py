@@ -74,9 +74,10 @@ def test_code_completeness():
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    assert len(CODE_SCOPE) == 98
+    # S2 adds realization; all previously registered codes keep their class.
+    assert len(CODE_SCOPE) == 99
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 71, 'place': 2, 'model': 23, 'mixed': 2}
+        'object': 72, 'place': 2, 'model': 23, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -117,10 +118,12 @@ SCENES = {
     'absorber_probe_proximity': {'absorber_proximity': [('probe[0]',), ('port[0]',)]},
     'dispersive_pole_at_face': {'dispersive_pole_at_absorber_face': [('geometry[0]',)]},
     'geometry_in_cpml': {'geometry_in_absorber': [('geometry[0]',)], 'lossless_q': [('geometry[0]',)]},
-    'guards_box_alumina': {'lossless_q': [('geometry[0]',)]},
-    'guards_lossless_q': {'lossless_q': [('geometry[0]',)]},
+    # S2 snapshot predeclarations: test_preflight_split_snapshot.py:110-113.
+    'guards_box_alumina': {'lossless_q': [('geometry[0]',)], 'realization': [('geometry[0]',)]},
+    'guards_lossless_q': {'lossless_q': [('geometry[0]',)], 'realization': [('geometry[0]',)]},
     'guards_no_sources': {},
-    'guards_under_resolved_dielectric': {'mesh_resolution': [('geometry[0]',)] * 3},
+    'guards_under_resolved_dielectric': {'mesh_resolution': [('geometry[0]',)] * 3,
+                                        'realization': [('geometry[0]',)]},
     'guards_upml_refinement': {},
     'nu_source_on_graded_node': {'source_on_graded_node': [('port[0]',)]},
     'nu_thin_conductor_graded_node': {'thin_conductor_graded_node': [('thin_conductor[0]',)]},
@@ -145,15 +148,21 @@ SCENES = {
         'thin_conductor_leontovich_band_offset': [('thin_conductor[0]', 'port[0]')],
         'sheet_effective_size': [('thin_conductor[0]',)]},
     'sheet_congruence_off_lattice': {
+        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:103.
+        'realization': [('thin_conductor[0]',), ('thin_conductor[1]',)],
         'sheet_plane_realized': [('thin_conductor[0]', 'thin_conductor[1]')],
         'congruent_conductor_rasterization_parity': [('thin_conductor[0]', 'thin_conductor[1]')]},
     'conformal_fine_dx': {'port_aperture_snap': [('waveguide_port[0]',), ('waveguide_port[0]',)],
                          'port_freqs_below_cutoff': [('waveguide_port[0]',)]},
-    'waveguide_nu_declared_geometry': {'port_evanescent': [('waveguide_port[0]',), ('waveguide_port[1]',)]},
+    # S2 snapshot predeclaration: test_preflight_split_snapshot.py:119.
+    'waveguide_nu_declared_geometry': {'port_evanescent': [('waveguide_port[0]',), ('waveguide_port[1]',)],
+                                      'port_aperture_snap': [('waveguide_port[0]',)]},
     'ntff_absorber_overlap': {'absorber_overlap': [('ntff',)]},
     'floating_port': {'floating_port': [('geometry[0]', 'port[0]')],
                       'lossless_q': [('geometry[0]',)]},
     'off_lattice_edges': {'mesh_resolution': [('geometry[0]',)] * 2,
+                          # S2 snapshot predeclaration: test_preflight_split_snapshot.py:106.
+                          'realization': [('geometry[0]',)],
                           'off_lattice_design_edges': [('geometry[0]',)]},
     'refplane_near_field': {'refplane_near_field': [('port[0]', 'port[1]')],
                             'sheet_effective_size': [('thin_conductor[0]',)],
@@ -169,12 +178,16 @@ SCENES = {
         'msl_port_conductor_planes': [('geometry[0]', 'msl_port[0]')],
         'msl_port_geometry': [('msl_port[0]',), ('msl_port[0]',)]},
     'ntff_pec_overlap_full': {
+        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:115.
+        'realization': [('geometry[0]',)],
         'ntff_pec_overlap': [('geometry[0]', 'ntff')],
         'port_in_pec': [('geometry[0]', 'port[0]'), ('geometry[0]', 'probe[0]')],
         'off_lattice_design_edges': [('geometry[0]',)],
         'port_conductor_continues': [('geometry[0]', 'port[0]')]},
     'pec_boundary_open': {'ntff_near_field': [('geometry[0]', 'ntff')]},
     'guards_msl_sheet_probe': {
+        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:112.
+        'realization': [('geometry[0]',), ('geometry[1]',)],
         'absorber_proximity': [('port[0]',)], 'body_flush_on_absorber': [('geometry[0]',)],
         'lossless_q': [('geometry[0]',)], 'off_lattice_design_edges': [('geometry[1]',)],
         'conductor_in_thin_absorber': [('geometry[1]',), ('geometry[1]',)]},
@@ -929,6 +942,137 @@ def test_all_lossless_declarations_survive_summary():
         sim.add(Box((x, .004, .003), (x+.001, .007, .005)), material='same_material')
     assert_target(sim, 'lossless_q', [('geometry[0]', 'geometry[1]', 'geometry[2]', 'geometry[3]',
                                     'geometry[4]', 'geometry[5]', 'geometry[6]', 'geometry[7]')])
+
+
+def _s2_subject_scene(snap='declared', *, sheet=False, lumped=False):
+    from rfx import Box, Simulation
+    sim = Simulation(10e9, (.012, .011, .010), dx=.001, boundary='pec', snap=snap)
+    sim.add(Box((.00223, .00337, .00419),
+                (.00761, .00873, .00419 if sheet else .00757)), material='pec')
+    if lumped:
+        sim.add_lumped_rlc((.009, .005, .002), 'ez', R=50.)
+    return sim
+
+
+@pytest.mark.parametrize('snap,severity', [('strict', 'error'), ('declared', 'warning')])
+def test_s2_table_route_subjects(snap, severity):
+    sim = _s2_subject_scene(snap)
+    report = sim.preflight(check_ntff=False, check_resolution=False)
+    check_report(sim, report)
+    findings = report.by_code('realization')
+    assert findings
+    assert [(i.scope, i.subjects, i.severity) for i in findings] == [
+        ('object', ('geometry[0]',), severity)]
+    assert findings[0].source == 'judge_realization'
+    assert findings[0].region is not None
+
+
+@pytest.mark.parametrize('snap,severity', [('strict', 'error'), ('declared', 'warning')])
+def test_s2_sheet_replay_subjects(snap, severity):
+    from rfx.model.realization_verdict import replay_legacy_findings
+    sim = _s2_subject_scene(snap, sheet=True)
+    report = sim.preflight(check_ntff=False, check_resolution=False)
+    check_report(sim, report)
+    original, = report.by_code('sheet_effective_size')
+    assert (original.scope, original.subjects, original.severity) == (
+        'object', ('geometry[0]',), severity)
+    assert original.region is not None
+    # Inspect replay itself: report substitution can otherwise hide a broken carrier.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        replay_legacy_findings(warnings, sim._campaign_ctx(), 'sheet_effective_size')
+    replayed, = [w.message for w in caught]
+    assert replayed.to_dict() == original.to_dict()
+
+
+def test_s2_delivery_preserves_subjects():
+    from rfx.model.realization_verdict import deliver_findings
+    sim = _s2_subject_scene()
+    report = sim.preflight(check_ntff=False, check_resolution=False)
+    original, = report.by_code('realization')
+    table = sim._campaign_ctx()._realized.realization_table
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        deliver_findings(table, (original,))
+    delivered, = [w.message for w in caught]
+    assert delivered.scope == 'object'
+    assert delivered.subjects == ('geometry[0]',)
+    assert delivered.to_dict() == original.to_dict()
+
+
+def test_s2_aperture_table_subjects():
+    from rfx import Simulation
+    sim = Simulation(100e9, (.012, .011, .010), dx=.001,
+                     dz_profile=np.full(10, .001),
+                     boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'},
+                     cpml_layers=4, snap='declared')
+    sim.add_waveguide_port(.00523, direction='+x', y_range=(.00217, .00873),
+                          z_range=(.00129, .00761), freqs=[80e9], f0=80e9,
+                          ref_offset=1, probe_offset=2)
+    report = sim.preflight(check_ntff=False, check_resolution=False)
+    check_report(sim, report)
+    findings = report.by_code('port_aperture_snap')
+    assert [(i.source, i.scope, i.subjects) for i in findings] == [
+        ('judge_realization', 'object', ('waveguide_port[0]',))]
+    assert findings[0].region is not None
+
+
+def test_s2_coax_gate_retains_sheet_subjects(monkeypatch):
+    from rfx.preflight import pec_geometry
+    from tests._coax_msl_instrument_fixture import build_instrument_junction, instrument_kwargs
+
+    sim = build_instrument_junction()
+    original = pec_geometry._warn_sheet_effective_size
+    retained = []
+
+    def capture(warn, *args, **kwargs):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            original(warnings, *args, **kwargs)
+        for item in caught:
+            retained.append(item.message)
+            warn.warn(item.message)
+
+    class ReachedGate(Exception):
+        pass
+
+    def gate(issues, **kwargs):
+        finding, = [i for i in issues if i.code == 'sheet_effective_size']
+        warning, = [w for w in retained if w.code == 'sheet_effective_size']
+        assert finding.scope == warning.scope == 'object'
+        assert finding.subjects == warning.subjects
+        assert finding.subjects
+        assert finding._subjects is warning._subjects
+        assert finding._region is warning._region
+        raise ReachedGate
+
+    monkeypatch.setattr(pec_geometry, '_warn_sheet_effective_size', capture)
+    monkeypatch.setattr(sim, '_run_preflight_gate', gate)
+    kwargs = instrument_kwargs(n_steps=1)
+    kwargs['skip_preflight'] = False
+    with pytest.raises(ReachedGate):
+        sim.compute_coax_msl_transition(**kwargs)
+
+
+def test_s2_lumped_label_rows_do_not_change_findings(monkeypatch):
+    from rfx.model import realization_placements
+
+    def findings():
+        sim = _s2_subject_scene(lumped=True)
+        sim.preflight(check_ntff=False, check_resolution=False)
+        table = sim._campaign_ctx()._realized.realization_table
+        return table, [(f.code, f.severity, str(f)) for f in table.findings]
+
+    with_rows, before = findings()
+    assert any(code == 'realization' for code, _, _ in before)
+    row = with_rows.row('lumped_rlc[0]')
+    assert row.status == 'not represented'
+    assert row.axes == row.regions == row.traced_inputs == ()
+    assert row.family == 'lumped_rlc'
+    monkeypatch.setattr(realization_placements, 'label_rows', lambda sim: [])
+    without_rows, after = findings()
+    assert all(r.label != 'lumped_rlc[0]' for r in without_rows.rows)
+    assert after == before
 
 
 def test_scene_code_coverage(request):

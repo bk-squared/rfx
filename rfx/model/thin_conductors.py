@@ -508,6 +508,7 @@ def warn_dc_films(sim, warn):
     prepared = legacy_table_ready(sim._campaign_ctx())
     from rfx.model.film_geometry import diagnostic_film_footprints, check_film_area
     from rfx.preflight._subjects import finding_subjects
+    from rfx.preflight._realization_subjects import retained_subjects
     conductors, films = diagnostic_film_footprints(sim, grid)
     for i, tc in enumerate(conductors):
         if tc.is_pec or tc.surface_impedance_f0 is not None:
@@ -523,6 +524,7 @@ def warn_dc_films(sim, warn):
                     for finding in table.findings:
                         if finding.code == "dc_film_area" and finding.loc == f"thin_conductors[{i}]":
                             warnings.warn(PreflightWarning(str(finding), code=finding.code,
+                                **retained_subjects(finding),
                                 severity=finding.severity, source=finding.source, loc=finding.loc))
                 elif i in films:
                     check_film_area(tc.shape, grid, films[i], snap=sim._snap)
@@ -546,8 +548,10 @@ def warn_dc_films(sim, warn):
                     loc=f'thin_conductors[{i}]'))
             for finding in findings:
                 message = finding.message
+                annotations = (retained_subjects(message) if message.scope == "object" else
+                               finding_subjects(sim, objects=(("_thin_conductors", i),)))
                 warn.warn(PreflightWarning(str(message), code=message.code,
-                    **finding_subjects(sim, objects=(("_thin_conductors", i),)),
+                    **annotations,
                     severity=message.severity, source=message.source,
                     loc=f'thin_conductors[{i}]'))
 
