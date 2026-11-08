@@ -119,3 +119,38 @@ def port_table(grid, specs, *, nu, boundary, dtype):
     return sample_table(tuple(replace(o, channels=tuple(
         c for c in o.channels if c.sample_stage == 'post-injection')) for o in owners),
         dtype=dtype)
+
+
+def plan_port_owners(plan, specs):
+    """Select the plan's port owners in spec order, by each spec's port index."""
+    owners = {o.id: o for o in plan.owners if o.kind in ('wire', 'lumped')}
+    selected = []
+    for _, _, kind, mid, port_id in specs:
+        key = f'port:{port_id}:mode:0'
+        if key not in owners:
+            raise ValueError(f'{key}: the measurement plan has no owner for this port')
+        owner = owners[key]
+        channels = tuple(c for c in owner.channels if c.sample_stage == 'post-injection')
+        names = tuple(c.name for c in channels)
+        expected = ('V', 'I', 'V_port') if kind == 'wire' else ('V', 'I')
+        if names != expected:
+            raise ValueError(f'{key}: plan channel order {names}, expected {expected}')
+        actual = tuple((n.i, n.j, n.k) for n in channels[0].nodes)
+        if actual != (tuple(mid),):
+            raise ValueError(f'{key}: plan midpoint {actual}, runner midpoint {tuple(mid)}')
+        selected.append(owner)
+    return tuple(selected)
+
+
+def plan_tables(plan, *, n_probes, port_specs, dtype):
+    """Compile the step's probe and port tables from the attached plan's owners."""
+    from dataclasses import replace
+    probes = tuple(o for o in plan.owners if o.kind == 'probe')
+    if len(probes) != n_probes:
+        raise ValueError(f'the measurement plan has {len(probes)} probe owners; '
+                         f'the runner records {n_probes} probes')
+    owners = plan_port_owners(plan, port_specs)
+    return dict(probe_table=sample_table(probes, dtype=dtype), port_owners=owners,
+                port_table=sample_table(tuple(replace(o, channels=tuple(
+                    c for c in o.channels if c.sample_stage == 'post-injection')) for o in owners),
+                    dtype=dtype))

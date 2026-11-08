@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax.numpy as jnp
 
@@ -315,6 +315,7 @@ def _build_nu_scan(
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
     design_box=None,
+    measurement=None,
 ) -> _NUScanSetup:
     """Build the NU scan carry + step function (pure code motion).
 
@@ -580,6 +581,18 @@ def _build_nu_scan(
         "sheet_coeffs": sheet_coeffs if use_sheet_impedance else None,
         "design_box_coeffs": design_box_coeffs,
     }
+    plan_owners = None
+    if measurement is not None:
+        # The attached plan's owners, compiled once outside the traced step.
+        import jax
+        from rfx.measurement.projector import plan_tables
+        with jax.ensure_compile_time_eval():
+            tables = plan_tables(measurement, n_probes=len(prb_meta),
+                                 port_specs=graded_specs(wire_ports), dtype=state.ex.dtype)
+        invariants["probe_table"] = tables["probe_table"]
+        if wire_ports:
+            invariants["port_table"] = tables["port_table"]
+        plan_owners = tables["port_owners"]
 
     ctx = GradedStepContext(
         use_lumped_rlc=use_lumped_rlc,
@@ -628,7 +641,9 @@ def _build_nu_scan(
         _accumulate_cm=_accumulate_cm if use_current_moments else None,
         emit_time_series=emit_time_series,
     )
-    step = make_graded_step(ctx)
+    step: Any = make_graded_step(ctx)
+    if plan_owners is not None:
+        step.port_owners = plan_owners
 
     return _NUScanSetup(
         step_fn=partial(step, invariants=invariants),

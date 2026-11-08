@@ -236,6 +236,8 @@ def _forward_from_materials(
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(self, conductors, n_steps=n_steps, path=lane or 'fwd_uniform',
                        frequencies=port_s11_freqs,
+                       default_probes=() if self._probes else tuple(
+                           (i, p.position, p.component) for i, p in enumerate(self._ports)),
                        overrides={**(monitor_overrides or {}), 'design_box': design_box,
                                   'design_occupancy': design_occupancy})
     _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing

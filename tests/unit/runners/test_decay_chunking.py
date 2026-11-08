@@ -116,6 +116,9 @@ def _run(
             # The frozen reference accepts bool only; this fixture requests none.
             assert not any(kwargs["record_dft"])
             kwargs["record_dft"] = False
+        if driver is run_until_decay_reference:
+            # The frozen reference keeps its own probe formation (no plan input).
+            kwargs.pop("measurement", None)
         if captured["family_peaks"] is not None:
             kwargs["family_peaks"] = captured["family_peaks"]
         captured["grid"], captured["materials"] = args[:2]

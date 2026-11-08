@@ -80,8 +80,8 @@ def test_conformal_zero_edges_are_exactly_zero_after_steps():
     original_invariants = uniform_setup.core_step_invariants
     original_scan = jax.lax.scan
 
-    def remember(ctx):
-        invariants = original_invariants(ctx)
+    def remember(ctx, **kwargs):
+        invariants = original_invariants(ctx, **kwargs)
         weights.extend(ctx.materials.components.tensor.conformal_weights)
         masks.extend(invariants['conformal_zero_masks'])
         return invariants

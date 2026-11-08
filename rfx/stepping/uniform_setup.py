@@ -819,21 +819,23 @@ def _build_step_setup(
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,
-                   *, design_hook=None, hooks=None):
+                   *, design_hook=None, hooks=None, measurement=None, dtype=None):
     """Compose the uniform step; retain the runner and adjoint call signatures.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` yielding
     ``(new_carry, probe_out, extras)``. The design callback attaches immediately
     after the E update; optional hook attachments use the transient uniform frame.
+    An attached ``measurement`` plan supplies the probe and port tables.
     """
     from rfx.stepping.uniform import make_uniform_step
     if invariants is None:
-        invariants = core_step_invariants(ctx)
+        invariants = (core_step_invariants(ctx) if measurement is None else
+                      core_step_invariants(ctx, measurement=measurement, dtype=dtype))
     return make_uniform_step(invariants["ctx"], invariants,
                              design_hook=design_hook, hooks=hooks)
 
 
-def core_step_invariants(ctx: _StepContext) -> dict:
+def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> dict:
     """What :func:`make_core_step`'s kernel reads besides its arguments.
 
     ``ctx`` itself plus arrays derived from it once, before the loop: the
@@ -842,6 +844,8 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     (:func:`rfx.core.jax_utils.split_loop_invariants`) and hands the rebuilt
     dict to ``make_core_step(ctx, invariants=...)`` inside the trace, so they
     are not compiled into the program as grid-sized constants.
+    With an attached ``measurement`` plan, the probe and port tables are
+    compiled from its owners once here, in ``dtype``, before the loop.
     """
     from rfx.model.materials import with_components
     ctx = replace(ctx, materials=with_components(ctx.materials, ctx.grid, periodic=ctx.periodic))
@@ -888,6 +892,14 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     ctx, e_loss = cpml_context(ctx)
     from rfx.boundaries.pmc import magnetic_update_factors
     magnetic_factors = magnetic_update_factors(ctx.pmc_faces_frozen, ctx.grid.shape, ctx.periodic)
-    return {"magnetic_factors": magnetic_factors, "ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
-            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
-            "conformal_zero_masks": conformal_zero_masks}
+    invariants = {"magnetic_factors": magnetic_factors, "ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
+                  "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
+                  "conformal_zero_masks": conformal_zero_masks}
+    if measurement is not None:
+        from rfx.measurement.projector import plan_tables
+        from rfx.measurement.time_records import uniform_specs
+        specs = uniform_specs(ctx)
+        tables = plan_tables(measurement, n_probes=len(ctx.prb_meta), port_specs=specs, dtype=dtype)
+        invariants.update({key: tables[key] for key, used in
+                           (('probe_table', ctx.prb_meta), ('port_table', specs)) if used})
+    return invariants

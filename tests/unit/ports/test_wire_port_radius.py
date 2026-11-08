@@ -124,7 +124,7 @@ def test_radius_none_full_field_history_is_bit_identical(lane, monkeypatch):
 
     if lane == "uniform":
         original = uniform_loop.make_core_step
-        monkeypatch.setattr(uniform_loop, "make_core_step", lambda ctx: wrap(original(ctx)))
+        monkeypatch.setattr(uniform_loop, "make_core_step", lambda ctx, **kwargs: wrap(original(ctx, **kwargs)))
     else:
         original = nu._build_nu_scan
 
