@@ -12,7 +12,7 @@ def test_default_plane_wave_until_decay(record_property):
     """
     sim = Simulation(
         freq_max=15e9, domain=(0.036, 0.024, 0.003), dx=1e-3, cpml_layers=8,
-        boundary=BoundarySpec(x="cpml", y="cpml", z="periodic"),
+        boundary=BoundarySpec(x="cpml", y="periodic", z="periodic"),
     )
     sim.add_tfsf_source(f0=8e9, bandwidth=0.5, margin=4,
                         polarization="ez", direction="+x")

@@ -1,4 +1,4 @@
-### Fixed — run(until_decay=) stops on an open plane wave with the default pulse (#1949)
+### Fixed — run(until_decay=) stops on an open plane wave with the default pulse (#1952)
 
 The default TF/SF pulse (differentiated Gaussian) now uses GaussianPulse's continuous,
 charge-free start instead of starting with a jump of 7.4e-4 of its amplitude. The jump
