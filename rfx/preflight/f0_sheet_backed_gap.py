@@ -3,25 +3,11 @@
 import jax
 import numpy as np
 
+from rfx.boundaries.pec import resolve_wall_faces, wall_edge_masks
 from rfx.model.conductors import SheetConductors
 from rfx.preflight._common import PreflightWarning
 from rfx.preflight._subjects import finding_subjects
 from rfx.preflight.realization import _shift_back_np
-
-
-def _pec_edges_with_faces(sim, root):
-    """Include domain edges zeroed after the sheet update, too."""
-    edges = [edge.copy() for edge in root.edges]
-    for axis, name in enumerate("xyz"):
-        boundary = getattr(sim._boundary_spec, name)
-        for side, index in (("lo", 0), ("hi", root.grid.shape[axis] - 1)):
-            if getattr(boundary, side) == "pec":
-                section = [slice(None)] * 3
-                section[axis] = index
-                for component in range(3):
-                    if component != axis:
-                        edges[component][tuple(section)] = True
-    return tuple(edges)
 
 
 def _conductor_nodes(root, edges, axis):
@@ -75,7 +61,8 @@ def _validate_cfg_f0_sheet_backed_gap(self, _w):
     root = ctx.realized()
     if root is None:
         return  # The assembly check reports the refusal.
-    edges = _pec_edges_with_faces(self, root)
+    faces = wall_edge_masks(root.grid.shape, resolve_wall_faces(root.grid, root.periodic)[0])
+    edges = tuple(edge | face for edge, face in zip(root.edges, faces, strict=True))
     walls = {}
     for (index, tc), spec in zip(sheets, root.sheet_impedance, strict=True):
         axis = int(spec.normal_axis)
@@ -85,10 +72,17 @@ def _validate_cfg_f0_sheet_backed_gap(self, _w):
         with jax.ensure_compile_time_eval():
             selected = SheetConductors((spec,), root.periodic)
             bare = selected.sheet_context(None)
-            live = selected.sheet_context(edges)
-        owned = sum(np.count_nonzero(np.asarray(getattr(bare, f"mask_e{a}")) &
-                                    ~np.asarray(getattr(live, f"mask_e{a}")))
-                    for a in "xyz")
+            live = selected.sheet_context(root.edges)
+        owned = 0
+        for a in "xyz":
+            coincident = (np.asarray(getattr(bare, f"mask_e{a}")) &
+                          ~np.asarray(getattr(live, f"mask_e{a}")))
+            # A rim touching a perpendicular PEC wall has zero tangential E
+            # in the continuum too. Read end rows before PEC removes them.
+            boundary_rows = getattr(bare, f"end_e{a}")
+            if boundary_rows is not None:
+                coincident &= ~np.asarray(boundary_rows)
+            owned += np.count_nonzero(coincident)
         if axis not in walls:
             walls[axis] = _conductor_nodes(root, edges, axis)
         # PEC-owned starting columns are coincident, not a field gap.

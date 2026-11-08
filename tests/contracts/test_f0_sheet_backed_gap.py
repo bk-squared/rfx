@@ -55,7 +55,8 @@ def test_s1_coincident_box_face_fires():
     sim = Simulation(freq_max=10e9, domain=(10*MM,)*3, dx=MM,
                      boundary="cpml", cpml_layers=2, snap="declared")
     sim.add(Box((2*MM, 2*MM, 2*MM), (8*MM, 8*MM, 4*MM)), material="pec")
-    _sheet(sim, 2, 4*MM)
+    # Keep all 84 Box-face edges inside the sheet, away from its boundary rows.
+    _sheet(sim, 2, 4*MM, lo=(MM, MM, 4*MM), hi=(9*MM, 9*MM, 4*MM))
     hit, = sim.preflight().by_code(CODE)
     assert "case C: 84 PEC-owned tangential edges" in str(hit)
     assert "sheet's loss is absent where PEC owns its edges" in str(hit)
@@ -76,12 +77,31 @@ def test_s2_open_side_quiet(scene):
     assert sim.preflight().by_code(CODE) == []
 
 
+def test_s2_leontovich_transmission_quiet():
+    domain = (10*MM, 2*MM, 2*MM)
+    sim = Simulation(freq_max=12e9, domain=domain, dx=0.5*MM,
+                     boundary=BoundarySpec(x="cpml", y="pmc", z="pec"),
+                     cpml_layers=2)
+    _sheet(sim, 0, 5*MM, lo=(0, 0, 0), hi=domain)
+    assert sim.preflight().by_code(CODE) == []
+
+
+def test_s2_perpendicular_pec_box_walls_quiet():
+    sim = Simulation(freq_max=10e9, domain=(10*MM,)*3, dx=MM,
+                     boundary="cpml", cpml_layers=2, snap="declared")
+    for low, high in ((1, 3), (7, 9)):
+        sim.add(Box((low*MM, MM, MM), (high*MM, 9*MM, 9*MM)), material="pec")
+    _sheet(sim, 2, 5*MM, lo=(3*MM, 2*MM, 5*MM), hi=(7*MM, 8*MM, 5*MM))
+    assert sim.preflight().by_code(CODE) == []
+
+
 def test_s3_graded_y_cavity_fires():
     hits = _cavity(1, graded=True).preflight().by_code(CODE)
     assert len(hits) == 2
     assert all("case G" in str(hit) for hit in hits)
     for hit in hits:
-        assert min(float(v) for v in re.findall(r"distance ([0-9.e+-]+) m", str(hit))) == pytest.approx(MM)
+        distances = sorted(float(v) for v in re.findall(r"distance ([0-9.e+-]+) m", str(hit)))
+        assert distances == pytest.approx([1e-3, 10e-3])
 
 
 def test_other_f0_planes_are_conductors():

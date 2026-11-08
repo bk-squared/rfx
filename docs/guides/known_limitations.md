@@ -22,15 +22,6 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
-### An f0 surface-impedance sheet with a conductor on both sides gives no conductor loss for fields with E normal to it
-
-Tracker: #2429
-
-In a 30 x 12 x 24 mm cavity, the y wall pair gave Q about 1.1e6 against 1624.
-The sheet loads tangential E only; fields with E normal to it can bypass its loss.
-Preflight warns when realized conductors bound both sides, or PEC owns the sheet's edges.
-Until wall loss on conductor faces exists, use a thick lossy Box for a lossy wall.
-
 ### Traced full-tensor CPU builds on older jaxlib issue pieces serially
 
 Tracker: #2095
@@ -171,6 +162,8 @@ both f0 sheets (copper, and ten times copper's resistance), with the E between t
 power equalled radiated, substrate and sheet power within 3×10⁻⁴ of the input (both measured; records kept with the
 project). Other spacings between a sheet and a lossless conductor behind it were not measured. For a wall one cell in
 front of a PEC face that must carry loss for every field orientation, use a PEC wall or a thick lossy Box.
+Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
+from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
