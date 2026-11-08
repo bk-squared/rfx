@@ -255,6 +255,16 @@ Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
+### A material gradient through `forward()` needs `skip_preflight=True` until preflight reads a traced permittivity.
+
+Tracker: #2436
+
+`jax.grad`, `jax.jit` and `jax.vmap` over a material's `eps_r` now run through `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"` (uniform mesh); `"full_tensor"` refuses a traced `eps_r` (#2441; see the full-tensor entry on moving a box face across a grid node).
+With the default `skip_preflight=False`, `forward()` with a traced `eps_r` still stops in preflight with a `ConcretizationTypeError` at `rfx/preflight/mesh.py:295`, smoothing on or off: the mesh check reads the permittivity as a Python number.
+Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a concrete value.
+Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
+Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
+
 ### Subpixel smoothing does not see a gap thinner than half a cell between two dielectric volumes.
 
 Tracker: #2397
@@ -290,9 +300,11 @@ outward changes the summed squared probe loss by 1.5 % at box εr 4 and 15 % at 
 nothing. The same tie falls on the bisector plane of every box edge, so a face off the nodes is no remedy (6.2 % at
 εr 10 with no face on a node). Two boxes whose coordinates differ only by floating-point rounding can therefore give
 results that differ by percent, a shape gradient across such a position is the derivative of a jump, and a `jax.jit`
-or `jax.grad` run can solve another model than the plain run (loss 8.8×10⁻³ apart with a traced sphere radius beside
-an εr 4 box). `subpixel_smoothing=True` and `"kottke_pec"` are continuous at these positions. Which side is the right
-model is not established. What to do: for a geometry or gradient study, use `subpixel_smoothing=True`, or check a
+or `jax.grad` run can solve another model than the plain run: under a trace the build runs in float32 and a face on a
+node falls on the other side (plain and `jax.jit` losses 8.8×10⁻³ apart with a traced permittivity on an εr 4 box,
+9.7×10⁻⁴ with a traced sphere radius beside an εr 2 box). A traced permittivity with `"full_tensor"` is therefore
+refused by name; use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
+`subpixel_smoothing=True` and `"kottke_pec"` are continuous at these positions. Which side is the right model is not established. What to do: for a geometry or gradient study, use `subpixel_smoothing=True`, or check a
 full-tensor result with its box faces moved by a small fraction of a cell.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.

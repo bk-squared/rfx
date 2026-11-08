@@ -112,7 +112,6 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     SDF cell-length rule. Outside media are sampled beyond the surface,
     excluding only the normal-source (SDF shape, image), as for Yee operands.
     """
-    from collections import OrderedDict
     from rfx.geometry.rasterize_grid import (
         coords_from_uniform_grid, coords_from_nonuniform_grid, centres_from_nonuniform_grid,
     )
@@ -158,10 +157,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     guard_count = xp.asarray(0, dtype=xp.int32)
     bulk = xp.ones(grid.shape, dtype=bool)
     mid_bulk = [bulk.copy() for _ in range(3)]
-    groups = OrderedDict()
-    for shape, eps in shapes:
-        groups.setdefault(eps, []).append(shape)
-    for eps, group in groups.items():
+    groups = smooth._medium_groups(shapes)
+    for key, (eps, group) in groups.items():
         for shape in group:
             if smooth._has_sdf(shape):
                 continue
@@ -181,7 +178,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         length = (smooth._normal_cell_length(xp, fill_length, ns) if graded
                   else uniform_cell(grid))
         outside = smooth._bulk_outside(
-            xp, groups, eps, nodes, signed_distance, ns, length,
+            xp, groups, key, nodes, signed_distance, ns, length,
             background_eps, masks, grid, normal_source=source,
             normal_image=source_image)
         inv_perp = f / eps + (1.0 - f) / (outside + 1e-30)
