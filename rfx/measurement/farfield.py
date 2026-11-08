@@ -1073,18 +1073,6 @@ def polarization_sense(ff: FarFieldResult) -> np.ndarray:
     return np.sign(S3).astype(int)
 
 
-# Lazy compatibility exports keep record definitions free of import cycles.
-_LAZY_EXPORTS = {
-    "compute_far_field": "rfx.measurement.farfield",
-    "compute_far_field_jax": "rfx.measurement.farfield",
-}
-
-
-def __getattr__(name):
-    from rfx._moved_names import resolve_moved
-    return resolve_moved(__name__, _LAZY_EXPORTS, name)
-
-
 """Far-field transforms of near-to-far-field surface records."""
 
 

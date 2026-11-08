@@ -122,7 +122,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/boundaries/upml.py", "_sigma_profile_1d"): _C0,
     ("rfx/boundaries/upml.py", "init_upml._h_coeffs"):
         "UPML's H coefficients: the PML loss sigma_perp*dt/(2*EPS_0)",
-    ("rfx/current_moments.py", "accumulate_current_moments"):
+    ("rfx/measurement/current_moments.py", "accumulate_current_moments"):
         "EPS_0/dt multiplies a field difference (displacement current)",
     ("rfx/measurement/current_moments.py", "end_of_record_moments"): _HOST,
     ("rfx/floquet.py", "extract_floquet_modes"): _C0,
