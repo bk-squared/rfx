@@ -2,6 +2,8 @@
 import jax
 import jax.numpy as jnp
 
+from rfx.errors import RfxRefusal
+
 
 def refuse_partial_wire_reference_planes(ports):
     """Require all wire ports in S order to share the plane-wave opt-in."""
@@ -11,7 +13,7 @@ def refuse_partial_wire_reference_planes(ports):
             target = opted if port.reference_plane_cells is not None else not_opted
             target.append(str(index))
     if opted and not_opted:
-        raise ValueError(
+        raise RfxRefusal(
             "reference_plane_cells must be set on every wire port of the "
             f"S-parameter solve: set on port(s) {', '.join(opted)}, "
             f"not on port(s) {', '.join(not_opted)}; "
