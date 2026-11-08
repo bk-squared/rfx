@@ -209,6 +209,11 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
             deliver_findings(table, findings)
         return
     smoothing, conformal = options or (False, False)
+    kinds = axis_kinds(grid_face_depths(conductors.grid))
+    table.early_domain_axes.update(axis for axis, kind in kinds.items()
+        if getattr(sim, f"_d{axis}_profile") is None)
+    if sim._dz_profile is not None:
+        table.early_domain_axes.add("z")
     if not finished:
         for owner in (sim, conductors.grid, sim._unresolved_domain):
             for row, finding in early_outcomes(owner).values():
@@ -220,11 +225,6 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
                     table.legacy_rows.append(row)
                     table.judged.add(row.label)
                     table.findings.append(finding)
-        kinds = axis_kinds(grid_face_depths(conductors.grid))
-        table.early_domain_axes.update(axis for axis, kind in kinds.items()
-            if getattr(sim, f"_d{axis}_profile") is None)
-        if sim._dz_profile is not None:
-            table.early_domain_axes.add("z")
         for row in table.rows:
             if row.traced_inputs:
                 continue
