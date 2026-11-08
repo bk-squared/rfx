@@ -2561,7 +2561,8 @@
       "surface_impedance_f0"
     ],
     "add_vector_probe": [
-      "position"
+      "position",
+      "allow_in_absorber"
     ],
     "add_waveguide_port": [
       "x_position",
