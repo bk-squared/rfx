@@ -241,10 +241,11 @@ JAX_PINS = {"jax": "==0.10.2", "jaxlib": "==0.10.2"}
         ("pr-tests.yml", "guards-and-preflight", "3.11", "dev", JAX_PINS),
         ("validation.yml", "slow-tests", "3.11", "dev", JAX_PINS),
         ("validation.yml", "three-device", "3.11", "dev", JAX_PINS),
+        ("validation.yml", "docs-blocks", "3.11", "dev,cad,visualization", JAX_PINS),
         ("regen-durations.yml", "fast", "3.11", "dev,cad", JAX_PINS),
         ("regen-durations.yml", "slow", "3.11", "dev", JAX_PINS),
     ],
-    ids=["required-fast", "guards", "weekly-slow", "weekly-three-device", "durations-fast", "durations-slow"],
+    ids=["required-fast", "guards", "weekly-slow", "weekly-three-device", "weekly-docs-blocks", "durations-fast", "durations-slow"],
 )
 def test_cpu_suite_python_and_jax_pins(
     workflow: str, job_name: str, python_version: str, extras: str, expected_pins: dict,
@@ -270,6 +271,17 @@ def test_cpu_suite_python_and_jax_pins(
     assert all(requirement.marker is None for requirement in requirements), installs[0]
     assert len(requirements) == len(expected_pins), installs[0]
     assert {r.name: str(r.specifier) for r in requirements} == expected_pins, installs[0]
+
+
+def test_weekly_docs_blocks_are_strict_and_reported() -> None:
+    jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
+    assert "docs-blocks" in jobs
+    assert "docs-blocks" in jobs["notify"]["needs"]
+    runs = [shlex.split(run, comments=True) for run in run_blocks(jobs["docs-blocks"])]
+    runner = [args for args in runs
+              if args[:2] == ["python", "scripts/docs/check_public_docs_blocks.py"]]
+    assert len(runner) == 1, runs
+    assert "--strict" in runner[0]
 
 
 def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:

@@ -258,6 +258,7 @@ def test_only_the_latest_jax_dispatch_switch_skips_a_job() -> None:
         "slow-tests": ONLY_LATEST_JAX_SKIP,
         "three-device": ONLY_LATEST_JAX_SKIP,
         "latest-jax": None,
+        "docs-blocks": ONLY_LATEST_JAX_SKIP,
         "notify": "${{ always() && !inputs.only_latest_jax }}",
     }
 
