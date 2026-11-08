@@ -409,10 +409,9 @@ What to do: size a run on three or more GPUs in one process from its two-GPU pea
 Tracker: #2472
 
 On two RTX A6000 GPUs a 236³-cell (13 M) closed PEC box driven by a TF/SF plane wave takes 2.010 ms per step, against
-1.801 ms before the shared multi-device time step (#2413; medians of three processes). The same box with CPML is 3.4 %
+1.801 ms before the shared multi-device time step (medians of three processes). The same box with CPML is 3.4 %
 slower (3.293 to 3.405 ms per step). Field values are unchanged. Two whole-field copies before the PEC wall write take
 most of the difference; removing them recovered only 0.043 ms per step, for a reason not yet measured.
-→ [#2472](https://github.com/bk-squared/rfx/issues/2472)
 
 ### A preflight keeps its whole-domain realization arrays until the Simulation is deleted
 
