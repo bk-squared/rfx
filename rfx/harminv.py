@@ -24,49 +24,11 @@ import numpy as np
 from scipy.signal import decimate as scipy_decimate
 
 
-DECIMATION_GUARD = 8
-_MAX_DECIMATION_STAGE = 13
-_FIR_HALF_OUTPUT_SAMPLES = 10
-_MIN_PENCIL_SAMPLES = 10
-
-
-def _pencil_columns(n_samples: int, pencil_parameter: float) -> int:
-    """The same clamped pencil shape for planning and the actual solve."""
-    return max(4, min(int(n_samples * pencil_parameter), n_samples - 2))
-
-
-def _decimation_plan(n_samples: int, dt: float, f_max: float,
-                     decimate: str | bool, *, pencil_parameter: float = 0.33,
-                     max_modes: int = 50) -> tuple[tuple[int, ...], int]:
-    """Preserve requested pencil capacity as well as finite FIR support.
-
-    A K-pole pencil needs at least K rows and columns. Leave one additional
-    singular direction for the relative rank cut, up to max_modes poles.
-    If the original record/shape cannot provide that capacity, preserve what
-    it already has; preprocessing cannot supply missing information. This
-    also respects the core's historical clamp for extreme pencil fractions.
-    """
-    if decimate not in ("auto", False):
-        raise ValueError("decimate must be 'auto' or False")
-    if n_samples < _MIN_PENCIL_SAMPLES:
-        return (), n_samples
-    columns = _pencil_columns(n_samples, pencil_parameter)
-    capacity = min(max_modes + 1, columns, n_samples - columns)
-    factors = []
-    if decimate == "auto" and 1.0 / dt > DECIMATION_GUARD * f_max:
-        target = int(1.0 / dt / (4.0 * f_max))
-        for factor in _decimation_factors(target):
-            kept = (n_samples + factor - 1) // factor - 2 * _FIR_HALF_OUTPUT_SAMPLES
-            columns = _pencil_columns(kept, pencil_parameter)
-            if (kept < _MIN_PENCIL_SAMPLES
-                    or min(columns, kept - columns) < capacity):
-                # Default p=.33/K=50 needs 155 retained samples. A rejected
-                # stage (q<=13) therefore leaves at most 2262 inputs to the
-                # core. Other requested pencil shapes/ranks change that bound.
-                break
-            factors.append(factor)
-            n_samples = kept
-    return tuple(factors), n_samples
+from rfx.measurement.matrix_pencil import (
+    DECIMATION_GUARD, _MAX_DECIMATION_STAGE, _FIR_HALF_OUTPUT_SAMPLES,
+    _MIN_PENCIL_SAMPLES, _pencil_columns, _decimation_factors, _decimation_plan,
+    _decimate, _pencil, _to_original_rate, _fit_residues,
+)
 
 
 def matrix_pencil_record_duration(n_samples: int, dt: float, f_max: float, *,
@@ -119,12 +81,7 @@ def _fit_mode_amplitudes(signal: np.ndarray, poles: np.ndarray,
     nearly coincident poles physically distinguishable. lstsq's numerical
     rank cutoff handles singular systems without forming normal equations.
     """
-    times = np.arange(len(signal)) * dt
-    reference = np.where(poles.real > 0, times[-1], 0.0)
-    basis = np.exp((times[:, None] - reference) * poles)
-    norms = np.linalg.norm(basis, axis=0)
-    coefficients = np.linalg.lstsq(basis / norms, signal, rcond=None)[0] / norms
-    return coefficients * np.exp(-reference * poles)
+    return _fit_residues(np.asarray(signal)[:, None], poles, dt)[:, 0]
 
 
 def matrix_pencil(
@@ -216,67 +173,18 @@ def matrix_pencil(
     factors, _ = _decimation_plan(len(y), dt, f_max, decimate,
                                  pencil_parameter=pencil_parameter,
                                  max_modes=max_modes)
-    for factor in factors:
-        # A symmetric FIR of order 20*q has support [-10*q, +10*q]
-        # in input samples. At output k (input centre k*q), precisely
-        # k=10 .. ceil(N/q)-11 have their whole support inside the record.
-        # Pin the order explicitly rather than depending on SciPy defaults.
-        half = _FIR_HALF_OUTPUT_SAMPLES
-        y = scipy_decimate(y, factor, n=2 * half * factor,
-                           ftype="fir", zero_phase=True)[half:-half]
-        dt *= factor
-
-    N = len(y)
-    if N < _MIN_PENCIL_SAMPLES:
+    Yd = _decimate(y[:, None], factors, decimate_fn=scipy_decimate)
+    if len(Yd) < _MIN_PENCIL_SAMPLES:
         return []
-
-    # Pencil parameter L: matrix size
-    L = _pencil_columns(N, pencil_parameter)
-
-    # Build Hankel matrices Y0 and Y1
-    # Y0[i,j] = y[i+j],     i=0..N-L-1, j=0..L-1
-    # Y1[i,j] = y[i+j+1],   same indices
-    M = N - L
-    Y0 = np.zeros((M, L), dtype=np.complex128)
-    Y1 = np.zeros((M, L), dtype=np.complex128)
-    for j in range(L):
-        Y0[:, j] = y[j:j+M]
-        Y1[:, j] = y[j+1:j+1+M]
-
-    # SVD of Y0 to determine rank
-    U, sv, Vh = np.linalg.svd(Y0, full_matrices=False)
-
-    # Determine effective rank from singular values
-    sv_norm = sv / sv[0] if sv[0] > 0 else sv
-    rank = max(1, int(np.sum(sv_norm > sv_threshold)))
-    rank = min(rank, max_modes, len(sv))
-
-    # Truncate to rank
-    U1 = U[:, :rank]
-    sv_trunc = sv[:rank]
-    sv_trunc = np.where(sv_trunc > 1e-30, sv_trunc, 1e-30)  # guard zeros
-    V1h = Vh[:rank, :]
-
-    # Matrix pencil: Z = S_inv @ U^H @ Y1 @ V^H @ S_inv
-    # Eigenvalues of Z are z_k = exp(s_k * dt)
-    S_inv = np.diag(1.0 / sv_trunc)
-    Z_mat = S_inv @ U1.conj().T @ Y1 @ V1h.conj().T
-
-    if not np.all(np.isfinite(Z_mat)):
-        return []
-
+    D = int(np.prod(factors)) if factors else 1
     try:
-        eigenvalues = np.linalg.eigvals(Z_mat)
-    except np.linalg.LinAlgError:
-        return []
-
-    eigenvalues = eigenvalues[np.isfinite(eigenvalues) & (np.abs(eigenvalues) >= 1e-30)]
-    if not len(eigenvalues):
-        return []
-    poles = np.log(eigenvalues) / dt
-    try:
+        kept, _, growing, _, _ = _pencil(
+            Yd, sv_threshold, 0, pencil_parameter=pencil_parameter,
+            max_rank=max_modes)
+        poles, _, eigenvalues = _to_original_rate(
+            np.concatenate([kept, growing]), D, dt, 0.9)
         amplitudes = _fit_mode_amplitudes(amplitude_signal, poles, amplitude_dt)
-    except np.linalg.LinAlgError:
+    except (ValueError, np.linalg.LinAlgError):
         return []
 
     modes = []
@@ -338,20 +246,6 @@ def matrix_pencil(
     # Sort by amplitude
     modes.sort(key=lambda m: m.amplitude, reverse=True)
     return modes[:max_modes]
-
-
-def _decimation_factors(target: int) -> list[int]:
-    """Return the largest <= target factor composed of stages no larger than 13."""
-    for effective_factor in range(target, 1, -1):
-        remainder = effective_factor
-        factors = []
-        for factor in range(_MAX_DECIMATION_STAGE, 1, -1):
-            while remainder % factor == 0:
-                factors.append(factor)
-                remainder //= factor
-        if remainder == 1:
-            return factors
-    return []
 
 
 def _ring_down_modes(series, dt, f_min, f_max, source_decay_time, **matrix_pencil_kwargs):
