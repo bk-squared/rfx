@@ -28,7 +28,7 @@ before any step.
 
 from __future__ import annotations
 
-from rfx.errors import ConfigurationWarning, RfxUnsupported
+from rfx.errors import ConfigurationWarning, RfxRefusal, RfxUnsupported
 
 import functools
 import inspect
@@ -1161,7 +1161,7 @@ def refuse_forward_reference_planes(sim) -> None:
     """Reject the run-only plane declaration before forward lane dispatch."""
     for index, port in enumerate(sim._ports):
         if port.reference_plane_cells is not None:
-            raise ValueError(
+            raise RfxRefusal(
                 "forward() does not form reference-plane S-parameters: "
                 f"add_port(reference_plane_cells=...) is set on port {index}; "
                 "use run(compute_s_params=True) for reference-plane S, "
