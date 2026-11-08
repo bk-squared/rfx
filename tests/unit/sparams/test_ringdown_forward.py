@@ -388,6 +388,9 @@ def test_a_rebuild_that_is_not_the_port_s_v_and_i_is_nan(defect, lane, cells, ji
     assert c > rd.CONSISTENCY_BAR, c
     assert np.isnan(v) and np.isnan(g), (v, g)
     assert np.all(np.asarray(rd_out._status) == rj.STATUS_INCONSISTENT)
+    assert np.isnan(rd_out.poles).all()
+    assert np.isnan(rd_out.poles_long).all()
+    assert np.isnan(rd_out.pole(12.4e9)).all()
 
 
 def test_a_common_one_step_delay_is_refused_by_w0_too(monkeypatch):
@@ -488,14 +491,15 @@ def test_an_x64_run_weights_the_port_dft_in_complex128():
 def _stub_identification(monkeypatch):
     """Poles and tail stubbed out: the check reads only the tail-free S."""
     def poles(identify_window, window, k_max, dt, freqs):
-        rdt, cdt = rj.working_dtypes()
-        return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, rdt),
+        _, cdt = rj.working_dtypes()
+        return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, jnp.int32),
                 jnp.int32(rj.STATUS_OK),
                 jnp.full((np.size(freqs), 4), np.log(rj.INERT_LAMBDA), cdt), jnp.int32(0))
 
     monkeypatch.setattr(rj, "host_poles", poles)
     monkeypatch.setattr(rj, "completion",
-                        lambda y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **k: plain)
+                        lambda y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **k:
+                        (plain, {"s": s0}) if k.get("return_aux") else plain)
 
 
 @pytest.mark.parametrize("jit", [False, True])

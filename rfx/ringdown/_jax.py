@@ -110,7 +110,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     Mask value 2 retains an unresolved pole in the fit but omits its tail. ``window`` is
     ``stop_gradient``-ed here. Returns ``s (k_max,)`` in the working complex
     dtype (the real poles first, then inert ones, ``lambda = 0.5`` per step),
-    ``mask (k_max,)`` in the working real dtype, ``status`` (int32):
+    ``mask (k_max,)`` in int32, ``status`` (int32):
     :data:`STATUS_OK`, :data:`STATUS_FAILED` (the identification raised) or
     :data:`STATUS_OVER_BUDGET` (more than ``k_max`` poles), on either failure
     with an all-zero mask; and ``tail_arg (nf, k_max)``, ``s dt + log z`` at
@@ -179,7 +179,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
 
     # The pole is the unit that crossed from the host: a complex s (1/s) in
     # the working precision.
-    return from_words(s_words), mask_i.astype(rdt), status, from_words(arg_words), count
+    return from_words(s_words), mask_i, status, from_words(arg_words), count
 
 
 # ---------------------------------------------------------------------------
