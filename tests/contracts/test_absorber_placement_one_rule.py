@@ -242,16 +242,19 @@ def test_ringdown_default_probe_keeps_port_opt_in():
     assert sim._probes == []
 
 
-def test_ringdown_run_keeps_port_opt_in():
+@pytest.mark.parametrize("stop", [False, True], ids=["run", "until_identified"])
+def test_ringdown_run_keeps_port_opt_in(stop):
     from rfx import GaussianPulse
     from rfx.ringdown import RingdownSpec
 
     sim = scene("uniform")
     sim.add_port((-.001, .005, .005), extent=.002, allow_in_absorber=True,
                  waveform=GaussianPulse(f0=25e9, bandwidth=1.))
-    result = sim.run(n_steps=128, skip_preflight=True,
+    steps = {"n_steps": 600, "until_identified": True} if stop else {"n_steps": 128}
+    result = sim.run(skip_preflight=True, **steps,
                      s_param_freqs=np.array([10e9]), ringdown=RingdownSpec())
-    assert result.time_series.shape == (128, 0)
+    assert result.time_series.shape[1] == 0
+    assert stop or result.time_series.shape == (128, 0)
     assert sim._probes == []
 
 
