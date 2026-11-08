@@ -771,6 +771,33 @@ def _warn_float32_width_resolution(profile, axis):
             Float32WidthResolutionWarning, stacklevel=user_stacklevel())
 
 
+def _assert_boundary_cells(profile, boundary, axis, *, match_each_other=False):
+    """Match end cells at the caller's precision, with the declared-span floor."""
+    dtype = getattr(profile, "dtype", np.dtype(np.float64))
+    eps = np.finfo(dtype if np.issubdtype(dtype, np.floating) else np.float64).eps
+    boundary = float(boundary)
+    tolerance = max(DECLARED_SPAN_TOL_M, 4 * float(eps) * abs(boundary))
+
+    def _check(lo, hi):
+        ends = ((-1, hi),) if match_each_other else ((0, lo), (-1, hi))
+        for index, cell in ends:
+            if not abs(float(cell) - boundary) <= tolerance:
+                if match_each_other:
+                    raise ValueError(
+                        f"dy_profile boundary cells must match each other "
+                        f"(got lo={boundary}, hi={float(cell)}); "
+                        f"tolerance={tolerance} m."
+                    )
+                detail = " (CPML cells use the boundary spacing)" if index == 0 else ""
+                raise ValueError(
+                    f"d{axis}_profile[{index}]={float(cell)} must equal boundary "
+                    f"dx={boundary}{detail}; tolerance={tolerance} m."
+                )
+
+    from rfx._traced_check import traced_check
+    traced_check("graded mesh", "boundary cells", _check, profile[0], profile[-1])
+
+
 def make_nonuniform_grid(
     domain_xy: tuple[float, float],
     dz_profile: np.ndarray,
@@ -808,8 +835,9 @@ def make_nonuniform_grid(
         absorbing — see ``pec_faces`` / ``pmc_faces``).
     dx_profile, dy_profile : 1D arrays or None
         Optional per-cell x / y spacings for the physical (non-CPML)
-        interior. When provided, the first and last values must match
-        ``dx`` (they set the boundary cell size used by the CPML).
+        interior. Both x ends must match ``dx`` within the profile's dtype
+        resolution (at least 1e-12 m). Concrete y ends must match each
+        other; traced y ends must match ``dx``, the stored boundary width.
     pec_faces, pmc_faces : set of str or None
         Face labels (``x_lo``, ``x_hi``, ``y_lo``, ``y_hi``, ``z_lo``,
         ``z_hi``) where the boundary is PEC / PMC. Per-face pad count
@@ -869,26 +897,15 @@ def make_nonuniform_grid(
         nx_interior = realized_cells(domain_xy[0], dx, kinds["x"])
         dx_prof_phys = np.full(nx_interior, float(dx))
     elif is_tracer(dx_profile):
-        # Tracer path (mesh-as-design-variable): stay in jnp and skip the
-        # concrete boundary validation. Caller is responsible for keeping
-        # `dx_profile[0] == dx_profile[-1] == dx` (the scalar `dx` still
-        # names the boundary cell; the CPML reads the traced end cells
-        # through `boundary_cell`).
+        # With a nominal profile the ends are not checked here: the fixed-cell
+        # check holds them outside a declared window (free inside, or with no
+        # window), and dx agreement is judged where a structure is resolved.
         dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
+        if nominal_profiles is None or "x" not in nominal_profiles:
+            _assert_boundary_cells(dx_prof_phys, dx, "x")
     else:
+        _assert_boundary_cells(dx_profile, dx, "x")
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
-        # Guard: CPML cells must have the same size as the boundary interior
-        # cells, otherwise the CPML σ/κ profile is miscalibrated.
-        if abs(float(dx_prof_phys[0]) - float(dx)) > 1e-12:
-            raise ValueError(
-                f"dx_profile[0]={float(dx_prof_phys[0])} must equal boundary "
-                f"dx={float(dx)} (CPML cells use the boundary spacing)."
-            )
-        if abs(float(dx_prof_phys[-1]) - float(dx)) > 1e-12:
-            raise ValueError(
-                f"dx_profile[-1]={float(dx_prof_phys[-1])} must equal boundary "
-                f"dx={float(dx)}."
-            )
     dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi), periodic="x" in periodic_axes)
     if not is_tracer(dx_full):
         assert_cells_span_declared_profile(
@@ -902,19 +919,17 @@ def make_nonuniform_grid(
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
-        # Tracer path: stay in jnp. The scalar `dy` is the concrete `dx`
-        # (the CPML reads the traced end cells through `boundary_cell`) — the caller must align `dy_profile[0]` and
-        # `dy_profile[-1]` with `dx` (same contract as the concrete path).
+        # With a nominal profile the ends are not checked here: the fixed-cell
+        # check holds them outside a declared window (free inside, or with no
+        # window), and dx agreement is judged where a structure is resolved.
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)
+        if nominal_profiles is None or "y" not in nominal_profiles:
+            _assert_boundary_cells(dy_prof_phys, dy_boundary, "y")
     else:
+        dy_boundary = float(dy_profile[0])
+        _assert_boundary_cells(dy_profile, dy_boundary, "y", match_each_other=True)
         dy_prof_phys = np.asarray(dy_profile, dtype=np.float64)
-        dy_boundary = float(dy_prof_phys[0])
-        if abs(float(dy_prof_phys[-1]) - dy_boundary) > 1e-12:
-            raise ValueError(
-                f"dy_profile boundary cells must match each other "
-                f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
-            )
     dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi), periodic="y" in periodic_axes)
     if not is_tracer(dy_full):
         assert_cells_span_declared_profile(
