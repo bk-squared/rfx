@@ -64,8 +64,8 @@ fd_check(objective, eps0, cell, h=1e-1)
 
 rfx runs in float32 by default, which resolves a loss to about `1e-7` of its
 value. Choose `h` so that the loss change, about `2 h |dL/dp|`, is well above
-that. Here the loss is large and `h = 1e-2` leaves an error of a few percent,
-while `h = 1e-1` agrees to about 0.2 %. For permittivity-like variables, start
+that. Here the loss is large and `h = 1e-2` left an error of 0.7 % on one CPU and
+2.4 % on another, while `h = 1e-1` agrees to about 0.4 %. For permittivity-like variables, start
 between `1e-2` and `1e-1`. If the check still fails, look at the loss scale, the
 run length and the monitor placement before touching optimizer settings.
 

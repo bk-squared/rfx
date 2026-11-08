@@ -54,11 +54,12 @@ print(s1.shape, float(np.max(np.abs(s1 - s2))))
 
 ```text
 2 0.0
-(1, 1, 50) 1.2731557319511921e-07
+(1, 1, 50) 0.0
 ```
 
-Split over two CPU devices, the probe signal is identical to the one-device
-run and S11 differs by 1.3×10⁻⁷: float32 rounding, not a different model.
+Split over two CPU devices, this run's probe signal and S11 are identical to the
+one-device run. A difference at float32 rounding level on another CPU is not a
+different model.
 
 What to know:
 
