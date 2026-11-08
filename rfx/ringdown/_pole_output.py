@@ -186,6 +186,9 @@ class RingdownForwardResult:
                 f"pole_mask={self.pole_mask!r}, pole_mask_long={self.pole_mask_long!r})")
 
 
+RingdownForwardResult.__module__ = "rfx.ringdown"
+
+
 def _register_pytree():
     import jax
     jax.tree_util.register_pytree_node_class(RingdownForwardResult)

@@ -7,9 +7,64 @@ import numpy as np
 import pytest
 
 from rfx import ringdown as rd
+from rfx.ringdown import _jax as rj
 from rfx.measurement.ringdown_resolution import completion_poles
 from tests._x64_compat import enable_x64
 from tests.unit.sparams.test_ringdown_run import _box, FREQS
+
+
+def test_pole_target_refuses_longer_record():
+    with pytest.raises(ValueError, match='pole_target.*against="longer_record"'):
+        rd.gradient_witness(1., 1., pole_target=10., against="longer_record")
+
+
+def test_returned_mask_preserves_unresolved_pole(monkeypatch):
+    def host_poles(identify_window, window, k_max, dt, freqs):
+        _, cdt = rj.working_dtypes()
+        poles = jnp.asarray([-1e7 + 2j * np.pi * 5e9,
+                             -1e7 + 2j * np.pi * 12.4e9,
+                             np.log(rj.INERT_LAMBDA) / dt], cdt)
+        return (poles, jnp.asarray([1, 2, 0], jnp.int32), jnp.int32(rj.STATUS_OK),
+                jnp.zeros((len(freqs), 3), cdt), jnp.int32(2))
+
+    def completion(y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **kw):
+        # Keep the stubbed poles connected to the differentiated record.
+        return plain, {"s": s0 + 0 * jnp.sum(y)}
+
+    monkeypatch.setattr(rj, 'host_poles', host_poles)
+    monkeypatch.setattr(rj, 'completion', completion)
+    sim = _box('uniform')
+    eps = jnp.full(sim._build_grid().shape, 2.2, jnp.float32)
+
+    def loss(x):
+        result = sim.forward(n_steps=600, port_s11_freqs=FREQS, eps_override=eps * x,
+                             ringdown=rd.RingdownSpec(), skip_preflight=True).ringdown
+        return result.pole(12.4e9)[0], result
+
+    (value, result), grad = jax.value_and_grad(loss, has_aux=True)(1.)
+    np.testing.assert_array_equal(result.pole_mask, [1, 2, 0])
+    np.testing.assert_array_equal(result.pole_mask_long, [1, 2, 0])
+    assert np.isnan(value) and np.isnan(grad)
+    assert np.isnan(result.pole(12.4e9)).all()
+    assert 'unresolved' in rd.pole_selection_reason(
+        result.poles, result.pole_mask, 12.4e9, result._pole_window_s())
+
+
+def test_not_completed_poles_keep_nan_gradient(monkeypatch):
+    monkeypatch.setattr(rd, '_refuse_stencil_order', lambda sim, caller: None)
+    sim = _box('uniform', stencil_order=4)
+    eps = jnp.full(sim._build_grid().shape, 2.2, jnp.float32)
+
+    def loss(x):
+        result = sim.forward(n_steps=600, port_s11_freqs=FREQS, eps_override=eps * x,
+                             ringdown=rd.RingdownSpec(), skip_preflight=True).ringdown
+        return jnp.sum(result.poles.real), result
+
+    (value, result), grad = jax.value_and_grad(loss, has_aux=True)(1.)
+    assert np.all(np.asarray(result._status) == rj.STATUS_PRECONDITION)
+    assert result.poles.shape == (1,)
+    assert np.isnan(result.poles).all() and np.isnan(value)
+    assert np.isnan(grad), f'precondition pole gradient must be NaN, got {grad}'
 
 
 @pytest.mark.parametrize('frequencies,masks,reason', [

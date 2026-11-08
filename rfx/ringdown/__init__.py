@@ -2144,6 +2144,7 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     With ``pole_target`` set, a concrete early-start result must select a
     unique pole in BOTH windows. Otherwise the witness cannot judge: its
     value is NaN, ``judged`` and ``ok`` are False, and the note names why.
+    ``pole_target`` with ``against="longer_record"`` raises ``ValueError``.
 
     Both gradients are pytrees of the same structure (the parameters). The
     value is the worst leaf's ``max |grad - grad_other| / max |grad|``.
@@ -2169,6 +2170,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     """
     import jax
 
+    if pole_target is not None and against == "longer_record":
+        raise ValueError('pole_target with against="longer_record" is unsupported')
     if against not in _GRADIENT_WITNESSES:
         raise ValueError(f"against must be one of {sorted(_GRADIENT_WITNESSES)}, "
                          f"got {against!r}")
