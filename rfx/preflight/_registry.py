@@ -249,6 +249,9 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
                 lambda sim, c: sim._validate_cfg_thin_conductor_surface_impedance(
                     c.warn),
                 "pec_geometry"),
+    ConfigCheck("_validate_cfg_f0_sheet_backed_gap",
+                lambda sim, c: sim._validate_cfg_f0_sheet_backed_gap(c.warn),
+                "f0_sheet_backed_gap"),
     ConfigCheck("_validate_cfg_thin_conductor_thickness",
                 lambda sim, c: sim._validate_cfg_thin_conductor_thickness(c.warn),
                 "pec_geometry"),

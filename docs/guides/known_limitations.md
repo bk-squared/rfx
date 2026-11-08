@@ -22,6 +22,15 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### An f0 surface-impedance sheet with a conductor on both sides gives no conductor loss for fields with E normal to it
+
+Tracker: #2429
+
+In a 30 x 12 x 24 mm cavity, the y wall pair gave Q about 1.1e6 against 1624.
+The sheet loads tangential E only; fields with E normal to it can bypass its loss.
+Preflight warns when realized conductors bound both sides, or PEC owns the sheet's edges.
+Until wall loss on conductor faces exists, use a thick lossy Box for a lossy wall.
+
 ### Traced full-tensor CPU builds on older jaxlib issue pieces serially
 
 Tracker: #2095

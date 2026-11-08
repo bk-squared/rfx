@@ -24,6 +24,7 @@ CODE_SCOPE = {
     'declared_z': 'model',
     'dielectric_at_absorber_seam': 'object',
     'dispersive_pole_at_absorber_face': 'object',
+    'f0_sheet_backed_gap': 'object',
     'floating_port': 'object',
     'floquet_nonuniform': 'model',
     'flux_region_clamped': 'object',
