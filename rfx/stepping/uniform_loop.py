@@ -268,6 +268,7 @@ def run(
 
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
+        measurement=measurement,
         grid=grid,
         materials=materials,
         boundary=boundary,
@@ -913,6 +914,7 @@ def run_until_decay(
 
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
+        measurement=measurement,
         grid=grid,
         materials=materials,
         boundary=boundary,
