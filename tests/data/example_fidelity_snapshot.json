@@ -1223,7 +1223,7 @@
                 0.0
               ],
               "mesh_extent_um": 30000.0,
-              "n_cells": 32,
+              "n_cells": 40,
               "realized_extent_um": 30000.0,
               "realized_um": [
                 0.0,
@@ -1315,32 +1315,7 @@
           "n_cells": null
         }
       },
-      "preflight": [
-        {
-          "code": "nu_grading_reaches_absorber",
-          "loc": null,
-          "numbers": [
-            8.0,
-            0.0536,
-            0.0,
-            8.0
-          ],
-          "severity": "warning",
-          "source": "_validate_cfg_multiband_grading"
-        },
-        {
-          "code": "nu_grading_reaches_absorber",
-          "loc": null,
-          "numbers": [
-            8.0,
-            0.0566,
-            0.0,
-            8.0
-          ],
-          "severity": "warning",
-          "source": "_validate_cfg_multiband_grading"
-        }
-      ]
+      "preflight": []
     },
     "examples/tutorials/materials_and_dispersion.py::make_sim::default": {
       "fidelity": {

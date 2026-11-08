@@ -1,8 +1,8 @@
 """CAD mesh import tutorial (issue #358) — an STL part straight into the solver.
 
 The full workflow: export a part to STL, import it with ``MeshShape`` and an
-explicit mm->m ``scale``, assign it PEC, resolve its 1.5 mm thickness with an
-edge-aware z profile, read the preflight report and step it.
+explicit mm->m ``scale``, assign it PEC, resolve its 1.5 mm thickness with
+uniform 0.75 mm z cells, read the preflight report and step it.
 
 Requires the optional CAD extra:  pip install 'rfx-fdtd[cad]'  (trimesh + rtree).
 Without it the script prints guidance and exits 0.
@@ -14,6 +14,8 @@ builds it, prints the preflight report and steps it.
 import sys
 import tempfile
 from pathlib import Path
+
+import numpy as np
 
 CAD_EXTRA_MESSAGE = "This demo needs the optional CAD extra:  pip install 'rfx-fdtd[cad]'"
 
@@ -35,8 +37,7 @@ def build_simulation():
         raise ModuleNotFoundError(CAD_EXTRA_MESSAGE, name="trimesh") from exc
 
     from rfx.api import Simulation
-    from rfx.geometry import Box, MeshShape
-    from rfx.mesh_edges import edge_aware_profiles
+    from rfx.geometry import MeshShape
 
     # 1. A "CAD" part — a 30x20x1.5 mm plate, drawn in MILLIMETRES like a real CAD
     #    export. (Swap this for trimesh.load('your_part.stl').) The 1.5 mm thickness
@@ -64,13 +65,13 @@ def build_simulation():
     #    and it is what a CAD sheet body would want.
     #
     #    At uniform dx = 1 mm the plate is solved 2.0 mm thick, and the
-    #    default strict preflight refuses it. The edge-aware z profile puts
-    #    nodes on both faces so it is solved at its drawn 1.5 mm thickness.
+    #    default strict preflight refuses it. Uniform 0.75 mm z cells put
+    #    nodes on both faces, preserving 1.5 mm thickness, and keep the mesh
+    #    uniform up to the absorbers.
     domain = (0.06, 0.04, 0.03)
-    profiles = edge_aware_profiles(
-        domain, 0.001, solids=[Box(*patch.bounding_box())], axes="z")
+    dz_profile = np.full(40, 0.75e-3)
     sim = Simulation(freq_max=10e9, domain=domain, dx=0.001,
-                     dz_profile=profiles["dz_profile"],
+                     dz_profile=dz_profile,
                      boundary="cpml", cpml_layers=8, mode="3d")
     sim.add(patch, material="pec")
     # source in free space ABOVE the plate (plate top is z≈15.75 mm), not inside the PEC
@@ -88,7 +89,7 @@ def main() -> int:
         print(exc)
         return 0
 
-    # 4. Preflight — check the imported part on the edge-aware mesh.
+    # 4. Preflight — check the imported part on the uniform z mesh.
     #    Preflight output is part of the result: quote it before trusting a number.
     report = sim.preflight()
     print("\n--- preflight ---")
@@ -97,7 +98,6 @@ def main() -> int:
 
     # 5. Run a few steps to confirm the imported geometry rasterises and steps cleanly.
     result = sim.run(num_periods=2)
-    import numpy as np
     print(f"\nran OK — probe finite: {bool(np.all(np.isfinite(result.time_series)))}")
     return 0
 

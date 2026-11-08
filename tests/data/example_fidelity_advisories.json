@@ -10,14 +10,6 @@
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
   },
   {
-   "code": "nu_grading_reaches_absorber",
-   "disposition": "intended",
-   "reason": "The CAD import tutorial places nodes on both faces of the drawn 1.5 mm plate with an edge-aware z profile, preserving its thickness under strict snap. The profile grades within the eight interior cells adjacent to each z absorber face, outside the validated absorber accuracy envelope. This tutorial only demonstrates importing, preflighting and stepping with a finite probe check; it makes no absorber accuracy claim. main() prints both warnings before the run.",
-   "ref": "examples/tutorials/cad_mesh_import_demo.py:64-74,91-101",
-   "rows": 2,
-   "variant": "examples/tutorials/cad_mesh_import_demo.py::build_simulation::default"
-  },
-  {
    "code": "no_sources",
    "disposition": "intended",
    "reason": "make_sim() is the shared EMPTY domain factory -- 'Build the small open domain shared by every material example'. The script always follows it with add_sample(), which adds the source and probe. The advisory therefore describes the half-built simulation this build-only gate audits, not anything the example runs: the six end-to-end solves in main() all go through add_sample() first. It is a statement about the audited entry point, not about the example's physics.",
