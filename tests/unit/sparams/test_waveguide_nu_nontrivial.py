@@ -323,9 +323,10 @@ def _get_nu_raw_waves():
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        dev_result = run_nonuniform_path(sim, n_steps=n_steps)
+        # Match the raw-record runs in rfx/sparams/waveguide.py's calculator.
+        dev_result = run_nonuniform_path(sim, n_steps=n_steps, waveguide_reference_only=True)
         ref_result = run_nonuniform_path(
-            sim, n_steps=n_steps,
+            sim, n_steps=n_steps, waveguide_reference_only=True,
             eps_override=vacuum_eps,
             sigma_override=vacuum_sigma,
         )

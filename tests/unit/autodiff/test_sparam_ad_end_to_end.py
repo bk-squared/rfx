@@ -124,7 +124,7 @@ _WR90_LX = 0.05      # domain length
 _WR90_FREQS = jnp.linspace(8e9, 12e9, 8)  # 8 pts above cutoff
 
 
-def _build_wg_sim() -> Simulation:
+def _build_wg_sim(*, n_ports: int = 2) -> Simulation:
     """Tiny 2-port WR-90 sim (minimal domain, CPU-fast, above-cutoff freqs)."""
     sim = Simulation(
         freq_max=12e9,
@@ -141,14 +141,15 @@ def _build_wg_sim() -> Simulation:
         n_modes=1,
         freqs=_WR90_FREQS,
     )
-    sim.add_waveguide_port(
-        direction="-x",
-        x_position=_WR90_LX - 0.01,
-        y_range=(0.0, 0.024),
-        z_range=(0.0, 0.012),
-        n_modes=1,
-        freqs=_WR90_FREQS,
-    )
+    if n_ports == 2:
+        sim.add_waveguide_port(
+            direction="-x",
+            x_position=_WR90_LX - 0.01,
+            y_range=(0.0, 0.024),
+            z_range=(0.0, 0.012),
+            n_modes=1,
+            freqs=_WR90_FREQS,
+        )
     return sim
 
 
@@ -376,8 +377,9 @@ def test_forward_eps_override_is_differentiable_waveguide():
     Mirrors tests/unit/autodiff/test_waveguide_forward.py::test_forward_with_waveguide_port_is_differentiable.
     Confirms the forward() tape is intact on the waveguide geometry used in
     the xfail test above.
+    forward() refuses two waveguide ports in one record (#2449), and this control needs one.
     """
-    sim = _build_wg_sim()
+    sim = _build_wg_sim(n_ports=1)
     # Add a probe so forward() returns non-trivial time_series
     sim.add_probe(position=(_WR90_LX / 2, _WR90_A / 2, _WR90_B / 2), component="ey")
     grid = sim._build_grid()
