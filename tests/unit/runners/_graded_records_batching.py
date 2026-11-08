@@ -48,7 +48,7 @@ def problem(kind, boundary, monkeypatch):
     if boundary == 'pec' and kind == 'ntff':
         monkeypatch.setattr('rfx.boundaries.features.refuse_ntff_reflecting_faces', lambda *a, **kw: None)
     if boundary == 'pec' and kind == 'moments':
-        monkeypatch.setattr('rfx.current_moments.refuse_current_the_monitor_cannot_see', lambda *a, **kw: None)
+        monkeypatch.setattr('rfx.measurement.current_moments.refuse_current_the_monitor_cannot_see', lambda *a, **kw: None)
 
     def build(amplitude):
         axis = 'z' if kind == 'moments' else 'x'
