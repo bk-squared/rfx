@@ -1,0 +1,6 @@
+### Fixed — record every completed waveguide-port step (#PR)
+
+An N-step run's waveguide-port V/I record now holds N samples, with no
+unwritten zero last sample. S extraction sums the one added sample: unchanged
+on a settled record, and up to about 5e-4 of max on a record cut before
+settling (WR-90 measurement).
