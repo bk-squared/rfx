@@ -1223,7 +1223,7 @@
                 0.0
               ],
               "mesh_extent_um": 30000.0,
-              "n_cells": 30,
+              "n_cells": 32,
               "realized_extent_um": 30000.0,
               "realized_um": [
                 0.0,
@@ -1274,31 +1274,25 @@
               "sub_cell": false
             },
             "z": {
-              "cell_um": 1000.0,
+              "cell_um": 750.0,
               "declared_extent_um": 1500.0,
               "declared_um": [
                 14250.0,
                 15750.0
               ],
               "face_residual_um": [
-                250.0,
-                250.0
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 2000.0,
+              "realized_extent_um": 1500.0,
               "realized_um": [
-                14000.0,
-                16000.0
+                14250.0,
+                15750.0
               ],
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "z",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": 0.0
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
@@ -1323,16 +1317,28 @@
       },
       "preflight": [
         {
-          "code": "mesh_import_underresolved",
+          "code": "nu_grading_reaches_absorber",
           "loc": null,
           "numbers": [
-            1.5,
-            2.0,
-            2.0,
-            1.0
+            8.0,
+            0.0536,
+            0.0,
+            8.0
           ],
           "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "source": "_validate_cfg_multiband_grading"
+        },
+        {
+          "code": "nu_grading_reaches_absorber",
+          "loc": null,
+          "numbers": [
+            8.0,
+            0.0566,
+            0.0,
+            8.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_multiband_grading"
         }
       ]
     },

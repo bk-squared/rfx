@@ -10,11 +10,11 @@
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
   },
   {
-   "code": "mesh_import_underresolved",
+   "code": "nu_grading_reaches_absorber",
    "disposition": "intended",
-   "reason": "The tutorial exists to show this advisory. Its docstring says the workflow is to read the resolution advisory that fires on the plate's 1.5 mm thickness (1.5 cells at dx = 1 mm, under the 2-cell floor), step 1 draws that thickness on purpose so the advisory fires, and step 3 explains what it warns about: the plate is solved 2.0 mm thick against 1.5 mm drawn, which the snapshot's fidelity row for the same plate also reads. main() prints the preflight report verbatim before the run.",
-   "ref": "examples/tutorials/cad_mesh_import_demo.py:1-6,36-38,61-67,86-95",
-   "rows": 1,
+   "reason": "The CAD import tutorial places nodes on both faces of the drawn 1.5 mm plate with an edge-aware z profile, preserving its thickness under strict snap. The profile grades within the eight interior cells adjacent to each z absorber face, outside the validated absorber accuracy envelope. This tutorial only demonstrates importing, preflighting and stepping with a finite probe check; it makes no absorber accuracy claim. main() prints both warnings before the run.",
+   "ref": "examples/tutorials/cad_mesh_import_demo.py:64-74,91-101",
+   "rows": 2,
    "variant": "examples/tutorials/cad_mesh_import_demo.py::build_simulation::default"
   },
   {

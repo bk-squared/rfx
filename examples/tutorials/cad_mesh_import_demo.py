@@ -1,9 +1,8 @@
 """CAD mesh import tutorial (issue #358) — an STL part straight into the solver.
 
 The full workflow: export a part to STL, import it with ``MeshShape`` and an
-explicit mm->m ``scale``, assign it PEC, read the preflight resolution advisory
-(``mesh_import_underresolved``) that fires on the plate's 1.5 mm thickness — 1.5
-cells at dx = 1 mm, under the 2-cell floor — and step it.
+explicit mm->m ``scale``, assign it PEC, resolve its 1.5 mm thickness with an
+edge-aware z profile, read the preflight report and step it.
 
 Requires the optional CAD extra:  pip install 'rfx-fdtd[cad]'  (trimesh + rtree).
 Without it the script prints guidance and exits 0.
@@ -36,11 +35,12 @@ def build_simulation():
         raise ModuleNotFoundError(CAD_EXTRA_MESSAGE, name="trimesh") from exc
 
     from rfx.api import Simulation
-    from rfx.geometry import MeshShape
+    from rfx.geometry import Box, MeshShape
+    from rfx.mesh_edges import edge_aware_profiles
 
     # 1. A "CAD" part — a 30x20x1.5 mm plate, drawn in MILLIMETRES like a real CAD
     #    export. (Swap this for trimesh.load('your_part.stl').) The 1.5 mm thickness
-    #    is deliberate: under-resolved at dx = 1 mm, so the advisory in step 4 fires.
+    #    is deliberate: it needs nodes on both faces to preserve its drawn size.
     part_mm = trimesh.creation.box(extents=(30.0, 20.0, 1.5))
     with tempfile.TemporaryDirectory() as td:
         stl = Path(td) / "patch.stl"
@@ -63,14 +63,14 @@ def build_simulation():
     #    other declaration, add_thin_conductor on a zero-thickness shape,
     #    and it is what a CAD sheet body would want.
     #
-    #    On this mesh the 1.5 mm plate spans z = 14.25 .. 15.75 mm, and the
-    #    cell centres at 14.5 and 15.5 mm are both inside it: the part
-    #    realizes 2 cells thick with tangential walls at z = 14, 15 and
-    #    16 mm — 2.0 mm of realized metal against 1.5 mm drawn, each face
-    #    rounded to its nearest node plane.  That +0.5 mm is exactly what
-    #    the advisory in step 4 is about, and it is why an under-resolved
-    #    CAD part is a resolution problem, not a rounding detail.
-    sim = Simulation(freq_max=10e9, domain=(0.06, 0.04, 0.03), dx=0.001,
+    #    At uniform dx = 1 mm the plate is solved 2.0 mm thick, and the
+    #    default strict preflight refuses it. The edge-aware z profile puts
+    #    nodes on both faces so it is solved at its drawn 1.5 mm thickness.
+    domain = (0.06, 0.04, 0.03)
+    profiles = edge_aware_profiles(
+        domain, 0.001, solids=[Box(*patch.bounding_box())], axes="z")
+    sim = Simulation(freq_max=10e9, domain=domain, dx=0.001,
+                     dz_profile=profiles["dz_profile"],
                      boundary="cpml", cpml_layers=8, mode="3d")
     sim.add(patch, material="pec")
     # source in free space ABOVE the plate (plate top is z≈15.75 mm), not inside the PEC
@@ -88,11 +88,7 @@ def main() -> int:
         print(exc)
         return 0
 
-    # 4. Preflight — the advisory fires here. The check (rfx/api/_preflight.py,
-    #    code "mesh_import_underresolved") compares the mesh's thinnest bbox extent
-    #    against 2 cells: 1.5 mm at dx = 1 mm is 1.5 cells, so it warns. A 2.0 mm
-    #    plate sits exactly AT the 2-cell floor and stays silent, so this is the
-    #    last warning before a feature is staircased away, not a wide margin.
+    # 4. Preflight — check the imported part on the edge-aware mesh.
     #    Preflight output is part of the result: quote it before trusting a number.
     report = sim.preflight()
     print("\n--- preflight ---")
