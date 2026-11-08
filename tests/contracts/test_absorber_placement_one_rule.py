@@ -240,3 +240,49 @@ def test_ringdown_default_probe_keeps_port_opt_in():
                          port_s11_freqs=np.array([10e9]), ringdown=RingdownSpec())
     assert result.time_series.shape == (128, 1)
     assert sim._probes == []
+
+
+def test_ringdown_run_keeps_port_opt_in():
+    from rfx import GaussianPulse
+    from rfx.ringdown import RingdownSpec
+
+    sim = scene("uniform")
+    sim.add_port((-.001, .005, .005), extent=.002, allow_in_absorber=True,
+                 waveform=GaussianPulse(f0=25e9, bandwidth=1.))
+    result = sim.run(n_steps=128, skip_preflight=True,
+                     s_param_freqs=np.array([10e9]), ringdown=RingdownSpec())
+    assert result.time_series.shape == (128, 0)
+    assert sim._probes == []
+
+
+@pytest.mark.parametrize("operation, columns", [("forward", 1), ("run", 0)])
+def test_ringdown_interior_port_with_back_leg_in_pad(operation, columns):
+    from rfx import GaussianPulse
+    from rfx.ringdown import RingdownSpec
+
+    sim = scene("uniform")
+    # x cell 8 is the first interior cell; the Hy back leg is cell 7 (-1 mm).
+    sim.add_port((0., .005, .005), extent=.002,
+                 waveform=GaussianPulse(f0=25e9, bandwidth=1.))
+    assert sim._ports[0].allow_in_absorber is False
+    assert field_index(sim._build_grid(), (0., .005, .005), "ez") == (8, 13, 13)
+    frequency_arg = "port_s11_freqs" if operation == "forward" else "s_param_freqs"
+    result = getattr(sim, operation)(n_steps=128, skip_preflight=True,
+                                    ringdown=RingdownSpec(),
+                                    **{frequency_arg: np.array([10e9])})
+    assert result.time_series.shape == (128, columns)
+    assert sim._probes == []
+
+
+@pytest.mark.parametrize("allow", [False, True])
+def test_vector_probe_in_pad(allow):
+    sim = scene("uniform")
+    sim.add_source((.005,) * 3, amplitude_kind="field")
+    kw = {"allow_in_absorber": True} if allow else {}
+    sim.add_vector_probe((-.001, .005, .005), **kw)
+    if not allow:
+        with pytest.raises(ValueError, match="1 cell into the x-lo CPML pad.*allow_in_absorber=True"):
+            sim.forward(n_steps=1, skip_preflight=True)
+    else:
+        result = sim.forward(n_steps=1, skip_preflight=True)
+        assert result.time_series.shape == (1, 6)
