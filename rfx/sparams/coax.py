@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from rfx.sparams import _coax_msl_stages
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
+from rfx.sparams._coax_status import coax_extraction_status
 
 from rfx.errors import AccuracyWarning
 from rfx._internal._precision import resolve_field_dtype
@@ -412,14 +413,7 @@ def compute_coaxial_line_reflection(
                 if termination == "matched"
                 else jnp.asarray(np.nan + 1j * np.nan)
             )
-        # Status from concrete geometry only. NOTE: unlike the concrete path,
-        # the traced rec_resid>0.1 "contaminated" check is NOT evaluated here
-        # (can't Python-branch on a tracer), so ``"passed"`` on the eps_scale
-        # path means geometry-resolved, NOT fit-clean — inspect
-        # ``recurrence_residual`` (returned) if you need the contamination
-        # signal. ``"differentiable"`` flags the AD path so it is not confused
-        # with a fully-gated concrete ``"passed"``.
-        status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
+        status = coax_extraction_status(annulus_cells, traced=True)
         s11 = jnp.stack(s11_c)
         warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
         completed = CoaxialLineReflectionResult(
@@ -465,12 +459,7 @@ def compute_coaxial_line_reflection(
             G = out.reflection
             z0_num[fi] = R_dut * (1.0 - G) / (1.0 + G)
 
-    if annulus_cells < 3.5:
-        status = "under_resolved"
-    elif float(np.max(rec_resid)) > 0.1:
-        status = "contaminated"
-    else:
-        status = "passed"
+    status = coax_extraction_status(annulus_cells, rec_resid, traced=False)
 
     warn_if_singular_value_exceeds_one(s11, freqs, extractor="compute_coaxial_line_reflection")
     completed = CoaxialLineReflectionResult(
@@ -1015,18 +1004,9 @@ def compute_coaxial_two_port(
     )
 
     if _traced_eps:
-        # Status from concrete geometry only -- rec_resid is a jnp
-        # tracer here, so the Python-branching "contaminated" check below
-        # cannot run (mirrors the 1-port eps_scale branch's own status
-        # derivation). "differentiable" flags the AD path so it is not
-        # confused with a fully-gated concrete "passed".
-        status = "under_resolved" if annulus_cells < 3.5 else "differentiable"
-    elif annulus_cells < 3.5:
-        status = "under_resolved"
-    elif float(np.max(rec_resid)) > 0.1:
-        status = "contaminated"
+        status = coax_extraction_status(annulus_cells, traced=True)
     else:
-        status = "passed"
+        status = coax_extraction_status(annulus_cells, rec_resid, traced=False)
 
     reference_planes = np.asarray([ref_top_m, ref_bot_m], dtype=float)
     # waves at each ladder's line impedance, referred to impedance=.
