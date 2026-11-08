@@ -602,18 +602,6 @@ same declaration. What to do: use `compute_waveguide_s_matrix()`, which drives o
 `amplitude=0.0` returns an S11 of its own that means nothing (received wave over a near-zero incident wave); read only
 the driven port's S11 from such a run.
 
-### A waveguide port with `f0` omitted on a graded mesh is driven at `freq_max/2`, which can lie below cutoff.
-
-Tracker: #2451
-
-On a uniform mesh an omitted waveguide `f0` resolves to the centre of the requested band; on a graded mesh the port
-still falls back to `freq_max/2`. For WR-90 that lies below the TE10 cutoff (6.557 GHz) whenever `freq_max` is below
-13.1 GHz, so the drive is mostly near or below cutoff, and its near-cutoff content keeps arriving after the record ends.
-Measured on an empty matched WR-90 guide read over 8.2–12.4 GHz with `freq_max` 12.4 GHz: |S11| 0.04–0.94 at 16 000
-steps and up to 2.0 at 32 000 steps on the graded mesh, against 0.0008–0.0012 on the uniform mesh and on the graded mesh
-with `f0` = 10.3 GHz. Preflight resolves the omitted `f0` to the band centre and does not see the low drive. What to do:
-on a graded mesh pass `f0` explicitly, at the centre of the band you read.
-
 ### A wire port with `reference_plane_cells` returns a different S11 from `run()` than from `forward()`.
 
 Tracker: #2450
