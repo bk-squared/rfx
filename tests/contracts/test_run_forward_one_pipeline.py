@@ -759,13 +759,24 @@ def test_port_s_equal_requests(declaration, path):
     assert port_s_pair(declaration, path) is not None
 
 
-@pytest.mark.parametrize('declaration,path', [
-    pytest.param('P-wire-refplane', 'uniform', marks=pytest.mark.xfail(
+# Both entries refuse partial opt-in for their own reason (forward() forms no reference-plane S; run() needs every wire port opted in), so raising lines differ by design and both_refused is not used.
+@pytest.mark.parametrize('entry', [
+    pytest.param('forward', id='P-wire-refplane-uniform-forward'),
+    pytest.param('run', id='P-wire-refplane-uniform-run', marks=pytest.mark.xfail(
         strict=True, raises=AssertionError,
-        reason="#2450: reference_plane_cells keeps run()'s wire S on the per-cell frame (no v_port); forward() uses the whole-port one")),
+        reason="#2450: run() admits a partial reference_plane_cells opt-in and forms the per-cell S; forward() refuses the option (#2454)")),
 ])
-def test_port_s_refplane_equal_requests(declaration, path):
-    assert port_s_pair(declaration, path) is not None
+def test_port_s_refplane_refusals(entry):
+    record = run_l2(BUILDERS['P-wire-refplane'], entry, 'uniform', n_steps=1)
+    assert record['outcome'] == 'raised'
+    assert record['type'] in ('ValueError', 'RfxRefusal')
+    assert raised_in_rfx(record)
+    assert 'reference_plane_cells' in record['message']
+    expected = {
+        'forward': 'forward() does not form reference-plane S-parameters',
+        'run': 'reference_plane_cells must be set on every wire port of the S-parameter solve',
+    }
+    assert expected[entry] in record['message']
 
 
 def test_default_port_probes_equal_requests():
