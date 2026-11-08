@@ -43,8 +43,10 @@ def graded_scene(kind):
      "rfx.runners.distributed.run_distributed have no lumped-element update). "
      "Remove the elements, or omit distributed=True (use a single-device forward() instead)."),
     ("forward", "wire", None,
-     "Wire ports with reference_plane_cells are not supported with distributed=True; "
-     "the V_ref path needs pre-injection recordings. Use one device."),
+     "forward() does not form reference-plane S-parameters: "
+     "add_port(reference_plane_cells=...) is set on port 0; "
+     "use run(compute_s_params=True) for reference-plane S, "
+     "or remove the option for forward()"),
 ])
 def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     from rfx.model import distributed_ports
@@ -58,7 +60,8 @@ def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     monkeypatch.setattr(distributed_ports, "assemble", recorded)
     sim = graded_scene(kind)
     options = dict(n_steps=4, skip_preflight=True, devices=host_devices(2))
-    with pytest.raises(NotImplementedError) as error:
+    exception = ValueError if entry == "forward" and kind == "wire" else NotImplementedError
+    with pytest.raises(exception) as error:
         if entry == "run":
             sim.run(compute_s_params=False, **options)
         else:

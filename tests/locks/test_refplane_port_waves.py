@@ -11,9 +11,8 @@ FAST (no FDTD / tiny FDTD):
   * add_port opt-in validation (wire-only, explicit transverse direction);
   * plumbing contract on the canonical thru (two planes per opted port,
     Phase-0-exact plane geometry, accumulator shapes);
-  * DEFAULT-PATH invariance: no opt-in => no plane registration, and
-    forward() is bitwise unaffected by the opt-in (its diagonal path
-    never touches the planes);
+  * DEFAULT-PATH invariance: no opt-in => no plane registration;
+    forward() refuses the opt-in before stepping (#2454);
   * short-run run(compute_s_params=True) wiring: diagonals bitwise equal
     to the default path (byte-frozen), off-diagonals move (loud).
 
@@ -548,18 +547,15 @@ def test_refplane_requires_pec_trace_at_plane():
 
 
 def test_forward_bitwise_unaffected_by_optin():
-    """forward(port_s11_freqs=...) is BITWISE identical with and without
-    the opt-in: the plane registration is gated to the S-matrix driver
-    path and forward()'s diagonal extraction never touches it."""
-    f_default = _build_thru().forward(n_steps=64, port_s11_freqs=_FREQS,
-                                      skip_preflight=True)
-    f_opted = _build_thru(reference_plane_cells=3).forward(
-        n_steps=64, port_s11_freqs=_FREQS, skip_preflight=True)
-    a = np.asarray(f_default.s_params)
-    b = np.asarray(f_opted.s_params)
-    assert a.shape == b.shape and a.tobytes() == b.tobytes(), (
-        "forward() S11 changed under reference_plane_cells — the opt-in "
-        "must not touch the forward()/diagonal path")
+    """#2454: the former bitwise lock pinned an accepted, dropped input."""
+    with pytest.raises(ValueError) as error:
+        _build_thru(reference_plane_cells=3).forward(
+            n_steps=64, port_s11_freqs=_FREQS, skip_preflight=True)
+    assert str(error.value) == (
+        "forward() does not form reference-plane S-parameters: "
+        "add_port(reference_plane_cells=...) is set on port 0; "
+        "use run(compute_s_params=True) for reference-plane S, "
+        "or remove the option for forward()")
 
 
 def test_run_short_diagonals_byte_frozen_offdiagonals_move():

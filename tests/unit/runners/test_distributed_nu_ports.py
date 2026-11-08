@@ -253,7 +253,8 @@ def test_refuses_before_staging(entry, kind, monkeypatch):
     def staging(*args, **kwargs):
         pytest.fail('refusal reached material staging')
     monkeypatch.setattr(electric_metrics, 'stage_forward_materials', staging)
-    with pytest.raises(NotImplementedError, match=message):
+    exception = ValueError if entry == 'forward' and kind == 'reference_plane' else NotImplementedError
+    with pytest.raises(exception, match=message):
         evaluate(sim, entry, 8, jax.devices())
 
 
