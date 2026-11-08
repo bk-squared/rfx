@@ -251,6 +251,35 @@ This holds for `subpixel_smoothing=True` and for the dielectric stage of `"kottk
 Gaps of half a cell or more are seen: their samples read the same values as with only the nearer volume present.
 Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
 
+### With subpixel smoothing, a later box nested in a box of another permittivity is solved as an earlier material when its permittivity repeats one used before.
+
+Tracker: #2453
+
+The smoother groups shapes by permittivity value and lays the groups down in the order each value first appears, while
+the model without smoothing paints shapes in declared order, so later geometry wins. When a later box's εr equals the
+εr of any earlier shape, the later box inside a box of another εr reads that box's value. Measured in a 12 mm PEC cube:
+an εr 4 box inside an εr 10.2 box, declared after it, reads 10.2 on every interior cell once a small εr 4 block is
+declared first elsewhere (4.0 without that block). That is about 155 % on the inner body's permittivity. Adding the
+small block moves the strongest resonance by 2.0 % with `subpixel_smoothing=True`, against 0.1 % without smoothing.
+Measured for `subpixel_smoothing=True`; `"kottke_pec"` and `"full_tensor"` use the same grouping and are not measured.
+What to do: until the fix, do not repeat an εr value across nested boxes (4.0 and 4.001 are kept apart), or switch
+smoothing off.
+
+### With `subpixel_smoothing="full_tensor"`, moving a box face across a grid node by 1e-12 m changes the result by percent.
+
+Tracker: #2441
+
+The full-tensor permittivity jumps where a box face crosses a grid node: the value with the face on the node differs
+from the limit as the face moves outward. Measured in a 12 mm PEC box at dx 1 mm, 20 steps: moving one face 1e-12 m
+outward changes the summed squared probe loss by 1.5 % at box εr 4 and 15 % at εr 10; moving it inward changes
+nothing. The same tie falls on the bisector plane of every box edge, so a face off the nodes is no remedy (6.2 % at
+εr 10 with no face on a node). Two boxes whose coordinates differ only by floating-point rounding can therefore give
+results that differ by percent, a shape gradient across such a position is the derivative of a jump, and a `jax.jit`
+or `jax.grad` run can solve another model than the plain run (loss 8.8×10⁻³ apart with a traced sphere radius beside
+an εr 4 box). `subpixel_smoothing=True` and `"kottke_pec"` are continuous at these positions. Which side is the right
+model is not established. What to do: for a geometry or gradient study, use `subpixel_smoothing=True`, or check a
+full-tensor result with its box faces moved by a small fraction of a cell.
+
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
 Tracker: none — accepted limitation (warns at default: tests/contracts/test_kottke_pec_warning.py::test_kottke_pec_volume_warning)
