@@ -276,8 +276,8 @@ def bind_table(sim, conductors, *, lane, compact=True):
         table = replace(table, rows=disjoint_rows(sim, table.rows, conductors.kernel_context[1]))
         record = replace(record, limitations=("disjoint vacuum stepper does not carry material declarations",))
     if inputs:
-        table = replace(table, rows=tuple(replace(row, traced_inputs=inputs,
-                        status="evaluated: nominal_profiles" if nominal else row.status)
+        table = replace(table, rows=tuple(replace(row, traced_inputs=() if row.status == "not represented" else inputs,
+                        status="evaluated: nominal_profiles" if nominal and row.status != "not represented" else row.status)
                                           for row in table.rows))
     object.__setattr__(conductors, "realization_table", table)
     conductors._realization_tables.append(table)

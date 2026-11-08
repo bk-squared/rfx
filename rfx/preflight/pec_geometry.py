@@ -59,6 +59,8 @@ exactly as wide after this leg as before it -- still 55.
 from __future__ import annotations
 
 from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready, replay_legacy_findings
+from rfx.preflight._subjects import finding_subjects
+
 import math
 
 import numpy as np
@@ -145,6 +147,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
         return
 
     dielectrics = []
+    dielectric_objects = {}
     nonbox_dielectrics = 0
     for entry in self._geometry:
         material = self._resolve_material(entry.material_name)
@@ -156,7 +159,9 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
         lo, hi = sheet_bounds(entry.shape)
         if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
             continue
-        dielectrics.append(_sorted_box_corners(entry.shape))
+        bounds = _sorted_box_corners(entry.shape)
+        dielectrics.append(bounds)
+        dielectric_objects[id(bounds[0])] = entry
 
     for i, tc in sheets:
         lo, hi = sheet_bounds(tc.shape)
@@ -178,6 +183,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
         if not candidates:
             continue
         _, height, blo, bhi = min(candidates, key=lambda candidate: candidate[:2])
+        nearest_dielectric = dielectric_objects[id(blo)]
         if all(lo[a] <= blo[a] + 1e-12 and hi[a] >= bhi[a] - 1e-12 for a in inplane):
             continue
         thickness = float(tc.thickness)
@@ -207,6 +213,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
             "Widening the strip does not correct it. See "
             'docs/guides/known_limitations.md, "Conductor thickness is not solved".'
             + coverage,
+            **finding_subjects(self, objects=(tc, nearest_dielectric)),
             code="thin_conductor_thickness_unmodelled",
             severity="warning",
             source="_validate_cfg_thin_conductor_thickness",
@@ -240,6 +247,7 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
         return
 
     src_f0s: list[float] = []
+    source_objects: dict[float, list[object]] = {}
     for family in ("_ports", "_msl_ports", "_waveguide_ports",
                    "_coaxial_ports", "_floquet_ports"):
         for entry in getattr(self, family, ()) or ():
@@ -248,6 +256,7 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
             if wf0 is not None and not is_tracer(wf0):
                 try:
                     src_f0s.append(float(wf0))
+                    source_objects.setdefault(float(wf0), []).append(entry)
                 except (TypeError, ValueError):
                     pass
 
@@ -272,6 +281,7 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
                     f"surface_impedance_f0 and use the DC sheet path "
                     f"(sigma_bulk*t/d), which is the correct model "
                     f"there.",
+                    **finding_subjects(self, objects=(tc,)),
                     code="thin_conductor_leontovich_thin_film",
                     source="_validate_cfg_thin_conductor_surface_impedance",
                 ),
@@ -289,6 +299,7 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
                         f"is {abs(math.sqrt(sf / f0) - 1.0):.1%}. Set "
                         f"surface_impedance_f0 to the band centre you "
                         f"actually analyse.",
+                        **finding_subjects(self, objects=(tc, *source_objects[sf])),
                         code="thin_conductor_leontovich_band_offset",
                         source=(
                             "_validate_cfg_thin_conductor_"
@@ -439,15 +450,18 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
         # register as an uncoded-at-source site.
         if "thinner than one cell" in msg:
             _w.warn(PreflightWarning(
-                text, code="pec_box_subcell", severity="error",
+                text, **finding_subjects(self, objects=(e,)),
+                      code="pec_box_subcell", severity="error",
                 source="_validate_cfg_pec_realization"))
         elif "ZERO cells" in msg or "ZERO nodes" in msg:
             _w.warn(PreflightWarning(
-                text, code="pec_zero_cells", severity="error",
+                text, **finding_subjects(self, objects=(e,)),
+                      code="pec_zero_cells", severity="error",
                 source="_validate_cfg_pec_realization"))
         else:
             _w.warn(PreflightWarning(
-                text, code="pec_realization_refused", severity="error",
+                text, **finding_subjects(self, objects=(e,)),
+                      code="pec_realization_refused", severity="error",
                 source="_validate_cfg_pec_realization"))
 
     # --- pec_box_one_cell: WARNING, aggregated ------------------------
@@ -497,6 +511,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
             "rfx.boundaries.pec.realized_wall_planes. STALE IF: "
             "realized_wall_planes on the named entry's own edge masks "
             "returns planes more than one index apart.",
+            **finding_subjects(self, objects=tuple(e for e, _ in one_cell)),
             code="pec_box_one_cell",
             source="_validate_cfg_pec_realization",
         ))
@@ -558,6 +573,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
           f"sheet declaration on the {ctx.lane} lane (zero-thickness PEC "
           "Boxes via add() and PEC add_thin_conductor entries). STALE "
           "IF: the named sheet's SheetSpec.plane is not the printed node.",
+          **finding_subjects(self, objects=tuple(r[1] for r in rows)),
           code="sheet_plane_realized", severity="info",
           source="_validate_cfg_pec_realization",
       ))
@@ -579,6 +595,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
             "is a rule, not the drawing. REMEDY: declare the sheet ON "
             "the plane you mean (a zero-thickness Box at that "
             "coordinate) so no tie is resolved for you.",
+            **finding_subjects(self, objects=tuple(r[0] for r in ties)),
             code="sheet_plane_realized", severity="warning",
             source="_validate_cfg_pec_realization",
         ))
@@ -614,6 +631,7 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
     if eps.ndim != 3:
         return
     rows = []
+    dielectric_objects = []
     for e in sheets:
         sp = e.sheet
         a = int(sp.normal_axis)
@@ -629,6 +647,12 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
         n = int(slot.sum())
         if n == 0:
             continue
+        for entry in ctx.sim._geometry:
+            mask = dict(realized.geometry_masks).get(id(entry))
+            if mask is not None and ctx.sim._resolve_material(entry.material_name).eps_r > 1:
+                if any(np.any(np.take(np.asarray(mask), plane, axis=a) & slot)
+                       for plane in (k - 1, k + 1)):
+                    dielectric_objects.append(entry)
         d_k = float(ctx.spacings[a][k])
         rows.append((n, e, a, k, float(below[slot][0]),
                      float(above[slot][0]), d_k))
@@ -660,6 +684,7 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
         f"COVERAGE: examined {len(sheets)} sheet(s) on the {ctx.lane} "
         "lane against the run's own assembled eps_r. STALE IF: "
         "eps_r at the named plane is not 1.0 on the assembled arrays.",
+        **finding_subjects(self, objects=(*tuple(r[1] for r in rows), *dielectric_objects)),
         code="sheet_slot_vacuum", severity="warning",
         source="_validate_cfg_sheet_slot_vacuum",
     ))
@@ -752,6 +777,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
         "(they have no face to draw to a wall). STALE IF: "
         "realized_wall_planes on the named entity does not reproduce "
         "the printed node.",
+        **finding_subjects(self, objects=(*tuple(r[0] for r in rows), "domain")),
         code="pec_face_short_of_domain_wall", severity="warning",
         source="_validate_cfg_pec_face_short_of_domain_wall",
     ))
@@ -951,6 +977,7 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
         "re-realizing the named members through "
         "rfx.boundaries.pec.realized_pec_edge_masks gives equal edge "
         "counts (spread <= tolerance).",
+        **finding_subjects(self, objects=tuple(e for _, group, _, _ in flagged for e, *_ in group)),
         code="congruent_conductor_rasterization_parity",
         source="_validate_cfg_congruent_rasterization_parity",
     ))
@@ -1020,6 +1047,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
         return _sheet_solved_plane(ctx, a, e, k, drawn)
 
     results = []
+    spacing_objects: list[object] = []
     for a in range(3):
         planes = []
         for e in conductors:
@@ -1104,6 +1132,8 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     else "")
                 label1 = kind1 if e1 is None else f"{e1.label} '{e1.name}' ({kind1})"
                 label2 = kind2 if e2 is None else f"{e2.label} '{e2.name}' ({kind2})"
+                spacing_objects.extend((e1 if e1 is not None else "domain",
+                                        e2 if e2 is not None else "domain"))
                 results.append((score, (
                     f"[{'xyz'[a]}] {label1} plane at "
                     f"{_fmt_len(z1)} (drawn {_fmt_len(g_lo)}) / "
@@ -1126,6 +1156,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
         'knowingly, use Simulation(..., snap="declared"). '
         "STALE IF: the named conductors or mesh change; the printed planes "
         "are this run's node coordinates.",
+        **finding_subjects(ctx, objects=spacing_objects),
         code="sheet_cavity_spacing",
         severity="warning" if ctx.sim._snap == "declared" else "error",
         source="_validate_cfg_sheet_cavity_thickness",
@@ -1215,6 +1246,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
         < self._PEC_SIGMA_THRESHOLD)
 
     results = []
+    electrical_objects: list[object] = []
     n_pairs = 0
     n_skipped_pec_between = 0
     lam0 = C0 / float(self._freq_max)
@@ -1286,6 +1318,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                     p[ia] = 0.5 * (lo_ov + hi_ov)
                 cuts = {g_lo, g_hi}
                 diel_boxes = []
+                diel_objects = []
                 for g in self._geometry:
                     mat = self._resolve_material(g.material_name)
                     if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
@@ -1297,6 +1330,8 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                                for ia in inplane):
                         continue
                     diel_boxes.append((blo, bhi, float(mat.eps_r)))
+                    if bhi[a] > g_lo and blo[a] < g_hi:
+                        diel_objects.append(g)
                     for c in (float(blo[a]), float(bhi[a])):
                         if g_lo < c < g_hi:
                             cuts.add(c)
@@ -1329,6 +1364,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                         "vacuum between two dielectrics (a slot in "
                         "the drawn stack — see sheet_slot_vacuum)"
                         if slot else "")
+                    electrical_objects.extend((e1, e2, *diel_objects))
                     results.append((max(abs(d_cap), abs(d_phase)), (
                         f"[{'xyz'[a]}] {e1.label} ({e1.kind}, plane "
                         f"k={k1} at {_fmt_len(z1)}, declared face "
@@ -1383,6 +1419,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
             "(conductor cell between). STALE IF: re-summing the printed "
             "column disagrees with these numbers, or realized_wall_planes "
             "on the named entries does not return the printed planes.",
+            **finding_subjects(self, objects=electrical_objects),
             code="sheet_cavity_electrical_thickness",
             source="_validate_cfg_sheet_cavity_thickness",
         ))
@@ -1494,6 +1531,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         "declared geometry knowingly without changing the solved geometry. "
         "STALE IF: the footprint's node span on the run's node "
         "coordinates does not reproduce the printed numbers.",
+        **finding_subjects(ctx, objects=tuple(r[2] for r in rows)),
         code="sheet_effective_size",
         severity="warning" if ctx.sim._snap == "declared" else "error",
         source="_validate_cfg_off_lattice_design_edges",
@@ -1604,6 +1642,7 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
         "(no analytic face coordinates). STALE IF: |face - nearest "
         "node| on the run's node coordinates does not reproduce the "
         "printed residuals.",
+        **finding_subjects(self, objects=tuple(r[1] for r in offenders)),
         code="off_lattice_design_edges",
         source="_validate_cfg_off_lattice_design_edges",
     ))

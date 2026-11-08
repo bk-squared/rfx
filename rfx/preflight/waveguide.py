@@ -53,6 +53,8 @@ the path, and a pure code-motion leg touches one fewer file.
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import finding_subjects
+
 from rfx.errors import AccuracyWarning
 from rfx.model.graded_admission import host_cells
 
@@ -774,6 +776,7 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                         f"({d_label}): {rec['error']}. "
                         f"This range is rejected by the compiler — the "
                         f"run would fail before stepping.",
+                        **finding_subjects(self, objects=(entry,)),
                         code="port_aperture_unrasterizable",
                         source="_check_waveguide_port_aperture_snap",
                         severity="error",
@@ -829,6 +832,7 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                     f"this run does not solve.{note} Choose dx so it "
                     f"divides the declared width, or declare the width "
                     f"the grid can represent.",
+                    **finding_subjects(self, objects=(entry,)),
                     code="port_aperture_snap",
                     severity=verdict.severity if verdict is not None else "warning",
                     loc=verdict.loc if verdict is not None else None,
@@ -900,6 +904,7 @@ def _emit_waveguide_port_cutoff_findings(
                 f"physically meaningless and grow with n_steps. Set "
                 f"f0 well above fc (e.g. the center of the measurement "
                 f"band).",
+                **finding_subjects(self, objects=(entry,)),
                 code="port_source_below_cutoff",
                 source="_check_waveguide_port_evanescent",
             ),
@@ -914,6 +919,7 @@ def _emit_waveguide_port_cutoff_findings(
                 f"fc={fc_excited / 1e9:.3f} GHz. Below-cutoff bins "
                 f"produce junk S-parameters and NaN gradients under "
                 f"jax.grad. Restrict freqs to f > fc.",
+                **finding_subjects(self, objects=(entry,)),
                 code="port_freqs_below_cutoff",
                 source="_check_waveguide_port_evanescent",
             ),
@@ -962,6 +968,7 @@ def _emit_waveguide_port_cutoff_findings(
                 f"registers as |S11| < 1 in a lossless structure. "
                 f"Restrict measurement freqs below {threshold / 1e9:.3f} GHz "
                 f"or increase port-to-obstacle distance.",
+                **finding_subjects(self, objects=(entry,)),
                 code="port_evanescent",
                 source="_check_waveguide_port_evanescent",
             ),
@@ -1172,6 +1179,7 @@ def _validate_cfg_waveguide_reference_plane(
                     f"waveguide_port reference plane = {effective:.4g} m is "
                     f"outside the {direction[-1]}-domain [0, {domain_ext:.4g}] m. "
                     f"Check x_position / reference_plane.",
+                    **finding_subjects(self, objects=(entry,)),
                     code="waveguide_reference_plane",
                     source="_validate_cfg_waveguide_reference_plane",
                 )
@@ -1200,6 +1208,7 @@ def _validate_cfg_waveguide_reference_plane(
                         f"S-matrix phase will be distorted by CPML stretching. "
                         f"Move x_position / reference_plane to the interior or "
                         f"reduce cpml_layers.",
+                        **finding_subjects(self, objects=(entry,)),
                         code="waveguide_reference_plane",
                         source="_validate_cfg_waveguide_reference_plane",
                     ),
@@ -1255,6 +1264,7 @@ def _validate_cfg_waveguide_reference_plane(
                                 f"assumes a uniform cross-section at the port "
                                 f"plane; reported S-params will mix modes. Move "
                                 f"the reference plane into the empty-guide region.",
+                                **finding_subjects(self, objects=(entry, g)),
                                 code="waveguide_reference_plane",
                                 source="_validate_cfg_waveguide_reference_plane",
                             ),

@@ -70,6 +70,8 @@ and it reads no ``pec_geometry`` module global -- it holds only
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import finding_subjects, absorber_region
+
 import math
 
 import numpy as np
@@ -121,6 +123,7 @@ def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
         return None
 
     lossless_names: list[str] = []
+    lossless_objects = []
     any_lossy_dielectric = False
     for entry in self._geometry:
         resolved = _resolve(entry.material_name)
@@ -132,6 +135,7 @@ def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
             continue
         if sigma <= 0.0 and not has_poles:
             lossless_names.append(entry.material_name)
+            lossless_objects.append(entry)
         else:
             any_lossy_dielectric = True
 
@@ -145,6 +149,7 @@ def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
                 f"(design-guide Anti-Pattern #1, an R5 surface-metric trap) — "
                 f"add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. "
                 f"(Harmless if you are not measuring Q.)",
+                **finding_subjects(self, objects=lossless_objects),
                 code="lossless_q",
                 source="_validate_cfg_lossless_resonator_in_absorber",
             ),
@@ -327,6 +332,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
     _w.warn(
         PreflightWarning(
             msg,
+            **finding_subjects(self, objects=(("_geometry", h[0]) for h in hits)),
             code="dispersive_pole_at_absorber_face",
             loc="geometry[" + ",".join(
                 f"#{h[0]} {h[2]} {h[3]}" for h in hits) + "]",
@@ -524,10 +530,10 @@ def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
     if self._pec_faces and self._geometry:
         from rfx.model.materials import assembled_as_pec
         closing = _pec_walls_closing_a_guide(self)
-        has_finite_pec = any(
+        finite_pec_objects = [entry for i, entry in enumerate(self._geometry) if
             assembled_as_pec(self, entry) and f"geometry[{i}]" not in closing
-            for i, entry in enumerate(self._geometry)
-        )
+        ]
+        has_finite_pec = bool(finite_pec_objects)
         if has_finite_pec:
             pec_face_list = ", ".join(sorted(self._pec_faces))
             _w.warn(
@@ -543,6 +549,7 @@ def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
                     f"one node plane, normal E through it live); a thick "
                     f"plate is a PEC Box VOLUME (walls on both faces, "
                     f"lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md).",
+                    **finding_subjects(self, objects=(*finite_pec_objects, "domain")),
                     code="pec_faces_finite_pec",
                     source="_validate_cfg_pec_faces_with_finite_pec",
                 ),
@@ -713,6 +720,7 @@ def _validate_cfg_absorber_placement(
                             f"({absorber_label} {'xyz'[ax]}-thickness: "
                             f"lo={_fmt_len(ct_lo)}, hi={_fmt_len(ct_hi)}). "
                             f"Signal will be attenuated. Move probe to interior.",
+                            **finding_subjects(self, objects=(pe,)),
                             code="absorber_overlap",
                             source="_validate_cfg_absorber_placement",
                         ),
@@ -748,6 +756,7 @@ def _validate_cfg_absorber_placement(
                             f"the {absorber_label} absorber is active. "
                             f"Fields there carry CPML fringe/reflection error; move "
                             f"inward for claims-bearing measurement.",
+                            **finding_subjects(self, objects=(pe,)),
                             code="absorber_proximity",
                             source="_validate_cfg_absorber_placement",
                         ),
@@ -769,6 +778,7 @@ def _validate_cfg_absorber_placement(
                             f"({absorber_label} {'xyz'[ax]}-thickness: "
                             f"lo={_fmt_len(ct_lo)}, hi={_fmt_len(ct_hi)}). "
                             f"Energy will be absorbed. Move source to interior.",
+                            **finding_subjects(self, objects=(pe,)),
                             code="absorber_overlap",
                             source="_validate_cfg_absorber_placement",
                         ),
@@ -790,6 +800,7 @@ def _validate_cfg_absorber_placement(
                             f"the {absorber_label} absorber is active. "
                             f"Fields there carry CPML fringe/reflection error; move "
                             f"inward for claims-bearing measurement.",
+                            **finding_subjects(self, objects=(pe,)),
                             code="absorber_proximity",
                             source="_validate_cfg_absorber_placement",
                         ),
@@ -899,6 +910,7 @@ def _validate_cfg_geometry_in_cpml(
             _w.warn(
                 PreflightWarning(
                     msg,
+                    **finding_subjects(self, objects=(("_geometry", r[1]) for r in recs)),
                     code="geometry_in_absorber",
                     loc="geometry[" + ",".join(
                         f"#{r[1]} {r[4]} {_fmt_len(r[0])}" for r in recs
@@ -985,6 +997,7 @@ def _validate_cfg_body_flush_on_absorber(
             "material into its layers, so the run models a half-space of it "
             "beyond the face; leave free space between the body and the face, "
             "or declare that half-space on purpose",
+            **finding_subjects(self, objects=tuple(("_geometry", row[1]) for row in entries)),
             code="body_flush_on_absorber", loc=f"geometry[{idx}] {face}",
             source="_validate_cfg_body_flush_on_absorber"), stacklevel=3)
 
@@ -1082,6 +1095,7 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
         _w.warn(
             PreflightWarning(
                 message,
+                **finding_subjects(self, objects=(("_thin_conductors" if u.collection == "thin_conductor" else "_geometry", idx),)),
                 code="dielectric_at_absorber_seam",
                 loc=f"{u.collection}[#{idx}] {axis_name}-{u.side}",
                 source="_validate_cfg_dielectric_at_absorber_seam",
@@ -1119,6 +1133,7 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
             continue
         terminals = port_terminal_points(collection, port, grid, nodes)
         contacts = []
+        contact_objects = []
         for ref, entry in conductor_entries(self):
             try:
                 lattice = _declared_conductor_lattice(self, grid, entry.shape, coords)
@@ -1136,6 +1151,7 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
             label = "entry" if ref.collection == "_geometry" else "thin conductor"
             face_text = ", ".join("xyz"[a]+"-"+side for a in range(3)
                                   for side in ("lo", "hi") if (a, side) in faces)
+            contact_objects.append(entry)
             contacts.append(f"'{name}' ({label} {entry_index}) under its terminal "
                             f"continues into the {face_text} absorber")
         if contacts:
@@ -1145,6 +1161,7 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
                     + "; ".join(contacts)
                     + "; if this conductor is a line the port ends, pass terminates= "
                     "to end it there; a ground plane should continue.",
+                    **finding_subjects(self, objects=(port, *contact_objects)),
                     code="port_conductor_continues",
                     loc=f"{collection}[{index}]",
                     source="_validate_cfg_port_conductor_continues",
@@ -1343,6 +1360,7 @@ def _validate_cfg_conductor_in_thin_absorber(self, _w, dx, absorber_label) -> No
                 f"than refuses. The measured co-factor was the lateral padding, and "
                 f"the one unpadded arm (4 layers, conductor at the face) settled, so "
                 f"this may over-warn on an unpadded domain.",
+                **finding_subjects(self, objects=(("_geometry", idx),)),
                 code="conductor_in_thin_absorber",
                 loc=f"geometry[#{idx}] {axis_name}-{side}",
                 source="_validate_cfg_conductor_in_thin_absorber",
@@ -1508,6 +1526,7 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
     _w.warn(
         PreflightWarning(
             " ".join(messages),
+            **finding_subjects(self, region=absorber_region(self, thin)),
             code="thin_absorber",
             severity="warning",
             loc=", ".join(thin),

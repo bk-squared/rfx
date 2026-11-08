@@ -36,6 +36,7 @@ acyclic).
 from __future__ import annotations
 
 from rfx.errors import RfxRefusal, RfxWarning
+from rfx.preflight._subjects import _Region, _Selection
 
 import json
 
@@ -264,6 +265,9 @@ class PreflightWarning(RfxWarning):
         severity: str | None = None,
         loc: str | None = None,
         source: str | None = None,
+        scope: str = "model",
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
     ) -> None:
         severity = severity or (message.legacy_severity if isinstance(message, Diagnostic) else "warning")
         self.diagnostic = (
@@ -288,9 +292,28 @@ class PreflightWarning(RfxWarning):
         self.severity = severity
         self.loc = loc
         self.source = source
+        self.scope = scope
+        self._subjects = subjects
+        self._region = region
+
+    @property
+    def subjects(self):
+        value = self._subjects
+        return value.resolve() if hasattr(value, "resolve") else tuple(value)
+
+    @property
+    def region(self):
+        value = self._region
+        return value.resolve() if value is not None and hasattr(value, "resolve") else value
 
     def __str__(self) -> str:  # back-compat: warning prints as its message
         return self.message
+
+    def to_dict(self) -> dict[str, object]:
+        """Expose the same structured fields as a captured report finding."""
+        return PreflightIssue(self.message, code=self.code, severity=self.severity,
+                              loc=self.loc, source=self.source, scope=self.scope,
+                              subjects=self._subjects, region=self._region).to_dict()
 
 
 class PreflightErrorWarning(PreflightWarning):
@@ -316,9 +339,13 @@ class PreflightErrorWarning(PreflightWarning):
         severity: str = "error",
         loc: str | None = None,
         source: str | None = None,
+        scope: str = "model",
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
     ) -> None:
         super().__init__(
-            message, code=code, severity=severity, loc=loc, source=source
+            message, code=code, severity=severity, loc=loc, source=source,
+            scope=scope, subjects=subjects, region=region,
         )
 
 
@@ -340,6 +367,9 @@ class PreflightConfigError(RfxRefusal):
         code: str = "uncoded",
         loc: str | None = None,
         source: str | None = None,
+        scope: str = "model",
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
     ) -> None:
         self.diagnostic = (
             message
@@ -363,7 +393,20 @@ class PreflightConfigError(RfxRefusal):
         self.code = code
         self.loc = loc
         self.source = source
+        self.scope = scope
+        self._subjects = subjects
+        self._region = region
 
+
+    @property
+    def subjects(self):
+        value = self._subjects
+        return value.resolve() if hasattr(value, "resolve") else tuple(value)
+
+    @property
+    def region(self):
+        value = self._region
+        return value.resolve() if value is not None and hasattr(value, "resolve") else value
 
 class PreflightIssue(str):
     """One preflight finding.
@@ -397,6 +440,9 @@ class PreflightIssue(str):
     :meth:`PreflightReport.to_json`.
     """
 
+    scope: str
+    _subjects: tuple[str, ...] | _Selection
+    _region: dict | _Region | None
     severity: str
     code: str
     loc: str | None
@@ -410,6 +456,9 @@ class PreflightIssue(str):
         code: str = "uncoded",
         loc: str | None = None,
         source: str | None = None,
+        scope: str = "model",
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
         diagnostic: Diagnostic | None = None,
     ):
         if isinstance(message, Diagnostic):
@@ -433,7 +482,20 @@ class PreflightIssue(str):
         obj.code = code
         obj.loc = loc
         obj.source = source
+        obj.scope = scope
+        obj._subjects = subjects
+        obj._region = region
         return obj
+
+    @property
+    def subjects(self):
+        value = self._subjects
+        return value.resolve() if hasattr(value, "resolve") else tuple(value)
+
+    @property
+    def region(self):
+        value = self._region
+        return value.resolve() if value is not None and hasattr(value, "resolve") else value
 
     def to_dict(self) -> dict[str, object]:
         """Return a stable, JSON-serializable record of this finding."""
@@ -443,6 +505,9 @@ class PreflightIssue(str):
             "severity": self.severity,
             "loc": self.loc,
             "source": self.source,
+            "scope": self.scope,
+            "subjects": self.subjects,
+            "region": self.region,
         }
 
 
@@ -598,6 +663,9 @@ class PreflightReport(list):
                     "severity": getattr(i, "severity", "warning"),
                     "loc": getattr(i, "loc", None),
                     "source": getattr(i, "source", None),
+                    "scope": getattr(i, "scope", "model"),
+                    "subjects": getattr(i, "subjects", ()),
+                    "region": getattr(i, "region", None),
                 }
                 for i in self
             ],

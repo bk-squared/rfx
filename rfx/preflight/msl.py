@@ -62,6 +62,8 @@ import numpy as np
 
 from rfx.preflight.msl_codes import msl_text, msl_diagnostic, msl_join, msl_value
 from rfx._internal._grid_metric import is_one_cell_size
+from rfx.preflight._subjects import finding_subjects
+from rfx.preflight._msl_subjects import conductor_owners, _msl_realized_substrate
 from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _fmt_len,
@@ -203,7 +205,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                 entries = list(resolver(grid))
         except (TypeError, ValueError, AttributeError):
             pass
-    for pe in entries:
+    for _port_index, pe in enumerate(entries):
         try:
             record = msl_probe_clearance_for_port(self, pe, grid)
         except (TimeoutError,):
@@ -222,6 +224,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                         subject=pe.name,
                         source="preflight_sparameters",
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="preflight_sparameters",
                 ),
@@ -244,6 +247,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                         subject=pe.name,
                         source="preflight_sparameters",
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="preflight_sparameters",
                 ),
@@ -275,6 +279,7 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
                     subject=pe.name,
                     source="preflight_sparameters",
                 ),
+                **finding_subjects(self, objects=(("_msl_ports", _port_index), *record.reflector.objects)),
                 code="msl_port_geometry",
                 source="preflight_sparameters",
             ),
@@ -433,109 +438,6 @@ def _msl_declared_face_geometry(self, pe, grid):
                 declared_n_above=max(1, k + 1 - ground_index),
                 ground=port.z_lo, trace=port.z_hi)
 
-def _msl_realized_substrate(self, pe, inr, assembled=None):
-    """Same-permittivity material-column extent under a port, or None.
-
-    This is NOT the conductor-plane gap. The material walk can include
-    sample slots also owned by the trace PEC volume; the lattice ownership contract uses different
-    samplers for dielectric material and PEC volume ownership. Keep its
-    count/extent separate from the validated normal source interval.
-
-    On a graded mesh, derive realized substrate thickness from the local profile. Multiplying ``n_cells`` by the
-    uniform scalar ``dx`` can report 300 um (+18%) for a three-cell substrate that ``fidelity_report()`` measures as
-    254.00 um on the same simulation.
-
-    So this reads the substrate the way ``rfx.fidelity`` does: build
-    the grid the run will use (non-uniform when any profile is set),
-    assemble materials on it, walk the permittivity column under the
-    port along the substrate-normal axis from the ground plane, and
-    sum the ACTUAL cell sizes of the cells that carry the substrate's
-    permittivity. Returns a dict with
-
-      n          same-permittivity sample-slot count under the port,
-      h_real     their summed material-column extent (m),
-      frac       where the DECLARED top face sits inside the cell that
-                 contains it, as a fraction of that cell (0 = on a node),
-      declared_n_above  upper face-bracket count relative to the port's
-                 canonical ground node (independent of material n),
-      d_iface    that cell's size (m),
-      nonuniform whether a mesh profile was in force,
-
-    or None when the material column cannot be derived. Declared-face
-    geometry is available independently through _msl_declared_face_geometry;
-    the compatibility frac/bracket fields here delegate to that helper.
-
-    ``assembled`` is the per-check cache from :meth:`_msl_assemble_once`
-    (grid, materials, per-axis cell sizes, nonuniform flag) so N MSL
-    ports cost one rasterization, not N.
-
-    The walk starts at the PORT'S OWN ground plane -- ``pe.position``'s
-    substrate-normal coordinate -- not at the domain floor. The first
-    version started at ``pad_lo`` (domain z = 0), which is only right
-    when the ground plane sits on the floor; on a stripline-like or
-    multi-layer stack it walked whatever dielectric lies BELOW the
-    ground and reported that as "the substrate" (a
-    ground plane at 800 um over an eps_r 9 filler read back n=10,
-    h_real=800 um, never seeing the 254 um / eps_r 3.66 substrate above
-    it). The class, reintroduced in a new form -- fixed here.
-
-    Lattice ownership contract: the walk starts at the
-    first cell ABOVE the realized ground. A sheet ground at the port
-    plane owns no cell, so that is the port's own cell; a VOLUME
-    ground drawn upward from the port plane (``Box(z_g, z_g + t)``)
-    occupies the cells ``k0 .. k0+n-1`` and its top face is a wall at
-    ``k0+n`` — the substrate begins there, and the returned dict says
-    how many conductor cells were skipped (``ground_cells``) so the
-    caller can name a port that sits UNDER its own ground.
-    """
-    try:
-        if assembled is None:
-            assembled = self._msl_assemble_once()
-        if assembled is None:
-            return None
-        grid, mats, sizes, nonuniform, realized = assembled
-        pos = tuple(float(v) for v in pe.position)
-        if nonuniform:
-            from rfx.nonuniform import position_to_index as _nu_p2i
-            idx = list(_nu_p2i(grid, pos))
-        else:
-            idx = list(grid.position_to_index(pos))
-        # Keep propagation/width lookup unchanged, but use the source's
-        # lower-tie normal plane. Generic uniform banker's rounding
-        # can start a half-cell-offset ground in the next dielectric layer.
-        from rfx.sources.msl_port import _msl_normal_bounds, msl_port_from_entry
-        idx[inr] = _msl_normal_bounds(grid, msl_port_from_entry(pe))[0]
-        eps = np.asarray(mats.eps_r, dtype=float)
-        k0 = int(idx[inr])  # the port's own ground plane, NOT pads[inr]
-        ground_cells = 0
-        if realized.pec_mask is not None:
-            sl = [int(idx[0]), int(idx[1]), int(idx[2])]
-            sl[inr] = slice(k0, None)
-            occ = np.asarray(realized.pec_mask[tuple(sl)], dtype=bool).ravel()
-            while ground_cells < occ.size and occ[ground_cells]:
-                ground_cells += 1
-            k0 += ground_cells
-        sl = [int(idx[0]), int(idx[1]), int(idx[2])]
-        sl[inr] = slice(k0, None)
-        col = np.asarray(eps[tuple(sl)], dtype=float).ravel()
-        if col.size == 0 or col[0] <= 1.0 + 1e-6:
-            return None
-        eps_sub = float(col[0])
-        n = 0
-        while n < col.size and abs(col[n] - eps_sub) <= 1e-3 * eps_sub:
-            n += 1
-        ax_sizes = sizes[inr][k0:]
-        h_real = float(np.sum(ax_sizes[:n]))
-        try:
-            face = self._msl_declared_face_geometry(pe, grid)
-        except (ValueError, TypeError, NotImplementedError):
-            face = {}
-        return dict(n=int(n), h_real=h_real, frac=face.get("frac"),
-                    declared_n_above=face.get("declared_n_above"),
-                    d_iface=face.get("d_iface"), nonuniform=bool(nonuniform),
-                    ground_cells=int(ground_cells))
-    except (ValueError, NotImplementedError):
-        return None
 
 def _msl_conductor_gap(self, pe, assembled):
     """Validated conductor planes from the caller's existing assembly.
@@ -745,8 +647,9 @@ def _check_msl_port_geometry(
                 stacklevel=3,
             )
 
-    for pe in _probe_entries:
+    for _port_index, pe in enumerate(_probe_entries):
         _gap = None
+        _plane_owners = conductor_owners(self, pe, _msl_assembled)
         if _msl_assembled is None:
             _w.warn(
                 PreflightWarning(
@@ -758,6 +661,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_conductor_planes",
                     severity="error",
                     source="_check_msl_port_geometry",
@@ -777,6 +681,7 @@ def _check_msl_port_geometry(
                             ),
                             subject=pe.name,
                         ),
+                        **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners)),
                         code="msl_port_conductor_planes",
                         severity="error",
                         source="_check_msl_port_geometry",
@@ -904,6 +809,7 @@ def _check_msl_port_geometry(
                             ),
                             subject=pe.name,
                         ),
+                        **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -956,6 +862,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners, *(_real.get("owners", ()) if _real else ()))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1063,6 +970,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners, *(_real.get("owners", ()) if _real else ()))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1091,6 +999,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_plane_owners, *(_real.get("owners", ()) if _real else ()))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1136,6 +1045,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1229,6 +1139,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1254,6 +1165,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1278,6 +1190,7 @@ def _check_msl_port_geometry(
                         + msl_text("reflector_bounds_remedy"),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *(obj for item in _unevaluated for obj in getattr(item, "objects", ())))),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1349,6 +1262,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index), *_clearance.reflector.objects)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1441,6 +1355,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1476,6 +1391,7 @@ def _check_msl_port_geometry(
                         ),
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1544,6 +1460,7 @@ def _check_msl_port_geometry(
                             ),
                             subject=pe.name,
                         ),
+                        **finding_subjects(self, objects=(("_msl_ports", _port_index), _other)),
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -1773,6 +1690,7 @@ def _check_msl_port_geometry(
                         _nf_msg,
                         subject=pe.name,
                     ),
+                    **finding_subjects(self, objects=(("_msl_ports", _port_index),)),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),

@@ -68,9 +68,11 @@ def _preflight_impl(
     # Selection information belongs outside the captured legality findings.
     # Resolve before any validator reads a profile or fallback spacing.
     self._resolve_mesh()
+    from rfx.preflight._subjects import finding_record
     issues = PreflightReport()
     verdict_findings = []
     if _conductors is not None:
+        self._finding_record_reader = lambda: _conductors._realization_record or finding_record(self)
         tables = _conductors._realization_tables
         issues._realization_reader = lambda: tables[-1] if tables else None
         if tables:
@@ -153,6 +155,9 @@ def _preflight_impl(
                     loc=getattr(e, "loc", None),
                     source=getattr(e, "source", None),
                     diagnostic=getattr(e, "diagnostic", None),
+                    scope=getattr(e, "scope", "model"),
+                    subjects=getattr(e, "_subjects", ()),
+                    region=getattr(e, "_region", None),
                 ))
 
     # The explicit per-film reader owns DC findings. Diagnostic assembly may
@@ -197,6 +202,9 @@ def _preflight_impl(
                 loc=loc,
                 source=source,
                 diagnostic=getattr(inst, "diagnostic", None),
+                scope=getattr(inst, "scope", "model"),
+                subjects=getattr(inst, "_subjects", ()),
+                region=getattr(inst, "_region", None),
             )
         )
 
@@ -249,6 +257,8 @@ def _preflight_impl(
         ):
             issues[:] = [issue for issue in issues if issue.code not in assembly_codes]
 
+    from rfx.preflight._subjects import resolve_findings
+    resolve_findings(issues)
     if strict and len(issues):   # PreflightReport refuses bool()
         # Aggregate-then-raise: escalate ALL findings at once. Preserves the
         # historical "strict escalates any issue to ValueError" contract,

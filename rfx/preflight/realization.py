@@ -212,8 +212,9 @@ class _EntryRealization:
 
     def __init__(self, *, label, name, shape, kind, cells=None, sheet=None,
                  wire=None, error=None, lo=None, hi=None, declared_mid=None,
-                 tie_planes=None, solved_shape=None):
+                 tie_planes=None, solved_shape=None, subject_label=None):
         self.label = label
+        self.subject_label = label if subject_label is None else subject_label
         self.name = name
         self.shape = shape
         self.solved_shape = shape if solved_shape is None else solved_shape
@@ -637,6 +638,7 @@ class _CampaignStaticsContext:
                 continue  # Assembly owns structural refusals.
             out.append(_EntryRealization(
                 label='add_thin_conductor(surface_impedance_f0=...)',
+                subject_label=f'thin_conductor[{i}]',
                 name=f'thin_conductor[{i}]', shape=tc.shape, kind='sheet',
                 sheet=sheet, lo=lo, hi=hi, solved_shape=solved))
         return out

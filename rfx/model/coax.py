@@ -51,13 +51,18 @@ def stamp_check_findings(sim, conductors):
     from rfx.model.pad_fill import check_pad_fill
     from rfx.preflight.realization import context_from_conductors
     from rfx.preflight.pec_geometry import _warn_sheet_effective_size
+    from rfx.preflight._common import PreflightIssue, PreflightWarning
+    from rfx.preflight._realization_subjects import retained_subjects
     ctx = context_from_conductors(sim, conductors)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         _warn_sheet_effective_size(warnings, ctx, ctx.interior_pec_entries())
     pad = []
     check_pad_fill(sim, conductors.grid, (), record=pad, conductors=conductors)
-    return (('sheet-size', tuple(str(w.message) for w in caught)),
+    return (('sheet-size', tuple(PreflightIssue(str(w.message), code=w.message.code,
+                severity=w.message.severity, loc=w.message.loc, source=w.message.source,
+                **retained_subjects(w.message)) for w in caught
+                if isinstance(w.message, PreflightWarning))),
             ('pad-fill', tuple(pad)))
 
 

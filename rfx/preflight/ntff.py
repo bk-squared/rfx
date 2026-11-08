@@ -25,6 +25,8 @@ imported from ``rfx.preflight._common``.
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import finding_subjects
+
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
@@ -139,6 +141,7 @@ def _validate_ntff_inverse_design(
                     f"enclose all radiators with no conductor surface "
                     f"on or crossing any face. Shrink or move the NTFF "
                     f"box.",
+                    **finding_subjects(self, objects=("ntff", e), region=(corner_lo, corner_hi)),
                     code="ntff_pec_overlap",
                     source="_validate_ntff_inverse_design",
                 )
@@ -160,11 +163,11 @@ def _validate_ntff_inverse_design(
     huygens_thresh = lam_min / 2.0
 
     # Collect candidate bboxes and point positions
-    bboxes: list[tuple[str, tuple, tuple]] = []
+    bboxes: list[tuple[str, tuple, tuple, object]] = []
     for entry in self._geometry:
         try:
             c1, c2 = entry.shape.bounding_box()
-            bboxes.append((entry.material_name, c1, c2))
+            bboxes.append((entry.material_name, c1, c2, entry))
         except (NotImplementedError, TypeError, AttributeError):
             continue
     # PEC thin conductors are sheets — conductors in the census.
@@ -178,10 +181,10 @@ def _validate_ntff_inverse_design(
             continue
         if c1 is None or c2 is None:
             continue
-        bboxes.append((f"thin_conductor[{_ti}]", tuple(c1), tuple(c2)))
-    points: list[tuple[str, tuple]] = []
+        bboxes.append((f"thin_conductor[{_ti}]", tuple(c1), tuple(c2), tc))
+    points: list[tuple[str, tuple, object]] = []
     for pe in self._ports:
-        points.append(("port/source", tuple(pe.position)))
+        points.append(("port/source", tuple(pe.position), pe))
     # Probes intentionally excluded: a DFT probe is a
     # passive observer and does not radiate or scatter.
 
@@ -190,7 +193,7 @@ def _validate_ntff_inverse_design(
         min_gap = float("inf")
         culprit = None
         # bbox distances
-        for name, c1, c2 in bboxes:
+        for name, c1, c2, owner in bboxes:
             # tangential overlap check — only meaningful gap if the face
             # is "above" the feature in the normal direction
             overlap = True
@@ -209,8 +212,9 @@ def _validate_ntff_inverse_design(
                 continue
             if d < min_gap:
                 min_gap, culprit = d, f"geometry '{name}'"
+                culprit_object = owner
         # points
-        for name, pos in points:
+        for name, pos, owner in points:
             # require tangential in-box for relevance
             in_tang = all(
                 tang[i][0] <= pos[other[i]] <= tang[i][1] for i in range(2)
@@ -220,6 +224,7 @@ def _validate_ntff_inverse_design(
             d = abs(coord - pos[axis])
             if d < min_gap:
                 min_gap, culprit = d, f"{name} at {pos}"
+                culprit_object = owner
 
         if culprit is not None and min_gap < gap_thresh:
             _w.warn(
@@ -230,6 +235,7 @@ def _validate_ntff_inverse_design(
                     f"near-field; directivity / pattern likely corrupted. "
                     f"Move NTFF box ≥ λ/2 from any radiating/scattering "
                     f"structure (Huygens-equivalence rule).",
+                    **finding_subjects(self, objects=("ntff", culprit_object), region=(corner_lo, corner_hi)),
                     code="ntff_near_field",
                     source="_validate_ntff_inverse_design",
                 ),
@@ -243,6 +249,7 @@ def _validate_ntff_inverse_design(
                     f"at f_max={f_max/1e9:.2f}GHz. Close to reactive near-"
                     f"field; far-field pattern accuracy may degrade. Move "
                     f"NTFF box ≥ λ/2 from radiating/scattering structures.",
+                    **finding_subjects(self, objects=("ntff", culprit_object), region=(corner_lo, corner_hi)),
                     code="ntff_near_field",
                     source="_validate_ntff_inverse_design",
                 ),
@@ -309,7 +316,7 @@ def _validate_ntff_small_ground_plane(
             c1, c2 = entry.shape.bounding_box()
         except (NotImplementedError, TypeError, AttributeError):
             continue
-        candidates.append((c1, c2))
+        candidates.append((c1, c2, entry))
     for tc in getattr(self, "_thin_conductors", ()):
         if not getattr(tc, "is_pec", False):
             continue
@@ -319,8 +326,8 @@ def _validate_ntff_small_ground_plane(
             continue
         if c1 is None or c2 is None:
             continue
-        candidates.append((tuple(c1), tuple(c2)))
-    for c1, c2 in candidates:
+        candidates.append((tuple(c1), tuple(c2), tc))
+    for c1, c2, owner in candidates:
         ext = [c2[a] - c1[a] for a in range(3)]
         thin = min(range(3), key=lambda a: ext[a])
         lat = [a for a in range(3) if a != thin]
@@ -347,6 +354,7 @@ def _validate_ntff_small_ground_plane(
         area = ext[lat[0]] * ext[lat[1]]
         if best is None or area > best[0]:
             best = (area, l_small, l_big, c1, c2)
+            best_object = owner
 
     if best is None:
         return
@@ -369,6 +377,7 @@ def _validate_ntff_small_ground_plane(
             f"impedance work. For a clean broadside pattern enlarge the "
             f"ground plane to at least ~1.4λ; if the small ground plane "
             f"is intentional, interpret the pattern accordingly.",
+            **finding_subjects(self, objects=("ntff", best_object)),
             code="ntff_small_ground_plane",
             source="_validate_ntff_small_ground_plane",
         ),
@@ -407,6 +416,7 @@ def _validate_cfg_ntff_absorber_overlap(
                         f"NTFF box extends into {absorber_label} region along "
                         f"{'xyz'[ax]}-axis. Far-field results will be "
                         f"corrupted. Shrink NTFF box to interior.",
+                        **finding_subjects(self, objects=("ntff",), region=(corner_lo, corner_hi)),
                         code="absorber_overlap",
                         source="_validate_cfg_ntff_absorber_overlap",
                     ),

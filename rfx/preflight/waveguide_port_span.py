@@ -9,6 +9,7 @@ import numpy as np
 
 from rfx.model.waveguide_planes import entry_planes
 from rfx.model.graded_admission import host_cells
+from rfx.preflight._subjects import finding_subjects
 from rfx.preflight._common import PreflightErrorWarning
 
 
@@ -121,11 +122,11 @@ def _objects(sim, grid, axis):
     for i, g in enumerate(sim._geometry):
         bounds = _bounds(g.shape)
         if bounds is not None:
-            yield f"{g.material_name} (geometry[{i}])", bounds, True
+            yield f"{g.material_name} (geometry[{i}])", bounds, True, g
     for i, sheet in enumerate(sim._thin_conductors):
         bounds = _bounds(sheet.shape)
         if bounds is not None and abs(bounds[1][axis] - bounds[0][axis]) <= 1e-9:
-            yield f"thin conductor[{i}]", bounds, False
+            yield f"thin conductor[{i}]", bounds, False, sheet
     for i, sheet in enumerate(sim._pinned_sheets):
         if sheet.normal_axis != axis:
             continue
@@ -136,7 +137,7 @@ def _objects(sim, grid, axis):
         for a, indices in zip(transverse, (sheet.i_range, sheet.j_range)):
             pad = getattr(grid, f"pad_{'xyz'[a]}_lo")
             lo[a], hi[a] = (grid.node_of(a, pad + n) for n in indices)
-        yield sheet.name or f"pinned PEC sheet[{i}]", (lo, hi), False
+        yield sheet.name or f"pinned PEC sheet[{i}]", (lo, hi), False, sheet
 
 
 def _validate_cfg_waveguide_port_span(self, _w):
@@ -158,7 +159,7 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 limits = getattr(entry, f"{'xyz'[a]}_range")
                 aperture[a] = limits if limits is not None else (0.0, self._domain[a])
         obstacles = []
-        for name, (lo, hi), volume in _objects(self, grid, axis):
+        for name, (lo, hi), volume, owner in _objects(self, grid, axis):
             if not all(hi[a] > limits[0] + tol and lo[a] < limits[1] - tol
                        for a, limits in aperture.items()):
                 continue
@@ -196,8 +197,8 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 faces = [face for face in faces if changes(face)]
             if faces:
                 face = min(faces, key=lambda f: abs(f - source))
-                obstacles.append((abs(face - source), name, face))
-        for _, name, face in sorted(obstacles):
+                obstacles.append((abs(face - source), name, face, owner, (lo, hi)))
+        for _, name, face, owner, bounds in sorted(obstacles, key=lambda item: item[:3]):
             _w.warn(PreflightErrorWarning(
                 f"waveguide port '{entry.name or p}' (source plane {source * 1e3:.6g} mm, "
                 f"direction {entry.direction}) measures its reflection at {reference * 1e3:.6g} mm "
@@ -206,6 +207,7 @@ def _validate_cfg_waveguide_port_span(self, _w):
                 "object's reflection and its S-parameters would not describe it. "
                 f"Move the port or the object so the face lies beyond {reference * 1e3:.6g} mm "
                 "in the launch direction, or pass a smaller ref_offset (minimum 3).",
+                **finding_subjects(self, objects=(entry, owner), region=bounds),
                 code="waveguide_port_obstacle_before_reference",
                 loc=f"waveguide_port[{p}]",
                 source="_validate_cfg_waveguide_port_span",

@@ -27,8 +27,11 @@ def message_numbers(message):
 def without_prose(value):
     """Remove presentation fields, retaining identifiers and numeric data."""
     if isinstance(value, dict):
+        ignored = {"message", "detail", "remedy", "note", "realization"}
+        if {"code", "message", "scope", "subjects"} <= value.keys():
+            ignored.update(("scope", "subjects", "region"))
         result = {k: without_prose(v) for k, v in value.items()
-                  if k not in {"message", "detail", "remedy", "note", "realization"}}
+                  if k not in ignored}
         if "message" in value:
             result["numbers"] = message_numbers(value["message"])
         return result
