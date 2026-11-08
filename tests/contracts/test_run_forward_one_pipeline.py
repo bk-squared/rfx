@@ -305,6 +305,10 @@ ADMISSION_ROWS = (
 
 
 BOTH_REFUSE_ROWS = (
+    ('C-full-tensor', 'multi-device-uniform'),
+    ('C-full-tensor', 'multi-device-graded'),
+    ('P-floquet', 'graded'),
+    ('P-floquet', 'multi-device-graded'),
     ('B-periodic', 'multi-device-graded'),
     ('B-periodic', 'multi-device-uniform'),
     ('B-upml', 'graded'),
@@ -579,11 +583,20 @@ def test_admission(declaration, path, direction):
     finish(declaration, path, 'admission', ids, set(), [])
 
 
-# Appendix I: these full-suite rows refuse while declaring the closed box.
-DECLARATION_REFUSAL_ROWS = (
-    ('PW-closed', 'graded'),
-    ('PW-closed', 'multi-device-graded'),
-)
+# These rows refuse at declaration, before either entry can be called.
+DECLARATION_REFUSAL_ROWS = {
+    ('PW-closed', 'graded'): 'closed_box TFSF require a uniform',
+    ('PW-closed', 'multi-device-graded'): 'closed_box TFSF require a uniform',
+    ('P-floquet', 'graded'): 'Floquet ports do not support non-uniform z mesh',
+    ('P-floquet', 'multi-device-graded'): 'Floquet ports do not support non-uniform z mesh',
+}
+
+MESSAGE_COMPARISON_ROWS = {
+    ('C-full-tensor', 'multi-device-uniform'): 'is supported on a single-device Yee mesh only',
+    ('C-full-tensor', 'multi-device-graded'): 'is supported on a single-device Yee mesh only',
+    ('P-floquet', 'graded'): DECLARATION_REFUSAL_ROWS['P-floquet', 'graded'],
+    ('P-floquet', 'multi-device-graded'): DECLARATION_REFUSAL_ROWS['P-floquet', 'multi-device-graded'],
+}
 
 
 #: The exception classes rfx raises to refuse a request it does not solve
@@ -625,14 +638,14 @@ def both_refused(declaration, path, pair):
         return False
     return (construction['outcome'] == 'raised'
             and construction['type'] in REFUSAL_TYPES
-            and 'closed_box TFSF require a uniform' in construction['message']
+            and DECLARATION_REFUSAL_ROWS[declaration, path] in construction['message']
             and raised_in_rfx(construction))
 
 
 @pytest.mark.parametrize('declaration,path,direction', parameters(BOTH_REFUSE_ROWS, 'refusal'))
 def test_both_refuse(declaration, path, direction):
     # Refusals occur before stepping; one step bounds an unexpectedly admitted call.
-    if direction:
+    if direction and (declaration, path) not in DECLARATION_REFUSAL_ROWS:
         pair = equal_request_pair(declaration, path, direction, n_steps=1,
                                   entry_options=entry_options(declaration))
     else:
@@ -640,6 +653,15 @@ def test_both_refuse(declaration, path, direction):
                               entry_options=entry_options(declaration))
                 for entry in ('run', 'forward')}
     assert both_refused(declaration, path, pair), pair
+    if (declaration, path) in MESSAGE_COMPARISON_ROWS:
+        if (declaration, path) in DECLARATION_REFUSAL_ROWS:
+            assert all('construction' in record for record in pair.values()), pair
+        records = [record['construction'] if (declaration, path) in DECLARATION_REFUSAL_ROWS else record
+                   for record in pair.values()]
+        assert records[0]['message'] == records[1]['message'], pair
+        expected = MESSAGE_COMPARISON_ROWS[declaration, path]
+        for record in records:
+            assert expected in record['message'], record
     if path.startswith('multi-device') and declaration in ('P-waveguide', 'PW-A', 'PW-B', 'PW-oblique'):
         expected = ('waveguide ports (add_waveguide_port) are not supported on'
                     if declaration == 'P-waveguide' else
@@ -703,6 +725,12 @@ def test_declaration_refusal_does_not_extend_to_unlisted_rows():
             for entry in ('run', 'forward')}
     assert both_refused('PW-closed', 'graded', pair), pair
     assert not both_refused('PW-A', 'graded', pair), pair
+    assert not both_refused('P-floquet', 'graded', pair), pair
+    floquet_pair = {entry: run_l2(BUILDERS['P-floquet'], entry, 'graded', n_steps=1)
+                    for entry in ('run', 'forward')}
+    assert both_refused('P-floquet', 'graded', floquet_pair), floquet_pair
+    assert not both_refused('PW-A', 'graded', floquet_pair), floquet_pair
+    assert not both_refused('PW-closed', 'graded', floquet_pair), floquet_pair
 
 
 @pytest.mark.parametrize('direction', ('a', 'b'))
