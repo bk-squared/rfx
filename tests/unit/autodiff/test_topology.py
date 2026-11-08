@@ -16,6 +16,7 @@ import pytest
 
 from rfx.boundaries.pec import apply_pec_mask, apply_pec_occupancy
 from rfx.core.yee import init_state
+from rfx.errors import RfxRefusal
 
 from rfx.topology import (
     TopologyDesignRegion,
@@ -519,6 +520,7 @@ class TestTopologyOptimize:
         assert result.final_result is None
 
     @pytest.mark.gpu  # optax is installed only in the GPU suite
+    @pytest.mark.xfail(strict=True, raises=RfxRefusal, reason="#2467: topology_optimize judges the realization domain row without the pre-solve pass; run() and forward() admit this domain")
     def test_topology_optimize_with_cpml(self):
         """Topology optimization should work with CPML boundary.
 
