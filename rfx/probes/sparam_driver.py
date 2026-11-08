@@ -159,6 +159,9 @@ def compute_lumped_wire_s_matrix_via_scan(
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")
         refuse_distributed_lumped_s_pmc(sim)
+    elif not graded:
+        from rfx.api._refplane_checks import refuse_partial_wire_reference_planes
+        refuse_partial_wire_reference_planes(sim._port_sparameter_entries())
     freqs = np.asarray(freqs, dtype=np.float64)
     n_freqs = len(freqs)
 
