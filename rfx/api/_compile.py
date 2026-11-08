@@ -373,6 +373,10 @@ class _CompileMixin:
             pass
         return self._freq_max / 2.0
 
+    def _resolve_waveguide_f0(self, entry: _WaveguidePortEntry, freqs) -> float:
+        """Use one source center for waveguide builders and cutoff checks."""
+        return entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs)
+
     def _build_waveguide_port_config(
         self,
         entry: _WaveguidePortEntry,
@@ -438,7 +442,7 @@ class _CompileMixin:
                 grid.dx,
                 freqs,
                 n_modes=entry.n_modes,
-                f0=entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs),
+                f0=self._resolve_waveguide_f0(entry, freqs),
                 bandwidth=entry.bandwidth,
                 amplitude=entry.amplitude,
                 probe_offset=entry.probe_offset,
@@ -455,7 +459,7 @@ class _CompileMixin:
             port,
             grid.dx,
             freqs,
-            f0=entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs),
+            f0=self._resolve_waveguide_f0(entry, freqs),
             bandwidth=entry.bandwidth,
             amplitude=entry.amplitude,
             probe_offset=entry.probe_offset,

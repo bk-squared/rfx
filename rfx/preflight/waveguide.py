@@ -871,9 +871,7 @@ def _emit_waveguide_port_cutoff_findings(
     else:
         f_arr = np.asarray(resolve_waveguide_port_freqs(self, entry), dtype=float)
     f_min = float(f_arr.min())
-    band_center = (float((f_arr.min() + f_arr.max()) / 2.0)
-                   if entry.freqs is not None else self._freq_max / 2.0)
-    f0_resolved = entry.f0 if entry.f0 is not None else band_center
+    f0_resolved = self._resolve_waveguide_f0(entry, f_arr)
     if f0_resolved <= fc_excited:
         _w.warn(
             PreflightWarning(
