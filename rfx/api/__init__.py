@@ -1265,8 +1265,8 @@ class Simulation(
         validate_radius(radius)
         if radius is not None and extent is None:
             raise ValueError("radius requires a wire port: provide extent=...")
-        if impedance <= 0:
-            raise ValueError(f"impedance must be positive, got {impedance}")
+        if not (impedance > 0 and math.isfinite(impedance)):
+            raise ValueError(f"impedance must be positive and finite, got {impedance}")
         if direction is not None and direction not in ("+x", "-x", "+y", "-y"):
             raise ValueError(
                 f"direction must be one of '+x','-x','+y','-y' (or None), got {direction!r}"
@@ -1468,8 +1468,8 @@ class Simulation(
             raise ValueError(f"width must be positive, got {width}")
         if height <= 0:
             raise ValueError(f"height must be positive, got {height}")
-        if impedance <= 0:
-            raise ValueError(f"impedance must be positive, got {impedance}")
+        if not (impedance > 0 and math.isfinite(impedance)):
+            raise ValueError(f"impedance must be positive and finite, got {impedance}")
         if mode not in ("eigenmode", "laplace", "uniform"):
             raise ValueError(f"mode must be 'eigenmode', 'laplace', or 'uniform', got {mode!r}")
         if mode == "eigenmode" and direction not in ("+x", "-x"):

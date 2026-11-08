@@ -934,7 +934,7 @@ def export_geometry_json(path: str | Path, sim: Simulation) -> None:
         ],
         "sources": [
             {"position": list(p.position), "component": p.component}
-            for p in sim._ports if p.impedance == 0
+            for p in sim._ports if p.is_soft_source
         ],
         "probes": [
             {"position": list(p.position), "component": p.component}

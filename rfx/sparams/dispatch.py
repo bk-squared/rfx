@@ -109,8 +109,8 @@ def _port_census(self) -> dict:
     -- they would fire in every drive run. Counted separately so the error
     messages can say which of the two is present.
     """
-    lumped_wire = [pe for pe in self._ports if pe.impedance != 0.0]
-    bare_sources = [pe for pe in self._ports if pe.impedance == 0.0]
+    lumped_wire = [pe for pe in self._ports if pe.is_port]
+    bare_sources = [pe for pe in self._ports if pe.is_soft_source]
     return {
         "waveguide": len(self._waveguide_ports),
         "msl": len(self._msl_ports),

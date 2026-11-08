@@ -111,7 +111,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
         return min(rel, key=rel.get)
 
     for _port_index, pe in enumerate(sim._ports):
-        if pe.impedance == 0.0:
+        if pe.is_soft_source:
             continue
         idx = (position_to_index(grid, pe.position) if getattr(pe, "extent", None) is not None
                else field_index(grid, pe.position, pe.component))

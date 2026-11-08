@@ -261,7 +261,7 @@ def test_c4(lane, axis, monkeypatch):
     sim.add_probe(C, 'e' + 'xyz'[(axis + 1) % 3])
     sim.preflight()
     assert (component, expected) in seen
-    assert sim.realized_geometry().ports[0].edges == (expected,)
+    assert sim.realized_geometry().sources[0].edges == (expected,)
     seen.clear()
     with _realized.capture() as captured:
         execute(sim, lane)

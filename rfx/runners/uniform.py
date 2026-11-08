@@ -270,7 +270,7 @@ def run_uniform(
     wire_port_live_cells = []
     wire_port_excites = []
     for _port_index, pe in enumerate(sim._ports):
-        if pe.impedance == 0.0:
+        if pe.is_soft_source:
             # The declared kind alone decides the drive (forward() calls the same).
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, sizing_n, field_dtype=field_dtype)

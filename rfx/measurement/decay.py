@@ -604,6 +604,7 @@ def dc_census(sim, *, dt, n_table):
     produce a ``DCNotEvaluated`` row with the exception type and text.
     """
     from rfx.core.jax_utils import is_tracer
+    from rfx.api._port_kind import is_soft_source
 
     if is_tracer(dt):
         return []   # traced dt: advisory host math is impossible here
@@ -611,7 +612,7 @@ def dc_census(sim, *, dt, n_table):
     if not dt > 0.0 or n_table <= 0:
         return []
     t = np.arange(int(n_table), dtype=np.float64) * dt
-    soft = [pe for pe in sim._ports if pe.impedance == 0.0 and getattr(pe, "excite", True)]
+    soft = [pe for pe in sim._ports if is_soft_source(pe) and getattr(pe, "excite", True)]
     soft += [pe for pe in sim._msl_ports if getattr(pe, "excite", True)]
     rows = []
     for pe in soft:

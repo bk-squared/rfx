@@ -33,7 +33,7 @@ def uniform_run_specs(grid, wires, live_cells, lumped, ports):
         mid = tuple(_grid_metric.field_index(grid, p.position, p.component))
         specs.append((p.component, (mid,), 'lumped', mid))
     ids = [i for wire in (True, False) for i, p in enumerate(ports)
-           if p.impedance != 0.0 and (p.extent is not None) == wire]
+           if p.is_port and (p.extent is not None) == wire]
     return tuple((*spec, port_id) for spec, port_id in zip(specs, ids, strict=True))
 
 

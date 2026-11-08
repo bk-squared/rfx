@@ -319,7 +319,7 @@ def report_realized_in_plane(sim, z_gnd, z_patch, feed) -> None:
         solved_span[name] = tuple(v for a in sheet.axes[:2] for v in a.bounds_m)
     substrate = next(e for e in record.entities if e.kind == "material")
     sub_span = tuple(v for a in substrate.axes[:2] for v in a.bounds_m)
-    i_f, j_f, _k = record.ports[0].edges[0]
+    i_f, j_f, _k = record.sources[0].edges[0]
     checks = {
         "patch solved": ((patch_x_lo, patch_x_hi, patch_y_lo, patch_y_hi),
                          solved_span["patch"], 1e-6 * dx),

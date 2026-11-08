@@ -80,7 +80,11 @@ class DomainAxisGeometry:
 
 @dataclass(frozen=True)
 class PortGeometry:
-    """Driven E edges (component and indices), or a waveguide aperture."""
+    """Driven E edges (component and indices), or a waveguide aperture.
+
+    Only ``add_port`` entries are ports; an ``add_source`` soft point source
+    is a :class:`SourceGeometry` row (``_PortEntry.is_port``).
+    """
 
     label: str
     kind: str
@@ -442,6 +446,8 @@ def _ports(sim, ctx, assembled):
     locate = (lambda pos: position_to_index(grid, pos)) if ctx.lane == "nonuniform" else grid.position_to_index
     rows = []
     for i, pe in enumerate(sim._ports):
+        if not pe.is_port:
+            continue
         if pe.extent is None:
             cells = (tuple(int(k) for k in field_index(grid, pe.position, pe.component)),)
         else:

@@ -482,7 +482,7 @@ def _build_full_scan_fn(
     boundary = sim._boundary
 
     # Detect if simulation uses features incompatible with simple vmap
-    has_ports = any(pe.impedance != 0.0 for pe in sim._ports)
+    has_ports = any(pe.is_port for pe in sim._ports)
     has_tfsf = sim._tfsf is not None
     has_waveguide = len(sim._waveguide_ports) > 0
     has_dispersion = debye_spec is not None or lorentz_spec is not None
@@ -538,7 +538,7 @@ def _build_full_scan_fn(
     probes = []
 
     for pe in sim._ports:
-        if pe.impedance == 0.0:
+        if pe.is_soft_source:
             # amplitude_kind routing:
             #   'field'   -> raw make_source on EVERY boundary (E += w has
             #               no material dependence, so no dynamic path)
@@ -855,7 +855,7 @@ def vmap_material_sweep(
             grid, tuple(a in sim._periodic_axes for a in "xyz"))
         dynamic_sources = [
             pe for pe in sim._ports
-            if pe.impedance == 0.0 and pe.amplitude_kind == "current"
+            if pe.is_soft_source and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
         native = "cb" if sim._boundary == "cpml" else "raw"

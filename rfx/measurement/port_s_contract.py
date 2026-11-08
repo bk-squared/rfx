@@ -13,7 +13,7 @@ PASSIVE_RECORD_S_MESSAGE = (
 
 def record_ports(sim, *, default=False):
     """The impedance ports selected for S, including the graded wire default."""
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    ports = [p for p in sim._ports if p.is_port]
     if default and sim._uses_nonuniform_mesh:
         wires = [p for p in ports if p.extent is not None]
         if wires:

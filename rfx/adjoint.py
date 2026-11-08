@@ -72,7 +72,7 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
         reason = "graded meshes"
     elif ringdown is not None:
         reason = "ring-down"
-    elif (any(p.impedance != 0 or p.extent is not None for p in sim._ports)
+    elif (any(p.is_port or p.extent is not None for p in sim._ports)
           or any(getattr(sim, p) for p in
                  ("_waveguide_ports", "_msl_ports", "_coaxial_ports",
                   "_floquet_ports", "_lumped_rlc"))

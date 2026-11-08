@@ -234,7 +234,7 @@ def _validate_cfg_refplane_placement(self, _w) -> None:
     """
     wire_ports = [
         pe for pe in self._ports
-        if pe.impedance != 0.0 and pe.extent is not None
+        if pe.is_port and pe.extent is not None
     ]
     opted = [
         pe for pe in wire_ports
@@ -843,7 +843,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     point_components = {}
     for pe in getattr(sim, "_ports", ()):
         pos = tuple(float(v) for v in pe.position)
-        kind = ("add_source" if float(pe.impedance) == 0.0
+        kind = ("add_source" if pe.is_soft_source
                 and pe.extent is None else "add_port")
         points.append((id(pe), f"{kind} at {pos}", pos))
         if pe.extent is None:
@@ -1168,7 +1168,7 @@ def wire_port_radius_findings(sim, grid=None) -> list[dict]:
     from rfx.core.yee import MU_0
 
     ports = [(i, pe) for i, pe in enumerate(getattr(sim, "_ports", ()))
-             if pe.extent is not None and float(pe.impedance) != 0.0
+             if pe.extent is not None and pe.is_port
              and getattr(pe, "radius", None) is None]
     if not ports:
         return []
