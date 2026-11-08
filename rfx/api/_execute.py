@@ -883,7 +883,7 @@ class _ExecuteMixin:
             return all(_w[2 * d] <= cell[d] < _w[2 * d + 1] for d in range(3))
 
         for _pe in self._ports:
-            if _pe.impedance == 0.0:
+            if _pe.is_soft_source:
                 # A plain soft source: caught as a source cell at the step --
                 # except on a held port edge, where a port's drive is
                 # accepted, so it is refused here whatever it sits on.

@@ -10,8 +10,8 @@ def main_record_port_s(sim, result, *, compute_s_params, s_param_freqs, off_reco
 
     # Match the source lists built by the uniform runner: zero-impedance
     # declarations are soft sources, and extent distinguishes wire ports.
-    lumped_ports = [pe for pe in sim._ports if pe.impedance != 0.0 and pe.extent is None]
-    wire_ports = [pe for pe in sim._ports if pe.impedance != 0.0 and pe.extent is not None]
+    lumped_ports = [pe for pe in sim._ports if pe.is_port and pe.extent is None]
+    wire_ports = [pe for pe in sim._ports if pe.is_port and pe.extent is not None]
     _single_lumped_main_record = (
         compute_s_params
         and len(sim._ports) == 1

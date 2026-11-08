@@ -171,7 +171,7 @@ def _concrete_nodes(sim, edges):
         concrete('current-moment monitor geometry',
                  (*sim._current_moments[:3], sim._current_moments[5]))
     if _traced(edges):
-        index = next(i for i, p in enumerate(sim._ports) if p.impedance and p.extent is not None)
+        index = next(i for i, p in enumerate(sim._ports) if p.is_port and p.extent is not None)
         raise TracedStructureRefusal(
             f'port:{index}: wire port live cells depend on PEC geometry that is traced, '
             'so they cannot be counted. Make that geometry concrete or remove the port.')
@@ -226,7 +226,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     ``pec_edges=None`` means no PEC edges, without material reassembly.
     Frequencies, grid.dt and ``dft_window`` retain traced phase leaves.
     """
-    wire = any(p.impedance and p.extent is not None for p in sim._ports)
+    wire = any(p.is_port and p.extent is not None for p in sim._ports)
     edges = conductors.pec_edges if pec_edges is _UNSET and conductors is not None else pec_edges
     _concrete_nodes(sim, edges if wire and edges is not _UNSET else None)
     with jax.ensure_compile_time_eval():
@@ -326,13 +326,13 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
                             dft_window=cfg.window, dft_window_alpha=cfg.window_alpha,
                             periodic=tuple(flux_periodic)))
     edges = (_pec_edges(sim, grid) if pec_edges is _UNSET and
-             any(p.impedance and p.extent is not None for p in sim._ports) else
+             any(p.is_port and p.extent is not None for p in sim._ports) else
              None if pec_edges is _UNSET else pec_edges)
-    _concrete_nodes(sim, edges if any(p.impedance and p.extent is not None for p in sim._ports) else None)
+    _concrete_nodes(sim, edges if any(p.is_port and p.extent is not None for p in sim._ports) else None)
     from rfx.sources.sources import WirePort, _wire_port_live_cells
     from .ports import lumped_wire_owner
     for i, entry in enumerate(sim._ports):
-        if not entry.impedance:
+        if entry.is_soft_source:
             continue  # a soft source has no measurement owner
         live = (field_index(grid, entry.position, entry.component),)
         if entry.extent is not None:

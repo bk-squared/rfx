@@ -45,7 +45,7 @@ def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
     """
     option = "distributed=True" if entry == "forward" else "devices=..."
     faces = sorted(sim._boundary_spec.pmc_faces())
-    if faces and any(pe.impedance != 0 and pe.extent is not None for pe in sim._ports):
+    if faces and any(pe.is_port and pe.extent is not None for pe in sim._ports):
         raise RfxUnsupported(
             f"Wire ports with magnetic (PMC) face(s) {', '.join(faces)} "
             f"are not supported with {option}; the multi-device main run "
@@ -53,7 +53,7 @@ def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
             "and drives would be wrong even with compute_s_params=False"
             f". Use one device (omit {option})."
         )
-    if faces and any(pe.impedance != 0 for pe in sim._ports):
+    if faces and any(pe.is_port for pe in sim._ports):
         raise RfxUnsupported(
             f"Lumped-port S-parameters with magnetic (PMC) face(s) {', '.join(faces)} "
             f"are not supported with {option}; use one device (omit {option})."
@@ -196,7 +196,7 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     # Ordered sparam-eligible lumped/wire ports (impedance != 0), in
     # registration order — the same order the multi-drive index counts.
-    eligible_ids = [i for i, pe in enumerate(sim._ports) if pe.impedance != 0.0]
+    eligible_ids = [i for i, pe in enumerate(sim._ports) if pe.is_port]
     eligible = [sim._ports[i] for i in eligible_ids]
     if not eligible:
         raise ValueError(
@@ -291,7 +291,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             drive._ports = [replace(pe, excite=(pe is eligible[j]), waveform=(
                 pe.waveform if pe.waveform is not None or pe is not eligible[j]
                 else GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)))
-                if pe.impedance != 0 else pe for pe in sim._ports]
+                if pe.is_port else pe for pe in sim._ports]
             record = run_nonuniform_path(drive, n_steps=n_steps, compute_s_params=True,
                                          s_param_freqs=freqs, conformal_pec=conformal_pec,
                                          subpixel_smoothing=subpixel_smoothing, _drive_scan=True,
@@ -327,7 +327,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             from dataclasses import replace
             driven_sim = copy(sim)
             driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
-                                 if pe.impedance != 0 else pe for pe in sim._ports]
+                                 if pe.is_port else pe for pe in sim._ports]
             receivers_by_id = {f"port:{i}:mode:0": pe for i, pe in zip(eligible_ids, eligible)}
             plane_counts = {}
             for rp, _ in raw.get("wire_refplane") or ():

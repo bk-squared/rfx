@@ -642,7 +642,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
                 f"model has a {what} port.")
     wire = []
     for pe in sim._ports:
-        if float(pe.impedance) == 0.0:
+        if pe.is_soft_source:
             continue            # a soft source: checked for being off, below
         if pe.extent is None:
             raise RfxUnsupported(
@@ -1014,7 +1014,7 @@ class RingdownRun:
         from rfx.measurement.record_end import source_end_step
 
         entries = [pe for pe in self.sim._ports
-                   if (float(pe.impedance) == 0.0 or bool(pe.excite))
+                   if (pe.is_soft_source or bool(pe.excite))
                    and pe.waveform is not None]
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in entries], self.n_steps, self.dt,
@@ -1023,7 +1023,7 @@ class RingdownRun:
         ratio_long = 0.0
         for pe, (w, peak, _) in zip(entries, samples):
             ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
-            kind = "source" if float(pe.impedance) == 0.0 else "wire port"
+            kind = "source" if pe.is_soft_source else "wire port"
             label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
             if not ratio <= float(self.spec.source_off_tol):
                 raise ValueError(
@@ -1943,7 +1943,7 @@ class RingdownStop:
 
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in self.sim._ports
-             if (float(pe.impedance) == 0.0 or bool(pe.excite))
+             if (pe.is_soft_source or bool(pe.excite))
              and pe.waveform is not None],
             self.n_max, self.base.dt, tolerance=self.spec.source_off_tol,
             return_detail=True)

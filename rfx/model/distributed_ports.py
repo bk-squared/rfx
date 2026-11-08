@@ -83,7 +83,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     with jax.ensure_compile_time_eval():
         queue, material_drive = PortSourceQueue(), []
         for index, pe in enumerate(sim._ports):
-            if pe.impedance == 0:
+            if pe.is_soft_source:
                 cell = _grid_metric.field_index(grid, pe.position, pe.component)
                 if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
                     volume, _ = current_source_volume(grid, cell, pe.component)

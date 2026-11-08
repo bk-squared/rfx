@@ -16,14 +16,14 @@ def _validate_mixed_family(
             "registration (for a pure lumped/wire multiport use the "
             "production scan driver / extract_s_matrix)."
         ), _diagnostics)
-    lw_entries = [pe for pe in self._ports if pe.impedance != 0.0]
+    lw_entries = [pe for pe in self._ports if pe.is_port]
     if not lw_entries:
         raise diagnostic_refusal(RfxRefusal(
             "compute_mixed_s_matrix() needs at least one sparam-eligible "
             "add_port() lumped/wire port (impedance != 0). For a pure "
             "MSL multiport use compute_msl_s_matrix()."
         ), _diagnostics)
-    if any(pe.impedance == 0.0 for pe in self._ports):
+    if any(pe.is_soft_source for pe in self._ports):
         raise diagnostic_refusal(RfxUnsupported(
             "compute_mixed_s_matrix() does not support bare sources / "
             "0-ohm ports (add_source or add_port(impedance=0)): they "

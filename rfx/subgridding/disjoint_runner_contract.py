@@ -148,7 +148,7 @@ def build_disjoint_runner_contract(sim, grid) -> DisjointRunnerContract:
     origin = _fine_origin(region, grid)
     source_mappings = tuple(
         _map_position(
-            name=f"source_{idx}" if pe.impedance == 0.0 else f"port_{idx}",
+            name=f"source_{idx}" if pe.is_soft_source else f"port_{idx}",
             component=pe.component,
             position=pe.position,
             origin=origin,

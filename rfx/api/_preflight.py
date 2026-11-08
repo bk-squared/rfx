@@ -345,7 +345,7 @@ class _PreflightMixin:
             return compute_s_params
 
         port_entries = self._port_sparameter_entries()
-        source_only_entries = [pe for pe in self._ports if pe.impedance == 0.0]
+        source_only_entries = [pe for pe in self._ports if pe.is_soft_source]
         messages: list[str] = []
 
         if self._msl_ports:
@@ -594,7 +594,7 @@ class _PreflightMixin:
                 "for a through line"
             )
         if not port_entries:
-            source_only = any(pe.impedance == 0.0 for pe in self._ports)
+            source_only = any(pe.is_soft_source for pe in self._ports)
             if source_only:
                 messages.append("add_source(...) is not an impedance port")
             detail = "; ".join(messages) if messages else (

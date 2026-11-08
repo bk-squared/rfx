@@ -532,7 +532,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,
                               grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
-        elif pe.impedance == 0.0:
+        elif pe.is_soft_source:
             # Deferred like the ports: a load declared after this source is
             # on the edge before the drive reads it.
             if sim._boundary == "cpml":

@@ -34,10 +34,11 @@ def _error(exc):
 
 
 def _sources(sim, ctx):
+    from rfx.api._port_kind import is_soft_source
     from rfx.realized_geometry import SourceGeometry
     rows = []
     for i, pe in enumerate(sim._ports):
-        if pe.impedance != 0.0:
+        if not is_soft_source(pe):
             continue
         try:
             cell = tuple(int(k) for k in field_index(ctx.grid, pe.position, pe.component))
