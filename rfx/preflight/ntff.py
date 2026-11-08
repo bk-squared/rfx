@@ -163,7 +163,7 @@ def _validate_ntff_inverse_design(
     huygens_thresh = lam_min / 2.0
 
     # Collect candidate bboxes and point positions
-    bboxes: list[tuple[str, tuple, tuple]] = []
+    bboxes: list[tuple[str, tuple, tuple, object]] = []
     for entry in self._geometry:
         try:
             c1, c2 = entry.shape.bounding_box()
@@ -182,7 +182,7 @@ def _validate_ntff_inverse_design(
         if c1 is None or c2 is None:
             continue
         bboxes.append((f"thin_conductor[{_ti}]", tuple(c1), tuple(c2), tc))
-    points: list[tuple[str, tuple]] = []
+    points: list[tuple[str, tuple, object]] = []
     for pe in self._ports:
         points.append(("port/source", tuple(pe.position), pe))
     # Probes intentionally excluded: a DFT probe is a

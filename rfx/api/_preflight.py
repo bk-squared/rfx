@@ -738,7 +738,7 @@ class _PreflightMixin:
         _check_waveguide_port_evanescent,
     )
 
-    from rfx.preflight._flux_subjects import _collect_flux_regions
+    from rfx.preflight._flux_subjects import _collect_flux_regions  # type: ignore[misc]  # mypy does not support class-scoped imports.
 
     def preflight(
         self,

@@ -247,7 +247,7 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
         return
 
     src_f0s: list[float] = []
-    source_objects = {}
+    source_objects: dict[float, list[object]] = {}
     for family in ("_ports", "_msl_ports", "_waveguide_ports",
                    "_coaxial_ports", "_floquet_ports"):
         for entry in getattr(self, family, ()) or ():
@@ -1047,7 +1047,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
         return _sheet_solved_plane(ctx, a, e, k, drawn)
 
     results = []
-    spacing_objects = []
+    spacing_objects: list[object] = []
     for a in range(3):
         planes = []
         for e in conductors:
@@ -1246,7 +1246,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
         < self._PEC_SIGMA_THRESHOLD)
 
     results = []
-    electrical_objects = []
+    electrical_objects: list[object] = []
     n_pairs = 0
     n_skipped_pec_between = 0
     lam0 = C0 / float(self._freq_max)

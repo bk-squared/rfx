@@ -59,7 +59,7 @@ def traced_placement_rows(sim, status, inputs):
     """Keep declaration identities when placement coordinates are traced."""
     from rfx.model.realization_table import RealizationRow
     internal = getattr(sim, "_internal_probe_indices", None) or ()
-    labels = []
+    labels: list[tuple[str, str]] = []
     for collection, family in (("_pinned_sheets", "pinned_sheet"),
             ("_ports", "port"), ("_waveguide_ports", "waveguide_port"),
             ("_msl_ports", "msl_port"), ("_coaxial_ports", "coaxial_port"),

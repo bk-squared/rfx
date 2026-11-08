@@ -20,7 +20,7 @@ def conductor_owners(sim, pe, assembled):
             continue
         for k in (span['n_lo'], span['n_hi']):
             foot = entry.footprint_on_plane(normal, k, assembled[-1].periodic, grid.shape)
-            index = [slice(None), slice(None)]
+            index: list[int | slice | list[int]] = [slice(None), slice(None)]
             index[tangent.index(prop)] = span['i_feed']
             index[tangent.index(width)] = list(span['width_nodes'])
             if np.any(foot[tuple(index)]):

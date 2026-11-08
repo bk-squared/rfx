@@ -36,6 +36,7 @@ acyclic).
 from __future__ import annotations
 
 from rfx.errors import RfxRefusal, RfxWarning
+from rfx.preflight._subjects import _Region, _Selection
 
 import json
 
@@ -265,8 +266,8 @@ class PreflightWarning(RfxWarning):
         loc: str | None = None,
         source: str | None = None,
         scope: str = "model",
-        subjects: tuple[str, ...] = (),
-        region: dict | None = None,
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
     ) -> None:
         severity = severity or (message.legacy_severity if isinstance(message, Diagnostic) else "warning")
         self.diagnostic = (
@@ -303,7 +304,7 @@ class PreflightWarning(RfxWarning):
     @property
     def region(self):
         value = self._region
-        return value.resolve() if hasattr(value, "resolve") else value
+        return value.resolve() if value is not None and hasattr(value, "resolve") else value
 
     def __str__(self) -> str:  # back-compat: warning prints as its message
         return self.message
@@ -339,8 +340,8 @@ class PreflightErrorWarning(PreflightWarning):
         loc: str | None = None,
         source: str | None = None,
         scope: str = "model",
-        subjects: tuple[str, ...] = (),
-        region: dict | None = None,
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
     ) -> None:
         super().__init__(
             message, code=code, severity=severity, loc=loc, source=source,
@@ -367,8 +368,8 @@ class PreflightConfigError(RfxRefusal):
         loc: str | None = None,
         source: str | None = None,
         scope: str = "model",
-        subjects: tuple[str, ...] = (),
-        region: dict | None = None,
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
     ) -> None:
         self.diagnostic = (
             message
@@ -405,7 +406,7 @@ class PreflightConfigError(RfxRefusal):
     @property
     def region(self):
         value = self._region
-        return value.resolve() if hasattr(value, "resolve") else value
+        return value.resolve() if value is not None and hasattr(value, "resolve") else value
 
 class PreflightIssue(str):
     """One preflight finding.
@@ -439,6 +440,9 @@ class PreflightIssue(str):
     :meth:`PreflightReport.to_json`.
     """
 
+    scope: str
+    _subjects: tuple[str, ...] | _Selection
+    _region: dict | _Region | None
     severity: str
     code: str
     loc: str | None
@@ -453,8 +457,8 @@ class PreflightIssue(str):
         loc: str | None = None,
         source: str | None = None,
         scope: str = "model",
-        subjects: tuple[str, ...] = (),
-        region: dict | None = None,
+        subjects: tuple[str, ...] | _Selection = (),
+        region: dict | _Region | None = None,
         diagnostic: Diagnostic | None = None,
     ):
         if isinstance(message, Diagnostic):
@@ -491,7 +495,7 @@ class PreflightIssue(str):
     @property
     def region(self):
         value = self._region
-        return value.resolve() if hasattr(value, "resolve") else value
+        return value.resolve() if value is not None and hasattr(value, "resolve") else value
 
     def to_dict(self) -> dict[str, object]:
         """Return a stable, JSON-serializable record of this finding."""

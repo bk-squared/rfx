@@ -827,7 +827,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         )
 
 
-def half_node_split_findings(sim, grid=None) -> list[str]:
+def half_node_split_findings(sim, grid=None) -> list[SubjectMessage]:
     """Point features split from a conductor declared at the same coordinate.
 
     A PolylineWire filament vertex and a PEC sheet plane midway between two
@@ -1041,7 +1041,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     return findings
 
 
-def trace_far_end_findings(sim, grid=None) -> list[str]:
+def trace_far_end_findings(sim, grid=None) -> list[SubjectMessage]:
     """Refuse a port end whose realized node misses its declared trace.
 
     Both tangential ends are included in the declared pairing. Admission

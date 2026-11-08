@@ -7,6 +7,7 @@ from rfx.errors import RfxRefusal
 from dataclasses import dataclass
 import math
 import sys
+from typing import Any
 
 import numpy as np
 
@@ -158,7 +159,7 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
     from rfx.geometry.smoothing import continued_conductor_shape
-    cache = {"owners": {}}
+    cache: dict[str | int | tuple, Any] = {"owners": {}}
     conductors = []
     for _, entry in entries:
         try:
@@ -277,7 +278,7 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
                     declared_length, plane,
                     substrate_eps, getattr(port, "eps_r_sub", None), extension, owners))
     if uninspectable is not None:
-        messages = {}
+        messages: dict[str, list[object]] = {}
         for item in cache.get("uninspectable", []):
             messages.setdefault(str(item), []).extend(item.objects)
         uninspectable.extend(SubjectMessage(message, objects) for message, objects in messages.items())

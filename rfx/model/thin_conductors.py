@@ -547,7 +547,9 @@ def warn_dc_films(sim, warn):
                     **finding_subjects(sim, objects=(("_thin_conductors", i), "domain")),  source='admit_dc_film',
                     loc=f'thin_conductors[{i}]'))
             for finding in findings:
-                message = finding.message
+                # The captured admission helpers emit PreflightWarning instances.
+                from typing import cast
+                message = cast(PreflightWarning, finding.message)
                 annotations = (retained_subjects(message) if message.scope == "object" else
                                finding_subjects(sim, objects=(("_thin_conductors", i),)))
                 warn.warn(PreflightWarning(str(message), code=message.code,

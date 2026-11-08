@@ -6,8 +6,16 @@ Unresolvable subjects remain contract defects, never legality findings.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from collections.abc import Callable, Sequence
+from typing import Any, Protocol
 
 import numpy as np
+
+
+class _ProfileOwner(Protocol):
+    _dx_profile: Any
+    _dy_profile: Any
+    _dz_profile: Any
 
 
 _COLLECTIONS = {
@@ -75,9 +83,9 @@ def finding_record(sim):
 
 @dataclass
 class _Selection:
-    sim: object
+    sim: _ProfileOwner
     keys: tuple[str, ...]
-    reader: object = None
+    reader: Callable[[], Any] | None = None
 
     def record(self):
         return self.reader() if self.reader is not None else finding_record(self.sim)
@@ -101,7 +109,7 @@ class _Selection:
 @dataclass
 class _Region:
     selection: _Selection
-    bounds: object
+    bounds: Sequence[Sequence[float]] | None
 
     def resolve(self):
         from rfx.core.jax_utils import is_tracer
@@ -227,6 +235,8 @@ def runway_region(sim, axis, side, runway):
 
 class SubjectMessage(str):
     """Keep declaration owners alongside a backwards-compatible message."""
+
+    objects: tuple[object, ...]
 
     def __new__(cls, message, objects):
         result = super().__new__(cls, message)
