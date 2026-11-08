@@ -98,6 +98,7 @@ if TYPE_CHECKING:
     from rfx.measurement.ringdown_tail import plain_dft, tail_dft
 
 from rfx._internal._grid_metric import field_index
+from rfx.ringdown._pole_output import RingdownForwardResult, select_pole, pole_selection_reason
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx.ringdown._sensitivity import sensitivity_truncation_error, required_t_over_tau
 from rfx.ringdown._growth_judge import (
@@ -167,6 +168,8 @@ __all__ = [
     "RingdownForwardResult",
     "static_pole_bound",
     "gradient_witness",
+    "select_pole",
+    "pole_selection_reason",
     "GRADIENT_WITNESS_BAR",
     "sensitivity_truncation_error",
     "required_t_over_tau",
@@ -189,7 +192,9 @@ class RingdownSpec:
         Read-only field channels appended after port V/I for pole identification.
         Positions are physical (x, y, z); components are ex/ey/ez/hx/hy/hz.
         Port residues and S assembly retain their original channels. These
-        extra channels have no W0-style accumulator witness.
+        extra channels have no W0-style accumulator witness. Port channels
+        are always included; probe-only identification is not offered. A
+        closed structure still needs a weakly coupled driven wire port.
     window_start : float
         Start of the identification window as a fraction of the record; the
         window is ``[window_start * T, T]``. The source must be off there
@@ -2111,7 +2116,8 @@ def static_pole_bound(n_window: int, n_channels: int, dt: float, freq_max: float
 
 def gradient_witness(grad, grad_other, *, against: str = "early_start",
                      ringdown=None, bar: float = GRADIENT_WITNESS_BAR,
-                     bin_axis: int | None = None) -> RingdownWitness:
+                     bin_axis: int | None = None,
+                     pole_target: float | None = None) -> RingdownWitness:
     """The witness of a completed gradient: two gradients of one objective, compared.
 
     ``grad`` is the gradient of an objective through
@@ -2134,6 +2140,10 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
       built on ``s_params`` alone keeps its gradient;
     * ``against="longer_record"`` (the fallback): ``ringdown.s_params`` of the
       same model on a record 1.5-2x longer.
+
+    With ``pole_target`` set, a concrete early-start result must select a
+    unique pole in BOTH windows. Otherwise the witness cannot judge: its
+    value is NaN, ``judged`` and ``ok`` are False, and the note names why.
 
     Both gradients are pytrees of the same structure (the parameters). The
     value is the worst leaf's ``max |grad - grad_other| / max |grad|``.
@@ -2177,6 +2187,16 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
         from rfx.ringdown import _jax as rj
         from rfx.core.jax_utils import is_tracer
         status = ringdown._status
+        if pole_target is not None and not any(is_tracer(a) for a in
+                (status, ringdown.poles, ringdown.poles_long)):
+            reasons = [f"{window}: {reason}" for window, poles, mask, code in (
+                ("main", ringdown.poles, ringdown.pole_mask, status[0]),
+                ("long", ringdown.poles_long, ringdown.pole_mask_long, status[1]))
+                if (reason := pole_selection_reason(
+                    poles, mask, pole_target, ringdown._pole_window_s(), status=code))]
+            if reasons:
+                return RingdownWitness(name, math.nan, float(bar), False, rule,
+                                       "cannot judge: " + "; ".join(reasons), judged=False)
         if not is_tracer(status):
             st = np.asarray(status).ravel()
             failed = [w for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), st)
@@ -2317,89 +2337,6 @@ class _ForwardReportContext:
         return replace(report, witnesses=report.witnesses + (w, wc))
 
 
-class RingdownForwardResult:
-    """``ForwardResult.ringdown``: the completed S-parameters, traced and differentiable.
-
-    ``s_params`` is the completion from the main window
-    ``[window_start T, T]`` and ``s_params_long`` the one from the window that
-    starts twice as early, ``[window_start/2 T, T]`` (the two ``WE``
-    compares); both have the shape and dtype of ``ForwardResult.s_params`` and
-    its bins ``freqs``. Their VALUE is ``run(ringdown=...)``'s completion of
-    the same record, computed in the working precision; their DERIVATIVE is
-    that of the infinite-record spectrum (poles by the frozen Gauss-Newton
-    implicit derivative, residues re-fitted). When the host identification
-    fails on a window, that array is NaN and the report names the failure.
-
-    ``report`` is a :class:`RingdownReport` computed on the host the first time
-    it is read, from a CONCRETE result (the float64 completion, W0, W1, WE and
-    the rest, as ``run()``'s, plus ``traced``: the traced value against the
-    float64 one). It is ``None`` while the arrays are traced, like
-    ``ForwardResult.settling_db``, and it never warns.
-
-    A JAX pytree: the arrays are its leaves.
-    """
-
-    __slots__ = ("s_params", "s_params_long", "freqs", "_channels", "_accs",
-                 "_s_plain", "_status", "_consistency", "_pole_counts", "_pole_budgets",
-                 "_ctx", "_report")
-
-    def __init__(self, s_params, s_params_long, freqs, channels, accs, s_plain,
-                 status, consistency, pole_counts, pole_budgets, ctx):
-        self.s_params = s_params
-        self.s_params_long = s_params_long
-        self.freqs = freqs
-        self._channels = channels
-        self._accs = accs
-        self._s_plain = s_plain
-        self._status = status
-        self._consistency = consistency
-        self._pole_counts = pole_counts
-        self._pole_budgets = pole_budgets
-        self._ctx = ctx
-        self._report = None
-
-    def tree_flatten(self):
-        return ((self.s_params, self.s_params_long, self.freqs, self._channels,
-                 self._accs, self._s_plain, self._status, self._consistency,
-                 self._pole_counts, self._pole_budgets), self._ctx)
-
-    @classmethod
-    def tree_unflatten(cls, ctx, children):
-        return cls(*children, ctx)
-
-    @property
-    def report(self) -> RingdownReport | None:
-        if self._report is not None:
-            return self._report
-        import jax
-
-        from rfx.core.jax_utils import is_tracer
-        leaves = jax.tree_util.tree_leaves(
-            (self.s_params, self.s_params_long, self._channels, self._accs,
-             self._s_plain))
-        if any(is_tracer(x) for x in leaves):
-            return None
-        if np.ndim(self._channels) != 2:
-            raise ValueError(
-                "RingdownForwardResult.report reads one result; this one is batched "
-                f"(its port channels have shape {tuple(np.shape(self._channels))}, "
-                "one record is (n_steps, channels)), as jax.vmap returns it. Take "
-                "one element first: jax.tree_util.tree_map(lambda a: a[i], result).")
-        self._report = self._ctx.report(self)
-        return self._report
-
-    def __repr__(self):
-        return (f"RingdownForwardResult(s_params={self.s_params!r}, "
-                f"s_params_long={self.s_params_long!r}, freqs={self.freqs!r})")
-
-
-def _register_pytree():
-    import jax
-    jax.tree_util.register_pytree_node_class(RingdownForwardResult)
-
-
-_register_pytree()
-
 
 def _rdt_nan(result):
     """The real dtype of the run's S (for a NaN consistency reading)."""
@@ -2482,10 +2419,14 @@ class RingdownForward(RingdownRun):
             # NaN built from the run's own S, so the gradient of anything made
             # from it is NaN too, not a silent 0.0
             nan = result.s_params * jnp.nan
+            pole_nan = jnp.reshape(jnp.sum(result.s_params) * jnp.nan, (1,)).astype(rj.working_dtypes()[1])
+            empty_mask = jnp.zeros(1, jnp.int32)
             return RingdownForwardResult(nan, nan, result.freqs, channels, accs,
                                          result.s_params, status_fail,
                                          jnp.asarray(jnp.nan, dtype=_rdt_nan(result)),
-                                         jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx)
+                                         jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx,
+                                         poles=pole_nan, poles_long=pole_nan,
+                                         pole_mask=empty_mask, pole_mask_long=empty_mask)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
         host_pms = pms
         if self.lane == "graded":
@@ -2567,23 +2508,29 @@ class RingdownForward(RingdownRun):
         consistency = jax.lax.stop_gradient(jnp.max(jnp.stack(worst)))
         consistent = consistency <= CONSISTENCY_BAR
         out, status, pole_counts, pole_budgets = [], [], [], []
+        poles, masks = [], []
         for n0 in (self.n_start, self.n_long):
             k_max = min(static_pole_bound(n - n0, Y.shape[1], dt, ref_hz),
                         TRACED_POLE_BUDGET)
             s0, mask, st, tail_arg, count = rj.host_poles(
                 identify_window if n0 == self.n_start else _witness_identification(identify_window),
                 raw[n0:], k_max, dt, f_bins)
-            spectra = rj.completion(Y, dt, f_bins, n0, s0, mask, tail_arg, plain=plain)
+            spectra, aux = rj.completion(Y, dt, f_bins, n0, s0, mask.astype(rdt),
+                                         tail_arg, plain=plain, return_aux=True)
             S = to_s(spectra)
             st = jnp.where(consistent, st, rj.STATUS_INCONSISTENT)
             # a failure reaches the value AND the gradient
             out.append(S * jnp.where(st == rj.STATUS_OK, 1.0, jnp.nan).astype(S.real.dtype))
+            poles.append(aux["s"] * jnp.where(st == rj.STATUS_OK, 1., jnp.nan))
+            masks.append(mask)
             status.append(st)
             pole_counts.append(count)
             pole_budgets.append(k_max)
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
                                      result.s_params, jnp.stack(status), consistency,
-                                     jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx)
+                                     jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,
+                                     poles=poles[0], poles_long=poles[1],
+                                     pole_mask=masks[0], pole_mask_long=masks[1])
 
 
 # Lazy compatibility exports avoid a cycle with the moved implementation.

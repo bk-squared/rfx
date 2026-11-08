@@ -488,14 +488,15 @@ def test_an_x64_run_weights_the_port_dft_in_complex128():
 def _stub_identification(monkeypatch):
     """Poles and tail stubbed out: the check reads only the tail-free S."""
     def poles(identify_window, window, k_max, dt, freqs):
-        rdt, cdt = rj.working_dtypes()
-        return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, rdt),
+        _, cdt = rj.working_dtypes()
+        return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, jnp.int32),
                 jnp.int32(rj.STATUS_OK),
                 jnp.full((np.size(freqs), 4), np.log(rj.INERT_LAMBDA), cdt), jnp.int32(0))
 
     monkeypatch.setattr(rj, "host_poles", poles)
     monkeypatch.setattr(rj, "completion",
-                        lambda y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **k: plain)
+                        lambda y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **k:
+                        (plain, {"s": s0}) if k.get("return_aux") else plain)
 
 
 @pytest.mark.parametrize("jit", [False, True])
