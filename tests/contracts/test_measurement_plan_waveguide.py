@@ -43,7 +43,8 @@ def legacy_factory(module, move=False):
             cfg = cfg._replace(probe_x=cfg.probe_x + 1)
         return update_waveguide_port_probe(cfg, state, dt, dx)
     namespace = dict(vars(module), legacy=legacy)
-    exec(compile(source, '<legacy waveguide step>', 'exec'), namespace)
+    exec(compile('from __future__ import annotations\n' + source,
+                 '<legacy waveguide step>', 'exec'), namespace)
     return name, namespace[name]
 
 
