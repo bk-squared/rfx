@@ -107,7 +107,7 @@ EXPECTED = {
 # Keep earlier graded boundary refusals; valid PEC guides now refuse on both meshes.
 MULTIPORT_REFUSAL = (
     "refused", ValueError,
-    "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow",
+    "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow",
 )
 PUBLIC_OVERRIDES = {
     (declaration, entry): (
