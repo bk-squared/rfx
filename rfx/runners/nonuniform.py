@@ -19,8 +19,7 @@ import jax.numpy as jnp
 from rfx.grid import C0
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lumped
-from rfx.materials.debye import init_debye
-from rfx.materials.lorentz import init_lorentz
+from rfx.stepping.graded_precision import field_grid, field_poles, init_graded_dispersion
 from rfx.model.overrides import apply_material_overrides
 from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.sources.port_drive import port_drive_waveform
@@ -382,7 +381,7 @@ def _port_drive_source(grid, cell, component, excitation, n_steps, *, materials,
 
 def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
-                        sheet_specs=(), drawn_eps_r=None, conductors=None):
+                        sheet_specs=(), drawn_eps_r=None, conductors=None, source_grid=None):
     """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
@@ -468,7 +467,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
             grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
             sources.defer(make_msl_port_sources,
-                grid, mp, n_steps=n_steps, mode_profile=mode_profile,
+                grid if source_grid is None else source_grid, mp, n_steps=n_steps, mode_profile=mode_profile,
             )
         # Only the SUBSTRATE-NORMAL component: the edge the modal
         # source drives.  The three-component form opened a
@@ -879,6 +878,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()
+    source_grid = grid._replace(dt=field_grid(grid, field_dtype).dt)
     probes = []
     from rfx.model.graded_ports import assemble_graded_ports
     from rfx.runners._admission import graded_lumped_default_s
@@ -906,11 +906,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
                    else field_index(grid, pe.position, pe.component))
             sources.defer(make_current_source,
-                          grid, idx, pe.component, pe.waveform, sizing_n,
+                          source_grid, idx, pe.component, pe.waveform, sizing_n,
                           amplitude_kind=pe.amplitude_kind)
         for cell, component, waveform, sigma_port, unit_field in drives_by_port.get(port_index, ()):
             sources.defer(_port_drive_source,
-                          grid, cell, component, waveform, sizing_n,
+                          source_grid, cell, component, waveform, sizing_n,
                           sigma_port=sigma_port, unit_field=unit_field)
 
     for pe in sim._probes:
@@ -984,7 +984,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if getattr(sim, "_msl_ports", None):
         materials, conductors = _setup_msl_ports_nu(
             sim, grid, materials, materials_drive, sources, sizing_n,
-            pec_edge_masks,
+            pec_edge_masks, source_grid=source_grid,
             geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
             drawn_eps_r=_drawn_eps_r, conductors=conductors,
         )
@@ -993,6 +993,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    materials = field_poles(materials, source_grid, debye_spec, lorentz_spec, field_dtype)
     sources = sources.resolve(materials)
 
     # Lumped RLC: build per-element metadata + zero-init ADE states
@@ -1014,17 +1015,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # on these coefficients alone and never reads ``materials.sigma``:
     # built before the port stamps they left every port unterminated, and a
     # 50 ohm and a 5000 ohm port gave the same waveform.
-    debye = None
-    if debye_spec is not None:
-        debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks, field_dtype=field_dtype,
-                           periodic=tuple(a in grid.periodic_axes for a in "xyz"))
-
-    lorentz = None
-    if lorentz_spec is not None:
-        lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks, field_dtype=field_dtype,
-                               periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+    debye, lorentz = init_graded_dispersion(
+        materials, source_grid.dt, grid.periodic_axes, debye_spec, lorentz_spec, field_dtype)
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
     # probe plane. Built from the same

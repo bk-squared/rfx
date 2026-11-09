@@ -80,3 +80,97 @@ def test_float64_step_coefficients(entry):
     finally:
         sys.setprofile(previous)
         jax.clear_caches()
+
+
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+@pytest.mark.parametrize('kind', ('field', 'current'))
+def test_float64_source_and_dispersion(entry, kind):
+    from rfx import Box, DebyePole, drude_pole
+    from rfx.model.source_coefficients import current_source_samples
+    from rfx.model.materials import e_update_coefficient_at
+    from rfx.materials.debye import init_debye
+    from rfx.materials.lorentz import init_lorentz
+    from rfx.stepping.graded_setup import _update_e_nu_dispersive
+    from tests.contracts.path_equivalence.builders import point
+    observed = set()
+
+    def check(name, values):
+        arrays = [v for v in jax.tree.leaves(values)
+                  if hasattr(v, 'dtype') and np.issubdtype(v.dtype, np.inexact)]
+        assert arrays, name
+        for value in arrays:
+            assert value.dtype == np.float64, f'B2 {name} dtype {value.dtype}; expected float64'
+        observed.add(name)
+
+    def inspect(frame, event, arg):
+        if event == 'call' and frame.f_code in (init_debye.__code__, init_lorentz.__code__):
+            check('ADE init dt', frame.f_locals['dt'])
+        if event == 'call' and frame.f_code is _update_e_nu_dispersive.__code__:
+            for name in ('debye', 'lorentz'):
+                check(name, frame.f_locals[name][0])
+        if event == 'return' and frame.f_code is current_source_samples.__code__:
+            check('source samples', arg)
+        if event == 'return' and frame.f_code is e_update_coefficient_at.__code__:
+            check('source Cb', arg)
+
+    previous = sys.getprofile()
+    try:
+        with jax.enable_x64(True), warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            row = ('_ports', 'amplitude_kind') if kind == 'current' else ('_materials', 'eps')
+            sim = build(row, 'run_nonuniform', precision='float64')
+            sim.add_material('poles', eps_r=2.5, debye_poles=[DebyePole(.2, 1e-11)],
+                             lorentz_poles=[drude_pole(2*np.pi*3e9, 2.300874e8)])
+            sim.add(Box(point(4, 2, 2), point(6, 4, 4)), material='poles')
+            sys.setprofile(inspect)
+            result = (sim.run(n_steps=12, compute_s_params=False, skip_preflight=True)
+                      if entry == 'run' else sim.forward(n_steps=12, checkpoint=False, skip_preflight=True))
+            jax.block_until_ready(result.time_series)
+            assert {'debye', 'lorentz', 'source samples'} <= observed
+            if kind == 'current':
+                assert 'source Cb' in observed
+    finally:
+        sys.setprofile(previous)
+        jax.clear_caches()
+
+
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+@pytest.mark.parametrize('source', ('tfsf', 'waveguide'))
+def test_float64_injection_operands(entry, source):
+    from rfx.sources.tfsf import line_source_value, update_tfsf_1d_e, update_tfsf_1d_h
+    from rfx.stepping.waveguide_source import apply_waveguide_port_e, apply_waveguide_port_h
+    observed = set()
+
+    def check(name, value):
+        assert getattr(value, 'dtype', None) == np.float64, f'B2 {name}: {getattr(value, "dtype", None)}'
+        observed.add(name)
+
+    def inspect(frame, event, arg):
+        code, local = frame.f_code, frame.f_locals
+        if event == 'call' and code in (update_tfsf_1d_e.__code__, update_tfsf_1d_h.__code__):
+            check('TFSF dt', local['dt'])
+        if event == 'return' and code is line_source_value.__code__:
+            check('TFSF time', local['t'])
+            check('TFSF sample', arg)
+        if event == 'return' and code in (apply_waveguide_port_e.__code__, apply_waveguide_port_h.__code__):
+            check(code.co_name+' coefficient', local['coeff'])
+            for name in ('e_inc_table', 'h_inc_table'):
+                check(name, getattr(local['cfg'], name))
+
+    previous = sys.getprofile()
+    try:
+        with jax.enable_x64(True), warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            row = ('_tfsf', 'plane_wave') if source == 'tfsf' else ('_waveguide_ports', 'waveguide_port')
+            sim = build(row, 'run_nonuniform', precision='float64')
+            sys.setprofile(inspect)
+            result = (sim.run(n_steps=12, compute_s_params=False, skip_preflight=True)
+                      if entry == 'run' else sim.forward(n_steps=12, checkpoint=False, skip_preflight=True))
+            jax.block_until_ready(result.time_series)
+            expected = ({'TFSF dt', 'TFSF time', 'TFSF sample'} if source == 'tfsf' else
+                        {'apply_waveguide_port_e coefficient', 'apply_waveguide_port_h coefficient',
+                         'e_inc_table', 'h_inc_table'})
+            assert observed == expected
+    finally:
+        sys.setprofile(previous)
+        jax.clear_caches()
