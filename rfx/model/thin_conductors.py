@@ -628,7 +628,7 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                     f"{'xyz'[normal]}_hi" if plane == grid.shape[normal] - 1 else None)
             if face in pec_faces:
                 raise RfxRefusal(
-                    f"{name} ({face}): an f0 surface-impedance sheet on a PEC domain face "
+                    f"{name} ({face}): an f0 surface-impedance sheet on a PEC domain face (or an absorber face's outer node plane) "
                     "carries no current (the face's PEC owns its edges), so its loss would "
                     "be dropped; for loss on that wall use add_wall_loss(faces=...) once "
                     "available, or a thick lossy Box inside the domain.")
