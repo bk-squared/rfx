@@ -26,9 +26,9 @@
 # +0.37 % electrically long), expected on this smoke example. Without the
 # ports' `radius` it also warned that S moves with every mesh refinement
 # (5.23 ohm of series reactance per halving of the transverse cell).
-# Declaring 0.1 mm moved S11 and S21 on this mesh by at most 0.027 and 0.025
+# Declaring 0.1 mm moved S11 and S21 on this mesh by at most 0.028 and 0.026
 # (complex difference over 2-10 GHz); at 2, 4, 6, 8 and 10 GHz |S21| moved by
-# at most 0.06 dB and its phase by 0.3 to 1.5 degrees.
+# at most 0.07 dB and its phase by 0.29 to 1.49 degrees.
 # Until the trace was drawn at its solved size it was refused: preflight
 # stops a sheet solved more than 1 % off its drawing (#1455).
 #
