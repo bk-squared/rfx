@@ -385,7 +385,8 @@ def test_coax_calculator_planes_and_voltage_weights():
 
     def stop(grid, *args, **kwargs):
         import sys
-        actual.update(sys._getframe(1).f_locals)
+        # The recorded-run helper sits between this spy and the coax driver.
+        actual.update(sys._getframe(2).f_locals)
         actual.update(kwargs)
         actual['grid'] = grid
         raise SetupCaptured

@@ -155,7 +155,7 @@ All full matrices are indexed `S[receiver_port, driven_port, freq_index]`.
 | `run(compute_s_params=True)` | `Result` | `s_params`, `freqs` |
 | `compute_msl_s_matrix()` | `MSLSMatrixResult` | `S`, `freqs`, `Z0`, `beta`, `port_names`, `reliable`, `settling_db`, `reference_impedances`, `line_impedances`, `sigma_max_excess`, `S_raw`, `passivity_correction` |
 | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult` | `s_params`, `freqs`, `port_names`, `port_directions`, `reference_planes`, `settling_db`, `s21_phase_residual_deg_rms` |
-| `compute_coaxial_line_reflection()` | `CoaxialLineReflectionResult` | `s11`, `freqs`, `status`, `annulus_cells`, `gamma`, `recurrence_residual`, `fit_residual`, `z0_numerical_ohm`, `termination` |
+| `compute_coaxial_line_reflection()` | `CoaxialLineReflectionResult` | `s11`, `freqs`, `status`, `annulus_cells`, `gamma`, `recurrence_residual`, `fit_residual`, `z0_numerical_ohm`, `termination`, `settling_db`, `settling_witness` |
 | `compute_coaxial_two_port()` | `CoaxialTwoPortResult` | `s_params`, `freqs`, `port_names`, `reference_planes`, `status`, `settling_db`, `cond_a`, `gamma`, `recurrence_residual`, `fit_residual`, `reference_impedances`, `line_impedances` |
 
 **Microstrip.** `S` is the raw extraction, the same function a gradient
