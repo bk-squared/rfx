@@ -18,7 +18,7 @@ def grid_for(path='uniform', domain=.012):
     if path == 'uniform':
         return Grid(freq_max=20e9, domain=(domain,) * 3, dx=.001, cpml_layers=0)
     # Nonconstant physical widths on all three axes; node 6 remains at 6 mm.
-    profile = np.array([.001] * 8 + [.0008, .0012] * 2)
+    profile = np.array([.001] * 4 + [.0008, .0012] * 2 + [.001] * 4)
     return make_nonuniform_grid((domain, domain), profile, .001, cpml_layers=0,
                                cpml_axes='', dx_profile=profile, dy_profile=profile)
 
