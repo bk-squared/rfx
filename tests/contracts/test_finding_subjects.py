@@ -84,14 +84,18 @@ def test_code_completeness():
 
 def check_report(sim, report, *, unavailable_labels=None):
     REACHED.update(issue.code for issue in report)
-    # An error assembly_refusal means the declaration has no realized record.
-    if unavailable_labels is None and any(
-            issue.code == 'assembly_refusal' and issue.severity == 'error' for issue in report):
-        from rfx.model.realization_unavailable import identity_record
-        from rfx.preflight._subjects import _finding_view
-        identity = identity_record(sim, sim._campaign_ctx(), 'assembly_refusal')
-        unavailable_labels = [row.label for row in _finding_view(sim, identity).realization_table.rows]
-    record = sim.realized_geometry() if unavailable_labels is None else None
+    record = None
+    if unavailable_labels is None:
+        try:
+            record = sim.realized_geometry()
+        except (ValueError, NotImplementedError):
+            # Only a refused assembly has no record; preflight then uses the identity record.
+            if not any(i.code == 'assembly_refusal' and i.severity == 'error' for i in report):
+                raise
+            from rfx.model.realization_unavailable import identity_record
+            from rfx.preflight._subjects import _finding_view
+            identity = identity_record(sim, sim._campaign_ctx(), 'assembly_refusal')
+            unavailable_labels = [row.label for row in _finding_view(sim, identity).realization_table.rows]
     labels = ([row.label for row in record.realization_table.rows]
               if record is not None else unavailable_labels)
     for issue in report:
