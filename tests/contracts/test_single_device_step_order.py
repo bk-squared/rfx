@@ -1,4 +1,4 @@
-"""Conductor-bearing observations pin the single-device step's physical order."""
+"""Fields and measurement records pin the single-device step's physical order."""
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import MISSING, fields, replace
@@ -116,6 +116,140 @@ def test_conductors_and_sources_match_independent_single_device_step(kind):
         rlc = tuple(new['rlc_states'][0]) if ctx.use_lumped_rlc else ()
         return (st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, extras['before'], *rlc)
     _check(jax.jit(actual)(carry), jax.jit(lambda c: _reference(ctx, c, source, coeffs))(carry))
+
+
+def _phase_scene(kind):
+    from rfx import Simulation
+    from rfx.core.yee import CurlBoundary
+    from rfx.measurement import measurement_plan
+    from rfx.sources.sources import LumpedPort, setup_lumped_port
+
+    grid = Grid(freq_max=10e9, domain=(.005, .005, .005), dx=.001, cpml_layers=0)
+    # Five 1 mm cells per axis, including both PEC endpoint nodes.
+    assert grid.shape == (6, 6, 6)
+    cell, probe = (1, 2, 3), (2, 1, 3)
+    position = tuple(i * .001 for i in cell)
+    sim = Simulation(freq_max=10e9, domain=(.005, .005, .005), dx=.001,
+                     boundary='pec', cpml_layers=0)
+    sim.add_probe(tuple(i * .001 for i in probe), 'ez')
+    materials = init_materials(grid.shape)
+    if kind == 'port':
+        sim.add_port(position, 'ez', impedance=50.)
+        materials = setup_lumped_port(
+            grid, LumpedPort(position, 'ez', 50., None), materials)
+    plan = measurement_plan(sim, n_steps=3)
+    faces = frozenset(f'{axis}_{side}' for axis in 'xyz' for side in ('lo', 'hi'))
+    required = {f.name: False for f in fields(_StepContext)
+                if f.default is MISSING and f.default_factory is MISSING}
+    required.update(grid=grid, materials=with_components(materials, grid, periodic=(False,) * 3),
+                    dt=grid.dt, dx=grid.dx, periodic=(False,) * 3, pec_axes='xyz',
+                    stencil_order=2, use_pec_faces=True)
+    ctx = _StepContext(
+        **required, pec_faces_frozen=faces, curl_boundary=CurlBoundary(faces, frozenset()),
+        prb_meta=((*probe, 'ez'),),
+        drives=StepDrives(drive_layout([(*cell, 'ez')], jnp.float32),
+                          drive_layout([(*cell, 'hz')], jnp.float32) if kind == 'magnetic' else None),
+        port_record_specs=(('ez', (cell,), 'lumped', cell, 0),) if kind == 'port' else ())
+    initial = init_state(grid.shape)
+    carry = {'fdtd': initial}
+    if kind == 'port':
+        carry['sparam_time_records'] = (jnp.zeros((3, 3), dtype=jnp.float32),)
+    # Step inputs are already scaled field increments, as in the existing
+    # conductor rows. A nonzero electric drive also makes the Ez probe live;
+    # the Hz drive is independently visible in the full six-field record.
+    electric = jnp.array([[2.], [-1.], [.5]], dtype=jnp.float32)
+    magnetic = jnp.array([[.25], [-.125], [.0625]], dtype=jnp.float32)
+    return ctx, carry, plan, electric, magnetic
+
+
+def _phase_reference(ctx, initial, electric, magnetic):
+    # This straight-line reference never calls the composer, its hooks, the
+    # projector or the port sampler. Plan tables describe geometry, not order:
+    # uniform_setup.py:917-920; uniform.py:405-406 reads V_ref before injection,
+    # :474 reads physical V/I afterwards. The old spec's pre-injection V/I
+    # is now a distinct V_ref channel (measurement/ports.py:81-84).
+    cell, probe = (1, 2, 3), (2, 1, 3)
+
+    def step(st, waves):
+        electric_t, magnetic_t = waves
+        st = update_h(st, ctx.materials, ctx.dt, ctx.dx,
+                      periodic=ctx.periodic, high_wall=(True,) * 3)
+        if ctx.drives.magnetic is not None:
+            st = inject_drives(st, ctx.drives.magnetic, magnetic_t)
+        st = update_e(st, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic,
+                      boundary=ctx.curl_boundary, high_wall=(True,) * 3)
+        st = apply_pec_faces(st, ctx.pec_faces_frozen)
+        v_ref = -st.ez[cell] * .001
+        st = inject_drives(st, ctx.drives.electric, electric_t)
+        # Ampere loop for an interior z-directed port: -Hx(y) + Hx(y-1)
+        # + Hy(x) - Hy(x-1), each times the 1 mm dual edge. Accumulate the
+        # four weighted terms in component order, like the float32 record,
+        # without asking the measurement plan for indices or weights.
+        terms = jnp.stack((st.hx[cell] * -.001, st.hx[1, 1, 3] * .001,
+                           st.hy[cell] * .001, st.hy[0, 2, 3] * -.001))
+        current, _ = jax.lax.scan(lambda total, term: (total + term, None),
+                                  jnp.float32(0), terms)
+        samples = jnp.stack((st.ez[cell] * -.001, current, v_ref))
+        return st, (tuple(st[:6]), jnp.stack((st.ez[probe],)), samples)
+
+    return jax.lax.scan(step, initial, (electric, magnetic))[1]
+
+
+def _phase_equal(kind, quantity, actual, expected):
+    import sys
+
+    got, want = np.asarray(actual), np.asarray(expected)
+    difference = float(np.max(np.abs(got - want)))
+    mismatches = int(np.count_nonzero(got.view(np.uint32) != want.view(np.uint32)))
+    print(f'row={kind} quantity={quantity} max_abs={difference:.9g} '
+          f'bit_mismatches={mismatches} bar=0 steps=3 cells=5x5x5 nodes=6x6x6 dx=0.001', file=sys.stderr)
+    np.testing.assert_array_equal(got.view(np.uint32), want.view(np.uint32),
+                                  err_msg=f'{kind} {quantity}: bitwise step order (bar=0)')
+
+
+@pytest.mark.parametrize('kind', ['magnetic', 'port'])
+def test_sources_and_port_records_match_independent_step(kind):
+    import sys
+    import time
+
+    ctx, carry, plan, electric, magnetic = _phase_scene(kind)
+    core = make_core_step(ctx, measurement=plan, dtype=jnp.float32)
+
+    def actual(carry, electric, magnetic):
+        def step(carry, inputs):
+            index, electric_t, magnetic_t = inputs
+            new, probe, _ = core(carry, index, electric_t, magnetic_t)
+            return new, (tuple(new['fdtd'][:6]), probe)
+        final, (states, probes) = jax.lax.scan(
+            step, carry, (jnp.arange(3, dtype=jnp.int32), electric, magnetic))
+        ports = final['sparam_time_records'][0] if kind == 'port' else jnp.zeros((3, 0))
+        return states, probes, ports
+
+    compiled = jax.jit(actual)
+    got = jax.block_until_ready(compiled(carry, electric, magnetic))
+    start = time.perf_counter()
+    jax.block_until_ready(compiled(carry, electric, magnetic))
+    elapsed = time.perf_counter() - start
+    reference = jax.jit(lambda state, e, h: _phase_reference(ctx, state, e, h))
+    want = reference(carry['fdtd'], electric, magnetic)
+    _phase_equal(kind, 'fields', got[0], want[0])
+    _phase_equal(kind, 'Ez_probe', got[1], want[1])
+    assert np.max(np.abs(np.asarray(want[1]))) > 0, 'Ez probe must read a nonzero record'
+    if kind == 'port':
+        for i, name in enumerate(('V', 'I', 'V_ref')):
+            _phase_equal(kind, name, got[2][:, i], want[2][:, i])
+        separation = float(np.max(np.abs(np.asarray(want[2][:, 0] - want[2][:, 2]))))
+        assert separation > 0, 'port voltage must distinguish pre/post injection'
+        assert np.max(np.abs(np.asarray(want[2][:, 1]))) > 0, 'port current must be nonzero'
+        print(f'row=port V={np.asarray(got[2][:, 0]).tolist()} '
+              f'I={np.asarray(got[2][:, 1]).tolist()} '
+              f'V_ref={np.asarray(got[2][:, 2]).tolist()}', file=sys.stderr)
+    else:
+        no_magnetic = reference(carry['fdtd'], electric, jnp.zeros_like(magnetic))
+        separation = float(np.max(np.abs(np.asarray(want[0]) - np.asarray(no_magnetic[0]))))
+        assert separation > 0, 'magnetic drive must change the field record'
+    print(f'row={kind} nonvacuity={separation:.9g} bar=>0 '
+          f'after_compile_wall_s={elapsed:.6f}', file=sys.stderr)
 
 
 def _graded_scene(kind):
