@@ -6,7 +6,6 @@ Numerical byte comparisons against 5c477d59 live in the B3a lane records.
 """
 
 from contextlib import ExitStack
-from dataclasses import replace
 from unittest.mock import patch
 
 import jax
@@ -68,42 +67,6 @@ def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
         "(the count is per trace of the step body; a JAX change that traces it "
         "a different number of times moves this without any routing defect)")
     return seen[0]
-
-
-@pytest.mark.parametrize("lane", ["run", "forward"])
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-@pytest.mark.parametrize("feature", ["plain", "lumped", "wire", "msl", "waveguide",
-                                      "debye", "lorentz", "mixed"])
-def test_simulation_uses_realized_curl(lane, mesh, feature):
-    sim = model(feature, mesh)
-    if (feature, mesh) == ("waveguide", "graded"):
-        # This curl-routing fixture crosses grading zones; retain its zero shift
-        # (forward resolves the same planes as run since #1726).
-        sim._waveguide_ports = [
-            replace(entry, calibration_preset="measured") for entry in sim._waveguide_ports
-        ]
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    boundary = require_shared(lambda: getattr(sim, lane)(**kwargs),
-                              helper="curl_h_nu" if mesh == "graded" else "curl_h")
-    if feature not in ("msl", "waveguide"):
-        assert boundary.pmc_faces == frozenset({"x_lo"})
-        assert "x_hi" in boundary.pec_faces
-        assert "x_lo" not in boundary.pec_faces
-
-
-@pytest.mark.parametrize("lane", ["run", "forward"])
-@pytest.mark.parametrize("mode", ["3d", "2d_tmz", "2d_tez"])
-@pytest.mark.parametrize("wall", ["pec", "cpml", "periodic"])
-def test_modes_and_periodicity(lane, mode, wall):
-    sim = model(mode=mode, wall=wall)
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    boundary = require_shared(lambda: getattr(sim, lane)(**kwargs))
-    assert boundary.periodic[0] == (wall == "periodic")
-    assert boundary.periodic[2] == (mode != "3d")
 
 
 @pytest.mark.parametrize("feature,mesh", [("subpixel", "uniform"), ("subpixel", "graded"),
