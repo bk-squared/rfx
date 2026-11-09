@@ -3,7 +3,7 @@
 The default TF/SF pulse (differentiated Gaussian) now uses GaussianPulse's continuous,
 charge-free start instead of starting with a jump of 7.4e-4 of its amplitude. The jump
 excited the incident line's band-edge mode, which kept an empty open plane-wave box from
-decaying, so `run(until_decay=)` ran to the step cap; it now stops after the pulse leaves.
+decaying, so `run(until_decay=)` ran to the step cap; a 3-D empty box now stops after the pulse leaves (a 2-D vacuum slab reference stops at about half its former 50,000-step cap: see known limitations).
 The pulse changes by at most 1.6e-3 of its amplitude. Results normalized by the measured
 incident spectrum (RCS, scattering, flux) move by about 5e-5 relative. A comparison against
 the bare differentiated-Gaussian formula moves where that pulse's spectrum is weak: for a

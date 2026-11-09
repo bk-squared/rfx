@@ -762,17 +762,13 @@ Each value's `settling_db`, `settling_witness` and `dt` come back per value and 
 What to do: pass `dx=` so every value shares one grid and time step; or use `parametric_sweep()`, which returns each
 value's full `Result`.
 
-### An open plane-wave scene runs `until_decay` to `decay_max_steps`.
+### An open plane-wave scene can run `until_decay` far past its drive end.
 
 Tracker: #1839
 
-On an open TF/SF scene the field energy left after the drive does not decay to the threshold: a remainder of
-1.5–2.7×10⁻⁹ of the drive's peak energy stays in the interior (in 3-D it is the incident-line absorber leak of #1839).
-The energy stop therefore runs to `decay_max_steps` and ends with a cap warning that states the after-drive reference
-as a fraction of the drive's peak energy. Measured on the slab tutorial's 2-D vacuum reference (drive end at step 406):
-the run took 50,000 steps (59 s on a Mac) where a fixed 506-step run took 0.64 s, and the probe spectra inside the
-total-field region changed by at most 3×10⁻⁶ of their band peak after step 500; over the open scenes measured the
-change was at most 1.5×10⁻⁵. The result is the same; the cost is 40–100 times the steps.
+The energy stop takes its reference after the drive ends, when the pulse has already left, so the reference is the small
+remainder itself. Measured on the slab tutorial's 2-D vacuum reference (drive end at step 406, `until_decay=1e-3`): the
+run stops at step 25,500, against a fixed 506-step run. An empty 3-D open box stops at step 550 on the float32 floor.
 What to do: on an open plane-wave scene, run a fixed `n_steps` (drive end plus the transit of the domain), or set a
 lower `decay_max_steps`.
 
