@@ -1167,6 +1167,9 @@ def test_f0_sheet_backed_gap_subjects():
 
 
 def test_scene_code_coverage(request):
-    if len([item for item in request.session.items if item.path == Path(__file__)]) < 90:
-        pytest.skip('coverage census applies to the complete scene battery')
+    expected = {item.nodeid for item in request.session.genitems(request.node.parent)}
+    selected = {item.nodeid for item in request.session.items if item.path == Path(__file__)}
+    if expected - selected:
+        pytest.skip('coverage census applies to the complete scene battery: '
+                    f'{len(expected & selected)} of {len(expected)} tests selected')
     assert REACHED | UNREACHABLE.keys() == CODE_SCOPE.keys(), sorted(CODE_SCOPE.keys() - REACHED)
