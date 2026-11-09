@@ -337,7 +337,7 @@ def _seam_witness(lane, current, fields):
     assert abs(current[step]) > 0, (lane, current[step])
 
 
-def _two_kernel_current(label, reference, actual, mesh):
+def _two_kernel_current(label, reference, actual, mesh, bar=None):
     assert reference.shape == actual.shape == (SEAM_STEPS,)
     assert np.isfinite(reference).all() and np.isfinite(actual).all()
     peak = float(np.max(np.abs(reference)))
@@ -349,7 +349,7 @@ def _two_kernel_current(label, reference, actual, mesh):
     measured = difference / peak
     # A18: two kernels use the accumulated float32 roundoff bar from
     # tests/unit/nonuniform/test_nonuniform_face_depths.py:94.
-    bar = SEAM_STEPS * 10 * np.finfo(np.float32).eps
+    bar = SEAM_STEPS * 10 * np.finfo(np.float32).eps if bar is None else bar
     print(f"{label}: measured={measured:.17g} bar={bar:.17g} "
           f"max_difference={difference:.17g} peak={peak:.17g} "
           f"steps={SEAM_STEPS} mesh={mesh}", file=sys.stderr)
@@ -383,4 +383,5 @@ def test_port_current_matches_across_cpu_devices():
     one, reference, _ = _seam_solve("multi_device", 3, devices=devices[:1])
     two, actual, _ = _seam_solve("multi_device", 3, devices=devices)
     assert one.grid.shape == two.grid.shape
-    _two_kernel_current("2 CPU vs 1 CPU current", reference, actual, two.grid.shape)
+    # 1 vs n devices, lumped port: TRACE_RTOL in tests/unit/runners/test_distributed_lumped_port_s.py:26,107-110.
+    _two_kernel_current("2 CPU vs 1 CPU current", reference, actual, two.grid.shape, bar=9e-6)
