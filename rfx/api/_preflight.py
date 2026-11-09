@@ -1215,6 +1215,8 @@ class _PreflightMixin:
         _validate_ntff_small_ground_plane,
     )
 
+    from rfx.preflight.f0_sheet_backed_gap import _validate_cfg_f0_sheet_backed_gap
+
     def _validate_simulation_config(self) -> None:
         """Comprehensive pre-simulation configuration validation.
 

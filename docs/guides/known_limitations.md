@@ -147,6 +147,8 @@ both f0 sheets (copper, and ten times copper's resistance), with the E between t
 power equalled radiated, substrate and sheet power within 3×10⁻⁴ of the input (both measured; records kept with the
 project). Other spacings between a sheet and a lossless conductor behind it were not measured. For a wall one cell in
 front of a PEC face that must carry loss for every field orientation, use a PEC wall or a thick lossy Box.
+Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
+from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
