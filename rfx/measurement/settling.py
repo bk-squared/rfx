@@ -311,7 +311,8 @@ def tfsf_source_drive(cfg, grid):
             return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
         if kind == "analytic":
             return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        return cfg.src_amp * (-2 * arg) * env
+        from rfx.sources.tfsf import line_source_value
+        return line_source_value(cfg, t, cfg.src_amp)
 
     is_traced = getattr(grid, "is_traced", None)
     if is_traced is not None and any(is_traced(axis) for axis in "xyz"):
