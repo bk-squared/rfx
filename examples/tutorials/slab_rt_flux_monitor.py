@@ -29,7 +29,7 @@ Public docs:
   - docs/public/measure/s-parameters.mdx   (flux monitors as non-port observables)
   - docs/public/api/results.mdx (add_flux_monitor -> Result.flux_monitors)
 
-Run:  python examples/slab_rt_flux_monitor.py
+Run:  python examples/tutorials/slab_rt_flux_monitor.py
 """
 
 import numpy as np

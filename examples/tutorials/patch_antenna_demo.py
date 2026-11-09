@@ -78,9 +78,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   read 2.5072 GHz (cross mode 2.0345 GHz — VESSL 369367259175), +3.5 %.
   Before the ownership contract that board read +11.3 % (2.6953 GHz,
   cross mode 2.2157 GHz — VESSL 369367259020, which reproduces the numbers
-  this docstring used to carry).  The committed lock
-  ``tests/crossval/test_patch_canonical_farfield_e4.py`` solves its own copy
-  of the pre-#1375 board (#1382), so it does not gate this number: the
+  this docstring used to carry).  No committed test gates this number: the
   agreement above is a measurement, not a pass.  On the pre-#1375 board the ownership contract
   moved the resonance the way issue #740's A/B predicted: that study's arm with
   a wall on BOTH faces of the ground's cell — the closest thing then available
@@ -111,8 +109,8 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   before #1546; openEMS's value is
   taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.75 dBi at its
   2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
-  the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
-  too is a measurement rather than a pass.  The pre-#1375 board printed
+  tolerance the former far-field lock carried (it solved a different board and was removed),
+  so this too is a measurement rather than a pass.  The pre-#1375 board printed
   6.72 dBi, the pre-contract board 7.39 dBi (against the former openEMS
   6.79 dBi: -0.07 dB and +0.60 dB).  The openEMS reference above uses this
   script's air distances (84 mm above the patch); it runs to openEMS's energy
@@ -122,7 +120,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   peak sat on 2.8 GHz — the LAST monitored bin, with the spectrum still rising
   into it, so the selector was pinned at the edge of its own frequency list.
   On this board the spectrum peaks at the 2.4 GHz bin with 2.5 GHz at
-  -0.5 dB, 2.3 GHz at -8.7 dB and 2.8 GHz at -15.3 dB (369367270265): an
+  -0.6 dB, 2.3 GHz at -8.7 dB and 2.8 GHz at -15.4 dB (measured 2026-11-09): an
   interior maximum, which is what the mode-identification rule assumes it is
   looking at.
 
