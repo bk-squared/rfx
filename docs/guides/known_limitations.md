@@ -618,6 +618,23 @@ The spread of |S21| on the same lines is 0.010, 0.009 and 0.023.
 These are the numbers on the test's meshes (cells of h/4, h/3 and h/4); other meshes were not measured.
 Until a fix lands, read the |S11| of a well-matched microstrip structure as uncertain by about this much, and keep the probe offset fixed when you compare designs.
 
+### `compute_waveguide_s_matrix` solves a conformal PEC body as a staircase.
+
+Tracker: #1373
+
+With conformal PEC on (`Boundary(conformal=True)`), `compute_waveguide_s_matrix` keeps the
+staircase PEC edges of a PEC body (`add(..., material="pec")`), so it solves the body as a
+staircase. Nothing says so: the conformal advisory it prints describes partially filled cells,
+which this lane does not solve. `run()` solves the same declaration as a cut-cell body. Under the
+default `snap="strict"` a body whose staircase misses its drawn size is refused; the numbers below
+were taken with `snap="declared"`. Measured on a PEC sphere of radius 2.5 mm in WR-90, 8.2 to
+12.4 GHz: at 1.27 mm cells the S-matrix lane's |S11| is 4.0 to 4.3 dB higher than with the cut-cell body, and at 0.635 mm cells 1.8 to 2.0 dB
+higher. At 1.27 mm cells it differs from plain staircase PEC by at most 0.1 dB in |S11| and
+0.03 dB in |S21| (measured; record kept with the project). Walls declared with
+`Boundary(conformal=True)` are not in the staircase mask (read in the code, not measured
+separately). Until the fix, judge such S-parameters by a mesh series: the staircase converges
+to first order.
+
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
 Tracker: #1373
