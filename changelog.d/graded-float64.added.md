@@ -1,4 +1,6 @@
 ### Added — Float64 on graded Yee meshes (#PR)
 
 Single-device graded meshes now accept `precision="float64"` in `run()`, `forward()`, the waveguide S-matrix, and the wire/lumped S calculator. Preflight no longer reports the graded precision warning for float64; mixed precision remains unsupported there.
+Uniform float64 CPML now forms E/H coefficients in float64; uniform ADE and source samples already used float64. Graded float64 CPML, ADE coefficients, and source samples now all use float64.
+On the synthetic B1 box at 12/36 steps, the uniform float64 change measured at most 3.624e-8 relative in probe series and 5.377e-8 across probe, objective, and gradient records; graded and uniform float64 records agree exactly.
 A synthetic PEC Drude box check compares graded float64, graded float32, and uniform float64. Its graded float64 criterion is at most two unmatched poles in each record window, with all 12 physical poles matched; a missed physical pole makes that window inconclusive. This criterion applies only to the synthetic box.

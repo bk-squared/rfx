@@ -723,14 +723,10 @@ def apply_cpml_e(
                                   boundary.periodic if boundary is not None else (False,) * 3, grid)
     faces = faces.intersection(face for face, depth in face_depths.items() if depth)
     owned = {} if owned is None else owned
-    # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
-    # float32 mu_r it silently promoted the ch coefficients to f64 and
-    # the field scatter demoted them back per step (a scatter dtype FutureWarning). A Python
-    # float is weak-typed in BOTH numpy and
-    # JAX, so the coefficients follow the ambient material dtype
-    # (promote, never pin).
+    # Float64 fields form absorber coefficients in field precision;
+    # other field dtypes retain the historical operand promotion.
     from rfx.boundaries.electric_coefficient import coefficient_dt
-    dt = coefficient_dt(grid.dt)
+    dt = coefficient_dt(grid.dt, state.ex.dtype)
     # Material-aware CPML: use local eps_r so guided modes in dielectric
     # waveguides see an impedance-matched absorber (equivalent to UPML).
     # Falls back to free-space eps_0 when materials is None.
@@ -1100,14 +1096,10 @@ def apply_cpml_h(
     frame, windows, psi_windows, face_depths = face_windows(state.hx.shape, (n_x, n_y, n_z), frame, periodic, grid)
     faces = faces.intersection(face for face, depth in face_depths.items() if depth)
     owned = {} if owned is None else owned
-    # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
-    # float32 mu_r it silently promoted the ch coefficients to f64 and
-    # the field scatter demoted them back per step (a scatter dtype FutureWarning). A Python
-    # float is weak-typed in BOTH numpy and
-    # JAX, so the coefficients follow the ambient material dtype
-    # (promote, never pin).
+    # Float64 fields form absorber coefficients in field precision;
+    # other field dtypes retain the historical operand promotion.
     from rfx.boundaries.electric_coefficient import coefficient_dt
-    dt = coefficient_dt(grid.dt)
+    dt = coefficient_dt(grid.dt, state.hx.dtype)
     from rfx.model.materials import h_components
     magnetic_materials = materials if hasattr(materials, "mu_r") else None
     if periodic is None:
