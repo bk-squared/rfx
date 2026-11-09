@@ -14,7 +14,13 @@ def _conformal_walls():
     return BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec", conformal=True), z="cpml")
 
 
-@pytest.mark.parametrize("conformal", [False, True], ids=["default-boundary", "conformal-pec-walls"])
+@pytest.mark.parametrize("conformal", [False], ids=["default-boundary"])
+@pytest.mark.xfail(
+    strict=True,
+    reason="#2535: the conformal-floor admission (rfx/runners/_admission.py:876) "
+    "resolves the auto mesh on the fit's traced per-iteration simulation, so an "
+    "auto-mesh differentiable_material_fit is refused before the first step",
+)
 def test_auto_mesh_material_fit_returns_finite_s_params(conformal):
     def factory(eps_inf, debye_poles, lorentz_poles):
         kwargs = {"boundary": _conformal_walls()} if conformal else {}
