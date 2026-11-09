@@ -66,6 +66,7 @@ thin_conductors:
   - {shape: box, bounds: [[0.005825, 0.005325, 0.003], [0.014175, 0.006675, 0.003]], sigma_bulk: 5.8e7}
 
 sources:
+  # Both radii are 0.20 x this finest 0.5 mm cell; coarser meshes work, refinement needs a <= 0.2 dx.
   # Port 1: excited 50 ohm lumped wire port, seated inside the substrate near
   # the feed end. The wire starts above the ground sheet (z = 0.002) and stops
   # below the trace sheet (z = 0.003), so it drives the substrate without
@@ -79,6 +80,7 @@ sources:
     component: ez
     impedance: 50.0
     extent: 0.0008
+    radius: 1.0e-4
     waveform: {type: gaussian_pulse, f0: 6e9, bandwidth: 0.9, amplitude: 1.0}
   # Port 2: passive matched load (no excitation) for the off-diagonal S entry.
   - type: port
@@ -86,6 +88,7 @@ sources:
     component: ez
     impedance: 50.0
     extent: 0.0008
+    radius: 1.0e-4
     excite: false
 
 probes:
