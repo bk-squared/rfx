@@ -28,6 +28,62 @@ def add(sim, kind, x, allow):
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
+@pytest.mark.parametrize("kind,subject,message", [
+    ("probe", "probe[0]",
+     "Probe[0] at -0.001 m is 1 cell into the x-lo CPML pad. "
+     "Pass allow_in_absorber=True on this object to keep this pad position; "
+     "its fields are absorber-attenuated."),
+    ("source", "port[0]",
+     "Source/port[0] at -0.001 m is 1 cell into the x-lo CPML pad. "
+     "Pass allow_in_absorber=True on this object to keep this pad position; "
+     "its fields are absorber-attenuated."),
+    ("lumped", "port[0]",
+     "Source/port[0] at -0.001 m is 1 cell into the x-lo CPML pad. "
+     "Pass allow_in_absorber=True on this object to keep this pad position; "
+     "its fields are absorber-attenuated."),
+    ("wire", "port[0]",
+     "Source/port[0] at 0.011 m is 1 cell into the z-hi CPML pad. "
+     "Pass allow_in_absorber=True on this object to keep this pad position; "
+     "its fields are absorber-attenuated."),
+], ids=["probe", "source", "lumped", "wire_endpoint"])
+@pytest.mark.parametrize("allow", [False, True])
+def test_located_pad_refusal(lane, kind, subject, message, allow):
+    sim = scene(lane)
+    if kind == "wire":
+        sim.add_port((.005,) * 3, extent=.006, allow_in_absorber=allow)
+    else:
+        add(sim, kind, -.001, allow)
+    report = sim.preflight()
+    findings = report.by_code("absorber_point_refused")
+    if allow:
+        assert findings == []
+    else:
+        finding, = findings
+        assert finding.severity == "error"
+        assert finding.subjects == (subject,)
+        assert str(finding) == message
+    assert not report.by_code("assembly_refusal")
+
+
+def test_located_pad_refusal_names_every_object_and_skips_internal_probes():
+    sim = scene("uniform")
+    add(sim, "probe", -.001, False)
+    add(sim, "probe", -.001, False)
+    sim._internal_probe_indices = {1}
+    add(sim, "probe", -.001, False)
+    add(sim, "source", -.001, False)
+    add(sim, "lumped", -.001, False)
+    # Both ends are in the pad; this is still one refused object.
+    add(sim, "wire", -.001, False)
+    report = sim.preflight()
+    findings = report.by_code("absorber_point_refused")
+    assert [i.subjects for i in findings] == [
+        ("probe[0]",), ("probe[2]",), ("port[0]",), ("port[1]",), ("port[2]",)]
+    assert all(i.severity == "error" for i in findings)
+    assert not report.by_code("assembly_refusal")
+
+
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
 @pytest.mark.parametrize("kind", ["probe", "source", "lumped", "wire"])
 @pytest.mark.parametrize("outside", [False, True], ids=["pad1", "beyond_grid"])
 @pytest.mark.parametrize("allow", [False, True])

@@ -2,7 +2,7 @@
   "preflight": {
     "issues": [
       {
-        "code": "assembly_refusal",
+        "code": "absorber_point_refused",
         "loc": null,
         "numbers": [
           0.0,
@@ -10,7 +10,7 @@
           1.0
         ],
         "severity": "error",
-        "source": "_validate_cfg_assembly"
+        "source": "_validate_cfg_absorber_placement"
       },
       {
         "code": "absorber_overlap",

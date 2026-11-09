@@ -78,7 +78,9 @@ import numpy as np
 
 from rfx._internal._grid_metric import NODE_TIE_REL
 from rfx.core.jax_utils import is_tracer
+from rfx.errors import RfxRefusal
 from rfx.geometry.csg import Box
+from rfx.model.point_placement import admit_point
 from rfx.preflight._common import (
     _ABSORBER_PROXIMITY_CELLS,
     _absorber_boundary_for_axis,
@@ -697,6 +699,28 @@ def _validate_cfg_absorber_placement(
 
     if cpml_thickness > 0:
         _internal = getattr(self, "_internal_probe_indices", frozenset())
+        grid = self._campaign_ctx().grid
+
+        def _point_refusal(pe, label):
+            # The campaign retains the production grid even when point
+            # admission prevents assembly. Never infer it from warning bands.
+            if grid is None:
+                raise RuntimeError("Absorber point admission requires the resolved grid.")
+            options = dict(allow_in_absorber=getattr(pe, "allow_in_absorber", False),
+                           label=label)
+            try:
+                admit_point(grid, pe.position, **options)
+                if getattr(pe, "extent", None) is not None:
+                    end = list(pe.position)
+                    end["xyz".index(pe.component[1])] += pe.extent
+                    admit_point(grid, end, **options)
+            except RfxRefusal as exc:
+                _w.warn(PreflightWarning(
+                    str(exc), severity="error", code="absorber_point_refused",
+                    **finding_subjects(self, objects=(pe,)),
+                    source="_validate_cfg_absorber_placement",
+                ), stacklevel=3)
+
         for _pi, pe in enumerate(self._probes):
             if _pi in _internal:
                 # Library-registered diagnostic probes (e.g. the MSL
@@ -707,6 +731,7 @@ def _validate_cfg_absorber_placement(
                 # unaffected (precedent: passive DFT probes are
                 # excluded from the geometry-extent check).
                 continue
+            _point_refusal(pe, f"Probe[{_pi}]")
             pos = pe.position
             for ax, coord in enumerate(pos):
                 domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
@@ -764,7 +789,8 @@ def _validate_cfg_absorber_placement(
                     )
                     break
 
-        for pe in self._ports:
+        for _pi, pe in enumerate(self._ports):
+            _point_refusal(pe, f"Source/port[{_pi}]")
             pos = pe.position
             for ax, coord in enumerate(pos):
                 domain_extent = self._domain[ax] if ax < len(self._domain) else self._domain[-1]
