@@ -202,6 +202,8 @@ def export_geometry_sdf(
     sdf : ndarray, shape (Nx, Ny, Nz)
         Signed distance field in metres.
     """
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "export_geometry_sdf")
     if getattr(sim, "_pinned_sheets", ()):
         raise ValueError(
             "export_geometry_sdf cannot place add_pinned_sheet sheets; "

@@ -132,6 +132,14 @@ def build_wall_operator(sim, root, film, *, lane):
                 for _, component, index in root.released_port_edges:
                     if component == "e" + "xyz"[c]:
                         selected[index] = False
+                if entry.faces:
+                    for d, axis in enumerate("xyz"):
+                        for side in ("lo", "hi"):
+                            pad = getattr(grid, f"pad_{axis}_{side}")
+                            sl = [slice(None)] * 3
+                            sl[d] = slice(0, pad) if side == "lo" else slice(shape[d] - pad, None)
+                            if pad and selected[tuple(sl)].any():
+                                refuse_wall_loss(sim, lane, "lossy PEC domain face enters a CPML pad")
                 masks[c] |= selected
                 sigma[c] = sigma[c] + jnp.where(selected, density, 0)
     for poles in root.assembly[1:3]:

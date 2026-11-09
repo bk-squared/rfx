@@ -63,6 +63,7 @@ def test_tiny_face_edges_and_rim_sum():
 @pytest.mark.parametrize("axis", [0, 1], ids=["x_hi", "y_hi"])
 def test_declared_high_normal_ghost_stays_exactly_zero(monkeypatch, graded, axis):
     from rfx.stepping import uniform_setup, uniform_loop, graded_setup, graded_loop
+    from rfx.core.yee import curl_h_nu
     kwargs = {"dy_profile": np.full(4, .0015)} if graded else {}
     sim = model(**kwargs)
     face = "xyz"[axis] + "_hi"
@@ -70,12 +71,20 @@ def test_declared_high_normal_ghost_stays_exactly_zero(monkeypatch, graded, axis
     grid, root, ctx = operator(sim, graded)
     setup = graded_setup if graded else uniform_setup
     original = setup.init_state
+    seeded_states = []
 
     def seeded(*args, **kwargs):
         state = original(*args, **kwargs)
         index = [2, 2, 2]
         index[axis] = -2
-        return state._replace(hz=state.hz.at[tuple(index)].set(1.))
+        hz = state.hz.at[tuple(index)].set(1.)
+        # Graded inv_d*_h[-1] is zero: an interior seed cannot drive the
+        # stored high H row. Seed that row too so its transverse curl drives
+        # the normal E ghost, whose initial value remains zero.
+        index[axis] = -1
+        state = state._replace(hz=hz.at[tuple(index)].set(1.))
+        seeded_states.append(state)
+        return state
 
     monkeypatch.setattr(setup, "init_state", seeded)
     if graded:
@@ -84,6 +93,12 @@ def test_declared_high_normal_ghost_stays_exactly_zero(monkeypatch, graded, axis
     else:
         state = uniform_loop.run(grid, root.materials, 4, sheet_impedance=ctx).state
     ghost = np.take(np.asarray((state.ex, state.ey)[axis]), -1, axis=axis)
+    assert len(seeded_states) == 1
+    if graded:
+        assert float((grid.inv_dx_h, grid.inv_dy_h)[axis][-1]) == 0
+        seed = seeded_states[0]
+        curls = curl_h_nu(seed.hx, seed.hy, seed.hz, grid.inv_dx, grid.inv_dy, grid.inv_dz)
+        assert np.max(np.abs(np.take(np.asarray(curls[axis]), -1, axis=axis))) > 0
     np.testing.assert_array_equal(ghost, np.zeros_like(ghost))
     assert np.max(np.abs(np.asarray(state.hz))) > 0
 

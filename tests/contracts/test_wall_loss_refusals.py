@@ -16,9 +16,9 @@ API_ROWS = ["selector-none", "selector-both", "sigma-zero", "sigma-negative", "f
 LANE_ROWS = ["optimize-uniform", "optimize-graded", "gradient-check", "topology", "material-fit", "vmap-scan",
              "coax-msl", "mixed-msl-junction", "ad-memory", "distributed-v2", "distributed-entry-run",
              "distributed-entry-forward", "distributed-nu-forward", "distributed-dispatch-run", "distributed-dispatch-forward",
-             "subgrid-dispatch", "subgrid-run", "waveguide", "multimode-waveguide", "lumped-scan", "eager-port-probe",
+             "subgrid-dispatch", "subgrid-run", "waveguide-and-multimode", "lumped-scan-and-eager-port-probe",
              "current-moments", "upml", "kottke", "conformal", "traced-mesh", "solid-cpml-pad",
-             "debye-overlap", "lorentz-overlap", "drude-overlap", "shape-sheet"]
+             "debye-overlap", "lorentz-overlap", "drude-overlap", "shape-sheet", "face-cpml-pad"]
 
 
 def model(graded=False, boundary="pec"):
@@ -101,9 +101,11 @@ def lane_call(row, monkeypatch):
             # Reach the runner's second guard after the dispatch guard is bypassed.
             monkeypatch.setattr(sim, "_dispatch_plan", lambda **kwargs: SimpleNamespace(lane="run_subgridded", n_steps=1))
         return lambda: sim.run(n_steps=1, compute_s_params=False, skip_preflight=True)
-    if row in ("waveguide", "multimode-waveguide"):
+    if row == "waveguide-and-multimode":
+        # Both modes share _admit_waveguide_options before mode selection.
         return lambda: sim.compute_waveguide_s_matrix(n_steps=1, skip_preflight=True)
-    if row in ("lumped-scan", "eager-port-probe"):
+    if row == "lumped-scan-and-eager-port-probe":
+        # The scan driver admits both its scan and eager probe branches.
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
         return lambda: compute_lumped_wire_s_matrix_via_scan(sim, np.array([8e9]), n_steps=1)
     if row == "current-moments":
@@ -121,7 +123,12 @@ def lane_call(row, monkeypatch):
             sim.forward(n_steps=1, skip_preflight=True)
             return profile.sum()
         return lambda: jax.make_jaxpr(traced)(np.full(8, .0015))
-    if row in ("solid-cpml-pad", "shape-sheet"):
+    if row == "face-cpml-pad":
+        from rfx.boundaries.spec import BoundarySpec
+        sim = Simulation(freq_max=10e9, domain=(.012, .006, .006), dx=.0015,
+                         boundary=BoundarySpec(x="cpml", y="pec", z="pec"), cpml_layers=4)
+        sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo",))
+    elif row in ("solid-cpml-pad", "shape-sheet"):
         sim = model(boundary="cpml")
         solid = Box((-.003, .003, .003), (.003, .009, .009)) if row == "solid-cpml-pad" else Box((.003, .003, .006), (.009, .009, .006))
         sim.add(solid, material="pec")
@@ -145,5 +152,33 @@ def lane_call(row, monkeypatch):
 @pytest.mark.parametrize("site", API_ROWS + LANE_ROWS)
 def test_wall_loss_refused_by_name(site, monkeypatch):
     call = api_call(site) if site in API_ROWS else lane_call(site, monkeypatch)
-    with pytest.raises(RfxRefusal, match="add_wall_loss"):
+    reason = "add_wall_loss.*lossy PEC domain face enters a CPML pad" if site == "face-cpml-pad" else "add_wall_loss"
+    with pytest.raises(RfxRefusal, match=reason):
+        call()
+
+
+@pytest.mark.parametrize("site", ["run-admission", "uniform-run", "uniform-forward", "graded-run-forward"])
+def test_runner_admission_site(site):
+    """Direct entries must name their own lane, even if later guards also refuse."""
+    sim = model(graded=site == "graded-run-forward")
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo",))
+    if site == "run-admission":
+        from rfx.runners.run import run_after_admission
+        call = lambda: run_after_admission(sim, n_steps=1, subpixel_smoothing=True)
+        lane = "run admission"
+    elif site == "uniform-run":
+        from rfx.runners.uniform import run_uniform
+        call = lambda: run_uniform(sim, n_steps=1, subpixel_smoothing=True)
+        lane = "run_uniform"
+    elif site == "uniform-forward":
+        from rfx.runners.uniform_forward import _forward_from_materials
+        grid = sim._build_grid()
+        materials = realized_conductors(sim, grid).materials
+        call = lambda: _forward_from_materials(sim, grid, materials, None, None, n_steps=1, subpixel_smoothing=True)
+        lane = "fwd_uniform"
+    else:
+        from rfx.runners.nonuniform import run_nonuniform_path
+        call = lambda: run_nonuniform_path(sim, n_steps=1, subpixel_smoothing=True)
+        lane = "run_nonuniform"
+    with pytest.raises(RfxRefusal, match=f"add_wall_loss: {lane}: Kottke"):
         call()

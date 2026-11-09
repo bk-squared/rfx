@@ -1,21 +1,24 @@
-"""Always-on 1.5 mm y-pair conductor-loss cavity oracle."""
+"""Always-on uniform and graded y-pair conductor-loss cavity oracles."""
 import time
 
 import numpy as np
+import pytest
 
 from rfx import GaussianPulse, Simulation
 from rfx.ringdown import identify
 
 
-def test_y_pair_cavity_q():
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_y_pair_cavity_q(graded):
     started = time.monotonic()
-    sim = Simulation(freq_max=10e9, domain=(.030, .012, .024), dx=.0015,
-                     boundary="pec", snap="declared")
+    kwargs = {"dy_profile": np.array([.00075, .00075] + [.001] * 9 + [.00075, .00075])} if graded else {}
+    sim = Simulation(freq_max=10e9, domain=(.030, .012, .024), dx=.001 if graded else .0015,
+                     boundary="pec", snap="declared", **kwargs)
     sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi"))
     sim.add_source((.0073, .0041, .0059), "ey", waveform=GaussianPulse(f0=8e9, bandwidth=.25),
                    amplitude_kind="current")
     sim.add_probe((.0217, .0083, .0151), "ey")
-    dt = sim._build_grid().dt
+    dt = (sim._build_nonuniform_grid() if graded else sim._build_grid()).dt
     result = sim.run(n_steps=int(np.ceil(20e-9/dt)), compute_s_params=False)
     series = np.asarray(result.time_series)
     model = identify(series, dt, int(np.ceil(2e-9/dt)), len(series), freq_max=10e9)
