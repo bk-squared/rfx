@@ -359,6 +359,15 @@ def _build_nu_scan(
     use_dft_planes = len(dft_planes) > 0
     use_flux_monitors = len(flux_monitors) > 0
     use_lumped_rlc = len(rlc_metas) > 0
+    runner_ntff, runner_moments = ntff_box, current_moments
+    if measurement is not None:
+        import jax
+        from rfx.measurement.accumulators import (
+            plan_monitor_objects, validate_monitor_presence, validate_monitor_carries,
+        )
+        with jax.ensure_compile_time_eval():
+            ntff_box, current_moments = plan_monitor_objects(measurement, grid)
+        validate_monitor_presence((ntff_box, current_moments), (runner_ntff, runner_moments))
     use_ntff = ntff_box is not None and ntff_data is not None
     use_current_moments = current_moments is not None
     use_waveguide_ports = len(waveguide_ports) > 0
@@ -508,7 +517,10 @@ def _build_nu_scan(
         )
         # Same dtype policy as the NTFF carry.
         carry_init["current_moments"] = _init_cm(
-            current_moments, field_dtype=carry_init["fdtd"].ex.dtype)
+            runner_moments, field_dtype=carry_init["fdtd"].ex.dtype)
+
+    if measurement is not None:
+        validate_monitor_carries(ntff_box, current_moments, carry_init)
 
     # Waveguide-port time-series carry (mirrors uniform path).
     # Spectra are computed POST-SCAN by a rect full-record DFT on the
