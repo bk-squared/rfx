@@ -916,9 +916,21 @@ def _emit_waveguide_port_cutoff_findings(
     import warnings as _w
     from dataclasses import replace
 
-    from rfx.model.waveguide_modes import port_light_speed
+    from rfx.model.waveguide_modes import port_light_speed, solve_rectangular_modes
     m0, n0 = entry.mode
+    mode_type = entry.mode_type
     try:
+        if entry.n_modes > 1:
+            # Match the solver's enumeration and tie order; only its first
+            # mode is driven, while the remaining configs listen passively.
+            freqs = resolve_waveguide_port_freqs(self, entry)
+            modes = solve_rectangular_modes(
+                a_ap, b_ap, float(jnp.max(freqs)) * 2.0, entry.n_modes)
+            if not modes:
+                raise ValueError("No waveguide modes found below the solver's frequency bound")
+            driven = modes[0]
+            m0, n0 = driven["m"], driven["n"]
+            mode_type = driven["mode_type"]
         grid = self._build_realized_grid()
         cells = _preflight_aperture_cells(self, entry, grid)
         if (entry.mode_profile == "discrete"
@@ -929,7 +941,8 @@ def _emit_waveguide_port_cutoff_findings(
             cutoff_basis = (f"analytic cutoff of the {aperture} aperture; "
                             "discrete cell budget exceeded")
         else:
-            cfg = _preflight_entry_config(self, replace(entry, n_modes=1), grid=grid)
+            cfg = _preflight_entry_config(
+                self, replace(entry, n_modes=1, mode=(m0, n0), mode_type=mode_type), grid=grid)
             speed = port_light_speed(cfg.medium)
             fc_excited = float(cfg.f_cutoff)
             cutoff_basis = f"builder {entry.mode_profile} cutoff"
@@ -938,9 +951,12 @@ def _emit_waveguide_port_cutoff_findings(
         # geometric span check can report its more specific obstruction.
         return
     except RuntimeError as exc:
-        _w.warn(f"Waveguide preflight could not build the declared mode ({exc!r}); "
+        _w.warn(f"Waveguide preflight could not build the driven mode ({exc!r}); "
                 "cutoff checks are unchecked for this port.", AccuracyWarning, stacklevel=2)
         return
+
+    if entry.n_modes > 1:
+        cutoff_basis += "; the port drives its lowest-cutoff mode"
 
     def _fc_gd(m, n, _a=a_gd, _b=b_gd):
         return (speed / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
@@ -959,7 +975,7 @@ def _emit_waveguide_port_cutoff_findings(
             PreflightWarning(
                 f"Waveguide port '{entry.name}': source center "
                 f"f0={f0_resolved / 1e9:.3f} GHz is at or below the "
-                f"{entry.mode_type}{m0}{n0} cutoff "
+                f"{mode_type}{m0}{n0} cutoff "
                 f"fc={fc_excited / 1e9:.3f} GHz ({cutoff_basis})"
                 f"{' (defaulted from the measurement band)' if entry.f0 is None else ''}. "
                 f"The launch is evanescent — extracted S-parameters are "
@@ -977,7 +993,7 @@ def _emit_waveguide_port_cutoff_findings(
             PreflightWarning(
                 f"Waveguide port '{entry.name}': minimum measurement "
                 f"frequency {f_min / 1e9:.3f} GHz is at or below the "
-                f"{entry.mode_type}{m0}{n0} cutoff "
+                f"{mode_type}{m0}{n0} cutoff "
                 f"fc={fc_excited / 1e9:.3f} GHz ({cutoff_basis}). Below-cutoff bins "
                 f"produce junk S-parameters and NaN gradients under "
                 f"jax.grad. Restrict freqs to f > fc.",
@@ -1024,8 +1040,9 @@ def _emit_waveguide_port_cutoff_findings(
                 f"{f_check / 1e9:.3f} GHz exceeds 0.90 × fc_next="
                 f"{threshold / 1e9:.3f} GHz on the REALIZED guide "
                 f"({guide_label}) "
-                f"(fc_{entry.mode_type}{m0}{n0}={fc_excited_gd / 1e9:.3f} GHz, "
+                f"(fc_{mode_type}{m0}{n0}={fc_excited_gd / 1e9:.3f} GHz, "
                 f"fc_{next_label}={fc_next / 1e9:.3f} GHz). "
+                f"{'The port drives its lowest-cutoff mode. ' if entry.n_modes > 1 else ''}"
                 f"Evanescent {next_label} contamination may exceed 1 % and "
                 f"registers as |S11| < 1 in a lossless structure. "
                 f"Restrict measurement freqs below {threshold / 1e9:.3f} GHz "
@@ -1073,7 +1090,7 @@ def _check_waveguide_port_evanescent(self) -> None:
 
     Now uses :meth:`_port_transverse_spans` for both:
     - the lower-bound checks (source / measurement at-or-below
-      cutoff) read the builder's declared-mode cutoff when affordable.
+      cutoff) read the builder's driven-mode cutoff when affordable.
       A discrete aperture above the budget instead uses its realized
       transverse spans in the closed form, without building a mode.
       The aperture can snap to either side of the declared width (see
