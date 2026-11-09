@@ -224,7 +224,8 @@ r_eps = -3.1e-05
 ```
 
 The sum over all cells is the derivative for a uniform change of σ or εr, and
-for a uniformly filled box that derivative has a closed form:
+for a box filled uniformly with vacuum (εr = 1, the only fill measured) that
+derivative has a closed form:
 
 - Σ d(1/Q)/dσ = 1/(ω ε₀), with ω = 2πf and f the fitted frequency;
 - Σ df/dεr = −(f/2)·tan θ/θ, with θ = πf·dt the Yee time-step correction.
@@ -263,8 +264,8 @@ Limits:
   are False, `check.value` is NaN and `check.note` starts `cannot judge:`.
 - **The two windows are matched by frequency only.** The match assumes isolated
   neighbours. `gradient_witness` is the check for a wrong match.
-- **Plain and `jax.jit` gradients can differ.** On the 1.0 mm box above they agree
-  to 1.1e-12. On a short lossy 600-step test box the gradient of `sum |S|^2`
+- **Plain and `jax.jit` gradients can differ.** On the 1.0 mm box above the pole
+  gradients agree to 1.1e-12 and the gradient of `sum |S|^2` to 2.7e-11. On a short lossy 600-step test box the gradient of `sum |S|^2`
   differs by up to 1.7e-2, and the pole outputs inherit and enlarge that gap. The cause is
   not determined
   ([tracked here](https://github.com/bk-squared/rfx/issues/2485)).
