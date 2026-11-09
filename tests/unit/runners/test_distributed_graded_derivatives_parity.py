@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, DebyePole, Simulation
+from rfx import Box, DebyePole, LorentzPole, Simulation
 from tests._multi_device_scene import host_devices
 from tests._one_device_parity import (
     assert_multi_device,
@@ -21,7 +21,7 @@ AXES = (np.r_[0., np.cumsum(PROFILE)], np.arange(5)*.001, np.arange(5)*.001)
 def model(boundary, kind, n_devices, *, drop_source=False):
     sim = Simulation(freq_max=15e9, domain=(.004, .004, .004), dx=.001,
                      boundary=boundary, cpml_layers=2, dx_profile=PROFILE)
-    grid = sim._build_nonuniform_grid()
+    grid = sim.freeze_mesh()
     seam = (grid.shape[0] + n_devices - 1) // n_devices
     x = grid.node_of("x", seam)
     if not drop_source:
@@ -35,6 +35,12 @@ def model(boundary, kind, n_devices, *, drop_source=False):
     if kind == "debye":
         sim.add_material("pole", eps_r=3., debye_poles=[DebyePole(delta_eps=1., tau=1e-11)])
         sim.add(Box((-1., .001, .001), (1., .003, .003)), material="pole")
+    if kind == "lorentz":
+        sim.add_material("pole", eps_r=3., lorentz_poles=[LorentzPole(
+            omega_0=2*np.pi*8e9, delta=2*np.pi*1e9, kappa=(2*np.pi*8e9)**2)])
+        sim.add(Box((-1., .001, .001), (1., .003, .003)), material="pole")
+        # Only the four user probes enter the checkpointed-gradient objective.
+        return sim, grid, seam, ()
     labels = field_probes(sim, graded=True, axes=AXES)
     return sim, grid, seam, labels
 
@@ -83,3 +89,27 @@ def test_graded_derivatives_match_one_device(boundary, kind, n_devices):
     assert all(not row["jvp"]["passed"] and not row["gradient"]["passed"] for row in rows[1:]), \
         ("derivative falsifier not resolved", rows)
     assert rows[0]["passed"], rows[0]
+
+
+@pytest.mark.parametrize("n_devices", [2, 3])
+def test_lorentz_checkpointed_gradient_matches_one_device(n_devices):
+    devices = host_devices(n_devices)
+    sim, grid, _, _ = model("cpml", "lorentz", n_devices)
+    eps = jnp.full(grid.shape, 2., dtype=jnp.float32)
+
+    def objective(value, selected=None):
+        options = {} if selected is None else dict(distributed=True, devices=selected)
+        result = sim.forward(eps_override=value, n_steps=STEPS, checkpoint=True,
+                             checkpoint_every=CHECKPOINT_EVERY, skip_preflight=True,
+                             **options)
+        return jnp.sum(result.time_series ** 2)
+
+    one = np.asarray(jax.grad(objective)(eps))
+    multi = np.asarray(jax.grad(lambda e: objective(e, devices))(eps))
+    # Existing one-vs-many gradient bar: tests/_one_device_parity.py:142-153,
+    # used by test_graded_derivatives_match_one_device above (1e-4 of peak).
+    metrics = derivative_metrics(one, multi)
+    row = record(dict(model="lorentz", boundary="cpml", devices=n_devices,
+                      steps=STEPS, checkpoint=True, checkpoint_every=CHECKPOINT_EVERY,
+                      mesh=tuple(grid.shape)), "none", metrics)
+    assert metrics["passed"], f"Lorentz checkpointed gradient: {row}"
