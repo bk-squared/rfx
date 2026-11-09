@@ -745,20 +745,7 @@ def _lane_resolver(lane: str, grid):
     return lambda pos: pos_to_nu_index(grid, pos)
 
 
-def _user_geometry(result, n_user: int, n_int: int):
-    """Drop the realized-geometry rows of the channel probes this run attached.
-
-    A point-probe row is labelled by its index in ``sim._probes``; the attached
-    ones are indices ``[n_user, n_user + n_int)``, the columns the time series drops.
-    """
-    import dataclasses
-    record = getattr(result, "realized_geometry", None)
-    probes = getattr(record, "probes", None)
-    if not probes or not n_int:
-        return result
-    attached = {f"probe[{i}]" for i in range(n_user, n_user + n_int)}
-    kept = tuple(p for p in probes if not (p.kind == "point" and p.label in attached))
-    return result._replace(realized_geometry=dataclasses.replace(record, probes=kept))
+from rfx.ringdown._geometry import _user_geometry
 
 
 def _node_position(grid, idx) -> tuple:
@@ -1119,8 +1106,9 @@ class RingdownRun:
         _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes)
+        # rfx attaches port channels; identification.py refuses pad probes earlier, and the port entry judges its position with the user's flag.
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp)
+                                  component=comp, allow_in_absorber=True)
                       for comp, idx in self.probe_keys)
         try:
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
@@ -1967,7 +1955,7 @@ class RingdownStop:
         n_user = len(probes)
         self.n_user = n_user
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp)
+                                  component=comp, allow_in_absorber=True)
                       for comp, idx in self.base.probe_keys)
         try:
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
@@ -2369,11 +2357,12 @@ class RingdownForward(RingdownRun):
         if self.lane == "uniform" and n_declared == 0:
             # forward()'s uniform lane records every port's own cell when the
             # model declares no probe; those columns stay first, as they were.
-            probes.extend(_ProbeEntry(position=pe.position, component=pe.component)
+            probes.extend(_ProbeEntry(position=pe.position, component=pe.component,
+                                      allow_in_absorber=pe.allow_in_absorber)
                           for pe in self.sim._ports)
         n_user = len(probes)
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp)
+                                  component=comp, allow_in_absorber=True)
                       for comp, idx in self.probe_keys)
         try:
             result = call()

@@ -446,6 +446,7 @@ class LumpedPort:
     component: str
     impedance: float
     excitation: GaussianPulse
+    allow_in_absorber: bool = False
     # Build-local record of the actual stamp and unit-voltage shape. Excluded
     # from descriptor identity; setup populates it before source assembly.
     _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
@@ -457,7 +458,8 @@ def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
     Uses the 3D formula σ = d_parallel / (Z0 · d_perp1 · d_perp2)
     which reduces to 1/(Z0·dx) for cubic cells.
     """
-    idx = field_index(grid, port.position, port.component)
+    idx = field_index(grid, port.position, port.component,
+                      allow_in_absorber=port.allow_in_absorber)
     sp = port_sigma(grid, idx, port.component, port.impedance)
     port._drive_stamps.clear()
     port._drive_stamps[tuple(idx)] = (sp, 1 / port_d_parallel(grid, idx, port.component))
@@ -471,7 +473,8 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
-    idx = field_index(grid, port.position, port.component)
+    idx = field_index(grid, port.position, port.component,
+                      allow_in_absorber=port.allow_in_absorber)
     i, j, k = idx
     increment = port_drive_waveform(
         grid, idx, port.component, port.excitation, None, materials,
@@ -507,6 +510,7 @@ class WirePort:
     impedance: float = 50.0
     excitation: object = None  # GaussianPulse or similar
     radius: float | None = None
+    allow_in_absorber: bool = False
     _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -541,6 +545,9 @@ def _wire_port_cells(grid, port):
     the extent occupies; it is a sub-cell declaration, not an empty one.
     """
     import numpy as np
+    from rfx.model.point_placement import admit_point
+    admit_point(grid, port.start, allow_in_absorber=port.allow_in_absorber)
+    admit_point(grid, port.end, allow_in_absorber=port.allow_in_absorber)
     s = np.array(port.start)
     e = np.array(port.end)
     diff = e - s
@@ -619,7 +626,8 @@ def wire_port_from_entry(pe):
     end = list(pe.position)
     end[{"ex": 0, "ey": 1, "ez": 2}[pe.component]] += pe.extent
     return WirePort(start=pe.position, end=tuple(end), component=pe.component,
-                    impedance=pe.impedance, excitation=pe.waveform, radius=pe.radius)
+                    impedance=pe.impedance, excitation=pe.waveform, radius=pe.radius,
+                    allow_in_absorber=getattr(pe, "allow_in_absorber", False))
 
 
 def _wire_port_live_cells(grid, port, pec_edge_masks=None):
