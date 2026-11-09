@@ -146,6 +146,38 @@ f_max, ...)` or `matrix_pencil_from_probe(...)`.
 `ntff_box`, `grid`, `dt` and `settling_probe_info`. Everything in it can carry
 a gradient.
 
+### `ForwardResult.ringdown`
+
+With `forward(..., ringdown=RingdownSpec())`, `out.ringdown` is a
+`rfx.ringdown.RingdownForwardResult`, a JAX pytree. Beside `s_params`,
+`s_params_long`, `freqs` and `report`, it holds the poles of the fit, traced with
+the same derivative as the completion. The main window is
+`[window_start T, T]`. The long window starts twice as early.
+
+| Member | Contents |
+|---|---|
+| `poles`, `poles_long` | read-only complex arrays of the main and long window, in 1/s, in the basis `exp(s t)`: `s = -alpha + i omega`. Padding entries follow the fitted ones. A failed window makes them NaN, as it does S. |
+| `pole_mask`, `pole_mask_long` | int32 arrays of the same shape: 0 padding, 1 completed, 2 unresolved. |
+| `pole(f_target, window="main")` | `(f, inv_q)`, frequency in Hz and 1/Q, traced, of the one pole with mask 1, positive frequency and decay within 1/(main window length) of `f_target`. `window="long"` reads the long window with the same radius. Without a unique pole both values and their gradients are NaN. |
+
+Under `jax.vmap` the four arrays gain a leading batch axis, and `pole()` raises
+`ValueError`; take one element first. A mask 2 pole is never selected.
+
+Two functions in `rfx.ringdown` go with them:
+
+| Function | Returns |
+|---|---|
+| `select_pole(poles, mask, f_target, window_s)` | the same `(f, inv_q)` from arrays you pass, with radius `1/window_s`; use the main window's length for either window. The choice of pole is not differentiated; the chosen pole keeps its derivative. |
+| `pole_selection_reason(poles, mask, f_target, window_s, status=None)` | on the host, `None` when a unique pole is selected, otherwise a string such as `"none within delta"`, or `"failed window: ..."` when `status` names a failed window |
+
+`gradient_witness(grad, grad_other, *, against="early_start", ringdown=None,
+bar=1e-2, bin_axis=None, pole_target=None)` takes the gradients of a selected
+pole through `pole_target=f_target`. On a concrete `ringdown`, it judges only when
+both windows select a unique pole. Otherwise the returned check has `value` NaN,
+`judged` and `ok` False, and a `note` that starts `cannot judge:`. `pole_target`
+with `against="longer_record"` raises `ValueError`. Example and validated range:
+[Frequency and Q of one resonance, per cell](/rfx/check/gradients/#frequency-and-q-of-one-resonance-per-cell).
+
 ## S-parameter results
 
 All full matrices are indexed `S[receiver_port, driven_port, freq_index]`.

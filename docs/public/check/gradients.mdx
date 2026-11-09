@@ -166,6 +166,109 @@ On a weakly coupled high-Q resonator, add
 fit from the port alone can get the value right and the gradient of that
 resonance wrong.
 
+### Frequency and Q of one resonance, per cell
+
+`out.ringdown.pole(f_target)` returns the frequency and 1/Q of one fitted pole,
+as traced values. One reverse pass through them gives df/dεr or d(1/Q)/dσ in
+every cell, where two forward runs per cell would otherwise be needed. The
+example is a closed PEC box in vacuum with a uniform conductivity of
+1.44e-5 S/m. A weak 10 kΩ wire port drives its lowest resonance. Two field
+probes inside the box join the fit.
+
+```python
+import jax
+import jax.numpy as jnp
+import numpy as np
+from rfx import GaussianPulse, Simulation
+from rfx.ringdown import RingdownSpec
+
+C0, EPS_0 = 299792458.0, 8.8541878128e-12
+SIGMA, RECORD_S, dx = 1.44e-5, 7.62e-9, 1e-3
+probes = (((0.0183, 0.0041, 0.0157), "ey"), ((0.0059, 0.0092, 0.0194), "ey"))
+
+with jax.enable_x64():
+    sim = Simulation(freq_max=15e9, domain=(0.0265, 0.0127, 0.0241), dx=dx,
+                     boundary="pec", precision="float64", snap="declared")
+    sim.add_port(position=(0.0071, (0.0127 - 3 * dx) / 2, 0.0063), component="ey",
+                 extent=3 * dx, impedance=10e3,
+                 waveform=GaussianPulse(f0=8.4e9, bandwidth=0.8))
+    grid = sim.freeze_mesh()
+    a, _, d = [(n - 1) * dx for n in grid.shape]   # the box the mesh built
+    target = C0 / 2 * np.hypot(1 / a, 1 / d)       # lowest mode, closed form
+    spec = RingdownSpec(freq_max=15e9, identification_probes=probes)
+
+    def poles(eps, sigma):
+        out = sim.forward(eps_override=eps, sigma_override=sigma,
+                          n_steps=round(RECORD_S / grid.dt),
+                          port_s11_freqs=np.linspace(7e9, 10e9, 41),
+                          ringdown=spec, skip_preflight=True)
+        return out.ringdown.pole(target), out.ringdown
+
+    (f, inv_q), pullback, rd = jax.vjp(
+        poles, jnp.ones(grid.shape), jnp.full(grid.shape, SIGMA), has_aux=True)
+    df_deps, _ = pullback((1.0, 0.0))        # df/deps_r per cell, Hz
+    _, dinvq_dsigma = pullback((0.0, 1.0))   # d(1/Q)/dsigma per cell, m/S
+
+    theta = np.pi * float(f) * grid.dt
+    sum_sigma = float(jnp.sum(dinvq_dsigma))
+    sum_eps = float(jnp.sum(df_deps))
+    print(f"f = {float(f) / 1e9:.4f} GHz, Q = {1 / float(inv_q):.0f}")
+    print(f"r_sigma = {sum_sigma * 2 * np.pi * float(f) * EPS_0 - 1:.1e}")
+    print(f"r_eps = {sum_eps / (-float(f) / 2 * np.tan(theta) / theta) - 1:.1e}")
+```
+
+```text
+f = 8.3544 GHz, Q = 3675
+r_sigma = -2.5e-05
+r_eps = -3.1e-05
+```
+
+The sum over all cells is the derivative for a uniform change of σ or εr, and
+for a uniformly filled box that derivative has a closed form:
+
+- Σ d(1/Q)/dσ = 1/(ω ε₀), with ω = 2πf and f the fitted frequency;
+- Σ df/dεr = −(f/2)·tan θ/θ, with θ = πf·dt the Yee time-step correction.
+
+`r_sigma` and `r_eps` are the relative differences from these two sums. Measured
+in float64 on the CPU, each mesh with the box it realized (record kept with the
+project):
+
+| cell | f (GHz) | Q | r_sigma | r_eps |
+|---|---|---|---|---|
+| 1.0 mm | 8.354 | 3675 | −2.5e-5 | −3.1e-5 |
+| 0.75 mm | 8.461 | 5943 | −1.9e-5 | −3.5e-5 |
+| 0.5 mm | 8.426 | 9770 | −6.8e-6 | +3.7e-5 |
+
+The largest difference is 3.7e-5, and it stays at a few 1e-5 on all three meshes.
+This is the validated case: this box, its lowest resonance, a uniform mesh and
+float64. The 1.0 mm case runs in the test suite
+(`tests/oracle/test_traced_pole_output.py`). The sums test the total only; no
+closed form tests how the sensitivity is spread over the cells.
+
+To check a pole gradient, differentiate `pole(target)` and
+`pole(target, window="long")` from one `forward()` call and pass
+`pole_target=target` to `gradient_witness`:
+`gradient_witness(g, g_long, ringdown=rd, pole_target=target)`. On the 0.5 mm
+box above it was judged, at 3.0e-4 for f and 5.4e-4 for 1/Q against the bar
+of 1e-2.
+
+Limits:
+
+- **No unique pole gives NaN.** `pole()` selects the one completed, decaying,
+  positive-frequency pole within 1/(main window length) of `f_target`. With none
+  or several there, or a failed fit, both values and their gradients are NaN.
+  `rfx.ringdown.pole_selection_reason` gives the reason on the host.
+- **No unique pole cannot be judged.** With `pole_target`, `gradient_witness`
+  needs a unique pole in both windows. Otherwise `check.judged` and `check.ok`
+  are False, `check.value` is NaN and `check.note` starts `cannot judge:`.
+- **The two windows are matched by frequency only.** The match assumes isolated
+  neighbours. `gradient_witness` is the check for a wrong match.
+- **Plain and `jax.jit` gradients can differ.** On the 1.0 mm box above they agree
+  to 1.1e-12. On a short lossy 600-step test box the gradient of `sum |S|^2`
+  differs by up to 1.7e-2, and the pole outputs inherit and enlarge that gap. The cause is
+  not determined
+  ([tracked here](https://github.com/bk-squared/rfx/issues/2485)).
+
 ## How the checks work
 
 **The gradient check from a longer run** (`gradient_record_length_witness`). Per frequency, the
@@ -193,6 +296,9 @@ leaf's largest gradient, against 1 %. A NaN in either gradient fails it.
 | a gradient with respect to a declared shape's size or position (a sphere radius, a box corner) | `NotImplementedError` naming the supported routes, on `run()` and `forward()` | differentiate through material overrides (`eps_override`) or a design region |
 | `forward(ringdown=...)` with more than one wire port on a uniform mesh | refused | use a graded mesh |
 | `gradient_witness(..., against="early_start")` without `ringdown=` | `TypeError` | pass the call's `out.ringdown` |
+| `gradient_witness(..., pole_target=..., against="longer_record")` | `ValueError` | use the default `against="early_start"` with the call's `out.ringdown` |
+| `out.ringdown.pole(f_target, window=...)` with a window other than `"main"` or `"long"` | `ValueError` | pass one of the two |
+| `out.ringdown.pole(...)` on a result batched by `jax.vmap` | `ValueError` naming the shape | take one element first: `jax.tree_util.tree_map(lambda a: a[i], result)` |
 
 The refusals of `run(ringdown=...)` that concern the model (port kinds, solver
 paths, the source in the fit window) on the
