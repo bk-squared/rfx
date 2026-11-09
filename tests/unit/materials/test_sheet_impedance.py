@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -583,7 +584,7 @@ def test_sheet_probe_record_survives_gpu_backend_query(monkeypatch):
             sim.add_source((.010, .010, .005), "ex", waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
         # Sample tangential E at an off-symmetry point on the sheet.
         sim.add_probe((.009, .011, .010), "ex")
-        result = sim.run(n_steps=8, skip_preflight=True)
+        result = sim.run(n_steps=300, skip_preflight=True)
         assert result.grid.shape == (21, 21, 21)
         return np.asarray(result.time_series)
 
@@ -592,10 +593,12 @@ def test_sheet_probe_record_survives_gpu_backend_query(monkeypatch):
         environment.setattr(jax, "default_backend", lambda: "gpu")
         actual = record(True)
     peak = float(np.max(np.abs(expected)))
+    peak_step = int(np.unravel_index(np.argmax(np.abs(expected)), expected.shape)[0]) + 1
+    print(f"sheet: peak_step_1based={peak_step}", file=sys.stderr)
     bar = 9 * float(np.spacing(np.float32(peak)))
     difference = float(np.max(np.abs(expected - absent)))
     error = float(np.max(np.abs(actual - expected)))
-    print(f'sheet: mesh=(21,21,21) steps=8 peak={peak:.17g} backend_error={error:.17g} bar=0 sheet_free_difference={difference:.17g} control_bar={bar:.17g}')
+    print(f'sheet: mesh=(21,21,21) steps=300 peak={peak:.17g} backend_error={error:.17g} bar=0 sheet_free_difference={difference:.17g} control_bar={bar:.17g}')
     assert np.isfinite(actual).all() and peak > 0, 'sheet probe must be live'
     assert difference > bar, f'sheet control difference {difference:.17g} <= 9 ULP {bar:.17g}'
     assert actual.tobytes() == expected.tobytes(), f'GPU query changed sheet record: max error {error:.17g}, required bitwise equality'
