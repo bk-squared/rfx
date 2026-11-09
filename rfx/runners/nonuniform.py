@@ -1227,7 +1227,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         # The energy stop reads W only after every drive built above has ended.
         from rfx.measurement.decay import advisory_inputs
         from rfx.measurement.record_end import drive_end
-        n_end = (drive_end(grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
+        n_end = (drive_end(source_grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
                            waveguide_ports=waveguide_port_cfgs)
                  if until_decay > 0 else None)
         # chunked host loop with the interior-energy stop. The
