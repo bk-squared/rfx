@@ -291,12 +291,14 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
 
     )},
     "_dt_min_cell": {"": lanes(
-        run_uniform=not_reachable("the constructor refuses it without dt="),
+        run_uniform=refuses("run(cut_cell_floor) admits the pin, then admission refuses dt_min_cell; "
+                            "tests/unit/runners/test_calculator_admission.py::test_dt_min_cell_refused_before_scan",
+                            raises="dt_min_cell="),
         run_nonuniform=carries("with dt=, read by the graded grid build"),
-        run_subgridded=not_reachable("the constructor refuses it without dt=, and dt= needs a profile"),
+        run_subgridded=refuses("the uniform dt= pin is refused before dt_min_cell is read", raises="dt="),
 
         run_distributed=refuses("dt_min_cell belongs to the graded runner", raises="dt="),
-        fwd_uniform=not_reachable("the constructor refuses it without dt="),
+        fwd_uniform=refuses("the uniform dt= pin is refused before dt_min_cell is read", raises="dt="),
         fwd_nonuniform=carries("with dt=, read by the graded grid build"),
         fwd_distributed_nu=carries("with dt=, read by _build_nonuniform_grid"),
 
