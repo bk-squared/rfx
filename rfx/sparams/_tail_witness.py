@@ -121,14 +121,18 @@ class TailShareWitness(NamedTuple):
     pole_rule: str = _POLE_RULE
     skipped_records: tuple = ()
     drive_share_per_bin: tuple | np.ndarray = ()
+    dropped_per_bin: list = []
 
 
 def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None,
-                       _record_results=None, known_drives=None, n_record=None):
+                       _record_results=None, known_drives=None, n_record=None,
+                       scale_groups=None, _channel_labels=None):
     """Judge per-bin pole tails by agreement between two source-free windows.
 
     ``rounding_groups`` names co-located same-kind records whose peaks share
     a rounding margin; ungrouped records are never skipped.
+    ``scale_groups`` gives a same-quantity key, or one key per input column;
+    a missing key or None keeps that column's own level.
     sensitivities are judged by a separate witness
     """
     from dataclasses import replace
@@ -136,6 +140,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
     from rfx.core.jax_utils import is_tracer
     from rfx.ringdown import identify, _static_pole, judge_growing_poles
     from rfx.measurement.ringdown_tail import plain_dft, tail_dft
+    from rfx.sparams._settling_groups import column_metadata
 
     records = tuple(records)
     skipped = _rounding_only_records(records, rounding_groups or {})
@@ -151,9 +156,16 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
     error = np.zeros(bins.size)
     contributions = {}
     drive_share = np.zeros(bins.size)
+    dropped_names = [[] for _ in bins]
+    kept_count = np.zeros(bins.size, dtype=int)
+
+    def dropped_rows():
+        return ([dict(freq_hz=float(f), count=len(names), channels=names)
+                 for f, names in zip(bins, dropped_names)]
+                if any(dropped_names) else [])
 
     def unavailable(status, reason):
-        return TailShareWitness(float('nan'), share + drive_share, float(bins[np.argmax(share + drive_share)]) if bins.size and np.any(share + drive_share) else float('nan'), status, reason, error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share)
+        return TailShareWitness(float('nan'), share + drive_share, float(bins[np.argmax(share + drive_share)]) if bins.size and np.any(share + drive_share) else float('nan'), status, reason, error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share, dropped_per_bin=dropped_rows())
 
     if records and len(skipped) == len(records):
         return unavailable('undetermined', 'every record is rounding only: ' + ', '.join(row['name'] for row in skipped))
@@ -211,8 +223,15 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
             check_stop = n if use_earlier else start + round(.9 * (n - start))
             if min(n - start, check_stop - check_start) < 10:
                 raise ValueError("post-source window too short for the identification check")
-            group = [(name, array[:, np.any(array[int(source_end):] != array[int(source_end)], axis=0)])
-                     for name, array in group]
+            filtered, keys, channel_names = [], [], []
+            for name, array in group:
+                column_keys, names = column_metadata(
+                    name, array.shape[1], scale_groups, _channel_labels)
+                active = np.any(array[int(source_end):] != array[int(source_end)], axis=0)
+                filtered.append((name, array[:, active]))
+                keys.extend(key for key, keep in zip(column_keys, active) if keep)
+                channel_names.extend(value for value, keep in zip(names, active) if keep)
+            group = filtered
             y = np.concatenate([array for _, array in group], axis=1)
             if y.shape[1] == 0:
                 zero_reasons.append(f"{label}: no post-source variation")
@@ -223,6 +242,19 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
             scale = np.max(np.maximum(np.abs(y.real), np.abs(y.imag)), axis=0)
             y = y / scale
             denom = np.abs(plain_dft(y, dt, bins))
+            raw_dft = denom * scale
+            group_scale = raw_dft.copy()
+            columns_by_key = {}
+            for col, key in enumerate(keys):
+                if key is not None:
+                    columns_by_key.setdefault(key, []).append(col)
+            for columns in columns_by_key.values():
+                group_scale[:, columns] = raw_dft[:, columns].max(axis=1)[:, None]
+            # 1e-2 is the -40 dB amplitude bar itself, not a tuned null cutoff.
+            dropped = raw_dft < 1e-2 * group_scale
+            kept_count += np.sum(~dropped, axis=1)
+            for k in range(len(bins)):
+                dropped_names[k].extend(channel_names[c] for c in np.flatnonzero(dropped[k]))
 
             def identify_window(lo, hi):
                 centered = y - np.mean(y[lo:hi], axis=0)
@@ -234,17 +266,24 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
                 residues = np.zeros((len(model.s), y.shape[1]), dtype=complex)
                 residues[:, active] = model.c
                 model = replace(model, c=residues)
-                return model, centered, np.where(active, denom, np.inf)
+                unmasked = np.where(active, denom, np.inf)
+                return model, centered, np.where(dropped, np.inf, unmasked), unmasked
 
-            main, main_series, main_denom = identify_window(start, n)
-            other, other_series, other_denom = identify_window(check_start, check_stop)
-            for model, series, window_denom in ((main, main_series, main_denom),
-                                                 (other, other_series, other_denom)):
+            main, main_series, main_denom, main_horizon = identify_window(start, n)
+            other, other_series, other_denom, other_horizon = identify_window(check_start, check_stop)
+            for model, series, window_denom, horizon_denom in (
+                    (main, main_series, main_denom, main_horizon),
+                    (other, other_series, other_denom, other_horizon)):
                 if not len(model.s):
                     reasons.append(f"{label}: no kept poles identified")
-                growth = judge_growing_poles(model, n, bins, window_denom)
-                if not growth.ok:
-                    reasons.append(f"{label}: growing-pole judge {growth.status}: {growth.reason}")
+                growth = judge_growing_poles(model, n, bins, window_denom,
+                                             horizon_denominator=horizon_denom)
+                # A null does not resolve a formerly undetermined growing-pole
+                # verdict, even when its bound alone caused that verdict.
+                growth_status = (judge_growing_poles(model, n, bins, horizon_denom)
+                                 if np.any(dropped) else growth)
+                if not growth_status.ok:
+                    reasons.append(f"{label}: growing-pole judge {growth_status.status}: {growth_status.reason}")
                 for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, growth=growth).items():
                     contributions[rule] = np.maximum(contributions.get(rule, np.zeros(len(bins))), value)
                     if rule == "kept non-static growing":
@@ -267,6 +306,9 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
                 per_channel = np.abs(tail) / main_denom
                 other_channel = np.abs(alt) / other_denom
                 err_channel = np.abs(tail - alt) / np.minimum(main_denom, other_denom)
+            per_channel = np.where(dropped, 0., per_channel)
+            other_channel = np.where(dropped, 0., other_channel)
+            err_channel = np.where(dropped, 0., err_channel)
             if not np.isfinite(per_channel).all() or not np.isfinite(err_channel).all() or not np.isfinite(other_channel).all():
                 reasons.append(f"{label}: non-finite tail or zero in-record DFT")
                 continue
@@ -281,7 +323,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
                         continue
                     columns = slice(offset, offset + array.shape[1])
                     peak = np.max(per_channel[:, columns])
-                    if not np.any(uncertain[:, columns]):
+                    if np.any(~dropped[:, columns]) and not np.any(uncertain[:, columns]):
                         _record_results[name] = float(20*np.log10(max(peak, np.finfo(float).tiny)))
                     offset += array.shape[1]
             if np.any(uncertain):
@@ -289,13 +331,16 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
                     reasons.append(f"{label}: identification windows disagree at {bins[k]:.12g} Hz")
         except (ValueError, np.linalg.LinAlgError, FloatingPointError) as exc:
             reasons.append(f"{label}: {exc}")
+    for k in np.flatnonzero(kept_count == 0):
+        if dropped_names[k]:
+            reasons.append(f"every channel dropped at read bin {bins[k]:.12g} Hz")
     if reasons:
         return unavailable('undetermined', '; '.join(reasons))
     share = share + drive_share
     worst = int(np.argmax(share))
     db = float(20 * np.log10(max(share[worst], np.finfo(float).tiny)))
     return TailShareWitness(db, share, float(bins[worst]),
-                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share)
+                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share, dropped_per_bin=dropped_rows())
 
 
 def result_read_bins(result):
@@ -329,17 +374,22 @@ class SettlingChannels(NamedTuple):
     freqs: object
     freq_max: float
 
-    def witness(self):
+    def witness(self, *, scale_groups=None, _channel_labels=None):
         return tail_share_witness(self.records, self.dt, self.source_end,
-                                  self.freqs, freq_max=self.freq_max)
+                                  self.freqs, freq_max=self.freq_max,
+                                  scale_groups=scale_groups, _channel_labels=_channel_labels)
 
 
 def port_record_witness(records, dt, source_end, freqs, *, freq_max):
     """Judge recorded S-channel matrices, one matrix per port."""
+    from rfx.sparams._settling_groups import port_column_groups
+
+    records = tuple(records)
+    groups, labels = port_column_groups(records)
     channels = SettlingChannels(
         tuple((record.id, record.samples) for record in records),
         dt, source_end, freqs, freq_max)
-    result = channels.witness()
+    result = channels.witness(scale_groups=groups, _channel_labels=labels)
     return result.db, {**result._asdict(), 'route': 's_channels',
                        'worst_record': None, 'per_record_db': {},
                        'skipped_records': [], 'source_dominated': False,
