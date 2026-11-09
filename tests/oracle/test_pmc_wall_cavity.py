@@ -2,8 +2,8 @@
 
 The low magnetic wall is on E node zero: H[-1] = -H[0]. Its image
 therefore has 26 physical x cells, with the shared E node at index 13.
-Closed forms use the physical cell counts; pole media use the public
-Simulation mirror model, independently of the curl implementation.
+Closed forms use the physical cell counts; every feature also uses the
+public Simulation mirror model, independently of the curl implementation.
 """
 
 import sys
@@ -46,8 +46,13 @@ def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False):
     sim.add_probe((shift + probe_x, 6 * H, H), "ez")
     if feature in ("lumped", "wire"):
         extra = {"extent": H} if feature == "wire" else {}
-        sim.add_port((3 * H, 4 * H, H), "ez", impedance=1e9,
+        sim.add_port((shift + 3 * H, 4 * H, H), "ez", impedance=1e9,
                      excite=False, **extra)
+        if image:
+            # Reflect about the original x=0 E node (x=a after translation).
+            # Ez is tangential: the image has the same sign and +z extent.
+            sim.add_port((shift - 3 * H, 4 * H, H), "ez", impedance=1e9,
+                         excite=False, **extra)
     if feature in ("debye", "lorentz", "mixed"):
         material = dict(eps_r=2.4)
         if feature in ("debye", "mixed"):
@@ -78,21 +83,36 @@ def _image_error(actual, reference):
     return float(np.max(np.abs(actual - reference)) / np.max(np.abs(reference)))
 
 
-def test_plain_pmc_image_plane():
-    """Establish the on-node mirror before using it for feature rows."""
-    half, result = _solve(_cavity())
-    image, doubled = _solve(_cavity(image=True))
-    pec, _ = _solve(_cavity(wall="pec"))
+def _check_image(mesh, feature, lane):
+    half, result = _solve(_cavity(mesh, feature), lane)
+    image, doubled = _solve(_cavity(mesh, feature, image=True), lane)
+    pec, _ = _solve(_cavity(mesh, feature, wall="pec"), lane)
     assert tuple(result.grid.shape) == (14, 11, 4)
     assert tuple(doubled.grid.shape) == (27, 11, 4)
     error = _image_error(half, image)
     separation = _image_error(half, pec)
-    report = (f"plain on-node mirror: error={error:.12g}, bar=1e-5; "
+    report = (f"{mesh}/{feature}/{lane}: image error={error:.12g}, bar=1e-5; "
               f"PEC separation={separation:.12g}, bar=1e-5; steps={IMAGE_STEPS}; "
               f"mesh={result.grid.shape}/{doubled.grid.shape}")
     print(report, file=sys.stderr)
     assert error <= 1e-5, report
     assert separation > 1e-5, report
+    return half
+
+
+@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+def test_plain_pmc_image_plane(mesh, lane):
+    """Establish the on-node mirror on every plain solver path."""
+    _check_image(mesh, "plain", lane)
+
+
+@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+@pytest.mark.parametrize("feature", ["lumped", "wire"])
+def test_port_pmc_image_plane(mesh, feature, lane):
+    """Both passive image ports retain the original Ez orientation."""
+    _check_image(mesh, feature, lane)
 
 
 def _lane_equal(actual, reference, label, poles=False):
@@ -181,21 +201,7 @@ def test_pmc_cavity_frequency_and_forward(mesh, feature):
 def test_pole_pmc_image_and_forward(mesh, feature):
     traces = {}
     for lane in ("run", "forward"):
-        half, result = _solve(_cavity(mesh, feature), lane)
-        image, doubled = _solve(_cavity(mesh, feature, image=True), lane)
-        pec, _ = _solve(_cavity(mesh, feature, wall="pec"), lane)
-        assert tuple(result.grid.shape) == (14, 11, 4)
-        assert tuple(doubled.grid.shape) == (27, 11, 4)
-        error = _image_error(half, image)
-        separation = _image_error(half, pec)
-        label = f"{mesh}/{feature}/{lane}"
-        report = (f"{label}: image error={error:.12g}, bar=1e-5; "
-                  f"PEC separation={separation:.12g}, bar=1e-5; "
-                  f"steps={IMAGE_STEPS}; mesh={result.grid.shape}/{doubled.grid.shape}")
-        print(report, file=sys.stderr)
-        assert error <= 1e-5, report
-        assert separation > 1e-5, report
-        traces[lane] = half
+        traces[lane] = _check_image(mesh, feature, lane)
     _lane_equal(traces["forward"], traces["run"], f"{mesh}/{feature}/forward-run", poles=True)
 
 
@@ -211,6 +217,27 @@ def _cavity_2d(mode, wall):
                    amplitude_kind="field")
     sim.add_probe((7 * H, 6 * H, 0.), probe)
     return sim
+
+
+@pytest.mark.parametrize("lane", ["run", "forward"])
+def test_2d_tmz_preserves_polarization(lane):
+    """A z-invariant Ez drive cannot generate Ex or Ey in isotropic vacuum.
+
+    The common six-component step still evaluates dHy/dz and dHx/dz for
+    Ex/Ey. A zero-padded z ghost creates cross-polarized E even when the
+    existing Ez cavity record is unchanged. Read all three E components
+    off the symmetry planes and compare with the zero transverse trace.
+    """
+    sim = _cavity_2d("2d_tmz", "pmc")
+    for component in ("ex", "ey"):
+        sim.add_probe((7 * H, 6 * H, 0.), component)
+    ez, result = _solve(sim, lane)
+    assert tuple(result.grid.shape) == (14, 11, 1)
+    actual = np.asarray(result.time_series)
+    expected = np.zeros_like(actual)
+    expected[:, 0] = ez
+    _lane_equal(actual, expected,
+                f"2d_tmz/{lane}/polarization, steps={IMAGE_STEPS}, mesh={result.grid.shape}")
 
 
 @pytest.mark.parametrize("lane", ["run", "forward"])
