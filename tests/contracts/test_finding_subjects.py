@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from rfx.preflight._scopes import CODE_SCOPE
+from tests._selection import deselected_count
 
 ROOT = Path(__file__).resolve().parents[2]
 REACHED = set()
@@ -1172,4 +1173,7 @@ def test_coax_stamp_ignores_foreign_warning(monkeypatch):
 def test_scene_code_coverage(request):
     if len([item for item in request.session.items if item.path == Path(__file__)]) < 90:
         pytest.skip('coverage census applies to the complete scene battery')
+    n = deselected_count(request.config, Path(__file__))
+    if n > 0:
+        pytest.skip(f'file cut by the shard split: {n} items deselected')
     assert REACHED | UNREACHABLE.keys() == CODE_SCOPE.keys(), sorted(CODE_SCOPE.keys() - REACHED)

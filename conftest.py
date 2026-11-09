@@ -36,15 +36,25 @@ if _DEVICE_COUNT_FLAG not in _preset_flags and (
 import sys  # noqa: E402
 import threading  # noqa: E402
 import warnings  # noqa: E402
+from collections import Counter
 
 import jax  # noqa: E402
 import pytest  # noqa: E402
+
+from tests._selection import DESELECTED_PATHS
 
 # A test that reads a note, a guide or a README must be marked docs_consistency,
 # which only the non-required docs-consistency workflow runs (PI, 2026-09-24).
 # With RFX_DURATIONS_LOG set, every test phase's duration is appended as it ends
 # (the weekly lane; tests/_durations_log.py).
 pytest_plugins = ("tests._prose_reads", "tests._durations_log", "tests._module_cache_clear", "tests._jax_version_xfails")
+
+
+def pytest_deselected(items):
+    # Census tests read this record to tell a cut battery from a complete one.
+    for item in items:
+        counts = item.config.stash.setdefault(DESELECTED_PATHS, Counter())
+        counts[item.path.resolve()] += 1
 
 
 def pytest_configure(config):
