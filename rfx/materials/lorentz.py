@@ -147,18 +147,27 @@ class LorentzState(NamedTuple):
     pz_prev: jnp.ndarray
 
 
+def pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype=None):
+    """Elementwise Lorentz ADE terms, optionally cast to the field's ADE dtype."""
+    w0, d, k = omega_0, delta, kappa
+    denom = 1.0 + d * dt
+
+    a_val = (2.0 - w0 ** 2 * dt ** 2) / denom
+    b_val = -(1.0 - d * dt) / denom
+    c_val = EPS_0 * k * dt ** 2 / denom
+    values = (a_val, b_val, c_val)
+    if field_dtype is not None:
+        return tuple(jnp.asarray(v, dtype=ade_state_dtype(field_dtype)) for v in values)
+    return values
+
+
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
     """Material-independent Lorentz ADE terms from per-pole edge fractions."""
     a_list, b_list = [], []
     c_lists = ([], [], [])
 
     for pole, fractions in zip(poles, fractions_by_pole):
-        w0, d, k = pole.omega_0, pole.delta, pole.kappa
-        denom = 1.0 + d * dt
-
-        a_val = (2.0 - w0 ** 2 * dt ** 2) / denom
-        b_val = -(1.0 - d * dt) / denom
-        c_val = EPS_0 * k * dt ** 2 / denom
+        a_val, b_val, c_val = pole_update_coeffs(pole.omega_0, pole.delta, pole.kappa, dt)
 
         if fractions is not None:
             reach = pole_reach(fractions)
