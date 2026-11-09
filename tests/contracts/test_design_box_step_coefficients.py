@@ -1,77 +1,63 @@
-"""The uniform step receives the four-incident-cell design-box coefficients."""
+"""Design-window material values and gradients equal whole-grid overrides."""
+import itertools
 
-import rfx.stepping.uniform_loop as uniform_loop
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.core.yee import MaterialArrays
-from rfx.grid import Grid
-import rfx.simulation as simulation
+from rfx import Box, GaussianPulse, Simulation
+from tests._x64_compat import enable_x64
 
 
 @pytest.mark.parametrize("design_sigma", [False, True], ids=["background-sigma", "design-sigma"])
-def test_design_box_step_coefficients(monkeypatch, design_sigma):
-    faces = {f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")}
-    grid = Grid(freq_max=10e9, domain=(.014, .013, .012), dx=.001,
-                cpml_layers=0, pec_faces=faces)
-    rng = np.random.default_rng(1179)
-    background_eps = rng.uniform(1., 4., grid.shape).astype(np.float32)
-    background_sigma = rng.uniform(0., .05, grid.shape).astype(np.float32)
-    bounds = (4, 9, 3, 8, 5, 9)
-    box = (slice(4, 9), slice(3, 8), slice(5, 9))
-    eps = rng.uniform(1., 6., (5, 5, 4)).astype(np.float32)
-    sigma = rng.uniform(0., .2, (5, 5, 4)).astype(np.float32) if design_sigma else None
-    materials = MaterialArrays(jnp.asarray(background_eps), jnp.asarray(background_sigma),
-                               jnp.ones(grid.shape, dtype=jnp.float32))
-    seen = []
-
-    class ContextCaptured(Exception):
-        pass
-
-    def capture(ctx, *args, **kwargs):
-        seen.append(ctx)
-        raise ContextCaptured
-
-    monkeypatch.setattr(uniform_loop, "make_core_step", capture)
-    # Stop after run() has built the exact context handed to its step.
-    with pytest.raises(ContextCaptured):
-        simulation.run(
-            grid, materials, n_steps=1, boundary="pec", field_dtype=jnp.float32,
-            design_box=simulation.DesignBoxSpec(bounds, jnp.asarray(eps),
-                                               None if sigma is None else jnp.asarray(sigma)))
-    assert len(seen) == 1
-    ctx = seen[0]
-    assert ctx.use_design_box
-    assert ctx.pec_faces_frozen == frozenset(faces)
-    assert not ctx.use_cpml and not ctx.use_upml
-    assert ctx.dt == grid.dt
-    coefficients = ctx.design_box
-    assert coefficients.bounds == (4, 10, 3, 9, 5, 10)
-
-    # Independent float64 reference on the complete cell material arrays.
-    m_eps = background_eps.astype(np.float64)
-    m_eps[box] = eps
-    m_sig = background_sigma.astype(np.float64)
-    if sigma is not None:
-        m_sig[box] = sigma
-    indices = np.meshgrid(np.arange(4, 10), np.arange(3, 9), np.arange(5, 10),
-                          indexing="ij")
-    eps0 = 8.8541878128e-12
-    for c, transverse in enumerate(((1, 2), (0, 2), (0, 1))):
-        e = np.zeros((6, 6, 5), dtype=np.float64)
-        s = np.zeros_like(e)
-        for offset1, offset2 in ((0, 0), (1, 0), (0, 1), (1, 1)):
-            neighbour = [index.copy() for index in indices]
-            neighbour[transverse[0]] -= offset1
-            neighbour[transverse[1]] -= offset2
-            e += m_eps[tuple(neighbour)] / 4.
-            s += m_sig[tuple(neighbour)] / 4.
-        loss = s * ctx.dt / (2. * eps0 * e)
-        ca = (1. - loss) / (1. + loss)
-        cb = (ctx.dt / (eps0 * e)) / (1. + loss)
-        for name, actual, expected in (("Ca", coefficients.ca[c], ca),
-                                       ("Cb", coefficients.cb[c], cb)):
-            actual = np.asarray(actual, dtype=np.float64)
-            np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=0.,
-                                       err_msg=f"component {'xyz'[c]} {name}")
+def test_design_box_value_and_gradients_match_whole_grid(design_sigma):
+    with enable_x64():
+        sim = Simulation(freq_max=10e9, domain=(.014, .013, .012), dx=.001,
+                         boundary="pec", precision="float64")
+        rng = np.random.default_rng(1179)
+        # Independent, random lossy materials in eight regions, including every wall.
+        split = np.array((7, 6, 6))
+        shape = (15, 14, 13)
+        indices = np.indices(shape)
+        background_eps, background_sigma = np.empty(shape), np.empty(shape)
+        for octant in itertools.product((0, 1), repeat=3):
+            e, s = float(np.float32(rng.uniform(1., 4.))), float(np.float32(rng.uniform(0., .05)))
+            lower = tuple(split[a] * .001 if octant[a] else -1. for a in range(3))
+            upper = tuple(1. if octant[a] else split[a] * .001 for a in range(3))
+            name = 'background' + ''.join(map(str, octant))
+            sim.add_material(name, eps_r=e, sigma=s)
+            sim.add(Box(lower, upper), material=name)
+            mask = np.logical_and.reduce([(indices[a] >= split[a]) == bool(octant[a]) for a in range(3)])
+            background_eps[mask], background_sigma[mask] = e, s
+        sim.add_source((.002, .004, .003), 'ez', amplitude_kind='field',
+                       waveform=GaussianPulse(f0=8e9, bandwidth=.8))
+        sim.add_probe((.010, .008, .007), 'ez')
+        assert sim.freeze_mesh().shape == shape
+        box = (slice(4, 9), slice(3, 8), slice(5, 9))
+        eps = jnp.asarray(rng.uniform(1., 6., (5, 5, 4)), jnp.float64)
+        sigma = jnp.asarray(rng.uniform(0., .2, (5, 5, 4)), jnp.float64)
+        bg_e, bg_s = jnp.asarray(background_eps), jnp.asarray(background_sigma)
+        def loss(e, s, window):
+            options = dict(n_steps=80, checkpoint=False, skip_preflight=True)
+            if window:
+                options.update(design_box=((.004, .003, .005), (.008, .007, .008)),
+                               design_eps_override=e)
+                if design_sigma:
+                    options['design_sigma_override'] = s
+            else:
+                options.update(eps_override=bg_e.at[box].set(e),
+                               sigma_override=bg_s.at[box].set(s) if design_sigma else bg_s)
+            return jnp.sum(sim.forward(**options).time_series ** 2)
+        argnums = (0, 1) if design_sigma else (0,)
+        actual, gradients = jax.value_and_grad(lambda e, s: loss(e, s, True), argnums=argnums)(eps, sigma)
+        expected, references = jax.value_and_grad(lambda e, s: loss(e, s, False), argnums=argnums)(eps, sigma)
+        assert np.isfinite(expected) and float(expected) > 0, 'reference objective must be live'
+        comparisons = [('value', np.asarray(actual), np.asarray(expected))]
+        comparisons += list(zip(('eps-gradient', 'sigma-gradient'), map(np.asarray, gradients), map(np.asarray, references)))
+        for name, got, ref in comparisons:
+            norm = float(np.linalg.norm(ref))
+            assert norm > 0 and np.isfinite(got).all(), f'{name}: vanished reference or nonfinite result'
+            relative = float(np.linalg.norm(got - ref)) / norm
+            print(f'design_sigma={design_sigma} {name}: mesh={shape} steps=80 expected_norm={norm:.17g} measured_norm={np.linalg.norm(got):.17g} relative={relative:.17g} bar=1e-10')
+            assert relative <= 1e-10, f'{name}: relative error {relative:.17g} exceeds 1e-10'

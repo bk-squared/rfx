@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx.stepping import uniform_setup
 from rfx.stepping.conductors import apply_conformal_pec
 
 
@@ -75,35 +74,34 @@ def test_conformal_scan_reads_boolean_zero_masks():
     assert len(selects) == 3, 'scan must apply all three conformal zero masks'
 
 
-def test_conformal_zero_edges_are_exactly_zero_after_steps():
-    weights, masks, final = [], [], []
-    original_invariants = uniform_setup.core_step_invariants
-    original_scan = jax.lax.scan
-
-    def remember(ctx, **kwargs):
-        invariants = original_invariants(ctx, **kwargs)
-        weights.extend(ctx.materials.components.tensor.conformal_weights)
-        masks.extend(invariants['conformal_zero_masks'])
-        return invariants
-
-    def scan(fn, carry, *args, **kwargs):
-        result = original_scan(fn, carry, *args, **kwargs)
-        if isinstance(carry, dict) and 'fdtd' in carry:
-            final.append(result[0]['fdtd'])
-        return result
-
-    with patch.object(uniform_setup, 'core_step_invariants', remember), \
-            patch.object(jax.lax, 'scan', scan):
-        result = _scene().run(n_steps=20, conformal_pec=True, skip_preflight=True)
-    assert len(weights) == len(masks) == 3 and len(final) == 1
-    assert np.any(np.asarray(result.time_series) != 0), 'scene must have a live field'
-    for component, weight, mask in zip(('ex', 'ey', 'ez'), weights, masks):
-        expected = np.asarray(weight) == 0
-        assert expected.any(), 'PEC body must contain fully covered edges'
-        assert np.asarray(mask).dtype == np.dtype('bool')
-        np.testing.assert_array_equal(np.asarray(mask), expected)
-        assert np.all(np.asarray(getattr(final[0], component))[expected] == 0.0), \
-            'electric field on every fully covered PEC edge must be exactly zero'
+def test_conformal_final_fields_zero_inside_pec_and_live_on_cut_edges():
+    result = _scene().run(n_steps=20, conformal_pec=True, skip_preflight=True)
+    grid = result.grid
+    assert grid.shape == (20, 18, 16)
+    lo, hi = np.array((.0062, .0023, .0017)), np.array((.0101, .0064, .0053))
+    nodes = np.meshgrid(*(np.array([grid.node_of(a, i) for i in range(grid.shape[a])])
+                          for a in range(3)), indexing='ij')
+    cut_peak = 0.
+    for axis, component in enumerate(('ex', 'ey', 'ez')):
+        # A Yee edge runs from its node to the next node along its component.
+        inside = np.ones(grid.shape, bool)
+        intersects = np.ones(grid.shape, bool)
+        for a in range(3):
+            end = nodes[a] + (grid.dx if a == axis else 0.)
+            inside &= (nodes[a] >= lo[a]) & (end <= hi[a])
+            intersects &= (end > lo[a]) & (nodes[a] < hi[a])
+        partial = intersects & ~inside
+        field = np.asarray(getattr(result.state, component))
+        assert inside.any() and partial.any(), f'{component}: empty geometry witness'
+        error = float(np.max(np.abs(field[inside])))
+        live = float(np.max(np.abs(field[partial])))
+        cut_peak = max(cut_peak, live)
+        print(f"{component}: mesh={grid.shape} steps=20 covered={inside.sum()} error={error:.17g} bar=0 partial_peak={live:.17g}")
+        assert error == 0., f'{component}: fully covered PEC edge field {error:.17g} != 0'
+    probe_peak = float(np.max(np.abs(np.asarray(result.time_series))))
+    print(f'conformal: cut_peak={cut_peak:.17g} probe_peak={probe_peak:.17g}')
+    assert cut_peak > 0, 'partially covered edges must stay live'
+    assert probe_peak > 0, 'scene must have a live probe record'
 
 
 def test_conformal_zero_refuses_float_weights():
