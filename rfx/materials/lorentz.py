@@ -354,8 +354,8 @@ def lorentz_p_component(coeffs: LorentzCoeffs, comp: int, e_old, p, p_prev,
                         pdtype=None):
     """P^{n+1} = a P^n + b P^{n-1} + c_comp E^n for E component ``comp``."""
     c = per_component(coeffs.c, "c")[comp]
-    a = coeffs.a[comp] if isinstance(coeffs.a, tuple) else coeffs.a
-    b = coeffs.b[comp] if isinstance(coeffs.b, tuple) else coeffs.b
+    a = per_component(coeffs.a, "a")[comp] if isinstance(coeffs.a, tuple) else coeffs.a
+    b = per_component(coeffs.b, "b")[comp] if isinstance(coeffs.b, tuple) else coeffs.b
     p_new = a * p + b * p_prev + c * e_old[None]
     return p_new if pdtype is None else p_new.astype(pdtype)
 

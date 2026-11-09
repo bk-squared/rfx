@@ -100,7 +100,9 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
             a, b, c = lorentz_pole_coeffs([LorentzPole(pole.omega_0, ds, ks)], dt, shape, [fractions])
             return a[0], b[0], tuple(v[0] for v in c)
     else:
-        ks = xp.max(xp.where(occupied, kappa, 0.))
+        # The normalization scale cancels between the builder and edge weights.
+        # Holding it fixed avoids differentiating a squared SI-strength divisor.
+        ks = jax.lax.stop_gradient(xp.max(xp.where(occupied, kappa, 0.)))
         ds = delta.reshape(-1)[xp.argmax(xp.where(occupied, kappa, 0.))]
         constant_delta = False
     k = xp.where(ks > 0, kappa / xp.where(ks > 0, ks, 1.), 0.)
