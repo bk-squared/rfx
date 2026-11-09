@@ -77,10 +77,10 @@ def test_code_completeness():
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    # The located pad refusal adds an object code; existing codes keep their class.
-    assert len(CODE_SCOPE) == 101
+    # Retained outcomes add declared_z; the f0 sheet-backed gap warning and the located pad refusal each add an object code; existing codes keep their class.
+    assert len(CODE_SCOPE) == 102
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 73, 'place': 2, 'model': 24, 'mixed': 2}
+        'object': 74, 'place': 2, 'model': 24, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -1168,6 +1168,15 @@ def test_coax_stamp_ignores_foreign_warning(monkeypatch):
     finding, = findings['sheet-size']
     assert (finding.code, finding.severity) == ('sheet_effective_size', 'warning')
     assert '4 conductor sheet dimension(s)' in str(finding)
+
+
+def test_f0_sheet_backed_gap_subjects():
+    from tests.contracts.test_f0_sheet_backed_gap import _cavity
+    sim = _cavity(1)
+    report = sim.preflight()
+    check_report(sim, report)
+    assert [i.subjects for i in report.by_code('f0_sheet_backed_gap')] == [
+        ('thin_conductor[0]',), ('thin_conductor[1]',)]
 
 
 def test_scene_code_coverage(request):

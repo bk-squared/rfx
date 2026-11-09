@@ -288,6 +288,7 @@ def _build_step_setup(
     design_box: "DesignBoxSpec | None" = None,
     design_occupancy: "DesignOccupancySpec | None" = None,
     current_moments: "object | None" = None,
+    measurement=None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -344,6 +345,13 @@ def _build_step_setup(
     use_debye = debye is not None
     use_lorentz = lorentz is not None
     use_tfsf = tfsf is not None
+    runner_ntff, runner_moments = ntff, current_moments
+    if measurement is not None:
+        from rfx.measurement.accumulators import (
+            plan_monitor_objects, validate_monitor_presence, validate_monitor_carries,
+        )
+        ntff, current_moments = plan_monitor_objects(measurement, grid)
+        validate_monitor_presence((ntff, current_moments), (runner_ntff, runner_moments))
     use_ntff = ntff is not None
     use_current_moments = current_moments is not None
     use_dft_planes = len(dft_planes) > 0
@@ -540,7 +548,7 @@ def _build_step_setup(
         # mirroring the CPML psi carry above. accumulate_ntff pins its
         # phase arithmetic to whatever is allocated here, so the scan carry
         # closes under jax_enable_x64 instead of raising a dtype mismatch.
-        carry_init["ntff"] = _init_ntff_data(ntff, field_dtype=_field_dtype)
+        carry_init["ntff"] = _init_ntff_data(runner_ntff, field_dtype=_field_dtype)
 
     accumulate_current_moments_fn = None
     if use_current_moments:
@@ -553,7 +561,10 @@ def _build_step_setup(
         # the field dtype with a complex64 floor so the scan carry closes
         # under jax_enable_x64.
         carry_init["current_moments"] = _init_cm(
-            current_moments, field_dtype=_field_dtype)
+            runner_moments, field_dtype=_field_dtype)
+
+    if measurement is not None:
+        validate_monitor_carries(ntff, current_moments, carry_init)
 
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
@@ -669,6 +680,11 @@ def _build_step_setup(
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     from rfx.measurement.accumulators import plane_metadata
     dft_meta = plane_metadata(dft_planes)
+    if measurement is not None:
+        from rfx.measurement.accumulators import plan_accumulator_meta
+        dft_meta, flux_meta_11 = plan_accumulator_meta(
+            measurement, _field_dtype, grid=grid, dft_planes=dft_planes, flux_monitors=flux_monitors)
+        flux_meta_8 = tuple(meta[:8] for meta in flux_meta_11)
     waveguide_meta = tuple(waveguide_ports)
 
     # ---- design box: fence, then build its coefficients once ----

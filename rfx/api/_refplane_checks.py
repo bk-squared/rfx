@@ -1,6 +1,28 @@
-"""Conductor footprint for the API reference-plane trace scan."""
+"""Admission and geometry checks for wire reference planes."""
 import jax
 import jax.numpy as jnp
+
+from rfx.errors import RfxRefusal
+
+
+def refuse_partial_wire_reference_planes(ports):
+    """Require a shared plane-wave opt-in on at least two wire ports in S order."""
+    opted, not_opted = [], []
+    for index, port in enumerate(ports):
+        if port.extent is not None:
+            target = opted if port.reference_plane_cells is not None else not_opted
+            target.append(str(index))
+    if opted and not_opted:
+        raise RfxRefusal(
+            "reference_plane_cells must be set on every wire port of the "
+            f"S-parameter solve: set on port(s) {', '.join(opted)}, "
+            f"not on port(s) {', '.join(not_opted)}; "
+            "set it on all of them or on none")
+    if opted and len(opted) + len(not_opted) < 2:
+        raise RfxRefusal(
+            "reference_plane_cells needs two or more wire ports in the S solve: "
+            f"set on port {', '.join(opted)}, the only wire port; remove it, "
+            "or add a second wire port with it")
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):

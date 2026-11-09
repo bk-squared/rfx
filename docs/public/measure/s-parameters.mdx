@@ -126,8 +126,7 @@ Two rules for this measurement:
   and simulation time.
 - Give both the same fixed `n_steps`, long enough for the fields to have died
   out in the run with the object. `until_decay=` stops each run at its own
-  step: here the empty run would run to its step cap and the slab run would
-  stop at 550 steps.
+  step, so the two records would differ in length.
 
 `add_flux_monitor(size=, center=)` limits the monitor to a finite rectangle;
 the [flux regions guide](https://github.com/bk-squared/rfx/blob/main/docs/guides/flux_regions.md)
@@ -440,7 +439,7 @@ returns the per-bin amounts in `sigma_max_excess`. Some calculators check more:
 | `run(compute_s_params=True)` on one device (uniform or graded) and the uniform `forward(port_s11_freqs=...)`, with lumped or wire ports | non-finite entries, any single `|S| > 1.1` |
 | `compute_msl_s_matrix`, `compute_waveguide_s_matrix`, `compute_mixed_s_matrix`, `compute_coax_msl_transition` | single entries and total column power |
 | `compute_coaxial_two_port` | the shared column-power check |
-| `compute_coaxial_line_reflection` | none further: read its `status`, `fit_residual` and `recurrence_residual` |
+| `compute_coaxial_line_reflection` | read its `status`, `fit_residual`, `recurrence_residual`, `settling_db` and `settling_witness` |
 
 A warning never changes the returned numbers. No warning means only that no
 check fired; it does not mean the S-matrix is correct.
@@ -464,7 +463,7 @@ no single check catches every case.
   record is long enough. `result.settling_witness["status"]` is `pass`,
   `fail`, `undetermined` or `absent` (nothing recorded to judge); only `pass`
   is a pass.
-- `compute_msl_s_matrix`, `compute_waveguide_s_matrix` and the coax two-port
+- `compute_msl_s_matrix`, `compute_waveguide_s_matrix` and the coax one- and two-port
   calculators check each drive run against the same −40 dB limit and warn when
   a record ends too early. Their results carry `settling_db` per drive.
 - When a run has an NTFF box or a DFT plane, `run()` warns if a probe is

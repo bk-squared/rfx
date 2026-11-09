@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.errors import RfxUnsupported
 from rfx.geometry.node_tensor import compute_node_tensor_eps
 from rfx.geometry.smoothing import (
     compute_inv_eps_tensor_diag, compute_smoothed_eps, compute_smoothed_eps_nonuniform,
@@ -47,6 +48,11 @@ def test_shared_face_operands(path, traced, reverse):
         # Returned arrays alone do not identify the
         # arithmetic dtype: the host path also casts its output to float32.
         rtol = 2e-5 if coordinate.dtype == np.dtype('float32') else 1e-6
+        # A traced Box coordinate is refused by the full-tensor node builder (#2441); restoring it is #2473.
+        if traced and path in {'nodes', 'graded_nodes'}:
+            with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
+                jax.jit(evaluate)(coordinate)
+            return
         result = jax.jit(evaluate)(coordinate) if traced else evaluate(coordinate)
         for axis, values in enumerate(result):
             is_node = path.endswith('nodes')
@@ -104,6 +110,11 @@ def test_same_permittivity_mask_body_across_sdf_face(path, traced):
     coordinate = jnp.float32(.0022) if traced else np.float64(.0022)
     # Host-f64 SDF arithmetic and traced-f32 arithmetic, per Amendment 4.
     rtol = 2e-5 if coordinate.dtype == np.dtype('float32') else 1e-6
+    # A traced Box coordinate is refused by the full-tensor node builder (#2441); restoring it is #2473.
+    if traced and path in {'nodes', 'graded_nodes'}:
+        with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
+            jax.jit(evaluate)(coordinate)
+        return
     result = jax.jit(evaluate)(coordinate) if traced else evaluate(coordinate)
     for values in result:
         np.testing.assert_allclose(np.asarray(values)[4, 4, 4], 4.0, rtol=rtol)

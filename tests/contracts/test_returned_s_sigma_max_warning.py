@@ -210,7 +210,8 @@ def _coax_exit(monkeypatch, s, *, differentiable):
 
     sim = Simulation(domain=(.008, .008, .040), freq_max=40e9, boundary="cpml")
     sim.add_coaxial_port((.004, .004, .020), face="top", pin_length=.005)
-    monkeypatch.setattr(simulation, "run", lambda *a, **kw: SimpleNamespace(dft_planes=kw["dft_planes"]))
+    monkeypatch.setattr(simulation, "run", lambda *a, **kw: SimpleNamespace(
+        dft_planes=kw["dft_planes"], time_series=np.zeros((1, len(kw["probes"])))))
     for name in ("coaxial_line_plane_voltage", "coaxial_line_plane_voltage_jnp"):
         monkeypatch.setattr(coax, name, lambda *a, **kw: jnp.zeros(3, dtype=complex))
     values = iter(s)

@@ -23,7 +23,7 @@ from __future__ import annotations
 from rfx.model.graded_admission import host_cells
 
 from rfx._internal._grid_metric import field_index
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from itertools import product
 
 import jax
@@ -50,6 +50,7 @@ class Channel:
     slot_offset: int = 0
     e_time_offset: float = 0.0
     h_time_offset: float = 0.0
+    box: tuple[int, int, tuple[int, int, int, int] | None] | None = None
 
 
 def field_channel(component, nodes=(), **metadata):
@@ -80,6 +81,8 @@ class Owner:
     dft_window: object = 'rect'
     dft_window_alpha: object = 0.25
     periodic: tuple[bool, bool, bool] | None = None
+    normal_h: tuple[bool, tuple[float, float], bool] | None = None
+    source: object = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)
@@ -288,7 +291,7 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
         index = _index(grid, tuple(point))[axis]
         region = getattr(sim, '_dft_plane_regions', {}).get(entry.name)
         channel = field_channel(entry.component,
-                          _plane_nodes(grid, axis, index, entry.component, region),
+                          _plane_nodes(grid, axis, index, entry.component, region), box=(axis, index, region),
                           e_time_offset=0., h_time_offset=0.)
         owners.append(Owner(f'dft_plane:{i}', 'dft_plane', (channel,),
                             _frequencies(sim, entry)))
@@ -330,13 +333,14 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
             nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
                           for plane, weight in planes
                           for n, a in zip(_plane_nodes(grid, axis, plane, component, regions[c]), area.flat))
-            channels.append(field_channel(component, nodes,
+            channels.append(field_channel(component, nodes, box=(axis, index, regions[c]),
                                     e_time_offset=0., h_time_offset=0.))
         owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
                             known_differences=(),
                             availability='result missing' if path.startswith('fwd') else 'sampled',
                             dft_window=cfg.window, dft_window_alpha=cfg.window_alpha,
-                            periodic=tuple(flux_periodic)))
+                            periodic=tuple(flux_periodic),
+                            normal_h=(cfg.normal_h_zero, cfg.normal_h_weights, cfg.normal_periodic)))
     edges = (_pec_edges(sim, grid) if pec_edges is _UNSET and
              any(p.is_port and p.extent is not None for p in sim._ports) else
              None if pec_edges is _UNSET else pec_edges)

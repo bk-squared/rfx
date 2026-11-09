@@ -246,7 +246,7 @@ def _prepare_coax_msl_ladder(
     # full-ladder residual from 3.7e-3 to 0.342, and this lane spent
     # three attempts attributing that to junction physics. The
     # threshold is the source near-field standoff constant —
-    # see :func:`rfx.api._preflight.msl_source_near_field_standoff_cells`
+    # see :func:`rfx.preflight._msl_probe_rules.msl_source_near_field_standoff_cells`
     # for the derivation that licenses reusing it here, and for the
     # W/h limitation it carries. Preflight cannot enforce it on this
     # lane (these are METHOD arguments and never reach the
@@ -278,7 +278,7 @@ def _prepare_coax_msl_ladder(
     # that gate is explicitly out of scope until the standoff rule and
     # the ladder self-consistency witness have both been exercised on a
     # settled run (PI sequencing).
-    from rfx.api._preflight import (
+    from rfx.preflight._msl_probe_rules import (
         msl_source_near_field_standoff_cells as _msl_standoff_cells,
     )
     _standoff_cells = _msl_standoff_cells(float(msl_pe.height), float(dz))

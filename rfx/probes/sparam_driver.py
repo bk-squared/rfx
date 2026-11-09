@@ -159,6 +159,9 @@ def compute_lumped_wire_s_matrix_via_scan(
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")
         refuse_distributed_lumped_s_pmc(sim)
+    elif not graded:
+        from rfx.api._refplane_checks import refuse_partial_wire_reference_planes
+        refuse_partial_wire_reference_planes(sim._port_sparameter_entries())
     freqs = np.asarray(freqs, dtype=np.float64)
     n_freqs = len(freqs)
 
@@ -417,8 +420,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     if graded:
         S = np.stack([column for _, column in sorted(columns, key=lambda c: c[0])], axis=1)
     if wire_mode and plane_v is not None:
-        # reference-plane path: byte-frozen legacy diagonals +
-        # plane-wave off-diagonals where both ports opted in.  The V/I
+        # Reference-plane path: S = B A^-1 over the whole opted block;
+        # entries outside that block retain the legacy path. The V/I
         # replay dump schema has no plane-phasor fields — fail loudly
         # rather than return a dump whose replay cannot reproduce S.
         if return_vi_dump:

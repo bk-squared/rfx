@@ -1204,18 +1204,16 @@ from rfx.api._waveguide_result import WaveguideSMatrixResult
 class CoaxialLineReflectionResult(NamedTuple):
     """One-port reflection from the validated coaxial transmission-line method.
 
-    The reflection is extracted from the modal voltage ``V(z)=∫E_r dr`` sampled
-    at several equally spaced reference planes on a real coax line terminated in
-    a matched resistive feed (see ``compute_coaxial_line_reflection``). The
-    complex propagation constant ``gamma`` is self-measured (matrix pencil), so
-    the result is Z0-free and immune to the coarse-mesh ``|V/I|`` bias.
+    Reflection uses modal voltage ``V(z)=∫E_r dr`` at equally spaced reference
+    planes on a real coax line with a matched resistive feed (``compute_coaxial_line_reflection``).
+    Self-measured ``gamma`` (matrix pencil) makes it Z0-free and immune to coarse-mesh ``|V/I|`` bias.
 
-    ``recurrence_residual`` is the per-frequency single-TEM-mode validity gate
-    (0 = a clean two-wave field). ``annulus_cells`` is the resolution metric
-    ``(outer-inner)/dx``; below ~3.5 cells the mode is under-resolved and the
-    high-frequency reflection degrades. ``status`` is ``"passed"``,
-    ``"under_resolved"`` (annulus too coarse), or ``"contaminated"`` (recurrence
-    residual exceeded the gate at one or more frequencies).
+    ``recurrence_residual`` gates single-TEM validity per frequency (0 = clean).
+    ``annulus_cells=(outer-inner)/dx`` below ~3.5 degrades high-frequency reflection.
+    ``status`` is ``"passed"``, ``"under_resolved"`` (coarse annulus), or
+    ``"contaminated"`` (recurrence gate exceeded at any frequency).
+    ``settling_db`` and ``settling_witness`` judge all plane voltages and the probe against the two-port's -40 dB bar.
+    The ``eps_scale`` path returns nan and an undetermined witness.
     """
 
     s11: np.ndarray
@@ -1227,6 +1225,8 @@ class CoaxialLineReflectionResult(NamedTuple):
     z0_numerical_ohm: np.ndarray
     termination: str
     status: str
+    settling_db: float | None = None
+    settling_witness: dict | None = None
 
 
 @dataclass

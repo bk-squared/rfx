@@ -62,8 +62,6 @@ KNOWN = (
     # Mirror of the TF/SF drive for the settling stop; moves with tfsf.py.
     ("rfx/measurement/settling.py", "tfsf_source_drive.waveform", "lane:absorber",
      "issue 1668"),
-    ("rfx/measurement/rcs.py", "_incident_spectrum_amplitude", "lane:absorber",
-     "issue 1668"),
     # One formula for the legacy line and the closed box's discrete-plane-wave line.
     ("rfx/sources/tfsf.py", "line_source_value", "lane:absorber", "issue 1668"),
     ("rfx/stepping/tfsf_2d.py", "_update_e_tez", "lane:absorber", "issue 1668"),

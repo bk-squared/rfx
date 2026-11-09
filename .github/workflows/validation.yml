@@ -467,6 +467,41 @@ jobs:
   # FROZEN reference data (docs/design_notes/20260921_crossval_role_redesign.md).
 
   # ---------------------------------------------------------------------------
+  docs-blocks:
+    if: ${{ !inputs.only_latest_jax }}
+    runs-on: ubuntu-latest
+    # Estimate on 4 CPUs: 18.8 min x 2 (half the recorded CPUs) x 1.42
+    # (slowest runner seen) x 1.5 (pages added later) = about 80 min.
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Raise the memory-mapping limit for the test process
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package with documentation dependencies
+        run: pip install -e ".[dev,cad,visualization]" "jax==0.10.2" "jaxlib==0.10.2"
+
+      - name: Run public documentation Python blocks
+        env:
+          JAX_PLATFORMS: cpu
+        run: python scripts/docs/check_public_docs_blocks.py --output-dir docs-blocks --grep-deprecations --timeout 900 --strict
+
+      - name: Upload public documentation block reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-blocks
+          path: docs-blocks/
+
   # Signal (issue #717 item 1). This workflow is scheduled, so nobody is
   # watching when it ends. The last green scheduled run was 2026-06-29
   # (28367818290); every scheduled run after it — 2026-07-06 through
@@ -497,8 +532,8 @@ jobs:
   #
   # `skipped` also counts as not-green (issue #717 review, 2026-09-13). No job
   # in this workflow is supposed to skip on either trigger. The one job-level `if:`
-  # is the dispatch switch only_latest_jax, which skips slow-tests, three-device
-  # and this job together, so that run writes no verdict. So a skip here means the
+  # is the dispatch switch only_latest_jax, which skips slow-tests, three-device,
+  # docs-blocks and this job together, so that run writes no verdict. So a skip here means the
   # lane quietly stopped covering something — the exact silent-gap class #717
   # exists to close — and the notifier must say so instead of printing "all
   # green". tests/contracts/test_validation_workflow_signal.py pins both halves
@@ -513,7 +548,7 @@ jobs:
   # that must at least show up as an annotation on the run. `core.error` cannot
   # red the job on its own, so the "never red the run" rule still holds.
   notify:
-    needs: [slow-tests, three-device, latest-jax]
+    needs: [slow-tests, three-device, latest-jax, docs-blocks]
     if: ${{ always() && !inputs.only_latest_jax }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

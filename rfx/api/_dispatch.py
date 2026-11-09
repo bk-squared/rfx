@@ -350,13 +350,12 @@ def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
     the realized PEC edge mask, a graded-lane port takes its cell sizes as
     Python floats, the far-field transform reads an NTFF box's frequency
     count. The answer therefore does not depend on the model: staged by
-    an outer trace, and not distributed.
+    an outer trace.
 
     Operations that read a traced input stay recorded, so a gradient is
-    unchanged. The distributed lane is excluded: its ``shard_map`` step
-    cannot run its constant-operand collectives outside the mesh.
+    unchanged. Multi-device advances leave through ``recorded_sharded_call``.
     """
-    return not distributed and _staged_by_an_outer_trace()
+    return _staged_by_an_outer_trace()
 
 
 def _declaration_setup_at_trace_time(entry=None, *, run=False):
@@ -382,7 +381,7 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
 
     The post-admission run entry uses ``devices=`` to select distributed
     calls. Its host-controlled decay/progress and subgrid paths retain their
-    existing execution context; only the fixed single-device scans enter.
+    existing execution context; fixed one- and multi-device scans enter.
     """
     if entry is None:
         return functools.partial(_declaration_setup_at_trace_time, run=run)

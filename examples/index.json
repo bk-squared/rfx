@@ -1,8 +1,8 @@
 {
   "schema": "rfx-example-index/1",
-  "about": "Machine-readable index of the official examples under examples/: for each, the public function that builds its Simulation without solving it, whether running it solves, and the files it leaves behind. Paths are relative to the repository root. tests/contracts/test_example_index.py holds this file to the scripts and to tests/_example_fidelity_lib.py::CLASSIFICATION.",
+  "about": "Machine-readable index of the official examples under examples/: for each, the public function that builds its Simulation without solving it, whether running it solves, and the files it leaves behind. Paths are relative to the repository root. No test checks this file against the scripts.",
   "fields": {
-    "lane": "CI lane that runs this file: 'pr' (every code-changing pull request), 'weekly' (the weekly validation lane), or 'manual' (not run by CI; lane_reason says why)",
+    "lane": "the CI lane this file is assigned to: 'pr' (every code-changing pull request), 'weekly' (the weekly validation lane), or 'manual' (not run by CI; lane_reason says why) An assignment, not a record of a run: no CI job reads this field.",
     "lane_reason": "required when lane is 'manual': why CI does not run it",
     "extra": "optional install extra the file needs (pip install rfx[<extra>]); a lane runner skips it where the extra is absent",
     "path": "the example file, relative to the repository root",

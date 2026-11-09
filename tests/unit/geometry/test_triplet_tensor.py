@@ -100,17 +100,26 @@ def test_builder_guard_count_and_traced_triplets(monkeypatch):
     from rfx.geometry.node_tensor import compute_node_tensor_eps
     from rfx.grid import Grid
 
+    from rfx.errors import RfxUnsupported
+    from rfx.geometry import Sphere
+
     grid = Grid(domain=(.003, .003, .003), dx=.001, freq_max=10e9, cpml_axes='')
 
-    def build(face):
-        return compute_node_tensor_eps(grid, [(Box((-.01, -.01, -.01),
-                                                   (face, .01, .01)), 38.)])
+    def build(radius):
+        # A sphere keeps the planar rule on every node, so each forced
+        # fallback on a touched triplet is counted.
+        return compute_node_tensor_eps(grid, [(Sphere((.0014, .0016, .0015), radius), 38.)])
 
-    concrete = build(.0012)
-    traced = jax.jit(build)(jnp.float32(.0012))
+    concrete = build(.0011)
+    traced = jax.jit(build)(jnp.float32(.0011))
     assert int(concrete.nodes.guard_count) == int(traced.nodes.guard_count) == 0
-    np.testing.assert_allclose(traced.nodes.triplets, concrete.nodes.triplets,
-                               rtol=1e-5, atol=1e-7)
+    # Traced float32 vs host float64 differ by rounding on the scale of the peak.
+    # On x86 CPU, jax 0.10.2: 6 of 4608 small off-diagonal entries (|value| 0.006 to 0.026)
+    # exceed per-entry rtol=1e-5 (atol=1e-7); 3.7e-7 abs among them, 1.07e-6 over all; loss 1.1e-7.
+    concrete_triplets = np.asarray(concrete.nodes.triplets, dtype=np.float64)
+    traced_triplets = np.asarray(traced.nodes.triplets, dtype=np.float64)
+    peak = np.max(np.abs(concrete_triplets))
+    assert np.max(np.abs(traced_triplets - concrete_triplets)) <= 1e-5 * peak
     original = triplet.guarded_tensor
     counted = []
 
@@ -121,8 +130,13 @@ def test_builder_guard_count_and_traced_triplets(monkeypatch):
         return xp.broadcast_to(fallback, tensor.shape), xp.ones_like(guard)
 
     monkeypatch.setattr(triplet, 'guarded_tensor', force_fallback)
-    forced = build(.0012)
+    forced = build(.0011)
     assert int(forced.nodes.guard_count) == sum(counted) > 0
+    # Beside an axis-aligned Box the scope of the exact content is decided on
+    # concrete coordinates: a traced face is refused by name.
+    with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
+        jax.jit(lambda face: compute_node_tensor_eps(
+            grid, [(Box((-.01, -.01, -.01), (face, .01, .01)), 38.)]))(jnp.float32(.0012))
 
 
 def test_rod_operator_equals_literal_eq10_and_is_exactly_symmetric():

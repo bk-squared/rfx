@@ -544,6 +544,11 @@ def test_the_guide_plates_realize_two_planes_spanning_the_cross_section():
         "nothing here is a conductor VOLUME")
     assert len(specs) == 2, len(specs)
 
+    # PEC is one cell behind each plate: this guide has the case G defect.
+    findings = sim.preflight().by_code("f0_sheet_backed_gap")
+    assert len(findings) == 2
+    assert all("case G" in str(finding) for finding in findings)
+
     z_nodes = np.asarray(grid.z if hasattr(grid, "z") else None, dtype=float) \
         if getattr(grid, "z", None) is not None else None
     planes = sorted(int(sp.plane) for sp in specs)

@@ -17,7 +17,7 @@ they do not run at import time.
 
 from __future__ import annotations
 
-from rfx.sparams import _coax_msl_stages
+from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 from rfx.sparams._coax_status import coax_extraction_status
 
@@ -218,7 +218,6 @@ def compute_coaxial_line_reflection(
         )
 
     from rfx.probes.probes import init_dft_plane_probe
-    from rfx.simulation import run as _run
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,
@@ -370,14 +369,12 @@ def compute_coaxial_line_reflection(
             )
     conductors = coax_kernel_conductors(self, grid, materials, pec_cells,
         _coax_pec_edge_masks(pec_cells), stamp_entities)
-    result = _run(
-        grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
-        sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
-        dft_planes=planes, pec_edge_masks=conductors.pec_edges,
-        return_state=False,
-    )
-    if result.dft_planes is None:
-        raise RuntimeError("compute_coaxial_line_reflection(): runner returned no DFT planes")
+    result, settling_db, settling_witness = _coax_oneport_record.run_reflection_record(
+        grid, materials, int(n_steps), spec=spec, conductors=conductors,
+        cpml_axes=cpml_axes, planes=planes, probes_z=probes_z, center_xy=center_xy,
+        a=a, b=b, eps_scale=eps_scale, freqs=freqs, freq_max=self._freq_max)
+    _warn_if_ringdown_truncated(np.asarray([settling_db]), ("port1",), n_steps=int(n_steps),
+        witnesses=None if eps_scale is not None else [settling_witness])
 
     # Modal voltage V(z) at every probe plane, per frequency.
     n_f = int(freqs.shape[0])
@@ -426,6 +423,7 @@ def compute_coaxial_line_reflection(
             z0_numerical_ohm=jnp.stack(z0_c),
             termination=termination,
             status=status,
+            settling_db=settling_db, settling_witness=settling_witness,
         )
         release_inspection(self)
         return completed
@@ -472,6 +470,7 @@ def compute_coaxial_line_reflection(
         z0_numerical_ohm=z0_num,
         termination=termination,
         status=status,
+        settling_db=settling_db, settling_witness=settling_witness,
     )
     release_inspection(self)
     return completed
@@ -988,7 +987,7 @@ def compute_coaxial_two_port(
                 if _channels:
                     _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
                 settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
-                    _channels, source_end_index=source_end,
+                    _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes, n_bot),
                     dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True)
 
 
@@ -1568,7 +1567,7 @@ def compute_coax_msl_transition(
             if _channels:
                 _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
             settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
-                _channels, source_end_index=source_end,
+                _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes),
                 dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
 
 

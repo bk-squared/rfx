@@ -153,8 +153,7 @@ outside the differentiable path.
 
 The default references assume the guide walls are the domain boundary. A
 T-junction, branch or septum has interior PEC walls, and the empty reference
-then radiates into open space: every |S| inflates badly (max |S| near 10 on a
-compact T). For these, pass `normalize="flux"` with one reference simulation
+then radiates into open space: |S| inflates (max |S| = 1.5 on the T below, 1.12 with its references). For these, pass `normalize="flux"` with one reference simulation
 per port: the straight continuation of that port's guide, with no junction.
 Every port runs on each reference model. A port that the straight guide would
 bury in its wall needs a closed air pocket there, because a port inside a PEC

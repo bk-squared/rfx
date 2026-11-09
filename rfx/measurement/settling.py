@@ -22,11 +22,13 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                    freq_max=None, source_end_index=None,
                                    record_noun="port records", return_detail=False,
                                    rounding_groups=None, _warn_stacklevel=2,
-                                   known_drives=None, n_record=None):
+                                   known_drives=None, n_record=None,
+                                   scale_groups=None, _channel_labels=None):
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
     ``rounding_groups`` maps record names to co-located same-kind groups
     compared for rounding-only peaks.
+    ``scale_groups`` maps names to same-quantity keys (or per-column keys).
     sensitivities are judged by a separate witness
     """
     from rfx.sparams._tail_witness import tail_share_witness
@@ -35,6 +37,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
     per_record = {}
     result = tail_share_witness(named, dt, source_end_index, freqs, freq_max=freq_max,
                                 rounding_groups=rounding_groups,
+                                scale_groups=scale_groups, _channel_labels=_channel_labels,
                                 known_drives=known_drives, n_record=n_record,
                                 _record_results=per_record if return_detail else None)
     if not return_detail:
@@ -93,6 +96,8 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
         freq_max = float(np.max(bins)) if np.size(bins) else None
     return settling_db_from_named_records(
         named, source_end_index=source_end,
+        scale_groups={name: f"{name.split('/')[0]}/{name.split('/')[1][0]}"
+                      for name, _ in named},
         dt=getattr(final_cfgs[0], "dt", None) if final_cfgs else None,
         freqs=bins, freq_max=freq_max, record_noun="port records",
         known_drives=known_drives if isinstance(known_drives, ValueError) else (known_drives or None),
@@ -311,7 +316,8 @@ def tfsf_source_drive(cfg, grid):
             return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
         if kind == "analytic":
             return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        return cfg.src_amp * (-2 * arg) * env
+        from rfx.sources.tfsf import line_source_value
+        return line_source_value(cfg, t, cfg.src_amp)
 
     is_traced = getattr(grid, "is_traced", None)
     if is_traced is not None and any(is_traced(axis) for axis in "xyz"):
