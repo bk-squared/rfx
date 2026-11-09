@@ -21,9 +21,13 @@
 # the 1 mm substrate is only ~2 cells thick. Refine `dx` for a quantitative
 # run.
 #
-# Preflight on this file prints "All checks passed" (checked 2026-10-12 on
-# main 50e266bc3). Until the trace was drawn at its solved size it was refused:
-# preflight stops a sheet solved more than 1 % off its drawing (#1455).
+# Preflight on this file prints two advisories (checked 2026-11-09): the 35 µm
+# trace is solved with zero thickness (t/h = 3.5 %; the line reads about
+# +0.37 % electrically long), and each wire port has no radius, so S at the
+# ports moves with every mesh refinement (5.23 ohm of series reactance per
+# halving of the transverse cell). Both are expected on this smoke example.
+# Until the trace was drawn at its solved size it was refused: preflight
+# stops a sheet solved more than 1 % off its drawing (#1455).
 #
 #   rfx run examples/config/microstrip_thru.yaml --output thru.h5
 #   rfx plot thru.h5 --quantity s_params --out thru_s11.png

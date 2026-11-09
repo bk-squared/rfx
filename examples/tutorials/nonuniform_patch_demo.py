@@ -12,8 +12,7 @@ air.  This tutorial shows the practical recipe AND the trap that comes with it:
      broken and the fixed placement).  The fix: derive every layer's z from
      where the built ``dz_profile`` actually put the fine cells, keep a
      uniform-fine BUFFER so the grading transition sits clear of the
-     resonator, and assert the realized cell count.  The committed lock for
-     this pattern is ``tests/unit/nonuniform/test_patch_uniform_fine_substrate.py``.
+     resonator, and assert the realized cell count.
 
   Rule 2 — NU TRADES ACCURACY FOR CELLS.  At matched dx a graded mesh is NOT
      more accurate than uniform — use it to make big problems tractable, not
@@ -92,6 +91,17 @@ drawn 29.5 mm instead of 28.7 mm; with the fringing extension of 0.69 mm per
 edge the ratio (28.7 + 1.38) / (29.5 + 1.38) predicts -2.59 % (derived).
 TM02 fell 0.85 % with the width going from 37.7 to 38 mm.  TM01 and TM11 left
 the list because the feed now sits on the y centre line (Rule 4).
+
+On current main (measured 2026-11-09 on 8 CPU cores, 200 periods; record kept
+with the project) this script prints:
+
+        2.3638 GHz  Q =  44.3   TM10 on the 29.5 mm length — the design mode
+        3.7066 GHz  Q = 118.5   TM02 on the 38 mm width
+        settling -40.7 dB
+
+and run()'s run-end check warns "run ended at -39.2 dB of peak — ring-down
+truncated; Harminv/DFT/NTFF quantities may carry transient error" (the code
+of 2026-10-11 printed no such warning).
 
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
@@ -395,8 +405,7 @@ def main() -> None:
 
     # =============================================================================
     # PART 2 — THE FIX: buffered fine band + z DERIVED from the built profile.
-    # (Same pattern as tests/unit/nonuniform/test_patch_uniform_fine_substrate.py::
-    #  build_uniform_fine_z and scripts/diagnostics/patch_tutorial_rfx.py.)
+    # (Same pattern as scripts/diagnostics/patch_tutorial_rfx.py.)
     # =============================================================================
     print("\n[2] THE FIX — buffered fine band, z derived from the built mesh:")
     dz_profile = build_dz_profile()
@@ -461,6 +470,9 @@ def main() -> None:
     # After x/y registration the feed sits on the y centre line and TM01 is not
     # excited; the slowest decayer left is TM02 (3.7062 GHz, Q = 115.1), and
     # 200 periods measured -42.5 dB (VESSL 369367266090).
+    # On current main TM02 reads 3.7066 GHz, Q = 118.5, and 200 periods measure
+    # -40.7 dB (2026-11-09): 0.7 dB inside the -40 dB bar, while run()'s own
+    # run-end check warns "run ended at -39.2 dB of peak" (ring-down truncated).
     # Before x/y registration, 200 periods measured -41.4 dB (VESSL
     # 369367259280). That cleared the -40 dB
     # bar, but by 1.4 dB, which is less margin than the number below was chosen

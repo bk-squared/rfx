@@ -108,7 +108,7 @@ def main() -> None:
     print(f"Fixed n_steps samples: {fixed_result.time_series.shape[0]}")
 
     # num_periods counts periods of freq_max.  A value of 0.1 is absurdly
-    # short here.  Expect a warning such as "run ended at -0.1 dB of peak":
+    # short here.  Expect a warning such as "run ended at 0.0 dB of peak":
     # a level near 0 dB says the response was clipped near its largest value.
     with warnings.catch_warnings(record=True) as clipped_warnings:
         warnings.simplefilter("always")
