@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
 if TYPE_CHECKING:
-    from numpy.typing import ArrayLike
+    from numpy.typing import ArrayLike, DTypeLike
     from rfx.current_moments import CurrentMomentMonitor
     from rfx._internal._uniform_specs import DesignBoxSpec
     from rfx.farfield import NTFFBox
@@ -76,7 +76,7 @@ def run_nonuniform(
     design_box: DesignBoxSpec | None = None,
     record_dft: bool | tuple[bool, ...] = False,
     measurement: object | None = None,
-    field_dtype=None,
+    field_dtype: DTypeLike | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -294,7 +294,7 @@ def run_nonuniform_until_decay(
     record_dft: bool | tuple[bool, ...] = False,
     advisory: dict | None = None,
     measurement: object | None = None,
-    field_dtype=None,
+    field_dtype: DTypeLike | None = None,
 ) -> dict:
     """Run non-uniform FDTD until the field energy left after the drive decays.
 
