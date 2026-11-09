@@ -709,10 +709,7 @@ def e_update_coefficient_at(materials, cell, component, dt,
             alpha, beta = c.debye.coefficients
             dt_terms = (alpha[pole_cell], tuple(b[pole_cell] for b in beta))
         if c.lorentz is not None:
-            a, b, strength = c.lorentz.coefficients
-            lt_terms = ((a[axis] if isinstance(a, tuple) else a)[pole_cell],
-                        (b[axis] if isinstance(b, tuple) else b)[pole_cell],
-                        tuple(v[pole_cell] for v in strength))
+            lt_terms = jax.tree.map(lambda value: value[pole_cell], c.lorentz.coefficients)
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
     if host:
         from rfx.model.source_coefficients import current_source_cb
