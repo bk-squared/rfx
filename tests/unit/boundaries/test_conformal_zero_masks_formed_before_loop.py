@@ -98,6 +98,8 @@ def test_conformal_final_fields_zero_inside_pec_and_live_on_cut_edges():
         cut_peak = max(cut_peak, live)
         print(f"{component}: mesh={grid.shape} steps=20 covered={inside.sum()} error={error:.17g} bar=0 partial_peak={live:.17g}")
         assert error == 0., f'{component}: fully covered PEC edge field {error:.17g} != 0'
+        dead = int(np.count_nonzero(field[partial] == 0))
+        assert dead == 0, f'{component}: {dead} of {partial.sum()} cut edges read exactly 0'
     probe_peak = float(np.max(np.abs(np.asarray(result.time_series))))
     print(f'conformal: cut_peak={cut_peak:.17g} probe_peak={probe_peak:.17g}')
     assert cut_peak > 0, 'partially covered edges must stay live'
