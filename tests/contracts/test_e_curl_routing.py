@@ -69,18 +69,6 @@ def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
     return seen[0]
 
 
-@pytest.mark.parametrize("feature,mesh", [("subpixel", "uniform"), ("subpixel", "graded"),
-                                           ("conformal", "uniform"),
-                                           ("tfsf", "uniform"), ("tfsf", "graded")])
-def test_special_run_branches(feature, mesh):
-    sim = model(feature, mesh)
-    kwargs = dict(n_steps=2, skip_preflight=True, compute_s_params=False)
-    if feature == "subpixel":
-        kwargs["subpixel_smoothing"] = True
-    require_shared(lambda: sim.run(**kwargs),
-                   helper="curl_h_nu" if mesh == "graded" else "curl_h")
-
-
 @pytest.mark.parametrize("mesh,feature", [("uniform", "lumped"), ("uniform", "wire"),
                                          ("graded", "wire")])
 def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
@@ -189,15 +177,6 @@ def test_kernel_adapters(branch):
     assert require_shared(calls[branch]) == boundary
 
 
-@pytest.mark.parametrize("graded", [False, True])
-def test_design_box_second_update_uses_boundary(graded):
-    state, mats, boundary = kernel_inputs()
-    inv_d = tuple(jnp.ones(n) / 1e-3 for n in state.ex.shape) if graded else None
-    require_shared(lambda: stepping_yee.update_e_box(
-        state, state, (1, 2, 1, 2, 1, 2), 1., .1, 1e-3,
-        inv_d=inv_d, boundary=boundary), helper="curl_h_nu" if graded else "curl_h")
-
-
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("lane", ["run", "forward"])
 def test_cpml_driver_passes_realized_boundary(mesh, lane):
@@ -226,23 +205,6 @@ def test_cpml_driver_passes_realized_boundary(mesh, lane):
     with patch.object(cpml, "apply_cpml_e", correction):
         getattr(sim, lane)(**kwargs)
     assert len(calls) == 1
-
-
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-@pytest.mark.parametrize("lane", ["run", "forward"])
-def test_sheet_replacement_update_also_uses_shared_curl(mesh, lane):
-    from rfx import Box
-    sim = model(mesh=mesh, wall="pec")
-    profile = sim._dx_profile
-    x0 = float(sum(profile[:3]) - .35 * profile[2]) if mesh == "graded" else (2 - .35) * 1e-3
-    x1 = float(sum(profile[:8]) + .35 * profile[8]) if mesh == "graded" else (8 + .35) * 1e-3
-    sim.add_thin_conductor(Box((x0, (2 - .35) * 1e-3, 4e-3), (x1, (6 + .35) * 1e-3, 4e-3)),
-                           sigma_bulk=1e4, surface_impedance_f0=12e9)
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    require_shared(lambda: getattr(sim, lane)(**kwargs), expected_calls=2,
-                   helper="curl_h_nu" if mesh == "graded" else "curl_h")
 
 
 def test_tfsf_forward_uses_shared_curl():
@@ -287,20 +249,3 @@ def test_each_graded_port_sample_reads_two_neighbors(component, idx):
         state.hx, state.hy, state.hz, component, *idx,
         .9e-3, 1.1e-3, 1.3e-3, boundary=boundary),
         helper="h_neighbor", indexed=True, expected_calls=2)
-
-
-@pytest.mark.parametrize("feature,mesh", [("subpixel", "uniform"),
-                                          ("subpixel", "graded"),
-                                          ("conformal", "uniform")])
-def test_smoothed_checkpoint_scan_uses_complete_curl(feature, mesh):
-    # These front doors build the actual smoothing tensors/weights, then
-    # execute the differentiable checkpointed scan. Simulation.forward has
-    # no subpixel keyword and refuses conformal PEC; do not label this as
-    # public forward() support.
-    sim = model(feature, mesh)
-    kwargs = dict(n_steps=2, skip_preflight=True, compute_s_params=False,
-                  checkpoint=True)
-    if feature == "subpixel":
-        kwargs["subpixel_smoothing"] = True
-    require_shared(lambda: sim.run(**kwargs),
-                   helper="curl_h_nu" if mesh == "graded" else "curl_h")

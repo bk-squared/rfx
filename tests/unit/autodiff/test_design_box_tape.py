@@ -27,6 +27,7 @@ This is NOT the removed ``design_mask`` (ledger; gated by
 
 from __future__ import annotations
 
+import sys
 from unittest import mock
 
 import numpy as np
@@ -282,68 +283,109 @@ def test_eps_override_is_the_grid_sized_counterexample():
         f"({4 * cells} bytes) — the counterexample stopped being one")
 
 
-def _mixed_boundary_sim(**kwargs):
+def _mixed_boundary_sim(wall="pec", **kwargs):
     """One absorbing face, five reflecting ones — a patch on a ground plane.
 
-    ``x_hi`` absorbs; ``x_lo``, y and z are PEC walls that allocate no pad,
+    ``x_hi`` absorbs; ``x_lo`` reflects, and y and z are PEC walls with no pad,
     so the design box may sit right against them.
     """
     from rfx.boundaries.spec import Boundary, BoundarySpec
 
     sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, cpml_layers=CPML,
-                     boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
+                     boundary=BoundarySpec(x=Boundary(lo=wall, hi="cpml"),
                                            y="pec", z="pec"), **kwargs)
-    sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
+    sim.add_source((4e-3, 12e-3, 10e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=F0, bandwidth=0.8))
-    sim.add_probe((16e-3, 10e-3, 8e-3), "ez")
+    sim.add_probe((16e-3, 8e-3, 6e-3), "ez")
     return sim
 
 
-def test_design_box_on_a_reflecting_wall_is_accepted_and_exact():
-    """A box against a PEC face is not inside an absorber.
+@pytest.mark.parametrize("wall,mesh", [("pec", "uniform"), ("pmc", "uniform"),
+                                       ("pmc", "graded")])
+def test_design_box_on_a_reflecting_wall_is_accepted_and_exact(wall, mesh):
+    """A box against a reflecting face matches the whole-grid reference.
 
     The absorber window the kernel writes is the axis maximum of the two
     pads, but a face with no allocated pad carries the all-no-op profile and
     adds exactly zero. Reading the axis maximum refused this configuration —
     a design region sitting on a ground plane, which is most of them.
     """
-    with enable_x64():
-        sim = _mixed_boundary_sim(precision="float64")
-        grid = sim._build_grid()
-        assert (grid.pad_x_lo, grid.pad_x_hi) == (0, CPML)
-        assert (grid.pad_y_lo, grid.pad_z_lo) == (0, 0)
-
-        # Corner at the origin: cell 0 on all three axes, flush against the
-        # PEC x_lo, y_lo and z_lo walls.
+    with enable_x64(mesh == "uniform"):
+        dtype = jnp.float64 if mesh == "uniform" else jnp.float32
+        precision = "float64" if mesh == "uniform" else "float32"
+        options = {}
+        if mesh == "graded":
+            interior = np.linspace(.87, 1.13, round(DOMAIN[0] / DX) - 2)
+            interior *= (DOMAIN[0] - 2 * DX) / interior.sum()
+            options["dx_profile"] = np.r_[DX, interior, DX]
+        sim = _mixed_boundary_sim(wall=wall, precision=precision, **options)
+        geometry = sim.realized_geometry()
+        # The public geometry report supplies the exact realized reference.
+        base = jnp.asarray(geometry.materials.eps_r, dtype=dtype)
         lo_m, hi_m = (0.0, 0.0, 0.0), (4e-3, 4e-3, 4e-3)
-        lo = grid.position_to_index(lo_m)
-        hi = grid.position_to_index(hi_m)
+        lo = tuple(int(np.argmin(abs(nodes - x)))
+                   for nodes, x in zip(geometry.nodes, lo_m))
+        hi = tuple(int(np.argmin(abs(nodes - x)))
+                   for nodes, x in zip(geometry.nodes, hi_m))
         assert lo == (0, 0, 0), lo
         sl = tuple(slice(lo[d], hi[d] + 1) for d in range(3))
         shape = tuple(hi[d] - lo[d] + 1 for d in range(3))
-        eps = jnp.asarray(_eps_design(shape, seed=11), jnp.float64)
-        base = sim._assemble_materials(grid)[0].eps_r
+        eps = jnp.asarray(_eps_design(shape, seed=11), dtype)
 
-        def box(e):
+        def box_record(e):
             r = sim.forward(design_box=(lo_m, hi_m), design_eps_override=e,
                             n_steps=N_STEPS, checkpoint=False,
                             skip_preflight=True)
-            return jnp.sum(r.time_series ** 2)
+            return r.time_series
 
-        def ref(e):
-            full = base.astype(jnp.float64).at[sl].set(e)
+        def ref_record(e):
+            full = base.at[sl].set(e)
             r = sim.forward(eps_override=full, n_steps=N_STEPS,
                             checkpoint=False, skip_preflight=True)
-            return jnp.sum(r.time_series ** 2)
+            return r.time_series
+
+        if mesh == "graded":
+            actual = np.asarray(box_record(eps))
+            expected = np.asarray(ref_record(eps))
+            peak = np.max(np.abs(expected))
+            assert peak > 0, "fixture excites nothing"
+            ulps = float(np.max(np.abs(actual.astype(float) - expected.astype(float)))
+                         / np.spacing(np.float32(peak)))
+            report = (f"design box pmc/graded: peak ULP={ulps:.12g}, bar=9; "
+                      f"steps={N_STEPS}; mesh={base.shape}; box={shape}; peak={peak:.12g}")
+            print(report, file=sys.stderr)
+            assert ulps <= 9, report
+            pec = _mixed_boundary_sim(wall="pec", precision=precision, **options)
+            control = np.asarray(pec.forward(
+                design_box=(lo_m, hi_m), design_eps_override=eps,
+                n_steps=N_STEPS, checkpoint=False, skip_preflight=True).time_series)
+            separation = float(np.max(np.abs(actual.astype(float) - control.astype(float)))
+                               / np.spacing(np.float32(peak)))
+            report = f"design box graded: PMC/PEC separation={separation:.12g} peak ULP, bar=9"
+            print(report, file=sys.stderr)
+            assert separation > 9, report
+            return
+
+        def box(e):
+            return jnp.sum(box_record(e) ** 2)
+
+        def ref(e):
+            return jnp.sum(ref_record(e) ** 2)
 
         value_box, value_ref = float(box(eps)), float(ref(eps))
         assert value_ref != 0.0, "fixture excites nothing"
-        assert abs(value_box - value_ref) / abs(value_ref) < 1e-10
+        value_rel = abs(value_box - value_ref) / abs(value_ref)
         grad_box = np.asarray(jax.grad(box)(eps))
         grad_ref = np.asarray(jax.grad(ref)(eps))
         assert np.linalg.norm(grad_ref) > 0.0
         rel = np.linalg.norm(grad_box - grad_ref) / np.linalg.norm(grad_ref)
-        assert rel < 1e-10, f"gradient differs by {rel:.3e} relative"
+        report = (f"design box {wall}/{mesh}: value={value_box:.12g}, "
+                  f"reference={value_ref:.12g}, relative={value_rel:.12g}; "
+                  f"gradient relative={rel:.12g}; bar=1e-10; "
+                  f"steps={N_STEPS}; mesh={base.shape}; box={shape}")
+        print(report, file=sys.stderr)
+        assert value_rel < 1e-10, report
+        assert rel < 1e-10, report
 
 
 def test_fence_still_catches_the_one_absorbing_face():

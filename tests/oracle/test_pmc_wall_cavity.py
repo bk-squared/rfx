@@ -11,7 +11,7 @@ import sys
 import numpy as np
 import pytest
 
-from rfx import Box, DebyePole, GaussianPulse, Simulation, lorentz_pole
+from rfx import Box, DebyePole, GaussianPulse, Simulation, Sphere, lorentz_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.harminv import matrix_pencil
 
@@ -22,7 +22,8 @@ STEPS = 2400
 IMAGE_STEPS = 300
 
 
-def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False):
+def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False, conformal=False,
+            sphere_eps=1.):
     a, b, d = (n * H for n in CELLS)
     interior = np.linspace(.87, 1.13, CELLS[0] - 2)
     interior *= (a - 2 * H) / interior.sum()
@@ -32,8 +33,10 @@ def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False):
         options["dx_profile"] = np.r_[widths[::-1], widths] if image else widths
     sim = Simulation(
         freq_max=30e9, domain=((2 if image else 1) * a, b, d), dx=H,
-        boundary=BoundarySpec(x=Boundary(lo="pec" if image else wall, hi="pec"),
-                              y="pec", z="pec"), cpml_layers=0, **options)
+        boundary=BoundarySpec(x=Boundary(lo="pec" if image or feature == "conformal" else wall,
+                                                hi="pec", conformal=conformal),
+                              y=Boundary(lo=wall, hi="pec") if feature == "conformal" else "pec",
+                              z="pec"), cpml_layers=0, **options)
     shift = a if image else 0.
     source_x = 2 * H if mesh == "uniform" else float(sum(widths[:2]))
     probe_x = 7 * H if mesh == "uniform" else float(sum(widths[:7]))
@@ -67,6 +70,24 @@ def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False):
         if image:
             sim.add(Box((shift - 8.6e-3, 2.2e-3, 1.4e-3),
                         (shift - 4.3e-3, 6.9e-3, 5.3e-3)), material="block")
+    if feature == "subpixel":
+        sim.add_material("sphere", eps_r=sphere_eps)
+        sim.add(Sphere(center=(shift + 4.3 * H, 2.2 * H, 1.4 * H),
+                       radius=H), material="sphere")
+        if image:
+            sim.add(Sphere(center=(shift - 4.3 * H, 2.2 * H, 1.4 * H),
+                           radius=H), material="sphere")
+    if feature == "sheet":
+        # An xy sheet includes the PMC E node and its tangential Ey edge.
+        # Each free end extends 0.35 of the outside cell beyond node 8.
+        end = float(np.sum(widths[:8]) + 0.35 * widths[8]) if mesh == "graded" else 8.35 * H
+        # Rs0 = sqrt(pi * f0 * mu0 / sigma_bulk) = eta0 (A17).
+        f0, mu0, eta0 = 12e9, 4 * np.pi * 1e-7, 376.730313
+        sigma_bulk = np.pi * f0 * mu0 / eta0**2
+        sim.add_thin_conductor(
+            Box((shift - end if image else 0., 1.65 * H, H),
+                (shift + end, 6.35 * H, H)),
+            sigma_bulk=sigma_bulk, surface_impedance_f0=f0)
     return sim
 
 
@@ -83,10 +104,10 @@ def _image_error(actual, reference):
     return float(np.max(np.abs(actual - reference)) / np.max(np.abs(reference)))
 
 
-def _check_image(mesh, feature, lane):
-    half, result = _solve(_cavity(mesh, feature), lane)
-    image, doubled = _solve(_cavity(mesh, feature, image=True), lane)
-    pec, _ = _solve(_cavity(mesh, feature, wall="pec"), lane)
+def _check_image(mesh, feature, lane, **kwargs):
+    half, result = _solve(_cavity(mesh, feature), lane, **kwargs)
+    image, doubled = _solve(_cavity(mesh, feature, image=True), lane, **kwargs)
+    pec, _ = _solve(_cavity(mesh, feature, wall="pec"), lane, **kwargs)
     assert tuple(result.grid.shape) == (14, 11, 4)
     assert tuple(doubled.grid.shape) == (27, 11, 4)
     error = _image_error(half, image)
@@ -251,3 +272,94 @@ def test_2d_pmc_cavity_frequency(mode, lane):
     report = f"{mode}/{lane}: frequency separation={separation:.12g}, bar=.01"
     print(report, file=sys.stderr)
     assert separation > .01, report
+
+
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+def test_subpixel_pmc_cavity_and_image(mesh):
+    frequencies = {}
+    for wall in ("pmc", "pec"):
+        trace, result = _solve(_cavity(mesh, "subpixel", wall=wall),
+                               steps=STEPS, subpixel_smoothing=True)
+        frequencies[wall] = _frequency(trace, result, wall, f"{mesh}/subpixel/{wall}")
+    separation = abs(frequencies["pmc"] / frequencies["pec"] - 1)
+    report = f"{mesh}/subpixel: frequency separation={separation:.12g}, bar=.01"
+    print(report, file=sys.stderr)
+    assert separation > .01, report
+    _check_image(mesh, "subpixel", "run", subpixel_smoothing=True)
+
+
+def test_conformal_node_aligned_pec_matches_plain():
+    actual, result = _solve(_cavity(feature="conformal", conformal=True))
+    expected, reference = _solve(_cavity(feature="conformal"))
+    assert tuple(result.grid.shape) == tuple(reference.grid.shape) == (14, 11, 4)
+    _lane_equal(actual, expected, f"conformal/plain, steps={IMAGE_STEPS}, mesh={result.grid.shape}")
+    pec, _ = _solve(_cavity(feature="conformal", wall="pec", conformal=True))
+    separation = _image_error(actual, pec)
+    bar = 9 * float(np.spacing(np.float32(np.max(np.abs(pec))))) / np.max(np.abs(pec))
+    report = f"conformal: y_lo PMC/PEC separation={separation:.12g}, bar={bar:.12g}"
+    print(report, file=sys.stderr)
+    assert separation > bar, report
+
+
+@pytest.mark.parametrize("feature,mesh,sphere_eps", [("subpixel", "uniform", 1.),
+                                                     ("subpixel", "graded", 1.),
+                                                     ("conformal", "uniform", 1.),
+                                                     ("subpixel", "uniform", 4.),
+                                                     ("subpixel", "graded", 4.)])
+def test_smoothed_checkpoint_matches_plain_scan(feature, mesh, sphere_eps):
+    conformal = feature == "conformal"
+    dielectric = sphere_eps == 4.
+    steps = IMAGE_STEPS if dielectric else STEPS
+    options = {"subpixel_smoothing": True} if not conformal else {}
+    traces = {}
+    for checkpoint in (False, True):
+        sim = _cavity(mesh, feature, conformal=conformal, sphere_eps=sphere_eps)
+        trace, result = _solve(sim, steps=steps, checkpoint=checkpoint, **options)
+        traces[checkpoint] = trace
+        if not conformal and not dielectric:
+            _frequency(trace, result, "pmc", f"{mesh}/subpixel/checkpoint={checkpoint}")
+    assert tuple(result.grid.shape) == (14, 11, 4)
+    _lane_equal(traces[True], traces[False],
+                f"{mesh}/{feature}/eps={sphere_eps:g}/checkpoint, steps={steps}, mesh={result.grid.shape}")
+    if dielectric:
+        unsmoothed, _ = _solve(_cavity(mesh, feature, sphere_eps=sphere_eps),
+                               steps=steps, checkpoint=False, subpixel_smoothing=False)
+        separation = float(np.max(np.abs(traces[False].astype(float) - unsmoothed.astype(float)))
+                           / np.spacing(np.float32(np.max(np.abs(unsmoothed)))))
+        report = (f"{mesh}/subpixel/eps={sphere_eps:g}: smoothing on/off separation="
+                  f"{separation:.12g} peak ULP, bar=9; steps={steps}; mesh={result.grid.shape}")
+        print(report, file=sys.stderr)
+        assert separation > 9, report
+    elif conformal:
+        pec, _ = _solve(_cavity(feature="conformal", wall="pec", conformal=True),
+                        steps=STEPS, checkpoint=True)
+        separation = _image_error(traces[True], pec)
+        bar = 9 * float(np.spacing(np.float32(np.max(np.abs(pec))))) / np.max(np.abs(pec))
+        report = f"conformal/checkpoint: y_lo PMC/PEC separation={separation:.12g}, bar={bar:.12g}"
+        print(report, file=sys.stderr)
+        assert separation > bar, report
+    else:
+        # Image comparisons pin the PMC ghost even when its frequency shift
+        # fits inside the closed-form bar. Exercise both scan variants.
+        for checkpoint in (False, True):
+            _check_image(mesh, feature, "run", checkpoint=checkpoint, **options)
+
+
+@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+def test_sheet_pmc_image(mesh, lane):
+    _check_image(mesh, "sheet", lane)
+
+
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+def test_sheet_pmc_forward_matches_run(mesh):
+    traces = {}
+    for lane in ("run", "forward"):
+        traces[lane], _ = _solve(_cavity(mesh, "sheet"), lane)
+        bare, _ = _solve(_cavity(mesh), lane)
+        separation = _image_error(traces[lane], bare)
+        bar = 9 * float(np.spacing(np.float32(np.max(np.abs(bare))))) / np.max(np.abs(bare))
+        report = f"{mesh}/sheet/{lane}: sheet/no-sheet separation={separation:.12g}, bar={bar:.12g}"
+        print(report, file=sys.stderr)
+        assert separation > bar, report
+    _lane_equal(traces["forward"], traces["run"], f"{mesh}/sheet/forward-run, steps={IMAGE_STEPS}")
