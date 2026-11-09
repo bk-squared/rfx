@@ -958,6 +958,8 @@ def _subgrid_opted_in(sim) -> bool:
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
 
 LANE_GATES: dict[str, dict[Row, Callable]] = {
+    **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
+       for lane in ("run_nonuniform", "fwd_nonuniform")},
     "run_subgridded": {
         **{row: _guarded_lid for row in _LID_ROWS},
         ("_refinement", "slab"): lambda sim, grid: (
@@ -1239,7 +1241,7 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     # Waveguide S is always formed, including for an amplitude-zero entry.
     if len(sim._waveguide_ports) > 1:
         raise ValueError(
-            "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+            "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
         )
     excited = [(index, port) for index, port in enumerate(sim._ports)
                if port.impedance > 0 and port.excite]

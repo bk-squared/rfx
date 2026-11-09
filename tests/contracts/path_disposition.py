@@ -291,12 +291,14 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
 
     )},
     "_dt_min_cell": {"": lanes(
-        run_uniform=not_reachable("the constructor refuses it without dt="),
+        run_uniform=refuses("run(cut_cell_floor) admits the pin, then admission refuses dt_min_cell; "
+                            "tests/unit/runners/test_calculator_admission.py::test_dt_min_cell_refused_before_scan",
+                            raises="dt_min_cell="),
         run_nonuniform=carries("with dt=, read by the graded grid build"),
-        run_subgridded=not_reachable("the constructor refuses it without dt=, and dt= needs a profile"),
+        run_subgridded=refuses("the uniform dt= pin is refused before dt_min_cell is read", raises="dt="),
 
         run_distributed=refuses("dt_min_cell belongs to the graded runner", raises="dt="),
-        fwd_uniform=not_reachable("the constructor refuses it without dt="),
+        fwd_uniform=refuses("the uniform dt= pin is refused before dt_min_cell is read", raises="dt="),
         fwd_nonuniform=carries("with dt=, read by the graded grid build"),
         fwd_distributed_nu=carries("with dt=, read by _build_nonuniform_grid"),
 
@@ -1642,6 +1644,8 @@ for (_attr, _feature), _cells in CALCULATOR_CELLS.items():
     TABLE[_attr][_feature].update(_cells)
 
 LANE_GATES.update({
+    ("run_nonuniform", ("_precision", "")): "float64 carries; mixed refuses with the existing message",
+    ("fwd_nonuniform", ("_precision", "")): "float64 carries; mixed refuses with the existing message",
     ("waveguide_s_matrix", ("_dt_pin", "")): "graded builder reads dt",
     ("waveguide_s_matrix", ("_dt_min_cell", "")): "graded builder reads dt_min_cell",
     ("waveguide_s_matrix", ("_nominal_profiles", "")): "graded builder reads nominal_profiles",
@@ -1679,8 +1683,10 @@ TABLE["_pec_occupancy_model"]["kottke"]["fwd_distributed"] = refuses(
     "uniform distributed forward refuses the occupancy override", raises="pec_occupancy_override")
 
 
-def cell(attr: str, feature: str, path: str) -> Cell:
+def cell(attr: str, feature: str, path: str, *, precision=None) -> Cell:
     """The recorded disposition for one input and one execution path."""
+    if attr == "_precision" and precision == "float64" and path in ("run_nonuniform", "fwd_nonuniform"):
+        return carries("float64 field and accumulation storage on single-device graded Yee")
     row = TABLE[attr][feature]
     return row["*"] if "*" in row else row[path]
 

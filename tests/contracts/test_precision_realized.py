@@ -32,7 +32,7 @@ MAIN_REFUSALS = {
     'differentiable_material_fit': (NotImplementedError, "precision='float64'.*Use precision='float32'"),
     **{name: (ValueError, "requires precision='float32'") for name in (
         'compute_coaxial_line_reflection', 'compute_coaxial_two_port', 'compute_coax_msl_transition')},
-    **{name: (NotImplementedError, "precision|float32") for name in ('vmap_material_sweep', 'run_nonuniform', 'forward_nonuniform', 'forward_distributed', 'run_distributed', 'driver_distributed')},
+    **{name: (NotImplementedError, "precision|float32") for name in ('vmap_material_sweep', 'forward_distributed', 'run_distributed', 'driver_distributed')},
     'run_subgridded': (NotImplementedError, 'subgrid|SBP|precision'),
 }
 REFUSES = tuple(MAIN_REFUSALS)
@@ -321,9 +321,12 @@ def numeric_arrays(result):
         yield result[0]
 
 
-@pytest.mark.parametrize('entry', HONOURS)
+@pytest.mark.parametrize('entry', HONOURS + ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'))
 @pytest.mark.parametrize('precision', ['float32','float64'])
 def test_realized_field_storage(monkeypatch, entry, precision):
+    if entry in ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'):
+        from tests.contracts.graded_precision import check_graded_storage
+        return check_graded_storage(monkeypatch, entry, precision)
     import rfx.simulation as core
     fields, accumulators, records = [], [], []
     initialize, make_step = uniform_setup.init_state, uniform_loop.make_core_step

@@ -1930,7 +1930,8 @@
         "sheet_impedance",
         "design_box",
         "record_dft",
-        "measurement"
+        "measurement",
+        "field_dtype"
       ]
     },
     "run_until_decay": {

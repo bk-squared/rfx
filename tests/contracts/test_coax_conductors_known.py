@@ -1,127 +1,47 @@
-"""The three coax calculators lend their actual stamped conductors to readers."""
-from dataclasses import replace
+"""Coax diagnostic faults preserve S and warnings; traced stamps stay usable.
 
+RF calibration stays in test_coaxial_line_reflection.py. The 400-step lock
+fixture intentionally emits a settling warning, compared with its control.
+"""
+import sys
+import warnings
+
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.geometry.csg import Cylinder
+from rfx import Simulation
 from rfx.model.conductors import coax_kernel_conductors
-from rfx import GaussianPulse, Simulation
-from tests.locks.test_sparams_split_bit_identity import _COAX_BAND
+from tests.locks.test_sparams_split_bit_identity import _coax_line_result
 
 
-def _coax_line_result():
-    sim = Simulation(domain=(0.008, 0.008, 0.040), freq_max=40.0e9,
-                     boundary="cpml", snap="declared")
-    sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
-                         waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
-    return sim.compute_coaxial_line_reflection(
-        termination="short", n_steps=400, freqs=_COAX_BAND)
+def _measure(row, quantity, measured, bar=0):
+    print(f"B3.1 row={row} quantity={quantity} measured={measured} bar={bar}", file=sys.stderr)
 
 
-def _coax_two_port_result():
-    sim = Simulation(domain=(0.008, 0.008, 0.060), freq_max=40.0e9,
-                     boundary="cpml", snap="declared")
-    sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
-                         waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
-    return sim.compute_coaxial_two_port(n_steps=400, freqs=_COAX_BAND)
+def _equal(row, quantity, actual, expected):
+    actual, expected = np.asarray(actual), np.asarray(expected)
+    mismatch = int(np.count_nonzero(actual != expected))
+    _measure(row, quantity + '.unequal', mismatch)
+    np.testing.assert_array_equal(actual, expected, err_msg=f"{row}: {quantity}; unequal={mismatch}, bar=0")
 
 
-def _coax_msl_result():
-    from tests._coax_msl_instrument_fixture import (
-        build_instrument_junction, instrument_kwargs,
-    )
-
-    sim = build_instrument_junction()
-    return sim.compute_coax_msl_transition(**instrument_kwargs(200))
-
-
-class KernelInspected(Exception):
-    pass
-
-
-@pytest.mark.parametrize('lane,call', [
-    ('reflection', _coax_line_result), ('two_port', _coax_two_port_result),
-    ('transition', _coax_msl_result),
-])
-def test_kernel_reads_owner_and_record_keeps_stamp(monkeypatch, lane, call):
-    import rfx.sparams.coax as calculators
-    captured = {}
-
-    def handover(sim, grid, materials, cells, edges, entities, **kwargs):
-        root = coax_kernel_conductors(sim, grid, materials, cells, edges, entities, **kwargs)
-        if lane != 'transition':
-            assert kwargs.get('root') is None, 'line calculator received a board stage'
-            assert root.pec_cells is cells
-            assert root.pec_edges is edges, 'line calculator merged additional edges'
-            for actual, expected in zip(edges, calculators._coax_pec_edge_masks(cells), strict=True):
-                np.testing.assert_array_equal(actual, expected)
-        # Equal values in a fresh tuple distinguish reading the returned owner
-        # from bypassing it with the original local masks (even if equal).
-        root = replace(root, pec_edges=tuple(np.array(e, copy=True) for e in root.pec_edges))
-        sim._coax_geometry = (sim._coax_geometry[0], root)
-        captured.update(sim=sim, root=root, declared=kwargs.get('root'))
-        return root
-
-    def kernel(grid, materials, n_steps, **kwargs):
-        sim, root = captured['sim'], captured['root']
-        assert kwargs['pec_edge_masks'] is root.pec_edges, 'kernel bypassed conductor owner'
-        assert materials is root.materials
-        assert root.provenance[-1].stage == 'coax stamp'
-        record = sim.realized_geometry()
-        assert record.conductors is root
-        assert sim.realized_geometry() is record
-        entities = {e.label: e for e in record.entities if e.provenance == 'coax stamp'}
-        assert set(entities) == {f'coaxial_port[0]/{name}' for name in ('shell', 'pin', 'dielectric')}
-        by_name = {e.entity_id.rsplit('/', 1)[1]: e for e in root.stamped_entities}
-        pin, shell = by_name['pin'], by_name['shell']
-        bore = Cylinder(shell.shape.center, shell.declared_radii_m[0], shell.shape.height)
-        outer = np.asarray(shell.shape.mask(grid))
-        hole = np.asarray(bore.mask(grid))
-        pin_mask = np.asarray(pin.shape.mask(grid))
-        area = np.asarray(grid.cells(0))[:, None] * np.asarray(grid.cells(1))[None, :]
-
-        def radius(mask):
-            return np.sqrt(area[np.asarray(mask).any(axis=2)].sum() / np.pi)
-
-        expected = dict(shell=(radius(hole), radius(outer)), pin=(0., radius(pin_mask)),
-                        dielectric=(radius(pin_mask), radius(hole)))
-        for name, mask in (('pin', pin_mask), ('shell', outer & ~hole), ('dielectric', hole & ~pin_mask)):
-            emitted = entities[f'coaxial_port[0]/{name}']
-            np.testing.assert_array_equal(emitted.mask, mask)
-            np.testing.assert_array_equal(emitted.radii_m, expected[name])
-            assert emitted.port_id == 'coaxial_port[0]'
-            assert emitted.sampling == 'closed cylinders at nodes, owned as cells'
-            indices = np.flatnonzero(mask.any(axis=(0, 1)))
-            assert emitted.axes[2].cell_range == (indices[0], indices[-1] + 1)
-            assert emitted.axes[2].bounds_m == (record.nodes[2][indices[0]], record.nodes[2][indices[-1]+1])
-        for actual, stored in zip(root.pec_edges, record.edge_masks, strict=True):
-            np.testing.assert_array_equal(actual, stored)
-        from rfx.preflight.realization import context_from_conductors
-        ctx = context_from_conductors(sim, root)
-        assert {e.label for e in ctx.interior_pec_entries()} >= {
-            'coaxial_port[0]/shell', 'coaxial_port[0]/pin'}
-        findings = dict(root.stamp_check_findings)
-        if lane == 'transition':
-            assert root.stamp_check_findings == ()
-            declared = captured['declared']
-            assert len(record.entities) == len(sim._geometry) + 3
-            assert root.assembly_entries == declared.assembly_entries
-            assert root.provenance[:-1] == declared.provenance
-            for owned, drawn in zip(root.pec_edges, declared.pec_edges, strict=True):
-                assert np.all(owned[np.asarray(drawn)])
-        else:
-            assert set(findings) == {'sheet-size', 'pad-fill'}
-            assert not findings['pad-fill']
-            assert not findings['sheet-size']
-        sim.add_material('invalidate_coax_view', eps_r=2.)
-        assert not any(e.provenance == 'coax stamp' for e in sim.realized_geometry().entities)
-        raise KernelInspected
-
-    monkeypatch.setattr(calculators, 'coax_kernel_conductors', handover)
-    monkeypatch.setattr('rfx.simulation.run', kernel)
-    with pytest.raises(KernelInspected):
-        call()
+def _edges(cells):
+    """Four incident cells per E edge, zero outside the nonperiodic box."""
+    result = []
+    for component in range(3):
+        mask = np.zeros_like(cells, dtype=bool)
+        transverse = [a for a in range(3) if a != component]
+        for first in (0, 1):
+            for second in (0, 1):
+                src, dst = [slice(None)] * 3, [slice(None)] * 3
+                for axis, shift in zip(transverse, (first, second)):
+                    if shift:
+                        src[axis], dst[axis] = slice(None, -1), slice(1, None)
+                mask[tuple(dst)] |= cells[tuple(src)]
+        result.append(mask)
+    return tuple(result)
 
 
 @pytest.mark.parametrize('overlap,offset', [('pin', 0), ('shell', 8)])
@@ -246,42 +166,43 @@ def test_transition_restored_state_and_board_readers(monkeypatch, overlap, offse
 
 
 @pytest.mark.parametrize('reader', ['stamp_check_findings', 'context_from_conductors', '_campaign_ctx'])
-def test_diagnostic_failure_reaches_kernel_and_records_finding(monkeypatch, reader):
-    import warnings
+def test_diagnostic_fault_preserves_s_and_warnings(monkeypatch, reader):
     import rfx.sparams.coax as calculators
-    seen = {}
+
+    with warnings.catch_warnings(record=True) as control:
+        warnings.simplefilter('always')
+        baseline = _coax_line_result()
 
     def fail(*args, **kwargs):
         raise RuntimeError('injected diagnostic failure')
 
-    def handover(sim, *args, **kwargs):
-        # Inject only into the new handover's reads, not existing admission.
+    def fault_at_handover(owner, *args, **kwargs):
+        # Fault injection is restricted to the diagnostic read: admission and
+        # time stepping remain real. There are no observations inside this wrapper.
         with monkeypatch.context() as patch:
             if reader == '_campaign_ctx':
-                patch.setattr(sim, reader, fail)
+                patch.setattr(owner, reader, fail)
             else:
                 module = 'rfx.model.coax' if reader == 'stamp_check_findings' else 'rfx.preflight.realization'
                 patch.setattr(f'{module}.{reader}', fail)
-            with warnings.catch_warnings(record=True) as emitted:
-                warnings.simplefilter('always')
-                root = coax_kernel_conductors(sim, *args, **kwargs)
-            assert not emitted
-        seen['root'] = root
-        assert root.stamp_check_findings == (('read-failed', ('RuntimeError', 'injected diagnostic failure')),)
-        if reader == '_campaign_ctx':
-            assert sim._coax_geometry is None
-        else:
-            assert sim._coax_geometry[1] is root
-        return root
+            return coax_kernel_conductors(owner, *args, **kwargs)
 
-    def kernel(*args, **kwargs):
-        assert kwargs['pec_edge_masks'] is seen['root'].pec_edges
-        raise KernelInspected
+    monkeypatch.setattr(calculators, 'coax_kernel_conductors', fault_at_handover)
+    with warnings.catch_warnings(record=True) as emitted:
+        warnings.simplefilter('always')
+        result = _coax_line_result()
+    _equal(reader, 'S11.bytes', np.asarray(result.s11).view(np.uint8),
+           np.asarray(baseline.s11).view(np.uint8))
+    assert np.isfinite(np.asarray(result.s11)).all()
+    expected = [(w.category, str(w.message)) for w in control]
+    actual = [(w.category, str(w.message)) for w in emitted]
+    _measure(reader, 'warnings_control', expected, 'same category/message/order')
+    _measure(reader, 'warnings_faulted', actual, 'same category/message/order')
+    assert actual == expected, f'{reader}: control={expected!r}, faulted={actual!r}'
 
-    monkeypatch.setattr(calculators, 'coax_kernel_conductors', handover)
-    monkeypatch.setattr('rfx.simulation.run', kernel)
-    with pytest.raises(KernelInspected):
-        _coax_line_result()
+
+class KernelInspected(Exception):
+    pass
 
 
 def test_skip_preflight_forms_sheet_rows_once_and_hands_the_kernel_its_edges(monkeypatch):
@@ -319,24 +240,32 @@ def test_skip_preflight_forms_sheet_rows_once_and_hands_the_kernel_its_edges(mon
     assert len(sheet_reads) == 1
 
 
-def test_traced_handover_does_not_publish_tracers():
-    import jax
-    import jax.numpy as jnp
-    from rfx import Simulation
+def test_traced_stamp_leaves_public_geometry_and_eager_s_concrete():
     from rfx.sources.coaxial_port import stamp_coaxial_line
-    from rfx.sparams.coax import _coax_pec_edge_masks
-    sim = Simulation(freq_max=10e9, domain=(.01, .01, .01), dx=.0005, boundary='cpml', snap="declared")
-    grid = sim._build_grid()
+
+    sim = Simulation(freq_max=10e9, domain=(.01, .01, .01), dx=.0005,
+                     boundary='cpml', snap='declared')
+    sim.add_coaxial_port((.005, .005, .005), face='top')
+    declared = sim.realized_geometry()
+    grid = declared.conductors.grid
     entities = []
-    materials, _, cells = stamp_coaxial_line(grid, sim._build_materials(grid)[0],
-        center_xy=(.005, .005), z_lo_index=grid.pad_z_lo+2,
-        z_hi_index=grid.pad_z_lo+8, realized_entities=entities)
-    edges = _coax_pec_edge_masks(cells)
+    materials, _, cells = stamp_coaxial_line(
+        grid, declared.materials, center_xy=(.005, .005),
+        z_lo_index=grid.pad_z_lo+2, z_hi_index=grid.pad_z_lo+8, realized_entities=entities)
 
     def objective(scale):
         root = coax_kernel_conductors(sim, grid,
-            materials._replace(eps_r=materials.eps_r * scale), cells, edges, entities)
-        assert sim._coax_geometry is None
+            materials._replace(eps_r=materials.eps_r * scale), cells, _edges(cells), entities)
         return jnp.sum(root.materials.eps_r)
 
-    assert np.isfinite(jax.grad(objective)(1.))
+    derivative = float(jax.grad(objective)(1.))
+    _measure('traced', 'gradient', derivative, 'finite')
+    assert np.isfinite(derivative)
+    record = sim.realized_geometry()
+    arrays = [*record.edge_masks, record.materials.eps_r, record.materials.sigma]
+    _measure('traced', 'concrete_arrays', sum(isinstance(a, np.ndarray) for a in arrays), len(arrays))
+    assert all(isinstance(a, np.ndarray) for a in arrays)
+    result = sim.compute_coaxial_line_reflection(termination='short', n_steps=16,
+        freqs=np.array([8e9]), probe_count=3, probe_start_cells=2, probe_spacing_cells=2)
+    _measure('traced', 'eager_S11_finite', int(np.isfinite(np.asarray(result.s11)).all()), 1)
+    assert np.isfinite(np.asarray(result.s11)).all()

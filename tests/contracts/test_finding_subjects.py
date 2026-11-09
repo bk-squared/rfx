@@ -898,7 +898,9 @@ def test_precision_model_scope():
         sim = Simulation(10e9, (.01,) * 3, dx=.001, boundary='pec', dz_profile=np.full(10, .001))
         sim._precision = 'float64'
         report = assert_target(sim, 'precision_float64_without_x64', [()])
-        assert [i.subjects for i in report.by_code('precision_nonuniform_lane_unsupported')] == [()]
+        assert not report.by_code('precision_nonuniform_lane_unsupported')
+        sim._precision = 'mixed'
+        assert_target(sim, 'precision_nonuniform_lane_unsupported', [()])
 
 
 def test_refinement_model_scope():
@@ -1167,6 +1169,9 @@ def test_f0_sheet_backed_gap_subjects():
 
 
 def test_scene_code_coverage(request):
-    if len([item for item in request.session.items if item.path == Path(__file__)]) < 90:
-        pytest.skip('coverage census applies to the complete scene battery')
+    expected = {item.nodeid for item in request.session.genitems(request.node.parent)}
+    selected = {item.nodeid for item in request.session.items if item.path == Path(__file__)}
+    if expected - selected:
+        pytest.skip('coverage census applies to the complete scene battery: '
+                    f'{len(expected & selected)} of {len(expected)} tests selected')
     assert REACHED | UNREACHABLE.keys() == CODE_SCOPE.keys(), sorted(CODE_SCOPE.keys() - REACHED)

@@ -99,12 +99,12 @@ EPS_MIN, EPS_MAX = 1.0, 6.0
 BETA = 20.0
 N_STEPS = 500
 N_ITERS = 12
-# Gradient descent step: measured |grad|_max ~ 1.0e-23 (BETA=20, this
-# fixture) -- essentially unchanged across BETA in [1, 50] (a
-# softmax-weighted average stays near the individual field cells' own
-# ~1e-22 magnitude regardless of temperature), so the pre-auto-scale LR
-# still applies unmodified. LR is sized so a full step moves the
-# most-sensitive layer's eps_r by a fraction of an eps_r unit.
+# Gradient descent step: this script prints |grad|_max = 1.287e-25 at the
+# first iteration (BETA=20; measured 2026-11-09). With LR = 1e22 a step
+# moves the most-sensitive layer's eps_r by about 1e-3, so the 12
+# iterations move eps_r by at most 0.02 and lower the loss by about 0.01 %
+# (printed as "0.0% reduction"): the run shows the gradient path through
+# field_softmax, not a converged shield.
 LR = 1.0e22
 
 

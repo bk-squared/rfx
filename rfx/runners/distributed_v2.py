@@ -392,8 +392,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         devices = jax.devices()
     n_devices = len(devices)
     from rfx.api._dispatch import _staged_by_an_outer_trace
+    from rfx.core.jax_utils import _REGION
     if (n_devices > 1 and sim._tfsf is not None and sim._tfsf.closed_box
-            and _staged_by_an_outer_trace()):
+            and (_REGION.get() is not None or _staged_by_an_outer_trace())):
         raise NotImplementedError(
             "Multi-device closed-box TF/SF cannot run inside a user jax.jit; "
             "use the plain call to forward() or run().")

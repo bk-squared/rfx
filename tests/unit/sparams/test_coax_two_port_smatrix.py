@@ -994,8 +994,7 @@ def test_matched_through_line_transmits_reciprocally(monkeypatch):
     native, line_impedances, reference_impedances = captures[0]
     # The 0.08 bar bounds the port's own reflection, inherited from the
     # one-port envelope (tests/unit/sparams/test_coaxial_line_reflection.py).
-    # Root cause and numbers: rfx-archive, commit 561b480fa,
-    # rfx/records/20261107-coax-through-line-s11/RESULT.md: built 43.575 ohm
+    # The staircased line is built at 43.575 ohm
     # versus drawn 48.591 ohm; native reflection <= 1.1e-5, but the
     # staircased line's mismatch to 50 ohm raises returned |S11| to 0.1363.
     assert np.all(np.abs(native[0, 0]) <= 0.08), np.abs(native[0, 0])

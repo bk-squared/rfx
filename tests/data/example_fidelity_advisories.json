@@ -21,7 +21,7 @@
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-283,467-473,531-536",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:307-310,467-473,539-540",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -29,7 +29,7 @@
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin: D 6.59 dBi against openEMS 6.83 dBi, -0.24 dB (module docstring).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,106-111,386-392,520-524",
+   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,104-109,384-390,518-522",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -37,7 +37,7 @@
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
    "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'ntff_small_ground_plane for finite-ground diffraction'; the openEMS reference solves the same finite ground plane.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,520-524",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,518-522",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -614,7 +614,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.5 mm substrate (t/h 2.33 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:130,287-289",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:157,314-316",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -622,7 +622,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.524 mm substrate (t/h 2.3 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,371-373",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,369-371",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -646,7 +646,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 62 cells (0.05937 m), declared 62.6579080344 cells (0.06 m).",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:253-254,288",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-281,315",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -654,7 +654,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 30 cells (0.0586 m), declared 30.7167235495 cells (0.06 m).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:328-329,377",
+   "ref": "examples/tutorials/patch_antenna_demo.py:326-327,375",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },

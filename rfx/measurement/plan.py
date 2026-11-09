@@ -23,7 +23,7 @@ from __future__ import annotations
 from rfx.model.graded_admission import host_cells
 
 from rfx._internal._grid_metric import field_index
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from itertools import product
 
 import jax
@@ -82,6 +82,7 @@ class Owner:
     dft_window_alpha: object = 0.25
     periodic: tuple[bool, bool, bool] | None = None
     normal_h: tuple[bool, tuple[float, float], bool] | None = None
+    source: object = field(default=None, compare=False, repr=False)
 
 
 @dataclass(frozen=True)

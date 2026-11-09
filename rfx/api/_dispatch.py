@@ -144,20 +144,10 @@ def _dispatch_plan(
             raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
     def _reject_lane_precision(lane: str) -> None:
-        # field_dtype is threaded ONLY on the
-        # uniform-lane runner (rfx/runners/uniform.py). The non-uniform,
-        # distributed, distributed-NU, and subgridded runners have zero
-        # field_dtype occurrences, so a non-float32 precision would
-        # silently run float32 fields there -- the exact SILENT_WRONG
-        # class this repo removes on sight. distributed=True is a
-        # call-time kwarg invisible to preflight (see the "P3
-        # (Distributed path)" precedent in
-        # _validate_cfg_subgrid_limitations), so THIS is the only
-        # enforcement point for that case; for the non-uniform-mesh
-        # case _validate_cfg_precision_x64 also warns in advance, but
-        # this raise is what actually stops it (and cannot be bypassed
-        # with skip_preflight=True, unlike a preflight warning).
-        if self._precision != "float32":
+        # Only single-device graded Yee carries float64; mixed stays refused.
+        if self._precision != "float32" and not (
+            self._precision == "float64" and lane in {"run_nonuniform", "fwd_nonuniform"}
+        ):
             raise NotImplementedError(
                 f"precision={self._precision!r} is currently supported "
                 f"only on the uniform single-device lane; "
@@ -356,13 +346,12 @@ def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
     the realized PEC edge mask, a graded-lane port takes its cell sizes as
     Python floats, the far-field transform reads an NTFF box's frequency
     count. The answer therefore does not depend on the model: staged by
-    an outer trace, and not distributed.
+    an outer trace.
 
     Operations that read a traced input stay recorded, so a gradient is
-    unchanged. The distributed lane is excluded: its ``shard_map`` step
-    cannot run its constant-operand collectives outside the mesh.
+    unchanged. Multi-device advances leave through ``recorded_sharded_call``.
     """
-    return not distributed and _staged_by_an_outer_trace()
+    return _staged_by_an_outer_trace()
 
 
 def _declaration_setup_at_trace_time(entry=None, *, run=False):
@@ -388,7 +377,7 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
 
     The post-admission run entry uses ``devices=`` to select distributed
     calls. Its host-controlled decay/progress and subgrid paths retain their
-    existing execution context; only the fixed single-device scans enter.
+    existing execution context; fixed one- and multi-device scans enter.
     """
     if entry is None:
         return functools.partial(_declaration_setup_at_trace_time, run=run)

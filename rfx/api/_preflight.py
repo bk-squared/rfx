@@ -24,7 +24,7 @@ This file is a facade and holds three things:
    configuration checks.
 2. The module-level RE-EXPORT blocks. Every name any leg moved is re-bound
    here, so the module namespace is exactly as wide as it was before the
-   split (55 names, pinned by set equality) and the 17 files that do
+   split (55 names, pinned by set equality) and the existing readers that do
    ``from rfx.api._preflight import <name>`` keep resolving. Classes are
    re-exported, never redefined: one ``PreflightWarning``, one
    ``_RealizedPEC``.
@@ -64,15 +64,15 @@ from rfx.geometry.csg import Box
 # as module globals of THIS module because three things depend on that
 # namespace and none of them would fail loudly if it quietly emptied out:
 #
-#   * 17 files do ``from rfx.api._preflight import <name>``, including
-#     ``rfx/sparams/_common.py`` (``PreflightWarning``) and
-#     ``validation/research/convergence_floor/fixture.py``;
+#   * Existing facade readers include
+#     ``validation/research/convergence_floor/fixture.py``; S-parameter
+#     helpers now import ``PreflightWarning`` from ``rfx.preflight._common``.
 #   * ``tests/unit/preflight/test_preflight_rasterization.py`` and
 #     ``tests/unit/ports/test_msl_clearance_diagnostic.py`` hold the MODULE
-#     OBJECT and ``monkeypatch.setattr`` a global on it across 9 call sites, so
-#     a name that stops living here aims those patches at a module nobody
-#     reads. (None of the 9 patched names is moved by this leg; the re-export
-#     is what keeps that true for the readers that stayed behind.)
+#     OBJECTS of the defining modules and ``monkeypatch.setattr`` their
+#     globals, so preflight and S-parameter readers share those patch targets.
+#     Those patches do not target this facade; its re-exports preserve
+#     compatibility for the readers that still import names from here.
 #   * ``_PreflightMixin`` below calls every one of these by BARE NAME, so they
 #     have to resolve as globals of this module.
 #
@@ -222,15 +222,15 @@ from rfx.preflight.pec_geometry import (
 # keeps both arrangements working, and it is required either way:
 # ``tests/unit/preflight/test_waveguide_setup_audits.py`` imports
 # ``WAVEGUIDE_DEFAULT_NUM_PERIODS`` from HERE and ``rfx/sparams/waveguide.py``
-# imports ``resolve_waveguide_port_freqs`` from HERE.
+# imports ``resolve_waveguide_port_freqs`` from ``rfx.preflight.waveguide``.
 #
-# Unlike the leg-2 block, this one is also a legitimate patch point -- there
-# is simply nothing patching it. An AST sweep over ``tests/ rfx/ validation/
-# scripts/ examples/`` resolving aliases, ``importlib`` forms and string-form
-# targets finds no ``monkeypatch``/``setattr``/``mock.patch`` site on any of
-# the three names, which is why ``rfx/sparams/waveguide.py`` is left importing
-# the resolver from here rather than being repointed at the leg module the way
-# leg 1 had to repoint its own S-matrix readers.
+# The S-parameter calculator imports the resolver from its defining module
+# so the lower package does not depend on this API facade. A scan of
+# ``tests/`` and ``rfx/`` finds no ``monkeypatch``/``setattr``/``mock.patch``
+# targeting this facade's resolver and expecting the calculator to see it.
+# Patches to ``rfx.preflight.waveguide`` target the defining module directly.
+# The re-export remains available to existing facade readers and the
+# preflight routing entry point below.
 #
 # 3 names move out and 3 come back, so the module namespace
 # ``tests/locks/test_preflight_split_snapshot.py`` pins by set equality is
@@ -1291,7 +1291,7 @@ class _PreflightMixin:
             or self._dx_profile is not None
             or self._dy_profile is not None
         )
-        if self._precision != "float32" and is_nonuniform:
+        if self._precision == "mixed" and is_nonuniform:
             _w.warn(PreflightWarning(
                 f"precision={self._precision!r} was requested on a "
                 "non-uniform mesh (dx/dy/dz profile set), but the "

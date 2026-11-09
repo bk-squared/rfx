@@ -51,7 +51,7 @@ Subgridding is outside the 2.0 supported scope:
 | `boundary="cpml"` / `"pec"` | **supported** | Use CPML for open domains. Its plane-wave reflection is measured per face, depth and frequency (`tests/unit/boundaries/test_cpml_reflection_coefficient.py`). |
 | `boundary="upml"` | **limited** | It absorbs, but its plane-wave reflection is not measured in this repository. Refused on a graded mesh and on several devices. Prefer CPML. |
 | `precision="float32"` | **supported** | The default. |
-| `precision="float64"` / `"mixed"` | **limited** | Uniform mesh, one device. `"float64"` is refused unless JAX 64-bit mode is on. `"mixed"` stores fields in float16 and raises the CPML reflection floor; do not use it for S-parameters. |
+| `precision="float64"` / `"mixed"` | **limited** | `"float64"`: one device, uniform or graded mesh; refused unless JAX 64-bit mode is on. `"mixed"`: uniform mesh, one device. `"mixed"` stores fields in float16 and raises the CPML reflection floor; do not use it for S-parameters. |
 | Isotropic, conductive and Debye/Lorentz materials | **supported** | Dispersive models within their tested subsets. A Kerr (χ³) material is solved on a single-device uniform mesh only. |
 | Metal sheets (`add_thin_conductor`) | **supported** | A lossless sheet on one grid plane. |
 | Lossy sheets and films (`surface_impedance_f0=`, `sigma_bulk` below the metal threshold) | **limited** | A sheet on one node plane, no thicker than one cell, on uniform and graded meshes. A lossy film is also solved on several devices. Not a general dispersive conductor model. |

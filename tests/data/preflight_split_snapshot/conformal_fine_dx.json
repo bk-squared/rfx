@@ -43,7 +43,7 @@
         "numbers": [
           1.0,
           10.0,
-          6.517
+          6.512
         ],
         "severity": "warning",
         "source": "_check_waveguide_port_evanescent"

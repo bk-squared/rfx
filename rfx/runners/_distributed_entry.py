@@ -81,8 +81,9 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
             devices=devices,
         )
     from rfx.api._dispatch import _staged_by_an_outer_trace
+    from rfx.core.jax_utils import _REGION
     if (plan.lane != "run_distributed_nu" and compute_s_params
-            and _staged_by_an_outer_trace()):
+            and (_REGION.get() is not None or _staged_by_an_outer_trace())):
         if _forward_port_s11:
             raise NotImplementedError(
                 "forward(distributed=True) on a uniform mesh cannot compute port S-parameters inside jax.jit "

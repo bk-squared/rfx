@@ -107,7 +107,7 @@ def ntff_owner(grid, box):
                     nodes.append(Node(component, *idx, float(normal*transverse), area))
             channels.append(Channel(face+':'+component, kind, tuple(nodes),
                                     e_time_offset=0., h_time_offset=0.))
-    return Owner('ntff_box:0', 'ntff', tuple(channels), _phase_values(box.freqs))
+    return Owner('ntff_box:0', 'ntff', tuple(channels), _phase_values(box.freqs), source=box)
 
 
 def current_moment_owner(grid, monitor):
@@ -147,4 +147,4 @@ def current_moment_owner(grid, monitor):
                 channels.append(Channel(prefix+name, 'H', nodes, sample_stage=stage,
                                         e_time_offset=0., h_time_offset=float(m.half_step)-.5))
     return Owner('current_moment:0', 'current_moment', tuple(channels),
-                 _phase_values(m.freqs))
+                 _phase_values(m.freqs), source=m)

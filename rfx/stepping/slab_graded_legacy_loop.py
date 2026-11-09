@@ -806,7 +806,8 @@ def run_graded_legacy_slab_loop(
             full_ys = jnp.sum(full_ys, axis=1)
         return final_, full_ys
 
-    final_carry, probe_ts = run_fn(
+    from rfx.stepping.sharded import recorded_sharded_call
+    final_carry, probe_ts = recorded_sharded_call(run_fn,
         carry_init,
         (sharded_materials, sharded_pec_mask, edge_keep,
          debye_coeffs, lorentz_coeffs, cpml_params,
@@ -820,4 +821,3 @@ def run_graded_legacy_slab_loop(
     final_lorentz_sharded = final_carry.get("lorentz") if use_lorentz else None
 
     return final_cpml_sharded, final_debye_sharded, final_lorentz_sharded, final_state_sharded, probe_ts
-

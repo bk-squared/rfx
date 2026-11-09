@@ -158,7 +158,7 @@ def _check_mixed_ladder(
     # Hard guard: every ladder coordinate strictly inside (0, lx)
     # and strictly monotonic (clamp shows up as duplicates).
     # Advisory: probe-0 closer than lambda_g/4 to a domain x-edge.
-    from rfx.api._preflight import msl_min_probe_clearance
+    from rfx.preflight._msl_probe_rules import msl_min_probe_clearance
     _lx_dom = float(self._domain[0])
     _clear = msl_min_probe_clearance(float(self._freq_max))
     for pe, pxs in zip(entries, probe_xs):

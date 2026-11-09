@@ -231,6 +231,7 @@ def _g5_call(case, monkeypatch, error):
         return lambda: coax_kernel_conductors(sim, None, None, None, (), (), root=root).stamp_check_findings
     if case == "cutoff":
         from rfx.preflight import waveguide
+        monkeypatch.setattr(waveguide, "_preflight_aperture_cells", lambda *a: {"x": 2, "y": 2})
         monkeypatch.setattr(waveguide, "resolve_waveguide_port_freqs", fail)
         entry = SimpleNamespace(direction="+z", mode_profile="discrete", n_modes=2)
         grid = SimpleNamespace(cells=lambda axis: [0.001])

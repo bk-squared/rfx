@@ -20,8 +20,6 @@ FREQS = np.array([3e9, 5e9, 7e9])
 JAX012_HIGH_FACE_XFAILS = frozenset({
     ('i', 2, 'pmc', 'uniform_run'),
     ('i', 2, 'pmc', 'uniform_forward'),
-    ('ii', 2, 'pmc', 'uniform_run'),
-    ('ii', 2, 'pmc', 'uniform_forward'),
 })
 
 
