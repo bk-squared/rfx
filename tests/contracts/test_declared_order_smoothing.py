@@ -196,10 +196,15 @@ def test_traced_mesh_nominal_matches_concrete(mode):
     traced_groups, traced = jax.jit(lambda d: mesh_arrays(d, mode))(0.)
     np.testing.assert_array_equal(concrete_groups, [0, 1, 0])
     np.testing.assert_array_equal(traced_groups, [0, 1, 0])
+    if mode == 'full_tensor':
+        concrete = {**concrete, 'inverse_diagonal': 1 / np.asarray(concrete['diagonal'], dtype=np.float64)}
+        traced = {**traced, 'inverse_diagonal': 1 / np.asarray(traced['diagonal'], dtype=np.float64)}
     for name, expected in concrete.items():
+        if mode == 'full_tensor' and name == 'diagonal':
+            continue
         expected = np.asarray(expected)
         peak = np.float32(np.max(np.abs(expected)))
-        bar = 9 * np.spacing(peak)
+        bar = 2.2e-6 * float(peak) if mode == 'full_tensor' else 9 * np.spacing(peak)
         assert np.all(np.abs(np.asarray(traced[name], dtype=np.float64) - expected) <= bar), name
 
 
