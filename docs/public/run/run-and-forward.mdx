@@ -105,8 +105,8 @@ Use a fixed `n_steps` in closed structures and in convergence studies.
 stored in float16) or `"float64"`. For float64, build and run the simulation
 inside `with jax.enable_x64():`; without it rfx raises instead of computing in
 float32. Do not switch 64-bit mode on for the whole process: it changes every
-JAX array in it. Float64 runs on a uniform mesh on one device only; the other
-solver paths refuse it, and so do some calculators on a uniform mesh
+JAX array in it. Float64 runs on one device, on a uniform or graded mesh;
+multi-device and subgridded runs refuse it, and so do some calculators
 (material sweeps, the coaxial calculators, material fitting).
 
 ### Snapshots
@@ -160,7 +160,7 @@ finds them equal for every combination both calls accept
 | Input | Solver path | Instead |
 |---|---|---|
 | `precision="float64"` outside `jax.enable_x64()` | all | build and run inside the block |
-| `precision="float64"` | graded mesh, multi-device, subgridded | a uniform mesh on one device |
+| `precision="float64"` | multi-device, subgridded | one device, on a uniform or graded mesh |
 | `until_decay` | multi-device, subgridded, a graded mesh with closed boundaries, a plane wave at an angle | `n_steps` |
 | `forward(distributed=True)` with override or design arguments, checkpoint arguments, `n_warmup`, `emit_time_series=False`, port S inside `jax.jit`, or with a gradient through port S | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` for the permittivity, conductivity and PEC overrides |
 | `forward()` with `Boundary(conformal=True)` | all | `run()` |

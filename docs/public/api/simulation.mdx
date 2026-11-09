@@ -44,7 +44,7 @@ sim = Simulation(
 | `cpml_layers` | Absorber thickness in cells (default 16). rfx adds the absorber **outside** `domain` on each CPML face, so the whole domain is interior. Keep sources and structures a few cells from its edge. |
 | `dx_profile`, `dy_profile`, `dz_profile` | Cell sizes along an axis, for a graded mesh. See [Non-Uniform Mesh](/rfx/model/domain-mesh/). |
 | `mode` | `"3d"` (default), `"2d_tmz"` (Ez, Hx, Hy) or `"2d_tez"` (Hz, Ex, Ey). |
-| `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). The last two run on the uniform single-device solver only. |
+| `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). Float64 runs on one device, on a uniform or graded mesh; mixed on a uniform mesh on one device. |
 | `pec_occupancy_model` | `"edge_keep"` (default) scales the E-edge update; `"kottke"` converts occupancy to an inverse-permittivity tensor on single-device uniform `forward()` and topology. Graded `forward()` (including distributed) refuses `"kottke"` with an occupancy input. Uniform distributed `forward()` refuses occupancy overrides; `run()` has no occupancy input. |
 | `solver` | `"yee"` (default). `"adi"` was removed in 2.1 and is refused by name. |
 | `stencil_order` | `2` (default) or `4`. Order 4 only runs on a uniform, PEC or periodic, non-dispersive model. |
