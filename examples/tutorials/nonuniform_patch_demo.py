@@ -99,6 +99,10 @@ with the project) this script prints:
         3.7066 GHz  Q = 118.5   TM02 on the 38 mm width
         settling -40.7 dB
 
+and run()'s run-end check warns "run ended at -39.2 dB of peak — ring-down
+truncated; Harminv/DFT/NTFF quantities may carry transient error" (the code
+of 2026-10-11 printed no such warning).
+
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
 """
@@ -467,7 +471,8 @@ def main() -> None:
     # excited; the slowest decayer left is TM02 (3.7062 GHz, Q = 115.1), and
     # 200 periods measured -42.5 dB (VESSL 369367266090).
     # On current main TM02 reads 3.7066 GHz, Q = 118.5, and 200 periods measure
-    # -40.7 dB (2026-11-09): 0.7 dB inside the -40 dB bar.
+    # -40.7 dB (2026-11-09): 0.7 dB inside the -40 dB bar, while run()'s own
+    # run-end check warns "run ended at -39.2 dB of peak" (ring-down truncated).
     # Before x/y registration, 200 periods measured -41.4 dB (VESSL
     # 369367259280). That cleared the -40 dB
     # bar, but by 1.4 dB, which is less margin than the number below was chosen

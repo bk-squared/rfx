@@ -109,8 +109,8 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   before #1546; openEMS's value is
   taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.75 dBi at its
   2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
-  the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
-  too is a measurement rather than a pass.  The pre-#1375 board printed
+  tolerance the former far-field lock carried (it solved a different board and was removed),
+  so this too is a measurement rather than a pass.  The pre-#1375 board printed
   6.72 dBi, the pre-contract board 7.39 dBi (against the former openEMS
   6.79 dBi: -0.07 dB and +0.60 dB).  The openEMS reference above uses this
   script's air distances (84 mm above the patch); it runs to openEMS's energy
