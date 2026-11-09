@@ -244,11 +244,22 @@ Tracker: #1632
 
 Tracker: #2436
 
-`jax.grad`, `jax.jit` and `jax.vmap` over a material's `eps_r` now run through `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"` (uniform mesh); `"full_tensor"` refuses a traced `eps_r` (#2441; see the full-tensor entry on moving a box face across a grid node).
+`jax.grad`, `jax.jit` and `jax.vmap` over a material's `eps_r` now run through `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"` (uniform mesh); `"full_tensor"` refuses a traced `eps_r` (#2441; see the full-tensor entry on non-Box shapes).
 With the default `skip_preflight=False`, `forward()` with a traced `eps_r` still stops in preflight with a `ConcretizationTypeError` at `rfx/preflight/mesh.py:295`, smoothing on or off: the mesh check reads the permittivity as a Python number.
 Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a concrete value.
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
+
+### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
+
+Tracker: #2441
+
+The full-tensor build gave each node one plane, the nearest face. At a box edge on a grid node, or on the bisector of a box edge, rounding chose the face and the model jumped: on main 5150ed340 a face moved by 1e-12 m changed the 20-step probe loss of an eps_r 10 box by 15 %.
+Fixed for axis-aligned Boxes, also overlapping ones: a node within 1.25 times the reach of its edge supports (1.53 cells on a uniform mesh, from the realized cell sizes on a graded one) of a Box takes, on each support, the exact content of the Boxes that meet it, painted in declared order as the assembled model paints them. On the on-node and the bisector box scenes a face moved by 1e-12 m changes no diagonal value by more than one float32 step. Every node farther from all Boxes keeps the one-plane values bit for bit.
+Next to a non-Box shape the exact and the one-plane triplets are blended over one cell, with the weight rising from 0 at the reach from the shape's bounding box to 1 one cell farther; within the reach the one-plane rule stays, with its jumps where a box face plane ties. Measured on an eps_r 10 box beside an eps_r 10 sphere of radius 1.5 mm whose bounding box sits at the reach, half a cell and one cell beyond it, the sphere moved by 2e-9 m: no diagonal value changes by more than the one-plane build changes it plus 1.7e-6 of the value (uniform and 1.0 / 0.8 mm graded meshes); 26 to 50 nodes are blended; the 20-step loss does not change in float32.
+Where a later Box of one permittivity sits inside an earlier Box of another, the triplets now carry the later Box's value; a diagonal cell whose four end triplets and Yee midpoint are all bulk still takes the diagonal smoother's value, which follows the grouping by permittivity value (inside the later box the diagonal reads 10.2 on edges whose ends are all bulk, and values from 4 to 10.2 on edges near its faces). `subpixel_smoothing=True` and `"kottke_pec"` keep that grouping everywhere.
+A traced permittivity with `"full_tensor"` is refused by name in any scene. With a Box in the scene a traced shape coordinate or mesh profile is also refused by name: the scope of the exact content is decided on concrete coordinates and realized cell sizes, and under a trace the build runs in float32 (plain and `jax.jit` losses 9.7×10⁻⁴ apart with a traced sphere radius beside a concrete εr 2 box, 8.8×10⁻³ with a traced permittivity on an εr 4 box). This is a capability change: main admitted a traced Box coordinate, and its build equalled the host build in shared-face scenes and moved a plain-versus-jit loss by up to 9.65×10⁻⁴ elsewhere (a traced sphere radius beside a Box); restoring it with the exact content formed on traced coordinates is #2473. More than eight boxes meeting one edge support are refused by name. Use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
+→ [#2473](https://github.com/bk-squared/rfx/issues/2473)
 
 ### Subpixel smoothing does not see a gap thinner than half a cell between two dielectric volumes.
 
@@ -274,23 +285,6 @@ small block moves the strongest resonance by 2.0 % with `subpixel_smoothing=True
 Measured for `subpixel_smoothing=True`; `"kottke_pec"` and `"full_tensor"` use the same grouping and are not measured.
 What to do: until the fix, do not repeat an εr value across nested boxes (4.0 and 4.001 are kept apart), or switch
 smoothing off.
-
-### With `subpixel_smoothing="full_tensor"`, moving a box face across a grid node by 1e-12 m changes the result by percent.
-
-Tracker: #2441
-
-The full-tensor permittivity jumps where a box face crosses a grid node: the value with the face on the node differs
-from the limit as the face moves outward. Measured in a 12 mm PEC box at dx 1 mm, 20 steps: moving one face 1e-12 m
-outward changes the summed squared probe loss by 1.5 % at box εr 4 and 15 % at εr 10; moving it inward changes
-nothing. The same tie falls on the bisector plane of every box edge, so a face off the nodes is no remedy (6.2 % at
-εr 10 with no face on a node). Two boxes whose coordinates differ only by floating-point rounding can therefore give
-results that differ by percent, a shape gradient across such a position is the derivative of a jump, and a `jax.jit`
-or `jax.grad` run can solve another model than the plain run: under a trace the build runs in float32 and a face on a
-node falls on the other side (plain and `jax.jit` losses 8.8×10⁻³ apart with a traced permittivity on an εr 4 box,
-9.7×10⁻⁴ with a traced sphere radius beside an εr 2 box). A traced permittivity with `"full_tensor"` is therefore
-refused by name; use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
-`subpixel_smoothing=True` and `"kottke_pec"` are continuous at these positions. Which side is the right model is not established. What to do: for a geometry or gradient study, use `subpixel_smoothing=True`, or check a
-full-tensor result with its box faces moved by a small fraction of a cell.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
