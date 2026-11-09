@@ -39,7 +39,7 @@ def observe_times():
         code, local = frame.f_code, frame.f_locals
         slots = {source_end_step.__code__: ('record-end', 'times'),
                  _validate_cfg_unresolved_pulse.__code__: ('preflight', 'times'),
-                 _realized.sources.__code__: ('realized source', 'raw'),
+                 _realized.sources.__code__: ('realized source', 'times'),
                  line_source_value.__code__: ('TFSF', 't'),
                  uniform_source_table.__code__: ('uniform source', 'times'),
                  current_source_samples.__code__: ('current source', 'times'),

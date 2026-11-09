@@ -181,7 +181,8 @@ def sources(grid, materials, specs, site, *, dt=None):
     n = len(tables[0])
     from rfx.sources._sampling import field_time_step
     step = field_time_step(grid.dt if dt is None else dt, ACTIVE.sim._precision)
-    raw = jax.vmap(pe.waveform)(jnp.arange(n, dtype=jnp.float32) * step)
+    times = jnp.arange(n, dtype=jnp.float32) * step
+    raw = jax.vmap(pe.waveform)(times)
     ACTIVE.observe(site, dict(waveforms=tables, raw_waveform=raw,
                              materials=materials._replace(components=None)),
                    metadata=dict(grid=grid, cells=cells, declaration=pe))
