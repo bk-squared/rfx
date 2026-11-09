@@ -515,6 +515,8 @@ def _build_full_scan_fn(
     #     sheet-FREE model. The sequential fallback runs Simulation.run()
     #     per value, which applies the ctx (batch-invariant by
     #     construction there).
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "vmap_sweep batched kernel")
     from rfx.materials.thin_conductor import has_f0_sheets
     if has_f0_sheets(getattr(sim, "_thin_conductors", None)):
         return None, None

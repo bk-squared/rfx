@@ -524,6 +524,8 @@ def differentiable_material_fit(
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(sim, "differentiable material fit")
         _refuse_f0(sim._thin_conductors, "differentiable material fit")
         _require_supported_fixture(sim)
         if _validate_only:

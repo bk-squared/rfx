@@ -139,6 +139,8 @@ def run_uniform(
     # v1 fences for the surface-impedance sheet operator (loud, never
     # silent): the operator replaces the standard isotropic E update at its
     # edges, so lanes that swap that update out are refused.
+    from rfx.model.wall_loss import admit_wall_loss
+    admit_wall_loss(sim, "run_uniform", smoothing=subpixel_smoothing, conformal=conformal_pec)
     if sheet_specs:
         if sim._boundary == "upml":
             raise ValueError(
@@ -620,6 +622,7 @@ def run_uniform(
     # PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
     sheet_ctx = conductors.sheet_context(pec_edge_masks)
+    sheet_ctx = assemble_wall_loss(sim, conductors, sheet_ctx, lane="run_uniform")
     if sim._tfsf is not None and sim._tfsf.closed_box:
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         validate_realized_vacuum_boundary(
@@ -890,3 +893,9 @@ def run_uniform(
         wire_port_sparams=(sim_result.wire_port_sparams if keep_wire_port_sparams else None),
         lumped_port_sparams=sim_result.lumped_port_sparams,
     )
+
+
+def assemble_wall_loss(sim, conductors, sheet_ctx, *, lane):
+    """Shared uniform run/forward wall assembly at final conductor ownership."""
+    from rfx.model.wall_loss import build_wall_operator
+    return build_wall_operator(sim, conductors, sheet_ctx, lane=lane)

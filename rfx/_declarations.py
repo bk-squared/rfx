@@ -15,6 +15,7 @@ DECLARATIONS = (
     ("_geometry", "entries"),
     ("_thin_conductors", "entries"),
     ("_pinned_sheets", "entries"),
+    ("_wall_losses", "entries"),
     ("_ports", "entries"),
     ("_waveguide_ports", "entries"),
     ("_msl_ports", "entries"),

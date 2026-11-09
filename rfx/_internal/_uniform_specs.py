@@ -400,6 +400,7 @@ class _StepContext:
     current_moments: Any = None
     curl_boundary: Any = None
     pec_faces_frozen: Any = frozenset()
+    wall_loss_faces: Any = frozenset()
     pmc_faces_frozen: Any = frozenset()
 
     # ---- pre-extracted metadata ----

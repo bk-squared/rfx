@@ -2560,6 +2560,12 @@
     "add_vector_probe": [
       "position"
     ],
+    "add_wall_loss": [
+      "sigma_bulk",
+      "f0",
+      "shape",
+      "faces"
+    ],
     "add_waveguide_port": [
       "x_position",
       "x_range",

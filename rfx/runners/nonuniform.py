@@ -627,6 +627,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     sim._require_no_refinement_on_the_nonuniform_lane()
     from rfx.api import Result
 
+    from rfx.model.wall_loss import admit_wall_loss, build_wall_operator
+    admit_wall_loss(sim, lane, smoothing=subpixel_smoothing, conformal=conformal_pec)
     from rfx.runners._smoothing_admission import refuse_nonuniform_smoothing
     refuse_nonuniform_smoothing(sim, subpixel_smoothing=subpixel_smoothing,
         eps_override=eps_override, pec_occupancy=pec_occupancy_override)
@@ -1128,6 +1130,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "not supported: the sheet operator assumes the "
                 "isotropic E update at its edges. Disable "
                 "subpixel_smoothing or drop the f0 sheet.")
+
+    sheet_ctx = build_wall_operator(sim, conductors, sheet_ctx, lane=lane)
 
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.

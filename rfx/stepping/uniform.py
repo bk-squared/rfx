@@ -33,10 +33,10 @@ if TYPE_CHECKING:
     from rfx._internal._uniform_specs import _StepContext
 
 
-def apply_pec_faces(state, faces):
+def apply_pec_faces(state, faces, *, normal_ghost_faces=()):
     """Retain both the lane and boundary-module wall observation points."""
     from rfx.boundaries import pec as pec_walls
-    return pec_walls.apply_pec_faces(state, faces)
+    return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces)
 
 
 @dataclass
@@ -369,6 +369,7 @@ def make_uniform_step(
             # on the same H^{n+1/2} the E update consumed (H is unchanged
             # between the E update and this slot).
             if ctx.use_sheet_impedance:
+                frame.st = apply_pec_faces(frame.st, ctx.wall_loss_faces)
                 from rfx.core.yee import curl_h as _curl_h
                 _scd = jnp.promote_types(frame.st.ex.dtype, jnp.float32)
                 _curls = _curl_h(
@@ -384,7 +385,8 @@ def make_uniform_step(
                     frame.st = pec_walls.apply_pec_faces(
                         frame.st, ctx.pec_faces_frozen, **face_args)
                 else:
-                    frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen)
+                    frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen,
+                                               normal_ghost_faces=ctx.wall_loss_faces)
 
         if ctx.use_lumped_rlc:
             frame.st, frame.new_rlc_states = ctx.update_rlc_elements(

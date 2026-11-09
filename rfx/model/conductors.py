@@ -627,7 +627,10 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
         if edges is not None:
             edges = _realized.ACTIVE.apply('conductors', 'pec_edges', edges)
             if edges is not conductors.pec_edges and conductors.sheet_operator is not None:
-                conductors = replace(conductors, sheet_operator=conductors.sheet_context(edges))
+                from rfx.model.wall_loss import build_wall_operator
+                conductors = replace(conductors, pec_edges=edges)
+                operator = build_wall_operator(sim, conductors, conductors.sheet_context(edges), lane=lane)
+                conductors = replace(conductors, sheet_operator=operator)
             conductors = replace(conductors, pec_edges=edges)
             _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
     from rfx.model.realization_table import finish_table

@@ -410,6 +410,8 @@ def topology_optimize(
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # Refuse unsupported surface-impedance sheets at entry.
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "topology-optimization")
     _refuse_f0(sim._thin_conductors, "topology-optimization")
     from rfx.runners._admission import admit
     admit(sim, "topology_optimize")

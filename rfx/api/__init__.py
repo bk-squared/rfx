@@ -153,6 +153,7 @@ from rfx.api._compile import _CompileMixin  # noqa: E402
 # ---------------------------------------------------------------------------
 
 from rfx.api._execute import _ExecuteMixin  # noqa: E402
+from rfx.api._wall_loss import _WallLossMixin
 from rfx.api._mesh import _MeshMixin  # noqa: E402
 from rfx.api._artifacts import _ArtifactsMixin  # noqa: E402
 from rfx.api._ad_memory import (  # noqa: E402
@@ -185,6 +186,7 @@ _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 # ---------------------------------------------------------------------------
 
 class Simulation(
+    _WallLossMixin,
     _MeshMixin,
     _PreflightMixin,
     _SparamMixin,
@@ -1099,61 +1101,6 @@ class Simulation(
             surface_impedance_f0=surface_impedance_f0,
         )
         self._thin_conductors.append(tc)
-        return self
-
-    def add_pinned_sheet(
-        self,
-        *,
-        plane_index: int,
-        i_range: tuple[int, int],
-        j_range: tuple[int, int],
-        normal_axis: int = 2,
-        sigma_bulk: float = 5.8e7,
-        thickness: float = 35e-6,
-        eps_r: float = 1.0,
-        surface_impedance_f0: float | None = None,
-        name: str | None = None,
-    ) -> "Simulation":
-        """Declare a thin PEC conductor by NODE INDICES instead of metres.
-
-        ``add_thin_conductor`` draws metal in metres, and the grid then
-        decides which node lines that reaches. This draws it on the node
-        lines directly: the conductor occupies node ``plane_index`` along
-        ``normal_axis`` and the inclusive node ranges ``i_range`` /
-        ``j_range`` on the other two axes, in increasing axis order — for
-        the default ``normal_axis=2`` that is ``i_range`` on x and
-        ``j_range`` on y.
-
-        Indices are INTERIOR (unpadded) node indices: interior node ``i``
-        sits at ``i * dx`` from the domain origin on a uniform mesh, and is
-        the ``i``-th interior node on a graded one. Absorber padding is
-        added when the sheet is realized.
-
-        Why it exists: the conductor's PHYSICAL size is then whatever the
-        cells between those nodes add up to, so stretching the cells makes
-        the metal longer without moving it off the lattice and without any
-        sub-cell metal. That is what lets ``jax.grad`` reach a patch edge
-        through ``dx_profile`` / ``dy_profile`` / ``dz_profile`` — a metric
-        sheet on a mesh that is a JAX tracer is still refused, because its
-        corners cannot be read off a traced node line.
-
-        The declaration is mesh-independent by construction, so the same
-        call gives the same footprint on the uniform and non-uniform lanes,
-        traced or not. A range spanning a single node line is refused: one
-        node line carries no E edge, so the metal would carry no current.
-
-        Only the lossless PEC sheet is supported (``sigma_bulk >= 1e6``,
-        ``surface_impedance_f0`` unset); ``thickness`` is accepted for
-        signature compatibility with :meth:`add_thin_conductor` and is not read.
-        ``eps_r`` must stay at 1; the sheet uses its cells' permittivity.
-        Declare surrounding dielectric with ``add(..., material=...)``.
-        """
-        from rfx.materials.thin_conductor import PinnedSheet
-        self._pinned_sheets.append(PinnedSheet(
-            normal_axis=normal_axis, plane_index=plane_index,
-            i_range=tuple(i_range), j_range=tuple(j_range),
-            sigma_bulk=sigma_bulk, thickness=thickness, eps_r=eps_r,
-            surface_impedance_f0=surface_impedance_f0, name=name))
         return self
 
     # ---- ports ----

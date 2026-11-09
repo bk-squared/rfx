@@ -157,6 +157,8 @@ class _AdMemoryMixin:
         # whole run. Count these separately from the six material arrays above: the
         # sheet touches neither pec_mask nor materials.sigma.
         sheet_bytes = 0
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(self, "AD memory estimate")
         if has_f0_sheets(getattr(self, "_thin_conductors", ())):
             sheet_bytes = cells * (3 * 1 + bytes_per_cell)
         forward_bytes = field_bytes + material_bytes + cpml_bytes + sheet_bytes
