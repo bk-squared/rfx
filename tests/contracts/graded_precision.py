@@ -33,6 +33,11 @@ def check_graded_storage(monkeypatch, entry, precision):
         return state
 
     def builder(ctx, *args, **kwargs):
+        if precision == 'float64':
+            for name in ('dt', 'inv_dx', 'inv_dy', 'inv_dz', 'inv_dx_h', 'inv_dy_h', 'inv_dz_h'):
+                assert getattr(ctx.grid, name).dtype == expected, name
+            assert ctx.dt.dtype == expected
+            assert all(a.dtype == expected for a in jax.tree.leaves(ctx.cpml_params))
         step = make_step(ctx, *args, **kwargs)
 
         @wraps(step)

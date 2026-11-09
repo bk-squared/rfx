@@ -729,7 +729,8 @@ def apply_cpml_e(
     # float is weak-typed in BOTH numpy and
     # JAX, so the coefficients follow the ambient material dtype
     # (promote, never pin).
-    dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
+    from rfx.boundaries.electric_coefficient import coefficient_dt
+    dt = coefficient_dt(grid.dt)
     # Material-aware CPML: use local eps_r so guided modes in dielectric
     # waveguides see an impedance-matched absorber (equivalent to UPML).
     # Falls back to free-space eps_0 when materials is None.
@@ -1105,7 +1106,8 @@ def apply_cpml_h(
     # float is weak-typed in BOTH numpy and
     # JAX, so the coefficients follow the ambient material dtype
     # (promote, never pin).
-    dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
+    from rfx.boundaries.electric_coefficient import coefficient_dt
+    dt = coefficient_dt(grid.dt)
     from rfx.model.materials import h_components
     magnetic_materials = materials if hasattr(materials, "mu_r") else None
     if periodic is None:

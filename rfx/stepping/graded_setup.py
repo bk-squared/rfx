@@ -403,6 +403,13 @@ def _build_nu_scan(
                 localized=(("sources", sources), ("waveguide_ports", waveguide_ports),
                            ("wire_ports", wire_ports), ("rlc_metas", rlc_metas)))
 
+    from rfx.stepping.graded_precision import field_grid, field_operands
+    step_grid = field_grid(grid, field_dtype)
+    dt = step_grid.dt
+    if use_cpml:
+        cpml_grid = step_grid
+        cpml_params = field_operands(cpml_params, field_dtype)
+
     # surface-impedance sheet: exponential-stepping A/B built once
     # from the FINAL scan materials; applied per step at tangential edges
     # in step_fn (after apply_pec_mask, before sources/DFT sampling).
@@ -420,12 +427,12 @@ def _build_nu_scan(
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
 
-    inv_dx_h = grid.inv_dx_h
-    inv_dy_h = grid.inv_dy_h
-    inv_dz_h = grid.inv_dz_h
-    inv_dx = grid.inv_dx
-    inv_dy = grid.inv_dy
-    inv_dz = grid.inv_dz
+    inv_dx_h = step_grid.inv_dx_h
+    inv_dy_h = step_grid.inv_dy_h
+    inv_dz_h = step_grid.inv_dz_h
+    inv_dx = step_grid.inv_dx
+    inv_dy = step_grid.inv_dy
+    inv_dz = step_grid.inv_dz
 
     # ---- design box on the graded mesh: fence, then build Ca/Cb ----
     # The SAME resolver the uniform lane runs (rfx.simulation), because the
@@ -542,6 +549,7 @@ def _build_nu_scan(
         waveguide_port_metrics = tuple(
             _waveguide_port_axis_metrics(grid, cfg) for cfg in waveguide_ports
         )
+        waveguide_port_metrics = field_operands(waveguide_port_metrics, field_dtype)
     else:
         waveguide_meta = ()
         waveguide_port_metrics = ()
@@ -578,7 +586,7 @@ def _build_nu_scan(
     invariants = {
         "inv_dx": inv_dx,
         "inv_dx_h": inv_dx_h,
-        "dx_arr": grid.dx_arr,
+        "dx_arr": step_grid.dx_arr,
         "drives": drive_layout(src_meta, src_waveforms.dtype),
         "probe_table": graded_probe_table(prb_meta, grid.shape, dtype=state.ex.dtype),
         "materials": kernel_materials(materials, electric=not (use_debye or use_lorentz), epsilon=aniso_eps is None),
@@ -620,7 +628,7 @@ def _build_nu_scan(
         dt=dt,
         inv_dy_h=inv_dy_h,
         inv_dz_h=inv_dz_h,
-        grid=grid,
+        grid=step_grid,
         use_tfsf=use_tfsf,
         tfsf_cfg=tfsf_cfg if use_tfsf else None,
         use_waveguide_ports=use_waveguide_ports,
@@ -668,7 +676,7 @@ def _build_nu_scan(
         invariants=invariants,
         carry_init=carry_init,
         src_waveforms=src_waveforms,
-        dt=dt,
+        dt=grid.dt,
         sources=sources,
         probes=probes,
         wire_ports=graded_s_ports(wire_ports),
