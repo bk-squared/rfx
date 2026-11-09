@@ -107,7 +107,7 @@ def _axis_dual_sizes(grid, position_ijk: tuple[int, int, int]
     arrs = _nu_cell_arrays(grid)
     if arrs is None:
         return _axis_cell_sizes(grid, position_ijk)
-    from rfx.nonuniform import e_node_dual_spacing_at
+    from rfx.model.graded_grid import e_node_dual_spacing_at
     return tuple(
         float(e_node_dual_spacing_at(arrs[ax], int(position_ijk[ax])))
         for ax in range(3)
@@ -602,7 +602,7 @@ def _axis_node_position(grid, axis: int, index: int) -> float:
     """
     from rfx.geometry.rasterize_grid import (
         coords_from_nonuniform_grid, coords_from_uniform_grid)
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     import numpy as np
 
     if 'xyz'[axis] in getattr(grid, 'periodic_axes', '') and index == grid.shape[axis]:

@@ -841,7 +841,7 @@ def build_coaxial_tem_plane_source_specs(
 
     # Lazy imports so the source helpers stay JIT-friendly for callers that
     # import this module without a full simulation pipeline.
-    from rfx.simulation import MagneticSourceSpec, SourceSpec
+    from rfx._internal._uniform_specs import MagneticSourceSpec, SourceSpec
     from rfx.grid import C0 as _C0
     import jax
     import jax.numpy as jnp
