@@ -32,12 +32,12 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
     arg = (t - cfg.src_t0) / cfg.src_tau
     v_inc = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
 
-    # Preserve the historical sample set: scan step N-1 remains excluded.
-    # Record the retained samples at slot n with the physical stamp.
+    # Each completed step contributes one sample at its physical stamp.
+    # Completed steps 1 through N occupy slots 0 through N-1.
     n_t = cfg.v_probe_t.shape[0]
     # A call before the first step (state.step == 0) has no slot: index n_t is
     # dropped, where -1 would have written the last slot.
-    step = jnp.where((state.step >= 1) & (state.step < n_t),
+    step = jnp.where((state.step >= 1) & (state.step <= n_t),
                      jnp.asarray(state.step, dtype=jnp.int32)-1, n_t)
     return cfg._replace(
         dt=float(dt),
@@ -51,18 +51,18 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
             jnp.asarray(i_ref, cfg.i_ref_t.dtype), mode='drop'),
         v_inc_t=cfg.v_inc_t.at[step].set(
             jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
-        # The count of samples written: the dropped last step is not one.
+        # Count every completed step, up to the allocated record length.
         n_steps_recorded=jnp.maximum(cfg.n_steps_recorded, jnp.minimum(
-            jnp.asarray(state.step, dtype=jnp.int32), n_t - 1)),
+            jnp.asarray(state.step, dtype=jnp.int32), n_t)),
     )
 
 
 def recorded(cfg, name):
     """A port's time record cut to the samples written (no unwritten tail).
 
-    A full scan leaves the last slot unwritten; a reader of the raw record
-    (the settling witness, the source-end search) must not take that zero
-    for a sample, or a source still on at the end reads as having ended.
+    A full scan fills every slot. A record stopped early can have unwritten
+    slots; concrete readers trim them so the settling witness and source-end
+    search do not mistake padding for a source that has ended.
     """
     from rfx.core.jax_utils import is_tracer
     record, count = getattr(cfg, name), getattr(cfg, 'n_steps_recorded', None)
