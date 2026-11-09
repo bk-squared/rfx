@@ -101,3 +101,44 @@ def test_p5c_per_pattern_corner():
     result = sim.run(n_steps=2000, compute_s_params=False, skip_preflight=True)
     assert np.all(np.isfinite(result.time_series))
     record('P5c', dict(bound=bound, corners=observed))
+
+
+@pytest.mark.parametrize('site', ['adjoint', 'design_box', 'f0_sheet', 'openems'])
+def test_p4_feature_presence_refusals(site):
+    """Existing feature fences catch maps without requiring a map-specific message."""
+    if site == 'f0_sheet':
+        from tests.unit.materials.test_sheet_impedance import _cube
+        sim = _cube()
+    else:
+        sim = Simulation(freq_max=6e9, domain=(.006,) * 3, dx=.0005, boundary='pec')
+    pole = drude_pole_map(lambda x, y, z: WP * (1 + x), 2e9)
+    sim.add_material('map', eps_r=1., lorentz_poles=[pole])
+    sim.add(Box((.001,) * 3, (.005,) * 3), material='map')
+    with pytest.raises((ValueError, NotImplementedError), match='Lorentz') as error:
+        if site == 'adjoint':
+            sim.forward(n_steps=4, gradient='adjoint', skip_preflight=True)
+        elif site == 'design_box':
+            sim.forward(n_steps=4, design_box=((.002,) * 3, (.004,) * 3),
+                        design_eps_override=jnp.ones((4, 4, 4)), skip_preflight=True)
+        elif site == 'f0_sheet':
+            sim.forward(n_steps=4, skip_preflight=True)
+        else:
+            from rfx.interop import design_to_dict
+            from rfx.interop.emitters.openems import emit_openems_script
+            # The codec refuses maps first. Inject the declaration into an otherwise
+            # valid document to reach the emitter's independent presence fence.
+            sim._materials['map'].lorentz_poles[:] = []
+            document = design_to_dict(sim)
+            document['materials']['map']['lorentz_poles'] = [pole]
+            emit_openems_script(document)
+    frames = []
+    tb = error.value.__traceback__
+    while tb is not None:
+        frames.append((tb.tb_frame.f_code.co_filename, tb.tb_frame.f_code.co_name))
+        tb = tb.tb_next
+    target = {'adjoint': ('adjoint.py', 'admit_forward_adjoint'),
+              'design_box': ('_execute.py', '_resolve_design_box_override'),
+              'f0_sheet': ('_execute.py', 'forward'),
+              'openems': ('openems.py', '_plan_materials')}[site]
+    assert any(path.endswith(target[0]) and name == target[1] for path, name in frames), frames
+    record(f'P4-{site}', dict(message=str(error.value), frames=frames))

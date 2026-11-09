@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+from contextlib import nullcontext
 
 import jax
 import jax.numpy as jnp
@@ -10,6 +11,7 @@ import pytest
 
 from rfx import Box, GaussianPulse, LorentzPoleMap, Simulation, drude_pole, drude_pole_map
 from tests.unit.materials.test_pole_map_stability_monotone import DOMAIN, DX, GRADED_X
+from tests._x64_compat import enable_x64
 
 WP1, WP2 = 2 * np.pi * np.array([3e9, 2e9])
 LO = (.01235, .00835, .00835)
@@ -23,9 +25,9 @@ def record(name, values):
         Path(folder, name + '.json').write_text(json.dumps(values, indent=2) + '\n')
 
 
-def scene(graded, kind, *, mapped, callable_constant=True):
+def scene(graded, kind, *, mapped, callable_constant=True, precision='float32'):
     sim = Simulation(freq_max=6e9, domain=DOMAIN, dx=DX, cpml_layers=8,
-                     **(dict(dx_profile=GRADED_X) if graded else {}))
+                     precision=precision, **(dict(dx_profile=GRADED_X) if graded else {}))
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     assert grid.shape == (97, 77, 69)
     nodes = []
@@ -78,7 +80,7 @@ class _Captured(Exception):
     pass
 
 
-def capture_scan(sim, steps, monkeypatch, *, forward=False, perturb=False):
+def capture_scan(sim, steps, monkeypatch, *, forward=False, perturb=False, perturbation=None):
     """Capture the actual public lane's scan; pair two scans without storing full histories."""
     import rfx.stepping.uniform_loop as uniform
     import rfx.stepping.graded_loop as graded
@@ -92,6 +94,13 @@ def capture_scan(sim, steps, monkeypatch, *, forward=False, perturb=False):
         coeffs = original(*args, **kwargs)
         c = tuple(v.at[0].set(jnp.where(v[0] > 0, jnp.nextafter(v[0], jnp.float32(jnp.inf)), v[0]))
                   for v in coeffs.c)
+        if perturbation is not None:
+            for old, new in zip(coeffs.c, c):
+                positive = np.asarray(old[0]) > 0
+                step = np.asarray(new[0] - old[0])[positive]
+                if step.size:
+                    perturbation.append(dict(dtype=str(old.dtype), min_step=float(step.min()),
+                                             max_step=float(step.max())))
         return coeffs._replace(c=c)
     with monkeypatch.context() as patch:
         patch.setattr(uniform, 'recorded_scan', capture)
@@ -105,6 +114,30 @@ def capture_scan(sim, steps, monkeypatch, *, forward=False, perturb=False):
                 sim.run(n_steps=steps, checkpoint=False, compute_s_params=False, skip_preflight=True)
     assert len(scans) == 1
     return scans[0]
+
+
+def assert_float64_scan(scan):
+    """Check both sides of the actual body, including every pole-state leaf."""
+    body, initial, xs = scan
+    def check(carry):
+        for value in (*carry['fdtd'][:3], *jax.tree.leaves(carry['lorentz'])):
+            assert value.dtype == jnp.float64, value.dtype
+    check(initial)
+    def checked(carry, x):
+        check(carry)
+        carry, out = body(carry, x)
+        check(carry)
+        return carry, out
+    jax.block_until_ready(jax.jit(lambda: jax.lax.scan(
+        checked, initial, jax.tree.map(lambda v: v[:1], xs)))())
+
+
+def spectral_errors(reference, actual, dt):
+    kernel = np.exp(-2j * np.pi * BINS[:, None] * np.arange(len(reference))[None, :] * dt) * dt
+    expected, got = kernel @ reference, kernel @ actual
+    active = abs(expected) > .01 * abs(expected).max(axis=0, keepdims=True)
+    errors = np.where(active, abs(got - expected) / np.maximum(abs(expected), np.finfo(float).tiny), 0.)
+    return dict(worst=float(errors.max()), errors=errors.tolist(), active=active.tolist())
 
 
 def paired_arrays(reference, actual):
@@ -145,28 +178,53 @@ def test_p1_fields(monkeypatch, graded, callables):
     np.testing.assert_array_equal(reference, actual)
 
 
-@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('graded,precision', [
+    pytest.param(False, 'float32', id='uniform-float32'),
+    pytest.param(True, 'float32', id='graded-float32'),
+    pytest.param(False, 'float64', id='uniform-float64'),
+    pytest.param(True, 'float64', id='graded-float64', marks=pytest.mark.xfail(
+        strict=True, raises=NotImplementedError, reason='graded float64 needs rfx#2538')),
+])
 @pytest.mark.parametrize('pin', ['P2a', 'P2b'])
-def test_p2_staircase(monkeypatch, graded, pin):
-    ref, grid, meta = scene(graded, pin, mapped=False)
+def test_p2_staircase(monkeypatch, graded, pin, precision):
+    with enable_x64() if precision == 'float64' else nullcontext():
+        try:
+            _p2_staircase(monkeypatch, graded, pin, precision)
+        except NotImplementedError as error:
+            assert graded and precision == 'float64' and 'precision' in str(error), str(error)
+            record(f'{pin}-graded-float64-refusal', dict(message=str(error)))
+            raise
+
+
+def _p2_staircase(monkeypatch, graded, pin, precision):
+    ref, grid, meta = scene(graded, pin, mapped=False, precision=precision)
     baseline = capture_scan(ref, 2000, monkeypatch)
-    control = capture_scan(ref, 2000, monkeypatch, perturb=True)
+    perturbation = []
+    control = capture_scan(ref, 2000, monkeypatch, perturb=True, perturbation=perturbation)
+    if precision == 'float64':
+        assert_float64_scan(baseline)
+        assert_float64_scan(control)
     ratio, _, reference, control_probes = paired(baseline, control)
     control_ratio = float(ratio.max())
-    record(f'{pin}-{graded}-control', dict(**meta, control_ratio=control_ratio))
-    assert control_ratio <= .1, f'cannot judge {pin}: control worst ratio {control_ratio} > 0.1'
-    mapped, _, _ = scene(graded, pin, mapped=True)
-    ratio, _, reference, actual = paired(baseline, capture_scan(mapped, 2000, monkeypatch))
-    kernel = np.exp(-2j * np.pi * BINS[:, None] * np.arange(2000)[None, :] * grid.dt) * grid.dt
-    expected, got = kernel @ reference, kernel @ actual
-    active = abs(expected) > .01 * abs(expected).max(axis=0, keepdims=True)
-    errors = np.where(active, abs(got - expected) / np.maximum(abs(expected), np.finfo(float).tiny), 0.)
-    bin_index, probe = np.unravel_index(errors.argmax(), errors.shape)
-    record(f'{pin}-{graded}', dict(**meta, control_ratio=control_ratio, worst_ratio=float(ratio.max()),
-                                   worst_spectral_error=float(errors.max()), bin_hz=float(BINS[bin_index]),
-                                   probe=int(probe), active_bins=int(active.sum())))
-    assert ratio.max() <= 1.
-    assert errors.max() <= 1e-4
+    control_spectrum = spectral_errors(reference, control_probes, grid.dt)
+    record(f'{pin}-{graded}-{precision}-control', dict(**meta, control_ratio=control_ratio,
+           spectrum=control_spectrum, perturbation=perturbation))
+    if precision == 'float64':
+        assert control_spectrum['worst'] <= 1e-10, f'cannot judge {pin}: {control_spectrum}'
+    else:
+        assert control_ratio <= .1, f'cannot judge {pin}: control worst ratio {control_ratio} > 0.1'
+    mapped, _, _ = scene(graded, pin, mapped=True, precision=precision)
+    candidate = capture_scan(mapped, 2000, monkeypatch)
+    if precision == 'float64':
+        assert_float64_scan(candidate)
+    ratio, _, reference, actual = paired(baseline, candidate)
+    spectrum = spectral_errors(reference, actual, grid.dt)
+    record(f'{pin}-{graded}-{precision}', dict(**meta, control_ratio=control_ratio,
+           worst_ratio=float(ratio.max()), spectrum=spectrum))
+    if precision == 'float64':
+        assert spectrum['worst'] <= 1e-9, spectrum
+    else:
+        assert ratio.max() <= 1.
 
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
@@ -203,3 +261,77 @@ def test_p6_traced_forward(monkeypatch, graded):
     ratio = np.divide(difference, allowance, out=np.where(difference > 0, np.inf, 0.), where=allowance > 0)
     record(f'P6-traced-{graded}', dict(**meta, worst_ratio=float(ratio.max())))
     assert ratio.max() <= 1.
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+def test_p2c_time_difference(monkeypatch, graded):
+    ref, _, meta = scene(graded, 'P6', mapped=False)
+    sim, _, _ = scene(graded, 'P6', mapped=True)
+    _, difference, reference, actual = paired(capture_scan(ref, 2000, monkeypatch),
+                                             capture_scan(sim, 2000, monkeypatch))
+    record(f'P2c-time-{graded}', dict(**meta, max_field_difference=float(difference.max()),
+           max_probe_difference=float(np.max(abs(reference - actual)))))
+
+
+def zero_scene(graded, all_zero, scale=1., without=False):
+    sim, grid, meta = scene(graded, 'P1', mapped=True)
+    pole = LorentzPoleMap(0., lambda x, y, z: 1e9 * (1 + 20*y),
+        lambda x, y, z: scale * jnp.where((x < .020) | all_zero, 0., WP1**2))
+    sim._materials['plasma'].lorentz_poles[:] = [] if without else [pole]
+    return sim, grid, meta
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('all_zero', [False, True], ids=['band', 'all'])
+def test_p2c_prime_fields(monkeypatch, graded, all_zero):
+    sim, grid, meta = zero_scene(graded, all_zero)
+    base = capture_scan(sim, 400, monkeypatch)
+    # The interior of the zero-strength band excludes its mixed interface edge.
+    widths = np.asarray(grid.cells(0), float)
+    nodes = np.r_[0., np.cumsum(widths[:-1])]
+    nodes -= nodes[8]
+    zero_x = jnp.asarray((nodes + widths < .020) | all_zero)[None, :, None, None]
+    def measure(scan):
+        body, initial, xs = scan
+        def step(carry, x):
+            carry, out = body(carry, x)
+            magnitude = jnp.max(jnp.stack([jnp.max(jnp.where(zero_x, abs(v), 0.))
+                                         for v in carry['lorentz'][:3]]))
+            return carry, (magnitude, out)
+        return jax.lax.scan(step, initial, xs)[1]
+    polarization, _ = jax.jit(lambda: measure(base))()
+    np.testing.assert_array_equal(polarization, 0.)
+    def traced(scale):
+        candidate, _, _ = zero_scene(graded, all_zero, scale)
+        scan = capture_scan(candidate, 400, monkeypatch, forward=True)
+        polarization, probes = measure(scan)
+        traces = probes[0] if isinstance(probes, tuple) else probes
+        return jnp.sum(traces**2), jnp.max(polarization)
+    # One scalar direction needs no reverse-mode tape of the full domain.
+    energy, gradient, traced_p = jax.jit(lambda scale: jax.jvp(
+        traced, (scale,), (jnp.ones_like(scale),), has_aux=True))(jnp.float32(1.))
+    assert np.isfinite(energy) and np.isfinite(gradient)
+    assert traced_p == 0.
+    equality = None
+    traced_equality_max = None
+    probe_difference = None
+    if all_zero:
+        vacuum, _, _ = zero_scene(graded, all_zero, without=True)
+        reference = capture_scan(vacuum, 400, monkeypatch)
+        _, difference, probes, actual = paired(reference, base)
+        def traced_equality(scale):
+            candidate, _, _ = zero_scene(graded, all_zero, scale)
+            return paired_arrays(reference, capture_scan(candidate, 400, monkeypatch, forward=True))[0]
+        traced_difference = jax.jit(traced_equality)(jnp.float32(1.))
+        equality = float(difference.max())
+        traced_equality_max = float(traced_difference.max())
+        probe_difference = float(np.max(abs(probes - actual)))
+    record(f'P2c-prime-{graded}-{all_zero}', dict(**meta, max_p=float(polarization.max()),
+           traced_max_p=float(traced_p), probe_energy=float(energy), probe_gradient=float(gradient),
+           field_difference_without_pole=equality,
+           traced_field_difference_without_pole=traced_equality_max,
+           probe_difference_without_pole=probe_difference))
+    if all_zero:
+        np.testing.assert_array_equal(difference, 0.)
+        np.testing.assert_array_equal(probes, actual)
+        np.testing.assert_array_equal(traced_difference, 0.)
