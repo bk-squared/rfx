@@ -28,7 +28,7 @@ is the map of what exists.
 | `rfx/probes/` | Probe and monitor code (point probes, DFT planes, flux monitors, the lumped/wire S driver `sparam_driver.py`, settling) |
 | `rfx/materials/` | Material models: Debye, Lorentz, nonlinear, the library, thin conductors |
 | `rfx/api/_sparams.py`, `rfx/sparams/` | S-parameter extraction. `rfx/api/_sparams.py` holds the `_SparamMixin` class `Simulation` inherits; the calculators live per family in `rfx/sparams/` (`coax.py` the four coaxial calculators, `waveguide.py` including its graded-mesh path, `mixed.py`, `msl.py`), shared helpers in `_common.py`, and the `compute_s_matrix` / `s_matrix_lane` entry point in `dispatch.py`. Grep both |
-| `rfx/farfield.py`, `rfx/ntff_surface.py`, `rfx/ntff_sweep.py` | Far-field transform and its sweeps |
+| `rfx/measurement/farfield.py`, `rfx/measurement/ntff_surface.py`, `rfx/ntff_sweep.py` | Far-field transform and its sweeps (`rfx/farfield.py` and `rfx/ntff_surface.py` re-export the names) |
 | `rfx/observables.py` | Differentiable accessor/objective factories on registered DFT-plane probes (`dft_field`, `field_energy`, `field_softmax`) plus `jacobian_fwd` |
 | `tests/` | Canonical usage examples for every API surface — start here |
 | `tests/crossval/` | Cross-solver comparisons against frozen reference records; check a case's docstring for what it judges before citing it as validation |
