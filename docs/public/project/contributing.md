@@ -164,7 +164,7 @@ rfx/
   geometry/          shapes, CAD mesh import, rasterization
   materials/         dispersive and thin-conductor models
   preflight/         the checks behind sim.preflight()
-  farfield.py        near-to-far-field transform
+  measurement/       record readers, near-to-far-field transform
   rcs.py             radar cross section
   optimize.py        gradient-based inverse design
 tests/               the test suite (see above)
