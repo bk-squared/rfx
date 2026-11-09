@@ -491,8 +491,9 @@ _GEOMETRY_FIELDS: dict[str, _F] = {
 # ``_PortEntry`` holds two physically different objects, discriminated only by
 # the ``impedance == 0`` sentinel that ``add_source`` stamps.  The document
 # splits them into ``soft_sources`` and ``lumped_ports``; a soft source records
-# only the three fields ``add_source`` can set.
+# only the fields ``add_source`` can set.
 _SOFT_SOURCE_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "position": _vec(3),
     "component": _STR,
     "waveform": _WAVEFORM,
@@ -550,6 +551,7 @@ def _ports_with_termination_indices(sim, ports):
 
 
 _LUMPED_PORT_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "terminates": _TERMINATES,
     "position": _vec(3),
     "component": _STR,
@@ -563,6 +565,7 @@ _LUMPED_PORT_FIELDS: dict[str, _F] = {
 }
 
 _PROBE_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "position": _vec(3),
     "component": _STR,
 }
@@ -1861,11 +1864,13 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _SOFT_SOURCE_FIELDS,
             what=f"excitations.soft_sources[{index}]",
+            defaults={"allow_in_absorber": False},
         )
         # add_source validates/resolves None at the declaration storage site.
         sim.add_source(
             values["position"], values["component"], waveform=values["waveform"],
             amplitude_kind=values["amplitude_kind"],
+            allow_in_absorber=values["allow_in_absorber"],
         )
         payload["amplitude_kind"] = sim._ports[-1].amplitude_kind
 
@@ -1876,7 +1881,7 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _LUMPED_PORT_FIELDS,
             what=f"excitations.lumped_ports[{index}]",
-            defaults={"radius": None},
+            defaults={"radius": None, "allow_in_absorber": False},
         )
         values["terminates"] = _termination_inputs(sim, values["terminates"])
         sim.add_port(
@@ -1934,9 +1939,11 @@ def simulation_from_design(document: Any) -> Any:
         _entry_list(observables, "probes", what="observables")
     ):
         values = _load_entry(
-            payload, _PROBE_FIELDS, what=f"observables.probes[{index}]"
+            payload, _PROBE_FIELDS, what=f"observables.probes[{index}]",
+            defaults={"allow_in_absorber": False},
         )
-        sim.add_probe(values["position"], values["component"])
+        sim.add_probe(values["position"], values["component"],
+                      allow_in_absorber=values["allow_in_absorber"])
 
     for index, payload in enumerate(
         _entry_list(observables, "dft_planes", what="observables")
@@ -1981,59 +1988,23 @@ def simulation_from_design(document: Any) -> Any:
 # Round-trip self-check
 # ---------------------------------------------------------------------------
 
-def _equal(left: Any, right: Any) -> bool:
-    """Structural equality that treats list and tuple alike.
-
-    Numbers compare with ``==``, so an ``int`` in a hand-written document
-    matches the ``float`` the exporter emits for the same value.
-    """
-    if isinstance(left, dict) or isinstance(right, dict):
-        if not (isinstance(left, dict) and isinstance(right, dict)):
-            return False
-        if set(left) != set(right):
-            return False
-        return all(_equal(left[k], right[k]) for k in left)
-    if isinstance(left, (list, tuple)) or isinstance(right, (list, tuple)):
-        if not (
-            isinstance(left, (list, tuple)) and isinstance(right, (list, tuple))
-        ):
-            return False
-        if len(left) != len(right):
-            return False
-        return all(_equal(a, b) for a, b in zip(left, right))
-    if isinstance(left, bool) or isinstance(right, bool):
-        return left is right
-    return left == right
-
-
-def _first_difference(left: Any, right: Any, path: str = "") -> str | None:
-    """Path of the first structural difference, or None when equal."""
-    if isinstance(left, dict) and isinstance(right, dict):
-        for key in sorted(set(left) | set(right)):
-            here = f"{path}.{key}" if path else key
-            if key not in left:
-                return f"{here} (missing from the rebuilt design)"
-            if key not in right:
-                return f"{here} (missing from the document)"
-            found = _first_difference(left[key], right[key], here)
-            if found is not None:
-                return found
-        return None
-    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
-        if len(left) != len(right):
-            return f"{path} (length {len(left)} rebuilt vs {len(right)} in document)"
-        for index, (a, b) in enumerate(zip(left, right)):
-            found = _first_difference(a, b, f"{path}[{index}]")
-            if found is not None:
-                return found
-        return None
-    if _equal(left, right):
-        return None
-    return f"{path} (rebuilt {left!r} vs document {right!r})"
+from rfx.interop._design_comparison import _equal, _first_difference
 
 
 def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
+    # Older v2 entries omit the absorber opt-in keyword.
+    document = {**document}
+    for section, families in (
+        ("excitations", ("soft_sources", "lumped_ports")),
+        ("observables", ("probes",)),
+    ):
+        document[section] = {**document[section]}
+        for family in families:
+            document[section][family] = [
+                {"allow_in_absorber": False, **entry}
+                for entry in document[section][family]
+            ]
     # Older documents use defaults for optional solver keys they do not carry.
     document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
     if document["solver"]["solver"] == "yee" and "adi_cfl_factor" in document["solver"]:
