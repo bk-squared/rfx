@@ -103,7 +103,8 @@ def test_p9_richardson(monkeypatch, graded):
         assert_float64_scan(captured)
         objective = lambda p: observable(p, 2000, graded, 'float64')
         values, trace = observable(params, 2000, graded, 'float64', with_trace=True)
-        ad = np.asarray(jax.jacrev(objective)(params), float)
+        ad = np.asarray([jax.grad(lambda p: objective(p)[k])(params)
+                         for k in range(len(BINS))], float).T
         fd = []
         for h in (1e-3, 5e-4):
             derivatives = []
@@ -115,11 +116,13 @@ def test_p9_richardson(monkeypatch, graded):
         richardson = (4 * fd[1] - fd[0]) / 3
         control = abs(fd[0] - fd[1]) / abs(richardson)
         error = abs(ad - richardson) / abs(richardson)
-        rounding = abs(ad) * 1e-3 / abs(np.asarray(values))[None, :]
+        rounding = abs(richardson) * 1e-3 / abs(np.asarray(values))[None, :]
+        rounding_ad = abs(ad) * 1e-3 / abs(np.asarray(values))[None, :]
         peak = int(np.argmax(abs(np.asarray(trace)))) + 1
         record(f'P9-{graded}', dict(observable=np.asarray(values).tolist(), ad=ad.tolist(),
                fd_h=fd[0].tolist(), fd_half=fd[1].tolist(), fd_r=richardson.tolist(),
                control=control.tolist(), relative=error.tolist(), rounding=rounding.tolist(),
+               rounding_ad=rounding_ad.tolist(),
                probe_peak_step=peak))
         assert 0 < peak < 2000
         assert np.all(rounding >= 1e-5), f'cannot judge P9 rounding: {rounding}'
