@@ -1,4 +1,4 @@
-"""Point sampling: one gather per component, one sorted channel reduction."""
+"""Static point and rectangular-plane sampling of completed fields."""
 from typing import NamedTuple
 
 import jax
@@ -13,6 +13,37 @@ class ComponentTerms(NamedTuple):
     weights: np.ndarray
 
 
+class BoxTerm(NamedTuple):
+    component: str
+    channel_id: int
+    indices: tuple
+    weights: np.ndarray
+
+
+def _box_terms(nodes, component, channel_id, dtype):
+    """Pack complete rectangular planes; leave all other nodes as points."""
+    if not nodes:
+        return (), nodes
+    coords = np.asarray([(n.i, n.j, n.k) for n in nodes])
+    axis = min(range(3), key=lambda a: len(np.unique(coords[:, a])))
+    boxes, remaining = [], []
+    for plane in sorted(set(coords[:, axis])):
+        group = [n for n in nodes if getattr(n, 'ijk'[axis]) == plane]
+        points = [(n.i, n.j, n.k) for n in group]
+        lo, hi = np.min(points, axis=0), np.max(points, axis=0) + 1
+        shape = hi - lo
+        if (all(shape[a] >= 2 for a in range(3) if a != axis)
+                and len(set(points)) == len(points) == int(np.prod(shape))):
+            weights = np.zeros(tuple(shape), dtype=dtype)
+            for n, point in zip(group, points):
+                weights[tuple(np.asarray(point) - lo)] = n.weight
+            boxes.append(BoxTerm(component, channel_id,
+                                 tuple(slice(int(a), int(b)) for a, b in zip(lo, hi)), weights))
+        else:
+            remaining.extend(group)
+    return tuple(boxes), remaining
+
+
 class SampleTable(NamedTuple):
     """Static host terms in ex, ey, ez, hx, hy, hz order.
 
@@ -24,21 +55,24 @@ class SampleTable(NamedTuple):
     channel_names: tuple[str, ...]
     order: np.ndarray
     segment_ids: np.ndarray
+    boxes: tuple[BoxTerm, ...] = ()
 
 
 def sample_table(owners, *, dtype):
-    """Concatenate point channels in owner order, then each owner's order."""
+    """Compile channels in owner order, packing complete component planes."""
     channels = tuple(c for o in owners for c in o.channels)
-    terms = []
+    terms, boxes = [], []
     for component in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz'):
-        nodes, ids = [], []
+        nodes: list = []
+        ids: list = []
         for channel_id, channel in enumerate(channels):
-            for node in channel.nodes:
-                if node.component[0].upper() != channel.kind:
-                    raise ValueError(f'{channel.name}: {channel.kind} channel reads {node.component}')
-                if node.component == component:
-                    nodes.append(node)
-                    ids.append(channel_id)
+            selected = [n for n in channel.nodes if n.component == component]
+            if selected and component[0].upper() != channel.kind:
+                raise ValueError(f'{channel.name}: {channel.kind} channel reads {component}')
+            packed, points = _box_terms(selected, component, channel_id, dtype)
+            boxes.extend(packed)
+            nodes.extend(points if packed else selected)
+            ids.extend([channel_id] * len(points if packed else selected))
         if nodes:
             weights = [n.weight for n in nodes]
             xp = jnp if any(isinstance(w, jax.core.Tracer) for w in weights) else np
@@ -47,7 +81,7 @@ def sample_table(owners, *, dtype):
                 np.asarray(ids, dtype=np.int32), xp.asarray(weights, dtype=dtype)))
     ids = np.concatenate([t.channel_ids for t in terms]) if terms else np.empty(0, np.int32)
     order = np.argsort(ids, kind='stable').astype(np.int32)
-    return SampleTable(tuple(terms), len(channels), tuple(c.name for c in channels), order, ids[order])
+    return SampleTable(tuple(terms), len(channels), tuple(c.name for c in channels), order, ids[order], tuple(boxes))
 
 
 def gather(state, table):
@@ -88,7 +122,26 @@ def combine(samples, table):
 
 def project(state, table):
     """Sample completed fields and evaluate all channels together."""
-    return combine(gather(state, table), table)
+    if not table.boxes:
+        return combine(gather(state, table), table)
+    values: list = [None] * table.n_channels
+    for component in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz'):
+        field = getattr(state, component)
+        terms = [(b.channel_id, b.indices, b.weights) for b in table.boxes if b.component == component]
+        for t in table.components:
+            if t.component == component:
+                terms.extend((int(c), tuple(int(i) for i in p), w)
+                             for c, p, w in zip(t.channel_ids, zip(*t.indices), t.weights))
+        axes = {b.channel_id: next(a for a, s in enumerate(b.indices) if s.stop-s.start == 1)
+                for b in table.boxes if b.component == component}
+        def plane(term):
+            channel, indices, _ = term
+            index = indices[axes.get(channel, 0)]
+            return channel, index.start if isinstance(index, slice) else index
+        for channel, indices, weights in sorted(terms, key=plane):
+            value = jnp.sum(field[indices] * jnp.asarray(weights, dtype=field.dtype))
+            values[channel] = value if values[channel] is None else values[channel] + value
+    return jnp.stack([jnp.asarray(0, state.ex.dtype) if v is None else v for v in values])
 
 
 def port_owners(grid, specs, *, nu, boundary):

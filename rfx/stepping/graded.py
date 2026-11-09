@@ -339,23 +339,16 @@ def make_graded_step(
         frame.st = inject_drives(frame.st, frame.invariants["drives"], frame.src_vals)
 
     def after_sources(frame: GradedFrame):
-        # Waveguide-port injection + DFT probe accumulation. The dx
-        # arg is unused by the per-cell-weighted integrals (cfg already
-        # stores u_widths/v_widths), but kept in the function signature
-        # for back-compat. It is handed the port's own primal cell rather
-        # than the grid's boundary scalar so that nothing here reads a
-        # scalar the port does not sit on; because the callee ignores it,
-        # no recorded number moves either way.
+        # Record the completed fields after the canonical source corrections.
         frame.new_waveguide_port_accs = None
         if ctx.use_waveguide_ports:
-            from rfx.measurement.waveguide_modal import (
-                update_waveguide_port_probe,
-            )
+            from rfx.measurement.modal import write_waveguide_record
+            waveguide_values = project(frame.st, frame.invariants['waveguide_table'])
             frame.new_waveguide_port_accs = []
-            for accs, cfg_meta, _m in zip(
+            for port, (accs, cfg_meta, _m) in enumerate(zip(
                 frame.carry["waveguide_port_accs"], ctx.waveguide_meta,
                 ctx.waveguide_port_metrics,
-            ):
+            )):
                 cfg = cfg_meta._replace(
                     v_probe_t=accs[0],
                     v_ref_t=accs[1],
@@ -365,7 +358,7 @@ def make_graded_step(
                     n_steps_recorded=accs[5],
                 )
                 # TFSF-style corrections applied earlier at canonical slots.
-                cfg_updated = update_waveguide_port_probe(cfg, frame.st, ctx.dt, _m[0])
+                cfg_updated = write_waveguide_record(cfg, waveguide_values[4*port:4*port+4], frame.st.step, ctx.dt)
                 frame.new_waveguide_port_accs.append((
                     cfg_updated.v_probe_t,
                     cfg_updated.v_ref_t,
