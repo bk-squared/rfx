@@ -62,6 +62,8 @@ def measure_normal_incident_spectrum(
     its own replay (``tfsf_oblique_open.measure_incident_spectrum``).
     """
     from jax import lax
+    from rfx.sources._sampling import field_time_step
+    dt = field_time_step(dt, (state.e1d if hasattr(state, "e1d") else state.ex).dtype)
 
     if getattr(cfg, "closed_box", False):
         from rfx.sources.tfsf_discrete_plane_wave import normal_incident_spectrum
@@ -158,11 +160,13 @@ def measure_incident_spectrum(
     ref = int(round(((cx * cfg.cos_theta + cy * cfg.sin_theta) * dx)
                     / cfg.d_aux + cfg.src_idx))
 
-    ts = jnp.arange(n_steps, dtype=jnp.float32) * cfg.dt
+    from rfx.sources._sampling import field_time_step
+    dt = field_time_step(cfg.dt, state.e1d.dtype)
+    ts = jnp.arange(n_steps, dtype=jnp.float32) * dt
 
     def _step(st, t):
-        st = update_tfsf_1d_h(cfg, st, cfg.dx_1d, cfg.dt)
-        st = update_tfsf_1d_e(cfg, st, cfg.dx_1d, cfg.dt, t)
+        st = update_tfsf_1d_h(cfg, st, cfg.dx_1d, dt)
+        st = update_tfsf_1d_e(cfg, st, cfg.dx_1d, dt, t)
         return st, st.e1d[ref]
 
     _, rec = lax.scan(_step, zero, ts)

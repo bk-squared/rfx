@@ -78,11 +78,15 @@ def generate(builders):
             if lane not in admitted:
                 assert row in builders, f'S0 missing refusal builder: {row}'
                 cells.append(Cell(row, lane, 'refusal', False, False, lane, 0))
+    cells.extend(Cell(("_float64", ""), a, b, False, True, None, steps)
+                 for a, b in (("run_uniform", "run_nonuniform"), ("fwd_uniform", "fwd_nonuniform"))
+                 for steps in (12, 36))
     return tuple(cells)
 
 
 # Filled from the measured cold-solve cost of passing 12-step candidates.
 PR_CHOICES = {
+    "_float64": "_float64::run_uniform:run_nonuniform:constant:12",
 
     "_boundary": "_boundary:cpml:run_uniform:run_nonuniform:constant:12",
     "_boundary_spec": "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12",
@@ -132,7 +136,8 @@ PR_FINDING_CHOICES = {
 
 def pr_subset(cells, findings):
     """Main-path refusals, one strict witness per cause, and passing families."""
-    chosen = {c.id for c in cells if not c.equivalence and c.refused in PR_REFUSAL_LANES}
+    chosen = {c.id for c in cells if (not c.equivalence and c.refused in PR_REFUSAL_LANES)
+              or c.row == ('_float64', '')}
     causes = {entry['cause'] for groups in findings.values()
               for entries in groups.values() for entry in entries}
     by_id = {c.id: c for c in cells}

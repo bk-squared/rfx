@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
 if TYPE_CHECKING:
-    from numpy.typing import ArrayLike
+    from numpy.typing import ArrayLike, DTypeLike
     from rfx.current_moments import CurrentMomentMonitor
     from rfx._internal._uniform_specs import DesignBoxSpec
     from rfx.farfield import NTFFBox
@@ -76,6 +76,7 @@ def run_nonuniform(
     design_box: DesignBoxSpec | None = None,
     record_dft: bool | tuple[bool, ...] = False,
     measurement: object | None = None,
+    field_dtype: DTypeLike | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -124,7 +125,7 @@ def run_nonuniform(
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
         design_box=design_box,
-        measurement=measurement,
+        measurement=measurement, field_dtype=field_dtype,
     )
     step_fn = setup.step_fn
     carry_init = setup.carry_init
@@ -293,6 +294,7 @@ def run_nonuniform_until_decay(
     record_dft: bool | tuple[bool, ...] = False,
     advisory: dict | None = None,
     measurement: object | None = None,
+    field_dtype: DTypeLike | None = None,
 ) -> dict:
     """Run non-uniform FDTD until the field energy left after the drive decays.
 
@@ -378,7 +380,7 @@ def run_nonuniform_until_decay(
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
         design_box=design_box,
-        measurement=measurement,
+        measurement=measurement, field_dtype=field_dtype,
     )
     carry = setup.carry_init
     init_plane_records(carry, dft_planes, record_dft, max_steps)
@@ -416,8 +418,10 @@ def run_nonuniform_until_decay(
     if use_flux_stop:
         _bl = flux_box_bounds(grid, radiated_flux_box)
 
+    from rfx.sources._sampling import field_time_step
+    measurement_grid = grid._replace(dt=field_time_step(grid.dt, field_dtype))
     energy_stop, energy = make_decay_stop(
-        grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
+        measurement_grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
         consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
         rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
@@ -425,7 +429,7 @@ def run_nonuniform_until_decay(
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(
-            grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            measurement_grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
             max_steps=max_steps, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
             tfsf=tfsf, waveguide_ports=waveguide_ports)
