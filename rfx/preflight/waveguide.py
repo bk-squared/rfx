@@ -398,8 +398,9 @@ _WAVEGUIDE_UV_AXES = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
 WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET = 2000
 
 
-def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_override=None, mu_r_override=None):
-    """Read the drawn realization and concrete call overrides through setup's resolver."""
+def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_override=None, mu_r_override=None,
+                                   section_only=False):
+    """Resolve configs, or just scalar section media when no mode build is allowed."""
     import jax
     from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.model.overrides import apply_material_overrides
@@ -432,45 +433,52 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
             elif value is not None:
                 overrides[name] = value
         materials = apply_material_overrides(materials, **overrides)
+        if section_only:
+            from rfx.boundaries.features import waveguide_segment_cells
+            from rfx.model.waveguide_modes import PortMedium
+            # A budget-limited cutoff needs only the section's scalar speed.
+            # Setup owns full material admission; no mode or waveform is built.
+            media = []
+            for cfg in cfgs:
+                bounds = waveguide_segment_cells(cfg, grid)
+                values = []
+                for name in ("eps_r", "mu_r"):
+                    array = getattr(materials, name)
+                    if isinstance(array, (tuple, list)):
+                        raise ValueError("Waveguide section medium must be isotropic")
+                    array = np.asarray(array)
+                    if array.ndim == 3:
+                        array = array[tuple(slice(lo, hi) if size != 1 else slice(None)
+                                            for (lo, hi), size in zip(bounds, array.shape))]
+                    if (not array.size or not np.all(np.isfinite(array))
+                            or np.any(array <= 0) or np.any(array != array.flat[0])):
+                        raise ValueError("Waveguide section medium must be homogeneous and positive")
+                    values.append(float(array.flat[0]))
+                media.append(PortMedium(*values))
+            return media
         return resolve_waveguide_section_medium(cfgs, grid, materials,
                                                 dict(debye=debye, lorentz=lorentz, pec_mask=pec,
                                                      pec_edge_masks=edges), ())
 
 
-def _preflight_entry_config(sim, entry, *, grid=None, realized_aperture=False):
+def _preflight_entry_config(sim, entry, *, grid=None):
     import warnings
     grid = sim._build_realized_grid() if grid is None else grid
     freqs = resolve_waveguide_port_freqs(sim, entry)
-    builder = sim
-    if realized_aperture and not sim._uses_nonuniform_mesh:
-        from copy import copy
-        # The uniform None-range branch reports the declared domain. For a
-        # budget approximation, give that same builder the realized span.
-        builder = copy(sim)
-        domain = list(sim._domain)
-        for axis in _WAVEGUIDE_UV_AXES[entry.direction[1]]:
-            if getattr(entry, f"{axis}_range") is None:
-                i = "xyz".index(axis)
-                domain[i] = (grid.shape[i] - grid.axis_pads[i]
-                             - getattr(grid, f"pad_{axis}_hi") - 1) * grid.dx
-        builder._domain = tuple(domain)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="Explicitly requested dtype.*")
         if sim._uses_nonuniform_mesh:
             from rfx.runners.nonuniform import _build_waveguide_port_config_nu
             cfg = _build_waveguide_port_config_nu(sim, entry, grid, freqs, 1)
         else:
-            cfg = builder._build_waveguide_port_config(entry, grid, freqs, 1)
+            cfg = sim._build_waveguide_port_config(entry, grid, freqs, 1)
     resolved = resolve_preflight_port_configs(sim, grid, [cfg])[0]
     return resolved[0] if isinstance(resolved, list) else resolved
 
 
-def _preflight_declared_mode_config(sim, entry):
-    """Read the declared mode without exceeding the discrete cell budget."""
-    from dataclasses import replace
-
-    grid = sim._build_realized_grid()
-    cells = 1
+def _preflight_aperture_slices(sim, entry, grid):
+    """The transverse cell slices used by both builders."""
+    slices = {}
     for axis in _WAVEGUIDE_UV_AXES[entry.direction[1]]:
         value_range = getattr(entry, f"{axis}_range")
         if sim._uses_nonuniform_mesh:
@@ -481,29 +489,39 @@ def _preflight_declared_mode_config(sim, entry):
             slc, _ = sim._range_to_slice(
                 value_range, sim._domain[i], grid.dx, grid.shape[i],
                 grid.axis_pads[i], getattr(grid, f"pad_{axis}_hi"))
-        cells *= slc[1] - slc[0] - 1
-    approximate = (entry.mode_profile == "discrete"
-                   and cells > WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET)
-    declared = replace(entry, n_modes=1,
-                       mode_profile="analytic" if approximate else entry.mode_profile)
-    cfg = _preflight_entry_config(
-        sim, declared, grid=grid, realized_aperture=approximate)
-    basis = ("builder analytic cutoff of the realized aperture (discrete cell budget exceeded)"
-             if approximate else f"builder {entry.mode_profile} cutoff")
-    return cfg, basis
+        slices[axis] = (slc[0], slc[1] - 1)
+    return slices
+
+
+def _preflight_aperture_cells(sim, entry, grid):
+    """One cell count for both preflight cutoff budget decisions."""
+    return {axis: hi - lo for axis, (lo, hi) in
+            _preflight_aperture_slices(sim, entry, grid).items()}
 
 
 def _preflight_section_medium(sim, entry):
     """Read section operands without paying for a transverse eigensolve."""
-    from dataclasses import replace
+    from types import SimpleNamespace
+    from rfx.model.waveguide_mesh import host_index
     from rfx.model.waveguide_modes import PortMedium
     if not sim._geometry and not any(
             v is not None for v in getattr(sim, "_waveguide_call_overrides", ())):
         return PortMedium()  # An undrawn domain with no overrides realizes vacuum.
-    # The analytic builder has the same section/recording indices. Only the
-    # scalar medium is read here; the actual mode/cutoff is built separately.
-    entry = replace(entry, mode_profile="analytic", n_modes=1)
-    return _preflight_entry_config(sim, entry).medium
+    # Resolve the section bounds directly: even an analytic builder would
+    # allocate profiles and waveforms for an aperture declined on cost.
+    grid = sim._build_realized_grid()
+    normal = entry.direction[1]
+    index = host_index(grid, normal, entry.x_position)
+    sign = 1 if entry.direction.startswith("+") else -1
+    slices = _preflight_aperture_slices(sim, entry, grid)
+    u, v = (slices[axis] for axis in _WAVEGUIDE_UV_AXES[normal])
+    section = SimpleNamespace(
+        normal_axis=normal, direction=entry.direction, x_index=index,
+        ref_x=index + sign * entry.ref_offset,
+        u_lo=u[0], u_hi=u[1], v_lo=v[0], v_hi=v[1],
+        segment_planes=() if entry.reference_plane is None else (entry.reference_plane,),
+    )
+    return resolve_preflight_port_configs(sim, grid, [section], section_only=True)[0]
 
 
 def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
@@ -574,15 +592,10 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
     if du["rasterized"] is None or dv["rasterized"] is None:
         return None
 
-    # Realized cell counts, from the realized spans -- ``_range_to_slice``
-    # reports ``(hi - lo - 1) * dx`` and ``_node_span_to_cell_span`` hands
-    # the solve exactly those ``hi - lo - 1`` cells. Computed BEFORE any
-    # build, because the budget decision depends on them.
-    cells = {u_ax: int(round(du["rasterized"]
-                             / _transverse_cell_size(grid, u_ax))),
-             v_ax: int(round(dv["rasterized"]
-                             / _transverse_cell_size(grid, v_ax)))}
-    cells_total = cells[u_ax] * cells[v_ax]
+    # The aperture advisory and evanescent check share the builder's cell
+    # count, so neither can admit an eigensolve the other declines on cost.
+    cells = _preflight_aperture_cells(sim, entry, grid)
+    cells_total = math.prod(cells.values())
 
     cfg = None
     skipped = None
@@ -894,17 +907,32 @@ def _emit_waveguide_port_cutoff_findings(
     used to be a verbatim copy of this body.
 
     ``a_ap``/``b_ap`` retain the builder's transverse-axis order;
-    the LOWER bound reads the builder's cutoff. ``a_gd``/``b_gd``
+    the LOWER bound reads the builder's cutoff within the cell budget,
+    or the lane's analytic aperture cutoff above it. ``a_gd``/``b_gd``
     set the 0.90 x fc_next margin heuristic — the guide that decides
     which higher-order modes exist. ``guide_label`` is the
     human-readable provenance of the latter.
     """
     import warnings as _w
+    from dataclasses import replace
 
     from rfx.model.waveguide_modes import port_light_speed
+    m0, n0 = entry.mode
     try:
-        cfg, cutoff_basis = _preflight_declared_mode_config(self, entry)
-        speed = port_light_speed(cfg.medium)
+        grid = self._build_realized_grid()
+        cells = _preflight_aperture_cells(self, entry, grid)
+        if (entry.mode_profile == "discrete"
+                and math.prod(cells.values()) > WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET):
+            speed = port_light_speed(_preflight_section_medium(self, entry))
+            fc_excited = (speed / 2.0) * math.sqrt((m0 / a_ap) ** 2 + (n0 / b_ap) ** 2)
+            aperture = "declared" if self._uses_nonuniform_mesh else "realized"
+            cutoff_basis = (f"analytic cutoff of the {aperture} aperture; "
+                            "discrete cell budget exceeded")
+        else:
+            cfg = _preflight_entry_config(self, replace(entry, n_modes=1), grid=grid)
+            speed = port_light_speed(cfg.medium)
+            fc_excited = float(cfg.f_cutoff)
+            cutoff_basis = f"builder {entry.mode_profile} cutoff"
     except ValueError:
         # Setup owns material/waveform refusal. Continue preflight so the
         # geometric span check can report its more specific obstruction.
@@ -913,12 +941,9 @@ def _emit_waveguide_port_cutoff_findings(
         _w.warn(f"Waveguide preflight could not build the declared mode ({exc!r}); "
                 "cutoff checks are unchecked for this port.", AccuracyWarning, stacklevel=2)
         return
-    m0, n0 = entry.mode
 
     def _fc_gd(m, n, _a=a_gd, _b=b_gd):
         return (speed / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
-
-    fc_excited = float(cfg.f_cutoff)
 
     # --- LOWER bound: source center / measurement bins
     # at or below the excited mode's own cutoff. Below fc the launch
@@ -1017,7 +1042,7 @@ def _check_waveguide_port_evanescent_declared_geometry(self) -> None:
 
     The non-uniform-mesh branch of
     :meth:`_check_waveguide_port_evanescent` uses the graded builder
-    for the excited mode. It shares
+    for the excited mode within budget, and the declared aperture above it. It shares
     :meth:`_emit_waveguide_port_cutoff_findings` with the uniform
     lane and only differs in what it feeds that emitter.
     """
@@ -1048,14 +1073,14 @@ def _check_waveguide_port_evanescent(self) -> None:
 
     Now uses :meth:`_port_transverse_spans` for both:
     - the lower-bound checks (source / measurement at-or-below
-      cutoff) are evaluated on the APERTURE, since that is the
-      literal dimension ``WaveguidePort.a``/``.b`` feed
-      ``_compute_beta`` and the mode template — this aligns the gate
-      with what is actually solved rather than loosening it; the
-      aperture can snap to either side of the declared width (see
+      cutoff) read the builder's declared-mode cutoff when affordable.
+      A discrete aperture above the budget instead uses its realized
+      transverse spans in the closed form, without building a mode.
+      The aperture can snap to either side of the declared width (see
       the round-up case in
-      ``tests/unit/ports/test_port_aperture_rasterization.py``), so this is not
-      a one-directional relaxation.
+      ``tests/unit/ports/test_port_aperture_rasterization.py``), so the
+      approximation must keep the realized spans in their axis order.
+      The finding labels the cutoff's basis explicitly.
     - the 0.90 x fc_next margin heuristic is evaluated on the GUIDE,
       i.e. the distance between the realized wall planes that
       bracket the aperture on the port's own transverse line, because
@@ -1102,7 +1127,7 @@ def _check_waveguide_port_evanescent(self) -> None:
         # tests/interop/test_interop_design_document.py::
         # _waveguide_with_dispersive_slab LOST its port_evanescent /
         # port_source_below_cutoff findings entirely.
-        ap = [spans[ax]["aperture"] if spans[ax]["aperture"] is not None
+        ap = [spans[ax]["rasterized"] if spans[ax]["rasterized"] is not None
               else spans[ax]["declared"] for ax in axes]
         gd = [spans[ax]["guide"] if spans[ax]["guide"] is not None
               else spans[ax]["declared"] for ax in axes]

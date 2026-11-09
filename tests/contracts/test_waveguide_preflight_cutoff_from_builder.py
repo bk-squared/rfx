@@ -87,15 +87,40 @@ def test_cutoff_from_builder(graded, a, b, mode_type, mode, n_modes):
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
-@pytest.mark.parametrize("dx,profile", [(.004, "discrete"), (.0005, "analytic")],
+@pytest.mark.parametrize("dx,over_budget", [(.004, False), (.0005, True)],
                          ids=["within_budget", "over_budget"])
-def test_discrete_cutoff_budget(graded, dx, profile):
-    sim = _scene(graded, .02, .04, "TE", (1, 0), [5e9, 6e9], 3,
+def test_discrete_cutoff_budget(graded, dx, over_budget, monkeypatch):
+    a, b = (.0202, .0402) if over_budget else (.02, .04)
+    sim = _scene(graded, a, b, "TE", (1, 0), [5e9, 6e9], 3,
                  dx=dx, mode_profile="discrete")
-    entry = replace(sim._waveguide_ports[0], n_modes=1, mode_profile=profile)
-    cfg = _preflight_entry_config(sim, entry)
+    if over_budget:
+        def forbidden(*args, **kwargs):
+            pytest.fail("an over-budget discrete aperture must not call either builder")
+
+        monkeypatch.setattr(Simulation, "_build_waveguide_port_config", forbidden)
+        monkeypatch.setattr("rfx.runners.nonuniform._build_waveguide_port_config_nu", forbidden)
+        a_ap, b_ap = (a, b) if graded else (.02, .04)
+        expected = (299792458.0 / 2) * math.sqrt((1 / a_ap) ** 2 + (0 / b_ap) ** 2)
+        aperture = "declared" if graded else "realized"
+        basis = f"analytic cutoff of the {aperture} aperture; discrete cell budget exceeded"
+    else:
+        entry = replace(sim._waveguide_ports[0], n_modes=1)
+        cfg = _preflight_entry_config(sim, entry)
+        assert cfg.mode_indices == (1, 0)
+        expected = cfg.f_cutoff
+        basis = "builder discrete cutoff"
     findings = _findings(sim)
     source = findings["port_source_below_cutoff"]
-    assert _quoted(source, "fc") == f"{cfg.f_cutoff / 1e9:.3f}"
-    assert f"builder {profile} cutoff" in source
-    assert ("discrete cell budget exceeded" in source) == (profile == "analytic")
+    assert _quoted(source, "fc") == f"{expected / 1e9:.3f}"
+    assert basis in source
+    assert ("discrete cell budget exceeded" in source) == over_budget
+    if over_budget:
+        # The section-medium read must also avoid both builders.
+        sim._waveguide_call_overrides = (np.asarray(4.0), None, np.asarray(1.0))
+        sim._waveguide_ports[0] = replace(
+            sim._waveguide_ports[0], n_modes=1, freqs=np.asarray([1e9, 2e9]), f0=1.5e9)
+        source = _findings(sim)["port_source_below_cutoff"]
+        c_medium = 299792458.0 / math.sqrt(4.0 * 1.0)
+        filled = (c_medium / 2) * math.sqrt((1 / a_ap) ** 2 + (0 / b_ap) ** 2)
+        assert _quoted(source, "fc") == f"{filled / 1e9:.3f}"
+        assert basis in source
