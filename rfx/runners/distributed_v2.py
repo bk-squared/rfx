@@ -606,7 +606,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         stepping_product, run_wrapped_uniform, sources, probes, layout, mesh, records,
         _operand_layout="wrapped_uniform_slab", n_steps=n_steps,
         boundary=sim._boundary, dispersion=dispersion, port_plan=ports,
-        record_vref=_record_vref, tfsf=tfsf, exchange_interval=exchange_interval)
+        record_vref=_record_vref, tfsf=tfsf, exchange_interval=exchange_interval,
+        rlc_metas=rlc_metas)
 
     if multi_process:
         from jax.experimental import multihost_utils

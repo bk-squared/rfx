@@ -14,6 +14,7 @@ from rfx.stepping.uniform import make_uniform_step
 
 
 _PORT_CARRY = ('wire_sparam_accs', 'lumped_sparam_accs', 'sparam_time_records')
+_RANK_CARRY = (*_PORT_CARRY, 'rlc_states')
 
 
 def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_interval=1):
@@ -78,6 +79,18 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
             debye_coeffs=inputs.get('debye_coeffs'),
             lorentz_coeffs=inputs.get('lorentz_coeffs'),
             drives=StepDrives(drives, None))
+        if ctx.use_lumped_rlc:
+            from rfx.stepping import slab_lumped
+
+            def update_rlc(state, states, metas, previous):
+                return slab_lumped.update(
+                    state, states, context.rlc_meta, previous, layout, rank)
+
+            # The canonical prepare/constitutive slots retain E^n and solve
+            # before drive references, sources and the final E exchange.
+            ctx = replace(ctx, rlc_meta=tuple(
+                slab_lumped.local_meta(meta, layout, rank)[0]
+                for meta in context.rlc_meta), update_rlc_elements=update_rlc)
         if ctx.use_tfsf:
             tables = tuple(tuple(table._replace(
                 target_index=cut[0][0], source_index=cut[1][0], coefficient=cut[2][0])
@@ -88,7 +101,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
                 shape=(layout.nx_local, *ctx.grid.shape[1:]),
                 tables_h=tables[0], tables_e=tables[1]))
         carry = dict(carry)
-        for key in _PORT_CARRY:
+        for key in _RANK_CARRY:
             if key in carry:
                 carry[key] = jax.tree.map(lambda a: a[0], carry[key])
         advance = make_uniform_step(ctx, inputs,
@@ -101,7 +114,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
             start = rank * layout.nx_per_rank
             with _realized.owned(start, jnp.minimum(layout.nx_per_rank, layout.nx - start)):
                 carry, samples, _ = advance(carry, xs[0], xs[1][0], None)
-        for key in _PORT_CARRY:
+        for key in _RANK_CARRY:
             if key in carry:
                 carry[key] = jax.tree.map(lambda a: a[None], carry[key])
         return carry, samples[None]
@@ -123,7 +136,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
 
 def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                     *, n_steps, boundary, debye_spec, lorentz_spec, port_plan,
-                    record_vref=True, tfsf=None, exchange_interval=1):
+                    record_vref=True, tfsf=None, exchange_interval=1, rlc_metas=()):
     """Form every spatial step operand from its owning slab's material rows."""
     from types import SimpleNamespace
     from jax.sharding import NamedSharding
@@ -169,12 +182,12 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         use_pmc_faces=bool(pmc_faces), use_aniso_inv=False, aniso_inv_eps_smooth=False,
         use_pec_edges=pec_edges is not None, use_pec_occupancy=False,
         use_conformal=False, use_wire_sparams=bool(wires), use_lumped_sparams=bool(lumped),
-        use_lumped_rlc=False, use_kerr=False, use_snapshot=False, use_monitor=False,
+        use_lumped_rlc=bool(rlc_metas), use_kerr=False, use_snapshot=False, use_monitor=False,
         use_flux_window=False, cpml_grid=grid, cpml_axes='xyz',
         pec_faces_frozen=pec_faces, pmc_faces_frozen=pmc_faces,
         curl_boundary=CurlBoundary(pec_faces, pmc_faces, (False,) * 3),
         port_record_specs=port_plan.specs, port_record_vref=record_vref,
-        wire_sparam_meta=wires, lumped_sparam_meta=lumped)
+        wire_sparam_meta=wires, lumped_sparam_meta=lumped, rlc_meta=rlc_metas)
     field_shape = (layout.n_devices * layout.nx_local, *grid.shape[1:])
     carry = {'fdtd': FDTDState(**{name: jnp.zeros(field_shape, jnp.float32, device=sharding)
         for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')},
@@ -219,6 +232,9 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     waves = (jnp.stack([s.waveform for s in sources], axis=-1) if sources
              else jnp.zeros((n_steps, 0), jnp.float32))
     inputs, carry = split(inputs, carry, layout, mesh, waveforms=waves, dt=grid.dt, staged=True)
+    if rlc_metas:
+        from rfx.stepping.slab_lumped import initial
+        carry['rlc_states'] = initial(rlc_metas, layout, mesh, jnp.float32)
     if ctx.use_pec_edges:
         row = jnp.arange(layout.n_devices * layout.nx_local) % layout.nx_local
         real = (row >= layout.ghost_width) & (row < layout.nx_local - layout.ghost_width)
@@ -249,7 +265,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
 
 def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
                 boundary, dispersion, port_plan, record_vref=True, tfsf=None,
-                exchange_interval=1):
+                exchange_interval=1, rlc_metas=()):
     """Transfer dense setup operands to slabs before entering the time loop."""
     grid, materials, pec_edges = operands
     operands.clear()
@@ -258,7 +274,7 @@ def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_s
     prepared = prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         n_steps=n_steps, boundary=boundary, debye_spec=debye_spec,
         lorentz_spec=lorentz_spec, port_plan=port_plan, record_vref=record_vref,
-        tfsf=tfsf, exchange_interval=exchange_interval)
+        tfsf=tfsf, exchange_interval=exchange_interval, rlc_metas=rlc_metas)
     del materials, pec_edges, debye_spec, lorentz_spec
     return run_prepared(prepared, records, mesh, n_steps=n_steps)
 

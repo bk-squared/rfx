@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from rfx import GaussianPulse, Simulation, SnapshotSpec
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 
 # PR and weekly jobs pin two/three devices through their host configuration.
