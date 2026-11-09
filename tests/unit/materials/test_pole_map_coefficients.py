@@ -118,7 +118,7 @@ def test_p3_one_state_identity_and_layout():
     coeffs, state = init(pole, grid, mask)
     assert not isinstance(coeffs.a, tuple)
     assert not isinstance(coeffs.b, tuple)
-    assert all(v.shape == (1,) + grid.shape for v in state)
+    assert all(v.shape == (1,) + grid.shape for v in state), [v.shape for v in state]
     values = np.unique(np.broadcast_to(profile(*xyz), grid.shape)[mask])
     from rfx.materials.lorentz import LorentzPole
     masks = [(np.broadcast_to(profile(*xyz), grid.shape) == value) & mask for value in values]
