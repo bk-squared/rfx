@@ -33,6 +33,8 @@ from __future__ import annotations
 
 from typing import NamedTuple
 from weakref import ref
+import os
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -41,6 +43,8 @@ from rfx.core.yee import (
     si_value_eps_r_grad, EPS_0, ade_state_dtype,
 )
 from rfx.materials.debye import per_component, pole_reach
+from rfx.materials.relative_strength import RelativeStrength
+from rfx.errors import AccuracyWarning
 
 
 class LorentzPole(NamedTuple):
@@ -50,15 +54,15 @@ class LorentzPole(NamedTuple):
         Resonant angular frequency (rad/s). Set to 0 for Drude.
     delta : float
         Damping coefficient (rad/s).
-    kappa : float
+    kappa : float or RelativeStrength
         Coupling strength = Δε · ω₀² for Lorentz, ω_p² for Drude.
     """
     omega_0: float
     delta: float
-    kappa: float
+    kappa: float | RelativeStrength
 
 
-def drude_pole(omega_p: float, gamma: float) -> LorentzPole:
+def drude_pole(omega_p: float, gamma: float, *, density: object = None) -> LorentzPole:
     """Create a Drude pole from plasma frequency and collision rate.
 
     Parameters
@@ -67,11 +71,15 @@ def drude_pole(omega_p: float, gamma: float) -> LorentzPole:
         Plasma frequency (rad/s).
     gamma : float
         Collision rate (rad/s).
+    density : optional
+        Relative density n_e / n_ref. With this keyword, omega_p is the
+        concrete plasma frequency at n_ref and strength is RelativeStrength.
     """
-    return LorentzPole(omega_0=0.0, delta=gamma / 2.0, kappa=omega_p ** 2)
+    kappa = omega_p ** 2 if density is None else RelativeStrength(omega_p ** 2, density)
+    return LorentzPole(omega_0=0.0, delta=gamma / 2.0, kappa=kappa)
 
 
-def lorentz_pole(delta_eps: float, omega_0: float, delta: float) -> LorentzPole:
+def lorentz_pole(delta_eps: float, omega_0: float, delta: float, *, relative: bool = False) -> LorentzPole:
     """Create a Lorentz pole from physical parameters.
 
     Parameters
@@ -82,8 +90,13 @@ def lorentz_pole(delta_eps: float, omega_0: float, delta: float) -> LorentzPole:
         Resonant angular frequency (rad/s).
     delta : float
         Damping coefficient (rad/s).
+    relative : bool
+        Use RelativeStrength(omega_0**2, delta_eps), with concrete omega_0 > 0.
     """
-    return LorentzPole(omega_0=omega_0, delta=delta, kappa=delta_eps * omega_0 ** 2)
+    if relative and (isinstance(omega_0, jax.core.Tracer) or omega_0 <= 0):
+        raise ValueError("relative lorentz_pole requires concrete omega_0 > 0; use drude_pole for omega_0=0")
+    kappa = RelativeStrength(omega_0 ** 2, delta_eps) if relative else delta_eps * omega_0 ** 2
+    return LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)
 
 
 class LorentzCoeffs(NamedTuple):
@@ -147,6 +160,45 @@ class LorentzState(NamedTuple):
     pz_prev: jnp.ndarray
 
 
+def pole_underflow_guard(out, factors, *, scalar=True):
+    """Identity solve whose transpose warns when an SI cotangent flushes.
+
+    Scalar factors are (denom, dt**2, EPS_0); map normalization supplies
+    (ks,) with scalar=False. Call sites opt in at trace time with
+    ``RFX_POLE_UNDERFLOW_CHECK=1``: set it before the first call; a cached
+    compile keeps the old setting. Off by default, float32 traced SI only.
+    """
+    args = tuple(jax.lax.stop_gradient(jnp.asarray(a)) for a in factors)
+
+    def report(count):
+        count = int(count)
+        if count == 0:
+            return
+        warning = AccuracyWarning(
+            "The float32 reverse-mode gradient with respect to a traced pole strength "
+            "in SI units underflowed to zero; declare the strength as "
+            "RelativeStrength(reference, value) or divide the objective by a constant of its order.")
+        warning.count = count
+        warnings.warn(warning, stacklevel=2)
+
+    def check(vecmat, ct):
+        replay = ct / args[0]
+        if scalar:
+            replay = replay * args[1]
+            replay = args[2] * replay
+        flushed = (ct != 0) & (replay == 0)
+
+        def warn(n):
+            jax.debug.callback(report, n)
+            return jnp.int32(0)
+
+        jax.lax.cond(jnp.any(flushed), warn, lambda n: jnp.int32(0), jnp.sum(flushed))
+        return ct
+
+    return jax.lax.custom_linear_solve(lambda x: x, out, lambda matvec, b: b,
+                                       transpose_solve=check)
+
+
 def pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype=None):
     """Elementwise Lorentz ADE terms, optionally cast to the field's ADE dtype."""
     w0, d, k = omega_0, delta, kappa
@@ -154,7 +206,26 @@ def pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype=None):
 
     a_val = (2.0 - w0 ** 2 * dt ** 2) / denom
     b_val = -(1.0 - d * dt) / denom
-    c_val = EPS_0 * k * dt ** 2 / denom
+    if isinstance(k, RelativeStrength):
+        from rfx._traced_check import traced_check
+        from rfx.errors import RfxUnsupported
+        import numpy as np
+
+        if callable(k.value):
+            raise RfxUnsupported("scalar Lorentz poles do not implement a callable RelativeStrength value")
+
+        def check_value(value):
+            if not np.all(np.isfinite(value)) or np.any(np.asarray(value) < 0):
+                raise ValueError("RelativeStrength value must be finite and non-negative")
+
+        traced_check("RelativeStrength", "pole strength", check_value, k.value)
+        s = float(EPS_0) * float(k.reference) * float(dt) ** 2
+        c_val = (s / denom) * k.value
+    else:
+        c_val = EPS_0 * k * dt ** 2 / denom
+        if (isinstance(k, jax.core.Tracer) and k.dtype == jnp.float32
+                and os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1"):
+            c_val = pole_underflow_guard(c_val, (denom, dt ** 2, EPS_0))
     values = (a_val, b_val, c_val)
     if field_dtype is not None:
         return tuple(jnp.asarray(v, dtype=ade_state_dtype(field_dtype)) for v in values)

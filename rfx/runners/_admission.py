@@ -1193,6 +1193,11 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    if lane == "run_subgridded":
+        from rfx.materials.relative_strength import RelativeStrength
+        if any(isinstance(p.kappa, RelativeStrength)
+               for m in _placed(sim) for p in (m.lorentz_poles or ())):
+            raise RfxUnsupported("run_subgridded does not implement RelativeStrength Lorentz poles; use a uniform or graded run")
     admit_conformal_floor(sim, lane, (run_args or {}).get("conformal_pec"),
                           smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:

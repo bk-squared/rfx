@@ -290,7 +290,10 @@ def combine_pole_extremes(records_from_all_slabs):
 def _concrete(value):
     """The concrete value under an eager trace (jvp, grad), else the value."""
     from rfx.core.jax_utils import is_tracer
+    from rfx.materials.relative_strength import RelativeStrength
 
+    if isinstance(value, RelativeStrength):
+        return RelativeStrength(value.reference, _concrete(value.value)).si
     if not is_tracer(value):
         return value
     concrete = value.to_concrete_value()

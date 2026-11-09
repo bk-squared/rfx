@@ -581,3 +581,15 @@ def test_uniform_forward_user_jit_refuses_port_s():
         "(or another JAX trace that stages it): on this path the port S-parameters are assembled "
         "on the host from the main run's port records. Omit port_s11_freqs for the fields and probe records, "
         "call forward() directly, or run on one device (omit distributed=True).")
+
+
+@pytest.mark.parametrize("validation", ["production", "research", "off"])
+def test_subgrid_refuses_relative_strength_by_name(validation):
+    from rfx import LorentzPole, RelativeStrength
+    sim = _build(refine=True)
+    sim._refinement["validation"] = validation
+    sim.add_material("relative", eps_r=1., lorentz_poles=[
+        LorentzPole(0., 2e9, RelativeStrength(4e20, .5))])
+    sim.add(Box((.008, .003, .003), (.016, .009, .009)), material="relative")
+    with pytest.raises(NotImplementedError, match="run_subgridded.*RelativeStrength"):
+        sim.run(n_steps=1, skip_preflight=True)

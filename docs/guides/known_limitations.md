@@ -22,6 +22,19 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### Float32 reverse gradients of SI pole strengths can underflow
+
+Tracker: #2561
+
+Differentiating a Lorentz or Drude strength in SI units can return zero in float32
+even when forward mode returns a nonzero derivative: the SI cotangent can fall
+below the backend's representable range. Declare the strength with
+`RelativeStrength(reference, value)`, choosing a reference near its largest value,
+or divide the objective by a constant of its order. The optional warning is off
+by default. Enable it with `RFX_POLE_UNDERFLOW_CHECK=1`; set it before the first call;
+a cached compile keeps the old setting. The warning detects a cotangent flushed
+to zero, not every loss of precision.
+
 ### Traced full-tensor CPU builds on older jaxlib issue pieces serially
 
 Tracker: #2095

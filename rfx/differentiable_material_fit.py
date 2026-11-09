@@ -136,6 +136,10 @@ def _poles_to_params(
         params.append(jnp.log(jnp.array(max(pole.delta_eps, 1e-12))))
         params.append(jnp.log(jnp.array(max(pole.tau, 1e-30))))
     for pole in lorentz_poles:
+        from rfx.materials.relative_strength import RelativeStrength
+        from rfx.errors import RfxUnsupported
+        if isinstance(pole.kappa, RelativeStrength):
+            raise RfxUnsupported("differentiable_material_fit does not optimize RelativeStrength; supply SI pole strengths")
         # Recover delta_eps from kappa = delta_eps * omega_0^2
         omega_0 = max(pole.omega_0, 1e-6)
         delta_eps = pole.kappa / (omega_0 ** 2) if omega_0 > 0 else 1.0

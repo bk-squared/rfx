@@ -470,7 +470,7 @@ def _plan_materials(document: dict) -> dict[str, _MaterialPlan]:
                 )
             if lorentz:
                 raise _refuse(
-                    f"material {name!r} with Lorentz poles",
+                    f"material {name!r} with Lorentz poles (including RelativeStrength)",
                     "same as Debye: no reachable openEMS counterpart, and "
                     "flattening to a single eps_r would change the material",
                 )

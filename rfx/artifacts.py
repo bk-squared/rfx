@@ -260,7 +260,10 @@ def _simulation_summary(sim: Any) -> dict[str, Any]:
 
 
 def _material_summary(material: Any) -> dict[str, Any]:
-    return {
+    from rfx.materials.relative_strength import RelativeStrength
+    from rfx.interop._materials import material_to_dict
+
+    out = {
         "eps_r": _safe_float(getattr(material, "eps_r", None)),
         "sigma": _safe_float(getattr(material, "sigma", None)),
         "mu_r": _safe_float(getattr(material, "mu_r", None)),
@@ -268,6 +271,10 @@ def _material_summary(material: Any) -> dict[str, Any]:
         "debye_poles": _sequence_summary(getattr(material, "debye_poles", None)),
         "lorentz_poles": _sequence_summary(getattr(material, "lorentz_poles", None)),
     }
+    if any(isinstance(p.kappa, RelativeStrength) for p in (getattr(material, "lorentz_poles", None) or ())):
+        # material_from_dict restores this declaration, including its static reference.
+        out["definition"] = material_to_dict(material, preserve_relative=True)
+    return out
 
 
 def _bbox(shape: Any) -> list[list[Any]] | None:
