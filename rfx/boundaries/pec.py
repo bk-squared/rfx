@@ -140,6 +140,7 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_gh
     """
     from ._face_frame import apply_framed_faces, needs_face_frame
 
+    normal_ghost_faces = normal_ghost_faces or ()
     if needs_face_frame(state.ex.shape, faces, frame, owned):
         return apply_framed_faces(state, faces, frame, owned)
     if not faces and not normal_ghost_faces:
