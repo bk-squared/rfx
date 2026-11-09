@@ -23,8 +23,7 @@ memory report can and cannot tell you.
 | `n_warmup=K` | non-uniform mesh only: no tape for the first `K` steps. This **approximates** the gradient | `forward()` docstring |
 
 Don't pick a segment count by hand. Boundary storage shrinks as segments get
-longer while the live segment's replay tape grows, so memory is lowest near
-`sqrt(2 x n_steps)` steps per segment and rises toward either extreme. Let
+longer while the live segment's replay tape grows, so memory is lowest at an intermediate segment length and rises toward either extreme. Let
 `plan_ad_memory(...)` choose.
 
 `n_warmup` cuts the gradient paths through the first `K` steps. That is nearly
