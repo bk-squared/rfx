@@ -579,7 +579,8 @@ def dc_cell_mask(shape, grid):
 
 def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                         sheet_specs=None, sheets=None, geometry_masks=None,
-                        geometry_key=None, snap='strict', film_geometry=None):
+                        geometry_key=None, snap='strict', film_geometry=None,
+                        name='thin_conductor'):
     """Emit PEC/f0 products or place a DC film on tangential edges of one node."""
     nonuniform = hasattr(grid, 'dx_arr')
     lane = 'non-uniform' if nonuniform else 'uniform'
@@ -619,6 +620,18 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 sheets.append(spec)
                 return materials, pec_mask
             mask, plane = np.asarray(spec.footprint), spec.plane
+            from rfx.boundaries.pec import resolve_wall_faces
+            periodic = tuple(a in getattr(grid, 'periodic_axes', '') or
+                             (a == 'z' and getattr(grid, 'is_2d', False)) for a in 'xyz')
+            pec_faces, _ = resolve_wall_faces(grid, periodic)
+            face = (f"{'xyz'[normal]}_lo" if plane == 0 else
+                    f"{'xyz'[normal]}_hi" if plane == grid.shape[normal] - 1 else None)
+            if face in pec_faces:
+                raise RfxRefusal(
+                    f"{name} ({face}): an f0 surface-impedance sheet on a PEC domain face "
+                    "carries no current (the face's PEC owns its edges), so its loss would "
+                    "be dropped; for loss on that wall use add_wall_loss(faces=...) once "
+                    "available, or a thick lossy Box inside the domain.")
             unwrapped = (None if spec.unwrapped_footprint is None
                          else np.asarray(spec.unwrapped_footprint))
             end_rows = spec.end_rows

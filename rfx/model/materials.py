@@ -35,7 +35,7 @@ from rfx.geometry.smoothing import continued_conductor_shape
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 from rfx.materials.thin_conductor import (
-    apply_thin_conductor, check_sheet_occupancy, sheet_bounds,
+    check_sheet_occupancy, sheet_bounds,
 )
 from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacings
 
@@ -516,13 +516,13 @@ def _fold_thin_conductors(sim, grid, materials, pec_mask, pec_shapes, pec_sheets
         sim, grid, tc.shape, entry=tc, unextendable=findings)) for tc in sim._thin_conductors]
     films = prepare_film_footprints(conductors, grid)
     for i, (declared, tc) in enumerate(zip(sim._thin_conductors, conductors)):
-        from rfx.model.thin_conductors import admit_dc_plane
+        from rfx.model.thin_conductors import admit_dc_plane, fold_thin_conductor
         admit_dc_plane(declared, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
         key = id(declared)
-        materials, pec_mask = apply_thin_conductor(
+        materials, pec_mask = fold_thin_conductor(
             grid, tc, materials, pec_mask=pec_mask, sheet_specs=sheet_specs,
             sheets=pec_sheets, geometry_masks=geometry_masks, geometry_key=key, snap=sim._snap,
-            film_geometry=films.get(i))
+            film_geometry=films.get(i), name=getattr(declared, 'name', None) or f'thin_conductor[{i}]')
         if assembly_entries is not None:
             assembly_entries.append((key, None, pec_sheets[-1] if tc.is_pec else None,
                                      None, tc.shape))

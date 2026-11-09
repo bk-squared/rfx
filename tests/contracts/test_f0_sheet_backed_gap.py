@@ -6,7 +6,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx.preflight._impl import run_preflight_gate
 
 
@@ -102,6 +102,43 @@ def test_s3_graded_y_cavity_fires():
     for hit in hits:
         distances = sorted(float(v) for v in re.findall(r"distance ([0-9.e+-]+) m", str(hit)))
         assert distances == pytest.approx([1e-3, 10e-3])
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("position", [0, 0.2*MM, MM, 10*MM],
+                         ids=["z-lo", "snaps-to-z-lo", "one-cell-inside", "z-hi"])
+def test_s4_pec_domain_face_admission(graded, entry, position, monkeypatch):
+    profiles = {"dz_profile": np.array([1, 1, 2, 2, 2, 1, 1])*MM} if graded else {}
+    sim = Simulation(freq_max=10e9, domain=(10*MM,)*3, dx=MM,
+                     boundary="pec", snap="declared", **profiles)
+    _sheet(sim, 2, position)
+
+    class Admitted(Exception):
+        pass
+
+    from rfx.model import thin_conductors
+    original = thin_conductors.fold_thin_conductor
+
+    def build_only(*args, **kwargs):
+        original(*args, **kwargs)
+        raise Admitted
+
+    monkeypatch.setattr(thin_conductors, "fold_thin_conductor", build_only)
+    kwargs = {"compute_s_params": False} if entry == "run" else {}
+    call = lambda: getattr(sim, entry)(n_steps=1, skip_preflight=True, **kwargs)
+    if position == MM:
+        with pytest.raises(Admitted):
+            call()
+    else:
+        with pytest.raises(RfxRefusal) as caught:
+            call()
+        face = "z_hi" if position == 10*MM else "z_lo"
+        assert str(caught.value) == (
+            f"thin_conductor[0] ({face}): an f0 surface-impedance sheet on a PEC domain face "
+            "carries no current (the face's PEC owns its edges), so its loss would "
+            "be dropped; for loss on that wall use add_wall_loss(faces=...) once "
+            "available, or a thick lossy Box inside the domain.")
 
 
 def test_other_f0_planes_are_conductors():
