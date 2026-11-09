@@ -189,7 +189,7 @@ def test_p8_linear_cell_centre_sampling(graded):
         actual = np.asarray(coeffs.c[comp])[(0,) + cell]
         ulp = abs(float(actual) - float(expected)) / abs(float(np.spacing(expected)))
         worst = max(worst, ulp)
-        assert ulp <= 2
+        assert ulp <= 2, (comp, cell, actual, expected, ulp)
     record(f'P8-{graded}', dict(worst_ulp=worst))
 
 
