@@ -413,6 +413,15 @@ On two RTX A6000 GPUs a 236³-cell (13 M) closed PEC box driven by a TF/SF plane
 slower (3.293 to 3.405 ms per step). Field values are unchanged. Two whole-field copies before the PEC wall write take
 most of the difference; removing them recovered only 0.043 ms per step, for a reason not yet measured.
 
+### Under a caller's `jax.jit`, a multi-device run holds more whole-domain setup arrays on every device for dispersive materials and graded meshes
+
+Tracker: #2486
+
+Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none. Since the multi-device setup boundary, two cases hold more than before, measured on a 25 x 13 x 13-cell box split over two (three) CPU devices:
+- Debye and Lorentz materials (Drude takes the Lorentz route; not measured): each pole coefficient is one more whole-domain float32 constant. A Debye box on the uniform mesh holds 13 (263,640 bytes at two devices, 290,004 at three) instead of a permittivity and a mask array (25,350 / 27,885 bytes); a Lorentz box, which was refused under a caller's jit before, now runs and holds 11 (223,080 / 245,388 bytes).
+- Graded meshes: each material array is held with its x ghost cells, 20,280 bytes at two devices and 22,308 at three instead of 16,900 (+20 % / +32 %), for permittivity (one array, also with a lumped port) and a lossy thin film (two arrays).
+What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
+
 ### A preflight keeps its whole-domain realization arrays until the Simulation is deleted
 
 Tracker: #1432
