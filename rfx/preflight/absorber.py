@@ -702,10 +702,11 @@ def _validate_cfg_absorber_placement(
         grid = self._campaign_ctx().grid
 
         def _point_refusal(pe, label):
-            # The campaign retains the production grid even when point
-            # admission prevents assembly. Never infer it from warning bands.
+            # The campaign keeps the production grid when only point admission
+            # fails; with no grid (traced mesh, failed grid build) the solve-time
+            # admission or the assembly finding covers it. Never infer it from bands.
             if grid is None:
-                raise RuntimeError("Absorber point admission requires the resolved grid.")
+                return
             options = dict(allow_in_absorber=getattr(pe, "allow_in_absorber", False),
                            label=label)
             try:

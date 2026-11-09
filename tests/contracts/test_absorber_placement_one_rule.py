@@ -1,4 +1,6 @@
 """One point-object rule; indices are hand-counted, never lookup-derived."""
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -25,6 +27,56 @@ def add(sim, kind, x, allow):
         sim.add_source(position, amplitude_kind="field", **kw)
     else:
         sim.add_port(position, extent=.002 if kind == "wire" else None, **kw)
+
+
+def traced_scene(profile):
+    sim = Simulation(freq_max=10e9, domain=(.01,) * 3, dx=.001,
+                     boundary="cpml", cpml_layers=4, snap="declared",
+                     dz_profile=profile, dt=.2 * .001 / 299792458.,
+                     dt_min_cell=.0005)
+    sim.add_source((.005,) * 3, "ez", amplitude_kind="field")
+    sim.add_probe((.006, .005, .005), "ez")
+    return sim
+
+
+def test_traced_mesh_preflight_without_campaign_grid():
+    reports = []
+
+    def objective(delta):
+        profile = jnp.full(10, .001).at[3].add(delta).at[4].add(-delta)
+        sim = traced_scene(profile)
+        assert sim._campaign_ctx().grid is None
+        reports.append(sim.preflight())
+        return jnp.sum(profile)
+
+    jax.grad(objective)(0.)
+    report, = reports
+    assert report.by_code("absorber_point_refused") == []
+
+
+def test_traced_mesh_forward_default_preflight_without_campaign_grid():
+    def objective(delta):
+        profile = jnp.full(10, .001).at[3].add(delta).at[4].add(-delta)
+        sim = traced_scene(profile)
+        result = sim.forward(n_steps=2, checkpoint=False)
+        return jnp.sum(result.time_series)
+
+    gradient = jax.grad(objective)(0.)
+    assert np.isfinite(gradient)
+
+
+def test_grid_build_failure_preflight_without_campaign_grid(monkeypatch):
+    sim = Simulation(freq_max=10e9, domain=(.01,) * 3, dx=.001,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_probe((.005,) * 3, "ez")
+
+    def fail(*args, **kwargs):
+        raise ValueError("original: detail")
+
+    monkeypatch.setattr(sim, "_build_grid", fail)
+    report = sim.preflight()
+    assert report.by_code("assembly_refusal")
+    assert report.by_code("absorber_point_refused") == []
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
