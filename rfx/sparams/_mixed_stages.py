@@ -581,9 +581,17 @@ def _score_mixed_record(
                              for channel in record.channels)
             _channels.extend((f"probe{i}", _ts_np[:, i])
                              for i in range(_ts_np.shape[1]))
+            from rfx.sparams._settling_groups import msl_column_groups, port_column_groups
+            _groups, _labels = msl_column_groups(_channels)
+            _port_groups, _ = port_column_groups(raw.get("sparam_time_records") or ())
+            for record in raw.get("sparam_time_records") or ():
+                _groups.update((f"{record.id}/{channel}", key)
+                               for channel, key in zip(record.channels, _port_groups[record.id]))
+            _groups.update((f"probe{i}", "ez") for i in range(_ts_np.shape[1]))
             settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(
                 _channels, source_end_index=_source_end, dt=raw.get("dt", grid.dt),
-                freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
+                freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
+                scale_groups=_groups, _channel_labels=_labels)
 
     return settling_db_runs, settling_details
 
