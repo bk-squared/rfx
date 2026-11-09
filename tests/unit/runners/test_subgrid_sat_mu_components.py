@@ -19,13 +19,13 @@ def _record(*, transpose=False, ramp=False):
                      boundary="pec", cpml_layers=0)
     sim.add_refinement((3 * DX, 6 * DX), ratio=2, validation="research")
     if ramp:
-        # Nine cell-wide pieces of the 1..3 ramp cross the low SAT face.
+        # Nine cell-wide pieces of the 1..3 ramp cross both SAT faces (z 3 and 6 cells).
         # Transposing each Box and both observation sites builds the reference
         # independently through Simulation, without reading SAT coefficients.
         for i in range(9):
             name = f"mu-{i}"
             sim.add_material(name, eps_r=1., mu_r=1. + i / 4.)
-            sim.add(Box(xyz(i, 0, 2), xyz(i + 1, 9, 5)), material=name)
+            sim.add(Box(xyz(i, 0, 2), xyz(i + 1, 9, 7)), material=name)
     else:
         sim.add_material("uniform-mu", eps_r=1., mu_r=2.)
         sim.add(Box(xyz(0, 0, 0), xyz(9, 9, 9)), material="uniform-mu")

@@ -17,6 +17,7 @@ def _conformal_walls():
 @pytest.mark.parametrize("conformal", [False], ids=["default-boundary"])
 @pytest.mark.xfail(
     strict=True,
+    raises=ValueError,
     reason="#2535: the conformal-floor admission (rfx/runners/_admission.py:876) "
     "resolves the auto mesh on the fit's traced per-iteration simulation, so an "
     "auto-mesh differentiable_material_fit is refused before the first step",
@@ -69,6 +70,7 @@ def test_frozen_domain_mutation_preserves_probe_record():
     sim = _frozen_model(domain)
     sim.freeze_mesh()
     domain[2] = 0.050
+    domain[1] = 0.006  # y is read through the frozen snapshot (conformal walls)
     expected = _frozen_model((0.024, 0.009, 0.009)).run(n_steps=16)
     actual = sim.run(n_steps=16)
     a, b = np.asarray(actual.time_series), np.asarray(expected.time_series)
