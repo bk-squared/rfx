@@ -9,6 +9,7 @@ from rfx.errors import RfxUnsupported
 from rfx.geometry import smoothing
 from rfx.geometry.node_tensor import compute_node_tensor_eps
 from rfx.grid import Grid
+from rfx.model import NominalProfile
 from rfx.model.graded_grid import make_nonuniform_grid
 
 
@@ -161,16 +162,17 @@ def test_join_window_checks_every_later_painted_group(path, mode):
 
 
 def mesh_arrays(delta, mode, *, nominal=True, adjacent=False, order='ADC',
-                nearby=False, membership_only=False):
+                nearby=False, membership_only=False, windowed=False):
     from types import SimpleNamespace
     from rfx.model.tensor_operands import full_tensor_eps, smoothing_nominal_h_max
     profile = np.array([.001] * 4 + [.0008, .0012] * 2 + [.001] * 4)
     traced = isinstance(delta, jax.core.Tracer)
     widths = jnp.asarray(profile).at[4].add(delta).at[5].add(-delta) if traced else profile
+    declaration = NominalProfile(profile, traced_cells=(4, 6)) if windowed else profile
     sim = Simulation(freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary='pec',
                      cpml_layers=0, dx_profile=widths, dy_profile=widths, dz_profile=widths,
                      dt=.2 * .001 / 299792458., dt_min_cell=.0005,
-                     nominal_profiles={a: profile for a in 'xyz'} if traced and nominal else None)
+                     nominal_profiles={a: declaration for a in 'xyz'} if traced and nominal else None)
     grid = sim._build_nonuniform_grid()
     # Revision 2c: centres and bounds clear both plane sets by >= 0.03 mm.
     # A and C overlap by 0.15 mm; distant D leaves their union unchanged.
@@ -196,10 +198,13 @@ def mesh_arrays(delta, mode, *, nominal=True, adjacent=False, order='ADC',
     return membership, arrays
 
 
-def test_traced_mesh_nominal_membership():
-    concrete = mesh_arrays(0., True, membership_only=True)
-    adc = jax.jit(lambda d: mesh_arrays(d, True, membership_only=True))(0.)
-    acd = jax.jit(lambda d: mesh_arrays(d, True, order='ACD', membership_only=True))(0.)
+@pytest.mark.parametrize('windowed', [False, True], ids=['plain', 'windowed'])
+def test_traced_mesh_nominal_membership(windowed):
+    concrete = mesh_arrays(0., True, membership_only=True, windowed=windowed)
+    adc = jax.jit(lambda d: mesh_arrays(
+        d, True, membership_only=True, windowed=windowed))(0.)
+    acd = jax.jit(lambda d: mesh_arrays(
+        d, True, order='ACD', membership_only=True, windowed=windowed))(0.)
     np.testing.assert_array_equal(concrete, [0, 1, 0])
     np.testing.assert_array_equal(adc, [0, 1, 0])
     np.testing.assert_array_equal(acd, [0, 0, 1])
@@ -216,10 +221,11 @@ def test_traced_mesh_nominal_order_arrays(mode):
                                       err_msg=name)
 
 
-def test_traced_mesh_nominal_nearby_membership():
+@pytest.mark.parametrize('windowed', [False, True], ids=['plain', 'windowed'])
+def test_traced_mesh_nominal_nearby_membership(windowed):
     # D' has a 2.20 mm x-gap: beyond 2*dx, inside 2*max(nominal_profiles).
     groups = jax.jit(lambda d: mesh_arrays(
-        d, True, nearby=True, membership_only=True))(0.)
+        d, True, nearby=True, membership_only=True, windowed=windowed))(0.)
     np.testing.assert_array_equal(groups, [0, 1, 2])
 
 

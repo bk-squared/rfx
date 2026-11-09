@@ -51,6 +51,7 @@ def smoothing_nominal_h_max(sim, grid):
     Return None if any traced axis lacks its nominal declaration. The
     grouping rule then refuses only joins that need a distance decision.
     Concrete axes retain their realized, axis-specific padded widths.
+    A NominalProfile entry contributes its cells.
     """
     import numpy as np
     from rfx.core.jax_utils import is_tracer
@@ -61,7 +62,8 @@ def smoothing_nominal_h_max(sim, grid):
         if is_tracer(widths):
             if name not in nominal:
                 return None
-            widths = nominal[name]
+            entry = nominal[name]
+            widths = getattr(entry, "cells", entry)
         maxima.append(float(np.max(widths)))
     return max(maxima)
 
