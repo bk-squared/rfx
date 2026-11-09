@@ -469,7 +469,19 @@ Resolve larger wire ports geometrically with a coax feed or a volume wire.
 Each halving of the transverse cell adds `ω·(μ0·ℓ/2π)·ln 2` of series reactance
 to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz for a
 1 mm port, so its S does not converge with the mesh. `run()` and `sim.preflight()`
-report it (code `wire_port_no_radius`).
+report it (code `wire_port_no_radius`). A YAML lumped port takes `radius:` the
+same way, with the same bound and the same refusal.
+
+### A coaxial port ended in a matched load reads a reflection floor that rises as the mesh is refined.
+
+Tracker: #2415
+
+On a 0.635/2.055 mm coaxial line with eps_r 2.1, the band median of |S11| over
+4-6 GHz rises from -40.2 dB at 0.4 mm to -35.8 dB at 0.2 mm. A load-face term
+that shrinks with the mesh cancels less of a nearly mesh-independent term near
+-32 dB. The origin of the mesh-independent term is not known. |S11| below about
+-32 dB on a fine mesh is not resolved on a coaxial port. These numbers are for
+this one line and band (measured on four meshes; record kept with the project).
 
 ### A multi-cell wire port's load-plane reflection misses the 2 dB and 0.1 bars on two loads at 25 µm.
 
