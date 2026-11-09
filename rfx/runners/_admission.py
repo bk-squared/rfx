@@ -1117,6 +1117,9 @@ def refuse_mixed_waveguide_sources(sim) -> None:
 
 def refuse_distributed_sources(sim, lane):
     """Name sources that cannot be stepped on the requested slab lane."""
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())],
+                f"distributed_v2 / distributed_nu ({lane})")
     if getattr(sim, "_waveguide_ports", ()):
         raise RfxUnsupported(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
     entry = getattr(sim, "_tfsf", None)
@@ -1191,6 +1194,9 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    if lane in {"run_subgridded", "material_fit"}:
+        from rfx.materials.pole_map import refuse_maps
+        refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())], lane)
     admit_conformal_floor(sim, lane, (run_args or {}).get("conformal_pec"),
                           smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:

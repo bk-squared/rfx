@@ -56,6 +56,9 @@ def _pole_key(pole):
        such poles will not dedupe against value-equal duplicates
        (fail-loud beats silent double-counting).
     """
+    from rfx.materials.pole_map import is_map
+    if is_map(pole):
+        return id(pole)
     try:
         hash(pole)
         return pole

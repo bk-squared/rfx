@@ -175,6 +175,7 @@ class PoleSetExtremes(NamedTuple):
     count: object
     occupied: tuple
     debye: tuple = ()
+    map_corners: tuple = ()
 
 
 def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
@@ -242,7 +243,16 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
             count = jnp.sum(selected)
         else:
             selected = (inverse == index).reshape(shape)
-        chosen = tuple(p for p, present in zip(lp, pattern) if present)
+        from rfx.materials.pole_map import SampledPoleMap, pattern_corner
+        chosen_list, map_corners = [], []
+        for p, present in zip(lp, pattern):
+            if not present:
+                continue
+            if isinstance(p, SampledPoleMap):
+                p, position = pattern_corner(p, selected, xp)
+                map_corners.append((len(chosen_list), position))
+            chosen_list.append(p)
+        chosen = tuple(chosen_list)
         debye = tuple(p for p, present in zip(dp, pattern[len(lp):]) if present)
         eps_low = xp.min(xp.where(selected, materials.eps_r, xp.inf))
         sigma_low = xs.min(xs.where(selected, materials.sigma, xs.inf))
@@ -256,7 +266,7 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
                 global_x[view.x0:view.x1] = occupied[0]
             occupied = (global_x,) + occupied[1:]
         records.append(PoleSetExtremes(int(unique_codes[index]), chosen, eps_low,
-                                      sigma_low, sigma_high, count, occupied, debye))
+                                      sigma_low, sigma_high, count, occupied, debye, tuple(map_corners)))
     return tuple(records)
 
 
@@ -351,7 +361,7 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
     for record in records:
         local = budget.local_axes(record.occupied) if hasattr(budget, "local_axes") else float(budget)
 
-        def check(eps, low, high, step, budget, count, *parameters, n_lorentz=len(record.poles)):
+        def check(eps, low, high, step, budget, count, corners, *parameters, n_lorentz=len(record.poles)):
             pole_values = np.asarray(parameters[:3 * n_lorentz], dtype=np.float64).reshape(-1, 3)
             debye = np.asarray(parameters[3 * n_lorentz:], dtype=np.float64).reshape(-1, 2)
             eps, low, high, step = map(float, (eps, low, high, step))
@@ -379,12 +389,16 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
                           f"so that dt={stable:.16g} can be passed") + "; or raise eps_inf"
             names = ", ".join(f"(omega_0={w:.6g}, delta={d:.6g}, kappa={k:.6g})"
                               for w, d, k in pole_values)
+            if corners:
+                names += "; " + ", ".join(
+                    f"LorentzPoleMap corner {int(i)} kappa_max at {tuple(float(x) for x in position)} m"
+                    for i, position in corners)
             raise ValueError(
                 f"Lorentz/Drude poles {names} on {count} cells, eps_low={eps:.6g}, "
                 f"sigma_low={low:.6g}, sigma_high={high:.6g}: unstable at this model's time step "
                 f"dt = {step:.6g} s; growth per step = {growth:.9g}; {limit}. To run: {remedy}.")
 
-        args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.count,
+        args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.count, record.map_corners,
                 *(v for p in record.poles + record.debye for v in p))
         # Eager autodiff carries concrete primals: judge them on the host. A
         # callback would copy a value replicated over processes to one device.
@@ -495,6 +509,8 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
         raise ValueError("prebuilt Lorentz coefficients require cell sizes and dt for pole stability admission")
     axes = (0, 1) if getattr(grid, "is_2d", False) else (0, 1, 2)
     lc = lorentz[0]
+    if isinstance(lc.a, tuple) or isinstance(lc.b, tuple):
+        raise ValueError("LorentzPoleMap tuple a/b coefficients require a judged realization; judge_prebuilt_poles cannot recover them")
     dc = None if debye is None else debye[0]
 
     def check(step, widths, coeffs, debye_coeffs):

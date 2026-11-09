@@ -130,6 +130,9 @@
     "LorentzPole": {
       "kind": "class"
     },
+    "LorentzPoleMap": {
+      "kind": "class"
+    },
     "LumpedRLCSpec": {
       "kind": "class"
     },
@@ -787,6 +790,13 @@
         "gamma"
       ]
     },
+    "drude_pole_map": {
+      "kind": "function",
+      "params": [
+        "omega_p",
+        "gamma"
+      ]
+    },
     "edge_is_pec": {
       "kind": "function",
       "params": [
@@ -1283,6 +1293,14 @@
       ]
     },
     "lorentz_pole": {
+      "kind": "function",
+      "params": [
+        "delta_eps",
+        "omega_0",
+        "delta"
+      ]
+    },
+    "lorentz_pole_map": {
       "kind": "function",
       "params": [
         "delta_eps",

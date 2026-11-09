@@ -482,6 +482,8 @@ def eval_lorentz(freqs: np.ndarray, eps_inf: float,
     -------
     eps_complex : (N,) complex array
     """
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(poles, "material_fit.eval_lorentz")
     # Straight from the pole fields: eps = eps_inf + sum kappa / (w0^2 - w^2 + 2j*delta*w).
     # For w0 > 0 this is the Lorentz form (kappa = delta_eps * w0^2). It used to
     # go through delta_eps = kappa / w0^2 and set delta_eps = 0 when w0 == 0, so a

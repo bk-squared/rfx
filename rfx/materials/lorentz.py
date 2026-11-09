@@ -23,7 +23,7 @@ four incident cells (:func:`rfx.core.yee.component_e_materials`), and each
 pole's κ_p (∝ Δε_p) is κ_p times the fraction of those cells that carry the
 pole -- the same parallel-susceptibility rule as σ, see
 ``rfx.materials.debye``. ``ca``/``cb``/``cc``/``c`` are 3-tuples ``(x, y,
-z)``; ``a`` and ``b`` depend on ω₀ and δ only and stay one array per pole.
+z)``; ``a`` and ``b`` also become component triples when damping varies.
 
 References:
     Taflove & Hagness, Ch. 9
@@ -31,7 +31,8 @@ References:
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Callable, NamedTuple
+from dataclasses import dataclass
 from weakref import ref
 
 import jax
@@ -56,6 +57,40 @@ class LorentzPole(NamedTuple):
     omega_0: float
     delta: float
     kappa: float
+
+
+@dataclass(frozen=True, eq=False)
+class LorentzPoleMap:
+    """One oscillator with strength and damping sampled at physical cell centres.
+
+    Callables take broadcastable X, Y, Z arrays in metres. On occupied cells,
+    delta and kappa must be finite and non-negative. Maps are keyed by identity.
+    """
+    omega_0: float
+    delta: float | Callable
+    kappa: float | Callable
+
+    def __post_init__(self):
+        if callable(self.omega_0) or jnp.ndim(self.omega_0) != 0:
+            raise ValueError("LorentzPoleMap omega_0 must be one scalar")
+        for name in ("delta", "kappa"):
+            value = getattr(self, name)
+            if not callable(value) and jnp.ndim(value) != 0:
+                raise ValueError(f"LorentzPoleMap {name} must be a scalar or callable")
+
+
+def drude_pole_map(omega_p: float | Callable, gamma: float | Callable) -> LorentzPoleMap:
+    """Declare a plasma-frequency and collision-rate profile in physical metres."""
+    kappa = (lambda x, y, z: omega_p(x, y, z) ** 2) if callable(omega_p) else omega_p ** 2
+    delta = (lambda x, y, z: gamma(x, y, z) / 2.) if callable(gamma) else gamma / 2.
+    return LorentzPoleMap(0., delta, kappa)
+
+
+def lorentz_pole_map(delta_eps: float | Callable, omega_0: float,
+                     delta: float | Callable) -> LorentzPoleMap:
+    """Declare spatial oscillator strength and damping at one resonance."""
+    kappa = (lambda x, y, z: delta_eps(x, y, z) * omega_0 ** 2) if callable(delta_eps) else delta_eps * omega_0 ** 2
+    return LorentzPoleMap(omega_0, delta, kappa)
 
 
 def drude_pole(omega_p: float, gamma: float) -> LorentzPole:
@@ -95,15 +130,15 @@ class LorentzCoeffs(NamedTuple):
     cc : (nx, ny, nz) each — P→E coupling: 1/γ
     c : (n_poles, nx, ny, nz) each — E^n coupling into the P recurrence (∝ κ)
 
-    One array for all components:
+    One array for all components, or component triples for a damping map:
 
     a, b : (n_poles, nx, ny, nz) — P recurrence coefficients (ω₀, δ only),
         the pole's values on every cell whose edges the pole reaches.
     """
     ca: tuple
     cb: tuple
-    a: jnp.ndarray
-    b: jnp.ndarray
+    a: jnp.ndarray | tuple
+    b: jnp.ndarray | tuple
     c: tuple
     cc: tuple
 
@@ -163,6 +198,8 @@ def pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype=None):
 
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
     """Material-independent Lorentz ADE terms from per-pole edge fractions."""
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(poles, "grid-less lorentz_pole_coeffs")
     a_list, b_list = [], []
     c_lists = ([], [], [])
 
@@ -245,7 +282,7 @@ def lorentz_e_coeffs(e_materials, dt, a, b, c):
 
 
 def init_lorentz(
-    poles: list[LorentzPole],
+    poles: list[LorentzPole | LorentzPoleMap],
     materials,
     dt: float,
     mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
@@ -317,7 +354,9 @@ def lorentz_p_component(coeffs: LorentzCoeffs, comp: int, e_old, p, p_prev,
                         pdtype=None):
     """P^{n+1} = a P^n + b P^{n-1} + c_comp E^n for E component ``comp``."""
     c = per_component(coeffs.c, "c")[comp]
-    p_new = coeffs.a * p + coeffs.b * p_prev + c * e_old[None]
+    a = coeffs.a[comp] if isinstance(coeffs.a, tuple) else coeffs.a
+    b = coeffs.b[comp] if isinstance(coeffs.b, tuple) else coeffs.b
+    p_new = a * p + b * p_prev + c * e_old[None]
     return p_new if pdtype is None else p_new.astype(pdtype)
 
 
