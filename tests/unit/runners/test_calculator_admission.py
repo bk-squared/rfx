@@ -228,6 +228,37 @@ def test_waveguide_timestep_gate(attr, value, graded, monkeypatch):
             sim.compute_waveguide_s_matrix(n_steps=4)
 
 
+@pytest.mark.parametrize("entry,conformal,refined,expected", [
+    ("run", "cut_cell_floor", False,
+     r"dt_min_cell= is not carried by the uniform run\(\) lane"),
+    ("run", None, False,
+     r'a uniform dt= pin requires run\(conformal_pec="cut_cell_floor"\); '
+     r'run_uniform does not carry this declaration'),
+    ("forward", None, False,
+     r'a uniform dt= pin requires run\(conformal_pec="cut_cell_floor"\); '
+     r'fwd_uniform does not carry this declaration'),
+    ("run", None, True,
+     r'a uniform dt= pin requires run\(conformal_pec="cut_cell_floor"\); '
+     r'run_subgridded does not carry this declaration'),
+])
+def test_dt_min_cell_refused_before_scan(entry, conformal, refined, expected, monkeypatch):
+    from rfx.errors import RfxUnsupported
+
+    kwargs = dict(freq_max=10e9, domain=(.012, .012, .012), dx=.001, boundary="pec")
+    dt = .5 * Simulation(**kwargs)._build_grid().dt
+    sim = Simulation(**kwargs, dt=dt, dt_min_cell=1e-3)
+    if refined:
+        sim.add_refinement(z_range=(.003, .009), ratio=2)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("dt_min_cell reached lax.scan before refusal")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    options = {"conformal_pec": conformal} if conformal is not None else {}
+    with pytest.raises(RfxUnsupported, match=expected):
+        getattr(sim, entry)(n_steps=4, **options)
+
+
 @pytest.mark.parametrize("calculator,feature", PHYSICS_CASES)
 def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator, feature):
     sim, call = calculator_case(calculator, feature=feature)
