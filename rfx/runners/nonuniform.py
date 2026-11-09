@@ -272,7 +272,7 @@ def _range_to_slice_nu(grid, axis, value_range):
 
 
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
-                                     freqs: jnp.ndarray, n_steps: int):
+                                     freqs: jnp.ndarray, n_steps: int, *, field_dtype=None):
     """NU-aware waveguide port config builder.
 
     Mirrors the uniform-path ``Simulation._build_waveguide_port_config``
@@ -285,6 +285,10 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         init_multimode_waveguide_port,
     )
 
+    if field_dtype is None:
+        field_dtype = jnp.float64 if sim._precision == "float64" else jnp.float32
+    if field_dtype == jnp.float64:
+        freqs = jnp.asarray(freqs, dtype=jnp.float64)
     normal_axis = entry.direction[1]
     axis_idx = {"x": 0, "y": 1, "z": 2}[normal_axis]
     pos_vec = [0.0, 0.0, 0.0]
@@ -351,7 +355,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
             dft_total_steps=n_steps,
             dt=float(grid.dt),
             waveform=entry.waveform,
-            mode_profile=entry.mode_profile,
+            mode_profile=entry.mode_profile, field_dtype=field_dtype,
         ), entry)
     return with_segment_declaration(init_waveguide_port(
         port, grid, freqs,
@@ -363,7 +367,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         dft_total_steps=n_steps,
         dt=float(grid.dt),
         waveform=entry.waveform,
-        mode_profile=entry.mode_profile,
+        mode_profile=entry.mode_profile, field_dtype=field_dtype,
     ), entry)
 
 
@@ -568,6 +572,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx._internal._precision import resolve_field_dtype
+    field_dtype = resolve_field_dtype(sim._precision) or jnp.float32
     from rfx.runners._admission import refuse_mixed_waveguide_sources
     refuse_mixed_waveguide_sources(sim)
     # The S-matrix calculator requests raw records, driving one port per run;
@@ -968,7 +974,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         for pe in sim._waveguide_ports:
             waveguide_port_cfgs.append(
                 _build_waveguide_port_config_nu(
-                    sim, pe, grid, wg_freqs, sizing_n,
+                    sim, pe, grid, wg_freqs, sizing_n, field_dtype=field_dtype,
                 )
             )
 
@@ -994,13 +1000,13 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     rlc_states_init: tuple = ()
     if sim._lumped_rlc:
         from rfx.lumped import (build_rlc_meta, init_rlc_state,
-                                refuse_stacked_solved_elements)
+                                refuse_stacked_solved_elements, rlc_carry_dtype)
         rlc_metas = tuple(
             build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc
         )
         # at most one element with its own solve per realized edge.
         refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
-        rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
+        rlc_states_init = tuple(init_rlc_state(dtype=rlc_carry_dtype(rlc_metas, field_dtype)) for _ in sim._lumped_rlc)
 
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
     # (the wire, lumped and MSL port loads above), as the uniform lane builds
@@ -1011,13 +1017,13 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     debye = None
     if debye_spec is not None:
         debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks,
+        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks, field_dtype=field_dtype,
                            periodic=tuple(a in grid.periodic_axes for a in "xyz"))
 
     lorentz = None
     if lorentz_spec is not None:
         lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks,
+        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks, field_dtype=field_dtype,
                                periodic=tuple(a in grid.periodic_axes for a in "xyz"))
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
@@ -1091,7 +1097,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if sim._ntff is not None:
         from rfx.farfield import make_ntff_box, init_ntff_data
         ntff_box = make_ntff_box(grid, *sim._ntff)
-        ntff_data_init = init_ntff_data(ntff_box)
+        ntff_data_init = init_ntff_data(ntff_box, field_dtype=field_dtype)
 
     # In-loop block current moments (rfx.current_moments), realized against
     # the grid the solve actually builds.
@@ -1158,6 +1164,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
     _shared_run_kwargs = dict(
+        field_dtype=field_dtype,
         design_box=design_box,
         sheet_impedance=sheet_ctx,
         aniso_eps=aniso_eps,

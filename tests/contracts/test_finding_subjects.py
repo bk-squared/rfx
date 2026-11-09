@@ -898,7 +898,9 @@ def test_precision_model_scope():
         sim = Simulation(10e9, (.01,) * 3, dx=.001, boundary='pec', dz_profile=np.full(10, .001))
         sim._precision = 'float64'
         report = assert_target(sim, 'precision_float64_without_x64', [()])
-        assert [i.subjects for i in report.by_code('precision_nonuniform_lane_unsupported')] == [()]
+        assert not report.by_code('precision_nonuniform_lane_unsupported')
+        sim._precision = 'mixed'
+        assert_target(sim, 'precision_nonuniform_lane_unsupported', [()])
 
 
 def test_refinement_model_scope():

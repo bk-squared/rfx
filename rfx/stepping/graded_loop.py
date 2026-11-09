@@ -76,6 +76,7 @@ def run_nonuniform(
     design_box: DesignBoxSpec | None = None,
     record_dft: bool | tuple[bool, ...] = False,
     measurement: object | None = None,
+    field_dtype=None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -124,7 +125,7 @@ def run_nonuniform(
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
         design_box=design_box,
-        measurement=measurement,
+        measurement=measurement, field_dtype=field_dtype,
     )
     step_fn = setup.step_fn
     carry_init = setup.carry_init
@@ -293,6 +294,7 @@ def run_nonuniform_until_decay(
     record_dft: bool | tuple[bool, ...] = False,
     advisory: dict | None = None,
     measurement: object | None = None,
+    field_dtype=None,
 ) -> dict:
     """Run non-uniform FDTD until the field energy left after the drive decays.
 
@@ -378,7 +380,7 @@ def run_nonuniform_until_decay(
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
         design_box=design_box,
-        measurement=measurement,
+        measurement=measurement, field_dtype=field_dtype,
     )
     carry = setup.carry_init
     init_plane_records(carry, dft_planes, record_dft, max_steps)

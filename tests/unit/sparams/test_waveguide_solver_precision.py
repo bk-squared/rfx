@@ -51,8 +51,7 @@ def _forbid_field_initialization(*args, **kwargs):
 
 
 
-@pytest.mark.parametrize("precision", ["float64", "mixed"])
-@pytest.mark.parametrize("x64", [False, True])
+@pytest.mark.parametrize("precision,x64", [("float64", False), ("mixed", False), ("mixed", True)])
 def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision, x64):
     monkeypatch.setattr(nonuniform_core, "init_state", _forbid_field_initialization)
     with enable_x64(x64), warnings.catch_warnings():
@@ -145,5 +144,29 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
             assert result.s_params.shape == (2 * n_modes, 2 * n_modes, 2)
             assert result.s_params.dtype == expected_complex
         assert len(initialized) == expected_runs
+    finally:
+        jax.clear_caches()
+
+
+def test_nonuniform_float64_accepted(monkeypatch):
+    initialized = []
+    initialize = nonuniform_core.init_state
+
+    def observe(*args, **kwargs):
+        state = initialize(*args, **kwargs)
+        dtypes = [getattr(state, name).dtype for name in ("ex", "ey", "ez", "hx", "hy", "hz")]
+        assert dtypes and all(d == np.float64 for d in dtypes), dtypes
+        initialized.append(dtypes)
+        return state
+
+    monkeypatch.setattr(nonuniform_core, "init_state", observe)
+    try:
+        with enable_x64(), warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            result = _guide(nonuniform=True, precision="float64").compute_waveguide_s_matrix(
+                n_steps=4, normalize=True)
+            assert result.s_params.dtype == np.complex128
+            assert result.s_params.real.dtype == np.float64
+        assert len(initialized) == 4
     finally:
         jax.clear_caches()

@@ -315,7 +315,7 @@ def _build_nu_scan(
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
     design_box=None,
-    measurement=None,
+    measurement=None, field_dtype=None,
 ) -> _NUScanSetup:
     """Build the NU scan carry + step function (pure code motion).
 
@@ -325,6 +325,7 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    field_dtype = field_dtype if field_dtype is not None else jnp.float32
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
     from rfx.geometry.node_tensor import SmoothedEps
@@ -382,7 +383,7 @@ def _build_nu_scan(
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step as apply_cpml_e, graded_cpml_operands
     (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
-         grid, cpml_axes, pec_faces, pmc_faces)
+         grid, cpml_axes, pec_faces, pmc_faces, field_dtype=field_dtype)
 
     pec_edge_masks, pec_static_edge_masks = graded_conductor_masks(
         pec_mask, pec_occupancy, pec_sheets, pec_wires, pec_edge_masks,
@@ -411,7 +412,7 @@ def _build_nu_scan(
         sheet_coeffs = sheet_update_coeffs(
             sheet_impedance.sigma_sheet, materials, dt)
 
-    state = init_state((grid.nx, grid.ny, grid.nz))
+    state = init_state((grid.nx, grid.ny, grid.nz), field_dtype=field_dtype)
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
     materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,

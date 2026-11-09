@@ -101,7 +101,7 @@ def compute_waveguide_s_matrix(
 
     Requires ``solver="yee"``. On a uniform mesh, ``precision`` selects
     field storage for every device and reference run, as on ``run()``.
-    A non-uniform mesh supports only ``precision="float32"``.
+    A graded mesh supports ``precision="float32"`` and ``"float64"``.
 
     Parameters
     ----------
