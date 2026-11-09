@@ -57,18 +57,18 @@ def test_lorentz_coefficients():
 
     # Hand-computed
     denom = 1.0 + delta * dt
-    a_exp = (2.0 - omega_0**2 * dt**2) / denom
-    b_exp = -(1.0 - delta * dt) / denom
+    a_exp = 2.0 * delta * dt / denom
+    b_exp = omega_0**2 * dt**2 / denom
     c_exp = EPS_0 * kappa * dt**2 / denom
 
-    assert abs(float(coeffs.a[0, 2, 2, 2]) - a_exp) < 1e-6
-    assert abs(float(coeffs.b[0, 2, 2, 2]) - b_exp) < 1e-6
+    assert abs(float(coeffs.damping[0, 2, 2, 2]) - a_exp) < 1e-6
+    assert abs(float(coeffs.restoring[0, 2, 2, 2]) - b_exp) < 1e-6
     for comp in range(3):   # c is per E component since #1260
         assert abs(float(coeffs.c[comp][0, 2, 2, 2]) - c_exp) / abs(c_exp) < 1e-4
 
     # State should be zeros
     assert float(jnp.max(jnp.abs(lstate.px))) == 0.0
-    assert float(jnp.max(jnp.abs(lstate.px_prev))) == 0.0
+    assert float(jnp.max(jnp.abs(lstate.vx))) == 0.0
 
     print(f"\nLorentz coefficients (ω₀={omega_0:.2e}, δ={delta:.2e}):")
     print(f"  a={a_exp:.6f}, b={b_exp:.6f}, c={c_exp:.4e}")

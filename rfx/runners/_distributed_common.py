@@ -158,8 +158,8 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, h
             alpha, beta = debye_pole_coeffs(poles, dt, shape_local, fractions)
             coeffs = DebyeCoeffs(None, None, None, alpha, beta)
         else:
-            a, b, c = lorentz_pole_coeffs(poles, dt, shape_local, fractions)
-            coeffs = LorentzCoeffs(ca=None, cb=None, cc=None, a=a, b=b, c=c)
+            damping, restoring, c = lorentz_pole_coeffs(poles, dt, shape_local, fractions)
+            coeffs = LorentzCoeffs(ca=None, cb=None, cc=None, damping=damping, restoring=restoring, c=c)
         return _pad_slab_dispersion_coeffs(coeffs, dt, nx_per, nx, rank=rank)
 
     state_type = DebyeState if kind == "debye" else LorentzState

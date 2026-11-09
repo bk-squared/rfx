@@ -254,8 +254,9 @@ def realized_operands(grid, materials, updates, localized) -> tuple[OperandRecor
             coeffs = value[0]
             # Setups receive ADE coefficients, whose masked recurrence terms
             # carry the realized pole reach (not the initial, zero P state).
-            names = ("alpha", "beta") if name == "debye" else ("a", "b", "c")
-            value = {key: getattr(coeffs, key) for key in names}
+            names = ("alpha", "beta") if name == "debye" else ("damping", "restoring", "c")
+            value = {key: (getattr(coeffs, key) - 1 if key in ("damping", "restoring")
+                           else getattr(coeffs, key)) for key in names}
             vacuum = 0
         elif vacuum == "sheet":
             value = {f"mask_e{a}": getattr(value, f"mask_e{a}") for a in "xyz"}

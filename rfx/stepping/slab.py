@@ -36,10 +36,10 @@ FILL = {
     'lorentz_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt.
     # 1/cc must stay finite in mixed ADE backward; zero caused NaN eps gradients.
     'lorentz_cc': Fill('1/eps0', '1/eps0'),
-    'lorentz_a': Fill(0., 0.),  # No exterior pole recurrence.
-    'lorentz_b': Fill(0., 0.),  # No exterior previous-polarization recurrence.
+    'lorentz_damping': Fill(1., 1.),  # Cancel the incoming exterior increment.
+    'lorentz_restoring': Fill(1., 1.),  # Cancel the exterior polarization.
     'lorentz_c': Fill(0., 0.),  # No exterior E-to-polarization coupling.
-    'lorentz_state': Fill(0., 0.),  # Initial/exterior Lorentz polarization and history are zero.
+    'lorentz_state': Fill(0., 0.),  # Initial/exterior Lorentz polarization and increment are zero.
     'pole_mask': Fill(False, False),  # No Debye/Lorentz pole outside the real cells.
     'eps_r': Fill(1., 1.),  # Vacuum permittivity; avoid division by zero in Yee updates.
     'mu_r': Fill(1., 1.),  # Vacuum permeability; magnetic face means keep their own low-face view.
@@ -358,7 +358,7 @@ def vacuum_dispersion_values(coeffs, dt):
     if hasattr(coeffs, "alpha"):
         kind, n_poles = "debye", coeffs.alpha.shape[0]
     else:
-        kind, n_poles = "lorentz", coeffs.a.shape[0]
+        kind, n_poles = "lorentz", coeffs.damping.shape[0]
     return _vacuum_dispersion_values(kind, int(n_poles), float(dt))
 
 
@@ -422,7 +422,7 @@ def cut_pole_coeffs(coeffs, layout, family, *, dt, mesh=None):
     if coeffs is None:
         return None
     spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
-    n_poles = coeffs.alpha.shape[0] if family == 'debye' else coeffs.a.shape[0]
+    n_poles = coeffs.alpha.shape[0] if family == 'debye' else coeffs.damping.shape[0]
     def field(name, value):
         kind = family + '_' + name
         if name in spatial:
@@ -436,7 +436,7 @@ def fill_pole_rows(coeffs, dt, nx_per, nx, *, rank):
     if rank is None:
         raise ValueError('slab rank must be supplied as data')
     family = 'debye' if hasattr(coeffs, 'alpha') else 'lorentz'
-    n_poles = coeffs.alpha.shape[0] if family == 'debye' else coeffs.a.shape[0]
+    n_poles = coeffs.alpha.shape[0] if family == 'debye' else coeffs.damping.shape[0]
     rows = rank * nx_per + jnp.arange(nx_per + 2) - 1
     real = ((rows >= 0) & (rows < nx))[:, None, None]
     return type(coeffs)(*(
