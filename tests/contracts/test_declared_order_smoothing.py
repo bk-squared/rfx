@@ -160,7 +160,8 @@ def test_join_window_checks_every_later_painted_group(path, mode):
             array[:, 12, 12, 12], np.asarray(expected, dtype=np.float32), maxulp=1)
 
 
-def mesh_arrays(delta, mode, *, nominal=True, adjacent=False):
+def mesh_arrays(delta, mode, *, nominal=True, adjacent=False, order='ADC',
+                nearby=False, membership_only=False):
     from types import SimpleNamespace
     from rfx.model.tensor_operands import full_tensor_eps, smoothing_nominal_h_max
     profile = np.array([.001] * 4 + [.0008, .0012] * 2 + [.001] * 4)
@@ -171,15 +172,20 @@ def mesh_arrays(delta, mode, *, nominal=True, adjacent=False):
                      dt=.2 * .001 / 299792458., dt_min_cell=.0005,
                      nominal_profiles={a: profile for a in 'xyz'} if traced and nominal else None)
     grid = sim._build_nonuniform_grid()
-    # A sphere contact exercises traced tensors without the existing Box refusal.
-    a = (Sphere((.00365, .005, .005), .00165), 4.)
-    c = (Sphere((.0068, .005, .005), .0015), 4.)
-    d = (Sphere((.010, .010, .010), .0005), 10.2)
-    pairs = [a, c] if adjacent else [a, d, c]
+    # Revision 2c: centres and bounds clear both plane sets by >= 0.03 mm.
+    # A and C overlap by 0.15 mm; distant D leaves their union unchanged.
+    a = (Sphere((.00363, .00527, .00533), .00156), 4.)
+    c = (Sphere((.00646, .00527, .00533), .00142), 4.)
+    d = (Sphere((.01069, .00871, .00933) if nearby else
+                (.01107, .00981, .00933), .00061), 10.2)
+    entries = {'A': a, 'C': c, 'D': d}
+    pairs = [a, c] if adjacent else [entries[key] for key in order]
     maximum = smoothing_nominal_h_max(sim, grid)
     groups = smoothing._medium_groups(pairs, grid, nominal_h_max=maximum)
     membership = jnp.array([next(k[0] for k, (_, members) in groups.items()
                                  if any(shape is s for s in members)) for shape, _ in pairs])
+    if membership_only:
+        return membership
     if mode == 'full_tensor':
         result = full_tensor_eps(sim, grid, SimpleNamespace(eps_r=jnp.ones((), jnp.float32)), pairs)
         arrays = {'diagonal': jnp.stack(result.diagonal), 'xi': jnp.stack(result.nodes.xi),
@@ -190,17 +196,31 @@ def mesh_arrays(delta, mode, *, nominal=True, adjacent=False):
     return membership, arrays
 
 
+def test_traced_mesh_nominal_membership():
+    concrete = mesh_arrays(0., True, membership_only=True)
+    adc = jax.jit(lambda d: mesh_arrays(d, True, membership_only=True))(0.)
+    acd = jax.jit(lambda d: mesh_arrays(d, True, order='ACD', membership_only=True))(0.)
+    np.testing.assert_array_equal(concrete, [0, 1, 0])
+    np.testing.assert_array_equal(adc, [0, 1, 0])
+    np.testing.assert_array_equal(acd, [0, 0, 1])
+
+
 @pytest.mark.parametrize('mode', [True, 'full_tensor'])
-def test_traced_mesh_nominal_matches_concrete(mode):
-    concrete_groups, concrete = mesh_arrays(0., mode)
-    traced_groups, traced = jax.jit(lambda d: mesh_arrays(d, mode))(0.)
-    np.testing.assert_array_equal(concrete_groups, [0, 1, 0])
-    np.testing.assert_array_equal(traced_groups, [0, 1, 0])
-    for name, expected in concrete.items():
-        expected = np.asarray(expected)
-        peak = np.float32(np.max(np.abs(expected)))
-        bar = 9 * np.spacing(peak)
-        assert np.all(np.abs(np.asarray(traced[name], dtype=np.float64) - expected) <= bar), name
+def test_traced_mesh_nominal_order_arrays(mode):
+    _, adc = jax.jit(lambda d: mesh_arrays(d, mode))(0.)
+    _, acd = jax.jit(lambda d: mesh_arrays(d, mode, order='ACD'))(0.)
+    for name in adc:
+        actual, expected = np.asarray(adc[name]), np.asarray(acd[name])
+        assert actual.dtype == expected.dtype == np.dtype('float32')
+        np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32),
+                                      err_msg=name)
+
+
+def test_traced_mesh_nominal_nearby_membership():
+    # D' has a 2.20 mm x-gap: beyond 2*dx, inside 2*max(nominal_profiles).
+    groups = jax.jit(lambda d: mesh_arrays(
+        d, True, nearby=True, membership_only=True))(0.)
+    np.testing.assert_array_equal(groups, [0, 1, 2])
 
 
 def test_traced_mesh_without_nominal_names_entries():
