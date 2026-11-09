@@ -52,8 +52,8 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                        overrides={'eps_r': eps_override, 'sigma': sigma_override,
                                   'pec_mask': pec_mask_override,
                                   'pec_occupancy': pec_occupancy_override})
-    # The distributed lane is outside declaration_setup (_dispatch.py), so an
-    # outer jit would trace the port's host cell sizes; traced inputs stay recorded.
+    # run(report_every=...) bypasses declaration_setup even though slabs ignore
+    # the progress option. Keep its host cell sizes concrete under an outer jit.
     with jax.ensure_compile_time_eval():
         ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
             pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
@@ -78,8 +78,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
                     if any(m is None or np.any(np.asarray(m)[window]) for m in masks):
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
-    # Drive samples and scales are host constants, as declaration_setup makes
-    # them on one device: a user jit must not stage them.
+    # The same region-bypassing run route needs concrete drive samples and scales.
     with jax.ensure_compile_time_eval():
         queue, material_drive = PortSourceQueue(), []
         for index, pe in enumerate(sim._ports):

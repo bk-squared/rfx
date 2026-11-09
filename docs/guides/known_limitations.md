@@ -373,7 +373,7 @@ three refinements. Measured 2026-10-31 with the conformal update now on main (op
 
 Tracker: #2241
 
-On one device, a fixed-step `run()` inside a user `jax.jit` now gives the same bits as plain `run()` on Linux CPU for a point current source on uniform and graded meshes and for a lumped or wire port on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Two cases still differ: `run(devices=...)` or `forward(distributed=True)` on a uniform mesh with a lumped or wire port (up to 432 float32 ULP of a probe's own peak per step over 192 steps), and `forward()` with a traced `eps_override` and a lumped port (33.5). Under a user `jax.jit`, `run()` refuses its port S-parameters (use `forward(port_s11_freqs=...)` or a plain call) and a multi-device closed-box plane wave (use a plain call); `until_decay` and `report_every` need a plain call. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. Until the multi-device fix lands (planned for 2.1), run a ported model on one device inside `jax.jit`, or call `run()` without an enclosing `jax.jit`.
+On one device, a fixed-step `run()` inside a user `jax.jit` now gives the same bits as plain `run()` on Linux CPU for a point current source on uniform and graded meshes and for a lumped or wire port on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). `run(devices=...)` and `forward(distributed=True)` on a uniform mesh with a lumped or wire port now stay within the cross-trace bar of the plain call on Linux CPU (9 float32 ULP of each probe's peak per step, 1e-4 of the peak summed over the record; they differed by up to 432 float32 ULP of a probe's own peak per step over 192 steps before the multi-device setup boundary). One case still differs: `forward()` with a traced `eps_override` and a lumped port (33.5). Under a user `jax.jit`, `run()` refuses its port S-parameters (use `forward(port_s11_freqs=...)` or a plain call) and a multi-device closed-box plane wave (use a plain call); `until_decay` and `report_every` need a plain call. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. With a traced `eps_override` and a lumped port, call `forward()` without an enclosing `jax.jit`.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
@@ -394,6 +394,15 @@ On two RTX A6000 GPUs a 236³-cell (13 M) closed PEC box driven by a TF/SF plane
 1.801 ms before the shared multi-device time step (medians of three processes). The same box with CPML is 3.4 %
 slower (3.293 to 3.405 ms per step). Field values are unchanged. Two whole-field copies before the PEC wall write take
 most of the difference; removing them recovered only 0.043 ms per step, for a reason not yet measured.
+
+### Under a caller's `jax.jit`, a multi-device run holds more whole-domain setup arrays on every device for dispersive materials and graded meshes
+
+Tracker: #2486
+
+Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none. Since the multi-device setup boundary, two cases hold more than before, measured on a 25 x 13 x 13-cell box split over two (three) CPU devices:
+- Debye and Lorentz materials (Drude takes the Lorentz route; not measured): each pole coefficient is one more whole-domain float32 constant. A Debye box on the uniform mesh holds 13 (263,640 bytes at two devices, 290,004 at three) instead of a permittivity and a mask array (25,350 / 27,885 bytes); a Lorentz box, which was refused under a caller's jit before, now runs and holds 11 (223,080 / 245,388 bytes).
+- Graded meshes: each material array is held with its x ghost cells, 20,280 bytes at two devices and 22,308 at three instead of 16,900 (+20 % / +32 %), for permittivity (one array, also with a lumped port) and a lossy thin film (two arrays).
+What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
 
 ### A preflight keeps its whole-domain realization arrays until the Simulation is deleted
 
