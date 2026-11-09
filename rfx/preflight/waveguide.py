@@ -477,26 +477,29 @@ def _preflight_entry_config(sim, entry, *, grid=None):
 
 
 def _preflight_aperture_slices(sim, entry, grid):
-    """The transverse cell slices used by both builders."""
+    """The transverse cell slices and physical spans used by both builders."""
     slices = {}
+    spans = {}
     for axis in _WAVEGUIDE_UV_AXES[entry.direction[1]]:
         value_range = getattr(entry, f"{axis}_range")
         if sim._uses_nonuniform_mesh:
             from rfx.runners.nonuniform import _range_to_slice_nu
-            slc, _ = _range_to_slice_nu(grid, axis, value_range)
+            slc, span = _range_to_slice_nu(grid, axis, value_range)
         else:
             i = "xyz".index(axis)
-            slc, _ = sim._range_to_slice(
+            slc, span = sim._range_to_slice(
                 value_range, sim._domain[i], grid.dx, grid.shape[i],
                 grid.axis_pads[i], getattr(grid, f"pad_{axis}_hi"))
         slices[axis] = (slc[0], slc[1] - 1)
-    return slices
+        spans[axis] = span
+    return slices, spans
 
 
 def _preflight_aperture_cells(sim, entry, grid):
     """One cell count for both preflight cutoff budget decisions."""
+    slices, _ = _preflight_aperture_slices(sim, entry, grid)
     return {axis: hi - lo for axis, (lo, hi) in
-            _preflight_aperture_slices(sim, entry, grid).items()}
+            slices.items()}
 
 
 def _preflight_section_medium(sim, entry):
@@ -513,7 +516,7 @@ def _preflight_section_medium(sim, entry):
     normal = entry.direction[1]
     index = host_index(grid, normal, entry.x_position)
     sign = 1 if entry.direction.startswith("+") else -1
-    slices = _preflight_aperture_slices(sim, entry, grid)
+    slices, _ = _preflight_aperture_slices(sim, entry, grid)
     u, v = (slices[axis] for axis in _WAVEGUIDE_UV_AXES[normal])
     section = SimpleNamespace(
         normal_axis=normal, direction=entry.direction, x_index=index,
@@ -920,18 +923,22 @@ def _emit_waveguide_port_cutoff_findings(
     m0, n0 = entry.mode
     mode_type = entry.mode_type
     try:
+        grid = self._build_realized_grid()
         if entry.n_modes > 1:
             # Match the solver's enumeration and tie order; only its first
             # mode is driven, while the remaining configs listen passively.
+            # Slice-reported spans can differ from both the declared width
+            # and the cell span, and decide which mode wins near a tie.
+            _, spans = _preflight_aperture_slices(self, entry, grid)
+            a_span, b_span = (spans[axis] for axis in _WAVEGUIDE_UV_AXES[entry.direction[1]])
             freqs = resolve_waveguide_port_freqs(self, entry)
             modes = solve_rectangular_modes(
-                a_ap, b_ap, float(jnp.max(freqs)) * 2.0, entry.n_modes)
+                a_span, b_span, float(jnp.max(freqs)) * 2.0, entry.n_modes)
             if not modes:
                 raise ValueError("No waveguide modes found below the solver's frequency bound")
             driven = modes[0]
             m0, n0 = driven["m"], driven["n"]
             mode_type = driven["mode_type"]
-        grid = self._build_realized_grid()
         cells = _preflight_aperture_cells(self, entry, grid)
         if (entry.mode_profile == "discrete"
                 and math.prod(cells.values()) > WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET):

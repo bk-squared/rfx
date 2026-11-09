@@ -101,6 +101,51 @@ def test_cutoff_from_builder(graded, a, b, mode_type, mode, n_modes):
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_multimode_near_tie_uses_builder_spans(graded):
+    # The uniform no-range builder reports the domain, even when its cells
+    # are shorter. The graded explicit range instead reports snapped edges.
+    profile = np.array([.0005] + [.00045] * 20 + [.000515] * 20
+                       + [.0007, .0009, .0009, .0007, .0005, .0005])
+    a_span = float(sum(profile[:41])) if graded else .0202
+    b_span = .020
+    driven_mode = (0, 1) if graded else (1, 0)
+    m, n = driven_mode
+    expected = (299792458.0 / 2) * math.sqrt((m / a_span) ** 2 + (n / b_span) ** 2)
+    sim = Simulation(
+        freq_max=.85 * expected, domain=(.024 if graded else .0202, .020, .08),
+        dx=.0005, dx_profile=profile if graded else None,
+        boundary={"x": "pec", "y": "pec", "z": "cpml"}, cpml_layers=4,
+    )
+    sim.add_waveguide_port(
+        .02, direction="+z", name="launch", mode=(1, 0), n_modes=3,
+        x_range=(0., .0201) if graded else None,
+        freqs=np.asarray([.75 * expected, .85 * expected]), f0=.8 * expected,
+        mode_profile="analytic", ref_offset=2, probe_offset=4,
+    )
+    entry = sim._waveguide_ports[0]
+    grid = sim._build_realized_grid()
+    cfgs = (_build_waveguide_port_config_nu(sim, entry, grid, entry.freqs, 1)
+            if graded else sim._build_waveguide_port_config(entry, grid, entry.freqs, 1))
+    cfg = cfgs[0]
+    assert cfg.mode_indices == driven_mode
+    assert cfg.mode_type == "TE"
+    assert cfg.f_cutoff == pytest.approx(expected)
+    resolved = _preflight_entry_config(sim, replace(entry, n_modes=1, mode=driven_mode))
+    assert resolved.mode_indices == driven_mode
+    assert resolved.f_cutoff == cfg.f_cutoff
+    findings = _findings(sim)
+    for code in ("port_source_below_cutoff", "port_freqs_below_cutoff"):
+        assert _quoted(findings[code], "fc") == f"{expected / 1e9:.3f}"
+        assert f"TE{m}{n} cutoff" in findings[code]
+        assert "builder analytic cutoff; the port drives its lowest-cutoff mode" in findings[code]
+    sim._waveguide_ports[0] = replace(
+        entry, freqs=np.asarray([1.2 * expected, 1.3 * expected]), f0=1.25 * expected)
+    findings = _findings(sim)
+    assert "port_source_below_cutoff" not in findings
+    assert "port_freqs_below_cutoff" not in findings
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 @pytest.mark.parametrize("dx,over_budget", [(.004, False), (.0005, True)],
                          ids=["within_budget", "over_budget"])
 def test_discrete_cutoff_budget(graded, dx, over_budget, monkeypatch):
