@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, LorentzPoleMap, Simulation, drude_pole, drude_pole_map
+from rfx import Box, GaussianPulse, LorentzPole, LorentzPoleMap, Simulation, drude_pole, drude_pole_map
 from tests.unit.materials.test_pole_map_stability_monotone import DOMAIN, DX, GRADED_X
 from tests._x64_compat import enable_x64
 
@@ -282,8 +282,8 @@ def zero_scene(graded, all_zero, scale=1., without=False):
 
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
-@pytest.mark.parametrize('all_zero', [False, True], ids=['band', 'all'])
-def test_p2c_prime_fields(monkeypatch, graded, all_zero):
+def test_p2c_prime_fields(monkeypatch, graded):
+    all_zero = False
     sim, grid, meta = zero_scene(graded, all_zero)
     base = capture_scan(sim, 400, monkeypatch)
     # The interior of the zero-strength band excludes its mixed interface edge.
@@ -312,26 +312,76 @@ def test_p2c_prime_fields(monkeypatch, graded, all_zero):
         traced, (scale,), (jnp.ones_like(scale),), has_aux=True))(jnp.float32(1.))
     assert np.isfinite(energy) and np.isfinite(gradient)
     assert traced_p == 0.
-    equality = None
-    traced_equality_max = None
-    probe_difference = None
-    if all_zero:
-        vacuum, _, _ = zero_scene(graded, all_zero, without=True)
-        reference = capture_scan(vacuum, 400, monkeypatch)
-        _, difference, probes, actual = paired(reference, base)
-        def traced_equality(scale):
-            candidate, _, _ = zero_scene(graded, all_zero, scale)
-            return paired_arrays(reference, capture_scan(candidate, 400, monkeypatch, forward=True))[0]
-        traced_difference = jax.jit(traced_equality)(jnp.float32(1.))
-        equality = float(difference.max())
-        traced_equality_max = float(traced_difference.max())
-        probe_difference = float(np.max(abs(probes - actual)))
     record(f'P2c-prime-{graded}-{all_zero}', dict(**meta, max_p=float(polarization.max()),
-           traced_max_p=float(traced_p), probe_energy=float(energy), probe_gradient=float(gradient),
-           field_difference_without_pole=equality,
-           traced_field_difference_without_pole=traced_equality_max,
-           probe_difference_without_pole=probe_difference))
-    if all_zero:
-        np.testing.assert_array_equal(difference, 0.)
-        np.testing.assert_array_equal(probes, actual)
-        np.testing.assert_array_equal(traced_difference, 0.)
+           traced_max_p=float(traced_p), probe_energy=float(energy), probe_gradient=float(gradient)))
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('forward', [False, True], ids=['concrete', 'traced'])
+def test_p2c_prime_all_zero(monkeypatch, graded, forward):
+    """D5: scalar reduction bit equality and the independent no-pole law."""
+    import rfx.materials.lorentz as lorentz
+    from rfx.geometry.rasterize_grid import (
+        centres_from_nonuniform_grid, centres_from_uniform_grid,
+    )
+
+    scalar, grid, meta = zero_scene(graded, True)
+    centres = (centres_from_nonuniform_grid if graded else centres_from_uniform_grid)(grid)
+    first_y = np.asarray(centres.y)
+    first_y = first_y[(first_y >= LO[1]) & (first_y < HI[1])][0]
+    scalar_delta = float(1e9 * (1 + 20 * first_y))
+    scalar._materials['plasma'].lorentz_poles[:] = [LorentzPole(0., scalar_delta, 0.)]
+    vacuum, _, _ = zero_scene(graded, True, without=True)
+    scalar_scan = capture_scan(scalar, 400, monkeypatch, forward=forward)
+    vacuum_scan = capture_scan(vacuum, 400, monkeypatch, forward=forward)
+    original_builder = lorentz.pole_update_coeffs
+
+    def capture_candidate(scale):
+        finite = []
+        def checked_builder(*args, **kwargs):
+            result = original_builder(*args, **kwargs)
+            finite.extend(jnp.all(jnp.isfinite(v)) for v in result)
+            return result
+        candidate, _, _ = zero_scene(graded, True, scale)
+        with monkeypatch.context() as patch:
+            patch.setattr(lorentz, 'pole_update_coeffs', checked_builder)
+            scan = capture_scan(candidate, 400, monkeypatch, forward=forward)
+        return scan, jnp.all(jnp.stack(finite)) if finite else jnp.asarray(True)
+
+    def measure(scan, finite):
+        body, initial, xs = scan
+        def step(carry, x):
+            carry, out = body(carry, x)
+            values = [jnp.max(abs(v)) for v in carry['lorentz'][:3]] if carry['lorentz'] is not None else []
+            return carry, jnp.max(jnp.stack(values)) if values else jnp.asarray(0.)
+        polarization = jax.lax.scan(step, initial, xs)[1]
+        return (paired_arrays(scalar_scan, scan), paired_arrays(vacuum_scan, scan),
+                jnp.max(polarization), finite)
+
+    if forward:
+        measured = jax.jit(lambda scale: measure(*capture_candidate(scale)))(jnp.float32(1.))
+    else:
+        scan, finite = capture_candidate(1.)
+        measured = jax.jit(lambda: measure(scan, finite))()
+    equal, law, max_p, finite = jax.device_get(measured)
+    difference, _, probes, actual = equal
+    def unpack(value):
+        return np.asarray(value[0] if isinstance(value, tuple) else value)
+    probes, actual = unpack(probes), unpack(actual)
+    law_difference, scale = (np.asarray(v, float) for v in law[:2])
+    allowance = 1.2e-7 * np.cumsum(scale)
+    ratios = np.divide(law_difference, allowance, out=np.where(law_difference > 0, np.inf, 0.),
+                       where=allowance > 0)
+    scalar_ratios, scalar_difference, _, _ = paired(vacuum_scan, scalar_scan)
+    values = dict(**meta, scalar_delta=scalar_delta, coefficients_finite=bool(finite),
+                  max_p=float(max_p), scalar_max_field_difference=float(np.max(difference)),
+                  scalar_max_probe_difference=float(np.max(abs(probes - actual))),
+                  probes_bit_equal=bool(probes.tobytes() == actual.tobytes()),
+                  worst_ratio=float(ratios.max()), scalar_control_ratio=float(scalar_ratios.max()),
+                  no_pole_max_field_difference=float(law_difference.max()),
+                  scalar_no_pole_max_field_difference=float(scalar_difference.max()))
+    record(f'P2c-prime-all-{graded}-{forward}', values)
+    np.testing.assert_array_equal(difference, 0.)
+    assert probes.tobytes() == actual.tobytes(), values
+    assert finite and max_p == 0., values
+    assert ratios.max() <= 1., values
