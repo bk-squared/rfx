@@ -24,13 +24,13 @@ Four lanes, all cheap (pure NumPy, or ``num_periods <= 4``):
   when only the resolved ladder crosses the plane zone, and stay silent when
   only the registration ladder does. Both fixtures self-verify their premise
   (registered vs resolved rung indices) before the call.
-* **Driver bookkeeping** — ``compute_mixed_s_matrix`` installs the resolved
-  entries for each run, and ``compute_msl_s_matrix``'s rebuilt entries keep
-  ``n_probes`` (it used to revert silently to the dataclass default 5).
+* **S-matrix ladder witnesses** — automatic versus explicit spacing, a
+  registration-spacing clearance twin, and three-probe dump replay
+  against the returned S with a five-probe dump twin.
 
 The guard tests that raise never reach the solve (the guard runs while the
-port sources are assembled), so they run in the default fast suite; only
-the two tests that complete a solve carry ``@pytest.mark.slow``.
+port sources are assembled). The ladder witnesses run complete public solves
+in the default suite; each solve has a 30-second budget.
 
 FAIL-BEFORE-FIX (measured on this worktree, pristine ``HEAD`` = 3038f845 with
 ``rfx/api/_execute.py`` restored, same driver script)::
@@ -248,10 +248,6 @@ def test_t2_crossing_guard_silent_at_n_probes_3():
 # T2b — the crossing guard walks the RESOLVED ladder, not the registration
 # ===========================================================================
 
-class _Abort(Exception):
-    """Raised by a capturing stub to stop a driver before its solve."""
-
-
 def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
                        n_probe_spacing):
     """The lane fixture with the microstrip port's ladder arguments free.
@@ -407,48 +403,81 @@ def test_t2b_guard_silent_when_only_the_registration_ladder_crosses():
     assert [pc["n_refplane_specs"] for pc in cap.positive_control] == [2, 2]
 
 
-def test_mixed_driver_installs_the_resolved_ladder_for_each_run():
-    """``compute_mixed_s_matrix`` rebuilds each run's ``self._msl_ports``
-    from the RESOLVED entries (the ladder ``probe_xs`` is built from), not
-    from the raw registration — captured at the solver entry and aborted
-    before any solve."""
-    from rfx import Simulation
+def _solve_ladder(row, solve):
+    """Print wall time even when the public solver refuses the specified row."""
+    import sys
+    from time import perf_counter
 
-    sim = _build_with_ladder(freq_max=m._FREQ_MAX, n_probes=5,
-                             n_probe_offset=10, n_probe_spacing=None)
-    grid, reg, res = _registered_and_resolved(sim)
-    assert res.n_probe_spacing != reg.n_probe_spacing      # discriminating
-
-    seen: list = []
-    orig = Simulation._forward_from_materials
-
-    def capture(self, *a, **kw):
-        seen.append(list(self._msl_ports))
-        raise _Abort
-
-    Simulation._forward_from_materials = capture
+    start = perf_counter()
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with pytest.raises(_Abort):
-                sim.compute_mixed_s_matrix(freqs=np.linspace(1e9, 4e9, 5),
-                                           n_steps=4, skip_preflight=True)
+        return solve()
     finally:
-        Simulation._forward_from_materials = orig
-    assert len(seen) == 1 and len(seen[0]) == 1
-    installed = seen[0][0]
-    assert (installed.n_probe_offset, installed.n_probe_spacing,
-            installed.n_probes) == (res.n_probe_offset, res.n_probe_spacing,
-                                    res.n_probes)
-    # Restored on exit: the registration is untouched.
-    assert sim._msl_ports[0] is reg
+        print(f"B3.8 {row}: solve_wall_s={perf_counter() - start:.6f}; limit_s=30",
+              file=sys.stderr)
 
 
-def test_msl_driver_rebuilt_entries_keep_n_probes(monkeypatch):
-    """``compute_msl_s_matrix`` rebuilds ``_MSLPortEntry`` per driven run;
-    the rebuild used to omit ``n_probes`` (silently back to the dataclass
-    default 5). Register a two-port microstrip thru with ``n_probes=3`` and
-    read the entries at ``run()``, aborting before any solve."""
+def _ladder_measurement(row, quantity, measured, bar):
+    import sys
+
+    print(f"B3.8 {row}: {quantity}={measured}; bar={bar}", file=sys.stderr)
+
+
+def test_mixed_s_matrix_auto_ladder_matches_explicit_spacing(tmp_path):
+    """The resolved ladder pins the refused pattern and finite S entries."""
+    import json
+
+    from rfx.interop import design_to_dict
+
+    auto = _build_with_ladder(freq_max=5e9, n_probes=5,
+                              n_probe_offset=10, n_probe_spacing=None)
+    document = design_to_dict(auto)
+    (tmp_path / "resolved-mixed-design.json").write_text(json.dumps(document))
+    spacing = document["excitations"]["msl_ports"][0]["n_probe_spacing"]
+    _ladder_measurement("mixed/public-dump", "resolved_spacing_cells", spacing, "measured, not assumed")
+    _ladder_measurement("mixed/model", "mesh", document["mesh"], "dx=80e-6; n_steps=64")
+    matrices = {}
+    clearances = {}
+    for row, sim in (
+        ("auto", auto),
+        ("explicit", _build_with_ladder(freq_max=5e9, n_probes=5,
+            n_probe_offset=10, n_probe_spacing=spacing)),
+        ("registration", _build_with_ladder(freq_max=5e9, n_probes=5,
+            n_probe_offset=10, n_probe_spacing=12)),
+    ):
+        result = _solve_ladder(f"mixed/{row}", lambda: sim.compute_mixed_s_matrix(
+            freqs=np.linspace(1e9, 4e9, 5), n_steps=64, skip_preflight=True))
+        matrices[row] = np.asarray(result.S)
+        clearances[row] = tuple((p.first_probe_m, p.deepest_probe_m)
+                                for p in result.probe_clearance)
+        assert len(clearances[row]) == 1 and all(
+            v is not None and np.isfinite(v) for v in clearances[row][0]
+        ), f"{row} must report finite first/deepest coordinates: {clearances[row]}"
+        _ladder_measurement(f"mixed/{row}", "first_deepest_probe_m", clearances[row],
+                            "auto == explicit; auto != registration")
+        _ladder_measurement(f"mixed/{row}", "nonfinite_S_count",
+                            int(np.count_nonzero(~np.isfinite(matrices[row]))), "same pattern in all three models")
+    a, b, old = (matrices[k] for k in ("auto", "explicit", "registration"))
+    finite = np.isfinite(a)
+    for row, value in (("explicit", b), ("registration", old)):
+        mismatches = int(np.count_nonzero(finite != np.isfinite(value)))
+        _ladder_measurement(f"mixed/auto-{row}", "nonfinite_pattern_mismatches", mismatches, 0)
+        assert mismatches == 0, f"{row} nonfinite pattern differs: mismatches={mismatches}, bar=0"
+    assert np.any(finite), "mixed S must contain finite entries"
+    a, b, old = a[finite], b[finite], old[finite]
+    delta = float(np.max(np.abs(a - b)))
+    _ladder_measurement("mixed/auto-explicit", "max_abs_S_difference", delta, "bitwise")
+    assert a.dtype == b.dtype and a.tobytes() == b.tobytes(), (
+        f"auto vs explicit resolved ladder is not bitwise equal: max_abs_difference={delta}")
+    assert np.max(np.abs(a)) > 0, "finite mixed S must be nonzero"
+    # A53: discriminate the run's ladder record, not its one-plane S.
+    assert clearances["auto"] == clearances["explicit"], (
+        f"auto vs explicit probe clearance: {clearances['auto']} != {clearances['explicit']}; bar=exact")
+    assert clearances["auto"] != clearances["registration"], (
+        f"registration-spacing clearance twin does not discriminate: "
+        f"auto={clearances['auto']}, registration={clearances['registration']}; bar=unequal")
+
+
+def _build_msl_thru(n_probes):
     from rfx import Box, Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
     from rfx.sources.sources import GaussianPulse
@@ -476,22 +505,65 @@ def test_msl_driver_rebuilt_entries_keep_n_probes(monkeypatch):
         sim.add_msl_port(position=(x, y_c, 0.0), width=m._W_TRACE,
                          height=m._H_SUB, direction=direction, impedance=50.0,
                          waveform=pulse, n_probe_offset=10, n_probe_spacing=4,
-                         n_probes=3)
-    assert [pe.n_probes for pe in sim._msl_ports] == [3, 3]
+                         n_probes=n_probes)
+    return sim
 
-    seen: list = []
 
-    def fake_run(self, *a, **kw):
-        seen.append([(pe.name, pe.n_probes, pe.n_probe_offset,
-                      pe.n_probe_spacing) for pe in self._msl_ports])
-        raise _Abort
+def test_msl_three_probe_dump_replays_returned_s_and_records_five(tmp_path):
+    """Keep the complete three-probe record and replay the public result."""
+    from rfx.validation import load_port_vi_dump_npz, replay_smatrix_from_port_vi_dump
 
-    monkeypatch.setattr(Simulation, "run", fake_run)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        with pytest.raises(_Abort):
-            sim.compute_msl_s_matrix(freqs=np.linspace(1e9, 4e9, 5),
-                                     num_periods=1.0)
-    assert len(seen) == 1
-    assert [row[1] for row in seen[0]] == [3, 3], seen
-    assert [(row[2], row[3]) for row in seen[0]] == [(10, 4), (10, 4)]
+    path = tmp_path / "three-probe.npz"
+    three = _build_msl_thru(3)
+    result = _solve_ladder("msl/three", lambda: three.compute_msl_s_matrix(
+        freqs=np.linspace(1e9, 4e9, 5), num_periods=1.0,
+        raw_3probe_dump_path=str(path)))
+    loaded = load_port_vi_dump_npz(path)
+    with np.load(path) as raw:
+        shape = raw["raw_v"].shape
+    _ladder_measurement("msl/dump", "raw_v_shape", shape, "(2, 2, 3, 5)")
+    _ladder_measurement("msl/model", "grid", loaded.metadata["grid"],
+                        loaded.metadata["simulation"])
+    assert shape == (2, 2, 3, 5), f"three-probe dump has raw_v.shape={shape}, expected (2, 2, 3, 5)"
+    _ladder_measurement("msl/dump", "n_probes_per_port", loaded.metadata["n_probes_per_port"], [3, 3])
+    assert loaded.metadata["n_probes_per_port"] == [3, 3]
+    replay = np.asarray(replay_smatrix_from_port_vi_dump(loaded).s_params)
+    # A47: independently refer the dump's line-reference power waves to the
+    # returned S's declared references, using the per-bin closed form.
+    z = np.asarray(loaded.port_impedances)
+    z_prime = np.asarray(result.reference_impedances)
+    _ladder_measurement("msl/references", "dump_ohms", z.tolist(), "public dump reference")
+    _ladder_measurement("msl/references", "returned_ohms", z_prime.tolist(), "public result reference")
+    r = np.diag((z_prime - z) / (z_prime + z))
+    c = np.diag((z + z_prime) / (2 * np.sqrt(z * z_prime)))
+    identity = np.eye(len(z))
+    replay = np.stack([
+        c @ (s_bin - r) @ np.linalg.inv(identity - r @ s_bin) @ np.linalg.inv(c)
+        for s_bin in np.moveaxis(replay, -1, 0)
+    ], axis=-1)
+    expected = np.asarray(result.S)
+    peak = float(np.max(np.abs(expected)))
+    difference = float(np.max(np.abs(replay - expected)))
+    error = difference / peak if peak > 0 else float("nan")
+    _ladder_measurement("msl/replay", "max_abs_difference", difference, 1e-5 * peak)
+    _ladder_measurement("msl/replay", "relative_S_error", error, 1e-5)
+    # Keep the spec's returned-S target, including its declared references.
+    # The dump's own production_smatrix is not a substitute for that target.
+    assert np.all(np.isfinite(expected)) and peak > 0, "returned MSL S must be finite and nonzero"
+    assert np.all(np.isfinite(replay)) and error <= 1e-5, (
+        f"dump replay vs returned S: relative_error={error:.9g}, bar=1e-5, "
+        f"max_abs_difference={difference:.9g}, peak={peak:.9g}")
+    five = _build_msl_thru(5)
+    five_path = tmp_path / "five-probe.npz"
+    _solve_ladder("msl/five", lambda: five.compute_msl_s_matrix(
+        freqs=np.linspace(1e9, 4e9, 5), num_periods=1.0,
+        raw_3probe_dump_path=str(five_path)))
+    five_dump = load_port_vi_dump_npz(five_path)
+    with np.load(five_path) as raw:
+        five_shape = raw["raw_v"].shape
+    counts = five_dump.metadata["n_probes_per_port"]
+    _ladder_measurement("msl/five-dump", "raw_v_shape", five_shape, "(2, 2, 5, 5)")
+    _ladder_measurement("msl/five-dump", "n_probes_per_port", counts, [5, 5])
+    assert five_shape == (2, 2, 5, 5), (
+        f"five-probe dump has raw_v.shape={five_shape}, expected (2, 2, 5, 5)")
+    assert counts == [5, 5], f"five-probe dump counts={counts}, expected [5, 5]"
