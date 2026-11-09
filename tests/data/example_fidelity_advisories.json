@@ -21,7 +21,7 @@
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:290-293,450-456,518-519",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:307-310,467-473,539-540",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -614,7 +614,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.5 mm substrate (t/h 2.33 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:140,297-299",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:157,314-316",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -646,7 +646,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 62 cells (0.05937 m), declared 62.6579080344 cells (0.06 m).",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:263-264,298",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-281,315",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
