@@ -8,7 +8,7 @@ from rfx.materials.lorentz import mixed_e_component_coeffs
 
 def coefficient_dt(dt, field_dtype=None):
     """Use field time for float64; retain the historical float32 operands."""
-    if field_dtype == jnp.dtype("float64"):
+    if field_dtype is not None and jnp.dtype(field_dtype) == jnp.dtype("float64"):
         return jnp.asarray(dt, dtype=field_dtype)
     from rfx.core.jax_utils import is_tracer
     if is_tracer(dt) or getattr(dt, 'dtype', None) == jnp.dtype('float64') and hasattr(dt, 'weak_type'):
