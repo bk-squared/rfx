@@ -98,8 +98,8 @@ def test_refresh_reads_current_declaration(entry):
 def trace(boundary, method_b=False, graded=False, entry="run"):
     sim = source(scene(boundary, graded=graded), method_b)
     sim.add_probe((.017, .005, .006), "ez")
-    # Main's probe first becomes nonzero at index 20 (normal) / 27 (Method B).
-    steps = 28 if method_b else 24
+    # The probe first becomes nonzero at index 28 on Method B (charge-free onset).
+    steps = 32 if method_b else 24
     result = getattr(sim, entry)(n_steps=steps, skip_preflight=True)
     values = np.asarray(result.time_series)
     assert values.shape == (steps, 1)
