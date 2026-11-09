@@ -4,7 +4,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Sphere
+from rfx import Box, Simulation, Sphere
+from rfx.errors import RfxUnsupported
 from rfx.geometry import smoothing
 from rfx.geometry.node_tensor import compute_node_tensor_eps
 from rfx.grid import Grid
@@ -134,3 +135,73 @@ def test_realized_graded_maximum_and_traced_bounds():
         return jnp.asarray(len(smoothing._medium_groups([a, d, traced], grid_for())))
 
     assert int(jax.jit(count)(.005)) == 3
+
+
+@pytest.mark.parametrize('path,mode', [('uniform', m) for m in MODES] +
+                         [('graded', True), ('graded', 'full_tensor')])
+def test_join_window_checks_every_later_painted_group(path, mode):
+    if path == 'uniform':
+        grid = grid_for(domain=.020)
+    else:
+        profile = np.array([.001] * 8 + [.0008, .0012] * 2 + [.001] * 8)
+        grid = make_nonuniform_grid((.020, .020), profile, .001, cpml_layers=0,
+                                   cpml_axes='', dx_profile=profile, dy_profile=profile)
+    pairs = [(Box((.001,) * 3, (.002,) * 3), 4.),
+             (Box((.008,) * 3, (.016,) * 3), 10.2),
+             (Box((.001, .001, .017), (.002, .002, .018)), 4.),
+             (Box((.0105,) * 3, (.0135,) * 3), 4.)]
+    arrays = arrays_for(grid, pairs, mode)
+    for name, array in arrays.items():
+        if name == 'triplets':
+            continue
+        expected = ([.25, .25, .25, 0., 0., 0.] if name == 'xi' else
+                    [.25, .25, .25] if name == 'inverse_diagonal' else [4., 4., 4.])
+        np.testing.assert_array_max_ulp(
+            array[:, 12, 12, 12], np.asarray(expected, dtype=np.float32), maxulp=1)
+
+
+def mesh_arrays(delta, mode, *, nominal=True, adjacent=False):
+    from types import SimpleNamespace
+    from rfx.model.tensor_operands import full_tensor_eps, smoothing_nominal_h_max
+    profile = np.array([.001] * 4 + [.0008, .0012] * 2 + [.001] * 4)
+    traced = isinstance(delta, jax.core.Tracer)
+    widths = jnp.asarray(profile).at[4].add(delta).at[5].add(-delta) if traced else profile
+    sim = Simulation(freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary='pec',
+                     cpml_layers=0, dx_profile=widths, dy_profile=widths, dz_profile=widths,
+                     dt=.2 * .001 / 299792458., dt_min_cell=.0005,
+                     nominal_profiles={a: profile for a in 'xyz'} if traced and nominal else None)
+    grid = sim._build_nonuniform_grid()
+    a, c, d = b3_shapes(sphere=True)
+    pairs = [a, c] if adjacent else [a, d, c]
+    maximum = smoothing_nominal_h_max(sim, grid)
+    groups = smoothing._medium_groups(pairs, grid, nominal_h_max=maximum)
+    membership = jnp.array([next(k[0] for k, (_, members) in groups.items()
+                                 if any(shape is s for s in members)) for shape, _ in pairs])
+    if mode == 'full_tensor':
+        result = full_tensor_eps(sim, grid, SimpleNamespace(eps_r=jnp.ones((), jnp.float32)), pairs)
+        arrays = {'diagonal': jnp.stack(result.diagonal), 'xi': jnp.stack(result.nodes.xi),
+                  'triplets': result.nodes.triplets}
+    else:
+        arrays = {'diagonal': jnp.stack(smoothing.compute_smoothed_eps_nonuniform(
+            grid, pairs, nominal_h_max=maximum))}
+    return membership, arrays
+
+
+@pytest.mark.parametrize('mode', [True, 'full_tensor'])
+def test_traced_mesh_nominal_matches_concrete(mode):
+    concrete_groups, concrete = mesh_arrays(0., mode)
+    traced_groups, traced = jax.jit(lambda d: mesh_arrays(d, mode))(0.)
+    np.testing.assert_array_equal(concrete_groups, [0, 1, 0])
+    np.testing.assert_array_equal(traced_groups, [0, 1, 0])
+    for name, expected in concrete.items():
+        expected = np.asarray(expected)
+        peak = np.float32(np.max(np.abs(expected)))
+        bar = 9 * np.spacing(peak)
+        assert np.all(np.abs(np.asarray(traced[name], dtype=np.float64) - expected) <= bar), name
+
+
+def test_traced_mesh_without_nominal_names_entries():
+    with pytest.raises(RfxUnsupported, match=r'nominal_profiles.*entries 1 .* and 2 '):
+        jax.jit(lambda d: mesh_arrays(d, True, nominal=False))(0.)
+    groups, _ = jax.jit(lambda d: mesh_arrays(d, True, nominal=False, adjacent=True))(0.)
+    np.testing.assert_array_equal(groups, [0, 0])

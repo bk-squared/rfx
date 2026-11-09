@@ -45,11 +45,33 @@ def attach_tensor(materials, operands):
     return materials._replace(components=replace(components, tensor=operands))
 
 
+def smoothing_nominal_h_max(sim, grid):
+    """Maximum physical width, substituting declared profiles on traced axes.
+
+    Return None if any traced axis lacks its nominal declaration. The
+    grouping rule then refuses only joins that need a distance decision.
+    Concrete axes retain their realized, axis-specific padded widths.
+    """
+    import numpy as np
+    from rfx.core.jax_utils import is_tracer
+    nominal = getattr(sim, '_nominal_profiles', None) or {}
+    maxima = []
+    for axis, name in enumerate('xyz'):
+        widths = grid.cells(axis)
+        if is_tracer(widths):
+            if name not in nominal:
+                return None
+            widths = nominal[name]
+        maxima.append(float(np.max(widths)))
+    return max(maxima)
+
+
 def full_tensor_eps(sim, grid, materials, shape_eps_pairs):
     """Build node tensors at the realized permittivity precision on either mesh."""
     from rfx.geometry.node_tensor import compute_node_tensor_eps
     return compute_node_tensor_eps(
         grid, shape_eps_pairs, background_eps=1.0,
+        nominal_h_max=smoothing_nominal_h_max(sim, grid),
         field_dtype=(jnp.float64 if sim._precision == 'float64' else materials.eps_r.dtype))
 
 
@@ -90,6 +112,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             dielectric_shapes=shape_eps_pairs,
             pec_shapes=pec_shapes or [],
             background_eps=1.0,
+            nominal_h_max=smoothing_nominal_h_max(sim, grid),
         )
         # Yee-stagger correction: the Kottke union reaches inv=0
         # on Yee-staggered components only when the cell-center
@@ -130,7 +153,9 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 aniso_eps = full_tensor_eps(sim, grid, materials, shape_eps_pairs)
             else:
                 from rfx.geometry.smoothing import compute_smoothed_eps
-                aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
+                aniso_eps = compute_smoothed_eps(
+                    grid, shape_eps_pairs, background_eps=1.0,
+                    nominal_h_max=smoothing_nominal_h_max(sim, grid))
 
     # Conformal PEC: form node lengths, face areas, and the SC clamp.
     # Entry admission refuses this with Stage 2; keep the exclusion
