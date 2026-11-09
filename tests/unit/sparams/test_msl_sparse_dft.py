@@ -9,6 +9,7 @@ import pytest
 
 from rfx.probes.probes import init_dft_plane_probe, update_dft_plane_probe
 from rfx.sources.msl_port import msl_loop_current as _REAL_LOOP_CURRENT
+from rfx.sparams._msl_stages import _prepare_msl_drive as _REAL_PREPARE_MSL_DRIVE
 
 
 def _state(ez: jnp.ndarray, step: int) -> SimpleNamespace:
@@ -262,8 +263,9 @@ def test_thru_foil_is_one_realized_sheet_plane():
 
 
 def _run_s(axis, lane, monkeypatch, *, crop: bool, seen: list):
-    """One thru solve; ``crop=False`` forces every internal plane to the
-    full transverse rectangle so the extractor takes its legacy path.
+    """One thru solve; ``crop=False`` clears the crop at its source, the
+    variant's ``_dft_plane_regions``, so the plan, runner probe and extractor
+    all take the full plane.
 
     ``seen`` collects the ``region`` every plane probe was initialised with.
     The returned ``loops`` list carries, per ``msl_loop_current`` call, the
@@ -274,14 +276,19 @@ def _run_s(axis, lane, monkeypatch, *, crop: bool, seen: list):
     import rfx.probes.probes as _pp
     import rfx.runners.uniform as _ru
     import rfx.sources.msl_port as _mp
+    import rfx.sparams._msl_stages as _stages
 
     real = init_dft_plane_probe
 
     def spy(*a, **k):
         seen.append(k.get("region"))
-        if not crop:
-            k["region"] = None
         return real(*a, **k)
+
+    def prepare_drive(*a, **k):
+        prepared = _REAL_PREPARE_MSL_DRIVE(*a, **k)
+        if not crop:
+            prepared[0]._dft_plane_regions.clear()
+        return prepared
 
     loops: list[dict] = []
     # the PRISTINE function, captured at import: reading it off the module
@@ -304,6 +311,7 @@ def _run_s(axis, lane, monkeypatch, *, crop: bool, seen: list):
     # forward path import it inside the function
     monkeypatch.setattr(_pp, "init_dft_plane_probe", spy)
     monkeypatch.setattr(_ru, "init_dft_plane_probe", spy)
+    monkeypatch.setattr(_stages, "_prepare_msl_drive", prepare_drive)
     # compute_msl_s_matrix imports msl_loop_current from its home module
     # inside the method, so patching the home module is what reaches it
     monkeypatch.setattr(_mp, "msl_loop_current", loop_spy)
@@ -478,8 +486,10 @@ def test_cropped_extractor_reproduces_full_plane_s_end_to_end(monkeypatch, lane,
     regions = [r for r in seen_crop if r is not None]
     assert regions and len(regions) == len(seen_crop), seen_crop
     assert all(len(r) == 4 and r[1] > r[0] and r[3] > r[2] for r in regions)
-    assert all(r is not None for r in seen_full)  # the spy saw the same regions...
-    # ...and the second run reset every one of them (so it went full-plane)
+    # The full run's planes were initialised full-plane because the crop was
+    # cleared at its source, the variant's _dft_plane_regions, so the plan,
+    # runner probe and extractor all took the full plane.
+    assert seen_full and all(r is None for r in seen_full), seen_full
 
     assert s_crop.shape == s_full.shape == (2, 2, 3)
 
