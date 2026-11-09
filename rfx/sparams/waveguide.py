@@ -303,7 +303,7 @@ def compute_waveguide_s_matrix(
     # otherwise raise so the user is not given silently-wrong numbers. Resolve
     # the frequency grid here because the NU absorber advisory needs it; a
     # shared resolver also applies the matching-grid check consistently.
-    from rfx.api._preflight import resolve_waveguide_port_freqs
+    from rfx.preflight.waveguide import resolve_waveguide_port_freqs
 
     def _resolve_freqs(entry: _WaveguidePortEntry) -> jnp.ndarray:
         # ONE definition, shared with preflight_sparameters(calculator=
