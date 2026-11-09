@@ -99,7 +99,7 @@ EPS_MIN, EPS_MAX = 1.0, 6.0
 BETA = 20.0
 N_STEPS = 500
 N_ITERS = 12
-# Gradient descent step: this script prints |grad|_max = 1.28e-25 at the
+# Gradient descent step: this script prints |grad|_max = 1.287e-25 at the
 # first iteration (BETA=20; measured 2026-11-09). With LR = 1e22 a step
 # moves the most-sensitive layer's eps_r by about 1e-3, so the 12
 # iterations move eps_r by at most 0.02 and lower the loss by about 0.01 %
