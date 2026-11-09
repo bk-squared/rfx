@@ -255,17 +255,11 @@ class Simulation(
         precomputed CPML profile arrays stay float32 either way (fixed
         setup-time constants measurably bias the primal but do not
         create a per-timestep rounding-lattice noise floor).
-        ``"mixed"``/``"float64"`` are UNIFORM-SINGLE-DEVICE-LANE ONLY
-        today: ``field_dtype`` is threaded only by
-        ``rfx/runners/uniform.py`` — the non-uniform-mesh, distributed
-        (``devices=``/``distributed=True``), and subgridded
-        (``refinement``) runners do not thread it, so a non-float32
-        precision there would silently run float32 fields. ``run()`` /
-        ``forward()`` raise ``NotImplementedError`` rather than do that
-        silently; ``preflight()`` also warns in advance for the
-        non-uniform-mesh case (the distributed case is a call-time
-        ``run()``/``forward()`` kwarg, invisible to preflight, so its
-        `NotImplementedError` at dispatch is the only enforcement point).
+        ``"float64"`` supports uniform and graded single-device Yee runs,
+        including forward(), waveguide S-matrix and wire/lumped S calculators.
+        ``"mixed"`` supports only the uniform single-device lane. Distributed
+        and subgridded lanes refuse both values with ``NotImplementedError``.
+        Preflight warns for ``"mixed"`` on a graded mesh.
 
         ACCURACY CAVEAT for ``"mixed"`` with a CPML boundary:
         float16 field storage is fine for transient and field-shape work

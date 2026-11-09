@@ -1291,7 +1291,7 @@ class _PreflightMixin:
             or self._dx_profile is not None
             or self._dy_profile is not None
         )
-        if self._precision != "float32" and is_nonuniform:
+        if self._precision == "mixed" and is_nonuniform:
             _w.warn(PreflightWarning(
                 f"precision={self._precision!r} was requested on a "
                 "non-uniform mesh (dx/dy/dz profile set), but the "

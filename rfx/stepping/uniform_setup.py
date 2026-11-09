@@ -511,6 +511,8 @@ def _build_step_setup(
         # psi carry dtype follows the field dtype so the scan carry stays
         # dtype-consistent when fields are complex.
         cpml_params, cpml_state = init_cpml(grid, field_dtype=_field_dtype)
+        from rfx.stepping.graded_precision import field_operands
+        cpml_params = field_operands(cpml_params, _field_dtype)
         carry_init["cpml"] = cpml_state
     elif use_upml:
         from rfx.boundaries.upml import init_upml

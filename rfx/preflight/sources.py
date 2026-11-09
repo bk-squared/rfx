@@ -324,7 +324,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
             import jax
             import jax.numpy as jnp
             n_pulse = int(math.ceil((float(t0) + 3.0 * tau) / dt)) + 1
-            times = jnp.arange(n_pulse, dtype=jnp.float32) * dt
+            from rfx.sources._sampling import field_time_step
+            times = jnp.arange(n_pulse, dtype=jnp.float32) * field_time_step(dt, self._precision)
             table = np.abs(np.asarray(jax.vmap(wf)(times), dtype=np.float64))
             if not np.any(table > 1e-6 * abs(float(amp))):
                 raise PreflightConfigError(

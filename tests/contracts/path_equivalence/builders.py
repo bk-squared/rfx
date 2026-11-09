@@ -81,6 +81,7 @@ BUILDERS = {
     # construction (the constructor refuses it on a concrete axis).
     ('_nominal_profiles', ''): ({}, lambda sim: setattr(sim, '_nominal_profiles', {'x': np.full(4, DX)})),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
+    ('_float64', ''): ({'precision': 'float64'}, _nothing),
 
     ('_stencil_order', ''): ({'stencil_order': 4}, _nothing),
     ('_mode', ''): ({'mode': '2d_tmz'}, _nothing),
@@ -145,10 +146,12 @@ BASE_ROWS = {('_freq_max', ''), ('_domain', ''), ('_dx', ''), ('_materials', 'ep
              ('_dx_profile', 'graded'), ('_dy_profile', 'graded'), ('_dz_profile', 'graded')}
 
 
-def build(row, lane, *, graded=False, dt=None):
+def build(row, lane, *, graded=False, dt=None, precision=None):
     ctor, add = BUILDERS[row]
     kwargs = dict(freq_max=15e9, domain=DOMAIN, dx=DX, boundary=boundary(), cpml_layers=2)
     kwargs.update(ctor)
+    if precision is not None:
+        kwargs["precision"] = precision
     if row[0] == '_waveguide_ports':
         # Modal aperture dimensions are declarations, not inferred rounded
         # box lengths. Put both transverse walls exactly on grid nodes.

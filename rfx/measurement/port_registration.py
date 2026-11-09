@@ -53,7 +53,7 @@ def graded_accumulators(ports, grid, freqs, carry):
     if not ports or freqs is None:
         return None, [], False
     bins = jnp.asarray(freqs, dtype=jnp.float32)
-    carry['wire_sparams'] = tuple(tuple(jnp.zeros(len(bins), dtype=jnp.complex64)
+    carry['wire_sparams'] = tuple(tuple(jnp.zeros(len(bins), dtype=jnp.result_type(jnp.complex64, jnp.float64))
                                       for _ in range(5)) for _ in ports)
     return bins, _build_wp_meta(ports, grid), True
 

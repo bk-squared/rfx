@@ -17,9 +17,9 @@ from .comparison import array_peak, compare, component_peaks, container, exclude
 
 
 @functools.lru_cache(maxsize=None)
-def solve(row, lane, graded, steps, dt, traced=True):
+def solve(row, lane, graded, steps, dt, traced=True, precision=None):
     started = time.perf_counter()
-    sim = build(row, lane, graded=graded, dt=dt)
+    sim = build(row, lane, graded=graded, dt=dt, precision=precision)
     grid = sim._build_realized_grid()
     geometry = sim.realized_geometry()
     kwargs = dict(n_steps=steps, skip_preflight=True)
@@ -73,14 +73,15 @@ def solve(row, lane, graded, steps, dt, traced=True):
                     return jnp.sum(out.time_series ** 2), out
 
                 objective, gradient, result = jax.jvp(
-                    loss, (jnp.float32(1.0),), (jnp.float32(1.0),), has_aux=True)
+                    loss, (jnp.asarray(1.0, dtype=precision or jnp.float32),),
+                    (jnp.asarray(1.0, dtype=precision or jnp.float32),), has_aux=True)
                 jax.block_until_ready(gradient)
             else:
                 result = run(**kwargs)
             jax.block_until_ready(result.time_series)
     assert capture.lane == lane, f're-routed: requested {lane}, observed {capture.lane}'
     assert result.time_series.shape == (steps, 2), f'probe record shape: {result.time_series.shape}'
-    assert result.time_series.dtype == jnp.float32, f'probe dtype: {result.time_series.dtype}'
+    assert result.time_series.dtype == np.dtype(precision or 'float32'), f'probe dtype: {result.time_series.dtype}'
     return dict(grid=grid, geometry=geometry, result=result, capture=capture,
                 objective=objective, gradient=gradient, elapsed=time.perf_counter()-started)
 
@@ -288,6 +289,13 @@ def _entry_refusal(sim, cell, report):
 
 
 def execute(cell):
+    if cell.row == ("_float64", ""):
+        with jax.enable_x64(True):
+            return _execute(cell, precision="float64")
+    return _execute(cell)
+
+
+def _execute(cell, precision=None):
     started = time.perf_counter()
     report = dict(cell=cell.id, failures=[], measurements=[])
     try:
@@ -329,13 +337,13 @@ def execute(cell):
         row = ('_materials', 'eps') if cell.row in BASE_ROWS else cell.row
         # The graded pair takes its first lane's computed time step. Other
         # pairs use the uniform lane's computed time step as declared.
-        sim_a = build(row, cell.a, graded=cell.graded)
+        sim_a = build(row, cell.a, graded=cell.graded, precision=precision)
         dt = float(sim_a._build_realized_grid().dt)
-        assert admission.DETECTORS[cell.row](sim_a), f'builder did not activate {cell.row}'
+        assert admission.DETECTORS[('_precision', '') if precision else cell.row](sim_a), f'builder did not activate {cell.row}'
         traced = cell.traced or not cell.a.startswith('fwd_')
-        a = solve(row, cell.a, cell.graded, cell.steps, None, traced)
+        a = solve(row, cell.a, cell.graded, cell.steps, None, traced, precision)
         pin_b = cell.graded or cell.b == 'run_nonuniform' or cell.b == 'fwd_nonuniform'
-        b = solve(row, cell.b, cell.graded, cell.steps, dt if pin_b else None, traced)
+        b = solve(row, cell.b, cell.graded, cell.steps, dt if pin_b else None, traced, precision)
         report['uncached_solve_seconds'] = a['elapsed'] + b['elapsed']
         _comparison(a['grid'].dt, b['grid'].dt, 'dt', 'exact', report)
         _comparison(a['result'].dt, b['result'].dt, 'result.dt', 'exact', report)

@@ -164,7 +164,7 @@ def field_source_samples(waveform, n_steps, dt):
 
 def current_source_samples(grid, waveform_fn, n_steps):
     """The current ``I(t)`` in amperes at the ``n_steps`` step times
-    ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
+    ``t = float32(n)*dt``, promoted by dt, before ``Cb/dV`` normalisation."""
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(waveform_fn, grid.dt):
         times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt

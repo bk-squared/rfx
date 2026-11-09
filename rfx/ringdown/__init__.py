@@ -1017,12 +1017,13 @@ class RingdownRun:
         the main window refuses.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports
                    if (pe.is_soft_source or bool(pe.excite))
                    and pe.waveform is not None]
         _, samples = source_end_step(
-            [(pe.waveform, 0.) for pe in entries], self.n_steps, self.dt,
+            [(pe.waveform, 0.) for pe in entries], self.n_steps, field_time_step(self.dt, self.sim._precision),
             tolerance=self.spec.source_off_tol, return_detail=True)
         rows = []
         ratio_long = 0.0
@@ -1945,12 +1946,13 @@ class RingdownStop:
         evaluated at every check.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.sources._sampling import field_time_step
 
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in self.sim._ports
              if (pe.is_soft_source or bool(pe.excite))
              and pe.waveform is not None],
-            self.n_max, self.base.dt, tolerance=self.spec.source_off_tol,
+            self.n_max, field_time_step(self.base.dt, self.sim._precision), tolerance=self.spec.source_off_tol,
             return_detail=True)
         # Scheduling retains n_max for a drive still on at the final sample;
         # the settling witness instead reports no source end in that case.

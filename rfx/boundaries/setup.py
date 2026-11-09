@@ -39,7 +39,7 @@ def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
     return _oblique_bloch
 
 
-def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
+def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces, *, field_dtype=None):
     from types import SimpleNamespace
     from rfx.boundaries.axes import padded_axes
     # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
@@ -59,6 +59,7 @@ def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
         # threaded through from the caller.
         cpml_params, cpml_state_init = init_cpml(
             grid, pec_faces=pec_faces, pmc_faces=pmc_faces,
+            **({} if field_dtype is None else {"field_dtype": field_dtype}),
         )
         cpml_grid = grid
         cpml_axes_eff = padded_axes(grid, cpml_axes)
