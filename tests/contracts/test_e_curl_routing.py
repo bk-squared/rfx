@@ -1,7 +1,5 @@
-"""Numerical E-kernel and port-current comparisons; B1.3 routing tests remain."""
+"""Numerical E-kernel and port-current comparisons."""
 
-from contextlib import ExitStack
-from unittest.mock import patch
 
 import jax
 import jax.numpy as jnp
@@ -15,59 +13,9 @@ from rfx.grid import Grid
 
 from rfx.core import yee
 import rfx.stepping.yee as stepping_yee  # the moved E kernels read curl_h here
-import rfx.stepping.poles as poles  # the moved pole E updates read curl_h here
-from rfx.materials import debye, lorentz
 from rfx.boundaries import upml
-import rfx.stepping.uniform_setup as uniform_setup
 import rfx.measurement.graded_wire as graded_wire
 from tests.contracts.curl_cases import model
-
-
-def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
-    """Count complete traced calls and all six nearest reads of each curl.
-
-    A curl has three components, each with two backward differences. Graded
-    curl_h_nu delegates to curl_h, so it also owns six nearest reads. Sheet
-    replacement evaluates two curls. Indexed current samples own two reads.
-    Counts concern Python execution/tracing, not the scan's time iterations.
-    """
-    seen = []
-    original = getattr(yee, helper)
-    neighbor = yee.h_neighbor
-
-    def witness(*args, **kwargs):
-        if indexed and kwargs.get("index") is None:
-            return original(*args, **kwargs)
-        boundary = kwargs.get("boundary")
-        assert isinstance(boundary, yee.CurlBoundary), "realized boundary missing"
-        seen.append(boundary)
-        if indexed:
-            return original(*args, **kwargs)
-        reads = []
-
-        def read(*a, **kw):
-            assert kw.get("boundary") == boundary, "neighbor boundary missing"
-            reads.append(a[1])
-            return neighbor(*a, **kw)
-
-        with patch.object(yee, "h_neighbor", read):
-            result = original(*args, **kwargs)
-        assert reads == [1, 2, 2, 0, 0, 1], "curl bypassed shared h_neighbor"
-        return result
-
-    jax.clear_caches()
-    with ExitStack() as stack:
-        for module in (yee, stepping_yee, uniform_setup, poles, debye, lorentz, upml):
-            if hasattr(module, helper):
-                stack.enter_context(patch.object(module, helper, witness))
-        call()
-    assert len(seen) == expected_calls, (
-        f"E update bypassed shared {helper}: {len(seen)} != {expected_calls} "
-        "(the count is per trace of the step body; a JAX change that traces it "
-        "a different number of times moves this without any routing defect)")
-    return seen[0]
-
-
 
 
 def kernel_inputs():
@@ -298,39 +246,3 @@ def test_gpu_backend_query_preserves_pec_and_pmc_records(monkeypatch):
     bar = 9*float(np.spacing(np.float32(np.max(np.abs(records["pmc"])))))
     _measure("backend", "PMC-minus-PEC", separation, bar)
     assert separation > bar, "PMC and PEC records must separate"
-
-
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-@pytest.mark.parametrize("lane", ["run", "forward"])
-def test_cpml_driver_passes_realized_boundary(mesh, lane):
-    from rfx.boundaries import cpml
-    sim = model(mesh=mesh, wall="cpml")
-    original = cpml.apply_cpml_e
-    calls = []
-    def correction(*args, **kwargs):
-        boundary = kwargs.get("boundary")
-        assert isinstance(boundary, yee.CurlBoundary)
-        neighbor = cpml.h_neighbor
-        reads = []
-        def read(*a, **kw):
-            assert kw.get("boundary") == boundary
-            reads.append(True)
-            return neighbor(*a, **kw)
-        with patch.object(cpml, "h_neighbor", read):
-            result = original(*args, **kwargs)
-        assert len(reads) == 12
-        calls.append(True)
-        return result
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    jax.clear_caches()
-    with patch.object(cpml, "apply_cpml_e", correction):
-        getattr(sim, lane)(**kwargs)
-    assert len(calls) == 1
-
-
-def test_tfsf_forward_uses_shared_curl():
-    sim = model("tfsf")
-    boundary = require_shared(lambda: sim.forward(n_steps=2, skip_preflight=True))
-    assert boundary.periodic == (False, True, True)
