@@ -159,7 +159,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     guard_count = xp.asarray(0, dtype=xp.int32)
     bulk = xp.ones(grid.shape, dtype=bool)
     mid_bulk = [bulk.copy() for _ in range(3)]
-    groups = smooth._medium_groups(shapes)
+    groups = smooth._medium_groups(shapes, grid)
     for key, (eps, group) in groups.items():
         for shape in group:
             if smooth._has_sdf(shape):
