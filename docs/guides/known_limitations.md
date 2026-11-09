@@ -852,6 +852,29 @@ The weak-port cavity contract is in
 `tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
 identification-probe option; port-only identification remains the default).
 
+### Plain and `jax.jit` gradients through `forward(ringdown=...)` differed on one short, lossy test box.
+
+Tracker: #2485
+
+`jax.grad` and `jax.jit(jax.grad)` of one objective through
+`forward(ringdown=...)` should agree within 1e-4, the bar for a quantity summed
+over the record. On a closed PEC 600-step test box, lossy, with poles near
+12.4 GHz (1/Q 0.14) and 38.6 GHz (1/Q 0.87), the gradient of `sum |S|^2` with
+respect to one scalar scaling `eps_override` has a relative gap
+|plain − jit| / |plain| of 1.5e-3 in float32, 7.9e-4 in the x64 context with a
+float32 override, and 1.7e-2 in the x64 context with a float64 override. The
+gradients of 1/Q from the traced pole outputs (`RingdownForwardResult.pole`)
+differ by more on that box. On another closed PEC box, with a weak 10 kΩ wire
+port, Q about 3700, 3997 steps and `precision="float64"`, the largest per-cell
+difference over the largest per-cell gradient is 2.7e-11 for the `sum |S|^2`
+gradient and 1.1e-12 for the gradients of the mode's frequency and 1/Q.
+
+The cause is not determined, and it is not known which property of the first
+box matters, so a longer or less lossy record is not known to be safe. What to
+do: treat a plain-to-jit gap above 1e-4 as an unexplained gradient. Agreement
+between the two does not validate a gradient; check it with `gradient_witness`
+or the same gradient from a longer record.
+
 ### A gradient can be wrong by tens of percent on a record whose value is converged.
 
 Tracker: #1514
