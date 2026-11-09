@@ -288,6 +288,7 @@ def _build_step_setup(
     design_box: "DesignBoxSpec | None" = None,
     design_occupancy: "DesignOccupancySpec | None" = None,
     current_moments: "object | None" = None,
+    measurement=None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -669,6 +670,11 @@ def _build_step_setup(
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     from rfx.measurement.accumulators import plane_metadata
     dft_meta = plane_metadata(dft_planes)
+    if measurement is not None:
+        from rfx.measurement.accumulators import plan_accumulator_meta
+        dft_meta, flux_meta_11 = plan_accumulator_meta(
+            measurement, _field_dtype, grid=grid, dft_planes=dft_planes, flux_monitors=flux_monitors)
+        flux_meta_8 = tuple(meta[:8] for meta in flux_meta_11)
     waveguide_meta = tuple(waveguide_ports)
 
     # ---- design box: fence, then build its coefficients once ----

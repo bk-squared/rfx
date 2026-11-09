@@ -42,6 +42,9 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
         # plan carries no channels (its runner owns sampling).
         plan = getattr(getattr(product, "_prepared_solve", None), "measurement", None)
         if plan is not None and plan.path != "run_subgridded":
+            from rfx.measurement.accumulators import validate_flux_prefix
+            validate_flux_prefix(product._prepared_solve.sim, product.grid, plan,
+                                 kwargs.get("flux_monitors") or ())
             kwargs["measurement"] = plan
     elif layout == "wrapped_uniform_slab":
         args.insert(0, [product.grid, product.materials, product.pec_edges])

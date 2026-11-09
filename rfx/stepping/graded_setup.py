@@ -586,7 +586,11 @@ def _build_nu_scan(
         # The attached plan's owners, compiled once outside the traced step.
         import jax
         from rfx.measurement.projector import plan_tables
+        from rfx.measurement.accumulators import plan_accumulator_meta
         with jax.ensure_compile_time_eval():
+            dft_meta, flux_meta = plan_accumulator_meta(
+                measurement, state.ex.dtype, grid=grid, dft_planes=dft_planes,
+                flux_monitors=flux_monitors, allow_flux_tail=True)
             tables = plan_tables(measurement, n_probes=len(prb_meta),
                                  port_specs=graded_specs(wire_ports), dtype=state.ex.dtype)
         invariants["probe_table"] = tables["probe_table"]
