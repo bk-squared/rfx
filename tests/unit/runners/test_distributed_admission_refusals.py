@@ -587,14 +587,17 @@ def test_uniform_forward_user_jit_refuses_port_s():
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_pole_map_named_refusal(graded, entry):
     from rfx import drude_pole_map
+    from tests.unit.materials.test_pole_map_runs import record
     sim = Simulation(freq_max=6e9, domain=(.006,) * 3, dx=.0005, boundary='pec',
                      **(dict(dx_profile=np.full(12, .0005)) if graded else {}))
     sim.add_material('map', eps_r=1., lorentz_poles=[drude_pole_map(lambda x, y, z: 2e9 + 0*x, 2e9)])
     sim.add(Box((.001,) * 3, (.005,) * 3), material='map')
     sim.add_source((.002, .0025, .003), 'ez')
     sim.add_probe((.004, .0035, .003), 'ez')
-    with pytest.raises((ValueError, NotImplementedError), match='LorentzPoleMap'):
+    with pytest.raises((ValueError, NotImplementedError),
+                       match='LorentzPoleMap is not supported by distributed_v2 / distributed_nu') as error:
         if entry == 'run':
             sim.run(n_steps=2, devices=_devices(), compute_s_params=False, skip_preflight=True)
         else:
             sim.forward(n_steps=2, distributed=True, devices=_devices(), skip_preflight=True)
+    record(f'P4-distributed-{entry}-{graded}', dict(message=str(error.value)))
