@@ -19,13 +19,16 @@
 # whole run finishes in a few seconds on CPU. This is a structural / API
 # smoke example, not a calibrated S-parameter reference. At this coarse mesh
 # the 1 mm substrate is only ~2 cells thick. Refine `dx` for a quantitative
-# run.
+# run, and lower each port's `radius` to at most 0.2 x the new `dx`.
 #
-# Preflight on this file prints two advisories (checked 2026-11-09): the 35 µm
+# Preflight on this file prints one advisory (checked 2026-11-09): the 35 µm
 # trace is solved with zero thickness (t/h = 3.5 %; the line reads about
-# +0.37 % electrically long), and each wire port has no radius, so S at the
-# ports moves with every mesh refinement (5.23 ohm of series reactance per
-# halving of the transverse cell). Both are expected on this smoke example.
+# +0.37 % electrically long), expected on this smoke example. Without the
+# ports' `radius` it also warned that S moves with every mesh refinement
+# (5.23 ohm of series reactance per halving of the transverse cell).
+# Declaring 0.1 mm moved S11 and S21 on this mesh by at most 0.027 and 0.025
+# (complex difference over 2-10 GHz); at 2, 4, 6, 8 and 10 GHz |S21| moved by
+# at most 0.06 dB and its phase by 0.3 to 1.5 degrees.
 # Until the trace was drawn at its solved size it was refused: preflight
 # stops a sheet solved more than 1 % off its drawing (#1455).
 #
