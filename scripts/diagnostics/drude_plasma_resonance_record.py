@@ -21,11 +21,11 @@ import traceback
 
 import jax
 import jax.numpy as jnp
-from jax.experimental import enable_x64
 import numpy as np
 
 from rfx import ringdown
 from rfx.measurement.record_end import source_end_step
+from tests._x64_compat import enable_x64
 from tests.oracle._drude_plasma_scene import (
     DOMAIN, FREQ_MAX, PROBES, SOURCE, references, scene, selected_rates, waveform,
 )
@@ -180,7 +180,8 @@ def main():
     if args.periods not in (6, 8) or args.smoke_steps < 0:
         parser.error("P0 periods must be 6 or 8; smoke steps must be nonnegative")
     root = Path(__file__).resolve().parents[2]
-    if args.output.resolve().is_relative_to(root):
+    local_smoke = args.smoke_steps and args.output.resolve().is_relative_to(root / "output" / "pole")
+    if args.output.resolve().is_relative_to(root) and not local_smoke:
         parser.error("measurement records must be outside the repository")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     start = time.monotonic()
