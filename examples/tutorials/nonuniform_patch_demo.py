@@ -109,6 +109,17 @@ the run-end level is at least 2 dB inside the -40 dB bar (one product change
 once moved this script's settling level by 1.8 dB), and both modes print the
 same frequency and Q as a 450-period run.
 
+The ring-down is slower than TM02's Q alone predicts (0.853 dB/ns): over the
+second half of a 450-period record the probe envelope falls 0.706 dB/ns.  A
+pole fit of that record (rfx.ringdown.identify, not printed by this script;
+measured 2026-11-10, record kept with the project) finds modes the script does
+not print that decay more slowly than TM02.  The main one, at 4.515 GHz with
+Q 191.3 (0.644 dB/ns), lies above the 1.5-3.6 GHz band the script searches and
+ends the record 4.9 times larger than TM02.  The fit without those modes decays
+at 0.852 dB/ns.  So the run-end level falls more slowly with run length than
+TM02's Q predicts; doubling the absorber changes no decay rate by more than
+0.65 %.
+
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
 """
