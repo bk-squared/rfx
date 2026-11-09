@@ -126,8 +126,7 @@ Two rules for this measurement:
   and simulation time.
 - Give both the same fixed `n_steps`, long enough for the fields to have died
   out in the run with the object. `until_decay=` stops each run at its own
-  step: here the empty run would run to its step cap and the slab run would
-  stop at 550 steps.
+  step, so the two records would differ in length.
 
 `add_flux_monitor(size=, center=)` limits the monitor to a finite rectangle;
 the [flux regions guide](https://github.com/bk-squared/rfx/blob/main/docs/guides/flux_regions.md)

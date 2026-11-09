@@ -37,7 +37,7 @@ rfx's dependency range now installs jaxlib 0.11.1 on Python 3.12+; Python 3.11 i
 
 ### One Python process that compiles many distinct grids can abort inside the JAX compiler on Linux hosts with the default vm.max_map_count
 
-Tracker: #2421
+Tracker: none — accepted limitation (warns at default: tests/contracts/test_map_count_warning.py::test_public_run_warns_once)
 
 The process can die with a segmentation fault or abort inside `backend_compile_and_load` (JAX's compiler),
 with no Python error and memory to spare. No wrong number is returned; unsaved results are lost.
@@ -957,7 +957,7 @@ as the decay check blind spot near weakly coupled resonances.
 
 ### A shipped paper example's headline numbers are not WR-90 numbers.
 
-Tracker: #1122
+Tracker: #2531
 
 `validation/tmtt_paper/waveguide_dielectric_taper.py` declares 22.86 × 10.16 mm.
 Its default SMOKE test run meshes at a commensurate dx = 1.27 mm and realizes WR-90
