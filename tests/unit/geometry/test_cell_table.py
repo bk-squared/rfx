@@ -9,10 +9,34 @@ import pytest
 from rfx import Simulation, Sphere
 from rfx.geometry import cell_table
 from rfx.model.conformal_rules import conformal_fractions_from_table
+from tests._cell_table_capture import record_cell_table_capture
 from tests._cell_table_scenes import SCENES, cell_table_scene
 
 
 REFERENCE = Path(__file__).resolve().parents[2] / 'data' / 'cell_table_56653420b.npz'
+CAPTURE_REFERENCE = REFERENCE.with_name('cell_table_capture_56653420b.npz')
+
+
+@pytest.mark.parametrize('scene', SCENES)
+@pytest.mark.parametrize('rule', ('sc', 'raw', 'floor'))
+def test_frozen_capture_calls(scene, rule):
+    from rfx.geometry.conformal_cells import compute_conformal_fractions
+
+    grid, shapes = cell_table_scene(scene)
+    with record_cell_table_capture(grid, shapes) as calls:
+        compute_conformal_fractions(
+            grid, pec_shapes=shapes, clamp=rule != 'raw',
+            conformal_pec='cut_cell_floor' if rule == 'floor' else None)
+    prefix = f'{scene}_{rule}_'
+    actual = {f'{prefix}call_count': np.asarray(len(calls))}
+    for index, call in enumerate(calls):
+        for argument, value in call.items():
+            actual[f'{prefix}{index}_{argument}'] = value
+    with np.load(CAPTURE_REFERENCE) as frozen:
+        assert set(actual) == {key for key in frozen.files if key.startswith(prefix)}
+        for key, value in actual.items():
+            assert value.dtype == frozen[key].dtype, key
+            assert np.array_equal(value, frozen[key]), key
 
 
 @pytest.mark.parametrize('scene', SCENES)

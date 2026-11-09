@@ -5,7 +5,7 @@ from rfx.grid import Grid
 
 
 SCENES = ('sphere', 'box_off', 'box_nodes', 'cylinder', 'periodic', 'lane',
-          'waveguide', 'saddle_spheres', 'empty')
+          'waveguide', 'saddle_spheres', 'empty', 'device_three_body')
 
 
 def cell_table_scene(name):
@@ -29,5 +29,9 @@ def cell_table_scene(name):
         'saddle_spheres': [Sphere((.005, .005, .006), .0007),
                            Sphere((.006, .006, .006), .0007)],
         'empty': [],
+        # Overlapping device bodies with three distinct nearest-SDF owners.
+        'device_three_body': [Sphere((.0053, .0057, .0062), .0024),
+                              Cylinder((.0068, .0062, .006), .0018, .007, axis='z'),
+                              Sphere((.0072, .0048, .0051), .002)],
     }
     return grid, shapes[name]
