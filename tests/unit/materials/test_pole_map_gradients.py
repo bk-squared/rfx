@@ -44,11 +44,9 @@ def observable(params, n_steps, graded, precision='float32', *, with_trace=False
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_a4_first_gradient(graded):
-    params = parameters()
-    j0 = tuple(float(v) for v in observable(params, 200, graded))
-    gradient = jax.grad(lambda p: jnp.sum(observable(p, 200, graded) / jnp.asarray(j0)))(params)
+    gradient = jax.grad(lambda p: jnp.sum(observable(p, 200, graded)))(parameters())
     values = np.asarray(gradient, float)
-    record(f'A4-first-{graded}', dict(gradient=values.tolist(), j0=j0, steps=200))
+    record(f'A4-first-{graded}', dict(gradient=values.tolist()))
     assert np.isfinite(values).all() and np.all(values != 0), values
 
 
@@ -73,14 +71,12 @@ def test_p7_record_witness(monkeypatch, graded):
     condition = precondition(params, steps, graded, monkeypatch)
     record(f'P7-precondition-{graded}', condition)
     assert condition['field_ratio'] <= 1e-3, f'cannot judge P7: {condition}'
-    j0 = tuple(float(v) for v in observable(params, steps, graded))
-    record(f'P7-normalization-{graded}', dict(j0=j0, steps=steps))
-    witness = gradient_record_length_witness(lambda p, n: observable(p, n, graded) / jnp.asarray(j0),
+    witness = gradient_record_length_witness(lambda p, n: observable(p, n, graded),
                                              params, steps, tol=1e-2, factor=1.5)
     short = np.asarray(list(witness.grad.values()), float)
     long = np.asarray(list(witness.grad_long.values()), float)
     relative = abs(short - long) / np.maximum(abs(short), abs(long))
-    record(f'P7-{graded}', dict(**condition, j0=j0, steps=steps, grad=short.tolist(), grad_long=long.tolist(),
+    record(f'P7-{graded}', dict(**condition, grad=short.tolist(), grad_long=long.tolist(),
            relative=relative.tolist(), worst=float(witness.worst), passed=bool(witness.passed),
            cosine=np.asarray(witness.cosine_by_bin).tolist()))
     assert np.isfinite(short[1]).all() and np.all(short[1] != 0), short
