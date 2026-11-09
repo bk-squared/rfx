@@ -155,3 +155,78 @@ def plan_accumulator_meta(plan, dtype, *, grid, dft_planes, flux_monitors, allow
                        tuple(box[2] for box in boxes), *owner.normal_h,
                        plan.time_base.record_length, owner.dft_window, owner.dft_window_alpha))
     return tuple(planes), tuple(fluxes) + flux_metadata(flux_monitors[len(selected):], window=True)
+
+
+def plan_monitor_objects(plan, grid):
+    """Compile retained monitors after checking their expanded stencils."""
+    import jax.numpy as jnp
+    import numpy as np
+    from .monitors import ntff_owner, current_moment_owner
+    from .plan import _traced
+
+    def bits(a, b):
+        if a is None or b is None:
+            return a is b
+        a, b = np.asarray(a), np.asarray(b)
+        return a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
+
+    def channels_equal(actual, expected):
+        if len(actual) != len(expected):
+            return False
+        for a, b in zip(actual, expected):
+            keys = ('name', 'kind', 'sample_stage', 'slot_offset', 'e_time_offset', 'h_time_offset', 'box')
+            if any(getattr(a, k) != getattr(b, k) for k in keys) or len(a.nodes) != len(b.nodes):
+                return False
+            for n, m in zip(a.nodes, b.nodes):
+                if (n.component, n.i, n.j, n.k) != (m.component, m.i, m.j, m.k):
+                    return False
+                if not bits(n.area, m.area):
+                    return False
+                if not _traced((n.weight, m.weight)) and not bits(n.weight, m.weight):
+                    return False
+        return True
+
+    objects: list = []
+    for kind, name, expand in (('ntff', 'ntff_box:0', ntff_owner),
+                               ('current_moment', 'current_moment:0', current_moment_owner)):
+        owners = [o for o in plan.owners if o.kind == kind]
+        if len(owners) > 1 or (owners and owners[0].id != name):
+            raise ValueError(f'{name}: owner count or identity mismatch')
+        if not owners or owners[0].availability.startswith('unavailable:'):
+            objects.append(None)
+            continue
+        owner = owners[0]
+        source = owner.source
+        if source is None:
+            raise ValueError(f'{name}: missing source')
+        if not channels_equal(owner.channels, expand(grid, source).channels):
+            raise ValueError(f'{name}: source and channels disagree')
+        if _traced(owner.frequencies):
+            if kind == 'current_moment':
+                source = source._replace(freqs=jnp.asarray(owner.frequencies, dtype=source.freqs.dtype))
+        elif not _traced(source.freqs) and not bits(owner.frequencies, source.freqs):
+            raise ValueError(f'{name}: source and frequencies disagree')
+        objects.append(source)
+    return tuple(objects)
+
+
+def validate_monitor_presence(compiled, runner):
+    for name, actual, expected in zip(('ntff_box:0', 'current_moment:0'), compiled, runner):
+        if (actual is None) != (expected is None):
+            raise ValueError(f'{name}: runner presence mismatch')
+
+
+def validate_monitor_carries(box, monitor, carry):
+    """Check the runner's buffers against the objects the step will read."""
+    if box is not None:
+        nf = len(box.freqs)
+        ni, nj, nk = box.i_hi-box.i_lo, box.j_hi-box.j_lo, box.k_hi-box.k_lo
+        shapes = ((nf, nj, nk, 4),)*2 + ((nf, ni, nk, 4),)*2 + ((nf, ni, nj, 4),)*2
+        data = carry.get('ntff')
+        if data is None or tuple(a.shape for a in data) != shapes*2:
+            raise ValueError('ntff_box:0: carry shape mismatch')
+    if monitor is not None:
+        shape = (len(monitor.freqs), monitor.n_blocks, 3, monitor.n_weights)
+        data = carry.get('current_moments')
+        if data is None or tuple(a.shape for a in data) != (shape, shape):
+            raise ValueError('current_moment:0: carry shape mismatch')
