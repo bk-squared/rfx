@@ -31,7 +31,7 @@ References:
 
 from __future__ import annotations
 
-from typing import Callable, NamedTuple
+from typing import Callable, NamedTuple, Sequence
 from dataclasses import dataclass
 from weakref import ref
 
@@ -282,7 +282,7 @@ def lorentz_e_coeffs(e_materials, dt, a, b, c):
 
 
 def init_lorentz(
-    poles: list[LorentzPole | LorentzPoleMap],
+    poles: Sequence[LorentzPole | LorentzPoleMap],
     materials,
     dt: float,
     mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,

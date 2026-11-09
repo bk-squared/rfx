@@ -244,7 +244,8 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
         else:
             selected = (inverse == index).reshape(shape)
         from rfx.materials.pole_map import SampledPoleMap, pattern_corner
-        chosen_list, map_corners = [], []
+        chosen_list: list = []
+        map_corners = []
         for p, present in zip(lp, pattern):
             if not present:
                 continue
