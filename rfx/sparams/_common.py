@@ -1435,8 +1435,8 @@ def _warn_junction_probe_clearance(
                 f"evanescent decay lengths of the next higher mode, the floor "
                 f"of the validated far-port envelope); recommend "
                 f">= {recommended_m * 1e3:.1f} mm (5 decay lengths). Compact "
-                f"port-to-junction clearance left residual max|S|~3.9 in the "
-                f"waveguide port-to-junction clearance verification (necessary-but-not-sufficient) — move "
+                f"port-to-junction clearance can leave the matrix non-passive "
+                f"even with matched straight-guide references — move "
                 f"the probe plane farther from the junction.",
                 code="port_junction_probe_clearance",
                 loc=f"port:{i}", source="_warn_junction_probe_clearance",

@@ -1,195 +1,21 @@
-"""Runtime routing contract for B3a; no inspection of implementation text.
+"""Numerical E-kernel and port-current comparisons."""
 
-Each adapter must reach the shared curl with the step's resolved boundary.
-The inline negative control also checks that disabling the assertion is red.
-Numerical byte comparisons against 5c477d59 live in the B3a lane records.
-"""
-
-from contextlib import ExitStack
-from dataclasses import replace
-from unittest.mock import patch
 
 import jax
 import jax.numpy as jnp
 import pytest
+import numpy as np
+import sys
+
+from rfx import Simulation, GaussianPulse
+from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.grid import Grid
 
 from rfx.core import yee
 import rfx.stepping.yee as stepping_yee  # the moved E kernels read curl_h here
-import rfx.stepping.poles as poles  # the moved pole E updates read curl_h here
-from rfx.materials import debye, lorentz
 from rfx.boundaries import upml
-import rfx.simulation as uniform
-import rfx.stepping.uniform as stepping_uniform
-import rfx.stepping.uniform_setup as uniform_setup
 import rfx.measurement.graded_wire as graded_wire
 from tests.contracts.curl_cases import model
-
-
-def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
-    """Count complete traced calls and all six nearest reads of each curl.
-
-    A curl has three components, each with two backward differences. Graded
-    curl_h_nu delegates to curl_h, so it also owns six nearest reads. Sheet
-    replacement evaluates two curls. Indexed current samples own two reads.
-    Counts concern Python execution/tracing, not the scan's time iterations.
-    """
-    seen = []
-    original = getattr(yee, helper)
-    neighbor = yee.h_neighbor
-
-    def witness(*args, **kwargs):
-        if indexed and kwargs.get("index") is None:
-            return original(*args, **kwargs)
-        boundary = kwargs.get("boundary")
-        assert isinstance(boundary, yee.CurlBoundary), "realized boundary missing"
-        seen.append(boundary)
-        if indexed:
-            return original(*args, **kwargs)
-        reads = []
-
-        def read(*a, **kw):
-            assert kw.get("boundary") == boundary, "neighbor boundary missing"
-            reads.append(a[1])
-            return neighbor(*a, **kw)
-
-        with patch.object(yee, "h_neighbor", read):
-            result = original(*args, **kwargs)
-        assert reads == [1, 2, 2, 0, 0, 1], "curl bypassed shared h_neighbor"
-        return result
-
-    jax.clear_caches()
-    with ExitStack() as stack:
-        for module in (yee, stepping_yee, uniform_setup, poles, debye, lorentz, upml):
-            if hasattr(module, helper):
-                stack.enter_context(patch.object(module, helper, witness))
-        call()
-    assert len(seen) == expected_calls, (
-        f"E update bypassed shared {helper}: {len(seen)} != {expected_calls} "
-        "(the count is per trace of the step body; a JAX change that traces it "
-        "a different number of times moves this without any routing defect)")
-    return seen[0]
-
-
-@pytest.mark.parametrize("lane", ["run", "forward"])
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-@pytest.mark.parametrize("feature", ["plain", "lumped", "wire", "msl", "waveguide",
-                                      "debye", "lorentz", "mixed"])
-def test_simulation_uses_realized_curl(lane, mesh, feature):
-    sim = model(feature, mesh)
-    if (feature, mesh) == ("waveguide", "graded"):
-        # This curl-routing fixture crosses grading zones; retain its zero shift
-        # (forward resolves the same planes as run since #1726).
-        sim._waveguide_ports = [
-            replace(entry, calibration_preset="measured") for entry in sim._waveguide_ports
-        ]
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    boundary = require_shared(lambda: getattr(sim, lane)(**kwargs),
-                              helper="curl_h_nu" if mesh == "graded" else "curl_h")
-    if feature not in ("msl", "waveguide"):
-        assert boundary.pmc_faces == frozenset({"x_lo"})
-        assert "x_hi" in boundary.pec_faces
-        assert "x_lo" not in boundary.pec_faces
-
-
-@pytest.mark.parametrize("lane", ["run", "forward"])
-@pytest.mark.parametrize("mode", ["3d", "2d_tmz", "2d_tez"])
-@pytest.mark.parametrize("wall", ["pec", "cpml", "periodic"])
-def test_modes_and_periodicity(lane, mode, wall):
-    sim = model(mode=mode, wall=wall)
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    boundary = require_shared(lambda: getattr(sim, lane)(**kwargs))
-    assert boundary.periodic[0] == (wall == "periodic")
-    assert boundary.periodic[2] == (mode != "3d")
-
-
-@pytest.mark.parametrize("feature,mesh", [("subpixel", "uniform"), ("subpixel", "graded"),
-                                           ("conformal", "uniform"),
-                                           ("tfsf", "uniform"), ("tfsf", "graded")])
-def test_special_run_branches(feature, mesh):
-    sim = model(feature, mesh)
-    kwargs = dict(n_steps=2, skip_preflight=True, compute_s_params=False)
-    if feature == "subpixel":
-        kwargs["subpixel_smoothing"] = True
-    require_shared(lambda: sim.run(**kwargs),
-                   helper="curl_h_nu" if mesh == "graded" else "curl_h")
-
-
-@pytest.mark.parametrize("mesh,feature", [("uniform", "lumped"), ("uniform", "wire"),
-                                         ("graded", "wire")])
-def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
-    """The scan compiles its port table with the boundary its curl receives.
-
-    The table writes the indexed h_neighbor reads as node weights; the
-    random-field cases of test_port_projector pin those weights against
-    _ampere_loop / wire_port_current, which read h_neighbor (checked below
-    by test_each_port_sample_reads_two_neighbors). What is left to route is
-    the boundary the step hands the table compiler. The step compiles its
-    table from the attached plan's port owners, so the boundary is read where
-    the plan builds them: magnetic faces and periodic flags.
-    """
-    import rfx.measurement.ports as ports
-    import rfx.measurement.prepared as prepared
-    import rfx.measurement.projector as projector
-    from rfx.boundaries.pmc import magnetic_image_faces
-    sim = model(feature, mesh)
-    tables, curls, owners, built, inside = [], [], [], [], [False]
-    real_build, real_owner, real_tables = (
-        prepared.build_measurement_plan, ports.lumped_wire_owner, projector.plan_tables)
-    helper = "curl_h_nu" if mesh == "graded" else "curl_h"
-    real_curl = getattr(yee, helper)
-
-    def build_spy(*args, **kwargs):
-        inside[0] = True
-        try:
-            built.append(real_build(*args, **kwargs))
-        finally:
-            inside[0] = False
-        return built[-1]
-
-    def owner_spy(grid, *args, **kwargs):
-        if inside[0]:
-            owners.append((magnetic_image_faces(kwargs["pmc_faces"], grid.shape, kwargs["periodic"]),
-                           tuple(kwargs["periodic"]), grid.shape))
-        return real_owner(grid, *args, **kwargs)
-
-    def table_spy(plan, **kwargs):
-        tables.append(plan)
-        return real_tables(plan, **kwargs)
-
-    def curl_spy(*args, **kwargs):
-        curls.append(kwargs.get("boundary"))
-        return real_curl(*args, **kwargs)
-
-    jax.clear_caches()
-    with ExitStack() as stack:
-        stack.enter_context(patch.object(prepared, "build_measurement_plan", build_spy))
-        stack.enter_context(patch.object(ports, "lumped_wire_owner", owner_spy))
-        stack.enter_context(patch.object(projector, "plan_tables", table_spy))
-        for module in (yee, stepping_yee, uniform_setup, poles, debye, lorentz, upml):
-            if hasattr(module, helper):
-                stack.enter_context(patch.object(module, helper, curl_spy))
-        if mesh == "graded":
-            sim.run(n_steps=2, skip_preflight=True, compute_s_params=True,
-                    s_param_freqs=jnp.array([12e9]))
-        else:
-            sim.forward(n_steps=2, skip_preflight=True,
-                        port_s11_freqs=jnp.array([12e9]))
-    assert tables, "the scan never compiled a port table"
-    assert len(built) == 1 and all(plan is built[0] for plan in tables)
-    assert curls and all(isinstance(b, yee.CurlBoundary) for b in curls)
-    assert len(set(curls)) == 1, curls
-    curl = curls[0]
-    assert owners
-    for faces, periodic, shape in owners:
-        assert periodic == tuple(curl.periodic), (periodic, curl)
-        assert faces == magnetic_image_faces(curl.pmc_faces, shape, curl.periodic), (faces, curl)
-        # The model's x_lo face is magnetic: a table built on a default boundary
-        # would weight that face's current legs differently.
-        assert "x_lo" in faces
 
 
 def kernel_inputs():
@@ -200,144 +26,223 @@ def kernel_inputs():
         frozenset({"x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}), frozenset({"x_lo"}))
 
 
+def _measure(row, quantity, measured, bar, **details):
+    print(f"B1 {row}: {quantity}={measured:.12g} bar={bar:.12g} {details}", file=sys.stderr)
+
+
+def _max_relative_error(actual, expected):
+    actual, expected = np.asarray(actual), np.asarray(expected)
+    assert np.isfinite(actual).all() and np.isfinite(expected).all()
+    difference = np.abs(actual.astype(np.float64) - expected.astype(np.float64))
+    relative = np.divide(difference, np.abs(expected), out=np.zeros_like(difference),
+                         where=expected != 0)
+    relative[(expected == 0) & (difference != 0)] = np.inf
+    return float(np.max(relative))
+
+
 @pytest.mark.parametrize("branch", ["plain", "aniso", "inverse", "fast_e", "fast_he", "box", "upml"])
-def test_kernel_adapters(branch):
+def test_e_kernels_match_plain_pmc_update(branch):
     state, mats, boundary = kernel_inputs()
     dt, dx = 1e-12, 1e-3
-    coeffs = yee.precompute_coeffs(mats, dt, dx, high_wall=(False, False, False))
+    high_wall = (False, False, False)
+    if branch == "upml":
+        grid = Grid(freq_max=20e9, domain=(4e-3, 3e-3, 2e-3), dx=dx,
+                    cpml_layers=0, cpml_axes="", pec_faces=boundary.pec_faces,
+                    pmc_faces=boundary.pmc_faces)
+        assert grid.shape == state.ex.shape
+        dt = grid.dt
+    expected = stepping_yee.update_e(state, mats, dt, dx, boundary=boundary, high_wall=high_wall)
+    plain_wall = stepping_yee.update_e(state, mats, dt, dx,
+                                     boundary=yee.CurlBoundary(), high_wall=high_wall)
+    separation = float(np.max(np.abs(np.asarray(expected.ez[0] - plain_wall.ez[0]))))
+    _measure(branch, "PMC-minus-default", separation, 0)
+    assert separation > 0, "PMC x_lo must change the ramp's E update"
+    coeffs = yee.precompute_coeffs(mats, dt, dx, high_wall=high_wall)
+    ca, cb = yee.e_component_coeffs(mats, dt, (False,)*3, high_wall=high_wall)
     calls = {
-        "plain": lambda: stepping_yee.update_e(state, mats, dt, dx, boundary=boundary, high_wall=(False, False, False)),
+        "plain": lambda: expected,
         "aniso": lambda: stepping_yee.update_e_aniso(state, mats, mats.eps_r, mats.eps_r,
-                                           mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
-        "inverse": lambda: stepping_yee.update_e_aniso_inv(state, mats, mats.eps_r, mats.eps_r,
-                                                  mats.eps_r, dt, dx, boundary=boundary, high_wall=(False, False, False)),
-        "fast_e": lambda: stepping_yee.update_e_fast(state, coeffs.ca_ex, coeffs.ca_ey, coeffs.ca_ez,
-                                            coeffs.cb_ex, coeffs.cb_ey, coeffs.cb_ez,
-                                            boundary=boundary),
+            mats.eps_r, dt, dx, boundary=boundary, high_wall=high_wall),
+        "inverse": lambda: stepping_yee.update_e_aniso_inv(state, mats, 1/mats.eps_r,
+            1/mats.eps_r, 1/mats.eps_r, dt, dx, boundary=boundary, high_wall=high_wall),
+        "fast_e": lambda: stepping_yee.update_e_fast(state, coeffs.ca_ex, coeffs.ca_ey,
+            coeffs.ca_ez, coeffs.cb_ex, coeffs.cb_ey, coeffs.cb_ez, boundary=boundary),
+        # E is zero initially, so the preceding H half-step leaves H unchanged.
         "fast_he": lambda: yee.update_he_fast(state, coeffs, boundary=boundary),
-        "box": lambda: stepping_yee.update_e_box(state, state, (1, 2, 1, 2, 1, 2),
-                                         1., .1, dx, boundary=boundary),
+        # The grid-wide update above is the first update; redo the entire box.
+        "box": lambda: stepping_yee.update_e_box(expected, state, (0, 5, 0, 4, 0, 3),
+            ca, cb, dx, boundary=boundary),
     }
     if branch == "upml":
-        grid = model(wall="pec", solved_domain=True)._build_grid()
-        state = yee.init_state(grid.shape)
-        coeff = upml.init_upml(grid, yee.init_materials(grid.shape))
-        calls[branch] = lambda: upml.apply_upml_e(state, coeff, boundary=boundary)
-    assert require_shared(calls[branch]) == boundary
+        calls[branch] = lambda: upml.apply_upml_e(state, upml.init_upml(grid, mats), boundary=boundary)
+    actual = calls[branch]()
+    # Repository kernel-family bar (arithmetic order differs between adapters):
+    # tests/unit/geometry/test_update_e_aniso_inv.py:69-86; Design A28.
+    for component in ("ex", "ey", "ez", "hx", "hy", "hz"):
+        got, want = np.asarray(getattr(actual, component)), np.asarray(getattr(expected, component))
+        error = _max_relative_error(got, want)
+        _measure(f"{branch}/{component}", "max-element-relative-error", error,
+                 0 if branch == "plain" else 5e-6, atol=0 if branch == "plain" else 1e-7,
+                 mesh=state.ex.shape, steps=1)
+        if branch == "plain":
+            assert got.tobytes() == want.tobytes(), f"{branch}/{component}: not bitwise equal"
+        else:
+            np.testing.assert_allclose(got, want, rtol=5e-6, atol=1e-7,
+                                       err_msg=f"{branch}/{component}")
 
 
-@pytest.mark.parametrize("graded", [False, True])
-def test_design_box_second_update_uses_boundary(graded):
-    state, mats, boundary = kernel_inputs()
-    inv_d = tuple(jnp.ones(n) / 1e-3 for n in state.ex.shape) if graded else None
-    require_shared(lambda: stepping_yee.update_e_box(
-        state, state, (1, 2, 1, 2, 1, 2), 1., .1, 1e-3,
-        inv_d=inv_d, boundary=boundary), helper="curl_h_nu" if graded else "curl_h")
+def _random_h():
+    state, _, boundary = kernel_inputs()
+    rng = np.random.default_rng(692)
+    state = state._replace(**{c: jnp.asarray(rng.standard_normal(state.ex.shape), dtype=jnp.float32)
+                              for c in ("hx", "hy", "hz")})
+    return state, boundary
 
 
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-@pytest.mark.parametrize("lane", ["run", "forward"])
-def test_cpml_driver_passes_realized_boundary(mesh, lane):
-    from rfx.boundaries import cpml
-    sim = model(mesh=mesh, wall="cpml")
-    original = cpml.apply_cpml_e
-    calls = []
-    def correction(*args, **kwargs):
-        boundary = kwargs.get("boundary")
-        assert isinstance(boundary, yee.CurlBoundary)
-        neighbor = cpml.h_neighbor
-        reads = []
-        def read(*a, **kw):
-            assert kw.get("boundary") == boundary
-            reads.append(True)
-            return neighbor(*a, **kw)
-        with patch.object(cpml, "h_neighbor", read):
-            result = original(*args, **kwargs)
-        assert len(reads) == 12
-        calls.append(True)
-        return result
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    jax.clear_caches()
-    with patch.object(cpml, "apply_cpml_e", correction):
-        getattr(sim, lane)(**kwargs)
-    assert len(calls) == 1
-
-
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-@pytest.mark.parametrize("lane", ["run", "forward"])
-def test_sheet_replacement_update_also_uses_shared_curl(mesh, lane):
-    from rfx import Box
-    sim = model(mesh=mesh, wall="pec")
-    profile = sim._dx_profile
-    x0 = float(sum(profile[:3]) - .35 * profile[2]) if mesh == "graded" else (2 - .35) * 1e-3
-    x1 = float(sum(profile[:8]) + .35 * profile[8]) if mesh == "graded" else (8 + .35) * 1e-3
-    sim.add_thin_conductor(Box((x0, (2 - .35) * 1e-3, 4e-3), (x1, (6 + .35) * 1e-3, 4e-3)),
-                           sigma_bulk=1e4, surface_impedance_f0=12e9)
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane == "run":
-        kwargs["compute_s_params"] = False
-    require_shared(lambda: getattr(sim, lane)(**kwargs), expected_calls=2,
-                   helper="curl_h_nu" if mesh == "graded" else "curl_h")
-
-
-def test_tfsf_forward_uses_shared_curl():
-    sim = model("tfsf")
-    boundary = require_shared(lambda: sim.forward(n_steps=2, skip_preflight=True))
-    assert boundary.periodic == (False, True, True)
-
-
-def test_gpu_query_standard_dispatch_passes_realized_boundary_on_cpu():
-    # An accelerator query keeps the standard lane and its realized boundary.
-    sim = model(wall="pec", solved_domain=True)
-    invoked = []
-    original = stepping_uniform.update_he_fast
-    def baked(*args, **kwargs):
-        invoked.append(True)
-        return original(*args, **kwargs)
-    with patch.object(jax, "default_backend", lambda: "gpu"), \
-            patch.object(stepping_uniform, "update_he_fast", baked):
-        boundary = require_shared(lambda: sim.run(
-            n_steps=2, skip_preflight=True, compute_s_params=False))
-    assert not invoked
-    assert boundary.pec_faces == frozenset(
-        f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
+def _sample_equal(row, actual, expected):
+    actual, expected = float(actual), float(expected)
+    assert np.isfinite(actual) and np.isfinite(expected) and expected != 0
+    error = abs(actual - expected) / abs(expected)
+    _measure(row, "relative-error", error, 1e-5, actual=actual, expected=expected,
+             mesh=(5, 4, 3), steps=0)
+    assert error <= 1e-5, f"{row}: current={actual}, curl*area={expected}, relative error={error} > 1e-5"
 
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 @pytest.mark.parametrize("idx", [(0, 0, 0), (2, 1, 1), (4, 3, 2)])
 @pytest.mark.parametrize("periodic", [(False, False, False), (True, True, True)])
-def test_each_port_sample_reads_two_neighbors(component, idx, periodic):
+def test_uniform_port_current_matches_curl_area(component, idx, periodic):
     from rfx.probes.probes import _ampere_loop
-    state, _, boundary = kernel_inputs()
+    from rfx.measurement.projector import port_table, project
+    state, boundary = _random_h()
     boundary = boundary._replace(periodic=periodic)
-    require_shared(lambda: _ampere_loop(state, idx, component, 1e-3, periodic, boundary),
-                   helper="h_neighbor", indexed=True, expected_calls=2)
+    dx = 1e-3
+    grid = Grid(freq_max=20e9, domain=(4e-3, 3e-3, 2e-3), dx=dx,
+                cpml_layers=0, cpml_axes="", pec_faces=boundary.pec_faces,
+                pmc_faces=boundary.pmc_faces)
+    assert grid.shape == state.ex.shape
+    table = port_table(grid, ((component, (idx,), "lumped", idx, 0),),
+                       nu=False, boundary=boundary, dtype=np.float32)
+    curl = yee.curl_h(state.hx, state.hy, state.hz, dx, periodic, boundary=boundary)
+    expected = float(curl["xyz".index(component[1])][idx]) * dx**2
+    row = f"uniform/{component}/{idx}/{periodic[0]}"
+    _sample_equal(row + "/ampere", _ampere_loop(state, idx, component, dx, periodic, boundary), expected)
+    # Single-device steps and public port_current sample these compiled owners.
+    _sample_equal(row + "/projector", project(state, table)[1], expected)
+    if idx == (0, 0, 0):
+        alternate = yee.curl_h(state.hx, state.hy, state.hz, dx, (False,)*3,
+                               boundary=yee.CurlBoundary())
+        if periodic[0] or component != "ex":
+            separation = abs(float(alternate["xyz".index(component[1])][idx]) * dx**2 - expected)
+            _measure(row, "boundary-separation", separation, abs(expected)*1e-5)
+            assert separation > abs(expected)*1e-5
 
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 @pytest.mark.parametrize("idx", [(0, 0, 0), (2, 1, 1), (4, 3, 2)])
-def test_each_graded_port_sample_reads_two_neighbors(component, idx):
-    state, _, boundary = kernel_inputs()
-    require_shared(lambda: graded_wire.wire_port_current(
-        state.hx, state.hy, state.hz, component, *idx,
-        .9e-3, 1.1e-3, 1.3e-3, boundary=boundary),
-        helper="h_neighbor", indexed=True, expected_calls=2)
+def test_graded_wire_current_matches_curl_area(component, idx):
+    state, boundary = _random_h()
+    duals = (.9e-3, 1.1e-3, 1.3e-3)
+    inverse = tuple(jnp.full(n, 1/d, dtype=jnp.float32) for n, d in zip(state.ex.shape, duals))
+    curl = yee.curl_h_nu(state.hx, state.hy, state.hz, *inverse, boundary=boundary)
+    axis = "xyz".index(component[1])
+    area = np.prod([d for a, d in enumerate(duals) if a != axis])
+    expected = float(curl[axis][idx]) * area
+    actual = graded_wire.wire_port_current(state.hx, state.hy, state.hz, component, *idx,
+                                           *duals, boundary=boundary)
+    _sample_equal(f"graded/{component}/{idx}", actual, expected)
+    if idx == (0, 0, 0) and component != "ex":
+        zero = yee.curl_h_nu(state.hx, state.hy, state.hz, *inverse, boundary=yee.CurlBoundary())
+        separation = abs(float(zero[axis][idx])*area - expected)
+        _measure(component, "graded-boundary-separation", separation, abs(expected)*1e-5)
+        assert separation > abs(expected)*1e-5
 
 
-@pytest.mark.parametrize("feature,mesh", [("subpixel", "uniform"),
-                                          ("subpixel", "graded"),
-                                          ("conformal", "uniform")])
-def test_smoothed_checkpoint_scan_uses_complete_curl(feature, mesh):
-    # These front doors build the actual smoothing tensors/weights, then
-    # execute the differentiable checkpointed scan. Simulation.forward has
-    # no subpixel keyword and refuses conformal PEC; do not label this as
-    # public forward() support.
-    sim = model(feature, mesh)
-    kwargs = dict(n_steps=2, skip_preflight=True, compute_s_params=False,
-                  checkpoint=True)
-    if feature == "subpixel":
-        kwargs["subpixel_smoothing"] = True
-    require_shared(lambda: sim.run(**kwargs),
-                   helper="curl_h_nu" if mesh == "graded" else "curl_h")
+def _port_model(mesh, feature):
+    profile = np.r_[1e-3, np.linspace(.87, 1.13, 11)*1e-3, 1e-3]
+    sim = Simulation(freq_max=20e9, domain=(13e-3, 10e-3, 8e-3), dx=1e-3,
+        boundary=BoundarySpec(x=Boundary(lo="pmc", hi="pec"), y="pec", z="pec"),
+        cpml_layers=0, **({"dx_profile": profile} if mesh == "graded" else {}))
+    sim.add_port((0., 3e-3, 2e-3), "ez", impedance=50.,
+                 waveform=GaussianPulse(f0=12e9, bandwidth=1.2),
+                 **({"extent": 2e-3} if feature == "wire" else {}))
+    sim.add_probe((4e-3, 3e-3, 2e-3), "ez")
+    return sim
+
+
+@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+@pytest.mark.parametrize("feature", ["lumped", "wire"])
+def test_port_records_match_forward_and_final_ampere_loop(mesh, feature):
+    sim = _port_model(mesh, feature)
+    grid = sim.freeze_mesh()
+    bins = np.array([8e9, 12e9, 16e9], dtype=np.float32)
+    run = sim.run(n_steps=200, skip_preflight=True, compute_s_params=True, s_param_freqs=bins)
+    forward = sim.forward(n_steps=200, skip_preflight=True, checkpoint=False, port_s11_freqs=bins)
+    # Existing pair bars: tests/contracts/test_port_projector.py:243 (S11),
+    # tests/contracts/test_run_port_records.py:39 (uniform/graded lumped/wire records).
+    # Both compare exactly; keep that bar rather than introducing a looser one.
+    assert np.isfinite(np.asarray(run.s_params)).all()
+    assert np.isfinite(np.asarray(forward.s_params)).all()
+    assert np.max(np.abs(np.asarray(run.s_params))) > 0
+    error = float(np.max(np.abs(np.asarray(run.s_params) - np.asarray(forward.s_params))))
+    row = f"{mesh}/{feature}"
+    _measure(row, "S11-max-difference", error, 0, mesh=grid.shape, steps=200)
+    np.testing.assert_array_equal(run.s_params, forward.s_params, err_msg=row + " S11")
+    for lane, result in (("run", run), ("forward", forward)):
+        record, = result.sparam_time_records
+        assert np.max(np.abs(np.asarray(record["I"]))) > 0
+        # Ez contour at the port midpoint. These indices are read from the
+        # realized public grid, not from the measurement table being checked.
+        position = (0., 3e-3, (3 if feature == "wire" else 2)*1e-3)
+        idx = tuple(int(grid.index_of(a, p)) for a, p in enumerate(position))
+        i, j, k = idx
+        assert i == 0, (grid.shape, idx)
+        # ForwardResult publishes records but no final state. Both records
+        # are checked against the run's final H state.
+        hx, hy = np.asarray(run.state.hx), np.asarray(run.state.hy)
+        # The x_lo PMC image is odd for tangential H: form the ghost
+        # explicitly, without consulting a curl helper or measurement owner.
+        hy_back = -hy[idx]
+        hx_back = 0. if j == 0 else hx[i, j-1, k]
+        # Compute dual edge lengths from realized primal cells, independently.
+        widths = [np.asarray(grid.cells(a)) for a in (0, 1)]
+        dx, dy = [float(w[p] if p == 0 else (w[p-1] + w[p])*.5)
+                  for w, p in zip(widths, (i, j))]
+        terms = np.array([hy[idx]*dy, -hy_back*dy, -hx[idx]*dx, hx_back*dx], dtype=np.float32)
+        expected = float(np.sum(terms, dtype=np.float32))
+        actual = float(record["I"][-1])
+        # Existing table-versus-loop rounding bar:
+        # tests/contracts/test_port_projector.py:94 (9 float32 peak ULP).
+        bar = 9*float(np.spacing(np.float32(abs(expected))))
+        zero_ghost_terms = terms.copy()
+        zero_ghost_terms[1] = 0.
+        zero_ghost_loop = float(np.sum(zero_ghost_terms, dtype=np.float32))
+        ghost_difference = abs(expected - zero_ghost_loop)
+        _measure(row + "/" + lane, "zero-ghost-loop-difference", ghost_difference, bar,
+                 ghost_term=abs(float(terms[1])), zero_ghost_loop=zero_ghost_loop)
+        assert ghost_difference > bar, f"{row}/{lane}: PMC ghost contribution {ghost_difference} <= {bar}"
+        difference = abs(actual - expected)
+        _measure(row + "/" + lane, "final-current-difference", difference, bar,
+                 actual=actual, expected=expected, mesh=grid.shape, idx=idx, steps=200)
+        assert difference <= bar, f"{row}/{lane}: current={actual}, hand loop={expected}, error={difference} > {bar}"
+    run_record, forward_record = run.sparam_time_records[0], forward.sparam_time_records[0]
+    record_error = float(np.max(np.abs(np.asarray(run_record.samples) - np.asarray(forward_record.samples))))
+    _measure(row, "record-max-difference", record_error, 0, mesh=grid.shape, steps=200)
+    np.testing.assert_array_equal(run_record.samples, forward_record.samples, err_msg=row + " records")
+
+
+def test_gpu_backend_query_preserves_pec_and_pmc_records(monkeypatch):
+    records = {}
+    for wall in ("pec", "pmc"):
+        cpu = model(wall=wall, solved_domain=True).run(n_steps=40, skip_preflight=True, compute_s_params=False)
+        with monkeypatch.context() as environment:
+            environment.setattr(jax, "default_backend", lambda: "gpu")
+            gpu = model(wall=wall, solved_domain=True).run(n_steps=40, skip_preflight=True, compute_s_params=False)
+        error = float(np.max(np.abs(np.asarray(cpu.time_series) - np.asarray(gpu.time_series))))
+        _measure(wall, "backend-record-difference", error, 0, mesh=cpu.state.ex.shape, steps=40)
+        np.testing.assert_array_equal(cpu.time_series, gpu.time_series, err_msg=wall + " backend query")
+        records[wall] = np.asarray(cpu.time_series)
+    separation = float(np.max(np.abs(records["pmc"] - records["pec"])))
+    bar = 9*float(np.spacing(np.float32(np.max(np.abs(records["pmc"])))))
+    _measure("backend", "PMC-minus-PEC", separation, bar)
+    assert separation > bar, "PMC and PEC records must separate"

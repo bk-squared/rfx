@@ -1,10 +1,11 @@
 """J-D: same family observations across paths, and no local message bypass."""
-import ast
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+from string import Formatter
+import warnings
 
 import pytest
 
@@ -93,22 +94,14 @@ def test_jd_path_identity():
     assert all(signature == signatures['uniform'] for signature in signatures.values())
 
 
-FAMILY_MODULES = (
-    "rfx/preflight/msl.py",
-    "rfx/preflight/msl_reflector.py",
-    "rfx/preflight/line_stub.py",
-    "rfx/preflight/line_port_coverage.py",
-    "rfx/sparams/_common.py",
-    "rfx/sources/msl_port.py",
-    "rfx/preflight/_msl_probe_rules.py",
-)
-
-
-@pytest.mark.source_scan
-def test_jd_no_print_and_no_hardcoded_emission_bypass():
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_jd_emissions_are_silent_and_catalogued(graded, capsys):
     from rfx.preflight.msl_codes import CODES, TEMPLATES
+    from tests._msl_diagnostic_golden import GOLDEN
+
+    lane = "graded" if graded else "uniform"
     # These are the only opaque messages: inspection exceptions or forwarded
-    # placement advice. Another code must not use one as a prose escape hatch.
+    # placement advice. Read the catalog, never the implementation's source.
     opaque = {
         'probe_placement_note': 'msl.probe_placement_note',
         'line_stub_realization': 'msl.line_stub_realization',
@@ -116,112 +109,84 @@ def test_jd_no_print_and_no_hardcoded_emission_bypass():
         'probe_clearance_scan_failed': 'msl.probe_clearance_scan_failed',
         'conductor_attachment': 'msl.conductor_attachment',
     }
-    from string import Formatter
-    for key, template in TEMPLATES.items():
-        fields = {field for _, field, _, _ in Formatter().parse(template)}
-        if fields & {'detail', 'exc'}:
-            assert key in opaque, key
-    for name in FAMILY_MODULES:
-        text = (ROOT / name).read_text()
-        tree = ast.parse(text)
-        if name in ('rfx/sparams/_common.py', 'rfx/sources/msl_port.py'):
-            selected = {'_resolve_msl_auto_offsets', 'validate_msl_port_geometry'}
-            tree.body = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in selected]
-            assert not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                           and n.func.id == 'print' for n in ast.walk(tree)), name
-        else:
-            assert 'print(' not in text
-        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    opaque_templates = {
+        key for key, template in TEMPLATES.items()
+        if {field for _, field, _, _ in Formatter().parse(template)} & {'detail', 'exc'}
+    }
+    assert opaque_templates == set(opaque), "opaque template allowlist changed"
+    for code, entry in CODES.items():
+        for key in set(entry.templates) & opaque_templates:
+            assert code == opaque[key], f"{code}: opaque template {key} belongs to {opaque[key]}"
 
-        def raw_text(node):
-            """Text written at the site: a literal, an f-string, a join/format, or a sum of them."""
-            if isinstance(node, ast.JoinedStr):
-                return True
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                return any(c.isalnum() for c in node.value)
-            if isinstance(node, ast.BinOp):
-                return raw_text(node.left) or raw_text(node.right)
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr == 'format':
-                    return True
-                # ', '.join(names) lists data; a separator with words in it is prose.
-                if node.func.attr == 'join':
-                    return raw_text(node.func.value)
-            return False
+    expected = {key: texts for key, texts in GOLDEN.items() if key.startswith(lane + "/")}
+    golden_texts = {text for texts in expected.values() for text in texts}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            observations = captured_cases(graded)
+        except Exception as error:
+            diagnostic = getattr(error, "diagnostic", None)
+            assert diagnostic is not None, (
+                f"{lane}: {type(error).__name__} lacks .diagnostic: {error}"
+            )
+            assert diagnostic.code in CODES, f"{lane}: unknown exception code {diagnostic.code}"
+            assert diagnostic.message == str(error) and str(error) in golden_texts, (
+                f"{lane}: exception differs from golden text: {error}"
+            )
+            raise  # These cases return findings; an unexpected refusal is a finding too.
 
-        def function_of(node):
-            while node is not None and not isinstance(node, ast.FunctionDef):
-                node = parents.get(node)
-            return getattr(node, 'name', None)
+    stdout = capsys.readouterr().out
+    print(f"{lane}: stdout_chars={len(stdout)} bar=0", file=sys.stderr)
+    assert stdout == "", f"{lane}: MSL diagnostics wrote {len(stdout)} characters to stdout: {stdout!r}"
 
-        # A site that stops calling the table is as much a bypass as one that
-        # appends to it: no raise or warn in the family may carry text written
-        # at the site. The one exception is an internal consistency error that
-        # is caught and re-rendered by its caller.
-        allowed_raw = {('rfx/preflight/msl.py', '_msl_declared_face_geometry')}
-        for n in ast.walk(tree):
-            site = None
-            if isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call) and n.exc.args:
-                site = n.exc.args[0]
-            elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                    and n.func.attr == 'warn' and n.args):
-                site = n.args[0]
-            if site is not None and raw_text(site):
-                assert (name, function_of(n)) in allowed_raw, (
-                    f"{name}:{n.lineno} emits text written at the site; route it through the code table")
-            # Messages collected in a list and emitted later (the placement notes) are
-            # emission too: only table text and data labels may be collected.
-            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                    and n.func.attr in ('append', 'extend', 'insert')):
-                for argument in n.args:
-                    prose = (isinstance(argument, ast.JoinedStr) and any(
-                        isinstance(part, ast.Constant) and len(str(part.value).split()) >= 2
-                        for part in argument.values)) or (
-                        isinstance(argument, ast.Constant) and isinstance(argument.value, str)
-                        and len(argument.value.split()) >= 2)
-                    # The reflector scan's reasons for a conductor it could not evaluate are
-                    # forwarded text (as on main; they reach the user inside
-                    # msl.reflector_scan_incomplete). Nothing else may collect prose.
-                    forwarded = (name == 'rfx/preflight/msl_reflector.py'
-                                 and isinstance(n.func.value, ast.Name)
-                                 and n.func.value.id == 'unevaluated')
-                    assert not prose or forwarded, (
-                        f"{name}:{n.lineno} collects text written at the site; use the code table")
-        for n in ast.walk(tree):
-            if isinstance(n, ast.BinOp):
-                for table_side, other in ((n.left, n.right), (n.right, n.left)):
-                    if any(isinstance(x, ast.Call) and isinstance(x.func, ast.Name)
-                           and x.func.id == 'msl_text' for x in ast.walk(table_side)):
-                        assert not raw_text(other), (name, n.lineno)
-            if not isinstance(n, ast.Call) or not isinstance(n.func, ast.Name):
-                continue
-            fn = n.func.id
-            if fn in ('PreflightWarning', 'PreflightErrorWarning', 'PreflightConfigError'):
-                # Other families in shared modules remain outside this migration.
-                if name.startswith('rfx/preflight/'):
-                    assert isinstance(n.args[0], ast.Call), (name, n.lineno)
-                    assert isinstance(n.args[0].func, ast.Name)
-                    assert n.args[0].func.id in ('msl_diagnostic', 'stub_diagnostic'), (name, n.lineno)
-            if fn in ('msl_diagnostic', 'msl_geometry_error', 'placement_warning'):
-                argument = n.args[1] if fn == 'msl_diagnostic' else n.args[0]
-                assert isinstance(argument, (ast.Call, ast.Name, ast.BinOp)), (name, n.lineno)
-                if isinstance(argument, ast.Call):
-                    assert isinstance(argument.func, ast.Name) and argument.func.id == 'msl_text'
-            if fn == 'msl_text':
-                key = ast.literal_eval(n.args[0])
-                outer = parents.get(n)
-                while outer is not None:
-                    if isinstance(outer, ast.Call) and isinstance(outer.func, ast.Name):
-                        emitter = outer.func.id
-                        code = (ast.literal_eval(outer.args[0]) if emitter == 'msl_diagnostic' else
-                                {'msl_geometry_error': 'msl.conductor_attachment',
-                                 'placement_warning': 'msl.probe_placement_note'}.get(emitter))
-                        if code is not None:
-                            assert key in CODES[code].templates, (name, n.lineno, code, key)
-                            if key in opaque:
-                                assert code == opaque[key], (name, n.lineno, code, key)
-                            break
-                    outer = parents.get(outer)
+    # The helper forwards uncatalogued warnings to this outer capture, keeping
+    # WarningMessage's filename metadata (no source reads). Construction/grid
+    # warnings also arrive here; unrelated material advisories are outside MSL.
+    outer_family = []
+    for warning in caught:
+        message = warning.message
+        diagnostic = getattr(message, "diagnostic", None)
+        path = Path(warning.filename)
+        family_file = path.parent.name == "preflight" and (
+            path.name.startswith("msl") or path.name in {"line_stub.py", "line_port_coverage.py"}
+        )
+        if family_file or getattr(diagnostic, "code", "").startswith("msl."):
+            assert diagnostic is not None, f"{lane}: {warning.filename}: {message} lacks .diagnostic"
+            assert diagnostic.code in CODES, f"{lane}: unknown warning code {diagnostic.code}"
+            assert diagnostic.message == str(message) and str(message) in golden_texts, (
+                f"{lane}: outer warning differs from golden text: {message}"
+            )
+            outer_family.append(message)
+
+    assert {lane + "/" + case for case in observations} == set(expected), f"{lane}: missing diagnostic cases"
+    found = set()
+    for case, messages in observations.items():
+        row = lane + "/" + case
+        diagnostics = [getattr(message, "diagnostic", None) for message in messages]
+        missing = sum(diagnostic is None for diagnostic in diagnostics)
+        unknown = sum(diagnostic is not None and diagnostic.code not in CODES for diagnostic in diagnostics)
+        actual = list(map(str, messages))
+        mismatches = sum(a != b for a, b in zip(actual, expected[row])) + abs(len(actual) - len(expected[row]))
+        record_mismatches = sum(
+            diagnostic is not None and diagnostic.message != str(message)
+            for message, diagnostic in zip(messages, diagnostics)
+        )
+        print(
+            f"{row}: messages={len(messages)} missing_diagnostic={missing} unknown_code={unknown} "
+            f"golden_mismatches={mismatches} record_mismatches={record_mismatches} bar=0",
+            file=sys.stderr,
+        )
+        assert missing == 0, f"{row}: {missing} emissions lack .diagnostic: {actual}"
+        assert unknown == 0, f"{row}: unknown diagnostic codes: {diagnostics}"
+        assert actual == expected[row], f"{row}: emitted text differs from golden"
+        assert record_mismatches == 0, f"{row}: structured message differs from emitted text"
+        found.update(diagnostic.code for diagnostic in diagnostics)
+    print(
+        f"{lane}: codes_reached={len(found)} expected_codes={len(CODES)} "
+        f"outer_family_warnings={len(outer_family)} opaque_templates={len(opaque_templates)}",
+        file=sys.stderr,
+    )
+    assert found == set(CODES), f"{lane}: unreached codes={set(CODES) - found}"
 
 
 @pytest.mark.parametrize(

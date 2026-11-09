@@ -70,7 +70,7 @@ def test_replay_refuses_two_ports_with_shared_bins(graded):
         result = sim.forward(n_steps=8, eps_override=e, skip_preflight=True)
         return sum(jnp.sum(jnp.abs(p.s11) ** 2) for p in result.waveguide_sparams.values())
 
-    with pytest.raises(ValueError, match="supports only a single waveguide port"):
+    with pytest.raises(ValueError, match="supports a single waveguide port"):
         jax.vjp(objective, jnp.ones(sim._build_realized_grid().shape, jnp.float32))
     jax.clear_caches()
 
@@ -85,12 +85,12 @@ def test_replay_refuses_different_port_bins(graded):
         result = sim.forward(n_steps=8, eps_override=e, skip_preflight=True)
         return sum(jnp.sum(jnp.abs(p.s11) ** 2) for p in result.waveguide_sparams.values())
 
-    with pytest.raises(ValueError, match="supports only a single waveguide port"):
+    with pytest.raises(ValueError, match="supports a single waveguide port"):
         jax.vjp(objective, jnp.ones(sim._build_realized_grid().shape, jnp.float32))
-    with pytest.raises(ValueError, match="supports only a single waveguide port"):
+    with pytest.raises(ValueError, match="supports a single waveguide port"):
         sim.estimate_ad_memory(8)
     for options in ({}, {"max_levels": 2}) if graded else ({},):
-        with pytest.raises(ValueError, match="supports only a single waveguide port"):
+        with pytest.raises(ValueError, match="supports a single waveguide port"):
             sim.plan_ad_memory(8, available_memory_gb=1e-6, **options)
     jax.clear_caches()
 

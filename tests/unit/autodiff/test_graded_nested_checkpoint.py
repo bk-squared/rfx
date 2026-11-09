@@ -1,5 +1,8 @@
 """Graded CPML levels, main's AD-memory terms, and BASE 1d5712706 traces."""
+
 import json
+import sys
+import time
 from pathlib import Path
 
 import jax
@@ -8,7 +11,6 @@ import numpy as np
 import pytest
 
 from rfx import GaussianPulse, Simulation
-from rfx.api._ad_memory_model import tape_accounting
 from rfx.geometry.csg import Box
 from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 from rfx.stepping.remat import checkpoint_memory
@@ -26,7 +28,7 @@ def scene():
     sim.add(Box((.002, .003, .002), (.007, .009, .006)), material="lossy")
     sim.add_source((.003, .004, .003), "ez", waveform=GaussianPulse(f0=3e9, bandwidth=.8))
     sim.add_probe((.005, .006, .004), "ez")
-    grid = sim._build_nonuniform_grid()
+    grid = sim.freeze_mesh()
     coords = coords_from_nonuniform_grid(grid)
     mask = Box((.002, .003, .002), (.007, .009, .006)).mask_on_coords(coords.x, coords.y, coords.z)
     eps = jnp.where(mask, 4., 1.).astype(jnp.float32)
@@ -131,25 +133,40 @@ def test_nested_conductivity_gradient_matches_forward_finite_difference(box, rec
     assert ad != 0 and scale >= 1e-3 * abs(j0), f"bar (c): probe must see the lossy block: {measurements}"
 
 
-def test_planner_uses_main_tape_terms(box, monkeypatch):
-    import rfx.api._ad_memory as api
+def test_planner_selected_estimate_fits_target_with_two_cotangents(box):
+    """The selected two-cotangent estimate fits the safety-adjusted target."""
     sim, _, _ = box
-    accounting = sim._ad_memory_static_accounting()
-    model = tape_accounting(sim, accounting, design_box=None, design="permittivity",
-        checkpoint=True, segmented=True, n_steps=97, checkpoint_every=1)
-    calls = []
-    original = api.plan_checkpoint_lengths
-    def capture(*args, **kwargs):
-        calls.append(kwargs)
-        return original(*args, **kwargs)
-    monkeypatch.setattr(api, "plan_checkpoint_lengths", capture)
-    plan = sim.plan_ad_memory(97, 1e-9, max_levels=2, cotangents=2)
-    assert calls[0]["boundary_bytes"] == model["carry_bytes"]
-    assert calls[0]["step_bytes"] == model["tape_step_bytes"]
-    assert calls[0]["static_bytes"] == model["c0_bytes"]
-    assert calls[0]["cotangents"] == plan.selected_estimate.cotangents == 2
-    assert isinstance(plan.checkpoint_every, tuple)
-    assert "forward passes" in plan.recommendation
+    reference = sim.estimate_ad_memory(97, checkpoint_every=(24, 5), cotangents=2)
+    tiny = sim.plan_ad_memory(97, 1e-9, max_levels=2, cotangents=2)
+    print(json.dumps(dict(row="tiny_budget", budget_gb=1e-9,
+                          measured=tiny.segmented_fits, bar=False,
+                          lengths=tiny.checkpoint_every,
+                          recommendation=tiny.recommendation)), file=sys.stderr)
+    assert isinstance(tiny.checkpoint_every, tuple), "a non-fitting plan must report checkpoint lengths"
+    assert "forward passes" in tiny.recommendation
+    assert tiny.segmented_fits is False, "a 1e-9 GB budget must not be reported as fitting"
+
+    # Both policy factors come from the public plan; the target retains the
+    # specified 1% margin above the independent (24, 5) estimate.
+    safety = tiny.fit_safety_factor
+    budget = reference.ad_segmented_gb * safety * 1.01 / tiny.target_fraction
+    plan = sim.plan_ad_memory(97, budget, max_levels=2, cotangents=2)
+    target = plan.target_fraction * budget
+    selected = plan.selected_estimate.ad_segmented_gb * safety
+    measurements = dict(fraction=plan.target_fraction, safety=safety,
+                        reference_gb=reference.ad_segmented_gb, budget_gb=budget,
+                        target_gb=target, selected_with_safety_gb=selected,
+                        cotangents=plan.selected_estimate.cotangents,
+                        lengths=plan.checkpoint_every)
+    print(json.dumps(dict(row="segmented_fits", measured=plan.segmented_fits,
+                          bar=True, **measurements)), file=sys.stderr)
+    print(json.dumps(dict(row="selected_with_safety_gb", measured=selected,
+                          bar=target)), file=sys.stderr)
+    print(json.dumps(dict(row="selected_cotangents", measured=plan.selected_estimate.cotangents,
+                          bar=2)), file=sys.stderr)
+    assert plan.segmented_fits is True, f"planner must find a fitting two-cotangent plan: {measurements}"
+    assert selected <= target, f"selected estimate exceeds the target: {measurements}"
+    assert plan.selected_estimate.cotangents == 2, f"selected estimate lost cotangents: {measurements}"
 
 
 def test_estimate_tuple_matches_checkpoint_memory(box):
@@ -174,15 +191,46 @@ def test_clamped_outer_level_keeps_inner_levels(box, design_box):
     assert "1 levels" in estimate.warning
 
 
-@pytest.mark.parametrize("gradient", [False, True])
-def test_runner_clamped_outer_level_traces_inner_levels(box, gradient):
+def test_clamped_checkpoint_preserves_compiled_memory_and_gradient(box):
+    """A clamped outer level keeps the inner level's memory savings and gradient."""
     sim, eps, sigma = box
-    def trace(chunk):
-        fun = lambda e, s: jnp.sum(outputs(sim, e, s, chunk)[1])
-        return str(jax.make_jaxpr(jax.grad(fun, argnums=(0, 1)) if gradient else fun)(eps, sigma))
-    clamped = trace((120, 5))
-    assert "checkpoint" in clamped or "remat" in clamped
-    assert clamped == trace((5,))
+    executables, temp = {}, {}
+    for chunk in ((120, 5), (5,), 24, None):
+        def objective(e, s):
+            return jnp.sum(outputs(sim, e, s, chunk)[1])
+
+        compiled = jax.jit(jax.grad(objective, argnums=(0, 1))).lower(eps, sigma).compile()
+        executables[chunk] = compiled
+        temp[chunk] = compiled.memory_analysis().temp_size_in_bytes
+        print(json.dumps(dict(row=str(chunk), quantity="temp_size_in_bytes",
+                              measured=temp[chunk], steps=97, mesh=eps.shape)), file=sys.stderr)
+
+    print(json.dumps(dict(row="clamped/inner", quantity="temp_difference_bytes",
+                          measured=temp[(120, 5)] - temp[(5,)], bar=0)), file=sys.stderr)
+    for chunk in ((5,), 24):
+        print(json.dumps(dict(row=f"{chunk}/plain", quantity="temp_size_in_bytes",
+                              measured=temp[chunk], bar=f"< {temp[None]}")), file=sys.stderr)
+    assert temp[(120, 5)] == temp[(5,)], f"clamped outer level lost inner checkpoint: {temp}"
+    assert temp[(5,)] < temp[None], f"inner checkpoint must reduce compiled temp bytes: {temp}"
+    assert temp[24] < temp[None], f"integer checkpoint must reduce compiled temp bytes: {temp}"
+
+    started = time.perf_counter()
+    clamped = jax.block_until_ready(executables[(120, 5)](eps, sigma))
+    inner = jax.block_until_ready(executables[(5,)](eps, sigma))
+    # Byte equality is already used for checkpoint values at
+    # tests/unit/autodiff/test_graded_nested_checkpoint.py:67.
+    # These two controls compile the same program, so the spec also requires
+    # byte-equal gradients (rather than the different-program 1e-6 bar at :73).
+    for name, actual, expected in zip(("eps", "sigma"), clamped, inner):
+        actual, expected = np.asarray(actual), np.asarray(expected)
+        peak = float(np.max(np.abs(expected)))
+        different_bytes = int(np.count_nonzero(actual.view(np.uint8) != expected.view(np.uint8)))
+        print(json.dumps(dict(row=name, quantity="gradient_different_bytes",
+                              measured=different_bytes, bar=0, gradient_peak=peak)), file=sys.stderr)
+        assert np.isfinite(actual).all() and peak > 0, f"{name} gradient must be finite and nonzero"
+        assert actual.tobytes() == expected.tobytes(), f"{name} gradient differs in {different_bytes} bytes"
+    print(json.dumps(dict(row="compiled_execution", quantity="wall_seconds",
+                          measured=time.perf_counter() - started, bar=30)), file=sys.stderr)
 
 
 def test_uniform_planner_refuses_levels():

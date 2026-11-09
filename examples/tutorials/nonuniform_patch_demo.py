@@ -47,8 +47,8 @@ Runtime: the pre-#931 board measured 1169 s (19 min) at num_periods=120 on a
 64-core CPU run alone, settling -53.8 dB.  Under the ownership contract the
 foils are sheets and the cavity lost its two vacuum cells, which raised the
 modal Q: the same 120 periods measured -30.9 dB, under-settled by the witness
-in part [5].  The run is 200 periods for that reason and measures -41.4 dB,
-in 840 s of FDTD (VESSL 369367259280, CPU lane).  Parts [1]-[3], the mesh
+in part [5].  The run was raised to 200 periods for that reason and measured
+-41.4 dB, in 840 s of FDTD (VESSL 369367259280, CPU lane).  Parts [1]-[3], the mesh
 lesson itself, are grid-only arithmetic and cost nothing to run.
 
 Modes recorded on the pre-registration uniform x/y mesh
@@ -92,16 +92,33 @@ edge the ratio (28.7 + 1.38) / (29.5 + 1.38) predicts -2.59 % (derived).
 TM02 fell 0.85 % with the width going from 37.7 to 38 mm.  TM01 and TM11 left
 the list because the feed now sits on the y centre line (Rule 4).
 
-On current main (measured 2026-11-09 on 8 CPU cores, 200 periods; record kept
+On current main (measured 2026-11-09 on 8 CPU cores, 225 periods; record kept
 with the project) this script prints:
 
         2.3638 GHz  Q =  44.3   TM10 on the 29.5 mm length — the design mode
         3.7066 GHz  Q = 118.5   TM02 on the 38 mm width
-        settling -40.7 dB
+        settling -44.7 dB
 
-and run()'s run-end check warns "run ended at -39.2 dB of peak — ring-down
-truncated; Harminv/DFT/NTFF quantities may carry transient error" (the code
-of 2026-10-11 printed no such warning).
+and run() gives no run-end warning (its run-end level, the largest |field| in
+the last 5 % of the record over the record's peak, is -43.8 dB).  At 200
+periods the same code printed the same two modes, settling -40.7 dB, and run()
+warned "run ended at -39.2 dB of peak — ring-down truncated; Harminv/DFT/NTFF
+quantities may carry transient error".  The run is 225 periods for that reason:
+of 225, 250 and 300 periods it is the shortest at which run() does not warn,
+the run-end level is at least 2 dB inside the -40 dB bar (one product change
+once moved this script's settling level by 1.8 dB), and both modes print the
+same frequency and Q as a 450-period run.
+
+The ring-down is slower than TM02's Q alone predicts (0.853 dB/ns): over the
+second half of a 450-period record the probe envelope falls 0.706 dB/ns.  A
+pole fit of that record (rfx.ringdown.identify, not printed by this script;
+measured 2026-11-10, record kept with the project) finds modes the script does
+not print that decay more slowly than TM02.  The main one, at 4.515 GHz with
+Q 191.3 (0.644 dB/ns), lies above the 1.5-3.6 GHz band the script searches and
+ends the record 4.9 times larger than TM02.  The fit without those modes decays
+at 0.852 dB/ns.  So the run-end level falls more slowly with run length than
+TM02's Q predicts; doubling the absorber changes no decay rate by more than
+0.65 %.
 
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
@@ -470,9 +487,12 @@ def main() -> None:
     # After x/y registration the feed sits on the y centre line and TM01 is not
     # excited; the slowest decayer left is TM02 (3.7062 GHz, Q = 115.1), and
     # 200 periods measured -42.5 dB (VESSL 369367266090).
-    # On current main TM02 reads 3.7066 GHz, Q = 118.5, and 200 periods measure
+    # On current main TM02 reads 3.7066 GHz, Q = 118.5. 200 periods measured
     # -40.7 dB (2026-11-09): 0.7 dB inside the -40 dB bar, while run()'s own
-    # run-end check warns "run ended at -39.2 dB of peak" (ring-down truncated).
+    # run-end check warned "run ended at -39.2 dB of peak" (ring-down truncated).
+    # 225, 250, 300, 400 and 450 periods measure -44.7, -49.0, -54.2, -67.3 and
+    # -73.8 dB, with the same two modes at every length; from 225 periods on,
+    # run() does not warn (run-end level -43.8 dB at 225).
     # Before x/y registration, 200 periods measured -41.4 dB (VESSL
     # 369367259280). That cleared the -40 dB
     # bar, but by 1.4 dB, which is less margin than the number below was chosen
@@ -482,11 +502,12 @@ def main() -> None:
     # measured -30.9 dB linearly in time says -51.5 dB (10 dB optimistic, wrong —
     # it charges the source ramp to the decay). The MEASURED slope between the two
     # runs is 0.131 dB/period (-30.9 at 120, -41.4 at 200); size any future change
-    # from that, not from either estimate.
+    # from a measured slope, not from either estimate. On current main the
+    # witness falls 0.132 dB/period (-40.7 at 200, -73.8 at 450, 2026-11-09).
     #
     # Raising the run length is the response to an unsettled run; lowering the bar
     # would not be.
-    n_periods = 200   # retained from the pre-registration runs documented above
+    n_periods = 225   # shortest measured length that clears run()'s check by 2 dB (see above)
     print(f"\nRunning NU simulation (num_periods={n_periods})...")
     t0 = time.time()
     result = sim.run(num_periods=n_periods)

@@ -295,7 +295,7 @@ def test_waveguide_port_rejects_unsupported_configuration():
     )
     sim_multi.add_waveguide_port(0.01, direction="+x")
     sim_multi.add_waveguide_port(0.09, direction="-x")
-    with pytest.raises(ValueError, match="Simulation.run\\(\\) supports only a single waveguide port"):
+    with pytest.raises(ValueError, match="One run\\(\\) or forward\\(\\) record supports a single waveguide port"):
         sim_multi.run(n_steps=40, compute_s_params=False)
 
 

@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from rfx.preflight._scopes import CODE_SCOPE
-from tests._selection import deselected_count
 
 ROOT = Path(__file__).resolve().parents[2]
 REACHED = set()
@@ -1180,9 +1179,9 @@ def test_f0_sheet_backed_gap_subjects():
 
 
 def test_scene_code_coverage(request):
-    if len([item for item in request.session.items if item.path == Path(__file__)]) < 90:
-        pytest.skip('coverage census applies to the complete scene battery')
-    n = deselected_count(request.config, Path(__file__))
-    if n > 0:
-        pytest.skip(f'file cut by the shard split: {n} items deselected')
+    expected = {item.nodeid for item in request.session.genitems(request.node.parent)}
+    selected = {item.nodeid for item in request.session.items if item.path == Path(__file__)}
+    if expected - selected:
+        pytest.skip('coverage census applies to the complete scene battery: '
+                    f'{len(expected & selected)} of {len(expected)} tests selected')
     assert REACHED | UNREACHABLE.keys() == CODE_SCOPE.keys(), sorted(CODE_SCOPE.keys() - REACHED)

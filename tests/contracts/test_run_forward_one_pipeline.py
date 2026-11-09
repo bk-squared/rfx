@@ -601,8 +601,8 @@ DECLARATION_REFUSAL_ROWS = {
 }
 
 MESSAGE_COMPARISON_ROWS = {
-    ('P-waveguide2', 'uniform'): 'Simulation.run() supports only a single waveguide port',
-    ('P-waveguide2', 'graded'): 'Simulation.run() supports only a single waveguide port',
+    ('P-waveguide2', 'uniform'): 'One run() or forward() record supports a single waveguide port',
+    ('P-waveguide2', 'graded'): 'One run() or forward() record supports a single waveguide port',
     ('C-full-tensor', 'multi-device-uniform'): 'is supported on a single-device Yee mesh only',
     ('C-full-tensor', 'multi-device-graded'): 'is supported on a single-device Yee mesh only',
     ('P-floquet', 'graded'): DECLARATION_REFUSAL_ROWS['P-floquet', 'graded'],

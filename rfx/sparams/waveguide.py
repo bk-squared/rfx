@@ -223,9 +223,7 @@ def compute_waveguide_s_matrix(
         guided ``P_inc`` correctly. For a junction the interior PEC septum /
         branch is stripped from the vacuum reference, which then radiates
         into free space: ``P_inc`` is mis-normalized and every ``|S|``
-        inflates hard (non-passive; ``normalize=True`` gave max|S|~230,
-        ``normalize='flux'`` gave max|S|~9.8, |S11|~1.9 on the verified
-        compact 3-port T-junction). Passing ``port_reference_sims[i]`` = the
+        inflates (non-passive). Passing ``port_reference_sims[i]`` = the
         matched straight guide for driven arm ``i`` moves ``P_inc`` toward
         the true single-mode guided incident power (PEC-folded identically
         to the device run).
@@ -238,11 +236,13 @@ def compute_waveguide_s_matrix(
         centre; (3) a converged mesh. On far-port geometry (arms 90/90/70 mm,
         48 mm CPML, dx 1.0/0.667 mm) the matched-reference flux path reaches
         passivity 1.006/1.002, reciprocity 0.001, mesh-convergence 0.0297
-        and 0.087 vs MEEP (r2000, cross-device). On COMPACT geometry the
-        matched reference fixes |S11| (1.86 → 0.49, physical) but the overall
-        matrix stays non-physical (residual max|S|~3.9); the two in-method
-        advisories (probe clearance, CPML thickness) warn when the far-port
-        discipline is not met.
+        and 0.087 vs MEEP (r2000, cross-device). With compact port-to-junction
+        clearance, matched straight-guide references are not sufficient:
+        the matrix stays non-passive.
+        ``tests/unit/sparams/test_waveguide_port_reference_sims.py::test_port_reference_sims_compact_junction_necessary_not_sufficient``
+        asserts ``max|S| > 1.05`` and requires the passivity warning to fire.
+        The two in-method advisories (probe clearance, CPML thickness) warn
+        when the far-port discipline is not met.
 
         The absorber half of that discipline is checked on **every**
         uniform path, not just this one: an in-method advisory

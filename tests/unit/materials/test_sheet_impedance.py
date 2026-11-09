@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -574,29 +575,33 @@ def _sheet_sim(**sim_kw):
     return sim
 
 
-def test_g9_fast_path_excludes_sheets(monkeypatch):
-    """A forced GPU query uses the standard lane with and without sheets."""
-    import jax
-    import rfx.stepping.uniform as stepping_uniform
+def test_sheet_probe_record_survives_gpu_backend_query(monkeypatch):
+    def record(sheet):
+        if sheet:
+            sim = _sheet_sim(boundary="pec")
+        else:
+            sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.001, boundary="pec")
+            sim.add_source((.010, .010, .005), "ex", waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
+        # Sample tangential E at an off-symmetry point on the sheet.
+        sim.add_probe((.009, .011, .010), "ex")
+        result = sim.run(n_steps=300, skip_preflight=True)
+        assert result.grid.shape == (21, 21, 21)
+        return np.asarray(result.time_series)
 
-    class _Boom(RuntimeError):
-        pass
-
-    def boom(*a, **k):
-        raise _Boom("update_he_fast called")
-
-    monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
-    monkeypatch.setattr(stepping_uniform, "update_he_fast", boom)
-
-    # A sheet-free control also stays on the standard lane.
-    ctrl = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
-                      boundary="pec")
-    ctrl.add_source((10e-3, 10e-3, 5e-3), "ex",
-                    waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
-    ctrl.run(n_steps=8, skip_preflight=True)
-
-    # The sheet-bearing model keeps its sheet operator.
-    _sheet_sim(boundary="pec").run(n_steps=8, skip_preflight=True)
+    expected, absent = record(True), record(False)
+    with monkeypatch.context() as environment:
+        environment.setattr(jax, "default_backend", lambda: "gpu")
+        actual = record(True)
+    peak = float(np.max(np.abs(expected)))
+    peak_step = int(np.unravel_index(np.argmax(np.abs(expected)), expected.shape)[0]) + 1
+    print(f"sheet: peak_step_1based={peak_step}", file=sys.stderr)
+    bar = 9 * float(np.spacing(np.float32(peak)))
+    difference = float(np.max(np.abs(expected - absent)))
+    error = float(np.max(np.abs(actual - expected)))
+    print(f'sheet: mesh=(21,21,21) steps=300 peak={peak:.17g} backend_error={error:.17g} bar=0 sheet_free_difference={difference:.17g} control_bar={bar:.17g}')
+    assert np.isfinite(actual).all() and peak > 0, 'sheet probe must be live'
+    assert difference > bar, f'sheet control difference {difference:.17g} <= 9 ULP {bar:.17g}'
+    assert actual.tobytes() == expected.tobytes(), f'GPU query changed sheet record: max error {error:.17g}, required bitwise equality'
 
 
 def test_g9_distributed_runners_refuse():

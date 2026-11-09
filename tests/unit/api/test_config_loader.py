@@ -174,6 +174,58 @@ def test_dict_vs_direct_equivalence():
         assert_wall_planes(sim, 2, expected_m=(0.002, 0.003), what=who)
 
 
+def _radius_builds(tmp_path, radius):
+    """Build the same small wire declaration through YAML and add_port."""
+    import yaml
+
+    cfg = {
+        "frequency": {"freq_max": 12e9},
+        "domain": [0.006, 0.006, 0.006],
+        "boundary": "pec",
+        "dx": 0.0005,
+        "sources": [{
+            "type": "port", "position": [0.003, 0.003, 0.002],
+            "component": "ez", "impedance": 50.0, "extent": 0.001,
+            "radius": radius, "excite": False,
+        }],
+    }
+    path = tmp_path / "wire-radius.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    direct = Simulation(
+        freq_max=12e9, domain=(0.006, 0.006, 0.006),
+        boundary="pec", dx=0.0005,
+    )
+    direct.add_port(
+        (0.003, 0.003, 0.002), "ez", impedance=50.0, extent=0.001,
+        radius=radius, excite=False,
+    )
+    return simulation_from_yaml(path), direct
+
+
+def test_config_radius_declaration_matches_direct(tmp_path):
+    configured, direct = _radius_builds(tmp_path, 1.0e-4)
+    # add_port appends this frozen _PortEntry, including radius, to _ports.
+    assert configured._ports == direct._ports
+
+
+def test_config_radius_bound_matches_direct(tmp_path):
+    configured, direct = _radius_builds(tmp_path, 1.25e-4)
+    # forward stamps wire ports before stepping; the clamped mutation runs one step.
+    for sim in (configured, direct):
+        grid = sim._build_grid()
+        assert max(grid.shape) <= 24
+        assert grid.dx == pytest.approx(0.0005)
+    with pytest.raises(ValueError, match="wire-port radius/d") as expected:
+        direct.forward(n_steps=1, skip_preflight=True)
+    actual = None
+    try:
+        configured.forward(n_steps=1, skip_preflight=True)
+    except Exception as exc:
+        actual = exc
+    assert type(actual) is type(expected.value)
+    assert str(actual) == str(expected.value)
+
+
 def test_yaml_matches_dict(tmp_path):
     import yaml
 

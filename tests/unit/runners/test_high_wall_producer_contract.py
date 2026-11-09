@@ -1,14 +1,14 @@
-"""H4/F5: actual lane operands against independent cell-to-edge formulas."""
-import jax
+"""High-wall material formulas and public probe parity across stepping lanes."""
+import sys
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx import Box, DebyePole, Simulation
-from rfx._internal import _realized
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import component_e_materials, component_h_materials
-from rfx.geometry.rasterize_grid import unpadded_high_walls
+from rfx.core.yee import MaterialArrays
+from rfx.model.materials import realize_components
 from tests._multi_device_scene import host_devices
 
 
@@ -43,16 +43,17 @@ def numpy_h(array, walls):
         for a in range(3))
 
 
-def wall_scene(debye=False):
+def wall_scene(debye=False, *, graded=False):
     h = .001
     sim = Simulation(freq_max=10e9, domain=(17*h, 6*h, 5*h), dx=h,
-        boundary=BoundarySpec(x='pmc', y='pec', z='pec'), cpml_layers=0)
+        boundary=BoundarySpec(x='pmc', y='pec', z='pec'), cpml_layers=0,
+        **({'dx_profile': np.full(17, h)} if graded else {}))
     poles = {'debye_poles': [DebyePole(3., 1 / (2*np.pi*50e9))]} if debye else {}
     sim.add_material('slab', eps_r=4., sigma=.125, mu_r=2., **poles)
     sim.add(Box((10*h, h, h), (17*h, 6*h, 4*h)), material='slab')
     sim.add_source((4*h, 3*h, 2*h), 'ez', waveform=lambda t: jnp.ones_like(t),
                    amplitude_kind='current')
-    sim.add_probe((12*h, 3*h, 2*h), 'ez')
+    sim.add_probe((16*h, 2*h, 2*h), 'ez')
     return sim
 
 
@@ -61,87 +62,100 @@ def assert_components(actual, expected):
         np.testing.assert_array_equal(got, want)
 
 
-@pytest.mark.parametrize('devices', [1, 2, 3], ids=['uniform', 'distributed-2', 'distributed-3'])
+@pytest.mark.parametrize('count,graded', [(2, False), (3, False), (1, True)],
+                         ids=['distributed-2', 'distributed-3', 'graded'])
 @pytest.mark.parametrize('debye', [False, True], ids=['static', 'debye'])
-def test_lane_uses_wall_materials(monkeypatch, devices, debye):
-    run_devices = host_devices(devices)
-    import rfx.model.materials as model
-    import rfx.materials.debye as ade
-    import rfx.runners._distributed_common as common
+def test_wall_material_probe_lane_parity(debye, count, graded):
+    """A dielectric ending at PMC keeps its near-wall record across lanes."""
+    devices = host_devices(count)
+    options = dict(n_steps=40, compute_s_params=False, skip_preflight=True)
+    reference = wall_scene(debye).run(devices=devices[:1], **options)
+    # Endpoint nodes: 17 x 6 x 5 cells, including each terminal node.
+    assert reference.grid.shape == (18, 7, 6)
+    shape = reference.grid.shape
 
-    sim = wall_scene(debye)
-    grid = sim._build_realized_grid()
-    cells, pole_spec, *_ = sim._assemble_materials(grid)
-    walls = unpadded_high_walls(grid)
-    eps = numpy_e(np.asarray(cells.eps_r), walls)
-    sigma = numpy_e(np.asarray(cells.sigma), walls)
-    mu = numpy_h(np.asarray(cells.mu_r), walls)
-    fractions = numpy_e(np.asarray(pole_spec[1][0], dtype=np.float32), walls) if debye else None
-    # The independent formula also pins the public S1 and S2 contracts.
+    def indices(result):
+        geometry = result.realized_geometry
+        source = geometry.sources[0].edges
+        probe = geometry.probes[0].index
+        assert source and probe is not None
+        # Only y and z have PEC faces in this fixture.
+        assert all(0 < edge[a] < result.grid.shape[a] - 1
+                   for edge in (*source, probe) for a in (1, 2))
+        return f'driven_indices={source} probe_index={probe}'
+
+    reference_indices = indices(reference)
+    print(f'{debye=}/reference: {reference_indices}', file=sys.stderr)
+    occupied = np.zeros(shape, dtype=bool)
+    # Cell centres inside the independently declared slab, before wall images.
+    occupied[10:17, 1:6, 1:4] = True
+    eps = np.where(occupied, 4., 1.).astype(np.float32)
+    sigma = np.where(occupied, .125, 0.).astype(np.float32)
+    mu = np.where(occupied, 2., 1.).astype(np.float32)
+    cells = MaterialArrays(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sigma),
+                           mu_r=jnp.asarray(mu))
+    walls = (True, True, True)
     actual_eps, actual_sigma = component_e_materials(cells, high_wall=walls)
-    assert_components(actual_eps, eps)
-    assert_components(actual_sigma, sigma)
-    assert_components(component_h_materials(cells, high_wall=walls), mu)
+    assert_components(actual_eps, numpy_e(eps, walls))
+    assert_components(actual_sigma, numpy_e(sigma, walls))
+    assert_components(component_h_materials(cells, high_wall=walls), numpy_h(mu, walls))
+    print(f'{debye=}/component-formulas: max_error=0 bar=0 mesh={shape}', file=sys.stderr)
+    wall = realize_components(cells, reference.grid, periodic=(False,) * 3, high_wall=walls)
+    blind = realize_components(cells, reference.grid, periodic=(False,) * 3,
+                               high_wall=(False,) * 3)
+    contrast = max(float(np.max(np.abs(np.asarray(a)[-1] - np.asarray(b)[-1])))
+                   for a, b in zip(wall.eps_update, blind.eps_update))
+    print(f'{debye=}/wall-precondition: eps_difference={contrast:.12g} bar=>0', file=sys.stderr)
+    assert contrast > 0, 'the high-wall image must change the terminal x row'
 
-    realize = model.realize_components
-    def observe_realization(*args, **kwargs):
-        out = realize(*args, **kwargs)
-        # The slab ADE initializer also realizes a one-cell vacuum placeholder.
-        # Observe domain/slab operands, whose transverse extent is the domain's.
-        if out.eps_update[0].shape[1:] == grid.shape[1:]:
-            _realized.ACTIVE.observe('contract.producer', dict(
-                eps_e=out.eps_update, sigma_e=out.sigma_update, mu_h=out.mu_update))
-        return out
-    monkeypatch.setattr(model, 'realize_components', observe_realization)
-    build_poles = ade.debye_pole_coeffs
-    def observe_poles(poles, dt, shape, weights):
-        # Point-source coefficient lookup uses a cropped 2x2x2 neighborhood;
-        # the lane contract compares the domain's update coefficients.
-        if tuple(shape[1:]) == grid.shape[1:]:
-            _realized.ACTIVE.observe('contract.poles', dict(fractions=weights[0]))
-        return build_poles(poles, dt, shape, weights)
-    monkeypatch.setattr(ade, 'debye_pole_coeffs', observe_poles)
-    monkeypatch.setattr(common, 'debye_pole_coeffs', observe_poles)
-
-    with _realized.capture() as captured:
-        sim.run(n_steps=4, devices=run_devices, compute_s_params=False,
-                skip_preflight=True)
-    electric = [r for r in captured.records if 'eps_e' in r]
-    magnetic = [r for r in captured.records if 'mu_h' in r]
-    pole_records = [r for r in captured.records if 'fractions' in r]
-    assert electric and magnetic
-    nx = grid.nx
-    per = (nx + devices - 1) // devices
-
-    def compare_record(actual, expected, record, *, magnetic=False):
-        if np.asarray(actual[0]).shape[0] == nx:
-            assert_components(actual, expected)
-            return set(range(0, nx, per))
-        key = 'h_owned_start' if magnetic else 'owned_start'
-        starts = [int(record[key])] if key in record else list(range(0, nx, per))
-        matches = []
-        for start in starts:
-            count = min(per, nx-start)
-            matches.append(all(np.array_equal(np.asarray(got)[1:1+count], want[start:start+count])
-                               for got, want in zip(actual, expected)))
-        assert any(matches), (record['site'], starts, 'no global owned slab matches')
-        return {start for start, match in zip(starts, matches) if match}
-
-    electric_starts, magnetic_starts, pole_starts = set(), set(), set()
-    for record in electric:
-        electric_starts.update(compare_record(record['eps_e'], eps, record))
-        compare_record(record['sigma_e'], sigma, record)
-    for record in magnetic:
-        magnetic_starts.update(compare_record(record['mu_h'], mu, record, magnetic=True))
-    assert electric_starts == magnetic_starts == set(range(0, nx, per))
-    if devices > 1:
-        assert any('owned_start' in r and int(r['owned_start']) <= nx-1
-                   < int(r['owned_start']) + int(r['owned_count']) for r in electric)
-    if debye:
-        assert pole_records
-        for record in pole_records:
-            pole_starts.update(compare_record(record['fractions'], fractions, record))
-        assert pole_starts == set(range(0, nx, per))
+    result = wall_scene(debye, graded=graded).run(devices=devices[:count], **options)
+    assert result.grid.shape == shape
+    a, b = np.asarray(reference.time_series), np.asarray(result.time_series)
+    assert a.shape == b.shape == (40, 1)
+    assert np.isfinite(a).all() and np.isfinite(b).all()
+    # The two grid builders round their float64 Courant calculation differently;
+    # the float32 stepping interval must agree, as must the probe records below.
+    assert np.float32(result.dt) == np.float32(reference.dt)
+    peak = float(np.max(np.abs(a)))
+    assert peak > 0, 'the near-wall probe must see the source'
+    error = np.abs(b.astype(np.float64) - a.astype(np.float64)).max(axis=1)
+    ulp = float(np.spacing(np.float32(peak)))
+    label = 'graded' if graded else f'distributed-{count}'
+    row = f'{debye=}/{label}'
+    print(f'{row}: devices={count} reference_dt={float(reference.dt):.17g} '
+          f'compared_dt={float(result.dt):.17g} reference[{reference_indices}] '
+          f'compared[{indices(result)}]', file=sys.stderr)
+    if graded:
+        # Uniform/constant-profile two-kernel bar:
+        # tests/unit/nonuniform/test_nonuniform_face_depths.py:91-94.
+        residual = float(error.max() / peak)
+        bar = options['n_steps'] * 10 * np.finfo(np.float32).eps
+        print(f'{row}: max_error={error.max():.12g} peak={peak:.12g} '
+              f'residual={residual:.12g} bar={bar:.12g} steps=40 '
+              f'mesh={result.grid.shape}', file=sys.stderr)
+        assert residual < bar, f'{row}: residual {residual:.12g} >= {bar:.12g}'
+    elif debye:
+        # Pole cross-trace law: tests/_one_device_parity.py:110;
+        # exercised by test_distributed_uniform_forward_media_parity.py:65.
+        bar = 1.2e-7 * np.cumsum(np.abs(a.astype(np.float64)).max(axis=1))
+        ratio = np.divide(error, bar, out=np.where(error > 0, np.inf, 0.), where=bar > 0)
+        worst = int(np.argmax(ratio))
+        print(f'{row}: worst_step={worst + 1} expected={a[worst, 0]:.12g} '
+              f'measured={b[worst, 0]:.12g} error_at_worst={error[worst]:.12g} '
+              f'allowance_at_worst={bar[worst]:.12g} '
+              f'max_error={error.max():.12g} peak={peak:.12g} '
+              f'peak_ULP={error.max()/ulp:.12g} max_law_ratio={ratio.max():.12g} '
+              f'bar=1 steps=40 mesh={result.grid.shape}', file=sys.stderr)
+        assert np.all(error <= bar), f'{row}: accumulated-law ratio {ratio.max():.12g} > 1'
+    else:
+        # One/several: tests/contracts/test_uniform_distributed_main_s.py:84.
+        worst = int(np.argmax(error))
+        print(f'{row}: worst_step={worst + 1} expected={a[worst, 0]:.12g} '
+              f'measured={b[worst, 0]:.12g} absolute_bar={9 * ulp:.12g} '
+              f'max_error={error.max():.12g} peak={peak:.12g} '
+              f'peak_ULP={error.max()/ulp:.12g} bar=9 steps=40 '
+              f'mesh={result.grid.shape}', file=sys.stderr)
+        assert np.all(error <= 9 * ulp), f'{row}: {error.max()/ulp:.12g} peak ULP > 9'
 
 
 def test_periodic_axis_is_never_a_wall():
