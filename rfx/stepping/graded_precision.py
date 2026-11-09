@@ -2,6 +2,9 @@
 import jax.numpy as jnp
 import jax
 
+from rfx.materials.debye import init_debye
+from rfx.materials.lorentz import init_lorentz
+
 
 def field_grid(grid, field_dtype):
     """Widen graded metrics once, preserving the float32 operator verbatim."""
@@ -22,8 +25,6 @@ def field_operands(tree, field_dtype):
 
 def init_graded_dispersion(materials, dt, periodic_axes, debye_spec, lorentz_spec, field_dtype):
     """Build ADE operands after final stamps using the graded field time."""
-    from rfx.materials.debye import init_debye
-    from rfx.materials.lorentz import init_lorentz
     result = []
     for spec, init in ((debye_spec, init_debye), (lorentz_spec, init_lorentz)):
         result.append(None if spec is None else init(
