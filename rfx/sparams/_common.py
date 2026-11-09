@@ -12,9 +12,9 @@ New code should import from here.
 Import contract, inherited from ``rfx.api._sparams``: this module must import
 ONLY external ``rfx.*`` / stdlib / jax / numpy, never ``rfx.api`` (that keeps
 ``rfx/api/__init__.py`` the sole composition point and the import graph
-acyclic). The helper bodies' function-local ``from rfx.api._preflight import
-...`` imports are inside functions, exactly as they were, and so do not run at
-import time.
+acyclic). The helper bodies import preflight checks directly from their
+defining ``rfx.preflight`` modules. These imports stay function-local so
+they do not run at import time.
 """
 
 from __future__ import annotations
@@ -555,10 +555,10 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     from rfx.preflight.msl_codes import msl_text, msl_join, placement_warning
     import warnings
 
-    from rfx.api._preflight import (
+    from rfx.preflight._msl_probe_rules import (
         msl_min_probe_clearance,
-        msl_nearest_downstream_reflector,
     )
+    from rfx.preflight.msl_reflector import msl_nearest_downstream_reflector
     from rfx.preflight._common import _fmt_len, local_cell
     from rfx.preflight.msl import (
         msl_auto_probe_ladder,
@@ -1387,7 +1387,7 @@ def _warn_junction_probe_clearance(
     ``warnings.warn`` per under-clearance port; does not raise.
     """
     import warnings
-    from rfx.api._preflight import PreflightWarning
+    from rfx.preflight._common import PreflightWarning
 
     axis_idx = {"x": 0, "y": 1, "z": 2}
     dev = np.asarray(device_sigma)
