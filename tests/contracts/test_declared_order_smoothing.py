@@ -171,7 +171,10 @@ def mesh_arrays(delta, mode, *, nominal=True, adjacent=False):
                      dt=.2 * .001 / 299792458., dt_min_cell=.0005,
                      nominal_profiles={a: profile for a in 'xyz'} if traced and nominal else None)
     grid = sim._build_nonuniform_grid()
-    a, c, d = b3_shapes(sphere=True)
+    # A sphere contact exercises traced tensors without the existing Box refusal.
+    a = (Sphere((.00365, .005, .005), .00165), 4.)
+    c = (Sphere((.0068, .005, .005), .0015), 4.)
+    d = (Sphere((.010, .010, .010), .0005), 10.2)
     pairs = [a, c] if adjacent else [a, d, c]
     maximum = smoothing_nominal_h_max(sim, grid)
     groups = smoothing._medium_groups(pairs, grid, nominal_h_max=maximum)
