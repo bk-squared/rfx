@@ -50,9 +50,9 @@ def largest_growth(eps_inf, sigma, poles, dt, x_max, *, debye=(), x_min=0.0):
     matrix[:, 0, :] = matrix[:, 1, :]
     matrix[:, 0, 0] += b_eps
     if poles:
-        from jax import enable_x64
+        from jax import enable_x64, ensure_compile_time_eval
         from rfx.materials.lorentz import pole_update_coeffs
-        with enable_x64():
+        with enable_x64(), ensure_compile_time_eval():
             damping, restoring, coupling = (np.asarray(v) for v in pole_update_coeffs(
                 *np.asarray(poles, dtype=np.float64).T, np.float64(dt), field_dtype=None))
         for i in range(len(poles)):
