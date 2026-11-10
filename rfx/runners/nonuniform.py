@@ -853,8 +853,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                     from rfx.model.tensor_operands import full_tensor_eps
                     aniso_eps = full_tensor_eps(sim, grid, materials, shape_eps_pairs)
                 else:
+                    from rfx.model.tensor_operands import smoothing_nominal_h_max
                     aniso_eps = compute_smoothed_eps_nonuniform(
                         grid, shape_eps_pairs, background_eps=1.0,
+                        nominal_h_max=smoothing_nominal_h_max(sim, grid),
                     )
 
     if getattr(sim, "_interface_eps", "sampled") == "dual_average":

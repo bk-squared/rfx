@@ -51,13 +51,14 @@ def _integrals(sim, root, table, smoothing, conformal=None):
     if root.lane == "nonuniform":
         from rfx.geometry.smoothing import smoothed_shape_pairs, compute_smoothed_eps_nonuniform
         from rfx.model.realization_integrals import begin
-        from rfx.model.tensor_operands import full_tensor_eps
+        from rfx.model.tensor_operands import full_tensor_eps, smoothing_nominal_h_max
         pairs, _ = smoothed_shape_pairs(sim, root.grid)
         begin(sim, root.grid, shapes=pairs, smoothing=mode)
         if mode == "full_tensor":
             full_tensor_eps(sim, root.grid, root.materials, pairs)
         else:
-            compute_smoothed_eps_nonuniform(root.grid, pairs)
+            compute_smoothed_eps_nonuniform(
+                root.grid, pairs, nominal_h_max=smoothing_nominal_h_max(sim, root.grid))
     else:
         from rfx.model.tensor_operands import form_tensor_operands
         shapes = root.assembly[4]

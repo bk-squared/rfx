@@ -323,10 +323,9 @@ _PAD_CONTINUE_CELLS = 2.0
 def medium_key(eps_r):
     """The identity of a dielectric medium in the smoother's grouping.
 
-    Shapes with one key are one medium: smoothed against their union SDF, and
-    excluded from each other's "outside" sample. A concrete ``eps_r`` keys by
-    its float value, so shapes of equal permittivity merge exactly as they
-    always have. A JAX tracer has no value while the program is built, so it
+    Shapes with one key can share a union SDF when declared order permits
+    it (see :func:`_medium_groups`). A concrete ``eps_r`` keys by its float
+    value. A JAX tracer has no value while the program is built, so it
     keys by object identity: one material traced once is one tracer object
     (``add_material`` stores it, ``_resolve_material`` returns it), and two
     materials given the same tracer object are one medium. Two different
@@ -338,14 +337,69 @@ def medium_key(eps_r):
     return float(eps_r)
 
 
-def _medium_groups(shapes):
-    """``{medium_key: (eps_r, [shape, ...])}`` in first-declared order.
+def _medium_groups(shapes, grid, *, nominal_h_max=None):
+    """``{(group_index, medium_key): (eps_r, shapes)}`` in painting order.
 
-    ``eps_r`` is the first shape's object, which the arithmetic uses."""
+    Join the most recent equal-medium group only when every entry already
+    assigned to a later-painted group is farther than two maximum cell
+    widths from the new entry.
+    This preserves unions across unrelated declarations without moving a
+    later material ahead of a nearby intervening one. Unknown or traced
+    bounds conservatively count as near. Traced widths use the caller's
+    declared nominal maximum; a reach-dependent join without it is refused.
+    """
     from collections import OrderedDict
+    import math
+    from rfx.geometry.csg import declared_bounds
+
+    widths = tuple(grid.cells(axis) for axis in range(3))
+    h_max = max(float(np.max(w)) for w in widths) if _host_path(*widths) else nominal_h_max
+    reach = None if h_max is None else 2 * h_max
+    bounds = [declared_bounds(shape) for shape, _ in shapes]
+
+    def near(j, index):
+        a, b = bounds[j], bounds[index]
+        if a is None or b is None or not _host_path(*jax.tree.leaves((a, b))):
+            return True
+        if reach is None:
+            raise RfxUnsupported(
+                "subpixel smoothing on traced cell widths requires nominal_profiles "
+                f"to decide the grouping reach between entries {j} "
+                f"({type(shapes[j][0]).__name__}) and {index} "
+                f"({type(shapes[index][0]).__name__}); declare nominal_profiles "
+                "for every traced mesh axis.")
+        for axis, name in enumerate('xyz'):
+            alo, ahi = float(a[0][axis]), float(a[1][axis])
+            blo, bhi = float(b[0][axis]), float(b[1][axis])
+            if not all(math.isfinite(v) for v in (alo, ahi, blo, bhi)):
+                return True
+            if name in grid.periodic_axes:
+                length = float(grid.domain[axis])
+                # There is an image b + n*length within reach iff this
+                # closed interval contains an integer. Absolute positions
+                # and axis-specific periods also cover distant images.
+                if math.ceil((alo - reach - bhi) / length) > math.floor((ahi + reach - blo) / length):
+                    return False
+            elif alo - reach > bhi or blo - reach > ahi:
+                return False
+        return True
+
     groups: OrderedDict = OrderedDict()
-    for shape, eps_r in shapes:
-        groups.setdefault(medium_key(eps_r), (eps_r, []))[1].append(shape)
+    latest: dict = {}
+    group_of: list = []
+    for index, (shape, eps_r) in enumerate(shapes):
+        medium = medium_key(eps_r)
+        target = latest.get(medium)
+        if target is not None and all(
+                not near(j, index)
+                for j in range(index) if group_of[j][0] > target[0]):
+            key = target
+            groups[key][1].append(shape)
+        else:
+            key = (len(groups), medium)
+            groups[key] = (eps_r, [shape])
+        latest[medium] = key
+        group_of.append(key)
     return groups
 
 
@@ -1275,7 +1329,7 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
     shapes only. Other images, shapes and mask-only bodies count. Neither
     smoothed operands nor node tensors are read. ``groups`` is
     :func:`_medium_groups`'s mapping and ``current`` the current group's
-    :func:`medium_key`.
+    unique ``(group_index, medium_key)`` key.
     """
     from rfx._internal._periodic import periodic_sdf
     from rfx.geometry.rasterize_grid import (
@@ -1315,7 +1369,8 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
     return outside
 
 
-def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None):
+def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None,
+                   nominal_h_max=None):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
 
     This is the ONE smoothing body; the uniform and non-uniform public
@@ -1327,7 +1382,9 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
     xp : numpy or jax.numpy
     shapes : list of (shape, eps_r)
         Applied in order; later shapes overwrite earlier ones. Shapes of one
-        medium form one group and are smoothed against their union SDF
+        medium share a group only when every entry in a later-painted group
+        is farther than two maximum cell widths from the joining entry,
+        and are smoothed against their union SDF
         with the nearest shape's analytic normal, so overlapping same-material
         bodies are not double-smoothed. Grouping is by medium identity
         (:func:`medium_key`): equal concrete ``eps_r`` values are one medium;
@@ -1348,7 +1405,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
     """
     eps = dict(zip(("ex", "ey", "ez"), eps))
     background = eps.copy()
-    groups = _medium_groups(shapes)
+    groups = _medium_groups(shapes, grid, nominal_h_max=nominal_h_max)
 
     for key, (eps_r, group_shapes) in groups.items():
         sdf_shapes = [s for s in group_shapes if _has_sdf(s)]
@@ -1440,13 +1497,14 @@ def _uniform_sample_coords(xp, coords, dx):
     return {"ex": (X + half, Y, Z), "ey": (X, Y + half, Z), "ez": (X, Y, Z + half)}
 
 
-def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks):
+def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks, *,
+                          nominal_h_max=None):
     """``compute_smoothed_eps`` body on backend ``xp``; returns ``xp`` arrays."""
     acc_dtype = np.float64 if xp is np else jnp.float32
     eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
     return _kottke_smooth(
         xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps, masks,
-        grid=grid,
+        grid=grid, nominal_h_max=nominal_h_max,
     )
 
 
@@ -1458,6 +1516,7 @@ def compute_smoothed_eps_nonuniform(
     nu_grid,
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
+    *, nominal_h_max: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Kottke tensor-averaged ε on a NonUniformGrid (per-component).
 
@@ -1544,7 +1603,8 @@ def compute_smoothed_eps_nonuniform(
     acc_dtype = np.float64 if host else jnp.float32
     eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
                 for _ in range(3))
-    eps = _kottke_smooth(xp, shapes, sample, extents, eps, masks, grid=nu_grid)
+    eps = _kottke_smooth(xp, shapes, sample, extents, eps, masks, grid=nu_grid,
+                         nominal_h_max=nominal_h_max)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
@@ -1552,6 +1612,7 @@ def compute_smoothed_eps(
     grid: Grid,
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
+    *, nominal_h_max: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute Kottke tensor-averaged permittivity for each E-field component.
 
@@ -1586,7 +1647,7 @@ def compute_smoothed_eps(
                       *(p for s, _ in shapes for p in _shape_parameters(s)),
                       *masks.values())
     eps = _smoothed_eps_uniform(np if host else jnp, grid, coords, shapes,
-                                background_eps, masks)
+                                background_eps, masks, nominal_h_max=nominal_h_max)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
@@ -1674,6 +1735,7 @@ def compute_inv_eps_tensor_diag(
     dielectric_shapes: list[tuple[Shape, float]] | None = None,
     pec_shapes: list[Shape] | None = None,
     background_eps: float = 1.0,
+    *, nominal_h_max: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Stage 2 unified subpixel ε⁻¹ tensor: dielectric Kottke + PEC limit.
 
@@ -1735,7 +1797,7 @@ def compute_inv_eps_tensor_diag(
     # Step 1: dielectric subpixel smoothing (existing Kottke path).
     if dielectric_shapes:
         eps = _smoothed_eps_uniform(xp, grid, coords, dielectric_shapes,
-                                    background_eps, diel_masks)
+                                    background_eps, diel_masks, nominal_h_max=nominal_h_max)
     else:
         acc_dtype = np.float64 if host else jnp.float32
         eps = tuple(xp.full(tuple(grid.shape), background_eps, dtype=acc_dtype)

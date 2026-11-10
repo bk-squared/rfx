@@ -275,20 +275,6 @@ This holds for `subpixel_smoothing=True` and for the dielectric stage of `"kottk
 Gaps of half a cell or more are seen: their samples read the same values as with only the nearer volume present.
 Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
 
-### With subpixel smoothing, a later box nested in a box of another permittivity is solved as an earlier material when its permittivity repeats one used before.
-
-Tracker: #2453
-
-The smoother groups shapes by permittivity value and lays the groups down in the order each value first appears, while
-the model without smoothing paints shapes in declared order, so later geometry wins. When a later box's εr equals the
-εr of any earlier shape, the later box inside a box of another εr reads that box's value. Measured in a 12 mm PEC cube:
-an εr 4 box inside an εr 10.2 box, declared after it, reads 10.2 on every interior cell once a small εr 4 block is
-declared first elsewhere (4.0 without that block). That is about 155 % on the inner body's permittivity. Adding the
-small block moves the strongest resonance by 2.0 % with `subpixel_smoothing=True`, against 0.1 % without smoothing.
-Measured for `subpixel_smoothing=True`; `"kottke_pec"` and `"full_tensor"` use the same grouping and are not measured.
-What to do: until the fix, do not repeat an εr value across nested boxes (4.0 and 4.001 are kept apart), or switch
-smoothing off.
-
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
 Tracker: none — accepted limitation (warns at default: tests/contracts/test_kottke_pec_warning.py::test_kottke_pec_volume_warning)
