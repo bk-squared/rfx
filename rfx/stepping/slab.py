@@ -323,7 +323,7 @@ def _vacuum_dispersion_values(kind, n_poles, dt):
     """Per field, the coefficient ``init_debye`` / ``init_lorentz`` give ONE
     vacuum cell (eps_r 1, sigma 0, no pole reaching it) at this ``dt``: Debye ``ca = 1, cb = dt/eps_0, cc = 1/eps_0,
     alpha = beta = 0``;
-    Lorentz ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, a = b = c = 0``.
+    Lorentz ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, damping = restoring = 1, c = 0``.
 
     No pole reaches the cell (all-False masks), so the pole parameters do not
     enter; placeholder poles only fix the pole count. Returned as Python

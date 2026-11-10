@@ -14,7 +14,7 @@ from tests.oracle._drude_plasma_scene import FREQ_MAX, references, scene, wavefo
 
 def test_drude_plasma_resonance():
     start = time.monotonic()
-    nu = 1.000e7
+    nu = 1.063e7
     pulse = waveform()
     sim, grid, n_steps = scene(nu, "float32", 8, pulse)
     dt = float(grid.dt)
