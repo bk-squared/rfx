@@ -165,12 +165,13 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     conformal_weights = None
     conformal_areas = None
     if conformal and pec_shapes and not use_kottke_pec:
-        from rfx.geometry.conformal import (
-            compute_conformal_fractions,
-            warn_conformal_model,
-        )
+        from rfx.geometry.cell_table import build_cell_table
+        from rfx.geometry.conformal import warn_conformal_model
+        from rfx.model.conformal_rules import conformal_fractions_from_table
         warn_conformal_model(conformal)
-        conformal_weights, conformal_areas = compute_conformal_fractions(grid, pec_shapes, conformal_pec=conformal)
+        table = build_cell_table(grid, pec_shapes, include_trailing_node=conformal == "cut_cell_floor")
+        conformal_weights, conformal_areas = conformal_fractions_from_table(
+            table, grid, conformal, pec_shapes=pec_shapes)
 
         # The 1/w permittivity is formed below, once the run's final
         # periodic flags are known.
@@ -234,8 +235,11 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
         )
     reference = None
     if conformal_weights is not None:
-        weights, areas = conformal_module.compute_conformal_fractions(
-            grid, boundary_pec_shapes, conformal_pec=conformal_pec)
+        from rfx.geometry.cell_table import build_cell_table
+        from rfx.model.conformal_rules import conformal_fractions_from_table
+        table = build_cell_table(grid, boundary_pec_shapes, include_trailing_node=conformal_pec == "cut_cell_floor")
+        weights, areas = conformal_fractions_from_table(
+            table, grid, conformal_pec, pec_shapes=boundary_pec_shapes)
         ref_aniso_eps = conformal_module.conformal_eps_correction(
             jnp.full_like(materials.eps_r, reference_eps), *weights)
         reference = (weights, areas)
