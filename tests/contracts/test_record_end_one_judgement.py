@@ -208,7 +208,7 @@ def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
     indices, _, _ = _hand_tfsf_geometry(cfg, grid, inside=True)
     corners, paths = tfsf_corner_paths(cfg, grid, inset=1)
     for point in corners:
-        sim.add_probe(tuple(point), "ez")
+        sim.add_probe(tuple(point), "ez", allow_in_absorber=True)
     waveform = _hand_tfsf_samples(cfg, grid, n)
     off = _off(waveform)
     bandwidth = .2 if kind == "bloch" else .8

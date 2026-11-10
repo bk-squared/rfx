@@ -76,15 +76,26 @@ def test_code_completeness():
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    # Retained outcomes add declared_z; existing codes keep their class.
-    assert len(CODE_SCOPE) == 101
+    # Retained outcomes add declared_z; the f0 sheet-backed gap warning and the located pad refusal each add an object code; existing codes keep their class.
+    assert len(CODE_SCOPE) == 102
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 73, 'place': 2, 'model': 24, 'mixed': 2}
+        'object': 74, 'place': 2, 'model': 24, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
     REACHED.update(issue.code for issue in report)
-    record = sim.realized_geometry() if unavailable_labels is None else None
+    record = None
+    if unavailable_labels is None:
+        try:
+            record = sim.realized_geometry()
+        except (ValueError, NotImplementedError):
+            # Only a refused assembly has no record; preflight then uses the identity record.
+            if not any(i.severity == 'error' for i in report):
+                raise
+            from rfx.model.realization_unavailable import identity_record
+            from rfx.preflight._subjects import _finding_view
+            identity = identity_record(sim, sim._campaign_ctx(), 'assembly_refusal')
+            unavailable_labels = [row.label for row in _finding_view(sim, identity).realization_table.rows]
     labels = ([row.label for row in record.realization_table.rows]
               if record is not None else unavailable_labels)
     for issue in report:
@@ -116,6 +127,7 @@ def check_report(sim, report, *, unavailable_labels=None):
 # message text, annotation helpers, or stored report output.
 SCENES = {
     'absorber_probe_outside': {'absorber_overlap': [('probe[0]',)],
+                               'absorber_point_refused': [('probe[0]',)],
                                'absorber_proximity': [('port[0]',)]},
     'absorber_probe_proximity': {'absorber_proximity': [('probe[0]',), ('port[0]',)]},
     'dispersive_pole_at_face': {'dispersive_pole_at_absorber_face': [('geometry[0]',)]},
@@ -928,7 +940,7 @@ def test_flux_unavailable_subjects(monkeypatch):
 def test_probe_index_hole():
     from tests.unit.preflight.test_preflight_absorber import _absorber_placement_sim
     sim = _absorber_placement_sim(-.001)
-    sim.add_probe((-.002, .006, .007), 'ez')
+    sim.add_probe((-.002, .006, .007), 'ez', allow_in_absorber=True)
     sim._internal_probe_indices = {0}
     report = sim.preflight()
     # The hidden witness is omitted from both the report check and record.

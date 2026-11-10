@@ -507,6 +507,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             lp = LumpedPort(
                 position=pe.position, component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
+                allow_in_absorber=pe.allow_in_absorber,
             )
             mid = tuple(int(i) for i in field_index(grid, pe.position, pe.component))
             port_entries.append(pe)
