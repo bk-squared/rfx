@@ -36,7 +36,8 @@ def _stability_sim(kappa, graded):
 
 
 # omega_p dt = 0.45 is above the eps_inf = 1 limit (about 0.28), 0.2 below (test_pole_stability_admission).
-# "rs" declarations put the size in the reference so a reader of value alone sees the other side of the limit.
+# The unstable "rs" row puts the size in the reference (value 1e-6), so a reader of value alone sees a stable pole.
+# The stable "rs" row (value 1e6) is a control: its value alone, read as kappa, is also below the limit.
 STABILITY_CASES = {
     ("unstable", "si"): (0.45, None, True),
     ("unstable", "rs"): (0.45, 1e-6, True),
