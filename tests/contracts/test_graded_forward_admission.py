@@ -7,7 +7,8 @@ import pytest
 from tests.contracts.run_forward_census import BUILDERS, exception_record
 
 
-@pytest.mark.parametrize("declaration", ("P-msl", "R-rlc"))
+# RLC is admitted; this row now pins only the unsupported MSL port.
+@pytest.mark.parametrize("declaration", ("P-msl",))
 def test_graded_multi_device_refusal_has_one_cause(declaration):
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2, "Root conftest must provide two host devices"

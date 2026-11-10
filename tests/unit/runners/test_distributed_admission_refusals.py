@@ -1,7 +1,7 @@
 """Refuse the input classes the distributed lanes would drop or get wrong.
 
 Periodic/Bloch boundaries, reference-plane and passive ports, surface monitors
-(flux, DFT planes), Kerr materials, lumped RLC elements, subgridding.
+(flux, DFT planes), Kerr materials, subgridding.
 
 Exercise the public dispatch and the shard_map runner entry with two CPU
 devices. The pmap runner entry went with that runner (#1296).
@@ -310,16 +310,46 @@ def test_kerr_material_is_refused(entry):
 @pytest.mark.parametrize("entry", ENTRIES)
 @pytest.mark.parametrize("element", ({"R": 10.0}, {"R": 10.0, "L": 1e-9}),
                          ids=("stamped_R", "series_RL"))
-def test_lumped_rlc_element_is_refused(entry, element):
-    """An element between source and probe: this lane never applies it (#1239).
-
-    Measured before the refusal (#1239's 12 mm box, 10 ohm): the multi-device
-    probe peak was bit-identical to the box without the element and 76 % above
-    the single-device peak, where the element lowers it by 43 %. A lone R is
-    stamped into the material; R+L has its own time update.
-    """
+def test_lumped_rlc_element_is_admitted(entry, element):
+    """Both entries reach the solve; class-specific bars live in the RLC contract."""
     sim = _build(entry=entry, rlc=element)
-    _assert_refused(sim, entry, "add_lumped_rlc()", "as if the elements were absent")
+    result = _run(sim, entry)
+    samples = result.time_series
+    assert np.isfinite(samples).all()
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("mesh", ("uniform", "graded"))
+def test_lumped_rlc_pmc_face_is_refused(entry, mesh):
+    sim = Simulation(freq_max=15e9, domain=(.024, .012, .012), dx=.001,
+                     boundary=BoundarySpec(x=Boundary(lo="pmc", hi="pec"), y="pec", z="pec"),
+                     **({"dx_profile": np.full(24, .001)} if mesh == "graded" else {}))
+    sim.add_lumped_rlc((.009, .006, .006), "ez", R=50., L=1e-9, C=1e-12,
+                       topology="series")
+    sim.add_source((.006, .006, .006), "ez", amplitude_kind="field")
+    with pytest.raises(NotImplementedError, match="add_lumped_rlc with PMC faces"):
+        kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
+        if entry == "run":
+            sim.run(**kwargs, compute_s_params=False)
+        else:
+            sim.forward(**kwargs, distributed=True, checkpoint=False)
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("overlap", ("domain_face", "conductor_edge"))
+def test_lumped_rlc_pec_overlap_is_refused(entry, overlap):
+    sim = _build()
+    point = (0., .006, .006)
+    if overlap == "conductor_edge":
+        sim.add(Box((.008, .004, .004), (.010, .008, .008)), material="pec")
+        point = (.008, .004, .006)
+    sim.add_lumped_rlc(point, "ez", R=50., L=1e-9, C=1e-12, topology="series")
+    with pytest.raises(NotImplementedError, match="on a PEC face or realized PEC edge"):
+        kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
+        if entry == "run":
+            sim.run(**kwargs, compute_s_params=False)
+        else:
+            sim.forward(**kwargs, distributed=True, checkpoint=False)
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
