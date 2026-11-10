@@ -718,7 +718,7 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/sources/coaxial_port.py",
+      "file": "rfx/model/coax_stamp.py",
       "function": "_coaxial_tem_edge_profile",
       "kind": "roll/diff"
     },
