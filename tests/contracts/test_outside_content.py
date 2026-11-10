@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Cylinder, Simulation
+from rfx import Box, Cylinder, Simulation, Sphere
 from rfx.geometry.node_tensor import compute_node_tensor_eps
 from rfx.geometry.smoothing import (
     _depth_cdf, compute_inv_eps_tensor_diag, compute_smoothed_eps,
@@ -126,3 +126,33 @@ def test_b8_continuity(case, eps, mode):
         peak = np.float32(max(np.max(np.abs(a)), np.max(np.abs(b))))
         error = np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))
         assert error <= np.spacing(peak)
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('scene', ['cylinder-x', 'cylinder-y', 'cylinder-z', 'box-sphere', 'bisector'])
+def test_b8_case6_known_limitations(graded, scene):
+    """The step-0 nonbox record's rim, nearby sphere and bisector geometries."""
+    profile = np.array([.001] * 4 + [.0008] * 5 + [.001] * 4)
+    grid = Simulation(domain=(.012,) * 3, dx=.001, freq_max=20e9, boundary='pec',
+                      **({'dz_profile': profile} if graded else {})).freeze_mesh()
+    results = []
+    for delta in (-1e-12, 1e-12):
+        if scene.startswith('cylinder'):
+            axis = scene[-1]
+            center = [.006, .006, .0064 if graded else .006]
+            center['xyz'.index(axis)] += delta
+            radius = .0016 if graded and axis != 'z' else .002
+            height = .0032 if graded and axis == 'z' else .004
+            shapes = [(Cylinder(tuple(center), radius, height, axis), 10.)]
+        elif scene == 'box-sphere':
+            shapes = [(Box((.005 + delta, .004, .004), (.009, .008, .008)), 10.),
+                      (Sphere((.0025, .004, .006), .0015), 10.)]
+        else:
+            shapes = [(Box((.0046 + delta, .0036, .0033), (.009, .0084, .0083)), 10.),
+                      (Sphere((.0021, .0036, .006), .0015), 10.)]
+        results.append(compute_smoothed_eps_nonuniform(grid, shapes) if graded
+                       else compute_smoothed_eps(grid, shapes))
+    for a, b in zip(*results):
+        a, b = np.asarray(a), np.asarray(b)
+        peak = np.float32(max(np.max(np.abs(a)), np.max(np.abs(b))))
+        assert np.max(np.abs(a.astype(np.float64) - b.astype(np.float64))) <= np.spacing(peak)

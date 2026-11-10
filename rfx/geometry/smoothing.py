@@ -401,6 +401,7 @@ def _medium_groups(shapes, grid, *, nominal_h_max=None):
             groups[key] = (eps_r, [shape])
         latest[medium] = key
         group_of.append(key)
+    groups.declaration_groups = tuple(group_of)
     return groups
 
 
@@ -1491,14 +1492,21 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
 
     supported = [s for s in groups[current][1] if _has_sdf(s)]
     entries = getattr(groups, 'declared', tuple((s, eps) for eps, group in groups.values() for s in group))
+    declaration_groups = getattr(groups, 'declaration_groups', None)
     intervals = []
     keys = {}
-    for shape, eps in entries:
+    source_count = 0
+    for declared_index, (shape, eps) in enumerate(entries):
+        if declaration_groups is not None:
+            own = declaration_groups[declared_index] == current and _has_sdf(shape)
+            source_index = source_count if own else -1
+            source_count += int(own)
+        else:
+            source_index = next((i for i, s in enumerate(supported) if s is shape), -1)
         if not candidate(shape):
             continue
         key = medium_key(eps)
         code = keys.setdefault(key, len(keys) + 1)
-        source_index = next((i for i, s in enumerate(supported) if s is shape), -1)
         if not isinstance(shape, (Box, Sphere, Cylinder)):
             # Point-only shapes retain the existing mask/SDF lookup, with
             # an artificial 0/1 material to recover its membership mask.
