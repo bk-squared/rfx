@@ -96,8 +96,9 @@ def measure(nu, smoke_steps=0):
             last = envelope["last_full_period"]
             separation = (last["n_start"] + last["n_stop"] - first["n_start"] - first["n_stop"]) * dt / 2
             row["decay_prediction"] = float(np.exp(-nu / 2 * separation))
-        if periods == 8 and not is_lorentz:
-            row["b2prime_start"] = {1e7: .97287, 1.063e7: .97119, 1.126e7: .96951}[nu]
+        if periods in (8, 16) and not is_lorentz:  # A11c: B2' is judged at N = 16 too
+            row["b2prime_start"] = ({1e7: .97287, 1.063e7: .97119, 1.126e7: .96951}[nu] if periods == 8
+                                    else row["decay_prediction"])
             row["b2prime_pass"] = bool(np.all(np.array(envelope["last_first_ratio"]) <= 1.01))
         record["cases"].append(row)
     return record
