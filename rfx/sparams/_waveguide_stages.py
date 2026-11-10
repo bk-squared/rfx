@@ -4,6 +4,8 @@ from __future__ import annotations
 def _admit_waveguide_options(
     RfxUnsupported, conformal_pec, port_reference_sims, resolve_field_dtype, self, subpixel_smoothing,
 ):
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(self, "waveguide S-matrix including multimode")
     if conformal_pec is not None and conformal_pec != "cut_cell_floor":
         raise RfxUnsupported(
             f"compute_waveguide_s_matrix received conformal_pec={conformal_pec!r}; "

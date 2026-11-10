@@ -336,6 +336,8 @@ def build_scene_artifact(sim: Any, *, include_private: bool = False) -> dict[str
     dumping large arrays or arbitrary private object state by default.
     """
 
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "scene artifact export")
     simulation = _simulation_summary(sim)
     materials = {
         str(name): _material_summary(material)

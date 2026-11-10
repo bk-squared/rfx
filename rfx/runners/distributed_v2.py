@@ -359,6 +359,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "distributed (v2) runner")
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")

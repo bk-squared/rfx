@@ -48,6 +48,7 @@ from rfx.interop import (
 from rfx.interop._design import (
     EXCLUDED_SIMULATION_ATTRS,
     EXPORTED_SIMULATION_ATTRS,
+    REFUSED_SIMULATION_ATTRS,
     TRACED_ONLY_SIMULATION_ATTRS,
     _PINNED_RECORDS,
     _WAVEFORM_CODECS,
@@ -558,15 +559,26 @@ def test_every_simulation_attribute_is_classified():
     assert not set(EXPORTED_SIMULATION_ATTRS) & set(TRACED_ONLY_SIMULATION_ATTRS)
 
 
+def test_lazy_wall_loss_is_classified_as_refused():
+    sim = Simulation(freq_max=10e9, domain=(.012,) * 3, dx=.0015, boundary="pec")
+    before = set(vars(sim))
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo",))
+    assert set(vars(sim)) - before == {"_wall_losses"}
+    assert REFUSED_SIMULATION_ATTRS == {"_wall_losses": "refused"}
+    assert not set(REFUSED_SIMULATION_ATTRS) & set(EXPORTED_SIMULATION_ATTRS)
+    with pytest.raises(UnsupportedDesignFeature, match="add_wall_loss is not carried by the design document"):
+        design_to_dict(sim)
+
+
 def test_every_builder_method_is_covered_by_the_document():
-    """Each public ``add_*`` builder writes into a section the document records."""
+    """Each public builder is exported, desugared, or explicitly refused."""
     builders = {
         name
         for name in dir(Simulation)
         if name == "add" or name.startswith("add_")
     }
-    # Every builder either appends to one of the exported lists or is a
-    # documented desugaring of another builder.
+    refused = {"add_wall_loss": "_wall_losses"}
+    assert all(REFUSED_SIMULATION_ATTRS[attr] == "refused" for attr in refused.values())
     desugaring = {
         # expands to 1-2 add_source calls at registration time
         "add_polarized_source",
@@ -592,10 +604,10 @@ def test_every_builder_method_is_covered_by_the_document():
         "add_thin_conductor",
         "add_tfsf_source",
         "add_waveguide_port",
-    } | desugaring
+    } | desugaring | refused.keys()
     assert builders == expected, (
         "the Simulation builder surface has changed; confirm the new method's "
-        "state reaches the design document and update this list: "
+        "state is exported or refused and update this list: "
         f"new={sorted(builders - expected)}, gone={sorted(expected - builders)}"
     )
 

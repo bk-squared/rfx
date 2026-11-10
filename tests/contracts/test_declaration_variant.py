@@ -10,7 +10,7 @@ from rfx._declarations import (
     DECLARATIONS, NOT_DECLARATIONS, declaration_key, declaration_variant,
     release_declaration_caches,
 )
-from tests.contracts.test_declaration_registry import model
+from tests.contracts.test_declaration_registry import model, declare
 from tests.locks import test_sparams_split_bit_identity as locks
 
 
@@ -18,6 +18,7 @@ from tests.locks import test_sparams_split_bit_identity as locks
                                       if f in {"entries", "mapping"}])
 def test_variant_in_place_append_is_private(attr, form):
     sim = model()
+    declare(sim, "add_wall_loss")
     original = getattr(sim, attr)
     token = object()
     if form == "mapping":

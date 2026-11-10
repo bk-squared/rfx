@@ -113,8 +113,8 @@ def _validate_cfg_f0_sheet_backed_gap(self, _w):
         if cases:
             label = getattr(tc, "name", None) or f"thin_conductor[{index}]"
             _w.warn(PreflightWarning(
-                f"f0 sheet {label}: {'; '.join(cases)}. Until wall loss on conductor faces "
-                "exists, use a thick lossy Box for a lossy wall.",
+                f"f0 sheet {label}: {'; '.join(cases)}. For a lossy wall use "
+                "add_wall_loss(faces=...) or add_wall_loss(shape=...).",
                 code="f0_sheet_backed_gap", severity="warning",
                 source="_validate_cfg_f0_sheet_backed_gap",
                 **finding_subjects(self, objects=(tc,)),

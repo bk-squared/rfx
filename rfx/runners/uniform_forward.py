@@ -93,6 +93,8 @@ def _forward_from_materials(
         refused before the first step; an explicit ``False`` asks for
         staircase PEC and passes.
         """
+    from rfx.model.wall_loss import admit_wall_loss
+    admit_wall_loss(self, "fwd_uniform", smoothing=subpixel_smoothing, conformal=conformal_pec)
     from rfx.runners._admission import refuse_mixed_waveguide_sources
     refuse_mixed_waveguide_sources(self)
     if self._waveguide_ports:
@@ -680,6 +682,8 @@ def _forward_from_materials(
     from rfx.stepping import prepared as prepared_step
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
+    from rfx.runners.uniform import assemble_wall_loss
+    sheet_impedance = assemble_wall_loss(self, conductors, sheet_impedance, lane=lane or "fwd_uniform")
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
     result = prepared_step.advance(stepping_product, _run,
         grid,

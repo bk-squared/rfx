@@ -133,6 +133,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     """
     # A plain source fires in every port drive, so it is refused here.
     resolve_field_dtype(sim._precision)
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "lumped/wire S-matrix scan and eager port probes")
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim, main_record=_main_wire_record)
     if subpixel_smoothing and devices is not None:

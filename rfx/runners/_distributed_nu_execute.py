@@ -381,6 +381,8 @@ def dispatch_forward(self, *, plan, _solve_assembly, _call_args):
     )
     from rfx.api._gradient_witness import with_conductivity_record
     from rfx.materials.thin_conductor import refuse_f0_sheets
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(self, "distributed non-uniform forward()")
     refuse_f0_sheets(self._thin_conductors,
                      "distributed non-uniform forward()")
     result = self._forward_distributed_nonuniform_from_materials(
