@@ -284,11 +284,11 @@ def build_triplets(xp, grid, shapes, nodes, normal, eps, outside, fallback,
             for sign in (1, -1):
                 h = widths[a][1 if sign == 1 else 0]
                 end = sign * h * normal[a]
-                edge = _segment_content(xp, outside_pieces, -signed_distance,
+                edge = _segment_content(xp, outside_pieces, outside_pieces.face,
                                         xp.maximum(0, end), start=xp.minimum(0, end))
                 mid = end / 2 + normal[b] * (bp - bm) / 4 + normal[c] * (cp - cm) / 4
                 face = _segment_content(
-                    xp, outside_pieces, -signed_distance, outside_pieces.hi[-1],
+                    xp, outside_pieces, outside_pieces.face, outside_pieces.hi[-1],
                     cdf=lambda t: _depth_cdf(xp, t - mid, alpha, beta))
                 rows.append((edge, face))
             portions.append(rows)

@@ -77,11 +77,13 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
         if union is None:
             owner = host_owner(sdf) if distance else None
             union, nearest, normal = sdf, xp.abs(sdf), ns
+            best_s = sdf
             source = xp.asarray(shape_index, dtype=xp.int32)
             source_image = image
         else:
             owner = host_owner(sdf, shape_index, owner, union) if distance else None
             closer = xp.abs(sdf) < nearest
+            best_s = xp.where(closer, sdf, best_s)
             source = xp.where(closer, shape_index, source)
             source_image = tuple(xp.where(closer, k, old)
                                  for k, old in zip(image, source_image))
@@ -95,8 +97,8 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
         from rfx.model.realization_integrals import capture
         capture(grid, shapes, result[0], owner, 3)
         distance_result = result + (union,)
-        return distance_result + (source, source_image) if normal_source else distance_result
-    return result + (source, source_image) if normal_source else result
+        return distance_result + (source, source_image, best_s) if normal_source else distance_result
+    return result + (source, source_image, best_s) if normal_source else result
 
 
 def _next(xp, a, axis, periodic):
@@ -175,7 +177,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         supported = [s for s in group if smooth._has_sdf(s)]
         if not supported:
             continue
-        f, ns, signed_distance, source, source_image = _union(
+        f, ns, signed_distance, source, source_image, best_s = _union(
             xp, grid, supported, nodes, distance=True, fill_length=fill_length,
             normal_source=True)
         interface = (f > 0) & (f < 1)
@@ -184,8 +186,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         pieces = smooth._outside_pieces(
             xp, groups, key, nodes, signed_distance, ns, length,
             background_eps, masks, grid, normal_source=source,
-            normal_image=source_image, nominal_h_max=nominal_h_max)
-        content = smooth._segment_content(xp, pieces, -signed_distance, length / 2)
+            normal_image=source_image, best_s=best_s, nominal_h_max=nominal_h_max)
+        content = smooth._segment_content(xp, pieces, pieces.face, length / 2)
         outside = content.eps
         inv_perp = xp.where(content.single,
                             f / eps + (1.0 - f) / (outside + 1e-30),

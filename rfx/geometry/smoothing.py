@@ -1379,6 +1379,7 @@ class _LinePieces(NamedTuple):
     lo: object
     hi: object
     eps: object
+    face: object
 
 
 class _SegmentContent(NamedTuple):
@@ -1446,7 +1447,7 @@ def _line_interval(xp, shape, points, normal, reach):
 
 def _outside_pieces(xp, groups, current, coords, distance, normal, length,
                     background, masks, grid, *, normal_source, normal_image,
-                    nominal_h_max=None):
+                    best_s, nominal_h_max=None):
     """Paint and merge the normal line once, in original declaration order.
 
     Shapes are filtered only with concrete declared bounds and widths.
@@ -1494,6 +1495,7 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
     entries = getattr(groups, 'declared', tuple((s, eps) for eps, group in groups.values() for s in group))
     declaration_groups = getattr(groups, 'declaration_groups', None)
     intervals = []
+    face = -distance
     keys = {}
     source_count = 0
     for declared_index, (shape, eps) in enumerate(entries):
@@ -1526,6 +1528,11 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
             excluded = normal_source == source_index
             for k, source in zip(image, normal_image):
                 excluded = excluded & (k == source)
+            # A33: use the source's own exit only when it also supplies the
+            # union's signed value. Inspect the raw interval before exclusion
+            # and empty-interval normalization; clipped/empty sources retain -s.
+            source_end = excluded & (best_s == distance) & (hi >= lo) & (hi < reach) & (hi > -reach)
+            face = xp.where(source_end, hi, face)
             lo = xp.where(excluded, reach, xp.clip(lo, -reach, reach))
             hi = xp.where(excluded, reach, xp.clip(hi, -reach, reach))
             hi = xp.maximum(lo, hi)
@@ -1562,7 +1569,7 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
     merged_lo.append(start)
     merged_hi.append(end)
     merged_eps.append(value)
-    return _LinePieces(xp.stack(merged_lo), xp.stack(merged_hi), xp.stack(merged_eps))
+    return _LinePieces(xp.stack(merged_lo), xp.stack(merged_hi), xp.stack(merged_eps), face)
 
 
 def _depth_cdf(xp, depth, alpha, beta):
@@ -1684,6 +1691,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                 if sdf_union is None:
                     owner = host_owner(s)
                     sdf_union = s
+                    best_s = s
                     best_abs_sdf = xp.abs(s)
                     best_nx, best_ny, best_nz = n_x, n_y, n_z
                     normal_source = xp.asarray(shape_index, dtype=xp.int32)
@@ -1693,6 +1701,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                     sdf_union = xp.minimum(sdf_union, s)
                     # Update normal where this shape's surface is closer
                     closer = xp.abs(s) < best_abs_sdf
+                    best_s = xp.where(closer, s, best_s)
                     normal_source = xp.where(closer, shape_index, normal_source)
                     normal_image = tuple(xp.where(closer, k, old)
                                          for k, old in zip(image, normal_image))
@@ -1717,8 +1726,8 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                 xp, groups, key, (Xc, Yc, Zc), sdf_union,
                 (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
                 normal_source=normal_source, normal_image=normal_image,
-                nominal_h_max=nominal_h_max)
-            content = _segment_content(xp, pieces, -sdf_union, length / 2)
+                best_s=best_s, nominal_h_max=nominal_h_max)
+            content = _segment_content(xp, pieces, pieces.face, length / 2)
             kt = _kottke_tensor_eps(f, eps_r, content.eps, best_nx, best_ny, best_nz,
                                     outside_content=content, xp=xp)
             smooth = kt[("ex", "ey", "ez").index(comp)]
