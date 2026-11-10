@@ -31,7 +31,7 @@ from tests.oracle._drude_plasma_scene import (
 )
 
 
-def source_record(pulse, n_steps, dt):
+def source_record(pulse, n_steps, dt, band_hz=(.5e9, 1.4e9)):
     """Use ringdown's source-off sampler and tolerance, without transit delay."""
     off, detail = source_end_step([(pulse, 0.0)], n_steps, dt,
                                   tolerance=1e-6, return_detail=True)
@@ -46,7 +46,7 @@ def source_record(pulse, n_steps, dt):
     nfft = 1 << int(np.ceil(np.log2(8 * n_steps)))
     spectrum = np.abs(np.fft.rfft(samples.astype(np.float64), n=nfft))
     frequencies = np.fft.rfftfreq(nfft, float(dt))
-    band = (frequencies >= .5e9) & (frequencies <= 1.4e9)
+    band = (frequencies >= band_hz[0]) & (frequencies <= band_hz[1])
     db_min = float(20 * np.log10(spectrum[band].min() / spectrum.max()))
     if db_min < -20:
         raise ValueError(f"waveform band minimum {db_min} dB is below -20 dB")
@@ -91,11 +91,11 @@ partial. Its width is explicit; the bar uses the full period ending at N.
                 last_two_periods_log_slope_per_s=growth.tolist())
 
 
-def pole_record(model, f_ref, f_cf, f_main):
+def pole_record(model, f_ref, f_cf, f_main, freq_max=FREQ_MAX):
     rows = []
     for s, amplitude, residues in zip(model.s, model.amplitude, model.c):
         frequency = float(s.imag / (2 * np.pi))
-        if 0 <= frequency <= .9 * FREQ_MAX:
+        if 0 <= frequency <= .9 * freq_max:
             rows.append(dict(freq_hz=frequency, decay_per_s=float(-s.real),
                              amplitude=float(amplitude),
                              residue_abs_per_probe=np.abs(residues).tolist()))
@@ -111,7 +111,7 @@ def pole_record(model, f_ref, f_cf, f_main):
                 nearest_0815ghz=min(rows, key=lambda p: abs(p["freq_hz"] - .815e9)) if rows else None,
                 s_growing=growing, rank=model.rank, n_decimated=model.n_decimated,
                 decimation_factors=list(model.factors), n_window=model.n_window,
-                freq_max=FREQ_MAX, guard=.9, sv_rel=1e-6, unit_tol=1e-6)
+                freq_max=freq_max, guard=.9, sv_rel=1e-6, unit_tol=1e-6)
 
 
 def measure(args, record):
