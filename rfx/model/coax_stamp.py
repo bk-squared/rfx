@@ -718,6 +718,8 @@ def stamp_coaxial_annular_resistor(
     ``σ = log(b'/a) / (2π·dz·Z)`` so the radial pin-to-shell resistance matches
     ``target_impedance``. The edge-owned load is not averaged into adjacent
     planes or Ez. Used both for the matched feed termination and a matched DUT.
+    The sheet is a conductance inside the line, not a vacuum cell, so it keeps
+    the host permittivity.
 
     ``pec_cell_mask`` is the conductor mask :func:`stamp_coaxial_line` returns;
     cells in it are skipped. It replaces the old test ``sigma >= PEC_SIGMA/2``,
@@ -739,7 +741,6 @@ def stamp_coaxial_annular_resistor(
     sigma_load = float(np.log(shell_inner_radius / float(pin_radius))) / (
         2.0 * np.pi * dz * float(target_impedance)
     )
-    eps = np.array(materials.eps_r)
     sig = np.array(materials.sigma)
     cx, cy = float(center_xy[0]), float(center_xy[1])
     z = int(z_index)
@@ -754,8 +755,7 @@ def stamp_coaxial_annular_resistor(
             if float(pin_radius) <= r <= shell_inner_radius and not occupied:
                 materials = stamp_lumped_sigma(materials, (i, j, z), sigma_load, "ex")
                 materials = stamp_lumped_sigma(materials, (i, j, z), sigma_load, "ey")
-                eps[i, j, z] = 1.0
                 stamped += 1
     if stamped == 0:
         raise ValueError("stamp_coaxial_annular_resistor stamped 0 cells; check geometry/resolution")
-    return materials._replace(eps_r=jnp.asarray(eps))
+    return materials

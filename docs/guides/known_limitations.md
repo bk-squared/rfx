@@ -473,20 +473,6 @@ to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz f
 report it (code `wire_port_no_radius`). A YAML lumped port takes `radius:` the
 same way, with the same bound and the same refusal.
 
-### A coaxial line's matched reflection has a floor from its open end, and coarse meshes read below it.
-
-Tracker: #2415
-
-A coaxial line ended in the matched sheet of
-`compute_coaxial_line_reflection(termination="matched")`, with open space behind the sheet, has an
-end capacitance from the field that leaves the open end. For a line with pin radius 0.635 mm,
-shell radius 2.055 mm and eps_r 2.1 it is about 31.5 fF (independent electrostatic solve; rfx
-agrees to about 5 % as the cell size goes to zero). Its matched reflection therefore has a physical
-floor of about -32 dB at 5 GHz (|S11| about 0.024), rising 6 dB per octave and growing with the
-permittivity of the space behind the end. With the current default load plane the reading is
-optimistic on coarse meshes (-40 dB at 0.4 mm cells) and rises toward that floor on refinement
-(measured; record kept with the project).
-
 ### A multi-cell wire port's load-plane reflection misses the 2 dB and 0.1 bars on two loads at 25 µm.
 
 Tracker: #1614
