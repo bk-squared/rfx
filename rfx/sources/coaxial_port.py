@@ -1120,5 +1120,3 @@ def solve_two_port_from_wave_amplitudes(
             stacklevel=2,
         )
     return TwoPortWaveSolve(s_params=s, cond_a=cond)
-
-
