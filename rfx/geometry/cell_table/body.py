@@ -76,7 +76,8 @@ def _refuse_off_lattice_box(box, lattice, widths, domain, what):
                 raise RfxUnsupported(
                     f'conformal PEC places PEC volumes that hold a grid node; {what} has a {"xyz"[axis]} '
                     f'face {offset:.3g} cell off the node lattice and would stay at its staircase position; '
-                    'move it onto node planes, refine the mesh, or use conformal_pec=False')
+                    'move it onto node planes, refine the mesh, or use conformal_pec=False '
+                    '(https://github.com/bk-squared/rfx/issues/1373)')
 
 
 def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
@@ -91,7 +92,7 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
                                  tuple(np.ones(shape, dtype=np.float64) for _ in range(3)))
     from rfx.geometry.smoothing import _get_sdf_fn
 
-    lines, widths, lattice = [], [], []
+    lines, widths, lattice, sample_lines = [], [], [], []
     for axis in range(3):
         cells = np.asarray(grid.cells(axis), dtype=np.float64)
         if not np.all(cells == cells[0]):
@@ -102,8 +103,10 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
         line = np.concatenate((line, [nodes[-1] + 2 * width]))
         admission_line = line if include_trailing_node else line[:-1]
         lattice.append((admission_line, None))
+        sample_lines.append(line)
         if axis == 2 and getattr(grid, 'is_2d', False):
             line = np.full_like(line, nodes[0])  # The collapsed lane repeats its physical slice.
+            sample_lines[-1] = line
             lattice[-1] = (None, None)
         elif 'xyz'[axis] in getattr(grid, 'periodic_axes', ''):
             lattice[-1] = (admission_line, float(grid.domain[axis]))
@@ -115,6 +118,8 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
     from rfx.geometry.csg import Box, PolylineWire
     from rfx.geometry.smoothing import _ContinuedSheetShape
     owner = np.zeros(sdf.shape, dtype=int)
+    tol = 1e-6 * min(widths)
+    carried = []
     for index, shape in enumerate(pec_shapes):
         fn = _get_sdf_fn(shape)
         if fn is None and isinstance(shape, PolylineWire) and float(shape.radius) < 0.5 * min(widths):
@@ -123,28 +128,51 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
         if isinstance(sheet, Box) and min(h - lo for lo, h in zip(sheet.corner_lo, sheet.corner_hi)) <= 0:
             _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this zero-thickness sheet')
             continue  # A zero-thickness Box on the node lattice is exact through its own edge masks.
+        if isinstance(sheet, Box) and getattr(grid, 'is_2d', False) and any(
+                abs(z - lines[2][0]) <= tol for z in (sheet.corner_lo[2], sheet.corner_hi[2])):
+            raise RfxUnsupported(
+                'conformal PEC: this Box has a z face on the 2-D slice; the slice must cross '
+                'its interior (https://github.com/bk-squared/rfx/issues/1373)')
         if fn is None:
             raise NotImplementedError(
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
         shape_sdf = periodic_sdf(grid, shape, coords, fn, xp=np)
         held = shape_sdf if include_trailing_node else np.broadcast_to(shape_sdf, sdf.shape)[:-1, :-1, :-1]
         if not np.any(held < -1e-9 * min(widths)) and np.min(held) < max(widths):
-            if isinstance(sheet, Box):  # On node planes its staircase faces are exact.
+            if isinstance(sheet, Box):
                 _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this PEC Box')
-                continue
-            raise NotImplementedError(
-                f'conformal PEC: the {type(shape).__name__} holds no grid node, so the cut-cell '
-                'operands would drop it; refine the mesh or use the staircase'
-                + ('; on the 2-D lane the z = 0 slice must cross its interior, not a face'
-                   if getattr(grid, 'is_2d', False) else ''))
+            else:
+                raise NotImplementedError(
+                    f'conformal PEC: the {type(shape).__name__} holds no grid node, so the cut-cell '
+                    'operands would drop it; refine the mesh or use the staircase'
+                    + ('; on the 2-D lane the z = 0 slice must cross its interior, not a face'
+                       if getattr(grid, 'is_2d', False) else ''))
+        carried.append((shape, fn))
         owner = np.where(shape_sdf < sdf, index, owner)
         sdf = np.minimum(sdf, shape_sdf)
     base = sdf[:-1, :-1, :-1]
+
+    def union_at(half_axes):
+        # Average before wrapping: the midpoint of a periodic seam is local.
+        sample = []
+        for a, line in enumerate(sample_lines):
+            values = (line[:-1] + line[1:]) / 2 if a in half_axes else line[:-1]
+            if lattice[a][1] is not None:
+                values = np.mod(values, lattice[a][1])
+            sample.append(values)
+        points = np.meshgrid(*sample, indexing='ij', sparse=True)
+        distance = np.full(base.shape, np.inf)
+        for shape, fn in carried:
+            distance = np.minimum(distance, periodic_sdf(grid, shape, points, fn, xp=np))
+        return distance
+
     lengths, areas = [], []
     for axis in range(3):
         end = [slice(None, -1)] * 3
         end[axis] = slice(1, None)
-        lengths.append(edge_fraction(base, sdf[tuple(end)]))
+        other = sdf[tuple(end)]
+        on_edge = (base <= tol) & (other <= tol) & ((np.abs(base) <= tol) | (np.abs(other) <= tol))
+        lengths.append(np.where(on_edge, union_at((axis,)) > tol, edge_fraction(base, other)))
         u, v = [a for a in range(3) if a != axis]
         corners = [base]
         for moved in ((u,), (u, v), (v,)):
@@ -152,5 +180,8 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
             for a in moved:
                 corner[a] = slice(1, None)
             corners.append(sdf[tuple(corner)])
-        areas.append(face_fraction(corners, (widths[u], widths[v])))
+        distances = np.stack(corners)
+        on_face = np.all(distances <= tol, axis=0) & np.any(np.abs(distances) <= tol, axis=0)
+        areas.append(np.where(on_face, union_at((u, v)) > tol,
+                              face_fraction(corners, (widths[u], widths[v]))))
     return CellGeometryTable(tuple(lengths), tuple(areas), owner[:-1, :-1, :-1])

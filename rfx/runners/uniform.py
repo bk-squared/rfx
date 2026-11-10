@@ -191,9 +191,6 @@ def run_uniform(
         from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
         refuse_bare_waveguide_edges(sim, grid, lane="run_uniform",
                                     conformal_weights=conformal_weights)
-    if conformal_weights is not None:
-        # Conformal replaces binary pec_mask; Stage 2 keeps it alive.
-        pec_mask = None
 
     # Build sources and probes for the compiled runner
     from rfx.sources.port_drive import PortSourceQueue
@@ -239,6 +236,9 @@ def run_uniform(
     pec_wires = tuple(pec_wires or ())
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
         pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
+    from rfx.model.conductors import stepped_conductors
+    conductors = stepped_conductors(conductors, conformal_operands=conformal_weights)
+    pec_mask = conductors.pec_cells
     pec_edge_masks = conductors.pec_edges
     from rfx.measurement.port_s_contract import passive_record_diagnostic
     passive_diagnostic = passive_record_diagnostic(sim)

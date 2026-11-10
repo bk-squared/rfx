@@ -48,3 +48,32 @@ def test_distributed_carriers_match_graded_support(row, graded):
 @pytest.mark.parametrize('lane', ('run_distributed', 'run_distributed_nu', 'fwd_distributed_nu'))
 def test_distributed_mode2d_is_not_admitted(lane):
     assert ('_mode', '') not in admission.ADMITS[lane]
+
+
+@pytest.mark.parametrize('lane', [
+    'coaxial_line_reflection', 'coaxial_two_port', 'coax_msl_transition',
+    'mixed_s_matrix', 's_matrix_scan', 'run_subgridded',
+])
+def test_conformal_pec_refusal_rows(lane):
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    sim = Simulation(20e9, (.012, .012, .012), dx=.001,
+                     boundary=BoundarySpec(x=Boundary('pec', 'pec', conformal=True), y='pec', z='pec'))
+    sim.add(Box((.004, .004, .004), (.006, .006, .006)), material='pec')
+    with pytest.raises(NotImplementedError, match='conformal'):
+        admission.admit(sim, lane, run_args={'conformal_pec': True})
+
+
+def test_graded_waveguide_refuses_conformal_by_name():
+    from tests.contracts.conformal_scenes import scene
+    sim = scene('S', ports=2)
+    sim._dx_profile = [.00127] * 111
+    with pytest.raises(NotImplementedError, match=r'(?s)refuses .*the non-uniform waveguide S-matrix lane.*\bconformal_pec='):
+        sim.compute_waveguide_s_matrix(n_steps=4, normalize="flux")
+
+
+def test_2d_box_face_on_slice_refuses_conformal_by_name():
+    sim = Simulation(20e9, (.012, .012, .001), dx=.001, boundary='pec',
+                     mode='2d_tmz', snap='declared')
+    sim.add(Box((.004, .004, 0.), (.008, .008, .004)), material='pec')
+    with pytest.raises(NotImplementedError, match=r'conformal PEC.*Box.*2-D.*/issues/1373'):
+        sim.run(n_steps=4, conformal_pec=True, skip_preflight=True, compute_s_params=False)

@@ -16,6 +16,8 @@ import numpy as np
 import pytest
 
 from rfx.api import Simulation
+from rfx.errors import RfxUnsupported
+from rfx.geometry.conformal_cells import compute_conformal_fractions
 from rfx.geometry.csg import Box
 from rfx.ringdown import identify
 from rfx.sources.sources import ModulatedGaussian
@@ -30,12 +32,12 @@ class _FinitePulse(ModulatedGaussian):
         return jnp.where(t < self.t0 + 6 * self.tau, super().__call__(t), 0.0)
 
 
-def _wall_from_te101(x0):
+def _wall_from_te101(x0, x_hi=0.03, *, snap='strict'):
     f_guess = C0 / 2 * math.sqrt(1 / x0 ** 2 + 1 / B ** 2)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sim = Simulation(freq_max=24e9, domain=(0.020, 0.014, 0.010), dx=DX, boundary="pec")
-        sim.add(Box((x0, -0.01, -0.01), (0.03, 0.024, 0.020)), material="pec")
+        sim = Simulation(freq_max=24e9, domain=(0.020, 0.014, 0.010), dx=DX, boundary="pec", snap=snap)
+        sim.add(Box((x0, -0.01, -0.01), (x_hi, 0.024, 0.020)), material="pec")
         sim.add_source((0.009, 0.007, 0.005), "ey", waveform=_FinitePulse(f0=f_guess, bandwidth=0.2, cutoff=5.0),
                        amplitude_kind="current")
         sim.add_probe((0.008, 0.007, 0.004), "ey")
@@ -54,3 +56,15 @@ def _wall_from_te101(x0):
 @pytest.mark.parametrize("x0", [18.25e-3, 18.75e-3])
 def test_conformal_wall_rings_at_its_drawn_plane(x0):
     assert abs(_wall_from_te101(x0) - x0) / DX <= 0.05
+
+
+@pytest.mark.parametrize("x_hi", [0.03, 0.019], ids=["node-plane-wall", "one-cell-slab"])
+def test_conformal_node_plane_wall_rings_at_18mm(x_hi):
+    assert abs(_wall_from_te101(0.018, x_hi, snap='declared') - 0.018) / DX <= 0.05
+
+
+def test_conformal_builder_refuses_off_lattice_box_without_inside_node():
+    sim = Simulation(24e9, (0.020, 0.014, 0.010), dx=DX, boundary='pec')
+    box = Box((0.018, -0.01, -0.01), (0.0184, 0.024, 0.020))
+    with pytest.raises(RfxUnsupported, match=r'conformal PEC.*this PEC Box.*x face 0.4 cell off the node lattice'):
+        compute_conformal_fractions(sim._build_grid(), [box], conformal_pec=True)

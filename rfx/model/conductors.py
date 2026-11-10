@@ -652,6 +652,20 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
                     _realization_record=root._realization_record, _prepared_owner=root._prepared_owner or root))
 
 
+def stepped_conductors(conductors, *, conformal_operands):
+    """Select hard edges for the actual operator, retaining sheets and releases."""
+    if conformal_operands is None:
+        return conductors
+    if not conductors.sheets and not conductors.wires:
+        return replace(conductors, pec_cells=None, pec_edges=None)
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    edges = realized_pec_edge_masks(None, sheets=conductors.sheets,
+        wires=conductors.wires, periodic=conductors.periodic)
+    if edges is not None and conductors.pec_edges is not None:
+        edges = tuple(edge & prior for edge, prior in zip(edges, conductors.pec_edges))
+    return replace(conductors, pec_cells=None, pec_edges=edges)
+
+
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
     """Record/replay the exact object passed to the stepping call."""
     if conductors.mode != "solve":
