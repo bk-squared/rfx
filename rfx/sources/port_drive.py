@@ -88,7 +88,7 @@ def soft_source(grid, position, component, waveform, n_steps, *, materials,
     from rfx.api._source_semantics import (
         SOURCE_AMPLITUDE_KINDS, guard_float16_source_increment)
     from rfx.model.source_coefficients import uniform_source_table
-    from rfx.simulation import SourceSpec
+    from rfx._internal._uniform_specs import SourceSpec
     if amplitude_kind not in SOURCE_AMPLITUDE_KINDS:
         raise ValueError(
             f"a declared soft source needs amplitude_kind 'field' or 'current' "
