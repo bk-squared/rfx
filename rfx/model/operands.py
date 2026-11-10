@@ -83,6 +83,10 @@ OPERANDS = {
         ("mu_update", 1, "component permeability", (OperandKind.MU,)),
         ("upml_eps", 1, "component permittivity", (OperandKind.EPS,)),
         ("upml_sigma", 0, "component conductivity", (OperandKind.SIGMA,)))},
+    # Realized Lorentz tuples store (damping, restoring, c); exterior D/R are one.
+    **{f"materials.components.lorentz.coefficients.{index}":
+       (1, "Drude/Lorentz pole medium", frozenset({OperandKind.LORENTZ, OperandKind.DRUDE}))
+       for index in (0, 1)},
     **{f"materials.components.{kind}.{field}.*": (0, label, frozenset(kinds))
        for kind, label, kinds in (("debye", "Debye pole medium", (OperandKind.DEBYE,)),
                                   ("lorentz", "Drude/Lorentz pole medium", (OperandKind.LORENTZ, OperandKind.DRUDE)))
