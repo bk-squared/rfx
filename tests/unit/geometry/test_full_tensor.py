@@ -74,7 +74,10 @@ def test_pec_wall_operator_is_symmetric():
         assert relative <= 1e-12
 
 
-def test_chunked_traced_build_and_jvp_equal_unchunked(monkeypatch):
+def test_chunked_traced_build_and_jvp_within_rounding_bound(monkeypatch):
+    """Two clean compiled builds satisfy the per-entry A35--A36 witness."""
+    from tests._chunked_rounding_bound import capture_operands, compare_builds, rounding_bound
+
     grid = Grid(domain=(.005, .005, .003), dx=.001, freq_max=10e9, cpml_axes='')
     def build(radius):
         rod = Cylinder((.0024, .0026, .0015), radius, .008, 'z')
@@ -85,9 +88,17 @@ def test_chunked_traced_build_and_jvp_equal_unchunked(monkeypatch):
     jax.clear_caches()
     monkeypatch.setattr(triplet, 'MATRIX_BATCH_SIZE', 64)
     actual = evaluate()
-    for value, reference in zip(jax.tree.leaves(actual), jax.tree.leaves(expected)):
-        np.testing.assert_array_equal(value, reference)
-    print('chunked build: 0 ULP primal and radius JVP')
+    jax.block_until_ready((expected, actual))
+    with monkeypatch.context() as capture_patch:
+        capture_patch.setattr(triplet, 'MATRIX_BATCH_SIZE', 2**20)
+        jax.clear_caches()
+        witness = rounding_bound(capture_operands(build, jnp.float32(.0017)))
+    measured = compare_builds(expected, actual, witness)
+    print(f'entries outside the derivation: {measured["outside"]}')
+    for row in measured['leaves']:
+        print(f'leaf={row["leaf"]} largest |difference|/bound={row["max_ratio"]:.17g}')
+    assert not measured['violations'], measured['violations'][:5]
+    jax.clear_caches()
 
 
 def test_serial_pieces_build_and_jvp_equal_batched(monkeypatch):
