@@ -37,7 +37,7 @@ def _sim_with_probe_in_cpml():
     # outside the interior slice -- genuinely in the absorber.
     sim = Simulation(domain=(0.02, 0.02, 0.02), freq_max=10e9, boundary="cpml")
     sim.add_source((0.01, 0.01, 0.01), component="ez")
-    sim.add_probe((0.01, 0.01, 0.0225), component="ez")
+    sim.add_probe((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)
     return sim
 
 

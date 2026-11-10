@@ -346,7 +346,8 @@ class Grid:
         from rfx.stepping.step_count import steps_for_periods
         return steps_for_periods(self.dt, self.freq_max, num_periods)
 
-    def position_to_index(self, pos: tuple[float, float, float]) -> tuple[int, int, int]:
+    def position_to_index(self, pos: tuple[float, float, float], *,
+                          allow_in_absorber=None) -> tuple[int, int, int]:
         """Convert physical position to grid index (accounting for the
         leading per-face CPML offset ``pad_{axis}_lo``).
 
@@ -357,6 +358,9 @@ class Grid:
             returned an out-of-range index silently, which then indexed
             the wrong cell (or wrapped negatively) downstream.
         """
+        if allow_in_absorber is not None:
+            from rfx.model.point_placement import admit_point
+            admit_point(self, pos, allow_in_absorber=allow_in_absorber)
         # Preserve this API's input-dtype division, including half-node ties.
         i = self._rounded_index(0, pos[0] / self.dx)
         j = self._rounded_index(1, pos[1] / self.dx)
