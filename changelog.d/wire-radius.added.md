@@ -1,3 +1,5 @@
+### Added — wire ports with a radius on multiple devices (#PR)
+
 Wire ports declared with `add_port(..., extent=..., radius=...)` now run on
 multiple devices on uniform and graded meshes, through `run(devices=...)`
 and `forward(distributed=True)`, using the one-device radius model.
