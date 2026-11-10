@@ -467,7 +467,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
             from rfx.materials.debye import debye_e_coeffs
             from rfx.materials.lorentz import lorentz_e_coeffs
             coeffs, state = bundle
-            fields = ('alpha', 'beta') if i == 0 else ('a', 'b', 'c')
+            fields = ('alpha', 'beta') if i == 0 else ('damping', 'restoring', 'c')
             terms = [getattr(coeffs, name) for name in fields]
             def local(eps, sigma, *terms):
                 return (debye_e_coeffs if i == 0 else lorentz_e_coeffs)((eps, sigma), grid.dt, *terms)

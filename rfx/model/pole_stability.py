@@ -1,7 +1,7 @@
 """Admission of the explicit Lorentz update on realized cell pole patterns.
 
-The state is (e, h, p_1, q_1, ...), with polarization in eps0 units and
-q the previous polarization. Cell patterns use their lowest epsilon and
+The state is (e, h, p_1, v_1, ...), with polarization in eps0 units and
+v the per-step polarization increment. Cell patterns use their lowest epsilon and
 both conductivity extrema, including Debye polarizations in the same cells.
 """
 from __future__ import annotations
@@ -21,16 +21,15 @@ X_SAMPLES = 129
 def largest_growth(eps_inf, sigma, poles, dt, x_max, *, debye=(), x_min=0.0):
     """Maximum spectral radius of the actual combined ADE update.
 
-    State: (e, h, p_1, q_1, ..., r_1, ...), with Lorentz p=P/eps0,
-    q=p at the previous step, Debye r=P_D/eps0, and h=dt curl(H)/eps0.
+    State: (e, h, p_1, v_1, ..., r_1, ...), with Lorentz p=P/eps0,
+    v=(P-P_prev)/eps0, Debye r=P_D/eps0, and h=dt curl(H)/eps0.
     Faraday gives h'=h-x e, x=4(c0 dt)^2 sum sin(k_a d_a/2)^2/d_a^2.
-    ``lorentz_p_component`` gives p'=A p+B q+C e, q'=p, where
-    A=(2-w0^2 dt^2)/(1+delta dt), B=-(1-delta dt)/(1+delta dt),
-    C=kappa dt^2/(1+delta dt). ``debye_e_component`` and the mixed update
+    ``lorentz_p_component`` gives v'=(1-damping)v-restoring*p+C*e,
+    p'=p+v', with increment terms from the shared elementwise core. ``debye_e_component`` and the mixed update
     in ``uniform_setup`` use a=(2 tau-dt)/(2 tau+dt), b=de dt/(2 tau+dt):
     gamma=eps_inf+sigma dt/(2 eps0)+sum b,
     gamma e'=(eps_inf-sigma dt/(2 eps0)-sum b)e+h'
-             -sum(p'-p)+sum((1-a)r), and r'=a r+b(e'+e).
+             -sum(v')+sum((1-a)r), and r'=a r+b(e'+e).
     These are also the Debye-only rows when there are no Lorentz poles.
     The default samples the unchanged 129 modes; x_min=x_max isolates one
     Fourier mode for the independent time-domain kernel witness.
@@ -50,15 +49,21 @@ def largest_growth(eps_inf, sigma, poles, dt, x_max, *, debye=(), x_min=0.0):
     matrix[:, 1, 1] = 1.0
     matrix[:, 0, :] = matrix[:, 1, :]
     matrix[:, 0, 0] += b_eps
-    for i, (w0, delta, kappa) in enumerate(poles):
-        p, q = 2 + 2 * i, 3 + 2 * i
-        d = delta * dt
-        matrix[:, p, 0] = kappa * dt * dt / (1.0 + d)
-        matrix[:, p, p] = (2.0 - (w0 * dt) ** 2) / (1.0 + d)
-        matrix[:, p, q] = -(1.0 - d) / (1.0 + d)
-        matrix[:, q, p] = 1.0
-        matrix[:, 0, :] -= matrix[:, p, :]
-        matrix[:, 0, p] += 1.0
+    if poles:
+        from jax import enable_x64, ensure_compile_time_eval
+        from rfx.materials.lorentz import pole_update_coeffs
+        with enable_x64(), ensure_compile_time_eval():
+            omega_0, delta, kappa = np.asarray(poles, dtype=np.float64).T
+            damping, restoring, coupling = (np.asarray(v) for v in pole_update_coeffs(
+                omega_0, delta, kappa, np.float64(dt), field_dtype=None))
+        for i in range(len(poles)):
+            p, v = 2 + 2 * i, 3 + 2 * i
+            matrix[:, v, 0] = coupling[i] / EPS_0
+            matrix[:, v, p] = -restoring[i]
+            matrix[:, v, v] = 1.0 - damping[i]
+            matrix[:, p, :] = matrix[:, v, :]
+            matrix[:, p, p] += 1.0
+            matrix[:, 0, :] -= matrix[:, v, :]
     start = 2 + 2 * len(poles)
     for i, (a, b) in enumerate(terms, start):
         matrix[:, 0, i] = 1 - a
@@ -506,9 +511,9 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
             cc = np.asarray(per_component(coeffs.cc, "cc")[component])
             precision = max(np.finfo(ca.dtype).eps, np.finfo(cc.dtype).eps)
             ca = ca.astype(np.float64)
-            a, b = np.asarray(coeffs.a), np.asarray(coeffs.b)
+            damping, restoring = np.asarray(coeffs.damping), np.asarray(coeffs.restoring)
             c = np.asarray(per_component(coeffs.c, "c")[component])
-            shape, n = ca.shape, a.shape[0]
+            shape, n = ca.shape, damping.shape[0]
             def unaverage(values, *, positive=False):
                 return _unaverage_prebuilt(values, component, periodic, precision, positive=positive, high_wall=high_wall)
 
@@ -536,7 +541,7 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
                 eps = unaverage((1. + ca) / (2. * cc * EPS_0), positive=True)
                 sigma = unaverage((1. - ca) / (cc * step))
             cell_c = np.stack([pole_cells(v) for v in c])
-            columns = [v.reshape(-1) for terms in (a, b, cell_c) for v in terms]
+            columns = [v.reshape(-1) for terms in (damping, restoring, cell_c) for v in terms]
             nd = 0 if debye_coeffs is None else debye_coeffs.alpha.shape[0]
             if nd:
                 beta = per_component(debye_coeffs.beta, "beta")[component]
@@ -545,14 +550,15 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
                                (debye_coeffs.alpha, cell_beta) for v in terms)
             rows, inverse = np.unique(np.stack(columns, axis=1), axis=0, return_inverse=True)
             for index, row in enumerate(rows):
-                av, bv, cv = row[:3 * n].reshape(3, n)
+                dv, rv, cv = row[:3 * n].reshape(3, n)
                 present = cv != 0.
                 if not np.any(present):
                     continue
-                av, bv, cv = av[present], bv[present], cv[present]
-                denom = 2. / (1. - bv)
-                poles = tuple(zip(np.sqrt(np.maximum(2. - av * denom, 0.)) / step,
-                                  (denom - 1.) / step, cv * denom / (EPS_0 * step * step)))
+                dv, rv, cv = dv[present], rv[present], cv[present]
+                ddt = dv / (2. - dv)
+                denom = 1. + ddt
+                poles = tuple(zip(np.sqrt(np.maximum(rv * denom, 0.)) / step,
+                                  ddt / step, cv * denom / (EPS_0 * step * step)))
                 selected = (inverse == index).reshape(shape)
                 dp = ()
                 if nd:

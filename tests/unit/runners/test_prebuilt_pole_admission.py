@@ -177,7 +177,7 @@ def test_assembled_admission_mark_requires_original_arrays_through_transforms(tr
         return
     jax.block_until_ready(result)
     assert not pole_sets_judged(result)  # returned arrays replace the assembly-time tracers
-    assert result._fields == ("ca", "cb", "a", "b", "c", "cc")
+    assert result._fields == ("ca", "cb", "damping", "restoring", "c", "cc")
 
 
 @pytest.mark.parametrize("missing", ["cells", "dt"])
@@ -309,7 +309,7 @@ def test_rescaled_assembled_coefficients_are_judged_again(graded):
         runner(grid, materials, 1, lorentz=(scaled, state))
 
 
-@pytest.mark.parametrize("field", ["ca", "cb", "a", "b", "c", "cc"])
+@pytest.mark.parametrize("field", ["ca", "cb", "damping", "restoring", "c", "cc"])
 def test_assembly_mark_is_tied_to_every_array_identity(field):
     grid = _box(.25)._build_realized_grid()
     coeffs, _ = init_lorentz([drude_pole(.2 / grid.dt, 0.)], init_materials(grid.shape), grid.dt, grid=grid)
