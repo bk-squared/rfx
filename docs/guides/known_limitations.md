@@ -618,7 +618,7 @@ The spread of |S21| on the same lines is 0.010, 0.009 and 0.023.
 These are the numbers on the test's meshes (cells of h/4, h/3 and h/4); other meshes were not measured.
 Until a fix lands, read the |S11| of a well-matched microstrip structure as uncertain by about this much, and keep the probe offset fixed when you compare designs.
 
-### `compute_waveguide_s_matrix` solves a conformal PEC body as a staircase.
+### Conformal PEC: `compute_waveguide_s_matrix` solves a PEC body as a staircase, and `run()` loses a PEC box with no grid node inside.
 
 Tracker: #1373
 
@@ -634,6 +634,15 @@ higher. At 1.27 mm cells it differs from plain staircase PEC by at most 0.1 dB i
 `Boundary(conformal=True)` are not in the staircase mask (read in the code, not measured
 separately). Until the fix, judge such S-parameters by a mesh series: the staircase converges
 to first order.
+
+`run()` with conformal PEC has a gap of its own. It gives no PEC edges to a PEC Box with no
+grid node strictly inside it, such as a box one cell thick with its faces on node planes. A
+one-cell PEC short across a rectangular waveguide at 3 mm cells then passes the field: the Ez
+energy behind the short is 1.0003 times that in front of it. Without conformal PEC the ratio is
+0.0, and a short two cells thick also gives 0.0. On a box whose faces lie on node planes, each
+face edge is left open or closed by the rounding of its distance to the face: on one such box
+62 of 268 face edges were left fully open (an edge on two faces counted on each) (measured; record kept with the project). Until the
+fix, make a PEC box that `run()` must see with conformal PEC at least two cells thick.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
