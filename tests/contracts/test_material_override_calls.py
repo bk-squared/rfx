@@ -75,7 +75,7 @@ def test_one_stage_definition_and_all_direct_writer_routes_call_it():
                            if isinstance(n, ast.FunctionDef) and n.name == "apply_material_overrides")
     assert definitions == ["rfx/model/overrides.py"]
     for file in ("rfx/api/_execute.py", "rfx/runners/nonuniform.py",
-                 "rfx/sparams/_waveguide_stages.py", "rfx/model/materials.py"):
+                 "rfx/sparams/waveguide.py", "rfx/model/materials.py"):
         tree = ast.parse((ROOT / file).read_text())
         assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                    and n.func.id == "apply_material_overrides" for n in ast.walk(tree)), file
