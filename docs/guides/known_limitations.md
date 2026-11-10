@@ -266,16 +266,16 @@ Where a later Box of one permittivity sits inside an earlier Box of another, the
 A traced permittivity with `"full_tensor"` is refused by name in any scene. With a Box in the scene a traced shape coordinate or mesh profile is also refused by name: the scope of the exact content is decided on concrete coordinates and realized cell sizes, and under a trace the build runs in float32 (plain and `jax.jit` losses 9.7×10⁻⁴ apart with a traced sphere radius beside a concrete εr 2 box, 8.8×10⁻³ with a traced permittivity on an εr 4 box). This is a capability change: main admitted a traced Box coordinate, and its build equalled the host build in shared-face scenes and moved a plain-versus-jit loss by up to 9.65×10⁻⁴ elsewhere (a traced sphere radius beside a Box); restoring it with the exact content formed on traced coordinates is #2473. More than eight boxes meeting one edge support are refused by name. Use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
 → [#2473](https://github.com/bk-squared/rfx/issues/2473)
 
-### Subpixel smoothing does not see a gap thinner than half a cell between two dielectric volumes.
+### Subpixel smoothing retains one source face and point rules for bodies without exact line intervals.
 
 Tracker: #2397
 
-Near a face, the smoothing reads the medium on the far side at one point half a normal cell beyond the face.
-When two dielectric volumes are separated by a gap thinner than that, the point lands inside the other volume.
-The cells across the gap then read as if the two volumes touched, and the gap's own medium does not enter the average.
-This holds for `subpixel_smoothing=True` and for the dielectric stage of `"kottke_pec"`, on uniform and graded Yee meshes and on the node tensor.
-Gaps of half a cell or more are seen: their samples read the same values as with only the nearer volume present.
-Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
+The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. The source shape's own fill still sees one face when that shape is thinner than a cell.
+Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
+On a curved face, full-tensor dual-face averages still use a first-order planar model.
+A later group's pass with a crossed normal can jump when its face enters the cell.
+Full-tensor spectral bounds include zero-weight portions, whose medium just beyond the face can step; a bound that clips then makes the tensor step too.
+Periodic images ±2 of traced shapes near an end of the admitted interval [−L, 2L] can reach beyond the domain edge and be missed by the existing image range.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 

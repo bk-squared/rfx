@@ -181,11 +181,15 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         interface = (f > 0) & (f < 1)
         length = (smooth._normal_cell_length(xp, fill_length, ns) if graded
                   else uniform_cell(grid))
-        outside = smooth._bulk_outside(
+        pieces = smooth._outside_pieces(
             xp, groups, key, nodes, signed_distance, ns, length,
             background_eps, masks, grid, normal_source=source,
-            normal_image=source_image)
-        inv_perp = f / eps + (1.0 - f) / (outside + 1e-30)
+            normal_image=source_image, nominal_h_max=nominal_h_max)
+        content = smooth._segment_content(xp, pieces, -signed_distance, length / 2)
+        outside = content.eps
+        inv_perp = xp.where(content.single,
+                            f / eps + (1.0 - f) / (outside + 1e-30),
+                            f / eps + (1.0 - f) * content.inv)
         inv_par = 1.0 / (f * eps + (1.0 - f) * outside + 1e-30)
         entries = [n * n * inv_perp + (1 - n * n) * inv_par for n in ns]
         entries += [ns[i] * ns[j] * (inv_perp - inv_par) for i, j in ((0, 1), (0, 2), (1, 2))]
@@ -194,7 +198,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
               for i, (value, old) in enumerate(zip(entries, xi))]
         current, guards, touched = build_triplets(
             xp, grid, supported, nodes, ns, eps, outside, matrices(xp, xi),
-            signed_distance=signed_distance, cell_lengths=lengths)
+            signed_distance=signed_distance, cell_lengths=lengths, outside_pieces=pieces)
         triplets = xp.where(touched[..., None, None], current, triplets)
         if scope is not None:  # exact triplets (w = 1) replace the planar ones
             touched = touched & ~scope.replaced

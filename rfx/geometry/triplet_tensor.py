@@ -5,6 +5,7 @@ Fractions analytically clip edges and dual faces against one local plane.
 Concrete inputs accumulate in host float64; tracers use the field dtype.
 """
 from itertools import product
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -137,14 +138,43 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
     return tuple(lengths), tuple(areas)
 
 
+class _TripletOutside(NamedTuple):
+    operand: object
+    edge_eps: object
+    edge_inv: object
+    edge_single: object
+    face_eps: object
+    face_single: object
+
+
 def accurate_tensor(xp, normal, lengths, areas, eps1, eps2):
     """Eqs. 15--19, with vector/matrix dimensions last; also return singular mask."""
     eye = xp.eye(3, dtype=lengths.dtype)
     nn = normal[..., :, None] * normal[..., None, :]
+    content = eps2 if isinstance(eps2, _TripletOutside) else None
+    eps2 = content.operand if content is not None else eps2
     e1, e2 = xp.asarray(eps1, dtype=lengths.dtype)[..., None, None], xp.asarray(eps2, dtype=lengths.dtype)[..., None, None]
     g1, g2 = eye + (1 / e1 - 1) * nn, eye + (1 / e2 - 1) * nn
+    face_map = e2 * g2
+    if content is not None:
+        edge = content.edge_eps[..., :, None]
+        face = content.face_eps[..., :, None]
+        g2 = xp.where(content.edge_single[..., :, None],
+                      eye + (1 / edge - 1) * nn,
+                      eye + (content.edge_inv[..., :, None] - 1) * nn)
+        face_map = xp.where(content.face_single[..., :, None],
+                            face * (eye + (1 / face - 1) * nn),
+                            face * (eye - nn) + nn)
     gamma = lengths[..., :, None] * g1 + (1 - lengths[..., :, None]) * g2
-    pi = areas[..., :, None] * e1 * g1 + (1 - areas[..., :, None]) * e2 * g2
+    # Keep the old multiplication order on single-medium portions.
+    if content is None:
+        pi = areas[..., :, None] * e1 * g1 + (1 - areas[..., :, None]) * e2 * g2
+    else:
+        face = content.face_eps[..., :, None]
+        outside_pi = xp.where(content.face_single[..., :, None],
+                              (1 - areas[..., :, None]) * face * (eye + (1 / face - 1) * nn),
+                              (1 - areas[..., :, None]) * face_map)
+        pi = areas[..., :, None] * e1 * g1 + outside_pi
     singular = xp.linalg.det(pi) == 0
     safe_pi = xp.where(singular[..., None, None], eye, pi)
     return _matmul(xp, gamma, _linalg(xp, "inv", safe_pi)), singular
@@ -193,6 +223,8 @@ def guarded_tensor(xp, normal, lengths, areas, eps1, eps2, fallback):
     In-range and bulk tensors retain their bits (decision record 3).
     """
     acc, singular = accurate_tensor(xp, normal, lengths, areas, eps1, eps2)
+    content = eps2 if isinstance(eps2, _TripletOutside) else None
+    eps2 = content.operand if content is not None else eps2
     tensor = (acc + xp.swapaxes(acc, -1, -2)) * .5
     bulk_any = xp.zeros_like(singular)
     for fraction, eps in ((0, eps2), (1, eps1)):
@@ -203,6 +235,11 @@ def guarded_tensor(xp, normal, lengths, areas, eps1, eps2, fallback):
     guard = singular & ~bulk_any
     lo = xp.asarray(1 / xp.maximum(eps1, eps2), dtype=tensor.dtype)
     hi = xp.asarray(1 / xp.minimum(eps1, eps2), dtype=tensor.dtype)
+    if content is not None:
+        edge = xp.where(content.edge_single, content.edge_eps, 1 / content.edge_inv)
+        maximum = xp.maximum(eps1, xp.maximum(xp.max(edge, axis=-1), xp.max(content.face_eps, axis=-1)))
+        minimum = xp.minimum(eps1, xp.minimum(xp.min(edge, axis=-1), xp.min(content.face_eps, axis=-1)))
+        lo, hi = 1 / maximum, 1 / minimum
     w = _linalg(xp, "eigvalsh", tensor)
     clip = ((w[..., 0] < lo) | (w[..., -1] > hi)) & ~bulk_any & ~singular
     # Double-where: no repeated bulk/in-range eigenvalues enter the eigh
@@ -223,16 +260,50 @@ def matrices(xp, entries):
 
 
 def build_triplets(xp, grid, shapes, nodes, normal, eps, outside, fallback,
-                   *, signed_distance=None, cell_lengths=None):
+                   *, signed_distance=None, cell_lengths=None, outside_pieces=None):
     lengths, areas = fractions(xp, grid, shapes, nodes,
                                signed_distance=signed_distance, normal=normal,
                                cell_lengths=cell_lengths)
     ns = xp.stack(xp.broadcast_arrays(*normal), axis=-1)
+    portions = None
+    if outside_pieces is not None:
+        from rfx.geometry.smoothing import _segment_content, _depth_cdf
+        from rfx.geometry.node_tensor import uniform_cell
+        widths = cell_lengths
+        if widths is None:
+            h = uniform_cell(grid)
+            widths = ((h, h),) * 3
+        portions = []
+        for a in range(3):
+            b, c = [axis for axis in range(3) if axis != a]
+            bm, bp = widths[b]
+            cm, cp = widths[c]
+            alpha = xp.abs((bm + bp) * normal[b]) / 4
+            beta = xp.abs((cm + cp) * normal[c]) / 4
+            rows = []
+            for sign in (1, -1):
+                h = widths[a][1 if sign == 1 else 0]
+                end = sign * h * normal[a]
+                edge = _segment_content(xp, outside_pieces, -signed_distance,
+                                        xp.maximum(0, end), start=xp.minimum(0, end))
+                mid = end / 2 + normal[b] * (bp - bm) / 4 + normal[c] * (cp - cm) / 4
+                face = _segment_content(
+                    xp, outside_pieces, -signed_distance, outside_pieces.hi[-1],
+                    cdf=lambda t: _depth_cdf(xp, t - mid, alpha, beta))
+                rows.append((edge, face))
+            portions.append(rows)
     tensors, guards, touched = [], [], []
     for signs in SIGNS:
         ls = xp.stack([lengths[a][s] for a, s in enumerate(signs)], axis=-1)
         ars = xp.stack([areas[a][s] for a, s in enumerate(signs)], axis=-1)
-        tensor, guard = guarded_tensor(xp, ns, ls, ars, eps, outside, fallback)
+        operand = outside
+        if portions is not None:
+            edges, faces = zip(*(portions[a][s] for a, s in enumerate(signs)))
+            def stack(values, field):
+                return xp.stack(xp.broadcast_arrays(*(getattr(v, field) for v in values)), axis=-1)
+            operand = _TripletOutside(outside, stack(edges, 'eps'), stack(edges, 'inv'),
+                                      stack(edges, 'single'), stack(faces, 'eps'), stack(faces, 'single'))
+        tensor, guard = guarded_tensor(xp, ns, ls, ars, eps, operand, fallback)
         tensors.append(tensor)
         guards.append(guard)
         touched.append(xp.any(ls > 0, axis=-1) | xp.any(ars > 0, axis=-1))
