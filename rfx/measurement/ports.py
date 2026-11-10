@@ -158,7 +158,7 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
     return Owner(f'waveguide_port:{port_id}:mode:{mode_id}', 'waveguide', tuple(channels),
                  _phase_values(cfg.freqs), refs, tuple(cfg.mode_indices),
                  f'{cfg.mode_type}{tuple(cfg.mode_indices)}: config transverse profiles times aperture_dA',
-                 ('record endpoint: one sample fewer because the final endpoint is excluded; retained samples use physical leapfrog timestamps at record slot n',))
+                 ('every completed step n is written at slot n-1 with its physical leapfrog stamp',))
 
 
 def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
