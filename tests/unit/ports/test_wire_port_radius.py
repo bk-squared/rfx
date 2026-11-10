@@ -323,7 +323,9 @@ def test_radius_refuses_axial_grading_before_step(monkeypatch):
 def test_radius_refuses_stamping_in_axial_cpml():
     from rfx.grid import Grid
     grid = Grid(freq_max=30e9, domain=(.006,)*3, dx=.0005, cpml_layers=4)
-    port = WirePort((.003, .003, -.0005), (.003, .003, .001), "ez", radius=RADIUS)
+    # Admit the endpoint so the radius stamping guard is exercised.
+    port = WirePort((.003, .003, -.0005), (.003, .003, .001), "ez", radius=RADIUS,
+                    allow_in_absorber=True)
     with pytest.raises(ValueError, match="outside axial CPML"):
         setup_wire_port(grid, port, init_materials(grid.shape))
 

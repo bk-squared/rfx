@@ -22,23 +22,30 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
     standing waves and produced ``|S11| → ∞`` as the gate widened.
     """
     from rfx.measurement.waveguide_modal import modal_voltage, modal_current
-    t = state.step * dt
 
     v_ref = modal_voltage(state, cfg, cfg.ref_x, dx)
     v_probe = modal_voltage(state, cfg, cfg.probe_x, dx)
     i_ref = modal_current(state, cfg, cfg.ref_x, dx)
     i_probe = modal_current(state, cfg, cfg.probe_x, dx)
 
+    return write_waveguide_record(cfg, (v_probe, i_probe, v_ref, i_ref), state.step, dt)
+
+
+def write_waveguide_record(cfg: WaveguidePortConfig, values, step, dt: float) -> WaveguidePortConfig:
+    """Write completed-step values in owner channel order at their physical stamp."""
+    v_probe, i_probe, v_ref, i_ref = values
+    completed_step = step
+    t = step * dt
     arg = (t - cfg.src_t0) / cfg.src_tau
     v_inc = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
 
     # Each completed step contributes one sample at its physical stamp.
     # Completed steps 1 through N occupy slots 0 through N-1.
     n_t = cfg.v_probe_t.shape[0]
-    # A call before the first step (state.step == 0) has no slot: index n_t is
+    # A call before the first step (completed_step == 0) has no slot: index n_t is
     # dropped, where -1 would have written the last slot.
-    step = jnp.where((state.step >= 1) & (state.step <= n_t),
-                     jnp.asarray(state.step, dtype=jnp.int32)-1, n_t)
+    step = jnp.where((completed_step >= 1) & (completed_step <= n_t),
+                     jnp.asarray(completed_step, dtype=jnp.int32)-1, n_t)
     return cfg._replace(
         dt=float(dt),
         v_probe_t=cfg.v_probe_t.at[step].set(
@@ -53,7 +60,7 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
             jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
         # Count every completed step, up to the allocated record length.
         n_steps_recorded=jnp.maximum(cfg.n_steps_recorded, jnp.minimum(
-            jnp.asarray(state.step, dtype=jnp.int32), n_t)),
+            jnp.asarray(completed_step, dtype=jnp.int32), n_t)),
     )
 
 

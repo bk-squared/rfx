@@ -245,6 +245,8 @@ def execute_from_materials(
     from rfx.stepping import prepared as prepared_step
     prepared_step.release_dense(stepping_product)
     del conductors
+    from rfx.stepping.slab_lumped import metadata
+    rlc_metas = metadata(self, grid, materials)
     from rfx.stepping.slab_ports import global_plan
     port_plan = global_plan(self, grid, port_specs, lane, s_param_freqs, compute_s_params)
 
@@ -326,7 +328,7 @@ def execute_from_materials(
         gather_final_state=gather_final_state,
         pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         material_drive=tuple(material_drive),
-        port_plan=port_plan,
+        port_plan=port_plan, rlc_metas=rlc_metas,
         slab_records=records,
         prepare_only=port_plan is not None,
     )

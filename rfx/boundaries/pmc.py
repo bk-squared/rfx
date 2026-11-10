@@ -53,7 +53,7 @@ def refuse_port_on_magnetic_face(sim, caller, *, reason):
             end = list(port.position)
             end["xyz".index(port.component[1])] += port.extent
             wire = WirePort(port.position, tuple(end), port.component,
-                            port.impedance, port.waveform, radius=port.radius)
+                            port.impedance, port.waveform, radius=port.radius, allow_in_absorber=port.allow_in_absorber)
             cells, flags, _ = _wire_port_live_cells(grid, wire, edges)
             live = tuple(cell for cell, flag in zip(cells, flags) if flag)
         for face in sorted(faces):

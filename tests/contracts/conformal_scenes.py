@@ -39,20 +39,19 @@ def capture_setups(monkeypatch):
     """No public read exposes post-restrict_node_pec operands; wrap as C4 did."""
     import jax
     from rfx.stepping import uniform_setup
-    from rfx.geometry import conformal, conformal_cells
+    from rfx.model import conformal_rules
 
     captured = []
     fractions = []
     original = uniform_setup._build_step_setup
-    original_fractions = conformal_cells.compute_conformal_fractions
+    original_fractions = conformal_rules.conformal_fractions_from_table
 
-    def observe_fractions(grid, shapes, **kwargs):
-        result = original_fractions(grid, shapes, **kwargs)
+    def observe_fractions(table, grid, conformal_pec, **kwargs):
+        result = original_fractions(table, grid, conformal_pec, **kwargs)
         fractions.append((grid, result))
         return result
 
-    monkeypatch.setattr(conformal, 'compute_conformal_fractions', observe_fractions)
-    monkeypatch.setattr(conformal_cells, 'compute_conformal_fractions', observe_fractions)
+    monkeypatch.setattr(conformal_rules, 'conformal_fractions_from_table', observe_fractions)
 
     def observe(grid, materials, **kwargs):
         setup = original(grid, materials, **kwargs)

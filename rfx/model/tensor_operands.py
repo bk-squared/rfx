@@ -45,11 +45,35 @@ def attach_tensor(materials, operands):
     return materials._replace(components=replace(components, tensor=operands))
 
 
+def smoothing_nominal_h_max(sim, grid):
+    """Maximum physical width, substituting declared profiles on traced axes.
+
+    Return None if any traced axis lacks its nominal declaration. The
+    grouping rule then refuses only joins that need a distance decision.
+    Concrete axes retain their realized, axis-specific padded widths.
+    A NominalProfile entry contributes its cells.
+    """
+    import numpy as np
+    from rfx.core.jax_utils import is_tracer
+    nominal = getattr(sim, '_nominal_profiles', None) or {}
+    maxima = []
+    for axis, name in enumerate('xyz'):
+        widths = grid.cells(axis)
+        if is_tracer(widths):
+            if name not in nominal:
+                return None
+            entry = nominal[name]
+            widths = getattr(entry, "cells", entry)
+        maxima.append(float(np.max(widths)))
+    return max(maxima)
+
+
 def full_tensor_eps(sim, grid, materials, shape_eps_pairs):
     """Build node tensors at the realized permittivity precision on either mesh."""
     from rfx.geometry.node_tensor import compute_node_tensor_eps
     return compute_node_tensor_eps(
         grid, shape_eps_pairs, background_eps=1.0,
+        nominal_h_max=smoothing_nominal_h_max(sim, grid),
         field_dtype=(jnp.float64 if sim._precision == 'float64' else materials.eps_r.dtype))
 
 
@@ -90,6 +114,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             dielectric_shapes=shape_eps_pairs,
             pec_shapes=pec_shapes or [],
             background_eps=1.0,
+            nominal_h_max=smoothing_nominal_h_max(sim, grid),
         )
         # Yee-stagger correction: the Kottke union reaches inv=0
         # on Yee-staggered components only when the cell-center
@@ -130,7 +155,9 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 aniso_eps = full_tensor_eps(sim, grid, materials, shape_eps_pairs)
             else:
                 from rfx.geometry.smoothing import compute_smoothed_eps
-                aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
+                aniso_eps = compute_smoothed_eps(
+                    grid, shape_eps_pairs, background_eps=1.0,
+                    nominal_h_max=smoothing_nominal_h_max(sim, grid))
 
     # Conformal PEC: form node lengths, face areas, and the SC clamp.
     # Entry admission refuses this with Stage 2; keep the exclusion
@@ -138,12 +165,13 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     conformal_weights = None
     conformal_areas = None
     if conformal and pec_shapes and not use_kottke_pec:
-        from rfx.geometry.conformal import (
-            compute_conformal_fractions,
-            warn_conformal_model,
-        )
+        from rfx.geometry.cell_table import build_cell_table
+        from rfx.geometry.conformal import warn_conformal_model
+        from rfx.model.conformal_rules import conformal_fractions_from_table
         warn_conformal_model(conformal)
-        conformal_weights, conformal_areas = compute_conformal_fractions(grid, pec_shapes, conformal_pec=conformal)
+        table = build_cell_table(grid, pec_shapes, include_trailing_node=conformal == "cut_cell_floor")
+        conformal_weights, conformal_areas = conformal_fractions_from_table(
+            table, grid, conformal, pec_shapes=pec_shapes)
 
         # The 1/w permittivity is formed below, once the run's final
         # periodic flags are known.
@@ -207,8 +235,11 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
         )
     reference = None
     if conformal_weights is not None:
-        weights, areas = conformal_module.compute_conformal_fractions(
-            grid, boundary_pec_shapes, conformal_pec=conformal_pec)
+        from rfx.geometry.cell_table import build_cell_table
+        from rfx.model.conformal_rules import conformal_fractions_from_table
+        table = build_cell_table(grid, boundary_pec_shapes, include_trailing_node=conformal_pec == "cut_cell_floor")
+        weights, areas = conformal_fractions_from_table(
+            table, grid, conformal_pec, pec_shapes=boundary_pec_shapes)
         ref_aniso_eps = conformal_module.conformal_eps_correction(
             jnp.full_like(materials.eps_r, reference_eps), *weights)
         reference = (weights, areas)

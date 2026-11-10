@@ -920,4 +920,9 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
         tables = plan_tables(measurement, n_probes=len(ctx.prb_meta), port_specs=specs, dtype=dtype)
         invariants.update({key: tables[key] for key, used in
                            (('probe_table', ctx.prb_meta), ('port_table', specs)) if used})
+    if ctx.use_waveguide_ports:
+        from rfx.measurement.waveguide_records import compile_waveguide_table
+        invariants['waveguide_table'] = compile_waveguide_table(
+            ctx.grid, ctx.waveguide_meta, measurement=measurement,
+            dtype=dtype or ctx.waveguide_meta[0].v_probe_t.dtype)
     return invariants
