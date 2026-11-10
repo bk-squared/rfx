@@ -28,6 +28,7 @@ def test_drude_plasma_resonance():
     model = ringdown.identify(series, dt, off, n_steps, freq_max=FREQ_MAX)
     poles = [dict(frequency=float(s.imag / (2 * np.pi)), decay=float(-s.real))
              for s in model.s if 0 <= s.imag / (2 * np.pi) <= .9 * FREQ_MAX]
+    assert poles, "B2: no in-band pole identified"
     nearest = min(poles, key=lambda row: abs(row["frequency"] - ref["f_cf"]))
     error = abs(nearest["frequency"] / ref["f_cf"] - 1)
     period = 1 / (ref["f_cf"] * dt)
