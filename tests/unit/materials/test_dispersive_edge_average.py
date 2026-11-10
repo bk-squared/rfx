@@ -132,8 +132,8 @@ def test_lorentz_edge_carries_the_four_cell_mean_of_every_parameter(c):
                                               rel=2e-6), node
         # the recurrence coefficients follow the pole on every edge it reaches
         if frac > 0:
-            assert float(coeffs.a[0][node]) == pytest.approx(
-                (2.0 - W0 ** 2 * DT ** 2) / (1 + DELTA * DT), rel=1e-6)
+            assert float(coeffs.damping[0][node]) == pytest.approx(
+                2.0 * DELTA * DT / (1 + DELTA * DT), rel=1e-6)
 
 
 def _half_filled(shape=(10, 10, 10), k_if=5, eps_fill=4.0):
@@ -269,9 +269,9 @@ def test_the_distributed_mixed_update_is_the_single_device_one():
     st = FDTDState(*(rnd(*SHAPE) for _ in range(6)), step=jnp.array(0, jnp.int32))
     dst = dst._replace(px=rnd(1, *SHAPE), py=rnd(1, *SHAPE), pz=rnd(1, *SHAPE))
     lst = lst._replace(px=rnd(1, *SHAPE) * 1e-3, py=rnd(1, *SHAPE) * 1e-3,
-                       pz=rnd(1, *SHAPE) * 1e-3, px_prev=rnd(1, *SHAPE) * 1e-3,
-                       py_prev=rnd(1, *SHAPE) * 1e-3,
-                       pz_prev=rnd(1, *SHAPE) * 1e-3)
+                       pz=rnd(1, *SHAPE) * 1e-3, vx=rnd(1, *SHAPE) * 1e-3,
+                       vy=rnd(1, *SHAPE) * 1e-3,
+                       vz=rnd(1, *SHAPE) * 1e-3)
     dx = 1e-3
     a, _, _ = _update_e_local_with_dispersion(st, mats, DT, dx,
                                               debye=(dco, dst), lorentz=(lco, lst), high_wall=(False, False, False))

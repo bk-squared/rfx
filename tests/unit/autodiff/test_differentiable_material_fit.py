@@ -77,7 +77,7 @@ def test_init_lorentz_is_differentiable():
     At GHz frequencies and ps timesteps, c values are O(1e-15) per cell,
     so we test kappa's gradient via sum(c) (linear, not squared) and use
     a scale-appropriate threshold.  For omega_0 and delta, the a/b coeffs
-    are O(1), so sum(a^2 + b^2) gives strong gradients directly.
+    are O(1), so sum(damping^2 + restoring^2) gives strong gradients directly.
     """
     shape = (8, 8, 8)
     materials = MaterialArrays(
@@ -87,12 +87,12 @@ def test_init_lorentz_is_differentiable():
     )
     dt = 1e-12
 
-    # Test omega_0 and delta via a/b coefficients
+    # Test omega_0 and delta via damping/restoring coefficients
     def loss_ab(omega_0, delta):
         kappa = jnp.float32(1e20)
         pole = LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)
         coeffs, _ = init_lorentz([pole], materials, dt, high_wall=(False, False, False))
-        return jnp.sum(coeffs.a ** 2) + jnp.sum(coeffs.b ** 2)
+        return jnp.sum(coeffs.damping ** 2) + jnp.sum(coeffs.restoring ** 2)
 
     grad_ab = jax.grad(loss_ab, argnums=(0, 1))
     w0 = jnp.float32(2 * jnp.pi * 5e9)

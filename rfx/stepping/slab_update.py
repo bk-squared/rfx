@@ -159,16 +159,16 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundar
     curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
     curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
-    px_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
-                                 lor_state.px_prev, jnp.promote_types(lor_state.px.dtype, state.ex.dtype))
-    py_new = lorentz_p_component(lorentz_coeffs, 1, state.ey, lor_state.py,
-                                 lor_state.py_prev, jnp.promote_types(lor_state.py.dtype, state.ey.dtype))
-    pz_new = lorentz_p_component(lorentz_coeffs, 2, state.ez, lor_state.pz,
-                                 lor_state.pz_prev, jnp.promote_types(lor_state.pz.dtype, state.ez.dtype))
+    px_new, vx_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
+                                 lor_state.vx, jnp.promote_types(lor_state.px.dtype, state.ex.dtype))
+    py_new, vy_new = lorentz_p_component(lorentz_coeffs, 1, state.ey, lor_state.py,
+                                 lor_state.vy, jnp.promote_types(lor_state.py.dtype, state.ey.dtype))
+    pz_new, vz_new = lorentz_p_component(lorentz_coeffs, 2, state.ez, lor_state.pz,
+                                 lor_state.vz, jnp.promote_types(lor_state.pz.dtype, state.ez.dtype))
 
-    dpx = jnp.sum(px_new - lor_state.px, axis=0)
-    dpy = jnp.sum(py_new - lor_state.py, axis=0)
-    dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
+    dpx = jnp.sum(vx_new, axis=0)
+    dpy = jnp.sum(vy_new, axis=0)
+    dpz = jnp.sum(vz_new, axis=0)
 
     ex_new = lorentz_e_component(lorentz_coeffs, 0, state.ex, curl_x, dpx, state.ex.dtype)
     ey_new = lorentz_e_component(lorentz_coeffs, 1, state.ey, curl_y, dpy, state.ey.dtype)
@@ -177,7 +177,7 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundar
     new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
     new_lor = LorentzState(
         px=px_new, py=py_new, pz=pz_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
+        vx=vx_new, vy=vy_new, vz=vz_new,
     )
     return new_fdtd, new_lor
 
@@ -237,16 +237,17 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     e_old = (state.ex, state.ey, state.ez)
     curls = (curl_x, curl_y, curl_z)
     p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
-    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
-                lorentz_state.pz_prev)
+    v_l = (lorentz_state.vx, lorentz_state.vy,
+                lorentz_state.vz)
     p_d = (debye_state.px, debye_state.py, debye_state.pz)
 
-    p_l_new = tuple(lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c],
-                                        p_l_prev[c], jnp.promote_types(p_l[c].dtype, e_old[c].dtype))
+    pv_l_new = tuple(lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c],
+                                        v_l[c], jnp.promote_types(p_l[c].dtype, e_old[c].dtype))
                     for c in range(3))
+    p_l_new, v_l_new = zip(*pv_l_new)
     e_new, p_d_new = [], []
     for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        dp_l = jnp.sum(v_l_new[c], axis=0)
         ca, cb, cc_d, cc_l = mixed_e_component_coeffs(
             debye_coeffs, lorentz_coeffs, c, dt)
         e_c = (ca * e_old[c] + cb * curls[c]
@@ -262,7 +263,7 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     new_debye_st = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
     new_lor_st = LorentzState(
         px=p_l_new[0], py=p_l_new[1], pz=p_l_new[2],
-        px_prev=lorentz_state.px, py_prev=lorentz_state.py, pz_prev=lorentz_state.pz,
+        vx=v_l_new[0], vy=v_l_new[1], vz=v_l_new[2],
     )
     return new_fdtd, new_debye_st, new_lor_st
 
@@ -528,7 +529,7 @@ def slab_dispersion_coeffs(coeffs, e_materials, dt, nx_per, nx, rank=None):
     if isinstance(coeffs, DebyeCoeffs):
         full = debye_e_coeffs(e_materials, dt, coeffs.alpha, coeffs.beta)
     else:
-        full = lorentz_e_coeffs(e_materials, dt, coeffs.a, coeffs.b, coeffs.c)
+        full = lorentz_e_coeffs(e_materials, dt, coeffs.damping, coeffs.restoring, coeffs.c)
     return _pad_slab_dispersion_coeffs(full, dt, nx_per, nx, rank)
 
 

@@ -109,7 +109,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         "a recorded field difference; no permittivity, traced or not, is divided through it",
     ("rfx/materials/debye.py", "debye_pole_coeffs"):
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
-    ("rfx/materials/lorentz.py", "lorentz_pole_coeffs"):
+    ("rfx/materials/lorentz.py", "pole_update_coeffs"):
         "material-independent ADE c: EPS_0 multiplies the pole strength",
 
 

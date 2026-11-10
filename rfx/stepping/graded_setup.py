@@ -174,15 +174,15 @@ def _update_e_nu_dispersive(
         lorentz_coeffs, lor_state = lorentz
         _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
         p_l = (lor_state.px, lor_state.py, lor_state.pz)
-        p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
+        v_l = (lor_state.vx, lor_state.vy, lor_state.vz)
 
-        px_new, py_new, pz_new = (
+        (px_new, vx_new), (py_new, vy_new), (pz_new, vz_new) = (
             lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c],
-                                p_l_prev[c], _pdtype) for c in range(3))
+                                v_l[c], _pdtype) for c in range(3))
 
-        dpx = jnp.sum(px_new - lor_state.px, axis=0)
-        dpy = jnp.sum(py_new - lor_state.py, axis=0)
-        dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
+        dpx = jnp.sum(vx_new, axis=0)
+        dpy = jnp.sum(vy_new, axis=0)
+        dpz = jnp.sum(vz_new, axis=0)
 
         ex_new = lorentz_e_component(lorentz_coeffs, 0, ex_old, curl_x, dpx,
                                      _fdtype)
@@ -195,7 +195,7 @@ def _update_e_nu_dispersive(
                                   step=state.step + 1)
         new_lor = LorentzState(
             px=px_new, py=py_new, pz=pz_new,
-            px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
+            vx=vx_new, vy=vy_new, vz=vz_new,
         )
         return new_fdtd, None, new_lor
 
@@ -207,16 +207,17 @@ def _update_e_nu_dispersive(
 
     # Explicit Lorentz polarization update first
     p_l = (lor_state.px, lor_state.py, lor_state.pz)
-    p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
+    v_l = (lor_state.vx, lor_state.vy, lor_state.vz)
     p_d = (debye_state.px, debye_state.py, debye_state.pz)
-    p_l_new = tuple(
-        lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c], p_l_prev[c],
+    pv_l_new = tuple(
+        lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c], v_l[c],
                             _lpdtype) for c in range(3))
+    p_l_new, v_l_new = zip(*pv_l_new)
     px_l_new, py_l_new, pz_l_new = p_l_new
 
     e_new, p_d_new = [], []
     for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        dp_l = jnp.sum(v_l_new[c], axis=0)
         ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
             debye_coeffs, lorentz_coeffs, c, dt)
         e_c = (ca * e_old3[c] + cb * curls[c]
@@ -234,7 +235,7 @@ def _update_e_nu_dispersive(
     new_debye = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
     new_lor = LorentzState(
         px=px_l_new, py=py_l_new, pz=pz_l_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
+        vx=v_l_new[0], vy=v_l_new[1], vz=v_l_new[2],
     )
     return new_fdtd, new_debye, new_lor
 

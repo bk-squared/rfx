@@ -413,7 +413,7 @@ def test_ade_allocation_sites_honour_the_policy():
                         field_dtype=jnp.float16, high_wall=(False, False, False))
     # float16 fields must NOT give a float16 recursive accumulator
     assert lor.px.dtype == jnp.float32
-    assert lor.px_prev.dtype == jnp.float32
+    assert lor.vx.dtype == jnp.float32
     assert deb.px.dtype == jnp.float32
     with enable_x64():
         _, lor64 = init_lorentz([lorentz_pole(2.0, 2 * np.pi * 5e9, 1e9)],
