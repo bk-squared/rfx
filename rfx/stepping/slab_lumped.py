@@ -59,7 +59,7 @@ def read(state, metas, layout, rank):
 def update(state, states, metas, previous, layout, rank):
     """Discard non-owner reads, writes and ADE advances."""
     updated = []
-    fields = {}
+    fields: dict[str, jax.Array] = {}
     for old, global_meta, e_prev in zip(states, metas, previous, strict=True):
         meta, owner = local_meta(global_meta, layout, rank)
         field = getattr(state, meta.component)
@@ -82,7 +82,7 @@ class SlabRLC:
     def read(self, state, *, ranks):
         def local(state, *, rank):
             return tuple(a[None] for a in read(state, self.metas, self.layout, rank))
-        spec = FDTDState(*(P('x') for _ in range(6)), step=P())
+        spec = FDTDState(*(P('x') for _ in range(6)), step=P())  # type: ignore[misc]  # mypy cannot infer the generator's six positional arguments.
         return rank_shard_map(local, mesh=self.mesh, in_specs=(spec,),
                               out_specs=P('x'))(ranks, state)
 
@@ -91,6 +91,6 @@ class SlabRLC:
             state, states = update(state, jax.tree.map(lambda a: a[0], states), self.metas,
                                    jax.tree.map(lambda a: a[0], previous), self.layout, rank)
             return state, jax.tree.map(lambda a: a[None], states)
-        spec = FDTDState(*(P('x') for _ in range(6)), step=P())
+        spec = FDTDState(*(P('x') for _ in range(6)), step=P())  # type: ignore[misc]  # mypy cannot infer the generator's six positional arguments.
         return rank_shard_map(local, mesh=self.mesh, in_specs=(spec, P('x'), P('x')),
                               out_specs=(spec, P('x')))(ranks, state, states, previous)

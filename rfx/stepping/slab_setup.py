@@ -534,7 +534,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         inv['cpml_x'] = profiles['cpml_x']
         # Native x faces retain the full one-device depth on every rank.
         # The y/z faces already contain the slab's x rows and ghosts.
-        carry['cpml'] = initial['cpml']
+        carry['cpml'] = initial['cpml']  # type: ignore[misc, valid-type]  # mypy treats the rebound imported function as a type application; publish returned a dict.
         if cpml_state is not None:
             carry['cpml'] = import_state(cpml_state, psi, layout, native=True)
     return SimpleNamespace(invariants=inv, carry_init=carry, src_waveforms=waves,
