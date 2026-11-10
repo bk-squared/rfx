@@ -27,6 +27,16 @@ YEE_OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5),
 CURL_TERMS = ((2, 1, 1, 2), (0, 2, 2, 0), (1, 0, 0, 1))
 
 
+def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
+    """Amplitude at |f0 sin(theta)| relative to f0 for the Bloch drive."""
+    # init_tfsf dispatches BOTH Gaussian waveform names to init_tfsf_2d,
+    # whose drive is exp(-i*2*pi*f0*t) * exp(-(t/tau)**2),
+    # tau = 1/(pi*f0*bandwidth). Thus |S(fc)/S(f0)| = exp(-offset**2).
+    # Work directly in dB to avoid underflow for narrow pulses.
+    offset = (1.0 - abs(math.sin(math.radians(angle_deg)))) / bandwidth
+    return -(20.0 / math.log(10.0)) * offset * offset
+
+
 class CorrectionTable(NamedTuple):
     target_component: int
     target_index: np.ndarray
@@ -590,7 +600,6 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
-    from rfx.api import _bloch_cutoff_level_db
     from rfx.sources.tfsf import resolve_waveform
     if closed_box:
         validate_declaration(self, theta_deg, phi_deg, direction_tol_deg,

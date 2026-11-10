@@ -137,7 +137,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): _C0,
     ("rfx/api/_gradient_witness.py", "conductivity_gradient_record"): _HOST,
     ("rfx/measurement/decay.py", "static_remnant_advisory"): _ENERGY,
-    ("rfx/sources/coaxial_port.py", "build_coaxial_tem_plane_source_specs"):
+    ("rfx/model/coax_stamp.py", "build_coaxial_tem_plane_source_specs"):
         _HOST + " (float(eps_r))",
     ("rfx/sources/coaxial_port.py", "coaxial_tem_capacitance_per_m"): _HOST,
     ("rfx/sources/coax_impedance.py", "coaxial_built_line_impedance"):
