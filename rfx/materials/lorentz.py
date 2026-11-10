@@ -161,7 +161,7 @@ class LorentzState(NamedTuple):
 
 
 def pole_underflow_guard(out, factors, *, scalar=True):
-    """Identity solve whose transpose warns when an SI cotangent flushes.
+    """Identity solve whose transpose warns below the normal SI cotangent range.
 
     Scalar factors are (denom, dt**2, EPS_0); map normalization supplies
     (ks,) with scalar=False. Call sites opt in at trace time with
@@ -176,7 +176,9 @@ def pole_underflow_guard(out, factors, *, scalar=True):
             return
         warning = AccuracyWarning(
             "The float32 reverse-mode gradient with respect to a traced pole strength "
-            "in SI units underflowed to zero; declare the strength as "
+            "in SI units fell below the smallest normal float32 value (1.2e-38): "
+            "it is zero on a backend that flushes subnormal values and has lost precision "
+            "on one that keeps them; declare the strength as "
             "RelativeStrength(reference, value) or divide the objective by a constant of its order.")
         warning.count = count
         warnings.warn(warning, stacklevel=2)
@@ -186,13 +188,13 @@ def pole_underflow_guard(out, factors, *, scalar=True):
         if scalar:
             replay = replay * args[1]
             replay = args[2] * replay
-        flushed = (ct != 0) & (replay == 0)
+        flagged = (ct != 0) & (jnp.abs(replay) < jnp.finfo(jnp.float32).tiny)
 
         def warn(n):
             jax.debug.callback(report, n)
             return jnp.int32(0)
 
-        jax.lax.cond(jnp.any(flushed), warn, lambda n: jnp.int32(0), jnp.sum(flushed))
+        jax.lax.cond(jnp.any(flagged), warn, lambda n: jnp.int32(0), jnp.sum(flagged))
         return ct
 
     return jax.lax.custom_linear_solve(lambda x: x, out, lambda matvec, b: b,

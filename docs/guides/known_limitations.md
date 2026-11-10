@@ -32,8 +32,9 @@ below the backend's representable range. Declare the strength with
 `RelativeStrength(reference, value)`, choosing a reference near its largest value,
 or divide the objective by a constant of its order. The optional warning is off
 by default. Enable it with `RFX_POLE_UNDERFLOW_CHECK=1`; set it before the first call;
-a cached compile keeps the old setting. The warning detects a cotangent flushed
-to zero, not every loss of precision.
+a cached compile keeps the old setting. The warning detects a nonzero incoming
+cotangent whose SI replay falls below the smallest normal float32 value (1.2e-38),
+returning zero on backends that flush subnormal values and losing precision on those that keep them.
 
 ### Traced full-tensor CPU builds on older jaxlib issue pieces serially
 
