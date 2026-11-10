@@ -54,6 +54,19 @@ shapes. The measured mapping count stayed below 23,000 when cleared every 50 sha
 rfx warns once per process (`MapCountWarning`) when the limit is below 262,144 on Linux.
 This limitation was measured on Linux. macOS, Windows and GPU backends were not measured.
 
+### An imported mesh's occupancy takes minutes and tens of GiB for large meshes or fine grids
+
+Tracker: #2555
+
+Before the first time step, rfx decides which cells lie inside an imported mesh (`MeshShape`) by casting one ray
+from every cell centre in the mesh's bounding box. Each ray is tested against about 6 % of all triangles, so time and
+memory grow with (cells in the bounding box) x (triangles). The result is correct and repeatable; only cost is affected.
+Measured on a 12-CPU Linux node (2026-11-10): a 5,120-triangle sphere of 80 mm diameter takes 57 s and 9 GiB at 2 mm cells,
+and 5.6 min and 25 GiB at 1.4 mm cells; a 20,480-triangle sphere takes 9 min and 34 GiB at 2 mm cells. A machine with
+less memory stops with an out-of-memory error instead.
+Until the fix lands, decimate the mesh to the fewest triangles that keep its shape at the cell size you use, or use a
+CSG primitive (`Box`, `Sphere`, `Cylinder`) where one fits.
+
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
 Tracker: #1373
