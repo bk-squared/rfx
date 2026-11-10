@@ -231,16 +231,16 @@ def test_absorber_backing_plane_source_admitted(path):
     graded = path == 'graded_run'
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     assert grid.pad_x_lo > 0
-    position = (-grid.pad_x_lo * DX, 7 * DX, 5 * DX)
+    position = (0.0 if graded else -grid.pad_x_lo * DX, 7 * DX, 5 * DX)
     if graded:
         from rfx.nonuniform import position_to_index
         cell = position_to_index(grid, position)
     else:
         cell = grid.position_to_index(position)
-    # The graded lookup clamps exterior coordinates to the physical interface.
-    # Only uniform placement reaches the backing and discriminates falsifier (d).
+    # Declare the graded control at the interior face it formerly clamped to.
+    # The uniform control deliberately drives the backing (falsifier d).
     assert cell[0] == (grid.pad_x_lo if graded else 0)
-    sim.add_source(position, 'ez', amplitude_kind='current')
+    sim.add_source(position, 'ez', amplitude_kind='current', allow_in_absorber=True)
     sim.add_probe((4 * DX, 7 * DX, 5 * DX), 'ez')
     sim.add_probe((13 * DX, 9 * DX, 4 * DX), 'ez')
     result = execute(sim, path, steps=2)

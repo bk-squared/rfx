@@ -602,6 +602,12 @@ def _build_nu_scan(
         "sheet_coeffs": sheet_coeffs if use_sheet_impedance else None,
         "design_box_coeffs": design_box_coeffs,
     }
+    if use_waveguide_ports:
+        import jax
+        from rfx.measurement.waveguide_records import compile_waveguide_table
+        with jax.ensure_compile_time_eval():
+            invariants['waveguide_table'] = compile_waveguide_table(
+                grid, waveguide_meta, measurement=measurement, dtype=state.ex.dtype)
     plan_owners = None
     if measurement is not None:
         # The attached plan's owners, compiled once outside the traced step.

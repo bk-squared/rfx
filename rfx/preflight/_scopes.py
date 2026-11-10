@@ -3,6 +3,7 @@
 CODE_SCOPE = {
     'absorber_budget_exceeds_axis': 'model',
     'absorber_overlap': 'object',
+    'absorber_point_refused': 'object',
     'absorber_proximity': 'object',
     'ad_memory': 'model',
     'assembly_fault': 'model',

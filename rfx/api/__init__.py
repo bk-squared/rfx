@@ -705,7 +705,7 @@ class Simulation(
         component: str = "ez",
         *,
         waveform: Callable[[float], float] | Callable[[jax.Array], jax.Array] | None = None,
-        amplitude_kind: str | None = None,
+        amplitude_kind: str | None = None, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
 
@@ -776,7 +776,7 @@ class Simulation(
             position=position, component=component,
             impedance=0.0,  # 0 = no port impedance (soft source)
             waveform=waveform, extent=None,
-            amplitude_kind=resolved_kind,
+            amplitude_kind=resolved_kind, allow_in_absorber=allow_in_absorber,
         ))
         return self
 
@@ -1111,7 +1111,7 @@ class Simulation(
         excite: bool = True,
         direction: str | None = None,
         reference_plane_cells: int | None = None,
-        terminates: object = None,
+        terminates: object = None, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a lumped port (single-cell) or wire port (multi-cell).
 
@@ -1262,7 +1262,7 @@ class Simulation(
             extent=extent, excite=excite, direction=direction,
             radius=radius,
             reference_plane_cells=reference_plane_cells,
-            terminates=terminated,
+            terminates=terminated, allow_in_absorber=allow_in_absorber,
         ))
         return self
 
@@ -1931,25 +1931,25 @@ class Simulation(
     def add_probe(
         self,
         position: tuple[float, float, float],
-        component: str = "ez",
+        component: str = "ez", *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a point field probe."""
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             raise ValueError(f"component must be a field name, got {component!r}")
-        self._probes.append(_ProbeEntry(position=position, component=component))
+        self._probes.append(_ProbeEntry(position=position, component=component, allow_in_absorber=allow_in_absorber))
         return self
 
     def add_vector_probe(
         self,
-        position: tuple[float, float, float],
+        position: tuple[float, float, float], *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a vector probe that records ALL 6 field components.
 
-        Records Ex, Ey, Ez, Hx, Hy, Hz at the same position.
+        Records Ex, Ey, Ez, Hx, Hy, Hz; allow_in_absorber opts into pad positions.
         Results accessible via result.time_series columns [0..5].
         """
         for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            self._probes.append(_ProbeEntry(position=position, component=comp))
+            self._probes.append(_ProbeEntry(position=position, component=comp, allow_in_absorber=allow_in_absorber))
         return self
 
     def _validate_declared_plane_coordinate(self, axis: str, coordinate: float) -> None:

@@ -512,12 +512,11 @@ def make_uniform_step(
                     v_ref_new_l))
 
         if ctx.use_waveguide_ports:
-            from rfx.measurement.waveguide_modal import (
-                update_waveguide_port_probe,
-            )
+            from rfx.measurement.modal import write_waveguide_record
+            waveguide_values = project(frame.st, invariants['waveguide_table'])
 
             frame.new_waveguide_port_accs = []
-            for accs, cfg_meta in zip(frame.carry["waveguide_port_accs"], ctx.waveguide_meta):
+            for port, (accs, cfg_meta) in enumerate(zip(frame.carry["waveguide_port_accs"], ctx.waveguide_meta)):
                 cfg = cfg_meta._replace(
                     v_probe_t=accs[0],
                     v_ref_t=accs[1],
@@ -529,7 +528,7 @@ def make_uniform_step(
                 # TFSF-style H and E corrections are applied earlier in their respective Yee
                 # sub-steps (canonical TFSF slots). This samples `st` AFTER source injection
                 # above.
-                cfg_updated = update_waveguide_port_probe(cfg, frame.st, dt, dx)
+                cfg_updated = write_waveguide_record(cfg, waveguide_values[4*port:4*port+4], frame.st.step, dt)
                 frame.new_waveguide_port_accs.append(
                     (
                         cfg_updated.v_probe_t,

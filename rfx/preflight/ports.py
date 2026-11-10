@@ -394,7 +394,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
             end[axis] += pe.extent
             wp = WirePort(
                 start=tuple(pe.position), end=tuple(end),
-                component=pe.component, impedance=pe.impedance,
+                component=pe.component, impedance=pe.impedance, allow_in_absorber=pe.allow_in_absorber,
             )
             try:
                 cells, live_flags, _ = _wire_port_live_cells(
@@ -673,7 +673,7 @@ def _wire_port_realized_cells(grid, pe):
             cells.append(tuple(cell))
         return cells
     wp = WirePort(start=tuple(pe.position), end=tuple(end),
-                  component=pe.component, impedance=pe.impedance)
+                  component=pe.component, impedance=pe.impedance, allow_in_absorber=pe.allow_in_absorber)
     return list(_wire_port_cells(grid, wp))
 
 

@@ -535,6 +535,8 @@ def _build_full_scan_fn(
 
     # Material-dependent source samples are prepared per sweep element by
     # run()'s scalar helpers; the scan builder needs only their locations.
+    from rfx.model.point_placement import admit_simulation_points
+    admit_simulation_points(sim, grid)
     sources = []
     j_source_meta: list[tuple[int, int, int, str]] = []
     probes = []
