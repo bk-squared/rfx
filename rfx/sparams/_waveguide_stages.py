@@ -15,7 +15,14 @@ def _admit_waveguide_options(
         conformal_pec = bool(self._boundary_spec.conformal_faces())
     if conformal_pec == "cut_cell_floor" and port_reference_sims is not None:
         raise NotImplementedError('conformal_pec="cut_cell_floor" cannot carry port_reference_sims; '
-                                  'use the uniform boundary-wall reference')
+                                  'use the uniform boundary-wall reference '
+                                  '(https://github.com/bk-squared/rfx/issues/1373)')
+    if conformal_pec and port_reference_sims is not None:
+        raise RfxUnsupported('conformal PEC cannot carry port_reference_sims: reference volume '
+                             'operands are unavailable (https://github.com/bk-squared/rfx/issues/1373)')
+    if conformal_pec and self._uses_nonuniform_mesh:
+        raise RfxUnsupported('conformal PEC is unavailable on the graded waveguide lane; '
+                             'use uniform cells (https://github.com/bk-squared/rfx/issues/1373)')
     from rfx.boundaries.features import refuse_traced_guide_mesh
     refuse_traced_guide_mesh(self, "compute_waveguide_s_matrix")
     resolve_field_dtype(self._precision)
@@ -37,9 +44,9 @@ def _validate_waveguide_ports(
         raise ValueError(
             "compute_waveguide_s_matrix() is not supported with manual periodic-axis overrides"
         )
-    if len(self._waveguide_ports) < 2:
+    if not self._waveguide_ports:
         raise ValueError(
-            "compute_waveguide_s_matrix() requires at least two waveguide ports"
+            "compute_waveguide_s_matrix() requires at least one waveguide port"
         )
 
     entries = list(self._waveguide_ports)
@@ -231,8 +238,10 @@ def _validate_waveguide_materials(
 
 
 def _prepare_waveguide_conductors(
-    base_materials, conductors, eps_override, sigma_override, subpixel_smoothing,
+    conductors, subpixel_smoothing, conformal_weights,
 ):
+    from rfx.model.conductors import stepped_conductors
+    conductors = stepped_conductors(conductors, conformal_operands=conformal_weights)
     # The realized PEC edges of this device — volumes, sheets and
     # wires — are built ONCE and handed to every device run of the
     # extractors below.
@@ -262,15 +271,7 @@ def _prepare_waveguide_conductors(
     _use_kottke_pec_early = (subpixel_smoothing == "kottke_pec")
     if _use_kottke_pec_early:
         _wg_pec_edge_masks = None
-    materials = base_materials
-    # G-AD-WIRE-WG2: public eps_override / sigma_override channel.
-    # Mirror the MSL pattern: replace eps_r / sigma on the assembled
-    # materials *after* the PEC fold so PEC boundaries are untouched.
-    from rfx.model.overrides import apply_material_overrides
-    materials = apply_material_overrides(
-        materials, eps_override=eps_override, sigma_override=sigma_override,
-        keep_lumped=True)
-    return _wg_pec_edge_masks, _wg_geometry_pec_edges, _wg_sheet_ctx, materials
+    return _wg_pec_edge_masks, _wg_geometry_pec_edges, _wg_sheet_ctx
 
 
 def _prepare_waveguide_references(
