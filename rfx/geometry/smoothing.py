@@ -385,8 +385,8 @@ def _medium_groups(shapes, grid, *, nominal_h_max=None):
         return True
 
     groups: OrderedDict = OrderedDict()
-    latest = {}
-    group_of = []
+    latest: dict = {}
+    group_of: list = []
     for index, (shape, eps_r) in enumerate(shapes):
         medium = medium_key(eps_r)
         target = latest.get(medium)
