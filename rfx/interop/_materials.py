@@ -62,7 +62,7 @@ def _dump_poles(kind: str, poles: Any, *, preserve_relative=False) -> list[dict]
     if poles is None:
         return None
     pole_cls, names = _POLE_FIELDS[kind]
-    dumped: list[dict[str, float]] = []
+    dumped: list[dict[str, Any]] = []
     for index, pole in enumerate(poles):
         if not isinstance(pole, pole_cls):
             raise UnsupportedDesignFeature(
@@ -70,7 +70,7 @@ def _dump_poles(kind: str, poles: Any, *, preserve_relative=False) -> list[dict]
                 f"{pole_cls.__name__}; the interop layer will not guess its "
                 f"parameter meaning"
             )
-        values = {}
+        values: dict[str, Any] = {}
         for name in names:
             value = getattr(pole, name)
             what = f"{kind}[{index}].{name}"

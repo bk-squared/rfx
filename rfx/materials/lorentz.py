@@ -31,7 +31,7 @@ References:
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 from weakref import ref
 import os
 import warnings
@@ -174,6 +174,7 @@ def pole_underflow_guard(out, factors, *, scalar=True):
         count = int(count)
         if count == 0:
             return
+        warning: Any
         warning = AccuracyWarning(
             "The float32 reverse-mode gradient with respect to a traced pole strength "
             "in SI units fell below the smallest normal float32 value (1.2e-38): "

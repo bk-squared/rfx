@@ -1,5 +1,6 @@
 """A pole strength differentiated in dimensionless units."""
 from dataclasses import dataclass
+from typing import Any, cast
 
 import jax
 import numpy as np
@@ -34,7 +35,7 @@ class RelativeStrength:
         """SI strength for admission and readers that do not feed fields."""
         if callable(self.value):
             return lambda *args: self.reference * self.value(*args)
-        return self.reference * self.value
+        return self.reference * cast(Any, self.value)
 
     def _key(self):
         if isinstance(self.value, jax.core.Tracer) or callable(self.value):
