@@ -53,8 +53,9 @@ def largest_growth(eps_inf, sigma, poles, dt, x_max, *, debye=(), x_min=0.0):
         from jax import enable_x64, ensure_compile_time_eval
         from rfx.materials.lorentz import pole_update_coeffs
         with enable_x64(), ensure_compile_time_eval():
+            omega_0, delta, kappa = np.asarray(poles, dtype=np.float64).T
             damping, restoring, coupling = (np.asarray(v) for v in pole_update_coeffs(
-                *np.asarray(poles, dtype=np.float64).T, np.float64(dt), field_dtype=None))
+                omega_0, delta, kappa, np.float64(dt), field_dtype=None))
         for i in range(len(poles)):
             p, v = 2 + 2 * i, 3 + 2 * i
             matrix[:, v, 0] = coupling[i] / EPS_0
