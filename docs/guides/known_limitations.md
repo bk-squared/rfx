@@ -147,6 +147,8 @@ mechanism is not measured. Check a curved film's loss on three meshes before usi
 
 Tracker: #2429
 
+Use `add_wall_loss(faces=...)` or `add_wall_loss(shape=...)` for opaque PEC wall conductor loss.
+
 A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) is a penetrable film: it carries current
 only through the tangential E on its edges. Two cases are measured. With a PEC face one cell behind the sheet, a field
 with E normal to the sheet and H tangential passes into the one-cell gap, and the sheet adds no conductor loss.

@@ -474,6 +474,7 @@ def quick_convergence(
         new_sim._ports = list(sim._ports)
         new_sim._probes = list(sim._probes)
         new_sim._thin_conductors = list(sim._thin_conductors)
+        new_sim._wall_losses = list(getattr(sim, "_wall_losses", ()))
         new_sim._ntff = sim._ntff
         new_sim._tfsf = sim._tfsf
         new_sim._dft_planes = list(sim._dft_planes)

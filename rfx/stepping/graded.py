@@ -85,6 +85,7 @@ class GradedStepContext:
     port_record_specs: tuple | None = None
     port_acc_indices: tuple = ()
     cpml_spacings: tuple | None = None
+    wall_loss_faces: frozenset = frozenset()
     slab_rlc: tuple | None = None
 
 
@@ -317,6 +318,7 @@ def make_graded_step(
         # the SAME shared stencil helper update_e_nu uses, on the same
         # H^{n+1/2} the E update consumed.
         if ctx.use_sheet_impedance:
+            frame.st = apply_pec_faces(frame.st, ctx.wall_loss_faces)
             from rfx.core.yee import curl_h_nu as _curl_h_nu
             from rfx.stepping.conductors import (
                 apply_sheet_impedance_e as _apply_sheet_e)
@@ -329,7 +331,8 @@ def make_graded_step(
 
         # PEC, per face
         frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
-                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
+                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"),
+                                   normal_ghost_faces=ctx.wall_loss_faces)
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         frame.new_rlc_states = None

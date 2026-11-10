@@ -121,7 +121,7 @@ def wall_edge_masks(shape, faces):
     return masks
 
 
-def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object:
+def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_ghost_faces=()) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
 
     Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
@@ -140,9 +140,10 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
     """
     from ._face_frame import apply_framed_faces, needs_face_frame
 
+    normal_ghost_faces = normal_ghost_faces or ()
     if needs_face_frame(state.ex.shape, faces, frame, owned):
         return apply_framed_faces(state, faces, frame, owned)
-    if not faces:
+    if not faces and not normal_ghost_faces:
         return state
     ex, ey, ez = state.ex, state.ey, state.ez
 
@@ -166,6 +167,13 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
         ey = ey.at[:, :, -1].set(0.0)
         # Ez at k=nz-1 is a ghost cell at z=(nz-0.5)*dx, outside the
         # physical domain. Zero it to prevent ghost-layer accumulation.
+        ez = ez.at[:, :, -1].set(0.0)
+
+    if "x_hi" in normal_ghost_faces:
+        ex = ex.at[-1, :, :].set(0.0)
+    if "y_hi" in normal_ghost_faces:
+        ey = ey.at[:, -1, :].set(0.0)
+    if "z_hi" in normal_ghost_faces:
         ez = ez.at[:, :, -1].set(0.0)
 
     return state._replace(ex=ex, ey=ey, ez=ez)

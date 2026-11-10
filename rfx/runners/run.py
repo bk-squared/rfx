@@ -49,6 +49,8 @@ def run_after_admission(
     ringdown: RingdownSpec | None = None,
     until_identified: bool = False,
 ) -> Result:
+    from rfx.model.wall_loss import admit_wall_loss
+    admit_wall_loss(self, "run admission", smoothing=subpixel_smoothing, conformal=conformal_pec)
     validate_exchange_interval(exchange_interval)
     fixed_num_periods = n_steps is None
     refuse_tfsf_decay_without_source_off(self, until_decay)
@@ -238,6 +240,8 @@ def run_after_admission(
     # ---- Subgridded lane ----
     if plan.lane == "run_subgridded":
         from rfx.materials.thin_conductor import refuse_f0_sheets
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(self, "subgridded (SBP-SAT) run()")
         refuse_f0_sheets(self._thin_conductors, "subgridded (SBP-SAT) run()")
         self._refuse_unsupported_run_kwargs("subgridded (SBP-SAT)", {
             "subpixel_smoothing": subpixel_smoothing,

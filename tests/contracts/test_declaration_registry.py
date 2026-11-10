@@ -13,6 +13,7 @@ from rfx import _declarations as declarations
 POINT = (0.005, 0.005, 0.005)
 CALLS = {
     "add": ((Box((0.002,)*3, (0.004,)*3),), {"material": "pec"}),
+    "add_wall_loss": ((), {"shape": Box((0.002,)*3, (0.004,)*3), "sigma_bulk": 5.8e5, "f0": 8e9}),
     "add_material": (("board",), {"eps_r": 3.4}),
     "add_source": ((POINT,), {}),
     "add_polarized_source": ((POINT,), {"polarization": "ex"}),
@@ -42,6 +43,8 @@ def model(**kwargs):
 
 def declare(sim, name):
     args, kwargs = CALLS[name]
+    if name == "add_wall_loss":
+        sim.add(kwargs["shape"], material="pec")
     getattr(sim, name)(*args, **kwargs)
 
 

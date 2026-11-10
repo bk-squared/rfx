@@ -2565,6 +2565,12 @@
       "position",
       "allow_in_absorber"
     ],
+    "add_wall_loss": [
+      "sigma_bulk",
+      "f0",
+      "shape",
+      "faces"
+    ],
     "add_waveguide_port": [
       "x_position",
       "x_range",

@@ -117,8 +117,12 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         **({} if report_every is None else {"report_every": report_every}))
     from rfx.materials.thin_conductor import refuse_f0_sheets
     if _forward_port_s11:
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(self, "distributed multi-device forward()")
         refuse_f0_sheets(self._thin_conductors, "distributed multi-device forward()")
     else:
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(self, "distributed multi-device run()")
         refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
     from rfx.runners._admission import admit_run_s_matrix
     admit_run_s_matrix(self, compute_s_params=compute_s_params,

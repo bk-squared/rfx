@@ -44,7 +44,7 @@ def test_s1_cavity_fires(axis):
         assert "case G" in str(hit)
         assert min(float(v) for v in re.findall(r"distance ([0-9.e+-]+) m", str(hit))) == pytest.approx(MM)
         assert "E normal to the sheet" in str(hit)
-        assert "thick lossy Box" in str(hit)
+        assert "add_wall_loss(faces=...) or add_wall_loss(shape=...)" in str(hit)
         assert hit.severity == "warning" and hit.scope == "object"
         assert hit.subjects
     with pytest.warns(AccuracyWarning, match="case G"):
@@ -137,8 +137,8 @@ def test_s4_pec_domain_face_admission(graded, entry, position, monkeypatch):
         assert str(caught.value) == (
             f"thin_conductor[0] ({face}): an f0 surface-impedance sheet on a PEC domain face (or an absorber face's outer node plane) "
             "carries no current (the face's PEC owns its edges), so its loss would "
-            "be dropped; for loss on that wall use add_wall_loss(faces=...) once "
-            "available, or a thick lossy Box inside the domain.")
+            "be dropped; for loss on that wall use add_wall_loss(faces=...) "
+            "or add_wall_loss(shape=...).")
 
 
 def test_other_f0_planes_are_conductors():

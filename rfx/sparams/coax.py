@@ -1242,8 +1242,8 @@ def compute_coax_msl_transition(
     flux_by_drive: dict = {}
 
     # ---- Registration guards ----------------------------------------
-    from rfx.materials.thin_conductor import refuse_f0_sheets
-    refuse_f0_sheets(self._thin_conductors, "coax-MSL transition")
+    from rfx.model.wall_loss import refuse_wall_and_f0_sheets
+    refuse_wall_and_f0_sheets(self, "coax-MSL transition")
     port, msl_pe, eps_r_sub_resolved = _coax_msl_stages._validate_coax_msl_registration(
         eps_r_sub, self,
     )

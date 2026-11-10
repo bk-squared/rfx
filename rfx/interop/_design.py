@@ -896,6 +896,9 @@ from rfx.interop._design_state import EXCLUDED_SIMULATION_ATTRS
 #: Constructor state accepted only with traced widths; export refuses that input.
 TRACED_ONLY_SIMULATION_ATTRS: tuple[str, ...] = ("_nominal_profiles",)
 
+# Lazy declarations have an explicit disposition alongside constructor state.
+REFUSED_SIMULATION_ATTRS = {"_wall_losses": "refused"}
+
 
 def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
     """MSL port entries with auto ``n_probe_offset`` resolved for export.
@@ -1357,23 +1360,20 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
     Parameters
     ----------
     sim : Simulation
-        A simulation whose design has been established through the
-        constructor and the ``add_*`` builders.
+        A simulation configured through the constructor and ``add_*`` builders.
 
     Returns
     -------
     dict
-        A ``rfx-design-ir/v2`` document.  Every value is a JSON scalar, list
-        or mapping; ``json.dump(document, allow_nan=False)`` succeeds without
-        ``default=``.
+        A ``rfx-design-ir/v2`` document of JSON scalars, lists and mappings;
+        ``json.dump(document, allow_nan=False)`` needs no ``default=``.
 
     Raises
     ------
     UnsupportedDesignFeature
-        If any design state cannot be represented exactly — an unregistered
-        shape class (``MeshShape``, a user-defined ``Shape``), a
-        ``CustomWaveform``, a JAX-traced mesh profile, a non-finite number, or
-        a record class that has grown a field this module does not record.
+        If design state cannot be represented exactly: unregistered shapes,
+        custom waveforms, traced profiles, non-finite numbers, new record
+        fields or wall losses.
 
     Notes
     -----
@@ -1385,6 +1385,8 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
     function detect the situation, so the responsibility is the caller's.  See
     the module docstring.
     """
+    if getattr(sim, "_wall_losses", ()):
+        raise UnsupportedDesignFeature("add_wall_loss is not carried by the design document")
     soft_sources, lumped_ports = _dump_ports(sim)
 
     ntff = None
