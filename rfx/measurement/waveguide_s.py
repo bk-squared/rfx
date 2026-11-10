@@ -538,9 +538,9 @@ def extract_waveguide_s_matrix(
         :meth:`Simulation.compute_waveguide_s_matrix` for full semantics.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
-    if not port_cfgs:
+    if len(port_cfgs) < 2:
         raise ValueError(
-            "extract_waveguide_s_matrix requires at least one waveguide port"
+            "extract_waveguide_s_matrix requires at least two waveguide ports"
         )
     if ref_shifts is None:
         ref_shifts = tuple(0.0 for _ in port_cfgs)
@@ -749,9 +749,9 @@ def extract_waveguide_s_matrix_flux(
     function for argument documentation.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
-    if not port_cfgs:
+    if len(port_cfgs) < 2:
         raise ValueError(
-            "extract_waveguide_s_matrix_flux requires at least one waveguide port"
+            "extract_waveguide_s_matrix_flux requires at least two waveguide ports"
         )
     if ref_shifts is None:
         ref_shifts = tuple(0.0 for _ in port_cfgs)
@@ -1087,9 +1087,9 @@ def extract_waveguide_s_params_normalized(
         Normalized S-matrix of shape (n_ports, n_ports, n_freqs), complex.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
-    if not port_cfgs:
+    if len(port_cfgs) < 2:
         raise ValueError(
-            "extract_waveguide_s_params_normalized requires at least one waveguide port"
+            "extract_waveguide_s_params_normalized requires at least two waveguide ports"
         )
     if ref_shifts is None:
         ref_shifts = tuple(0.0 for _ in port_cfgs)

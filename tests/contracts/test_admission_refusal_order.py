@@ -65,10 +65,10 @@ def test_conformal_pec_refusal_rows(lane):
 
 def test_graded_waveguide_refuses_conformal_by_name():
     from tests.contracts.conformal_scenes import scene
-    sim = scene('S')
+    sim = scene('S', ports=2)
     sim._dx_profile = [.00127] * 111
-    with pytest.raises(NotImplementedError, match=r'conformal PEC.*graded.*/issues/1373'):
-        sim.compute_waveguide_s_matrix(n_steps=4)
+    with pytest.raises(NotImplementedError, match=r'(?s)refuses .*the non-uniform waveguide S-matrix lane.*\bconformal_pec='):
+        sim.compute_waveguide_s_matrix(n_steps=4, normalize="flux")
 
 
 def test_2d_box_face_on_slice_refuses_conformal_by_name():

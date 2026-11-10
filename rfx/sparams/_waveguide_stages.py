@@ -20,9 +20,6 @@ def _admit_waveguide_options(
     if conformal_pec and port_reference_sims is not None:
         raise RfxUnsupported('conformal PEC cannot carry port_reference_sims: reference volume '
                              'operands are unavailable (https://github.com/bk-squared/rfx/issues/1373)')
-    if conformal_pec and self._uses_nonuniform_mesh:
-        raise RfxUnsupported('conformal PEC is unavailable on the graded waveguide lane; '
-                             'use uniform cells (https://github.com/bk-squared/rfx/issues/1373)')
     from rfx.boundaries.features import refuse_traced_guide_mesh
     refuse_traced_guide_mesh(self, "compute_waveguide_s_matrix")
     resolve_field_dtype(self._precision)
@@ -44,9 +41,9 @@ def _validate_waveguide_ports(
         raise ValueError(
             "compute_waveguide_s_matrix() is not supported with manual periodic-axis overrides"
         )
-    if not self._waveguide_ports:
+    if len(self._waveguide_ports) < 2:
         raise ValueError(
-            "compute_waveguide_s_matrix() requires at least one waveguide port"
+            "compute_waveguide_s_matrix() requires at least two waveguide ports"
         )
 
     entries = list(self._waveguide_ports)

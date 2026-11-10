@@ -65,6 +65,9 @@ def capture_setups(monkeypatch):
                       if g is grid and weights is not None and
                       all(np.array_equal(x, y) for x, y in zip(w, weights))), None)
         captured.append(dict(grid=grid,
+            material_paths=tuple(jax.tree_util.keystr(path) for path, _ in
+                                 jax.tree_util.tree_flatten_with_path(realized)[0]),
+            pec_edges_present=masks is not None,
             masks=tuple(np.zeros(grid.shape, bool) for _ in range(3)) if masks is None else
                   tuple(np.asarray(a).copy() for a in masks),
             weights=None if tensor is None or tensor.conformal_weights is None else
@@ -79,3 +82,24 @@ def capture_setups(monkeypatch):
                 if value is original:
                     monkeypatch.setattr(module, key, observe)
     return captured
+
+
+def assert_same_setup(field, device, *, label):
+    """A5: compare every captured operand, including coefficient leaves, bit for bit."""
+    assert field['material_paths'] == device['material_paths']
+    for key in ('masks', 'weights', 'areas', 'materials'):
+        assert field[key] is not None and device[key] is not None, (label, key)
+        assert len(field[key]) == len(device[key]), (label, key)
+        for component, (a, b) in enumerate(zip(field[key], device[key])):
+            name = field['material_paths'][component] if key == 'materials' else 'xyz'[component]
+            context = f'{label}: {key}[{name}]'
+            assert a.shape == b.shape and a.dtype == b.dtype, context
+            # Compare bytes as well as values (including the sign bit of zero).
+            bits_a = a.reshape(-1).view(np.uint8).reshape(a.size, a.dtype.itemsize)
+            bits_b = b.reshape(-1).view(np.uint8).reshape(b.size, b.dtype.itemsize)
+            different = np.any(bits_a != bits_b, axis=1).reshape(a.shape)
+            indices = np.argwhere(different)
+            assert not len(indices), (context, [
+                (tuple(index), a[tuple(index)].item(), b[tuple(index)].item())
+                for index in indices])
+        print(f'{label}: {key}: {len(field[key])} components bit-identical')
