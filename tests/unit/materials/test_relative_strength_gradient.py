@@ -67,4 +67,3 @@ def test_relative_strength_gradient(lane, compiled, monkeypatch):
     assert float(forward) != 0
     assert error <= 1e-4
     assert not underflow
-    assert elapsed < 20

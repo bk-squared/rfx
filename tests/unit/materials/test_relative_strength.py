@@ -1,17 +1,90 @@
 """Declaration, non-field readers, and coefficient-path admission."""
 import json
+import warnings
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, LorentzPole, RelativeStrength, Simulation, drude_pole, lorentz_pole
+from rfx import Box, GaussianPulse, LorentzPole, RelativeStrength, Simulation, drude_pole, lorentz_pole
 from rfx.artifacts import build_scene_artifact
 from rfx.core.yee import EPS_0
 from rfx.errors import RfxUnsupported
 from rfx.interop._materials import material_from_dict, material_to_dict
 from rfx.materials.lorentz import pole_update_coeffs
+
+
+STABILITY_N, STABILITY_DX = 12, 1e-3
+UNSTABLE = "unstable at this model's time step"
+
+
+def _stability_step():
+    return float(Simulation(freq_max=10e9, domain=(STABILITY_N * STABILITY_DX,) * 3,
+                            dx=STABILITY_DX, boundary="pec")._build_grid().dt)
+
+
+def _stability_sim(kappa, graded):
+    options = {"dz_profile": np.full(STABILITY_N, STABILITY_DX)} if graded else {}
+    sim = Simulation(freq_max=10e9, domain=(STABILITY_N * STABILITY_DX,) * 3,
+                     dx=STABILITY_DX, boundary="pec", **options)
+    sim.add_material("m", eps_r=1., lorentz_poles=[LorentzPole(0., 0., kappa)])
+    sim.add(Box((0, 0, 0), (STABILITY_N * STABILITY_DX,) * 3), material="m")
+    sim.add_source((.005, .006, .006), "ez", waveform=GaussianPulse(f0=10e9, bandwidth=.8))
+    sim.add_probe((.007, .005, .006), "ez")
+    return sim
+
+
+# omega_p dt = 0.45 is above the eps_inf = 1 limit (about 0.28), 0.2 below (test_pole_stability_admission).
+# "rs" declarations put the size in the reference so a reader of value alone sees the other side of the limit.
+STABILITY_CASES = {
+    ("unstable", "si"): (0.45, None, True),
+    ("unstable", "rs"): (0.45, 1e-6, True),
+    ("stable", "si"): (0.2, None, False),
+    ("stable", "rs"): (0.2, 1e6, False),
+}
+
+
+def _stability_declare(wdt, value, traced=None):
+    kappa = (wdt / _stability_step()) ** 2
+    if value is None:
+        return kappa if traced is None else traced, kappa
+    return RelativeStrength(kappa / value, value if traced is None else traced), value
+
+
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
+@pytest.mark.parametrize("route", ["run", "jit_grad"])
+@pytest.mark.parametrize("case", list(STABILITY_CASES), ids=lambda c: "-".join(c))
+def test_stability_reads_si(case, route, lane):
+    wdt, value, expect_refusal = STABILITY_CASES[case]
+    graded = lane == "graded"
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if route == "run":
+                kappa, _ = _stability_declare(wdt, value)
+                ts = np.asarray(_stability_sim(kappa, graded).run(
+                    n_steps=5, compute_s_params=False, skip_preflight=True).time_series)
+            else:
+                _, primal = _stability_declare(wdt, value)
+
+                def loss(v):
+                    kappa, _ = _stability_declare(wdt, value, traced=v)
+                    return jnp.sum(_stability_sim(kappa, graded).forward(
+                        n_steps=5, skip_preflight=True).time_series ** 2)
+
+                ts = np.asarray(jax.block_until_ready(jax.jit(jax.grad(loss))(jnp.float32(primal))))
+                jax.effects_barrier()
+        outcome = f"ran finite={bool(np.all(np.isfinite(ts)))}"
+    except Exception as exc:  # The in-program route surfaces the ValueError through XLA.
+        outcome = f"refused {type(exc).__name__}: {UNSTABLE in str(exc)}"
+        if UNSTABLE not in str(exc):
+            outcome += " msg=" + str(exc)[:300]
+    print(f"stability {case} {route} {lane}: {outcome}")
+    if expect_refusal:
+        assert outcome.startswith("refused") and outcome.endswith("True"), outcome
+    else:
+        assert outcome.startswith("ran finite=True"), outcome
 
 
 @pytest.mark.parametrize("reference", [0., -1., float("inf"), float("nan"), 1, jnp.float32(1.)])
