@@ -191,7 +191,8 @@ def pole_underflow_guard(out, factors, *, scalar=True):
         flagged = (ct != 0) & (jnp.abs(replay) < jnp.finfo(jnp.float32).tiny)
 
         def warn(n):
-            jax.debug.callback(report, n)
+            from rfx._traced_check import traced_check
+            traced_check("RFX_POLE_UNDERFLOW_CHECK", "pole strength cotangent underflow", report, n)
             return jnp.int32(0)
 
         jax.lax.cond(jnp.any(flagged), warn, lambda n: jnp.int32(0), jnp.sum(flagged))
