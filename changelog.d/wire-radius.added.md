@@ -1,0 +1,5 @@
+Wire ports declared with `add_port(..., extent=..., radius=...)` now run on
+multiple devices on uniform and graded meshes, through `run(devices=...)`
+and `forward(distributed=True)`, using the one-device radius model.
+The existing local mesh, radius bound, solver and material restrictions remain.
+Realized-model captures publish zero outside the domain for material increments.
