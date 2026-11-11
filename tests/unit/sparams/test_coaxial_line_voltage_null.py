@@ -7,8 +7,11 @@ from tests.unit.sparams.test_coaxial_line_settling import _run
 
 
 @pytest.mark.slow_physics
-def test_short_line_voltage_null_at_1500_steps():
-    result = _run(1500, termination='short')
+def test_short_line_voltage_null_at_1650_steps():
+    # 1650 steps: the matched feed sheet keeps the line's permittivity, so the
+    # short line rings down 15.9 dB per round trip (was 18.3); 1650 restores the
+    # settling precondition's ~6 dB margin to -40 dB (record 20261107-coax-oneport-floor).
+    result = _run(1650, termination='short')
     assert result.settling_db <= -40., result.settling_db
     assert result.settling_witness['status'] == 'pass'
     # The requested 5.5 GHz bin can be rounded by the fixture's JAX float32.
