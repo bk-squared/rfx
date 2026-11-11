@@ -5,7 +5,7 @@ This package holds the S-matrix helpers and calculators used by
 
 Modules:
 
-* :mod:`rfx.sparams._common` — the module-level helpers: MSL modal voltage
+* :mod:`rfx.measurement.sparam_assembly` and :mod:`rfx.measurement.sparam_advisories` — the module-level helpers: MSL modal voltage
   and wave solve, the settling / passivity / reciprocity witnesses, the
   ringdown and geometry advisories, the mixed and coaxial power-wave
   assemblers, and the shared constants.
