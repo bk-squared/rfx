@@ -414,8 +414,8 @@ def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
     assert msg.startswith(f"{entry} refuses"), msg
     assert msg.count("drop Boundary(conformal=True)") == 1, msg
     if path != "waveguide-nonuniform":
-        assert ("use run() on a uniform mesh to keep conformal PEC "
-                "for a forward-only result") in msg, msg
+        assert ("use run() or forward() on a uniform mesh and one device "
+                "to keep default conformal PEC") in msg, msg
 
 
 @pytest.mark.parametrize("nonuniform", [False, True],
