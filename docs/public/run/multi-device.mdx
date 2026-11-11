@@ -124,7 +124,7 @@ step. These are refused:
 | a periodic axis, a Floquet port | all multi-device | one device |
 | a microstrip or coaxial port, a lumped RLC element | all multi-device | one device |
 | a passive port (`excite=False`) | uniform mesh | a graded mesh, or one device |
-| a wire port with `reference_plane_cells` or an explicit radius | all multi-device | one device |
+| a wire port with `reference_plane_cells` | all multi-device | one device |
 | a PMC face with a wire port or lumped-port S, or, on a graded mesh, with any port or frequency-domain record | all multi-device | one device |
 | a plane wave that is not a closed box: an open slab, oblique incidence (Bloch line or Method B), a `face_record` replay | uniform mesh | one device |
 | a closed-box plane wave at oblique incidence (`theta_deg` or `phi_deg` not 0), or on 5 or more devices | uniform mesh | normal incidence on 2 to 4 devices, or one device |

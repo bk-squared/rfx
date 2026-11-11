@@ -181,11 +181,13 @@ sheets, so read `fidelity_report()` for those.
 ### Curved metal
 
 Metal on a curved or slanted surface lands as a staircase of cell faces. On a
-uniform mesh with `run()`, `run(conformal_pec=True)` weights the update at the
+uniform mesh on one device, `run(conformal_pec=True)` weights the update at the
 cut cells instead: each cut E edge uses its PEC-free length and each cut H face
-its PEC-free area, and a stability clamp keeps the ordinary time step. Other
-solver paths refuse it. Left at its default, `conformal_pec` follows the PEC boundary
-faces declared with `Boundary(..., conformal=True)`. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
+its PEC-free area, and a stability clamp keeps the ordinary time step. Left at
+its default, `conformal_pec` follows the PEC boundary faces declared with
+`Boundary(..., conformal=True)`; `forward()`, which has no `conformal_pec=`
+argument, takes the same update from that declaration. Graded meshes, multiple
+devices and subgrids refuse it. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
 dielectric with a smoothed tensor. It is experimental and not recommended for
 metal: on a PEC sphere and on a strip resonator it was farther from the
 reference than the staircase, and a run that uses it with a PEC volume warns. A
@@ -336,7 +338,7 @@ The solver paths refuse what they do not implement:
 | a design box that reaches a surface-impedance sheet or a lumped element | uniform and graded mesh | keep the box clear of it; under a whole-domain design occupancy rfx keeps the sheet's edges free of design metal, with a warning |
 | a surface-impedance sheet with `subpixel_smoothing` or `conformal_pec` | all | one or the other |
 | a surface-impedance sheet with a Debye or Lorentz material | uniform and graded mesh, `run()` and `forward()` | a non-dispersive material, or a lossy film |
-| `conformal_pec=True` | every path except `run()` on a uniform mesh | a finer mesh near the curved metal |
+| conformal PEC (`conformal_pec=True`, or a `Boundary(..., conformal=True)` face) | graded mesh, multi-device, subgridded; `optimize()`; the calculators `compute_mixed_s_matrix` and `topology_optimize` | a uniform mesh on one device with `run()` or `forward()`, or a finer mesh near the curved metal |
 | an `OrientedBox` with `conformal_pec=True` (also when a conformal boundary face turns it on), with `subpixel_smoothing`, or in `add_thin_conductor` | all | leave `conformal_pec` and smoothing off, so the rotated body is staircased; or draw it axis-aligned as a `Box` |
 | `eps_r` other than 1, or traced, on a PEC or surface-impedance sheet (`add_thin_conductor`) or a pinned sheet (`add_pinned_sheet`) | all | refused when declared: leave `eps_r` at 1 and declare the dielectric around the sheet |
 | a lossy film (`sigma_bulk < 1e6`) with `eps_r` other than 1, normal to a 2-D model's invariant axis, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | all | the message names which |

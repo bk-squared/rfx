@@ -83,7 +83,10 @@ Where the two calls still differ:
 
 - `forward()` has no `until_decay`, `snapshot=`, `report_every` or
   `until_identified`, and its result has no `state` and no snapshots.
-- `forward()` refuses `Boundary(conformal=True)` and `add_refinement`.
+- `forward()` has no `conformal_pec=` argument: it takes conformal PEC from
+  `Boundary(conformal=True)`, on a uniform mesh on one device as `run()`
+  does, and refuses it together with the PEC mask and occupancy overrides.
+- `forward()` refuses `add_refinement`.
 - `run()` forms S by default; `forward()` forms the driven port's column, and
   only when `port_s11_freqs` is given.
 - `forward(distributed=True)` on a uniform mesh runs the declared model as it
@@ -163,7 +166,7 @@ finds them equal for every combination both calls accept
 | `precision="float64"` | multi-device, subgridded | one device, on a uniform or graded mesh |
 | `until_decay` | multi-device, subgridded, a graded mesh with closed boundaries, a plane wave at an angle | `n_steps` |
 | `forward(distributed=True)` with override or design arguments, checkpoint arguments, `n_warmup`, `emit_time_series=False`, port S inside `jax.jit`, or with a gradient through port S | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` for the permittivity, conductivity and PEC overrides |
-| `forward()` with `Boundary(conformal=True)` | all | `run()` |
+| conformal PEC (`Boundary(conformal=True)`, or `run(conformal_pec=True)`) | graded mesh, multi-device, subgridded | a uniform mesh on one device |
 | `run(snapshot=...)` | graded mesh on one device, subgridded, an oblique plane wave | a uniform mesh, or `run(devices=...)` on a graded mesh |
 | `add_refinement` without `validation="research"` or `"off"` | uniform mesh, `run()` | a graded mesh |
 | `add_refinement` in any mode | `forward()`, graded mesh, multi-device | a graded mesh |
