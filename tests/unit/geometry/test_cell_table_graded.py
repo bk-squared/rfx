@@ -220,7 +220,7 @@ def test_product_refusals_unchanged(monkeypatch, entry):
         expected += ('Boundary(conformal=True) asks for Dey-Mittra conformal PEC, and this path has no conformal update, '
                      'so the walls and PEC shapes would be staircased. Instead: drop Boundary(conformal=True) (staircase PEC), or use ')
         expected += ('compute_waveguide_s_matrix() on a uniform mesh (no dx/dy/dz profile).' if entry == 'waveguide_graded'
-                     else 'run() on a uniform mesh to keep conformal PEC for a forward-only result.')
+                     else 'run() or forward() on a uniform mesh and one device to keep default conformal PEC.')
     with pytest.raises(RfxUnsupported) as caught:
         if entry == 'waveguide_graded':
             sim.compute_waveguide_s_matrix(normalize=True, n_steps=1, skip_preflight=True,
