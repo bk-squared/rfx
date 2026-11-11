@@ -330,6 +330,9 @@ _DISPATCH_FILES = (
     # modules under rfx/sparams/; the scan follows the code by globbing the
     # package so the class stays covered there instead of passing vacuously.
     *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/sparams").glob("*.py")),
+    # The calculators' shared helpers live in these two measurement modules.
+    "rfx/measurement/sparam_assembly.py",
+    "rfx/measurement/sparam_advisories.py",
     "rfx/api/_preflight.py",
     # #980 Phase 3 does the same to rfx/api/_preflight.py, a leg at a time,
     # into rfx/preflight/. Globbed NOW, while the package holds only leaf
