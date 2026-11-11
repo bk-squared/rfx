@@ -350,6 +350,22 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 
 The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
 
+### Conformal PEC next to the high seam of a periodic axis gives wrong cut-cell operands on the seam row.
+
+Tracker: #2585
+
+A conformal PEC body whose high bound lies close below the high seam of a periodic axis (a gap of
+0.7 cell is affected; 1.7 cells measured clean) gets wrong cut-cell lengths and areas on the seam row: the seam edge measures the body through
+its far periodic image. This was measured on a sphere; by the code, a cylinder or a Box whose
+high face lies off the node lattice is affected the same way (not measured). In one 1 mm cell, an edge whose closed-form PEC-free length is 0.70
+reads 0.97 with the body 0.7 cell below the seam; with the body 1.7 cells below, no edge
+differs. A whole-cell translation leaves a periodic structure physically unchanged, but here S
+changes with where the seam is cut. On a 14 mm periodic cell with a 3.2 mm PEC sphere 0.7 cell
+below the seam, reflected power moves by up to 2.4e-3 (2 % of R, 0.09 dB in |S11|) at λ/21 and
+8.5e-4 at λ/43 (measured; record kept with the project). Until the fix, keep conformal bodies
+at least two cells below the high seam, or translate the cell's contents by whole cells until no
+conformal body's high bound lies within two cells below the high seam.
+
 ### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
 
 Tracker: #2274
