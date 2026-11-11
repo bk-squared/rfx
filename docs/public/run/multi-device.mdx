@@ -132,7 +132,8 @@ step. These are refused:
 | a waveguide port | all multi-device | one device |
 | a Kerr material, a surface-impedance sheet, `add_refinement` | all multi-device | one device |
 | `precision` other than float32, `stencil_order=4`, UPML | all multi-device | float32, second order, CPML |
-| `until_decay`, `checkpoint`, `subpixel_smoothing`, `conformal_pec`, `ringdown` | `run(devices=...)` | a fixed `n_steps`; one device for the rest |
+| conformal PEC (`conformal_pec=True`, or a `Boundary(..., conformal=True)` face) | all multi-device | one device on a uniform mesh |
+| `until_decay`, `checkpoint`, `subpixel_smoothing`, `ringdown` | `run(devices=...)` | a fixed `n_steps`; one device for the rest |
 | override, design or checkpoint arguments, `n_warmup`, `emit_time_series=False`, `ringdown`, a gradient through port S | `forward(distributed=True)` on a uniform mesh | a graded mesh for the material overrides, or one device |
 | `exchange_interval` other than 1 | all multi-device | 1 |
 | a graded mesh whose largest cell on an axis is more than 5 times its smallest (`run()` warns above 3 times; `forward()` checks only when preflight runs) | graded mesh | a gentler grading |
