@@ -127,6 +127,37 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
            interface_delta_e=[float(v[interface, 6, 6]) for v in observed_delta]))
 
 
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+def test_p2c_float64_edge_mean(graded):
+    from tests._x64_compat import enable_x64
+    from tests.unit.materials.test_pole_map_runs import record
+
+    with enable_x64():
+        grid, xyz, mask = rig(graded)
+        x, y, z = xyz
+        kappa = np.broadcast_to(WP**2 * (1 + 40 * x + 20 * y), grid.shape)
+        delta = np.broadcast_to(np.where(x < .0025, 1e9, 2e9) + 1e10 * y, grid.shape)
+        pole = LorentzPoleMap(0., lambda x, y, z: np.where(x < .0025, 1e9, 2e9) + 1e10 * y,
+                             lambda x, y, z: WP**2 * (1 + 40 * x + 20 * y))
+        coeffs, _ = init(pole, grid, mask)
+        assert all(v.dtype == np.float64 for v in coeffs.c), [v.dtype for v in coeffs.c]
+        worst = 0
+        edges = 0
+        bar = 30 if graded else 25
+        for comp, cell in itertools.product(range(3), itertools.product(range(3, 10), repeat=3)):
+            ke = hand_mean(mask * kappa, grid, comp, cell)
+            de = hand_mean(mask * kappa * delta, grid, comp, cell) / ke
+            expected = np.float64(EPS0 * ke * float(grid.dt)**2 / (1 + de * float(grid.dt)))
+            actual = np.asarray(coeffs.c[comp])[(0,) + cell]
+            assert np.signbit(actual) == np.signbit(expected)
+            spacings = abs(int(actual.view(np.uint64)) - int(expected.view(np.uint64)))
+            worst = max(worst, spacings)
+            edges += 1
+            assert spacings <= bar, (comp, cell, actual, expected, spacings)
+        record(f'A8c-P2c-{graded}', dict(c_dtype=str(coeffs.c[0].dtype), edges=edges,
+                                        worst_spacings=worst, bar=bar))
+
+
 def test_p3_one_state_identity_and_layout():
     grid, xyz, mask = rig()
     profile = lambda x, y, z: WP**2 * (1 + 40 * x)
