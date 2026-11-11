@@ -14,9 +14,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import GaussianPulse, Simulation
+from rfx import Box, GaussianPulse, Simulation
 from rfx._internal import _realized
 from rfx._internal._grid_metric import field_index
+from rfx.boundaries.pec import realized_pec_edge_masks
 from rfx.boundaries.spec import BoundarySpec
 
 DEVICES = min(3, len(jax.devices('cpu')))
@@ -38,7 +39,7 @@ def definitions(name, seam, pads):
     if name == 'R2':
         return [((seam-2, y+7, z+4), 'ex', .002, True)], [
             (seam, y+7, z+4), (seam, y+8, z+4),
-            (seam-5, y+9, z+3), (seam+5, y+5, z+5)]
+            (seam-2, y+11, z+3), (seam+1, y+4, z+5)]
     r1 = [((seam, y+7, 0), 'ez', HEIGHT, True)]
     r3 = [((seam-5, y+10, 0), 'ez', HEIGHT, True),
           ((seam+5, y+4, 0), 'ez', HEIGHT, True)]
@@ -75,14 +76,16 @@ def scene(mesh, boundary, name, *, radius=True, column=None, length=.0175):
     grid = sim._build_realized_grid()
     seam = (grid.shape[0]+DEVICES-1)//DEVICES
     ports, probes = definitions(name, seam, grid.axis_pads)
+    # R2's wire drives two one-cell PEC plates; their inner faces sit on the wire's end nodes.
+    plates = (seam-3, seam+2) if name == 'R2' else ()
     if mesh == 'graded':
-        stencil_x = set()
+        stencil_x = set(plates)
         for axis, cell in declared_cells(ports):
             stencil_x.add(cell[0])
             if axis != 0:
                 stencil_x.update((cell[0]-1, cell[0]+1))
         pad = grid.axis_pads[0]
-        candidates = range(pad+3, pad+real_nx-4) if boundary == 'cpml' else range(real_nx-1)
+        candidates = range(pad+3, pad+real_nx-4)
         pair = next(i for i in candidates
                     if all(abs(j-k) >= 3 for j in (i, i+1) for k in stencil_x))
         profile = np.full(real_nx, D)
@@ -93,6 +96,9 @@ def scene(mesh, boundary, name, *, radius=True, column=None, length=.0175):
         assert (grid.shape[0]+DEVICES-1)//DEVICES == seam
     def position(cell):
         return tuple(float(grid.node_of(a, i)) for a, i in enumerate(cell))
+    y, z = grid.axis_pads[1:]
+    for plate in plates:
+        sim.add(Box(position((plate, y+2, z+1)), position((plate+1, y+14, z+7))), material='pec')
     for k, (cell, component, extent, has_radius) in enumerate(ports):
         point = position(cell)
         assert tuple(map(int, field_index(grid, point, component))) == cell
@@ -105,6 +111,20 @@ def scene(mesh, boundary, name, *, radius=True, column=None, length=.0175):
         point = position(cell)
         assert tuple(map(int, field_index(grid, point, component))) == cell
         sim.add_probe(point, component)
+    if plates:
+        cells = np.asarray(sim.conductor_mask(grid))
+        expected = np.zeros(grid.shape, bool)
+        expected[list(plates), y+2:y+14, z+1:z+7] = True
+        extra, missing = (np.argwhere(a & ~b).tolist() for a, b in ((cells, expected), (expected, cells)))
+        assert not extra and not missing, ('R2 plate cells', mesh, boundary, extra[:8], missing[:8])
+        ex, ey, ez = (np.asarray(m) for m in realized_pec_edge_masks(cells))
+        for plane in (seam-2, seam+2):
+            for label, mask in (('ey', ey), ('ez', ez)):
+                face = mask[plane, y+2:y+14, z+1:z+7]
+                assert face.all(), ('R2 plate face', mesh, boundary, label, plane, np.argwhere(~face).tolist()[:8])
+        live = [cell for _, cell in declared_cells(ports)] + list(probes)
+        assert not any(ex[cell] for cell in live), ('R2 PEC ex edge', mesh, boundary,
+                                                    [cell for cell in live if ex[cell]])
     return sim, grid, ports, probes, seam
 
 
@@ -211,7 +231,6 @@ def expected_stencil(ports, family):
 @pytest.mark.parametrize('mesh,boundary', MESHES if DEVICES == 2 else [])
 @pytest.mark.parametrize('name', ['R1', 'R2'])
 def test_realized_stencil(mesh, boundary, name):
-    require_valid_scene(mesh, boundary, name)
     sim, grid, ports, _, width = scene(mesh, boundary, name)
     with _realized.capture() as dump:
         solve(sim, grid, distributed=True, steps=4)
