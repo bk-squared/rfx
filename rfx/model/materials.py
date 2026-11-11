@@ -632,8 +632,7 @@ class EdgePoles(NamedTuple):
                                    high_wall=tuple(wall and w.stop == n for wall, w, n in
                                        zip(unpadded_high_walls(self.grid), window, self.grid.shape)),
                                    cell_sizes=widths).coefficients
-            out.append(tuple(tuple(v[local] for v in t) if isinstance(t, tuple) else t[local]
-                             for t in terms))
+            out.append(jax.tree.map(lambda value: value[local], terms))
         return out
 
 

@@ -518,8 +518,8 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
         raise ValueError("prebuilt Lorentz coefficients require cell sizes and dt for pole stability admission")
     axes = (0, 1) if getattr(grid, "is_2d", False) else (0, 1, 2)
     lc = lorentz[0]
-    if isinstance(lc.a, tuple) or isinstance(lc.b, tuple):
-        raise ValueError("LorentzPoleMap tuple a/b coefficients require a judged realization; judge_prebuilt_poles cannot recover them")
+    if isinstance(lc.damping, tuple) or isinstance(lc.restoring, tuple):
+        raise ValueError("LorentzPoleMap tuple damping/restoring coefficients require a judged realization; judge_prebuilt_poles cannot recover them")
     dc = None if debye is None else debye[0]
 
     def check(step, widths, coeffs, debye_coeffs):

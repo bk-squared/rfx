@@ -97,8 +97,8 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
         constant_delta = not active_d.size or bool(np.all(active_d == ds))
         constant_kappa = not active_k.size or bool(np.all(active_k == ks))
         if ks == 0 or (constant_delta and constant_kappa):
-            a, b, c = lorentz_pole_coeffs([LorentzPole(pole.omega_0, ds, ks)], dt, shape, [fractions])
-            return a[0], b[0], tuple(v[0] for v in c)
+            damping, restoring, c = lorentz_pole_coeffs([LorentzPole(pole.omega_0, ds, ks)], dt, shape, [fractions])
+            return damping[0], restoring[0], tuple(v[0] for v in c)
     else:
         # The normalization scale cancels between the builder and edge weights.
         # Holding it fixed avoids differentiating a squared SI-strength divisor.
@@ -111,17 +111,18 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
     mk = edge_xp.asarray(xp.where(occupied, k, 0.))
     kwargs = dict(periodic=periodic, high_wall=high_wall, cell_sizes=cell_sizes, array_module=edge_xp)
     weights = edge_mean_components(mk, **kwargs)
+    reach = jnp.ones(shape, bool) if fractions is None else pole_reach(fractions)
     if constant_delta:
-        av, bv, cv = pole_update_coeffs(pole.omega_0, ds, ks, dt)
-        reach = jnp.ones(shape, bool) if fractions is None else pole_reach(fractions)
-        return jnp.where(reach, av, 0.), jnp.where(reach, bv, 0.), tuple(cv * w for w in weights)
+        damping, restoring, strength = pole_update_coeffs(pole.omega_0, ds, ks, dt)
+        return jnp.where(reach, damping, 1.0), jnp.where(reach, restoring, 1.0), tuple(strength * w for w in weights)
     product = edge_xp.asarray(xp.where(occupied, k * (delta - ds), 0.))
     offsets = edge_mean_components(product, **kwargs)
     terms = []
     for w, offset in zip(weights, offsets):
         de = ds + edge_xp.where(w > 0, offset / edge_xp.where(w > 0, w, 1.), 0.)
-        a, b, c = pole_update_coeffs(pole.omega_0, de, ks, dt)
-        terms.append(tuple(jnp.asarray(v) for v in (a, b, edge_xp.where(ks > 0, c * w, 0.))))
+        damping, restoring, c = pole_update_coeffs(pole.omega_0, de, ks, dt)
+        terms.append((jnp.where(reach, damping, 1.0), jnp.where(reach, restoring, 1.0),
+                      jnp.asarray(edge_xp.where(ks > 0, c * w, 0.))))
     return tuple(tuple(t[i] for t in terms) for i in range(3))
 
 
@@ -133,8 +134,8 @@ def build_map_coeffs(poles, masks, dt, shape, weights, *, periodic, high_wall, c
             terms.append(map_terms(pole, mask, dt, shape, fractions, periodic=periodic,
                                    high_wall=high_wall, cell_sizes=cell_sizes))
         else:
-            a, b, c = lorentz_pole_coeffs([pole], dt, shape, [fractions])
-            terms.append((a[0], b[0], tuple(v[0] for v in c)))
+            damping, restoring, c = lorentz_pole_coeffs([pole], dt, shape, [fractions])
+            terms.append((damping[0], restoring[0], tuple(v[0] for v in c)))
     result = []
     for i in range(3):
         if any(isinstance(t[i], tuple) for t in terms):

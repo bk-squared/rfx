@@ -24,7 +24,9 @@ four incident cells (:func:`rfx.core.yee.component_e_materials`), and each
 pole's κ_p (∝ Δε_p) is κ_p times the fraction of those cells that carry the
 pole -- the same parallel-susceptibility rule as σ, see
 ``rfx.materials.debye``. ``ca``/``cb``/``cc``/``c`` are 3-tuples ``(x, y,
-z)``; ``damping`` and ``restoring`` depend on ω₀ and δ only and stay one array per pole.
+z)``; ``damping`` and ``restoring`` depend on ω₀ and δ only; for a
+``LorentzPoleMap`` whose δ varies they are component triples formed from
+each edge's strength-weighted δ.
 
 References:
     Taflove & Hagness, Ch. 9
@@ -144,7 +146,7 @@ class LorentzCoeffs(NamedTuple):
     cc : (nx, ny, nz) each — P→E coupling: 1/γ
     c : (n_poles, nx, ny, nz) each — E^n coupling into the P recurrence (∝ κ)
 
-    One array for all components:
+    One array for all components, or component triples for a damping map:
 
     damping, restoring : (n_poles, nx, ny, nz) — increment coefficients (ω₀, δ only),
         the pole's values on every cell whose edges the pole reaches.
