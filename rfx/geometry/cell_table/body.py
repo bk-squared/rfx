@@ -3,6 +3,7 @@
 import numpy as np
 
 from rfx._internal._periodic import periodic_sdf
+from rfx.core.jax_utils import is_tracer
 from rfx.errors import RfxUnsupported
 from rfx.geometry.cell_table.nodes import _axis_node_positions
 from rfx.geometry.cell_table.table import CellGeometryTable
@@ -63,7 +64,7 @@ def _refuse_off_lattice_box(box, lattice, widths, domain, what):
 
     A face on or beyond a domain face is that wall's, placed by the boundary itself.
     """
-    for axis, ((line, period), width) in enumerate(zip(lattice, widths)):
+    for axis, ((line, period, uniform), width) in enumerate(zip(lattice, widths)):
         if line is None:
             continue
         for value in (box.corner_lo[axis], box.corner_hi[axis]):
@@ -71,7 +72,9 @@ def _refuse_off_lattice_box(box, lattice, widths, domain, what):
             if not (period or 1e-6 * width < value < float(domain[axis]) - 1e-6 * width) \
                     or not line[0] < value < line[-1]:
                 continue
-            offset = np.min(np.abs(line - value)) / width
+            index = np.searchsorted(line, value) - 1
+            local_width = width if uniform else line[index + 1] - line[index]
+            offset = np.min(np.abs(line - value)) / local_width
             if offset > 1e-6:
                 raise RfxUnsupported(
                     f'conformal PEC places PEC volumes that hold a grid node; {what} has a {"xyz"[axis]} '
@@ -86,33 +89,55 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
     ``include_trailing_node`` preserves the floor reader's existing refusal
     lattice; SC and unclamped readers judge without that final node.
     """
+    for axis in range(3):
+        if getattr(grid, 'is_traced', lambda axis: False)(axis):
+            raise RfxUnsupported(f'cell geometry table requires concrete cells on axis {"xyz"[axis]}')
+    axis_cells = [grid.cells(axis) for axis in range(3)]
+    for axis, cells in enumerate(axis_cells):
+        if is_tracer(cells):
+            raise RfxUnsupported(f'cell geometry table requires concrete cells on axis {"xyz"[axis]}')
     if not pec_shapes:
         shape = tuple(n + 2 for n in grid.shape)
         return CellGeometryTable(tuple(np.ones(shape, dtype=np.float64) for _ in range(3)),
                                  tuple(np.ones(shape, dtype=np.float64) for _ in range(3)))
+    if hasattr(grid, 'domain') and grid.domain is None:
+        domain = tuple(float(np.sum(axis_cells[axis])) if name in grid.periodic_axes else
+                       grid.node_of(axis, grid.shape[axis] - getattr(grid, f'pad_{name}_hi') - 1)
+                       for axis, name in enumerate('xyz'))
+        grid = grid._replace(domain=domain)
     from rfx.geometry.smoothing import _get_sdf_fn
 
-    lines, widths, lattice, sample_lines = [], [], [], []
-    for axis in range(3):
-        cells = np.asarray(grid.cells(axis), dtype=np.float64)
-        if not np.all(cells == cells[0]):
-            raise NotImplementedError('conformal PEC SC clamp requires uniform cells')
-        width = float(cells[0])
+    lines, widths, max_widths, lattice, sample_lines = [], [], [], [], []
+    for axis, cells in enumerate(axis_cells):
+        cells = np.asarray(cells, dtype=np.float64)
+        uniform = bool(np.all(cells == cells[0]))
+        width = float(np.min(cells))
+        periodic = 'xyz'[axis] in getattr(grid, 'periodic_axes', '')
+        # Non-periodic stores end in a node-provider duplicate, not a physical cell.
+        end_width = float(cells[-1 if periodic or len(cells) == 1 else -2])
         nodes = _axis_node_positions(cells, getattr(grid, f'pad_{"xyz"[axis]}_lo'))
-        line = np.concatenate(([nodes[0] - width], nodes, [nodes[-1] + width]))
-        line = np.concatenate((line, [nodes[-1] + 2 * width]))
+        line = np.concatenate(([nodes[0] - float(cells[0])], nodes, [nodes[-1] + end_width]))
+        line = np.concatenate((line, [nodes[-1] + 2 * end_width]))
         admission_line = line if include_trailing_node else line[:-1]
-        lattice.append((admission_line, None))
+        lattice.append((admission_line, None, uniform))
         sample_lines.append(line)
         if axis == 2 and getattr(grid, 'is_2d', False):
             line = np.full_like(line, nodes[0])  # The collapsed lane repeats its physical slice.
             sample_lines[-1] = line
-            lattice[-1] = (None, None)
-        elif 'xyz'[axis] in getattr(grid, 'periodic_axes', ''):
-            lattice[-1] = (admission_line, float(grid.domain[axis]))
+            lattice[-1] = (None, None, uniform)
+        elif periodic:
+            if not uniform:
+                line[0] = nodes[0] - end_width
+                line[-1] = nodes[-1] + end_width + float(cells[0])
+            lattice[-1] = (admission_line, float(grid.domain[axis]), uniform)
             line = np.mod(line, float(grid.domain[axis]))
+            if not uniform:
+                # Copy wrapped physical nodes to avoid seam roundoff in the halos.
+                line[0] = line[-3]
+                line[-2:] = line[1:3]
         lines.append(line)
         widths.append(width)
+        max_widths.append(float(np.max(cells)))
     coords = np.meshgrid(*lines, indexing='ij', sparse=True)
     sdf = np.full(tuple(len(line) for line in lines), np.inf, dtype=np.float64)
     from rfx.geometry.csg import Box, PolylineWire
@@ -138,7 +163,7 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
         shape_sdf = periodic_sdf(grid, shape, coords, fn, xp=np)
         held = shape_sdf if include_trailing_node else np.broadcast_to(shape_sdf, sdf.shape)[:-1, :-1, :-1]
-        if not np.any(held < -1e-9 * min(widths)) and np.min(held) < max(widths):
+        if not np.any(held < -1e-9 * min(widths)) and np.min(held) < max(max_widths):
             if isinstance(sheet, Box):
                 _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this PEC Box')
             else:
