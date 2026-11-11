@@ -217,21 +217,39 @@ def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
     return fold(0, coords)
 
 
+def _sdf_image_ranges(grid, shape, *, padding=None):
+    """Images within a reader's reach of the base period.
+
+    By default, pad every periodic axis by the largest cell over all axes:
+    conformal edges reach a full cell, and smoothing samples half a cell
+    along a normal that can point along a coarser transverse axis. Uniform
+    2-D grids expose a singleton collapsed-axis cell of the same width, so
+    including it leaves the maximum over the physical axes unchanged.
+    Readers with a wider support may supply their own ``padding``.
+    """
+    import numpy as np
+    periodic = getattr(grid, 'periodic_axes', '')
+    if padding is None and periodic:
+        padding = max(float(np.max(grid.cells(a))) for a in range(3))
+    return [_fill_image_range(grid, shape, a, padding=padding)
+            if 'xyz'[a] in periodic else (0,) for a in range(3)]
+
+
 def periodic_sdf(grid, shape, coords, sdf_fn, *, xp, normal_fn=None,
                  return_image=False, exclude_image=None, exclude_where=False):
     """Minimum signed distance over fill images, with the winning normal.
 
     Images are reduced one axis at a time; only base-grid arrays are held.
-    SDF weights sample a half-cell transition outside a body's bounds, so
-    the shared image selector includes that support as well as its interior.
+    Conformal edges reach one full cell outside a body's bounds. The largest
+    cell over all axes pads every periodic axis, including on graded grids;
+    halo nodes are wrapped copies of physical nodes. This also covers the
+    half-cell normal transition sampled by smoothing, even when the normal
+    points along a coarser transverse axis.
     The non-periodic call is exactly the original SDF/normal evaluation.
     Optionally retain the winning image's coordinate-shift indices. Outside
     media lookup can exclude that image at selected samples before folding.
     """
-    periodic = getattr(grid, 'periodic_axes', '')
-    images = [_fill_image_range(grid, shape, a, padding=.5 * float(grid.cells(a)[0]))
-              if 'xyz'[a] in periodic else (0,)
-              for a in range(3)]
+    images = _sdf_image_ranges(grid, shape)
 
     def fold(axis, values, image):
         if axis == 3:
