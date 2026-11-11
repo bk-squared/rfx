@@ -1496,15 +1496,13 @@ class _ExecuteMixin:
                 checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
                 emit_time_series=emit_time_series, ringdown=ringdown)
         checkpoint = True if checkpoint is None else checkpoint
-        # No forward lane (and so no optimize()) applies Dey-Mittra weights.
-        self._refuse_conformal_boundary(
-            {"fwd_uniform": "uniform forward",
-             "fwd_nonuniform": "non-uniform forward",
-             "fwd_distributed_nu": "distributed non-uniform forward",
-             }.get(plan.lane, plan.lane),
-            entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
-            instead="use run() on a uniform mesh to keep conformal PEC "
-                    "for a forward-only result")
+        if plan.lane != "fwd_uniform":
+            self._refuse_conformal_boundary(
+                {"fwd_uniform": "uniform forward", "fwd_nonuniform": "non-uniform forward",
+                 "fwd_distributed_nu": "distributed non-uniform forward"}.get(plan.lane, plan.lane),
+                entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
+                instead="use run() on a uniform mesh to keep conformal PEC "
+                        "for a forward-only result")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(
@@ -1647,8 +1645,8 @@ class _ExecuteMixin:
                 materials, eps_override=eps_override, sigma_override=sigma_override,
                 mu_r_override=mu_r_override)
 
-        if pec_mask_override is not None:
-            pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
+        from rfx.runners._admission import merge_forward_pec_mask
+        pec_mask = merge_forward_pec_mask(self, pec_mask, pec_mask_override)
 
         if n_steps is None:
             n_steps = grid.num_timesteps(num_periods=num_periods)
@@ -1976,7 +1974,7 @@ class _ExecuteMixin:
         from rfx.geometry.conformal import validate_conformal_min_weight
         validate_conformal_min_weight(conformal_min_weight)
         self._resolve_field_dtype()
-        admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box)
+        admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box, conformal_pec)
         from rfx.runners.run import run_after_admission
         return run_after_admission(
             self,

@@ -279,6 +279,20 @@ def build_c_smooth(path):
     return dielectric(path)
 
 
+def build_c_conformal(path):
+    sim = base_scene(path, snap="declared", boundary=BoundarySpec(
+        x='cpml', y=Boundary('pec', 'pec', conformal=True), z='cpml'))
+    sim.add(Sphere((.0153, .0102, .0061), .0023), material='pec')
+    return sim.add(Box((.0223, .0072, .0033), (.0267, .0138, .0086)), material='pec')
+
+
+def build_p_conformal(path):
+    sim = base_scene(path, snap="declared", source=False, boundary=BoundarySpec(
+        x='cpml', y=Boundary('pec', 'pec', conformal=True), z='cpml'))
+    sim.add(Sphere((.0153, .0102, .0061), .0023), material='pec')
+    return sim.add_port(SOURCE, 'ez', impedance=50.)
+
+
 def build_c_full_tensor(path):
     sim = base_scene(path, source=False)
     sim.add_material('sphere', eps_r=4.)
@@ -333,6 +347,7 @@ BUILDERS = {
     'C-sheet': build_c_sheet, 'C-film': build_c_film, 'C-wire': build_c_wire,
     'C-pinned': build_c_pinned, 'C-smooth': build_c_smooth,
     'C-full-tensor': build_c_full_tensor,
+    'C-conformal': build_c_conformal, 'P-conformal': build_p_conformal,
     'R-rlc': build_r_rlc, 'O-dft': build_o_dft, 'O-flux': build_o_flux,
     'O-ntff': build_o_ntff, 'O-vector': build_o_vector, 'O-cm': build_o_cm,
 }

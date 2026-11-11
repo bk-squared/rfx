@@ -128,11 +128,11 @@ def test_keyword_not_accepted(entry, source, keyword):
 
 
 @pytest.mark.parametrize("source", ["K", "B"])
-def test_lumped_scan_refuses_conformal_once(source):
+def test_lumped_scan_refuses_kottke_conformal(source):
     with pytest.raises(NotImplementedError,
-                       match="lumped/wire S-matrix scan does not carry") as caught:
+                       match="kottke_pec.*cannot combine") as caught:
         _invoke("lumped_scan", source)
-    assert str(caught.value).count("Boundary(conformal=True) or conformal_pec=True") == 1
+    assert str(caught.value).count("cannot combine") == 1
 
 
 CONFORMAL_ROWS = (("_boundary_spec", "conformal"),
