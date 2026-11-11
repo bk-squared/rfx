@@ -246,6 +246,7 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     single = expected_sim.run(**kwargs)
     reader_counts = []
     from rfx.sources import sources as port_sources
+    from rfx.model import lumped_stamp
     original_live = port_sources._wire_port_live_cells
 
     def capture_live(g, port, pec_edge_masks=None):
@@ -254,6 +255,7 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
         return result
 
     monkeypatch.setattr(port_sources, '_wire_port_live_cells', capture_live)
+    monkeypatch.setattr(lumped_stamp, '_wire_port_live_cells', capture_live)
     multi = _port_model().run(devices=_devices(), **kwargs)
     # The slab port sampler reads the live cells resolved inside run_distributed
     # (#2175): every resolution, main run and S-driver drives, is one reader.
