@@ -233,7 +233,7 @@ def test_radius_refuses_dispersive_board_before_step(lane, kind, monkeypatch):
 
 
 @pytest.mark.parametrize("entry", [  "subgridded",
-                                   "distributed_v2", "distributed_nu", "upml"])
+                                   "upml"])
 def test_unsupported_radius_path_refuses_before_first_step(entry, monkeypatch):
     from rfx.runners.distributed_v2 import run_distributed
     options = {}
@@ -256,13 +256,15 @@ def test_unsupported_radius_path_refuses_before_first_step(entry, monkeypatch):
             sim.run(n_steps=1, skip_preflight=True)
 
 
-def test_low_level_distributed_nu_refuses_stamped_radius(monkeypatch):
-    from rfx.runners.distributed_nu import run_nonuniform_distributed_pec
+def test_legacy_distributed_h_shard_refuses_stamped_radius(monkeypatch):
+    from rfx.stepping.slab_update import update_h_nu_shmap
     mats = init_materials((3,)*3)
     mats = mats._replace(mu_r_wire=(jnp.zeros_like(mats.mu_r), None, None))
     monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped before refusal"))
-    with pytest.raises(NotImplementedError, match="radius.*distributed_nu"):
-        run_nonuniform_distributed_pec(None, mats, None, 1, n_devices=2)
+    with pytest.raises(NotImplementedError, match="radius.*distributed H shard"):
+        update_h_nu_shmap(None, mats, None, 1., *([None]*6),
+                          ranks=jnp.zeros(2, jnp.int32), nx_per=2, nx=3,
+                          high_wall=(True, True, True))
 
 
 def test_radius_material_records_survive_checkpoint(tmp_path):

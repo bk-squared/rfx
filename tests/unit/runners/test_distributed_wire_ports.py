@@ -202,14 +202,14 @@ def test_single_wire_zero_wave():
 
 
 @pytest.mark.parametrize("kind,message", [
-    ("planes", "reference_plane_cells"), ("radius", "radius"),
+    ("planes", "reference_plane_cells"),  # Radius parity is in the contract.
     ("passive", "passive port"), ("pmc", "PMC")])
 @pytest.mark.parametrize("compute_s", [None, True, False])
 def test_refusals(kind, message, compute_s):
     from rfx.boundaries.spec import Boundary, BoundarySpec
     sim = _model(planes=kind == "planes")
-    if kind in ("radius", "passive"):
-        sim._ports[0] = replace(sim._ports[0], **({"radius": .0001} if kind == "radius" else {"excite": False}))
+    if kind == "passive":
+        sim._ports[0] = replace(sim._ports[0], excite=False)
     if kind == "graded":
         sim = Simulation(freq_max=10e9, domain=(.016, .006, .006), dx=.001,
                          boundary="pec", dz_profile=np.array([.001]*3 + [.0005]*6))

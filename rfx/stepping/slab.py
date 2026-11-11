@@ -57,6 +57,19 @@ FILL = {
 }
 
 
+def material_kind(path, *, prefix="materials"):
+    """Publish a material leaf with its operand-table neutral value."""
+    from rfx.model.operands import material_rule
+    names = [str(getattr(p, 'name', getattr(p, 'key', getattr(p, 'idx', p))))
+             for p in path]
+    neutral, _, _ = material_rule('.'.join((prefix, *names)))
+    if neutral == 1:
+        return 'eps_r'
+    if neutral == 0:
+        return 'lumped'
+    raise ValueError(f"Material leaf has no scalar neutral fill: {prefix}.{'.'.join(names)}")
+
+
 @dataclass(frozen=True)
 class Slab:
     """Static x ownership, constructed before tracing a time-step scan."""
