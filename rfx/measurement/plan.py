@@ -222,7 +222,7 @@ def _pec_edges(sim, grid):
 def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                            calculator_owners=(), conductors=None, pec_edges=_UNSET,
                            periodic=None, dft_window=_UNSET, staggered_area=False,
-                           overrides=None, default_probes=()):
+                           overrides=None, default_probes=(), identification=()):
     """Freeze measurement geometry using the run's realized inputs when supplied.
 
     Omitted inputs retain the declaration-based convenience behavior. Explicit
@@ -238,12 +238,12 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             calculator_owners=calculator_owners, conductors=conductors,
             pec_edges=edges, periodic=periodic, dft_window=dft_window,
             staggered_area=staggered_area, overrides=overrides,
-            default_probes=default_probes)
+            default_probes=default_probes, identification=identification)
 
 
 def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
                             calculator_owners, conductors, pec_edges, periodic,
-                            dft_window, staggered_area, overrides, default_probes=()):
+                            dft_window, staggered_area, overrides, default_probes=(), identification=()):
     """Build a frozen snapshot from a Simulation and the run's realized grid.
 
     ``path`` selects run/forward availability on the selected mesh. Optional
@@ -284,6 +284,11 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
                                      (Node(component, ni, nj, nk, 1.0),),
                                      e_time_offset=0., h_time_offset=0.),),
                             known_differences=('forward-only default probes at port positions',)))
+    for i, entry in enumerate(identification):
+        owners.append(Owner(f'ringdown:{i}', 'identification',
+                            (field_channel(entry.component,
+                                     (Node(entry.component, *field_index(grid, entry.position, entry.component), 1.0),),
+                                     e_time_offset=0., h_time_offset=0.),)))
     for i, entry in enumerate(sim._dft_planes):
         axis = 'xyz'.index(entry.axis)
         point = [0.0, 0.0, 0.0]

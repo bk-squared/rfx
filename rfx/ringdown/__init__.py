@@ -1101,21 +1101,15 @@ class RingdownRun:
     # -- the run -------------------------------------------------------------
 
     def run(self, call):
-        """Attach the probes, call the lane's runner, detach, complete."""
-        from rfx.api._spec import _ProbeEntry
+        """Scope the probes to the lane call, then complete."""
+        from rfx.measurement.identification import ringdown_probes
 
         _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes)
-        # rfx attaches port channels; identification.py refuses pad probes earlier, and the port entry judges its position with the user's flag.
-        probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp, allow_in_absorber=True)
-                      for comp, idx in self.probe_keys)
-        try:
+        with ringdown_probes(probes, self.grid, self.probe_keys, "RingdownRun.run"):
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
             result = call(**kwargs)
-        finally:
-            del probes[n_user:]
         return self._finish(result, n_user)
 
     # -- after the run -------------------------------------------------------
@@ -1950,21 +1944,16 @@ class RingdownStop:
     # -- the run -------------------------------------------------------------
 
     def run(self, call):
-        """Attach the probes, call the lane's runner with the stop, detach, complete."""
-        from rfx.api._spec import _ProbeEntry
+        """Scope the probes to the lane call with the stop, then complete."""
+        from rfx.measurement.identification import ringdown_probes
 
         probes = self.sim._probes
         n_user = len(probes)
         self.n_user = n_user
-        probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp, allow_in_absorber=True)
-                      for comp, idx in self.base.probe_keys)
-        try:
+        with ringdown_probes(probes, self.grid, self.base.probe_keys, "RingdownStop.run"):
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
             result = call(stop_fn=self.after_chunk, stop_interval=self.chunk,
                           **kwargs)
-        finally:
-            del probes[n_user:]
         n_rec = int(np.shape(result.time_series)[0])
         fin = (self.base if n_rec == self.n_max else
                RingdownRun(self.sim, self.spec, lane=self.lane, n_steps=n_rec,
@@ -2350,26 +2339,14 @@ class RingdownForward(RingdownRun):
     caller = "forward"
 
     def run(self, call):
-        """Attach the probes, call the lane, detach, complete (traced)."""
-        from rfx.api._spec import _ProbeEntry
+        """Scope the probes to the lane call, then complete (traced)."""
+        from rfx.measurement.identification import ringdown_probes
 
         _check_run_identification_memory(self)
         probes = self.sim._probes
-        n_declared = len(probes)
-        if self.lane == "uniform" and n_declared == 0:
-            # forward()'s uniform lane records every port's own cell when the
-            # model declares no probe; those columns stay first, as they were.
-            probes.extend(_ProbeEntry(position=pe.position, component=pe.component,
-                                      allow_in_absorber=pe.allow_in_absorber)
-                          for pe in self.sim._ports)
-        n_user = len(probes)
-        probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
-                                  component=comp, allow_in_absorber=True)
-                      for comp, idx in self.probe_keys)
-        try:
+        n_user = len(probes) or (len(self.sim._ports) if self.lane == "uniform" else 0)
+        with ringdown_probes(probes, self.grid, self.probe_keys, "RingdownForward.run"):
             result = call()
-        finally:
-            del probes[n_declared:]
         self.sim = None          # the plan outlives the call inside the result
         return self._finish_forward(result, n_user)
 

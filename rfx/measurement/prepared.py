@@ -6,6 +6,8 @@ from rfx.measurement.plan import build_measurement_plan
 
 def attach_measurement(sim, conductors, *, n_steps, path, grid=None, **inputs):
     from rfx.model.conductors import PreparedSolve
+    from rfx.measurement.identification import read_ringdown_probes
+    identification = read_ringdown_probes(sim._probes, "attach_measurement")
     prepared = conductors._prepared_solve
     if prepared is None:
         # Internal material-based entries also own an execution-local snapshot.
@@ -18,7 +20,7 @@ def attach_measurement(sim, conductors, *, n_steps, path, grid=None, **inputs):
     prepared._measurement_inputs = dict(
         sim=sim, grid=conductors.grid if grid is None else grid, n_steps=n_steps, path=path,
         conductors=replace(conductors), pec_edges=conductors.pec_edges,
-        periodic=conductors.periodic, **inputs)
+        periodic=conductors.periodic, identification=identification, **inputs)
     if path == 'run_subgridded':
         finish_measurement(conductors)
 
