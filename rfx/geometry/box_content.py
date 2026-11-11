@@ -102,10 +102,8 @@ def _images(grid, shape, bounds):
     """Periodic copies of ``bounds`` as ``periodic_sdf`` enumerates them."""
     from itertools import product
 
-    from rfx._internal._periodic import _fill_image_range
-    periodic = getattr(grid, 'periodic_axes', '')
-    ranges = [_fill_image_range(grid, shape, a, padding=.5 * float(grid.cells(a)[0]))
-              if 'xyz'[a] in periodic else (0,) for a in range(3)]
+    from rfx._internal._periodic import _sdf_image_ranges
+    ranges = _sdf_image_ranges(grid, shape)
     lo, hi = bounds
     out = []
     for shift in product(*ranges):

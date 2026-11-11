@@ -217,21 +217,28 @@ def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
     return fold(0, coords)
 
 
+def _sdf_image_ranges(grid, shape):
+    """Images reaching a full cell beyond the body on each periodic axis."""
+    import numpy as np
+    periodic = getattr(grid, 'periodic_axes', '')
+    return [_fill_image_range(grid, shape, a, padding=float(np.max(grid.cells(a))))
+            if 'xyz'[a] in periodic else (0,) for a in range(3)]
+
+
 def periodic_sdf(grid, shape, coords, sdf_fn, *, xp, normal_fn=None,
                  return_image=False, exclude_image=None, exclude_where=False):
     """Minimum signed distance over fill images, with the winning normal.
 
     Images are reduced one axis at a time; only base-grid arrays are held.
-    SDF weights sample a half-cell transition outside a body's bounds, so
-    the shared image selector includes that support as well as its interior.
+    Conformal edges reach one full cell outside a body's bounds. The largest
+    cell on each axis covers that reach, including on graded periodic grids;
+    halo nodes are wrapped copies of physical nodes. This also covers the
+    half-cell transition sampled by smoothing weights.
     The non-periodic call is exactly the original SDF/normal evaluation.
     Optionally retain the winning image's coordinate-shift indices. Outside
     media lookup can exclude that image at selected samples before folding.
     """
-    periodic = getattr(grid, 'periodic_axes', '')
-    images = [_fill_image_range(grid, shape, a, padding=.5 * float(grid.cells(a)[0]))
-              if 'xyz'[a] in periodic else (0,)
-              for a in range(3)]
+    images = _sdf_image_ranges(grid, shape)
 
     def fold(axis, values, image):
         if axis == 3:
