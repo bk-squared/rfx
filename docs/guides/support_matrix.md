@@ -626,6 +626,11 @@ line the calculator builds. Use `feed_impedance=` for the feed and `dut_impedanc
 `termination="matched"`. `probe_count` must be at least three and every plane
 must fit between the load and the source.
 
+A 0.635/2.055 mm coaxial line with eps_r 2.1 ended in a matched sheet with
+open space behind it has an end capacitance of about 31.5 fF, giving a
+physical matched-reflection floor of about -32 dB at 5 GHz, rising 6 dB per
+octave and growing with the permittivity behind the end.
+
 - A short and an open are held to `|Γ|` within 0.05 of 1 on the current code
   (`tests/unit/sparams/test_coaxial_line_reflection.py`).
 - Recorded fixtures compare it with the closed form over 4–12 GHz for short,
