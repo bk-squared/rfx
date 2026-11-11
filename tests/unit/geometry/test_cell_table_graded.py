@@ -290,3 +290,139 @@ def test_body_inside_coarse_cell_holds_no_node(include_trailing_node):
     with pytest.raises(NotImplementedError, match='the Sphere holds no grid node'):
         build_cell_table(grid, [Sphere((center,) * 3, .0009)],
                          include_trailing_node=include_trailing_node)
+
+
+def _node_lines(grid):
+    return [np.array([grid.node_of(a, i) for i in range(grid.shape[a])]) for a in range(3)]
+
+
+def _owner_points(lines, kind, axis):
+    # Corners and centre of each owner from its start node on lines[:-1] and the next node.
+    start = np.meshgrid(*(n[:-1] for n in lines), indexing='ij', sparse=True)
+    end = np.meshgrid(*(n[1:] for n in lines), indexing='ij', sparse=True)
+    u, v = [a for a in range(3) if a != axis]
+    moved = (axis,) if kind == 'edge' else (u, v)
+    steps = [(), moved] if kind == 'edge' else [(), (u,), (u, v), (v,)]
+    corners = [[end[a] if a in step else start[a] for a in range(3)] for step in steps]
+    return corners, [(start[a] + end[a]) / 2 if a in moved else start[a] for a in range(3)]
+
+
+def _in_box(point, lo, hi, strict=False):
+    below = np.less if strict else np.less_equal
+    inside = True
+    for a in range(3):
+        inside = inside & below(lo[a], point[a]) & below(point[a], hi[a])
+    return inside
+
+
+@pytest.mark.parametrize('include_trailing_node', [False, True])
+def test_graded_box_faces_on_node_planes(include_trailing_node):
+    # Every Box face lies on a node plane between unequal cells.
+    grid = _graded(_geometric_profiles())
+    lines = _node_lines(grid)
+    lo, hi = tuple(n[5] for n in lines), tuple(n[19] for n in lines)
+    table = build_cell_table(grid, [Box(lo, hi)], include_trailing_node=include_trailing_node)
+    physical = tuple(slice(1, len(n)) for n in lines)
+    planes = [(b, f) for b in range(3) for f in (lo[b], hi[b])]
+
+    def on(point, b, f):
+        return (point[b] == f) & _in_box(point, lo, hi)
+
+    for axis in range(3):
+        lengths = table.lengths[axis][physical]
+        (first, last), centre = _owner_points(lines, 'edge', axis)
+        in_face = touching = False
+        for b, f in planes:
+            if b != axis:
+                in_face = in_face | (on(first, b, f) & on(last, b, f))
+            touching = touching | on(first, b, f) | on(last, b, f)
+        touching = touching & ~_in_box(centre, lo, hi)
+        in_face, touching = (np.broadcast_to(m, lengths.shape) for m in (in_face, touching))
+        assert np.count_nonzero(in_face) and np.count_nonzero(touching), axis
+        assert np.all(lengths[in_face] == 0.), axis
+        assert np.max(np.abs(lengths[touching] - 1.)) <= 1e-12, axis
+        areas = table.areas[axis][physical]
+        corners, _ = _owner_points(lines, 'face', axis)
+        in_face = False
+        for f in (lo[axis], hi[axis]):
+            lying = True
+            for corner in corners:
+                lying = lying & on(corner, axis, f)
+            in_face = in_face | lying
+        in_face = np.broadcast_to(in_face, areas.shape)
+        assert np.count_nonzero(in_face), axis
+        assert np.all(areas[in_face] == 0.), axis
+
+
+@pytest.mark.parametrize('thin', range(3))
+@pytest.mark.parametrize('include_trailing_node', [False, True])
+def test_graded_one_cell_box_without_node_is_carried(thin, include_trailing_node):
+    # One cell thick between node planes of unequal cells: no node lies strictly inside,
+    # so admission takes the node-less Box branch and the in-surface union carries it.
+    grid = _graded(_geometric_profiles())
+    lines = _node_lines(grid)
+    lo, hi = [n[5] for n in lines], [n[19] for n in lines]
+    lo[thin], hi[thin] = lines[thin][10], lines[thin][11]
+    width = np.diff(lines[thin])
+    assert width[10] != width[9] and width[10] != width[11]
+    nodes = np.meshgrid(*lines, indexing='ij', sparse=True)
+    assert not np.any(_in_box(nodes, lo, hi, strict=True))
+    table = build_cell_table(grid, [Box(tuple(lo), tuple(hi))],
+                             include_trailing_node=include_trailing_node)
+    physical = tuple(slice(1, len(n)) for n in lines)
+    for axis in range(3):
+        for kind, values in (('edge', table.lengths[axis]), ('face', table.areas[axis])):
+            values = values[physical]
+            corners, centre = _owner_points(lines, kind, axis)
+            inside = np.broadcast_to(_in_box(centre, lo, hi), values.shape)
+            assert np.count_nonzero(inside), (kind, axis)
+            assert np.all(values[inside] == 0.), (kind, axis)
+            if kind == 'edge':
+                outside = np.broadcast_to(~(_in_box(corners[0], lo, hi) | _in_box(corners[1], lo, hi)),
+                                          values.shape)
+                assert np.count_nonzero(outside), axis
+                assert np.max(np.abs(values[outside] - 1.)) <= 1e-12, axis
+
+
+@pytest.mark.parametrize('include_trailing_node', [False, True])
+def test_periodic_graded_seam_face_reads_midpoints(include_trailing_node):
+    # The Box's low z face is node 0, the seam, and its high face the last node: the last
+    # cell (2.5 mm, wider than the first, 1 mm) is an open gap between two Box images.
+    profiles = [*_geometric_profiles()[:2], .001 * np.array([1., 2., 3., 2., 1.5, 2.5])]
+    grid = _graded(profiles, periodic='z')
+    lines = _node_lines(grid)
+    nz, period = grid.nz, float(np.sum(profiles[2]))
+    lo = (lines[0][5], lines[1][5], lines[2][0])
+    hi = (lines[0][19], lines[1][19], lines[2][-1])
+    table = build_cell_table(grid, [Box(lo, hi)], include_trailing_node=include_trailing_node)
+    for field in ('lengths', 'areas', 'edge_part_counts', 'face_part_counts'):
+        for axis, values in enumerate(getattr(table, field)):
+            for halo, physical in ((0, nz), (nz + 1, 1)):
+                assert np.array_equal(values[:, :, halo], values[:, :, physical]), (field, axis, halo)
+    # Table z owners start at nodes -1 .. nz, unwrapped; the Box repeats with the period.
+    lines[2] = np.r_[lines[2][-1] - period, lines[2], lines[2][0] + period, lines[2][1] + period]
+    images = [(lo[:2] + (lo[2] + k * period,), hi[:2] + (hi[2] + k * period,)) for k in (-1, 0, 1)]
+
+    def union(point, strict=False):
+        inside = False
+        for image in images:
+            inside = inside | _in_box(point, *image, strict=strict)
+        return inside
+
+    seam = np.isin(np.arange(nz + 2), (0, 1, nz, nz + 1))
+    read = {0.: 0, 1.: 0}
+    for axis in range(3):
+        for kind, values in (('edge', table.lengths[axis]), ('face', table.areas[axis])):
+            values = values[1:len(lines[0]), 1:len(lines[1]), :]
+            corners, centre = _owner_points(lines, kind, axis)
+            closed, surface = True, False
+            for corner in corners:
+                closed = closed & union(corner)
+                surface = surface | (union(corner) & ~union(corner, strict=True))
+            in_surface = np.broadcast_to(closed & surface & seam, values.shape)
+            expected = np.broadcast_to(~union(centre), values.shape).astype(np.float64)
+            assert np.array_equal(values[in_surface], expected[in_surface]), (kind, axis)
+            for value in read:
+                read[value] += int(np.count_nonzero(expected[in_surface] == value))
+    # Owners in a Box face read metal; owners spanning the gap read open.
+    assert read[0.] and read[1.], read
