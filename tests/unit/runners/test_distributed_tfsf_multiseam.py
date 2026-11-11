@@ -288,6 +288,30 @@ def first_difference(a, b):
     return nodes[0].tolist() if len(nodes) else None
 
 
+def step_comparison(a, b):
+    """Per step: float64 max |b - a|, float32 max |a|, first differing node [step, i, j, k] or None.
+
+    Bit-equal to difference/first_difference over the whole record, one step at a time to avoid GB-scale
+    temporaries (rfx-archive rfx/records/20261112-b2-multiseam-measure/).
+    """
+    assert a.shape == b.shape
+    assert a.dtype == b.dtype == np.float32
+    steps = a.shape[0]
+    delta = np.empty(steps, dtype=np.float64)
+    peak = np.empty(steps, dtype=np.float32)
+    first = None
+    for t in range(steps):
+        xt, yt = a[t], b[t]
+        assert np.isfinite(xt).all() and np.isfinite(yt).all()
+        delta[t] = np.abs(yt.astype(np.float64) - xt.astype(np.float64)).max()
+        peak[t] = np.abs(xt).max()
+        if first is None:
+            mask = xt.view(np.uint32) != yt.view(np.uint32)
+            if mask.any():
+                first = [t] + [int(v) for v in np.unravel_index(int(np.argmax(mask)), mask.shape)]
+    return delta, peak, first
+
+
 def far_field(result):
     with redirect_stdout(sys.stderr):
         ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, [np.pi / 2], [np.pi])
@@ -335,9 +359,7 @@ def measure_box(scene, count):
         assert a.shape == (scene.steps, *scene.grid.shape)
         np.testing.assert_array_equal(one.snapshot_axes[c].steps, np.arange(1, scene.steps + 1))
         np.testing.assert_array_equal(many.snapshot_axes[c].steps, one.snapshot_axes[c].steps)
-        delta = difference(a, b).reshape(scene.steps, -1).max(axis=1)
-        peak = np.abs(a).reshape(scene.steps, -1).max(axis=1)
-        at = first_difference(a, b)
+        delta, peak, at = step_comparison(a, b)
         if at is not None:
             first.append(dict(step=at[0] + 1, component=c, node=at[1:], stage="completed grid step"))
         report["grid_diagnostics"][c] = dict(delta=delta.tolist(), peak=peak.tolist(), first_difference=at)
@@ -502,3 +524,44 @@ def test_b2_right_hx_ghost():
     require_devices(3)
     report = measure_ghost(build_box("B2", 3))
     assert report["passes"], report
+
+
+def test_step_comparison_matches_whole_record():
+    """step_comparison equals the whole-record form on planted float32 cases; positions are literals."""
+    rng = np.random.default_rng(20261112)
+    base = rng.standard_normal((7, 5, 4, 3)).astype(np.float32)
+    base[2, 0, 0, 0] = np.float32(-100.0)  # the largest magnitude is negative: the peak is max |a|
+    base[3] = np.float32(0.0)  # an all-zero step for the signed-zero cases
+
+    def planted(*edits):
+        b = base.copy()
+        for idx, value in edits:
+            b[idx] = np.float32(value)
+        return b
+
+    up = np.nextafter(base[6, 4, 3, 2], np.float32(np.inf), dtype=np.float32)
+    several = planted(((4, 1, 2, 0), base[4, 1, 2, 0] + np.float32(0.5)),
+                      ((4, 3, 0, 2), base[4, 3, 0, 2] - np.float32(2.0)),
+                      ((4, 0, 3, 1), base[4, 0, 3, 1] + np.float32(0.25)),
+                      ((6, 0, 0, 0), base[6, 0, 0, 0] + np.float32(1.0)))
+    negzero = planted(((3, 2, 1, 1), -0.0))
+    cases = [("identical", base, base.copy(), None),
+             ("one difference at the last element (1 ULP)", base, planted(((6, 4, 3, 2), up)), [6, 4, 3, 2]),
+             ("one difference at the first element", base, planted(((0, 0, 0, 0), base[0, 0, 0, 0] + 1)),
+              [0, 0, 0, 0]),
+             ("several differences from step 4 on", base, several, [4, 0, 3, 1]),
+             ("-0.0 against +0.0 in an all-zero step (second array)", base, negzero, [3, 2, 1, 1]),
+             ("-0.0 against +0.0 in an all-zero step (first array)", negzero, base.copy(), [3, 2, 1, 1])]
+    steps = base.shape[0]
+    for name, a, b, planted_at in cases:
+        delta, peak, first = step_comparison(a, b)
+        whole_delta = difference(a, b).reshape(steps, -1).max(axis=1)
+        whole_peak = np.abs(a).reshape(steps, -1).max(axis=1)
+        assert delta.dtype == whole_delta.dtype == np.float64, name
+        assert peak.dtype == whole_peak.dtype == np.float32, name
+        assert np.array_equal(delta, whole_delta), name
+        assert np.array_equal(peak, whole_peak), name
+        assert peak[2] == np.float32(100.0), name
+        assert first == first_difference(a, b), name
+        assert first == planted_at, name
+        assert first is None or (type(first) is list and all(type(v) is int for v in first)), name
