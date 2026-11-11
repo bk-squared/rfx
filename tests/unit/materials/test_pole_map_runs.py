@@ -186,7 +186,13 @@ def test_p1_fields(monkeypatch, graded, callables):
         strict=True, raises=NotImplementedError, reason='graded float64 needs rfx#2538')),
 ])
 @pytest.mark.parametrize('pin', ['P2a', 'P2b'])
-def test_p2_staircase(monkeypatch, graded, pin, precision):
+def test_p2_staircase(monkeypatch, graded, pin, precision, request):
+    if pin == 'P2b' and not graded and precision == 'float32':
+        request.applymarker(pytest.mark.xfail(
+            strict=True, raises=AssertionError,
+            reason="cannot judge P2b in float32 on main's core: scalar control 0.1255 uniform > 0.1 "
+                   "(rfx-archive MERGE-MAIN.md A7.3d @5cf6b6730); judged by "
+                   "the float64 twin (A7.3e, desk D:091839)"))
     with enable_x64() if precision == 'float64' else nullcontext():
         try:
             _p2_staircase(monkeypatch, graded, pin, precision)
