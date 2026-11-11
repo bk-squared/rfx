@@ -44,13 +44,9 @@ _ringdown_probes: ContextVar[tuple | None] = ContextVar("ringdown_probes", defau
 
 
 @contextmanager
-def ringdown_probes(probes, grid, keys, entry_point):
+def ringdown_probes(probes, entries, entry_point):
     """Lend probes to lanes sharing the declaration list, including drive copies."""
-    from rfx.api._spec import _ProbeEntry
-    from rfx.ringdown import _node_position
-    entries = tuple(_ProbeEntry(position=_node_position(grid, idx), component=comp,
-                                allow_in_absorber=True) for comp, idx in keys)
-    token = _ringdown_probes.set((probes, entries, entry_point))
+    token = _ringdown_probes.set((probes, tuple(entries), entry_point))
     try:
         yield
     finally:

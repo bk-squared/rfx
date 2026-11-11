@@ -283,10 +283,14 @@ def test_r7_a():
                                     'runners/nonuniform.py', 'runners/uniform_forward.py'))
 @pytest.mark.parametrize('entry_point', ('RingdownRun.run', 'RingdownStop.run', 'RingdownForward.run'))
 def test_r7_b(reader, entry_point):
+    from rfx.api._spec import _ProbeEntry
+    from rfx.ringdown import _node_position
     sim, lane = scene('E1')
     grid, keys = planned(sim, lane)
     probes = sim._probes
-    with ringdown_probes(probes, grid, keys, entry_point):
+    entries = tuple(_ProbeEntry(position=_node_position(grid, idx), component=comp,
+                                allow_in_absorber=True) for comp, idx in keys)
+    with ringdown_probes(probes, entries, entry_point):
         with pytest.raises(RuntimeError, match=entry_point + '.*' + reader):
             read_ringdown_probes(list(probes), reader)
 

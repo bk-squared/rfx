@@ -7,7 +7,7 @@ from rfx.measurement.plan import build_measurement_plan
 def attach_measurement(sim, conductors, *, n_steps, path, grid=None, **inputs):
     from rfx.model.conductors import PreparedSolve
     from rfx.measurement.identification import read_ringdown_probes
-    identification = read_ringdown_probes(sim._probes, "attach_measurement")
+    identification = read_ringdown_probes(getattr(sim, "_probes", None), "attach_measurement")
     prepared = conductors._prepared_solve
     if prepared is None:
         # Internal material-based entries also own an execution-local snapshot.

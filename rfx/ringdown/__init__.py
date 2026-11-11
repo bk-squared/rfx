@@ -755,6 +755,12 @@ def _node_position(grid, idx) -> tuple:
     return tuple(host_node_of(grid, ax, int(idx[ax])) for ax in range(3))
 
 
+def _ringdown_probe_entries(grid, keys):
+    from rfx.api._spec import _ProbeEntry
+    return tuple(_ProbeEntry(position=_node_position(grid, idx), component=comp,
+                             allow_in_absorber=True) for comp, idx in keys)
+
+
 def _read_port_metas(lane: str, result, grid, boundary=None, port_ids=None) -> list:
     """Realized cells, metrics and accumulators of every wire port, from the run."""
     import jax.numpy as jnp
@@ -1107,7 +1113,7 @@ class RingdownRun:
         _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes)
-        with ringdown_probes(probes, self.grid, self.probe_keys, "RingdownRun.run"):
+        with ringdown_probes(probes, _ringdown_probe_entries(self.grid, self.probe_keys), "RingdownRun.run"):
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
             result = call(**kwargs)
         return self._finish(result, n_user)
@@ -1950,7 +1956,7 @@ class RingdownStop:
         probes = self.sim._probes
         n_user = len(probes)
         self.n_user = n_user
-        with ringdown_probes(probes, self.grid, self.base.probe_keys, "RingdownStop.run"):
+        with ringdown_probes(probes, _ringdown_probe_entries(self.grid, self.base.probe_keys), "RingdownStop.run"):
             kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
             result = call(stop_fn=self.after_chunk, stop_interval=self.chunk,
                           **kwargs)
@@ -2345,7 +2351,7 @@ class RingdownForward(RingdownRun):
         _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes) or (len(self.sim._ports) if self.lane == "uniform" else 0)
-        with ringdown_probes(probes, self.grid, self.probe_keys, "RingdownForward.run"):
+        with ringdown_probes(probes, _ringdown_probe_entries(self.grid, self.probe_keys), "RingdownForward.run"):
             result = call()
         self.sim = None          # the plan outlives the call inside the result
         return self._finish_forward(result, n_user)
