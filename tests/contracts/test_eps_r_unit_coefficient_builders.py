@@ -69,8 +69,8 @@ BUILDERS = {
         "a lumped element's D0 = eps/dt + sigma/2 (traced branch)",
     ("rfx/stepping/slab_update.py", "component_e_coeffs"):
         "both multi-device lanes' slab Ca/Cb (#1303: e_update_coeffs per component)",
-    ("rfx/materials/debye.py", "init_debye"): "Debye initialization",
-    ("rfx/materials/debye.py", "debye_e_coeffs"):
+    ("rfx/model/dispersive_poles.py", "init_debye"): "Debye initialization",
+    ("rfx/model/dispersive_poles.py", "debye_e_coeffs"):
         "Debye ADE ca/cb/cc, including distributed in-loop builders",
     ("rfx/materials/lorentz.py", "init_lorentz"): "Lorentz initialization",
     ("rfx/materials/lorentz.py", "lorentz_e_coeffs"):
@@ -107,7 +107,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/measurement/monitors.py", "current_moment_owner"):
         "measurement-plan description of the current-moment reduction: the vacuum constant EPS_0/dt scales "
         "a recorded field difference; no permittivity, traced or not, is divided through it",
-    ("rfx/materials/debye.py", "debye_pole_coeffs"):
+    ("rfx/model/dispersive_poles.py", "debye_pole_coeffs"):
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
     ("rfx/materials/lorentz.py", "pole_update_coeffs"):
         "material-independent ADE c: EPS_0 multiplies the pole strength",
@@ -179,7 +179,7 @@ ALLOWLIST_CEILING = 51  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regi
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
     ("rfx/core/yee.py", "e_update_coeffs"),
-    ("rfx/materials/debye.py", "debye_e_coeffs"),
+    ("rfx/model/dispersive_poles.py", "debye_e_coeffs"),
     ("rfx/materials/lorentz.py", "lorentz_e_coeffs"),
     ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"),
 }
