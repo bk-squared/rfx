@@ -344,7 +344,7 @@ The backscatter errors are 0.56 / 0.34 / 0.28 dB, against 2.35 / 1.75 / 1.19 dB 
 The offset stays constant in cells, so the error falls only first order in the cell size.
 A user gets conformal PEC only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns it on for every PEC body in that run. The default is the staircase. A run with conformal PEC warns.
 Under conformal PEC these are refused: `conformal_min_weight` other than 0.1; PEC shapes with no signed distance (polyhedra, extrusions, volume wires); a body that holds no grid node strictly inside, except a Box with every face on a node plane or a domain face; a zero-thickness PEC sheet off the node lattice; and `subpixel_smoothing="kottke_pec"`, refused before any time step on every path.
-`forward()`, graded meshes, multiple devices and subgrids refuse conformal PEC.
+Graded meshes, multiple devices and subgrids refuse conformal PEC. `forward()` has no `conformal_pec=` argument: on a uniform mesh on one device it takes conformal PEC from a `Boundary(conformal=True)` declaration, and it refuses one together with `pec_mask_override`, `pec_occupancy_override` or `design_occupancy_override`. `optimize()`, `topology_optimize()`, `compute_mixed_s_matrix()` and a traced PEC shape refuse conformal PEC.
 Judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), stays marked as an expected failure until a fix lands.
 
@@ -479,8 +479,8 @@ square transverse mesh. Refinement therefore changes its series inductance;
 it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
 the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
 square transverse stencil and uniform spacing along the pin. Axial grading
-across the port refuses this model. It is carried by single-device,
-nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
+across the port refuses this model. It is carried by nondispersive 3-D
+second-order Yee `run()` and `forward()`, on one device or several; other solvers,
 Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
 Each halving of the transverse cell adds `ω·(μ0·ℓ/2π)·ln 2` of series reactance
