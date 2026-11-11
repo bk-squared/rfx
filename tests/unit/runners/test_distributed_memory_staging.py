@@ -291,11 +291,13 @@ def _measure(case, multi_process):
                 coeffs = bound['invariants'][kind + '_coeffs']
                 assert all(value is not None for value in (coeffs.ca, coeffs.cb, coeffs.cc))
                 # #1302: rows outside the domain hold a vacuum cell's
-                # coefficients (ca 1, cb dt/eps_0, cc 1/eps_0, pole terms 0)
+                # coefficients (ca 1, cb dt/eps_0, cc 1/eps_0; Lorentz damping
+                # and restoring 1, c 0 to zero P; Debye pole terms 0)
                 # (float32 arithmetic, as the coefficient builders run it)
                 eps0 = np.float32(EPS_0)
                 vacuum = {"ca": np.float32(1.0), "cb": np.float32(grid.dt) / eps0,
-                          "cc": np.float32(1.0) / eps0}
+                          "cc": np.float32(1.0) / eps0,
+                          "damping": np.float32(1.0), "restoring": np.float32(1.0)}
                 for name, field in zip(coeffs._fields, coeffs):
                     pad = np.float32(vacuum.get(name, 0.0))
                     # a per-E-component field (#1260) is an (x, y, z) tuple

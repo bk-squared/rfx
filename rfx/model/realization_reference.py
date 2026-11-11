@@ -144,7 +144,9 @@ def nominal_record(sim, conductors, lane, *, compact):
                 from rfx.model.tensor_operands import full_tensor_eps
                 full_tensor_eps(reference, grid, root.materials, pairs)
             else:
-                compute_smoothed_eps_nonuniform(grid, pairs)
+                from rfx.model.tensor_operands import smoothing_nominal_h_max
+                compute_smoothed_eps_nonuniform(
+                    grid, pairs, nominal_h_max=smoothing_nominal_h_max(reference, grid))
         record = record_from_conductors(reference, root, lane=lane, compact=compact)
         if record is not None:
             object.__setattr__(record, "_quantity_grid", grid)

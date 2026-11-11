@@ -867,6 +867,9 @@ def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None, conducto
     model's own with (see :func:`refuse_current_the_monitor_cannot_see`).
     """
     spec = getattr(sim, "_current_moments", None)
+    from rfx.model.wall_loss import refuse_wall_loss
+    if getattr(sim, "_current_moments", None) is not None:
+        refuse_wall_loss(sim, "current_moments monitor")
     if spec is None:
         return None
     corner_lo, corner_hi, block_size, freqs, order, extra = spec

@@ -630,8 +630,8 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 raise RfxRefusal(
                     f"{name} ({face}): an f0 surface-impedance sheet on a PEC domain face (or an absorber face's outer node plane) "
                     "carries no current (the face's PEC owns its edges), so its loss would "
-                    "be dropped; for loss on that wall use add_wall_loss(faces=...) once "
-                    "available, or a thick lossy Box inside the domain.")
+                    "be dropped; for loss on that wall use add_wall_loss(faces=...) "
+                    "or add_wall_loss(shape=...).")
             unwrapped = (None if spec.unwrapped_footprint is None
                          else np.asarray(spec.unwrapped_footprint))
             end_rows = spec.end_rows

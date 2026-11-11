@@ -48,6 +48,7 @@ from rfx.interop import (
 from rfx.interop._design import (
     EXCLUDED_SIMULATION_ATTRS,
     EXPORTED_SIMULATION_ATTRS,
+    REFUSED_SIMULATION_ATTRS,
     TRACED_ONLY_SIMULATION_ATTRS,
     _PINNED_RECORDS,
     _WAVEFORM_CODECS,
@@ -558,15 +559,26 @@ def test_every_simulation_attribute_is_classified():
     assert not set(EXPORTED_SIMULATION_ATTRS) & set(TRACED_ONLY_SIMULATION_ATTRS)
 
 
+def test_lazy_wall_loss_is_classified_as_refused():
+    sim = Simulation(freq_max=10e9, domain=(.012,) * 3, dx=.0015, boundary="pec")
+    before = set(vars(sim))
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo",))
+    assert set(vars(sim)) - before == {"_wall_losses"}
+    assert REFUSED_SIMULATION_ATTRS == {"_wall_losses": "refused"}
+    assert not set(REFUSED_SIMULATION_ATTRS) & set(EXPORTED_SIMULATION_ATTRS)
+    with pytest.raises(UnsupportedDesignFeature, match="add_wall_loss is not carried by the design document"):
+        design_to_dict(sim)
+
+
 def test_every_builder_method_is_covered_by_the_document():
-    """Each public ``add_*`` builder writes into a section the document records."""
+    """Each public builder is exported, desugared, or explicitly refused."""
     builders = {
         name
         for name in dir(Simulation)
         if name == "add" or name.startswith("add_")
     }
-    # Every builder either appends to one of the exported lists or is a
-    # documented desugaring of another builder.
+    refused = {"add_wall_loss": "_wall_losses"}
+    assert all(REFUSED_SIMULATION_ATTRS[attr] == "refused" for attr in refused.values())
     desugaring = {
         # expands to 1-2 add_source calls at registration time
         "add_polarized_source",
@@ -592,10 +604,10 @@ def test_every_builder_method_is_covered_by_the_document():
         "add_thin_conductor",
         "add_tfsf_source",
         "add_waveguide_port",
-    } | desugaring
+    } | desugaring | refused.keys()
     assert builders == expected, (
         "the Simulation builder surface has changed; confirm the new method's "
-        "state reaches the design document and update this list: "
+        "state is exported or refused and update this list: "
         f"new={sorted(builders - expected)}, gone={sorted(expected - builders)}"
     )
 
@@ -1607,8 +1619,10 @@ def test_schema_entry_fields_match_the_emitter_registry(
     registry = getattr(_design, registry_name)
     node = _schema_at(published_schema, path)
 
-    # Radius is opt-in: old wire-port documents have no radius key.
+    # Older documents omit radius and the absorber opt-in keyword.
     optional = {"radius"} if path == "excitations.lumped_ports" else set()
+    if path in {"excitations.soft_sources", "excitations.lumped_ports", "observables.probes"}:
+        optional.add("allow_in_absorber")
     assert set(node["required"]) == set(registry) - optional, (
         f"{path}: schema required={sorted(node['required'])} but the emitter "
         f"records {sorted(registry)}"
@@ -2161,3 +2175,38 @@ def test_design_export_uses_current_entry_positions_for_terminations():
     rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
     assert int(np.asarray(sheets[0].footprint).sum()) == 169
     assert int(np.asarray(sheets[1].footprint).sum()) == 27
+
+
+def test_older_v2_document_defaults_absorber_opt_in_to_false(published_schema):
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
+    sim.add_probe((0.010, 0.010, 0.010), "ez", allow_in_absorber=True)
+    sim.add_source((0.005, 0.010, 0.010), "ez", allow_in_absorber=True)
+    sim.add_port((0.015, 0.010, 0.010), "ez", impedance=50.0, allow_in_absorber=True)
+    document = design_to_dict(sim)
+    del document["observables"]["probes"][0]["allow_in_absorber"]
+    del document["excitations"]["soft_sources"][0]["allow_in_absorber"]
+    del document["excitations"]["lumped_ports"][0]["allow_in_absorber"]
+
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._probes[0].allow_in_absorber is False
+    assert rebuilt._ports[0].allow_in_absorber is False
+    assert rebuilt._ports[1].allow_in_absorber is False
+
+    jsonschema = pytest.importorskip("jsonschema")
+    jsonschema.validate(instance=document, schema=published_schema)
+
+
+@pytest.mark.parametrize("kind", ["probe", "source", "lumped", "wire"])
+def test_absorber_opt_in_survives_design_round_trip(kind):
+    sim = Simulation(freq_max=25e9, domain=(.01,) * 3, dx=.001, cpml_layers=8)
+    position = (-.001, .005, .005)
+    if kind == "probe":
+        sim.add_probe(position, allow_in_absorber=True)
+    elif kind == "source":
+        sim.add_source(position, amplitude_kind="field", allow_in_absorber=True)
+    else:
+        sim.add_port(position, extent=.002 if kind == "wire" else None,
+                     allow_in_absorber=True)
+    rebuilt = simulation_from_design(design_to_dict(sim))
+    entry = (rebuilt._probes if kind == "probe" else rebuilt._ports)[0]
+    assert entry.allow_in_absorber is True

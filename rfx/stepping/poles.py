@@ -79,7 +79,8 @@ def update_e_lorentz(
     """E-field update with Lorentz/Drude ADE dispersion.
 
     Update order:
-    1. P^{n+1} = a P^n + b P^{n-1} + c E^n  (explicit)
+    1. v^{n+1} = (v^n + (c E^n - damping v^n)) - restoring P^n
+       P^{n+1} = P^n + v^{n+1}
     2. E^{n+1} = Ca E^n + Cb curl(H) - Cc Σ(P^{n+1} - P^n)
 
     Dtype note
@@ -109,17 +110,17 @@ def update_e_lorentz(
         hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
     # P^{n+1} = a P^n + b P^{n-1} + c_comp E^n (per pole, per component)
-    px_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,
-                                 lor_state.px_prev, _pdtype)
-    py_new = lorentz_p_component(coeffs, 1, state.ey, lor_state.py,
-                                 lor_state.py_prev, _pdtype)
-    pz_new = lorentz_p_component(coeffs, 2, state.ez, lor_state.pz,
-                                 lor_state.pz_prev, _pdtype)
+    px_new, vx_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,
+                                 lor_state.vx, _pdtype)
+    py_new, vy_new = lorentz_p_component(coeffs, 1, state.ey, lor_state.py,
+                                 lor_state.vy, _pdtype)
+    pz_new, vz_new = lorentz_p_component(coeffs, 2, state.ez, lor_state.pz,
+                                 lor_state.vz, _pdtype)
 
-    # ΔP = P^{n+1} - P^n, summed over poles
-    dpx = jnp.sum(px_new - lor_state.px, axis=0)
-    dpy = jnp.sum(py_new - lor_state.py, axis=0)
-    dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
+    # ΔP is the stored increment, summed over poles
+    dpx = jnp.sum(vx_new, axis=0)
+    dpy = jnp.sum(vy_new, axis=0)
+    dpz = jnp.sum(vz_new, axis=0)
 
     # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP, per component
     ex_new = lorentz_e_component(coeffs, 0, state.ex, curl_x, dpx, _fdtype)
@@ -132,7 +133,7 @@ def update_e_lorentz(
     )
     new_lor = LorentzState(
         px=px_new, py=py_new, pz=pz_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
+        vx=vx_new, vy=vy_new, vz=vz_new,
     )
 
     return new_fdtd, new_lor

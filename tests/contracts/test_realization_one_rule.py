@@ -1533,10 +1533,9 @@ def test_conformal_zero_drawn_area_has_no_reference_on_nz_one():
     assert "not judged: no reference" in str(findings[0])
 
 
-def test_conformal_waveguide_result_names_unevaluated_realization_once():
+def test_conformal_waveguide_result_evaluates_same_integral_and_open_area_as_run():
+    """A4 / design §2: both entries judge the declared conformal open faces."""
     from rfx.boundaries.spec import Boundary, BoundarySpec
-    text = ("realization: not evaluated: conformal; geometric comparisons were skipped. "
-            "Evaluate on uniform run() to check the realized dimensions.")
     def geometry():
         sim = Simulation(10e9, (.06, .024, .012), dx=.002, cpml_layers=4,
                          boundary=BoundarySpec(x="cpml", y=Boundary("pec", "pec", conformal=True),
@@ -1549,12 +1548,6 @@ def test_conformal_waveguide_result_names_unevaluated_realization_once():
     sim.add_waveguide_port(.044, direction="-x", f0=8e9, freqs=[8e9], name="right")
     result = sim.compute_waveguide_s_matrix(n_steps=200, normalize=True, skip_preflight=True)
     table = result.realized_geometry.realization_table
-    findings = [f for f in table.findings if f.code == "realization"]
-    assert [(str(f), f.code, f.source) for f in findings] == [
-        (text, "realization", "judge_realization")]
-    assert table.row("geometry[0]").status == "not evaluated: conformal"
-    assert "geometry[0]" in table.judged
-
     uniform = geometry().run(n_steps=1, compute_s_params=False, skip_preflight=True)
     evaluated = uniform.realized_geometry.realization_table
     row = evaluated.row("geometry[0]")
@@ -1562,3 +1555,18 @@ def test_conformal_waveguide_result_names_unevaluated_realization_once():
     assert row.integral_comparison is not None
     assert row.label in evaluated.judged
     assert not [f for f in evaluated.findings if "not evaluated: conformal" in str(f)]
+
+    lane_row = table.row("geometry[0]")
+    assert lane_row.status == row.status == "evaluated"
+    assert lane_row.model == row.model
+    assert row.model.startswith("conformal open faces")
+    assert lane_row.integral_comparison is not None
+    assert len(lane_row.integral_comparison) == len(row.integral_comparison) == 4
+    for field, actual, expected in zip(
+            ("measure", "declared", "realized", "dimension"),
+            lane_row.integral_comparison, row.integral_comparison):
+        assert actual == expected, field
+    assert lane_row.open_area_m2 == row.open_area_m2
+    assert row.open_area_m2 is not None
+    assert lane_row.label in table.judged
+    assert not [f for f in table.findings if "not evaluated: conformal" in str(f)]

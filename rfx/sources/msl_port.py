@@ -267,7 +267,7 @@ def _msl_grid_geometry(grid):
         coords_from_nonuniform_grid, coords_from_uniform_grid,
         cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
     )
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     coords = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
               else coords_from_uniform_grid(grid))
     if any(is_tracer(x) for x in coords[:3]):
@@ -498,7 +498,7 @@ def _axis_cell_size(grid, axis: str, idx: int) -> float:
     branch is skipped. A uniform ``Grid`` may carry ``*_profile`` attributes
     (tests inject them); use those when present, otherwise its scalar spacing.
     """
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     if isinstance(grid, NonUniformGrid):
         per_cell = np.asarray({"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis])
         clamped = max(0, min(int(idx), int(per_cell.shape[0]) - 1))
@@ -530,7 +530,7 @@ def _axis_dual_size(grid, axis: str, idx: int) -> float:
     exempt because its V/I route is Gwarek rather than the Ampere loop;
     that reasoning is wrong and must not be reinstated.
     """
-    from rfx.nonuniform import NonUniformGrid, e_node_dual_spacing_at
+    from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacing_at
     if isinstance(grid, NonUniformGrid):
         per_cell = np.asarray(
             {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis],
@@ -1099,7 +1099,7 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
     """
     if port.excitation is None:
         return []
-    from rfx.simulation import SourceSpec
+    from rfx._internal._uniform_specs import SourceSpec
     from rfx.sources.port_drive import port_drive_waveform
 
     if not port._drive_stamps:
@@ -1173,7 +1173,7 @@ def make_msl_port_sources_jm(
             "add_msl_port default) for a y-directed port."
         )
 
-    from rfx.simulation import SourceSpec, MagneticSourceSpec  # local import: avoid cycles
+    from rfx._internal._uniform_specs import SourceSpec, MagneticSourceSpec  # local import: avoid cycles
 
     dt = grid.dt
     dx = float(grid.dx)
@@ -1283,7 +1283,7 @@ def _msl_position_to_index(grid, pos):
     method = getattr(grid, "position_to_index", None)
     if callable(method):
         return method(pos)
-    from rfx.nonuniform import position_to_index as _nu_position_to_index
+    from rfx.model.graded_grid import position_to_index as _nu_position_to_index
     return _nu_position_to_index(grid, pos)
 
 
@@ -1308,7 +1308,7 @@ def _msl_coord_for_index(grid, axis: str, target_i: int) -> float:
     clamped = max(0, min(int(target_i), n_axis - 1))
     u = clamped - pad  # user-domain (non-CPML) interior index
     arr_attr = {"x": "dx_arr", "y": "dy_arr", "z": "dz"}[axis]
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     if not isinstance(grid, NonUniformGrid):
         # Uniform Grid — legacy scalar spacing (byte-identical).
         return float(u * grid.dx)
@@ -1339,7 +1339,7 @@ def msl_sampled_node_coordinates(grid, port: MSLPort, coordinates) -> tuple[floa
     from rfx.geometry.rasterize_grid import (
         coords_from_nonuniform_grid, coords_from_uniform_grid,
     )
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
 
     axis, _, _, _ = msl_axis_roles(port.direction)
     axes = (coords_from_nonuniform_grid(grid) if isinstance(grid, NonUniformGrid)
@@ -1370,7 +1370,7 @@ def msl_h_plane_stencil(grid, port: MSLPort, e_plane_coordinate: float) -> dict:
         coords_from_nonuniform_grid,
         coords_from_uniform_grid,
     )
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
 
     coordinate = float(e_plane_coordinate)
     if not np.isfinite(coordinate):

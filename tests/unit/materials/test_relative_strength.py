@@ -1,5 +1,6 @@
 """Declaration, non-field readers, and coefficient-path admission."""
 import json
+import sys
 import warnings
 
 import jax
@@ -127,8 +128,11 @@ def test_helpers_and_si_coefficients():
         lorentz_pole(2., 0., 4., relative=True)
     for k in (3e20, jnp.float32(3e20)):
         dt, d, w = np.float64(1e-12), 2e9, 3e9
-        expected = ((2 - w**2 * dt**2) / (1 + d * dt), -(1 - d * dt) / (1 + d * dt),
-                    EPS_0 * k * dt**2 / (1 + d * dt))
+        dtype = jnp.result_type(w, d, k, dt)
+        wn, dn, kn, dtn = (np.asarray(value, dtype=dtype) for value in (w, d, k, dt))
+        denom = 1.0 + dn * dtn
+        expected = ((2.0 * dn) * dtn / denom, (wn * wn) * (dtn * dtn) / denom,
+                    ((EPS_0 * kn) * (dtn * dtn)) / denom)
         for actual, old in zip(pole_update_coeffs(w, d, k, dt), expected):
             assert np.asarray(actual).tobytes() == np.asarray(old).tobytes()
 
@@ -187,7 +191,10 @@ def test_distributed_relative_strength_uses_core(lane, entry, monkeypatch):
     original = lorentz.pole_update_coeffs
     def counted(w, d, k, *args, **kwargs):
         if not (w == 1. and d == 1. and k == 1.):  # Vacuum halo coefficients.
-            calls.append(isinstance(k, RelativeStrength))
+            caller = sys._getframe(1).f_globals["__name__"]
+            calls.append((caller, isinstance(k, RelativeStrength)))
+            if relative and caller != "rfx.model.pole_stability" and not isinstance(k, RelativeStrength):
+                print(f"Unexpected field SI call: caller={caller} w={w!r} d={d!r} k={k!r} args={args!r} kwargs={kwargs!r}")
         return original(w, d, k, *args, **kwargs)
     monkeypatch.setattr(lorentz, "pole_update_coeffs", counted)
     results = []
@@ -203,9 +210,12 @@ def test_distributed_relative_strength_uses_core(lane, entry, monkeypatch):
         result = getattr(sim, entry)(n_steps=12, devices=jax.devices("cpu")[:2],
                                      skip_preflight=True, **options)
         results.append(np.asarray(result.time_series))
-        if relative:
-            assert calls and all(calls)
-            calls.clear()
-    assert calls and not any(calls)
+        stability = [flag for caller, flag in calls if caller == "rfx.model.pole_stability"]
+        field = [flag for caller, flag in calls if caller != "rfx.model.pole_stability"]
+        print(f"M2c lane={lane} entry={entry} relative={relative}: "
+              f"stability={len(stability)} flags={stability} field={len(field)} flags={field}")
+        assert stability and not any(stability)
+        assert field and (all(field) if relative else not any(field))
+        calls.clear()
     assert np.any(results[0] != 0)
     np.testing.assert_allclose(*results, rtol=1e-6, atol=0.)

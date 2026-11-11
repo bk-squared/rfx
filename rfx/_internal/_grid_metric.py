@@ -349,12 +349,15 @@ def is_one_cell_size(sizes) -> bool:
     return bool(np.all(np.isclose(s, s[0], rtol=SAME_CELL_RTOL, atol=0.0)))
 
 
-def field_index(grid, position, component):
+def field_index(grid, position, component, *, allow_in_absorber=None):
     """Resolve one Yee component, keeping displaced high-face entries inside.
 
     Node lookup and interior rounding stay unchanged. Both mesh types
     carry their periodic-axis record on the grid.
     """
+    if allow_in_absorber is not None:
+        from rfx.model.point_placement import admit_point
+        admit_point(grid, position, allow_in_absorber=allow_in_absorber)
     if hasattr(grid, "position_to_index"):
         index = list(grid.position_to_index(position))
     else:

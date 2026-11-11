@@ -139,6 +139,8 @@ def run_uniform(
     # v1 fences for the surface-impedance sheet operator (loud, never
     # silent): the operator replaces the standard isotropic E update at its
     # edges, so lanes that swap that update out are refused.
+    from rfx.model.wall_loss import admit_wall_loss
+    admit_wall_loss(sim, "run_uniform", smoothing=subpixel_smoothing, conformal=conformal_pec)
     if sheet_specs:
         if sim._boundary == "upml":
             raise ValueError(
@@ -189,9 +191,6 @@ def run_uniform(
         from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
         refuse_bare_waveguide_edges(sim, grid, lane="run_uniform",
                                     conformal_weights=conformal_weights)
-    if conformal_weights is not None:
-        # Conformal replaces binary pec_mask; Stage 2 keeps it alive.
-        pec_mask = None
 
     # Build sources and probes for the compiled runner
     from rfx.sources.port_drive import PortSourceQueue
@@ -237,6 +236,9 @@ def run_uniform(
     pec_wires = tuple(pec_wires or ())
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
         pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
+    from rfx.model.conductors import stepped_conductors
+    conductors = stepped_conductors(conductors, conformal_operands=conformal_weights)
+    pec_mask = conductors.pec_cells
     pec_edge_masks = conductors.pec_edges
     from rfx.measurement.port_s_contract import passive_record_diagnostic
     passive_diagnostic = passive_record_diagnostic(sim)
@@ -284,7 +286,7 @@ def run_uniform(
                 start=pe.position, end=tuple(end),
                 component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
-                radius=pe.radius,
+                radius=pe.radius, allow_in_absorber=pe.allow_in_absorber,
             )
             wire_ports.append(wp)
             wire_port_excites.append(bool(pe.excite))
@@ -321,6 +323,7 @@ def run_uniform(
             lp = LumpedPort(
                 position=pe.position, component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
+                allow_in_absorber=pe.allow_in_absorber,
             )
             lumped_ports.append(lp)
             materials = setup_lumped_port(grid, lp, materials)
@@ -620,6 +623,7 @@ def run_uniform(
     # PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
     sheet_ctx = conductors.sheet_context(pec_edge_masks)
+    sheet_ctx = assemble_wall_loss(sim, conductors, sheet_ctx, lane="run_uniform")
     if sim._tfsf is not None and sim._tfsf.closed_box:
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         validate_realized_vacuum_boundary(
@@ -890,3 +894,9 @@ def run_uniform(
         wire_port_sparams=(sim_result.wire_port_sparams if keep_wire_port_sparams else None),
         lumped_port_sparams=sim_result.lumped_port_sparams,
     )
+
+
+def assemble_wall_loss(sim, conductors, sheet_ctx, *, lane):
+    """Shared uniform run/forward wall assembly at final conductor ownership."""
+    from rfx.model.wall_loss import build_wall_operator
+    return build_wall_operator(sim, conductors, sheet_ctx, lane=lane)

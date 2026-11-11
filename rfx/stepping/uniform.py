@@ -33,10 +33,10 @@ if TYPE_CHECKING:
     from rfx._internal._uniform_specs import _StepContext
 
 
-def apply_pec_faces(state, faces):
+def apply_pec_faces(state, faces, *, normal_ghost_faces=()):
     """Retain both the lane and boundary-module wall observation points."""
     from rfx.boundaries import pec as pec_walls
-    return pec_walls.apply_pec_faces(state, faces)
+    return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces)
 
 
 @dataclass
@@ -369,6 +369,7 @@ def make_uniform_step(
             # on the same H^{n+1/2} the E update consumed (H is unchanged
             # between the E update and this slot).
             if ctx.use_sheet_impedance:
+                frame.st = apply_pec_faces(frame.st, ctx.wall_loss_faces)
                 from rfx.core.yee import curl_h as _curl_h
                 _scd = jnp.promote_types(frame.st.ex.dtype, jnp.float32)
                 _curls = _curl_h(
@@ -384,7 +385,8 @@ def make_uniform_step(
                     frame.st = pec_walls.apply_pec_faces(
                         frame.st, ctx.pec_faces_frozen, **face_args)
                 else:
-                    frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen)
+                    frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen,
+                                               normal_ghost_faces=ctx.wall_loss_faces)
 
         if ctx.use_lumped_rlc:
             frame.st, frame.new_rlc_states = ctx.update_rlc_elements(
@@ -510,12 +512,11 @@ def make_uniform_step(
                     v_ref_new_l))
 
         if ctx.use_waveguide_ports:
-            from rfx.measurement.waveguide_modal import (
-                update_waveguide_port_probe,
-            )
+            from rfx.measurement.modal import write_waveguide_record
+            waveguide_values = project(frame.st, invariants['waveguide_table'])
 
             frame.new_waveguide_port_accs = []
-            for accs, cfg_meta in zip(frame.carry["waveguide_port_accs"], ctx.waveguide_meta):
+            for port, (accs, cfg_meta) in enumerate(zip(frame.carry["waveguide_port_accs"], ctx.waveguide_meta)):
                 cfg = cfg_meta._replace(
                     v_probe_t=accs[0],
                     v_ref_t=accs[1],
@@ -527,7 +528,7 @@ def make_uniform_step(
                 # TFSF-style H and E corrections are applied earlier in their respective Yee
                 # sub-steps (canonical TFSF slots). This samples `st` AFTER source injection
                 # above.
-                cfg_updated = update_waveguide_port_probe(cfg, frame.st, dt, dx)
+                cfg_updated = write_waveguide_record(cfg, waveguide_values[4*port:4*port+4], frame.st.step, dt)
                 frame.new_waveguide_port_accs.append(
                     (
                         cfg_updated.v_probe_t,

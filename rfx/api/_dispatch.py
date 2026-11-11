@@ -90,6 +90,12 @@ def _dispatch_plan(
     step count comes from a throwaway grid) and ``None`` for lanes that
     build-and-reuse a grid (the caller resolves it there).
     """
+    from rfx.model.wall_loss import admit_wall_loss, refuse_wall_loss
+    admit_wall_loss(self, mode + " dispatch", smoothing=subpixel_smoothing)
+    if distributed or devices is not None:
+        refuse_wall_loss(self, mode + " distributed dispatch")
+    if self._refinement is not None:
+        refuse_wall_loss(self, mode + " subgridded dispatch")
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, distributed=distributed, devices=devices)
     from rfx.boundaries.features import admit_ntff, admit_waveguide

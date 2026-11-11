@@ -35,14 +35,14 @@ def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
         state = empty._replace(ey=mode * v[0], hz=mode * v[1] / impedance)
         dbs = db[1]._replace(py=mode[None] * v[2] * EPS_0)
         lrs = None if lr is None else lr[1]._replace(
-            py=mode[None] * v[3] * EPS_0, py_prev=mode[None] * v[4] * EPS_0)
+            py=mode[None] * v[3] * EPS_0, vy=mode[None] * v[4] * EPS_0)
         return state, dbs, lrs
 
     def vector_from_carry(carry):
         state, dbs, lrs = carry
         values = [state.ey[0, 0, 0], state.hz[0, 0, 0] * impedance, dbs.py[0, 0, 0, 0] / EPS_0]
         if lrs is not None:
-            values += [lrs.py[0, 0, 0, 0] / EPS_0, lrs.py_prev[0, 0, 0, 0] / EPS_0]
+            values += [lrs.py[0, 0, 0, 0] / EPS_0, lrs.vy[0, 0, 0, 0] / EPS_0]
         return jnp.asarray(values)
 
     @jax.jit
@@ -55,7 +55,7 @@ def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
         # Full dynamic state norm; P is in eps0 units. Hz is in impedance units.
         values = [state.ey, state.hz * impedance, dbs.py / EPS_0]
         if lrs is not None:
-            values += [lrs.py / EPS_0, lrs.py_prev / EPS_0]
+            values += [lrs.py / EPS_0, lrs.vy / EPS_0]
         norm = jnp.sqrt(sum(jnp.sum(jnp.abs(v) ** 2) for v in values))
         return (state, dbs, lrs), norm
 

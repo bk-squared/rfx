@@ -12,10 +12,11 @@ Each pole introduces a second-order auxiliary polarization P_p:
     d²P_p/dt² + 2δ_p dP_p/dt + ω₀_p² P_p = ε₀ κ_p E
 
 Discretized (central difference + Crank-Nicolson damping):
-    P^{n+1} = a_p P^n + b_p P^{n-1} + c_p E^n
+    v^{n+1} = (v^n + (c_p E^n - damping_p v^n)) - restoring_p P^n
+    P^{n+1} = P^n + v^{n+1}
 
-    a_p = (2 - ω₀²Δt²) / (1 + δΔt)
-    b_p = -(1 - δΔt) / (1 + δΔt)
+    damping_p = 2δΔt / (1 + δΔt)
+    restoring_p = ω₀²Δt² / (1 + δΔt)
     c_p = ε₀ κ_p Δt² / (1 + δΔt)
 
 Per E component: ε_∞ and σ are the edge mean over the component's
@@ -23,7 +24,7 @@ four incident cells (:func:`rfx.core.yee.component_e_materials`), and each
 pole's κ_p (∝ Δε_p) is κ_p times the fraction of those cells that carry the
 pole -- the same parallel-susceptibility rule as σ, see
 ``rfx.materials.debye``. ``ca``/``cb``/``cc``/``c`` are 3-tuples ``(x, y,
-z)``; ``a`` and ``b`` depend on ω₀ and δ only and stay one array per pole.
+z)``; ``damping`` and ``restoring`` depend on ω₀ and δ only and stay one array per pole.
 
 References:
     Taflove & Hagness, Ch. 9
@@ -110,13 +111,13 @@ class LorentzCoeffs(NamedTuple):
 
     One array for all components:
 
-    a, b : (n_poles, nx, ny, nz) — P recurrence coefficients (ω₀, δ only),
+    damping, restoring : (n_poles, nx, ny, nz) — increment coefficients (ω₀, δ only),
         the pole's values on every cell whose edges the pole reaches.
     """
     ca: tuple
     cb: tuple
-    a: jnp.ndarray
-    b: jnp.ndarray
+    damping: jnp.ndarray
+    restoring: jnp.ndarray
     c: tuple
     cc: tuple
 
@@ -147,17 +148,17 @@ def pole_sets_judged(coeffs):
 
 
 class LorentzState(NamedTuple):
-    """Auxiliary polarization state (current and previous step).
+    """Auxiliary polarization and its per-step increment.
 
     p_{x,y,z} : (n_poles, nx, ny, nz) — P^n
-    p_{x,y,z}_prev : (n_poles, nx, ny, nz) — P^{n-1}
+    v_{x,y,z} : (n_poles, nx, ny, nz) — P^n - P^{n-1}
     """
     px: jnp.ndarray
     py: jnp.ndarray
     pz: jnp.ndarray
-    px_prev: jnp.ndarray
-    py_prev: jnp.ndarray
-    pz_prev: jnp.ndarray
+    vx: jnp.ndarray
+    vy: jnp.ndarray
+    vz: jnp.ndarray
 
 
 def pole_underflow_guard(out, factors, *, scalar=True):
@@ -204,75 +205,67 @@ def pole_underflow_guard(out, factors, *, scalar=True):
 
 
 def pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype=None):
-    """Elementwise Lorentz ADE terms, optionally cast to the field's ADE dtype."""
-    w0, d, k = omega_0, delta, kappa
-    denom = 1.0 + d * dt
-
-    a_val = (2.0 - w0 ** 2 * dt ** 2) / denom
-    b_val = -(1.0 - d * dt) / denom
-    if isinstance(k, RelativeStrength):
+    """Elementwise ADE increments, in the inputs' promoted arithmetic dtype."""
+    relative = isinstance(kappa, RelativeStrength)
+    si_tracer = isinstance(kappa, jax.core.Tracer) and kappa.dtype == jnp.float32
+    if relative:
         from rfx._traced_check import traced_check
         from rfx.errors import RfxUnsupported
         import numpy as np
 
-        if callable(k.value):
+        if callable(kappa.value):
             raise RfxUnsupported("scalar Lorentz poles do not implement a callable RelativeStrength value")
 
         def check_value(value):
             if not np.all(np.isfinite(value)) or np.any(np.asarray(value) < 0):
                 raise ValueError("RelativeStrength value must be finite and non-negative")
 
-        traced_check("RelativeStrength", "pole strength", check_value, k.value)
-        s = float(EPS_0) * float(k.reference) * float(dt) ** 2
-        c_val = (s / denom) * k.value
+        traced_check("RelativeStrength", "pole strength", check_value, kappa.value)
+        s = float(EPS_0) * float(kappa.reference) * float(dt) ** 2
+        kappa = kappa.value
+
+    dtype = jnp.result_type(omega_0, delta, kappa, dt)
+    omega_0, delta, kappa, dt = jnp.broadcast_arrays(
+        *(jnp.asarray(value, dtype=dtype) for value in (omega_0, delta, kappa, dt)))
+    denom = 1.0 + delta * dt
+    if relative:
+        strength = (s / denom) * kappa
     else:
-        c_val = EPS_0 * k * dt ** 2 / denom
-        if (isinstance(k, jax.core.Tracer) and k.dtype == jnp.float32
-                and os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1"):
-            c_val = pole_underflow_guard(c_val, (denom, dt ** 2, EPS_0))
-    values = (a_val, b_val, c_val)
+        strength = EPS_0 * kappa * dt ** 2 / denom
+        if si_tracer and os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1":
+            strength = pole_underflow_guard(strength, (denom, dt ** 2, EPS_0))
+    terms = (2.0 * delta * dt / denom,
+             omega_0 ** 2 * dt ** 2 / denom,
+             strength)
     if field_dtype is not None:
-        return tuple(jnp.asarray(v, dtype=ade_state_dtype(field_dtype)) for v in values)
-    return values
+        terms = tuple(value.astype(ade_state_dtype(field_dtype)) for value in terms)
+    return terms
 
 
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
     """Material-independent Lorentz ADE terms from per-pole edge fractions."""
-    a_list, b_list = [], []
+    damping_list, restoring_list = [], []
     c_lists = ([], [], [])
-
     for pole, fractions in zip(poles, fractions_by_pole):
-        a_val, b_val, c_val = pole_update_coeffs(pole.omega_0, pole.delta, pole.kappa, dt)
-
+        damping, restoring, strength = pole_update_coeffs(
+            pole.omega_0, pole.delta, pole.kappa, dt, field_dtype=None)
         if fractions is not None:
             reach = pole_reach(fractions)
-            a_list.append(jnp.where(reach, a_val, 0.0))
-            b_list.append(jnp.where(reach, b_val, 0.0))
+            damping_list.append(jnp.where(reach, damping, 1.0))
+            restoring_list.append(jnp.where(reach, restoring, 1.0))
             for comp in range(3):
                 c_lists[comp].append(jnp.where(
-                    fractions[comp] > 0, c_val * fractions[comp], 0.0))
+                    fractions[comp] > 0, strength * fractions[comp], 0.0))
         else:
-            # No dtype pin: ``a_val``/``b_val``/``c_val`` are numpy scalars
-            # (``dt`` is ``grid.dt``, an np.float64), so this matches the
-            # masked branch above, which has always produced whatever
-            # ``jnp.where`` promotes to. A hard float32 here made the two
-            # branches disagree and capped the ADE coefficients at float32
-            # under ``precision="float64"``. With x64 off JAX
-            # clamps to float32, so the default lane is unchanged.
-            a_list.append(jnp.full(shape, a_val))
-            b_list.append(jnp.full(shape, b_val))
-            c_arr = jnp.full(shape, c_val)
+            damping_list.append(jnp.full(shape, damping))
+            restoring_list.append(jnp.full(shape, restoring))
             for comp in range(3):
-                c_lists[comp].append(c_arr)
-
-    a = jnp.stack(a_list)
-    b = jnp.stack(b_list)
-    c = tuple(jnp.stack(cl) for cl in c_lists)
-
-    return a, b, c
+                c_lists[comp].append(jnp.full(shape, strength))
+    return (jnp.stack(damping_list), jnp.stack(restoring_list),
+            tuple(jnp.stack(values) for values in c_lists))
 
 
-def _lorentz_e_coeffs_si(e_materials, dt, a, b, c):
+def _lorentz_e_coeffs_si(e_materials, dt, damping, restoring, c):
     """Build E coefficients from the component means and fixed ADE terms.
 
     Distributed runners form these inside the time loop so autodiff does
@@ -289,11 +282,11 @@ def _lorentz_e_coeffs_si(e_materials, dt, a, b, c):
         cb.append(dt / safe_gamma)
         cc.append(1.0 / safe_gamma)
 
-    return LorentzCoeffs(ca=tuple(ca), cb=tuple(cb), a=a, b=b, c=c,
+    return LorentzCoeffs(ca=tuple(ca), cb=tuple(cb), damping=damping, restoring=restoring, c=c,
                            cc=tuple(cc))
 
 
-def _lorentz_e_coeffs_eps_r(e_materials, dt, a, b, c):
+def _lorentz_e_coeffs_eps_r(e_materials, dt, damping, restoring, c):
     """The Lorentz coefficients in relative-permittivity units."""
     eps_c, sig_c = e_materials
     ca, cb, cc = [], [], []
@@ -306,17 +299,17 @@ def _lorentz_e_coeffs_eps_r(e_materials, dt, a, b, c):
         cb.append((dt / EPS_0) / safe_gamma)
         cc.append((1.0 / EPS_0) / safe_gamma)
 
-    return LorentzCoeffs(ca=tuple(ca), cb=tuple(cb), a=a, b=b, c=c,
+    return LorentzCoeffs(ca=tuple(ca), cb=tuple(cb), damping=damping, restoring=restoring, c=c,
                            cc=tuple(cc))
 
 
-def lorentz_e_coeffs(e_materials, dt, a, b, c):
+def lorentz_e_coeffs(e_materials, dt, damping, restoring, c):
     """Build component E coefficients with SI values and eps_r derivatives.
 
     Shared by init_lorentz and the distributed in-loop coefficient builders.
     """
     return si_value_eps_r_grad(
-        _lorentz_e_coeffs_si, _lorentz_e_coeffs_eps_r, e_materials, dt, a, b, c)
+        _lorentz_e_coeffs_si, _lorentz_e_coeffs_eps_r, e_materials, dt, damping, restoring, c)
 
 
 def init_lorentz(
@@ -373,27 +366,30 @@ def init_lorentz(
     if realized is None or len(realized.poles) != n_poles:
         raise ValueError("realized lorentz poles do not match the requested poles")
     validate_dispersion(realized, poles, dt)
-    a, b, c = (realized.coefficients if realized.coefficients is not None else
+    damping, restoring, c = (realized.coefficients if realized.coefficients is not None else
                   lorentz_pole_coeffs(poles, dt, shape, realized.weights))
-    coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
+    coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, damping, restoring, c)
     if components.pole_sets_judged:
         coeffs = mark_judged(coeffs)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(
         px=zeros, py=zeros.copy(), pz=zeros.copy(),
-        px_prev=zeros.copy(), py_prev=zeros.copy(), pz_prev=zeros.copy(),
+        vx=zeros.copy(), vy=zeros.copy(), vz=zeros.copy(),
     )
 
     return coeffs, state
 
 
-def lorentz_p_component(coeffs: LorentzCoeffs, comp: int, e_old, p, p_prev,
+def lorentz_p_component(coeffs: LorentzCoeffs, comp: int, e_old, p, v,
                         pdtype=None):
-    """P^{n+1} = a P^n + b P^{n-1} + c_comp E^n for E component ``comp``."""
+    """Advance P and its increment, grouping drive with damping before v."""
     c = per_component(coeffs.c, "c")[comp]
-    p_new = coeffs.a * p + coeffs.b * p_prev + c * e_old[None]
-    return p_new if pdtype is None else p_new.astype(pdtype)
+    v_new = (v + (c * e_old[None] - coeffs.damping * v)) - coeffs.restoring * p
+    p_new = p + v_new
+    if pdtype is not None:
+        return p_new.astype(pdtype), v_new.astype(pdtype)
+    return p_new, v_new
 
 
 def lorentz_e_component(coeffs: LorentzCoeffs, comp: int, e_old, curl, dp,

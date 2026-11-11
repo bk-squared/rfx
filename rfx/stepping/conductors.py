@@ -62,10 +62,12 @@ def apply_sheet_impedance_e(state, e_prev, curls, ctx, coeffs):
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
 
     def _component(c, mask, end_mask, field):
-        new = a * e_prev[c].astype(_cdtype) + b * curls[c]
+        ac, bc = (a[c], b[c]) if getattr(ctx, "component_sigma", False) else (a, b)
+        new = ac * e_prev[c].astype(_cdtype) + bc * curls[c]
         if end is not None and end_mask is not None:
+            ae, be = (end[0][c], end[1][c]) if getattr(ctx, "component_sigma", False) else end
             new = jnp.where(
-                end_mask, end[0] * e_prev[c].astype(_cdtype) + end[1] * curls[c], new)
+                end_mask, ae * e_prev[c].astype(_cdtype) + be * curls[c], new)
         return jnp.where(mask, new.astype(_fdtype), field)
 
     ex = _component(0, ctx.mask_ex, getattr(ctx, "end_ex", None), state.ex)

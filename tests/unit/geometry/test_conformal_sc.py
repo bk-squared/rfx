@@ -267,12 +267,34 @@ def test_conformal_run_keeps_a_filament_and_refuses_a_body_holding_no_node():
     ('xy', ((.004, .004, .006), (.008, .008, .006)), False),   # sheet on node planes, periodic
 ])
 def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, box, refused):
-    """With no node strictly inside, the cut cells see nothing and the staircase faces remain: exact on node planes."""
+    """Node-plane Boxes are carried by cut-cell fractions even with no node strictly inside.
+
+    C4 (rfx-archive rfx/records/20261110-conformal-lane-staircase/) found run()
+    lost such a box: behind/front Ez energy 1.0003. The old all-1 expectation
+    ("staircase faces remain") pinned that skip instead of the closed PEC set.
+    """
     from rfx.grid import Grid
     grid = Grid(10e9, (.012, .012, .012), dx=.001, cpml_layers=0, periodic_axes=periodic)
     if refused:
         with pytest.raises(NotImplementedError, match='cell off the node lattice'):
             compute_conformal_fractions(grid, [Box(*box)])
+    elif not periodic:
+        lengths, areas = compute_conformal_fractions(grid, [Box(*box)])
+        # Corners / dx give nodes (4, 4, 6) to (8, 8, 7), inclusive.
+        # E spans one interval along its component; H spans the other two.
+        # These six ranges contain 40, 40, 25 edges and 20, 20, 32 faces.
+        edge_ranges = ((slice(4, 8), slice(4, 9), slice(6, 8)),
+                       (slice(4, 9), slice(4, 8), slice(6, 8)),
+                       (slice(4, 9), slice(4, 9), slice(6, 7)))
+        face_ranges = ((slice(4, 9), slice(4, 8), slice(6, 7)),
+                       (slice(4, 8), slice(4, 9), slice(6, 7)),
+                       (slice(4, 8), slice(4, 8), slice(6, 8)))
+        for label, arrays, ranges in (('E', lengths, edge_ranges), ('H', areas, face_ranges)):
+            for component, (actual, closed) in enumerate(zip(arrays, ranges)):
+                expected = np.ones(grid.shape, dtype=np.float32)
+                expected[closed] = 0
+                np.testing.assert_array_equal(actual, expected,
+                                              err_msg=f'box1: {label}{"xyz"[component]} closed set')
     else:
         lengths, areas = compute_conformal_fractions(grid, [Box(*box)])
         assert all(float(jnp.min(a)) == 1. for a in lengths + areas)

@@ -17,7 +17,7 @@ def test_relative_strength_keying(second):
     grid = sim._build_grid()
     materials, _, lorentz = sim._build_materials(grid)
     coefficients, _ = lorentz
-    entries = coefficients.a.shape[0]
+    entries = coefficients.damping.shape[0]
     delta_eps = np.asarray(coefficients.c[0], dtype=np.float64).sum(axis=0) * (1 + 1e9 * grid.dt) / (EPS_0 * grid.dt**2 * w0**2)
     permittivity = np.asarray(materials.eps_r) + delta_eps
     cells = (permittivity[4, 4, 4], permittivity[10, 4, 4], permittivity[16, 4, 4])

@@ -138,18 +138,19 @@ def _update_e_with_optional_dispersion(
     e_old = (ex_old, ey_old, ez_old)
     curls = (curl_x, curl_y, curl_z)
     p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
-    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
-                lorentz_state.pz_prev)
+    v_l = (lorentz_state.vx, lorentz_state.vy,
+                lorentz_state.vz)
     p_d = (debye_state.px, debye_state.py, debye_state.pz)
-    p_l_new = tuple(
-        lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c], p_l_prev[c],
+    pv_l_new = tuple(
+        lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c], v_l[c],
                             _lpdtype)
         for c in range(3))
+    p_l_new, v_l_new = zip(*pv_l_new)
     px_l_new, py_l_new, pz_l_new = p_l_new
 
     e_new, p_d_new = [], []
     for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        dp_l = jnp.sum(v_l_new[c], axis=0)
         ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
             debye_coeffs, lorentz_coeffs, c, dt)
         e_c = (
@@ -176,9 +177,9 @@ def _update_e_with_optional_dispersion(
         px=px_l_new,
         py=py_l_new,
         pz=pz_l_new,
-        px_prev=lorentz_state.px,
-        py_prev=lorentz_state.py,
-        pz_prev=lorentz_state.pz,
+        vx=v_l_new[0],
+        vy=v_l_new[1],
+        vz=v_l_new[2],
     )
 
     return new_fdtd, new_debye, new_lorentz
@@ -787,7 +788,8 @@ def _build_step_setup(
         pec_static_edge_masks=pec_static_edge_masks,
         kerr_chi3=kerr_chi3,
         ntff=ntff,
-        pec_faces_frozen=_pec_faces_frozen,
+        pec_faces_frozen=_pec_faces_frozen - getattr(sheet_impedance, "wall_faces", frozenset()),
+        wall_loss_faces=getattr(sheet_impedance, "wall_faces", frozenset()),
         pmc_faces_frozen=_pmc_faces_frozen,
         curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
         prb_meta=tuple(prb_meta),
@@ -920,4 +922,9 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
         tables = plan_tables(measurement, n_probes=len(ctx.prb_meta), port_specs=specs, dtype=dtype)
         invariants.update({key: tables[key] for key, used in
                            (('probe_table', ctx.prb_meta), ('port_table', specs)) if used})
+    if ctx.use_waveguide_ports:
+        from rfx.measurement.waveguide_records import compile_waveguide_table
+        invariants['waveguide_table'] = compile_waveguide_table(
+            ctx.grid, ctx.waveguide_meta, measurement=measurement,
+            dtype=dtype or ctx.waveguide_meta[0].v_probe_t.dtype)
     return invariants
