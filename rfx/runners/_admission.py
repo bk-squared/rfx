@@ -1440,7 +1440,7 @@ def refuse_conformal_occupancy_overrides(sim, pec_occupancy, design_occupancy):
     for name, override in (("pec_occupancy_override", pec_occupancy),
                            ("design_occupancy_override", design_occupancy)):
         if override is not None:
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"forward({name}=...) is not supported together with conformal PEC; "
                 "turn Boundary(conformal=True) off, or add the cells as PEC shapes.")
 

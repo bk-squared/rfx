@@ -387,6 +387,7 @@ SIGMA_READS = {
 
     ('rfx/geometry/smoothing.py', 'warn_curved_high_contrast', 'sim._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material: PEC-threshold test that skips conductors in the advisory; not assembled cells'),
     ('rfx/runners/_admission.py', '_pec_shapes', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
+    ('rfx/runners/_admission.py', '_refuse_traced_conformal_shapes', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/runners/_admission.py', '_placed', 'material'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/electric_metrics.py', 'slab_e_component_materials', 'materials'): (1, 'slicing/passing on: replicated x-low view into edge mean'),
     ('rfx/stepping/slab_update.py', 'slab_e_materials_shmap', 'mat'): (1, 'passing on: checkpointed slab mean operands'),
