@@ -246,6 +246,7 @@ def test_graded_wire_s_follows_one_device(compute_s):
 @pytest.mark.parametrize("mutation", ["no_stamps", "seam_stamp", "own_slab", "half_step"])
 def test_mutations(monkeypatch, mutation):
     from rfx.sources import sources
+    from rfx.model import lumped_stamp
     from rfx.probes import sparam_driver as driver
     from rfx.core import dft_utils
     from rfx.runners import distributed_v2 as runner
@@ -260,6 +261,7 @@ def test_mutations(monkeypatch, mutation):
                 def stamp(materials, cell, sigma, component):
                     return materials if cell[0] == 11 else original_stamp(materials, cell, sigma, component)
                 patch.setattr(sources, "stamp_lumped_sigma", stamp)
+                patch.setattr(lumped_stamp, "stamp_lumped_sigma", stamp)
             result = original_run(*args, **kwargs)
             return result
     monkeypatch.setattr(runner, "run_distributed", mutated_run)
