@@ -1,6 +1,7 @@
 """Pole-map time-domain pins on the predeclared open-domain scene."""
 import json
 import os
+import sys
 from pathlib import Path
 from contextlib import nullcontext
 
@@ -250,14 +251,27 @@ def test_p6_traced_forward(monkeypatch, graded):
     realized = []
     builder = pole_map.map_terms
     def observe(pole, mask, *args, **kwargs):
-        terms = builder(pole, mask, *args, **kwargs)
-        realized.append((pole, mask, terms))
+        witness = {}
+        def trace(frame, event, arg):
+            if event == 'return' and frame.f_code is builder.__code__:
+                local = frame.f_locals
+                witness.update(concrete=local['concrete'], edge_module=local['edge_xp'].__name__)
+                witness['active'] = tuple((w > 0) & local['reach'] for w in local['weights'])
+        previous = sys.getprofile()
+        sys.setprofile(trace)
+        try:
+            terms = builder(pole, mask, *args, **kwargs)
+        finally:
+            sys.setprofile(previous)
+        realized.append((pole, mask, terms, witness))
         return terms
     monkeypatch.setattr(pole_map, 'map_terms', observe)
     sim, _, meta = scene(graded, 'P6', mapped=True)
     reference = capture_scan(sim, 2000, monkeypatch)
     assert len(realized) == 1
-    pole, mask, concrete = realized.pop()
+    pole, mask, concrete, concrete_path = realized.pop()
+    active_by_component = concrete_path.pop('active')
+    paths = [concrete_path]
     occupied = np.asarray(mask, bool)
     # At least one neighbouring occupied pair differs in both strength and damping.
     mixed = occupied[1:] & occupied[:-1] & (np.diff(pole.delta, axis=0) != 0) & (np.diff(pole.kappa, axis=0) != 0)
@@ -275,24 +289,40 @@ def test_p6_traced_forward(monkeypatch, graded):
                 material.lorentz_poles[:] = [maps[id(original)]]
         difference, magnitude, _, _ = paired_arrays(reference, capture_scan(traced, 2000, monkeypatch, forward=True))
         assert len(realized) == 1
-        terms = realized.pop()[2]
+        _, _, terms, path = realized.pop()
+        path.pop('active')
+        paths.append(path)
         return difference, magnitude, terms[0], terms[2]
     difference, magnitude, traced_damping, traced_c = jax.jit(measured)(jnp.float32(1.))
     worst_rate = 0.
     worst_fraction = 0.
     active_edges = 0
+    worst_spacings = 0
+    largest = []
     dt = meta['dt']
-    for dc, dtc, c in zip(concrete[0], traced_damping, traced_c):
+    for comp, (dc, dtc, c, active) in enumerate(zip(concrete[0], traced_damping, traced_c, active_by_component)):
+        dc_bits, dtc_bits = (np.asarray(v, dtype=np.float32).view(np.uint32) for v in (dc, dtc))
         dc, dtc, c = (np.asarray(v, dtype=float) for v in (dc, dtc, c))
-        active = c > 0
+        active = np.asarray(active, bool)
+        np.testing.assert_array_equal(active, c > 0)
+        spacings = abs(dtc_bits.astype(np.int64) - dc_bits.astype(np.int64))
+        worst_spacings = max(worst_spacings, int(spacings[active].max()))
         rate_error = abs(dtc / ((2-dtc)*dt) - dc / ((2-dc)*dt))
         allowance_rate = 4*2**-24*2 / ((2-dc)**2*dt)
         worst_rate = max(worst_rate, float(rate_error[active].max()))
         worst_fraction = max(worst_fraction, float((rate_error/allowance_rate)[active].max()))
         active_edges += int(active.sum())
-        assert np.all(rate_error[active] <= allowance_rate[active]), (worst_rate, worst_fraction)
+        indices = np.flatnonzero(active)
+        for flat in indices[np.argsort(-rate_error.ravel()[indices], kind='stable')[:5]]:
+            cell = np.unravel_index(flat, active.shape)
+            largest.append(dict(component=comp, cell=list(map(int, cell)), rate_error=float(rate_error[cell]),
+                concrete_bits=f'{int(dc_bits[cell]):08x}', traced_bits=f'{int(dtc_bits[cell]):08x}'))
+    readable = paths == [dict(concrete=True, edge_module='numpy'), dict(concrete=False, edge_module='jax.numpy')]
     record(f'B6.4-{graded}', dict(worst_rate_error=worst_rate, worst_bar_fraction=worst_fraction,
-           active_edges=active_edges, mixed_cell_pairs=int(mixed.sum())))
+           active_edges=active_edges, mixed_cell_pairs=int(mixed.sum()), paths=paths, readable=readable,
+           worst_damping_spacings=worst_spacings,
+           largest_rate_differences=sorted(largest, key=lambda row: -row['rate_error'])[:5]))
+    assert worst_fraction <= 1., (worst_rate, worst_fraction)
     allowance = 1.2e-7 * np.cumsum(np.asarray(magnitude, float))
     difference = np.asarray(difference, float)
     ratio = np.divide(difference, allowance, out=np.where(difference > 0, np.inf, 0.), where=allowance > 0)

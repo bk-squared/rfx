@@ -87,8 +87,8 @@ def test_b6_5_relative_coefficients(graded, monkeypatch):
 
 def test_b6_6_stability_si():
     from tests.unit.materials.test_pole_map_admission import _admission_scene
-    from rfx.model.pole_stability import pole_set_extremes
-    corners = []
+    from rfx.model.pole_stability import courant_budget, largest_stable_step, pole_set_extremes
+    admitted = []
     for relative in (False, True):
         sim, grid, bound = _admission_scene()
         if relative:
@@ -100,12 +100,20 @@ def test_b6_6_stability_si():
         materials, _, spec, *_ = sim._assemble_materials(grid)
         records = pole_set_extremes(materials, spec)
         assert len(records) == 1
-        kappa = float(records[0].poles[0].kappa)
-        # P5b's host-float64 corner must retain the independently declared SI strength.
-        assert abs(kappa - .99*bound) <= 1e-12 * abs(.99*bound)
-        corners.append(kappa)
-    difference = abs(corners[0]-corners[1])/abs(corners[0])
-    record('B6.6', dict(bound=bound, corners=corners, relative_difference=difference, largest_value=1.98))
+        record_ = records[0]
+        assert all(isinstance(v, (float, np.floating)) for p in record_.poles for v in p)
+        budget = courant_budget(grid).local_axes(record_.occupied)
+        # Bracket at the vacuum CFL limit so the result is the admitted pole
+        # bound, not the unchanged supplied grid.dt on two already-stable arms.
+        upper = 1 / np.sqrt(budget)
+        step = largest_stable_step(record_.eps_low, record_.sigma_low, record_.poles, upper, budget)
+        assert step is not None
+        if not relative:
+            assert step < upper
+        admitted.append(step)
+    difference = abs(admitted[0]-admitted[1])/abs(admitted[0])
+    record('B6.6', dict(si_strength_bound=bound, admitted_steps=admitted, bracket=upper,
+           relative_difference=difference, largest_value=1.98))
     assert difference <= 1e-12
 
 
