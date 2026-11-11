@@ -1,6 +1,7 @@
 """Default conformal operands and the diagnostic material gradient through forward."""
 
 import json
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -15,9 +16,10 @@ from rfx.geometry import cell_table
 STEPS = 64
 
 
-def scene(eps=2.5, *, conformal=True):
-    sim = Simulation(20e9, (.012,) * 3, dx=.001, cpml_layers=0, snap="declared",
-                     boundary=BoundarySpec(x='pec', y=Boundary('pec', 'pec', conformal=conformal), z='pec'))
+def scene(eps=2.5, *, conformal=True, **options):
+    sim = Simulation(20e9, (.012,) * 3, dx=.001, cpml_layers=0,
+                     boundary=BoundarySpec(x='pec', y=Boundary('pec', 'pec', conformal=conformal), z='pec'),
+                     **options)
     sim.add_material('host', eps_r=eps)
     sim.add(Box((.0013, .0012, .0011), (.0107, .0108, .0106)), material='host')
     sim.add(Sphere((.0061, .0058, .0057), .0023), material='pec')
@@ -151,8 +153,78 @@ def test_conformal_pec_mask_override_refused(monkeypatch):
         guarded.setattr(jax.lax, 'scan', fail)
         with pytest.raises(NotImplementedError, match='pec_mask_override.*conformal.*conformal_pec=False.*PEC shapes'):
             scene().forward(n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
-    result = scene(conformal=False).forward(n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
+    # Staircase control deliberately rasterizes the fractional-diameter sphere.
+    result = scene(conformal=False, snap="declared").forward(
+        n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
     assert np.all(np.isfinite(result.time_series))
+
+
+@pytest.mark.parametrize('fixture', ('sphere', 'box'))
+def test_strict_conformal_realization_warnings_match_run(fixture):
+    realized = []
+    for route in ('run', 'forward'):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            sim = scene() if fixture == 'sphere' else scan_scene(declared=True)
+            assert sim._snap == 'strict'
+            options = {'compute_s_params': False} if route == 'run' else {}
+            getattr(sim, route)(n_steps=8, skip_preflight=True, **options)
+        realized.append([(type(w.message), str(w.message)) for w in caught
+                         if getattr(w.message, 'code', None) == 'realization'])
+    if fixture == 'sphere':
+        assert realized[0]
+    assert realized[0] == realized[1]
+
+
+@pytest.mark.parametrize('override', ('pec_occupancy_override', 'design_occupancy_override'))
+@pytest.mark.parametrize('model', ('edge_keep', 'kottke'))
+def test_conformal_occupancy_override_refused_before_steps(monkeypatch, override, model):
+    sim = scene(pec_occupancy_model=model)
+    options = ({'design_box': ((.002,) * 3, (.004,) * 3)}
+               if override == 'design_occupancy_override' else {})
+    shape = (3,) * 3 if options else sim._build_grid().shape
+    options[override] = jnp.full(shape, .5)
+
+    def fail(*args, **kwargs):
+        pytest.fail('conformal occupancy override reached time stepping')
+
+    monkeypatch.setattr(jax.lax, 'scan', fail)
+    with pytest.raises(NotImplementedError, match=override + r'.*conformal PEC.*Boundary'):
+        sim.forward(n_steps=8, skip_preflight=True, **options)
+
+
+def scan_scene(*, declared):
+    sim = Simulation(20e9, (.012,) * 3, dx=.001, cpml_layers=0,
+                     boundary=BoundarySpec(x='pec', y=Boundary('pec', 'pec', conformal=declared), z='pec'))
+    sim.add(Box((.0063, .0052, .0043), (.0097, .0088, .0086)), material='pec')
+    sim.add_port((.003, .004, .003), 'ez', impedance=50.)
+    return sim
+
+
+@pytest.mark.parametrize('declared', (False, True))
+def test_multi_device_conformal_scan_refused_before_steps(monkeypatch, declared):
+    from rfx.probes import sparam_driver
+
+    def fail(*args, **kwargs):
+        pytest.fail('conformal devices= scan reached distributed accumulation or stepping')
+
+    monkeypatch.setattr(sparam_driver, '_distributed_lumped_accumulators', fail)
+    monkeypatch.setattr(jax.lax, 'scan', fail)
+    with pytest.raises(NotImplementedError, match=r'compute_lumped_wire_s_matrix_via_scan\(devices=.*conformal PEC.*single device.*conformal_pec=False'):
+        sparam_driver.compute_lumped_wire_s_matrix_via_scan(
+            scan_scene(declared=declared), [10e9], n_steps=8,
+            conformal_pec=None if declared else True, devices=[jax.devices()[0]] * 2)
+
+
+@pytest.mark.parametrize('declared', (False, True))
+def test_strict_conformal_scan_admitted(declared):
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+
+    sim = scan_scene(declared=declared)
+    assert sim._snap == 'strict'
+    result, _ = compute_lumped_wire_s_matrix_via_scan(
+        sim, [10e9], n_steps=8, conformal_pec=None if declared else True)
+    assert np.all(np.isfinite(result))
 
 
 def test_conformal_sheet_refusal_matches_run(monkeypatch):

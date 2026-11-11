@@ -1433,6 +1433,18 @@ def _no_shape_tangent_jvp(primals, tangents):
         "(with subpixel_smoothing only in a closed PEC domain).")
 
 
+def refuse_conformal_occupancy_overrides(sim, pec_occupancy, design_occupancy):
+    """Forward cannot combine occupancy overrides with conformal shape operands."""
+    if not (_conformal_requested(sim, {}) and sim._has_pec_to_conform()):
+        return
+    for name, override in (("pec_occupancy_override", pec_occupancy),
+                           ("design_occupancy_override", design_occupancy)):
+        if override is not None:
+            raise NotImplementedError(
+                f"forward({name}=...) is not supported together with conformal PEC; "
+                "turn Boundary(conformal=True) off, or add the cells as PEC shapes.")
+
+
 def merge_forward_pec_mask(sim, pec_mask, override):
     """Refuse cell-mask overrides that conformal shape operands would discard."""
     if override is None:

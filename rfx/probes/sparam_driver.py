@@ -136,6 +136,12 @@ def compute_lumped_wire_s_matrix_via_scan(
     refuse_wall_loss(sim, "lumped/wire S-matrix scan and eager port probes")
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim, main_record=_main_wire_record)
+    conformal_pec = (bool(sim._boundary_spec.conformal_faces())
+                     if conformal_pec is None else conformal_pec)
+    if devices is not None and conformal_pec and sim._has_pec_to_conform():
+        raise RfxUnsupported(
+            "compute_lumped_wire_s_matrix_via_scan(devices=...) refuses conformal PEC; "
+            "use a single device (omit devices=) or set conformal_pec=False.")
     if subpixel_smoothing and devices is not None:
         raise NotImplementedError(
             "subpixel_smoothing is not applied by the multi-device S drives; "
@@ -175,7 +181,9 @@ def compute_lumped_wire_s_matrix_via_scan(
     if not skip_preflight:
         from rfx._diagnostic_transport import report_diagnostics
         report_diagnostics(sim._auto_preflight(
-            context="compute_lumped_wire_s_matrix_via_scan", check_ntff="advisory"))
+            context="compute_lumped_wire_s_matrix_via_scan", check_ntff="advisory",
+            prepare=True, distributed=devices is not None, conformal=bool(conformal_pec),
+            realization_options=(subpixel_smoothing, bool(conformal_pec))))
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     if devices is None and not graded:
         _sheet_specs: list = []

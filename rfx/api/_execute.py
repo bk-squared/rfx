@@ -31,7 +31,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing
+from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing, refuse_conformal_occupancy_overrides
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 
@@ -1403,6 +1403,7 @@ class _ExecuteMixin:
         rounding, not necessarily bit for bit.
         """
         _call_args = dict(locals()); del _call_args["self"], _call_args["_removed_kwargs"]
+        refuse_conformal_occupancy_overrides(self, pec_occupancy_override, design_occupancy_override)
         self, pinned_sheet_layout = _conductors.prepare_sheet_layout(
             self, pinned_sheet_layout, distributed=distributed)
         refuse_forward_smoothing(self, subpixel_smoothing=subpixel_smoothing,
@@ -1460,7 +1461,7 @@ class _ExecuteMixin:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override), realization_options=(subpixel_smoothing, False))
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, conformal=bool(self._boundary_spec.conformal_faces()), tfsf_material_overrides=(eps_override, sigma_override, mu_r_override), realization_options=(subpixel_smoothing, bool(self._boundary_spec.conformal_faces())))
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=distributed)
@@ -1501,8 +1502,8 @@ class _ExecuteMixin:
                 {"fwd_uniform": "uniform forward", "fwd_nonuniform": "non-uniform forward",
                  "fwd_distributed_nu": "distributed non-uniform forward"}.get(plan.lane, plan.lane),
                 entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
-                instead="use run() on a uniform mesh to keep conformal PEC "
-                        "for a forward-only result")
+                instead="use run() or forward() on a uniform mesh and one device "
+                        "to keep default conformal PEC")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(

@@ -666,7 +666,8 @@ def stepped_conductors(conductors, *, conformal_operands):
     return replace(conductors, pec_cells=None, pec_edges=edges)
 
 
-def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
+def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True,
+              realization_options=None):
     """Record/replay the exact object passed to the stepping call."""
     if conductors.mode != "solve":
         raise ValueError("A runner cannot consume audit-mode conductors")
@@ -694,7 +695,7 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
             if item.name != "_prepared_owner":
                 object.__setattr__(owner, item.name, getattr(conductors, item.name))
         conductors = owner
-    record = finish_table(sim, conductors, lane=lane)
+    record = finish_table(sim, conductors, lane=lane, realization_options=realization_options)
     if record is not None and not _traced_product(conductors):
         from rfx.model.realization_reference import remember_kernel
         remember_kernel(sim, conductors, record)
@@ -922,9 +923,9 @@ def drawn_launch_eps(sim, grid, materials):
     return materials.eps_r
 
 
-def forward_kernel_inputs(sim, root, lane, edges, sheet_operator):
+def forward_kernel_inputs(sim, root, lane, edges, sheet_operator, *, realization_options=None):
     root, _ = at_kernel(sim, root, lane=lane, pec_edges=edges,
-                        sheet_operator=sheet_operator)
+                        sheet_operator=sheet_operator, realization_options=realization_options)
     return root, root.pec_edges, root.sheet_operator
 
 

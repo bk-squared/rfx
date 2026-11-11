@@ -114,8 +114,6 @@ def _forward_from_materials(
             ": the sheet operator assumes the plain isotropic "
             "E update at its edges (Stage-1/2 conformal and Kottke "
             "lanes do not apply the sheet operator).")
-    from rfx.model.tensor_operands import refuse_full_tensor_conformal
-    refuse_full_tensor_conformal(subpixel_smoothing, _conformal, pec_shapes)
     refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,
         conformal_pec=_conformal, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
@@ -675,7 +673,9 @@ def _forward_from_materials(
     stepping_product = conductors
     from rfx.runners.uniform import assemble_wall_loss
     sheet_impedance = assemble_wall_loss(self, conductors, sheet_impedance, lane=lane or "fwd_uniform")
-    conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
+    conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(
+        self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance,
+        realization_options=(subpixel_smoothing, _conformal))
     result = prepared_step.advance(stepping_product, _run,
         grid,
         materials,

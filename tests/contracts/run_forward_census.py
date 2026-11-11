@@ -280,14 +280,14 @@ def build_c_smooth(path):
 
 
 def build_c_conformal(path):
-    sim = base_scene(path, snap="declared", boundary=BoundarySpec(
+    sim = base_scene(path, boundary=BoundarySpec(
         x='cpml', y=Boundary('pec', 'pec', conformal=True), z='cpml'))
     sim.add(Sphere((.0153, .0102, .0061), .0023), material='pec')
     return sim.add(Box((.0223, .0072, .0033), (.0267, .0138, .0086)), material='pec')
 
 
 def build_p_conformal(path):
-    sim = base_scene(path, snap="declared", source=False, boundary=BoundarySpec(
+    sim = base_scene(path, source=False, boundary=BoundarySpec(
         x='cpml', y=Boundary('pec', 'pec', conformal=True), z='cpml'))
     sim.add(Sphere((.0153, .0102, .0061), .0023), material='pec')
     return sim.add_port(SOURCE, 'ez', impedance=50.)
