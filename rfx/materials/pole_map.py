@@ -20,6 +20,7 @@ class SampledPoleMap:
     kappa: object
     centres: tuple
     source: object = field(metadata={"static": True})
+    si_traced: bool = field(default=False, metadata={"static": True})
 
     def __iter__(self):
         return iter((self.omega_0, self.delta, self.kappa))
@@ -67,6 +68,7 @@ def sample_spec(spec, grid, shape):
         relative = isinstance(pole.kappa, RelativeStrength)
         strength = pole.kappa.value if relative else pole.kappa
         values = [v(*xyz) if callable(v) else v for v in (pole.delta, strength)]
+        si_traced = not relative and is_tracer(values[1])
         xp = jnp if any(is_tracer(v) for v in values) or is_tracer(mask) else np
         occupied = xp.ones(shape, dtype=bool) if mask is None else xp.broadcast_to(mask, shape).astype(bool)
         values = [xp.broadcast_to(v, shape) for v in values]
@@ -85,7 +87,7 @@ def sample_spec(spec, grid, shape):
         delta, kappa = (xp.where(occupied, v, 0.) for v in values)
         if relative:
             kappa = RelativeStrength(pole.kappa.reference, kappa)
-        sampled.append(SampledPoleMap(pole.omega_0, delta, kappa, axes, pole))
+        sampled.append(SampledPoleMap(pole.omega_0, delta, kappa, axes, pole, si_traced))
     return sampled, masks
 
 
@@ -94,7 +96,7 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
     from rfx.materials.lorentz import LorentzPole, lorentz_pole_coeffs, pole_update_coeffs, pole_underflow_guard
     relative = isinstance(pole.kappa, RelativeStrength)
     value = pole.kappa.value if relative else pole.kappa
-    si_tracer = not relative and is_tracer(value) and value.dtype == jnp.float32
+    si_tracer = not relative and pole.si_traced and value.dtype == jnp.float32
     concrete = not any(is_tracer(v) for v in (pole.delta, value, mask))
     xp = np if concrete else jnp
     occupied = xp.ones(shape, dtype=bool) if mask is None else xp.broadcast_to(mask, shape).astype(bool)
