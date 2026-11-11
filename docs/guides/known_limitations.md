@@ -836,6 +836,22 @@ Tracker: #1373
 
 `forward(distributed=True)` on a uniform mesh runs the same solve as `run(devices=...)` and returns its probe records. It refuses `eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and `rlc_values_override`. It runs inside a user `jax.jit`, where port S-parameters are refused by name. For a gradient with those arguments, run on one device, or use a graded mesh, where `forward(distributed=True)` takes traced permittivity, conductivity and PEC overrides.
 
+### In float32, a reverse-mode gradient with respect to a traced Lorentz or Drude pole strength in SI units underflows.
+
+Tracker: #2561
+
+With a traced pole strength kappa = omega_p² in SI units (rad²/s²), the reverse pass forms the
+cotangent of kappa in float32. On the CPU, once |dJ/dkappa| is below 1.18e-38 the gradient is
+exactly zero, with no warning. In a synthetic reproduction (a 30 x 16 x 16 mm domain at 0.5 mm
+cells, one traced Drude pole) this happened below a source amplitude of 0.108 on a graded mesh and
+0.0153 on the uniform mesh. On a GPU (one RTX 3080 measured) the cotangent is kept as a subnormal
+number: below 1.18e-38 the gradient loses precision, and it reaches zero only near 1.4e-45. For a
+metal-like Drude pole (kappa about 2e32 rad²/s²) the CPU zero would be reached once
+|dJ/dlog kappa| is below about 2e-6, so nearly any objective in raw SI units would return a zero
+gradient (an estimate, not measured). Only kappa was traced; other pole parameters were not
+measured. What to do: divide the objective by a constant of its order, such as its value at the
+starting design given as a Python float, or run with `precision="float64"` and JAX x64.
+
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
 Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_conductivity_gradient_record.py::test_lossless_design)
