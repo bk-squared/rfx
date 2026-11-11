@@ -88,9 +88,11 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
     monkeypatch.setattr(lorentz, 'pole_update_coeffs', observe)
     coeffs, _ = init(pole, grid, mask)
     assert len(observed_delta) == 3
-    assert isinstance(coeffs.a, tuple) and isinstance(coeffs.b, tuple)
-    worst = 0.
+    assert isinstance(coeffs.damping, tuple) and isinstance(coeffs.restoring, tuple)
     worst_delta = 0.
+    worst_damping = 0
+    worst_restoring = 0.
+    worst_c = 0
     for comp, cell in itertools.product(range(3), itertools.product(range(3, 10), repeat=3)):
         ke = hand_mean(mask * kappa, grid, comp, cell)
         de = hand_mean(mask * kappa * delta, grid, comp, cell) / ke
@@ -99,14 +101,28 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
         worst_delta = max(worst_delta, delta_ulp)
         assert delta_ulp <= 2, (comp, cell, observed_delta[comp][cell], de, delta_ulp)
         expected = pole_update_coeffs(0., de, ke, grid.dt)
-        for arr, value in zip((coeffs.a[comp], coeffs.b[comp], coeffs.c[comp]), expected):
-            want = np.float32(value)
-            got = np.asarray(arr)[(0,) + cell]
-            ulp = abs(float(got) - float(want)) / abs(float(np.spacing(want)))
-            worst = max(worst, ulp)
-            assert ulp <= 2, (comp, cell, got, want, ulp)
+        d = np.float64(np.float32(observed_delta[comp][cell]))
+        t = np.float64(np.float32(grid.dt))
+        want_damping = np.float32(2 * d * t / (1 + d * t))
+        got_damping = np.float32(np.asarray(coeffs.damping[comp])[(0,) + cell])
+        assert np.signbit(got_damping) == np.signbit(want_damping)
+        damping_spacings = abs(int(got_damping.view(np.uint32)) - int(want_damping.view(np.uint32)))
+        worst_damping = max(worst_damping, damping_spacings)
+        assert damping_spacings <= 4, (comp, cell, got_damping, want_damping, damping_spacings)
+        want = np.float32(expected[1])
+        got = np.asarray(coeffs.restoring[comp])[(0,) + cell]
+        ulp = abs(float(got) - float(want)) / abs(float(np.spacing(want)))
+        worst_restoring = max(worst_restoring, ulp)
+        assert ulp <= 2, (comp, cell, got, want, ulp)
+        # A8b: independent float64 closed form, rounded once to float32.
+        want_c = np.float32(EPS0 * ke * float(grid.dt)**2 / (1 + de * float(grid.dt)))
+        got_c = np.float32(np.asarray(coeffs.c[comp])[(0,) + cell])
+        assert np.signbit(got_c) == np.signbit(want_c)
+        c_spacings = abs(int(got_c.view(np.uint32)) - int(want_c.view(np.uint32)))
+        worst_c = max(worst_c, c_spacings)
+        assert c_spacings <= 12, (comp, cell, got_c, want_c, c_spacings)
     interface = int(np.flatnonzero(x[:, 0, 0] >= .0025)[0])
-    record(f'P2c-coefficients-{graded}', dict(worst_ulp=worst, delta_e_worst_ulp=worst_delta,
+    record(f'P2c-coefficients-{graded}', dict(delta_e_worst_ulp=worst_delta, damping_worst_spacings=worst_damping, restoring_worst_ulp=worst_restoring, c_worst_spacings=worst_c,
            interface_index=interface,
            interface_delta_e=[float(v[interface, 6, 6]) for v in observed_delta]))
 
@@ -116,8 +132,8 @@ def test_p3_one_state_identity_and_layout():
     profile = lambda x, y, z: WP**2 * (1 + 40 * x)
     pole = LorentzPoleMap(0., 1e9, profile)
     coeffs, state = init(pole, grid, mask)
-    assert not isinstance(coeffs.a, tuple)
-    assert not isinstance(coeffs.b, tuple)
+    assert not isinstance(coeffs.damping, tuple)
+    assert not isinstance(coeffs.restoring, tuple)
     assert all(v.shape == (1,) + grid.shape for v in state), [v.shape for v in state]
     values = np.unique(np.broadcast_to(profile(*xyz), grid.shape)[mask])
     from rfx.materials.lorentz import LorentzPole
@@ -187,10 +203,12 @@ def test_p8_linear_cell_centre_sampling(graded):
             assert ke == pytest.approx(WP**2 * (1 + slope * physical_x), rel=1e-14)
         expected = np.float32(EPS0 * ke * grid.dt**2 / (1 + 1e9 * grid.dt))
         actual = np.asarray(coeffs.c[comp])[(0,) + cell]
-        ulp = abs(float(actual) - float(expected)) / abs(float(np.spacing(expected)))
-        worst = max(worst, ulp)
-        assert ulp <= 2, (comp, cell, actual, expected, ulp)
-    record(f'P8-{graded}', dict(worst_ulp=worst))
+        assert np.signbit(actual) == np.signbit(expected)
+        spacings = abs(int(actual.view(np.uint32)) - int(expected.view(np.uint32)))
+        worst = max(worst, spacings)
+        bar = 19 if graded else 14
+        assert spacings <= bar, (comp, cell, actual, expected, spacings)
+    record(f'P8-{graded}', dict(worst_spacings=worst))
 
 
 def test_callable_sampled_once_and_outside_mask_ignored():
@@ -205,3 +223,49 @@ def test_callable_sampled_once_and_outside_mask_ignored():
     coeffs, _ = init(LorentzPoleMap(0., delta, kappa), grid, mask)
     assert count == [1, 1]
     assert all(np.isfinite(v).all() for v in jax.tree.leaves(coeffs))
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('scene_name', ['P2c', 'common'])
+@pytest.mark.parametrize('vary_delta', [False, True], ids=['constant_delta', 'varying_delta'])
+def test_exterior_increment_convention(graded, scene_name, vary_delta):
+    from rfx.materials.debye import pole_reach
+    from rfx.model.materials import electric_cell_sizes, pole_component_weights
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    from tests.unit.materials.test_pole_map_runs import HI, LO, record, scene
+
+    if scene_name == 'P2c':
+        grid, xyz, mask = rig(graded)
+    else:
+        _, grid, _ = scene(graded, 'P1', mapped=True)
+        axes = []
+        for axis in range(3):
+            widths = np.asarray(grid.cells(axis), dtype=float)
+            nodes = np.r_[0., np.cumsum(widths[:-1])]
+            nodes -= nodes[8]
+            axes.append(nodes + widths / 2)
+        xyz = np.meshgrid(*axes, indexing='ij', sparse=True)
+        mask = np.broadcast_to(np.logical_and.reduce([
+            np.broadcast_to((v >= lo) & (v < hi), grid.shape)
+            for v, lo, hi in zip(xyz, LO, HI)]), grid.shape)
+    delta = (lambda x, y, z: 1e9 * (1 + 30 * x)) if vary_delta else 1e9
+    pole = LorentzPoleMap(0., delta, lambda x, y, z: WP**2 * (1 + 40 * x + 20 * y))
+    coeffs, _ = init(pole, grid, mask)
+    assert isinstance(coeffs.damping, tuple) == vary_delta
+    fractions = pole_component_weights(mask, high_wall=unpadded_high_walls(grid),
+                                       cell_sizes=electric_cell_sizes(grid))
+    exterior = ~np.asarray(pole_reach(fractions))
+    assert np.any(exterior)
+    counts = []
+    for component in range(3):
+        c = np.asarray(coeffs.c[component])[0]
+        forbidden = np.asarray(fractions[component]) <= 0
+        assert np.count_nonzero(c[forbidden]) == 0
+        assert np.count_nonzero(c[exterior]) == 0
+        for values in (coeffs.damping, coeffs.restoring):
+            array = values[component] if isinstance(values, tuple) else values
+            np.testing.assert_array_equal(np.asarray(array)[0][exterior], 1.)
+        counts.append(dict(c_nonzero=int(np.count_nonzero(c)), forbidden=int(forbidden.sum()),
+                           exterior_c_nonzero=int(np.count_nonzero(c[exterior]))))
+    record(f'A7-exterior-{scene_name}-{graded}-{vary_delta}',
+           dict(exterior_cells=int(exterior.sum()), components=counts))
