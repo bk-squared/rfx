@@ -974,6 +974,9 @@ def validate_dispersion(realized, poles, dt):
     if realized.coefficients is None:
         return
     def same(a, b):
+        from rfx.materials.relative_strength import RelativeStrength
+        if isinstance(a, RelativeStrength) or isinstance(b, RelativeStrength):
+            return a == b
         return a is b or (not is_tracer(a) and not is_tracer(b)
                           and jnp.ndim(a) == jnp.ndim(b) == 0 and bool(a == b))
     if not same(realized.dt, dt):

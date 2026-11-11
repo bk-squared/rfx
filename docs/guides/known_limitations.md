@@ -865,8 +865,15 @@ number: below 1.18e-38 the gradient loses precision, and it reaches zero only ne
 metal-like Drude pole (kappa about 2e32 rad²/s²) the CPU zero would be reached once
 |dJ/dlog kappa| is below about 2e-6, so nearly any objective in raw SI units would return a zero
 gradient (an estimate, not measured). Only kappa was traced; other pole parameters were not
-measured. What to do: divide the objective by a constant of its order, such as its value at the
-starting design given as a Python float, or run with `precision="float64"` and JAX x64.
+measured. What to do: declare the strength as `RelativeStrength(reference, value)`, choosing a
+reference near its largest value, so that the differentiated variable is of order 1;
+`drude_pole(omega_p, gamma, density=...)` and
+`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it. Otherwise divide the objective
+by a constant of its order, such as its value at the starting design given as a Python float,
+or run with `precision="float64"` and JAX x64. An optional warning is off by default: set
+`RFX_POLE_UNDERFLOW_CHECK=1` before the first call (a cached compile keeps the old setting).
+It warns when a nonzero incoming cotangent, replayed in SI units, falls below the smallest
+normal float32 value (1.18e-38).
 
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 

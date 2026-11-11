@@ -69,7 +69,7 @@ if TYPE_CHECKING:
 
 from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, cast
 
 import jax
 import jax.numpy as jnp
@@ -135,13 +135,17 @@ def _poles_to_params(
     for pole in debye_poles:
         params.append(jnp.log(jnp.array(max(pole.delta_eps, 1e-12))))
         params.append(jnp.log(jnp.array(max(pole.tau, 1e-30))))
-    for pole in lorentz_poles:
+    for lorentz_pole in lorentz_poles:
+        from rfx.materials.relative_strength import RelativeStrength
+        from rfx.errors import RfxUnsupported
+        if isinstance(lorentz_pole.kappa, RelativeStrength):
+            raise RfxUnsupported("differentiable_material_fit does not optimize RelativeStrength; supply SI pole strengths")
         # Recover delta_eps from kappa = delta_eps * omega_0^2
-        omega_0 = max(pole.omega_0, 1e-6)
-        delta_eps = pole.kappa / (omega_0 ** 2) if omega_0 > 0 else 1.0
+        omega_0 = max(lorentz_pole.omega_0, 1e-6)
+        delta_eps = lorentz_pole.kappa / (omega_0 ** 2) if omega_0 > 0 else 1.0
         params.append(jnp.log(jnp.array(max(delta_eps, 1e-12))))
         params.append(jnp.log(jnp.array(omega_0)))
-        params.append(jnp.log(jnp.array(max(pole.delta, 1e-12))))
+        params.append(jnp.log(jnp.array(max(lorentz_pole.delta, 1e-12))))
     return jnp.stack(params)
 
 
@@ -697,7 +701,7 @@ def differentiable_material_fit(
         for p in final_debye
     ]
     lorentz_out = [
-        LorentzPole(omega_0=float(p.omega_0), delta=float(p.delta), kappa=float(p.kappa))
+        LorentzPole(omega_0=float(p.omega_0), delta=float(p.delta), kappa=float(cast(float, p.kappa)))
         for p in final_lorentz
     ]
 

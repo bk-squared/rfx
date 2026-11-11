@@ -88,6 +88,7 @@ from rfx.sources.waveguide_port import (
 )
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, drude_pole, lorentz_pole
+from rfx.materials.relative_strength import RelativeStrength
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 from rfx.boundaries.pec import (
     SheetSpec, WireSpec, edge_is_pec, realized_pec_edge_masks,
@@ -312,7 +313,7 @@ __all__ = [
     "extract_s_matrix_wire", "compute_floquet_s_params",
     "compute_rcs", "compute_rcs_jax", "RCSResult", "ScatteringResponse",
     # materials / dispersion / fitting
-    "DebyePole", "LorentzPole", "drude_pole", "lorentz_pole",
+    "DebyePole", "LorentzPole", "RelativeStrength", "drude_pole", "lorentz_pole",
     "ThinConductor", "MATERIAL_LIBRARY",
     # lattice ownership contract: the one realization of conductor
     # geometry as PEC E edges, and the two helpers every consumer reads.
