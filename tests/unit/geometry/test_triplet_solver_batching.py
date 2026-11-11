@@ -87,3 +87,23 @@ def test_fixed_inverse_jvp_batches_equal_bits(monkeypatch, isolated):
         outputs.append(jax.jvp(inverse, (matrix,), (tangent,)))
     _assert_bits(outputs[1], outputs[0])
     jax.clear_caches()
+
+
+@pytest.mark.parametrize('isolated', [False, True], ids=['full', 'one-among-identities'])
+@pytest.mark.parametrize('operation', ['inv', 'eigh', 'eigvalsh', 'inverse-jvp'])
+def test_fixed_solver_serial_and_sliced_equal_bits(monkeypatch, isolated, operation):
+    """The same batch-64 solves retain every bit with slices or serial map."""
+    matrix, tangent = fixed_inputs(isolated)
+    if operation in ('eigh', 'eigvalsh'):
+        matrix = (matrix + jnp.swapaxes(matrix, -1, -2)) / 2
+    monkeypatch.setattr(triplet, 'MATRIX_BATCH_SIZE', 64)
+    outputs = []
+    for serial in (False, True):
+        monkeypatch.setattr(triplet, '_serial_pieces', lambda: serial)
+        jax.clear_caches()
+        solve = jax.jit(lambda m: triplet._linalg(
+            jnp, 'inv' if operation == 'inverse-jvp' else operation, m))
+        outputs.append(jax.jvp(solve, (matrix,), (tangent,))
+                       if operation == 'inverse-jvp' else solve(matrix))
+    _assert_bits(outputs[1], outputs[0])
+    jax.clear_caches()

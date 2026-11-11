@@ -101,10 +101,10 @@ def test_chunked_traced_build_and_jvp_within_rounding_bound(monkeypatch):
     jax.clear_caches()
 
 
-def test_serial_pieces_build_and_jvp_equal_batched(monkeypatch):
-    """A dielectric rod's node permittivity tensor and radius derivative must
-    not change by one bit when the pieces are issued in another order.
-    """
+def test_serial_and_sliced_build_and_jvp_within_rounding_bound(monkeypatch):
+    """Two clean batch-64 compiled forms satisfy the frozen A35--A36 bound."""
+    from tests._chunked_rounding_bound import capture_operands, compare_builds, rounding_bound
+
     grid = Grid(domain=(.005, .005, .003), dx=.001, freq_max=10e9, cpml_axes='')
     def build(radius):
         rod = Cylinder((.0024, .0026, .0015), radius, .008, 'z')
@@ -117,8 +117,16 @@ def test_serial_pieces_build_and_jvp_equal_batched(monkeypatch):
     jax.clear_caches()
     monkeypatch.setattr(triplet, '_serial_pieces', lambda: True)
     actual = evaluate()
-    for value, reference in zip(jax.tree.leaves(actual), jax.tree.leaves(expected)):
-        np.testing.assert_array_equal(value, reference)
+    jax.block_until_ready((expected, actual))
+    with monkeypatch.context() as capture_patch:
+        capture_patch.setattr(triplet, 'MATRIX_BATCH_SIZE', 2**20)
+        jax.clear_caches()
+        witness = rounding_bound(capture_operands(build, jnp.float32(.0017)))
+    measured = compare_builds(expected, actual, witness)
+    print(f'entries outside the derivation: {measured["outside"]}')
+    for row in measured['leaves']:
+        print(f'leaf={row["leaf"]} largest |difference|/bound={row["max_ratio"]:.17g}')
+    assert not measured['violations'], measured['violations'][:5]
     jax.clear_caches()
 
 
