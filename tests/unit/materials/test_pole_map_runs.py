@@ -246,8 +246,22 @@ def test_p6_run_forward(monkeypatch, graded):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_p6_traced_forward(monkeypatch, graded):
+    import rfx.materials.pole_map as pole_map
+    realized = []
+    builder = pole_map.map_terms
+    def observe(pole, mask, *args, **kwargs):
+        terms = builder(pole, mask, *args, **kwargs)
+        realized.append((pole, mask, terms))
+        return terms
+    monkeypatch.setattr(pole_map, 'map_terms', observe)
     sim, _, meta = scene(graded, 'P6', mapped=True)
     reference = capture_scan(sim, 2000, monkeypatch)
+    assert len(realized) == 1
+    pole, mask, concrete = realized.pop()
+    occupied = np.asarray(mask, bool)
+    # At least one neighbouring occupied pair differs in both strength and damping.
+    mixed = occupied[1:] & occupied[:-1] & (np.diff(pole.delta, axis=0) != 0) & (np.diff(pole.kappa, axis=0) != 0)
+    assert np.any(mixed)
     def measured(scale):
         traced, _, _ = scene(graded, 'P6', mapped=True)
         maps = {}
@@ -260,8 +274,25 @@ def test_p6_traced_forward(monkeypatch, graded):
                                                         lambda x, y, z: scale * profile(x, y, z))
                 material.lorentz_poles[:] = [maps[id(original)]]
         difference, magnitude, _, _ = paired_arrays(reference, capture_scan(traced, 2000, monkeypatch, forward=True))
-        return difference, magnitude
-    difference, magnitude = jax.jit(measured)(jnp.float32(1.))
+        assert len(realized) == 1
+        terms = realized.pop()[2]
+        return difference, magnitude, terms[0], terms[2]
+    difference, magnitude, traced_damping, traced_c = jax.jit(measured)(jnp.float32(1.))
+    worst_rate = 0.
+    worst_fraction = 0.
+    active_edges = 0
+    dt = meta['dt']
+    for dc, dtc, c in zip(concrete[0], traced_damping, traced_c):
+        dc, dtc, c = (np.asarray(v, dtype=float) for v in (dc, dtc, c))
+        active = c > 0
+        rate_error = abs(dtc / ((2-dtc)*dt) - dc / ((2-dc)*dt))
+        allowance_rate = 4*2**-24*2 / ((2-dc)**2*dt)
+        worst_rate = max(worst_rate, float(rate_error[active].max()))
+        worst_fraction = max(worst_fraction, float((rate_error/allowance_rate)[active].max()))
+        active_edges += int(active.sum())
+        assert np.all(rate_error[active] <= allowance_rate[active]), (worst_rate, worst_fraction)
+    record(f'B6.4-{graded}', dict(worst_rate_error=worst_rate, worst_bar_fraction=worst_fraction,
+           active_edges=active_edges, mixed_cell_pairs=int(mixed.sum())))
     allowance = 1.2e-7 * np.cumsum(np.asarray(magnitude, float))
     difference = np.asarray(difference, float)
     ratio = np.divide(difference, allowance, out=np.where(difference > 0, np.inf, 0.), where=allowance > 0)

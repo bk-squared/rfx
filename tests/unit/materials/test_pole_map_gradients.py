@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, LorentzPoleMap, Simulation, gradient_record_length_witness
+from rfx import Box, GaussianPulse, LorentzPole, LorentzPoleMap, RelativeStrength, Simulation, gradient_record_length_witness
 from tests._x64_compat import enable_x64
 from tests.unit.materials.test_pole_map_runs import capture_scan, assert_float64_scan, record
 
@@ -17,13 +17,18 @@ def parameters():
     return (jnp.log(jnp.asarray(KAPPA)), jnp.asarray(.4))
 
 
-def scene(params, graded, precision='float32'):
+def scene(params, graded, precision='float32', *, declaration='si'):
     log_kappa, slope = params
     sim = Simulation(freq_max=6e9, domain=(.030, .016, .016), dx=.0005,
                      cpml_layers=8, precision=precision,
                      **(dict(dx_profile=GRADED_X) if graded else {}))
     pole = LorentzPoleMap(0., 2e9,
         lambda x, y, z: jnp.exp(log_kappa) * (1 + slope * (x - .015) / .0093))
+    if declaration == 'relative':
+        pole = LorentzPoleMap(0., 2e9, RelativeStrength(float(KAPPA),
+            lambda x, y, z: jnp.exp(log_kappa - jnp.log(KAPPA)) * (1 + slope * (x - .015) / .0093)))
+    elif declaration == 'scalar':
+        pole = LorentzPole(0., 2e9, jnp.exp(log_kappa))
     sim.add_material('plasma', eps_r=1., lorentz_poles=[pole])
     sim.add(Box((.01035, .00435, .00435), (.01965, .01165, .01165)), material='plasma')
     sim.add_source((.00585, .00835, .00815), 'ez', waveform=GaussianPulse(f0=4e9))
@@ -32,8 +37,8 @@ def scene(params, graded, precision='float32'):
     return sim, grid
 
 
-def observable(params, n_steps, graded, precision='float32', *, with_trace=False):
-    sim, grid = scene(params, graded, precision)
+def observable(params, n_steps, graded, precision='float32', *, with_trace=False, declaration='si'):
+    sim, grid = scene(params, graded, precision, declaration=declaration)
     result = sim.forward(n_steps=n_steps, checkpoint=True, skip_preflight=True)
     trace = jnp.asarray(result.time_series).reshape(n_steps, -1)[:, 0]
     kernel = jnp.exp(-2j * jnp.pi * jnp.asarray(BINS)[:, None]
@@ -44,10 +49,19 @@ def observable(params, n_steps, graded, precision='float32', *, with_trace=False
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_a4_first_gradient(graded):
-    gradient = jax.grad(lambda p: jnp.sum(observable(p, 200, graded)))(parameters())
-    values = np.asarray(gradient, float)
-    record(f'A4-first-{graded}', dict(gradient=values.tolist()))
-    assert np.isfinite(values).all() and np.all(values != 0), values
+    for declaration in ('relative', 'scalar'):
+        objective = lambda p: jnp.sum(observable(p, 200, graded, declaration=declaration))
+        params = parameters()
+        reverse = np.asarray(jax.grad(objective)(params), float)
+        forward = np.asarray([jax.jvp(objective, (params,),
+            (tuple(jnp.asarray(float(i == j)) for j in range(2)),))[1] for i in range(2)], float)
+        active = slice(None) if declaration == 'relative' else slice(0, 1)
+        relative = abs(reverse[active] - forward[active]) / abs(forward[active])
+        record(f'B6.1-{declaration}-{graded}', dict(reverse=reverse.tolist(), forward=forward.tolist(),
+               relative=relative.tolist()))
+        assert np.isfinite(reverse).all() and np.isfinite(forward).all()
+        assert np.all(reverse[active] != 0) and np.all(forward[active] != 0)
+        assert np.all(relative <= 1e-4), relative
 
 
 def precondition(params, steps, graded, monkeypatch):

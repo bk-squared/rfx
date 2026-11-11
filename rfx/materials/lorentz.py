@@ -75,28 +75,42 @@ class LorentzPoleMap:
     """
     omega_0: float
     delta: float | Callable
-    kappa: float | Callable
+    kappa: float | Callable | RelativeStrength
 
     def __post_init__(self):
         if callable(self.omega_0) or jnp.ndim(self.omega_0) != 0:
             raise ValueError("LorentzPoleMap omega_0 must be one scalar")
         for name in ("delta", "kappa"):
             value = getattr(self, name)
+            if name == "kappa" and isinstance(value, RelativeStrength):
+                value = value.value
             if not callable(value) and jnp.ndim(value) != 0:
                 raise ValueError(f"LorentzPoleMap {name} must be a scalar or callable")
 
 
-def drude_pole_map(omega_p: float | Callable, gamma: float | Callable) -> LorentzPoleMap:
+def drude_pole_map(omega_p: float | Callable, gamma: float | Callable, *, density=None) -> LorentzPoleMap:
     """Declare a plasma-frequency and collision-rate profile in physical metres."""
-    kappa = (lambda x, y, z: omega_p(x, y, z) ** 2) if callable(omega_p) else omega_p ** 2
+    kappa: float | Callable | RelativeStrength
+    if density is not None:
+        if callable(omega_p) or isinstance(omega_p, jax.core.Tracer):
+            raise ValueError("drude_pole_map density requires a concrete reference omega_p")
+        kappa = RelativeStrength(float(omega_p ** 2), density)
+    else:
+        kappa = (lambda x, y, z: omega_p(x, y, z) ** 2) if callable(omega_p) else omega_p ** 2
     delta = (lambda x, y, z: gamma(x, y, z) / 2.) if callable(gamma) else gamma / 2.
     return LorentzPoleMap(0., delta, kappa)
 
 
 def lorentz_pole_map(delta_eps: float | Callable, omega_0: float,
-                     delta: float | Callable) -> LorentzPoleMap:
+                     delta: float | Callable, *, relative: bool = False) -> LorentzPoleMap:
     """Declare spatial oscillator strength and damping at one resonance."""
-    kappa = (lambda x, y, z: delta_eps(x, y, z) * omega_0 ** 2) if callable(delta_eps) else delta_eps * omega_0 ** 2
+    kappa: float | Callable | RelativeStrength
+    if relative and (isinstance(omega_0, jax.core.Tracer) or omega_0 <= 0):
+        raise ValueError("relative lorentz_pole_map requires concrete omega_0 > 0; use drude_pole_map for omega_0=0")
+    if relative:
+        kappa = RelativeStrength(float(omega_0 ** 2), delta_eps)
+    else:
+        kappa = (lambda x, y, z: delta_eps(x, y, z) * omega_0 ** 2) if callable(delta_eps) else delta_eps * omega_0 ** 2
     return LorentzPoleMap(omega_0, delta, kappa)
 
 

@@ -185,6 +185,7 @@ class PoleSetExtremes(NamedTuple):
 
 def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     """Reduce static pole patterns over owned cells only; never count halos."""
+    import jax
     import jax.numpy as jnp
     from rfx.core.jax_utils import is_tracer
 
@@ -227,7 +228,7 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     else:
         unique_codes, inverse, counts = np.unique(codes, return_inverse=True, return_counts=True)
     patterns = [[bool((int(code) >> bit) & 1) for bit in range(len(poles))] for code in unique_codes]
-    values = [materials.eps_r, materials.sigma] + [v for p in poles for v in p]
+    values = [materials.eps_r, materials.sigma] + jax.tree.leaves([v for p in poles for v in p])
     traced = abstract_masks or any(is_tracer(v) for v in values)
     # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)

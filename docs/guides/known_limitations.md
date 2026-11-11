@@ -868,7 +868,7 @@ gradient (an estimate, not measured). Only kappa was traced; other pole paramete
 measured. What to do: declare the strength as `RelativeStrength(reference, value)`, choosing a
 reference near its largest value, so that the differentiated variable is of order 1;
 `drude_pole(omega_p, gamma, density=...)` and
-`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it. Otherwise divide the objective
+`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it; maps use `drude_pole_map(..., density=)` or `lorentz_pole_map(..., relative=True)`. Otherwise divide the objective
 by a constant of its order, such as its value at the starting design given as a Python float,
 or run with `precision="float64"` and JAX x64. An optional warning is off by default: set
 `RFX_POLE_UNDERFLOW_CHECK=1` before the first call (a cached compile keeps the old setting).

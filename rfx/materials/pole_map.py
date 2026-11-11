@@ -1,5 +1,6 @@
 """Realization and edge reduction of spatial Lorentz pole declarations."""
 from dataclasses import dataclass, field
+import os
 
 import jax
 import jax.numpy as jnp
@@ -8,6 +9,7 @@ import numpy as np
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import edge_mean_components
 from rfx.materials.debye import pole_reach
+from rfx.materials.relative_strength import RelativeStrength
 
 
 @jax.tree_util.register_dataclass
@@ -62,7 +64,9 @@ def sample_spec(spec, grid, shape):
         if not is_map(pole) or isinstance(pole, SampledPoleMap):
             sampled.append(pole)
             continue
-        values = [v(*xyz) if callable(v) else v for v in (pole.delta, pole.kappa)]
+        relative = isinstance(pole.kappa, RelativeStrength)
+        strength = pole.kappa.value if relative else pole.kappa
+        values = [v(*xyz) if callable(v) else v for v in (pole.delta, strength)]
         xp = jnp if any(is_tracer(v) for v in values) or is_tracer(mask) else np
         occupied = xp.ones(shape, dtype=bool) if mask is None else xp.broadcast_to(mask, shape).astype(bool)
         values = [xp.broadcast_to(v, shape) for v in values]
@@ -79,17 +83,22 @@ def sample_spec(spec, grid, shape):
 
         traced_check("LorentzPoleMap", "occupied cell values", check, occupied, *values, ordered=True)
         delta, kappa = (xp.where(occupied, v, 0.) for v in values)
+        if relative:
+            kappa = RelativeStrength(pole.kappa.reference, kappa)
         sampled.append(SampledPoleMap(pole.omega_0, delta, kappa, axes, pole))
     return sampled, masks
 
 
 def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_sizes):
     """Use the shared builder after the declared strength-weighted edge rule."""
-    from rfx.materials.lorentz import LorentzPole, lorentz_pole_coeffs, pole_update_coeffs
-    concrete = not any(is_tracer(v) for v in (pole.delta, pole.kappa, mask))
+    from rfx.materials.lorentz import LorentzPole, lorentz_pole_coeffs, pole_update_coeffs, pole_underflow_guard
+    relative = isinstance(pole.kappa, RelativeStrength)
+    value = pole.kappa.value if relative else pole.kappa
+    si_tracer = not relative and is_tracer(value) and value.dtype == jnp.float32
+    concrete = not any(is_tracer(v) for v in (pole.delta, value, mask))
     xp = np if concrete else jnp
     occupied = xp.ones(shape, dtype=bool) if mask is None else xp.broadcast_to(mask, shape).astype(bool)
-    kappa, delta = xp.asarray(pole.kappa), xp.asarray(pole.delta)
+    kappa, delta = xp.asarray(value), xp.asarray(pole.delta)
     if concrete:
         active_k, active_d = kappa[occupied], delta[occupied]
         ks = float(active_k.max()) if active_k.size else 0.
@@ -97,7 +106,8 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
         constant_delta = not active_d.size or bool(np.all(active_d == ds))
         constant_kappa = not active_k.size or bool(np.all(active_k == ks))
         if ks == 0 or (constant_delta and constant_kappa):
-            damping, restoring, c = lorentz_pole_coeffs([LorentzPole(pole.omega_0, ds, ks)], dt, shape, [fractions])
+            strength = RelativeStrength(pole.kappa.reference, ks) if relative else ks
+            damping, restoring, c = lorentz_pole_coeffs([LorentzPole(pole.omega_0, ds, strength)], dt, shape, [fractions])
             return damping[0], restoring[0], tuple(v[0] for v in c)
     else:
         # The normalization scale cancels between the builder and edge weights.
@@ -106,6 +116,9 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
         ds = delta.reshape(-1)[xp.argmax(xp.where(occupied, kappa, 0.))]
         constant_delta = False
     k = xp.where(ks > 0, kappa / xp.where(ks > 0, ks, 1.), 0.)
+    if si_tracer and os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1":
+        k = pole_underflow_guard(k, (ks,), scalar=False)
+    strength = RelativeStrength(pole.kappa.reference, ks) if relative else (RelativeStrength(1.0, ks) if si_tracer else ks)
     # Concrete products are rounded before entering the edge-mean program.
     edge_xp = np if concrete and not constant_delta else jnp
     mk = edge_xp.asarray(xp.where(occupied, k, 0.))
@@ -113,14 +126,14 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
     weights = edge_mean_components(mk, **kwargs)
     reach = jnp.ones(shape, bool) if fractions is None else pole_reach(fractions)
     if constant_delta:
-        damping, restoring, strength = pole_update_coeffs(pole.omega_0, ds, ks, dt)
-        return jnp.where(reach, damping, 1.0), jnp.where(reach, restoring, 1.0), tuple(strength * w for w in weights)
+        damping, restoring, c = pole_update_coeffs(pole.omega_0, ds, strength, dt)
+        return jnp.where(reach, damping, 1.0), jnp.where(reach, restoring, 1.0), tuple(c * w for w in weights)
     product = edge_xp.asarray(xp.where(occupied, k * (delta - ds), 0.))
     offsets = edge_mean_components(product, **kwargs)
     terms = []
     for w, offset in zip(weights, offsets):
         de = ds + edge_xp.where(w > 0, offset / edge_xp.where(w > 0, w, 1.), 0.)
-        damping, restoring, c = pole_update_coeffs(pole.omega_0, de, ks, dt)
+        damping, restoring, c = pole_update_coeffs(pole.omega_0, de, strength, dt)
         terms.append((jnp.where(reach, damping, 1.0), jnp.where(reach, restoring, 1.0),
                       jnp.asarray(edge_xp.where(ks > 0, c * w, 0.))))
     return tuple(tuple(t[i] for t in terms) for i in range(3))
@@ -149,7 +162,8 @@ def build_map_coeffs(poles, masks, dt, shape, weights, *, periodic, high_wall, c
 def pattern_corner(pole, selected, xp):
     """A corner and its kappa-max position for this membership pattern only."""
     from rfx.materials.lorentz import LorentzPole
-    k = xp.where(selected, pole.kappa, -xp.inf)
+    strength = pole.kappa.si if isinstance(pole.kappa, RelativeStrength) else pole.kappa
+    k = xp.where(selected, strength, -xp.inf)
     index = xp.unravel_index(xp.argmax(k), selected.shape)
     position = tuple(xp.asarray(axis)[i] for axis, i in zip(pole.centres, index))
     corner = LorentzPole(pole.omega_0, xp.min(xp.where(selected, pole.delta, xp.inf)), xp.max(k))
