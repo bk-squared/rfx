@@ -1,4 +1,4 @@
-"""A whole-cell translation preserves a periodic conformal PEC structure."""
+"""Periodic readers agree with whole-cell translations and wide image sums."""
 
 import numpy as np
 import pytest
@@ -10,6 +10,7 @@ from rfx.geometry.cell_table import build_cell_table
 from rfx.geometry.conformal_cells import compute_conformal_fractions
 from rfx.grid import Grid
 from rfx.nonuniform import make_nonuniform_grid
+from tests._x64_compat import enable_x64
 
 
 def _uniform():
@@ -75,7 +76,8 @@ def test_graded_translation_and_seam_distances(centre):
     # The last edge [9.5, 12] mm straddles the sphere centre at 10.1 mm.
     # Linear node-SDF interpolation is not the chord overlap on that edge:
     # its endpoint distances are -0.6 and +0.7 mm, giving 0.7 / 1.3.
-    # This checks the existing cell-table rule with the nearest seam image.
+    # This pins the linear endpoint-SDF limitation: 0.538..., versus the
+    # exact chord's 0.28, with the nearest seam image.
     expected = [1., 1., 1., 1., .6, .7 / 1.3]
     if centre == .0091:
         # A 1.7 mm seam gap exceeds the first cell (1 mm). Here the seam
@@ -91,7 +93,7 @@ def test_box_content_enumerates_the_sdf_images(graded):
     grid = _graded(.001 * np.array([1., 2., 3., 2., 1.5, 2.5])) if graded else _uniform()
     axis = 2 if graded else 0
     lo, hi = [.004] * 3, [.008] * 3
-    lo[axis], hi[axis] = .0089, .0113
+    lo[axis], hi[axis] = (.007, .0089) if graded else (.0015, .003)
     box = Box(tuple(lo), tuple(hi))
     coords = tuple(np.zeros(1) for _ in range(3))
     visited = []
@@ -103,15 +105,24 @@ def test_box_content_enumerates_the_sdf_images(graded):
     _periodic.periodic_sdf(grid, box, coords, sample, xp=np)
     expected = [(tuple(lo[a] - shift[a] for a in range(3)),
                  tuple(hi[a] - shift[a] for a in range(3))) for shift in visited]
-    assert _images(grid, box, (lo, hi)) == expected
-    assert len(expected) == 2
+    actual = _images(grid, box, (lo, hi))
+    assert set(expected) < set(actual)
+    # Independent integer shifts: SDF reaches only the base Box here;
+    # the wider R+h reach also reads the image across the nearest seam.
+    assert len(expected) == 1
+    shift = [0.] * 3
+    shift[axis] = -grid.domain[axis] if graded else grid.domain[axis]
+    extra = (tuple(lo[a] + shift[a] for a in range(3)),
+             tuple(hi[a] + shift[a] for a in range(3)))
+    assert set(actual) == set(expected) | {extra}
 
 
-def test_node_tensor_change_is_confined_to_seam(monkeypatch):
+@pytest.mark.parametrize('centre', [.0105, .0015], ids=['high', 'low'])
+def test_node_tensor_change_is_confined_to_seam(monkeypatch, centre):
     from rfx.geometry.node_tensor import compute_node_tensor_eps
 
     grid = _uniform()
-    shapes = [(Sphere((.0105, .006, .006), .0008), 4.)]
+    shapes = [(Sphere((centre, .006, .006), .0008), 4.)]
     actual = compute_node_tensor_eps(grid, shapes)
 
     def old_ranges(grid, shape):
@@ -130,3 +141,76 @@ def test_node_tensor_change_is_confined_to_seam(monkeypatch):
             np.testing.assert_array_equal(np.asarray(a)[1:-1], np.asarray(b)[1:-1])
     np.testing.assert_array_equal(np.asarray(actual.nodes.triplets)[:, 1:-1],
                                   np.asarray(previous.nodes.triplets)[:, 1:-1])
+
+
+def _wide_images(monkeypatch):
+    """Independent reference: include two whole periods beyond every bound."""
+    original = _periodic._fill_image_range
+
+    def wide(grid, shape, axis, **kwargs):
+        kwargs['padding'] = 2 * float(grid.domain[axis])
+        return original(grid, shape, axis, **kwargs)
+
+    monkeypatch.setattr(_periodic, '_fill_image_range', wide)
+
+
+def _assert_node_operands(actual, expected, *, roll=0, axis=0):
+    for a, b in zip(actual, expected):
+        np.testing.assert_allclose(a, np.roll(b, roll, axis=axis), rtol=0, atol=1e-12)
+    for field in ('xi', 'cross', 'cross_reverse'):
+        values = getattr(actual.nodes, field)
+        if values is not None:
+            for a, b in zip(values, getattr(expected.nodes, field)):
+                spatial_axis = axis + np.ndim(b) - 3
+                np.testing.assert_allclose(a, np.roll(b, roll, axis=spatial_axis),
+                                           rtol=0, atol=1e-12)
+    np.testing.assert_allclose(actual.nodes.triplets,
+                               np.roll(expected.nodes.triplets, roll, axis=axis + 1),
+                               rtol=0, atol=1e-12)
+
+
+def test_box_blocker_reach_and_whole_cell_translation(monkeypatch):
+    from rfx.geometry.node_tensor import compute_node_tensor_eps
+
+    grid = _uniform()
+
+    def operands(offset):
+        return compute_node_tensor_eps(grid, [
+            (Box((.0003 + offset, .004, .004), (.003 + offset, .008, .008)), 2.),
+            (Sphere((.0097 + offset, .006, .006), .0008), 4.)], field_dtype=np.float64)
+
+    with enable_x64(True):
+        actual, translated = operands(0.), operands(.001)
+        with monkeypatch.context() as reference:
+            _wide_images(reference)
+            expected = operands(0.)
+        _assert_node_operands(actual, expected)
+        _assert_node_operands(translated, actual, roll=1)
+
+
+@pytest.mark.parametrize('radius', [.0003, .00002], ids=['r0.3mm', 'r0.02mm'])
+@pytest.mark.parametrize('reader', ['node', 'kottke'])
+def test_anisotropic_normal_reach(monkeypatch, radius, reader):
+    from rfx.geometry.node_tensor import compute_node_tensor_eps
+    from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
+
+    dz = .0002
+    grid = _graded(np.full(12, dz))
+    # Offset from the coarse x nodes so even the tiny sphere's seam samples
+    # have a normal with a coarse-axis component, rather than a pure z normal.
+    sphere = Sphere((.0062, .006, grid.domain[2] - 1.05 * dz - radius), radius)
+
+    def operands():
+        if reader == 'node':
+            return compute_node_tensor_eps(grid, [(sphere, 4.)], field_dtype=np.float64)
+        return compute_smoothed_eps_nonuniform(grid, [(sphere, 4.)])
+
+    with enable_x64(True):
+        actual = operands()
+        _wide_images(monkeypatch)
+        expected = operands()
+        if reader == 'node':
+            _assert_node_operands(actual, expected)
+        else:
+            for a, b in zip(actual, expected):
+                np.testing.assert_allclose(a, b, rtol=0, atol=1e-12)

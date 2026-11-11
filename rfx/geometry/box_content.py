@@ -99,11 +99,19 @@ def is_exact_box(shape):
 
 
 def _images(grid, shape, bounds):
-    """Periodic copies of ``bounds`` as ``periodic_sdf`` enumerates them."""
+    """Periodic bounds within the Box scope and blocker reach ``R + h``.
+
+    Evaluate ``_reach`` with each axis's largest cell to bound every node's
+    scope radius R and the extra cell h in the blocker weight. On a cubic
+    mesh, R = REACH_FACTOR * sqrt(h**2 + h**2/4 + h**2/4), so R + h is
+    about 2.53 h. Both Box and blocker images use this wider padding.
+    """
     from itertools import product
 
     from rfx._internal._periodic import _sdf_image_ranges
-    ranges = _sdf_image_ranges(grid, shape)
+    largest = [np.asarray([np.max(grid.cells(a))]) for a in range(3)]
+    radius, extra = _reach([(h, h) for h in largest])
+    ranges = _sdf_image_ranges(grid, shape, padding=float(np.max(radius + extra)))
     lo, hi = bounds
     out = []
     for shift in product(*ranges):

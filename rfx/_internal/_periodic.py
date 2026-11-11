@@ -217,11 +217,21 @@ def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
     return fold(0, coords)
 
 
-def _sdf_image_ranges(grid, shape):
-    """Images reaching a full cell beyond the body on each periodic axis."""
+def _sdf_image_ranges(grid, shape, *, padding=None):
+    """Images within a reader's reach of the base period.
+
+    By default, pad every periodic axis by the largest cell over all axes:
+    conformal edges reach a full cell, and smoothing samples half a cell
+    along a normal that can point along a coarser transverse axis. Uniform
+    2-D grids expose a singleton collapsed-axis cell of the same width, so
+    including it leaves the maximum over the physical axes unchanged.
+    Readers with a wider support may supply their own ``padding``.
+    """
     import numpy as np
     periodic = getattr(grid, 'periodic_axes', '')
-    return [_fill_image_range(grid, shape, a, padding=float(np.max(grid.cells(a))))
+    if padding is None and periodic:
+        padding = max(float(np.max(grid.cells(a))) for a in range(3))
+    return [_fill_image_range(grid, shape, a, padding=padding)
             if 'xyz'[a] in periodic else (0,) for a in range(3)]
 
 
@@ -231,9 +241,10 @@ def periodic_sdf(grid, shape, coords, sdf_fn, *, xp, normal_fn=None,
 
     Images are reduced one axis at a time; only base-grid arrays are held.
     Conformal edges reach one full cell outside a body's bounds. The largest
-    cell on each axis covers that reach, including on graded periodic grids;
+    cell over all axes pads every periodic axis, including on graded grids;
     halo nodes are wrapped copies of physical nodes. This also covers the
-    half-cell transition sampled by smoothing weights.
+    half-cell normal transition sampled by smoothing, even when the normal
+    points along a coarser transverse axis.
     The non-periodic call is exactly the original SDF/normal evaluation.
     Optionally retain the winning image's coordinate-shift indices. Outside
     media lookup can exclude that image at selected samples before folding.
