@@ -399,7 +399,7 @@
    "disposition": "intended",
    "reason": "The interface example deliberately extends the dielectric half-space through the absorbing layers, avoiding an unintended rear slab face. The displayed physical domain stops before those layers; absorber-region fields are not interpreted as material physics.",
    "ref": "examples/visualization/field_movies.py:5-10,62-72",
-   "rows": 1,
+   "rows": 2,
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
   {

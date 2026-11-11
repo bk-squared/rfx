@@ -658,7 +658,12 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
             assert " x " not in m, f"advisory uses ' x ' as a multiplication sign: {m[:120]!r}"
             if mirrored:
                 m = _axis.sub(lambda k: "y" if k.group(1) == "x" else "x", m)
-            out.append(re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m))
+            m = re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m)
+            if m.startswith("[run] preflight found"):
+                # Axis swapping reverses emission order inside the joined warning.
+                header, *lines = m.split("\n  - ")
+                m = "\n  - ".join([header, *sorted(lines)])
+            out.append(m)
         return sorted(out)
 
     cx, cy = _canon(wx, mirrored=False), _canon(wy, mirrored=True)
