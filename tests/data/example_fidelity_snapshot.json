@@ -3961,6 +3961,18 @@
           "source": "_validate_cfg_geometry_in_cpml"
         },
         {
+          "code": "geometry_in_absorber",
+          "loc": "geometry[#0 lo 1m]",
+          "numbers": [
+            0.0,
+            -1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_geometry_in_cpml"
+        },
+        {
           "code": "lossless_q",
           "loc": null,
           "numbers": [
