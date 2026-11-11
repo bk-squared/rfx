@@ -54,6 +54,7 @@ def validate_radius(radius):
 RADIUS_SUPPORTED_PATHS = frozenset({
     "run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform",
     "s_matrix_scan", "mixed_s_matrix", "topology_optimize",
+    "run_distributed", "run_distributed_nu", "fwd_distributed_nu",
 })
 
 

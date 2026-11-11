@@ -571,7 +571,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("shared voltage drive agrees with run_uniform"),
             run_subgridded=carries("inside the refined slab"),
 
-            run_distributed=carries("uniform live wire drive/load and whole-port S; planes/radius refused"),
+            run_distributed=carries("uniform live wire drive/load and whole-port S including radius; reference planes refused"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries("shared voltage drive agrees with run_uniform"),
             fwd_distributed_nu=DIST_FWD_PORTS,
@@ -1697,4 +1697,21 @@ PLAIN_SOURCE_S_REQUEST = {
                   "tests/unit/sparams/test_plain_source_refusal.py", raises="plain sources")
     for path in ("run_uniform", "run_nonuniform", "run_subgridded", "run_distributed", "run_distributed_nu",
                  "s_matrix_scan", "fwd_distributed", "fwd_uniform", "fwd_nonuniform")
+}
+
+
+# #2032 Part A: radius carrier routes, checked by the radius contract.
+WIRE_RADIUS_PATHS = {
+    "run_distributed": carries("global stamp, uniform slab realization"),
+    "fwd_distributed": carries("admits as run_distributed; same uniform step"),
+    "run_distributed_nu": carries("global graded stamp, wrapped slab realization"),
+    "fwd_distributed_nu": carries("global graded stamp, wrapped slab realization"),
+    "graded_nonwrapped": not_reachable("a port requires the wrapped step"),
+    "run_uniform": carries("unchanged one-device radius model"),
+    "run_nonuniform": carries("unchanged one-device radius model"),
+    "fwd_uniform": carries("unchanged one-device radius model"),
+    "fwd_nonuniform": carries("unchanged one-device radius model"),
+    "subgridded": refuses("no radius record carrier", raises="radius"),
+    "adi": refuses("second-order 3-D Yee required", raises="radius"),
+    "upml": refuses("no H component record carrier", raises="radius"),
 }

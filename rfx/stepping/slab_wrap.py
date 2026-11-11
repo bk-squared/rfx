@@ -13,7 +13,7 @@ from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
-from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
+from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place, material_kind
 from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table
 
 
@@ -146,13 +146,13 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None, staged=False):
                 if name == 'components':
                     # Kernel operands (KernelComponents) or, under a realized-model
                     # capture, the whole realization: cut every grid-shaped leaf,
-                    # padded by the field family its top-level name belongs to.
+                    # padded by the operand table's neutral value.
                     def cut_component(path, a):
-                        top = str(getattr(path[0], 'name', getattr(path[0], 'key', path[0])))
+                        # Nonspatial metadata stays in its original form.
                         if np.ndim(a) != 3 or np.shape(a)[0] != layout.nx:
                             return a
-                        kind = ('eps_r' if 'eps' in top else 'sigma' if 'sigma' in top
-                                else 'mu_r' if top.startswith('mu') else 'lumped')
+                        kind = material_kind(path, prefix='materials.components')
+                        # Component increments are zero even for eps/mu names.
                         return cut(a, layout, kind, mesh=mesh)
                     fields[name] = None if field is None else jax.tree_util.tree_map_with_path(
                         cut_component, field)

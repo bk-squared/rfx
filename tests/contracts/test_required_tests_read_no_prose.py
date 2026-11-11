@@ -421,6 +421,7 @@ DOCS_CONSISTENCY_TESTS = frozenset({
     "tests/contracts/test_support_table.py::test_refused_star_removed",
     "tests/contracts/test_support_table.py::test_stray_qualifier",
     "tests/contracts/test_support_table.py::test_supported_changed_to_refused",
+    "tests/contracts/test_support_table.py::test_wire_radius_carrier_rows",
     "tests/contracts/test_waveguide_aperture_conductors.py::test_rule4_support_refusal_row",
     "tests/unit/autodiff/test_ad_diagnostics.py::test_memory_reduction_docs_include_residual_inspection_boundary",
     "tests/unit/autodiff/test_estimate_ad_memory.py::test_memory_reduction_docs_separate_planning_from_certificate_evidence",

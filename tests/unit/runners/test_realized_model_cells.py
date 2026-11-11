@@ -41,7 +41,10 @@ def model(lane, row, fill=False):
               cpml_layers=3)
     if lane in ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu"):
         kw["dx_profile"] = np.array([MM]*4 + [MM/2]*8 + [MM]*4)
-    pass
+    if row == "mu_radius":
+        kw["domain"] = (14*MM, 11*MM, 12*MM)
+        if "dx_profile" in kw:
+            kw["dx_profile"] = np.array([MM]*4 + [MM/2]*8 + [MM]*6)
     if row == "conformal":
         kw["boundary"] = BoundarySpec(
             x=Boundary(lo="pec", hi="pec", conformal=True),
@@ -62,7 +65,10 @@ def model(lane, row, fill=False):
     if row == "conformal":
         sim.add(Box((9*MM, 2*MM, 2*MM), (10*MM, 4*MM, 4*MM)), material="pec")
     pos = (5*MM, 5*MM, 6*MM)
-    if row.startswith(("lumped_", "wire_")):
+    if row == "mu_radius":
+        sim.add_port((11*MM, 5*MM, 6*MM), "ez", extent=2*MM,
+                     radius=.1*MM, waveform=unit_waveform)
+    elif row.startswith(("lumped_", "wire_")):
         kind = row.split("_")[1]
         extra = {} if kind == "none" else {"amplitude_kind": kind}
         sim.add_port(pos, "ez", waveform=unit_waveform,
@@ -90,15 +96,16 @@ def override_epsilon(sim, lane):
 
 def run(sim, lane, row, steps=4):
     kw = dict(n_steps=steps, skip_preflight=True)
+    count = min(3, len(jax.devices("cpu"))) if row == "mu_radius" else 2
     if lane.startswith("run"):
         kw["compute_s_params"] = False
         if lane in ("run_distributed", "run_distributed_nu"):
-            kw["devices"] = jax.devices("cpu")[:2]
+            kw["devices"] = jax.devices("cpu")[:count]
         if row == "conformal":
             kw["conformal_pec"] = True
         return sim.run(**kw)
     if lane in ("fwd_distributed", "fwd_distributed_nu"):
-        kw.update(distributed=True, devices=jax.devices("cpu")[:2])
+        kw.update(distributed=True, devices=jax.devices("cpu")[:count])
     if row == "override_drive":
         kw["eps_override"] = override_epsilon(sim, lane)
     return sim.forward(checkpoint=False, **kw)
@@ -427,3 +434,11 @@ def test_kernel_dump_is_consumed(kernel, quantity):
     assert np.any(moved != unchanged)
     print(f"J4 kernel {site} {quantity} unchanged_bits=True "
           f"max_field_delta={np.max(np.abs(moved-unchanged)):.9g}", file=sys.stderr)
+
+
+@pytest.mark.parametrize("lane", ["run_distributed", "fwd_distributed",
+                                  "run_distributed_nu", "fwd_distributed_nu"])
+@pytest.mark.parametrize("axis", range(3))
+def test_published_radius_mu(lane, axis):
+    """P1a: the existing mu row, including every outside slab row."""
+    assert_cell(measured(lane, "mu_radius"), "mu", axis)
