@@ -247,7 +247,7 @@ def _preflight_impl(
         "pec_box_subcell", "pec_zero_cells", "pec_realization_refused",
         "dc_film_area", "dc_film_layers", "dc_film_unchecked",
         "source_decoupled", "declared-span-short-of-padded-face",
-        "port_aperture_unrasterizable",
+        "port_aperture_unrasterizable", "absorber_point_refused",
     }
     if any(issue.code in assembly_codes for issue in issues):
         exc = self._campaign_ctx()._assembly_exception

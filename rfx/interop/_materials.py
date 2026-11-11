@@ -15,11 +15,14 @@ from __future__ import annotations
 import dataclasses
 from typing import Any
 
+import numpy as np
+
 from rfx.api._spec import MaterialSpec
 from rfx.interop._errors import UnsupportedDesignFeature
 from rfx.interop._validate import check_number, check_text
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
+from rfx.materials.relative_strength import RelativeStrength
 
 __all__ = [
     "material_from_dict",
@@ -39,15 +42,27 @@ _POLE_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
 _SCALAR_FIELDS: tuple[str, ...] = ("eps_r", "sigma", "mu_r", "chi3")
 
 
+def _relative_value(value, what):
+    """Record concrete dimensionless scalars or arrays, refusing live functions."""
+    from rfx.core.jax_utils import is_tracer
+
+    if is_tracer(value) or callable(value):
+        raise UnsupportedDesignFeature(f"{what}: RelativeStrength requires a concrete value for export")
+    array = np.asarray(value)
+    if array.dtype.kind not in "fiu" or not np.all(np.isfinite(array)):
+        raise UnsupportedDesignFeature(f"{what}: RelativeStrength value must contain finite numbers")
+    return array.tolist()
+
+
 def _material_spec_field_names() -> tuple[str, ...]:
     return tuple(f.name for f in dataclasses.fields(MaterialSpec))
 
 
-def _dump_poles(kind: str, poles: Any) -> list[dict[str, float]] | None:
+def _dump_poles(kind: str, poles: Any, *, preserve_relative=False) -> list[dict] | None:
     if poles is None:
         return None
     pole_cls, names = _POLE_FIELDS[kind]
-    dumped: list[dict[str, float]] = []
+    dumped: list[dict[str, Any]] = []
     for index, pole in enumerate(poles):
         if not isinstance(pole, pole_cls):
             raise UnsupportedDesignFeature(
@@ -55,11 +70,18 @@ def _dump_poles(kind: str, poles: Any) -> list[dict[str, float]] | None:
                 f"{pole_cls.__name__}; the interop layer will not guess its "
                 f"parameter meaning"
             )
-        dumped.append({
-            name: check_number(
-                getattr(pole, name), what=f"{kind}[{index}].{name}")
-            for name in names
-        })
+        values: dict[str, Any] = {}
+        for name in names:
+            value = getattr(pole, name)
+            what = f"{kind}[{index}].{name}"
+            if isinstance(value, RelativeStrength):
+                if preserve_relative:
+                    values[name] = {"type": "RelativeStrength", "reference": float(value.reference),
+                                    "value": _relative_value(value.value, f"{what}.value")}
+                    continue
+                value = value.si
+            values[name] = check_number(value, what=what)
+        dumped.append(values)
     return dumped
 
 
@@ -85,15 +107,24 @@ def _load_poles(kind: str, payload: Any) -> list[Any] | None:
                 f"{pole_cls.__name__}: missing={sorted(missing)}, "
                 f"unknown={sorted(unknown)}"
             )
-        poles.append(pole_cls(**{
-            name: check_number(
-                item[name], what=f"{kind}[{index}].{name}")
-            for name in names
-        }))
+        values = {}
+        for name in names:
+            value = item[name]
+            what = f"{kind}[{index}].{name}"
+            if name == "kappa" and isinstance(value, dict) and value.get("type") == "RelativeStrength":
+                if set(value) != {"type", "reference", "value"}:
+                    raise UnsupportedDesignFeature(f"{what}: invalid RelativeStrength fields")
+                relative = _relative_value(value["value"], f"{what}.value")
+                value = RelativeStrength(check_number(value["reference"], what=f"{what}.reference"),
+                                         np.asarray(relative) if isinstance(relative, list) else relative)
+            else:
+                value = check_number(value, what=what)
+            values[name] = value
+        poles.append(pole_cls(**values))
     return poles
 
 
-def material_to_dict(material: Any) -> dict[str, Any]:
+def material_to_dict(material: Any, *, preserve_relative=False) -> dict[str, Any]:
     """Serialise a :class:`MaterialSpec` losslessly.
 
     Raises
@@ -123,7 +154,7 @@ def material_to_dict(material: Any) -> dict[str, Any]:
         for name in _SCALAR_FIELDS
     }
     for kind in _POLE_FIELDS:
-        out[kind] = _dump_poles(kind, getattr(material, kind))
+        out[kind] = _dump_poles(kind, getattr(material, kind), preserve_relative=preserve_relative)
     return out
 
 

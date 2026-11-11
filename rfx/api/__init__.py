@@ -102,14 +102,7 @@ from rfx.mesh_planner import MeshPlan, mesh_intelligence_report, plan_simulation
 from rfx.auto_config import simulation_auto  # noqa: E402
 
 
-def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
-    """Amplitude at |f0 sin(theta)| relative to f0 for the Bloch drive."""
-    # init_tfsf dispatches BOTH Gaussian waveform names to init_tfsf_2d,
-    # whose drive is exp(-i*2*pi*f0*t) * exp(-(t/tau)**2),
-    # tau = 1/(pi*f0*bandwidth). Thus |S(fc)/S(f0)| = exp(-offset**2).
-    # Work directly in dB to avoid underflow for narrow pulses.
-    offset = (1.0 - abs(math.sin(math.radians(angle_deg)))) / bandwidth
-    return -(20.0 / math.log(10.0)) * offset * offset
+from rfx.sources.tfsf_discrete_plane_wave import _bloch_cutoff_level_db  # noqa: E402,F401
 
 
 from rfx.api._validators import (  # noqa: E402
@@ -153,6 +146,7 @@ from rfx.api._compile import _CompileMixin  # noqa: E402
 # ---------------------------------------------------------------------------
 
 from rfx.api._execute import _ExecuteMixin  # noqa: E402
+from rfx.api._wall_loss import _WallLossMixin
 from rfx.api._mesh import _MeshMixin  # noqa: E402
 from rfx.api._artifacts import _ArtifactsMixin  # noqa: E402
 from rfx.api._ad_memory import (  # noqa: E402
@@ -185,6 +179,7 @@ _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 # ---------------------------------------------------------------------------
 
 class Simulation(
+    _WallLossMixin,
     _MeshMixin,
     _PreflightMixin,
     _SparamMixin,
@@ -255,17 +250,11 @@ class Simulation(
         precomputed CPML profile arrays stay float32 either way (fixed
         setup-time constants measurably bias the primal but do not
         create a per-timestep rounding-lattice noise floor).
-        ``"mixed"``/``"float64"`` are UNIFORM-SINGLE-DEVICE-LANE ONLY
-        today: ``field_dtype`` is threaded only by
-        ``rfx/runners/uniform.py`` — the non-uniform-mesh, distributed
-        (``devices=``/``distributed=True``), and subgridded
-        (``refinement``) runners do not thread it, so a non-float32
-        precision there would silently run float32 fields. ``run()`` /
-        ``forward()`` raise ``NotImplementedError`` rather than do that
-        silently; ``preflight()`` also warns in advance for the
-        non-uniform-mesh case (the distributed case is a call-time
-        ``run()``/``forward()`` kwarg, invisible to preflight, so its
-        `NotImplementedError` at dispatch is the only enforcement point).
+        ``"float64"`` supports uniform and graded single-device Yee runs,
+        including forward(), waveguide S-matrix and wire/lumped S calculators.
+        ``"mixed"`` supports only the uniform single-device lane. Distributed
+        and subgridded lanes refuse both values with ``NotImplementedError``.
+        Preflight warns for ``"mixed"`` on a graded mesh.
 
         ACCURACY CAVEAT for ``"mixed"`` with a CPML boundary:
         float16 field storage is fine for transient and field-shape work
@@ -709,7 +698,7 @@ class Simulation(
         component: str = "ez",
         *,
         waveform: Callable[[float], float] | Callable[[jax.Array], jax.Array] | None = None,
-        amplitude_kind: str | None = None,
+        amplitude_kind: str | None = None, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
 
@@ -780,7 +769,7 @@ class Simulation(
             position=position, component=component,
             impedance=0.0,  # 0 = no port impedance (soft source)
             waveform=waveform, extent=None,
-            amplitude_kind=resolved_kind,
+            amplitude_kind=resolved_kind, allow_in_absorber=allow_in_absorber,
         ))
         return self
 
@@ -1101,61 +1090,6 @@ class Simulation(
         self._thin_conductors.append(tc)
         return self
 
-    def add_pinned_sheet(
-        self,
-        *,
-        plane_index: int,
-        i_range: tuple[int, int],
-        j_range: tuple[int, int],
-        normal_axis: int = 2,
-        sigma_bulk: float = 5.8e7,
-        thickness: float = 35e-6,
-        eps_r: float = 1.0,
-        surface_impedance_f0: float | None = None,
-        name: str | None = None,
-    ) -> "Simulation":
-        """Declare a thin PEC conductor by NODE INDICES instead of metres.
-
-        ``add_thin_conductor`` draws metal in metres, and the grid then
-        decides which node lines that reaches. This draws it on the node
-        lines directly: the conductor occupies node ``plane_index`` along
-        ``normal_axis`` and the inclusive node ranges ``i_range`` /
-        ``j_range`` on the other two axes, in increasing axis order — for
-        the default ``normal_axis=2`` that is ``i_range`` on x and
-        ``j_range`` on y.
-
-        Indices are INTERIOR (unpadded) node indices: interior node ``i``
-        sits at ``i * dx`` from the domain origin on a uniform mesh, and is
-        the ``i``-th interior node on a graded one. Absorber padding is
-        added when the sheet is realized.
-
-        Why it exists: the conductor's PHYSICAL size is then whatever the
-        cells between those nodes add up to, so stretching the cells makes
-        the metal longer without moving it off the lattice and without any
-        sub-cell metal. That is what lets ``jax.grad`` reach a patch edge
-        through ``dx_profile`` / ``dy_profile`` / ``dz_profile`` — a metric
-        sheet on a mesh that is a JAX tracer is still refused, because its
-        corners cannot be read off a traced node line.
-
-        The declaration is mesh-independent by construction, so the same
-        call gives the same footprint on the uniform and non-uniform lanes,
-        traced or not. A range spanning a single node line is refused: one
-        node line carries no E edge, so the metal would carry no current.
-
-        Only the lossless PEC sheet is supported (``sigma_bulk >= 1e6``,
-        ``surface_impedance_f0`` unset); ``thickness`` is accepted for
-        signature compatibility with :meth:`add_thin_conductor` and is not read.
-        ``eps_r`` must stay at 1; the sheet uses its cells' permittivity.
-        Declare surrounding dielectric with ``add(..., material=...)``.
-        """
-        from rfx.materials.thin_conductor import PinnedSheet
-        self._pinned_sheets.append(PinnedSheet(
-            normal_axis=normal_axis, plane_index=plane_index,
-            i_range=tuple(i_range), j_range=tuple(j_range),
-            sigma_bulk=sigma_bulk, thickness=thickness, eps_r=eps_r,
-            surface_impedance_f0=surface_impedance_f0, name=name))
-        return self
-
     # ---- ports ----
 
     def add_port(
@@ -1170,7 +1104,7 @@ class Simulation(
         excite: bool = True,
         direction: str | None = None,
         reference_plane_cells: int | None = None,
-        terminates: object = None,
+        terminates: object = None, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a lumped port (single-cell) or wire port (multi-cell).
 
@@ -1321,7 +1255,7 @@ class Simulation(
             extent=extent, excite=excite, direction=direction,
             radius=radius,
             reference_plane_cells=reference_plane_cells,
-            terminates=terminated,
+            terminates=terminated, allow_in_absorber=allow_in_absorber,
         ))
         return self
 
@@ -1990,25 +1924,25 @@ class Simulation(
     def add_probe(
         self,
         position: tuple[float, float, float],
-        component: str = "ez",
+        component: str = "ez", *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a point field probe."""
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             raise ValueError(f"component must be a field name, got {component!r}")
-        self._probes.append(_ProbeEntry(position=position, component=component))
+        self._probes.append(_ProbeEntry(position=position, component=component, allow_in_absorber=allow_in_absorber))
         return self
 
     def add_vector_probe(
         self,
-        position: tuple[float, float, float],
+        position: tuple[float, float, float], *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a vector probe that records ALL 6 field components.
 
-        Records Ex, Ey, Ez, Hx, Hy, Hz at the same position.
+        Records Ex, Ey, Ez, Hx, Hy, Hz; allow_in_absorber opts into pad positions.
         Results accessible via result.time_series columns [0..5].
         """
         for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            self._probes.append(_ProbeEntry(position=position, component=comp))
+            self._probes.append(_ProbeEntry(position=position, component=comp, allow_in_absorber=allow_in_absorber))
         return self
 
     def _validate_declared_plane_coordinate(self, axis: str, coordinate: float) -> None:

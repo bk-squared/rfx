@@ -212,7 +212,7 @@ def build_monitor_simulation(dut: str, dx: float = RUNG_DX_M):
     interior flux planes registered.
 
     ``Simulation.run()`` accepts exactly one waveguide port
-    (``rfx/runners/uniform.py``, "supports only a single waveguide port"), and
+    (``rfx/runners/uniform.py``, "supports a single waveguide port"), and
     the flux-lane extractor drives one port at a time with every other port at
     ``src_amp = 0`` — a passive port injects nothing (the ``src_amp`` scaling
     in ``apply_waveguide_port_e`` / ``_h``) and only records. Dropping the

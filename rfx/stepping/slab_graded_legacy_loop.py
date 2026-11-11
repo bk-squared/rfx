@@ -264,9 +264,9 @@ def run_graded_legacy_slab_loop(
                     idx += 1
                     l_cc = args[idx]
                     idx += 1
-                    l_a = args[idx]
+                    l_damping = args[idx]
                     idx += 1
-                    l_b = args[idx]
+                    l_restoring = args[idx]
                     idx += 1
                     l_c = args[idx]
                     idx += 1
@@ -276,20 +276,20 @@ def run_graded_legacy_slab_loop(
                     idx += 1
                     l_pz = args[idx]
                     idx += 1
-                    l_pxp = args[idx]
+                    l_vx = args[idx]
                     idx += 1
-                    l_pyp = args[idx]
+                    l_vy = args[idx]
                     idx += 1
-                    l_pzp = args[idx]
+                    l_vz = args[idx]
                     idx += 1
                     lr_local = (
                         slab_dispersion_coeffs(
                             LorentzCoeffs(ca=l_ca, cb=l_cb, cc=l_cc,
-                                          a=l_a, b=l_b, c=l_c),
+                                          damping=l_damping, restoring=l_restoring, c=l_c),
                             means, dt, nx_per, nx_real, rank=rank),
                         LorentzState(px=l_px, py=l_py, pz=l_pz,
-                                     px_prev=l_pxp, py_prev=l_pyp,
-                                     pz_prev=l_pzp),
+                                     vx=l_vx, vy=l_vy,
+                                     vz=l_vz),
                     )
                 else:
                     lr_local = None
@@ -315,7 +315,7 @@ def run_graded_legacy_slab_loop(
                 if _has_lr:
                     outs = outs + (
                         new_lr.px, new_lr.py, new_lr.pz,
-                        new_lr.px_prev, new_lr.py_prev, new_lr.pz_prev,
+                        new_lr.vx, new_lr.vy, new_lr.vz,
                     )
                 return outs + (absorber_curl,)
 
@@ -338,9 +338,9 @@ def run_graded_legacy_slab_loop(
             if _has_lr:
                 call_args.extend([
                     lorentz_coeffs.ca, lorentz_coeffs.cb, lorentz_coeffs.cc,
-                    lorentz_coeffs.a, lorentz_coeffs.b, lorentz_coeffs.c,
+                    lorentz_coeffs.damping, lorentz_coeffs.restoring, lorentz_coeffs.c,
                     lr_st_in.px, lr_st_in.py, lr_st_in.pz,
-                    lr_st_in.px_prev, lr_st_in.py_prev, lr_st_in.pz_prev,
+                    lr_st_in.vx, lr_st_in.vy, lr_st_in.vz,
                 ])
 
             results = _e_disp(ranks, *call_args)
@@ -367,8 +367,8 @@ def run_graded_legacy_slab_loop(
                 from rfx.materials.lorentz import LorentzState
                 new_lr_st = LorentzState(
                     px=results[ridx], py=results[ridx + 1], pz=results[ridx + 2],
-                    px_prev=results[ridx + 3], py_prev=results[ridx + 4],
-                    pz_prev=results[ridx + 5],
+                    vx=results[ridx + 3], vy=results[ridx + 4],
+                    vz=results[ridx + 5],
                 )
                 ridx += 6
 

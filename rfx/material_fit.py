@@ -492,7 +492,9 @@ def eval_lorentz(freqs: np.ndarray, eps_inf: float,
     omega = 2.0 * np.pi * np.asarray(freqs, dtype=float)
     eps = np.full(omega.shape, eps_inf, dtype=complex)
     for p in poles:
-        eps = eps + p.kappa / (p.omega_0 ** 2 - omega ** 2 + 2j * p.delta * omega)
+        from rfx.materials.relative_strength import RelativeStrength
+        kappa = p.kappa.si if isinstance(p.kappa, RelativeStrength) else p.kappa
+        eps = eps + kappa / (p.omega_0 ** 2 - omega ** 2 + 2j * p.delta * omega)
     return eps
 
 

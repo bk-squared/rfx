@@ -217,7 +217,7 @@ def _dispersion_cases(dtype):
         "debye_e_coeffs": lambda e, s: debye.debye_e_coeffs(
             components(e, s), dt, dc.alpha, dc.beta),
         "lorentz_e_coeffs": lambda e, s: lorentz.lorentz_e_coeffs(
-            components(e, s), dt, lc.a, lc.b, lc.c),
+            components(e, s), dt, lc.damping, lc.restoring, lc.c),
         "mixed_e_component_coeffs": mixed,
     }
     return {name: (fn, m.eps_r, m.sigma) for name, fn in fns.items()}

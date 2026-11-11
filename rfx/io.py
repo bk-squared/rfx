@@ -911,6 +911,8 @@ def export_geometry_json(path: str | Path, sim: Simulation) -> None:
     """
     import json
 
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "export_geometry_json")
     geo = {
         "freq_max": sim._freq_max,
         "domain": list(sim._domain),
@@ -967,6 +969,8 @@ def save_experiment_report(path: str | Path, sim: Simulation, result: Result | O
     import json
     import time
 
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "save_experiment_report")
     grid = None
     if hasattr(result, "grid") and result.grid is not None:
         grid = result.grid
@@ -1042,6 +1046,8 @@ def save_simulation_dataset(path: str | Path, sim: Simulation, result: Result, *
     include_config : bool
         Save simulation config as input metadata (default True).
     """
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "save_simulation_dataset")
     import h5py
 
     path = Path(path)

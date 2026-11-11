@@ -174,15 +174,15 @@ def _update_e_nu_dispersive(
         lorentz_coeffs, lor_state = lorentz
         _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
         p_l = (lor_state.px, lor_state.py, lor_state.pz)
-        p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
+        v_l = (lor_state.vx, lor_state.vy, lor_state.vz)
 
-        px_new, py_new, pz_new = (
+        (px_new, vx_new), (py_new, vy_new), (pz_new, vz_new) = (
             lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c],
-                                p_l_prev[c], _pdtype) for c in range(3))
+                                v_l[c], _pdtype) for c in range(3))
 
-        dpx = jnp.sum(px_new - lor_state.px, axis=0)
-        dpy = jnp.sum(py_new - lor_state.py, axis=0)
-        dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
+        dpx = jnp.sum(vx_new, axis=0)
+        dpy = jnp.sum(vy_new, axis=0)
+        dpz = jnp.sum(vz_new, axis=0)
 
         ex_new = lorentz_e_component(lorentz_coeffs, 0, ex_old, curl_x, dpx,
                                      _fdtype)
@@ -195,7 +195,7 @@ def _update_e_nu_dispersive(
                                   step=state.step + 1)
         new_lor = LorentzState(
             px=px_new, py=py_new, pz=pz_new,
-            px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
+            vx=vx_new, vy=vy_new, vz=vz_new,
         )
         return new_fdtd, None, new_lor
 
@@ -207,16 +207,17 @@ def _update_e_nu_dispersive(
 
     # Explicit Lorentz polarization update first
     p_l = (lor_state.px, lor_state.py, lor_state.pz)
-    p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
+    v_l = (lor_state.vx, lor_state.vy, lor_state.vz)
     p_d = (debye_state.px, debye_state.py, debye_state.pz)
-    p_l_new = tuple(
-        lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c], p_l_prev[c],
+    pv_l_new = tuple(
+        lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c], v_l[c],
                             _lpdtype) for c in range(3))
+    p_l_new, v_l_new = zip(*pv_l_new)
     px_l_new, py_l_new, pz_l_new = p_l_new
 
     e_new, p_d_new = [], []
     for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        dp_l = jnp.sum(v_l_new[c], axis=0)
         ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
             debye_coeffs, lorentz_coeffs, c, dt)
         e_c = (ca * e_old3[c] + cb * curls[c]
@@ -234,7 +235,7 @@ def _update_e_nu_dispersive(
     new_debye = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
     new_lor = LorentzState(
         px=px_l_new, py=py_l_new, pz=pz_l_new,
-        px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
+        vx=v_l_new[0], vy=v_l_new[1], vz=v_l_new[2],
     )
     return new_fdtd, new_debye, new_lor
 
@@ -315,7 +316,7 @@ def _build_nu_scan(
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
     design_box=None,
-    measurement=None,
+    measurement=None, field_dtype=None,
 ) -> _NUScanSetup:
     """Build the NU scan carry + step function (pure code motion).
 
@@ -325,6 +326,7 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    field_dtype = field_dtype if field_dtype is not None else jnp.float32
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
     from rfx.geometry.node_tensor import SmoothedEps
@@ -382,7 +384,7 @@ def _build_nu_scan(
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step as apply_cpml_e, graded_cpml_operands
     (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
-         grid, cpml_axes, pec_faces, pmc_faces)
+         grid, cpml_axes, pec_faces, pmc_faces, field_dtype=field_dtype)
 
     pec_edge_masks, pec_static_edge_masks = graded_conductor_masks(
         pec_mask, pec_occupancy, pec_sheets, pec_wires, pec_edge_masks,
@@ -402,6 +404,13 @@ def _build_nu_scan(
                 localized=(("sources", sources), ("waveguide_ports", waveguide_ports),
                            ("wire_ports", wire_ports), ("rlc_metas", rlc_metas)))
 
+    from rfx.stepping.graded_precision import field_grid, field_operands
+    step_grid = field_grid(grid, field_dtype)
+    dt = step_grid.dt
+    if use_cpml:
+        cpml_grid = step_grid
+        cpml_params = field_operands(cpml_params, field_dtype)
+
     # surface-impedance sheet: exponential-stepping A/B built once
     # from the FINAL scan materials; applied per step at tangential edges
     # in step_fn (after apply_pec_mask, before sources/DFT sampling).
@@ -411,7 +420,7 @@ def _build_nu_scan(
         sheet_coeffs = sheet_update_coeffs(
             sheet_impedance.sigma_sheet, materials, dt)
 
-    state = init_state((grid.nx, grid.ny, grid.nz))
+    state = init_state((grid.nx, grid.ny, grid.nz), field_dtype=field_dtype)
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
     materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
@@ -419,12 +428,12 @@ def _build_nu_scan(
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
 
-    inv_dx_h = grid.inv_dx_h
-    inv_dy_h = grid.inv_dy_h
-    inv_dz_h = grid.inv_dz_h
-    inv_dx = grid.inv_dx
-    inv_dy = grid.inv_dy
-    inv_dz = grid.inv_dz
+    inv_dx_h = step_grid.inv_dx_h
+    inv_dy_h = step_grid.inv_dy_h
+    inv_dz_h = step_grid.inv_dz_h
+    inv_dx = step_grid.inv_dx
+    inv_dy = step_grid.inv_dy
+    inv_dz = step_grid.inv_dz
 
     # ---- design box on the graded mesh: fence, then build Ca/Cb ----
     # The SAME resolver the uniform lane runs (rfx.simulation), because the
@@ -541,6 +550,7 @@ def _build_nu_scan(
         waveguide_port_metrics = tuple(
             _waveguide_port_axis_metrics(grid, cfg) for cfg in waveguide_ports
         )
+        waveguide_port_metrics = field_operands(waveguide_port_metrics, field_dtype)
     else:
         waveguide_meta = ()
         waveguide_port_metrics = ()
@@ -577,7 +587,7 @@ def _build_nu_scan(
     invariants = {
         "inv_dx": inv_dx,
         "inv_dx_h": inv_dx_h,
-        "dx_arr": grid.dx_arr,
+        "dx_arr": step_grid.dx_arr,
         "drives": drive_layout(src_meta, src_waveforms.dtype),
         "probe_table": graded_probe_table(prb_meta, grid.shape, dtype=state.ex.dtype),
         "materials": kernel_materials(materials, electric=not (use_debye or use_lorentz), epsilon=aniso_eps is None),
@@ -593,6 +603,12 @@ def _build_nu_scan(
         "sheet_coeffs": sheet_coeffs if use_sheet_impedance else None,
         "design_box_coeffs": design_box_coeffs,
     }
+    if use_waveguide_ports:
+        import jax
+        from rfx.measurement.waveguide_records import compile_waveguide_table
+        with jax.ensure_compile_time_eval():
+            invariants['waveguide_table'] = compile_waveguide_table(
+                grid, waveguide_meta, measurement=measurement, dtype=state.ex.dtype)
     plan_owners = None
     if measurement is not None:
         # The attached plan's owners, compiled once outside the traced step.
@@ -619,7 +635,7 @@ def _build_nu_scan(
         dt=dt,
         inv_dy_h=inv_dy_h,
         inv_dz_h=inv_dz_h,
-        grid=grid,
+        grid=step_grid,
         use_tfsf=use_tfsf,
         tfsf_cfg=tfsf_cfg if use_tfsf else None,
         use_waveguide_ports=use_waveguide_ports,
@@ -640,7 +656,8 @@ def _build_nu_scan(
         inv_dz=inv_dz,
         curl_boundary=curl_boundary,
         apply_cpml_e=apply_cpml_e,
-        _pec_faces_frozen=_pec_faces_frozen,
+        _pec_faces_frozen=_pec_faces_frozen - getattr(sheet_impedance, "wall_faces", frozenset()),
+        wall_loss_faces=getattr(sheet_impedance, "wall_faces", frozenset()),
         use_pec_edges=use_pec_edges,
         use_pec_occupancy=use_pec_occupancy,
         use_wire_ports=use_wire_ports,
@@ -667,7 +684,7 @@ def _build_nu_scan(
         invariants=invariants,
         carry_init=carry_init,
         src_waveforms=src_waveforms,
-        dt=dt,
+        dt=grid.dt,
         sources=sources,
         probes=probes,
         wire_ports=graded_s_ports(wire_ports),

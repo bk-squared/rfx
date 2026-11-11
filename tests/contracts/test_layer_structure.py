@@ -1309,7 +1309,7 @@ def test_restored_definition_read_through_the_step_module_import_is_refused(tmp_
     simulation`` of a name simulation.py defines (make_probe) is refused."""
     path = "rfx/stepping/uniform.py"
     reader = (REPO / path).read_text()
-    route = "    return pec_walls.apply_pec_faces(state, faces)\n"
+    route = "    return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces)\n"
     assert reader.count(route) == 1
     write(tmp_path, path, reader.replace(
         route, "    from rfx import simulation\n    simulation.make_probe\n" + route))

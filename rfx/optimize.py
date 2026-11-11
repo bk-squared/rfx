@@ -451,6 +451,8 @@ def optimize(
         from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(sim, "optimize() non-uniform design")
         _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
         # this assembly is BOOKKEEPING — it supplies base eps_r
         # and the volume cell mask that ride into sim.forward() as
@@ -476,6 +478,8 @@ def optimize(
         from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(sim, "optimize() design")
         _refuse_f0(sim._thin_conductors, "optimize() design")
         # Bookkeeping assembly — see the non-uniform branch above.
         _opt_sheets: list = []
@@ -640,6 +644,8 @@ def gradient_check(
     resolve_field_dtype(sim._precision)
     grid = sim._build_realized_grid()
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_gc
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "gradient-check")
     _refuse_f0_gc(sim._thin_conductors, "gradient-check")
     # Baseline eps_r only; the solve is sim.forward(), which assembles and
     # realizes its own sheets and wires. Collect-and-drop so

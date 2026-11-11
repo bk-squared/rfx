@@ -13,6 +13,7 @@ from rfx._internal._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
     LumpedPortSParamSpec,
+    MagneticSourceSpec,
     ProbeSpec,
     SimResult,
     SnapshotSpec,
@@ -75,22 +76,6 @@ from rfx.snapshots import (
 
 
 
-class MagneticSourceSpec(NamedTuple):
-    """Precomputed H-component current source (Schelkunoff M/J magnetic).
-
-    Used for the Schelkunoff J+M one-sided MSL port launch. The waveform
-    is precomputed to include the -dt/mu coefficient so injection is a
-    plain add (same pattern as SourceSpec for E fields).
-
-    component : "hx", "hy", or "hz"
-    waveform  : (n_steps,) float array — values added to the H field
-        component at (i, j, k) each timestep (after the H update).
-    """
-    i: int
-    j: int
-    k: int
-    component: str
-    waveform: jnp.ndarray
 
 
 

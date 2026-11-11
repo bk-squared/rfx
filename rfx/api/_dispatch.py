@@ -90,6 +90,12 @@ def _dispatch_plan(
     step count comes from a throwaway grid) and ``None`` for lanes that
     build-and-reuse a grid (the caller resolves it there).
     """
+    from rfx.model.wall_loss import admit_wall_loss, refuse_wall_loss
+    admit_wall_loss(self, mode + " dispatch", smoothing=subpixel_smoothing)
+    if distributed or devices is not None:
+        refuse_wall_loss(self, mode + " distributed dispatch")
+    if self._refinement is not None:
+        refuse_wall_loss(self, mode + " subgridded dispatch")
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, distributed=distributed, devices=devices)
     from rfx.boundaries.features import admit_ntff, admit_waveguide
@@ -138,20 +144,10 @@ def _dispatch_plan(
             raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
     def _reject_lane_precision(lane: str) -> None:
-        # field_dtype is threaded ONLY on the
-        # uniform-lane runner (rfx/runners/uniform.py). The non-uniform,
-        # distributed, distributed-NU, and subgridded runners have zero
-        # field_dtype occurrences, so a non-float32 precision would
-        # silently run float32 fields there -- the exact SILENT_WRONG
-        # class this repo removes on sight. distributed=True is a
-        # call-time kwarg invisible to preflight (see the "P3
-        # (Distributed path)" precedent in
-        # _validate_cfg_subgrid_limitations), so THIS is the only
-        # enforcement point for that case; for the non-uniform-mesh
-        # case _validate_cfg_precision_x64 also warns in advance, but
-        # this raise is what actually stops it (and cannot be bypassed
-        # with skip_preflight=True, unlike a preflight warning).
-        if self._precision != "float32":
+        # Only single-device graded Yee carries float64; mixed stays refused.
+        if self._precision != "float32" and not (
+            self._precision == "float64" and lane in {"run_nonuniform", "fwd_nonuniform"}
+        ):
             raise NotImplementedError(
                 f"precision={self._precision!r} is currently supported "
                 f"only on the uniform single-device lane; "

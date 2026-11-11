@@ -205,6 +205,8 @@ def compute_mixed_s_matrix(
 
     n_lw = len(lw_entries)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(self, "MSL junction S-parameter")
     _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
     from rfx.runners._admission import admit
     admit(self, "mixed_s_matrix")

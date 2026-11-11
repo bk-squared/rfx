@@ -515,6 +515,8 @@ def _build_full_scan_fn(
     #     sheet-FREE model. The sequential fallback runs Simulation.run()
     #     per value, which applies the ctx (batch-invariant by
     #     construction there).
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "vmap_sweep batched kernel")
     from rfx.materials.thin_conductor import has_f0_sheets
     if has_f0_sheets(getattr(sim, "_thin_conductors", None)):
         return None, None
@@ -533,6 +535,8 @@ def _build_full_scan_fn(
 
     # Material-dependent source samples are prepared per sweep element by
     # run()'s scalar helpers; the scan builder needs only their locations.
+    from rfx.model.point_placement import admit_simulation_points
+    admit_simulation_points(sim, grid)
     sources = []
     j_source_meta: list[tuple[int, int, int, str]] = []
     probes = []

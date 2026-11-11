@@ -14,7 +14,7 @@ from rfx import Box, Simulation
 
 
 MESSAGE = (
-    "Simulation.run() supports only a single waveguide port; use "
+    "One run() or forward() record supports a single waveguide port; use "
     "compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
 )
 PATHS = ("uniform-run", "uniform-forward", "graded-run", "graded-forward")

@@ -299,6 +299,8 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
                         geometry_masks=(), assembly_entries=(),
                         pad_fill_findings=(), periodic=None, mode="solve", n_devices=1):
     """Build from production collectors, assembling only when none were supplied."""
+    from rfx.model.point_placement import admit_simulation_points
+    admit_simulation_points(sim, grid)
     from rfx.boundaries.pec import realized_pec_edge_masks
     if mode not in ("solve", "audit"):
         raise ValueError(f"Unknown conductor assembly mode: {mode}")
@@ -405,7 +407,8 @@ def _port_release_description(conductors):
     return "; ".join(descriptions)
 
 
-def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, sim=None, sheet_operator=None):
+def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, sim=None, sheet_operator=None,
+                           occupancy_mesh=None):
     """Publish only for an occupancy input, then release and guard its box."""
     if occupancy is not None or design is not None:
         for i, config in enumerate(waveguide_configs):
@@ -415,16 +418,47 @@ def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, 
         if occupancy is not None or design is not None:
             conductors = publish_declarations(conductors, sim, design, sheet_operator, occupancy=occupancy)
         conductors = replace(conductors, design_findings=source_findings(sim, conductors, occupancy, design))
-    occupancy = release_port_occupancy(occupancy, conductors)
+    occupancy = release_port_occupancy(occupancy, conductors, mesh=occupancy_mesh)
     refuse_port_design_box(design, conductors)
     return conductors, occupancy
 
 
-def release_port_occupancy(occupancy, conductors):
+def _release_sharded_occupancy(occupancy, cells, mesh):
+    """Scatter only real-grid cells on their owners; communicate a warning bit.
+
+    Published incident cells are bounded by the conductors grid. Translating
+    those indices into each shard leaves alignment rows untouched, without
+    slicing an indivisible real-grid extent or gathering the global design.
+    """
+    import jax
+    import jax.numpy as jnp
+    from jax.sharding import PartitionSpec as P
+
+    def release(local):
+        x, y, z = (jnp.asarray(c) for c in cells.T)
+        x = x - jax.lax.axis_index('x') * local.shape[0]
+        owned = (x >= 0) & (x < local.shape[0])
+        indices = (jnp.where(owned, x, local.shape[0]), y, z)
+        occupied = jnp.any(local.at[indices].get(mode='fill', fill_value=0) != 0)
+        released = local.at[indices].set(0.0, mode='drop')
+        return released, jax.lax.pmax(occupied.astype(jnp.int32), 'x')
+
+    return jax.jit(jax.shard_map(release, mesh=mesh, in_specs=P('x'),
+        out_specs=(P('x'), P()), check_vma=False))(occupancy)
+
+
+def release_port_occupancy(occupancy, conductors, *, mesh=None):
     """Keep port edges free of design metal; warn once for this application."""
     if occupancy is None:
         return occupancy
-    if np.shape(occupancy) != conductors.grid.shape:
+    sharded = False
+    if mesh is not None:
+        from rfx.stepping.slab import Slab, is_sharded
+        layout = Slab(conductors.grid.shape[0], mesh.size, 0)
+        sharded = is_sharded(occupancy, layout, mesh)
+    expected = ((layout.nx_padded, *conductors.grid.shape[1:]) if sharded
+                else conductors.grid.shape)
+    if np.shape(occupancy) != expected:
         raise ValueError(f"Port occupancy shape {np.shape(occupancy)} differs from "
                          f"conductors grid shape {conductors.grid.shape}.")
     if not len(conductors.released_cells):
@@ -432,11 +466,17 @@ def release_port_occupancy(occupancy, conductors):
     import warnings
     from rfx.core.jax_utils import is_tracer
     indices = tuple(conductors.released_cells.T)
-    if is_tracer(occupancy) or np.any(np.asarray(occupancy)[indices] != 0):
+    if sharded:
+        released, occupied = _release_sharded_occupancy(occupancy, conductors.released_cells, mesh)
+    else:
+        occupied = True if is_tracer(occupancy) else np.any(np.asarray(occupancy)[indices] != 0)
+    if is_tracer(occupancy) or bool(occupied):
         ports = _port_release_description(conductors)
         warnings.warn("Port occupancy release: " + ports
                       + ". Each driven edge is kept free of design metal.",
                       ConfigurationWarning, stacklevel=user_stacklevel())
+    if sharded:
+        return released
     import jax.numpy as jnp
     return jnp.asarray(occupancy).at[indices].set(0.0)
 
@@ -612,6 +652,20 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
                     _realization_record=root._realization_record, _prepared_owner=root._prepared_owner or root))
 
 
+def stepped_conductors(conductors, *, conformal_operands):
+    """Select hard edges for the actual operator, retaining sheets and releases."""
+    if conformal_operands is None:
+        return conductors
+    if not conductors.sheets and not conductors.wires:
+        return replace(conductors, pec_cells=None, pec_edges=None)
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    edges = realized_pec_edge_masks(None, sheets=conductors.sheets,
+        wires=conductors.wires, periodic=conductors.periodic)
+    if edges is not None and conductors.pec_edges is not None:
+        edges = tuple(edge & prior for edge, prior in zip(edges, conductors.pec_edges))
+    return replace(conductors, pec_cells=None, pec_edges=edges)
+
+
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
     """Record/replay the exact object passed to the stepping call."""
     if conductors.mode != "solve":
@@ -627,7 +681,10 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
         if edges is not None:
             edges = _realized.ACTIVE.apply('conductors', 'pec_edges', edges)
             if edges is not conductors.pec_edges and conductors.sheet_operator is not None:
-                conductors = replace(conductors, sheet_operator=conductors.sheet_context(edges))
+                from rfx.model.wall_loss import build_wall_operator
+                conductors = replace(conductors, pec_edges=edges)
+                operator = build_wall_operator(sim, conductors, conductors.sheet_context(edges), lane=lane)
+                conductors = replace(conductors, sheet_operator=operator)
             conductors = replace(conductors, pec_edges=edges)
             _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
     from rfx.model.realization_table import finish_table

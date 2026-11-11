@@ -500,8 +500,8 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
-    ("_lumped_rlc", "R"): _NO_SHEETS,
-    ("_lumped_rlc", "series_RL"): _NO_SHEETS,
+    ("_lumped_rlc", "R"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
+    ("_lumped_rlc", "series_RL"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
     ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
     ("_tfsf", "closed_box"): frozenset({"run_uniform", "fwd_uniform"}),
     ("_refinement", "slab"): frozenset(),
@@ -531,6 +531,9 @@ _ADMITTED_ON: dict[Row, frozenset] = {
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
 # Define that runner's carried rows once; neither entry inherits uniform v2.
 _DISTRIBUTED_NU_ROWS = frozenset({
+    # Both graded entries carry folded R and stateful series RL elements.
+    ('_lumped_rlc', 'R'),
+    ('_lumped_rlc', 'series_RL'),
     ('_dft_planes', 'dft_plane'),
     ('_flux_monitors', 'flux'),
     ('_ntff', 'ntff_box'),
@@ -958,6 +961,8 @@ def _subgrid_opted_in(sim) -> bool:
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
 
 LANE_GATES: dict[str, dict[Row, Callable]] = {
+    **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
+       for lane in ("run_nonuniform", "fwd_nonuniform")},
     "run_subgridded": {
         **{row: _guarded_lid for row in _LID_ROWS},
         ("_refinement", "slab"): lambda sim, grid: (
@@ -1197,6 +1202,11 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     if lane in {"run_subgridded", "material_fit"}:
         from rfx.materials.pole_map import refuse_maps
         refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())], lane)
+    if lane == "run_subgridded":
+        from rfx.materials.relative_strength import RelativeStrength
+        if any(isinstance(p.kappa, RelativeStrength)
+               for m in _placed(sim) for p in (m.lorentz_poles or ())):
+            raise RfxUnsupported("run_subgridded does not implement RelativeStrength Lorentz poles; use a uniform or graded run")
     admit_conformal_floor(sim, lane, (run_args or {}).get("conformal_pec"),
                           smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
@@ -1245,7 +1255,7 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     # Waveguide S is always formed, including for an amplitude-zero entry.
     if len(sim._waveguide_ports) > 1:
         raise ValueError(
-            "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+            "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
         )
     excited = [(index, port) for index, port in enumerate(sim._ports)
                if port.impedance > 0 and port.excite]

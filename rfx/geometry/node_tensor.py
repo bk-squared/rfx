@@ -105,7 +105,8 @@ def _next(xp, a, axis, periodic):
     return xp.take(a, xp.minimum(xp.arange(a.shape[axis]) + 1, a.shape[axis] - 1), axis)
 
 
-def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=None):
+def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=None,
+                            nominal_h_max=None):
     """Host-float64 concrete geometry, or the smoother's traced JAX path.
 
     Same-material groups use the existing union, nearest analytic normal and
@@ -146,9 +147,10 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         midpoint = smooth._kottke_smooth(
             xp, shapes, samples, mid_length,
             tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3)),
-            masks, grid=grid)
+            masks, grid=grid, nominal_h_max=nominal_h_max)
     else:
-        midpoint = smooth._smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks)
+        midpoint = smooth._smoothed_eps_uniform(
+            xp, grid, coords, shapes, background_eps, masks, nominal_h_max=nominal_h_max)
         samples = smooth._uniform_sample_coords(xp, coords, uniform_cell(grid))
         mid_length = None
     x, y, z = (xp.asarray(a, dtype=acc_dtype) for a in coords[:3])
@@ -159,7 +161,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     guard_count = xp.asarray(0, dtype=xp.int32)
     bulk = xp.ones(grid.shape, dtype=bool)
     mid_bulk = [bulk.copy() for _ in range(3)]
-    groups = smooth._medium_groups(shapes)
+    groups = smooth._medium_groups(shapes, grid, nominal_h_max=nominal_h_max)
     for key, (eps, group) in groups.items():
         for shape in group:
             if smooth._has_sdf(shape):

@@ -17,6 +17,7 @@ from rfx.errors import AccuracyWarning
 import warnings
 
 from rfx.core.jax_utils import is_tracer
+from rfx.materials.relative_strength import RelativeStrength
 
 
 def _pole_key(pole):
@@ -69,7 +70,7 @@ def _pole_key(pole):
     try:
         # NamedTuples hash/compare equal to plain tuples of the same
         # values, so this key merges with value-equal hashable poles.
-        return tuple(float(f) for f in pole)
+        return tuple(f if isinstance(f, RelativeStrength) else float(f) for f in pole)
     except (TypeError, ValueError):
         warnings.warn(
             f"Dispersion pole {pole!r} has unhashable fields that "

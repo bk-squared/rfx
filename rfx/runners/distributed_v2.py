@@ -233,7 +233,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
     Periodic/Bloch boundaries, reference-plane or passive ports, Kerr materials,
-    lumped RLC elements, MSL ports, subgridding, and surface monitors (flux,
+    MSL ports, subgridding, and surface monitors (flux,
     DFT planes; NTFF on graded meshes). ``tests/contracts/path_disposition.py``
     records the per-path disposition of every Simulation attribute;
     ``tests/unit/runners/test_path_disposition_cells.py`` enforces it.
@@ -289,17 +289,6 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
             "(rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed material assembly). "
             f"Remove chi3, or {single_device_hint}."
-        )
-
-    rlc = getattr(sim, "_lumped_rlc", None) or ()
-    if rlc:
-        raise RfxUnsupported(
-            f"add_lumped_rlc() element(s) ({len(rlc)}): not supported on the {lane} "
-            "path; the lane never applies them and would solve the structure as if "
-            "the elements were absent, with no warning ("
-            "rfx.runners.distributed_v2.run_distributed / "
-            "rfx.runners.distributed.run_distributed have no lumped-element update). "
-            f"Remove the elements, or {single_device_hint}."
         )
 
     msl = getattr(sim, "_msl_ports", None) or ()
@@ -370,6 +359,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "distributed (v2) runner")
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
@@ -467,7 +458,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # the specific refusals above, and before the first step.
     from rfx.runners._admission import admit
     admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
-    materials = base_materials
+    from rfx.stepping import slab_lumped
+    materials = slab_lumped.fold(sim, grid, base_materials)
 
     _distributed_boundary_layers(
         grid, n_devices,
@@ -507,6 +499,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             lp = LumpedPort(
                 position=pe.position, component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
+                allow_in_absorber=pe.allow_in_absorber,
             )
             mid = tuple(int(i) for i in field_index(grid, pe.position, pe.component))
             port_entries.append(pe)
@@ -551,6 +544,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # Global cells enter the ordinary owner mapping below independently.
         probes.extend(_record_probes)
 
+    rlc_metas = slab_lumped.metadata(sim, grid, materials,
+                                     pec_edges=conductors.pec_edges, uniform=True)
     from rfx.stepping.uniform_slab_ports import UniformPortPlan
     order = sorted(range(len(port_specs)), key=lambda k: port_specs[k][2] != 'wire')
     if compute_s_params and s_param_freqs is None:
@@ -587,9 +582,11 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # Final whole-grid operands, after port stamping/PEC release, before
         # cutting slabs or preparing the incident line. Both public entries
         # share this runner. Other operator families are refused by admission.
+        # Stateful RLC has no material stamp; include its realized edges too.
         validate_realized_vacuum_boundary(
             sim, grid, materials, box_bounds(grid.shape, grid.cpml_layers, sim._tfsf.margin),
-            pec_edge_masks=pec_edges, debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+            pec_edge_masks=pec_edges, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+            rlc_indices=((m.i, m.j, m.k) for m in rlc_metas))
     del conductors, base_materials
     # Create state directly on its owning devices and stage materials one
     # addressable slab at a time, without whole-domain slab stacks.
@@ -612,7 +609,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         stepping_product, run_wrapped_uniform, sources, probes, layout, mesh, records,
         _operand_layout="wrapped_uniform_slab", n_steps=n_steps,
         boundary=sim._boundary, dispersion=dispersion, port_plan=ports,
-        record_vref=_record_vref, tfsf=tfsf, exchange_interval=exchange_interval)
+        record_vref=_record_vref, tfsf=tfsf, exchange_interval=exchange_interval,
+        rlc_metas=rlc_metas)
 
     if multi_process:
         from jax.experimental import multihost_utils

@@ -152,6 +152,8 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
 
     # (name, samples, reach), or (name, None, (kind, reason)) for a drive
     # whose table cannot be read; evaluated in this order.
+    from rfx.sources._sampling import field_time_step
+    dt = field_time_step(dt, getattr(sim, "_precision", None))
     drives = []
 
     def refuse(name, kind, reason):

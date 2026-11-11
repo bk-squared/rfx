@@ -26,3 +26,11 @@ def concrete_waveform_eval(waveform, *time_parameters):
            jax.tree_util.tree_leaves((time_parameters, parameters))):
         return nullcontext()
     return jax.ensure_compile_time_eval()
+
+
+def field_time_step(dt, field_dtype):
+    """Promote drive time before sampling; preserve float32 operands verbatim."""
+    import jax.numpy as jnp
+    if field_dtype == "float64" or field_dtype == jnp.float64:
+        return jnp.asarray(dt, dtype=jnp.float64)
+    return dt

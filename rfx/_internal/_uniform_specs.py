@@ -28,6 +28,24 @@ class SourceSpec(NamedTuple):
     waveform: jnp.ndarray
 
 
+class MagneticSourceSpec(NamedTuple):
+    """Precomputed H-component current source (Schelkunoff M/J magnetic).
+
+    Used for the Schelkunoff J+M one-sided MSL port launch. The waveform
+    is precomputed to include the -dt/mu coefficient so injection is a
+    plain add (same pattern as SourceSpec for E fields).
+
+    component : "hx", "hy", or "hz"
+    waveform  : (n_steps,) float array — values added to the H field
+        component at (i, j, k) each timestep (after the H update).
+    """
+    i: int
+    j: int
+    k: int
+    component: str
+    waveform: jnp.ndarray
+
+
 class ProbeSpec(NamedTuple):
     """Point probe that records a field component each timestep."""
     i: int
@@ -400,6 +418,7 @@ class _StepContext:
     current_moments: Any = None
     curl_boundary: Any = None
     pec_faces_frozen: Any = frozenset()
+    wall_loss_faces: Any = frozenset()
     pmc_faces_frozen: Any = frozenset()
 
     # ---- pre-extracted metadata ----

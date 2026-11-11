@@ -232,6 +232,9 @@
     "RLCState": {
       "kind": "class"
     },
+    "RelativeStrength": {
+      "kind": "class"
+    },
     "Result": {
       "kind": "class"
     },
@@ -787,7 +790,8 @@
       "kind": "function",
       "params": [
         "omega_p",
-        "gamma"
+        "gamma",
+        "density"
       ]
     },
     "drude_pole_map": {
@@ -1297,7 +1301,8 @@
       "params": [
         "delta_eps",
         "omega_0",
-        "delta"
+        "delta",
+        "relative"
       ]
     },
     "lorentz_pole_map": {
@@ -1948,7 +1953,8 @@
         "sheet_impedance",
         "design_box",
         "record_dft",
-        "measurement"
+        "measurement",
+        "field_dtype"
       ]
     },
     "run_until_decay": {
@@ -2532,11 +2538,13 @@
       "excite",
       "direction",
       "reference_plane_cells",
-      "terminates"
+      "terminates",
+      "allow_in_absorber"
     ],
     "add_probe": [
       "position",
-      "component"
+      "component",
+      "allow_in_absorber"
     ],
     "add_refinement": [
       "z_range",
@@ -2550,7 +2558,8 @@
       "position",
       "component",
       "waveform",
-      "amplitude_kind"
+      "amplitude_kind",
+      "allow_in_absorber"
     ],
     "add_tfsf_source": [
       "f0",
@@ -2576,7 +2585,14 @@
       "surface_impedance_f0"
     ],
     "add_vector_probe": [
-      "position"
+      "position",
+      "allow_in_absorber"
+    ],
+    "add_wall_loss": [
+      "sigma_bulk",
+      "f0",
+      "shape",
+      "faces"
     ],
     "add_waveguide_port": [
       "x_position",

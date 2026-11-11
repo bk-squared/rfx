@@ -73,6 +73,7 @@ from rfx import Box, GaussianPulse, Simulation
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import lorentz_pole
 from rfx.runners import nonuniform as _nu_runner
+from rfx.stepping import graded_precision as _graded_precision
 
 DX = 1e-3
 L = 16 * DX
@@ -165,13 +166,13 @@ def _dispersion_built_before_the_stamps(*kinds):
         stack.enter_context(
             mock.patch.object(_nu_runner, "assemble_materials_nu", _assemble))
         for kind in kinds:
-            real = getattr(_nu_runner, f"init_{kind}")
+            real = getattr(_graded_precision, f"init_{kind}")
 
             def _pre_stamp(poles, materials, dt, *a, _real=real, **kw):
                 return _real(poles, assembled["materials"], dt, *a, grid=assembled["grid"], **kw)
 
             stack.enter_context(
-                mock.patch.object(_nu_runner, f"init_{kind}", _pre_stamp))
+                mock.patch.object(_graded_precision, f"init_{kind}", _pre_stamp))
         yield
 
 

@@ -101,7 +101,7 @@ def compute_waveguide_s_matrix(
 
     Requires ``solver="yee"``. On a uniform mesh, ``precision`` selects
     field storage for every device and reference run, as on ``run()``.
-    A non-uniform mesh supports only ``precision="float32"``.
+    A graded mesh supports ``precision="float32"`` and ``"float64"``.
 
     Parameters
     ----------
@@ -223,9 +223,7 @@ def compute_waveguide_s_matrix(
         guided ``P_inc`` correctly. For a junction the interior PEC septum /
         branch is stripped from the vacuum reference, which then radiates
         into free space: ``P_inc`` is mis-normalized and every ``|S|``
-        inflates hard (non-passive; ``normalize=True`` gave max|S|~230,
-        ``normalize='flux'`` gave max|S|~9.8, |S11|~1.9 on the verified
-        compact 3-port T-junction). Passing ``port_reference_sims[i]`` = the
+        inflates (non-passive). Passing ``port_reference_sims[i]`` = the
         matched straight guide for driven arm ``i`` moves ``P_inc`` toward
         the true single-mode guided incident power (PEC-folded identically
         to the device run).
@@ -238,11 +236,13 @@ def compute_waveguide_s_matrix(
         centre; (3) a converged mesh. On far-port geometry (arms 90/90/70 mm,
         48 mm CPML, dx 1.0/0.667 mm) the matched-reference flux path reaches
         passivity 1.006/1.002, reciprocity 0.001, mesh-convergence 0.0297
-        and 0.087 vs MEEP (r2000, cross-device). On COMPACT geometry the
-        matched reference fixes |S11| (1.86 → 0.49, physical) but the overall
-        matrix stays non-physical (residual max|S|~3.9); the two in-method
-        advisories (probe clearance, CPML thickness) warn when the far-port
-        discipline is not met.
+        and 0.087 vs MEEP (r2000, cross-device). With compact port-to-junction
+        clearance, matched straight-guide references are not sufficient:
+        the matrix stays non-passive.
+        ``tests/unit/sparams/test_waveguide_port_reference_sims.py::test_port_reference_sims_compact_junction_necessary_not_sufficient``
+        asserts ``max|S| > 1.05`` and requires the passivity warning to fire.
+        The two in-method advisories (probe clearance, CPML thickness) warn
+        when the far-port discipline is not met.
 
         The absorber half of that discipline is checked on **every**
         uniform path, not just this one: an in-method advisory
@@ -329,7 +329,15 @@ def compute_waveguide_s_matrix(
             refuse_waveguide_pmc(reference)
             admit(reference, "waveguide_s_matrix")
 
-    if not skip_preflight:
+    conformal_solve = None
+    if conformal_pec:
+        conformal_solve = self._auto_preflight(
+            skip=skip_preflight, prepare=True,
+            context="compute_waveguide_s_matrix", check_ntff="advisory",
+            conformal=True, realization_options=(subpixel_smoothing, conformal_pec),
+            tfsf_material_overrides=(eps_override, sigma_override, None))
+        report_diagnostics(conformal_solve.diagnostics)
+    elif not skip_preflight:
         report_diagnostics(self._auto_preflight(
             context="compute_waveguide_s_matrix", check_ntff="advisory",
             tfsf_material_overrides=(eps_override, sigma_override, None)))
@@ -424,14 +432,13 @@ def compute_waveguide_s_matrix(
         eps_override, is_tracer, normalize, port_reference_sims, self, sigma_override,
     )
 
-    grid = self._build_grid()
+    grid = conformal_solve.realized().grid if conformal_solve is not None else self._build_grid()
     _wg_sheet_specs: list = []
     _wg_pec_sheets: list = []
     _wg_pec_wires: list = []
     from rfx.model.conductors import solve_conductors, assembled_materials
-    conductors = solve_conductors(
-        self, grid, realization_options=(subpixel_smoothing, conformal_pec),
-        realization_not_evaluated="conformal" if conformal_pec else None)
+    conductors = (conformal_solve.take() if conformal_solve is not None else solve_conductors(
+        self, grid, realization_options=(subpixel_smoothing, conformal_pec)))
     base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
         conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
         pec_wires=_wg_pec_wires)
@@ -440,9 +447,9 @@ def compute_waveguide_s_matrix(
     _waveguide_stages._validate_waveguide_materials(
         conformal_pec, debye_spec, eps_override, lorentz_spec, pec_shapes, self, subpixel_smoothing,
     )
-    _wg_pec_edge_masks, _wg_geometry_pec_edges, _wg_sheet_ctx, materials = _waveguide_stages._prepare_waveguide_conductors(
-        base_materials, conductors, eps_override, sigma_override, subpixel_smoothing,
-    )
+    from rfx.model.overrides import apply_material_overrides
+    materials = apply_material_overrides(base_materials, eps_override=eps_override,
+                                         sigma_override=sigma_override, keep_lumped=True)
 
     ref_materials_per_port, ref_pec_edge_masks_per_port, ref_pec_masks = _waveguide_stages._prepare_waveguide_references(
         grid, port_reference_sims,
@@ -527,6 +534,8 @@ def compute_waveguide_s_matrix(
         materials = with_components(materials, grid, periodic=resolve_periodic(grid, None))
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
+    _wg_pec_edge_masks, _wg_geometry_pec_edges, _wg_sheet_ctx = _waveguide_stages._prepare_waveguide_conductors(
+        conductors, subpixel_smoothing, conformal_weights)
     ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,

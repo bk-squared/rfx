@@ -85,6 +85,8 @@ class GradedStepContext:
     port_record_specs: tuple | None = None
     port_acc_indices: tuple = ()
     cpml_spacings: tuple | None = None
+    wall_loss_faces: frozenset = frozenset()
+    slab_rlc: tuple | None = None
 
 
 @dataclass
@@ -184,7 +186,10 @@ def make_graded_step(
         # series element is solved together with its edge field).
         frame.rlc_e_prev = (
             tuple(getattr(frame.st, m.component)[m.i, m.j, m.k] for m in ctx.rlc_metas)
-            if ctx.use_lumped_rlc else ())
+            if ctx.use_lumped_rlc and ctx.slab_rlc is None else ())
+        if ctx.use_lumped_rlc and ctx.slab_rlc is not None:
+            from rfx.stepping.slab_lumped import read
+            frame.rlc_e_prev = read(frame.st, ctx.rlc_metas, *ctx.slab_rlc)
 
         # E^n on the slab, before anything in this step writes E (the H
         # update below does not touch it). Slab-sized so the reverse-mode
@@ -313,6 +318,7 @@ def make_graded_step(
         # the SAME shared stencil helper update_e_nu uses, on the same
         # H^{n+1/2} the E update consumed.
         if ctx.use_sheet_impedance:
+            frame.st = apply_pec_faces(frame.st, ctx.wall_loss_faces)
             from rfx.core.yee import curl_h_nu as _curl_h_nu
             from rfx.stepping.conductors import (
                 apply_sheet_impedance_e as _apply_sheet_e)
@@ -325,37 +331,34 @@ def make_graded_step(
 
         # PEC, per face
         frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
-                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
+                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"),
+                                   normal_ghost_faces=ctx.wall_loss_faces)
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         frame.new_rlc_states = None
         if ctx.use_lumped_rlc:
             from rfx.stepping.lumped import update_rlc_elements
-            frame.st, frame.new_rlc_states = update_rlc_elements(
-                frame.st, frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev)
+            from rfx.stepping.slab_lumped import update
+            solve = update_rlc_elements if ctx.slab_rlc is None else update
+            frame.st, frame.new_rlc_states = solve(
+                frame.st, frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev,
+                *(() if ctx.slab_rlc is None else ctx.slab_rlc))
 
     def sources(frame: GradedFrame):
         # Sources (point sources + wire port excitation)
         frame.st = inject_drives(frame.st, frame.invariants["drives"], frame.src_vals)
 
     def after_sources(frame: GradedFrame):
-        # Waveguide-port injection + DFT probe accumulation. The dx
-        # arg is unused by the per-cell-weighted integrals (cfg already
-        # stores u_widths/v_widths), but kept in the function signature
-        # for back-compat. It is handed the port's own primal cell rather
-        # than the grid's boundary scalar so that nothing here reads a
-        # scalar the port does not sit on; because the callee ignores it,
-        # no recorded number moves either way.
+        # Record the completed fields after the canonical source corrections.
         frame.new_waveguide_port_accs = None
         if ctx.use_waveguide_ports:
-            from rfx.measurement.waveguide_modal import (
-                update_waveguide_port_probe,
-            )
+            from rfx.measurement.modal import write_waveguide_record
+            waveguide_values = project(frame.st, frame.invariants['waveguide_table'])
             frame.new_waveguide_port_accs = []
-            for accs, cfg_meta, _m in zip(
+            for port, (accs, cfg_meta, _m) in enumerate(zip(
                 frame.carry["waveguide_port_accs"], ctx.waveguide_meta,
                 ctx.waveguide_port_metrics,
-            ):
+            )):
                 cfg = cfg_meta._replace(
                     v_probe_t=accs[0],
                     v_ref_t=accs[1],
@@ -365,7 +368,7 @@ def make_graded_step(
                     n_steps_recorded=accs[5],
                 )
                 # TFSF-style corrections applied earlier at canonical slots.
-                cfg_updated = update_waveguide_port_probe(cfg, frame.st, ctx.dt, _m[0])
+                cfg_updated = write_waveguide_record(cfg, waveguide_values[4*port:4*port+4], frame.st.step, ctx.dt)
                 frame.new_waveguide_port_accs.append((
                     cfg_updated.v_probe_t,
                     cfg_updated.v_ref_t,
