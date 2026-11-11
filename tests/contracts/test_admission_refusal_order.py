@@ -59,8 +59,16 @@ def test_conformal_pec_refusal_rows(lane):
     sim = Simulation(20e9, (.012, .012, .012), dx=.001,
                      boundary=BoundarySpec(x=Boundary('pec', 'pec', conformal=True), y='pec', z='pec'))
     sim.add(Box((.004, .004, .004), (.006, .006, .006)), material='pec')
-    with pytest.raises(NotImplementedError, match='conformal'):
+    if lane == 's_matrix_scan':
         admission.admit(sim, lane, run_args={'conformal_pec': True})
+        with pytest.raises(NotImplementedError, match='cut_cell_floor'):
+            admission.admit(sim, lane, run_args={'conformal_pec': 'cut_cell_floor'})
+        from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+        with pytest.raises(NotImplementedError, match=r'devices=.*conformal PEC'):
+            compute_lumped_wire_s_matrix_via_scan(sim, [10e9], n_steps=1, devices=[object(), object()])
+    else:
+        with pytest.raises(NotImplementedError, match='conformal'):
+            admission.admit(sim, lane, run_args={'conformal_pec': True})
 
 
 def test_graded_waveguide_refuses_conformal_by_name():

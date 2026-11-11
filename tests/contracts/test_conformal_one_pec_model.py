@@ -32,10 +32,12 @@ def test_no_volume_staircase(monkeypatch, name, entry):
 
 
 @pytest.mark.parametrize('name', ['S', 'Q', 'P'])
-def test_forward_refuses_conformal_pec(name):
-    with pytest.raises(NotImplementedError, match=r'^the differentiable forward solve .* refuses') as error:
-        scene(name).forward(n_steps=4, skip_preflight=True)
-    assert 'conformal_pec=True' in str(error.value)
+def test_forward_carries_same_conformal_pec(monkeypatch, name):
+    rows = capture_setups(monkeypatch)
+    scene(name).run(n_steps=4, compute_s_params=False)
+    scene(name).forward(n_steps=4, skip_preflight=True)
+    assert len(rows) == 2
+    assert_same_setup(rows[0], rows[1], label=f'{name}: forward')
 
 
 def test_reference_short_refuses_by_name():
