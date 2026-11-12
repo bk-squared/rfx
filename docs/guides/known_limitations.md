@@ -676,6 +676,22 @@ The stopband minima also move with the feed length: with longer feeds they are 5
 passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
 power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
 
+### Directivity, gain and radiation efficiency are off when the φ grid repeats the 0/2π seam or is spaced unevenly
+
+Tracker: #2618
+
+`directivity()`, `antenna_gain()` and `antenna_gain_dB()` without `input_power`, and `antenna_efficiency()` integrate the
+radiated power over the sphere with a φ weight equal to each sample's spacing to its neighbours. That weight does not
+wrap around: with `endpoint=True` the samples at 0 and 2π are the same direction and each carries a full step, so N
+evenly spaced samples carry a total φ weight of 2π·N/(N − 1). For a pattern that does not change with φ, directivity and
+gain then read 10·log10(N/(N − 1)) dB low (0.35 dB at N = 13, 0.09 dB at N = 49, 0.012 dB at N = 361) and efficiency
+reads N/(N − 1) times high. Unevenly spaced φ samples give a total weight above or below 2π: φ = [0, 1, 2, 5] rad carries
+a weight of 7 and reads a short dipole's 1.76 dBi as 1.29 dBi. These values follow from the weights in closed form.
+Realized gain (`antenna_gain(..., input_power=...)`) does not integrate over the sphere and is not affected, and
+`maximize_directivity` integrates its own φ grid with weights that sum to 2π.
+What to do: space φ evenly and leave out 2π (`np.linspace(0, 2 * np.pi, N, endpoint=False)`); the weights then sum to
+exactly 2π.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
