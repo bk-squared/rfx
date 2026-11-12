@@ -56,6 +56,7 @@ def _forward_from_materials(
     monitor_overrides: dict | None = None,
     lane: str | None = None,
     conformal_pec: bool | None = None,
+    conformal_min_weight: float = 0.1,
 ) -> ForwardResult | dict:
     """Run a minimal differentiable forward path from explicit materials.
 
@@ -88,10 +89,8 @@ def _forward_from_materials(
           returned unchanged.
 
         ``conformal_pec`` resolves as in ``run()``: ``None`` reads
-        ``Boundary(conformal=True)``. Neither route here has a Dey-Mittra
-        update, so a conformal request on a model with PEC to conform is
-        refused before the first step; an explicit ``False`` asks for
-        staircase PEC and passes.
+        ``Boundary(conformal=True)``. Uniform Yee scans form the same
+        default conformal operands before entering the compiled loop.
         """
     from rfx.model.wall_loss import admit_wall_loss
     admit_wall_loss(self, "fwd_uniform", smoothing=subpixel_smoothing, conformal=conformal_pec)
@@ -102,35 +101,22 @@ def _forward_from_materials(
         require_isolated_s_drive(self)
     from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
     wg_freqs = resolve_shared_waveguide_port_freqs(self, route="uniform forward()")
-    if subpixel_smoothing and sheet_impedance is not None:
+    from rfx.model.tensor_operands import (
+        refuse_tensor_conflicts, form_tensor_operands, finish_tensor_operands, finish_conformal_mu)
+    from rfx.runners._admission import admit_conformal_floor
+    admit_conformal_floor(self, "fwd_uniform", conformal_pec, grid=grid)
+    _conformal = (bool(self._boundary_spec.conformal_faces())
+                  if conformal_pec is None else bool(conformal_pec))
+    if (subpixel_smoothing or _conformal) and sheet_impedance is not None:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
             "supported with subpixel_smoothing / conformal_pec"
             ": the sheet operator assumes the plain isotropic "
             "E update at its edges (Stage-1/2 conformal and Kottke "
             "lanes do not apply the sheet operator).")
-    from rfx.model.tensor_operands import (
-        refuse_tensor_conflicts, form_tensor_operands, finish_tensor_operands)
     refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,
-        conformal_pec=False, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        conformal_pec=_conformal, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
-    from rfx.runners._admission import admit_conformal_floor
-    admit_conformal_floor(self, "fwd_uniform", conformal_pec, grid=grid)
-    _conformal = (bool(self._boundary_spec.conformal_faces())
-                  if conformal_pec is None else bool(conformal_pec))
-    from rfx.model.tensor_operands import refuse_full_tensor_conformal
-    refuse_full_tensor_conformal(subpixel_smoothing, _conformal, pec_shapes)
-    if _conformal and self._has_pec_to_conform():
-        raise NotImplementedError(
-            "Conformal PEC (Boundary(conformal=True) or conformal_pec=True) "
-            "is not carried by the uniform forward scan that forward(), "
-            "optimize(), topology_optimize(), compute_mixed_s_matrix(), "
-            "compute_lumped_wire_s_matrix_via_scan() and run()'s lumped/wire "
-            "S-matrix step: it has no Dey-Mittra update, so the walls and PEC "
-            "shapes would be staircased. It is refused before the first time "
-            "step. Pass conformal_pec=False (or drop Boundary(conformal=True)) "
-            "for staircase walls, or use run(compute_s_params=False) on a "
-            "uniform mesh for conformal fields.")
 
     # The uniform forward lane has no subgrid. forward() (and
     # optimize() through it), topology_optimize() and
@@ -180,9 +166,11 @@ def _forward_from_materials(
                 r_val=_v.get("R"), c_val=_v.get("C"),
             )
 
-    aniso_eps, aniso_inv_eps, _, unextendable, _ = form_tensor_operands(
+    aniso_eps, aniso_inv_eps, conformal_weights, unextendable, conformal_areas = form_tensor_operands(
         self, grid, materials, subpixel_smoothing=subpixel_smoothing,
-        conformal=False, conformal_min_weight=0.1, pec_shapes=pec_shapes)
+        conformal=_conformal, conformal_min_weight=conformal_min_weight, pec_shapes=pec_shapes)
+    if conformal_weights is not None:
+        pec_mask = None
     if subpixel_smoothing:
         from rfx.geometry.smoothing import warn_unextendable_shapes
         warn_unextendable_shapes([u for u in unextendable if not u.conductor])
@@ -554,10 +542,15 @@ def _forward_from_materials(
         for pe in self._ports:
             probes.append(make_probe(grid, pe.position, pe.component))
 
+    from rfx.measurement.identification import read_ringdown_probes
+    for pe in read_ringdown_probes(self._probes, "runners/uniform_forward.py"):
+        probes.append(make_probe(grid, pe.position, pe.component))
+
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=periodic_bool,
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-    aniso_eps = finish_tensor_operands(materials, aniso_eps, None)
+    materials = finish_conformal_mu(materials, conformal_areas)
+    aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
         periodic=periodic_bool, grid=grid,
@@ -612,7 +605,7 @@ def _forward_from_materials(
         self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
     from rfx.model.source_coefficients import resolve_run_sources
     sources = resolve_run_sources(sources, materials, self, grid,
-        tensor=occupancy_tensor or aniso_eps is not None or aniso_inv_eps is not None)
+        tensor=occupancy_tensor or aniso_eps is not None or aniso_inv_eps is not None or conformal_weights is not None)
 
     # Floquet ports — inject soft source, same as run_uniform.py:274-327
     if self._floquet_ports:
@@ -684,7 +677,9 @@ def _forward_from_materials(
     stepping_product = conductors
     from rfx.runners.uniform import assemble_wall_loss
     sheet_impedance = assemble_wall_loss(self, conductors, sheet_impedance, lane=lane or "fwd_uniform")
-    conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
+    conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(
+        self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance,
+        realization_options=(subpixel_smoothing, _conformal))
     result = prepared_step.advance(stepping_product, _run,
         grid,
         materials,
@@ -708,6 +703,7 @@ def _forward_from_materials(
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
         pec_occupancy=pec_occupancy_for_run,
+        conformal_weights=conformal_weights,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps_run,
         # Only the occupancy operator is smooth; the Kottke tensor keeps

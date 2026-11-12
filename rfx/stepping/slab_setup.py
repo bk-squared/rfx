@@ -13,7 +13,7 @@ from jax.sharding import NamedSharding, PartitionSpec as P
 from rfx.backend import host_cpu_device
 from rfx.core.yee import FDTDState
 from rfx.model.materials import (ComponentCells, realize_components, kernel_materials)
-from rfx.stepping.slab import cut, zero_pole_state, place
+from rfx.stepping.slab import cut, zero_pole_state, place, material_kind
 from rfx.stepping.slab_view import (UniformSlabView, uniform_slab_rows, uniform_apply,
                                    uniform_from_cut, stack_and_place, product_rows, slab_views, device_rows)
 
@@ -287,11 +287,11 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     def finish(path, a):
         if not hasattr(a, 'ndim') or a.ndim < (3 if device is not None else 4):
             return a
-        names = [str(getattr(p, 'name', getattr(p, 'key', ''))) for p in path]
-        name = next((p for p in reversed(names) if p), '')
-        kind = ('edge_keep' if 'edge_keep' in names else
-                'eps_r' if 'eps' in name else 'sigma' if 'sigma' in name
-                else 'mu_r' if 'mu' in name else 'lumped')
+        # Raw records, component increments and full update operands all
+        # share the same neutral-value declaration. Increments publish zero;
+        # the full epsilon and permeability operands publish one.
+        # Unknown leaves are refused by material_rule, never guessed by name.
+        kind = material_kind(path)
         return publish(a, kind)
     staged = jax.tree_util.tree_map_with_path(finish, staged)
     inverse = jax.tree.map(lambda a: publish(a, 'eps_r'), inverse)

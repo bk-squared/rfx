@@ -211,6 +211,36 @@ When you hand a figure or file to someone else, keep the script, the rfx
 version and the settings (mesh, run length, calculator options) with it, so
 the result can be reproduced.
 
+## Export the model setup
+
+The functions above save results. To save the model itself (geometry,
+materials, sources, ports), rfx has five exports. Only the design document
+can rebuild the simulation.
+
+| Function | What it writes | Rebuilds the simulation | Use it for |
+|---|---|---|---|
+| `rfx.interop.design_to_json(sim)` (or `design_to_dict`) | the design document `rfx-design-ir/v2`: the constructor parameters of every shape, material, source and port, as canonical JSON | yes: `rfx.interop.simulation_from_design(document)` | keeping or sharing a design; comparing two designs |
+| `rfx.interop.emit_openems_script(document)` | an openEMS script projected from a design document | no | a cross-check against openEMS |
+| `rfx.export_geometry_json(path, sim)` | a geometry index: the shape class and bounding box of each entry, scalar material values | no | indexing a dataset; a quick review |
+| `rfx.export_artifact_bundle(path, sim, result)` | a folder with `report.json`, `report.md`, the scene summary, the geometry index and, on request, a field VTK file | no | a record of one run: setup summary, versions, results |
+| `rfx.export_geometry_sdf(sim, resolution=...)` | a NumPy array: the signed distance to the nearest shape boundary on a regular grid, negative inside | no | input to a geometry-conditioned neural network |
+
+- The design document is provisional. Its shape codec is round-trip tested;
+  the wider description and the external-solver emitters are still being
+  built. `simulation_from_design` exports the rebuilt simulation again and
+  compares it with the document, and a difference raises
+  `UnsupportedDesignFeature` instead of returning a different model.
+- `export_geometry_json` keeps bounding boxes only: a cylinder and a box with
+  the same bounds look the same, and dispersive poles are dropped. Do not
+  drive another solver from it.
+- The artifact bundle is a review record, not a CAD export.
+- `export_geometry_sdf` approximates the distance from the sampled shapes. A
+  shape that covers no sample point raises `ValueError`; use a finer
+  `resolution`.
+- To write a setup by hand, use YAML: `rfx.config.simulation_from_yaml(path)`
+  builds a `Simulation` from a YAML file. rfx reads this format but does not
+  write it.
+
 ## Limits
 
 - **Frame times off by a factor of `interval`** → read `times_s` from

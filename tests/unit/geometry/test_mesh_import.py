@@ -346,3 +346,249 @@ def test_mid_plane_registered_sheet_deterministic_and_correct_both_sides():
     # out: strictly-inside node occupied, strictly-outside node empty.
     assert m[4, 5, 7] and m[7, 5, 7], "interior mid-plane cells must be PEC"
     assert not m[2, 5, 7] and not m[9, 5, 7], "exterior mid-plane cells empty"
+
+
+# Scanline bars: independent solid inequalities, plus the pinned legacy comparison.
+def _scanline_nudge():
+    d = np.array([1.0, np.sqrt(2) / 2, np.sqrt(3) / 3])
+    return 1e-12 * (d / np.linalg.norm(d))
+
+
+def _scanline_points(coords):
+    return np.stack(np.meshgrid(*coords, indexing="ij"), axis=-1).reshape(-1, 3)
+
+
+def _scanline_fixture(kind, rotation, offset):
+    angles = np.deg2rad([20, 30, 45, 60])
+    rx = trimesh.transformations.rotation_matrix(angles[0], [1, 0, 0])
+    rz = trimesh.transformations.rotation_matrix(angles[1], [0, 0, 1])
+    ry = trimesh.transformations.rotation_matrix(angles[2], [0, 1, 0])
+    rz60 = trimesh.transformations.rotation_matrix(angles[3], [0, 0, 1])
+    transform = (np.eye(4), rz @ rx, ry @ rz60)[rotation]
+    shift = np.array(((0, 0, 0), (1 / 3,) * 3, (.25, .5, .75))[offset]) * .001
+    mesh = (trimesh.creation.box(extents=(.010, .012, .014)) if kind == "box"
+            else trimesh.creation.icosphere(subdivisions=3, radius=.008))
+    original = mesh.copy()
+    mesh.apply_transform(transform)
+    mesh.apply_translation(shift)
+    coords = (np.arange(-12, 13, dtype=float) * .001,) * 3
+    local = (_scanline_points(coords) + _scanline_nudge() - shift) @ transform[:3, :3]
+    if kind == "box":
+        half = np.array([.005, .006, .007])
+        expected = np.all((local >= -half) & (local < half), axis=1)
+    else:
+        # Closed-form convex polyhedron: intersection of its supporting half-spaces.
+        # An icosphere is faceted; the radius inequality alone is not its solid.
+        normals = original.face_normals
+        distances = np.einsum("ij,ij->i", normals, original.triangles[:, 0])
+        expected = np.concatenate([
+            np.all(points @ normals.T < distances, axis=1)
+            for points in np.array_split(local, 32)])
+    return mesh, coords, expected.reshape((25,) * 3)
+
+
+def _legacy_comparison(mesh, coords):
+    from rfx.geometry.mesh_import import (
+        _contains_deterministic, _crossing_parity, _D1, _TIE_BREAK_EPS_M,
+    )
+    from trimesh.ray.ray_triangle import RayMeshIntersector
+    ray = RayMeshIntersector(mesh)
+    coords = tuple(np.asarray(c, dtype=np.float64).ravel() for c in coords)
+    lo, hi = np.asarray(mesh.bounds, dtype=np.float64)
+    indices = [np.flatnonzero((c >= lo[k] - _TIE_BREAK_EPS_M)
+                             & (c <= hi[k] + _TIE_BREAK_EPS_M))
+               for k, c in enumerate(coords)]
+    shape = tuple(len(c) for c in coords)
+    result = np.zeros(shape, dtype=bool)
+    disagreement = np.zeros(shape, dtype=bool)
+    if any(len(i) == 0 for i in indices):
+        return result, disagreement
+    pts = _scanline_points(tuple(c[i] for c, i in zip(coords, indices)))
+    old, broken = [], []
+    for part in np.array_split(pts, max(1, (len(pts) + 2047) // 2048)):
+        origins = part + _scanline_nudge()
+        old.append(_contains_deterministic(ray, part))
+        broken.append(_crossing_parity(ray, origins, _D1)
+                      != _crossing_parity(ray, origins, -_D1))
+    window = tuple(len(i) for i in indices)
+    result[np.ix_(*indices)] = np.concatenate(old).reshape(window)
+    disagreement[np.ix_(*indices)] = np.concatenate(broken).reshape(window)
+    return result, disagreement
+
+
+@pytest.mark.parametrize("kind", ["box", "sphere"])
+@pytest.mark.parametrize("rotation", range(3))
+@pytest.mark.parametrize("offset", range(3))
+def test_scanline_b2_ties(kind, rotation, offset):
+    mesh, coords, expected = _scanline_fixture(kind, rotation, offset)
+    actual = np.asarray(MeshShape(mesh).mask_on_coords(*coords))
+    np.testing.assert_array_equal(actual, expected)
+    old, broken = _legacy_comparison(mesh, coords)
+    differences = actual != old
+    for index in np.argwhere(differences):
+        print("B2 difference", kind, rotation, offset,
+              [float(coords[k][i]) for k, i in enumerate(index)],
+              "old_fwd_bwd_disagree", bool(broken[tuple(index)]))
+    assert not np.any(differences & ~broken)
+
+
+@pytest.mark.parametrize("defect", ["open", "dup"])
+@pytest.mark.parametrize("lattice", ["9x9x10", "41-cubed"])
+def test_scanline_b2_nonwatertight_keeps_legacy(defect, lattice, monkeypatch):
+    import rfx.geometry.mesh_import as module
+    box = trimesh.creation.box(extents=(.010, .012, .014))
+    faces = box.faces[1:] if defect == "open" else np.vstack([box.faces, box.faces[0]])
+    mesh = trimesh.Trimesh(vertices=box.vertices, faces=faces, process=False)
+    assert not mesh.is_watertight
+    message = ("MeshShape requires a watertight mesh — the given mesh has holes or "
+               "non-manifold edges, so the inside/outside test is undefined and the "
+               "occupancy mask would be wrong. Repair it in your CAD tool (or "
+               "trimesh.repair) before import.")
+    with pytest.raises(ValueError) as exc:
+        MeshShape(mesh)
+    assert str(exc.value) == message
+    if lattice == "41-cubed":
+        coords = tuple(np.linspace(lo, hi, 41) for lo, hi in mesh.bounds.T)
+    else:
+        coords = (np.linspace(-.008, .008, 9), np.linspace(-.008, .008, 9),
+                  np.linspace(-.009, .009, 10))
+    old, _ = _legacy_comparison(mesh, coords)
+    calls = []
+    original = module._contains_deterministic
+
+    def observed(intersector, pts):
+        calls.append(len(pts))
+        return original(intersector, pts)
+
+    monkeypatch.setattr(module, "_contains_deterministic", observed)
+    shape = MeshShape(mesh, validate=False)
+    for _ in range(2):
+        shape._mask_cache.clear()
+        np.testing.assert_array_equal(shape.mask_on_coords(*coords), old)
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("kind", ["box", "sphere"])
+@pytest.mark.parametrize("rotation", range(3))
+@pytest.mark.parametrize("offset", range(3))
+def test_scanline_b3_shuffles_and_uncached_repeats(kind, rotation, offset):
+    mesh, coords, expected = _scanline_fixture(kind, rotation, offset)
+    _check_scanline_determinism(mesh, coords, expected)
+
+
+def _check_scanline_determinism(mesh, coords, expected):
+    shape = MeshShape(mesh)
+    for _ in range(20):
+        shape._mask_cache.clear()
+        np.testing.assert_array_equal(shape.mask_on_coords(*coords), expected)
+    for seed in range(5):
+        rng = np.random.default_rng(seed)
+        permutation = rng.permutation(len(mesh.vertices))
+        inverse = np.argsort(permutation)
+        faces = inverse[mesh.faces[rng.permutation(len(mesh.faces))]]
+        shifts = rng.integers(0, 3, len(faces))
+        faces = np.take_along_axis(faces, (np.arange(3) + shifts[:, None]) % 3, axis=1)
+        shuffled = trimesh.Trimesh(vertices=mesh.vertices[permutation], faces=faces, process=False)
+        np.testing.assert_array_equal(MeshShape(shuffled).mask_on_coords(*coords), expected)
+
+
+def test_scanline_b3_grid2_and_mac_timing():
+    import time
+    mesh = trimesh.creation.icosphere(subdivisions=4, radius=.04)
+    mesh.apply_translation([.06, .06, .06])
+    coords = (np.arange(60, dtype=float) * .002 + .001,) * 3
+    points = _scanline_points(coords) + _scanline_nudge()
+    normals = mesh.face_normals
+    distances = np.einsum("ij,ij->i", normals, mesh.triangles[:, 0])
+    # Restrict half-space work to the bounding sphere; this is an analytic cull.
+    inside = np.linalg.norm(points - .06, axis=1) < .04
+    expected = np.zeros(len(points), dtype=bool)
+    expected[inside] = np.concatenate([
+        np.all(part @ normals.T < distances, axis=1)
+        for part in np.array_split(points[inside], 128)])
+    expected = expected.reshape((60,) * 3)
+    start = time.perf_counter()
+    actual = MeshShape(mesh).mask_on_coords(*coords)
+    elapsed = time.perf_counter() - start
+    print(f"Mac estimate only: grid-2 cell-centre mask_on_coords {elapsed:.6f} s")
+    np.testing.assert_array_equal(actual, expected)
+    _check_scanline_determinism(mesh, coords, expected)
+
+
+@pytest.mark.parametrize("original_rounding", [False, True])
+def test_scanline_b6_tetrahedron_edge_and_vertex_after_nudge(original_rounding):
+    from fractions import Fraction as F
+
+    # Axis intercept tetrahedron: nonnegative local coordinates and
+    # sum(local_i / intercept_i) < 1, using the actual float64 vertices.
+    length = .004
+    shift = _scanline_nudge()
+    if original_rounding:
+        # Preserve the previous run's geometry as a regression: reassociating
+        # this expression moves the lower x face one ULP above the sample.
+        d = np.array([1.0, np.sqrt(2) / 2, np.sqrt(3) / 3])
+        shift = 1e-12 * d / np.linalg.norm(d)
+    vertices = np.array([[0., 0., 0.], [length, 0., 0.],
+                         [0., length, 0.], [0., 0., length]]) + shift
+    mesh = trimesh.Trimesh(vertices=vertices,
+                           faces=[[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]],
+                           process=False)
+    axis = np.array([-.001, 0., .001, .002, .003, .004])
+    coords = (axis,) * 3
+    points = _scanline_points(coords)
+    lo = list(map(F, vertices[0]))
+    spans = [F(vertices[k + 1, k]) - lo[k] for k in range(3)]
+    expected = []
+    for point in points + _scanline_nudge():
+        local = [F(point[k]) - lo[k] for k in range(3)]
+        expected.append(all(t >= 0 for t in local)
+                        and sum(t / span for t, span in zip(local, spans)) < 1)
+    expected = np.array(expected).reshape((6,) * 3)
+    actual = np.asarray(MeshShape(mesh).mask_on_coords(*coords))
+    if original_rounding:
+        old, _ = _legacy_comparison(mesh, coords)
+        previous_local = points + shift - vertices[0]
+        previous = (np.all(previous_local >= 0, axis=1)
+                    & (previous_local.sum(axis=1) < length)).reshape((6,) * 3)
+        for index in np.argwhere(previous != expected):
+            cell = tuple(index)
+            print("B6 original correction", [float(coords[k][i]) for k, i in enumerate(index)],
+                  "closed_form", bool(expected[cell]), "old", bool(old[cell]),
+                  "new", bool(actual[cell]))
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_scanline_b6_tetrahedron_shared_projected_diagonal():
+    from fractions import Fraction as F
+
+    # Barycentric weights at A,B,C,D are 1-X-Z, X, Z-Y+X, Y-X.
+    # Thus the solid is 0 <= X <= Y, Y-X <= Z, X+Z <= 1.
+    # Its lower faces share projected A-D; projected vertices retain exact ties.
+    # Strict +x crossings include X=0 and X=Y-Z, exclude X=Y and X=1-Z.
+    length = .004
+    vertices = np.array([[0., 0., 0.], [length, length, 0.],
+                         [0., 0., length], [0., length, length]]) + _scanline_nudge()
+    mesh = trimesh.Trimesh(vertices=vertices,
+                           faces=[[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]],
+                           process=False)
+    axis = np.array([-.001, 0., .001, .002, .003, .004])
+    coords = (axis,) * 3
+    lo = list(map(F, vertices[0]))
+    hi = list(map(F, vertices.max(axis=0)))
+    expected = []
+    for point in _scanline_points(coords) + _scanline_nudge():
+        x, y, z = [(F(point[k]) - lo[k]) / (hi[k] - lo[k]) for k in range(3)]
+        expected.append(0 <= x < y and y - x <= z and x + z < 1)
+    np.testing.assert_array_equal(MeshShape(mesh).mask_on_coords(*coords),
+                                  np.array(expected).reshape((6,) * 3))
+
+
+def test_scanline_b6_box_x_face_after_nudge():
+    axis = np.array([-.001, 0., .001, .002, .003])
+    lo, hi = _scanline_nudge(), np.full(3, .002) + _scanline_nudge()
+    # Assign vertices directly: creation.box's centre/extents arithmetic can
+    # round away the deliberately exact nudge tie.
+    mesh = trimesh.creation.box()
+    mesh.vertices = np.where(np.asarray(mesh.vertices) < 0, lo, hi)
+    expected = _box_volume_expectation(axis, axis, axis, lo, hi, tie_break=True)
+    np.testing.assert_array_equal(MeshShape(mesh).mask_on_coords(axis, axis, axis), expected)

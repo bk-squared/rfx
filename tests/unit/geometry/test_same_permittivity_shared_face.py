@@ -127,8 +127,8 @@ def test_periodic_unit_cell_reads_bulk(path, traced):
 
 @pytest.mark.parametrize('reverse', [False, True], ids=['AB', 'BA'])
 @pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
-def test_same_permittivity_gap_reads_nearest_box_alone(reverse, traced):
-    """The 0.45 mm gap contains q, half a cell beyond either face."""
+def test_same_permittivity_cell_holding_both_walls_reads_content(reverse, traced):
+    """A cell holding both walls reads its content; other cells keep one wall."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     grid = sim.freeze_mesh()
@@ -154,11 +154,13 @@ def test_same_permittivity_gap_reads_nearest_box_alone(reverse, traced):
         assert np.all(selected)
         expected = np.where(near_lower[None, None, :], np.asarray(lower[axis]),
                             np.asarray(upper[axis]))[..., selected]
+        if axis == 2:
+            expected[..., np.flatnonzero(selected) == 4] = 1 / (.04/4 + .90 + .06/4)
         np.testing.assert_allclose(np.asarray(combined[axis])[..., selected], expected, rtol=rtol)
     # Hand fractions: .54/.56 dielectric at tangential z=2/2.5 mm;
-    # .06 dielectric at normal z=2.25 mm, whose nearest face is 2.47 mm.
+    # .04 lower and .06 upper dielectric at normal z=2.25 mm.
     for axis in (0, 1):
         np.testing.assert_allclose(np.asarray(combined[axis])[4, 4, 4:6],
                                    [2.62, 2.68], rtol=rtol)
     np.testing.assert_allclose(np.asarray(combined[2])[4, 4, 4],
-                               1/(.06/4+.94), rtol=rtol)
+                               1/(.04/4+.90+.06/4), rtol=rtol)

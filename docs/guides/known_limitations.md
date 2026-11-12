@@ -54,19 +54,6 @@ shapes. The measured mapping count stayed below 23,000 when cleared every 50 sha
 rfx warns once per process (`MapCountWarning`) when the limit is below 262,144 on Linux.
 This limitation was measured on Linux. macOS, Windows and GPU backends were not measured.
 
-### An imported mesh's occupancy takes minutes and tens of GiB for large meshes or fine grids
-
-Tracker: #2555
-
-Before the first time step, rfx decides which cells lie inside an imported mesh (`MeshShape`) by casting one ray
-from every cell centre in the mesh's bounding box. Each ray is tested against about 6 % of all triangles, so time and
-memory grow with (cells in the bounding box) x (triangles). The result is correct and repeatable; only cost is affected.
-Measured on a 12-CPU Linux node (2026-11-10): a 5,120-triangle sphere of 80 mm diameter takes 57 s and 9 GiB at 2 mm cells,
-and 5.6 min and 25 GiB at 1.4 mm cells; a 20,480-triangle sphere takes 9 min and 34 GiB at 2 mm cells. A machine with
-less memory stops with an out-of-memory error instead.
-Until the fix lands, decimate the mesh to the fewest triangles that keep its shape at the cell size you use, or use a
-CSG primitive (`Box`, `Sphere`, `Cylinder`) where one fits.
-
 ### Graded lumped S: mixed records, periodic run requests and the run() default
 
 Tracker: #1373
@@ -274,21 +261,21 @@ Tracker: #2441
 The full-tensor build gave each node one plane, the nearest face. At a box edge on a grid node, or on the bisector of a box edge, rounding chose the face and the model jumped: on main 5150ed340 a face moved by 1e-12 m changed the 20-step probe loss of an eps_r 10 box by 15 %.
 Fixed for axis-aligned Boxes, also overlapping ones: a node within 1.25 times the reach of its edge supports (1.53 cells on a uniform mesh, from the realized cell sizes on a graded one) of a Box takes, on each support, the exact content of the Boxes that meet it, painted in declared order as the assembled model paints them. On the on-node and the bisector box scenes a face moved by 1e-12 m changes no diagonal value by more than one float32 step. Every node farther from all Boxes keeps the one-plane values bit for bit.
 Next to a non-Box shape the exact and the one-plane triplets are blended over one cell, with the weight rising from 0 at the reach from the shape's bounding box to 1 one cell farther; within the reach the one-plane rule stays, with its jumps where a box face plane ties. Measured on an eps_r 10 box beside an eps_r 10 sphere of radius 1.5 mm whose bounding box sits at the reach, half a cell and one cell beyond it, the sphere moved by 2e-9 m: no diagonal value changes by more than the one-plane build changes it plus 1.7e-6 of the value (uniform and 1.0 / 0.8 mm graded meshes); 26 to 50 nodes are blended; the 20-step loss does not change in float32.
-Within that reach the jump is large. A 12 mm PEC box with εr 10 shapes was measured on 1 mm cells (record kept with the project), uniform and graded in z (1.0 / 0.8 mm). Moving a shape coordinate by 1e-12 m changed the 20-step probe loss by 0.39 % to 39 % at a Cylinder rim on grid nodes, whether the cap was translated or the radius changed, along x, y or z. At a Box edge on a node with a sphere 1 cell away it changed by 10.7 % (uniform) and 24 % (graded); at a Box edge with nodes on its bisector, with those nodes 1.4 mm from the sphere's bounding box, by 5.6 % and 7.8 %. The diagonal jumped by up to 6.5×10⁶ float32 steps in 20 to 56 cells. A gradient or a sweep through such a coordinate sees a step. Until one content rule covers every shape, use `subpixel_smoothing=True` near cylinders and spheres (measured for cylinder coordinates and for a Box face beside a sphere; a sphere's own coordinates were not moved). On the same scenes and meshes, `True` was measured continuous: at ±1e-12 m no cell moved by a float32 step and the loss did not change, and from 1e-9 to 1e-6 m its changes grow with the move. Its slope can differ on the two sides of a face that lies on a node (a kink, not a step). Its accuracy against `"full_tensor"` near curved shapes was not measured. `OrientedBox` is not reachable under `"full_tensor"`: it raises `NotImplementedError` by name.
+Within that reach the jump is large. A 12 mm PEC box with εr 10 shapes was measured on 1 mm cells (record kept with the project), uniform and graded in z (1.0 / 0.8 mm). Moving a shape coordinate by 1e-12 m changed the 20-step probe loss by 0.39 % to 39 % at a Cylinder rim on grid nodes, whether the cap was translated or the radius changed, along x, y or z. At a Box edge on a node with a sphere 1 cell away it changed by 10.7 % (uniform) and 24 % (graded); at a Box edge with nodes on its bisector, with those nodes 1.4 mm from the sphere's bounding box, by 7.6 % and 12 %. There the jump is the one-plane face flip at the bisector nodes; the nodes next to it, whose normal comes from the sphere and reaches the Box within one cell, count the Box's content along that normal, and that corrected model responds more to the same flip (measured: main's model with this fix's values at only those nodes gives this fix's losses exactly, on both meshes). The diagonal jumped by up to 6.5×10⁶ float32 steps in 20 to 56 cells. A gradient or a sweep through such a coordinate sees a step. Until one content rule covers every shape, use `subpixel_smoothing=True` near cylinders and spheres (measured for cylinder coordinates and for a Box face beside a sphere; a sphere's own coordinates were not moved). On the same scenes and meshes, `True` was measured continuous: at ±1e-12 m no cell moved by a float32 step and the loss did not change, and from 1e-9 to 1e-6 m its changes grow with the move. Its slope can differ on the two sides of a face that lies on a node (a kink, not a step). Its accuracy against `"full_tensor"` near curved shapes was not measured. `OrientedBox` is not reachable under `"full_tensor"`: it raises `NotImplementedError` by name.
 Where a later Box of one permittivity sits inside an earlier Box of another, the triplets now carry the later Box's value; a diagonal cell whose four end triplets and Yee midpoint are all bulk still takes the diagonal smoother's value, which follows the grouping by permittivity value (inside the later box the diagonal reads 10.2 on edges whose ends are all bulk, and values from 4 to 10.2 on edges near its faces). `subpixel_smoothing=True` and `"kottke_pec"` keep that grouping everywhere.
 A traced permittivity with `"full_tensor"` is refused by name in any scene. With a Box in the scene a traced shape coordinate or mesh profile is also refused by name: the scope of the exact content is decided on concrete coordinates and realized cell sizes, and under a trace the build runs in float32 (plain and `jax.jit` losses 9.7×10⁻⁴ apart with a traced sphere radius beside a concrete εr 2 box, 8.8×10⁻³ with a traced permittivity on an εr 4 box). This is a capability change: main admitted a traced Box coordinate, and its build equalled the host build in shared-face scenes and moved a plain-versus-jit loss by up to 9.65×10⁻⁴ elsewhere (a traced sphere radius beside a Box); restoring it with the exact content formed on traced coordinates is #2473. More than eight boxes meeting one edge support are refused by name. Use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
 → [#2473](https://github.com/bk-squared/rfx/issues/2473)
 
-### Subpixel smoothing does not see a gap thinner than half a cell between two dielectric volumes.
+### Subpixel smoothing retains one source face and point rules for bodies without exact line intervals.
 
-Tracker: #2397
+Tracker: #2624
 
-Near a face, the smoothing reads the medium on the far side at one point half a normal cell beyond the face.
-When two dielectric volumes are separated by a gap thinner than that, the point lands inside the other volume.
-The cells across the gap then read as if the two volumes touched, and the gap's own medium does not enter the average.
-This holds for `subpixel_smoothing=True` and for the dielectric stage of `"kottke_pec"`, on uniform and graded Yee meshes and on the node tensor.
-Gaps of half a cell or more are seen: their samples read the same values as with only the nearer volume present.
-Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
+The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. The source shape's own fill still sees one face when that shape is thinner than a cell.
+Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
+On a curved face, full-tensor dual-face averages still use a first-order planar model.
+A later group's pass with a crossed normal can jump when its face enters the cell.
+Full-tensor spectral bounds include zero-weight portions, whose medium just beyond the face can step; a bound that clips then makes the tensor step too.
+Periodic images ±2 of traced shapes near an end of the admitted interval [−L, 2L] can reach beyond the domain edge and be missed by the existing image range.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
@@ -344,27 +331,11 @@ The backscatter errors are 0.56 / 0.34 / 0.28 dB, against 2.35 / 1.75 / 1.19 dB 
 The offset stays constant in cells, so the error falls only first order in the cell size.
 A user gets conformal PEC only on request: `run(conformal_pec=True)`, or any axis declared `Boundary(conformal=True)`, which turns it on for every PEC body in that run. The default is the staircase. A run with conformal PEC warns.
 Under conformal PEC these are refused: `conformal_min_weight` other than 0.1; PEC shapes with no signed distance (polyhedra, extrusions, volume wires); a body that holds no grid node strictly inside, except a Box with every face on a node plane or a domain face; a zero-thickness PEC sheet off the node lattice; and `subpixel_smoothing="kottke_pec"`, refused before any time step on every path.
-`forward()`, graded meshes, multiple devices and subgrids refuse conformal PEC.
+Graded meshes, multiple devices and subgrids refuse conformal PEC. `forward()` has no `conformal_pec=` argument: on a uniform mesh on one device it takes conformal PEC from a `Boundary(conformal=True)` declaration, and it refuses one together with `pec_mask_override`, `pec_occupancy_override` or `design_occupancy_override`. `optimize()`, `topology_optimize()`, `compute_mixed_s_matrix()`, `differentiable_material_fit()`, the fast path of `vmap_material_sweep()` and a traced PEC shape refuse conformal PEC.
 Judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), stays marked as an expected failure until a fix lands.
 
 The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
-
-### Conformal PEC next to the high seam of a periodic axis gives wrong cut-cell operands on the seam row.
-
-Tracker: #2585
-
-A conformal PEC body whose high bound lies close below the high seam of a periodic axis (a gap of
-0.7 cell is affected; 1.7 cells measured clean) gets wrong cut-cell lengths and areas on the seam row: the seam edge measures the body through
-its far periodic image. This was measured on a sphere; by the code, a cylinder or a Box whose
-high face lies off the node lattice is affected the same way (not measured). In one 1 mm cell, an edge whose closed-form PEC-free length is 0.70
-reads 0.97 with the body 0.7 cell below the seam; with the body 1.7 cells below, no edge
-differs. A whole-cell translation leaves a periodic structure physically unchanged, but here S
-changes with where the seam is cut. On a 14 mm periodic cell with a 3.2 mm PEC sphere 0.7 cell
-below the seam, reflected power moves by up to 2.4e-3 (2 % of R, 0.09 dB in |S11|) at λ/21 and
-8.5e-4 at λ/43 (measured; record kept with the project). Until the fix, keep conformal bodies
-at least two cells below the high seam, or translate the cell's contents by whole cells until no
-conformal body's high bound lies within two cells below the high seam.
 
 ### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
 
@@ -420,6 +391,25 @@ Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distrib
 - Debye and Lorentz materials (Drude takes the Lorentz route; not measured): each pole coefficient is one more whole-domain float32 constant. A Debye box on the uniform mesh holds 13 (263,640 bytes at two devices, 290,004 at three) instead of a permittivity and a mask array (25,350 / 27,885 bytes); a Lorentz box, which was refused under a caller's jit before, now runs and holds 11 (223,080 / 245,388 bytes).
 - Graded meshes: each material array is held with its x ghost cells, 20,280 bytes at two devices and 22,308 at three instead of 16,900 (+20 % / +32 %), for permittivity (one array, also with a lumped port) and a lossy thin film (two arrays).
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
+
+### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
+
+Tracker: #2608
+
+`run(devices=..., snapshot=SnapshotSpec(...))` joins the devices' snapshot histories into one record at the end of the
+run. While it does so, each device holds more than twice the whole snapshot record, and after the run every device
+keeps a full copy of the record. The same run on one device peaks at 1.0 to 1.05 times the record. So the largest
+snapshot record that fits is smaller on two devices than on one.
+Measured on two CPU host devices, all six components of a uniform 48³-cell box (CPML cells included) recorded for 100,
+200 and 400 steps: 2.75 to 2.76 times the record on each device at all three lengths, growing by 6.96 MiB per recorded
+step. Host memory rose by a further 1.0 times the record during the join, so these figures are lower bounds (record
+kept with the project). GPUs, graded meshes, more than two devices, fewer components and slices were not measured.
+From the code: the join needs at least twice the record on each device for any device count, so more devices do not
+raise the limit; the multiple is larger when fewer components are recorded; and a slice normal to x (`slice_axis=0`) is
+held whole on every device during the run, so its join grows with the device count.
+What to do: record fewer frames (`SnapshotSpec(interval=...)`); the measured peak grew in proportion to the frame count.
+A 2-D slice normal to y or z (`slice_axis=1` or `2` with `slice_index`) lowers the peak with its size; fewer components
+lower it by less than the record shrinks. Or run a snapshot-heavy case on one device.
 
 ### A preflight keeps its whole-domain realization arrays until the Simulation is deleted
 
@@ -479,8 +469,8 @@ square transverse mesh. Refinement therefore changes its series inductance;
 it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
 the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
 square transverse stencil and uniform spacing along the pin. Axial grading
-across the port refuses this model. It is carried by single-device,
-nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
+across the port refuses this model. It is carried by nondispersive 3-D
+second-order Yee `run()` and `forward()`, on one device or several; other solvers,
 Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
 Each halving of the transverse cell adds `ω·(μ0·ℓ/2π)·ln 2` of series reactance
@@ -488,20 +478,6 @@ to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz f
 1 mm port, so its S does not converge with the mesh. `run()` and `sim.preflight()`
 report it (code `wire_port_no_radius`). A YAML lumped port takes `radius:` the
 same way, with the same bound and the same refusal.
-
-### A coaxial line's matched reflection has a floor from its open end, and coarse meshes read below it.
-
-Tracker: #2415
-
-A coaxial line ended in the matched sheet of
-`compute_coaxial_line_reflection(termination="matched")`, with open space behind the sheet, has an
-end capacitance from the field that leaves the open end. For a line with pin radius 0.635 mm,
-shell radius 2.055 mm and eps_r 2.1 it is about 31.5 fF (independent electrostatic solve; rfx
-agrees to about 5 % as the cell size goes to zero). Its matched reflection therefore has a physical
-floor of about -32 dB at 5 GHz (|S11| about 0.024), rising 6 dB per octave and growing with the
-permittivity of the space behind the end. With the current default load plane the reading is
-optimistic on coarse meshes (-40 dB at 0.4 mm cells) and rises toward that floor on refinement
-(measured; record kept with the project).
 
 ### A multi-cell wire port's load-plane reflection misses the 2 dB and 0.1 bars on two loads at 25 µm.
 
@@ -686,6 +662,22 @@ HFSS. The cause is not known. On a uniform mesh the gap is larger and falls firs
 The stopband minima also move with the feed length: with longer feeds they are 5.8 and 16.6 dB deeper, and the
 passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
 power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
+
+### Directivity, gain and radiation efficiency are off when the φ grid repeats the 0/2π seam or is spaced unevenly
+
+Tracker: #2618
+
+`directivity()`, `antenna_gain()` and `antenna_gain_dB()` without `input_power`, and `antenna_efficiency()` integrate the
+radiated power over the sphere with a φ weight equal to each sample's spacing to its neighbours. That weight does not
+wrap around: with `endpoint=True` the samples at 0 and 2π are the same direction and each carries a full step, so N
+evenly spaced samples carry a total φ weight of 2π·N/(N − 1). For a pattern that does not change with φ, directivity and
+gain then read 10·log10(N/(N − 1)) dB low (0.35 dB at N = 13, 0.09 dB at N = 49, 0.012 dB at N = 361) and efficiency
+reads N/(N − 1) times high. Unevenly spaced φ samples give a total weight above or below 2π: φ = [0, 1, 2, 5] rad carries
+a weight of 7 and reads a short dipole's 1.76 dBi as 1.29 dBi. These values follow from the weights in closed form.
+Realized gain (`antenna_gain(..., input_power=...)`) does not integrate over the sphere and is not affected, and
+`maximize_directivity` integrates its own φ grid with weights that sum to 2π.
+What to do: space φ evenly and leave out 2π (`np.linspace(0, 2 * np.pi, N, endpoint=False)`); the weights then sum to
+exactly 2π.
 
 ## Ring-down completion and the early stop
 

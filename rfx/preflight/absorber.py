@@ -906,8 +906,8 @@ def _validate_cfg_geometry_in_cpml(
                             over, idx, entry.material_name,
                             type(entry.shape).__name__, side, coord, bound,
                         ))
-                        # One finding per entry, first crossing axis.
-                        break
+                        # Record every crossed axis so findings do not
+                        # depend on axis order.
                 except (NotImplementedError, TypeError):
                     pass
 

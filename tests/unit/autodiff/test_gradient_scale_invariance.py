@@ -37,6 +37,7 @@ import rfx.core.yee
 import rfx.stepping.yee
 import rfx.lumped
 import rfx.materials.thin_conductor
+import rfx.model.dispersive_poles
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import MaterialArrays, init_state, si_value_eps_r_grad
@@ -296,7 +297,7 @@ def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
 # it inside their CPML functions, from rfx.core.yee, at call time.
 _IMPORTERS = (rfx.core.yee, rfx.stepping.yee, rfx.boundaries.cpml, rfx.boundaries.upml,
               rfx.materials.thin_conductor, rfx.lumped,
-              rfx.materials.debye, rfx.materials.lorentz)
+              rfx.model.dispersive_poles, rfx.materials.lorentz)
 
 
 def _si_only(si_fn, eps_r_fn, *args):

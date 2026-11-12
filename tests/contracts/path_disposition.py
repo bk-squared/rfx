@@ -237,7 +237,7 @@ CONFORMAL = dict(
 
     run_distributed=_conformal("distributed multi-device lane"),
     run_distributed_nu=_conformal("distributed multi-device lane"),
-    fwd_uniform=_conformal("uniform forward lane"),
+    fwd_uniform=carries("the uniform scan forms the same default SC operands as run()"),
     fwd_nonuniform=_conformal("non-uniform forward lane"),
     fwd_distributed_nu=_conformal("distributed non-uniform forward lane"),
 
@@ -571,7 +571,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("shared voltage drive agrees with run_uniform"),
             run_subgridded=carries("inside the refined slab"),
 
-            run_distributed=carries("uniform live wire drive/load and whole-port S; planes/radius refused"),
+            run_distributed=carries("uniform live wire drive/load and whole-port S including radius; reference planes refused"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries("shared voltage drive agrees with run_uniform"),
             fwd_distributed_nu=DIST_FWD_PORTS,
@@ -785,9 +785,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             **CONFORMAL,
         ),
         "conformal_s_matrix": lanes(
-            run_uniform=admission("Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix", RUN_U,
-                                  "the lumped-port S-matrix run() returns came from "
-                                  "_forward_from_materials, which staircases (#1299)"),
+            run_uniform=carries("lumped/wire S-matrix uses the conformal forward scan"),
             **CONFORMAL,
         ),
         # A closed PEC box with a CPML lid on z_hi, against the all-PEC box.
@@ -1462,8 +1460,8 @@ CALCULATOR_CELLS = {
         'material_fit': carries('sim_run resolves the PMC faces from the grid through resolve_wall_faces'),
     },
     ('_boundary_spec', 'conformal'): {
-        's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='Boundary(conformal=True) or conformal_pec=True'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True'),
+        's_matrix_scan': carries('the uniform scan carries the default conformal operands'),
+        'mixed_s_matrix': refuses('compute_mixed_s_matrix has no conformal comparator yet', raises='compute_mixed_s_matrix'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='Boundary(conformal=True) or conformal_pec=True'),
         'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True'),
@@ -1473,8 +1471,8 @@ CALCULATOR_CELLS = {
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='Boundary(conformal=True) or conformal_pec=True'),
     },
     ('_boundary_spec', 'conformal_s_matrix'): {
-        's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly; rfx/sparams/_mixed_stages.py:_run_mixed_drive: per-drive _forward_from_materials', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
+        's_matrix_scan': carries('the uniform scan carries the default conformal operands'),
+        'mixed_s_matrix': refuses('compute_mixed_s_matrix has no conformal comparator yet', raises='compute_mixed_s_matrix'),
         'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix'),
@@ -1697,4 +1695,21 @@ PLAIN_SOURCE_S_REQUEST = {
                   "tests/unit/sparams/test_plain_source_refusal.py", raises="plain sources")
     for path in ("run_uniform", "run_nonuniform", "run_subgridded", "run_distributed", "run_distributed_nu",
                  "s_matrix_scan", "fwd_distributed", "fwd_uniform", "fwd_nonuniform")
+}
+
+
+# #2032 Part A: radius carrier routes, checked by the radius contract.
+WIRE_RADIUS_PATHS = {
+    "run_distributed": carries("global stamp, uniform slab realization"),
+    "fwd_distributed": carries("admits as run_distributed; same uniform step"),
+    "run_distributed_nu": carries("global graded stamp, wrapped slab realization"),
+    "fwd_distributed_nu": carries("global graded stamp, wrapped slab realization"),
+    "graded_nonwrapped": not_reachable("a port requires the wrapped step"),
+    "run_uniform": carries("unchanged one-device radius model"),
+    "run_nonuniform": carries("unchanged one-device radius model"),
+    "fwd_uniform": carries("unchanged one-device radius model"),
+    "fwd_nonuniform": carries("unchanged one-device radius model"),
+    "subgridded": refuses("no radius record carrier", raises="radius"),
+    "adi": refuses("second-order 3-D Yee required", raises="radius"),
+    "upml": refuses("no H component record carrier", raises="radius"),
 }

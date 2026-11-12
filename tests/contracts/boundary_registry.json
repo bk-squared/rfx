@@ -77,7 +77,7 @@
       "function": "wire_port_current"
     },
     {
-      "file": "rfx/probes/probes.py",
+      "file": "rfx/measurement/probes.py",
       "function": "_ampere_loop"
     },
     {
@@ -342,33 +342,13 @@
       "count": 6
     },
     {
-      "file": "rfx/current_moments.py",
-      "function": "_index_window",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/current_moments.py",
-      "function": "slab_curl_h",
-      "kind": "difference"
-    },
-    {
       "file": "rfx/fidelity.py",
       "function": "_max_run_length",
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/model/conformal_rules.py",
-      "function": "conformal_b_floor",
-      "kind": "roll/diff"
-    },
-    {
       "file": "rfx/geometry/cell_table/body.py",
       "function": "face_fraction.polygon",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/model/conformal_rules.py",
-      "function": "sc_clamp",
       "kind": "roll/diff"
     },
     {
@@ -385,11 +365,6 @@
       "file": "rfx/geometry/node_tensor.py",
       "function": "compute_node_tensor_eps",
       "kind": "neighbour"
-    },
-    {
-      "file": "rfx/geometry/smoothing.py",
-      "function": "_cell_width_pairs",
-      "kind": "roll/diff"
     },
     {
       "file": "rfx/geometry/port_termination.py",
@@ -417,6 +392,11 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/geometry/smoothing.py",
+      "function": "_cell_width_pairs",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/geometry/triplet_tensor.py",
       "function": "fractions",
       "kind": "difference"
@@ -425,6 +405,16 @@
       "file": "rfx/geometry/triplet_tensor.py",
       "function": "fractions",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/current_moments.py",
+      "function": "_index_window",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/current_moments.py",
+      "function": "slab_curl_h",
+      "kind": "difference"
     },
     {
       "file": "rfx/measurement/flux_weights.py",
@@ -448,9 +438,45 @@
       "count": 6
     },
     {
+      "file": "rfx/measurement/ntff_surface.py",
+      "function": "NTFFSurface.__post_init__",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/measurement/ntff_surface.py",
+      "function": "NTFFSurface.__post_init__",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/measurement/ports.py",
       "function": "coax_owner",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/probes.py",
+      "function": "_ampere_loop",
+      "kind": "neighbour",
+      "count": 2
+    },
+    {
+      "file": "rfx/measurement/probes.py",
+      "function": "_bwd_h",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/measurement/probes.py",
+      "function": "_metric_ampere_loop",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/measurement/probes.py",
+      "function": "extract_s_matrix",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/measurement/probes.py",
+      "function": "extract_s_matrix_wire",
+      "kind": "boundary"
     },
     {
       "file": "rfx/mesh_edges.py",
@@ -458,8 +484,23 @@
       "kind": "difference"
     },
     {
+      "file": "rfx/model/coax_stamp.py",
+      "function": "_coaxial_tem_edge_profile",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/model/conductors.py",
       "function": "_f0_solved_bounds",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/model/conformal_rules.py",
+      "function": "conformal_b_floor",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/model/conformal_rules.py",
+      "function": "sc_clamp",
       "kind": "roll/diff"
     },
     {
@@ -483,6 +524,16 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/model/operands.py",
+      "function": "node_tensor_operands",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/model/realization_integrals.py",
+      "function": "_drawn_union_volume",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/model/waveguide_mode_solver.py",
       "function": "_cell_centred_gradient",
       "kind": "difference"
@@ -491,16 +542,6 @@
       "file": "rfx/model/wire_mask.py",
       "function": "polyline_tube_mask",
       "kind": "difference"
-    },
-    {
-      "file": "rfx/ntff_surface.py",
-      "function": "NTFFSurface.__post_init__",
-      "kind": "difference"
-    },
-    {
-      "file": "rfx/ntff_surface.py",
-      "function": "NTFFSurface.__post_init__",
-      "kind": "roll/diff"
     },
     {
       "file": "rfx/preflight/mesh.py",
@@ -533,30 +574,104 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/probes/probes.py",
-      "function": "_ampere_loop",
-      "kind": "neighbour",
-      "count": 2
+      "file": "rfx/realized_geometry.py",
+      "function": "_build_record",
+      "kind": "roll/diff"
     },
     {
-      "file": "rfx/probes/probes.py",
-      "function": "_bwd_h",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/probes/probes.py",
-      "function": "_metric_ampere_loop",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/probes/probes.py",
-      "function": "extract_s_matrix",
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "init_cpml_slabs",
       "kind": "boundary"
     },
     {
-      "file": "rfx/probes/probes.py",
-      "function": "extract_s_matrix_wire",
+      "file": "rfx/runners/_distributed_nu_execute.py",
+      "function": "execute_from_materials",
       "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_nu.py",
+      "function": "init_cpml_for_sharded_nu",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "_init_cpml_sharded",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "_validate_monotone_axis",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "coaxial_line_reflection_from_plane_voltages",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "coaxial_tem_reference_plane_vi",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/stepping/absorber.py",
+      "function": "apply_cpml_e_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/floquet.py",
+      "function": "apply_bloch_periodic_x._wrap",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.constitutive",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.e_boundary",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.h_boundary",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.pec",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_exchange.py",
+      "function": "exchange_e_yee_shmap._exchange",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_exchange.py",
+      "function": "exchange_h_yee_shmap._exchange",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_graded_legacy_loop.py",
+      "function": "run_graded_legacy_slab_loop._apply_cpml_e_shmap._e",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_graded_legacy_loop.py",
+      "function": "run_graded_legacy_slab_loop._apply_cpml_h_shmap._h",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_graded_legacy_loop.py",
+      "function": "run_graded_legacy_slab_loop.step_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/slab_measurements.py",
+      "function": "cut_probe_table",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/stepping/slab_update.py",
@@ -678,99 +793,19 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/stepping/slab_exchange.py",
-      "function": "exchange_e_yee_shmap._exchange",
+      "file": "rfx/stepping/slab_wrap_uniform.py",
+      "function": "prepare_uniform",
       "kind": "boundary"
     },
     {
-      "file": "rfx/stepping/slab_exchange.py",
-      "function": "exchange_h_yee_shmap._exchange",
+      "file": "rfx/stepping/slab_wrap_uniform.py",
+      "function": "wrap_uniform.local.exchange.full",
       "kind": "boundary"
     },
     {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "init_cpml_slabs",
+      "file": "rfx/stepping/slab_wrap_uniform.py",
+      "function": "wrap_uniform.local.tfsf_hx",
       "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/_distributed_nu_execute.py",
-      "function": "execute_from_materials",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/distributed_nu.py",
-      "function": "init_cpml_for_sharded_nu",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_graded_legacy_loop.py",
-      "function": "run_graded_legacy_slab_loop._apply_cpml_e_shmap._e",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_graded_legacy_loop.py",
-      "function": "run_graded_legacy_slab_loop._apply_cpml_h_shmap._h",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_graded_legacy_loop.py",
-      "function": "run_graded_legacy_slab_loop.step_fn",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/model/coax_stamp.py",
-      "function": "_coaxial_tem_edge_profile",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "_validate_monotone_axis",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "coaxial_line_reflection_from_plane_voltages",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "coaxial_tem_reference_plane_vi",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/stepping/absorber.py",
-      "function": "apply_cpml_e_step",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/floquet.py",
-      "function": "apply_bloch_periodic_x._wrap",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/graded.py",
-      "function": "make_graded_step.constitutive",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/graded.py",
-      "function": "make_graded_step.e_boundary",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/graded.py",
-      "function": "make_graded_step.h_boundary",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/graded.py",
-      "function": "make_graded_step.pec",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_measurements.py",
-      "function": "cut_probe_table",
-      "kind": "roll/diff"
     },
     {
       "file": "rfx/stepping/subgrid_coupling.py",
@@ -991,26 +1026,6 @@
       "file": "rfx/visualize.py",
       "function": "plot_stack_profile",
       "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/runners/distributed_v2.py",
-      "function": "_init_cpml_sharded",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_wrap_uniform.py",
-      "function": "prepare_uniform",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_wrap_uniform.py",
-      "function": "wrap_uniform.local.exchange.full",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/stepping/slab_wrap_uniform.py",
-      "function": "wrap_uniform.local.tfsf_hx",
-      "kind": "boundary"
     }
   ]
 }

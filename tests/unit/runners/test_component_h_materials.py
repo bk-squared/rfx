@@ -145,7 +145,7 @@ def test_h_builder_carries_component_record(path):
         np.testing.assert_allclose(after, before/factor, rtol=3e-7, atol=1e-12)
 
 
-@pytest.mark.parametrize("path", ["split", "shard", "distributed_nu", "distributed_h_shard",
+@pytest.mark.parametrize("path", ["split", "shard", "distributed_h_shard",
                                    "subgridded", "subgridded_reference", "sat_h", "sat_e", "upml"])
 def test_unimplemented_carrier_refuses_non_none_record(path):
     from rfx import Simulation

@@ -319,7 +319,7 @@ def _refined_rows(table, refinements, sim):
     return replace(table, rows=tuple(rows))
 
 
-def finish_table(sim, conductors, *, lane):
+def finish_table(sim, conductors, *, lane, realization_options=None):
     """Complete the existing prepared table with stage-owned rows."""
     record = bind_table(sim, conductors, lane=lane)
     if record is None:
@@ -358,5 +358,5 @@ def finish_table(sim, conductors, *, lane):
         record = replace(record, limitations=("disjoint vacuum stepper does not carry material declarations",))
     object.__setattr__(conductors, "_realization_record", record)
     from rfx.model.realization_verdict import admit_table
-    admit_table(sim, conductors, finished=True)
+    admit_table(sim, conductors, options=realization_options, finished=True)
     return record

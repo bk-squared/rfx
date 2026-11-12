@@ -624,3 +624,17 @@ def test_intro_requires_subgridded_only():
     assert check_rows(ParsedPage((), "Subgridded", ()), table={}, row_class={}) == []
     assert check_rows(ParsedPage((), "ADI", ()), table={}, row_class={}) == [
         "intro must mention Subgridded"]
+
+
+def test_wire_radius_carrier_rows(page_text):
+    from rfx.sources.wire_radius import RADIUS_SUPPORTED_PATHS
+    for lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
+        assert lane in RADIUS_SUPPORTED_PATHS
+        assert T.WIRE_RADIUS_PATHS[lane].kind == T.CARRIES
+    assert "fwd_distributed" not in RADIUS_SUPPORTED_PATHS
+    assert T.WIRE_RADIUS_PATHS["fwd_distributed"].kind == T.CARRIES
+    assert T.WIRE_RADIUS_PATHS["graded_nonwrapped"].kind == T.NOT_REACHABLE
+    for lane in ("subgridded", "adi", "upml"):
+        assert T.WIRE_RADIUS_PATHS[lane].kind == T.REFUSES
+    assert "reference planes or a radius is refused" not in page_text
+    assert "Radius ports use the same model on both meshes" in page_text

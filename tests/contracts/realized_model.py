@@ -44,7 +44,7 @@ for lane in LANES:
                                      else Cell("not reachable",
                                                note="P0 override fixture exercises the three Yee forward lanes"))
     TABLE["conformal"][lane] = (Cell(note="#1373: four-cell dielectric epsilon before the 1/w scaling")
-                                if lane == "run_uniform" else Cell("refuses"))
+                                if lane in ("run_uniform", "fwd_uniform") else Cell("refuses"))
     TABLE["sat"][lane] = (Cell(issue="#1373", note="per-cell SAT face epsilon")
                           if lane == "run_subgridded" else Cell("not reachable",
                           note="no coarse/fine interface on this lane"))

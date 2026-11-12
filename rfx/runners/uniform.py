@@ -470,7 +470,8 @@ def run_uniform(
                 released_edges=(mode_profile["cell_indices"] if mode_profile is not None else list(_msl_yz_cells(grid, mp))))
             pec_edge_masks = conductors.pec_edges
 
-    for pe in sim._probes:
+    from rfx.measurement.identification import read_ringdown_probes
+    for pe in (*sim._probes, *read_ringdown_probes(sim._probes, "runners/uniform.py")):
         probes.append(_simulation.make_probe(grid, pe.position, pe.component))
 
     axis_to_index = {"x": 0, "y": 1, "z": 2}
@@ -839,7 +840,7 @@ def run_uniform(
         )
         s_params, _, s_settling = compute_lumped_wire_s_matrix_via_scan(
             sim, s_param_freqs, n_steps=sp_n_steps,
-            conformal_pec=conformal_pec,
+            conformal_pec=conformal_pec, conformal_min_weight=conformal_min_weight,
             return_settling=True,
             skip_preflight=True,
             subpixel_smoothing=subpixel_smoothing,
