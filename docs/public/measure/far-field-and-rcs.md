@@ -85,6 +85,16 @@ print(f"Directivity: {D[0]:.2f} dBi")   # a short dipole is about 1.76 dBi
 (D = 4π U_max / P_rad). Sample `theta` over [0, π] and `phi` over [0, 2π), as
 above. A single cut gives the wrong P_rad.
 
+Space `phi` evenly and leave out 2π (`endpoint=False`). The integral weights
+each φ sample by its spacing to its neighbours, so with `endpoint=True` the
+seam at 0 and 2π counts twice: N evenly spaced samples carry a total φ weight
+of 2π·N/(N − 1). For a pattern that does not change with φ, `directivity()`
+and `antenna_gain()` without `input_power` then read 10·log10(N/(N − 1)) dB
+low (0.35 dB at N = 13, 0.09 dB at N = 49), and `antenna_efficiency()` reads
+N/(N − 1) times high. Unevenly spaced φ samples also give a total weight other
+than 2π. Realized gain (`antenna_gain(..., input_power=...)`) does not
+integrate over the sphere and is unaffected.
+
 For optimization, `compute_far_field_jax(..., max_phase_bytes=4e9)` is the
 differentiable version. The byte budget splits the theta grid into chunks to
 bound memory; the result is the same. For a directivity objective use
