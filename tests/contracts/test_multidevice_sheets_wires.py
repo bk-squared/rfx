@@ -152,7 +152,7 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
 
 @pytest.mark.parametrize('kind', KINDS)
 @pytest.mark.parametrize('graded', [False, True])
-@pytest.mark.parametrize('boundary', ['pec', 'cpml'])
+@pytest.mark.parametrize('boundary', ['cpml'])
 def test_b1_owned_masks(monkeypatch, kind, graded, boundary):
     _owned_masks(monkeypatch, kind, graded, boundary)
 

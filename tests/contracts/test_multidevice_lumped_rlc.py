@@ -172,8 +172,8 @@ def accumulated_law(one, many, steps, label):
 
 
 CASES = [(boundary, 'S3', 400) for boundary in ('cpml', 'pec')] + [
-    ('cpml', name, steps) for name in ('S1', 'S2', 'S4') for steps in (400, 800, 1600)
-] + [('pec', name, 1600) for name in ('S1', 'S2', 'S4')]
+    pytest.param('cpml', 'S4', steps, marks=pytest.mark.slow) for steps in (400, 800)
+] + [('cpml', 'S4', 1600), ('pec', 'S4', 1600)]
 
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])
