@@ -1,7 +1,9 @@
-Declare one spatial Drude or Lorentz pole with `LorentzPoleMap`,
-`drude_pole_map`, or `lorentz_pole_map`: strength and damping may be
-functions of physical cell-centre coordinates on uniform and graded meshes.
-A map shares one polarization state across its occupied cells.
-Distributed_v2, distributed_nu, subgridded execution, design export,
-scalar material fitting, grid-less realization and unjudged tuple a/b
-prebuilt coefficients refuse maps by name.
+### Added — Spatial Drude and Lorentz pole maps: one pole whose strength and damping vary from cell to cell (#PRNUM)
+
+Declare one spatial Drude or Lorentz pole with `LorentzPoleMap`, `drude_pole_map` or `lorentz_pole_map`: its
+strength and damping are functions of the physical cell-centre coordinates, on uniform and graded meshes, and the map
+shares one polarization state across its occupied cells. A map with one value everywhere gives the scalar pole's
+fields bit for bit. A reverse-mode gradient through a map whose damping is one value over its cells uses the scalar
+pole's memory (measured ratio 1.00002 at 9000 steps); a map whose damping varies uses about 3x the scalar pole's
+memory per step. distributed_v2, distributed_nu, subgridded runs, design export, scalar material fitting, grid-less
+realization and prebuilt tuple a/b coefficients refuse maps by name.
