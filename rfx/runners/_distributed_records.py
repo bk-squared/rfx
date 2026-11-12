@@ -1,7 +1,8 @@
 """Owned records at the uniform and graded distributed sampling slots.
 
-Ranks are data, and assembly replicates before indexing by rank.
-Only placement is performed for cell records; moment pairs are summed once.
+Ranks are data: assembly reduces owned chunks without replicating the carry.
+Cell records preserve signed zeros; moment pairs are summed once. Multi-process
+assembly retains the host-array placement after process_allgather.
 """
 
 from rfx.errors import RfxUnsupported
@@ -15,6 +16,7 @@ from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.runners._rank import rank_shard_map
 from rfx.runners._distributed_ntff import SlabNTFF
+from rfx.runners._record_join import join_owned, packed_pieces, record_bytes
 from rfx.stepping.slab import place
 from rfx.measurement import accumulators
 from rfx.measurement.plane_records import time_recorded_dft_selection
@@ -147,7 +149,32 @@ class PlaneRecords(Packed):
             branches.append(branch)
         return self.mapped(buffer, state, step, branches, ranks=ranks)
 
-    def assemble(self, buffer):
+    def assemble(self, buffer, *, multi_process=False):
+        if multi_process:
+            return self._assemble_host(buffer)
+        arrays = [a for t in self.templates for a in (t[:4] if self.flux else (t.accumulator,))]
+        record_size = record_bytes(arrays)
+        owners: dict[tuple[int, int], list[list[tuple]]] = {}
+        axes = {}
+        for rank, part in enumerate(self.parts):
+            pieces = iter(packed_pieces(self.shapes[rank], self.sizes[rank]))
+            for number, meta, destinations in part:
+                axes[number] = None if meta[0 if self.flux else 1] == 0 else 1
+                for component, destination in enumerate(destinations):
+                    offset, shape = next(pieces)
+                    owners.setdefault((number, component), [[] for _ in self.parts])[rank].append(
+                        (offset, shape, (0, destination.start or 0, 0), shape))
+        result = []
+        for number, t in enumerate(self.templates):
+            values = [join_owned(buffer, owners[(number, component)], a.shape, a.dtype,
+                                mesh=self.mesh, kind="flux" if self.flux else "planes",
+                                record_size=record_size, x_axis=axes[number])
+                      for component, a in enumerate(t[:4] if self.flux else (t.accumulator,))]
+            result.append(t._replace(**dict(zip(("e1_dft", "e2_dft", "h1_dft", "h2_dft")
+                                                if self.flux else ("accumulator",), values))))
+        return tuple(result)
+
+    def _assemble_host(self, buffer):
         buffer = self.replicated(buffer)
         result = [[jnp.zeros(a.shape, a.dtype) for a in (t[:4] if self.flux else (t.accumulator,))]
                   for t in self.templates]
@@ -224,7 +251,23 @@ class SnapshotRecords:
             return tuple(arrays)
         return apply(ranks, buffer, state, step)
 
-    def assemble(self, buffer):
+    def assemble(self, buffer, *, multi_process=False):
+        if multi_process or not self.frames:
+            return self._assemble_host(buffer)
+        shape = (self.frames,) + self.full_shape
+        source_shape = (self.frames,) + self.frame_shape
+        record_size = len(self.spec.components) * int(np.prod(shape)) * np.dtype(self.dtype).itemsize
+        owners = []
+        for start, end, owned in self.parts:
+            destination = (0,) * len(shape) if self.axis == 0 else (0, start) + (0,) * (len(shape) - 2)
+            extent = shape if self.axis == 0 else (self.frames, end - start) + shape[2:]
+            owners.append([(0, source_shape, destination, extent)] if owned else [])
+        return {component: join_owned(history, owners, shape, self.dtype, mesh=self.mesh,
+                                      kind="snapshots", record_size=record_size,
+                                      x_axis=None if self.axis == 0 else 1)
+                for component, history in zip(self.spec.components, buffer)}
+
+    def _assemble_host(self, buffer):
         buffer = jax.tree.map(lambda a: (place(a, NamedSharding(self.mesh, P()))
                                         if isinstance(a, (jax.Array, jax.core.Tracer)) else a), buffer)
         result = {c: jnp.zeros((self.frames,) + self.full_shape, self.dtype) for c in self.spec.components}
@@ -278,10 +321,19 @@ class MomentRecords(Packed):
             branches.append(branch)
         return self.mapped(buffer, state, step, branches, ranks=ranks, previous=previous)
 
-    def assemble(self, buffer):
+    def assemble(self, buffer, *, multi_process=False):
+        if multi_process:
+            return self._assemble_host(buffer)
+        record_size = sum(self.sizes[0]) * np.dtype(self.dtype).itemsize
+        return tuple(join_owned(buffer, [[(offset, shape, (0,) * len(shape), shape)] for _ in self.parts],
+                                shape, self.dtype, mesh=self.mesh, kind="moments",
+                                record_size=record_size, x_axis=None, summed=True)
+                     for offset, shape in packed_pieces(self.shapes[0], self.sizes[0]))
+
+    def _assemble_host(self, buffer):
         buffer = self.replicated(buffer)
         summed = jnp.sum(buffer, axis=0)
-        return tuple(self.unpack(summed, 0))
+        return tuple(a.astype(self.dtype) for a in self.unpack(summed, 0))
 
 
 def _host_arrays(value):
@@ -343,7 +395,8 @@ class SlabRecords:
             if multi_process:
                 from jax.experimental import multihost_utils
                 buffer = multihost_utils.process_allgather(buffer, tiled=True)
-            values[kind] = layout.assemble(buffer)
+            values[kind] = (layout.assemble(buffer, multi_process=True) if multi_process
+                            else layout.assemble(buffer))
         result = dict(ntff_box=self.ntff_box, ntff_data=values.get("ntff"),
                       current_moment_data=values.get("moments"), current_moment_monitor=self.monitor)
         if "planes" in values:

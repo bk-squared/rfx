@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx import Box, DebyePole, LorentzPole, Simulation
+from rfx import Box, DebyePole, LorentzPole, Simulation, SnapshotSpec
 
 
 # Extended wire ports refuse before compilation.
@@ -33,6 +33,8 @@ CASES = [
     ("graded", "gradient-lorentz", "cpml"),
     ("graded", "gradient-sharded", "cpml"),
 ]
+CASES += [("uniform", kind, "cpml") for kind in
+          ("planes", "flux", "moments", "snapshots", "farfield")]
 
 
 def model(lane, mode, boundary):
@@ -54,8 +56,15 @@ def model(lane, mode, boundary):
         sim.add_source(pos, "ez", amplitude_kind=("current" if material_kind == "sharded" else "field"),
                        waveform=lambda t: amplitude * jnp.cos(t * 2e10))
     sim.add_probe(pos, "ez")
-    if mode == "ntff":
+    if mode in ("ntff", "farfield"):
         sim.add_ntff_box((3e-3, 2e-3, 2e-3), (12e-3, 5e-3, 5e-3), freqs=[5e9])
+    if mode == "planes":
+        sim.add_dft_plane_probe(axis="y", coordinate=3e-3, component="ez", freqs=[5e9])
+    if mode == "flux":
+        sim.add_flux_monitor(axis="y", coordinate=3e-3, freqs=[5e9])
+    if mode == "moments":
+        sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), (12e-3, 5e-3, 5e-3),
+                                       block_size=2e-3, freqs=[5e9])
     if material_kind in ("debye", "lorentz"):
         sim.add_material("debye", eps_r=4.,
                          **({"debye_poles": [DebyePole(delta_eps=1., tau=1e-11)]}
@@ -82,6 +91,25 @@ def exercise_programs():
     for lane, mode, boundary in PROGRAMS:
         sim = model(lane, mode, boundary)
         kwargs = dict(n_steps=4, devices=devices, skip_preflight=True)
+        if mode == "snapshots":
+            kwargs["snapshot"] = SnapshotSpec(interval=1, components=("ez",))
+        if mode == "farfield":
+            from rfx.farfield import compute_far_field_jax
+
+            def radiation(amplitude):
+                scene = model(lane, mode, boundary)
+                scene.add_source((7e-3, 3e-3, 3e-3), "ez", amplitude_kind="field",
+                                 waveform=lambda t: amplitude*jnp.cos(t*2e10))
+                result = scene.run(**kwargs)
+                ff = compute_far_field_jax(result.ntff_data, result.ntff_box, scene._build_grid(),
+                                           jnp.asarray([.4]), jnp.asarray([.3]))
+                return jnp.sum(jnp.abs(ff.E_theta)**2 + jnp.abs(ff.E_phi)**2)
+
+            value = jax.value_and_grad(radiation)(jnp.float32(1.))
+            jax.block_until_ready(value)
+            assert all(np.isfinite(np.asarray(a)).all() for a in value)
+            print(f"completed {lane}-{mode}-{boundary}", flush=True)
+            continue
         if mode.startswith("gradient"):
             grid = sim._build_nonuniform_grid()
             eps = jnp.full(grid.shape, 1.5, jnp.float32)
