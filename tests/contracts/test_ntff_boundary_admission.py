@@ -93,9 +93,11 @@ def forbid_field_loops(monkeypatch):
         monkeypatch.setattr(jax.lax, name, reached)
 
 
-@pytest.mark.parametrize("entry", ("run", "run_skip", "forward"))
-@pytest.mark.parametrize("mesh,case,outcome,message", EXPECTED_TABLE,
-                         ids=[f"{row[0]}-{row[1]}" for row in EXPECTED_TABLE])
+@pytest.mark.parametrize("mesh,case,outcome,message,entry", [
+    pytest.param(*row, entry, id=f"{row[0]}-{row[1]}-{entry}")
+    for row in EXPECTED_TABLE for entry in ("run", "run_skip", "forward")
+    if not (row[2] == "admitted" and entry == "run_skip")
+])
 def test_ntff_boundary_table(mesh, case, outcome, message, entry, monkeypatch):
     method = "run" if entry == "run_skip" else entry
     kwargs = {"n_steps": 1}

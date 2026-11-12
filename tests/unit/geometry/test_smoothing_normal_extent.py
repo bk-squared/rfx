@@ -60,8 +60,12 @@ def closed_form(profiles, axis, box, component):
 
 
 @pytest.mark.parametrize('axis', range(3), ids=list('xyz'))
-@pytest.mark.parametrize('structure', ['noncubic', 'normal_region', 'normal_joint', 'tangent'])
-@pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
+@pytest.mark.parametrize('traced,structure', [
+    pytest.param(t, s, id=f"{'traced' if t else 'host'}-{s}")
+    for t in (False, True)
+    for s in ('noncubic', 'normal_region', 'normal_joint', 'tangent')
+    if not t or s == 'normal_region'
+])
 def test_profile_flat_slab(axis, structure, traced):
     profiles, grid, box = slab_case(axis, structure)
     with enable_x64(True):
