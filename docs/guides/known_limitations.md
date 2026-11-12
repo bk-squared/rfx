@@ -237,6 +237,19 @@ No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propa
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
+### `precision="float64"` still builds some model coefficients in float32
+
+Tracker: #2613
+
+A float64 run steps float64 fields, but some coefficients are still built in float32. These include the material eps,
+sigma and mu; the Debye, Lorentz and Drude pole edge weights; the CPML profiles; the graded-mesh metrics; the conformal-PEC operands; and
+the TF/SF coefficients. `tests/contracts/test_float64_model_invariant.py` names each array, and its list may only shrink.
+Those that were measured differ from a float64 build by up to about 1e-7 relative (sigma 1.03e-7, pole weights 9.8e-8
+and eps 8.3e-8 on a graded mesh; conformal-PEC operands 5.0e-8 on a uniform mesh); mu, the CPML profiles, the graded
+metrics and the TF/SF coefficients were not measured, and how far a field or S moves was not measured. float32 runs are
+not affected. UPML and an oblique Bloch TF/SF source refuse float64 (see the
+[support matrix](support_matrix.md)'s refused inputs).
+
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
