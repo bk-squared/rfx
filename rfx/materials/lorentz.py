@@ -88,7 +88,8 @@ class LorentzPoleMap:
                 raise ValueError(f"LorentzPoleMap {name} must be a scalar or callable")
 
 
-def drude_pole_map(omega_p: float | Callable, gamma: float | Callable, *, density=None) -> LorentzPoleMap:
+def drude_pole_map(omega_p: float | Callable, gamma: float | Callable, *,
+                   density: float | Callable | None = None) -> LorentzPoleMap:
     """Declare a plasma-frequency and collision-rate profile in physical metres."""
     kappa: float | Callable | RelativeStrength
     if density is not None:

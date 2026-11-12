@@ -8,6 +8,7 @@ import numpy as np
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import edge_mean_components
+from rfx.errors import RfxUnsupported
 from rfx.materials.debye import pole_reach
 from rfx.materials.relative_strength import RelativeStrength
 
@@ -33,7 +34,7 @@ def is_map(pole):
 
 def refuse_maps(poles, site):
     if any(is_map(p) for p in poles or ()):
-        raise ValueError(f"LorentzPoleMap is not supported by {site}; use scalar poles")
+        raise RfxUnsupported(f"LorentzPoleMap is not supported by {site}; use scalar poles")
 
 
 def sample_spec(spec, grid, shape):
