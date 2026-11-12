@@ -157,3 +157,30 @@ def test_wall_loss_refused_by_name(site, monkeypatch):
     reason = "add_wall_loss.*lossy PEC domain face enters a CPML pad" if site == "face-cpml-pad" else "add_wall_loss"
     with pytest.raises(RfxRefusal, match=reason):
         call()
+
+
+@pytest.mark.parametrize("site", ["run-admission", "uniform-run", "uniform-forward", "graded-run-forward"])
+def test_runner_admission_site(site):
+    """Direct entries must name their own lane, even if later guards also refuse."""
+    sim = model(graded=site == "graded-run-forward")
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo",))
+    if site == "run-admission":
+        from rfx.runners.run import run_after_admission
+        call = lambda: run_after_admission(sim, n_steps=1, subpixel_smoothing=True)
+        lane = "run admission"
+    elif site == "uniform-run":
+        from rfx.runners.uniform import run_uniform
+        call = lambda: run_uniform(sim, n_steps=1, subpixel_smoothing=True)
+        lane = "run_uniform"
+    elif site == "uniform-forward":
+        from rfx.runners.uniform_forward import _forward_from_materials
+        grid = sim._build_grid()
+        materials = realized_conductors(sim, grid).materials
+        call = lambda: _forward_from_materials(sim, grid, materials, None, None, n_steps=1, subpixel_smoothing=True)
+        lane = "fwd_uniform"
+    else:
+        from rfx.runners.nonuniform import run_nonuniform_path
+        call = lambda: run_nonuniform_path(sim, n_steps=1, subpixel_smoothing=True)
+        lane = "run_nonuniform"
+    with pytest.raises(RfxRefusal, match=f"add_wall_loss: {lane}: Kottke"):
+        call()

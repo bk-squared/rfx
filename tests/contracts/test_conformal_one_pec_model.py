@@ -1,6 +1,7 @@
 """The public field and S entries hand the time step exactly one PEC model."""
 import numpy as np
 import pytest
+from pathlib import Path
 
 from tests.contracts.conformal_scenes import assert_same_setup, capture_setups, scene
 
@@ -13,6 +14,21 @@ def test_one_rule_and_no_volume_staircase(monkeypatch, name):
     assert len(rows) == 3  # run(), then one device setup per lane excitation.
     for setup_index, device in enumerate(rows[1:]):
         assert_same_setup(rows[0], device, label=f'{name}: lane device {setup_index}')
+
+
+@pytest.mark.parametrize('name', ['S', 'Q', 'P'])
+@pytest.mark.parametrize('entry', ['run', 'waveguide'])
+def test_no_volume_staircase(monkeypatch, name, entry):
+    rows = capture_setups(monkeypatch)
+    sim = scene(name, ports=1 if entry == 'run' else 2)
+    if entry == 'run':
+        sim.run(n_steps=4, compute_s_params=False)
+    else:
+        sim.compute_waveguide_s_matrix(n_steps=4, normalize=False)
+    assert len(rows) == (1 if entry == 'run' else 2)
+    for setup_index, row in enumerate(rows):
+        counts = tuple(np.count_nonzero(a) for a in row['masks'])
+        assert counts == (0, 0, 0), (name, entry, setup_index, 'volume staircase', counts)
 
 
 def test_reference_short_refuses_by_name():
@@ -36,6 +52,24 @@ def test_strict_lane_admission_reads_conformal_open_faces(monkeypatch):
     assert len(setups) == 3
     for setup_index, device in enumerate(setups[1:]):
         assert_same_setup(setups[0], device, label=f'S strict: lane device {setup_index}')
+
+
+def test_sphere_changes_only_domain_wall_rows(monkeypatch, record_property):
+    rows = capture_setups(monkeypatch)
+    scene('S').run(n_steps=4, compute_s_params=False)
+    # Captured through run() on b969e2c40, with the same C4 observation wrapper.
+    baseline = np.load(Path(__file__).parents[1] / 'data/conformal_node_plane/S-b969e2c40.npz')
+    counts = {}
+    for key in ('weights', 'areas'):
+        for component, actual in enumerate(rows[0][key]):
+            touches = np.zeros(actual.shape, dtype=bool)
+            spans_y = component == 1 if key == 'weights' else component != 1
+            touches[:, [0, 17, 18] if spans_y else [0, 18], :] = True
+            old = baseline[f'{key}{component}']
+            np.testing.assert_array_equal(actual[~touches], old[~touches],
+                                          err_msg=f'S: {key}[{component}] changed away from domain walls')
+            counts[f'{key}{component}'] = int(np.count_nonzero(actual != old))
+    record_property('changed_wall_rows', counts)
 
 
 @pytest.mark.parametrize('entry', ['run', 'waveguide'])
