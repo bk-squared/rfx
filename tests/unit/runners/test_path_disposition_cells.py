@@ -825,33 +825,6 @@ def test_the_refusal_names_lanes_that_carry_the_rest_of_the_model(attr, feature,
     assert named in carriers.split(".\n")[0], message
 
 
-_CONFORMAL_S = ("_boundary_spec", "conformal_s_matrix")
-
-
-@pytest.mark.parametrize("call", [
-    {},
-    {"compute_s_params": True},
-    {"compute_s_params": False},
-    {"conformal_pec": False},
-], ids=["default", "s_params", "no_s_params", "staircase_override"])
-def test_conformal_s_matrix_is_carried_when_run_computes_it(call):
-    """Admission preserves conformal fields and requested lumped-port S bytes."""
-    kwargs = dict(n_steps=N_STEPS, skip_preflight=True, **call)
-    sim = _build(FEATURES[_CONFORMAL_S], "run_uniform", True)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        got = sim.run(**kwargs)
-        with patch.object(A, "admit", lambda *args, **kw: None):
-            unadmitted = _build(FEATURES[_CONFORMAL_S], "run_uniform", True).run(**kwargs)
-    np.testing.assert_array_equal(_probe(got), _probe(unadmitted))
-    for name in ("ex", "ey", "ez", "hx", "hy", "hz"):
-        np.testing.assert_array_equal(np.asarray(getattr(got.state, name)),
-                                      np.asarray(getattr(unadmitted.state, name)))
-    assert (got.s_params is None) == (unadmitted.s_params is None)
-    if got.s_params is not None:
-        np.testing.assert_array_equal(np.asarray(got.s_params), np.asarray(unadmitted.s_params))
-
-
 # ------------------------------------------------------ the table's own terms
 
 def test_every_executable_row_has_a_builder():

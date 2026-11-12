@@ -126,7 +126,8 @@ def test_material_gradient_and_fresh_model_fd(monkeypatch):
     assert relative <= 1e-2, f'AD={ad}, FD(h)={fd}, FD(h/2)={half}, relative={relative}'
 
 
-def test_operands_match_run_bytes(monkeypatch):
+@pytest.mark.parametrize('scene_name', ('dielectric-sphere', 'cylinder'))
+def test_operands_match_run_bytes(monkeypatch, scene_name):
     from rfx import simulation
     from rfx.model import conformal_rules
     original = simulation.run
@@ -146,8 +147,13 @@ def test_operands_match_run_bytes(monkeypatch):
 
     monkeypatch.setattr(conformal_rules, 'conformal_fractions_from_table', formed)
     monkeypatch.setattr(simulation, 'run', captured)
-    ran = scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
-    forward = scene().forward(n_steps=STEPS, skip_preflight=True)
+    if scene_name == 'dielectric-sphere':
+        build_scene = scene
+    else:
+        from tests.unit.runners.test_silent_drop_warnings import _conformal_cavity
+        build_scene = lambda: _conformal_cavity(True)
+    ran = build_scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
+    forward = build_scene().forward(n_steps=STEPS, skip_preflight=True)
     assert len(operands) == 2
     assert len(fractions) == 2
     left, right = (jax.tree.leaves((operands[i], fractions[i])) for i in range(2))
