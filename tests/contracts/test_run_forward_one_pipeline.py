@@ -376,8 +376,8 @@ def directions(declaration):
     return ('a', 'b') if declaration in PORTED else (None,)
 
 
-# Both entries refuse, but from two guards, not one check both call
-# (rfx-core-desk 2026-10-27). MSL and coaxial port refusals now share one
+# Both entries refuse, but from two guards, not one check both call.
+# MSL and coaxial port refusals now share one
 # check; RLC is admitted and compared in the tables above.
 TWO_GUARD_REFUSALS = {
 }
@@ -636,7 +636,7 @@ def raised_in_rfx(record):
 
 def same_raising_line(run, forward):
     # One refusal both entries call raises from one line; two guards with
-    # the same text do not (rfx-core-desk 2026-10-27).
+    # the same text do not.
     return (Path(run['raising_site'].rsplit(':', 1)[0]).resolve(),
             run['raising_site'].rsplit(':', 1)[1]) == (
         Path(forward['raising_site'].rsplit(':', 1)[0]).resolve(),

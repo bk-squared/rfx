@@ -2,8 +2,8 @@
 
 Issue #980 Phase 2 breaks the 8 647-line ``rfx/api/_sparams.py`` into
 ``rfx/sparams/`` a piece at a time. Every step is PURE CODE MOTION, and
-``docs/agent-memory/development_methodology.md`` §2.2 gates a code-motion
-refactor on BIT IDENTITY -- ``np.array_equal`` on the raw arrays, never a
+the code-motion rule gates a
+refactor on BIT IDENTITY before and after -- ``np.array_equal`` on the raw arrays, never a
 tolerance -- not on "the physics still looks right".
 
 This module is that gate. It drives each public ``compute_*`` S-matrix leg
@@ -241,7 +241,7 @@ _LEGS = (
      ("s_params", "freqs", "reference_planes", "settling_db",
       "s21_phase_residual_deg_rms")),
     # sigma_max_excess joined MSLSMatrixResult when enforce_passivity stopped
-    # being the default (PI, 2026-09-21): a numeric field the dataclass
+    # being the default: a numeric field the dataclass
     # carries, so the witness has to name it. On this leg's own record the
     # projection was active only in the float32 noise around a passive
     # |S21| = 1 thru (raw sigma_max 1.000000003 to 1.000000119), so S_raw and

@@ -10,7 +10,7 @@
  "provenance": {
   "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
   "git_dirty": true,
-  "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "rfx_version": "1.8.0",
   "jax_version": "0.6.2",
   "numpy_version": "2.2.6",
@@ -1239,7 +1239,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -1899,7 +1899,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -2586,7 +2586,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -3489,7 +3489,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -4177,7 +4177,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -4892,7 +4892,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -5799,7 +5799,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -6491,7 +6491,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -7205,7 +7205,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -8112,7 +8112,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -8803,7 +8803,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -9521,7 +9521,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -10490,7 +10490,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",
@@ -11236,7 +11236,7 @@
    "provenance": {
     "commit": "f5712d6b41153a4a82d3db7cb9b659898fdf87f1",
     "git_dirty": true,
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a64f3761bf9faad17/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_version": "1.8.0",
     "jax_version": "0.6.2",
     "numpy_version": "2.2.6",

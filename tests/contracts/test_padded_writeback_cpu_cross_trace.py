@@ -1,7 +1,7 @@
 """Pin CPU padded write-back probe agreement across plain and jax.jit calls.
 Before #1621 the record read 32 ULP at 120 steps (63 at 480).
 Why #1621 removed the spread is not known; this catches a regression
-even though the mechanism is not known (rfx-lead, 2026-10-21).
+even though the mechanism is not known.
 """
 
 import jax

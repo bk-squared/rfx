@@ -1222,7 +1222,7 @@ def test_reverse_report_order_and_totals(synthetic, capsys):
 
 
 # A layer import of a name a five file defines itself is layer code living in a five file; the unit rules read
-# syntax and miss a scalar formula, a metric choice or a record type (rfx-core-desk L:e06a77).
+# syntax and miss a scalar formula, a metric choice or a record type.
 FIVE_DEFINITION = "{path} R: imports {entry}, which the five file defines; move the definition into its layer"
 
 

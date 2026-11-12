@@ -28,7 +28,7 @@ run: |-
   date
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
-  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T2-sparams-ports
+  SRC=<workspace>/research/rfx-931-T2-sparams-ports
   test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
   RUNS=/root/workspace/claude-workspace/rfx/runs
   OUT=$RUNS/issue931-post-thru-sv-ladder-dx4-$(date -u +%Y%m%dT%H%M%SZ)

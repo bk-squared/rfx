@@ -912,8 +912,8 @@
      "speed_mcells_per_s": 62.92,
      "record_length_s": 1.321328932e-08
     },
-    "stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_a_real_openems_stdout.log",
-    "smoke_stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_a_smoke_openems_stdout.log",
+    "stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_a_real_openems_stdout.log",
+    "smoke_stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_a_smoke_openems_stdout.log",
     "excitation_energy_peak": 1.222318901643529e-11,
     "port_trace_samples": 323,
     "openems": {
@@ -2137,8 +2137,8 @@
      "speed_mcells_per_s": 165.38,
      "record_length_s": 1.1142969208582835e-08
     },
-    "stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_coarse_real_openems_stdout.log",
-    "smoke_stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_coarse_smoke_openems_stdout.log",
+    "stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_coarse_real_openems_stdout.log",
+    "smoke_stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_coarse_smoke_openems_stdout.log",
     "excitation_energy_peak": 9.196439182682654e-13,
     "port_trace_samples": 325,
     "openems": {
@@ -3420,8 +3420,8 @@
      "speed_mcells_per_s": 219.51,
      "record_length_s": 1.0911529595348002e-08
     },
-    "stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_mid_real_openems_stdout.log",
-    "smoke_stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_mid_smoke_openems_stdout.log",
+    "stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_mid_real_openems_stdout.log",
+    "smoke_stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_mid_smoke_openems_stdout.log",
     "excitation_energy_peak": 8.29946106376191e-13,
     "port_trace_samples": 323,
     "openems": {
@@ -4961,8 +4961,8 @@
      "speed_mcells_per_s": 178.04,
      "record_length_s": 1.0622075512466447e-08
     },
-    "stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_fine_real_openems_stdout.log",
-    "smoke_stdout_log_path": "/root/workspace/byungkwan-workspace/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_fine_smoke_openems_stdout.log",
+    "stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_fine_real_openems_stdout.log",
+    "smoke_stdout_log_path": "<workspace>/research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/stage_b_fine_smoke_openems_stdout.log",
     "excitation_energy_peak": 7.433075954668348e-13,
     "port_trace_samples": 310,
     "openems": {
@@ -4981,8 +4981,8 @@
    "DELTA 6 (far field): the retired CalcNF2FF call -- theta -180..178 step 2, phi 0 and 90, center [0, 0, 1e-3], only when the dip is below -6 dB -- is kept, and made at the refined resonance instead of the bin. The recording box is created on every rung unless --no-nf2ff. Reported only; a failure is recorded, not raised. The dump files are measured and then deleted from the pod's /tmp.",
    "DELTA 7 (how the solver runs): the retired FDTD.Run(sim_path, cleanup=True, numThreads=8) becomes the shared module's capture, Run(sim_path, cleanup=True, verbose=1, numThreads=8) with stdout and stderr in a file, after a 200-step smoke pass, with the shared sanity gates around it, and the realized-line check before each pass.",
    "DELTA 8 (the patch lines keep clear of the port and the edges): an evenly spaced patch line (the retired np.arange from -L/2 - 2 in steps of patch_res) is dropped when it lies closer than half a patch cell -- the width of the thirds-rule pair, metal_edge_res -- to the probe's line, to either thirds-rule line at a patch edge, to a patch edge or to a ground edge. The rule is the same on every rung. Without it the three meshes were not the same board: at rung 1 a patch line sat on the +x radiating edge (19.999999999999975 mm, inside the thirds-rule pair); at rung 1/sqrt(2) a 20.1 um cell sat just outside the -x and -y edges (neighbour ratios 21 and 42) and set the timestep to 0.047 ps; at rung 1/2 a line landed at 20.0000000000001 mm and another at y = 6.4e-14 mm, and CSXCAD's smoothing, which deletes the LOWER of two lines closer than 1e-7 of the mean spacing, deleted the probe's y = 0 line, so openEMS would have driven no edge.",
-   "DELTA 9 (probe position): FEED_OFFSET_X = -9.0e-3 becomes -8.73125e-3, the probe 8.73125 mm off the patch centre along x instead of 9 mm (PI 2026-09-24). -8.73125 mm is -11, -22 and -33 cells of rfx's h/4, h/8 and h/12 (h = 3.175 mm) from the patch centre, a lattice node on every rung of rfx's uniform ladder, which put the -9 mm probe at 8.731 / 9.128 / 8.996 mm. The builder's line is unchanged (feed = FEED_OFFSET_X * 1e3); the port's x line, the comb clearance around it (delta 8) and the line check follow the constant.",
-   "DELTA 10 (the board on the rfx lattice): L_PATCH 40 -> 39.7 mm, W_PATCH 50 -> 49.25 mm, GP_X 56 -> 55.6 mm, GP_Y 66 -> 65.1 mm (PI 2026-09-25). Every edge now sits just outside a node common to rfx's h/4, h/8 and h/12 (h = 3.175 mm, the patch centre a node): half-extents 25, 31, 35 and 41 cells of h/4 plus 6.25, 18.75, 18.75 and 6.25 um, so each rung of rfx's uniform ladder realizes the same sheets and the same substrate. The substrate still covers the ground's footprint. The air box does NOT follow the ground: its x and y lines stay at the retired faces x +-88, y +-93 mm (B_BOX_FACES_MM, B_BOX_SUBSTITUTIONS), so the absorber is where it was. The TL model and the resonance window are computed from the new L and W (F_TM010_BOARD_HZ, B_RESONANCE_BAND_HZ).",
+   "DELTA 9 (probe position): FEED_OFFSET_X = -9.0e-3 becomes -8.73125e-3, the probe 8.73125 mm off the patch centre along x instead of 9 mm. -8.73125 mm is -11, -22 and -33 cells of rfx's h/4, h/8 and h/12 (h = 3.175 mm) from the patch centre, a lattice node on every rung of rfx's uniform ladder, which put the -9 mm probe at 8.731 / 9.128 / 8.996 mm. The builder's line is unchanged (feed = FEED_OFFSET_X * 1e3); the port's x line, the comb clearance around it (delta 8) and the line check follow the constant.",
+   "DELTA 10 (the board on the rfx lattice): L_PATCH 40 -> 39.7 mm, W_PATCH 50 -> 49.25 mm, GP_X 56 -> 55.6 mm, GP_Y 66 -> 65.1 mm. Every edge now sits just outside a node common to rfx's h/4, h/8 and h/12 (h = 3.175 mm, the patch centre a node): half-extents 25, 31, 35 and 41 cells of h/4 plus 6.25, 18.75, 18.75 and 6.25 um, so each rung of rfx's uniform ladder realizes the same sheets and the same substrate. The substrate still covers the ground's footprint. The air box does NOT follow the ground: its x and y lines stay at the retired faces x +-88, y +-93 mm (B_BOX_FACES_MM, B_BOX_SUBSTITUTIONS), so the absorber is where it was. The TL model and the resonance window are computed from the new L and W (F_TM010_BOARD_HZ, B_RESONANCE_BAND_HZ).",
    "NOTHING ELSE: the patch and ground as sheets, the substrate (eps_r 2.2 with tan delta 1e-3 as a conductivity at 2.4 GHz) over the ground's footprint, the 50 ohm lumped port from z = 0 to z = h (at x = -8.73125 mm, delta 9), SetGaussExcite(2.4e9, 1.2e9), the air box's z lines, the thirds rule, SmoothMeshLines('all', mesh_res, 1.4) and the mm length unit are the retired builder's, proved so character for character by --self-check."
   ],
   "copy_proof": {

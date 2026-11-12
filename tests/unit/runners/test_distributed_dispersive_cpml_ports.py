@@ -3,8 +3,7 @@
 The port-S bar is calibrated per host. The multi-device S differs from one device
 by float32 rounding formed inside the compiled step: it moves with the host and
 the XLA CPU flags, 2 and 3 devices give identical values, and it does not grow
-from 400 to 800 steps (rfx-archive rfx/records/20261019-item5-port-s-bar,
-78108cc99: 0.91-1.87e-6 of the |S| peak, 1.04-1.23x one device's own
+from 400 to 800 steps (78108cc99: 0.91-1.87e-6 of the |S| peak, 1.04-1.23x one device's own
 jit-vs-eager spread on every host). So the bar is that unit, measured here on the
 same scene and host: multi-device <= 2 x the one-device jit-vs-eager spread,
 which itself stays <= 1e-4 (the cross-trace bar for a record-summed quantity).

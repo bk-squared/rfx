@@ -288,8 +288,7 @@ def _ctor_ratio_warnings(axis, prof):
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 def test_grading_cap_is_1_4_on_every_axis(axis):
     """The in-plane cap moved 1.3 -> 1.4 on in-plane witnesses at 1.40
-    (2026-10-29: e5_x/e5_y reflection; rfx-archive
-    records/20261029-inplane-cap-1p4, pinned by
+    (2026-10-29: e5_x/e5_y reflection; pinned by
     test_inplane_grading_witness.py). It was held at 1.3 from 2026-08-29
     (note WP6R.8, finding BL1) because no witness graded an in-plane axis.
 

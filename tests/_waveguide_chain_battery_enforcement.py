@@ -22,6 +22,7 @@ ENFORCEMENT = FIXTURE.with_name("enforcement_931_realized_pec_forward2_run369367
 def load_enforced_fixture() -> dict:
     raw = FIXTURE.read_bytes()
     record = json.loads(ENFORCEMENT.read_text())
+    # Digest of the cleaned copy: only two string values changed; original bytes are in git at 647262587.
     assert hashlib.sha256(raw).hexdigest() == record["measurement_sha256"]
     fx = json.loads(raw)
     for check in record["checks"]:

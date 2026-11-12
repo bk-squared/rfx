@@ -1,5 +1,4 @@
-"""Lossless homogeneous WR-90 and dielectric-step scattering oracles (#1994), judged by bars B1-B5 and the group delay
-(rfx-lead L:fd8d39)."""
+"""Lossless homogeneous WR-90 and dielectric-step scattering oracles (#1994), judged by bars B1-B5 and the group delay."""
 import functools
 import json
 import os
@@ -33,10 +32,10 @@ CASES={'A':('O1',False),'B':('O2',False),'A-shift':('O1',True)}
 
 
 def passivity_excess(row,*,record_end=True):
-    """B1 (rfx-lead L:1c3609, form (i)): sum <= 1 + delta + 2s + s^2 per bin, s the record check's per-bin share (pole
-    tail plus the known drive beyond the record): a relative error s per entry moves |S11|^2+|S21|^2 by at most 2s + s^2
-    (derivation: rfx-archive rfx/records/20261026-nu-record-end-drive-tail/DESIGN.md). Checked before adoption at a/45 on
-    16000, 32000 and 64000 steps against the 64000-step sum, every bin inside (record-end-truncation.json there).
+    """B1 (form (i)): sum <= 1 + delta + 2s + s^2 per bin, s the record check's per-bin share (pole
+    tail plus the known drive beyond the record): a relative error s per entry moves |S11|^2+|S21|^2 by at most 2s + s^2.
+    Checked before adoption at a/45 on
+    16000, 32000 and 64000 steps against the 64000-step sum, every bin inside.
     record_end=False is the settled form (ii): rounding only."""
     # derived estimate: float32 rounding of the DFT ratio over N steps; not measured
     delta=np.sqrt(row['n_steps'])*2**-24*10
