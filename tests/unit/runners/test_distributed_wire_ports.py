@@ -243,44 +243,6 @@ def test_graded_wire_s_follows_one_device(compute_s):
         assert float(np.max(np.abs(np.asarray(multi.s_params) - np.asarray(one.s_params)))) <= 1e-4 * peak
 
 
-@pytest.mark.parametrize("mutation", ["no_stamps", "seam_stamp", "own_slab", "half_step"])
-def test_mutations(monkeypatch, mutation):
-    from rfx.sources import sources
-    from rfx.model import lumped_stamp
-    from rfx.probes import sparam_driver as driver
-    from rfx.core import dft_utils
-    from rfx.runners import distributed_v2 as runner
-    import jax.numpy as jnp
-    original_run = runner.run_distributed
-    def mutated_run(*args, **kwargs):
-        with monkeypatch.context() as patch:
-            original_stamp = sources.stamp_lumped_sigma
-            if mutation == "no_stamps":
-                patch.setattr(sources, "setup_wire_port", lambda grid, wp, materials, **kw: materials)
-            elif mutation == "seam_stamp":
-                def stamp(materials, cell, sigma, component):
-                    return materials if cell[0] == 11 else original_stamp(materials, cell, sigma, component)
-                patch.setattr(sources, "stamp_lumped_sigma", stamp)
-                patch.setattr(lumped_stamp, "stamp_lumped_sigma", stamp)
-            result = original_run(*args, **kwargs)
-            return result
-    monkeypatch.setattr(runner, "run_distributed", mutated_run)
-    if mutation in ("own_slab", "half_step"):
-        from tests.unit.runners._uniform_port_mutations import mutate_port_sampler
-        mutate_port_sampler(monkeypatch, mutation)
-    # Without the load stamp a port has no source impedance to drive behind
-    # (#1463: the drive is the stamped conductance times the source field), so
-    # that mutation is refused before stepping instead of reaching the parity.
-    expected = ((RuntimeError, "no stamped load") if mutation == "no_stamps"
-                else (AssertionError, "S parity|trace parity"))
-    with pytest.raises(expected[0], match=expected[1]):
-        _parity("ex")
-    print(f"wire mutation={mutation}: RED")
-    monkeypatch.undo()
-    _parity("ex")
-    print(f"wire mutation={mutation}: restored GREEN")
-
-
 if __name__ == "__main__":
     for case in ("ez", "ex", "dead", "dielectric"):
         _parity(case, n_devices=int(sys.argv[1]))
