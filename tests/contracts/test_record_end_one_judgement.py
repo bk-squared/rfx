@@ -1038,6 +1038,7 @@ def _s4_closed_record(n, dt, poles, residues, bins, kind='E', factor=1.):
 
 @pytest.mark.parametrize('frame', ['wire-whole', 'wire-legacy', 'lumped', 'waveguide'])
 def test_s4_reader_closed_pole_tail(frame):
+    from rfx.sparams._tail_witness import _IDENTIFICATION
     from types import SimpleNamespace
     from rfx.measurement.record_readers import port_s_reader, waveguide_s_reader
     from rfx.measurement.record_end import record_end_error
@@ -1084,6 +1085,7 @@ def test_s4_reader_closed_pole_tail(frame):
     expected_kappa = sum(sum(abs(w)*abs(spectra[name]) for name, w in operand.items()) /
                          abs(sum(w*spectra[name] for name, w in operand.items())) for operand in operands)
     actual = record_end_error(records, dt, 0, bins, freq_max=12e9,
+                              identification=_IDENTIFICATION,
                               reader=reader, scale_groups=groups, _channel_labels=labels)
     legacy = tail_share_witness(records, dt, 0, bins, freq_max=12e9,
                                 scale_groups=groups, _channel_labels=labels)
@@ -1185,3 +1187,18 @@ def test_s4_spg_s11_lengthening_reduces_error(s4_spg_records):
     e40 = long['record_end_error_per_entry']['S11'][-1]
     assert e30 > 1e-2
     assert e40 < e30
+
+
+def test_s4_spg_s22_windows_disagree(s4_spg_records):
+    result = s4_spg_records[30][0]
+    witness = result.settling_witness[1]
+    main = np.asarray(witness['record_end_error_per_entry']['S22'])
+    second = np.asarray(witness['record_end_error_second_per_entry']['S22'])
+    straddles = (main > 1e-2) != (second > 1e-2)
+    assert np.any(straddles), (
+        f'SP-g P30 S22 scene no longer straddles 1e-2: main={main}, second={second}')
+    k = int(np.flatnonzero(straddles)[0])
+    print(f'SP-g P30 S22 at {float(result.freqs[k]):.12g} Hz: '
+          f'main e_Q={main[k]:.12g}, second e_Q={second[k]:.12g}')
+    assert witness['status_per_entry']['S22'] == 'undetermined', witness
+    assert 'S22: windows disagree' in witness['reason'], witness

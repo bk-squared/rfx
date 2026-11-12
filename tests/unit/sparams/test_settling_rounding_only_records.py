@@ -201,9 +201,10 @@ def test_skipped_names_survive_unavailable_returns(missing):
 
 
 def test_every_record_skipped_is_undetermined(monkeypatch):
+    import rfx.measurement.record_end as record_end
     # Unreachable with the strict rule (the largest record is never below its
     # own peak), so the skip list is forced.
-    monkeypatch.setattr(witness, '_rounding_only_records', lambda records, groups: tuple(
+    monkeypatch.setattr(record_end, '_rounding_only_records', lambda records, groups: tuple(
         dict(name=name, group=groups[name], peak_ratio=1., threshold=1., reason='forced')
         for name, _ in records))
     result = witness.tail_share_witness(

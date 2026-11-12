@@ -142,7 +142,9 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
                   'status_per_entry': {key: value for row in quantity_rows
                                        for key, value in row['status_per_entry'].items()},
                   'record_end_error_per_entry': {key: value for row in quantity_rows
-                                                for key, value in row['record_end_error_per_entry'].items()}}
+                                                for key, value in row['record_end_error_per_entry'].items()},
+                  'record_end_error_second_per_entry': {key: value for row in quantity_rows
+                                                for key, value in (row.get('record_end_error_second_per_entry') or {}).items()}}
         if detail['status'] in {'pass', 'fail'}:
             detail['worst_freq_hz'] = float(bins[np.argmax(quantity)])
     return db, {**detail, **record_selection_detail(result)}

@@ -359,7 +359,8 @@ def _plane_reach(axis, coordinate):
     return lambda points: max(abs(float(p[axis]) - coordinate) for p in points)
 
 
-from typing import NamedTuple
+from dataclasses import dataclass
+from typing import Callable, NamedTuple
 from rfx.measurement.ringdown_resolution import in_window_shares, pole_classes
 
 # A record is skipped only when both its peak and its end-of-record level are
@@ -423,10 +424,25 @@ _POLE_RULE = (
 )
 
 
-def _pole_contributions(model, series, bins, denominator, record_s, *, growth=None):
+@dataclass(frozen=True)
+class IdentificationOps:
+    """Identification operations supplied by the caller above measurement."""
+
+    identify: Callable
+    judge_growing_poles: Callable
+    _static_pole: Callable
+    _fit_residues: Callable
+    RingdownPole: Callable
+
+
+def _pole_contributions(model, series, bins, denominator, record_s, *, identification: IdentificationOps, growth=None):
     """Return per-bin maxima over fitted pole terms and channels by rule."""
-    from rfx.ringdown import RingdownPole, _fit_residues, _static_pole, judge_growing_poles
     from rfx.measurement.ringdown_tail import plain_dft
+
+    judge_growing_poles = identification.judge_growing_poles
+    _static_pole = identification._static_pole
+    _fit_residues = identification._fit_residues
+    RingdownPole = identification.RingdownPole
 
     window = series[model.n_ref:model.n_ref + model.n_window]
     indices = {'discarded growing': [], 'non-decaying sinusoidal': []}
@@ -485,9 +501,10 @@ class TailShareWitness(NamedTuple):
     tails_per_channel: object = None
     second_tails_per_channel: object = None
     window_starts: object = None
+    record_end_error_second_per_entry: object = None
 
 
-def _channel_tail_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None,
+def _channel_tail_witness(records, dt, source_end, freqs, *, identification: IdentificationOps, freq_max, rounding_groups=None,
                        _record_results=None, known_drives=None, n_record=None,
                        scale_groups=None, _channel_labels=None, _tails=None,
                        _window_starts=None):
@@ -502,9 +519,12 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, freq_max, rounding_
     from dataclasses import replace
 
     from rfx.core.jax_utils import is_tracer
-    from rfx.ringdown import identify, _static_pole, judge_growing_poles
     from rfx.measurement.ringdown_tail import plain_dft, tail_dft
     from rfx.sparams._settling_groups import column_metadata
+
+    identify = identification.identify
+    judge_growing_poles = identification.judge_growing_poles
+    _static_pole = identification._static_pole
 
     records = tuple(records)
     skipped = _rounding_only_records(records, rounding_groups or {})
@@ -653,7 +673,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, freq_max, rounding_
                                  if np.any(dropped) else growth)
                 if not growth_status.ok:
                     reasons.append(f"{label}: growing-pole judge {growth_status.status}: {growth_status.reason}")
-                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, growth=growth).items():
+                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, identification=identification, growth=growth).items():
                     contributions[rule] = np.maximum(contributions.get(rule, np.zeros(len(bins))), value)
                     if rule == "kept non-static growing":
                         continue
@@ -746,7 +766,7 @@ def settling_verdict(settling_db) -> str:
     return "fail" if value > _SETTLING_WITNESS_DB else "pass"
 
 
-def record_end_error(records, dt, source_end, freqs, *, freq_max,
+def record_end_error(records, dt, source_end, freqs, *, identification: IdentificationOps, freq_max,
                      rounding_groups=None, _record_results=None, known_drives=None,
                      n_record=None, scale_groups=None, _channel_labels=None, reader=None):
     """One record-end rule, with an identity or linear/ratio quantity reader.
@@ -755,6 +775,7 @@ def record_end_error(records, dt, source_end, freqs, *, freq_max,
     operand maps column names to weights. Identification and its channel
     diagnostics retain the original denominators, independently of the reader.
     Returned tails use the whole-record plain DFT origin, including exp(-iwNdt).
+    Identification operations are required; measurement imports no implementation.
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.sparams._settling_groups import column_metadata
@@ -763,7 +784,7 @@ def record_end_error(records, dt, source_end, freqs, *, freq_max,
     records = tuple(records)
     tails, windows = {}, {}
     result = _channel_tail_witness(
-        records, dt, source_end, freqs, freq_max=freq_max,
+        records, dt, source_end, freqs, identification=identification, freq_max=freq_max,
         rounding_groups=rounding_groups if reader is None else None,
         _record_results=_record_results, known_drives=known_drives,
         n_record=n_record, scale_groups=scale_groups, _channel_labels=_channel_labels,
@@ -809,7 +830,7 @@ def record_end_error(records, dt, source_end, freqs, *, freq_max,
         eps = np.finfo(y.real.dtype).eps
         nw = len(y) - windows[len(y)][0]
         sigma[name] = factor * _ROUNDING_TAIL_EPS_MULTIPLE * eps * largest[groups[name]] * dt * np.sqrt(nw)
-    errors, kappas, floors, statuses = {}, {}, {}, {}
+    errors, second_errors, kappas, floors, statuses = {}, {}, {}, {}, {}
     drive = np.asarray(result.drive_share_per_bin)
     if not drive.size:
         drive = np.zeros(bins.size)
@@ -830,6 +851,7 @@ def record_end_error(records, dt, source_end, freqs, *, freq_max,
         error += kappa * drive
         other += kappa * drive
         errors[entry], kappas[entry], floors[entry] = error, kappa, floor
+        second_errors[entry] = other
         if result.status in {'undetermined', 'absent'}:
             status = 'undetermined'
         elif not np.isfinite(error).all() or not np.isfinite(other).all():
@@ -854,5 +876,6 @@ def record_end_error(records, dt, source_end, freqs, *, freq_max,
         record_end_error_per_bin=error, kappa_per_bin=np.maximum.reduce(list(kappas.values())),
         record_end_floor_per_bin=np.maximum.reduce(list(floors.values())),
         record_end_error_per_entry=errors, status_per_entry=statuses,
+        record_end_error_second_per_entry=second_errors,
         tails_per_channel={k: v[0] for k, v in aligned_tails.items()},
         second_tails_per_channel={k: v[1] for k, v in aligned_tails.items()})

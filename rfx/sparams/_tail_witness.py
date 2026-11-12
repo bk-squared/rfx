@@ -1,10 +1,18 @@
 """Per-read-bin pole-tail witness for recorded values."""
 
 import numpy as np
+from functools import partial
 from typing import NamedTuple
 
-from rfx.measurement.record_end import (TailShareWitness, _pole_contributions,
+from rfx.ringdown import identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole
+from rfx.measurement.record_end import (IdentificationOps, TailShareWitness,
+                                         _pole_contributions as _record_pole_contributions,
                                          _rounding_only_records, record_end_error)
+
+_IDENTIFICATION = IdentificationOps(
+    identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole)
+# Retain the private compatibility import without moving any rule out of measurement.
+_pole_contributions = partial(_record_pole_contributions, identification=_IDENTIFICATION)
 
 
 def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None,
@@ -12,7 +20,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
                        scale_groups=None, _channel_labels=None, reader=None):
     """Delegate the record-end rule, retaining the identity reader by default."""
     return record_end_error(
-        records, dt, source_end, freqs, freq_max=freq_max,
+        records, dt, source_end, freqs, identification=_IDENTIFICATION, freq_max=freq_max,
         rounding_groups=rounding_groups, _record_results=_record_results,
         known_drives=known_drives, n_record=n_record, scale_groups=scale_groups,
         _channel_labels=_channel_labels, reader=reader)
