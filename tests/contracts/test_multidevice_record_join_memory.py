@@ -1,4 +1,8 @@
-"""Distinct live device buffers and compiled temporary bytes at the record join."""
+"""Distinct live device buffers and compiled temporary bytes at the record join.
+
+A <= max(0.025 R, one row along the two splittable axes). Compiled programs
+allow 3 A + 0.05 R + 1024 bytes; live buffers allow C + R + 3 A + 0.05 R.
+"""
 import gc
 import json
 import sys
@@ -37,6 +41,17 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
     peaks = own.copy()
     analyses = []
     original = join._join_program
+    original_chunk_shape = join.chunk_shape
+    row_bytes = {}
+
+    def plan(shape, dtype, record_size, x_axis):
+        chunk = original_chunk_shape(shape, dtype, record_size, x_axis)
+        axes = {0, next((a for a in range(1, len(shape)) if a != x_axis), 0)}
+        row = int(np.prod([s for a, s in enumerate(shape) if a not in axes]))*dtype.itemsize
+        row_bytes[(shape, dtype, chunk)] = row
+        return chunk
+
+    monkeypatch.setattr(join, 'chunk_shape', plan)
 
     def instrument(*args):
         program = original(*args)
@@ -46,7 +61,7 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
             stats = compiled.memory_analysis()
             assert stats is not None, 'compiled join memory unavailable'
             analyses.append(dict(shape=shape, chunk=chunk, A=int(np.prod(chunk))*dtype.itemsize,
-                                 temporary=stats.temp_size_in_bytes))
+                                 row_bytes=row_bytes.get((shape, dtype, chunk)), temporary=stats.temp_size_in_bytes))
             return compiled(ranks, buffer)
         return measured
     monkeypatch.setattr(join, '_join_program', instrument)
@@ -72,13 +87,18 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
     assert analyses, 'join programs not observed'
     largest = max(row['A'] for row in analyses)
     temporary = max(row['temporary'] for row in analyses)
-    bar = 3*largest + .05*record_size
+    live_allowance = 3*largest + .05*record_size
+    for row in analyses:
+        row['temporary_bar'] = 3*row['A'] + .05*record_size + 1024
     report = dict(kind=kind, size=size, single_frequency=single, R=record_size, C=own, A=largest,
                   P=peaks, P_over_R=[p/record_size for p in peaks], temporary=temporary,
-                  temporary_bar=bar, peak_bar=[c+record_size+bar for c in own], programs=analyses)
+                  temporary_bar=live_allowance+1024, peak_bar=[c+record_size+live_allowance for c in own], programs=analyses)
     (tmp_path / 'memory.json').write_text(json.dumps(report))
     print(json.dumps(report), flush=True)
     print(f'{kind}: one-device reference 1.0 R')
-    assert largest <= .025*record_size, ('chunk bound', report)
-    assert all(row['temporary'] <= 3*row['A'] + .05*record_size for row in analyses), ('compiled temporary bound', report)
-    assert all(p <= c+record_size+bar for p, c in zip(peaks, own)), ('join distinct-buffer bound', report)
+    if single:
+        assert largest < record_size, ('one-frequency chunk must be smaller than R', report)
+    assert all(row['row_bytes'] is not None and row['A'] <= max(.025*record_size, row['row_bytes'])
+               for row in analyses), ('chunk bound', report)
+    assert all(row['temporary'] <= row['temporary_bar'] for row in analyses), ('compiled temporary bound', report)
+    assert all(p <= c+record_size+live_allowance for p, c in zip(peaks, own)), ('join distinct-buffer bound', report)

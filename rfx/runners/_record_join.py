@@ -49,7 +49,11 @@ def record_bytes(arrays):
 
 
 def chunk_shape(shape, dtype, record_size, x_axis):
-    """Equal tiles: leading axis, then the first non-x trailing axis."""
+    """Split the leading axis, then the first non-x trailing axis.
+
+    A <= max(0.025 R, one row along these two splittable axes), in bytes.
+    The row floor keeps unsplittable dimensions and at least one element.
+    """
     chunk = list(shape)
     limit = record_size // (40 * jnp.dtype(dtype).itemsize)
     axes = [0] + [a for a in range(1, len(shape)) if a != x_axis][:1]

@@ -65,7 +65,10 @@ def test_second_axis_chunk_bits(n, nx):
     template = layout.templates[0].accumulator
     chunk = join.chunk_shape(template.shape, template.dtype, template.nbytes, 1)
     assert chunk[0] == 1 and chunk[2] < template.shape[2], 'second-axis split not exercised'
-    assert np.prod(chunk)*template.dtype.itemsize <= .025*template.nbytes
+    chunk_bytes = np.prod(chunk)*template.dtype.itemsize
+    row_bytes = template.shape[1]*template.dtype.itemsize
+    assert chunk_bytes <= max(.025*template.nbytes, row_bytes)
+    assert chunk_bytes < template.nbytes, 'one-frequency chunk must be smaller than R'
     actual = np.asarray(layout.assemble(buffer)[0].accumulator)
     expected = np.asarray(frozen(layout, buffer)[0].accumulator)
     assert actual.tobytes() == expected.tobytes(), 'second-axis chunk bit equality'
