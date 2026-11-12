@@ -812,7 +812,7 @@ def preview_port_stages(sim, conductors):
             if label not in done:
                 port = msl_port_from_entry(entry)
                 support = list(_msl_yz_cells(grid, port))
-                if conductors.lane == 'nonuniform' or getattr(entry, "mode", "laplace") != "uniform":
+                if getattr(entry, "mode", "laplace") != "uniform":
                     from rfx.sources.msl_port import compute_msl_mode_profile, msl_cross_section_span, msl_cell
                     span = msl_cross_section_span(grid, port)
                     centre = msl_cell(entry.direction, span["i_feed"], span["w_centre"],
