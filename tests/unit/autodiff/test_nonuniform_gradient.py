@@ -11,8 +11,6 @@ a host boundary inside ``make_nonuniform_grid`` (``np.asarray`` /
 stays in trace flips this test to XPASS and fails loudly — the hole
 self-announces when it closes.
 
-See docs/research_notes/2026-04-15_nonuniform_completion_handoff.md
-(Step 2 + Step 5) for the scope behind this test.
 """
 
 from __future__ import annotations

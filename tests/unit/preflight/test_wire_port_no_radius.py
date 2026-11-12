@@ -4,8 +4,7 @@
 lattice's own radius, about 0.20 d (d the transverse cell). Its series
 inductance against a wire of fixed radius a is (mu0 l / 2 pi) ln(0.20 d / a),
 so each halving of d adds omega (mu0 l / 2 pi) ln 2 of reactance: about
-5.05 ohm at 5.8 GHz for a 1 mm port, and S never converges with the mesh
-(rfx-archive ledger, "A wire port has no radius").
+5.05 ohm at 5.8 GHz for a 1 mm port, and S never converges with the mesh.
 
 Expected values here are written from the formula with literals; the
 check's own helpers are not called to produce them.

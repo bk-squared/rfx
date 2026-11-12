@@ -601,8 +601,7 @@ def _nu_sim_with_dft_plane() -> Simulation:
 def test_forward_distributed_nu_dft_planes_match_native():
     """Graded forward(distributed=True) carries DFT planes since #1402 step 4g.
 
-    CPML: compile-form rounding of the wrapped step (rfx-archive DESIGN.md 4g
-    amendment 1), so the record-summed bar 1e-4 of the peak.
+    CPML: compile-form rounding of the wrapped step, so the record-summed bar 1e-4 of the peak.
     """
     from tests._multi_device_scene import host_devices
     one = _nu_sim_with_dft_plane().forward(n_steps=8, skip_preflight=True)

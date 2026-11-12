@@ -82,7 +82,7 @@ def test_kerr_intensity_dependent():
 # (lossless) by scaling the E-UPDATE INCREMENT, not the whole field:
 #   E^{n+1} = E^n + (E_lin - E^n) / (1 + χ³·|E^n|²/ε_r)
 # The pre-#437 form E_lin/(1+factor) was a nonlinear ABSORBER (reduced |E|, zero
-# phase shift) — see docs/research_notes/2026-07-22_kerr_operator_defect.md.
+# phase shift).
 # ---------------------------------------------------------------------------
 
 def test_kerr_zero_chi3_unchanged():

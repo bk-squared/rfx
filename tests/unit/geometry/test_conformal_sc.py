@@ -269,7 +269,7 @@ def test_conformal_run_keeps_a_filament_and_refuses_a_body_holding_no_node():
 def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, box, refused):
     """Node-plane Boxes are carried by cut-cell fractions even with no node strictly inside.
 
-    C4 (rfx-archive rfx/records/20261110-conformal-lane-staircase/) found run()
+    C4 found run()
     lost such a box: behind/front Ez energy 1.0003. The old all-1 expectation
     ("staircase faces remain") pinned that skip instead of the closed PEC set.
     """

@@ -1,7 +1,7 @@
 """Issue #625: design_mask was REMOVED from every public surface, not
 deprecated.
 
-PI decision (2026-08-11): the masking mechanism (`jnp.where(mask, x,
+The masking mechanism (`jnp.where(mask, x,
 stop_gradient(x))` applied to field state each step) was measured to save
 ZERO reverse-mode AD memory (partial-eval residuals have whole-array
 granularity, so confining the design variable to a fraction of cells does

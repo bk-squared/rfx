@@ -118,7 +118,6 @@ LX = L_LINE + 2 * PORT_MARGIN
 # 2026-05-04 fixed-LY mesh-conv sweep: with this LY, Z0 lands within
 # 2-9% of Hammerstad analytic across dx=40-80µm; with the previous
 # LY=W+6·dx the box shrank with mesh and Z0 drifted 54→60Ω.
-# See docs/research_notes/20260504_msl_meshconv_fixed_ly.md.
 LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)   # W + (2·h_sub + 8·dx) each side
 LZ = H_SUB + 1.5e-3      # substrate + 1.5 mm air above
 
@@ -495,7 +494,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     same-commit disagreements, and that row has no commit.
     Nothing here re-derives a bound: MEASURED_SPREAD_ENVELOPE is still the
     retired board's 0.004607, and the #931 board's envelope would TIGHTEN the
-    gate, which is a PI decision and not this issue's.
+    gate, which is outside this issue.
 
     The envelope has DRIFTED since 2026-08-09: a full-precision pod re-measure
     at HEAD (1f005d0d) gives spread = 0.0046760 (0.4676%) vs the committed
@@ -525,7 +524,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     Per issue #610's no-silent-loosening rule the gate STAYS 0.007 and
     MEASURED_SPREAD_ENVELOPE stays 0.004607: attribution is not a licence to
     re-derive, and on current main any re-derivation would have to be measured
-    on the #931 board, not this one. That call is the PI's, not maintenance.
+    on the #931 board, not this one.
     Full-precision per-leg mean|Z0[+x]| moved:
     57.3381 → 57.32987 Ω (−0.00823) at L=8mm, 57.5778 → 57.57185 Ω (−0.00595)
     at L=10mm, 57.6030 → 57.59874 Ω (−0.00426) at L=12mm — all DECREASES

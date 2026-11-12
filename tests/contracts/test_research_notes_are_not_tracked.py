@@ -192,8 +192,9 @@ REVIEWED = {
         (1, "a synthetic citation fed to the contract's own keep rule; "
             "the contract compares it as text and reads no file"),
     "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py":
-        (2, "the C4 pattern and one synthetic line name the segment as text "
-            "to flag; the contract reads no file there"),
+        (6, "the C4 pattern and one synthetic line name the segment as text "
+            "to flag; the exception table names the segment for contracts that "
+            "name it as text; the contract reads no file there"),
     "tests/contracts/test_guide_citations_resolve.py":
         (4, "sample TEXT fed to that file's own predicate -- the two dead "
             "links it was written to catch, the prose that replaced them, "

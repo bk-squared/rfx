@@ -178,7 +178,7 @@ def _assert_identity(reference, candidate, *, peaks=None):
 
 
 # Static scene, base vs base: H 2,160 / 5,070 record-peak ULP at 200 / 400 steps.
-# E 4.5 / 4 ULP; rfx-archive record 20261007-acc-952 (scan vs jitted steps).
+# E 4.5 / 4 ULP (scan vs jitted steps).
 @pytest.mark.parametrize('name', FIXTURES)
 def test_cpml_localization_identity_eager(name):
     with jax.disable_jit():
@@ -282,5 +282,5 @@ def test_cpml_localization_ad(variable):
     assert np.max(np.abs(a)) > 0 and np.max(np.abs(b)) > 0
     error = np.max(np.abs(a-b)) / max(np.max(np.abs(a)), 1e-30)
     # Frozen program vs itself under another trace: up to 5.5e-6.
-    # Per-leaf gradient peak; rfx-archive record 20261007-acc-952.
+    # Per-leaf gradient peak.
     assert error <= 1e-4

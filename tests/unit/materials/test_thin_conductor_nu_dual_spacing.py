@@ -197,8 +197,7 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     # The old diagnostic assumed the cell value was read at the node. Since
     # the E-edge mean (#1210), the solver realizes sum(sigma_edge * dual) over
     # node planes. On main this was 2.5% off sigma*t between 0.9h|1.1h cells
-    # while that diagnostic passed. Record: rfx-archive/rfx/records/
-    # 20261008-dc-sheet-realized-conductance-unequal-cells/.
+    # while that diagnostic passed.
     # matched node (deep in the coarse region): primal == dual, unchanged
     sig, primal, dual, rs = _graded_sheet_sigma(
         9.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True, profile=spacings)

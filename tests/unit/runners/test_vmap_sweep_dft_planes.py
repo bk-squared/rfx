@@ -3,7 +3,7 @@
 CPU-runnable on tiny grids (intentionally not gpu-marked, matching
 ``test_vmap_sweep_eligibility.py``, so the PR gate exercises this file).
 
-Comparator-class work (rfx-known-issues.md case ledger; workspace R5): the
+Comparator-class work: the
 equivalence tests below carry a predeclared tolerance derived from an
 inspected per-bin dump (not asserted blind), and a one-sided falsifier
 ritual (deliberate sign flip in the vmap DFT kernel, which must turn the

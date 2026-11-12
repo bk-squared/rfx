@@ -1,7 +1,6 @@
 # T2 (tests/unit/sparams, tests/unit/ports) — what must be re-solved for #931
 
-Branch `feat/931-t2-sparams-ports`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-T2-sparams-ports`.
+Branch `feat/931-t2-sparams-ports`.
 
 Every conductor in these two directories was re-declared under the lattice
 ownership contract: foil is a **sheet** (a zero-thickness Box on the laminate
@@ -63,7 +62,7 @@ is, so the branch must be committed before submitting.
   same wall had it started. Fixed by adding `pytest>=7.4` to the job's pip line;
   any future job that imports a test module needs the same.
 * **VESSL run id: 369367259234** (resubmitted 2026-09-07 14:38 UTC,
-  https://app.vessl.ai/remilab/runs/byungkwan/369367259234).
+  https://app.vessl.ai/remilab/runs/<project>/369367259234).
   Command: `vessl run create -f rfx-931-post-msl-sheet-golden.yaml` (the yaml
   sits beside this file; submit it from a non-git directory — the CLI cannot
   read a worktree's `.git` file). Run name `rfx-931-post-msl-sheet-golden`,
