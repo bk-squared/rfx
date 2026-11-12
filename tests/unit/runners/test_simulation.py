@@ -39,6 +39,7 @@ from rfx.probes.probes import (
 from rfx.sources.waveguide_port import (
     WaveguidePort, init_waveguide_port, inject_waveguide_port,
     update_waveguide_port_probe, extract_waveguide_s21, extract_waveguide_s_matrix,
+    extract_waveguide_port_waves,
 )
 
 
@@ -575,8 +576,8 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
 
     port = WaveguidePort(
         x_index=nc + 5,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -618,9 +619,14 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
 
     s21_compiled = np.array(extract_waveguide_s21(compiled_cfg))
     s21_manual = np.array(extract_waveguide_s21(manual_cfg))
-    max_err = np.max(np.abs(s21_compiled - s21_manual))
-    print(f"\nCompiled waveguide vs manual loop max S21 error: {max_err:.2e}")
-    assert max_err < 1e-3, f"Compiled waveguide runner diverged from manual loop: {max_err:.2e}"
+    a_inc, _ = extract_waveguide_port_waves(compiled_cfg)
+    incident = np.abs(np.asarray(a_inc))
+    relative_incident = incident / np.max(incident)
+    # Refer the difference to the incident peak because S21 divides by a_inc.
+    # 1e-4 of the peak is the cross-trace bar for a quantity summed over the record.
+    max_err = np.max(relative_incident * np.abs(s21_compiled - s21_manual))
+    print(f"\nCompiled waveguide vs manual loop incident-peak error: {max_err:.9e}")
+    assert max_err < 1e-4, f"Compiled waveguide runner diverged from manual loop: {max_err:.2e}"
 
 
 def test_extract_waveguide_s_matrix_two_port_reciprocity():
@@ -645,8 +651,8 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
 
     port0 = WaveguidePort(
         x_index=nc + 5,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -655,8 +661,8 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
     )
     port1 = WaveguidePort(
         x_index=grid.nx - nc - 6,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -730,7 +736,7 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
     # and a port aperture holding wall material is refused (rfx#1994).
     xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)))
     yslice = (pady + int(round(0.04 / dx)), pady + int(round(0.08 / dx)))
-    zslice = (padz, grid.nz - padz)
+    zslice = (padz, grid.nz - padz - 1)
 
     left = WaveguidePort(
         x_index=nc + 5,

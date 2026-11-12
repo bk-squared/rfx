@@ -295,7 +295,7 @@ def _run_waveguide_sim(a_wg, b_wg, length, f0, dx, nc, freqs,
 
     port = WaveguidePort(
         x_index=port_x,
-        y_slice=(0, grid.ny), z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1), z_slice=(0, grid.nz - 1),
         a=a_actual, b=b_actual,
         mode=(1, 0), mode_type="TE",
     )
