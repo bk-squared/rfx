@@ -161,3 +161,85 @@ def test_wall_parameters_keep_closed_form_derivatives():
     g = 1 / np.sqrt(np.pi * 8e9 * (4*np.pi*1e-7) / 5.8e5)
     assert float(ds) == pytest.approx(g / (.0015 * 2 * 5.8e5), rel=2e-6)
     assert float(df) == pytest.approx(-g / (.0015 * 2 * 8e9), rel=2e-6, abs=1e-15)
+
+
+def test_uniform_graded_high_face_row_parity(monkeypatch):
+    """Pin lossy, lossless and padded high rows on identical dyadic cells.
+
+    bk-squared/rfx#2613 owns the 4.553e-8 lane amplitude scale: the uniform
+    current-source coefficient forms eps_r * EPS_0 in float32 at
+    rfx/core/yee.py:1014, even in a float64 run. Its fix PR must tighten
+    these record bars to the rounding-only control (exactly 0 on this box
+    in Stage A) and write the cause.
+    """
+    import math
+    import time
+
+    import jax
+
+    from rfx import GaussianPulse
+    from rfx.ringdown import identify
+    from rfx.stepping import uniform_setup
+
+    started = time.monotonic()
+    h, f101 = 2**-10, 8.190329e9
+    realized = []
+    original = uniform_setup.core_step_invariants
+
+    def capture(ctx, **kwargs):
+        invariants = original(ctx, **kwargs)
+        realized.append((tuple(ctx.grid.shape), invariants["h_row_factors"]))
+        return invariants
+
+    monkeypatch.setattr(uniform_setup, "core_step_invariants", capture)
+    with jax.enable_x64():
+        for scene in ("S1", "S1_lossless", "S2"):
+            records, dts, qs = [], [], []
+            for graded in (False, True):
+                run_started = time.monotonic()
+                kwargs = {"dy_profile": np.full(12, h)} if graded else {}
+                sim = Simulation(freq_max=10e9, domain=(30*h, 12*h, 24*h),
+                                 dx=h, boundary="cpml" if scene == "S2" else "pec",
+                                 snap="declared", precision="float64", **kwargs)
+                if scene == "S1":
+                    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9,
+                                      faces=("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
+                sim.add_source((.0073, .0041, .0059), "ey",
+                               waveform=GaussianPulse(f0=8e9, bandwidth=.25), amplitude_kind="current")
+                sim.add_probe((.0217, .0083, .0151), "ey")
+                grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+                assert bool(sim._uses_nonuniform_mesh) == graded
+                dt = float(grid.dt)
+                record = np.asarray(sim.run(n_steps=math.ceil(20e-9/dt),
+                                            compute_s_params=False).time_series).ravel()
+                assert record.dtype == np.float64
+                records.append(record)
+                dts.append(dt)
+                if scene == "S1":
+                    modes = identify(record, dt, math.ceil(2e-9/dt), len(record), freq_max=10e9)
+                    pole = modes.s[np.argmin(np.abs(modes.s.imag/(2*np.pi)-f101))]
+                    qs.append(float(pole.imag / (-2*pole.real)))
+                print(f"{scene} {'G' if graded else 'U'} wall_s={time.monotonic()-run_started:.6f}")
+            u, g = records
+            assert u.shape == g.shape
+            per_step = float(np.max(np.abs(u-g)) / np.max(np.abs(u)))
+            du, dg = [np.sum(x * np.exp(-2j*np.pi*f101*np.arange(len(x))*dt))
+                      for x, dt in zip(records, dts)]
+            r = float(abs(du-dg) / abs(du))
+            print(f"{scene} per_step={per_step:.17g} r={r:.17g}")
+            assert per_step <= 2e-7, (scene, "per_step", per_step)
+            assert r <= 2e-7, (scene, "r", r)
+            if scene == "S1":
+                q_relative = abs(qs[0]/qs[1]-1)
+                print(f"S1 Q_U={qs[0]:.17g} Q_G={qs[1]:.17g} Q_relative={q_relative:.17g}")
+                assert q_relative <= 1.7e-6, ("S1", "Q_relative", q_relative)
+
+        assert [shape for shape, _ in realized] == [(31, 13, 25), (31, 13, 25), (63, 45, 57)]
+        for shape, factors in realized:
+            for axis, factor in enumerate(factors):
+                assert factor is not None, ("realized-factor", shape, axis, factor)
+                expected = np.ones(shape[axis], dtype=np.float32)
+                expected[-1] = 0.
+                np.testing.assert_array_equal(factor, expected,
+                                              err_msg=f"realized-factor shape={shape} axis={axis}")
+        print(f"realized-factor rows={len(realized)*3} wall_s={time.monotonic()-started:.6f}")

@@ -910,11 +910,12 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
             ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
     from rfx.stepping.absorber import cpml_context
     ctx, e_loss = cpml_context(ctx)
-    from rfx.boundaries.pmc import magnetic_update_factors
+    from rfx.boundaries.pmc import high_face_row_factors, magnetic_update_factors
     magnetic_factors = magnetic_update_factors(ctx.pmc_faces_frozen, ctx.grid.shape, ctx.periodic)
     invariants = {"magnetic_factors": magnetic_factors, "ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
                   "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
                   "conformal_zero_masks": conformal_zero_masks}
+    invariants["h_row_factors"] = high_face_row_factors(ctx.grid.shape, ctx.periodic)
     if measurement is not None:
         from rfx.measurement.projector import plan_tables
         from rfx.measurement.time_records import uniform_specs

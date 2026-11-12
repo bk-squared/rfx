@@ -308,10 +308,13 @@ def init_upml(
     da_hy, db_hy = _h_coeffs(sigma_perp_hy, mu_abs[1])
     da_hz, db_hz = _h_coeffs(sigma_perp_hz, mu_abs[2])
 
-    from rfx.boundaries.pmc import magnetic_update_coefficients, magnetic_update_factors
+    from rfx.boundaries.pmc import high_face_row_factors, magnetic_update_coefficients, magnetic_update_factors
     db_hx, db_hy, db_hz = magnetic_update_coefficients(
         (db_hx, db_hy, db_hz), magnetic_update_factors(
             getattr(grid, "pmc_faces", ()) or (), grid.shape, periodic or (False, False, False)))
+    db_hx, db_hy, db_hz = magnetic_update_coefficients(
+        (db_hx, db_hy, db_hz), high_face_row_factors(
+            grid.shape, periodic or (False, False, False)))
 
     return UPMLCoeffs(
         ca_ex=ca_ex, ca_ey=ca_ey, ca_ez=ca_ez,

@@ -171,7 +171,8 @@ def make_uniform_step(
             else:
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
                     high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch,
-                    magnetic_factors=invariants["magnetic_factors"])
+                    magnetic_factors=invariants["magnetic_factors"],
+                    h_row_factors=invariants["h_row_factors"])
 
     def h_boundary(frame: UniformFrame):
         """Correct incident H, absorb outgoing H, and damp conductor cells."""

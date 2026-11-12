@@ -83,6 +83,20 @@ def magnetic_update_factors(faces, shape, periodic=(False, False, False)):
     return tuple(factors)
 
 
+def high_face_row_factors(shape, periodic):
+    """Hold the outside tangential H row on every non-periodic high face."""
+    import numpy as np
+
+    factors = []
+    for axis, size in enumerate(shape):
+        factor = None
+        if size > 1 and not periodic[axis]:
+            factor = np.ones(size, dtype=np.float32)
+            factor[-1] = 0.
+        factors.append(factor)
+    return tuple(factors)
+
+
 def magnetic_update_coefficients(coefficients, factors):
     """Apply each axis factor to its two tangential H coefficients."""
     result = list(coefficients)
@@ -92,7 +106,7 @@ def magnetic_update_coefficients(coefficients, factors):
             shape[axis] = -1
             for component in range(3):
                 if component != axis:
-                    result[component] = result[component] * factor.reshape(shape)
+                    result[component] = result[component] * factor.astype(result[component].dtype).reshape(shape)
     return tuple(result)
 
 
