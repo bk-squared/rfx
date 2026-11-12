@@ -4,7 +4,7 @@ import numpy as np
 
 # Largest polar angle (rad) either pole may leave uncovered beyond the end
 # sample's own cell. A cap of 0.02 rad is (1 - cos 0.02)/2 = 1.0e-4 of the
-# sphere, 0.0009 dB for an isotropic pattern (#2618).
+# sphere, 0.0009 dB for an isotropic pattern.
 POLE_TOLERANCE_RAD = 0.02
 
 
