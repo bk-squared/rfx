@@ -1,4 +1,6 @@
 """A4: traced-map differentiation, record convergence, and Richardson oracle."""
+import os
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -79,7 +81,9 @@ def precondition(params, steps, graded, monkeypatch, *, declaration='si'):
 
 
 @pytest.mark.slow
-@pytest.mark.highmem
+@pytest.mark.skipif(os.environ.get('RFX_HOST_MEMORY_WITNESS') != '1', reason=(
+    'host peak 31-45 GiB; out of device memory on the 48 GB A6000 lane: run by hand on remi cpu-16 at each release '
+    'with RFX_HOST_MEMORY_WITNESS=1 (docs/guides/public_docs_maintenance.md, Release checklist)'))
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 @pytest.mark.parametrize('declaration', ['scalar', 'relative'], ids=['scalar', 'map'])
 def test_p7_record_witness(monkeypatch, graded, declaration):
