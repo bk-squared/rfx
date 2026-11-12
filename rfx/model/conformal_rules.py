@@ -52,8 +52,9 @@ def conformal_b_floor(lengths, areas, q):
     return tuple(result)
 
 
-def conformal_fractions_from_table(table, grid, conformal_pec, *, clamp=True, pec_shapes=()):
-    """Apply the operand rule, physical slice, then the float32 device cast."""
+def conformal_fractions_from_table(table, grid, conformal_pec, *, clamp=True, pec_shapes=(), field_dtype=jnp.float32):
+    """Apply the operand rule and physical slice at the run coefficient dtype."""
+    dtype = jnp.promote_types(field_dtype, jnp.float32)
     lengths, areas = table.lengths, table.areas
     owner = table.owners
     if conformal_pec == "cut_cell_floor":
@@ -72,7 +73,7 @@ def conformal_fractions_from_table(table, grid, conformal_pec, *, clamp=True, pe
     if owner is not None:
         from rfx.model.realization_integrals import capture
         for axis, area in enumerate(areas):
-            capture(grid, pec_shapes, np.asarray(area[physical], dtype=np.float32),
+            capture(grid, pec_shapes, np.asarray(area[physical], dtype=dtype),
                     owner[physical], axis, face=True)
-    return tuple(tuple(jnp.asarray(a[physical], dtype=jnp.float32) for a in arrays)
+    return tuple(tuple(jnp.asarray(a[physical], dtype=dtype) for a in arrays)
                  for arrays in (lengths, areas))

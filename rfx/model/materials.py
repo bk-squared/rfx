@@ -14,6 +14,7 @@ import jax
 
 import jax.numpy as jnp
 
+from rfx._internal._precision import resolve_field_dtype
 from rfx.model.tensor_operands import TensorOperands
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import (
@@ -150,16 +151,18 @@ def assemble_cells(
         pec_mask is a boolean array (True at PEC cells) or None.
         pec_shapes is a list of Shape objects that are PEC.
         boundary_pec_shapes is a list of PEC shapes from boundary conditions.
-        kerr_chi3 is a float32 array of chi3 values or None.
+        kerr_chi3 has the run coefficient dtype, or is None.
 
-    Materials/poles retain declaration order and float32 initialization.
+    Materials/poles retain declaration order and the run coefficient dtype.
     Overrides and design boxes enter the cell stage in ``model.overrides``.
     """
+    # Coefficients keep the float32 floor for float16 field storage.
+    dtype = jnp.promote_types(resolve_field_dtype(sim._precision) or jnp.float32, jnp.float32)
     # Start with vacuum
-    eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
-    mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    chi3_arr = jnp.zeros(grid.shape, dtype=jnp.float32)
+    eps_r = jnp.ones(grid.shape, dtype=dtype)
+    sigma = jnp.zeros(grid.shape, dtype=dtype)
+    mu_r = jnp.ones(grid.shape, dtype=dtype)
+    chi3_arr = jnp.zeros(grid.shape, dtype=dtype)
     pec_mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
     pec_shapes = []
     has_kerr = False
@@ -751,15 +754,15 @@ def electric_grid_kwargs(grid):
     return dict(grid=grid)
 
 
-def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
+def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None, field_dtype=jnp.float32):
     """Dual-volume pole occupancy, using the electric material rule."""
     if mask is None:
         return None
-    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic,
+    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.promote_types(field_dtype, jnp.float32)), periodic,
                                 high_wall=high_wall, cell_sizes=cell_sizes)
 
 
-def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None):
+def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None, field_dtype=jnp.float32):
     if spec is None:
         return None
     from rfx.materials.pole_map import sample_spec, is_map, build_map_coeffs
@@ -772,7 +775,7 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=N
     else:
         masks = [masks] * len(poles)
     weights = tuple(pole_component_weights(_view_wall_cells(m, grid, view, high_wall), periodic,
-                    high_wall=high_wall, cell_sizes=cell_sizes) for m in masks)
+                    high_wall=high_wall, cell_sizes=cell_sizes, field_dtype=field_dtype) for m in masks)
     if grid is None:
         return ComponentDispersion(tuple(poles), None, weights, None)
     if any(is_map(p) for p in poles):
@@ -875,9 +878,11 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
         eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
         _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape,
-                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view,
+                       field_dtype=materials.eps_r.dtype),
         _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
-                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view,
+                       field_dtype=materials.eps_r.dtype),
         materials, tuple(periodic), _component_grid_key(grid, view),
         pole_sets_judged=pole_sets_judged)
 
