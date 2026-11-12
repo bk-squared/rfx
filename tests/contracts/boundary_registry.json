@@ -407,6 +407,21 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/measurement/coax_records.py",
+      "function": "_validate_monotone_axis",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/coax_records.py",
+      "function": "coaxial_line_reflection_from_plane_voltages",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/coax_records.py",
+      "function": "coaxial_tem_reference_plane_vi",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/measurement/current_moments.py",
       "function": "_index_window",
       "kind": "roll/diff"
@@ -597,21 +612,6 @@
       "file": "rfx/runners/distributed_v2.py",
       "function": "_init_cpml_sharded",
       "kind": "boundary"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "_validate_monotone_axis",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "coaxial_line_reflection_from_plane_voltages",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "coaxial_tem_reference_plane_vi",
-      "kind": "roll/diff"
     },
     {
       "file": "rfx/stepping/absorber.py",
