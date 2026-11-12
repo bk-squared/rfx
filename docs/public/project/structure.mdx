@@ -34,10 +34,11 @@ setting reaches. You do not need it to use rfx.
    declarations: probes, ports, DFT planes, flux monitors, the far-field box and
    current-moment monitors (`rfx/measurement/`). On one device, the step
    records each of them at its hook points from that plan.
-5. **Results.** After the run, S-parameters and the far-field transform are
-   formed from those records (`rfx/measurement/`, `rfx/sparams/`). `run()`
-   returns them in a result object; `forward()` returns the time signals as
-   JAX arrays, so you can differentiate them (see
+5. **Results.** After the run, the records become results. `run()` returns
+   the S-parameters and the far-field box's DFT records in a result object
+   (`rfx/sparams/`); `compute_far_field` turns those records into a radiation
+   pattern (`rfx/measurement/farfield.py`). `forward()` returns the time
+   signals as JAX arrays, so you can differentiate them (see
    [run() and forward()](/rfx/run/run-and-forward/)).
 
 ## Where the paths still differ
