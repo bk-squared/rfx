@@ -726,6 +726,45 @@ def _loss(S):
     return jnp.sum(jnp.abs(S) ** 2)
 
 
+@pytest.mark.slow
+def test_plain_and_jitted_gradients_agree_on_a_witness_passing_record():
+    """Pin float32 plain/jitted ring-down gradients from rfx/records/20261112-2485-plain-jit/.
+    Witnesses come first so an untrusted short record cannot establish agreement.
+    """
+    n = 1000
+    sim = _box("uniform")
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+
+    def forward(p):
+        return sim.forward(n_steps=n, skip_preflight=True, port_s11_freqs=FREQS,
+                           eps_override=eps * p, ringdown=RingdownSpec()).ringdown
+
+    def obj(p):
+        return _loss(forward(p).s_params)
+
+    def both(p):
+        out = forward(p)
+        return (_loss(out.s_params), _loss(out.s_params_long)), out
+
+    (_l, _l_long), pullback, rd_out = jax.vjp(both, 1.0, has_aux=True)
+    report = rd_out.report
+    assert report.ok is True, (
+        f"ringdown report: failure={report.failure}; "
+        + "; ".join(f"{w.name}: value={w.value}, rule={w.rule}, note={w.note}"
+                    for w in report.witnesses if w.judged and not w.ok))
+
+    (g,) = pullback((1.0, 0.0))
+    (g_long,) = pullback((0.0, 1.0))
+    w = gradient_witness(g, g_long, ringdown=rd_out)
+    assert w.judged and w.value <= 1e-2, (
+        f"{w.name}: judged={w.judged}, value={w.value}, note={w.note}")
+
+    g_plain = float(jax.grad(obj)(1.0))
+    g_jit = float(jax.jit(jax.grad(obj))(1.0))
+    assert abs(g_plain - g_jit) <= 1e-4 * max(abs(g_plain), abs(g_jit)), (
+        f"g_plain={g_plain}, g_jit={g_jit}, gap={abs(g_plain - g_jit)}")
+
+
 @functools.lru_cache(maxsize=None)
 def _grads(n):
     """d/dp of sum |S11|^2 at p = 1 (the fill's permittivity scaled by p),
