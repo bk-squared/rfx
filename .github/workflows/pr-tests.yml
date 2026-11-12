@@ -267,9 +267,10 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
+      # TRIAL (never merged): 20 shards, rfx-core-desk D:836b90, 2026-11-12.
       matrix:
         python-version: ["3.11"]
-        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -303,7 +304,7 @@ jobs:
           lscpu | grep -E '^(Model name|CPU\(s\))'
           echo "SIMD flags: $(grep -m1 -oE 'avx512[a-z_0-9]*|avx2|fma' /proc/cpuinfo | sort -u | tr '\n' ' ')"
 
-      - name: Contract tests — shard ${{ matrix.group }} of 12 (the diff is not code)
+      - name: Contract tests — shard ${{ matrix.group }} of 20 (the diff is not code)
         if: needs.changes.outputs.code_changed == 'false'
         # The diff touches no file under rfx/, tests/, validation/ or examples/
         # and no build or lane configuration, so the physics tests would observe
@@ -319,9 +320,9 @@ jobs:
         run: >
           pytest tests/contracts -q -ra -p no:cacheprovider
           -o addopts="" -m "not gpu and not docs_consistency" --strict-markers
-          --splits 12 --group ${{ matrix.group }}
+          --splits 20 --group ${{ matrix.group }}
 
-      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 12
+      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 20
         if: needs.changes.outputs.code_changed != 'false'
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
@@ -345,7 +346,7 @@ jobs:
         # so a failure that depends on collection order can be replayed outside
         # CI (the list is uploaded by the next step, pass or fail).
         run: |
-          set -- -p no:cacheprovider --splits 12 --group ${{ matrix.group }}
+          set -- -p no:cacheprovider --splits 20 --group ${{ matrix.group }}
           pytest --collect-only -q "$@" > "$RUNNER_TEMP/fast-suite-collection.txt" || echo "::warning::collect-only failed; the run below reports the collection error"
           pytest -q -ra "$@"
 
