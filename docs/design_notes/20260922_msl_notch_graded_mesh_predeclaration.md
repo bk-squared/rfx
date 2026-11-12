@@ -6,7 +6,7 @@ edited into §5. One attempt per arm (R2). Lane: nu-mesh. Tracker: #810 (the
 graded-mesh S-parameter question) and #928 (the case).
 **Tree:** branch `nu/msl-notch-graded` on top of `crossval/msl-notch-filter`
 (PR #1177, the case this arm extends); main 12da9104 is contained.
-**Written by** the NU lane leader (bk-workspace, Fable) on 2026-09-22 after
+**Written by** the NU lane leader on 2026-09-22 after
 reading the case, the MSL port's graded-mesh paths, the band-profile builder,
 the edge-offset builder and the ledger entries named below, and after one
 build-only feasibility run on CPU (§2).
@@ -165,7 +165,7 @@ VESSL: `scripts/vessl_msl_notch_graded.yaml`, GPU preset copied from
 `scripts/vessl_gpu_suite.yaml`, one job per arm submitted through
 `scripts/vessl_submit.sh` (run id recorded by the submitter), log tee'd and
 collected under a trap, pytest not involved (the instrument is a script).
-Concurrency per the queue rule (agent-rules research/CLAUDE.md 2026-09-22).
+Concurrency per the queue rule (2026-09-22).
 
 ## 5. Frozen windows
 

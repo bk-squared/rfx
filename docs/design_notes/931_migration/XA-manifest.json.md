@@ -40,7 +40,7 @@ Replace the opening of `claim_scope` (everything from "INTEGRATION/SMOKE" up to
 and including "...omits the thirds-rule + reproduce-gate.") with:
 
 > INTEGRATION/SMOKE diagnostic-reporter only (demoted from claims-bearing
-> 2026-07-15, see docs/research_notes/20260715_cv05_first_principles_review.md):
+> 2026-07-15):
 > exercises probe-fed patch + finite-GP + CPML + NU-graded-z + openEMS lumped
 > port end-to-end and REPORTS a coarse-mesh (dx=1mm) resonance. It does NOT
 > establish accuracy. Since the lattice ownership contract (#931) both

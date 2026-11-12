@@ -6,7 +6,7 @@ note left to the migrating agent, and the sites that belong to another owner.
 
 ## Decisions taken here
 
-The inventory asked the PI four questions. Three are answered by the design
+The inventory raised four questions. Three are answered by the design
 note as it stands; the fourth is answered by the branch. All four are written
 into the fixtures themselves so the next reader does not have to re-derive them.
 

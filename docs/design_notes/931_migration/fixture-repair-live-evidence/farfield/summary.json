@@ -19,7 +19,7 @@
         "--steps",
         "600",
         "--output-dir",
-        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-farfield-20260909T014959Z-b36fc46cdf21-101/600"
+        "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-farfield-20260909T014959Z-b36fc46cdf21-101/600"
       ],
       "status": "complete",
       "timeout_s": 21600,
@@ -38,7 +38,7 @@
         "--steps",
         "1200",
         "--output-dir",
-        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-farfield-20260909T014959Z-b36fc46cdf21-101/1200"
+        "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-farfield-20260909T014959Z-b36fc46cdf21-101/1200"
       ],
       "status": "complete",
       "timeout_s": 21600,
@@ -60,7 +60,7 @@
         "-rA",
         "--timeout=7200",
         "--timeout-method=thread",
-        "--junitxml=/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-farfield-20260909T014959Z-b36fc46cdf21-101/junit.xml",
+        "--junitxml=<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-farfield-20260909T014959Z-b36fc46cdf21-101/junit.xml",
         "tests/unit/farfield/test_farfield_inplane_nonuniform.py"
       ],
       "status": "complete",

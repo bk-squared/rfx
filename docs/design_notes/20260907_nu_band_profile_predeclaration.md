@@ -9,7 +9,7 @@ siblings #740, #745, #752, #811).
 **Tree:** worktree `rfx-nu-band`, branch `feat/nu-band-profile`, based on
 `origin/main d990e18c` (`d990e18ce0870ac7a893a86627e7232d1cf92c7b`).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-band/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Date: 2026-09-07 (KST).
 
@@ -414,8 +414,8 @@ cells/lambda) — quote the law, not the dB.
 Run commands (declared) and output:
 
 ```
-cd /Users/byungkwankim/Documents/rfx-nu-band && PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-band \
-  /Users/byungkwankim/Documents/rfx/.venv/bin/python -m validation.research.multiband_nu.w6_band_builder \
+cd <workspace>/Documents/rfx-nu-band && PYTHONPATH=<workspace>/Documents/rfx-nu-band \
+  <workspace>/Documents/rfx/.venv/bin/python -m validation.research.multiband_nu.w6_band_builder \
   --widths 2,4,8,16 --out validation/research/multiband_nu/results/w6_band_builder.json
 ```
 
@@ -463,7 +463,7 @@ does not drift: thin copper sheets register on a NODE PLANE, never as a
 ## Results (appended after measurement; no window above changed)
 
 Measured 2026-09-07 (KST) on this tree, `rfx.__file__` =
-`/Users/byungkwankim/Documents/rfx-nu-band/rfx/__init__.py`. Commits:
+`rfx/__init__.py`. Commits:
 `a61d0a89` (builder, both rewires, tests, W6 instrument), `d79ad615`
 (engine exact-endpoint fix, before any FDTD ran), `d51879a7` (W6
 provenance-loader fix, before any FDTD ran), then this commit (results,

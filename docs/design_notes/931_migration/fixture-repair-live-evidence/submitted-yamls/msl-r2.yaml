@@ -15,7 +15,7 @@ env:
   LANG: "C.UTF-8"
   JAX_PLATFORMS: "cpu"
   MPLBACKEND: "Agg"
-  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds"
+  RFX_CHECKOUT: "<workspace>/research/rfx-931-fastlane-reds"
   RFX_SHA: "b36fc46cdf21d1c57f221e6a057654bcad60bae2"
   RFX_LABEL: "msl-base"
 mount:
@@ -25,7 +25,7 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
-  test "$RFX_CHECKOUT" = /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds
+  test "$RFX_CHECKOUT" = <workspace>/research/rfx-931-fastlane-reds
   echo "$RFX_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo 'FATAL: supply the full final commit in RFX_SHA'; exit 3; }
   git config --global --add safe.directory "$RFX_CHECKOUT"
   git config --global --add safe.directory "$(git -C "$RFX_CHECKOUT" rev-parse --absolute-git-dir)"

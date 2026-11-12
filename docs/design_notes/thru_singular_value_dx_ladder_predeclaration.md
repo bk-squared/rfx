@@ -383,7 +383,7 @@ pre-declared attempt. One of them, its own note, one run:
    observable question.
 
 This note recommends 1: it re-uses the three rungs as the prediction basis
-and needs one run. The choice is the PI's; nothing is launched here.
+and needs one run. The choice remains open; nothing is launched here.
 
 ### 9.6 Not done in this round
 

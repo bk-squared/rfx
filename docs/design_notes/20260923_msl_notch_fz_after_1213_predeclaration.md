@@ -5,7 +5,7 @@ this commit, and each arm gets one attempt. Lane: nu-mesh. Tracker: #810. It fol
 `20260922_msl_notch_fz_ladder_predeclaration.md` (record
 `validation/research/multiband_nu/results/msl_notch_graded_fz.json`, "the R2 record"), whose
 arms are reused here and not re-run.
-**Written by** the NU lane leader (bk-workspace).
+**Written by** the NU lane leader.
 
 ## 0. The question, physically
 

@@ -7,7 +7,7 @@ Historical repair/handoff record. Live follow-up and superseding dispositions:
 
 Source base: `949e1845b84b26826d4e5309363bea4c2ffa5920`;
 worktree `rfx-931-fastlane-reds`, branch `feat/931-fixture-repair`.
-The PI explicitly authorized fixture repair, keeping #931 and the corrected
+Fixture repair keeps #931 and the corrected
 MSL board. No other worktree was read or modified. No VESSL run was launched.
 
 The common class is **a historical assertion whose declared physical problem
@@ -21,7 +21,7 @@ R1 basis: the normative #931 note requires both dimensions and placement on
 nodes; `T7-fixture-purpose-and-engineering-review.md` says “Comparing a corrected
 live board against an old-board output no longer tests same-problem equivalence.”
 `T7-slow-interaction-stop.md` records the former authorization stop, superseded
-by this PI decision. The observed far-field and short confounders in
+by this decision. The observed far-field and short confounders in
 `slow-consumer-evidence/` motivate the controls below. Repo-local private memory
 files remain absent; no other checkout was opened to retrieve them.
 
@@ -162,7 +162,7 @@ The independently scheduled MSL base/long/refined records and far-field 1200-ste
 window/mesh sensitivity; the short job deliberately preserves the coarse red.
 No VESSL execution, GPU comparison or complete repository suite is claimed.
 
-R3: consistent with the quoted review and current PI authorization; protected
+R3: consistent with the quoted review and current fixture-repair scope; protected
 production files unchanged. One final physical configuration per fixture, with
 identified construction/instrument defects recorded before repeats. Falsifiers
 include wrong-observable rejection, exact realized geometry, frozen physical
