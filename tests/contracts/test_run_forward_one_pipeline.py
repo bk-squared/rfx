@@ -3,8 +3,10 @@
 The literal exceptions are progress toward zero at 2.0, not tolerances.
 No solver helper supplies an expected value: the other fresh entry does.
 """
+import inspect
 import json
 import sys
+import warnings
 from fnmatch import fnmatchcase
 from pathlib import Path
 
@@ -15,6 +17,7 @@ import numpy as np
 from tests.contracts.run_forward_census import (
     BUILDERS, SEAMS, FrozenArray, capture, compare, compare_l2, equal_request_pair, freeze,
     l2_differences, normalize_inputs, observables, run_l2, port_s_pair, port_drive_witness_leaves,
+    build_p_msl_s, msl_noop_eps_override,
 )
 
 KNOWN_ROWS = (
@@ -770,6 +773,59 @@ def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
 @pytest.mark.parametrize('path', ['uniform', 'graded', 'multi-device-graded'])
 def test_port_s_equal_requests(declaration, path):
     assert port_s_pair(declaration, path) is not None
+
+
+@pytest.mark.parametrize('path', ('uniform', 'graded'))
+def test_msl_s_equal_requests(path):
+    import jax.numpy as jnp
+
+    # At 150 steps S is transient: this checks equal requests, not physical S.
+    pair = {}
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        for channel in ('run', 'forward'):
+            sim = build_p_msl_s(path)
+            kwargs = dict(freqs=jnp.array([2e9, 5e9, 8e9]), n_steps=150)
+            if channel == 'forward':
+                kwargs['eps_override'] = msl_noop_eps_override(sim, path)
+            try:
+                pair[channel] = sim.compute_msl_s_matrix(**kwargs)
+            except Exception as exc:
+                pytest.fail(f'P-msl-s/{path}/{channel} must admit: {type(exc).__name__}: {exc}')
+
+    run, forward = pair['run'], pair['forward']
+    np.testing.assert_array_equal(run.freqs, forward.freqs)
+    s_run, s_forward = np.asarray(run.S), np.asarray(forward.S)
+    assert np.all(np.isfinite(s_run)), 'P-msl-s run S must be finite'
+    assert np.all(np.isfinite(s_forward)), 'P-msl-s forward S must be finite'
+    scale = np.max(np.abs(s_run))
+    assert scale >= 0.05, f'P-msl-s/{path} max |S_run| = {scale} < 0.05'
+    delta = np.max(np.abs(s_forward - s_run))
+    assert delta <= 1e-4 * scale, (
+        f'P-msl-s/{path} all S11 bins: max |S_forward - S_run| = {delta} '
+        f'> 1e-4 * max |S_run| = {1e-4 * scale}')
+
+    assert len(run.settling_witness) == len(forward.settling_witness) == s_run.shape[1]
+    for r, f in zip(run.settling_witness, forward.settling_witness, strict=True):
+        assert r['status'] == f['status']
+        assert r['reason'] == f['reason']
+        assert r['reason'] != 'traced or unavailable S channels'
+        assert f['reason'] != 'traced or unavailable S channels'
+    r_db, f_db = np.asarray(run.settling_db), np.asarray(forward.settling_db)
+    np.testing.assert_array_equal(np.isnan(r_db), np.isnan(f_db))
+    finite = np.isfinite(r_db)
+    np.testing.assert_array_equal(finite, np.isfinite(f_db))
+    np.testing.assert_allclose(r_db[finite], f_db[finite], rtol=0, atol=1e-3)
+    np.testing.assert_array_equal(run.reliable, forward.reliable)
+
+
+def test_msl_s_has_no_multi_device_entry():
+    from rfx import Simulation
+
+    # The two multi-device paths are not reachable through compute_msl_s_matrix.
+    params = inspect.signature(Simulation.compute_msl_s_matrix).parameters
+    assert 'devices' not in params and all(
+        p.kind != inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 # Both entries refuse partial opt-in for their own reason (forward() forms no reference-plane S; run() needs every wire port opted in), so raising lines differ by design and both_refused is not used.
