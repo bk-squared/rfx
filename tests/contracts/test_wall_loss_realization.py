@@ -1,4 +1,6 @@
 """Opaque ownership, hand-counted edges and high-face ghost contracts."""
+import json
+
 import numpy as np
 import pytest
 
@@ -57,6 +59,27 @@ def test_tiny_face_edges_and_rim_sum():
     # Independent SI closed form, two full 1.5 mm E-curl spacings.
     expected = 2 / np.sqrt(np.pi * 8e9 * (4*np.pi*1e-7) / 5.8e5) / .0015
     assert float(ctx.sigma_sheet[2, 0, 0, 1]) == pytest.approx(expected, rel=2e-6)
+
+
+def test_solid_face_conductivity_closed_form():
+    sim = model()
+    solid = Box((.0015,) * 3, (.0045,) * 3)
+    sim.add(solid, material="pec")
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, shape=solid)
+    _, _, ctx = operator(sim)
+    # The solid spans cells 1,2 and node planes 1..3 on each axis.
+    # x_lo: Ey[1,1,2] runs y=1..2 at x=1,z=2; z=2 is between rim planes 1,3.
+    # z_lo: Ey[2,1,1] runs y=1..2 at x=2,z=1; x=2 is between rim planes 1,3.
+    # Each edge's open segment is interior to its face, not along a face rim.
+    indices = ((1, 1, 2), (2, 1, 1))
+    rs = np.sqrt(np.pi * 8e9 * (4*np.pi*1e-7) / 5.8e5)
+    expected = 1 / (rs * .0015)  # One full E-curl spacing, independent SI formula.
+    actual = [float(ctx.sigma_sheet[(1,) + index]) for index in indices]
+    print(json.dumps(dict(component="ey", faces=["x_lo", "z_lo"], indices=indices,
+                          sigma_sheet=actual, expected=expected)))
+    for index in indices:
+        assert bool(ctx.mask_ey[index])
+    assert actual == pytest.approx([expected, expected], rel=2e-6)
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform-forward-step", "graded-forward-step"])

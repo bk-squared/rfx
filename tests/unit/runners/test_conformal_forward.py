@@ -28,6 +28,70 @@ def scene(eps=2.5, *, conformal=True, **options):
     return sim
 
 
+def s_scan_scene():
+    """G1-S: off-node-plane PEC sphere in a dielectric host, with one port."""
+    sim = Simulation(20e9, (.012,) * 3, dx=.001, cpml_layers=0,
+                     boundary=BoundarySpec(x='pec', y=Boundary('pec', 'pec', conformal=True), z='pec'),
+                     snap='declared')
+    sim.add_material('host', eps_r=2.5)
+    sim.add(Box((.0013, .0012, .0011), (.0107, .0108, .0106)), material='host')
+    sim.add(Sphere((.0061, .0058, .0057), .0023), material='pec')
+    sim.add_port((.003, .004, .003), 'ez', impedance=50.)
+    return sim
+
+
+def test_s_scan_steps_run_operands(monkeypatch):
+    from rfx import simulation
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+
+    original = simulation.run
+    operands = []
+
+    def captured(grid, materials, *args, **kwargs):
+        values = (materials.components.mu_update, kwargs['aniso_eps'], kwargs['conformal_weights'])
+        operands.append(jax.tree.map(lambda a: np.asarray(a).copy(), values))
+        return original(grid, materials, *args, **kwargs)
+
+    monkeypatch.setattr(simulation, 'run', captured)
+    s_scan_scene().run(n_steps=512, skip_preflight=True, compute_s_params=False)
+    compute_lumped_wire_s_matrix_via_scan(
+        s_scan_scene(), np.linspace(6e9, 18e9, 7), n_steps=512, skip_preflight=True)
+    assert len(operands) == 2
+    left, right = (jax.tree.leaves(value) for value in operands)
+    print(json.dumps(dict(run_arrays=len(left), scan_arrays=len(right),
+                          structure_equal=jax.tree.structure(operands[0]) == jax.tree.structure(operands[1]))))
+    assert jax.tree.structure(operands[0]) == jax.tree.structure(operands[1])
+    assert len(left) == len(right) == 9
+    for a, b in zip(left, right, strict=True):
+        assert a.dtype == b.dtype
+        assert a.shape == b.shape
+        assert a.tobytes() == b.tobytes()
+
+
+def test_s_scan_moves_s_from_staircase():
+    """G1-S is not settled; read only conformal-minus-staircase at a fixed record.
+
+    This checks the difference at N=512, not the S values themselves.
+    """
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+
+    freqs = np.linspace(6e9, 18e9, 7)
+    spectra = []
+    for conformal in (None, False):
+        s, bins = compute_lumped_wire_s_matrix_via_scan(
+            s_scan_scene(), freqs, n_steps=512, skip_preflight=True, conformal_pec=conformal)
+        np.testing.assert_array_equal(bins, freqs)
+        spectra.append(np.asarray(s)[0, 0].copy())
+    # D_k(main)/10 from rfx-archive rfx/records/20261112-test-audit-220fixes/gaps/DESIGN.md.
+    # All seven measured D_k exceed 1e-3; no bin is excluded.
+    floor = np.array([2.390819e-4, 4.062380e-4, 3.0621594e-3, 8.380125e-4,
+                      8.620271e-4, 3.0284235e-3, 2.90690035e-2])
+    difference = np.abs(spectra[0] - spectra[1])
+    print(json.dumps(dict(n_steps=512, frequencies_hz=freqs.tolist(),
+                          D_k=difference.tolist(), floor_k=floor.tolist())))
+    assert np.all(difference >= floor), f'D_k={difference}, floor_k={floor}'
+
+
 def objective(eps):
     result = scene(eps).forward(n_steps=STEPS, skip_preflight=True)
     return jnp.sum(jnp.abs(result.time_series) ** 2)
