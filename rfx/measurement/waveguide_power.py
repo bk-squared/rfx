@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx._traced_check import traced_check
+from rfx._traced_check import require_host_callbacks, traced_check
 from rfx._warning_origin import user_stacklevel
 from rfx.errors import RfxWarning
 
@@ -65,4 +65,13 @@ def warn_power_waves(cfgs, *, port_indices=None):
                 WaveguideCutoffWarning, stacklevel=user_stacklevel(),
             )
 
+    if any(isinstance(x, jax.core.Tracer) for x in jax.tree.leaves((masks, freqs))):
+        try:
+            require_host_callbacks("waveguide S", "below-cutoff notice")
+        except (NotImplementedError, RuntimeError):
+            warnings.warn(
+                "Waveguide S: an entry whose mode is at or below its own cutoff is NaN; this backend "
+                "cannot list those ports and bins inside compiled code",
+                WaveguideCutoffWarning, stacklevel=user_stacklevel())
+            return
     traced_check("waveguide S", "below-cutoff notice", emit, masks, freqs)

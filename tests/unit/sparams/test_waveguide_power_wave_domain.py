@@ -122,6 +122,52 @@ def test_scalar_extractors(lane, monkeypatch):
         np.testing.assert_array_equal(np.asarray(value)[2:], expected)
 
 
+@pytest.mark.parametrize("lane", ["pair", "s11"])
+@pytest.mark.parametrize("policy", ["mps", "gpu"])
+def test_traced_cutoff_notice_without_host_callbacks(lane, policy, monkeypatch):
+    from rfx import Simulation, _traced_check
+    from rfx.backend import BackendClass
+
+    sim = Simulation(freq_max=12e9, domain=(.12, .024, .012), dx=.002,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
+    sim.add_waveguide_port(.02, direction="+x", name="launch", f0=9e9,
+                          freqs=np.array([5e9, 8e9, 10e9]), ref_offset=3, probe_offset=10)
+    cfg = sim.forward(n_steps=2, skip_preflight=True).waveguide_ports["launch"]
+    extract = (lambda c: ws.extract_waveguide_sparams(c)[0]) if lane == "pair" else ws.extract_waveguide_s11
+    below = np.asarray(cfg.freqs) <= cfg.f_cutoff
+    assert below.any() and (~below).any()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        reference = np.asarray(extract(cfg))
+    np.testing.assert_array_equal(np.isnan(reference), below)
+    assert np.isfinite(reference[~below]).all()
+    notices = [w for w in caught if issubclass(w.category, WaveguideCutoffWarning)]
+    assert len(notices) == 1
+    assert "TE10" in str(notices[0].message) and "bins [0]" in str(notices[0].message)
+
+    backend = (BackendClass("mps", True, "slab", "memory_stats_if_available", False)
+               if policy == "mps" else BackendClass("gpu", True, "padded", "memory_stats", True))
+    monkeypatch.setattr(_traced_check, "backend_class", lambda: backend)
+    if policy == "gpu":
+        def no_cpu():
+            raise RuntimeError("No CPU device")
+        monkeypatch.setattr(_traced_check, "host_cpu_device", no_cpu)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        got = np.asarray(jax.jit(lambda f: extract(cfg._replace(freqs=f)))(cfg.freqs))
+        jax.effects_barrier()
+    np.testing.assert_array_equal(np.isnan(got), below)
+    np.testing.assert_array_equal(np.isnan(got), np.isnan(reference))
+    assert np.isfinite(got[~below]).all()
+    np.testing.assert_allclose(got[~below], reference[~below], rtol=1e-5)
+    notices = [w for w in caught if issubclass(w.category, WaveguideCutoffWarning)]
+    assert len(notices) == 1
+    assert notices[0].filename == __file__
+    assert str(notices[0].message) == (
+        "Waveguide S: an entry whose mode is at or below its own cutoff is NaN; this backend "
+        "cannot list those ports and bins inside compiled code")
+
+
 def test_defined_objective_gradient(manufactured, monkeypatch):
     cfgs = manufactured
 
