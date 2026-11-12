@@ -66,7 +66,7 @@ def judge_realization(table, snap):
                         if r.status.startswith("not evaluated: traced") or r.traced_inputs))))
             continue
         if row.status == "not judged: edge not measured":
-            # DESIGN.md D:c1d171 / D:8ea1e2: node span is not a measured edge.
+            # Node span is not a measured edge.
             table.judged.add(row.label)
             findings.append(PreflightIssue(
                 f"realization {row.label} ({row.family}): not judged: edge not measured; "

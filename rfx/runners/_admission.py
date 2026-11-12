@@ -1288,7 +1288,7 @@ def graded_lumped_default_s(sim):
     fields with S=None (two driven ports also warn, as forward() does; with no
     driven port there is no incident wave to form S from). A port
     set with a wire port keeps the wire default. Never a refusal: the user did
-    not ask for S (rfx-lead D:6b5bd8).
+    not ask for S.
     """
     ports = [p for p in sim._ports if p.is_port]
     if (not ports or any(p.extent is not None for p in ports)
@@ -1335,7 +1335,7 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
 def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=None):
     """run()'s S request after the plain-source rule: an explicit request with a
     plain source or 0-ohm port is refused; the default request warns and
-    resolves to False (fields, S=None), as graded run() does (rfx-lead D:c70245)."""
+    resolves to False (fields, S=None), as graded run() does."""
     # Subgridded runs opt into S explicitly; uniform/graded runs resolve
     # None from lumped/wire ports, graded lumped ports only when one is driven.
     # Passive single-wire main records warn and keep raw spectra with S disabled.

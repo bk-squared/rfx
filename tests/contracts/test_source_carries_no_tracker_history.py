@@ -4,6 +4,7 @@ import ast
 import io
 from pathlib import Path
 import re
+import sys
 import tokenize
 
 import pytest
@@ -22,10 +23,7 @@ RFX_TRACKER_URL = re.compile(
 )
 # A date embedded in a cited document's filename is path data, not prose
 # chronology. Pin the entire path and require the exception to remain used.
-KEEP = {
-    ("stepping/kerr.py", "docs/research_notes/2026-07-23_kerr_quantitative_spm_finding.md"):
-        "Date is part of the cited document's filename",
-}
+KEEP = {}
 
 
 def _documentation_nodes(tree):
@@ -110,7 +108,7 @@ def test_history_mutations_are_detected(mutation, expected):
     assert _history(mutation, "sample.py")[0] == [expected]
 
 
-def test_documentation_scope_and_keep_rules():
+def test_documentation_scope_and_keep_rules(monkeypatch):
     source = '''"""Paper (1997), version 0.12.0, #abcdef, https://example.org/paper."""
 VALUE = "runtime #123 and 2026-05-08"
 """Attribute history #456."""
@@ -125,7 +123,8 @@ class Sample:
         "sample.py:3: #456", "sample.py:4: #789", "sample.py:6: #321",
         "sample.py:9: #654",
     ]
-    path = next(iter(KEEP))
+    path = ("sample.py", "docs/research_notes/2000-01-02_sample.md")
+    monkeypatch.setattr(sys.modules[__name__], "KEEP", {path: "Synthetic citation"})
     assert _history(f'"""See {path[1]}."""', path[0]) == ([], {path})
     assert _history(f'"""See {path[1]}."""', "elsewhere.py")[0]
 
@@ -138,3 +137,10 @@ class Sample:
 ])
 def test_external_citations_and_compact_document_ids_are_kept(citation):
     assert _history(f'"""See {citation}."""', "sample.py") == ([], set())
+
+
+def test_unused_keep_entry_is_rejected(monkeypatch):
+    path = ("unused_sample.py", "2000-01-02_unused.md")
+    monkeypatch.setattr(sys.modules[__name__], "KEEP", {path: "Synthetic unused citation"})
+    with pytest.raises(AssertionError, match="Stale Keep entries"):
+        test_source_carries_no_tracker_history()
