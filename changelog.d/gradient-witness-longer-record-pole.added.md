@@ -1,3 +1,4 @@
+### Added — Compare pole gradients across longer records with per-record selection diagnostics (#PR)
 `gradient_witness(..., against="longer_record", pole_target=f,
 ringdown=(res, res_longer))` now checks each record's main-window pole selection.
 Its note reports both selected frequencies and 1/Q values, record lengths and ratio.
