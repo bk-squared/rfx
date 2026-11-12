@@ -52,14 +52,10 @@ def _release_case_memory():
     gc.collect()
 
 
-@pytest.mark.parametrize("case", ["uniform", "nu", "harminv-fed", *[
-    f"broad-{substrate}-{band}-{geometry}-{resolution}"
-    for substrate, band, resolution in [
-        ("ro4003c", "high", "sub4"), ("ro4003c", "high", "sub6"),
-        ("ro4003c", "low", "sub4"), ("teflon", "high", "sub4"),
-        ("ro4003c", "low", "sub6"), ("teflon", "high", "sub6"),
-    ] for geometry in ("thru", "open_stub")
-]])
+@pytest.mark.parametrize('case', [
+    pytest.param(case, marks=pytest.mark.slow if case in ('broad-ro4003c-low-thru-sub4', 'broad-teflon-high-thru-sub4', 'broad-ro4003c-low-open_stub-sub4', 'broad-teflon-high-open_stub-sub4', 'broad-ro4003c-low-open_stub-sub6', 'broad-teflon-high-open_stub-sub6', 'broad-ro4003c-low-thru-sub6') else ())
+    for case in ['uniform', 'nu', 'harminv-fed', *[f'broad-{substrate}-{band}-{geometry}-{resolution}' for substrate, band, resolution in [('ro4003c', 'high', 'sub4'), ('ro4003c', 'high', 'sub6'), ('ro4003c', 'low', 'sub4'), ('teflon', 'high', 'sub4'), ('ro4003c', 'low', 'sub6'), ('teflon', 'high', 'sub6')] for geometry in ('thru', 'open_stub')]]
+])
 def test_converted_fixture_port_coverage(case, _release_case_memory):
     sim = converted_builder(case)
     grid = sim._build_realized_grid()

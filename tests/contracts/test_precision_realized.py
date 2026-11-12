@@ -321,8 +321,11 @@ def numeric_arrays(result):
         yield result[0]
 
 
-@pytest.mark.parametrize('entry', HONOURS + ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'))
-@pytest.mark.parametrize('precision', ['float32','float64'])
+@pytest.mark.parametrize('precision, entry', [
+    pytest.param(precision, entry, marks=pytest.mark.slow if precision == 'float32' and entry not in FINAL_S else ())
+    for entry in HONOURS + ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf')
+    for precision in ['float32', 'float64']
+])
 def test_realized_field_storage(monkeypatch, entry, precision):
     if entry in ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'):
         from tests.contracts.graded_precision import check_graded_storage

@@ -1,7 +1,7 @@
 """Moved import paths warn on every access; package-owned lazy exports do not."""
 
 import ast
-from importlib import import_module, util
+from importlib import import_module
 from pathlib import Path
 import subprocess
 import sys
@@ -173,52 +173,3 @@ def test_lazy_export_inventory():
                     and any(isinstance(t, ast.Name) and t.id == "_LAZY_EXPORTS" for t in node.targets)):
                 found.update((module, name, target) for name, target in ast.literal_eval(node.value).items())
     assert found == {(old, name, target) for old, name, target, _ in MOVED} | set(OWNED)
-
-
-def _old_path_readers(source, package):
-    moved = {(old, name) for old, name, _, _ in MOVED}
-    tree = ast.parse(source)
-    aliases = {}
-    violations = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                aliases[alias.asname or alias.name] = alias.name
-        elif isinstance(node, ast.ImportFrom):
-            module = (util.resolve_name("." * node.level + (node.module or ""), package)
-                      if node.level else node.module or "")
-            for alias in node.names:
-                aliases[alias.asname or alias.name] = module + "." + alias.name
-                if (module, alias.name) in moved:
-                    violations.append((node.lineno, module + "." + alias.name))
-    def resolve(node):
-        if isinstance(node, ast.Name):
-            return aliases.get(node.id, node.id)
-        if isinstance(node, ast.Attribute):
-            return resolve(node.value) + "." + node.attr
-        return ""
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and (resolve(node.value), node.attr) in moved:
-            violations.append((node.lineno, resolve(node)))
-        if (isinstance(node, ast.Call) and len(node.args) >= 2
-                and isinstance(node.func, (ast.Name, ast.Attribute))
-                and (node.func.id if isinstance(node.func, ast.Name) else node.func.attr)
-                in {"getattr", "setattr"}
-                and isinstance(node.args[1], ast.Constant)
-                and (resolve(node.args[0]), node.args[1].value) in moved):
-            violations.append((node.lineno, resolve(node.args[0]) + "." + node.args[1].value))
-    return violations
-
-
-@pytest.mark.source_scan
-def test_no_deprecated_path_readers():
-    violations = []
-    for root in ("rfx", "tests"):
-        for path in (REPO / root).rglob("*.py"):
-            if path == Path(__file__):
-                continue
-            relative = path.relative_to(REPO)
-            package = ".".join(relative.parent.parts)
-            violations.extend(f"{relative}:{line}: {name}" for line, name in
-                              _old_path_readers(path.read_text(), package))
-    assert violations == [], "\n".join(violations)

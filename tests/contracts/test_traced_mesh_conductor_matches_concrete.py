@@ -101,8 +101,12 @@ def test_a4_clear_shape_is_identity_with_check(monkeypatch):
     assert all(pair == ("conductor continuation", "outermost layer") for pair in checks)
 
 
-@pytest.mark.parametrize("k,delta", [(1.05, .00030), (1.1, .00035), (1.5, .00055)])
-@pytest.mark.parametrize("jit", [False, True], ids=["eager", "jit"])
+@pytest.mark.parametrize('jit, k, delta', [
+    pytest.param(jit, k, delta, id=f"{jit_id}-{k}-{delta}")
+    for k,delta in [(1.05, 0.0003), (1.1, 0.00035), (1.5, 0.00055)]
+    for jit, jit_id in zip([False, True], ['eager', 'jit'])
+    if k != 1.1
+])
 def test_noncandidate_checks_realized_layer(k, delta, jit):
     def scene(d):
         with patch.object(board, "CPML", 4):

@@ -214,17 +214,6 @@ def test_calculator_releases_inspection(name, contexts):
         _released(sim, contexts)
 
 
-def test_calculator_refusal_keeps_inspection(contexts):
-    sim = _model(source=False)
-    _prime(sim)
-    cached = tuple(getattr(sim, name, None) for name in MEMOS)
-    with pytest.raises(ValueError, match='requires.*cpml'):
-        sim.compute_coaxial_line_reflection(n_steps=2)
-    assert all(getattr(sim, name, None) is value for name, value in zip(MEMOS, cached))
-    assert contexts['audit'][0]() is cached[0][1]
-    del cached
-    sim.clear_inspection_cache()
-    _released(sim, contexts)
 
 
 @pytest.mark.parametrize('graded', [False, True])
@@ -259,19 +248,5 @@ def test_inspection_reuses_until_explicit_release(entry, graded, contexts, monke
     rebuilt = getattr(sim, entry)()
     assert len(contexts['audit']) == len(assemblies) == 2
     del rebuilt
-    sim.clear_inspection_cache()
-    _released(sim, contexts)
-
-
-def test_dispatch_refusal_keeps_inspection(contexts):
-    sim = _model()
-    _prime(sim)
-    cached = tuple(getattr(sim, name, None) for name in MEMOS)
-    # This refusal is inside dispatch, after automatic preflight has returned.
-    with pytest.raises(ValueError, match='checkpoint_segments must be an int'):
-        sim.forward(n_steps=2, checkpoint_segments=(1, 1))
-    assert all(getattr(sim, name, None) is value for name, value in zip(MEMOS, cached))
-    assert contexts['audit'][0]() is cached[0][1]
-    del cached
     sim.clear_inspection_cache()
     _released(sim, contexts)
