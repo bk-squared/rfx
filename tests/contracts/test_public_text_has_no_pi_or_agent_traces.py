@@ -158,7 +158,6 @@ NAMED_EXCEPTIONS = (
     ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/agent-memory', 'The contract proves the local-only ledger directory is untracked.'),
     ('tests/contracts/test_source_carries_no_tracker_history.py', 'docs/research_notes/2000-01-02_sample.md', 'Synthetic citation proves private provenance is detected.'),
     ('tests/contracts/test_guide_citations_resolve.py', 'docs/research_notes/', 'Synthetic prose and its explanation prove a plain path is not a link.'),
-    ('tests/unit/nonuniform/test_interface_eps_rule.py', '/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py', 'another cleanup step changes this literal together with the values it asserts'),
 )
 
 
