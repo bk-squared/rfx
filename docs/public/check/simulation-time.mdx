@@ -68,6 +68,10 @@ unavailable, once for each signal judged). From 300 steps on it passes. Both
 values are far below −40 dB. The 300-step value changes with the CPU: it read
 −103.4 dB on one and −71.8 dB on another. The dB figure does not measure
 convergence. Read the status, not the number.
+Near 1 % the status itself can differ between machines: the fields stepped
+on two CPUs differ in the last float32 digit, and in the cases measured that
+moved one entry's estimated share by as much as 36 % (one entry read `fail`
+on one CPU and `undetermined` on the other).
 
 The four states:
 
