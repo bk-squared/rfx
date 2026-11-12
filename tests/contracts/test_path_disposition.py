@@ -325,6 +325,19 @@ def test_lane_gates_are_the_listed_ones():
         assert T.cell(attr, feature, lane).kind == T.REFUSES, (lane, attr, feature)
 
 
+def test_graded_precision_disposition_by_value():
+    sim = Simulation(freq_max=10e9, domain=(.008, .008, .016), dx=.002, boundary="pec")
+    row = ("_precision", "")
+    for precision, kind in (("float64", T.CARRIES), ("mixed", T.REFUSES)):
+        sim._precision = precision
+        for lane in ("run_nonuniform", "fwd_nonuniform"):
+            assert T.cell(*row, lane, precision=precision).kind == kind
+            assert (row in A.refused(sim, lane)) == (kind == T.REFUSES)
+        for lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu", "run_subgridded"):
+            assert T.cell(*row, lane, precision=precision).kind == T.REFUSES
+            assert row in A.refused(sim, lane)
+
+
 def test_subgridded_production_disposition_requires_explicit_opt_in():
     """#1465: a carried feature never grants production admission."""
     row = ("_refinement", "slab")
