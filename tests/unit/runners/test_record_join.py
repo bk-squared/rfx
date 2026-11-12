@@ -38,9 +38,8 @@ def test_same_buffer_bits(kind, padded, n):
                 value.real[value.real == 0] = 0.
                 value.imag[value.imag == 0] = 0.
         if kind == 'moments' and n == 3:
-            for x, y in ((a.real, b.real), (a.imag, b.imag)):
-                bar = 9*np.spacing(np.float32(np.max(np.abs(y))))
-                assert np.max(np.abs(x-y)) <= bar, ('moment ULP', index, bar)
+            bar = 9*np.spacing(np.float32(np.max(np.abs(b))))
+            assert np.max(np.abs(a-b)) <= bar, ('moment ULP', index, bar)
         else:
             assert a.tobytes() == b.tobytes(), ('record bit equality', kind, index)
     print(dict(kind=kind, devices=n, nx=18 + int(padded), bits='equal or moment ULP'))
@@ -120,6 +119,29 @@ def test_empty_snapshot():
     buffer = layout.initial()
     for a, b in zip(arrays('snapshots', layout.assemble(buffer)), arrays('snapshots', frozen(layout, buffer))):
         assert a.shape == b.shape and a.dtype == b.dtype and a.size == 0
+
+
+@pytest.mark.parametrize('multi_process', [False, True])
+def test_moments_keep_carry_dtype(multi_process):
+    layout = layout_for('moments')
+    buffer = jnp.real(filled(layout))
+    if multi_process:
+        buffer = np.asarray(buffer)
+    result = layout.assemble(buffer, multi_process=multi_process)
+    assert all(a.dtype == buffer.dtype for a in result), 'moment carry dtype'
+
+
+@pytest.mark.parametrize('multi_process', [False, True])
+def test_ntff_x_faces_keep_owner_shape_and_dtype(multi_process):
+    layout = layout_for('ntff')
+    buffer = jnp.real(filled(layout))
+    if multi_process:
+        buffer = np.asarray(buffer)
+    result = layout.assemble(buffer, multi_process=multi_process)
+    for face in (0, 1, 6, 7):
+        owner = next(part for part in layout.parts if part[2][face % 6])
+        assert result[face].shape == owner[4][face], 'NTFF owner shape'
+        assert result[face].dtype == buffer.dtype, 'NTFF owner dtype'
 
 
 def test_program_cache_reused_across_layout_instances():

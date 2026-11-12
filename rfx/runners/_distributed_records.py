@@ -324,16 +324,16 @@ class MomentRecords(Packed):
     def assemble(self, buffer, *, multi_process=False):
         if multi_process:
             return self._assemble_host(buffer)
-        record_size = sum(self.sizes[0]) * np.dtype(self.dtype).itemsize
+        record_size = sum(self.sizes[0]) * np.dtype(buffer.dtype).itemsize
         return tuple(join_owned(buffer, [[(offset, shape, (0,) * len(shape), shape)] for _ in self.parts],
-                                shape, self.dtype, mesh=self.mesh, kind="moments",
+                                shape, buffer.dtype, mesh=self.mesh, kind="moments",
                                 record_size=record_size, x_axis=None, summed=True)
                      for offset, shape in packed_pieces(self.shapes[0], self.sizes[0]))
 
     def _assemble_host(self, buffer):
         buffer = self.replicated(buffer)
         summed = jnp.sum(buffer, axis=0)
-        return tuple(a.astype(self.dtype) for a in self.unpack(summed, 0))
+        return tuple(a.astype(buffer.dtype) for a in self.unpack(summed, 0))
 
 
 def _host_arrays(value):

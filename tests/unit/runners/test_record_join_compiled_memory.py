@@ -56,6 +56,8 @@ def test_compiled_memory_context(kind, monkeypatch):
                 def objective(alpha):
                     return sum(jnp.sum(jnp.abs(a)**2) for a in solve(alpha, True).values())
                 rows[version]['grad_forward'] = statistics(jax.jit(jax.grad(objective)), jnp.float32(1.))
+            else:
+                rows[version]['grad_forward'] = 'not applicable: forward has no snapshot argument'
     print(json.dumps(dict(kind=kind, compiled_memory=rows)), flush=True)
 
 

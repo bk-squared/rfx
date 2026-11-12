@@ -13,10 +13,10 @@ from tests.unit.runners._record_join_scene import KINDS, layout_for
 from tests.unit.runners.test_record_join import arrays
 
 
-def buffers():
+def buffers(arrays=None):
     """Count a physical allocation once per device, including aliasing views."""
     found = {}
-    for array in jax.live_arrays():
+    for array in jax.live_arrays() if arrays is None else arrays:
         for shard in array.addressable_shards:
             data = shard.data
             key = (shard.device.id, data.unsafe_buffer_pointer())
@@ -28,7 +28,9 @@ def buffers():
 def test_join_memory(kind, size, single, monkeypatch, tmp_path):
     layout = layout_for(kind, size=size, single_frequency=single)
     gc.collect()
-    baseline = buffers()
+    # Retain baseline allocations so a freed address cannot hide a new buffer.
+    baseline_arrays = tuple(jax.live_arrays())
+    baseline = buffers(baseline_arrays)
     carry = layout.initial()
     jax.block_until_ready(carry)
     own = [sum(a.addressable_shards[r].data.nbytes for a in jax.tree.leaves(carry)) for r in range(2)]

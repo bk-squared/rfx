@@ -28,7 +28,7 @@ def layout_for(kind, n=2, *, size=1, nx=17, single_frequency=False):
     elif kind == 'ntff':
         sim.add_ntff_box((3e-3, 2e-3, 2e-3), ((nx - 7)*1e-3, 10e-3, 78e-3), freqs=freqs)
     elif kind == 'moments':
-        sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), ((nx - 7)*1e-3, 10e-3, 78e-3),
+        sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), ((nx - 7)*1e-3, 10e-3, 6e-3),
                                        block_size=2e-3, freqs=freqs)
     spec = SnapshotSpec(interval=1, components=('ex', 'ez', 'hy')) if kind == 'snapshots' else None
     mesh = Mesh(np.asarray(host_devices(n)), ('x',))
