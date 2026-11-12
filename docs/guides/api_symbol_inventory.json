@@ -798,7 +798,8 @@
       "kind": "function",
       "params": [
         "omega_p",
-        "gamma"
+        "gamma",
+        "density"
       ]
     },
     "edge_is_pec": {
@@ -1310,7 +1311,8 @@
       "params": [
         "delta_eps",
         "omega_0",
-        "delta"
+        "delta",
+        "relative"
       ]
     },
     "make_band_profile": {
