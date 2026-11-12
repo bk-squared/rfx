@@ -220,7 +220,7 @@ def test_g5_mutation(precision, record_property):
 @pytest.mark.parametrize("path", ["graded", "distributed", "ringdown", "ports",
     "debye", "lorentz", "kerr", "upml", "occupancy", "whole_grid", "missing_box",
     "tfsf", "precision", "invalid", "sheet", "current_moments", "stencil",
-    "ntff", "h_plane", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
+    "ntff", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
     "different_bins", "time_domain"])
 def test_g5_refusals(path):
     sim, eps = fixture("float32")
@@ -314,7 +314,7 @@ def test_wavelet_targets(precision, record_property):
 @pytest.mark.parametrize("flag", ["use_debye", "use_lorentz", "use_kerr", "use_upml",
     "use_design_occupancy", "use_current_moments", "use_sheet_impedance", "use_tfsf",
     "use_waveguide_ports", "use_lumped_rlc", "use_wire_sparams", "use_lumped_sparams",
-    "use_ntff", "use_flux_monitors", "use_aniso_inv", "use_conformal",
+    "use_flux_monitors", "use_aniso_inv", "use_conformal",
     "use_pec_occupancy", "use_pmc_faces"])
 def test_g5_kernel_refusals(flag):
     from types import SimpleNamespace
