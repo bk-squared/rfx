@@ -58,6 +58,20 @@ def test_negative_zero_bits(kind):
             assert a.tobytes() == b.tobytes(), ('negative-zero bit equality', kind)
 
 
+@pytest.mark.parametrize('n', [2, 3])
+@pytest.mark.parametrize('nx', [18, 19])
+def test_second_axis_chunk_bits(n, nx):
+    layout = layout_for('planes', n, nx=nx, single_frequency=True)
+    buffer = filled(layout)
+    template = layout.templates[0].accumulator
+    chunk = join.chunk_shape(template.shape, template.dtype, template.nbytes, 1)
+    assert chunk[0] == 1 and chunk[2] < template.shape[2], 'second-axis split not exercised'
+    assert np.prod(chunk)*template.dtype.itemsize <= .025*template.nbytes
+    actual = np.asarray(layout.assemble(buffer)[0].accumulator)
+    expected = np.asarray(frozen(layout, buffer)[0].accumulator)
+    assert actual.tobytes() == expected.tobytes(), 'second-axis chunk bit equality'
+
+
 def test_owned_negative_zero_gradient():
     shape = (40, 4, 8)
     owners = [[(0, (40, 2, 8), (0, rank*2, 0), (40, 2, 8))] for rank in range(2)]
@@ -106,3 +120,38 @@ def test_empty_snapshot():
     buffer = layout.initial()
     for a, b in zip(arrays('snapshots', layout.assemble(buffer)), arrays('snapshots', frozen(layout, buffer))):
         assert a.shape == b.shape and a.dtype == b.dtype and a.size == 0
+
+
+def test_program_cache_reused_across_layout_instances():
+    join._join_program.cache_clear()
+    first = layout_for('planes', nx=20)
+    second = layout_for('planes', nx=20)
+    a = first.assemble(first.initial())
+    before = join._join_program.cache_info()
+    b = second.assemble(second.initial())
+    after = join._join_program.cache_info()
+    assert after.misses == before.misses and after.hits > before.hits, 'join recompiles the same layout'
+    np.testing.assert_array_equal(a[0].accumulator, b[0].accumulator)
+
+
+def test_runner_flag_selects_host_join(monkeypatch):
+    from types import SimpleNamespace
+    from jax.experimental import multihost_utils
+    from rfx.runners._distributed_records import SlabRecords
+    layout = layout_for('ntff')
+    carry = filled(layout)
+    calls = []
+    def gathered(buffer, *, tiled):
+        calls.append(tiled)
+        return np.asarray(buffer)
+    monkeypatch.setattr(multihost_utils, 'process_allgather', gathered)
+    records = object.__new__(SlabRecords)
+    records.layouts = {'ntff': layout}
+    records.ntff_box, records.monitor, records.sim = layout.box, None, SimpleNamespace()
+    def fail(*a, **kw):
+        raise RuntimeError('device join reached')
+    monkeypatch.setattr('rfx.runners._distributed_ntff.join_owned', fail)
+    records.assemble({'ntff': carry}, multi_process=True)
+    assert calls == [True]
+    with pytest.raises(RuntimeError, match='device join reached'):
+        records.assemble({'ntff': np.asarray(carry)}, multi_process=False)

@@ -1,5 +1,9 @@
 """Whole-program compiled memory is context, not an eager-join acceptance bar."""
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -53,3 +57,42 @@ def test_compiled_memory_context(kind, monkeypatch):
                     return sum(jnp.sum(jnp.abs(a)**2) for a in solve(alpha, True).values())
                 rows[version]['grad_forward'] = statistics(jax.jit(jax.grad(objective)), jnp.float32(1.))
     print(json.dumps(dict(kind=kind, compiled_memory=rows)), flush=True)
+
+
+@pytest.mark.parametrize('version', ['old', 'new'])
+def test_enclosing_user_jit_dump_context(version, tmp_path):
+    """Name the enclosing-jit identity modules separately from the rank contract."""
+    dump = tmp_path / 'hlo'
+    dump.mkdir()
+    root = Path(__file__).resolve().parents[3]
+    program = '''
+import sys
+import pytest
+if sys.argv[1] == 'old':
+    from rfx.runners import _distributed_records as records
+    from rfx.runners._distributed_ntff import SlabNTFF
+    from tests.unit.runners._record_join_frozen import assemble
+    for cls in (records.PlaneRecords, records.SnapshotRecords, records.MomentRecords, SlabNTFF):
+        cls.assemble = lambda self, buffer, **kw: assemble(self, buffer)
+sys.exit(pytest.main([
+    'tests/unit/runners/test_distributed_uniform_user_jit.py',
+    'tests/unit/runners/test_distributed_uniform_forward_user_jit.py',
+    '-p', 'no:cacheprovider', '-q']))
+'''
+    env = dict(os.environ, PYTHONPATH=str(root), JAX_PLATFORMS='cpu',
+               JAX_ENABLE_COMPILATION_CACHE='false',
+               XLA_FLAGS=f'--xla_force_host_platform_device_count=2 --xla_dump_to={dump}')
+    run = subprocess.run([sys.executable, '-c', program, version], cwd=root, env=env,
+                         capture_output=True, text=True, timeout=900)
+    assert run.returncode == 0, run.stdout + run.stderr
+    modules = sorted(dump.rglob('*after_optimizations.txt'))
+    assert modules, 'no user-jit optimized dumps'
+    identities = []
+    for module in modules:
+        text = module.read_text()
+        operations = [op for op in ('partition-id', 'replica-id', 'partition_id', 'replica_id') if op in text]
+        if operations:
+            identities.append(dict(module=module.name, operations=operations))
+    print(json.dumps(dict(version=version, user_jit_identity_modules=identities,
+                          summary=run.stdout.splitlines()[-1])), flush=True)
+    assert all('.jit_call.' in row['module'] for row in identities), identities

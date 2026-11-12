@@ -97,7 +97,7 @@ class SlabNTFF:
                 start = 0 if face < 2 else lo - self.box.i_lo
                 owners[index][rank].append((offset, shape, (0, start, 0, 0), shape))
                 if face < 2:
-                    arrays[index] = jax.ShapeDtypeStruct(shape, self.dtype)
+                    arrays[index] = jax.ShapeDtypeStruct(shape, buffer.dtype)
         record_size = record_bytes(arrays)
         return NTFFData(*(join_owned(buffer, pieces, a.shape, a.dtype, mesh=self.mesh,
                                     kind="ntff", record_size=record_size,

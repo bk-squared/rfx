@@ -13,7 +13,8 @@ KINDS = ('planes', 'flux', 'ntff', 'moments', 'snapshots')
 def layout_for(kind, n=2, *, size=1, nx=17, single_frequency=False):
     # Same CPML/source construction as test_distributed_record_planes.model;
     # enough transverse cells to measure the second-axis chunk split directly.
-    sim = Simulation(freq_max=15e9, domain=((nx - 1)*1e-3, 12e-3, 80e-3), dx=1e-3,
+    # Four CPML cells and the endpoint node are included in the requested nx.
+    sim = Simulation(freq_max=15e9, domain=((nx - 5)*1e-3, 12e-3, 80e-3), dx=1e-3,
                      boundary='cpml', cpml_layers=2, precision='float32')
     sim.add_source((5e-3, 5e-3, 4e-3), 'ez', amplitude_kind='field')
     grid = sim._build_grid()
@@ -25,9 +26,9 @@ def layout_for(kind, n=2, *, size=1, nx=17, single_frequency=False):
     elif kind == 'flux':
         sim.add_flux_monitor(axis='y', coordinate=4e-3, freqs=freqs, name='record')
     elif kind == 'ntff':
-        sim.add_ntff_box((3e-3, 2e-3, 2e-3), ((nx - 4)*1e-3, 10e-3, 78e-3), freqs=freqs)
+        sim.add_ntff_box((3e-3, 2e-3, 2e-3), ((nx - 7)*1e-3, 10e-3, 78e-3), freqs=freqs)
     elif kind == 'moments':
-        sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), ((nx - 4)*1e-3, 10e-3, 78e-3),
+        sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), ((nx - 7)*1e-3, 10e-3, 78e-3),
                                        block_size=2e-3, freqs=freqs)
     spec = SnapshotSpec(interval=1, components=('ex', 'ez', 'hy')) if kind == 'snapshots' else None
     mesh = Mesh(np.asarray(host_devices(n)), ('x',))
