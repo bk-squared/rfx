@@ -982,6 +982,8 @@ _RECORD_END_FILES = (
     'measurement/waveguide_s.py', 'sparams/waveguide.py', 'sparams/_common.py',
     'sparams/_settling_warning.py', 'sparams/_msl_stages.py',
     'sparams/_mixed_stages.py', 'sparams/_coax_oneport_record.py', 'sparams/coax.py',
+    # The S calculators' shared helpers moved from sparams/_common.py into these two.
+    'measurement/sparam_assembly.py', 'measurement/sparam_advisories.py',
 )
 
 
