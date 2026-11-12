@@ -126,4 +126,4 @@ also counted in the first invocation. Historical schema-2/3 replay assertions
 remain intact. No fixture, live envelope, gate or xfail was changed. The old
 artifact is byte-identical to `b4ae761e`, and the new artifact matches its source.
 
-R3: memory=none-after-grep (no docs/agent-memory entries in this worktree; consistent with T6 and the amended predeclaration) | R2-attempts=0 | falsifier=source-copy and old-fixture byte checks, unchanged 1e-4 live gate, and stored-verdict replay all passed; GPU live falsifier not run
+R3: memory=none-after-grep (consistent with T6 and the amended predeclaration) | R2-attempts=0 | falsifier=source-copy and old-fixture byte checks, unchanged 1e-4 live gate, and stored-verdict replay all passed; GPU live falsifier not run

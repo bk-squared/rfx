@@ -542,7 +542,7 @@ and still converge to some f_floor ≠ f_physical**. A turn-over is a statement 
 shape of f(h) over the sampled range; it is not a statement about the limit.
 
 *Worse, the authoritative ledger records a MEASURED floor for this very fixture class.*
-`rfx-known-issues.md` (issue-#80 resolution research, 2026-05-30): **DIELECTRIC-interface
+The recorded issue-#80 resolution research (2026-05-30): **DIELECTRIC-interface
 staircasing, ~49 % of the error, ε_r-coupled**, which "drops FDTD from 2nd→1st order
 (Farjadpour/Johnson SPIE 6322, 2006), giving a **non-vanishing FLOOR for thin high-ε_r
 layers** (Boriskin arXiv:1001.1733)". The W4R fixture is exactly that: a 1.5 mm ε_r = 4.3
@@ -578,7 +578,7 @@ own data refute it.
 
 | | |
 |---|---|
-| ledger law (rfx-known-issues.md, 2026-07-12 patch-resonance envelope) | f_res bias ≈ −dx/L_eff |
+| recorded law (2026-07-12 patch-resonance envelope) | f_res bias ≈ −dx/L_eff |
 | applied here, L_eff = 13.5 mm, dx = 0.75 → 0.1875 mm | bias −5.56 % → −1.39 % |
 | ⇒ predicted **change** across this lane's dx range | **4.17 % = 230.0 MHz** |
 | this lane's **measured** refinement variation over that same range | **41.44 MHz** |

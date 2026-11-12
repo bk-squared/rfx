@@ -162,15 +162,15 @@ on CPU.
 
 ## 7. Memory (R1)
 
-- `docs/agent-memory/rfx-known-issues.md`, entry "Added 2026-09-01 —
-  #778/#779 stack merged" (the plan cites it at `:137-141` of main 1c38b0d7;
-  the ledger has grown since, so the entry is named by heading): "f64 fields,
+- Entry "Added 2026-09-01 —
+  #778/#779 stack merged" (named by its
+  heading): "f64 fields,
   4x/2x step counts and complex128 algebra all reproduce 1.003227 (falling
   monotonically to 0.9874 at 7 GHz), so the excess is systematic with
   mechanism unidentified → filed as #819. Gate value (1.01) and every measured
   number unchanged." Consistent — this ladder is that issue's candidate 1,
   and it moves neither the gate nor a measured number.
-- same file, entry "Added 2026-07-10 — #313 RESOLVED" (plan `:4278-4306`):
+- Entry "Added 2026-07-10 — #313 RESOLVED":
   "Default path and ALL diagonals byte-frozen (bitwise witnesses)"; the
   reference-plane path is opt-in and never de-embeds with omega/c or a
   nominal 50 ohm. Consistent — the ladder runs the default path with no
@@ -187,7 +187,7 @@ on CPU.
 
 ## 8. R3 pre-launch line
 
-R3: memory=rfx-known-issues.md "#778/#779 stack merged" (#819 entry) +
+R3: memory="#778/#779 stack merged" (#819 entry) +
 "#313 RESOLVED" entry + feedback_negated_closing_keyword +
 project_thin_pec_sheet_live_ez_edge | R2-attempts=1 (this single pre-declared
 attempt on the mesh-resolution mechanism; the three earlier witnesses were
@@ -344,7 +344,7 @@ are. The replay test imports the live constant and asserts it is 1.01.
 ### 9.5 STOP — memory re-read, alternative architectures, redesign (R2)
 
 Memory (R1), re-read after the verdict:
-- `docs/agent-memory/rfx-known-issues.md`, "#778/#779 stack merged" (#819
+- "#778/#779 stack merged" (#819
   entry): "the excess is systematic with mechanism unidentified". Consistent.
   This ladder adds two facts: the 3 GHz excess is not invariant to dx (10× on
   the first halving), so it is not a fixed extraction offset; and it crosses
@@ -391,7 +391,7 @@ No gate or measured number touched (`_THRU_MAX_SINGULAR_VALUE = 1.01` asserted
 by the replay test). No rung re-run. Nothing folded into the waveguide
 battery. Issue #819 stays open; this note is its candidate-1 record.
 
-R3: memory=rfx-known-issues.md "#778/#779 stack merged" (#819 entry) +
+R3: memory="#778/#779 stack merged" (#819 entry) +
 feedback_gate_can_bind_artifact + feedback_label_mechanism_provenance +
 project_thin_pec_sheet_live_ez_edge + feedback_quote_the_measure_with_the_number
 | R2-attempts=1 (closed as non-closing; no second run on this mechanism) |

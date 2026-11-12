@@ -19,7 +19,7 @@ One VESSL run per case, preset `gpu-rtx4090`, cluster `remilab-c0`,
 | cv17 | `369367259154` | `scripts/vessl_931_post_cv17.yaml` | `python -u validation/crossval/17_dielectric_sphere_mie.py` | 5-10 min | CONTROL — dielectric-only, bit-identical. **No** `--write-fixture` |
 
 Submitted 2026-09-07 10:07-10:09 UTC, organization `remilab`, project
-`byungkwan`; run pages at `https://app.vessl.ai/remilab/runs/byungkwan/<run id>`.
+`<project>`; run pages at `https://app.vessl.ai/remilab/runs/<project>/<run id>`.
 Submitted from a non-worktree directory: the `vessl` CLI walks the cwd's `.git`
 as a directory and a git worktree's `.git` is a file, so `vessl run create`
 raises `NotADirectoryError` if run from inside one.

@@ -3,14 +3,7 @@
 Date: 2026-09-06. Status: the methodology section is the durable part; the
 findings and decisions below are dated and specific to this arc.
 
-**Why this file and not `docs/agent-memory/development_methodology.md`.** That
-file is the home of this repository's method, and this section belongs in it.
-It is also gitignored in this public repo, so it exists only in the primary
-checkout: a rule written there has no history, no diff review and no backup,
-and a reader of the public repo cannot see it at all. The text is therefore
-written here, in a tracked file, and the agent-memory copy — when it is next
-edited from the primary checkout — should point at this note rather than
-restate it.
+This methodology is written here in a tracked file so readers can inspect its history and review its changes.
 
 ---
 
