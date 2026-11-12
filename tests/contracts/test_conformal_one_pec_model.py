@@ -31,6 +31,15 @@ def test_no_volume_staircase(monkeypatch, name, entry):
         assert counts == (0, 0, 0), (name, entry, setup_index, 'volume staircase', counts)
 
 
+@pytest.mark.parametrize('name', ['S', 'Q', 'P'])
+def test_forward_carries_same_conformal_pec(monkeypatch, name):
+    rows = capture_setups(monkeypatch)
+    scene(name).run(n_steps=4, compute_s_params=False)
+    scene(name).forward(n_steps=4, skip_preflight=True)
+    assert len(rows) == 2
+    assert_same_setup(rows[0], rows[1], label=f'{name}: forward')
+
+
 def test_reference_short_refuses_by_name():
     with pytest.raises(NotImplementedError, match=r'conformal PEC.*port_reference_sims.*/issues/1373'):
         scene('P', ports=2).compute_waveguide_s_matrix(n_steps=4, normalize='flux',
