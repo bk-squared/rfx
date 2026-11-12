@@ -12,7 +12,7 @@ import numpy as np
 from jax import lax
 from rfx.runners._rank import rank_shard_map
 from rfx.stepping.slab import place
-from rfx.runners._record_join import join_owned, packed_pieces, record_bytes
+from rfx.stepping.record_join import join_owned, packed_pieces, record_bytes
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.farfield import (NTFFData, accumulate_ntff, init_ntff_data,

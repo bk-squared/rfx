@@ -94,7 +94,7 @@ def exercise_programs():
         if mode == "snapshots":
             kwargs["snapshot"] = SnapshotSpec(interval=1, components=("ez",))
         if mode == "farfield":
-            from rfx.farfield import compute_far_field_jax
+            from rfx.measurement.farfield import compute_far_field_jax
 
             def radiation(amplitude):
                 scene = model(lane, mode, boundary)

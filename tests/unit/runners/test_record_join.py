@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
-from rfx.runners import _record_join as join
+from rfx.stepping import record_join as join
 from tests._multi_device_scene import host_devices
 from tests.unit.runners._record_join_scene import KINDS, layout_for, filled
 from tests.unit.runners._record_join_frozen import assemble as frozen

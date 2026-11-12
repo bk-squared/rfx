@@ -12,7 +12,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx.runners import _record_join as join
+from rfx.stepping import record_join as join
 from tests.unit.runners._record_join_scene import KINDS, layout_for
 from tests.unit.runners.test_record_join import arrays
 
@@ -72,7 +72,7 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
             return result
         return measured
     monkeypatch.setattr(join, '_join_program', instrument)
-    watched = {'_record_join.py', '_distributed_records.py', '_distributed_ntff.py', '_record_join_frozen.py'}
+    watched = {'record_join.py', '_distributed_records.py', '_distributed_ntff.py', '_record_join_frozen.py'}
 
     def sample():
         current = buffers()
