@@ -1194,12 +1194,12 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
     if sim._precision == "float64":
-        # rfx#2613: UPML replaces the whole-grid update with float32 arithmetic.
+        # UPML replaces the whole-grid update with float32 arithmetic.
         if sim._boundary == "upml":
             raise RfxUnsupported(
                 "precision='float64' with UPML would compute a float32 UPML update. "
                 "Declare precision='float32' or use boundary='cpml' for float64.")
-        # rfx#2613: match the Bloch auxiliary path; Method B remains real-valued.
+        # Oblique Bloch steps complex64 fields; Method B remains real-valued.
         tfsf = sim._tfsf
         if tfsf is not None and abs(tfsf.angle_deg) > .01 and tfsf.method == "bloch":
             raise RfxUnsupported(
