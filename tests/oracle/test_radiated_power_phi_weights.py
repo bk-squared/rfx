@@ -69,7 +69,8 @@ def test_phi_weight_sum_through_public_path(phi):
 
 
 def _test_periodic_weights(phi):
-    # Rule items 1-3 of the design, formed here in float64.
+    # Rule items 1-3 of the design (item 3 as corrected 2026-11-12 13:13),
+    # formed here in float64.
     seam = phi[-1] - phi[0] >= 2 * np.pi - 1e-9
     u = phi[:-1] if seam else phi
     m = len(u)
@@ -79,8 +80,8 @@ def _test_periodic_weights(phi):
         prv = u[i - 1] if i > 0 else u[m - 1] - 2 * np.pi
         w[i] = (nxt - prv) / 2
     if seam:
-        w = np.append(w, w[0] / 2)
-        w[0] = w[-1]
+        w = np.append(w, (phi[-1] - phi[-2]) / 2)
+        w[0] = (phi[1] - phi[0]) / 2
     return w
 
 
