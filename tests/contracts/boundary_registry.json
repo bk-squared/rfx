@@ -77,7 +77,7 @@
       "function": "wire_port_current"
     },
     {
-      "file": "rfx/probes/probes.py",
+      "file": "rfx/measurement/probes.py",
       "function": "_ampere_loop"
     },
     {
@@ -533,28 +533,28 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/probes/probes.py",
+      "file": "rfx/measurement/probes.py",
       "function": "_ampere_loop",
       "kind": "neighbour",
       "count": 2
     },
     {
-      "file": "rfx/probes/probes.py",
+      "file": "rfx/measurement/probes.py",
       "function": "_bwd_h",
       "kind": "neighbour"
     },
     {
-      "file": "rfx/probes/probes.py",
+      "file": "rfx/measurement/probes.py",
       "function": "_metric_ampere_loop",
       "kind": "neighbour"
     },
     {
-      "file": "rfx/probes/probes.py",
+      "file": "rfx/measurement/probes.py",
       "function": "extract_s_matrix",
       "kind": "boundary"
     },
     {
-      "file": "rfx/probes/probes.py",
+      "file": "rfx/measurement/probes.py",
       "function": "extract_s_matrix_wire",
       "kind": "boundary"
     },
