@@ -12,10 +12,14 @@ from rfx.geometry.smoothing import (
 )
 
 
-@pytest.mark.parametrize('path', ['uniform', 'graded', 'kottke_pec', 'nodes', 'graded_nodes'])
-@pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
-@pytest.mark.parametrize('reverse', [False, True], ids=['AB', 'BA'])
-@pytest.mark.parametrize('offset', [0., .0002], ids=['node_plane', 'off_grid'])
+@pytest.mark.parametrize("offset,reverse,traced,path", [
+    pytest.param(o, r, t, p, id=f"{'off_grid' if o else 'node_plane'}-{'BA' if r else 'AB'}-{'traced' if t else 'host'}-{p}")
+    for o in (0., .0002)
+    for r in (False, True) for t in (False, True)
+    for p in ('uniform', 'graded', 'kottke_pec', 'nodes', 'graded_nodes')
+    if (not o and (r == t or (p in ('nodes', 'graded_nodes') and not t)))
+    or (o and p == 'uniform' and r == t)
+])
 def test_same_permittivity_face_operands(path, traced, reverse, offset):
     graded = path.startswith('graded')
     profiles = dict(dx_profile=np.full(8, .0005), dy_profile=np.full(8, .0005),

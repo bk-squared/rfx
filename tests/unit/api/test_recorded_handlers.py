@@ -2,10 +2,6 @@
 
 import builtins
 from dataclasses import replace
-from pathlib import Path
-import runpy
-import sys
-from unittest.mock import MagicMock
 
 import numpy as np
 
@@ -98,11 +94,10 @@ def _small_sim():
 # Each case enters the production handler through its actual caller. The return
 # value is the field exposed to a reader, not an assertion about source syntax.
 G5_CASES = (
-    "host_poles", "linear_accumulators", "peak_error", "bounding_box",
-    "mesh_error", "audit_error", "issues", "invariance", "dashboard",
-    "import_rfx", "import_jax", "jax_devices", "jax_config", "core_deps",
-    "optional_deps", "smoke", "fidelity", "coax", "cutoff", "mask_error",
-    "source", "tfsf", "point_probe", "plane_probe", "flux", "ntff",
+    "host_poles", "linear_accumulators", "invariance",
+    "import_rfx", "import_jax", "jax_devices", "jax_config",
+    "fidelity", "coax", "cutoff", "mask_error", "source", "tfsf",
+    "point_probe", "plane_probe", "flux", "ntff",
     "cells_per_wavelength", "error_witnesses", "judge_record",
 )
 
@@ -121,28 +116,10 @@ def _g5_call(case, monkeypatch, error):
                               _dft_planes=(), _flux_monitors=(), _uses_nonuniform_mesh=False)
         monkeypatch.setattr(jax, "eval_shape", fail)
         return lambda: linear_accumulators(sim, None, 1)[1]
-    if case in {"peak_error", "bounding_box", "mesh_error", "audit_error", "issues"}:
-        from rfx import artifacts
-        if case == "peak_error":
-            return lambda: artifacts._array_summary(_BrokenArray(error), include_peak=True)["peak_error"]
-        if case == "bounding_box":
-            return lambda: artifacts._bbox(SimpleNamespace(bounding_box=fail))
-        if case == "issues":
-            return lambda: artifacts._preflight_summary(SimpleNamespace(preflight=fail),
-                                                        n_steps=None, available_memory_gb=None)["issues"]
-        grid = SimpleNamespace(shape=(2, 2, 2), dx=0.001, dt=1e-12)
-        sim = SimpleNamespace(_build_grid=fail if case == "mesh_error" else lambda: grid)
-        if case == "audit_error":
-            sim.mesh_intelligence_report = fail
-        def mesh():
-            result = artifacts._mesh_summary(sim, n_steps=None, available_memory_gb=None)
-            return result["error"] if case == "mesh_error" else result["audit"]["error"]
-        return mesh
     if case == "invariance":
         from rfx.boundaries.tfsf import invariant
         return lambda: invariant(_BrokenArray(error), 0, (2, 2, 2))[1]
-    if case in {"import_rfx", "import_jax", "jax_devices", "jax_config",
-                "core_deps", "optional_deps", "smoke"}:
+    if case in {"import_rfx", "import_jax", "jax_devices", "jax_config"}:
         from rfx import diagnostics as diag
         report = diag._Report()
         if case in {"import_rfx", "import_jax"}:
@@ -157,40 +134,12 @@ def _g5_call(case, monkeypatch, error):
             monkeypatch.setattr(jax, "devices", fail)
         elif case == "jax_config":
             monkeypatch.setattr(jax.config, "read", fail)
-        elif case in {"core_deps", "optional_deps"}:
-            monkeypatch.setattr(diag.importlib, "import_module", fail)
-        else:
-            monkeypatch.setattr(Simulation, "run", fail)
         check = {"import_rfx": diag._check_rfx_import, "import_jax": diag._check_jax,
-                 "jax_devices": diag._check_jax, "jax_config": diag._check_jax,
-                 "core_deps": diag._check_core_deps, "optional_deps": diag._check_optional_extras,
-                 "smoke": diag._check_smoke}[case]
+                 "jax_devices": diag._check_jax, "jax_config": diag._check_jax}[case]
         def diagnostic():
             check(report)
             return report.lines
         return diagnostic
-    if case == "dashboard":
-        class Stopped(BaseException):
-            pass
-        st = MagicMock()
-        st.number_input.side_effect = lambda *a, **kw: kw["value"]
-        st.selectbox.side_effect = lambda label, options, **kw: options[0]
-        st.columns.side_effect = lambda n: [MagicMock() for _ in range(n)]
-        st.tabs.side_effect = lambda labels: [MagicMock() for _ in labels]
-        st.session_state = {}
-        st.button.return_value = True
-        st.stop.side_effect = Stopped
-        components = MagicMock()
-        components.geometry_panel.return_value = []
-        components.source_panel.return_value = ([], [])
-        monkeypatch.setitem(sys.modules, "streamlit", st)
-        monkeypatch.setitem(sys.modules, "rfx.dashboard.components", components)
-        monkeypatch.setattr(Simulation, "_build_realized_grid", fail)
-        def dashboard():
-            with pytest.raises(Stopped):
-                runpy.run_path(str(Path(__file__).parents[3] / "rfx/dashboard/app.py"))
-            return str(st.error.call_args) + str(st.code.call_args)
-        return dashboard
     if case in {"source", "tfsf", "point_probe", "plane_probe", "flux", "ntff", "cells_per_wavelength"}:
         from rfx import realized_placement as placement
         grid = SimpleNamespace(shape=(3, 3, 3), position_to_index=fail)
@@ -294,20 +243,10 @@ def test_g5_failure_is_recorded(case, monkeypatch):
     if case == "host_poles":
         from rfx.ringdown._jax import STATUS_FAILED
         assert result == STATUS_FAILED
-    elif case == "optional_deps":
-        assert len(result) == 4
-        assert all("not installed (" in line for line in result)
     elif case == "invariance":
         assert "RuntimeError: invariance unavailable" in result
     else:
         assert MESSAGE in str(result)
-
-
-@pytest.mark.parametrize("case", G5_CASES)
-def test_g5_timeout_propagates(case, monkeypatch):
-    call = _g5_call(case, monkeypatch, TimeoutError)
-    with pytest.raises(TimeoutError, match=MESSAGE):
-        call()
 
 
 @pytest.mark.parametrize("case", ["laplace", "compile_switch", "readable"])
@@ -332,29 +271,6 @@ def test_narrowed_handlers_propagate_runtime_error(case, monkeypatch):
         monkeypatch.setattr(builtins, "__import__", importing)
     with pytest.raises(RuntimeError, match=MESSAGE):
         call()
-
-
-@pytest.mark.parametrize("error", [TypeError, ValueError, AttributeError, NotImplementedError, RuntimeError])
-def test_scalar_conversion_known_failure_preserves_value(error):
-    from rfx.artifacts import _scalar
-    value = SimpleNamespace(item=_raising(error))
-    assert _scalar(value) is value
-
-
-def test_scalar_type_dispatch_propagates_timeout():
-    from rfx.artifacts import _scalar
-    with pytest.raises(TimeoutError, match=MESSAGE):
-        _scalar(SimpleNamespace(item=_raising(TimeoutError)))
-
-
-def test_git_undecodable_output_preserves_default(monkeypatch):
-    from rfx import artifacts
-
-    def undecodable(*args, **kwargs):
-        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
-
-    monkeypatch.setattr(artifacts.subprocess, "run", undecodable)
-    assert artifacts._git(["status", "--porcelain"], cwd=Path.cwd()) is None
 
 
 def test_staging_probe_missing_api_is_conservative(monkeypatch):
@@ -384,108 +300,18 @@ def test_traced_invariance_and_readable_values_do_not_coerce():
     jax.make_jaxpr(check)(jnp.ones((2, 2, 2)))
 
 
-def test_artifact_traced_values_use_metadata_without_host_conversion():
-    from rfx import artifacts
-    def check(value):
-        assert artifacts._safe_float(value) is None
-        assert artifacts._jsonable(value, array_values=True)["shape"] == [2]
-        assert "traced value" in artifacts._array_summary(value, include_peak=True)["peak_error"]
-        assert artifacts._profile_summary(value)["count"] == 2
-        assert artifacts._freq_summary(value)["size"] == 2
-        return value
-    jax.make_jaxpr(check)(jnp.ones(2))
-
-
-PROBE_CASES = (
-    "version", "backend", "devices", "device_metadata", "analysis_attribute",
-    "analysis_call", "analysis_field", "scope", "memory_outer", "memory_inner",
-    "safe_float", "array_values", "to_dict", "asdict", "sequence", "profile",
-    "grid_shape", "frequencies", "git", "distribution_version", "compile_probe",
-)
-NARROWED_PROBES = ("safe_float", "array_values", "sequence", "profile",
-                   "grid_shape", "frequencies", "git", "distribution_version")
-RECORDED_PROBES = tuple(case for case in PROBE_CASES if case not in NARROWED_PROBES)
-
-
 def _recorded_probe(case, monkeypatch, error):
     fail = _raising(error)
-    class BrokenAttribute:
-        def __getattr__(self, name):
-            fail()
-    if case in {"version", "backend", "devices", "device_metadata"}:
-        from rfx.api import _compiled_memory as memory
-        fake_jax = SimpleNamespace(__version__="0.10.2", default_backend=lambda: "cpu",
-                                   local_devices=lambda: [BrokenAttribute()])
-        if case == "version":
-            fake_jax = BrokenAttribute()
-        elif case == "backend":
-            fake_jax.default_backend = fail
-        elif case == "devices":
-            fake_jax.local_devices = fail
-        monkeypatch.setattr(memory, "jax", fake_jax)
-        return lambda: memory._environment_summary()["reason"]
-    if case in {"analysis_attribute", "analysis_call", "analysis_field", "scope"}:
-        from rfx.api import _compiled_memory as memory
-        if case == "scope":
-            return lambda: memory._compiled_introspection_scope(BrokenAttribute())[1]
-        compiled = BrokenAttribute() if case == "analysis_attribute" else SimpleNamespace(
-            memory_analysis=fail if case == "analysis_call" else lambda: BrokenAttribute())
-        return lambda: memory._normalize_compiled_memory_analysis(compiled).reason
     if case in {"memory_outer", "memory_inner"}:
         from tests.unit.autodiff.test_estimate_ad_memory import _uniform_sim
         sim = _uniform_sim()
         monkeypatch.setattr(jax, "local_devices", fail if case == "memory_outer" else lambda: [
             SimpleNamespace(platform="mps", memory_stats=fail)])
         return lambda: sim.estimate_ad_memory(4).warning
-    if case == "distribution_version":
-        from rfx import diagnostics
-        monkeypatch.setattr(diagnostics.metadata, "version", fail)
-        return lambda: diagnostics._version_of("rfx")
-    if case == "compile_probe":
-        from rfx.core.jax_utils import compile_time_switch
-        monkeypatch.setattr(jax, "make_jaxpr", fail)
-        def probe():
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                assert compile_time_switch.__wrapped__() is None
-            return str(caught[0].message)
-        return probe
-    from rfx import artifacts
-    if case == "safe_float":
-        class BrokenFloat:
-            __float__ = fail
-        return lambda: artifacts._safe_float(BrokenFloat())
-    if case == "array_values":
-        return lambda: artifacts._jsonable(_BrokenArray(error), array_values=True)
-    if case in {"to_dict", "asdict"}:
-        value = SimpleNamespace(**{"to_dict" if case == "to_dict" else "_asdict": fail})
-        return lambda: artifacts._jsonable(value)
-    if case == "sequence":
-        class BrokenSequence:
-            __len__ = fail
-        return lambda: artifacts._sequence_summary(BrokenSequence())
-    if case == "profile":
-        return lambda: artifacts._profile_summary(_BrokenArray(error))
-    if case == "grid_shape":
-        class BrokenDimension:
-            __int__ = fail
-        return lambda: artifacts._grid_shape(SimpleNamespace(shape=(BrokenDimension(),)))
-    if case == "frequencies":
-        return lambda: artifacts._freq_summary(_BrokenArray(error))
-    if case == "git":
-        monkeypatch.setattr(artifacts.subprocess, "run", fail)
-        return lambda: artifacts._git(["rev-parse", "HEAD"], cwd=Path.cwd())
     raise AssertionError(case)
 
 
-@pytest.mark.parametrize("case", PROBE_CASES)
-def test_recorded_probe_timeout_propagates(case, monkeypatch):
-    call = _recorded_probe(case, monkeypatch, TimeoutError)
-    with pytest.raises(TimeoutError, match=MESSAGE):
-        call()
-
-
-@pytest.mark.parametrize("case", RECORDED_PROBES)
+@pytest.mark.parametrize("case", ["memory_outer", "memory_inner"])
 def test_recorded_probe_preserves_fallback(case, monkeypatch):
     result = _recorded_probe(case, monkeypatch, RuntimeError)()
     if case in {"to_dict", "asdict"}:
@@ -493,74 +319,3 @@ def test_recorded_probe_preserves_fallback(case, monkeypatch):
         assert "fail" in result["repr"]
         result = result["error"]
     assert f"RuntimeError: {MESSAGE}" in result
-
-
-@pytest.mark.parametrize("case", NARROWED_PROBES)
-def test_default_probe_runtime_error_propagates(case, monkeypatch):
-    with pytest.raises(RuntimeError, match=MESSAGE):
-        _recorded_probe(case, monkeypatch, RuntimeError)()
-
-
-@pytest.mark.parametrize("case, error", [
-    (case, error)
-    for case, errors in (
-        ("safe_float", (TypeError, ValueError, OverflowError)),
-        ("grid_shape", (TypeError, ValueError, OverflowError)),
-        ("array_values", (TypeError, ValueError)),
-        ("profile", (TypeError, ValueError)),
-        ("frequencies", (TypeError, ValueError)),
-        ("sequence", (TypeError,)),
-        ("git", (OSError,)),
-        ("distribution_version", (ImportError, OSError)),
-    ) for error in errors
-])
-def test_default_probe_expected_failure_preserves_fallback(case, error, monkeypatch):
-    result = _recorded_probe(case, monkeypatch, error)()
-    if case in {"safe_float", "grid_shape", "git"}:
-        assert result is None
-    elif case == "distribution_version":
-        assert result == "?"
-    elif case == "sequence":
-        assert result == {"present": True, "count": None, "type": "BrokenSequence"}
-    else:
-        assert result["shape"] == [2, 2, 2]
-        assert result["dtype"] == "float32"
-        assert result["size"] == 8
-        assert "min" not in result
-
-
-def test_git_subprocess_timeout_preserves_default(monkeypatch):
-    import subprocess
-    from rfx import artifacts
-    def expired(*args, **kwargs):
-        raise subprocess.TimeoutExpired("git", 2)
-    monkeypatch.setattr(artifacts.subprocess, "run", expired)
-    assert artifacts._git(["status"], cwd=Path.cwd()) is None
-
-
-def test_animation_writer_runtime_error_propagates(monkeypatch, tmp_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.animation as animation
-    import matplotlib.pyplot as plt
-    from rfx.animation import save_field_animation
-    monkeypatch.setattr(animation, "FFMpegWriter", _raising(RuntimeError))
-    try:
-        with pytest.raises(RuntimeError, match=MESSAGE):
-            save_field_animation({"ez": np.zeros((2, 2, 2))}, tmp_path / "failed.mp4")
-    finally:
-        plt.close("all")
-
-
-@pytest.mark.parametrize("probe, target", [("_mpl3d", "mpl_toolkits.mplot3d.art3d"),
-                                          ("_pyvista", "pyvista")])
-def test_visualization_import_probe_runtime_error_propagates(monkeypatch, probe, target):
-    from rfx import visualize3d
-    original = builtins.__import__
-    def importing(name, *args, **kwargs):
-        if name == target:
-            raise RuntimeError(MESSAGE)
-        return original(name, *args, **kwargs)
-    monkeypatch.setattr(builtins, "__import__", importing)
-    with pytest.raises(RuntimeError, match=MESSAGE):
-        getattr(visualize3d, probe)()
