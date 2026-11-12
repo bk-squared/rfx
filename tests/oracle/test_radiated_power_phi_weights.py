@@ -158,6 +158,46 @@ def test_r3_both_paths_read_the_one_weight_function(monkeypatch):
     np.testing.assert_allclose(np.asarray(after_jax), 3.0 * np.asarray(before_jax), rtol=1e-6)
 
 
+def _float32_built_seam_grid(n):
+    # Built in float32 and carried in float64, as compute_far_field stores
+    # it: the last sample is float32(2*pi), 1.7e-7 past 2*pi.
+    phi = np.asarray(jnp.linspace(0, 2 * jnp.pi, n), dtype=np.float64)
+    assert phi.dtype == np.float64 and 0 < phi[-1] - 2 * np.pi < 1e-6
+    return phi
+
+
+@pytest.mark.parametrize("n", [73, 13])
+def test_float32_built_seam_grid_weight_sum(n):
+    phi = _float32_built_seam_grid(n)
+    theta = np.array([0.0, np.pi / 2 - 0.25, np.pi / 2, np.pi / 2 + 0.25, np.pi])
+    intensity = np.zeros((1, len(theta), n))
+    intensity[0, 2, :] = 4.0
+    total = integrate_radiated_power(intensity, theta, phi)[0]
+    print(f"float32-built n={n}: sum - 2*pi = {total - 2 * np.pi:.3e} "
+          f"({(total - 2 * np.pi) / np.spacing(2 * np.pi):.1f} ulp)", file=sys.stderr)
+    assert abs(total - 2 * np.pi) <= 8 * np.spacing(2 * np.pi), total - 2 * np.pi
+
+
+@pytest.mark.parametrize("n", [73, 13])
+def test_float32_built_seam_grid_takes_the_seam_branch(n):
+    phi = _float32_built_seam_grid(n)
+    weights = radiated_power_module._phi_weights(phi)
+    assert len(weights) == n
+    assert weights[-1] == 0.5 * (phi[-1] - phi[-2])
+
+
+@pytest.mark.parametrize("n", [73, 13])
+def test_float32_built_seam_grid_z_dipole(n):
+    d = directivity(_z_dipole(THETA, _float32_built_seam_grid(n)))[0]
+    assert abs(d - D_DIPOLE_DBI) <= 1e-6, d
+
+
+def test_phi_span_beyond_full_turn_is_refused():
+    phi = np.linspace(0, 2 * np.pi + 1e-5, 73)
+    with pytest.raises(ValueError, match="full-sphere coverage"):
+        directivity(_z_dipole(THETA, phi))
+
+
 _PHI24 = np.linspace(0, 2 * np.pi, 24, endpoint=False)
 
 

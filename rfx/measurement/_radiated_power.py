@@ -43,7 +43,10 @@ def _phi_weights(phi):
     phi = np.asarray(phi)
     if phi.ndim != 1 or phi.size < 1:
         raise _coverage_error()
-    tol = _coverage_tol(phi)
+    # Angle grids built in float32 are often carried in float64 (a float32
+    # 2*pi is 1.7e-7 past 2*pi), so the phi checks never use less than the
+    # float32 rounding tolerance.
+    tol = max(_coverage_tol(phi), 8 * np.finfo(np.float32).eps * np.pi)
     phi = phi.astype(np.float64)
     if not np.all(np.isfinite(phi)):
         raise _coverage_error()
