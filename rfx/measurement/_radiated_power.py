@@ -37,8 +37,8 @@ def _phi_weights(phi):
     samples u_0..u_{M-1}, w_i = (u_{i+1} - u_{i-1}) / 2 with u_M = u_0 + 2*pi
     and u_{-1} = u_{M-1} - 2*pi, so the weights sum to 2*pi for any spacing.
     With a seam repeat, the first sample gets half its forward interval and
-    the repeat half its backward interval (the closed-interval trapezoid end
-    weights); together they carry the first unique sample's weight.
+    the repeat half its backward interval measured to phi_0 + 2*pi; together
+    they carry the first unique sample's weight.
     """
     phi = np.asarray(phi)
     if phi.ndim != 1 or phi.size < 1:
@@ -63,7 +63,7 @@ def _phi_weights(phi):
     u_prev = np.insert(u[:-1], 0, u[-1] - 2 * np.pi)
     weights = (u_next - u_prev) / 2
     if seam:
-        weights = np.append(weights, (phi[-1] - phi[-2]) / 2)
+        weights = np.append(weights, (phi[0] + 2 * np.pi - phi[-2]) / 2)
         weights[0] = (phi[1] - phi[0]) / 2
     return weights
 

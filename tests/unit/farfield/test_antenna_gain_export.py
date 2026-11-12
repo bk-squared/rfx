@@ -136,7 +136,8 @@ def test_valid_sphere_uses_periodic_phi_weights(dtype, grid):
     def periodic_phi_weights(p):
         # Periodic trapezoid over one turn; a 0/2*pi seam repeat is one
         # direction: the first sample takes half its forward interval and the
-        # repeat half its backward interval. One sample: axisymmetric 2*pi.
+        # repeat half its backward interval measured to phi_0 + 2*pi. One
+        # sample: axisymmetric 2*pi.
         if len(p) == 1:
             return np.array([2 * np.pi])
         p64 = p.astype(np.float64)
@@ -147,7 +148,7 @@ def test_valid_sphere_uses_periodic_phi_weights(dtype, grid):
                        - (u[i - 1] if i > 0 else u[m - 1] - 2 * np.pi)) / 2
                       for i in range(m)])
         if seam:
-            w = np.append(w, (p64[-1] - p64[-2]) / 2)
+            w = np.append(w, (p64[0] + 2 * np.pi - p64[-2]) / 2)
             w[0] = (p64[1] - p64[0]) / 2
         return w.astype(p.dtype)
 

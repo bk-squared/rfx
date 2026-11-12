@@ -69,7 +69,7 @@ def test_phi_weight_sum_through_public_path(phi):
 
 
 def _test_periodic_weights(phi):
-    # Rule items 1-3 of the design (item 3 as corrected 2026-11-12 13:13),
+    # Rule items 1-3 of the design (item 3 as decided 2026-11-12 16:44),
     # formed here in float64.
     seam = phi[-1] - phi[0] >= 2 * np.pi - 1e-9
     u = phi[:-1] if seam else phi
@@ -80,7 +80,7 @@ def _test_periodic_weights(phi):
         prv = u[i - 1] if i > 0 else u[m - 1] - 2 * np.pi
         w[i] = (nxt - prv) / 2
     if seam:
-        w = np.append(w, (phi[-1] - phi[-2]) / 2)
+        w = np.append(w, (phi[0] + 2 * np.pi - phi[-2]) / 2)
         w[0] = (phi[1] - phi[0]) / 2
     return w
 
@@ -183,7 +183,7 @@ def test_float32_built_seam_grid_takes_the_seam_branch(n):
     phi = _float32_built_seam_grid(n)
     weights = radiated_power_module._phi_weights(phi)
     assert len(weights) == n
-    assert weights[-1] == 0.5 * (phi[-1] - phi[-2])
+    assert weights[-1] == 0.5 * (phi[0] + 2 * np.pi - phi[-2])
 
 
 @pytest.mark.parametrize("n", [73, 13])
