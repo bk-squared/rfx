@@ -101,8 +101,7 @@ def test_p7_record_witness(monkeypatch, graded):
 
 @pytest.mark.parametrize('graded', [
     pytest.param(False, id='uniform'),
-    pytest.param(True, id='graded', marks=pytest.mark.xfail(strict=True,
-        raises=NotImplementedError, reason='graded float64 needs rfx#2538')),
+    pytest.param(True, id='graded'),
 ])
 def test_p9_richardson(monkeypatch, graded):
     with enable_x64():
