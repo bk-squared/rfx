@@ -69,8 +69,9 @@ def test_phi_weight_sum_through_public_path(phi):
 
 
 def _test_periodic_weights(phi):
-    # Rule items 1-3 of the design (item 3 as decided 2026-11-12 16:44),
-    # formed here in float64.
+    # Periodic trapezoid weights on the unique samples; with a seam repeat,
+    # half the first interval and half the interval up to phi[0] + 2*pi.
+    # Formed here in float64.
     seam = phi[-1] - phi[0] >= 2 * np.pi - 1e-9
     u = phi[:-1] if seam else phi
     m = len(u)
