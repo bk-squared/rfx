@@ -36,7 +36,7 @@ setting reaches. You do not need it to use rfx.
    records each of them at its hook points from that plan.
 5. **Results.** After the run, the records become results. `run()` returns
    the S-parameters and the far-field box's DFT records in a result object
-   (`rfx/sparams/`); `compute_far_field` turns those records into a radiation
+   (`rfx/measurement/`, `rfx/sparams/`); `compute_far_field` turns those records into a radiation
    pattern (`rfx/measurement/farfield.py`). `forward()` returns the time
    signals as JAX arrays, so you can differentiate them (see
    [run() and forward()](/rfx/run/run-and-forward/)).
