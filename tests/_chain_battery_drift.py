@@ -13,12 +13,12 @@ The guards solve the CHEAPEST rung of each battery again, with the battery's
 own driver so that the live case is the recorded case, check that the grid it
 builds is the recorded grid, and hold the live S to the stored S with the bar
 the battery itself is judged by (``docs/design_notes/chain_closure_contract.md``,
-"The v2.0 battery for lumped/wire, MSL and coax", and the PI's deep-null
-ruling of 2026-09-21): magnitude within 2 dB outside the core of a deep null,
+"The v2.0 battery for lumped/wire, MSL and coax"): magnitude within 2 dB
+outside the core of a deep null,
 a quantity that is near zero by construction held to -20 dB, a frequency
 feature (a notch, a reflection zero, a phase crossing) within 1 %, and a line's
 electrical length — the slope of its unwrapped phase against frequency — within
-1 % (the PI's phase item of 2026-09-24, ``tests/_electrical_length.py``). A
+1 % (``tests/_electrical_length.py``). A
 line with no frequency feature has nothing else that sees its length: with
 every edge permittivity above vacuum read 5 % high the coaxial thru solves
 2.48 % longer electrically while its |S21| moves 0.01 dB. The phase also has to
@@ -133,7 +133,7 @@ def magnitude_findings(label: str, freqs, stored, live, *, deep=None,
 
     ``deep`` marks the core of a null — bins where the reference is at or below
     the deep-null level — in which a dB difference is the difference of two
-    near-zeros and says nothing (the PI's 2026-09-21 ruling). By default the
+    near-zeros and says nothing. By default the
     core is where the STORED curve is at or below -20 dB. The worst distance is
     appended to ``report`` whether or not it is inside the bar.
     """

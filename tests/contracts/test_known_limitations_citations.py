@@ -30,7 +30,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # mode_profile fixtures -- the page's own rule for when an entry goes.
 # The taper entry carries NO citation line on purpose. #1100 (the SMOKE half)
 # closed with the commensurate mesh, and #1122 (the paper lane's published
-# figures) closed on 2026-09-19 with a PI decision to disclose rather than
+# figures) closed with a decision to disclose rather than
 # re-mesh or issue an erratum. The limitation is still real and still belongs
 # on this page, but there is no open work behind it, and an arrow line would
 # present a settled decision as a task. Both numbers sit in
@@ -59,14 +59,14 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # than the documented one node short of it. Pinned by
 # tests/unit/grid/test_cell_count_ulp_snap.py and
 # tests/unit/geometry/test_declared_span_reaches_padded_face.py.
-# #830 (the fitted microstrip beta sitting ~0.9 % above the closed form) left on
-# 2026-09-21: the PI closed it as a stated accuracy in the support matrix. The
+# The fitted microstrip beta sits ~0.9 % above the closed form and is
+# a stated accuracy in the support matrix. The
 # offset is still real and unattributed, so the prose stays without the arrow
 # and 830 sits in RESOLVED_REFERENCES.
-# #838 left on 2026-09-23: closed as not planned before 2.0 by PI decision.
+# Closed as not planned before 2.0.
 # The coax-to-microstrip power over-read remains a standing limitation, with
 # its closed issue named for provenance in RESOLVED_REFERENCES.
-# #1381 left on 2026-09-30: closed as a stated limit by PI decision (both the
+# Closed as a stated limit (both the
 # completion of an unresolved pair and the early stop it can end). The two ring-down
 # entries stay as standing limitations, with 1381 in RESOLVED_REFERENCES.
 # The traced-mesh conductor entry leaves with nominal-grid continuation,
@@ -144,12 +144,12 @@ def _page() -> str:
 
 
 # The pinned set is checked in two halves. An entry that disappears while its
-# issue is open hides a defect from users, and the PI's documentation rule
-# (2026-09-22) keeps that one blocking. A new citation not yet added to the set
+# issue is open hides a defect from users, and the documentation rule
+# keeps that one blocking. A new citation not yet added to the set
 # is bookkeeping, and runs with the other documentation checks.
 @pytest.mark.reads_docs_for_gate(reason=(
     "a known-limitations entry must stay while its defect is open: the one page "
-    "a PR must keep right (PI, 2026-09-22)"))
+    "a PR must keep right"))
 def test_every_pinned_issue_keeps_its_entry():
     cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
     missing = CITED_ISSUES - cited

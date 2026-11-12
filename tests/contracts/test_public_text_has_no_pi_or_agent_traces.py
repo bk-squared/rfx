@@ -10,11 +10,11 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCOPE = ("rfx/",)
+SCOPE = ("rfx/", "tests/contracts/", ":(top,glob)tests/*")
 pytestmark = pytest.mark.source_scan
 
 PATTERNS = {
-    "C1": re.compile(r"/Users/byungkwankim/|-Users-byungkwankim|byungkwan-workspace"),
+    "C1": re.compile(r"/Users/byungkwankim/|-Users-byungkwankim|byungkwan-workspace|runs/byungkwan/|Project: byungkwan"),
     "C2": re.compile(r"\b(?:PI|PI-directed|PI-gated|PI-approved)\b|the professor"),
     "C3": re.compile(r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff]"),
     "C4": re.compile(
@@ -31,7 +31,7 @@ MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
 def matching_classes(line):
     """Allow mathematical uses without hiding attribution elsewhere on a line."""
     return [name for name, pattern in PATTERNS.items()
-            if pattern.search(MATH_PI.sub("", line) if name == "C2" else line)]
+            if pattern.search(MATH_PI.sub("", line) if name == "C2" and "PI" in line else line)]
 
 
 def test_public_text_has_no_pi_or_agent_traces():
@@ -47,7 +47,11 @@ def test_public_text_has_no_pi_or_agent_traces():
             source = data.decode("utf-8")
         except UnicodeDecodeError:
             continue
+        exceptions = tuple(literal for path, literal, reason in NAMED_EXCEPTIONS
+                           if path == name)
         for number, line in enumerate(source.splitlines(), 1):
+            if exceptions and any(literal in line for literal in exceptions):
+                continue
             if classes := matching_classes(line):
                 errors.append(f"{name}:{number}: {', '.join(classes)}: {line.strip()}")
     assert not errors, "\n".join(errors)
@@ -67,6 +71,8 @@ def test_math_and_identifiers_are_allowed(line):
     ("# /Users/byungkwankim/x", "C1"),
     ("# -Users-byungkwankim-x", "C1"),
     ("# byungkwan-workspace/x", "C1"),
+    ("# runs/byungkwan/123", "C1"),
+    ("# Project: byungkwan", "C1"),
     ("# (PI, 2026-09-24)", "C2"),
     ("# PI-directed", "C2"),
     ("# PI-gated", "C2"),
@@ -98,3 +104,116 @@ def test_math_and_identifiers_are_allowed(line):
 ])
 def test_each_private_text_form_is_detected(line, expected):
     assert matching_classes(line) == [expected]
+
+
+# Escaped spellings keep the exception table from matching its own literals.
+NAMED_EXCEPTIONS = (
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', 'if pattern.search(MATH_\x50I.sub("", line) if name == "C2" and "\x50I" in line else line)]',
+     "Detector matching logic must name the text it detects."),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '"C1": re.compile(r"/Users/\x62yungkwankim/|-Users-\x62yungkwankim|\x62yungkwan-workspace|\x72uns/\x62yungkwan/|\x50roject: \x62yungkwan"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '"C2": re.compile(r"\\b(?:\x50I|\x50I-directed|\x50I-gated|\x50I-approved)\\b|\x74he professor"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', 'r"\x72fx-archive|\x61gent-rules|\x70i-desk|\x72fx-lead|\x72fx-core-desk|\\b[DL]:[0-9a-f]{6}\\b"',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', 'r"|\x4dSL-PLANE\\.md|\x72fx/\x72ecords/|\x6cedger archive|\x69nternal issue \x6cedger|\x72fx-known-issues|\\b\x72ecords? 20\\d{6}-[a-z]"',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', 'r"|\x64ocs/research_notes/|\x72fx-research|\x72fx-adv|\x72fx-fdfd-research"',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', 'r"|\x62k-workspace|\x72emilab-cnu/paper"',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', 'MATH_\x50I = re.compile(r"\\b\x50I(?=\\s*=)|\\b2\\s*\\*\\s*\x50I\\b")',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# /Users/\x62yungkwankim/x", "C1"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# -Users-\x62yungkwankim-x", "C1"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x62yungkwan-workspace/x", "C1"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72uns/\x62yungkwan/123", "C1"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x50roject: \x62yungkwan", "C1"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# (\x50I, 2026-09-24)", "C2"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x50I-directed", "C2"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x50I-gated", "C2"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x50I-approved", "C2"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x74he professor", "C2"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("\x50I = math.pi  # \x50I approved", "C2"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("2 * \x50I  # \x50I approved", "C2"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \uc9c0\uc2dc", "C3"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72fx-archive", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x61gent-rules", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x70i-desk", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72fx-lead", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72fx-core-desk", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x44:abc123", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x4c:abcdef", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x4dSL-PLANE.md", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72fx/\x72ecords/sample/", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x6cedger archive", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# see \x72fx-known-issues.md", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72ecords 20261012-pencil-stage-peaks", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x69nternal issue \x6cedger", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x64ocs/research_notes/sample.md", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72fx-research", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72fx-adv", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72fx-fdfd-research", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x62k-workspace", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x72emilab-cnu/paper", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '("# \x61cc-admem-g1-20261016t043022z-648d9", "C4"),',
+     'Detector patterns and synthetic cases must name the text they detect.'),
+    ('tests/contracts/test_layer_structure.py', '(\x50I to decide how far 2.0 reaches)',
+     'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_changelog_fragments.py', 'bk-squared/\x72fx-archive',
+     'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_data_budget.py', 'bk-squared/\x72fx-archive',
+     'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_data_budget.py', '\x72fx/\x72ecords/<YYYYMMDD>-<topic>/',
+     'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_research_notes_are_not_tracked.py', '\x64ocs/research_notes/',
+     'The contract proves the research-note directory is untracked.'),
+    ('tests/contracts/test_source_carries_no_tracker_history.py', '\x64ocs/research_notes/2000-01-02_sample.md',
+     'Synthetic citation proves private provenance is detected.'),
+    ('tests/contracts/test_guide_citations_resolve.py', '\x64ocs/research_notes/',
+     'Synthetic prose and its explanation prove a plain path is not a link.'),
+    ('tests/contracts/test_pr_body_contract.py', 'It does not close #737. The three decisions the tracker needs from the \x50I',
+     'Compared diagnostic text and generated test identifier await a cleanup ruling.'),
+    ('tests/contracts/boundary_baseline.py', '\x4c:d47ac6',
+     'The recorded harness digest is handled in the fixture cleanup step.'),
+    ('tests/contracts/boundary_baseline.py', '\x4c:6daae7',
+     'The recorded harness digest is handled in the fixture cleanup step.'),
+)
+
+
+def test_named_exceptions_are_not_stale():
+    for path, literal, reason in NAMED_EXCEPTIONS:
+        lines = (ROOT / path).read_text(encoding="utf-8").splitlines()
+        assert any(literal in line for line in lines), (path, literal, reason)

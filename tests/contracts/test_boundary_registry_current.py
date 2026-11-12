@@ -19,7 +19,7 @@ EXCEPTIONS = (
     (
         "rfx/model/realization_reference_area.py",
         "drawn_open_fractions",
-        "rfx-known-issues.md: The realization table's face reference does not fold a box drawn past a periodic seam",
+        "The realization table's face reference does not fold a box drawn past a periodic seam",
         "the reference reads only the domain nodes, so a box past a periodic seam is not folded",
     ),
 )

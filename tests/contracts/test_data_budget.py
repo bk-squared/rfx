@@ -1,7 +1,7 @@
-"""The data-budget gate does what it claims (PI, 2026-09-24).
+"""The data-budget gate does what it claims.
 
 The repository holds code, tests and the frozen reference data a test reads;
-measurement records go to ``bk-squared/rfx-archive``. The gate is mechanical
+measurement records are stored separately. The gate is mechanical
 and so is everything that can go wrong with it: a budget off by one, a rename
 counted as new data, a deletion counted against the PR that moves records out,
 an allowlist glob that crosses directories, a fixture no test reads slipping

@@ -6,8 +6,7 @@ probe 0 from the recorded V/I and shifts it back to the feed plane:
 ``S_feed[i, j] = D_i S_probe0[i, j] D_j``, ``D_p = exp(-j beta_p L_p)``,
 beta_p the closed form (Hammerstad-Jensen eps_eff(0) with Kirschning-Jansen
 dispersion) on every bin (one resolver, ``rfx.measurement.msl_planes``, for both
-the MSL and the mixed calculator; rfx-archive MSL-PLANE.md, decision records
-5, 7 and 12).
+the MSL and the mixed calculator).
 
 The identity below is checked with every factor formed in THIS file:
 S_probe0 by a NumPy multi-drive solve of the raw probe-0 V/I the calculator

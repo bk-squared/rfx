@@ -154,7 +154,7 @@ def test_physics_cutover_does_not_exempt_lane_or_review() -> None:
         "Review: opus (separate instance) – ACCEPT",
         "Review: opus (separate instance) – ACCEPT WITH CHANGES",
         "Review: skipped — (a) pure docs change, one paragraph, trivially reverted",
-        "Review: skipped - (b) PI instructed the skip on 2026-09-18",
+        "Review: skipped - (b) the maintainer instructed the skip on 2026-09-18",
         "Review: skipped – (a) one comment typo, reverted with one click",
     ],
     ids=[
