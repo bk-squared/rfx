@@ -41,9 +41,9 @@ Usage (from a clean checkout; the ``rfx`` import must resolve to this tree)::
         --assemble --out <dir with every arm JSON> --run-index <json> \\
         --artifact-out <path outside the repository>
 
-Measurement records stay out of this repository (PI, 2026-09-24). The record of
-2026-09-23 is ``rfx/records/20260924-coax-closed-can/open_absorber_diagnostic.json``
-in ``bk-squared/rfx-archive``.
+Measurement records stay out of this repository. The record of
+2026-09-23 is retained
+in the record repository.
 """
 from __future__ import annotations
 

@@ -46,7 +46,7 @@ PRE-DECLARED READING (before the run)
   witness above -40 dB voids that arm.
 
 RECORDED VERDICT (2026-08-28) — PRE-2.0, kept as dated history. Source:
-docs/agent-memory/rfx-known-issues.md, "Added 2026-08-28 (evening) -- A/B
+the recorded findings, "Added 2026-08-28 (evening) -- A/B
 VERDICT ..." and "... canonical edge-fed patch gate RED since #702" (anchor
 corrected 2026-08-29 to the realized 43 x 51 raster; that file is local to
 the primary checkout). The arms below are the OLD ones (face1 = one-cell

@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   XLA_PYTHON_CLIENT_PREALLOCATE: "false"
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -14,8 +15,9 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -euo pipefail
-  cd /root/workspace/byungkwan-workspace/research/rfx
-  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
+  cd /root/workspace/$RFX_WORKSPACE/research/rfx
+  git config --global --add safe.directory /root/workspace/$RFX_WORKSPACE/research/rfx || true
   echo "=== rfx port external-reference shard: generalized_planar_ports ==="
   echo "=== expected state ==="
   echo "This shard fails until the broad-E5 external/reference evidence is present and marked broad_e5_passed."
@@ -23,7 +25,7 @@ run: |-
   git status --short || true
   echo "=== install runtime dependencies (repo path, no editable install) ==="
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
-  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export RFX_REPO_ROOT="/root/workspace/$RFX_WORKSPACE/research/rfx"
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
   python -c "import numpy, rfx; print('dependency_probe=passed', 'numpy', numpy.__version__, 'rfx', getattr(rfx, '__version__', 'unknown'))"
   output_root="${RFX_PORT_EXTERNAL_OUTPUT_ROOT:-.omx/physics-gate/vessl-2026-05-09-port-external}"

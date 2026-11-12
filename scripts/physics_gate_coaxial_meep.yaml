@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: nvidia/cuda:12.1.0-devel-ubuntu22.04
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   DEBIAN_FRONTEND: noninteractive
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -15,9 +16,10 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
-  cd /root/workspace/byungkwan-workspace/research/rfx
-  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  cd /root/workspace/$RFX_WORKSPACE/research/rfx
+  git config --global --add safe.directory /root/workspace/$RFX_WORKSPACE/research/rfx || true
   echo "=== rfx MEEP coax power-flux reference (LINEAGE A conda-forge pymeep) ==="
   echo "=== install miniconda + pymeep (conda-forge MIT MEEP, NOT PyPI 'meep') ==="
   apt-get update && apt-get install -y --no-install-recommends python3 python3-pip libopenmpi3 openmpi-bin curl

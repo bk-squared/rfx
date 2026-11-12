@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Enforce the Physics first line and the Lane/Review provenance lines.
 
-The reader's first question is what changed for a user (rfx-core-desk,
-2026-10-26). The first non-blank body line must start flush left with
+The reader's first question is what changed for a user;
+the first non-blank body line must start flush left with
 ``Physics:`` and describe that change, or say ``Physics: none — reason``.
 The text must be non-empty and contain no angle brackets; ``none`` requires
 a dash and a non-empty reason. Comments, fences and preformatted blocks are
@@ -64,7 +64,7 @@ text would otherwise be a passing body.
 say WHICH by opening the reason with the literal ``(a)`` or ``(b)``:
 
     (a) an easily reverted pure docs/comment change
-    (b) an explicit instruction from the PI to skip
+    (b) an explicit instruction from the maintainer to skip
 
 That is what makes the exception auditable later; a bare "skipped - x" records
 nothing.
@@ -545,7 +545,7 @@ def _check_review(lines: list[str]) -> list[str]:
         problem += (
             f" Found a `Review: skipped` line that does not say which exception "
             f"({bad_skip[0].strip()!r}): open the reason with `(a)` for an easily "
-            "reverted pure docs/comment change, or `(b)` for a skip the PI instructed."
+            "reverted pure docs/comment change, or `(b)` for a skip instructed by the maintainer."
         )
     problem += _adorned_hint(lines, "Review:")
     return [problem]
@@ -657,7 +657,7 @@ def failure_report(problems: list[str], env: dict[str, str] | None = None) -> st
         "  Review: <who read it> (separate instance) - ACCEPT",
         "  Review: <who read it> (separate instance) - ACCEPT WITH CHANGES",
         "  Review: skipped - (a) <easily reverted pure docs/comment change>",
-        "  Review: skipped - (b) <the PI instructed the skip>",
+        "  Review: skipped - (b) <the maintainer instructed the skip>",
         "",
         f"Allowed lanes ({lane_source}):",
     ]
