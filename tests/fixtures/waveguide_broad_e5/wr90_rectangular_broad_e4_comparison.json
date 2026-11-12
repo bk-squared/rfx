@@ -325,10 +325,10 @@
       "pre_fix_stdout": "tests/fixtures/waveguide_broad_e5/cv11_current_main_pre_fix_3fa534d1_stdout.txt",
       "post_fix_stdout": "tests/fixtures/waveguide_broad_e5/cv11_current_main_8206031d_stdout.txt",
       "provider_logs": {
-        "369367260731": "docs/research_notes/vessl_logs/369367260731-failed.log",
-        "369367260733": "docs/research_notes/vessl_logs/369367260733-completed.log",
-        "369367260735": "docs/research_notes/vessl_logs/369367260735-failed-checkout.log",
-        "369367260736": "docs/research_notes/vessl_logs/369367260736-completed.log"
+        "369367260731": "",
+        "369367260733": "",
+        "369367260735": "",
+        "369367260736": ""
       },
       "historical_delta_attribution": "June-to-August 3.7x improvement remains unattributed: the CPML/aperture candidates were not isolated. The new material A/B explains only the September pre-fix to post-fix change."
     },

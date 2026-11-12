@@ -2997,7 +2997,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/cv02-meep117/candidate-inputs/input-00.npz",
+      "file": "",
       "channel": null,
       "input_sha256": "3b97513568492c21a2da1119b67edc72e1d2ed8f2e67649d3361bec37fee532b",
       "n_samples": 3728,
@@ -3098,7 +3098,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/cv02-meep134/candidate-inputs/input-00.npz",
+      "file": "",
       "channel": null,
       "input_sha256": "3b97513568492c21a2da1119b67edc72e1d2ed8f2e67649d3361bec37fee532b",
       "n_samples": 3728,
@@ -3199,7 +3199,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 0,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3284,7 +3284,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 1,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3369,7 +3369,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 2,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3438,7 +3438,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 3,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3523,7 +3523,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 4,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3608,7 +3608,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 5,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3693,7 +3693,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 6,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3778,7 +3778,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 7,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3863,7 +3863,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 8,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -3948,7 +3948,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/unfed-input.npz",
+      "file": "",
       "channel": 9,
       "input_sha256": "aaca41a89cc52ca8699499c9c6bff3a8f5c3951157eace5107cec06cc0570056",
       "n_samples": 24882,
@@ -4033,7 +4033,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 0,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4134,7 +4134,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 1,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4235,7 +4235,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 2,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4320,7 +4320,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 3,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4421,7 +4421,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 4,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4522,7 +4522,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 5,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4623,7 +4623,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 6,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4724,7 +4724,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 7,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4793,7 +4793,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 8,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,
@@ -4894,7 +4894,7 @@
       "same_plan": true
     },
     {
-      "file": "docs/research_notes/issue872/patch-gpu-369367260362/fed-input.npz",
+      "file": "",
       "channel": 9,
       "input_sha256": "e3a4de0e333fecbc94249db142d639818961ae7269abdd969f7b4081705cb919",
       "n_samples": 24882,

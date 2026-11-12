@@ -10,8 +10,7 @@ decomposition.
 Scope of this CPU test: assert the flux branch RUNS on the NU path and
 that at a SETTLED num_periods it produces a passive, physical S-matrix
 (passivity ≤ 1.10, real reflection registered). Absolute-accuracy /
-broad-E5-envelope validation against analytic Airy is a GPU task
-(docs/research_notes/20260529_flux_nu_wiring_design.md).
+broad-E5-envelope validation against analytic Airy is a GPU task.
 
 Caveat (documented, not asserted): at transition num_periods the flux
 extractor — like any DFT-based extractor — is not yet settled and can
@@ -133,5 +132,4 @@ def test_nu_flux_settled_is_passive_and_reflects():
     # GPU envelope (CPML=24, 200mm domain, settled): WR-90 NU flux
     # 16/16 cases ≤ 0.0156 vs analytic Airy, eps_r {2,4}, grading 1.0-3.0
     # (VESSL run 369367240154; artifact registered under
-    # rectangular_waveguide_port). See
-    # docs/research_notes/20260529_flux_nu_wiring_design.md.
+    # rectangular_waveguide_port).

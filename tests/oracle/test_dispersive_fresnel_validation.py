@@ -4,8 +4,7 @@ Validates FDTD normal-incidence broadband reflection ``R(f)`` of a **dispersive*
 dielectric slab against a rigorous analytic oracle, for a single-Debye-pole, a
 single-Lorentz-pole and a single-Drude-pole material (the Drude arm is the
 closed-form comparison that used to live only in a cross-validation case). This
-is the tracked dispersive R/T oracle called
-for by ``docs/agent-memory/task_recipes/rt_measurement.md`` (the old
+is the tracked dispersive R/T oracle (the old
 ``crossval/08_material_dispersion.py`` numbers became unreproducible once that
 script was removed).
 
@@ -32,8 +31,7 @@ branch the +j matrix expects. ε(ω) fed to the oracle is the IDENTICAL
 ``eval_debye`` / ``eval_lorentz`` used to build the FDTD material.
 
 Gate: ``mean |R_fdtd - R_analytic| < 5%`` over the pulse band (measured 3.46% /
-2.74% on CPU 2026-07-02; recorded in
-``docs/research_notes/20260702_w31_dispersive_fresnel.md``). Gated on the MEAN
+2.74% on CPU 2026-07-02). Gated on the MEAN
 per the roadmap spec, not the per-frequency max.
 """
 

@@ -7,8 +7,7 @@ each formerly its own file:
 
 1. ``Simulation.compute_coaxial_two_port`` FDTD path — was
    ``test_coax_two_port_fdtd.py``. STATUS: VALIDATED WITH SCOPE (issue #489,
-   PI decision 2026-08-06 — see the docstring on ``CoaxialTwoPortResult`` and
-   ``docs/research_notes/20260729_i489_coax_two_port_design.md`` for the full
+   See the docstring on ``CoaxialTwoPortResult`` for the full
    evidence chain and scope statement — every gateable DUT here is
    azimuthally symmetric, so this battery alone still excludes the
    transition-discontinuity class issue #489 targets; that class is covered,

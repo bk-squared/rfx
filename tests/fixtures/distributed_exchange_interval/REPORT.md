@@ -5,9 +5,9 @@ UTC: 2026-09-22T02:07:14.424621+00:00. Branch `agent/distributed-exchange-interv
 ## Reproduction
 
 ```sh
-cd /Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval
-JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py
-JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --case M3 --device-count 4
+cd <workspace>/Documents/rfx-worktrees/dist-exchange-interval
+JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD .venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py
+JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD .venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --case M3 --device-count 4
 ```
 
 These are the recorded measurement invocations. The final script's first command alone runs all 18 configurations; the second command appended the 4-device M3 batch to the initial measurements.
@@ -15,7 +15,7 @@ These are the recorded measurement invocations. The final script's first command
 Analysis-only command:
 
 ```sh
-JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --analyze-only --output /tmp/rfx-K
+JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD .venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --analyze-only --output /tmp/rfx-K
 ```
 
 ## Configuration and definitions
@@ -30,7 +30,7 @@ Trace comparisons use the first timed repeat. For either reference, max ratio = 
 
 Timings are synchronized public `sim.run` wall time plus transfer/copy of the probe trace, including setup and any tracing/compilation performed by that call. All returned field arrays and traces are blocked before stopping the timer. One full-length warmup per configuration precedes five timed repeats; configuration order rotates by one each round. No concurrent simulation processes are used. Ratios are t(K)/t(K=1) and t(distributed)/t(single); these are elapsed-time ratios. CPU timings do not transfer to GPU.
 
-Environment: `{"JAX_PLATFORMS": "cpu", "PYTHONPATH": "/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval", "XLA_FLAGS": "--xla_force_host_platform_device_count=4", "cpu": "arm", "executable": "/Users/byungkwankim/Documents/rfx/.venv/bin/python", "jax_devices": ["cpu:0", "cpu:1", "cpu:2", "cpu:3"], "jax_enable_x64": false, "jax_version": "0.10.2", "logical_cpu_count": 10, "numpy_version": "2.4.6", "platform": "macOS-26.5.2-arm64-arm-64bit", "python": "3.11.2 (v3.11.2:878ead1ac1, Feb  7 2023, 10:02:41) [Clang 13.0.0 (clang-1300.0.29.30)]", "rfx_file": "/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval/rfx/__init__.py"}`
+Environment: `{"JAX_PLATFORMS": "cpu", "PYTHONPATH": "<workspace>/Documents/rfx-worktrees/dist-exchange-interval", "XLA_FLAGS": "--xla_force_host_platform_device_count=4", "cpu": "arm", "executable": ".venv/bin/python", "jax_devices": ["cpu:0", "cpu:1", "cpu:2", "cpu:3"], "jax_enable_x64": false, "jax_version": "0.10.2", "logical_cpu_count": 10, "numpy_version": "2.4.6", "platform": "macOS-26.5.2-arm64-arm-64bit", "python": "3.11.2 (v3.11.2:878ead1ac1, Feb  7 2023, 10:02:41) [Clang 13.0.0 (clang-1300.0.29.30)]", "rfx_file": "rfx/__init__.py"}`
 
 ## Summary rows
 
@@ -267,7 +267,7 @@ All analytic TE/TM modes in 8–16 GHz:
 
 ## Files and completion
 
-- Script: `/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval/scripts/diagnostics/measure_exchange_interval_error.py` (uncommitted).
+- Script: `scripts/diagnostics/measure_exchange_interval_error.py` (uncommitted).
 - All trace samples and FFT magnitudes: `/tmp/rfx-K/traces.npz`.
   Keys M1/M2/M3_single and M1/M2/M3_dN_KK hold first timed repeats; suffixes _warmup and _repeat1 through _repeat5 hold every run. _time_s arrays use index×dt; M3_frequency_Hz and _fft_magnitude_V_per_m hold spectra.
 - Full metrics: `/tmp/rfx-K/results.json`; run provenance: `/tmp/rfx-K/run_manifest.json`.

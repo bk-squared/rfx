@@ -21,8 +21,7 @@ record (2026-07-27 session, scratchpad ``f7_falsifier_declaration.md`` +
 * mesh convergence: within 0.006 dB from lambda/60 to lambda/120,
   +0.08 to +0.16 dB from PO at 5 GHz for this plate at 20 and 40 deg.
   Pattern and specular-direction validation remain as before. The always-on
-  gate below pins its fixed-grid Delta within 0.03 dB of the predeclared values
-  (rfx-archive rfx/records/20261031-oblique-rcs-level-1991).
+  gate below pins its fixed-grid Delta within 0.03 dB of the predeclared values.
 
 F5 — the 4-edge Method-B box requires vacuum on ALL FOUR transverse boundary
 planes; the pre-#471 validator checked only x planes and ``compute_rcs`` ran
@@ -266,7 +265,7 @@ def test_oblique_nu_grid_fence_fails_loud_on_ez():
 def test_absolute_sigma_matches_po_at_gate_grid(theta_inc):
     """Pin Delta vs PO to +0.0833/+0.1583 dB at 20/40 deg: |Delta - pin| <= 0.03 dB.
     Bar rounds up four times the largest measured route/record/mesh shift (0.007 dB).
-    Predeclared in rfx-archive rfx/records/20261031-oblique-rcs-level-1991."""
+"""
     grid, mats, n_w = _gate_grid_and_plate()
     res = compute_rcs(grid, mats, N_STEPS, f0=F0, bandwidth=0.5,
                       theta_inc=theta_inc, polarization="ez",

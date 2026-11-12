@@ -31,7 +31,7 @@ from mie_oracle import bistatic_over_pi_a2  # noqa: E402
 
 sys.path.insert(0, str(_REPO))
 
-# The v2 accuracy bar's magnitude line (PI, 2026-09-23, #820): the corrected
+# The v2 accuracy bar's magnitude line (#820): the corrected
 # pattern is judged against exact Mie within 2 dB, not against a window derived
 # from an earlier run. The previous bars (1.06 dB mean, from a measured 0.705 via
 # the envelope policy, and 0.5 dB at backscatter) were measured with the

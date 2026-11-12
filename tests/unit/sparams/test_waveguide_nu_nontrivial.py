@@ -18,7 +18,7 @@ reference within the broad-E5 0.05 tolerance, even for the eps_r=4 strong
 reflector that normalize=True floors at ~0.077. See
 ``tests/unit/sparams/test_waveguide_nu_flux.py`` (CPU sanity + Airy accuracy) and the
 GPU-validated WR-90 NU flux broad-E5 envelope (16/16 cases, VESSL run
-369367240154). Trail: docs/research_notes/20260529_flux_nu_wiring_design.md.
+369367240154).
 
 == UPDATE 2026-06-24: matches_uniform flipped to a real flux gate ==
 
@@ -439,8 +439,7 @@ def test_nu_nontrivial_matches_uniform():
     Resolves the long-open "NU non-trivial S-matrix at noise floor" item: that
     symptom was ``num_periods=2`` UNDERSETTLING, not a production bug (the
     reflected wave had not returned to the port). Triple-verified by two
-    diagnose->verify workflows; see the module docstring + rfx-known-issues
-    "NU non-trivial device".
+    diagnose->verify workflows; see the module docstring.
 
     At a settled ``num_periods`` the NU ``normalize='flux'`` S-matrix:
       - conserves power band-wide on BOTH drive columns (|S|^2 = 1.00 +/- 0.02,

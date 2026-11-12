@@ -47,8 +47,7 @@ Measured on both sides by the same rule, from the two solves only:
 - D(f): DFT of the full probe record at 41 bins, over 3-7 GHz for the Ez
   variants and over [0.6, 1.4] f_est for the control.
 
-Bars (rfx-archive rfx/plans/idm/20261026-high-wall-mirror/DESIGN.md section 3
-and its decision records 1-3):
+Bars:
 
 - anchor (v2 accuracy bar item 4, resonances within 1 %):
   |f_H / f_closed - 1| <= 1e-2 and |f_L / f_closed - 1| <= 1e-2;

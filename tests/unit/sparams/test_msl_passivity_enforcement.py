@@ -1,7 +1,6 @@
 """Passivity enforcement on compute_msl_s_matrix: strict ||S||_2 <= 1, loudly.
 
-``enforce_passivity=True`` is an OPT-IN post-process since 2026-09-21 (PI
-decision; the returned S must be the raw extraction on every channel, because
+``enforce_passivity=True`` is an OPT-IN post-process (the returned S must be the raw extraction on every channel, because
 the projection cannot run under tracing or on the eps_override channel —
 ``tests/unit/autodiff/test_msl_forward_identity.py`` is that contract). Every
 end-to-end test below that wants the projection therefore asks for it by
@@ -223,7 +222,7 @@ def test_enforced_result_is_strictly_passive_and_loud():
 @pytest.mark.parametrize("kwargs", [{}, {"enforce_passivity": False}],
                          ids=["default", "explicit_false"])
 def test_the_unprojected_default_returns_the_raw_extraction(kwargs):
-    """The default and an explicit False are the same call (PI 2026-09-21).
+    """The default and an explicit False are the same call.
 
     ``sigma_max_excess`` is what keeps the bound violation visible here, and
     it must agree with an offline singular-value read of the returned S —
