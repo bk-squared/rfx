@@ -15,6 +15,115 @@ EPS0 = 8.8541878128e-12
 WP = 2 * np.pi * 3e9
 
 
+def _capture_c2(kind, monkeypatch):
+    """Observe public setup before its scan, as in C1's coefficient measurement."""
+    import sys
+    from functools import wraps
+    import rfx.materials.lorentz as lorentz
+    import rfx.materials.pole_map as pole_map
+    import rfx.model.materials as materials
+    from tests.unit.materials.test_pole_map_runs import capture_scan, scene
+
+    records = {name: [] for name in ('realize', 'map', 'electric')}
+    locals_at_return = {}
+    targets = [('realize', materials, '_realize_poles'), ('map', pole_map, 'map_terms'),
+               ('electric', lorentz, 'lorentz_e_coeffs')]
+    codes = {getattr(mod, attr).__code__ for _, mod, attr in targets}
+    def profile(frame, event, arg):
+        if event == 'return' and frame.f_code in codes:
+            locals_at_return[frame.f_code] = frame.f_locals.copy()
+    def wrap(name, original):
+        @wraps(original)
+        def spy(*args, **kwargs):
+            offsets = {k: len(v) for k, v in records.items()}
+            result = original(*args, **kwargs)
+            records[name].append(dict(local=locals_at_return[original.__code__], result=result, offsets=offsets))
+            return result
+        return spy
+    with monkeypatch.context() as patch:
+        for name, mod, attr in targets:
+            patch.setattr(mod, attr, wrap(name, getattr(mod, attr)))
+        sim, grid, _ = scene(True, kind, mapped=True, precision='float64')
+        previous = sys.getprofile()
+        sys.setprofile(profile)
+        try:
+            capture_scan(sim, 1, patch)
+        finally:
+            sys.setprofile(previous)
+    electric = [r for r in records['electric'] if np.shape(r['result'].c[0])[-3:] == grid.shape][-1]
+    c = electric['result'].c
+    realized = [r for r in records['realize'] if r['result'] is not None
+                and r['local']['kind'] == 'Lorentz' and r['result'].coefficients is not None
+                and all(np.array_equal(a, b) for a, b in zip(r['result'].coefficients[2], c))][-1]
+    local = realized['local']
+    assert not any(local['periodic'])
+    widths = tuple(np.asarray(local['grid'].cells(a)) for a in range(3))
+    assert all(len(d) == grid.shape[a] for a, d in enumerate(widths))
+    maps = records['map'][realized['offsets']['map']:]
+    assert len(maps) == 1
+    m = maps[0]['local']
+    return dict(w=tuple(np.asarray(v) for v in m['weights']), c=tuple(np.asarray(v) for v in c),
+                k=np.asarray(m['k']), delta=np.asarray(m['delta']), ks=float(m['ks']), dt=float(m['dt']),
+                widths=widths, high_wall=local['high_wall'])
+
+
+def _four_cell_mean(values, widths, component, high_wall):
+    """Independent four-area NumPy float64 rule, including boundary replication."""
+    shape = values.shape
+    axes = [a for a in range(3) if a != component]
+    base = [np.minimum(np.arange(n), n - 2 if high_wall[a] else n - 1)
+            for a, n in enumerate(shape)]
+    cells, areas = [], []
+    for backs in ((0, 0), (1, 0), (0, 1), (1, 1)):
+        ix = [v.copy() for v in base]
+        for a, back in zip(axes, backs):
+            ix[a] = np.maximum(np.arange(shape[a]) - back, 0)
+            if high_wall[a]:
+                ix[a] = np.minimum(ix[a], shape[a] - 2)
+        cells.append(values[np.ix_(*ix)])
+        ds = []
+        for a in axes:
+            sh = [1, 1, 1]
+            sh[a] = shape[a]
+            ds.append(np.asarray(widths[a], np.float64)[ix[a]].reshape(sh))
+        areas.append(ds[0] * ds[1])
+    return sum(np.asarray(v, np.float64) * a for v, a in zip(cells, areas)) / sum(areas)
+
+
+def _float64_distance(actual, expected):
+    active = expected != 0
+    a, b = np.asarray(actual)[active], expected[active]
+    assert np.all(np.isfinite(a)) and np.all(np.signbit(a) == np.signbit(b))
+    ai, bi = a.view(np.uint64), b.view(np.uint64)
+    return int((np.maximum(ai, bi) - np.minimum(ai, bi)).max())
+
+
+@pytest.mark.parametrize('kind', ['P2a', 'P2b'])
+def test_c2_graded_float64_coefficients(kind, monkeypatch):
+    from tests._x64_compat import enable_x64
+    from tests.unit.materials.test_pole_map_runs import record
+
+    with enable_x64():
+        m = _capture_c2(kind, monkeypatch)
+        dtypes = dict(w=[str(v.dtype) for v in m['w']], c=[str(v.dtype) for v in m['c']])
+        record(f'C2-{kind}-precondition', dtypes)
+        assert all(v.dtype == np.float64 for v in (*m['w'], *m['c'])), dtypes
+        rows = []
+        for comp in range(3):
+            w64 = _four_cell_mean(m['k'], m['widths'], comp, m['high_wall'])
+            kd64 = _four_cell_mean(m['k'] * m['delta'], m['widths'], comp, m['high_wall'])
+            de = np.divide(kd64, w64, out=np.zeros_like(w64), where=w64 != 0)
+            ke = m['ks'] * w64
+            c64 = EPS0 * ke * m['dt']**2 / (1 + de * m['dt'])
+            rows.append(dict(component=('Ex', 'Ey', 'Ez')[comp],
+                             w=_float64_distance(m['w'][comp], w64),
+                             c=_float64_distance(m['c'][comp][0], c64)))
+        record(f'C2-{kind}', dict(rows=rows))
+        for row in rows:
+            assert row['w'] <= 17, row
+            assert row['c'] <= 28, row
+
+
 def rig(graded=False):
     widths = np.array([.5, .45, .4, .35, .4, .45, .55, .6, .65, .6, .55, .5]) * .001
     sim = Simulation(freq_max=6e9, domain=(.006,) * 3, dx=.0005, cpml_layers=0, boundary='pec',
