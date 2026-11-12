@@ -1,0 +1,8 @@
+`gradient_witness(..., against="longer_record", pole_target=f,
+ringdown=(res, res_longer))` now checks each record's main-window pole selection.
+Its note reports both selected frequencies and 1/Q values, record lengths and ratio.
+A failed or nonunique selection names the affected record and returns
+`judged=False`, `ok=False`, and a NaN value. Selections separated by more than
+the finer record's resolution also cannot be judged.
+A pair without `pole_target` checks each record's completion status.
+Pass concrete, unbatched results, returned as aux alongside each gradient.
