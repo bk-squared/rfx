@@ -700,6 +700,7 @@ def _validate_cfg_absorber_placement(
     if cpml_thickness > 0:
         _internal = getattr(self, "_internal_probe_indices", frozenset())
         grid = self._campaign_ctx().grid
+        bounds_cache = {}
 
         def _point_refusal(pe, label):
             # The campaign keeps the production grid when only point admission
@@ -708,7 +709,7 @@ def _validate_cfg_absorber_placement(
             if grid is None:
                 return
             options = dict(allow_in_absorber=getattr(pe, "allow_in_absorber", False),
-                           label=label)
+                           label=label, bounds_cache=bounds_cache)
             try:
                 admit_point(grid, pe.position, **options)
                 if getattr(pe, "extent", None) is not None:
