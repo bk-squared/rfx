@@ -119,11 +119,25 @@ vsweep = vmap_material_sweep(base, "insert.eps_r",
 print(vsweep.time_series.shape)    # (n_values, n_steps, n_probes)
 ```
 
-The fast path supports PEC and CPML boundaries, soft sources, point probes and
-DFT plane probes. A model with ports, TFSF, dispersion, flux monitors or an NTFF
-box falls back to running the cases one by one. Memory grows with the batch
-size, because each case keeps its own fields. Geometry and incidence-angle
-sweeps belong in `parametric_sweep`.
+`vmap_material_sweep` chooses the batched fast path from the model; you do not
+choose it. The fast path takes a uniform mesh with PEC, CPML or periodic walls,
+materials without poles, PEC shapes, sheets and wires, soft sources, point
+probes and DFT plane probes. A model with a port of any kind, a plane wave
+(TFSF), Debye, Lorentz or Drude poles, a lumped RLC element, a surface-impedance
+sheet (`surface_impedance_f0=`), a flux monitor, an NTFF box, UPML or a graded
+mesh falls back to running the cases one by one through `run()`, with a
+`ConfigurationWarning`.
+
+A model that takes the fast path is refused, not run one by one, when it holds
+an input the fast path does not carry: among them a Kerr material, a PMC face,
+conformal PEC, a refined region (`add_refinement`), `stencil_order=4` and a
+precision other than `float32`. The
+[support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
+names each one under `vmap_sweep_batched`. A current-moment monitor is refused
+on either route, and so is `add_wall_loss` on a uniform mesh.
+
+On the fast path memory grows with the batch size, because each case keeps its
+own fields. Geometry and incidence-angle sweeps belong in `parametric_sweep`.
 
 ## Resumable sweeps with a manifest
 
@@ -201,8 +215,9 @@ before you rely on the numbers.
   that snaps to the grid differently in each case adds a staircase error that
   looks like a trend. Check `sim.preflight()` for off-lattice warnings, and
   refine the mesh if the metric moves by less than a cell's worth.
-- **`vmap_material_sweep` holds every case in memory.** Reduce the batch or
-  the number of DFT-plane frequencies if it runs out of memory.
+- **On its fast path `vmap_material_sweep` holds every case in memory.**
+  Reduce the batch or the number of DFT-plane frequencies if it runs out of
+  memory.
 - **A short `n_steps` ranks cases by an unfinished response.** Use a run length
   that lets each case settle before you compare metrics.
 
