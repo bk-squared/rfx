@@ -7,6 +7,9 @@ import jax
 import jax.numpy as jnp
 from rfx._internal._precision import HIGHEST
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
+from rfx.measurement.adjoint_targets import ntff_target_spectra
+from rfx.stepping.adjoint_monitors import monitor_frequencies, magnetic_wavelet_hook
+from rfx.stepping.sequence import HookPoint
 
 
 def _plane_slice(meta, shape):
@@ -22,8 +25,25 @@ def _plane_slice(meta, shape):
 def design_adjoint_scan(ctx, initial, xs):
     """Two ordinary forward scans with frequency-sized local residuals.
 
-    Point objectives select a pixel of a registered E-plane DFT. Direct
+    Point objectives select a pixel of a registered E/H-plane DFT. Direct
     records/final-field objectives are refused through symbolic cotangents.
+
+    NTFF objectives reach this scan through the ordinary uniform carry. The
+    primal scan retains production accumulation, including its compensation.
+    Only the second scan drops both measurement carries and primal sources.
+    NTFF transposes are computed per face, so monitor residuals scale with
+    surface area, rather than with the enclosed volume.
+
+    Magnetic sources attach after H and before E. Their compact wavelets use
+    exactly the same integer-step basis as E sources; the H half-step stamp
+    belongs in the target spectrum, before solving for wavelet coefficients.
+    Component permeability supplies Db and electric coefficients supply Cb.
+    Shared samples on neighbouring face slabs add their independent targets.
+    No face resampling formula or time-stepping kernel is duplicated here.
+
+    Admission owns geometry and frequency validation before either scan.
+    It includes the collocation halo in the CPML exclusion, and accepts an
+    NTFF box without any plane monitor using that box's own bins.
     """
     import numpy as np
     from rfx.stepping import recorded_scan
@@ -34,7 +54,7 @@ def design_adjoint_scan(ctx, initial, xs):
                    "use_design_occupancy", "use_current_moments",
                    "use_sheet_impedance", "use_tfsf", "use_waveguide_ports",
                    "use_lumped_rlc", "use_wire_sparams", "use_lumped_sparams",
-                   "use_ntff", "use_flux_monitors", "use_aniso_inv",
+                   "use_flux_monitors", "use_aniso_inv",
                    "use_conformal", "use_pec_occupancy", "use_pmc_faces")
     for name in unsupported:
         if getattr(ctx, name):
@@ -47,26 +67,8 @@ def design_adjoint_scan(ctx, initial, xs):
     dtype = initial["fdtd"].ex.dtype
     if dtype not in (jnp.float32, jnp.float64) or ctx.stencil_order != 2:
         raise NotImplementedError("gradient='adjoint' requires float32/float64 and stencil_order=2")
-    if not ctx.dft_meta:
-        raise NotImplementedError("gradient='adjoint' requires E DFT monitors; time-domain objectives unsupported")
-    freqs_host = []
-    for meta in ctx.dft_meta:
-        if meta[0].name not in ("ex", "ey", "ez"):
-            raise NotImplementedError("gradient='adjoint' does not support H DFT planes")
-        f = np.asarray(meta[3])
-        if (not np.all(np.isfinite(f)) or np.any(f <= 0)
-                or np.any(f >= 0.5 / ctx.dt) or len(np.unique(f)) != len(f)):
-            raise ValueError("gradient='adjoint' requires distinct positive sub-Nyquist bins")
-        freqs_host.extend(f.tolist())
-        slm = _plane_slice(meta, ctx.grid.shape)
-        margin = ctx.grid.cpml_layers if ctx.use_cpml else 1
-        for d, s in enumerate(slm):
-            lo, hi = (s.start, s.stop) if isinstance(s, slice) else (s, s+1)
-            if lo < margin + 1 or hi > ctx.grid.shape[d] - margin - 1:
-                raise NotImplementedError("gradient='adjoint' requires interior monitor region outside CPML/boundaries")
-    common = np.asarray(ctx.dft_meta[0][3])
-    if any(not np.array_equal(np.asarray(m[3]), common) for m in ctx.dft_meta):
-        raise NotImplementedError("gradient='adjoint' requires identical monitor frequency bins")
+    common = monitor_frequencies(ctx)
+    freqs_host = common.tolist()
     freqs = jnp.asarray(common, dtype=dtype)
     bounds = ctx.design_box.bounds
     sl = tuple(slice(bounds[2*d], bounds[2*d+1]) for d in range(3))
@@ -85,14 +87,16 @@ def design_adjoint_scan(ctx, initial, xs):
         if targets is not None:
             # Suppress primal drives. CPML and ordinary Yee updates are reused.
             local = replace(local, drives=None,
-                            use_dft_planes=False, dft_meta=(), prb_meta=())
+                            use_dft_planes=False, dft_meta=(), prb_meta=(), use_ntff=False)
             from rfx.geometry.rasterize_grid import unpadded_high_walls
             monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic,
                              high_wall=unpadded_high_walls(ctx.grid))[1])
             monitor_cb = [a.at[sl].set(b) for a, b in zip(monitor_cb, coeffs[1])]
-            weights = [_wavelet_coefficients(jnp.asarray(m[3], dtype=dtype), ctx.dt,
-                                             wavelet_length, t)
-                       for m, t in zip(ctx.dft_meta, targets)]
+            electric, magnetic = targets
+            weights = [(c, slot, _wavelet_coefficients(freqs, ctx.dt,
+                                                     wavelet_length, t))
+                       for c, slot, t in electric]
+            h_hook = magnetic_wavelet_hook(ctx, magnetic, freqs, wavelet_length, dtype)
 
         def hook(prev, state):
             e = tuple(getattr(prev, c)[sl] for c in ("ex", "ey", "ez"))
@@ -100,17 +104,16 @@ def design_adjoint_scan(ctx, initial, xs):
                                             ctx.dx, ctx.periodic, ctx.stencil_order, ctx.bloch))
             if targets is not None:
                 n = prev.step
-                for m, w in zip(ctx.dft_meta, weights):
-                    c = m[0].name
-                    slot = _plane_slice(m, ctx.grid.shape)
-                    basis = _wavelet_basis(jnp.asarray(m[3], dtype=dtype), ctx.dt,
-                                           wavelet_length, n.astype(dtype))
-                    value = 2 * jnp.real(jnp.einsum('f,fij->ij', basis, w, precision=HIGHEST))
+                for c, slot, w in weights:
+                    basis = _wavelet_basis(freqs, ctx.dt, wavelet_length, n.astype(dtype))
+                    value = 2 * jnp.real(jnp.einsum('f,f...->...', basis, w, precision=HIGHEST))
                     cb = monitor_cb[("ex", "ey", "ez").index(c)][slot]
                     state = state._replace(**{c: getattr(state, c).at[slot].add((cb*value).astype(dtype))})
             return state, (e, curl)
 
-        core = make_core_step(local, {**invariants, "ctx": local}, design_hook=hook if recording else None)
+        core = make_core_step(local, {**invariants, "ctx": local},
+                              design_hook=hook if recording else None,
+                              hooks={HookPoint.AFTER_H: (h_hook,)} if targets is not None else None)
         def step(carry, row):
             state, acc_e, acc_h, peak, last_e, tail = carry
             state, probes, extras = core(state, *row)
@@ -133,7 +136,7 @@ def design_adjoint_scan(ctx, initial, xs):
                 if targets is None:
                     acc_h = tuple(a + phase[:, None, None, None]*v for a, v in zip(acc_h, h))
             return (state, acc_e, acc_h, peak, last_e, tail), (probes,) if targets is None else None
-        start = initial if targets is None else {k: v for k, v in initial.items() if k != "dft_planes"}
+        start = initial if targets is None else {k: v for k, v in initial.items() if k not in ("dft_planes", "ntff")}
         (last, e, h, peak, last_e, tail), outputs = recorded_scan(
             step, (start, z, z, jnp.zeros((), dtype), jnp.zeros((), dtype),
                    jnp.zeros((), dtype)), xs)
@@ -158,13 +161,25 @@ def design_adjoint_scan(ctx, initial, xs):
         last_bar, outputs_bar = cotangents
         symbolic = jax.custom_derivatives.SymbolicZero
         for name, bar in last_bar.items():
-            if name != "dft_planes" and any(not isinstance(v, symbolic) for v in jax.tree.leaves(bar)):
+            if name not in ("dft_planes", "ntff") and any(not isinstance(v, symbolic) for v in jax.tree.leaves(bar)):
                 raise NotImplementedError("gradient='adjoint' does not support final-field/time-domain objectives")
         if any(not isinstance(v, symbolic) for v in jax.tree.leaves(outputs_bar)):
-            raise NotImplementedError("gradient='adjoint' does not support time-domain objectives; register E DFT bins")
-        targets = [jnp.zeros_like(a) if isinstance(b, symbolic) else b
-                   for a, b in zip(initial["dft_planes"], last_bar["dft_planes"])]
-        (_, adj, _), _ = run(coeffs, targets=targets, recording=True)
+            raise NotImplementedError("gradient='adjoint' does not support time-domain objectives; register E/H DFT or NTFF bins")
+        electric, magnetic = [], []
+        for meta, a, b in zip(ctx.dft_meta, initial.get("dft_planes", ()),
+                              last_bar.get("dft_planes", ())):
+            target = jnp.zeros_like(a) if isinstance(b, symbolic) else b
+            entry = (meta[0].name, _plane_slice(meta, ctx.grid.shape), target)
+            (electric if meta[0].name.startswith("e") else magnetic).append(entry)
+        if ctx.use_ntff:
+            # Symbolic zeros include untouched faces and all compensation leaves.
+            bar = jax.tree.map(lambda a, b: jnp.zeros_like(a) if isinstance(b, symbolic) else b,
+                               initial["ntff"], last_bar["ntff"],
+                               is_leaf=lambda v: isinstance(v, symbolic))
+            ntff_e, ntff_h = ntff_target_spectra(ctx.ntff, bar, dtype)
+            electric.extend(ntff_e)
+            magnetic.extend(ntff_h)
+        (_, adj, _), _ = run(coeffs, targets=(electric, magnetic), recording=True)
         grads = tuple(tuple(jnp.real(jnp.sum(a*f, axis=0)/cb).astype(c.dtype)
                             for a, f, cb, c in zip(adj, fields, coeffs[1], cs))
                       for fields, cs in zip((e, h), coeffs))
