@@ -15,6 +15,18 @@ from rfx.sources.sources import (
 )
 
 
+def _fft_peak_freq(time_series, dt, f_lo, f_hi):
+    """Find peak frequency in a band using zero-padded FFT."""
+    n = len(time_series)
+    n_pad = n * 8
+    spectrum = np.abs(np.fft.rfft(time_series, n=n_pad))
+    freqs = np.fft.rfftfreq(n_pad, d=dt)
+    mask = (freqs >= f_lo) & (freqs <= f_hi)
+    masked = np.where(mask, spectrum, 0.0)
+    peak_idx = np.argmax(masked)
+    return freqs[peak_idx]
+
+
 # =========================================================================
 # Test 2: CPML grazing-incidence reflection benchmark
 # =========================================================================
@@ -83,6 +95,68 @@ def test_cpml_grazing_incidence():
     assert reflection_db < -20, \
         f"CPML grazing reflection {reflection_db:.1f} dB exceeds -20 dB"
     assert not np.isnan(energy_final)
+
+
+# =========================================================================
+# Test 3: Mesh convergence (2nd-order Yee scheme)
+# =========================================================================
+
+@pytest.mark.slow_physics
+def test_mesh_convergence_2nd_order():
+    """PEC cavity resonance error decreases with mesh refinement.
+
+    Run at three resolutions (4mm, 2mm, 1mm). Finer meshes should
+    give smaller frequency error (2nd-order Yee scheme).
+    """
+    CAVITY_A, CAVITY_B, CAVITY_D = 0.1, 0.1, 0.05
+    F_ANALYTICAL = (C0 / 2.0) * np.sqrt((1 / CAVITY_A)**2 + (1 / CAVITY_B)**2)
+
+    resolutions = [0.004, 0.002, 0.001]  # 4mm, 2mm, 1mm
+    errors = []
+
+    for dx_val in resolutions:
+        grid = Grid(freq_max=5e9, domain=(CAVITY_A, CAVITY_B, CAVITY_D),
+                    dx=dx_val, cpml_layers=0)
+        state = init_state(grid.shape)
+        materials = init_materials(grid.shape)
+
+        pulse = GaussianPulse(f0=F_ANALYTICAL, bandwidth=0.8)
+        src_i = grid.nx // 3
+        src_j = grid.ny // 3
+        src_k = grid.nz // 2
+        probe_i = 2 * grid.nx // 3
+        probe_j = 2 * grid.ny // 3
+        probe_k = grid.nz // 2
+
+        num_steps = grid.num_timesteps(num_periods=80)
+        dt, dx = grid.dt, grid.dx
+
+        ts = np.zeros(num_steps)
+        for n in range(num_steps):
+            t = n * dt
+            state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+            state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+            state = apply_pec(state)
+            ez = state.ez.at[src_i, src_j, src_k].add(pulse(t))
+            state = state._replace(ez=ez)
+            ts[n] = float(state.ez[probe_i, probe_j, probe_k])
+
+        f_peak = _fft_peak_freq(ts, dt, F_ANALYTICAL * 0.5, F_ANALYTICAL * 1.5)
+        err = abs(f_peak - F_ANALYTICAL) / F_ANALYTICAL
+        errors.append(err)
+
+    print(f"\nMesh convergence (TM110 = {F_ANALYTICAL/1e9:.4f} GHz):")
+    for dx_val, err in zip(resolutions, errors):
+        print(f"  dx={dx_val*1000:.0f}mm: err={err*100:.4f}%")
+
+    ratio = errors[0] / max(errors[2], 1e-15)
+    print(f"  Ratio (4mm/1mm): {ratio:.2f} (expect ~16 for 2nd order)")
+
+    # Finest mesh must beat coarsest
+    assert errors[2] < errors[0], \
+        f"1mm mesh ({errors[2]*100:.4f}%) not better than 4mm ({errors[0]*100:.4f}%)"
+    assert errors[2] < 0.005, f"Finest mesh error {errors[2]*100:.3f}% exceeds 0.5%"
+    assert ratio > 1.0, f"No convergence: ratio {ratio:.2f}"
 
 
 # =========================================================================
