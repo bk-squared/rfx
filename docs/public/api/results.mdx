@@ -172,10 +172,19 @@ Two functions in `rfx.ringdown` go with them:
 
 `gradient_witness(grad, grad_other, *, against="early_start", ringdown=None,
 bar=1e-2, bin_axis=None, pole_target=None)` takes the gradients of a selected
-pole through `pole_target=f_target`. On a concrete `ringdown`, it judges only when
-both windows select a unique pole. Otherwise the returned check has `value` NaN,
-`judged` and `ok` False, and a `note` that starts `cannot judge:`. `pole_target`
-with `against="longer_record"` raises `ValueError`. Example and validated range:
+pole through `pole_target=f_target`. With `against="early_start"`, a concrete
+`ringdown` must select a unique pole in both windows. With `against="longer_record"`,
+pass `ringdown=(res, res_longer)`: concrete, unbatched results in gradient order.
+Each record's main window must select uniquely; selected frequencies must be no
+further apart than the finer of the two selection radii. The note reports both
+selected frequencies and 1/Q values, record lengths, and the second/first record
+ratio. Otherwise the check has `value` NaN, `judged` and `ok` False, with a note
+naming the failing records or saying `cannot judge (selection differs: ...)`.
+A pair without `pole_target` checks completion status and reports the lengths
+and ratio. Without a pair, `pole_target` raises `ValueError`; omitting both keeps
+the gradient-only comparison. Return each result as aux from
+`jax.value_and_grad(..., has_aux=True)` to use one forward per record.
+Example and validated range:
 [Frequency and Q of one resonance, per cell](/rfx/check/gradients/#frequency-and-q-of-one-resonance-per-cell).
 
 ## S-parameter results

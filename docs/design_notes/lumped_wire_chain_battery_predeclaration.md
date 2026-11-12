@@ -2,7 +2,7 @@
 
 Status: written BEFORE the first battery solve. Contract:
 [`chain_closure_contract.md`](chain_closure_contract.md), section "The v2.0 battery for
-lumped/wire, MSL and coax", with the PI's 2026-09-21 ruling on deep nulls (below).
+lumped/wire, MSL and coax", with the rule on deep nulls (below).
 
 Chain scope (contract, per-family table): the differentiable **S11** of
 `Simulation.forward(port_s11_freqs=...)`, for a lumped port (`add_port(..., extent=None)`) and a
@@ -45,7 +45,7 @@ that is recorded — the referee is the 1-D line either way.
    with the line's phase.
 4. **Matched**, `R = Zc` (control): `S11 = 0` in the ideal line. A deep null — see the ruling.
 
-## Deep nulls (PI ruling, 2026-09-21)
+## Deep nulls
 
 The matched case is held to an upper bound, `|S11| <= -20 dB` at every bin of every rung, and
 recorded as the port's own reflection floor (this number is what a user most needs from the
@@ -79,7 +79,7 @@ Falsifiers declared now:
   the fixture is not the 1-D line it claims to be and nothing else is read until that is explained.
 - If `|S11|` exceeds 1.02 on a settled record at the claims rung, the family does not close.
 - If the resistive cases' `|S11|` is more than 2 dB from 1/3 anywhere in band at the claims rung,
-  the family does not close on this battery; the curve is reported and the PI decides.
+  the family does not close on this battery; the curve is reported and the disposition remains open.
 - If AD, FD and the closed-form derivative disagree by more than 5 % pairwise where the FD is
   interpretable, criterion 3a is open.
 
@@ -91,7 +91,7 @@ fallback and aborts on a dirty tree; a failed stage ships its partial JSON. An a
 records into `tests/fixtures/lumped_wire_chain_battery/fixture.json`, which one replay test
 re-derives every assembled number from.
 
-## Addendum 2026-09-21 (leader; PI decision of the same day)
+## Addendum 2026-09-21
 
 Written after the battery ran. Nothing above is edited; what changed is recorded here.
 
@@ -109,7 +109,7 @@ Written after the battery ran. Nothing above is edited; what changed is recorded
    sine ratio to 5 % at every rung (2.345 measured against 2.456 predicted at 1000 um). Feeding the
    closed form the rung's own fitted electrical length removes about a third of the distance
    (0.270 -> 0.153 at 250 um), not all of it; the rest is not attributed.
-   PI decision: criterion 3a is carried by AD against FD, as the contract defines it, and is MET.
+   Decision: criterion 3a is carried by AD against FD, as the contract defines it, and is MET.
    The closed-form derivative stays in the record as a third witness that converges at first order
    and is NOT held to 5 %. The falsifier as I wrote it was stricter than the contract and asked a
    continuum formula to match a lattice derivative at a cell size where the VALUE itself is only
@@ -160,13 +160,13 @@ Decision (lead, 2026-10-06 for the matched row; 2026-10-08 for the others):
    circuit actually built (formula written in the test file, no product extractor): short `-1`,
    half `-1/3`, double `+1/3`, matched `0` (floor `|Gamma_L| <= -20 dB`), open `+1` — an open
    element must be invisible. Magnitude within 2 dB; phase against the prediction that adds the
-   measured one-cell element inductance (`0.214 mu0 dx` per element, rfx-archive
-   `rfx/records/20261007-1162-lumped-cell-inductance/`), judged as a three-mesh trend, not at one bin.
+   measured one-cell element inductance (`0.214 mu0 dx` per element),
+   judged as a three-mesh trend, not at one bin.
 2. Electrical length is judged by the bar's own definition (v2 bar item 5), once, on the short
    row: the network is a one-port there, so the reflection-phase slope with the port's own
    reflection removed (`tests/_electrical_length.py`), within 1 %. No new observable (no ripple
    spacing) is introduced. If that slope cannot be formed on this circuit, the curve and the
-   reason go to the PI as a criterion question before anything else is chosen.
+   reason are reported for a criterion decision before anything else is chosen.
 3. The raw port `|S11|` is reported with every row and not judged.
 
 This is a correction of the comparator, not a change of a bar: the floors and tolerances are the

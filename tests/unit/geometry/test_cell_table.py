@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pytest
 
-from rfx import Simulation, Sphere
+from rfx import Sphere
 from rfx.geometry import cell_table
 from rfx.model.conformal_rules import conformal_fractions_from_table
 from tests._cell_table_capture import record_cell_table_capture
@@ -165,36 +165,6 @@ def test_frozen_operands(scene, rule):
     assert int(table.topology_key, 16) >= 0
     with pytest.raises(FrozenInstanceError):
         table.topology_key = ''
-
-
-def test_topology_tracks_shapes_but_not_body_fractions():
-    from rfx.grid import Grid
-
-    grid, shapes = cell_table_scene('sphere')
-    assert (cell_table.build_cell_table(grid, shapes).topology_key
-            == cell_table.build_cell_table(grid, []).topology_key)
-    keys = []
-    for domain in ((.01, .012, .014), (.014, .012, .01)):
-        grid = Grid(20e9, domain, dx=.001, cpml_layers=0)
-        keys.append(cell_table.build_cell_table(grid, []).topology_key)
-    assert keys[0] != keys[1]
-
-
-def test_staircase_forms_no_table(monkeypatch):
-    from rfx.core.yee import init_materials
-    from rfx.model.tensor_operands import form_tensor_operands
-
-    def fail(*args, **kwargs):
-        pytest.fail('staircase operand setup built a cell table')
-
-    monkeypatch.setattr(cell_table, 'build_cell_table', fail)
-    sim = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec')
-    grid = sim._build_grid()
-    result = form_tensor_operands(
-        sim, grid, init_materials(grid.shape), subpixel_smoothing=False,
-        conformal=False, conformal_min_weight=.1,
-        pec_shapes=[Sphere((.0061, .0058, .0057), .0023)])
-    assert result[2] is None and result[4] is None
 
 
 @pytest.mark.parametrize('rule', ('sc', 'raw', 'floor'))

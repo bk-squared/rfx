@@ -1,7 +1,7 @@
 # X-D phase 2b — manifest digit refresh, claim_scope literals, and the pass-2 landing checklist
 
 Group X-D (cv18, cv19), branch `feat/931-wr90-iris`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-XD-wr90iris`, merged up to
+`<workspace>/research/rfx-931-XD-wr90iris`, merged up to
 `feat/931-lattice-ownership` at `770c4e6c`.
 
 Two things live here. **§1-§2** are replacement text for

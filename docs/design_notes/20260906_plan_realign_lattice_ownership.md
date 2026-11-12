@@ -1,6 +1,6 @@
 # Lattice ownership contract for conductors — design + migration plan (2026-09-06)
 
-Status: **DECIDED by the PI 2026-09-06** (issue #931). This note is normative for the
+Status: **DECIDED** (issue #931). This note is normative for the
 implementation branch `feat/931-lattice-ownership`. It amends the 2026-09-05 post-v1.8
 plan's item 1 from "visualize the rasterization" to "define and enforce the ownership
 contract"; the visualization work then reads the contract instead of re-deriving.

@@ -76,7 +76,7 @@ falsifier localizes to a window-calibration error at the band edge (figure-deriv
 below the figure's own axis clip, and no cells-per-wavelength normalization). A re-derived
 window (e.g. paper-comparable claim restricted to ≥ 11.5 cells/λ ⇔ ≤ 26 GHz at Δ = 1 mm, or
 thresholds anchored to the measured (Δ/λ)² law) would require fresh pre-declaration and
-fresh data per SPEC-00; that decision belongs to the adversarial reviewer / PI, not this lane.
+fresh data per SPEC-00.
 
 ## F-M1-grad / F-M1-vjp detail
 
@@ -303,7 +303,7 @@ is not converted into an exoneration.*
 
 **(c) PR body, WITHDRAWN:** "paper-class interface reflection" and "the scheme is
 exonerated". Replacement text for the PR body (this lane cannot write to GitHub; recorded
-here for the PI to paste):
+here for use there):
 
 > F-M1b retry: the interface arm PASSES the frozen windows (−46.24 / −29.29 dB) at every
 > r ∈ {2,3,4,5,6} **under this lane's declared TEM-projected observable** (y-mean of the Ey

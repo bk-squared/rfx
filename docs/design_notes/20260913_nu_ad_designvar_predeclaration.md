@@ -9,11 +9,11 @@ that declaration.** At withdrawal, HEAD is `733165791f417cd57797b767258a3ae0c28e
 `"ad6"` JSON keys finds none. Uncommitted AD6 replay-test drafts found in the worktree were
 discarded unrun: they tested the withdrawn design.
 
-The PI rejected the following, quoted from the replacement request:
 
-> “a flat 15 % gate is not a quantitative claim, and neither is the existing convention”
 
-> “the directions must be the DESIGN VARIABLES, not abstract vectors”
+
+
+
 
 Accordingly, tied indicators, all-ones and seeded random directions are
 withdrawn. The replacement uses layer thickness and permittivity directions
@@ -156,9 +156,9 @@ verdicts without hiding fired results. No `rfx/` changes, push, or PR.
 
 ## Lead additions before measurement (2026-09-13)
 
-The lane was taken over from the delegated agent by the lead at this point,
-on the PI's instruction that implementation and experiments are done by the
-lead and the delegated model is used for review only. Nothing had been
+
+
+Nothing had been
 measured. Three additions, all to the judges or to their power, none to a
 window above:
 

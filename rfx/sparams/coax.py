@@ -1178,13 +1178,15 @@ def compute_coax_msl_transition(
     RuntimeError
         If no realized trace conductor is found above the substrate at the
         microstrip feed, or the runner returns no DFT-plane records.
+    RfxUnsupported
+        If the registered MSL port's mode is not ``"laplace"`` (the default).
 
     Limits
     ------
     Requires a float32, three-dimensional uniform Yee mesh with the default
     stencil order, positive CPML on all six faces, and no periodic axes or
     refinement. Register exactly one bottom-face coax port and one microstrip
-    port, no other ports, existing TFSF source, lumped RLC elements, probes,
+    port with ``mode="laplace"``, no other ports, existing TFSF source, lumped RLC elements, probes,
     DFT planes, flux monitors, or NTFF boxes. The registered geometry must
     be nonempty, and the microstrip source interval must meet its realized
     conductors. The coax ``position[2]`` locates the physical ground plane;

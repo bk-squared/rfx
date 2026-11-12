@@ -1,6 +1,6 @@
 # T6 chain fixture ingest — 2026-09-08
 
-Ingest of the PI-adjudicated artifact, on `feat/931-chain-ingest` based on
+Ingest of the artifact, on `feat/931-chain-ingest` based on
 `b4ae761e`, following [T6's prescription](T6-waveguide-chain-battery.md).
 No measurement producer, operator, gate or historical fixture is edited.
 
@@ -39,7 +39,7 @@ against the unchanged 0.05 gate. These are stored-artifact checks, not new solve
 
 ## Open item: unexplained slab coarse/flux drift
 
-The PI did not pre-declare or explain this row. The new-minus-old complex
+This row was not pre-declared or explained. The new-minus-old complex
 S-matrix maximum is **1.0422476162860573e-5**, at **S11, 8.4 GHz**. It is
 2.08 times the **5e-6 envelope**, though 9.59 times below the **1e-4 gate**.
 Its cause remains open. Neither a passing live test nor the changed PEC operator

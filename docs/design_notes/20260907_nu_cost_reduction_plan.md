@@ -3,7 +3,7 @@
 **Status:** plan (2026-09-07). Code work starts AFTER the accuracy/autodiff lane
 (branch `feat/nu-band-accuracy-ad`, note
 `docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md`) has
-reported, because G2 and G3 take their accuracy comparator from it (PI rule:
+reported, because G2 and G3 take their accuracy comparator from it (rule:
 one lane at a time; a policy that trades cells for accuracy is decided on a
 measured accuracy curve, not on cost alone).
 **Branch:** `feat/nu-cost-reduction` (from `feat/nu-band-profile` @ 7c6e3997).

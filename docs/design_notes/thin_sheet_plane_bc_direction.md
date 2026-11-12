@@ -16,7 +16,7 @@
 > users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
 > the lattice").
 
-Status: DIRECTION (PI-endorsed 2026-08-25). Not a commitment; a recorded target
+Status: DIRECTION. Not a commitment; a recorded target
 for the next architecture review. Triggers to revisit: the in-plane
 discretization verdict of the current crossval campaign, and an external
 design review (Codex) of this note's open questions.
@@ -93,7 +93,7 @@ Promote "sheet on a mesh plane" to the DEFAULT thin-conductor realization:
 The measured cost of the status quo is no longer hypothetical: the crossval
 campaign spent multiple GPU runs and several review cycles discovering,
 one symptom at a time, what a plane-BC model would have excluded by
-construction. The PI's read: this direction is plausibly the largest
+construction. This direction is plausibly the largest
 remaining trial-and-error reducer for board-class work.
 
 ## Design review outcome (Codex, 2026-08-25)

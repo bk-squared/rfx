@@ -1,4 +1,4 @@
-# THRU feed-post de-embedding — pre-declaration (PI disposition (b) on the held #683 gate)
+# THRU feed-post de-embedding — pre-declaration (disposition (b) on the held #683 gate)
 
 > **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**
 > Kept as dated history and deliberately NOT rewritten.
@@ -44,7 +44,7 @@ two 1 mm vertical feed posts, ~0.26 nH class each, interfering across
 the 16 mm line). The old "0.09 feed-post class" was an extrapolation
 from the legacy frame-mismatch artifact and is refuted.
 
-PI disposition (b): DE-EMBED the feed posts via the #313
+Disposition (b): DE-EMBED the feed posts via the #313
 reference-plane path family, then pin the physical de-embedded floor.
 
 ## 2. Derivation: what de-embedding is correct for THIS fixture topology

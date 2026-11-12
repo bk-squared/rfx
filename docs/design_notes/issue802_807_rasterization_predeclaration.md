@@ -82,7 +82,7 @@ NU lane stays f32 — "just enable x64" widens the lane split.
 
 Interpreter: `python` from the worktree with `PYTHONPATH=<worktree>`;
 every evidence JSON records `rfx.__file__`. Scratchpad =
-`/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/84ed5b7d-c5f2-49fd-b30c-d2477926a026/scratchpad`.
+`<workspace>/research/rfx/scratchpad`.
 
 **F1 — convention exactness, flag invariance (#802 repro).**
 Fixture verbatim from the issue: `Box((0,0,2.5e-3),(12.5e-3,3.4e-3,2.8e-3))`,

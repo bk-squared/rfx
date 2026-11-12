@@ -2,17 +2,17 @@
 
 > Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
 
-**Status:** pre-declaration for the boundary-model campaign, the PI's request of 2026-09-22 ("설계 자체를
-다시 고민해봐 … 시뮬레이터로서 일반화가 제한적인 영역에서 가능해야해"). The draft had three independent
+**Status:** pre-declaration for the boundary-model campaign.
+The draft had three independent
 reviews before this text: a design review (Opus, separate instance, 4 P1 / 9 P2 / 4 P3, seven CPU
 reproductions), then the leader's recommendations reviewed by Codex and by a second Opus instance, each
 independently (both SOUND WITH CHANGES; their conditions are folded in below and named where they
 decided something). Both then rechecked this text (ACCEPT WITH CHANGES each); their changes are in it.
-The review texts are kept off-repo under `bk-workspace/.boundary-model/`; the measurements are
+The measurements are
 committed under `scripts/diagnostics/boundary_model/`, and the reviews' scripts with the output they
 printed under its `reviews/` (its README says how they were kept). Written by the absorber-lane leader. Model for the shape: the
 NU grid-core note (`20260922_nu_grid_core_predeclaration.md`).
-**Lane:** absorber. **Order (PI):** this campaign, then PR #1012; after that the PI chooses #952 or a
+**Lane:** absorber. **Order:** this campaign, then PR #1012; after that the choice is #952 or a
 periodic unit-cell campaign.
 
 ## 0. The physics, what is wrong, and what changes for a user
@@ -303,7 +303,7 @@ mixing CPML and UPML; Kottke smoothing's even extension at a magnetic face and f
 reflecting face (refused until each is designed); the absorber-adjacent graded transition (NU G16); the
 continuation contract's own rules (#1167 — this note changes where absorbing faces are read from, not
 what continues through them); the periodic unit-cell feature itself (sheet source with the Bloch phase,
-TE/TM, higher Floquet orders, witnesses), which the PI schedules after #1012.
+TE/TM, higher Floquet orders, witnesses), scheduled after #1012.
 
 ## 5. Regression requirement, every PR
 `scripts/ci/local.sh` green; `tests/unit/boundaries`, `tests/contracts`, `tests/locks` green; no frozen
@@ -322,7 +322,7 @@ from any magnetic face, or on the face under the "full" convention with a migrat
 
 ## 7. Decision record, 2026-10-05: S1 boundaries (the structure plan's realized-model stage)
 
-The PI's 2026-10-04 restructuring makes the remaining kernel work of §3 (B4, B6) part of stage S1:
+The remaining kernel work of §3 (B4, B6) is part of stage S1:
 one declaration, one realized model, every path reads it. For boundaries the duplicated part today
 is not the absorber law (one `_cpml_profile` since #1374) but the **reading of the declaration into
 per-face depths**: the same rule — a wall face or a face on a non-absorbing axis gets no pad, an
@@ -408,14 +408,14 @@ record — and in a file the PR already touches, so it is fixed here: the multi-
 record (PEC faces and zero-depth absorber backings), judged by that probe equal to one device within the
 cross-trace bar, with the old wall rule as the mutation. This is the PR's one computed-result change.
 
-Addendum 5, 2026-10-07 (leader, before PR3 starts; scope approved by the lead, [L:245043]). PR3 is the class
+Addendum 5, 2026-10-07 (before PR3 starts). PR3 is the class
 Addendum 3 named: a feature that silently rewrites declared faces. Two features do it today.
 (a) A waveguide port: `_waveguide_cpml_axes` (`api/_compile.py`) makes the grid absorb only on the port
 axes, so a model declared `cpml` on every face (the default) is solved with electric walls on the
 transverse faces. `boundaries/depths.py` reads that method — a reader of the feature, not of the declaration.
 (b) A TF/SF plane-wave source: `add_tfsf_source` requires `boundary='cpml'` and the run then wraps the
 transverse axes periodically, pads included. On the default box a finite scatterer is solved as an array
-of period N·dx with the pads (37 mm on the 2026-10-05 record, rfx-archive `20261005-tfsf-transverse-period`,
+of period N·dx with the pads (37 mm on the 2026-10-05 record,
 f8b3b79a: backscatter off by several dB at 7 GHz and 20–30 dB toward c/period).
 B5 as written also moves computed results (an aperture port in a larger absorbing domain, the graded
 lane's waveguide runs, a pad-free periodic grid, Floquet k_t, RCS, the 2-D invariant axis, port
@@ -502,8 +502,8 @@ The same rule applies to any other committed TF/SF case the census finds non-inv
 with its structure before converting; a case that pins a physical number (a lock, an oracle, a
 cross-validation record) is NOT converted by the implementer — stop on it and report.
 
-Addendum 5c, 2026-10-08 (leader, after two independent implementations were reviewed; decisions by the
-lead, [L:2de396]). Addendum 5 rested on assumptions about the paths that were not checked against the
+Addendum 5c, 2026-10-08 (after two independent implementations were reviewed).
+Addendum 5 rested on assumptions about the paths that were not checked against the
 code; four were wrong. What is assumed now is written per path, and each line is to be confirmed by
 reading the code and by a build before it is relied on.
 (1) Where the waveguide rule applies. Checked (both reviews, reproduced): on the uniform single-device
@@ -537,7 +537,7 @@ finding that the invariance was not judged.
 declaration (PEC transverse faces, absorber on the port axis); any other default-boundary model exports
 exactly as on main; a document written by main imports and runs as it did on main.
 
-## Addendum 5d (2026-10-08, lead decision L:0f6340 after measurement) — the default full-aperture guide on the graded mesh is refused
+## Addendum 5d (2026-10-08, after measurement) — the default full-aperture guide on the graded mesh is refused
 
 Addendum 5c (1) kept today's behaviour on the paths where main keeps real absorbers on the transverse faces of a
 full-aperture guide (non-uniform, distributed_nu) and asked for one measurement. The measurement is in: with the
@@ -552,7 +552,7 @@ two-port contract fixture, |S11| is 14.5-19.4 dB lower on 16 of 20 bins and |S21
    the same way on every path) stays the first item of PR3b, cause issue tracker 1221.
 2. An explicitly declared transverse absorber on these paths keeps today's behaviour (the user asked for an open
    cross-section and gets it). An explicitly declared wall keeps today's behaviour.
-3. Measured basis for the way through (rfx-archive `rfx/records/20261008-s1-pr3a-guide-default-uniform-vs-graded/`):
+3. Measured basis for the way through:
    with the side walls declared, the graded path equals the uniform path where both realize the same cross-section
    (0.937 mm cell, 44 nodes on both: |S21| within 0.001 dB, |S11| within 0.03 dB, phase within 0.01 deg, 20 bins).
    At cells where a 40 mm width is not a whole number of cells the uniform builder realizes one more node than the
@@ -605,7 +605,7 @@ refusal names ("declare y='periodic'") does not exist there.
    single-device fallback.
 
 
-## Addendum 6 (2026-10-10, leader; lead decision L:13914c) — one rule for the conducting plane behind an absorbing face (tracker 1549)
+## Addendum 6 (2026-10-10) — one rule for the conducting plane behind an absorbing face (tracker 1549)
 
 This addendum is the specification of the 1549 fix. It was written before the implementation; the cause was
 measured first (lane records `1549-forward-run/`: kernel-input comparison of run() and forward(), substitution both
@@ -714,7 +714,7 @@ multi-device uniform path still leaves a positive-depth absorber unbacked unless
 (`rfx/runners/distributed_v2.py:905-912`). This addendum makes it every electric face of the record, on every path.
 Addendum 5c (5) stands: low-level callers' explicit flags are their declaration.
 
-## Addendum 5f (2026-10-11, lead decision L:bad416) — on the graded mesh a full-aperture guide refuses what the uniform mesh refuses
+## Addendum 5f (2026-10-11) — on the graded mesh a full-aperture guide refuses what the uniform mesh refuses
 
 Addendum 5d (2) kept an explicitly declared transverse absorber on the graded mesh ("the user asked for an open
 cross-section and gets it"). Read again with the 5d measurement: the waveguide port's modal decomposition assumes the

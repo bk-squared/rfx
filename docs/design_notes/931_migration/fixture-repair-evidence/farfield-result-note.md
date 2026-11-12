@@ -23,7 +23,7 @@ quantity no longer isolates its stated property. T8 established that the
 old graded fixture changed the conductor stencil, source cell volume and
 physical acquisition window as well as NTFF integration. Its old passing
 2.1381% power metric already hid about 19% angular-shape disagreement.
-The PI authorized physical fixture repair; the new comparison therefore
+The physical fixture repair comparison therefore
 holds those local quantities fixed rather than changing the 5% envelope.
 
 The domain remains 22 x 22 x 22 mm, with a 1.5 mm PEC cube bounded by

@@ -536,7 +536,7 @@ Consumers to re-point on success:
 
 ## 2026-09-08 amendment: admissible eps stencil (prediction before re-measurement)
 
-PI-approved redesign on `feat/931-chain-adfd`, based on `0815260c`. This section
+Redesign on `feat/931-chain-adfd`, based on `0815260c`. This section
 supersedes the eps stencil and lossless magnitude expectation in §5(a), including
 later notes' treatment of that magnitude leg. No re-measurement is used to set it.
 
@@ -591,7 +591,7 @@ using the PEC-short window coordinates; it gains no AD accuracy leg. All three D
 predicted to have global min eps_r = 1 and ratio 0.99 at every rung (vacuum
 outside the window controls it). The retained eps comparisons are predicted to
 be finite and, when ULP-resolved, to meet the existing 0.05 gate. Their actual
-accuracy is for the PI's post-commit run to adjudicate, not a local smoke result.
+accuracy is for the post-commit run to adjudicate, not a local smoke result.
 
 **Falsifiers.** Build-time tests must reject the old vacuum minus arm, a
 numerically stable eps_r < 1 arm, a boundary-ratio arm, and a bad material region
