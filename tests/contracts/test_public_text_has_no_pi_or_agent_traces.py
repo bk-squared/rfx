@@ -20,8 +20,8 @@ PATTERNS = {
     "C3": re.compile(r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff]"),
     "C4": re.compile(
         r"rfx-archive|agent-rules|pi-desk|rfx-lead|rfx-core-desk|\b[DL]:[0-9a-f]{6}\b"
-        r"|MSL-PLANE\.md|rfx/records/|ledger archive|internal issue ledger|rfx-known-issues|\brecords? 20\d{6}-[a-z]"
-        r"|docs/research_notes/|rfx-research|rfx-adv|rfx-fdfd-research"
+        r"|MSL-PLANE\.md|rfx/records/|ledger archive|internal issue ledger|rfx-known-issues|\brecords?[ /]20\d{6}-[a-z]"
+        r"|docs/research_notes/|docs/agent-memory|rfx-research|rfx-adv|rfx-fdfd-research"
         r"|bk-workspace|remilab-cnu/paper"
         r"|(?<![\w-])acc-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-\d{8}t\d{6}z-[0-9a-f]+(?![\w-])"
     ),
@@ -29,7 +29,7 @@ PATTERNS = {
 # Deliberately broader than PATTERNS; Git selects lines, Python judges them.
 CANDIDATE_PATTERN = (
     r"byungkwan|/Users/|PI|professor|rfx|agent-rules|pi-desk|[DL]:|MSL-PLANE"
-    r"|ledger|records? 20|research_notes|bk-workspace|remilab-cnu|acc-"
+    r"|ledger|records?[ /]20|docs/agent-memory|research_notes|bk-workspace|remilab-cnu|acc-"
     r"|[^ -~]"  # All non-ASCII text includes every Hangul range, in any locale.
 )
 MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
@@ -107,6 +107,8 @@ PRIVATE_TEXT_CASES = [
     ("# ledger archive", "C4"),
     ("# see rfx-known-issues.md", "C4"),
     ("# records 20261012-pencil-stage-peaks", "C4"),
+    ("# records/20261109-x/DESIGN.md", "C4"),
+    ("# docs/agent-memory/x.md", "C4"),
     ("# internal issue ledger", "C4"),
     ("# docs/research_notes/sample.md", "C4"),
     ("# rfx-research", "C4"),
@@ -153,6 +155,7 @@ NAMED_EXCEPTIONS = (
     ('tests/contracts/test_data_budget.py', 'bk-squared/rfx-archive', 'the producer in scripts/ changes this text in the next cleanup step'),
     ('tests/contracts/test_data_budget.py', 'rfx/records/<YYYYMMDD>-<topic>/', 'the producer in scripts/ changes this text in the next cleanup step'),
     ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/research_notes/', 'The contract proves the research-note directory is untracked.'),
+    ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/agent-memory', 'The contract proves the local-only ledger directory is untracked.'),
     ('tests/contracts/test_source_carries_no_tracker_history.py', 'docs/research_notes/2000-01-02_sample.md', 'Synthetic citation proves private provenance is detected.'),
     ('tests/contracts/test_guide_citations_resolve.py', 'docs/research_notes/', 'Synthetic prose and its explanation prove a plain path is not a link.'),
     ('tests/unit/nonuniform/test_interface_eps_rule.py', '/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py', 'another cleanup step changes this literal together with the values it asserts'),

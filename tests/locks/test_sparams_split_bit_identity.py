@@ -2,8 +2,8 @@
 
 Issue #980 Phase 2 breaks the 8 647-line ``rfx/api/_sparams.py`` into
 ``rfx/sparams/`` a piece at a time. Every step is PURE CODE MOTION, and
-``docs/agent-memory/development_methodology.md`` §2.2 gates a code-motion
-refactor on BIT IDENTITY -- ``np.array_equal`` on the raw arrays, never a
+the code-motion rule gates a
+refactor on BIT IDENTITY before and after -- ``np.array_equal`` on the raw arrays, never a
 tolerance -- not on "the physics still looks right".
 
 This module is that gate. It drives each public ``compute_*`` S-matrix leg

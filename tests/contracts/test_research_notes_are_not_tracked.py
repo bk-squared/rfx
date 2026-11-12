@@ -190,8 +190,9 @@ REVIEWED = {
         (1, "a synthetic citation fed to the contract's own keep rule; "
             "the contract compares it as text and reads no file"),
     "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py":
-        (7, "the new Git prefilter adds one segment literal to the prior six; "
-            "the C4 pattern and one synthetic line name the segment as text "
+        (10, "the ledger synthetic line and its exception path and literal add "
+            "three segment literals to the prior seven; "
+            "the C4 pattern, Git prefilter and synthetic lines name segments as text "
             "to flag; the exception table names the segment for contracts that "
             "name it as text; the contract reads no file there"),
     "tests/contracts/test_guide_citations_resolve.py":

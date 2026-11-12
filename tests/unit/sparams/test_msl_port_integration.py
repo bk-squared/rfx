@@ -152,7 +152,6 @@ def test_msl_thru_line_passive_gate():
     ~1.5x. ``compute_msl_s_matrix`` now measures the closed Ampère-loop
     current ``∮H·dl`` (``msl_loop_current``). The (40, 65) bound has been
     left UNCHANGED throughout — it was never weakened to make this pass.
-    See ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
 
     CALIBRATION REFRESHED 2026-07-30 (issues #511/#507 + PR #516 review
     finding F2) and again 2026-09-07 (#931 R6 — the on-lattice sheet

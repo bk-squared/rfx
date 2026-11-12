@@ -59,14 +59,14 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # than the documented one node short of it. Pinned by
 # tests/unit/grid/test_cell_count_ulp_snap.py and
 # tests/unit/geometry/test_declared_span_reaches_padded_face.py.
-# The fitted microstrip beta sits ~0.9 % above the closed form and is
-# a stated accuracy in the support matrix. The
+# #830 left the cited set on 2026-09-21: the fitted microstrip beta sits ~0.9 %
+# above the closed form, closed as a stated accuracy in the support matrix. The
 # offset is still real and unattributed, so the prose stays without the arrow
 # and 830 sits in RESOLVED_REFERENCES.
-# Closed as not planned before 2.0.
+# #838 left the cited set on 2026-09-23: closed as not planned before 2.0.
 # The coax-to-microstrip power over-read remains a standing limitation, with
 # its closed issue named for provenance in RESOLVED_REFERENCES.
-# Closed as a stated limit (both the
+# #1381 left the cited set on 2026-09-30: closed as a stated limit (both the
 # completion of an unresolved pair and the early stop it can end). The two ring-down
 # entries stay as standing limitations, with 1381 in RESOLVED_REFERENCES.
 # The traced-mesh conductor entry leaves with nominal-grid continuation,

@@ -10,8 +10,7 @@ tested (an observable outside the design region reads back exactly 0.0; one
 co-located with the mask read back 52.8-69.9% error against a reference
 matching central finite differences to 1e-5). The masked gradient was a
 function of mask geometry alone, not a derivative of anything. See
-CHANGELOG.md for the full write-up and `docs/agent-memory/` for the durable
-record.
+CHANGELOG.md for the full write-up.
 
 This module is the falsifier the removal itself asks for: every public
 entry point that used to accept `design_mask=` must now reject it with a

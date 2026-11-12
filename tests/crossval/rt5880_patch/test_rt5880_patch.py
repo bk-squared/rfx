@@ -1111,8 +1111,7 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
     and with rfx's axis scaled by f0_ref / f0_rfx.  Rule R-b
     judges the magnitude after aligning the JUDGED feature; the judged
     feature is f0 now, so the alignment is on f0, but R-b's 2 dB judgement
-    does not apply to this case: the rule reports the magnitude and
-    judges nothing on it.
+    does not apply to this case: this case judges f0 and R only and reports the magnitude.
 
     The deep-null exclusion is two-sided on purpose: a bin where one curve is
     in its dip and the other is not is the two dips sitting at different
