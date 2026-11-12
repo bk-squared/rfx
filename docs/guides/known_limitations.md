@@ -152,6 +152,18 @@ front of a PEC face that must carry loss for every field orientation, use a PEC 
 Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
 from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
+### `add_wall_loss` on a uniform mesh: each lossy high domain face dissipates slightly more power than the surface-impedance model
+
+Tracker: #2615
+
+Each lossy high domain face (x_hi, y_hi, z_hi) dissipates slightly more power than the surface-impedance model, because
+the uniform update also drives the magnetic row half a cell outside that face. Cavity Q comes out low by 2.4e-4 of its
+value with the x pair lossy, 1.8e-4 with the y pair and 1.5e-4 with the z pair (wall conductivity 5.8e5 S/m, one
+hundredth of copper; TE101 near 8 GHz, 1 mm cells), against a graded mesh with the same cells, which does not drive that
+row. Lossless walls are unaffected.
+What to do now: give one axis an explicit profile of equal cells (for example `dy_profile=np.full(ny, dx)`); the run then
+takes the graded path on the same cells, which does not drive that row.
+
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
 Tracker: #1958
