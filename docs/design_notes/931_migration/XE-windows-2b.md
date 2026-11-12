@@ -299,7 +299,7 @@ Run **369367259206** (gpu-a6000-1, SMOKE=0, rc 0). Its only produced file is
 `validation/tmtt_paper/beam_steering_superstrate.png`, which `.gitignore` line 64
 (`**/*.png`) excludes, so no file is committed. The numbers, against this
 script's own pre-change baseline run (harvest
-`/root/workspace/claude-workspace/rfx/runs/issue931-baseline-tmtt-beam-steer-20260907T055211Z`,
+`<workspace>/rfx/runs/issue931-baseline-tmtt-beam-steer-20260907T055211Z`,
 same image and preset, rc 0; the harvest carries no run id) rather than against
 the paper headline:
 

@@ -6,7 +6,7 @@ No measurement producer, operator, gate or historical fixture is edited.
 
 ## Source and consumers
 
-- Source: `/root/workspace/claude-workspace/rfx/runs/issue931-chain-repin-20260908T073139Z/fixture.json`.
+- Source: `<workspace>/rfx/runs/issue931-chain-repin-20260908T073139Z/fixture.json`.
 - Run: **369367259427**, supplied by the adjacent `run_id.txt`.
 - Producer commit: `6df7ccaf20d572e0c58c194c12bc63467d4ef360`.
 - Predeclaration: `docs/design_notes/waveguide_chain_battery_predeclaration.md`,
