@@ -24,6 +24,9 @@ import numpy as np
 
 from rfx.core.jax_utils import is_tracer
 from rfx.measurement.phasors import exp_j
+from rfx.measurement.waveguide_power import (
+    power_wave_pair, finite_wave_ratio, mask_power_wave, warn_power_waves,
+)
 from rfx.measurement.waveguide_s import (
     assemble_normalized_waveguide_column,
     _waveguide_s21_phase_residual,
@@ -903,6 +906,7 @@ def _compute_waveguide_s_matrix_nu(
         self, e, grid, resolve_waveguide_port_freqs(self, e), n_steps) for e in entries]
     medium_cfgs = resolve_preflight_port_configs(
         self, grid, medium_cfgs, eps_override=eps_override, sigma_override=sigma_override)
+    warn_power_waves(medium_cfgs)
     reference = _empty_waveguide_reference(self, _reference_medium(medium_cfgs, normalize))
 
     # Frequency grid must match across ports.
@@ -1064,7 +1068,8 @@ def _compute_waveguide_s_matrix_nu(
                 # AD-safe angle (double-where): angle() has an
                 # undefined gradient at 0; angle(1)=0 matches
                 # np.angle(0)=0 so the primal is unchanged.
-                ratio = b_recv_dev / safe_a_inc
+                defined = power_wave_pair(dev_wg[recv_name], ref_wg[drive_name])
+                ratio = finite_wave_ratio(b_recv_dev, safe_a_inc, defined)
                 ratio_ok = jnp.abs(ratio) > 0.0
                 phase = jnp.angle(
                     jnp.where(ratio_ok, ratio, jnp.ones_like(ratio))
@@ -1078,7 +1083,9 @@ def _compute_waveguide_s_matrix_nu(
                 # d(sqrt)/dx = inf would leak 0*inf=nan through the
                 # backward pass; primal stays exactly sqrt(x) for
                 # x>0 and exactly 0 at x=0.
-                p_ratio = _flux_power_ratio(P_num, safe_P_inc)
+                p_ratio = _flux_power_ratio(
+                    jnp.where(defined, P_num, 0), jnp.where(defined, safe_P_inc, 1),
+                )
                 p_ok = p_ratio > 0.0
                 mag = jnp.where(
                     p_ok,
@@ -1087,7 +1094,7 @@ def _compute_waveguide_s_matrix_nu(
                     ),
                     0.0,
                 )
-                recv_col.append(mag * exp_j(phase, xp=jnp))
+                recv_col.append(mask_power_wave(mag * exp_j(phase, xp=jnp), defined))
             s_columns.append(recv_col)
             continue
 
@@ -1106,6 +1113,7 @@ def _compute_waveguide_s_matrix_nu(
         # small-signal guard; the diagonal keeps its existing floor.
         s_columns.append(assemble_normalized_waveguide_column(
             b_out_dev, b_out_ref, a_inc_ref, drive_idx,
+            port_cfgs=[dev_wg[e.name] for e in original_entries],
             diagonal_floor=1e-30, transmission_floor=1e-60, xp=jnp,
         ))
 
