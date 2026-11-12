@@ -407,6 +407,16 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/measurement/_radiated_power.py",
+      "function": "_phi_weights",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/_radiated_power.py",
+      "function": "integrate_radiated_power",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/measurement/coax_records.py",
       "function": "_validate_monotone_axis",
       "kind": "roll/diff"
