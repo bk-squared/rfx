@@ -7,8 +7,6 @@ from rfx.model.graded_admission import host_cells
 from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
-from rfx.boundaries.axes import hi_face_is_wall
-from rfx.model.waveguide_aperture import validate_waveguide_aperture
 from rfx.core.yee import EPS_0, MU_0
 from rfx.model.waveguide_waveform import waveguide_waveform_error
 from rfx.model.waveguide_mode_solver import (
@@ -580,15 +578,13 @@ def init_waveguide_port(
     ref_offset : int
         Cells downstream from source for reference probe.
     grid : Grid or None
-        Optional grid for aperture validation. A span reaching the node count
-        at a high electric wall is refused; use the guide's cell span instead.
+        Retained for call compatibility. Apertures are validated when run or
+        extracted, using the run's electric walls.
     """
-    # Explicit grid supplies uniform boundary detection.
     grid_obj = None
     if hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
         grid_obj = dx
         dx = float(grid_obj.dx)
-    boundary_grid = grid_obj if grid_obj is not None else grid
     m, n = port.mode
     normal_axis = port.normal_axis
     if normal_axis not in ("x", "y", "z"):
@@ -611,13 +607,6 @@ def init_waveguide_port(
     else:
         raise ValueError(
             "non-x-normal ports require u_slice and v_slice explicit transverse aperture slices"
-        )
-
-    if boundary_grid is not None:
-        faces = {f"{axis}_hi" for axis in "xyz" if hi_face_is_wall(boundary_grid, axis)}
-        validate_waveguide_aperture(
-            normal_axis, (u_lo, u_hi), (v_lo, v_hi), boundary_grid.shape,
-            faces, name=port.direction,
         )
 
     nu_port = u_hi - u_lo
