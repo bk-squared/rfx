@@ -371,7 +371,7 @@ the per-bin curve, so the decision rule's tolerances (factor 1.25 at the worst b
 crossing within ±2 bins, rung ratios within ±25 %) were never reached — nothing got close
 enough for them to bind.
 
-The envelope this leaves, for the PI:
+The envelope this leaves, for consideration:
 
 * On an empty WR-90 guide the `normalize=False` lane's column-power closure is
   **6.1e-3 at a = 9 cells, 1.2e-3 at 18, 2.5e-4 at 36**, falling as dx², and the `flux`

@@ -559,17 +559,6 @@ def test_every_simulation_attribute_is_classified():
     assert not set(EXPORTED_SIMULATION_ATTRS) & set(TRACED_ONLY_SIMULATION_ATTRS)
 
 
-def test_lazy_wall_loss_is_classified_as_refused():
-    sim = Simulation(freq_max=10e9, domain=(.012,) * 3, dx=.0015, boundary="pec")
-    before = set(vars(sim))
-    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo",))
-    assert set(vars(sim)) - before == {"_wall_losses"}
-    assert REFUSED_SIMULATION_ATTRS == {"_wall_losses": "refused"}
-    assert not set(REFUSED_SIMULATION_ATTRS) & set(EXPORTED_SIMULATION_ATTRS)
-    with pytest.raises(UnsupportedDesignFeature, match="add_wall_loss is not carried by the design document"):
-        design_to_dict(sim)
-
-
 def test_every_builder_method_is_covered_by_the_document():
     """Each public builder is exported, desugared, or explicitly refused."""
     builders = {

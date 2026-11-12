@@ -8,10 +8,10 @@ NU realized-cell-vector loss, including the cells controlling dt.
 **Tree:** rfx-ad-quant, feat/nu-ad-directional, base origin/main
 fa3929136159e0a644783b56012b21c1bce21340. Date: 2026-09-13 (KST).
 **Provenance:** import printed and verified as
-`/Users/byungkwankim/Documents/rfx-ad-quant/rfx/__init__.py`.
+`rfx/__init__.py`.
 Every JSON records rfx_file and git_sha; execution is CPU, float32,
-using PYTHONPATH=/Users/byungkwankim/Documents/rfx-ad-quant and
-/Users/byungkwankim/Documents/rfx/.venv/bin/python.
+using PYTHONPATH=<workspace>/Documents/rfx-ad-quant and
+<workspace>/Documents/rfx/.venv/bin/python.
 
 ## 0. Existing evidence (read-only verification before measurement)
 

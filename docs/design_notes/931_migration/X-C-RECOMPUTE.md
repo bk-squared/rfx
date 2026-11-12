@@ -1,7 +1,7 @@
 # X-C recompute index — issue #931, cases cv14 / cv15 / cv16 / cv17
 
 Branch `feat/931-crossval-C`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-XC-crossvalC`.
+`<workspace>/research/rfx-931-XC-crossvalC`.
 One VESSL run per case, preset `gpu-rtx4090`, cluster `remilab-c0`,
 `JAX_PLATFORMS=cpu`. Per-case detail lives in each results directory:
 

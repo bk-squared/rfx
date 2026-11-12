@@ -78,7 +78,7 @@ is what actually crosses observable against rig.
 ## 1. R1 — memory this plan is checked against
 
 Read read-only at the primary checkout
-`/root/workspace/byungkwan-workspace/research/rfx/docs/agent-memory/`.
+`docs/agent-memory`.
 
 1. `rfx-known-issues.md:4158` — *"in an empty WR-90 waveguide driven from port
    1, `|b1/a1|` ... scales with CPML thickness as 10 layers -> 11.7 %, 20 -> 4.2 %,
@@ -300,7 +300,7 @@ Attempts consumed at the time of writing: **0**.
 - It will not modify anything under `rfx/`. If the identified cause is in the
   absorber, the lane STOPS at the diagnosis and writes the landing
   pre-declaration (which tests and fixtures move, including cv01's #813
-  numbers) for the PI to decide.
+  numbers) for a separate decision.
 - It will not change cv03's committed record, gates or tolerances.
 - If the cause is a rig/comparator defect, the cv03 rig change is proposed as a
   **separate** commit under the same append-only evidence rules, with no gate
@@ -400,7 +400,7 @@ without another append.
 
 ---
 
-## 8. Landing pre-declaration — for the PI, not executed in this lane
+## 8. Landing pre-declaration — not executed in this lane
 
 Written 2026-09-15 (KST) after the arms closed. Results:
 `docs/design_notes/issue831_far_end_return_results.md`. **Nothing below is
@@ -572,16 +572,16 @@ estimator) was right, the extractor was right, the oracle was right, and the
 array the solver received was wrong.
 
 The ledger and that invariant sentence live in gitignored memory, which this
-lane does not edit. Flagged here for the PI to update after landing.
+lane does not edit. Flagged here for an update after landing.
 
-### 8.7 Also for the PI, separately: two preflight gaps this exposed
+### 8.7 Two preflight gaps this exposed
 
 Neither is filed as an issue here; both are decisions, not findings.
 
 1. **Nothing warns that a dielectric ends at the absorber seam.** The preflight
    has a geometry-in-absorber check; the failure mode here is geometry
    ABSENT from the absorber under a flag that claims to put it there, and it is
-   silent. The PI's stated order after v1.8 puts preflight work behind the mesh
+   silent. The stated order after v1.8 puts preflight work behind the mesh
    rasterization viz; this belongs in that slot.
 2. **The committed cv03 has no point probe, so `settling_db` is `None`** and
    its own ring-down witness cannot fire. With one added, every committed arm

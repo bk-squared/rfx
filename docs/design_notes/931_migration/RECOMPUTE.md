@@ -17,7 +17,7 @@ explicitly not used as a prediction.
 
 * **yaml**: `scripts/vessl_931_docs_sheet_vs_volume_ab.yaml`
 * **preset**: `gpu-rtx4090`, cluster `remilab-c0`, `JAX_PLATFORMS=cpu`
-* **reads**: `/root/workspace/byungkwan-workspace/research/rfx-931-Docs-docs`
+* **reads**: `<workspace>/research/rfx-931-Docs-docs`
   (branch `feat/931-docs`), copied to `/root/work/rfx931-docs-ab`
 * **writes**: `/root/workspace/claude-workspace/rfx/runs/issue931-post-docs-ab-<ts>/`
 * **steps**
@@ -124,7 +124,7 @@ Submit command (from a directory that is NOT a git worktree — the VESSL CLI
 reads `.git` as a directory and a worktree's `.git` is a file):
 
     cd /tmp && vessl run create -f \
-      /root/workspace/byungkwan-workspace/research/rfx-931-Docs-docs/scripts/vessl_931_docs_sheet_vs_volume_ab.yaml
+      scripts/vessl_931_docs_sheet_vs_volume_ab.yaml
 
 Read the result at
 `/root/workspace/claude-workspace/rfx/runs/issue931-post-docs-ab-<ts>/`:

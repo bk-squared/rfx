@@ -70,7 +70,7 @@ holds and P2 fails, the lateral walls matter but the DUT rim is not the only sou
 feed end next. If P2 holds and P1 fails, the rim matters but the lateral walls are not what
 holds the energy.
 
-The column-power question (T0 / T2). This is PI question 1 of 2026-09-24, not part of M. On the
+The column-power question (T0 / T2). This is not part of M. On the
 two-port lane, a lossless thru or bead reads |S11|² + |S21|² down to 0.979 / 0.969 at 9 annulus
 cells, falling with frequency, and doubling the record does not change it. If T2's minimum is at
 least 0.995 where T0's is about 0.98, the missing power is radiation from the unshielded line ends

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxUnsupported
 
 
 def _validate_coax_msl_registration(
@@ -115,6 +115,11 @@ def _validate_coax_msl_registration(
             "position[2])."
         )
     msl_pe = self._msl_ports[0]
+    if msl_pe.mode != "laplace":
+        raise RfxUnsupported(
+            f"compute_coax_msl_transition(): MSL port {msl_pe.name!r} has "
+            f"unsupported mode={msl_pe.mode!r}; use mode=\"laplace\" (the default)."
+        )
     # The coax stub's own top face stops AT port.position[2] (rounded to
     # the nearest grid node); the caller's own registered ground-plane
     # conductor is expected to occupy that node and MSL's substrate

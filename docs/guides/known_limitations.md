@@ -152,6 +152,18 @@ front of a PEC face that must carry loss for every field orientation, use a PEC 
 Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
 from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
+### `add_wall_loss` on a uniform mesh: each lossy high domain face dissipates slightly more power than the surface-impedance model
+
+Tracker: #2615
+
+Each lossy high domain face (x_hi, y_hi, z_hi) dissipates slightly more power than the surface-impedance model, because
+the uniform update also drives the magnetic row half a cell outside that face. Cavity Q comes out low by 2.4e-4 of its
+value with the x pair lossy, 1.8e-4 with the y pair and 1.5e-4 with the z pair (wall conductivity 5.8e5 S/m, one
+hundredth of copper; TE101 near 8 GHz, 1 mm cells), against a graded mesh with the same cells, which does not drive that
+row. Lossless walls are unaffected.
+What to do now: give one axis an explicit profile of equal cells (for example `dy_profile=np.full(ny, dx)`); the run then
+takes the graded path on the same cells, which does not drive that row.
+
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
 Tracker: #1958
@@ -224,6 +236,19 @@ These step times come from a second CPU node; on it, the unchanged step on 0.11.
 No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propagation=false` leaves it 2.4 to 3.0 times slower, and jaxlib 0.11.2 rejects `--xla_cpu_use_fusion_emitters`.
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
+
+### `precision="float64"` still builds some model coefficients in float32
+
+Tracker: #2613
+
+A float64 run steps float64 fields, but some coefficients are still built in float32. These include the material eps,
+sigma and mu; the Debye, Lorentz and Drude pole edge weights; the CPML profiles; the graded-mesh metrics; the conformal-PEC operands; and
+the TF/SF coefficients. `tests/contracts/test_float64_model_invariant.py` names each array, and its list may only shrink.
+Those that were measured differ from a float64 build by up to about 1e-7 relative (sigma 1.03e-7, pole weights 9.8e-8
+and eps 8.3e-8 on a graded mesh; conformal-PEC operands 5.0e-8 on a uniform mesh); mu, the CPML profiles, the graded
+metrics and the TF/SF coefficients were not measured, and how far a field or S moves was not measured. float32 runs are
+not affected. UPML and an oblique Bloch TF/SF source refuse float64 (see the
+[support matrix](support_matrix.md)'s refused inputs).
 
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 

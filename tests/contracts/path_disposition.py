@@ -1680,8 +1680,17 @@ TABLE["_pec_occupancy_model"]["kottke"]["fwd_distributed"] = refuses(
     "uniform distributed forward refuses the occupancy override", raises="pec_occupancy_override")
 
 
-def cell(attr: str, feature: str, path: str, *, precision=None) -> Cell:
+COAX_MSL_MODE_REFUSAL = refuses(
+    "rfx/sparams/_coax_msl_stages.py: registration refuses every non-Laplace mode "
+    "before assembly (#2619); tests/contracts/test_coax_msl_mode_refusal.py",
+    raises='use mode="laplace" (the default).',
+)
+
+
+def cell(attr: str, feature: str, path: str, *, precision=None, mode=None) -> Cell:
     """The recorded disposition for one input and one execution path."""
+    if (attr, feature, path) == ("_msl_ports", "msl_port", "coax_msl_transition") and mode not in (None, "laplace"):
+        return COAX_MSL_MODE_REFUSAL
     if attr == "_precision" and precision == "float64" and path in ("run_nonuniform", "fwd_nonuniform"):
         return carries("float64 field and accumulation storage on single-device graded Yee")
     row = TABLE[attr][feature]

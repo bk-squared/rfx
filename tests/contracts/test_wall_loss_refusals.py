@@ -17,7 +17,7 @@ LANE_ROWS = ["optimize-uniform", "optimize-graded", "gradient-check", "topology"
              "coax-msl", "mixed-msl-junction", "ad-memory", "distributed-v2", "distributed-entry-run",
              "distributed-entry-forward", "distributed-nu-forward", "distributed-dispatch-run", "distributed-dispatch-forward",
              "subgrid-dispatch", "subgrid-run", "waveguide-and-multimode", "lumped-scan-and-eager-port-probe",
-             "current-moments", "upml", "kottke", "conformal", "traced-mesh", "solid-cpml-pad",
+             "current-moments", "upml", "kottke", "kottke-forward", "conformal", "traced-mesh", "solid-cpml-pad",
              "debye-overlap", "lorentz-overlap", "drude-overlap", "shape-sheet", "face-cpml-pad"]
 
 
@@ -112,6 +112,8 @@ def lane_call(row, monkeypatch):
         from rfx.current_moments import monitor_for_simulation
         sim.add_current_moment_monitor((.003,)*3, (.009,)*3, .003, np.array([8e9]))
         return lambda: monitor_for_simulation(sim, None)
+    if row == "kottke-forward":
+        return lambda: sim.forward(n_steps=1, skip_preflight=True, subpixel_smoothing=True)
     if row in ("upml", "kottke", "conformal"):
         if row == "upml":
             sim._boundary = "upml"

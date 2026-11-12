@@ -16,8 +16,6 @@ import numpy as np
 import pytest
 
 from rfx.api import Simulation
-from rfx.errors import RfxUnsupported
-from rfx.geometry.conformal_cells import compute_conformal_fractions
 from rfx.geometry.csg import Box
 from rfx.ringdown import identify
 from rfx.sources.sources import ModulatedGaussian
@@ -61,10 +59,3 @@ def test_conformal_wall_rings_at_its_drawn_plane(x0):
 @pytest.mark.parametrize("x_hi", [0.03, 0.019], ids=["node-plane-wall", "one-cell-slab"])
 def test_conformal_node_plane_wall_rings_at_18mm(x_hi):
     assert abs(_wall_from_te101(0.018, x_hi, snap='declared') - 0.018) / DX <= 0.05
-
-
-def test_conformal_builder_refuses_off_lattice_box_without_inside_node():
-    sim = Simulation(24e9, (0.020, 0.014, 0.010), dx=DX, boundary='pec')
-    box = Box((0.018, -0.01, -0.01), (0.0184, 0.024, 0.020))
-    with pytest.raises(RfxUnsupported, match=r'conformal PEC.*this PEC Box.*x face 0.4 cell off the node lattice'):
-        compute_conformal_fractions(sim._build_grid(), [box], conformal_pec=True)

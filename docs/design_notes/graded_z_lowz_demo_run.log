@@ -150,4 +150,4 @@ graded profile (um): [63.5, 63.5, 63.5, 48.85, 42.33, 32.56, 25.05, 21.17, 27.52
   F5_z_cell_ratio: FIRED
   F6_z_cost_ratio: FIRED
   settling_precondition: OK
-wrote /Users/byungkwankim/Documents/rfx-worktrees/graded-z-lowz-demo/docs/design_notes/graded_z_lowz_demo_results.json
+wrote docs/design_notes/graded_z_lowz_demo_results.json

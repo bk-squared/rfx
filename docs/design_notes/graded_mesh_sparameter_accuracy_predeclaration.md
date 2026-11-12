@@ -25,7 +25,7 @@ the `mid` rung, so all 14 cells fit in about 5 minutes.
 
 | entry | load-bearing sentence | this plan is … |
 |---|---|---|
-| `docs/guides/physics_validation_evidence_rule.md` line 129 | "Nonuniform S-parameter paths — Shadow unless they pass a co-refined analytic/external field or S-parameter oracle. 'Finite gradient' is E0/E1, not validation." | **consistent** — this lane measures a NU S-parameter path against analytic oracles and proposes NO promotion. Promotion is the PI's call on the evidence. |
+| `docs/guides/physics_validation_evidence_rule.md` line 129 | "Nonuniform S-parameter paths — Shadow unless they pass a co-refined analytic/external field or S-parameter oracle. 'Finite gradient' is E0/E1, not validation." | **consistent** — this lane measures a NU S-parameter path against analytic oracles and proposes NO promotion. |
 | `docs/guides/support_matrix.md`, "Multi-band graded mesh" | "The MESH ITSELF is documented — not any observable computed on it … **Not witnessed:** … in-plane grading." and "in-plane (`dx_profile` / `dy_profile`) grading is UNCOVERED, absorber-adjacent grading is EXCLUDED, and `dt` is unchanged (global min-cell CFL)." | **consistent** — arm B is a z-axis profile with ratio ≤ 1.4, ≤ 3 fine bands, and the z faces are PEC so no grading approaches an absorber. Arms D2 and E grade an in-plane axis on purpose and are labelled out-of-envelope throughout. |
 | `docs/agent-memory/rfx-known-issues.md`, waveguide chain-status row | "Still outside this row: NU `flux` sub-lane AD-vs-FD only (no plane test, no ladder; **#810 dz-graded evidence absent**)" | **consistent** — this is the missing dz-graded forward evidence for that row. No AD leg, no plane-shift leg, no ladder is claimed here. |
 | `docs/agent-memory/rfx-known-issues.md`, `~~#811~~ RESOLVED 2026-09-01 (PR #828)` | "dz-only now routes to the NU lane; dz-only+normalize=False fails loud; … dz-graded ACCURACY stays open under #810" | **consistent, and it constrains the design**: every graded arm is flux-lane-only. Verified by running it — see §1.3. |
@@ -428,7 +428,7 @@ agreeing is reported in the results, not used to set anything.
 
 Nothing in `docs/agent-memory/` is edited by this lane. No gate, tolerance or
 golden anywhere in the repo is touched. No promotion of the NU lane out of
-shadow is proposed here; that is the PI's call on this evidence.
+shadow is proposed here.
 
 **R3:** memory=`physics_validation_evidence_rule.md` line 129 + known-issues
 chain-status row ("#810 dz-graded evidence absent") + `~~#811~~` row |

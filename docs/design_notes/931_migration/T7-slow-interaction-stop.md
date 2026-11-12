@@ -224,7 +224,7 @@ JAX/jaxlib/CPU environment, full logs and artifacts with the actual VESSL run
 IDs. Neither command authorizes a re-pin. Do not run
 `scripts/capture_msl_e2e_golden.py`: it overwrites the committed golden. Before
 accepting new values, retain full time/field or angular traces and the realized
-geometry witness; quantify every changed lock and record the PI decision.
+geometry witness; quantify every changed lock and record the decision.
 The full impact/GPU jobs become meaningful after the architecture is
 implemented and the two re-pin decisions are resolved.
 
