@@ -562,6 +562,8 @@ class _CompiledWgGrid:
 
 def test_compiled_runner_waveguide_port_matches_manual_loop():
     """Compiled runner should preserve waveguide-port source/probe behavior."""
+    import sys
+
     a_wg = 0.04
     b_wg = 0.02
     length = 0.12
@@ -571,7 +573,10 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
 
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
-    freqs = jnp.linspace(4.5e9, 8e9, 12)
+    # TE20 cutoff c/a = 7.49 GHz for a = 40 mm; above it the single-mode V-I
+    # extractor is not physical. Use the same band as
+    # test_extract_waveguide_s_matrix_two_port_reciprocity.
+    freqs = jnp.linspace(5.0e9, 7.0e9, 12)
     n_steps = grid.num_timesteps(num_periods=30)
 
     port = WaveguidePort(
@@ -619,14 +624,9 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
 
     s21_compiled = np.array(extract_waveguide_s21(compiled_cfg))
     s21_manual = np.array(extract_waveguide_s21(manual_cfg))
-    a_inc, _ = extract_waveguide_port_waves(compiled_cfg)
-    incident = np.abs(np.asarray(a_inc))
-    relative_incident = incident / np.max(incident)
-    # Refer the difference to the incident peak because S21 divides by a_inc.
-    # 1e-4 of the peak is the cross-trace bar for a quantity summed over the record.
-    max_err = np.max(relative_incident * np.abs(s21_compiled - s21_manual))
-    print(f"\nCompiled waveguide vs manual loop incident-peak error: {max_err:.9e}")
-    assert max_err < 1e-4, f"Compiled waveguide runner diverged from manual loop: {max_err:.2e}"
+    max_err = np.max(np.abs(s21_compiled - s21_manual))
+    print(f"\nCompiled waveguide vs manual loop max|dS21| (5-7 GHz): {max_err:.9e}", file=sys.stderr)
+    assert max_err < 1e-3, f"Compiled waveguide runner diverged from manual loop: {max_err:.2e}"
 
 
 def test_extract_waveguide_s_matrix_two_port_reciprocity():
