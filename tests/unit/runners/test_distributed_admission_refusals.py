@@ -501,6 +501,10 @@ def test_graded_passive_port_is_carried(entry):
     one = evaluate(sim, entry, 32)
     multi = evaluate(sim, entry, 32, devices)
     assert len(multi.sparam_time_records) == 2
+    if entry == 'forward':
+        witness = multi.settling_witness
+        assert any(row.get('reader_frame') == 'whole-port'
+                   for row in witness.get('runs', (witness,))), witness
     for a, b in zip(one.sparam_time_records, multi.sparam_time_records):
         np.testing.assert_array_equal(a.samples, b.samples)
 

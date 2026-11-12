@@ -1,7 +1,10 @@
 """Complex per-bin tail ratios and amplitude scaling."""
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
+import rfx.sparams._tail_witness as tail_witness
 from rfx.sparams._tail_witness import tail_share_witness
 
 
@@ -62,7 +65,9 @@ def test_zero_post_source_channels_have_zero_share(monkeypatch, source_end):
     zero_tail[:source_end] = 1.
     expected = tail_share_witness([('live', y)], 1., source_end,
                                   [.07, .12], freq_max=.15)
-    monkeypatch.setattr(ringdown, 'identify', observed)
+
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=observed))
     per_record = {}
     result = tail_share_witness(
         [('live', np.column_stack([zero_tail, y])), ('zero', zero_tail)],
@@ -83,7 +88,8 @@ def test_all_zero_post_source_group_passes(monkeypatch, source_end):
     def unexpected(*args, **kwargs):
         pytest.fail('an all-zero group reached identification')
 
-    monkeypatch.setattr(ringdown, 'identify', unexpected)
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=unexpected))
     y = np.zeros((200, 2))
     y[:source_end] = 1.
     result = tail_share_witness([('zero', y)], 1., source_end,
@@ -104,7 +110,8 @@ def test_named_records_share_one_multichannel_identification(monkeypatch):
         calls.append((series.shape, start, stop))
         return original(series, dt, start, stop, **kwargs)
 
-    monkeypatch.setattr(ringdown, 'identify', observed)
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=observed))
     y = np.exp((-.02 + 2j*np.pi*.07)*np.arange(200))
     result = tail_share_witness([('v', y), ('i', np.column_stack([2*y, 3j*y]))],
                                 1., 0, [.07], freq_max=.15)
@@ -122,7 +129,8 @@ def test_late_source_end_uses_remaining_window(monkeypatch):
         windows.append((start, stop))
         return original(series, dt, start, stop, **kwargs)
 
-    monkeypatch.setattr(ringdown, 'identify', observed)
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=observed))
     n = 700
     y = np.exp((-.002 + 2j*np.pi*.07)*np.arange(n))
     result = tail_share_witness([('record', y)], 1., round(.95*n),
@@ -140,7 +148,8 @@ def test_short_identification_check_is_undetermined(monkeypatch, source_end):
     def unexpected(*args, **kwargs):
         pytest.fail('a short identification window reached the pencil')
 
-    monkeypatch.setattr(ringdown, 'identify', unexpected)
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=unexpected))
     y = np.exp((-.002 + 2j*np.pi*.07)*np.arange(200))
     result = tail_share_witness([('record', y)], 1., source_end, [.07], freq_max=.15)
     assert result.status == 'undetermined'

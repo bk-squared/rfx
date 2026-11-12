@@ -12,9 +12,9 @@ witness (two differently-defined settling numbers per run).
 Containment: ``Simulation._internal_probe_indices`` runtime bookkeeping
 (deliberately NOT an ``_ProbeEntry`` field — the entry field set is pinned
 by the interop design-IR contract). Probe-placement preflight advisories
-and #332/#336 skip internal indices; USER probes keep pre-#470 behavior
-exactly (the #332 fail-safe in test_patch_edgefed_s11_passivity relies on
-user-probe series still being evaluated during MSL runs).
+and #332/#336 skip internal indices. USER probes keep placement advisories;
+the MSL runs read DFT planes, so their per-bin settling witness replaces
+#332's envelope advisory even when user probes are present.
 """
 import warnings
 
@@ -64,6 +64,9 @@ def test_witness_probes_produce_no_probe_advisories_and_no_332():
         warnings.simplefilter("always")
         res = sim.compute_msl_s_matrix(freqs=FREQS, num_periods=2.0)
     msgs = [str(w.message) for w in caught]
+    print(f'MSL user_probes={len(sim._probes)}: '
+          f'envelope={[m for m in msgs if "ring-down truncated" in m]}, '
+          f'witness={[m for m in msgs if "settling witness" in m]}')
     assert not any("Probe at" in m for m in msgs), msgs
     assert not any("ring-down truncated" in m for m in msgs), msgs
     assert any("settling witness" in m for m in msgs), msgs
@@ -74,10 +77,9 @@ def test_witness_probes_produce_no_probe_advisories_and_no_332():
 
 
 def test_user_probe_advisories_and_332_still_fire():
-    """USER probes keep pre-#470 behavior during the same MSL run: a probe
-    near the x-CPML still draws a placement advisory, and an interior
-    user probe's hot tail still fires #332 on the truncated record (the
-    fail-safe test_patch_edgefed_s11_passivity depends on).
+    """User probes keep their placement advisory during the same MSL run.
+    The truncated record emits the S settling-witness warning. Its DFT
+    planes exclude the run from the envelope advisory.
 
     Issue #500 / review finding H1: on this fixture (dx=2e-4, cpml_layers=8
     -> pad=8) the second probe sits at x=200um = node 9, one cell inside
@@ -93,7 +95,7 @@ def test_user_probe_advisories_and_332_still_fire():
     load-bearing (see _validate_cfg_absorber_placement's docstring)."""
     sim = _thru()
     # interior probe above the trace: sees real signal -> hot tail at
-    # num_periods=2 -> #332 must fire on the USER column
+    # num_periods=2. DFT planes select the per-bin witness, not #332.
     sim.add_probe(position=(0.006, 0.004, 0.0012), component="ez")
     # one cell inside the domain (node 9 of pad=8) -> absorber_proximity
     sim.add_probe(position=(0.0002, 0.004, 0.0012), component="ez")
@@ -101,6 +103,9 @@ def test_user_probe_advisories_and_332_still_fire():
         warnings.simplefilter("always")
         sim.compute_msl_s_matrix(freqs=FREQS, num_periods=2.0)
     msgs = [str(w.message) for w in caught]
+    print(f'MSL user_probes={len(sim._probes)}: '
+          f'envelope={[m for m in msgs if "ring-down truncated" in m]}, '
+          f'witness={[m for m in msgs if "settling witness" in m]}')
     # compute_msl_s_matrix folds individual preflight findings into ONE
     # consolidated "[run] preflight found N advisory issue(s)" UserWarning
     # (issue #66 parity), so absorber_proximity's own .code is not visible
@@ -110,7 +115,8 @@ def test_user_probe_advisories_and_332_still_fire():
         "within 2 cells" in m and "CPML absorber" in m and "fringe/reflection" in m
         for m in msgs
     ), msgs
-    assert any("ring-down truncated" in m for m in msgs), msgs
+    assert not any("ring-down truncated" in m for m in msgs), msgs
+    assert any("settling witness" in m for m in msgs), msgs
     # user probes survive the call
     assert len(sim._probes) == 2
     assert sim._internal_probe_indices == set()

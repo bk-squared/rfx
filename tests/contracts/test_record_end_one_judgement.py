@@ -975,3 +975,399 @@ def test_s2b_coverage_preserves_tail_value_and_nonpass_reason(status, db):
     assert witness["coverage"] == coverage.rows()
     assert witness["status"] == ("undetermined" if status in {"pass", "absent"} else status)
     assert witness["reason"] == ("cannot judge: coverage" if status in {"pass", "absent"} else "tail reason")
+
+
+_RECORD_END_FILES = (
+    'sparams/_tail_witness.py', 'measurement/settling.py', 'probes/sparam_driver.py',
+    'measurement/waveguide_s.py', 'sparams/waveguide.py', 'sparams/_common.py',
+    'sparams/_settling_warning.py', 'sparams/_msl_stages.py',
+    'sparams/_mixed_stages.py', 'sparams/_coax_oneport_record.py', 'sparams/coax.py',
+    # The S calculators' shared helpers moved from sparams/_common.py into these two.
+    'measurement/sparam_assembly.py', 'measurement/sparam_advisories.py',
+)
+
+
+def test_s4_record_end_comparisons_have_one_owner():
+    # This source-name check misses comparisons on other names. Ring-down,
+    # gradients, decay and coverage (S5-S7) are not yet covered.
+    violations = []
+    for name in _RECORD_END_FILES:
+        source = (REPO / 'rfx' / name).read_text()
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Compare):
+                continue
+            operands = [node.left, *node.comparators]
+            def is_bar(value):
+                if isinstance(value, ast.UnaryOp) and isinstance(value.op, (ast.USub, ast.UAdd)):
+                    value = value.operand
+                return isinstance(value, ast.Constant) and value.value in (1e-2, 1e-3, 40)
+            if any(is_bar(value) for value in operands) and any(
+                    re.search('share|tail|error|settl|db|witness',
+                              ast.get_source_segment(source, value) or '', re.I)
+                    for value in operands if not is_bar(value)):
+                violations.append((name, node.lineno))
+    assert not violations
+
+
+def test_s4_tail_delegate_and_reader_sites():
+    tree = ast.parse((REPO / 'rfx/sparams/_tail_witness.py').read_text())
+    body = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                and n.name == 'tail_share_witness')
+    assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+               and n.func.id == 'record_end_error' for n in ast.walk(body))
+    for name, function, minimum in (
+            ('probes/sparam_driver.py', 'port_record_witness', 1),
+            ('sparams/_record_selection.py', 'port_record_witness', 1),
+            ('measurement/waveguide_s.py', 'settling_db_from_port_records', 2)):
+        tree = ast.parse((REPO / 'rfx' / name).read_text())
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == function
+                 and any(k.arg == 'reader' for k in n.keywords)]
+        assert len(calls) >= minimum, name
+
+
+def test_s4_envelope_only_without_frequency_reads():
+    """The envelope guards probe-only runs; a DFT read uses its per-bin witness."""
+    from examples.tutorials.run_control_and_fields import build_simulation, F0
+    from rfx.errors import AccuracyWarning
+
+    for with_plane in (False, True):
+        sim = build_simulation()
+        if with_plane:
+            sim.add_dft_plane_probe(axis="x", coordinate=.019, component="ez",
+                                    freqs=np.array([F0]), name="read")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            result = sim.run(num_periods=.1, compute_s_params=False, skip_preflight=True)
+        messages = [str(w.message) for w in caught if issubclass(w.category, AccuracyWarning)]
+        envelope = [message for message in messages if 'ring-down truncated' in message]
+        witness = result.settling_witness
+        print(f'clipped with_plane={with_plane}: status={witness["status"]}, '
+              f'reason={witness["reason"]!r}, warnings={messages}')
+        assert sim._ntff is None and result.s_params is None
+        assert not sim._internal_probe_indices
+        if with_plane:
+            assert sim._dft_planes and result.dft_planes
+            assert not envelope, f'DFT-plane run emitted envelope warning: {envelope}'
+            assert witness['status'] != 'pass', witness
+        else:
+            assert not sim._dft_planes
+            assert envelope, f'Clipped probe-only run emitted no envelope warning: {messages}'
+
+
+def _s4_closed_record(n, dt, poles, residues, bins, kind='E', factor=1.):
+    z = np.exp(poles * dt)
+    q = z[None, :] * np.exp(-2j * np.pi * bins[:, None] * dt)
+    samples = np.exp(np.arange(n)[:, None] * poles[None, :] * dt) @ residues
+    stamp = factor * np.exp(-2j * np.pi * bins * dt * (1. if kind == 'E' else .5))
+    inside = stamp * dt * ((1 - q**n) / (1 - q) @ residues)
+    # Whole-record origin: tail = dt exp(-iwNdt) sum c z**N/(1-z exp(-iwdt)).
+    tail = stamp * dt * np.exp(-2j * np.pi * bins * n * dt) * (
+        z[None, :]**n / (1 - q) @ residues)
+    return samples.astype(np.complex128), inside, tail
+
+
+@pytest.mark.parametrize('frame', ['wire-whole', 'wire-legacy', 'lumped', 'waveguide'])
+def test_s4_reader_closed_pole_tail(frame):
+    from rfx.sparams._tail_witness import _IDENTIFICATION
+    from types import SimpleNamespace
+    from rfx.measurement.record_readers import port_s_reader, waveguide_s_reader
+    from rfx.measurement.record_end import record_end_error
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._settling_groups import port_column_groups
+    from rfx.sparams._tail_witness import tail_share_witness
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    waveguide = frame == 'waveguide'
+    specs = ([('port0/v_ref_t', 'E', [1., .8]), ('port0/i_ref_t', 'H', [.007, .004]),
+              ('port0/v_probe_t', 'E', [2., 1.]), ('port0/i_probe_t', 'H', [.01, .02])]
+             if waveguide else [('V', 'E', [2., 1.]), ('I', 'H', [.007, .004]),
+                                ('V_port', 'E', [1., .8]), ('V_ref', 'E', [.9, 1.2])])
+    arrays, spectra, tails = {}, {}, {}
+    for name, kind, residues in specs:
+        arrays[name], spectra[name], tails[name] = _s4_closed_record(
+            n, dt, poles, np.array(residues), bins, kind, 2. if waveguide else 1.)
+    if waveguide:
+        from rfx.model.waveguide_modes import PortMedium
+        cfg = SimpleNamespace(freqs=bins, f_cutoff=0., mode_type='TE', medium=PortMedium(),
+                              dt=dt, dx=0., direction='+x')
+        # Zero cutoff is a TEM-like modal impedance, sqrt(mu0/eps0).
+        from rfx.core.yee import MU_0, EPS_0
+        z = np.sqrt(MU_0 / EPS_0)
+        reader = waveguide_s_reader([cfg], 0)
+        records = tuple(arrays.items())
+        groups, labels = {name: name.split('_')[0] for name in arrays}, None
+        operands = ({'port0/v_ref_t': .5, 'port0/i_ref_t': -.5*z},
+                    {'port0/v_ref_t': .5, 'port0/i_ref_t': .5*z})
+    else:
+        kind = 'lumped' if frame == 'lumped' else 'wire'
+        record = PortTimeRecord('p', kind, tuple(arrays), np.column_stack(list(arrays.values())))
+        reader = port_s_reader([record], {'p': (50., 3, True)}, whole_port=frame != 'wire-legacy')
+        records = (('p', record.samples),)
+        groups, labels = port_column_groups([record])
+        voltage = 'V' if frame == 'lumped' else 'V_port'
+        sign = 1.
+        if frame == 'wire-legacy':
+            voltage, sign = 'V_ref', -1.
+        operands = ({voltage: sign, 'I': -50.}, {voltage: sign, 'I': 50.})
+    expected = sum(sum(abs(w)*abs(tails[name]) for name, w in operand.items()) /
+                   abs(sum(w*spectra[name] for name, w in operand.items())) for operand in operands)
+    expected_kappa = sum(sum(abs(w)*abs(spectra[name]) for name, w in operand.items()) /
+                         abs(sum(w*spectra[name] for name, w in operand.items())) for operand in operands)
+    actual = record_end_error(records, dt, 0, bins, freq_max=12e9,
+                              identification=_IDENTIFICATION,
+                              reader=reader, scale_groups=groups, _channel_labels=labels)
+    legacy = tail_share_witness(records, dt, 0, bins, freq_max=12e9,
+                                scale_groups=groups, _channel_labels=labels)
+    np.testing.assert_allclose(actual.record_end_error_per_bin, expected, rtol=2e-4)
+    np.testing.assert_allclose(actual.kappa_per_bin, expected_kappa, rtol=2e-5)
+    np.testing.assert_allclose(actual.share_per_bin, legacy.share_per_bin, rtol=1e-9)
+    for name, tail in tails.items():
+        label = name if waveguide else f'p[{name}]'
+        np.testing.assert_allclose(actual.tails_per_channel[label], tail, rtol=2e-4, atol=1e-18)
+
+
+@pytest.mark.parametrize('whole_port', [True, False], ids=['whole-port', 'legacy-per-cell'])
+def test_s4_two_port_closed_pole_tail(whole_port):
+    """Off-diagonal S uses the receive impedance and the drive's incident wave."""
+    from rfx.measurement.record_readers import port_s_reader
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._tail_witness import port_record_witness
+
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    residues = {
+        'drive': {'V': [2., 1.], 'V_port': [1., .8], 'V_ref': [.9, 1.2], 'I': [.007, .004]},
+        'receive': {'V': [.7, 1.3], 'V_port': [1.8, .6], 'V_ref': [.4, .5], 'I': [.003, .008]},
+    }
+    records, spectra, tails = [], {}, {}
+    for port, channels in residues.items():
+        samples = []
+        for name, values in channels.items():
+            signal, spectrum, tail = _s4_closed_record(
+                n, dt, poles, np.array(values), bins, 'H' if name == 'I' else 'E')
+            samples.append(signal)
+            spectra[port, name], tails[port, name] = spectrum, tail
+        records.append(PortTimeRecord(port, 'wire', tuple(channels), np.column_stack(samples)))
+    # By hand: receive Z=80, four live cells; drive Z=50, three live cells.
+    # V_ref has the legacy sign. Neither numerator nor denominator is built
+    # from the reader's returned weights.
+    operands = (({('receive', 'V_port'): 1., ('receive', 'I'): -80.},
+                 {('drive', 'V_port'): 1., ('drive', 'I'): 50.}) if whole_port else
+                ({('receive', 'V'): 1., ('receive', 'I'): -80./4},
+                 {('drive', 'V_ref'): -1., ('drive', 'I'): 50./3}))
+    expected = sum(sum(abs(w)*abs(tails[key]) for key, w in weights.items()) /
+                   abs(sum(w*spectra[key] for key, w in weights.items())) for weights in operands)
+    _, actual = port_record_witness(records, dt, 0, bins, freq_max=12e9,
+        reader=port_s_reader(records, {'drive': (50., 3, True), 'receive': (80., 4, False)},
+                             whole_port=whole_port))
+    measured = actual['record_end_error_per_entry']['receive/drive']
+    print(f'two-port whole_port={whole_port}: bins={bins}, e_Q={measured}, expected={expected}')
+    np.testing.assert_allclose(measured, expected, rtol=2e-4)
+
+
+def test_s4_zero_receive_port_is_undetermined():
+    """No received field cannot distinguish isolation from a wave yet to arrive."""
+    from rfx.measurement.record_readers import port_s_reader
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._tail_witness import port_record_witness
+
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    poles = -np.log(1000)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    residues = {'V': [2., 1.], 'V_port': [1., .8],
+                'V_ref': [.9, 1.2], 'I': [.007, .004]}
+    samples, spectra, tails = [], {}, {}
+    for name, values in residues.items():
+        signal, spectra[name], tails[name] = _s4_closed_record(
+            n, dt, poles, np.array(values), bins, 'H' if name == 'I' else 'E')
+        samples.append(signal)
+    drive = PortTimeRecord('drive', 'wire', tuple(residues), np.column_stack(samples))
+    # S11 by hand: b = V_port - 50 I, a = V_port + 50 I.
+    expected = sum((abs(tails['V_port']) + 50*abs(tails['I'])) /
+                   abs(spectra['V_port'] + sign*50*spectra['I']) for sign in (-1, 1))
+    no_field = ('no field recorded at the receiving port over the whole record; '
+                'the record cannot tell an isolated port from a wave that has not arrived')
+    for case in ('Z', 'N'):
+        received = np.zeros_like(drive.samples)
+        if case == 'N':
+            received[:, drive.channels.index('I')] = _s4_closed_record(
+                n, dt, poles, np.array([.003, .008]), bins, 'H')[0]
+        assert np.count_nonzero(np.any(received != 0, axis=0)) == (case == 'N')
+        receive = PortTimeRecord('receive', 'wire', drive.channels, received)
+        records = (drive, receive)
+        db, actual = port_record_witness(records, dt, 0, bins, freq_max=12e9,
+            reader=port_s_reader(records, {'drive': (50., 3, True), 'receive': (80., 4, False)},
+                                 whole_port=True))
+        measured = actual['record_end_error_per_entry']
+        print(f'zero-receive case={case}: bins={bins}, S11 e_Q={measured["drive/drive"]}, '
+              f'expected={expected}, S21 e_Q={measured["receive/drive"]}, '
+              f'statuses={actual["status_per_entry"]}, status={actual["status"]}, '
+              f'settling_db={db}, reason={actual["reason"]!r}')
+        assert actual['status_per_entry']['drive/drive'] == 'pass', actual
+        np.testing.assert_allclose(measured['drive/drive'], expected, rtol=2e-4)
+        if case == 'Z':
+            assert actual['status_per_entry']['receive/drive'] == 'undetermined', \
+                'Z: an all-zero receiving port must remain undetermined'
+            assert f'receive/drive: {no_field}' in actual['reason'], actual
+            assert np.isnan(measured['receive/drive']).all(), actual
+            assert actual['status'] == 'undetermined' and np.isnan(db), actual
+        else:
+            assert no_field not in actual['reason'], \
+                'N: a nonzero weighted receive channel must not get the no-field reason'
+
+
+def test_s4_dropped_channel_tail_decides_verdict():
+    """A small in-record DFT does not remove its weighted absolute tail."""
+    from rfx.measurement.record_end import record_end_error
+    from rfx.sparams._tail_witness import _IDENTIFICATION
+
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    q = np.exp((poles - 2j*np.pi*bins[0])*dt)
+    d = dt*(1-q**n)/(1-q)
+    strong, x, tx = _s4_closed_record(n, dt, poles, np.array([1., 0.]), bins)
+    small, y, ty = _s4_closed_record(n, dt, poles, .05*np.array([1., -.9*d[0]/d[1]]), bins)
+    weight = 40.
+    expected = (abs(tx) + weight*abs(ty)) / abs(x + weight*y)
+    without_small = abs(tx) / abs(x + weight*y)
+    assert np.all(abs(y) < 1e-2*abs(x))
+    assert np.all(without_small < 1e-2) and np.all(expected > 1e-2)
+    actual = record_end_error([('strong', strong), ('small', small)], dt, 0, bins,
+        identification=_IDENTIFICATION, freq_max=12e9,
+        scale_groups={'strong': 'E', 'small': 'E'},
+        reader={'entries': {'Q': ({'strong': 1., 'small': weight},)},
+                'sampling': {'strong': ('E', 1.), 'small': ('E', 1.)}})
+    assert any('small' in row['channels'] for row in actual.dropped_per_bin)
+    print(f'dropped channel: |y/x|={abs(y/x)}, e_Q={actual.record_end_error_per_bin}, '
+          f'expected={expected}, without_small={without_small}')
+    assert actual.status == 'fail', actual
+    np.testing.assert_allclose(actual.record_end_error_per_bin, expected, rtol=2e-4)
+
+
+def test_s4_deep_null_fails():
+    from rfx.measurement.record_readers import port_s_reader
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._tail_witness import port_record_witness
+    n, dt, z0 = 1500, 1e-12, 50.
+    bins = np.array([9e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    q = np.exp((poles - 2j*np.pi*bins[0])*dt)
+    d = dt*(1-q**n)/(1-q)
+    # Solve b_stamped/a_stamped=1e-3, including E at (n+1)dt and
+    # H at (n+1/2)dt. With A=sum(d), B=.1*delta*d[0], the two
+    # waves are ((E-H)A+(E+H)B)/2 and ((E+H)A+(E-H)B)/2.
+    e, h = np.exp(-2j*np.pi*bins[0]*dt*np.array([1., .5]))
+    ratio = 1e-3
+    delta = sum(d)*(ratio*(e+h)-(e-h))/((e+h)-ratio*(e-h)) / (.1*d[0])
+    a = np.ones(2)
+    b = .1*np.array([1, -(1-delta)*d[0]/d[1]])
+    v, vd, vt = _s4_closed_record(n, dt, poles, (a+b)/2, bins)
+    i, idft, it = _s4_closed_record(n, dt, poles, (a-b)/(2*z0), bins, 'H')
+    outgoing, incoming = vd-z0*idft, vd+z0*idft
+    kappa_b = (abs(vd)+z0*abs(idft))/abs(outgoing)
+    kappa_a = (abs(vd)+z0*abs(idft))/abs(incoming)
+    expected = (abs(vt)+z0*abs(it))*(1/abs(outgoing)+1/abs(incoming))
+    np.testing.assert_allclose(outgoing/incoming, ratio, rtol=1e-10)
+    np.testing.assert_allclose(kappa_b, 1e3, rtol=1e-3)
+    record = PortTimeRecord('p', 'wire', ('V_port', 'I'), np.column_stack([v, i]))
+    _, result = port_record_witness([record], dt, 0, bins, freq_max=12e9,
+                                    reader=port_s_reader([record], {'p': (z0, 1, True)}))
+    assert result['share_per_bin'][0] < 1e-2
+    assert result['status'] == 'fail', result
+    assert result['record_end_error_per_bin'][0] > 1e-2
+    np.testing.assert_allclose(result['kappa_per_bin'], kappa_b+kappa_a, rtol=2e-5)
+    np.testing.assert_allclose(result['record_end_error_per_bin'], expected, rtol=2e-4)
+    print(f'deep null: bins={bins}, delta={delta}, kappa_b={kappa_b}, '
+          f'e_Q={result["record_end_error_per_bin"]}')
+
+
+@pytest.mark.parametrize('seed', range(20))
+def test_s4_noisy_two_poles_nonpass(seed):
+    from rfx.sparams._tail_witness import tail_share_witness
+    n, dt = 2400, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    lo, hi = 1e-10, 1e-9
+    for _ in range(60):
+        tau = (lo+hi)/2
+        poles = -1/tau + 2j*np.pi*np.array([9e9, 12e9])
+        signal, inside, tail = _s4_closed_record(n, dt, poles, np.ones(2), bins)
+        if max(abs(tail)/abs(inside)) < .03:
+            lo = tau
+        else:
+            hi = tau
+    signal += np.random.default_rng(seed).normal(0, 1e-4*max(abs(signal)), n)
+    result = tail_share_witness([('M3', signal)], dt, 0, bins, freq_max=12e9)
+    assert result.status != 'pass', (seed, result)
+
+
+@pytest.fixture(scope='module')
+def s4_spg_records():
+    import time
+    import rfx.measurement.waveguide_s as extraction
+    from tests.oracle.test_waveguide_port_validation_battery import _build_sim
+    captured, results = [], {}
+    original = extraction.settling_db_from_port_records
+    def observe(configs, **kwargs):
+        captured.append(tuple(configs))
+        return original(configs, **kwargs)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(extraction, 'settling_db_from_port_records', observe)
+        for periods in (30, 40):
+            sim = _build_sim(np.linspace(4.5e9, 8.0e9, 10), solved_domain=True,
+                obstacles=[((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)],
+                waveform='modulated_gaussian')
+            start = time.monotonic()
+            result = sim.compute_waveguide_s_matrix(num_periods=periods, normalize=False)
+            elapsed = time.monotonic() - start
+            results[periods] = (result, tuple(captured[-2:]), elapsed)
+            print(f'SP-g P{periods}: {elapsed:.6f} seconds')
+    return results
+
+
+def test_s4_b8_realized_transit_window(s4_spg_records):
+    result, runs, _ = s4_spg_records[40]
+    for configs, witness in zip(runs, result.settling_witness):
+        n, dt = len(configs[0].v_ref_t), configs[0].dt
+        expected = 0
+        for cfg in configs:
+            if not cfg.src_amp:
+                continue
+            table = abs(np.asarray(cfg.e_inc_table))
+            off = int(np.flatnonzero(table[:n] > 1e-6*max(table[:n]))[-1]) + 1
+            reach = max(abs(float(point) - float(cfg.source_x_m)) for other in configs
+                        for point in (other.reference_x_m, other.probe_x_m))
+            expected = max(expected, off + math.ceil(reach / (C0*dt)))
+        assert expected == 2181
+        assert witness['window_starts'][n][0] == max(round(n/2), expected)
+
+
+def test_s4_spg_s11_lengthening_reduces_error(s4_spg_records):
+    short = s4_spg_records[30][0].settling_witness[0]
+    long = s4_spg_records[40][0].settling_witness[0]
+    assert short['status_per_entry']['S11'] == 'fail', short
+    e30 = short['record_end_error_per_entry']['S11'][-1]
+    e40 = long['record_end_error_per_entry']['S11'][-1]
+    assert e30 > 1e-2
+    assert e40 < e30
+    assert long['status_per_entry']['S11'] == 'pass', long
+    assert e40 <= 1e-2
+    print(f'SP-g S11 at 8 GHz: P30 e_Q={e30:.12g}, P40 e_Q={e40:.12g}')
+
+
+def test_s4_spg_s22_windows_disagree(s4_spg_records):
+    result = s4_spg_records[30][0]
+    witness = result.settling_witness[1]
+    main = np.asarray(witness['record_end_error_per_entry']['S22'])
+    second = np.asarray(witness['record_end_error_second_per_entry']['S22'])
+    straddles = (main > 1e-2) != (second > 1e-2)
+    assert np.any(straddles), (
+        f'SP-g P30 S22 scene no longer straddles 1e-2: main={main}, second={second}')
+    k = int(np.flatnonzero(straddles)[0])
+    print(f'SP-g P30 S22 at {float(result.freqs[k]):.12g} Hz: '
+          f'main e_Q={main[k]:.12g}, second e_Q={second[k]:.12g}')
+    assert witness['status_per_entry']['S22'] == 'undetermined', witness
+    assert 'S22: windows disagree' in witness['reason'], witness
