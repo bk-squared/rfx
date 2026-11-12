@@ -917,7 +917,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                           source_grid, cell, component, waveform, sizing_n,
                           sigma_port=sigma_port, unit_field=unit_field)
 
-    for pe in sim._probes:
+    from rfx.measurement.identification import read_ringdown_probes
+    for pe in (*sim._probes, *read_ringdown_probes(sim._probes, "runners/nonuniform.py")):
         idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
                else field_index(grid, pe.position, pe.component))
         probes.append((*idx, pe.component))
