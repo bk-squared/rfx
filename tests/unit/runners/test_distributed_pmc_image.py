@@ -117,6 +117,6 @@ def measure(scene, record_property):
     jax.clear_caches()
 
 
-@pytest.mark.parametrize('scene', ('s1', 's2', 's3', 's5', 's6'))
+@pytest.mark.parametrize('scene', ('s1', 's2', 's3', 's4', 's5', 's6'))
 def test_pmc_records_match_single_device(scene, record_property):
     measure(scene, record_property)
