@@ -289,6 +289,38 @@ def test_withheld_cpml_high_h_rows():
                 assert e_max > 0., ("withheld-E-live", axis, component, e_max)
 
 
+def test_unwalled_faces_end_as_magnetic_walls():
+    """Unpadded faces omitted from pec_axes end at half-cell magnetic walls."""
+    import jax
+    import jax.numpy as jnp
+
+    from rfx import GaussianPulse
+    from rfx.core.yee import init_materials
+    from rfx.grid import Grid
+    from rfx.harminv import matrix_pencil
+    from rfx.simulation import ProbeSpec, SourceSpec, run
+
+    with jax.enable_x64(False):
+        grid = Grid(freq_max=16e9, domain=(.024,)*3, dx=.001, cpml_layers=0)
+        assert grid.shape == (25, 25, 25)
+        pulse = GaussianPulse(f0=8.8e9, bandwidth=0.8)
+        wave = jax.vmap(pulse)(jnp.arange(2400, dtype=jnp.float32) * grid.dt)
+        result = run(grid, init_materials(grid.shape), 2400, boundary="pec",
+                     pec_axes="", field_dtype=jnp.float32,
+                     sources=[SourceSpec(8, 8, 12, "ez", wave)],
+                     probes=[ProbeSpec(16, 16, 12, "ez")])
+        record = np.asarray(result.time_series)[:, 0]
+        assert record.dtype == np.float32
+        modes = [m for m in matrix_pencil(record[600:2400], float(grid.dt), 2e9, 14e9)
+                 if m.Q > 30]
+        frequency = max(modes, key=lambda m: m.amplitude).freq
+    # PMC planes sit half a cell beyond each end of the 24 mm node span.
+    expected = 299792458.0 * np.sqrt(2) / (2 * .025)
+    relative_error = abs(frequency - expected) / expected
+    print(f"unwalled frequency_Hz={frequency:.17g} relative_error={relative_error:.17g}")
+    assert relative_error <= 1e-2, (frequency, expected, relative_error)
+
+
 def test_graded_cpml_faces_have_realized_pec_backing():
     """Graded's CPML writer relies on backing; a new withhold route must fail."""
     from rfx.boundaries.setup import nonuniform_boundaries
