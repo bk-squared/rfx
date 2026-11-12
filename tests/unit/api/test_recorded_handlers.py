@@ -95,8 +95,8 @@ def _small_sim():
 # value is the field exposed to a reader, not an assertion about source syntax.
 G5_CASES = (
     "host_poles", "linear_accumulators", "invariance",
-    "import_rfx", "import_jax", "jax_devices", "jax_config",
-    "fidelity", "coax", "cutoff", "mask_error", "source", "tfsf",
+    "import_rfx", "import_jax", "jax_devices", "jax_config", "core_deps",
+    "optional_deps", "fidelity", "coax", "cutoff", "mask_error", "source", "tfsf",
     "point_probe", "plane_probe", "flux", "ntff",
     "cells_per_wavelength", "error_witnesses", "judge_record",
 )
@@ -119,7 +119,8 @@ def _g5_call(case, monkeypatch, error):
     if case == "invariance":
         from rfx.boundaries.tfsf import invariant
         return lambda: invariant(_BrokenArray(error), 0, (2, 2, 2))[1]
-    if case in {"import_rfx", "import_jax", "jax_devices", "jax_config"}:
+    if case in {"import_rfx", "import_jax", "jax_devices", "jax_config",
+                "core_deps", "optional_deps"}:
         from rfx import diagnostics as diag
         report = diag._Report()
         if case in {"import_rfx", "import_jax"}:
@@ -134,8 +135,11 @@ def _g5_call(case, monkeypatch, error):
             monkeypatch.setattr(jax, "devices", fail)
         elif case == "jax_config":
             monkeypatch.setattr(jax.config, "read", fail)
+        elif case in {"core_deps", "optional_deps"}:
+            monkeypatch.setattr(diag.importlib, "import_module", fail)
         check = {"import_rfx": diag._check_rfx_import, "import_jax": diag._check_jax,
-                 "jax_devices": diag._check_jax, "jax_config": diag._check_jax}[case]
+                 "jax_devices": diag._check_jax, "jax_config": diag._check_jax,
+                 "core_deps": diag._check_core_deps, "optional_deps": diag._check_optional_extras}[case]
         def diagnostic():
             check(report)
             return report.lines
@@ -243,6 +247,9 @@ def test_g5_failure_is_recorded(case, monkeypatch):
     if case == "host_poles":
         from rfx.ringdown._jax import STATUS_FAILED
         assert result == STATUS_FAILED
+    elif case == "optional_deps":
+        assert len(result) == 4
+        assert all("not installed (" in line for line in result)
     elif case == "invariance":
         assert "RuntimeError: invariance unavailable" in result
     else:
