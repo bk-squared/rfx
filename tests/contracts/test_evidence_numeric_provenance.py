@@ -719,6 +719,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/guide/benchmarks.mdx": GATED,
     "docs/public/project/changelog.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/project/deprecation-policy.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/project/structure.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/start/concepts.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/examples/first-patch.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/start/install.mdx": NO_ARTIFACT_REFERENCE,
