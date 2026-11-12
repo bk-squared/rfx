@@ -5,7 +5,7 @@ coefficient. Its Debye beta was unpacked rows-first, so the pole sum ran along x
 0.478 of its value (probe traces 35-52 % of peak, the eps gradient 84-100 %). The override here is the drawn
 permittivity, so one device with and without it is the same model. Bars: the accumulated rounding law on every
 E cell (1.2e-7 x the running sum of max|E|), the probe spectra within 1e-6 of their largest bin, the gradient
-within 1e-4 (rfx-archive records/20261017-item5-dispersive).
+within 1e-4.
 """
 import jax
 import jax.numpy as jnp

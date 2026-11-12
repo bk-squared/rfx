@@ -182,8 +182,6 @@ REVIEWED = {
     "scripts/build_public_docs_bundle.py":
         (3, "three forbidden path segments used only to reject private paths from public bundles; no file reads"),
     # Assertion / warning text that happens to cite a note. No path resolution.
-    "tests/unit/api/test_api.py":
-        (1, "prose inside an assertion message"),
     "scripts/capture_msl_replay_fixture.py":
         (1, "prose inside a retirement message"),
     "scripts/diagnostics/probe_fed_msl_openems_referee.py":
@@ -192,8 +190,11 @@ REVIEWED = {
         (1, "a synthetic citation fed to the contract's own keep rule; "
             "the contract compares it as text and reads no file"),
     "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py":
-        (2, "the C4 pattern and one synthetic line name the segment as text "
-            "to flag; the contract reads no file there"),
+        (10, "the ledger synthetic line and its exception path and literal add "
+            "three segment literals to the prior seven; "
+            "the C4 pattern, Git prefilter and synthetic lines name segments as text "
+            "to flag; the exception table names the segment for contracts that "
+            "name it as text; the contract reads no file there"),
     "tests/contracts/test_guide_citations_resolve.py":
         (4, "sample TEXT fed to that file's own predicate -- the two dead "
             "links it was written to catch, the prose that replaced them, "

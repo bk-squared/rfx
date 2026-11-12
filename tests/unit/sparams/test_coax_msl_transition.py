@@ -16,7 +16,7 @@ closest precedent):
 3. The FDTD fixture itself (``@pytest.mark.slow_physics``), asserting the
    predeclared witnesses at DIAGNOSTIC honesty level — this gate pins the
    MEASURED envelope of THIS fixture only, no claim beyond it.
-4. ATTEMPT 2 (PI-directed, R2's own escape clause): attempt 1's own
+4. ATTEMPT 2 (R2's own escape clause): attempt 1's own
    discriminant named a concrete implementation defect (the MSL probe
    ladder spans too small a fraction of a guided wavelength for the
    matrix-pencil wave split to resolve) — R2 permits exactly one retry
@@ -1009,7 +1009,7 @@ def test_coax_msl_transition_first_fixture_diagnostic():
 
 # ---------------------------------------------------------------------------
 # Part 4 -- ATTEMPT 2: resolve attempt 1's own named instrument-scoping
-# defect (PI-directed, R2's written escape clause). See PREDECLARATION_
+# defect (R2's written escape clause). See PREDECLARATION_
 # ATTEMPT2 below for the full form. Attempt 1's own PREDECLARATION, fixture,
 # and regression locks above are UNCHANGED -- this section is purely
 # additive.
@@ -1025,7 +1025,7 @@ PREDECLARATION_ATTEMPT2 = {
         "guided wavelength at the measured frequencies, too short for the "
         "matrix-pencil forward/backward split to resolve -- an instrument-"
         "scoping limit of the probe geometry, not a claim about attempt "
-        "1's junction physics. PI-directed. This is the ONE attempt that "
+        "1's junction physics. This is the ONE attempt that "
         "defect authorizes; attempt 1's own two construction-debugging "
         "fixes (missing PEC layer, rasterization knife-edge) do not count "
         "against this budget (plumbing, not a mechanism-hypothesis loop, "
@@ -1823,8 +1823,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     shell's inner radius) -- i.e. the difference is float rounding of an
     exactly-on-node radius, not a geometry error -- and the count is
     reported in the failure message. Whether a one-column shell asymmetry
-    in the coax stub is acceptable for Step B is a PI call recorded in the
-    #589 measurement report, not decided here; the method's stamping is
+    in the coax stub is acceptable for Step B is not decided here; the method's stamping is
     production code and is not touched.
 
     Fail-before-fix evidence (recorded in the KNIFE-EDGE NOTE above): with
@@ -2553,8 +2552,7 @@ def test_extra_flux_monitors_entry_validation():
         "dies in 3.5 s with that ValueError, before a single time step; it has been the red "
         "in shard 3 of the weekly lane since then (#1022). The QUESTION this test asks -- "
         "opt-in flux monitors must not move S by one bit -- is still wanted, so it is not "
-        "removed. Repairing the board is coax-MSL lane work, deferred past v2.0 (PI, "
-        "2026-09-20). raises=ValueError alone is broad -- this function also raises ValueError for "
+        "removed. Repairing the board is coax-MSL lane work, deferred past v2.0. raises=ValueError alone is broad -- this function also raises ValueError for "
         "bad monitor entries -- so the body below checks the MESSAGE and turns any other "
         "ValueError into an AssertionError, which this marker does not absorb. strict=True turns "
         "the day the board builds again into an XPASS error that forces this marker off.")
@@ -2882,7 +2880,7 @@ PREDECLARATION_ATTEMPT3 = {
         "fraction 0.0). This is a construction defect of the same class as "
         "attempt 1's missing-PEC-layer / knife-edge fixes (plumbing, not a "
         "mechanism-hypothesis loop) and is what the settled runs measured "
-        "(S00 = -0.9928 at 6 GHz, |S10| = -90 dB). PI-directed."
+        "(S00 = -0.9928 at 6 GHz, |S10| = -90 dB)."
     ),
     "geometry_change": (
         "ONLY the ground plane entity: one full-plane PEC Box -> 20 half-"
@@ -2895,7 +2893,7 @@ PREDECLARATION_ATTEMPT3 = {
         "unchanged (asserted by test_attempt3_junction_is_attempt2_plus_"
         "hole_only). The 0.4 < r <= 0.5 mm ring under the coax dielectric "
         "stays PEC (a one-cell ground lip, 32/32) -- part of the "
-        "predeclared clearance, flagged for the PI as a convention question "
+        "predeclared clearance, flagged as a convention question "
         "(flush 0.5 mm aperture would be a NEW predeclaration)."
     ),
     "instrument_unchanged": (
@@ -3603,7 +3601,7 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
 # table's ym/yp -- and even they carry a different footprint, since these are
 # patches of a box whose z-span is 2.5-3.6 mm rather than 0.9-3.4 mm. The x
 # and z faces differ outright. W4's numbers are therefore NOT directly
-# comparable to that instrument's and the PI must arbitrate the two knowingly.
+# comparable to that instrument's.
 #
 # Why attempt 3 cannot simply reuse the predeclared table:
 #   * The predeclared box was built for ATTEMPT 2, where the ground plane is
@@ -3752,7 +3750,7 @@ def _attempt3_scratch_flux_entries():
 # LIMITATION, stated because one fixture cannot separate it: the derivation
 # anchors on the substrate height h and was validated at W/h = 2 only. The
 # first higher-order microstrip mode scales with (W + 2h), so a very wide
-# trace could need more standoff than 5*h. Routed to the PI, not decided here.
+# trace could need more standoff than 5*h. Not decided here.
 # ---------------------------------------------------------------------------
 MSL_STANDOFF_H_SUB_MULTIPLE = 5.0   # the issue-#80 Fix B constant, reused
 PROBE_COUNT_3B = 8
@@ -4219,7 +4217,7 @@ def test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder():
 # ---------------------------------------------------------------------------
 # Part 6 -- this cross-family lane refuses a non-passive S by default (#838).
 #
-# PI decision 2026-09-20: port/S-parameter work stops at pure single-family
+# Port/S-parameter work stops at pure single-family
 # ports, so this lane's MSL-side power over-read is not going to be attributed
 # or corrected. What the issue closes on instead is the BEHAVIOUR -- a default
 # call does not hand back a matrix the shared guard rejects.
@@ -4496,7 +4494,7 @@ def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not
 
     assert _transition_strict_passivity_default() is True, (
         "compute_coax_msl_transition must refuse a non-passive S by default "
-        "(issue #838, PI decision 2026-09-20)"
+        "(issue #838)"
     )
     for name in ("compute_coaxial_two_port",):
         default = inspect.signature(

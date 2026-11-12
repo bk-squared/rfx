@@ -21,8 +21,7 @@ S to the stored S with the bar the battery is judged by:
   minimum bin and its two neighbours, the battery's own estimator — within 1 %;
 * |S21| and |S11| within 2 dB at every bin outside the notch core, the bins
   where the stored |S21| is at or below -20 dB. Inside the core the depth is a
-  difference of two near-zeros and is compared with nothing (the PI's
-  2026-09-21 ruling);
+  difference of two near-zeros and is compared with nothing;
 * the phase of S21 turning the same way with frequency as it does in the
   record (falling, about 11 rad across the band), fitted outside the core. A
   conjugated S (the other time convention) keeps every magnitude and the notch
@@ -38,10 +37,9 @@ about its length. Its lock holds:
 * |S21| within 2 dB at every bin, and |S11| under the -20 dB bound the battery
   holds the thru's reflection to;
 * the electrical length of S21 within 1 % of the record's: the least-squares
-  slope of its unwrapped phase against frequency, live over stored (the PI's
-  phase item of 2026-09-24). The stored record was taken at the first probe
+  slope of its unwrapped phase against frequency, live over stored. The stored record was taken at the first probe
   planes, 16.4 mm apart. ``compute_msl_s_matrix`` now reports S at the feed
-  planes (20.0 mm apart; rfx-archive MSL-PLANE.md, decision record 14), so
+  planes (20.0 mm apart), so
   the live S is compared at the probe-0 planes the record was taken at:
   ``tests/_msl_probe0.probe0_s`` undoes the shift with the result's own
   ``shift_beta`` and ``reference_plane_offsets_m``. Every pin here is a
@@ -57,8 +55,7 @@ under test. The remedy is to measure the battery again, not to move anything in
 this file.
 
 Lane: gpu and slow, the gpu step of the weekly A6000 lane
-(agent-rules _configs/scripts/merge_train_weekly_gpu.py on the merge train's
-Mac runner, remi gpu-a6000). Its gpu selection excludes crossval_ladder. The historical run of
+(run by the merge-train runner on Mac, remi gpu-a6000). Its gpu selection excludes crossval_ladder. The historical run of
 2026-09-23 at 3247dc0e ended gpu_rc=0 with 171 passed. Wall time: 60 s on the
 A6000 for the notch (run 369367264070); 75 s for the notch and 68 s for the
 thru on an RTX 3080 (run 369367264556). The notch's solve takes 34 min on four

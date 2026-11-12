@@ -8,13 +8,13 @@
     "script_sha256": "286ee87857f7f8f009a4b674f94298cb1f2b2ae0c131198fa1b746a316235438",
     "environment": {
       "python": "3.11.2 (v3.11.2:878ead1ac1, Feb  7 2023, 10:02:41) [Clang 13.0.0 (clang-1300.0.29.30)]",
-      "executable": "/Users/byungkwankim/Documents/rfx/.venv/bin/python",
+      "executable": ".venv/bin/python",
       "platform": "macOS-26.5.2-arm64-arm-64bit",
       "cpu": "arm",
       "logical_cpu_count": 10,
       "JAX_PLATFORMS": "cpu",
       "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
-      "PYTHONPATH": "/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval",
+      "PYTHONPATH": "<workspace>/Documents/rfx-worktrees/dist-exchange-interval",
       "jax_version": "0.10.2",
       "numpy_version": "2.4.6",
       "jax_enable_x64": false,
@@ -24,11 +24,11 @@
         "cpu:2",
         "cpu:3"
       ],
-      "rfx_file": "/Users/byungkwankim/Documents/rfx-worktrees/dist-exchange-interval/rfx/__init__.py"
+      "rfx_file": "rfx/__init__.py"
     },
     "commands": [
-      "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py",
-      "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --case M3 --device-count 4"
+      "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD .venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py",
+      "JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 PYTHONPATH=$PWD .venv/bin/python scripts/diagnostics/measure_exchange_interval_error.py --case M3 --device-count 4"
     ],
     "runs": {
       "M1_single": {

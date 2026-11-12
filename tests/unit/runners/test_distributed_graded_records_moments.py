@@ -23,7 +23,7 @@ def compare(sim, n_devices, entry):
     values = {'moments': measure(many.current_moment_data[0], one.current_moment_data[0])}
     for name in ('E_theta', 'E_phi'):
         values[name] = measure(getattr(ff[1], name), getattr(ff[0], name))
-    # CPML wrapped step: compile-form rounding, operands byte-equal (rfx-archive DESIGN.md 4g amendment 1).
+    # CPML wrapped step: compile-form rounding, operands byte-equal.
     return with_bars(values, 'relative_peak'), many
 
 

@@ -5,51 +5,69 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import subprocess
+from time import perf_counter
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCOPE = ("rfx/",)
+SCOPE = ("rfx/", "tests/")
 pytestmark = pytest.mark.source_scan
 
 PATTERNS = {
-    "C1": re.compile(r"/Users/byungkwankim/|-Users-byungkwankim|byungkwan-workspace"),
+    "C1": re.compile(r"/Users/byungkwankim/|-Users-byungkwankim|byungkwan-workspace|runs/byungkwan/|Project: byungkwan"),
     "C2": re.compile(r"\b(?:PI|PI-directed|PI-gated|PI-approved)\b|the professor"),
     "C3": re.compile(r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff]"),
     "C4": re.compile(
         r"rfx-archive|agent-rules|pi-desk|rfx-lead|rfx-core-desk|\b[DL]:[0-9a-f]{6}\b"
-        r"|MSL-PLANE\.md|rfx/records/|ledger archive|internal issue ledger|rfx-known-issues|\brecords? 20\d{6}-[a-z]"
-        r"|docs/research_notes/|rfx-research|rfx-adv|rfx-fdfd-research"
+        r"|MSL-PLANE\.md|rfx/records/|ledger archive|internal issue ledger|rfx-known-issues|\brecords?[ /]20\d{6}-[a-z]"
+        r"|docs/research_notes/|docs/agent-memory|rfx-research|rfx-adv|rfx-fdfd-research"
         r"|bk-workspace|remilab-cnu/paper"
         r"|(?<![\w-])acc-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-\d{8}t\d{6}z-[0-9a-f]+(?![\w-])"
     ),
 }
+# Deliberately broader than PATTERNS; Git selects lines, Python judges them.
+CANDIDATE_PATTERN = (
+    r"byungkwan|/Users/|PI|professor|rfx|agent-rules|pi-desk|[DL]:|MSL-PLANE"
+    r"|ledger|records?[ /]20|docs/agent-memory|research_notes|bk-workspace|remilab-cnu|acc-"
+    r"|[^ -~]"  # All non-ASCII text includes every Hangul range, in any locale.
+)
 MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
 
 
 def matching_classes(line):
     """Allow mathematical uses without hiding attribution elsewhere on a line."""
     return [name for name, pattern in PATTERNS.items()
-            if pattern.search(MATH_PI.sub("", line) if name == "C2" else line)]
+            if pattern.search(MATH_PI.sub("", line) if name == "C2" and "PI" in line else line)]
 
 
 def test_public_text_has_no_pi_or_agent_traces():
-    paths = subprocess.check_output(
-        ["git", "ls-files", "-z", "--", *SCOPE], cwd=ROOT,
-    ).decode().split("\0")
+    started = perf_counter()
+    result = subprocess.run(
+        ["git", "grep", "-n", "-I", "-z", "-E", "-i", CANDIDATE_PATTERN,
+         "--", *SCOPE], cwd=ROOT, capture_output=True,
+    )
+    selected = perf_counter()
+    assert result.returncode in (0, 1), result.stderr.decode(errors="replace")
     errors = []
-    for name in filter(None, paths):
-        data = (ROOT / name).read_bytes()
-        if b"\0" in data:
+    for record in result.stdout.split(b"\n"):
+        if not record:
             continue
+        name, number, source = record.split(b"\0", 2)
+        name = name.decode("utf-8")
         try:
-            source = data.decode("utf-8")
+            line = source.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        for number, line in enumerate(source.splitlines(), 1):
-            if classes := matching_classes(line):
-                errors.append(f"{name}:{number}: {', '.join(classes)}: {line.strip()}")
+        exceptions = tuple(literal for path, literal, reason in NAMED_EXCEPTIONS
+                           if path == name)
+        if exceptions and any(literal in line for literal in exceptions):
+            continue
+        if classes := matching_classes(line):
+            errors.append(f"{name}:{number.decode()}: {', '.join(classes)}: {line.strip()}")
+    finished = perf_counter()
+    print(f"public-text scan: git grep={selected - started:.3f}s "
+          f"Python={finished - selected:.3f}s")
     assert not errors, "\n".join(errors)
 
 
@@ -63,10 +81,12 @@ def test_math_and_identifiers_are_allowed(line):
     assert matching_classes(line) == []
 
 
-@pytest.mark.parametrize(("line", "expected"), [
+PRIVATE_TEXT_CASES = [
     ("# /Users/byungkwankim/x", "C1"),
     ("# -Users-byungkwankim-x", "C1"),
     ("# byungkwan-workspace/x", "C1"),
+    ("# runs/byungkwan/123", "C1"),
+    ("# Project: byungkwan", "C1"),
     ("# (PI, 2026-09-24)", "C2"),
     ("# PI-directed", "C2"),
     ("# PI-gated", "C2"),
@@ -87,6 +107,8 @@ def test_math_and_identifiers_are_allowed(line):
     ("# ledger archive", "C4"),
     ("# see rfx-known-issues.md", "C4"),
     ("# records 20261012-pencil-stage-peaks", "C4"),
+    ("# records/20261109-x/DESIGN.md", "C4"),
+    ("# docs/agent-memory/x.md", "C4"),
     ("# internal issue ledger", "C4"),
     ("# docs/research_notes/sample.md", "C4"),
     ("# rfx-research", "C4"),
@@ -95,6 +117,52 @@ def test_math_and_identifiers_are_allowed(line):
     ("# bk-workspace", "C4"),
     ("# remilab-cnu/paper", "C4"),
     ("# acc-admem-g1-20261016t043022z-648d9", "C4"),
-])
+]
+
+
+@pytest.mark.parametrize(("line", "expected"), PRIVATE_TEXT_CASES)
 def test_each_private_text_form_is_detected(line, expected):
     assert matching_classes(line) == [expected]
+
+
+def test_git_prefilter_covers_every_class(tmp_path):
+    assert {expected for _, expected in PRIVATE_TEXT_CASES} == set(PATTERNS)
+    lines = [line for line, _ in PRIVATE_TEXT_CASES]
+    # Include every endpoint of the Hangul ranges, not just a common syllable.
+    lines.extend(chr(point) for point in (
+        0x1100, 0x11ff, 0x3130, 0x318f, 0xa960, 0xa97f,
+        0xac00, 0xd7af, 0xd7b0, 0xd7ff,
+    ))
+    sample = tmp_path / "samples.txt"
+    sample.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    for engine in ("-E", "-P"):
+        result = subprocess.run(
+            ["git", "grep", "--no-index", "-n", "-I", "-z", engine, "-i",
+             CANDIDATE_PATTERN, "--", sample.name],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert result.returncode == 0, (engine, result.stderr)
+        selected = [record.split(b"\0", 2)[2].decode("utf-8")
+                    for record in result.stdout.split(b"\n") if record]
+        assert selected == lines, engine
+
+
+# A blank literal exempts a whole file while it still contains matching text.
+NAMED_EXCEPTIONS = (
+    ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '', 'The pin holds the patterns and synthetic cases, and its only hits are such text.'),
+    ('tests/contracts/test_layer_structure.py', '(PI to decide how far 2.0 reaches)', 'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_changelog_fragments.py', 'bk-squared/rfx-archive', 'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_data_budget.py', 'bk-squared/rfx-archive', 'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_data_budget.py', 'rfx/records/<YYYYMMDD>-<topic>/', 'the producer in scripts/ changes this text in the next cleanup step'),
+    ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/research_notes/', 'The contract proves the research-note directory is untracked.'),
+    ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/agent-memory', 'The contract proves the local-only ledger directory is untracked.'),
+    ('tests/contracts/test_source_carries_no_tracker_history.py', 'docs/research_notes/2000-01-02_sample.md', 'Synthetic citation proves private provenance is detected.'),
+    ('tests/contracts/test_guide_citations_resolve.py', 'docs/research_notes/', 'Synthetic prose and its explanation prove a plain path is not a link.'),
+)
+
+
+def test_named_exceptions_are_not_stale():
+    for path, literal, reason in NAMED_EXCEPTIONS:
+        lines = (ROOT / path).read_text(encoding="utf-8").splitlines()
+        assert any(literal in line and (literal or matching_classes(line))
+                   for line in lines), (path, literal, reason)

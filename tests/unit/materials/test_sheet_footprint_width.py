@@ -16,8 +16,7 @@ cells. The DC fold was already at the drawn width, because the four-cell
 average gives its two end rows half weight. ``END_ROW_WEIGHT`` (0.5) on the
 f0 sheet's end rows gives both models the drawn width.
 
-Set-up after the leader's measurement of 2026-10-07 (rfx-archive
-``rfx/records/20261007-s1-g7-edge-order-g4-lossy-footprint/scripts``): cells of
+Set-up: cells of
 lambda_min/100, a sheet of point sources, |S21| from a DFT plane divided by the
 same plane of the empty line. The record is 2500 steps; at 5000 steps |S21|
 moved by at most 1e-5 on both paths and both models (measured 2026-10-07).

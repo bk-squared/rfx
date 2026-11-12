@@ -33,7 +33,7 @@ Warning: Unused primitive (type: Box) detected in property: port1_metal!
   rfx self-consistency (reported): True
   sanity_passed: True
 
-=== Written to /root/workspace/byungkwan-workspace/research/rfx/.omx/msl-phase-referee/20260804T055009Z/openems_msl_phase_referee.json ===
+=== Written to <workspace>/research/rfx/.omx/msl-phase-referee/20260804T055009Z/openems_msl_phase_referee.json ===
 
 ==============================================================================
 overall_passed=True (self-checks only -- NOT a verdict on rfx vs openEMS phase agreement)

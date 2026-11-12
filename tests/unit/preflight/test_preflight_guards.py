@@ -1025,8 +1025,7 @@ def test_absorber_overlap_no_false_positive_on_2d_collapsed_z():
 def test_absorber_overlap_still_fires_on_2d_xy():
     """The 2D-z exemption must not silence real x/y absorber overlap.
 
-    Issue #500: CPML pads EXTERIOR to the requested domain (see
-    rfx-known-issues.md #500), so a source has to sit at a genuinely
+    Issue #500: CPML pads EXTERIOR to the requested domain, so a source has to sit at a genuinely
     negative x (past the x=0 domain edge, inside the 2e-6m-thick x_lo
     absorber: cpml_layers=20 * dx=1e-7) to be "in" it — x=1e-7 (interior,
     just past the edge) used to false-fire under the pre-#500

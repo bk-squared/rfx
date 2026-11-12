@@ -1647,7 +1647,7 @@
   "numpy_version": "2.2.6",
   "recapture_entry_point": "scripts/diagnostics/waveguide_false_lane_transmission_tilt.py",
   "source_fixture": "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json",
-  "source_fixture_sha256": "f00d0959932497b97c89c9830b8628e11a588ac46b43d660554d2210e8acfd35",
+  "source_fixture_sha256": "32d8cfc18b13b364af8f851a3dfba0a3d7d07947bdecb5fb605fdae7145633bd",
   "stages": [
    "read",
    "profiles",

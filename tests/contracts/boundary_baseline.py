@@ -123,7 +123,7 @@ def write_baseline(baseline, old_markdown, target):
     (target / "MATRIX.md").write_text(markdown)
 
 
-# #2043, contact L:d47ac6 (2026-10-27): graded PMC high face, impose -> hold.
+# #2043: graded PMC high face, impose -> hold.
 # Route (b) gives the graded PMC high-face ghost row zero inverse H spacing,
 # so the row HOLDS its entry value instead of being forced to zero each step.
 # The plane is unchanged. The uniform lane still imposes zero each step, except
@@ -136,7 +136,7 @@ GRADED_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchan
     precondition="Zero tangential H ghost row, exterior normal E row, and transverse CPML H psi on that row at entry; no in-scan writer may seed them.")
 
 
-# #2043, contact L:6daae7 (2026-10-27): uniform UPML PMC high face, impose -> hold.
+# #2043: uniform UPML PMC high face, impose -> hold.
 # The PMC factor is folded into db_h only (rfx/boundaries/upml.py, init_upml), so
 # the ghost row updates as da*H_old and HOLDS its entry value. From the only entry
 # (init_state zeros; UPML is one-device only) the fields are bit-identical to main.

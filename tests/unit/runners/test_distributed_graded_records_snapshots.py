@@ -38,7 +38,7 @@ def test_snapshots(n_devices, boundary, interval, axis):
               for c in spec.components
               for i, (actual, reference) in enumerate(zip(many.snapshots[c], expected[c]))}
     assert all(len(many.snapshots[c]) == len(expected[c]) for c in spec.components)
-    # CPML wrapped step: compile-form rounding, operands byte-equal (rfx-archive DESIGN.md 4g amendment 1).
+    # CPML wrapped step: compile-form rounding, operands byte-equal.
     with_bars(values, 'snapshot_ulp' if boundary == 'cpml' else 'array_equal')
     record('snapshots', dict(boundary=boundary, devices=n_devices, interval=interval, axis=axis), values)
     assert all(v['passed'] for v in values.values()), ('snapshot bar', values)
@@ -122,7 +122,7 @@ def test_cpml_seam_snapshot_mutations(mutation, monkeypatch):
                 values[f'{c}/step{i + 1}'] = value
         return with_bars(values, 'snapshot_ulp')
 
-    # CPML wrapped step: compile-form rounding, operands byte-equal (rfx-archive DESIGN.md 4g amendment 1).
+    # CPML wrapped step: compile-form rounding, operands byte-equal.
     control = run()
     control_values = metrics(control)
     record('snapshot_seam_control', dict(mutation=mutation, devices=2, boundary='cpml'), control_values)
