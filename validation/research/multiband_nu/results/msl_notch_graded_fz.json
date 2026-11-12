@@ -1196,9 +1196,9 @@
      "--commit",
      "c4d6aee830e2a1e5086413e1c0557bbec193592e",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-C_off_re-20260922T163753Z/msl_notch_graded_fz.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz-C_off_re-20260922T163753Z/msl_notch_graded_fz.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-C_off_re-20260922T163753Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz-C_off_re-20260922T163753Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -7630,9 +7630,9 @@
      "--commit",
      "d558382f3f5f969bea047a0949bc342bcb8f8bec",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-F16Z6-20260922T092115Z/msl_notch_graded_fz.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz-F16Z6-20260922T092115Z/msl_notch_graded_fz.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-F16Z6-20260922T092115Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz-F16Z6-20260922T092115Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -14054,9 +14054,9 @@
      "--commit",
      "d558382f3f5f969bea047a0949bc342bcb8f8bec",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-ON13-20260922T091626Z/msl_notch_graded_fz.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz-ON13-20260922T091626Z/msl_notch_graded_fz.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-ON13-20260922T091626Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz-ON13-20260922T091626Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -20578,9 +20578,9 @@
      "--commit",
      "d558382f3f5f969bea047a0949bc342bcb8f8bec",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-Z16-20260922T092710Z/msl_notch_graded_fz.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz-Z16-20260922T092710Z/msl_notch_graded_fz.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-Z16-20260922T092710Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz-Z16-20260922T092710Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -27078,9 +27078,9 @@
      "--commit",
      "d558382f3f5f969bea047a0949bc342bcb8f8bec",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-Z6-20260922T091625Z/msl_notch_graded_fz.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz-Z6-20260922T091625Z/msl_notch_graded_fz.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-Z6-20260922T091625Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz-Z6-20260922T091625Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -33584,9 +33584,9 @@
      "--commit",
      "d558382f3f5f969bea047a0949bc342bcb8f8bec",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-Z8-20260922T092440Z/msl_notch_graded_fz.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz-Z8-20260922T092440Z/msl_notch_graded_fz.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz-Z8-20260922T092440Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz-Z8-20260922T092440Z"
     ],
     "git_describe": null,
     "git_dirty": null,

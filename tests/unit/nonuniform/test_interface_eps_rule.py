@@ -179,6 +179,7 @@ def test_invalid_rule():
         fixture(interface_eps="harmonic")
 
 
+@pytest.mark.source_scan
 def test_e3_replay():
     if not RESULT.exists():
         pytest.skip("E3 ladder not measured yet")
@@ -192,7 +193,7 @@ def test_e3_replay():
         points = []
         for scale in (0.5, 1, 2):
             row = units[w7.a1_key(arm, scale, "production")]
-            assert row["rfx_file"] == "/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py"
+            assert row["rfx_file"] == "rfx/__init__.py"
             assert row["git_sha"] and row["interface_eps_rule"] == "dual_average"
             assert row["valid"] and row["valid_10ns"] and not row["smoke"]
             assert abs(row["f_meas"]-row["f_model"]) <= .15e6 and row["g3_pass"]
