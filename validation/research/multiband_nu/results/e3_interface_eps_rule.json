@@ -1,7 +1,7 @@
 {
  "runs": [
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "7b846c0b716c5e2e72e9e7f6c0722987a042cebb",
    "git_dirty": false,
    "git_modified_tracked": [],
@@ -21,7 +21,7 @@
    "interface_eps_rule": "sampled"
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "7b846c0b716c5e2e72e9e7f6c0722987a042cebb",
    "git_dirty": false,
    "git_modified_tracked": [],
@@ -4591,7 +4591,7 @@
   "all_pass": true,
   "failed": [],
   "wallclock_s": 7.785488843917847,
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "7b846c0b716c5e2e72e9e7f6c0722987a042cebb",
   "git_dirty": false,
   "git_modified_tracked": [],

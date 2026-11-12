@@ -14,7 +14,7 @@ damage. Three rules it now obeys:
    consistency floor is fully compatible with everything measured: f(h)
    may turn over and still converge to some f_floor != f_physical. The
    authoritative ledger records a MEASURED non-vanishing floor for this
-   fixture class (rfx-known-issues.md, "DIELECTRIC-interface staircasing
+   fixture class (recorded entry "DIELECTRIC-interface staircasing
    (~49%, eps_r-coupled) ... giving a non-vanishing FLOOR for thin
    high-eps_r layers"), and that entry stands as the standing evidence
    that a real floor may exist here.
@@ -491,7 +491,7 @@ def main():
         meas = out["accuracy_envelope"]["spread_hz"]
         out["ledger_cross_check"] = {
             "status": "REFUTED -- reported as a FINDING, not as support",
-            "ledger_entry": ("rfx-known-issues.md, 'patch-resonance "
+            "ledger_entry": ("recorded entry 'patch-resonance "
                              "discretization error envelope (measured, "
                              "tutorial patch)': f_res bias ~ -dx/L_eff"),
             "applied_to_this_fixture": {

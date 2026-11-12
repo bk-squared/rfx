@@ -1,4 +1,4 @@
-"""THRU feed-post de-embedding harness (PI disposition (b) on the held #683 gate).
+"""THRU feed-post de-embedding harness (disposition (b) on the held #683 gate).
 
 Pre-declaration (binding, committed BEFORE this file existed):
     docs/design_notes/thru_feedpost_deembed_predeclaration.md

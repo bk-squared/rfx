@@ -184,8 +184,6 @@ REVIEWED = {
     # Assertion / warning text that happens to cite a note. No path resolution.
     "tests/unit/api/test_api.py":
         (1, "prose inside an assertion message"),
-    "validation/research/floquet/rcwa_referee.py":
-        (1, "prose citing the known-issues ledger"),
     "scripts/capture_msl_replay_fixture.py":
         (1, "prose inside a retirement message"),
     "scripts/diagnostics/probe_fed_msl_openems_referee.py":
