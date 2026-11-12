@@ -14,7 +14,7 @@ import pytest
 from rfx import Simulation
 
 
-_N = 24
+_N = 20
 _DX = 1e-3
 _CPML_LAYERS = 8
 _T_MAX = 4000
