@@ -177,9 +177,8 @@ def test_run_control_and_fields_tutorial_runs():
     }
     _assert_only_absorber_reports(output, 1)
     assert "Fixed n_steps samples: 120" in output
-    assert "run has no ring-down settling witness:" in output
-    assert "Probe time series and Harminv modes have unguarded truncation." in output
-    assert "ring-down truncated" not in output
+    assert "Truncation advisory:" in output
+    assert "ring-down truncated" in output
     assert "Until-decay truncation advisory observed: False" in output
 
     match = re.search(r"Until-decay samples:\s*(\d+)", output)

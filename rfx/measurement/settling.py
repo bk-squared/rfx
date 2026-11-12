@@ -4,6 +4,7 @@ from __future__ import annotations
 from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
+import math
 
 import numpy as np
 
@@ -111,11 +112,12 @@ def warn_postrun_energy_witness(
     fixed_num_periods: bool,
     until_decay: float | None,
 ) -> None:
-    """Warn for missing energy and fixed-period probe-only run witnesses.
+    """Warn about measured late energy or an exactly zero excitation.
 
     Tracer-safe: a no-op under a JAX transformation.
     """
     from rfx.core.jax_utils import is_tracer
+    from rfx.sources.sources import GaussianPulse
 
     import warnings
 
@@ -149,31 +151,27 @@ def warn_postrun_energy_witness(
             )
             return
 
-        from rfx.sources.sources import GaussianPulse
-        from rfx.measurement.record_end import settling_verdict
-
-        has_s = (getattr(result, "s_params", None) is not None
-                 or bool(getattr(result, "waveguide_sparams", None)))
-        if (sim._boundary_spec.absorber_type in ("cpml", "upml")
-                and any(isinstance(getattr(source, "waveform", None), GaussianPulse)
-                        for source in (*sim._ports, *sim._msl_ports))
-                and fixed_num_periods and until_decay is None
-                and sim._ntff is None and not sim._dft_planes and not has_s
-                and not _internal):
-            witness = getattr(result, "settling_witness", None) or {}
-            verdict = settling_verdict(getattr(result, "settling_db", None))
-            if witness.get("status") in {"absent", "undetermined"} or verdict == "absent":
+        pulsed = any(
+            isinstance(getattr(source, "waveform", None), GaussianPulse)
+            for source in (*sim._ports, *sim._msl_ports)
+        )
+        open_boundary = sim._boundary_spec.absorber_type in ("cpml", "upml")
+        has_s = (getattr(result, 's_params', None) is not None
+                 or bool(getattr(result, 'waveguide_sparams', None)))
+        if (open_boundary and pulsed and fixed_num_periods and until_decay is None
+                and sim._ntff is None and not sim._dft_planes and not has_s):
+            tail_samples = max(1, math.ceil(magnitude.shape[0] * 0.05))
+            tail = float(np.max(magnitude[-tail_samples:]))
+            tail_db = -math.inf if tail == 0.0 else 20.0 * math.log10(tail / peak)
+            from rfx.api._sparams import settling_verdict as _verdict
+            if _verdict(tail_db) == "fail":
                 warnings.warn(
-                    "run has no ring-down settling witness: "
-                    f"{witness.get('reason', 'probe witness unavailable')}. "
-                    "Probe time series and Harminv modes have unguarded truncation.",
-                    AccuracyWarning, stacklevel=user_stacklevel())
-            elif verdict == "fail":
-                warnings.warn(
-                    "run ring-down settling witness failed: worst probe record "
-                    f"{witness['worst_record']} = {float(result.settling_db):+.1f} dB; "
-                    "probe time series and Harminv modes integrate a cut transient.",
-                    AccuracyWarning, stacklevel=user_stacklevel())
+                    f"run ended at {tail_db:.1f} dB of peak — ring-down "
+                    "truncated; Harminv/DFT/NTFF quantities may carry "
+                    "transient error; consider until_decay or more periods"
+                    "", AccuracyWarning,
+                    stacklevel=user_stacklevel(),
+                )
         return
 
     state = getattr(result, "state", None)

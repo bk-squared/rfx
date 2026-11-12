@@ -1024,31 +1024,33 @@ def test_s4_tail_delegate_and_reader_sites():
         assert len(calls) >= minimum, name
 
 
-def test_s4_probe_only_advisory_uses_attached_witness():
-    """The tutorial's clipped record warns; a witnessed pass through P10 is silent."""
-    from examples.tutorials.run_control_and_fields import build_simulation
+def test_s4_envelope_only_without_frequency_reads():
+    """The envelope guards probe-only runs; a DFT read uses its per-bin witness."""
+    from examples.tutorials.run_control_and_fields import build_simulation, F0
     from rfx.errors import AccuracyWarning
 
-    rows = {}
-    for periods in (.1, 1, 3, 10):
+    for with_plane in (False, True):
         sim = build_simulation()
+        if with_plane:
+            sim.add_dft_plane_probe(axis="x", coordinate=.019, component="ez",
+                                    freqs=np.array([F0]), name="read")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always')
-            result = sim.run(num_periods=periods, compute_s_params=False, skip_preflight=True)
-        witness = result.settling_witness
+            result = sim.run(num_periods=.1, compute_s_params=False, skip_preflight=True)
         messages = [str(w.message) for w in caught if issubclass(w.category, AccuracyWarning)]
-        rows[periods] = (witness, messages)
-        print(f'probe-only P{periods}: status={witness["status"]}, reason={witness["reason"]!r}, '
-              f'settling_db={result.settling_db}, warnings={messages}')
-        assert sim._ntff is None and not sim._dft_planes and result.s_params is None
+        envelope = [message for message in messages if 'ring-down truncated' in message]
+        witness = result.settling_witness
+        print(f'clipped with_plane={with_plane}: status={witness["status"]}, '
+              f'reason={witness["reason"]!r}, warnings={messages}')
+        assert sim._ntff is None and result.s_params is None
         assert not sim._internal_probe_indices
-    clipped, messages = rows[.1]
-    assert clipped['status'] in {'fail', 'absent', 'undetermined'}, clipped
-    assert len(messages) == 1 and 'ring-down settling witness' in messages[0], messages
-    passing = [(p, w, messages) for p, (w, messages) in rows.items() if w['status'] == 'pass']
-    assert passing, f'No probe witness passes at 0.1, 1, 3 or 10 periods: {rows}'
-    for periods, witness, messages in passing:
-        assert not messages, (periods, witness, messages)
+        if with_plane:
+            assert sim._dft_planes and result.dft_planes
+            assert not envelope, f'DFT-plane run emitted envelope warning: {envelope}'
+            assert witness['status'] != 'pass', witness
+        else:
+            assert not sim._dft_planes
+            assert envelope, f'Clipped probe-only run emitted no envelope warning: {messages}'
 
 
 def _s4_closed_record(n, dt, poles, residues, bins, kind='E', factor=1.):
