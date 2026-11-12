@@ -34,18 +34,20 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
     """Step with the product taken by the runner, using its final operands."""
     args = list(args)
     layout = _operand_layout
+    # One-device and wrapped slab steps sample from the attached plan; the
+    # subgridded plan carries no channels (its runner owns sampling).
+    plan = getattr(getattr(product, "_prepared_solve", None), "measurement", None)
+    attached = plan is not None and plan.path != "run_subgridded"
+    if attached and layout in ("grid", "wrapped_uniform_slab", "graded_slab"):
+        kwargs["measurement"] = plan
     if layout == "grid":
         args[:2] = product.grid, product.materials
         if "pec_edge_masks" in kwargs:
             kwargs["pec_edge_masks"] = product.pec_edges
-        # One-device steps sample from the attached plan; the subgridded
-        # plan carries no channels (its runner owns sampling).
-        plan = getattr(getattr(product, "_prepared_solve", None), "measurement", None)
-        if plan is not None and plan.path != "run_subgridded":
+        if attached:
             from rfx.measurement.accumulators import validate_flux_prefix
             validate_flux_prefix(product._prepared_solve.sim, product.grid, plan,
                                  kwargs.get("flux_monitors") or ())
-            kwargs["measurement"] = plan
     elif layout == "wrapped_uniform_slab":
         args.insert(0, [product.grid, product.materials, product.pec_edges])
         release_dense(product)

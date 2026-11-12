@@ -362,8 +362,9 @@ def test_b2_uniform_slab_ports():
     mesh = jax.sharding.Mesh(np.asarray(jax.devices()[:2]), ('x',))
     layout = SimpleNamespace(n_devices=mesh.size, nx_per_rank=(grid.nx+mesh.size-1)//mesh.size, ghost_width=1)
     boundary = SimpleNamespace(pmc_faces=sim._boundary_spec.pmc_faces(), periodic=run_flags(sim, grid))
-    slab = UniformSlabPorts(grid, sim._ports, specs, boundary, layout, mesh, 12, jnp.float32, FREQS)
     plan = plan_for(sim, grid, path='run_distributed')
+    slab = UniformSlabPorts(grid, sim._ports, specs, boundary, layout, mesh, 12, jnp.float32, FREQS,
+                            measurement=plan)
     owner = next(o for o in plan.owners if o.kind == 'wire')
     for channel, expected in zip(owner.channels, slab.owners[0].channels):
         nodes(channel, [(n.component, n.i, n.j, n.k, n.weight, n.area) for n in expected.nodes])

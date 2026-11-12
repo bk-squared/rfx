@@ -1,1 +1,1 @@
-{"multi-device-uniform": [], "multi-device-graded": []}
+{"multi-device-uniform": ["lumped_wire_vi", "probe"], "multi-device-graded": ["lumped_wire_vi", "probe"]}

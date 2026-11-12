@@ -228,3 +228,71 @@ def test_measurement_plan_multidevice_assembly_tables(declaration, direction, re
         assert tables['probe_table'], (declaration, entry, paths)
         if direction:
             assert tables['port_table'], (declaration, entry, paths)
+
+
+R2_SCENES = {'A': base_scene, 'L': BUILDERS['P-lumped'], 'W': BUILDERS['P-wire-driven']}
+
+
+@pytest.mark.parametrize('path', PATHS)
+@pytest.mark.parametrize('n', (2, 3))
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+@pytest.mark.parametrize('name', tuple(R2_SCENES))
+def test_measurement_plan_multidevice_plan_source(name, entry, n, path, report):
+    """The cut tables and record owners are the attached plan's, compiled here."""
+    from rfx.measurement.projector import sample_table
+    from rfx.runners import _distributed_nu_wrapped as wrapped
+    from rfx.stepping import prepared as prepared_step, slab_wrap, uniform_slab_ports
+    selected_devices = devices(n)
+    sim = scene(R2_SCENES[name], path)[0]
+    plans, cut_tables, port_plans, setups = [], [], [], []
+    advance, cut, build = prepared_step.advance, slab_wrap.cut_probe_table, wrapped.build_setup
+    port_plan_type = uniform_slab_ports.UniformPortPlan
+
+    def attached(product, *args, **kwargs):
+        plans.append(product._prepared_solve.measurement)
+        return advance(product, *args, **kwargs)
+
+    def cut_spy(table, *args, **kwargs):
+        cut_tables.append(table)
+        return cut(table, *args, **kwargs)
+
+    def build_spy(*args, **kwargs):
+        setups.append((kwargs.get('port_plan'), build(*args, **kwargs)))
+        return setups[-1][1]
+
+    class PortPlanSpy(port_plan_type):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            port_plans.append(self)
+
+    kwargs = dict(devices=selected_devices, n_steps=300, skip_preflight=True)
+    with patch.object(prepared_step, 'advance', attached), \
+            patch.object(slab_wrap, 'cut_probe_table', cut_spy), \
+            patch.object(wrapped, 'build_setup', build_spy), \
+            patch.object(uniform_slab_ports, 'UniformPortPlan', PortPlanSpy):
+        sim.run(**kwargs) if entry == 'run' else sim.forward(distributed=True, **kwargs)
+    assert len(plans) == 1 and plans[0] is not None, (path, name, entry, n, len(plans))
+    plan = plans[0]
+    if path == 'multi-device-uniform':
+        assert len(port_plans) == 1 and not setups, (len(port_plans), len(setups))
+        specs, owners_in_use = port_plans[0].specs, port_plans[0].owners
+    else:
+        assert len(setups) == 1 and not port_plans, (len(setups), len(port_plans))
+        runner_plan, setup = setups[0]
+        specs = () if runner_plan is None else runner_plan.specs
+        owners_in_use = setup.step_fn_inv.port_owners
+    by_id = {owner.id: owner for owner in plan.owners}
+    port_owners = tuple(by_id[f'port:{spec[4]}:mode:0'] for spec in specs)
+    expected = [sample_table(tuple(o for o in plan.owners if o.kind == 'probe'), dtype=jnp.float32)]
+    if specs:
+        expected.append(sample_table(tuple(replace(o, channels=tuple(
+            c for c in o.channels if c.sample_stage == 'post-injection')) for o in port_owners),
+            dtype=jnp.float32))
+    tables = compare(freeze(cut_tables), freeze(expected))
+    owners = compare(freeze(owners_in_use), freeze(port_owners))
+    report('R2', path=path, n=n, scene=name, entry=entry, cut_calls=len(cut_tables),
+           channels=[t.n_channels for t in cut_tables], port_owners=[o.id for o in port_owners],
+           tables_equal=tables == [], owners_equal=owners == [], tables_diff=tables[:3],
+           owners_diff=owners[:3])
+    assert tables == [], (path, name, entry, n, tables[:3])
+    assert owners == [], (path, name, entry, n, owners[:3])

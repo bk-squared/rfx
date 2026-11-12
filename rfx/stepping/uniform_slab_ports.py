@@ -9,7 +9,7 @@ from rfx.measurement.port_sampler import (
     pre_injection_samples, ref_dft_update, wire_dft_update, lumped_dft_update,
     stack_samples,
 )
-from rfx.measurement.projector import port_table, port_owners, project
+from rfx.measurement.projector import plan_tables, project
 from rfx.measurement.time_records import from_owners
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.slab import place
@@ -26,8 +26,8 @@ class UniformPortPlan:
         from rfx._internal._uniform_specs import WirePortSParamSpec, LumpedPortSParamSpec
         self.specs = tuple(specs)
         self.dt = grid.dt
-        self.owners = port_owners(grid, specs, nu=False, boundary=boundary)
-        self.table = port_table(grid, specs, nu=False, boundary=boundary, dtype=dtype)
+        # The attached plan's owners and table arrive by use_plan_tables.
+        self.owners = self.table = None
         self.metadata = []
         if freqs is not None:
             bins = jnp.asarray(freqs, dtype=jnp.float32)
@@ -37,7 +37,15 @@ class UniformPortPlan:
                     WirePortSParamSpec(*mid, pe.component, bins, pe.impedance, cells, pe.excite)
                     if kind == 'wire' else
                     LumpedPortSParamSpec(*mid, pe.component, bins, pe.impedance, pe.excite))
+
+    def use_plan_tables(self, owners, table):
+        """Take the attached plan's port owners and completed-field table."""
+        self.owners, self.table = tuple(owners), table
+
     def assemble(self, final, *, multi_process=False):
+        if self.owners is None:
+            raise RuntimeError('UniformPortPlan.assemble before use_plan_tables: '
+                               'the port owners come from the attached measurement plan')
         if multi_process and final:
             from jax.experimental import multihost_utils
             final = multihost_utils.process_allgather(final, tiled=True)
@@ -52,8 +60,12 @@ class UniformSlabPorts(UniformPortPlan):
     """Small P('x') payloads for the retained closed-box TFSF loop."""
 
     def __init__(self, grid, entries, specs, boundary, layout, mesh, n_steps,
-                 dtype, freqs, *, record_vref=True):
+                 dtype, freqs, *, measurement, record_vref=True):
         super().__init__(grid, entries, specs, boundary, dtype, freqs)
+        # This loop records ports only; every probe owner of the plan is skipped.
+        n_probes = sum(o.kind in ('probe', 'identification') for o in measurement.owners)
+        tables = plan_tables(measurement, n_probes=n_probes, port_specs=self.specs, dtype=dtype)
+        self.use_plan_tables(tables['port_owners'], tables['port_table'])
         self.mesh, self.record_vref = mesh, record_vref
         self.payload = cut_probe_table(self.table, layout, mesh) if specs else ()
         initial = {}
