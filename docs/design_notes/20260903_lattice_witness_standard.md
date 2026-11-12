@@ -149,8 +149,8 @@ Per case:
 | cv22 Drude | `drude` | ε∞ = 3, fp = 7 GHz, γ = 2π·3 GHz | as Lorentz with ω0 = 0, κ = ωp², δ = γ/2 |
 | cv23 | `conductive` | ε′ = 4, σ ∈ {0.15577, 1.5577, 4.6731} S/m | `ε′ − jσ(x/tan x)/(ωε0)` |
 
-
-**No arm is excluded.** All three cv22 pole models
+**No arm is excluded.** An arm whose pole model cannot be done exactly is excluded with its
+reason; that condition does not bite here: all three cv22 pole models
 are exact through the same identity, and §5.2 shows the lattice model predicts
 each arm's measured continuum residual a priori.
 
