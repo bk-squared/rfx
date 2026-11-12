@@ -163,14 +163,14 @@ on CPU.
 ## 7. Memory (R1)
 
 - Entry "Added 2026-09-01 —
-  #778/#779 stack merged" (the plan cites it at `:137-141` of main 1c38b0d7;
-  the ledger has grown since, so the entry is named by heading): "f64 fields,
+  #778/#779 stack merged" (named by its
+  heading): "f64 fields,
   4x/2x step counts and complex128 algebra all reproduce 1.003227 (falling
   monotonically to 0.9874 at 7 GHz), so the excess is systematic with
   mechanism unidentified → filed as #819. Gate value (1.01) and every measured
   number unchanged." Consistent — this ladder is that issue's candidate 1,
   and it moves neither the gate nor a measured number.
-- same file, entry "Added 2026-07-10 — #313 RESOLVED" (plan `:4278-4306`):
+- Entry "Added 2026-07-10 — #313 RESOLVED":
   "Default path and ALL diagonals byte-frozen (bitwise witnesses)"; the
   reference-plane path is opt-in and never de-embeds with omega/c or a
   nominal 50 ohm. Consistent — the ladder runs the default path with no

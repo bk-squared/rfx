@@ -33,7 +33,7 @@ use `normalize=True`.
 
 The entries below were read on 2026-09-03.
 
-- **`:99`** — the waveguide chain-status row, rewritten against the measured battery:
+- **Waveguide chain-status row** — rewritten against the measured battery:
   "the de-embedding β is wrong because `_discrete_te_mode_profiles` … solves the Neumann
   eigenproblem on the FULL cell-centred operator over the aperture's `nu` entries, and the
   aperture defaults to the whole transverse field extent — N+1 for an N-cell guide", and
@@ -41,26 +41,26 @@ The entries below were read on 2026-09-03.
   the predicted rotation crosses ±180° where both sign hypotheses coincide mod 360°."
   *This note acts on both sentences*: PR #889 corrected the aperture (§2.2), and §4 re-declares
   the shift so the wrong-sign witness stops being degenerate. Neither is a tolerance change.
-- **`:64`** — "#729 node-vs-cell miscounts on three committed surfaces." *Consistent*: the
+- **#729 node-vs-cell class** — "#729 node-vs-cell miscounts on three committed surfaces." *Consistent*: the
   aperture defect PR #889 fixed is a fourth site of that class, and its own R3 line says so.
   The class entry is why a fifth site is worth looking for, not why this run is safe.
-- **`:3110-3122`** — "WAVEGUIDE end-to-end AD — RESOLVED 2026-05-25 (G-AD-WIRE-WG2, commit
+- **Waveguide end-to-end AD** — "WAVEGUIDE end-to-end AD — RESOLVED 2026-05-25 (G-AD-WIRE-WG2, commit
   f6dc361)". *Consistent*: this run re-measures objectives on a working tape; it
   re-implements no assembly. The expected AD-vs-FD order in §5 is taken from there.
-- **`:3413-3420`** — "The two-run diagonal formula `S11 = (b_dev − b_ref) / a_ref` does NOT
+- **Two-run diagonal formula** — "The two-run diagonal formula `S11 = (b_dev − b_ref) / a_ref` does NOT
   cancel Yee dispersion … ±10–20 % |S11| error with `normalize=True`." *Consistent*: lanes
   stay `normalize=False` and `normalize="flux"`.
-- **`:4129`** — "The offset is a **time-convention conjugation** … conjugate the Meep data."
+- **Time-convention conjugation** — "The offset is a **time-convention conjugation** … conjugate the Meep data."
   *Consistent*: the only phase referee here is rfx's own analytic Airy oracle; no external
   phase data enters.
-- **`:4336`** — "Do-not-repeat: never anchor a drive-side wave at the port cell." *Consistent*:
+- **Port-cell anchoring** — "Do-not-repeat: never anchor a drive-side wave at the port cell." *Consistent*:
   probe planes stay 25.40 mm inward of each port plane at every rung, unchanged from the
   parent note.
-- **`:3735-3752`** — the `aperture_dA` DROP-weight workaround. *Consistent, and checked*:
+- **Aperture DROP weight** — the `aperture_dA` DROP-weight workaround. *Consistent, and checked*:
   PR #889 records `aperture_dA.sum()` unchanged at 2.3225759287e-04 m², because the DROP
   weight had already zeroed the extra row and column — only the eigen-operator's size moved.
   This run does not reopen the weight.
-- **`:3546`** — "Production `compute_waveguide_s_matrix` on PEC-short geometry returns spread
+- **PEC-short spread** — "Production `compute_waveguide_s_matrix` on PEC-short geometry returns spread
   0.0004 at R=1 — Meep-class." *Consistent*: the ladder magnitude floor 0.005 is unchanged.
 - **auto-memory `project_issue527_f32_comparator`** — "a comparator-validity assert placed
   BEFORE the accuracy gate". *Consistent*: every FD leg still asserts its ULP span first.
@@ -705,7 +705,7 @@ first order, which is the signature §2.2 attributes to the one-cell width error
   single confirmation that the removed error was the first-order one-cell width term. The
   remaining reflection is then second order, i.e. ordinary Yee `Z_TE` error (#873).
 - **Fine-rung `|S11|` near 0.010 with ratios ≈ 2** — a first-order term survives the aperture
-  correction. #889 fixed a site of the node-vs-cell class (ledger `:64`); a surviving
+  correction. #889 fixed a site of the recorded node-vs-cell class; a surviving
   first-order term says there is a fifth site. Report the ratio sequence, do not adjust
   anything.
 - **Anything else below the frozen 0.0320** — i.e. every value/ratio combination the two
@@ -993,7 +993,7 @@ which are separate from the sibling's below:
 
   **The other 14 AD-vs-FD legs — predicted green, and now branched, because a prediction with
   only a pass branch is not a pre-declaration.** Predicted `rel` in **1e-4 … 1.2e-2** against
-  the 0.05 gate (first run: 1.018e-4 … 1.138e-2, ledger `:3110` expectation 1e-3). Seven of the
+  the 0.05 gate (first run: 1.018e-4 … 1.138e-2, recorded expectation 1e-3). Seven of the
   14 sit on the `normalize=False` lane — `pec_short|false|eps|{re_s11, im_s11}`,
   `pec_short|false|sigma|s11_mag2` and all four `slab|false|eps` legs — and their gradient
   *magnitudes* will move with `Z_TE`, which at the fine rung rises by **1.24 % … 4.07 %** across

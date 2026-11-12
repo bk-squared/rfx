@@ -1,6 +1,6 @@
 # Issue #831 — cv03's far-end return: pre-declared hypotheses, arms and gates
 
-> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are kept with the project, outside this repository. Historical paths below refer to those records; reproduction commands that read them need the archived files.
 
 Written 2026-09-15 (KST), **before any measurement in this lane**. Frozen here
 so every verdict below is judged against a threshold that existed before the
@@ -130,7 +130,7 @@ and `rfx/boundaries/upml.py:69-92`.
 - The per-cell grading step scales as `sigma_max/N ~ 1/N^2`, and the first pad
   cell at the hi face carries `sigma_max*(0.5/N)^2 ~ 1/N^3`. Discretisation
   reflection — the term that actually sets a numerical PML's floor — therefore
-  *falls* with N. This is the cv01/#1027 direction and the `:4158` direction.
+  *falls* with N. This is the cv01/#1027 direction and the direction of recorded entry 1 above.
 
 So there is no absorber mechanism in this code that produces #831's sign. Either
 the absorber is not delivering its assembled profile (measurable, Arm C), or the

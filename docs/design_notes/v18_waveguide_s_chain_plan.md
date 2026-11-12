@@ -75,8 +75,8 @@ have one consistent state; the synchronized record check is clean.
 slope/intercept; conjugate the Meep data") and the entry stating that the contract doc is the first v1.8
 deliverable.
 
-**Must not.** Touch any test or extractor. Delete the cv11 row's half-step lesson at
-`index.md:249` (the "PEC-short per-freq spread 0.13 was a dump-comparator artefact" sentence
+**Must not.** Touch any test or extractor. Delete the cv11 row's half-step lesson
+(the "PEC-short per-freq spread 0.13 was a dump-comparator artefact" sentence
 stays).
 
 ---
@@ -181,7 +181,7 @@ in the PR body, and name the shard if it goes slow.
   `:556`, the bidirectional falsifier `:629-634`). Objectives: |S11|² (PEC-short and slab),
   |S21|² (slab), and Re/Im S21 (slab), at the band-centre bin. Pass `rel ≤ 0.05`
   (`tests/unit/autodiff/test_sparam_ad_end_to_end.py:298`, `tests/unit/autodiff/test_waveguide_flux_ad.py:84`). Expected
-  order 1e-3 (ledger 2.0e-4 at `:3093-3099`). An FD leg below the span floor skips with the
+  order 1e-3 (recorded 2.0e-4). An FD leg below the span floor skips with the
   span printed; it never passes.
 - **(b) Reference plane.** Shift left 0.02 m and right 0.08 m, the asymmetric pair actually
   used at `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257` (an earlier draft of this plan

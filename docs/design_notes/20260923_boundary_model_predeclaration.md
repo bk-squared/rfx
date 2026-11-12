@@ -1,6 +1,6 @@
 # One realized boundary for every kernel — pre-declaration
 
-> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are kept with the project, outside this repository. Historical paths below refer to those records; reproduction commands that read them need the archived files.
 
 **Status:** pre-declaration for the boundary-model campaign.
 The draft had three independent
