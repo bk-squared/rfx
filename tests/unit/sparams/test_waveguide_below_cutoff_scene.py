@@ -5,6 +5,9 @@ import warnings
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
+
+from rfx.errors import AccuracyWarning
 
 from rfx import Simulation
 from rfx.measurement import waveguide_s as ws
@@ -57,7 +60,7 @@ def test_e1_issue_scene_cpu(monkeypatch):
     start = time.perf_counter()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        result = scene(True).compute_waveguide_s_matrix(normalize=False, num_periods=40)
+        result = scene(True).compute_waveguide_s_matrix(normalize=False, num_periods=40, strict_passivity=True)
     s = np.asarray(result.s_params)
     elapsed = time.perf_counter()-start
     old = np.asarray(unmasked_matrix(waves, 4))
@@ -69,6 +72,7 @@ def test_e1_issue_scene_cpu(monkeypatch):
     assert s[defined].tobytes() == old[defined].tobytes()
     power = (np.abs(s[:, :, -2:])**2).sum(axis=0)
     assert power.max() <= 1.005
+    assert_no_nonfinite_advisory(caught)
     notices = [w for w in caught if issubclass(w.category, WaveguideCutoffWarning)]
     assert len(notices) == 1
     message = str(notices[0].message)
@@ -80,16 +84,42 @@ def test_e1_issue_scene_cpu(monkeypatch):
 
 
 def test_e2_wr90_cpu(monkeypatch):
+    from rfx.sparams import waveguide as calculator
+
+    finalized = []
+    finalize = calculator._finalize_sparam_result
+
+    def capture_finalizer(result, **kwargs):
+        finalized.append((result, kwargs))
+        return finalize(result, **kwargs)
+
+    monkeypatch.setattr(calculator, "_finalize_sparam_result", capture_finalizer)
     waves = capture_unmasked(monkeypatch)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        result = scene(False).compute_waveguide_s_matrix(normalize=False, num_periods=40)
+        result = scene(False).compute_waveguide_s_matrix(normalize=False, num_periods=40, strict_passivity=True)
     s = np.asarray(result.s_params)
     old = np.asarray(unmasked_matrix(waves, 2))
     assert np.isnan(s[:, :, :3]).all()
     assert np.isfinite(s[:, :, 3:]).all()
     assert s[:, :, 3:].tobytes() == old[:, :, 3:].tobytes()
     assert len([w for w in caught if issubclass(w.category, WaveguideCutoffWarning)]) == 1
+    assert_no_nonfinite_advisory(caught)
+    assert len(finalized) == 1
+    measured, options = finalized[0]
+    refused = np.zeros(s.shape, dtype=bool)
+    refused[:, :, :3] = True
+    np.testing.assert_array_equal(options["refused_positions"], refused)
+    # The partial advisory has no returned record. A complete defined column
+    # with power 2 * 1.3**2 = 3.38 must still exceed this lane's limit of 3.
+    nonpassive = measured._replace(s_params=measured.s_params.at[:, 0, 3].set(1.3))
+    with pytest.raises(ValueError, match="passivity_violation: max column power .*frequency index 3"):
+        finalize(nonpassive, **options)
+    # Refusals must not hide a numerical NaN in an otherwise defined entry.
+    diverged = measured._replace(s_params=measured.s_params.at[0, 0, 3].set(jnp.nan))
+    with pytest.raises(ValueError, match="nonfinite_sparams"):
+        finalize(diverged, **options)
+    print("P2 strict=True passed; cutoff_warnings=1; defined column power=3.38 flagged; unrelated NaN flagged")
     print(f"E2 cutoff={waves[0][0].f_cutoff:.12g}; unmasked_below={old[:,:,:3].tolist()}; "
           f"NaNs={np.isnan(s).sum()}; unchanged=True")
 
@@ -116,3 +146,10 @@ def test_e4_wr90_gradient(monkeypatch):
     np.testing.assert_allclose(after, before, rtol=1e-6, atol=0.)
     print(f"E4 before={float(before):.12g}; after={float(after):.12g}; "
           f"relative_error={float(jnp.abs((after-before)/before)):.12g}; n_steps=128")
+
+
+def assert_no_nonfinite_advisory(caught):
+    bad = [str(w.message) for w in caught if issubclass(w.category, AccuracyWarning)
+           and any(text in str(w.message).lower()
+                   for text in ("unreliable", "nonfinite", "non-finite"))]
+    assert not bad
