@@ -67,8 +67,8 @@ the mechanism and the four-test signature are unchanged, only the exact
 magnitude moved with the cell count). The gate below (``rtol=1e-6``) is
 anchored near the observed floor with margin for cross-machine
 floating-point reduction-order jitter (this repo's own experience is
-that cross-machine float comparisons are not bit-exact -- see the CI
-slow-suite agent-memory entry; an independent re-measurement of the
+that cross-machine float comparisons are not bit-exact in the CI
+slow suite; an independent re-measurement of the
 CHANGELOG's separate 7-configuration representativeness sweep on
 different hardware got exactly ``0.0`` on all seven, where this
 session's machine measured them at-or-below ~4e-7 -- same conclusion,
