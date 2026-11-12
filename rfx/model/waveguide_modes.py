@@ -5,6 +5,7 @@ from __future__ import annotations
 from rfx.model.graded_admission import host_cells
 
 from typing import NamedTuple
+import warnings
 import jax.numpy as jnp
 import numpy as np
 from rfx.core.yee import EPS_0, MU_0
@@ -658,6 +659,26 @@ def init_waveguide_port(
         u_widths_np = np.full(nu_port, float(dx))
         v_widths_np = np.full(nv_port, float(dx))
 
+    if not isinstance(aperture_grid, Grid):
+        transverse_axes = [axis for axis in "xyz" if axis != normal_axis]
+        oversized_axes = [
+            axis for axis, widths, declared_size in zip(
+                transverse_axes, (u_widths_np, v_widths_np), (port.a, port.b),
+            )
+            if len(widths) and np.sum(widths) - declared_size > 0.5 * widths[-1]
+        ]
+        if oversized_axes:
+            from rfx.preflight._common import PreflightWarning
+
+            warnings.warn(PreflightWarning(
+                "The aperture reaches past the declared guide size on "
+                f"{', '.join(oversized_axes)}; the walls are not checked on this path "
+                "(a configuration built from a scalar dx or a graded grid); "
+                "build with a uniform Grid to have them checked, or use the "
+                "cell span `(lo, hi - 1)`.",
+                code="waveguide-aperture-size-unchecked", source="init_waveguide_port",
+            ), stacklevel=2)
+
     # Cell-centre coordinates (cumulative-sum midpoints). For uniform
     # widths this collapses to the original `np.linspace(0.5*dx, ...)`.
     u_coords = np.cumsum(u_widths_np) - 0.5 * u_widths_np
@@ -1198,13 +1219,22 @@ def init_multimode_waveguide_port(
         # Only the first (dominant) mode is actively driven
         mode_amplitude = amplitude if mode_idx == 0 else 0.0
 
-        cfg = init_waveguide_port(
-            mode_port, dx, freqs, f0=f0, bandwidth=bandwidth,
-            amplitude=mode_amplitude, probe_offset=probe_offset,
-            ref_offset=ref_offset, dft_total_steps=dft_total_steps,
-            dt=dt, waveform=waveform, mode_profile=mode_profile,
-            grid=grid, h_offset=h_offset, field_dtype=field_dtype,
-        )
+        # All modes share one aperture; report its size only on the first mode.
+        from rfx.preflight._common import PreflightWarning
+
+        with warnings.catch_warnings():
+            if mode_idx:
+                warnings.filterwarnings(
+                    "ignore", message="The aperture reaches past the declared guide size",
+                    category=PreflightWarning,
+                )
+            cfg = init_waveguide_port(
+                mode_port, dx, freqs, f0=f0, bandwidth=bandwidth,
+                amplitude=mode_amplitude, probe_offset=probe_offset,
+                ref_offset=ref_offset, dft_total_steps=dft_total_steps,
+                dt=dt, waveform=waveform, mode_profile=mode_profile,
+                grid=grid, h_offset=h_offset, field_dtype=field_dtype,
+            )
         cfgs.append(cfg._replace(multimode=True))
 
     return _gram_schmidt_modes(cfgs)

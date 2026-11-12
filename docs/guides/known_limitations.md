@@ -653,8 +653,10 @@ Not fixed in 2.1.0. Read absolute amplitudes from a port beside a conformal wall
 
 ### A waveguide port built without a uniform Grid is unchecked in a caller's own loop.
 
-A configuration built with scalar `dx` or a graded grid and stepped through `inject_waveguide_port` and `update_waveguide_port_probe` in the caller's own loop has no aperture check.
+A configuration built with scalar `dx` or a graded grid warns when the aperture exceeds the declared guide size by more than half the last cell on either transverse axis; the walls remain unchecked when stepped through `inject_waveguide_port` and `update_waveguide_port_probe` in the caller's own loop.
 A whole node plane there drives and reads the row outside the high electric wall; use the cell span `(0, n - 1)`, as `Simulation` builds it.
+
+Tracker: none — accepted limitation (warns at default: tests/unit/ports/test_waveguide_whole_plane_aperture.py::test_initializers_warn_without_uniform_grid)
 
 ### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 

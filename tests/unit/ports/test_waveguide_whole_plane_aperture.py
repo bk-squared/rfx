@@ -4,6 +4,7 @@ import base64
 import json
 from pathlib import Path
 import re
+import warnings
 import zlib
 
 import jax.numpy as jnp
@@ -11,10 +12,12 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from rfx.auto_config import smooth_grading
 from rfx.core.yee import init_materials
 from rfx.grid import Grid
 from rfx.measurement import waveguide_s
 from rfx.model.graded_grid import make_nonuniform_grid
+from rfx.preflight._common import PreflightWarning
 from rfx.sources.waveguide_port import (
     WaveguidePort, init_waveguide_port, init_multimode_waveguide_port,
 )
@@ -52,6 +55,76 @@ def _configs(scene, whole_axis=None, multimode=False):
         port, grid.dx, freqs, f0=6e9, probe_offset=15, ref_offset=3,
         dft_total_steps=steps, **({"n_modes": 2} if multimode else {}),
     ) for port in _ports(grid, whole_axis)]
+
+
+def _x_profile():
+    return smooth_grading(
+        np.concatenate([np.full(20, 0.002), np.full(40, 0.001), np.full(20, 0.002)]),
+        max_ratio=1.3,
+    )
+
+
+def _graded_grid():
+    profile = _x_profile()
+    return make_nonuniform_grid(
+        (float(np.sum(profile)), 0.04), np.full(10, 0.002), 0.002,
+        dx_profile=profile, cpml_layers=10, cpml_axes="x",
+        pec_faces={"y_lo", "y_hi", "z_lo", "z_hi"},
+    )
+
+
+@pytest.mark.parametrize("axis", ["y", "z", "yz"])
+@pytest.mark.parametrize("multimode", [False, True])
+@pytest.mark.parametrize("graded", [False, True])
+def test_initializers_warn_without_uniform_grid(scene, axis, multimode, graded):
+    grid, freqs, _ = scene
+    if graded:
+        grid = _graded_grid()
+    port = _ports(grid, axis)[0]
+    if axis == "yz":
+        port = port._replace(y_slice=(0, grid.ny), z_slice=(0, grid.nz))
+    initializer = init_multimode_waveguide_port if multimode else init_waveguide_port
+    with pytest.warns(PreflightWarning, match="aperture reaches past") as caught:
+        initializer(port, grid if graded else grid.dx, freqs,
+                    **({"n_modes": 2} if multimode else {}))
+    assert len(caught) == 1
+    message = str(caught[0].message)
+    assert f"on {', '.join(axis)};" in message
+    assert "the walls are not checked on this path" in message
+    assert "build with a uniform Grid" in message
+    assert "cell span `(lo, hi - 1)`" in message
+
+
+@pytest.mark.parametrize("multimode", [False, True])
+@pytest.mark.parametrize("graded", [False, True])
+def test_initializers_cell_span_without_uniform_grid_stays_quiet(scene, multimode, graded):
+    grid, freqs, _ = scene
+    if graded:
+        grid = _graded_grid()
+    initializer = init_multimode_waveguide_port if multimode else init_waveguide_port
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", PreflightWarning)
+        initializer(_ports(grid)[0], grid if graded else grid.dx, freqs,
+                    **({"n_modes": 2} if multimode else {}))
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_simulation_cell_span_build_and_run_stays_quiet(graded):
+    profile = _x_profile() if graded else None
+    domain_x = float(np.sum(profile)) if graded else 0.12
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", PreflightWarning)
+        sim = Simulation(
+            freq_max=12e9, domain=(domain_x, 0.04, 0.02), dx=0.002,
+            boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
+            dx_profile=profile,
+        )
+        sim.add_waveguide_port(0.01, direction="+x", freqs=jnp.linspace(5e9, 7e9, 3),
+                              f0=6e9, name="guide")
+        result = sim.run(n_steps=3, compute_s_params=False)
+    cfg = result.waveguide_ports["guide"]
+    assert (cfg.u_lo, cfg.u_hi) == (0, result.grid.ny - 1)
+    assert (cfg.v_lo, cfg.v_hi) == (0, result.grid.nz - 1)
 
 
 def _extract(scene, name, whole_axis=None):
