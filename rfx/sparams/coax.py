@@ -495,7 +495,7 @@ def compute_coaxial_two_port(
     """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
 
     .. note::
-        Production edits to this lane need the PI's approval. **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
+        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
         ``docs/guides/sparameter_support_matrix.md``, the S-parameter
         family companion where this row lives). Covered: the two-port
         through-line class on this single coax geometry family, bracketed
@@ -528,8 +528,7 @@ def compute_coaxial_two_port(
     solve_two_port_from_wave_amplitudes` — the two-drive solve that does
     NOT assume the non-driven port sees zero incident wave (unlike the
     naive ``S[j,i] = b_j/a_i`` ratio, which has a hard terminator-
-    reflection floor on a through line; see that function's docstring
-    and ``docs/research_notes/20260729_i489_coax_two_port_design.md``).
+    reflection floor on a through line; see that function's docstring).
 
     Port 1 is the +z end (mirrors the 1-port fixture's own ``face='top'``
     orientation); port 2 is the -z end (mirror image, ``face='bottom'``).

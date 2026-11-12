@@ -282,7 +282,7 @@ def _prepare_coax_msl_ladder(
     # REPORT-ONLY: no gate, no refusal, and no msl_fit_residual_max —
     # that gate is explicitly out of scope until the standoff rule and
     # the ladder self-consistency witness have both been exercised on a
-    # settled run (PI sequencing).
+    # settled run.
     from rfx.preflight._msl_probe_rules import (
         msl_source_near_field_standoff_cells as _msl_standoff_cells,
     )

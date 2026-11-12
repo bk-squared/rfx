@@ -1,7 +1,7 @@
 {
   "issue": 491,
   "scope": "comparator leg only -- no rfx Floquet comparison performed by this script",
-  "r2_stop_pointer": "docs/agent-memory/rfx-known-issues.md, 'RCWA FEASIBILITY SCOPED 2026-07-05' entry -- rfx drive-isolation is the blocker, not RCWA availability; naive two-run reference subtraction FAILED there and must not be retried",
+  "r2_stop_pointer": "recorded entry 'RCWA FEASIBILITY SCOPED 2026-07-05' -- rfx drive-isolation is the blocker, not RCWA availability; naive two-run reference subtraction FAILED there and must not be retried",
   "tool": {
     "name": "grcwa",
     "version": "0.1.2"

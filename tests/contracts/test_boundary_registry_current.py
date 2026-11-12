@@ -17,12 +17,6 @@ pytestmark = pytest.mark.source_scan
 # This list may only shrink: a fix PR removes its entry.
 EXCEPTIONS = (
     (
-        "rfx/measurement/_radiated_power.py",
-        "integrate_radiated_power",
-        "rfx-known-issues.md: Radiated-power sphere integral — φ seam and uneven φ weights; bk-squared/rfx#2618",
-        "the NumPy φ weights count a repeated 2π seam sample twice",
-    ),
-    (
         "rfx/model/realization_reference_area.py",
         "drawn_open_fractions",
         "rfx-known-issues.md: The realization table's face reference does not fold a box drawn past a periodic seam",

@@ -22,7 +22,7 @@ Equations implemented below cite the arXiv numbering of each paper.
 - `validation/research/` exists; contains `subgrid/` (3D disjoint prototype, research-only,
   explicitly not long-time energy-stable). No `portgrid/` dir exists → this lane creates it.
   No file overlap with the wire-port stack (#771–#779) or the crossval lanes.
-- Ledger NFS is mounted; `rfx-known-issues.md` confirms the disjoint-subgrid / SBP-SAT history.
+- The recorded entry confirms the disjoint-subgrid / SBP-SAT history.
 - PR #90 body re-read (read-only): confirmed 2D lessons — (1) point-source area scaling
   ratio² when injecting the same pulse into grids of different cell area, (2) interface
   penalty signs must be outward-normal-consistent per face, (3) Yee boundary derivative

@@ -229,7 +229,7 @@ new here:
   the one cheap check left for whoever owns the extractor;
 * `beta/k0` = 0.872 on 8 of the 12 bins (eps_eff 0.76, below vacuum) and
   does not move with `num_periods` 6 -> 20, while `Re Z0` swings -4533 to
-  98 ohm across the band. This is *consistent with* `rfx-known-issues.md`
+  98 ohm across the band. This is *consistent with* the recorded entry dated
   2026-08-20, "MSL extractor reports non-physical Z0 / eps_eff on a real
   board — DIAGNOSTIC-ONLY (does NOT reach S11)": same extractor, same model
   class, same non-physical eps_eff. Not a new defect and not a #931 one.

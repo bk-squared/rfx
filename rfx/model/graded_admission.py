@@ -189,8 +189,8 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     # error budget.
     # The dx/dy cap of 1.4 is supported by in-plane witnesses at 1.40:
     # transition reflection on x and y (e5_x/e5_y), and on a cavity graded
-    # in plane, second-order resonances and 1e6-step energy (rfx-archive
-    # records/20261029-inplane-cap-1p4; see the caps in api/_preflight.py).
+    # in plane, second-order resonances and 1e6-step energy
+    # (see the caps in api/_preflight.py).
     # Beyond the cap this warning still fires, and preflight adds the
     # richer advisory nu_grading_ratio_beyond_validated_cap with the
     # accuracy class on both sides.

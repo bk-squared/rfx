@@ -206,7 +206,9 @@ def build_sphere(count, x_extra_cells=0):
     dx = C0 / f0 / geo["resolution_cells_per_lambda"]
     domain = list(geo["domain_m"])
     domain[0] += x_extra_cells * dx
-    sim = Simulation(freq_max=f0 * 1.5, domain=tuple(domain), dx=dx,
+    # A 12-cell sphere cannot lie on the grid; the Mie bar judges the staircase (as in
+    # test_distributed_tfsf_slab.py, same fixture).
+    sim = Simulation(snap="declared", freq_max=f0 * 1.5, domain=tuple(domain), dx=dx,
                      boundary="cpml", cpml_layers=geo["cpml_layers"])
     sim.add_material("PEC", eps_r=1., sigma=geo["pec_sigma_s_per_m"])
     sim.add(Sphere(center=tuple(d / 2 for d in domain), radius=radius), material="PEC")

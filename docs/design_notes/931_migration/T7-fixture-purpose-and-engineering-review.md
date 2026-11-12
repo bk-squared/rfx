@@ -42,9 +42,8 @@ Three kinds of evidence are distinguished throughout:
   stopped before assembly; the corrected invocation completed. No pytest,
   FDTD solve, or external-solver experiment was run in this discussion.
 
-The primary checkout's private `docs/agent-memory/development_methodology.md`
-§2.2 says pure code-motion refactors require a before/after bit-identical
-comparison. Its `rfx-known-issues.md` entry dated 2026-07-13 says V173A's earlier
+Pure code-motion refactors require a before/after bit-identical
+comparison. The entry dated 2026-07-13 says V173A's earlier
 red “was NOT solver drift”: Harminv's decimation default had changed. This
 proposal is consistent with both: preserve strict same-problem refactor checks,
 but distinguish a deliberate problem change from a numerically neutral refactor.

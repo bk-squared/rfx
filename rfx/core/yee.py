@@ -364,8 +364,7 @@ def _shift_bwd(arr, axis):
 # A 4th-order option for the smooth-bulk lever (analytic gate-1: ~2.52x fewer
 # cells/wavelength than (2,2) for the same dispersion error; gate-2 spike:
 # this advantage is a SMOOTH-PROPAGATION property and does NOT extend to PEC /
-# geometric features, which staircase at 2nd order regardless — see
-# docs/research_notes/20260627_memory_efficiency_techniques_exploration.md).
+# geometric features, which staircase at 2nd order regardless).
 # The two coefficients on the near (1/2-cell) and far (3/2-cell) staggered
 # differences. At a non-periodic boundary the wider stencil reaches outside the
 # domain, so the first/last TWO gaps revert to 2nd order (the 2-cell PEC/edge

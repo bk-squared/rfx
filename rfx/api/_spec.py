@@ -1770,7 +1770,7 @@ class CoaxMSLTransitionResult:
     Do not read the reciprocity/degeneracy numbers on this result as
     evidence about coax<->MSL launch physics in general.
 
-    ATTEMPT 2 (PI-directed, R2's escape clause — attempt 1's own named
+    ATTEMPT 2 (R2's escape clause — attempt 1's own named
     defect authorized exactly one retry): lengthened the MSL probe ladder
     1.000mm -> 8.000mm and widened the MSL port's x-CPML clearance
     200um -> 1500um, keeping the junction geometry byte-identical to

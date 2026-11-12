@@ -17,7 +17,7 @@ worktree branched from `main` @ 92018513.
 
 ## R1 memory citations
 
-- `docs/agent-memory/rfx-known-issues.md` line 24: "#802 realized cells depend
+- "#802 realized cells depend
   on JAX_ENABLE_X64 — f32 node rounding at node-aligned faces". This change
   implements the issue's own proposed direction (exact host coordinates,
   traced path preserved). Consistent.
@@ -368,6 +368,4 @@ declared planes and keep their validity.
 - **#589**: the f64 replicate is unblocked (realized geometry no longer
   depends on the flag; the coax junction byte-identity chain that caught
   #802 is x64-invariant again).
-- **rfx-known-issues ledger**: gitignored and local to the primary
-  checkout — this worktree cannot update it; the merging session must
-  move #802/#807 to resolved there with this note as the artifact.
+- **Recorded status**: the merging session must mark #802/#807 as resolved with this note as the artifact.

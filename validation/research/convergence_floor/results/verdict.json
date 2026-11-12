@@ -309,7 +309,7 @@
  },
  "ledger_cross_check": {
   "status": "REFUTED -- reported as a FINDING, not as support",
-  "ledger_entry": "rfx-known-issues.md, 'patch-resonance discretization error envelope (measured, tutorial patch)': f_res bias ~ -dx/L_eff",
+  "ledger_entry": "recorded entry 'patch-resonance discretization error envelope (measured, tutorial patch)': f_res bias ~ -dx/L_eff",
   "applied_to_this_fixture": {
    "L_eff_mm": 13.5,
    "dx_range_mm": [

@@ -1,5 +1,5 @@
 {
- "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx-nu-band-profile/rfx/__init__.py",
+ "rfx_file": "rfx/__init__.py",
  "argv": [
   "--f7-only",
   "--carry-f8",
@@ -2961,7 +2961,7 @@
   ]
  },
  "f8_provenance": {
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-band/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "argv": [
    "--widths",
    "2,4,8,16,32,64",

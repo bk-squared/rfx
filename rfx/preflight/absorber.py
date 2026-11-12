@@ -1457,8 +1457,7 @@ _validate_cfg_port_conductor_continues.__qualname__ = (
 
 # CPML reference measurements at 1 mm cells with the shipped CFS alpha
 #: 2, 10, 30 GHz and below 1 GHz, respectively, in dB.
-# None: not measured (the 8-layer records stop at 20 GHz; rfx-archive
-# rfx/records/20260928-1272-cfs-alpha, direct/L8-dx0.001).
+# None: not measured (the 8-layer records stop at 20 GHz).
 _ABSORBER_REFLECTION_DB = {
     4: (-20, -23, -17, -6),
     6: (-38, -41, -32, -13),

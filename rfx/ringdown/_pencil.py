@@ -20,8 +20,7 @@ from rfx.measurement.matrix_pencil import (
 # Import the module rather than rfx's re-exported harminv function.
 _harminv = import_module("rfx.harminv")
 
-# Mac per-stage peaks / formula, maxima 1.780 and 1.626, plus 5 %:
-# records 20261012-pencil-stage-peaks, decision g.
+# Mac per-stage peaks / formula, maxima 1.780 and 1.626, plus 5 %.
 _STAGE1_FACTOR = 1.87
 _STAGE2_FACTOR = 1.71
 

@@ -480,7 +480,7 @@ def _check_msl_port_geometry(
        Microstrip fringing fields decay as exp(-π·d/h_sub); the
        5%-amplitude tail sits at d ≈ 0.95·h_sub. A ≥ 2·h_sub margin
        keeps Z0 bias under ~5% (verified by fixed-LY mesh-conv
-       sweep — see rfx-known-issues.md).
+       sweep).
 
        The reference position is
        ``_absorber_boundary_for_axis``'s exterior-frame edge (y=0 /
@@ -492,8 +492,7 @@ def _check_msl_port_geometry(
        answered by the helper alone, and the absorber does start
        exactly at the edge);
        it is a SEPARATE, empirically-measured MSL-specific margin.
-       the maintainer's internal issue ledger (primary checkout
-       only, not in this public tree), "CALIBRATED, OpenEMS-class" entry: with the pre-calibration
+       With the pre-calibration
        ``LY = W + 6·dx`` at dx=80µm, cpml_layers=8, "the trace ended
        up INSIDE the CPML overlap region (negative clearance)" and
        Z0 drifted UP with mesh refinement (54→60Ω) instead of

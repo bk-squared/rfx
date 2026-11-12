@@ -309,7 +309,7 @@ def maximize_directivity(
     ``U = |E_θ|² + |E_φ|²`` is the radiation intensity and ``P_rad`` is
     the total radiated power integrated over the FULL sphere (the same
     coverage as ``farfield.directivity()`` and ``antenna._total_radiated_power``,
-    retaining this objective's JAX trapezoid endpoint weights — so the
+    with the same φ weights as ``farfield.directivity()`` — so the
     optimized quantity is the true directivity, not an upper-hemisphere proxy
     that would inflate D for antennas with any back radiation). The ratio is
     scale-invariant, so the absolute magnitude of the NTFF spectral integral
