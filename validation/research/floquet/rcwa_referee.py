@@ -8,7 +8,7 @@ has something honest to compare against. It does **not** touch rfx's
 Floquet port code, runs no rfx simulation, and makes **no** claim about
 rfx's own calibrated S-parameters.
 
-rfx-side status (`docs/agent-memory/rfx-known-issues.md`, "RCWA FEASIBILITY
+rfx-side status (recorded entry "RCWA FEASIBILITY
 SCOPED 2026-07-05" entry -- grep "RCWA"): the real blocker for a
 Floquet-vs-RCWA comparison is DRIVE-ISOLATION on the rfx side (recovering a
 physical |S11|<=1 from a real periodic-cell FDTD run), not the availability
@@ -50,7 +50,7 @@ extension -- avoided per the task's explicit steer away from build-heavy
 tools); a standalone `rcwa` PyPI package was not evaluated because grcwa
 installed and ran cleanly on the first attempt.
 
-Step 1 -- REPRODUCE-GATE (`docs/agent-memory/task_recipes/external_solver_comparator.md`
+Step 1 -- REPRODUCE-GATE (external solver comparator
 discipline: reproduce the tool's own documented known-good result before any
 comparison use). `_reproduce_grcwa_s4_regression()` below replicates,
 parameter-for-parameter, grcwa's OWN committed regression test
@@ -400,8 +400,8 @@ def main() -> int:
         "issue": 491,
         "scope": "comparator leg only -- no rfx Floquet comparison performed by this script",
         "r2_stop_pointer": (
-            "docs/agent-memory/rfx-known-issues.md, 'RCWA FEASIBILITY SCOPED "
-            "2026-07-05' entry -- rfx drive-isolation is the blocker, not RCWA "
+            "recorded entry 'RCWA FEASIBILITY SCOPED "
+            "2026-07-05' -- rfx drive-isolation is the blocker, not RCWA "
             "availability; naive two-run reference subtraction FAILED there and "
             "must not be retried"
         ),
