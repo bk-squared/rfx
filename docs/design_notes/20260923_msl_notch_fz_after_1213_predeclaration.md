@@ -5,7 +5,7 @@ this commit, and each arm gets one attempt. Lane: nu-mesh. Tracker: #810. It fol
 `20260922_msl_notch_fz_ladder_predeclaration.md` (record
 `validation/research/multiband_nu/results/msl_notch_graded_fz.json`, "the R2 record"), whose
 arms are reused here and not re-run.
-**Written by** the NU lane leader.
+
 
 ## 0. The question, physically
 
@@ -23,7 +23,7 @@ layer, took the substrate's. So for the tangential field, the top half-cell of t
 behaved as air. That half-cell is the layer right under the strip, beside it, where the
 fringing field is strongest, and in effect it is an air gap of about FZ/2 under the strip.
 Such a gap lowers ε_eff and raises the notch, more on a coarser substrate cell. That is the
-direction R2 measured. This is the leader's hypothesis, and testing it is what this note is
+direction R2 measured. This is the hypothesis, and testing it is what this note is
 for.
 
 This note asks one question. **Was R2's substrate term the old interface rule?** If it was,
@@ -131,8 +131,8 @@ singularity at the strip edge in the plane normal to the sheet (R2 §0's origina
 
 ## 7. Who does what
 
-One Opus instance implements from this note and submits the jobs. The leader reads the records
-and writes the Conclusions. A separate Opus instance reviews.
+One Opus instance implements from this note and submits the jobs. The Conclusions are written
+after the records are read. A separate Opus instance reviews.
 
 ## Results (facts)
 
@@ -297,7 +297,7 @@ the bar 1 % of that reading's OWN limit.
 
 The finest rung, Z16m, from the reference: +0.1066 % (|S21|^2), +0.1507 % (log).
 
-### Conclusions (leader; read against G.1–G.4 and the two records)
+### Conclusions (read against G.1–G.4 and the two records)
 
 **On the current solver the substrate cell hardly matters to this notch, and at the coarsest
 mesh #1213 alone moved it by 77.66 MHz.** On the same four meshes, main reads the notch 77.66,
