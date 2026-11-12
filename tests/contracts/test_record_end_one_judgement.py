@@ -1024,6 +1024,33 @@ def test_s4_tail_delegate_and_reader_sites():
         assert len(calls) >= minimum, name
 
 
+def test_s4_probe_only_advisory_uses_attached_witness():
+    """The tutorial's clipped record warns; a witnessed pass through P10 is silent."""
+    from examples.tutorials.run_control_and_fields import build_simulation
+    from rfx.errors import AccuracyWarning
+
+    rows = {}
+    for periods in (.1, 1, 3, 10):
+        sim = build_simulation()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            result = sim.run(num_periods=periods, compute_s_params=False, skip_preflight=True)
+        witness = result.settling_witness
+        messages = [str(w.message) for w in caught if issubclass(w.category, AccuracyWarning)]
+        rows[periods] = (witness, messages)
+        print(f'probe-only P{periods}: status={witness["status"]}, reason={witness["reason"]!r}, '
+              f'settling_db={result.settling_db}, warnings={messages}')
+        assert sim._ntff is None and not sim._dft_planes and result.s_params is None
+        assert not sim._internal_probe_indices
+    clipped, messages = rows[.1]
+    assert clipped['status'] in {'fail', 'absent', 'undetermined'}, clipped
+    assert len(messages) == 1 and 'ring-down settling witness' in messages[0], messages
+    passing = [(p, w, messages) for p, (w, messages) in rows.items() if w['status'] == 'pass']
+    assert passing, f'No probe witness passes at 0.1, 1, 3 or 10 periods: {rows}'
+    for periods, witness, messages in passing:
+        assert not messages, (periods, witness, messages)
+
+
 def _s4_closed_record(n, dt, poles, residues, bins, kind='E', factor=1.):
     z = np.exp(poles * dt)
     q = z[None, :] * np.exp(-2j * np.pi * bins[:, None] * dt)
@@ -1097,6 +1124,75 @@ def test_s4_reader_closed_pole_tail(frame):
         np.testing.assert_allclose(actual.tails_per_channel[label], tail, rtol=2e-4, atol=1e-18)
 
 
+@pytest.mark.parametrize('whole_port', [True, False], ids=['whole-port', 'legacy-per-cell'])
+def test_s4_two_port_closed_pole_tail(whole_port):
+    """Off-diagonal S uses the receive impedance and the drive's incident wave."""
+    from rfx.measurement.record_readers import port_s_reader
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._tail_witness import port_record_witness
+
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    residues = {
+        'drive': {'V': [2., 1.], 'V_port': [1., .8], 'V_ref': [.9, 1.2], 'I': [.007, .004]},
+        'receive': {'V': [.7, 1.3], 'V_port': [1.8, .6], 'V_ref': [.4, .5], 'I': [.003, .008]},
+    }
+    records, spectra, tails = [], {}, {}
+    for port, channels in residues.items():
+        samples = []
+        for name, values in channels.items():
+            signal, spectrum, tail = _s4_closed_record(
+                n, dt, poles, np.array(values), bins, 'H' if name == 'I' else 'E')
+            samples.append(signal)
+            spectra[port, name], tails[port, name] = spectrum, tail
+        records.append(PortTimeRecord(port, 'wire', tuple(channels), np.column_stack(samples)))
+    # By hand: receive Z=80, four live cells; drive Z=50, three live cells.
+    # V_ref has the legacy sign. Neither numerator nor denominator is built
+    # from the reader's returned weights.
+    operands = (({('receive', 'V_port'): 1., ('receive', 'I'): -80.},
+                 {('drive', 'V_port'): 1., ('drive', 'I'): 50.}) if whole_port else
+                ({('receive', 'V'): 1., ('receive', 'I'): -80./4},
+                 {('drive', 'V_ref'): -1., ('drive', 'I'): 50./3}))
+    expected = sum(sum(abs(w)*abs(tails[key]) for key, w in weights.items()) /
+                   abs(sum(w*spectra[key] for key, w in weights.items())) for weights in operands)
+    _, actual = port_record_witness(records, dt, 0, bins, freq_max=12e9,
+        reader=port_s_reader(records, {'drive': (50., 3, True), 'receive': (80., 4, False)},
+                             whole_port=whole_port))
+    measured = actual['record_end_error_per_entry']['receive/drive']
+    print(f'two-port whole_port={whole_port}: bins={bins}, e_Q={measured}, expected={expected}')
+    np.testing.assert_allclose(measured, expected, rtol=2e-4)
+
+
+def test_s4_dropped_channel_tail_decides_verdict():
+    """A small in-record DFT does not remove its weighted absolute tail."""
+    from rfx.measurement.record_end import record_end_error
+    from rfx.sparams._tail_witness import _IDENTIFICATION
+
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    q = np.exp((poles - 2j*np.pi*bins[0])*dt)
+    d = dt*(1-q**n)/(1-q)
+    strong, x, tx = _s4_closed_record(n, dt, poles, np.array([1., 0.]), bins)
+    small, y, ty = _s4_closed_record(n, dt, poles, .05*np.array([1., -.9*d[0]/d[1]]), bins)
+    weight = 40.
+    expected = (abs(tx) + weight*abs(ty)) / abs(x + weight*y)
+    without_small = abs(tx) / abs(x + weight*y)
+    assert np.all(abs(y) < 1e-2*abs(x))
+    assert np.all(without_small < 1e-2) and np.all(expected > 1e-2)
+    actual = record_end_error([('strong', strong), ('small', small)], dt, 0, bins,
+        identification=_IDENTIFICATION, freq_max=12e9,
+        scale_groups={'strong': 'E', 'small': 'E'},
+        reader={'entries': {'Q': ({'strong': 1., 'small': weight},)},
+                'sampling': {'strong': ('E', 1.), 'small': ('E', 1.)}})
+    assert any('small' in row['channels'] for row in actual.dropped_per_bin)
+    print(f'dropped channel: |y/x|={abs(y/x)}, e_Q={actual.record_end_error_per_bin}, '
+          f'expected={expected}, without_small={without_small}')
+    assert actual.status == 'fail', actual
+    np.testing.assert_allclose(actual.record_end_error_per_bin, expected, rtol=2e-4)
+
+
 def test_s4_deep_null_fails():
     from rfx.measurement.record_readers import port_s_reader
     from rfx.measurement.port_time import PortTimeRecord
@@ -1106,17 +1202,32 @@ def test_s4_deep_null_fails():
     poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
     q = np.exp((poles - 2j*np.pi*bins[0])*dt)
     d = dt*(1-q**n)/(1-q)
-    delta = 1e-3*abs(sum(d))/(.1*abs(d[0]))
+    # Solve b_stamped/a_stamped=1e-3, including E at (n+1)dt and
+    # H at (n+1/2)dt. With A=sum(d), B=.1*delta*d[0], the two
+    # waves are ((E-H)A+(E+H)B)/2 and ((E+H)A+(E-H)B)/2.
+    e, h = np.exp(-2j*np.pi*bins[0]*dt*np.array([1., .5]))
+    ratio = 1e-3
+    delta = sum(d)*(ratio*(e+h)-(e-h))/((e+h)-ratio*(e-h)) / (.1*d[0])
     a = np.ones(2)
     b = .1*np.array([1, -(1-delta)*d[0]/d[1]])
-    v, _, _ = _s4_closed_record(n, dt, poles, (a+b)/2, bins)
-    i, _, _ = _s4_closed_record(n, dt, poles, (a-b)/(2*z0), bins, 'H')
+    v, vd, vt = _s4_closed_record(n, dt, poles, (a+b)/2, bins)
+    i, idft, it = _s4_closed_record(n, dt, poles, (a-b)/(2*z0), bins, 'H')
+    outgoing, incoming = vd-z0*idft, vd+z0*idft
+    kappa_b = (abs(vd)+z0*abs(idft))/abs(outgoing)
+    kappa_a = (abs(vd)+z0*abs(idft))/abs(incoming)
+    expected = (abs(vt)+z0*abs(it))*(1/abs(outgoing)+1/abs(incoming))
+    np.testing.assert_allclose(outgoing/incoming, ratio, rtol=1e-10)
+    np.testing.assert_allclose(kappa_b, 1e3, rtol=1e-3)
     record = PortTimeRecord('p', 'wire', ('V_port', 'I'), np.column_stack([v, i]))
     _, result = port_record_witness([record], dt, 0, bins, freq_max=12e9,
                                     reader=port_s_reader([record], {'p': (z0, 1, True)}))
     assert result['share_per_bin'][0] < 1e-2
     assert result['status'] == 'fail', result
     assert result['record_end_error_per_bin'][0] > 1e-2
+    np.testing.assert_allclose(result['kappa_per_bin'], kappa_b+kappa_a, rtol=2e-5)
+    np.testing.assert_allclose(result['record_end_error_per_bin'], expected, rtol=2e-4)
+    print(f'deep null: bins={bins}, delta={delta}, kappa_b={kappa_b}, '
+          f'e_Q={result["record_end_error_per_bin"]}')
 
 
 @pytest.mark.parametrize('seed', range(20))
@@ -1187,6 +1298,9 @@ def test_s4_spg_s11_lengthening_reduces_error(s4_spg_records):
     e40 = long['record_end_error_per_entry']['S11'][-1]
     assert e30 > 1e-2
     assert e40 < e30
+    assert long['status_per_entry']['S11'] == 'pass', long
+    assert e40 <= 1e-2
+    print(f'SP-g S11 at 8 GHz: P30 e_Q={e30:.12g}, P40 e_Q={e40:.12g}')
 
 
 def test_s4_spg_s22_windows_disagree(s4_spg_records):

@@ -9,9 +9,9 @@ This tutorial applies all three run controls to one small open simulation:
   ring-down work.
 
 An intentionally tiny ``num_periods`` value clips the pulse response so the
-post-run advisory can report the remaining envelope level.  The simulation is
-then repeated with ``until_decay``.  Finally, the probe samples and final field
-arrays are inspected, and a two-dimensional ``|Ez|`` slice is saved.
+post-run advisory can report that no ring-down settling witness is available.
+The simulation is then repeated with ``until_decay``. Finally, the probe samples
+and final field arrays are inspected, and a two-dimensional ``|Ez|`` slice is saved.
 
 Run as::
 
@@ -68,7 +68,7 @@ def truncation_messages(recorded: list[warnings.WarningMessage]) -> list[str]:
     return [
         str(item.message)
         for item in recorded
-        if "ring-down truncated" in str(item.message)
+        if "ring-down settling witness" in str(item.message)
     ]
 
 
@@ -108,8 +108,8 @@ def main() -> None:
     print(f"Fixed n_steps samples: {fixed_result.time_series.shape[0]}")
 
     # num_periods counts periods of freq_max.  A value of 0.1 is absurdly
-    # short here.  Expect a warning such as "run ended at 0.0 dB of peak":
-    # a level near 0 dB says the response was clipped near its largest value.
+    # short here. Expect "run has no ring-down settling witness": the
+    # clipped record cannot establish a tail after source injection ends.
     with warnings.catch_warnings(record=True) as clipped_warnings:
         warnings.simplefilter("always")
         clipped_result = sim.run(
@@ -119,7 +119,10 @@ def main() -> None:
         )
     clipped_messages = truncation_messages(clipped_warnings)
     print(f"Source-period samples: {clipped_result.time_series.shape[0]}")
-    print(f"Fixed-record envelope advisory observed: {bool(clipped_messages)}")
+    if not clipped_messages:
+        raise RuntimeError("Clipped run emitted no ring-down settling advisory")
+    for message in clipped_messages:
+        print(message)
 
     # until_decay=1e-3 finishes when total field energy in the non-absorbing
     # interior stays below one thousandth of its peak on consecutive checks.

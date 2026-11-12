@@ -220,13 +220,13 @@ def run_after_admission(
                 self, ringdown, lane="graded", n_steps=n_steps,
                 grid=_nu_grid, bins=s_param_freqs).run(_nu_call)
         self._warn_run_sparams_if_nonpassive(_res)
+        _res = self._attach_run_settling_witness(
+            _res, n_steps=n_steps, num_periods=num_periods)
         self._warn_postrun_energy_witness(
             _res,
             fixed_num_periods=fixed_num_periods,
             until_decay=until_decay,
         )
-        _res = self._attach_run_settling_witness(
-            _res, n_steps=n_steps, num_periods=num_periods)
         _warn_if_nonfinite_result(_res, context="run")
         from rfx.current_moments import require_accumulated_current_moments
         require_accumulated_current_moments(self, _res, "run")
@@ -351,13 +351,13 @@ def run_after_admission(
         _res = RingdownRun(self, ringdown, lane="uniform", n_steps=n_steps,
                            grid=grid, bins=s_param_freqs).run(_uniform_call)
     self._warn_run_sparams_if_nonpassive(_res)
+    _res = self._attach_run_settling_witness(
+        _res, n_steps=n_steps, num_periods=num_periods)
     self._warn_postrun_energy_witness(
         _res,
         fixed_num_periods=fixed_num_periods,
         until_decay=until_decay,
     )
-    _res = self._attach_run_settling_witness(
-        _res, n_steps=n_steps, num_periods=num_periods)
     _warn_if_nonfinite_result(_res, context="run")
     from rfx.current_moments import require_accumulated_current_moments
     require_accumulated_current_moments(self, _res, "run")

@@ -74,10 +74,9 @@ def test_witness_probes_produce_no_probe_advisories_and_no_332():
 
 
 def test_user_probe_advisories_and_332_still_fire():
-    """USER probes keep pre-#470 behavior during the same MSL run: a probe
-    near the x-CPML still draws a placement advisory, and an interior
-    user probe's hot tail still fires #332 on the truncated record (the
-    fail-safe test_patch_edgefed_s11_passivity depends on).
+    """User probes keep their placement advisory during the same MSL run.
+    The truncated record emits the S settling-witness warning; internal
+    probes exclude this run from the generic probe-only advisory.
 
     Issue #500 / review finding H1: on this fixture (dx=2e-4, cpml_layers=8
     -> pad=8) the second probe sits at x=200um = node 9, one cell inside
@@ -111,6 +110,7 @@ def test_user_probe_advisories_and_332_still_fire():
         for m in msgs
     ), msgs
     assert not any("ring-down truncated" in m for m in msgs), msgs
+    assert any("settling witness" in m for m in msgs), msgs
     # user probes survive the call
     assert len(sim._probes) == 2
     assert sim._internal_probe_indices == set()
