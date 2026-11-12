@@ -250,7 +250,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         cut(a, layout, 'pmc_h_factor', mesh=mesh) if axis == 0 and a is not None else a
         for axis, a in enumerate(factors))
     inputs['h_row_factors'] = tuple(
-        cut(a, layout, 'pmc_h_factor', mesh=mesh) if axis == 0 and a is not None else a
+        cut(a, layout, 'pmc_h_factor', mesh=mesh) if axis == 0 and a is not None else None if a is None else jnp.asarray(a)
         for axis, a in enumerate(high_face_row_factors(grid.shape, ctx.periodic)))
     for family, bundle in (('debye', debye), ('lorentz', lorentz)):
         if bundle is not None:
