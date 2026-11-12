@@ -17,10 +17,11 @@
   "qualification_figure": "msl-v1-qualification-and-source.png",
   "full_complex_arrays": "msl-v1-matrix.npz",
   "artifact_hashes": {
-    "outputs/931-fixture-repair/msl-final-base/result.json": "51e5d2ea7d0c0feabefcf517635c087171b1bc4e772ef31e351483d8c650a1ce",
-    "outputs/931-fixture-repair/msl-final-base/requalified-4mm.json": "e610cc614559f997f051461ac6fc6fb47b8a9e255b1e491cfeb4af48f233f3b5",
+    "pin_note": "Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-12); the original bytes are in git at 647262587 under the same path.",
+    "outputs/931-fixture-repair/msl-final-base/result.json": "db67e1a2f8a72f03ac8ba3f4d0afff3120829e0290c540ea96df91dd030d72b7",
+    "outputs/931-fixture-repair/msl-final-base/requalified-4mm.json": "ff81264faef42a00733e66385409af90780ef64ef04fdfd66895a30ffd1ac9e2",
     "tests/fixtures/msl_s_matrix_golden.npy": "7203caac78f285e5dc3dfc73bd74dd71e4c2e33f0a92b095808d854cfeb6eddb",
-    "outputs/931-fixture-repair/msl-final-base/requalified-4mm-endpoint.json": "eac1047e80b1ad70c34f24a47c7ade1f98e9ea59cf1ed3ecb6d6305567565d63"
+    "outputs/931-fixture-repair/msl-final-base/requalified-4mm-endpoint.json": "b49a7df69e8397ae378fe8d28d97a422fcc8c9710157ab0e915246e23b8c0215"
   },
   "final_requalification_file": "msl-v1-requalified-4mm-endpoint.json",
   "physics_band_indices": [

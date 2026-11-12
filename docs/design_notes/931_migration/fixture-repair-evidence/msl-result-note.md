@@ -58,7 +58,8 @@ float32 capture as 4,500,000,256 Hz, using a one-float32-ULP boundary guard.
 Its physical-band indices are explicitly **[5,6,7,8]**. This floating-point
 selection correction leaves all physical budgets unchanged; reliability
 remains the only failure after including that endpoint. The original report SHA256 is
-`51e5d2ea7d0c0feabefcf517635c087171b1bc4e772ef31e351483d8c650a1ce`.
+`db67e1a2f8a72f03ac8ba3f4d0afff3120829e0290c540ea96df91dd030d72b7`.
+Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-12); the original bytes are in git at 647262587 under the same path.
 The corrected reference model is the drawing-based thin-strip quasi-TEM
 approximation, with **Z0=47.89480046631184 ohm**, not an external full-wave
 oracle. Source-fitted line impedance is about 46.5--46.9 ohm. The 10%

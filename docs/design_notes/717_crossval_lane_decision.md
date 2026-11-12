@@ -2,8 +2,8 @@
 
 > 2026-10-20: Historical analysis below; the referenced VESSL weekly-lane file has been deleted. A6000 checks and the monthly crossval-ladder now run via the merge-train runner.
 
-Decision note. No code change here — issue #717 item 2 asks a question only the PI can
-answer, so this file is the inventory and the options, not a lane.
+Decision note. No code change here — issue #717 item 2 asks a question this note does not decide, so this file
+is the inventory and the options, not a lane.
 
 Inventory taken at `5c6a9816` (2026-09-13). Every claim below is a file:line or a command
 you can re-run; where a number is measured, the command and the machine are given with it.

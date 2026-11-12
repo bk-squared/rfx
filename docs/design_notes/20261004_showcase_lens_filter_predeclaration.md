@@ -406,7 +406,7 @@ check. Ledger: the lens entries (settled at the declared record on every mesh; g
 151 iterates of the first run) — consistent, the run reuses the record length and re-witnesses it.
 
 **Amendment 6, note (2026-10-09, leader; geometry only, no run) — what a wider sector would take.**
-Asked by the lead while the PI decides whether ±30° on the present block is the wanted "wide" field of view.
+Asked while it was still open whether ±30° on the present block is the wanted "wide" field of view.
 Full-thickness coverage half-angle θc of a block of width W and thickness t = 30 mm whose lower face is h above
 the source: tan θc = (W/2) / (h + t). Present block: W = 90 mm, h = 45 mm, θc = 31°. Cell counts are for the
 driver's domain rule (18 mm of air round the block and above it, plate 18 mm above the floor, source 9 mm above

@@ -1,4 +1,5 @@
 {
+  "pin_note": "Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-12); the original bytes are in git at 647262587 under the same path.",
   "provenance": {
     "run_id": "369367259618",
     "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
@@ -1004,7 +1005,7 @@
       },
       "committed_reference": {
         "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-coarse.json",
-        "sha256": "b723ee81ad7a9c05d4e5acc0b014905ff5bbd9beb1f178a1d9da1ce9be1953cc"
+        "sha256": "e710b21010e110cfdb0be0b941036cee4b064bc646f2e0fa980d47ad5fcd019b"
       },
       "committed_records": {
         "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-coarse-traces.npz",
@@ -1688,7 +1689,7 @@
       },
       "committed_reference": {
         "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-fine.json",
-        "sha256": "671af0fff5199ae02be6ca3b18791690b9356678efea4aadeb93717bbc82d671"
+        "sha256": "55fa2ee5f972752267c588dcfc2c82179a686e03931fcf51f905f2405cfe6b6e"
       },
       "committed_records": {
         "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-fine-traces.npz",
