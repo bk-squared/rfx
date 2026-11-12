@@ -9,6 +9,26 @@ moves that week's pull request forward; it never adds a second one. Prices are r
 significant figures when merged, so a refresh rewrites only the prices that moved. Before this
 rule, four re-pricings in two weeks changed about 144,000 lines.
 
+2026-11-12: fast prices re-priced. `regen-durations` run
+[43150712878](https://github.com/bk-squared/rfx/actions/runs/43150712878) (`lanes=fast`, main
+`ed1470068`), normalised to the EPYC 7763 with the unchanged 2026-10-29 factors below. All 12 jobs
+uploaded artifacts; none needed log pricing. No result-line gap exceeds its artifact value by 600 s
+(largest excess 1.3 s); each artifact sum is 1.05-1.63 % below its session time. The unchanged
+full-inventory-or-freshly-measured prune rule drops 347 old entries at `ed1470068`; all freshly
+measured IDs are in this Mac's full collection. Merged in the 10-29 order
+(old file, jobs 1-9, 11, 12, then job 10), rounded to two significant figures:
+28,506 → **31137 entries in the file**, of which **681 carried unchanged** (not re-measured).
+The explicit fast collection (`not gpu and not slow and not slow_physics`, 31,380 tests on macOS,
+no CAD extra) has 595 unpriced tests, down from 3,573; the default addopts additionally excludes
+`docs_consistency`. pytest-split predicts 52.8-58.0 min per shard (7763 basis), versus old
+48.4-53.1 min; the old split under new prices costs 41.0-67.9 min.
+Check on 120 readings from the 10 most recent green pr-tests code runs, using each shard's own test list:
+normalised actual / new-price prediction median 0.988, p10 0.821, p90 1.142,
+range 0.749-1.510; all CPUs have existing factors, with no exclusions or refit.
+`.test_durations_weekly` unchanged: the 11-09 validation run was red, the method requires a green
+weekly run, and the 11-16 run feeds the next refresh. Inputs, scripts, readings and the growth
+breakdown: rfx-archive `rfx/records/20261112-prices-refresh/`.
+
 2026-11-05: both files re-priced. Fast prices: `regen-durations` run
 [41949007467](https://github.com/bk-squared/rfx/actions/runs/41949007467) (`lanes=fast`, main
 `e190f8f70`), normalised to the EPYC 7763 with the unchanged 2026-10-29 factors below. All 12 jobs
