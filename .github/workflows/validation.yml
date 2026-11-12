@@ -283,7 +283,7 @@ jobs:
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
-        # The [debye] two-vs-three case in test_distributed_nu_wrapped_poles_cpml.py needs 3 host devices and runs in no other lane (.test_durations: 180 s); its item-6 memory cases start their own 3-device child and already run in the PR and weekly shards.
+        # The [debye] two-vs-three case in test_distributed_nu_wrapped_poles_cpml.py needs 3 host devices and runs in no other lane (not timed alone; the file's three cases took 547 s together on a 12-CPU cluster node); its item-6 memory cases start their own 3-device child and already run in the PR and weekly shards.
         run: >
           pytest -v -ra -p no:cacheprovider -o addopts=""
           tests/unit/runners/test_distributed_nu_wrapped_step.py
