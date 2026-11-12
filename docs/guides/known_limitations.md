@@ -152,6 +152,18 @@ front of a PEC face that must carry loss for every field orientation, use a PEC 
 Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
 from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
+### `add_wall_loss` on a uniform mesh: each lossy high domain face dissipates slightly more power than the surface-impedance model
+
+Tracker: #2615
+
+Each lossy high domain face (x_hi, y_hi, z_hi) dissipates slightly more power than the surface-impedance model, because
+the uniform update also drives the magnetic row half a cell outside that face. Cavity Q comes out low by 2.4e-4 of its
+value with the x pair lossy, 1.8e-4 with the y pair and 1.5e-4 with the z pair (wall conductivity 5.8e5 S/m, one
+hundredth of copper; TE101 near 8 GHz, 1 mm cells), against a graded mesh with the same cells, which does not drive that
+row. Lossless walls are unaffected.
+What to do now: give one axis an explicit profile of equal cells (for example `dy_profile=np.full(ny, dx)`); the run then
+takes the graded path on the same cells, which does not drive that row.
+
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
 Tracker: #1958
@@ -261,21 +273,21 @@ Tracker: #2441
 The full-tensor build gave each node one plane, the nearest face. At a box edge on a grid node, or on the bisector of a box edge, rounding chose the face and the model jumped: on main 5150ed340 a face moved by 1e-12 m changed the 20-step probe loss of an eps_r 10 box by 15 %.
 Fixed for axis-aligned Boxes, also overlapping ones: a node within 1.25 times the reach of its edge supports (1.53 cells on a uniform mesh, from the realized cell sizes on a graded one) of a Box takes, on each support, the exact content of the Boxes that meet it, painted in declared order as the assembled model paints them. On the on-node and the bisector box scenes a face moved by 1e-12 m changes no diagonal value by more than one float32 step. Every node farther from all Boxes keeps the one-plane values bit for bit.
 Next to a non-Box shape the exact and the one-plane triplets are blended over one cell, with the weight rising from 0 at the reach from the shape's bounding box to 1 one cell farther; within the reach the one-plane rule stays, with its jumps where a box face plane ties. Measured on an eps_r 10 box beside an eps_r 10 sphere of radius 1.5 mm whose bounding box sits at the reach, half a cell and one cell beyond it, the sphere moved by 2e-9 m: no diagonal value changes by more than the one-plane build changes it plus 1.7e-6 of the value (uniform and 1.0 / 0.8 mm graded meshes); 26 to 50 nodes are blended; the 20-step loss does not change in float32.
-Within that reach the jump is large. A 12 mm PEC box with εr 10 shapes was measured on 1 mm cells (record kept with the project), uniform and graded in z (1.0 / 0.8 mm). Moving a shape coordinate by 1e-12 m changed the 20-step probe loss by 0.39 % to 39 % at a Cylinder rim on grid nodes, whether the cap was translated or the radius changed, along x, y or z. At a Box edge on a node with a sphere 1 cell away it changed by 10.7 % (uniform) and 24 % (graded); at a Box edge with nodes on its bisector, with those nodes 1.4 mm from the sphere's bounding box, by 5.6 % and 7.8 %. The diagonal jumped by up to 6.5×10⁶ float32 steps in 20 to 56 cells. A gradient or a sweep through such a coordinate sees a step. Until one content rule covers every shape, use `subpixel_smoothing=True` near cylinders and spheres (measured for cylinder coordinates and for a Box face beside a sphere; a sphere's own coordinates were not moved). On the same scenes and meshes, `True` was measured continuous: at ±1e-12 m no cell moved by a float32 step and the loss did not change, and from 1e-9 to 1e-6 m its changes grow with the move. Its slope can differ on the two sides of a face that lies on a node (a kink, not a step). Its accuracy against `"full_tensor"` near curved shapes was not measured. `OrientedBox` is not reachable under `"full_tensor"`: it raises `NotImplementedError` by name.
+Within that reach the jump is large. A 12 mm PEC box with εr 10 shapes was measured on 1 mm cells (record kept with the project), uniform and graded in z (1.0 / 0.8 mm). Moving a shape coordinate by 1e-12 m changed the 20-step probe loss by 0.39 % to 39 % at a Cylinder rim on grid nodes, whether the cap was translated or the radius changed, along x, y or z. At a Box edge on a node with a sphere 1 cell away it changed by 10.7 % (uniform) and 24 % (graded); at a Box edge with nodes on its bisector, with those nodes 1.4 mm from the sphere's bounding box, by 7.6 % and 12 %. There the jump is the one-plane face flip at the bisector nodes; the nodes next to it, whose normal comes from the sphere and reaches the Box within one cell, count the Box's content along that normal, and that corrected model responds more to the same flip (measured: main's model with this fix's values at only those nodes gives this fix's losses exactly, on both meshes). The diagonal jumped by up to 6.5×10⁶ float32 steps in 20 to 56 cells. A gradient or a sweep through such a coordinate sees a step. Until one content rule covers every shape, use `subpixel_smoothing=True` near cylinders and spheres (measured for cylinder coordinates and for a Box face beside a sphere; a sphere's own coordinates were not moved). On the same scenes and meshes, `True` was measured continuous: at ±1e-12 m no cell moved by a float32 step and the loss did not change, and from 1e-9 to 1e-6 m its changes grow with the move. Its slope can differ on the two sides of a face that lies on a node (a kink, not a step). Its accuracy against `"full_tensor"` near curved shapes was not measured. `OrientedBox` is not reachable under `"full_tensor"`: it raises `NotImplementedError` by name.
 Where a later Box of one permittivity sits inside an earlier Box of another, the triplets now carry the later Box's value; a diagonal cell whose four end triplets and Yee midpoint are all bulk still takes the diagonal smoother's value, which follows the grouping by permittivity value (inside the later box the diagonal reads 10.2 on edges whose ends are all bulk, and values from 4 to 10.2 on edges near its faces). `subpixel_smoothing=True` and `"kottke_pec"` keep that grouping everywhere.
 A traced permittivity with `"full_tensor"` is refused by name in any scene. With a Box in the scene a traced shape coordinate or mesh profile is also refused by name: the scope of the exact content is decided on concrete coordinates and realized cell sizes, and under a trace the build runs in float32 (plain and `jax.jit` losses 9.7×10⁻⁴ apart with a traced sphere radius beside a concrete εr 2 box, 8.8×10⁻³ with a traced permittivity on an εr 4 box). This is a capability change: main admitted a traced Box coordinate, and its build equalled the host build in shared-face scenes and moved a plain-versus-jit loss by up to 9.65×10⁻⁴ elsewhere (a traced sphere radius beside a Box); restoring it with the exact content formed on traced coordinates is #2473. More than eight boxes meeting one edge support are refused by name. Use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
 → [#2473](https://github.com/bk-squared/rfx/issues/2473)
 
-### Subpixel smoothing does not see a gap thinner than half a cell between two dielectric volumes.
+### Subpixel smoothing retains one source face and point rules for bodies without exact line intervals.
 
-Tracker: #2397
+Tracker: #2624
 
-Near a face, the smoothing reads the medium on the far side at one point half a normal cell beyond the face.
-When two dielectric volumes are separated by a gap thinner than that, the point lands inside the other volume.
-The cells across the gap then read as if the two volumes touched, and the gap's own medium does not enter the average.
-This holds for `subpixel_smoothing=True` and for the dielectric stage of `"kottke_pec"`, on uniform and graded Yee meshes and on the node tensor.
-Gaps of half a cell or more are seen: their samples read the same values as with only the nearer volume present.
-Until a fix lands, use cells normal to a thin gap no larger than twice the gap.
+The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. The source shape's own fill still sees one face when that shape is thinner than a cell.
+Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
+On a curved face, full-tensor dual-face averages still use a first-order planar model.
+A later group's pass with a crossed normal can jump when its face enters the cell.
+Full-tensor spectral bounds include zero-weight portions, whose medium just beyond the face can step; a bound that clips then makes the tensor step too.
+Periodic images ±2 of traced shapes near an end of the admitted interval [−L, 2L] can reach beyond the domain edge and be missed by the existing image range.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
@@ -827,6 +839,12 @@ before the DFT.
 Tracker: #1373
 
 `forward(distributed=True)` on a uniform mesh runs the same solve as `run(devices=...)` and returns its probe records. It refuses `eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and `rlc_values_override`. It runs inside a user `jax.jit`, where port S-parameters are refused by name. For a gradient with those arguments, run on one device, or use a graded mesh, where `forward(distributed=True)` takes traced permittivity, conductivity and PEC overrides.
+
+### Port V/I time records (`sparam_time_records`) carry no gradient, and nothing refuses or warns
+
+Tracker: #2627
+
+Every time step writes the per-step voltage and current records of lumped and wire ports, `sparam_time_records` on the `run()` and `forward()` results, under `jax.lax.stop_gradient`, on the uniform and graded meshes and on one device or several. So `jax.grad` of any quantity built from these records is exactly 0 with respect to every input, with no refusal and no warning, although a driven port's own waveform enters its V and I linearly. For the gradient of a port quantity, differentiate the S-parameters of `forward(port_s11_freqs=...)` (`ForwardResult.s_params`), which are formed from the frequency-domain accumulators, not from these records. That route runs on one device on a uniform or graded mesh, and with `distributed=True` on a graded mesh. Its gradient is refused with `distributed=True` on a uniform mesh, where the plain call runs. The route is refused when the model also has a plain source or a 0-ohm port, when one record has more than one driven port, and for a passive port with `distributed=True` on a uniform mesh. Field probes (`ForwardResult.time_series`) differentiate normally.
 
 ### In float32, a reverse-mode gradient with respect to a traced Lorentz or Drude pole strength in SI units underflows.
 

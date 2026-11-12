@@ -99,6 +99,7 @@ if TYPE_CHECKING:
 
 from rfx._internal._grid_metric import field_index
 from rfx.ringdown._pole_output import RingdownForwardResult, select_pole, pole_selection_reason
+from rfx.ringdown._witness_records import _read_witness_records, _check_witness_records
 from rfx._gradient_witness_registry import GRADIENT_WITNESS_BAR, _GRADIENT_WITNESSES
 from rfx.ringdown._sensitivity import sensitivity_truncation_error, required_t_over_tau
 from rfx.ringdown._growth_judge import (
@@ -2129,7 +2130,13 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     With ``pole_target`` set, a concrete early-start result must select a
     unique pole in BOTH windows. Otherwise the witness cannot judge: its
     value is NaN, ``judged`` and ``ok`` are False, and the note names why.
-    ``pole_target`` with ``against="longer_record"`` raises ``ValueError``.
+    With ``against="longer_record"``, pass ``ringdown=(res_T, res_2T)`` in
+    gradient order. Both results must be concrete and unbatched. Each main
+    window must complete and, with ``pole_target``, select a unique pole.
+    Selections further apart than the finer window's radius cannot be judged.
+    The note names failing records or reports both selected poles and the
+    record ratio. A pair without ``pole_target`` checks completion only;
+    without a pair, omit ``pole_target`` to compare gradients as supplied.
 
     Both gradients are pytrees of the same structure (the parameters). The
     value is the worst leaf's ``max |grad - grad_other| / max |grad|``.
@@ -2152,17 +2159,32 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
         (g,) = pullback((1.0, 0.0))
         (g_long,) = pullback((0.0, 1.0))
         w = gradient_witness(g, g_long, ringdown=rd_out)
+
+    One forward per record also supplies concrete results for a pole check::
+
+        def one(Rs, n):
+            r = sim_of(Rs).forward(n_steps=n, port_s11_freqs=bins, ringdown=spec).ringdown
+            return r.pole(f)[1], r
+        (q_T, res_T), g_T = jax.value_and_grad(lambda x: one(x, n_T), has_aux=True)(Rs0)
+        (q_2T, res_2T), g_2T = jax.value_and_grad(lambda x: one(x, n_2T), has_aux=True)(Rs0)
+        w = gradient_witness(g_T, g_2T, against="longer_record", pole_target=f,
+                             ringdown=(res_T, res_2T))
     """
     import jax
 
-    if pole_target is not None and against == "longer_record":
-        raise ValueError('pole_target with against="longer_record" is unsupported')
+    if pole_target is not None and against == "longer_record" and ringdown is None:
+        raise ValueError('pole_target with against="longer_record" needs '
+                         "ringdown=(result of grad's record, result of grad_other's record)")
     if against not in _GRADIENT_WITNESSES:
         raise ValueError(f"against must be one of {sorted(_GRADIENT_WITNESSES)}, "
                          f"got {against!r}")
     if bin_axis is not None and not isinstance(bin_axis, (int, np.integer)):
         raise ValueError("bin_axis must be an integer or None")
     name, rule = _GRADIENT_WITNESSES[against]
+    records = None
+    record_note = ""
+    if against == "longer_record" and ringdown is not None:
+        records = _read_witness_records(ringdown)
     if against == "early_start":
         if not isinstance(ringdown, RingdownForwardResult):
             raise TypeError(
@@ -2217,13 +2239,21 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     if tree_a != tree_b:
         raise ValueError(f"the two gradients have different structures: {tree_a} "
                          f"and {tree_b}")
-    values, skipped = [], 0
+    leaf_pairs = []
     for a, b in zip(leaves_a, leaves_b):
         a, b = np.asarray(a), np.asarray(b)
         if a.shape != b.shape:
             raise ValueError(f"gradient leaves of shapes {a.shape} and {b.shape}")
         if bin_axis is not None and not -a.ndim <= bin_axis < a.ndim:
             raise ValueError(f"bin_axis={bin_axis} outside gradient leaf shape {a.shape}")
+        leaf_pairs.append((a, b))
+    if records is not None:
+        cannot_judge_note, record_note = _check_witness_records(records, pole_target)
+        if cannot_judge_note is not None:
+            return RingdownWitness(name, math.nan, float(bar), False, rule,
+                                   cannot_judge_note, judged=False)
+    values, skipped = [], 0
+    for a, b in leaf_pairs:
         if not a.size:
             continue
         a, b = a.astype(np.complex128), b.astype(np.complex128)
@@ -2239,6 +2269,7 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     value = float(np.max(values)) if values else math.nan
     rule += "; normalized independently per leaf" + (" and per bin" if bin_axis is not None else "")
     note = f"skipped {skipped} zero-reference bins" if bin_axis is not None else ""
+    note = "; ".join(part for part in (record_note, note) if part)
     return RingdownWitness(name, value, float(bar), bool(value <= bar), rule, note,
                            judged=bool(values))
 
