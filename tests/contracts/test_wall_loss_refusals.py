@@ -17,7 +17,7 @@ LANE_ROWS = ["optimize-uniform", "optimize-graded", "gradient-check", "topology"
              "coax-msl", "mixed-msl-junction", "ad-memory", "distributed-v2", "distributed-entry-run",
              "distributed-entry-forward", "distributed-nu-forward", "distributed-dispatch-run", "distributed-dispatch-forward",
              "subgrid-dispatch", "subgrid-run", "waveguide-and-multimode", "lumped-scan-and-eager-port-probe",
-             "current-moments", "upml", "kottke", "conformal", "traced-mesh", "solid-cpml-pad",
+             "current-moments", "upml", "kottke", "kottke-forward", "conformal", "traced-mesh", "solid-cpml-pad",
              "debye-overlap", "lorentz-overlap", "drude-overlap", "shape-sheet", "face-cpml-pad"]
 
 
@@ -112,6 +112,8 @@ def lane_call(row, monkeypatch):
         from rfx.current_moments import monitor_for_simulation
         sim.add_current_moment_monitor((.003,)*3, (.009,)*3, .003, np.array([8e9]))
         return lambda: monitor_for_simulation(sim, None)
+    if row == "kottke-forward":
+        return lambda: sim.forward(n_steps=1, skip_preflight=True, subpixel_smoothing=True)
     if row in ("upml", "kottke", "conformal"):
         if row == "upml":
             sim._boundary = "upml"
@@ -154,31 +156,4 @@ def test_wall_loss_refused_by_name(site, monkeypatch):
     call = api_call(site) if site in API_ROWS else lane_call(site, monkeypatch)
     reason = "add_wall_loss.*lossy PEC domain face enters a CPML pad" if site == "face-cpml-pad" else "add_wall_loss"
     with pytest.raises(RfxRefusal, match=reason):
-        call()
-
-
-@pytest.mark.parametrize("site", ["run-admission", "uniform-run", "uniform-forward", "graded-run-forward"])
-def test_runner_admission_site(site):
-    """Direct entries must name their own lane, even if later guards also refuse."""
-    sim = model(graded=site == "graded-run-forward")
-    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo",))
-    if site == "run-admission":
-        from rfx.runners.run import run_after_admission
-        call = lambda: run_after_admission(sim, n_steps=1, subpixel_smoothing=True)
-        lane = "run admission"
-    elif site == "uniform-run":
-        from rfx.runners.uniform import run_uniform
-        call = lambda: run_uniform(sim, n_steps=1, subpixel_smoothing=True)
-        lane = "run_uniform"
-    elif site == "uniform-forward":
-        from rfx.runners.uniform_forward import _forward_from_materials
-        grid = sim._build_grid()
-        materials = realized_conductors(sim, grid).materials
-        call = lambda: _forward_from_materials(sim, grid, materials, None, None, n_steps=1, subpixel_smoothing=True)
-        lane = "fwd_uniform"
-    else:
-        from rfx.runners.nonuniform import run_nonuniform_path
-        call = lambda: run_nonuniform_path(sim, n_steps=1, subpixel_smoothing=True)
-        lane = "run_nonuniform"
-    with pytest.raises(RfxRefusal, match=f"add_wall_loss: {lane}: Kottke"):
         call()

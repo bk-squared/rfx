@@ -126,7 +126,8 @@ def test_material_gradient_and_fresh_model_fd(monkeypatch):
     assert relative <= 1e-2, f'AD={ad}, FD(h)={fd}, FD(h/2)={half}, relative={relative}'
 
 
-def test_operands_match_run_bytes(monkeypatch):
+@pytest.mark.parametrize('scene_name', ('dielectric-sphere', 'cylinder', 'S', 'Q', 'P'))
+def test_operands_match_run_bytes(monkeypatch, scene_name):
     from rfx import simulation
     from rfx.model import conformal_rules
     original = simulation.run
@@ -146,8 +147,22 @@ def test_operands_match_run_bytes(monkeypatch):
 
     monkeypatch.setattr(conformal_rules, 'conformal_fractions_from_table', formed)
     monkeypatch.setattr(simulation, 'run', captured)
-    ran = scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
-    forward = scene().forward(n_steps=STEPS, skip_preflight=True)
+    if scene_name == 'dielectric-sphere':
+        build_scene = scene
+    elif scene_name == 'cylinder':
+        from tests.unit.runners.test_silent_drop_warnings import _conformal_cavity
+        build_scene = lambda: _conformal_cavity(True)
+    else:
+        from tests.contracts.conformal_scenes import scene as pec_scene
+        def build_scene():
+            sim = pec_scene(scene_name)
+            # Waveguide scenes have no point probes; retain the cover's
+            # nonzero time-series check by observing the driven TE10 field.
+            position = (.016, .02, .01) if scene_name == 'P' else (.04, .01143, .00508)
+            sim.add_probe(position, 'ez')
+            return sim
+    ran = build_scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
+    forward = build_scene().forward(n_steps=STEPS, skip_preflight=True)
     assert len(operands) == 2
     assert len(fractions) == 2
     left, right = (jax.tree.leaves((operands[i], fractions[i])) for i in range(2))

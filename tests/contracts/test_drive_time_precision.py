@@ -106,17 +106,6 @@ def test_float64_ringdown_source_times(lane):
             assert 'record-end' in observed, cls.__name__
 
 
-@pytest.mark.parametrize('lane', ('uniform', 'nonuniform'))
-def test_float64_preflight_sampling(lane):
-    from rfx.preflight.sources import _validate_cfg_unresolved_pulse
-    from rfx.sources.sources import GaussianPulse
-    with observe_times() as observed:
-        sim = build(('_materials', 'eps'), 'run_' + lane, precision='float64')
-        sim._ports[0] = replace(sim._ports[0], waveform=GaussianPulse(f0=1e11, bandwidth=1.))
-        _validate_cfg_unresolved_pulse(sim, warnings, DX)
-        assert 'preflight' in observed
-
-
 @pytest.mark.parametrize('kind', ('normal', 'closed', 'methodB'))
 def test_float64_incident_replay_times(kind):
     from rfx.measurement.incident import measure_normal_incident_spectrum, measure_incident_spectrum

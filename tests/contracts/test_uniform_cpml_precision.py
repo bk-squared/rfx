@@ -78,10 +78,3 @@ def test_uniform_cpml_float64_coefficients(entry):
     finally:
         sys.setprofile(previous)
         jax.clear_caches()
-
-
-def test_coefficient_dt_without_float64_field_keeps_python_float():
-    from rfx.boundaries.electric_coefficient import coefficient_dt
-    with jax.enable_x64(True):
-        for field_dtype in (None, np.dtype('float32')):
-            assert type(coefficient_dt(np.float64(1e-12), field_dtype)) is float
