@@ -117,6 +117,14 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
         ks = jax.lax.stop_gradient(xp.max(xp.where(occupied, kappa, 0.)))
         ds = delta.reshape(-1)[xp.argmax(xp.where(occupied, kappa, 0.))]
         constant_delta = False
+        if not is_tracer(pole.delta):
+            concrete_delta = np.asarray(pole.delta)
+            active_d = (concrete_delta.reshape(-1) if is_tracer(mask) else
+                        concrete_delta[np.ones(shape, dtype=bool) if mask is None else
+                                       np.broadcast_to(mask, shape).astype(bool)])
+            constant_delta = not active_d.size or bool(np.all(active_d == active_d[0]))
+            if constant_delta:
+                ds = float(active_d[0]) if active_d.size else 0.
     k = xp.where(ks > 0, kappa / xp.where(ks > 0, ks, 1.), 0.)
     if si_tracer and os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1":
         k = pole_underflow_guard(k, (ks,), scalar=False)
