@@ -458,13 +458,13 @@ CPML gate is 176 steps), as in cv22's smoke.
 
 ## 12. Round 1 read (VESSL 369367257813) — two gates fired; the rfx residual is the Yee lattice's own term, derived exactly; round 2 pre-declared
 
-Artifacts (world-readable): `<workspace>/rfx/runs/cv23-lossy-20260902T115843Z/_23_lossy_results/` (`r1/` below); log `~/Documents/vessl-run-logs/369367257813_cv23-lossy-r1.log`; ran the tree at `04d6e88` (= `3400143` after the coordinator's rebase; `r1/rfx.json::commit`). Every number is by key. No artifact is committed by this section (the baseline fails; round 2 re-runs the full set); no window moves.
+Artifacts (world-readable): `<workspace>/rfx/runs/cv23-lossy-20260902T115843Z/_23_lossy_results/` (`r1/` below); log `~/Documents/vessl-run-logs/369367257813_cv23-lossy-r1.log`; ran the tree at `04d6e88` (= `3400143` after the rebase; `r1/rfx.json::commit`). Every number is by key. No artifact is committed by this section (the baseline fails; round 2 re-runs the full set); no window moves.
 
 ### 12.1 What fired
 
 | arm | E2 (`r1/rfx.json::arms.<arm>`) | mean\|ΔR\| / \|ΔT\| / \|ΔA\| vs windows | signed ΔR at 4 / 7 / 10 GHz | witness | E4 (Meep 40 px/cm) |
 |---|---|---|---|---|---|
-| tand0p1 (direct) | PASS | 0.0039 / 0.0057 / 0.0020 vs 0.0100 / 0.0172 / 0.0272 (`A_tight_ok` true) | +0.0016 / −0.0007 / +0.0140 | 1067 steps, 0 ext., tails 8.9e-4 / 1.0e-3 | **G4_mean_R FAIL**: Meep-vs-TMM `::meep.mean_dR_meep_tmm_gated = 0.0157` vs 0.0100 (1.57×; the coordinator's 0.0106 was the leg's diagnostic on Meep's own bins); T 0.0113 / A 0.0066 pass; rfx-vs-Meep 0.0127 / 0.0076 / 0.0059 pass (G5) |
+| tand0p1 (direct) | PASS | 0.0039 / 0.0057 / 0.0020 vs 0.0100 / 0.0172 / 0.0272 (`A_tight_ok` true) | +0.0016 / −0.0007 / +0.0140 | 1067 steps, 0 ext., tails 8.9e-4 / 1.0e-3 | **G4_mean_R FAIL**: Meep-vs-TMM `::meep.mean_dR_meep_tmm_gated = 0.0157` vs 0.0100 (1.57×; the quoted 0.0106 was the leg's diagnostic on Meep's own bins); T 0.0113 / A 0.0066 pass; rfx-vs-Meep 0.0127 / 0.0076 / 0.0059 pass (G5) |
 | tand1 (api) | PASS | 0.0051 / 0.0018 / 0.0033 | +0.0026 / +0.0050 / +0.0077 | 1158, 0 ext., 9.8e-5 / 2.8e-5 | all pass: Meep-vs-TMM 0.0031 / 0.0035 / 0.0033; rfx-vs-Meep 0.0045 / 0.0018 / 0.0063 |
 | tand3 (api) | **G2_R FAIL**: `::mean_dR_gated = 0.0126` vs `::mean_window_R = 0.0102` (1.24×); per-bin max 0.0190 < 0.074; T 0.0001 (vacuous, as declared); A 0.0124 vs 0.0272 pass, `A_tight_ok` true | | **+0.0067 / +0.0124 / +0.0190** (monotone, ∝ f) | 1181, 0 ext., 8.7e-5 / 1.0e-5 | all pass — but read the numbers: **Meep-vs-TMM `::meep.mean_dR_meep_tmm_gated = 0.0009`**, rfx-vs-Meep `::meep.mean_dR_rfx_meep_gated = 0.0117`. Meep at 40 px/cm agrees with the transfer matrix to 0.001; rfx is 0.012 above BOTH. The premise "rfx and Meep sit together ~0.01 from TMM" does not hold; the TMM/interface model is not implicated |
 
@@ -488,7 +488,7 @@ Evaluated on the r1 bin grid at the rig's dx = 1 mm, dt = 2.335 ps, against the 
 
 The measurement is the lattice solution to 3e-5 in the mean on every arm and every observable, bin by bin (the ∝ f trend on tand3 is `(|n| k0 dx)² ∝ f²·(σ/ωε0) ∝ f`). What is left after the lattice term — the truncation / CPML / probe residual the cv04 envelope was meant to cover — is ≤ 1.4e-4. Read plainly: **cv04's committed 0.0066 was itself mostly the lattice term of the lossless ε = 4 slab** (|n| = 2), and §4's assumption that the cv04 window transfers to |n| = 3–4.6 is what fired, exactly as §10(i) allowed. rfx's σ path (§3) is confirmed at the 1e-4 level; nothing in `update_e`, the API assembly or the R extraction is implicated.
 
-The coordinator's two candidate mechanisms, computed a priori as asked (gated-band mean|ΔR| through the TMM): a ±dx/2 thickness error gives 0.031 / 0.006 / **0.0005** on tand0p1 / tand1 / tand3 — the surface-impedance arm is thickness-blind, so an interface shift cannot be its 0.0126 — and half-weighted interface cells (1 | 8 | 1 mm at (ε'+1)/2, σ/2) give 0.058 / 0.017 / 0.022 with the **wrong sign** on tand3 (−0.022 vs the measured +0.0126). Neither is the mechanism; the lattice term is.
+The two proposed candidate mechanisms, computed a priori as asked (gated-band mean|ΔR| through the TMM): a ±dx/2 thickness error gives 0.031 / 0.006 / **0.0005** on tand0p1 / tand1 / tand3 — the surface-impedance arm is thickness-blind, so an interface shift cannot be its 0.0126 — and half-weighted interface cells (1 | 8 | 1 mm at (ε'+1)/2, σ/2) give 0.058 / 0.017 / 0.022 with the **wrong sign** on tand3 (−0.022 vs the measured +0.0126). Neither is the mechanism; the lattice term is.
 
 ### 12.3 Meep: the tand3 ladder is the same lattice term; the tand0p1/tand1 first-order term is a one-cell thickness excess
 
@@ -538,7 +538,7 @@ Two Meep discriminators are pre-declared for round 3 at 40 px/cm on tand0p1, wit
 
 | leg | tag | what it draws | nodes | **prediction** (mean\|ΔR\| / \|ΔT\| vs TMM) | if instead … |
 |---|---|---|---|---|---|
-| half-cell thinner (the coordinator's) | `res40_thin_half` (`--thickness-offset-cells -0.5`, d − a/80) | edges ±0.49375 cm | 39 | **0.0156 / 0.0110, mirrored** (= TMM(d − a/40)), NOT a collapse | it collapses → the half-pixel offset is the mechanism and the node-count model is wrong |
+| half-cell thinner (the proposed mechanism) | `res40_thin_half` (`--thickness-offset-cells -0.5`, d − a/80) | edges ±0.49375 cm | 39 | **0.0156 / 0.0110, mirrored** (= TMM(d − a/40)), NOT a collapse | it collapses → the half-pixel offset is the mechanism and the node-count model is wrong |
 | centre shifted +½ pixel, nominal size | `res40_shift_half` (`--center-offset-cells 0.5`) | [−0.4875, 0.5125] cm | **40** | **≈ 0.00025 / 0.00036** — the lattice level (d_eff = d; monitors unmoved; \|R\|, \|T\| are translation-invariant) | it stays ~0.0156 → the node-count model is refuted and Meep's first-order term is left as an open note (the 80 px/cm reference then stands on its measured margin alone) |
 
 The r2 thin-by-one leg is re-run in round 3 so it is part of the committed evidence.

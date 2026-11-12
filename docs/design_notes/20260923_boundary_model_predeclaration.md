@@ -645,14 +645,14 @@ the graded mesh, multi-device graded, subgridded coarse grid (survey step 5; to 
 The kernel parameter `pec_axes` of the low-level functions (`rfx.run`, `rfx.simulation`) stays: a low-level caller's
 explicit flags are the caller's declaration (same stance as Addendum 5c (5)). High-level entries stop passing it.
 
-### Classes W and R — predeclared inclusion rule (condition 3)
+### Classes W and R — predeclared inclusion rule (Addendum 6 approval condition 3)
 W (waveguide-port entries: the absorber on the port axis is unbacked on run AND on the S calculator) and R (oblique
 RCS) are changed in the same commit series but INCLUDED in this PR only if, with the change, every committed lock,
 oracle and contract that reads them passes without touching a pinned value or tolerance. If any pin moves beyond its
 committed tolerance, that class is reverted to today's selection in this PR, listed with the measured shifts, and goes
 to PR3b. The contract test below then carries an explicit, named exception list (not a per-entry computation).
 
-### Judges (condition 1)
+### Judges (Addendum 6 approval condition 1)
 1. `tests/contracts/test_backing_wall_one_rule.py`, always-on, no field step (stop at the kernel factory):
    for each declaration in a matrix {all absorbing; absorber on x only + PEC elsewhere; PMC pair on one axis; one
    periodic axis; lo absorber / hi PEC on one axis; default plane wave; closed_box plane wave; full-aperture guide with
@@ -668,7 +668,7 @@ to PR3b. The contract test below then carries an explicit, named exception list 
 4. Mutations (helper calls kept): the forward entry passes "axes not absorbing" again → 1 and 3 red; the multi-device
    wall set drops positive-depth absorbers → 1 red; the plane-wave branch passes "" → 1 red.
 
-### Census (condition 2)
+### Census (Addendum 6 approval condition 2)
 Before/after on the same base, serial: tests/locks, tests/oracle, tests/contracts, tests/unit/{autodiff,sparams,
 runners,boundaries,sources,ports,preflight} and the weekly `slow`/`slow_physics` selection on VESSL CPU long. Report
 every test whose outcome changes and, for each value compared with a tolerance in a changed-outcome test, the shift.
