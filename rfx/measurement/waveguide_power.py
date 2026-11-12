@@ -6,8 +6,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx._traced_check import traced_check
 from rfx._warning_origin import user_stacklevel
-from rfx.core.jax_utils import is_tracer
 from rfx.errors import RfxWarning
 
 
@@ -65,7 +65,4 @@ def warn_power_waves(cfgs, *, port_indices=None):
                 WaveguideCutoffWarning, stacklevel=user_stacklevel(),
             )
 
-    if any(is_tracer(x) for x in (*masks, *freqs)):
-        jax.debug.callback(emit, masks, freqs)
-    else:
-        emit(masks, freqs)
+    traced_check("waveguide S", "below-cutoff notice", emit, masks, freqs)
