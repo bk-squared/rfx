@@ -49,7 +49,7 @@ class ConductorWidthAxis:
 
 
 def f0_uses_solved_span(spec):
-    """D:c1d171: compare the assembled model's Rs = 1/G with 0.01 eta0."""
+    """Compare the assembled model's Rs = 1/G with 0.01 eta0."""
     from rfx.core.yee import MU_0, EPS_0
     return abs(1.0 / float(spec.g_sheet)) <= 1e-2 * np.sqrt(MU_0 / EPS_0)
 

@@ -8,12 +8,11 @@ from rfx.model.design_box import design_box_bounds, design_box_window
 
 
 # Calibrated (GPU, jax 0.10.2): maximum G1 intercept/cell, rounded up to 8 B.
-# rfx-archive:rfx/records/20261016-ad-memory-tape-terms/
-# G1 acc-admem-g1-20261016t043022z-648d9; both maxima are the 21^3 rows.
+# Both G1 maxima are the 21^3 rows.
 AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
 
 # Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2.
-# rfx/records/20261027-compiled-gradient-estimate/: working arrays beyond one carry.
+# Working arrays beyond one carry.
 AD_MEMORY_WORKING_CARRIES = 6.5
 
 

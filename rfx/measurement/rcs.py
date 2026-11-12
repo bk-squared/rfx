@@ -83,8 +83,7 @@ def compute_rcs(
         h_eff^2); the oblique path's hardcoded 2-cell midplane box means
         h_eff = 2*dx, so scale by ``(L_z/h_eff)^2`` for a physical strip
         height ``L_z``. The always-on gate-grid test locks Delta within
-        0.03 dB of +0.0833/+0.1583 dB at 20/40 deg (rfx-archive
-        rfx/records/20261031-oblique-rcs-level-1991).
+        0.03 dB of +0.0833/+0.1583 dB at 20/40 deg.
         Requires ``polarization='ez'`` and a uniform
         grid; other combos raise ``NotImplementedError``.
     phi_inc : float

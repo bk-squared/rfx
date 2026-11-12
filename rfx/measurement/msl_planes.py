@@ -5,8 +5,7 @@ declares and measures V and I at probe 0, ``n_probe_offset`` cells further
 in. The S calculators form S at probe 0; this module moves it back to the
 declared feed plane, so that S11 is the reflection seen at the port the user
 placed. Both ``compute_msl_s_matrix`` and the MSL rows/columns of
-``compute_mixed_s_matrix`` call it; neither keeps its own expression
-(measurement plan MSL-PLANE.md, decision records 5 and 7).
+``compute_mixed_s_matrix`` call it; neither keeps its own expression.
 
 Per MSL port ``p``:
 
@@ -30,8 +29,8 @@ singular values (passivity) and cond(A) do not change. beta depends only on
 Python floats, so no gradient flows through it.
 
 Accuracy of the closed-form beta against the simulated line (two-line beta,
-two lines differing only in length, probes at the auto offset; MSL-PLANE.md
-decision records 10-15 in bk-squared/rfx-archive): within 0.76 % on every
+two lines differing only in length, probes at the auto offset):
+within 0.76 % on every
 bin of the resolved boards measured (the microstrip chain battery thru at
 100 um, 50 um and on a z-graded substrate, and an eps_r 10.2 / h 0.6 mm
 board), where the shift's phase error 2 L |beta - beta_2L| is at most
@@ -60,7 +59,7 @@ import numpy as np
 
 @dataclass(kw_only=True)
 class MSLFeedPlaneFields:
-    """Where a microstrip port's S is referred (MSL-PLANE.md records 5, 7).
+    """Where a microstrip port's S is referred.
 
     Attributes
     ----------
