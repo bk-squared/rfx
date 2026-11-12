@@ -81,6 +81,9 @@ The chunk axes have identical extents on every owner (x is not chunked).
                 sizes = tuple(min(c, e) for c, e in zip(chunk, extent))
                 source_starts = tuple(start if c != s else 0 for start, c, s in zip(starts, chunk, shape))
                 value = lax.dynamic_slice(source, source_starts, sizes)
+                if len(pieces) == 1:
+                    padding = tuple((d, c - size - d, 0) for d, c, size in zip(destination, chunk, sizes))
+                    return lax.pad(value.astype(dtype), jnp.zeros((), dtype), padding)
                 part = lax.dynamic_update_slice(part, value.astype(dtype), destination)
             return part
         branches.append(write)
