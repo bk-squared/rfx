@@ -71,7 +71,10 @@ class LorentzPoleMap:
     """One oscillator with strength and damping sampled at physical cell centres.
 
     Callables take broadcastable X, Y, Z arrays in metres. On occupied cells,
-    delta and kappa must be finite and non-negative. Maps are keyed by identity.
+    delta and kappa must be finite and non-negative. Under jax.grad a callable and
+    its derivative must also be finite at every cell centre outside the material;
+    clamp the argument of a function that is undefined there (a NaN there makes the
+    gradient NaN). Maps are keyed by identity.
     """
     omega_0: float
     delta: float | Callable

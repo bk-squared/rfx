@@ -213,3 +213,33 @@ def test_constant_delta_map_gradient_memory(declaration):
     record(f'C7.4-memory-{declaration}', dict(temp=temps, slope=slopes, ratio=ratio))
     assert slopes['scalar'] > 0, slopes
     assert ratio <= 1.10, (ratio, slopes)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="known defect rfx#2650: a traced callable that is "
+                   "not finite outside the material gives a NaN reverse-mode gradient")
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+def test_traced_profile_non_finite_outside_support(graded):
+    """Known defect rfx#2650: a profile that is NaN outside its Box, sqrt(1 - ((x - 6 mm)/3 mm)**2), should keep a finite gradient."""
+    x0, R = .006, .003   # the Box spans x .004-.008, inside |x - x0| < R
+
+    def objective(s, clamped):
+        def kappa(x, y, z):
+            u = 1 - ((x - x0) / R) ** 2
+            return s * KAPPA * jnp.sqrt(jnp.maximum(u, 0.) if clamped else u)
+        sim = Simulation(freq_max=6e9, domain=(.012,) * 3, dx=.0005, cpml_layers=8,
+                         **(dict(dx_profile=np.r_[np.full(8, .0005), np.linspace(.0003, .0007, 8),
+                                                  np.full(8, .0005)]) if graded else {}))
+        sim.add_material('m', eps_r=1., lorentz_poles=[LorentzPoleMap(0., 1e9, kappa)])
+        sim.add(Box((.004, .004, .004), (.008, .008, .008)), material='m')
+        sim.add_source((.00285, .00535, .00485), 'ez', waveform=GaussianPulse(f0=3e9))
+        sim.add_probe((.00935, .00685, .00585), 'ez')
+        return jnp.sum(jnp.asarray(sim.forward(n_steps=60, skip_preflight=True).time_series) ** 2)
+
+    value, grad = jax.value_and_grad(objective)(jnp.float32(1.), False)
+    control_value, control = jax.value_and_grad(objective)(jnp.float32(1.), True)
+    relative = abs(float(grad) - float(control)) / abs(float(control))
+    record(f'C9-nan-outside-{graded}', dict(value=float(value), grad=float(grad), control_value=float(control_value),
+                                           control_grad=float(control), relative=relative))
+    assert np.isfinite(value) and np.isfinite(grad), (float(value), float(grad))
+    assert np.isfinite(control) and control != 0, float(control)
+    assert relative <= 1e-4, (float(grad), float(control), relative)
