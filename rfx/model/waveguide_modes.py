@@ -578,11 +578,16 @@ def init_waveguide_port(
     ref_offset : int
         Cells downstream from source for reference probe.
     grid : Grid or None
-        Retained for call compatibility. Apertures are validated when run or
-        extracted, using the run's electric walls.
+        Validate the aperture against a uniform Grid's declared electric,
+        magnetic and periodic boundaries.
     """
+    from rfx.grid import Grid
+
+    aperture_grid = dx if isinstance(dx, Grid) else grid
     grid_obj = None
-    if hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
+    if isinstance(dx, Grid):
+        dx = float(dx.dx)
+    elif hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
         grid_obj = dx
         dx = float(grid_obj.dx)
     m, n = port.mode
@@ -608,6 +613,23 @@ def init_waveguide_port(
         raise ValueError(
             "non-x-normal ports require u_slice and v_slice explicit transverse aperture slices"
         )
+
+    if isinstance(aperture_grid, Grid):
+        from rfx.boundaries.pec import resolve_wall_faces
+        from rfx.model.waveguide_aperture import validate_waveguide_aperture
+
+        periodic = tuple(axis in aperture_grid.periodic_axes for axis in "xyz")
+        faces, _ = resolve_wall_faces(aperture_grid, periodic, None)
+        try:
+            validate_waveguide_aperture(
+                normal_axis, (u_lo, u_hi), (v_lo, v_hi), aperture_grid.shape,
+                faces, name=port.direction,
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"{error} These walls are the Grid's declared faces; an axis "
+                "overridden as periodic or PMC by a run must be declared on the Grid."
+            ) from error
 
     nu_port = u_hi - u_lo
     nv_port = v_hi - v_lo

@@ -1,4 +1,4 @@
-"""Run walls determine aperture refusal; cell-span spectra retain every stored bit."""
+"""Grid and run walls determine refusal; cell-span spectra retain every stored bit."""
 
 import base64
 import json
@@ -90,32 +90,85 @@ def _no_step(*args, **kwargs):
 
 @pytest.mark.parametrize("axis", ["y", "z"])
 @pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("grid_kind,conformal", [("explicit", False), ("explicit", True), ("grid_dx", False)])
-def test_initializers_defer_whole_node_plane_to_loop(scene, monkeypatch, axis, multimode, grid_kind, conformal):
-    grid, freqs, steps = scene
-    if grid_kind == "grid_dx":
-        grid = make_nonuniform_grid((0.12, 0.04), np.full(10, 0.002), 0.002,
-                                    cpml_layers=10, cpml_axes="x")
-    else:
-        # The loop's refusal has the same meaning with or without conformal faces.
-        grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.02), dx=0.002,
-                    cpml_layers=10, cpml_axes="x")
-        grid.conformal_faces = {"y_hi", "z_hi"} if conformal else set()
+@pytest.mark.parametrize("grid_kind", ["explicit", "grid_dx"])
+@pytest.mark.parametrize("conformal", [False, True])
+def test_initializers_refuse_uniform_node_plane(scene, axis, multimode, grid_kind, conformal):
+    _, freqs, steps = scene
+    grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.02), dx=0.002,
+                cpml_layers=10, cpml_axes="x",
+                conformal_faces={"y_hi", "z_hi"} if conformal else set())
     initializer = init_multimode_waveguide_port if multimode else init_waveguide_port
     kwargs = {"n_modes": 2} if multimode else {}
     metric = grid if grid_kind == "grid_dx" else grid.dx
     if grid_kind == "explicit":
         kwargs["grid"] = grid
+    with pytest.raises(ValueError, match=_refusal(grid, axis, "+x")) as error:
+        initializer(_ports(grid, axis)[0], metric, freqs, f0=6e9,
+                    dft_total_steps=steps, **kwargs)
+    assert str(error.value).endswith(
+        "These walls are the Grid's declared faces; an axis "
+        "overridden as periodic or PMC by a run must be declared on the Grid."
+    )
+    # Expected bounds come directly from node counts, independently of validation.
+    valid = initializer(_ports(grid)[0], metric, freqs, f0=6e9,
+                        dft_total_steps=steps, **kwargs)
+    for cfg in valid if multimode else [valid]:
+        assert (cfg.u_lo, cfg.u_hi) == (0, grid.ny - 1)
+        assert (cfg.v_lo, cfg.v_hi) == (0, grid.nz - 1)
+
+
+@pytest.mark.parametrize("walls", ["periodic", "pmc_hi"])
+@pytest.mark.parametrize("multimode", [False, True])
+@pytest.mark.parametrize("grid_kind", ["explicit", "grid_dx"])
+@pytest.mark.parametrize("conformal", [False, True])
+def test_initializers_accept_declared_periodic_or_pmc_high_face(scene, walls, multimode,
+                                                               grid_kind, conformal):
+    _, freqs, steps = scene
+    grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.02), dx=0.002,
+                cpml_layers=10, cpml_axes="x",
+                periodic_axes="y" if walls == "periodic" else "",
+                pmc_faces={"y_hi"} if walls == "pmc_hi" else set(),
+                conformal_faces={"y_hi", "z_hi"} if conformal else set())
+    initializer = init_multimode_waveguide_port if multimode else init_waveguide_port
+    kwargs = {"n_modes": 2} if multimode else {}
+    metric = grid if grid_kind == "grid_dx" else grid.dx
+    if grid_kind == "explicit":
+        kwargs["grid"] = grid
+    whole = initializer(_ports(grid, "y")[0], metric, freqs, f0=6e9,
+                        dft_total_steps=steps, **kwargs)
+    for cfg in whole if multimode else [whole]:
+        assert (cfg.u_lo, cfg.u_hi) == (0, grid.ny)
+        assert (cfg.v_lo, cfg.v_hi) == (0, grid.nz - 1)
+
+
+@pytest.mark.parametrize("axis", ["y", "z"])
+@pytest.mark.parametrize("multimode", [False, True])
+@pytest.mark.parametrize("graded", [False, True])
+def test_initializers_without_uniform_grid_defer_to_loop(scene, monkeypatch, axis, multimode, graded):
+    grid, freqs, steps = scene
+    if graded:
+        grid = make_nonuniform_grid((0.12, 0.04), np.full(10, 0.002), 0.002,
+                                    cpml_layers=10, cpml_axes="x")
+    initializer = init_multimode_waveguide_port if multimode else init_waveguide_port
+    kwargs = {"n_modes": 2} if multimode else {}
+    metric = grid if graded else grid.dx
     whole = initializer(_ports(grid, axis)[0], metric, freqs, f0=6e9,
                         dft_total_steps=steps, **kwargs)
     configs = whole if multimode else [whole]
     for cfg in configs:
         assert (cfg.u_lo, cfg.u_hi) == (0, grid.ny if axis == "y" else grid.ny - 1)
         assert (cfg.v_lo, cfg.v_hi) == (0, grid.nz if axis == "z" else grid.nz - 1)
-    monkeypatch.setattr(uniform_loop, "_build_step_setup", _no_step)
+    if graded:
+        run = graded_loop.run_nonuniform
+        monkeypatch.setattr(graded_loop, "_build_nu_scan", _no_step)
+        run_kwargs = {"pec_faces": {"y_lo", "y_hi", "z_lo", "z_hi"}}
+    else:
+        run = uniform_loop.run
+        monkeypatch.setattr(uniform_loop, "_build_step_setup", _no_step)
+        run_kwargs = {"boundary": "cpml"}
     with pytest.raises(ValueError, match=_refusal(grid, axis, "0 (+x)")):
-        uniform_loop.run(grid, init_materials(grid.shape), 1, boundary="cpml",
-                         cpml_axes="x", pec_axes="yz", waveguide_ports=configs)
+        run(grid, init_materials(grid.shape), 1, cpml_axes="x",
+            waveguide_ports=configs, **run_kwargs)
     # Expected bounds come directly from node counts, independently of validation.
     valid = initializer(_ports(grid)[0], metric, freqs, f0=6e9,
                         dft_total_steps=steps, **kwargs)
@@ -186,7 +239,7 @@ def test_whole_plane_uses_the_runs_high_wall(scene, monkeypatch, entry, walls):
         grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.02), dx=0.002,
                     **declarations)
     configs = [init_waveguide_port(
-        port, grid.dx, freqs, f0=6e9, dft_total_steps=steps, grid=grid,
+        port, grid.dx, freqs, f0=6e9, dft_total_steps=steps,
     ) for port in _ports(grid, "y")]
     for cfg in configs:
         assert (cfg.u_lo, cfg.u_hi) == (0, grid.ny)
@@ -231,7 +284,7 @@ def test_non_x_normal_loop_refuses_node_span_and_accepts_cells(scene, monkeypatc
         direction=f"+{normal_axis}", u_slice=(0, grid.nx - 1), v_slice=(0, count),
         a=(grid.nx - 1) * grid.dx, b=(count - 1) * grid.dx,
     )
-    cfg = init_waveguide_port(port, grid.dx, freqs, f0=6e9, grid=grid,
+    cfg = init_waveguide_port(port, grid.dx, freqs, f0=6e9,
                               probe_offset=2, ref_offset=1, dft_total_steps=steps)
     assert (cfg.v_lo, cfg.v_hi) == (0, count)
     material = init_materials(grid.shape)

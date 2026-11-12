@@ -402,9 +402,7 @@ def test_grid_carries_conformal_faces_from_boundaryspec():
 def test_waveguide_port_refuses_node_plane_with_or_without_conformal_faces():
     """The builder keeps its cell span; low-level node planes are refused."""
     import jax.numpy as jnp
-    from rfx.core.yee import init_materials
     from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
-    from rfx.stepping import uniform_loop
 
     freqs = jnp.linspace(5e9, 9e9, 5)
 
@@ -445,11 +443,9 @@ def test_waveguide_port_refuses_node_plane_with_or_without_conformal_faces():
             mode=(1, 0), mode_type="TE", direction="+x", normal_axis="x",
             u_slice=(0, grid.ny), v_slice=(0, grid.nz),
         )
-        cfg = init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
-                                  dft_total_steps=200, dt=float(grid.dt), grid=grid)
         with pytest.raises(ValueError, match="as Simulation builds it") as error:
-            uniform_loop.run(grid, init_materials(grid.shape), 1,
-                             boundary="cpml", waveguide_ports=[cfg])
+            init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
+                                dft_total_steps=200, dt=float(grid.dt), grid=grid)
         assert f"y_slice={(0, grid.ny)}" in str(error.value)
         assert f"cell span y_slice={(0, grid.ny - 1)}" in str(error.value)
 
