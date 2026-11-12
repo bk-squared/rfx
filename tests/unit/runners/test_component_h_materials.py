@@ -15,6 +15,7 @@ import pytest
 from rfx.core import yee
 from rfx.grid import Grid
 from rfx.runners import _distributed_common as dc
+from tests._stated_plan import stated_plan
 
 
 @pytest.mark.parametrize("periodic", [(False,)*3, (True, False, True)])
@@ -160,7 +161,7 @@ def test_unimplemented_carrier_refuses_non_none_record(path):
         elif path == "shard":
             _shard_materials(marked, None)
         elif path == "distributed_nu":
-            run_nonuniform_distributed_pec(None, marked, None, 1, n_devices=2)
+            run_nonuniform_distributed_pec(None, marked, None, 1, n_devices=2, measurement=stated_plan(None, [], n_steps=1))
         elif path == "distributed_h_shard":
             dc.update_h_nu_shmap(None, marked, None, 1., *([None]*6),
                                  ranks=jnp.zeros(1, jnp.int32), nx_per=grid.nx,

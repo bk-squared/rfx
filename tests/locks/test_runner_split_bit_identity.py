@@ -164,6 +164,7 @@ import pytest
 from rfx import Box, Simulation
 from rfx.runners._rank import mesh_ranks
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian
+from tests._stated_plan import stated_plan
 
 _BASELINE_ENV = "RFX_RUNNER_BASELINE_DIR"
 _CAPTURE_ENV = "RFX_RUNNER_BASELINE_CAPTURE"
@@ -449,6 +450,7 @@ def _f_distributed_nu_direct_pec():
         probes=[prb],
         n_devices=n_devices,
         devices=jax.devices()[:2],
+        measurement=stated_plan(sharded_grid, [prb], n_steps=n_steps),
     )
 
 

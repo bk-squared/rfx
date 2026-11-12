@@ -296,3 +296,28 @@ def test_measurement_plan_multidevice_plan_source(name, entry, n, path, report):
            owners_diff=owners[:3])
     assert tables == [], (path, name, entry, n, tables[:3])
     assert owners == [], (path, name, entry, n, owners[:3])
+
+
+def test_measurement_plan_multidevice_stated_plan(report):
+    """The test helper's stated plan is the product's probe plan on the census scene."""
+    from rfx.measurement.plan import build_measurement_plan
+    from rfx.measurement.projector import plan_tables
+    from rfx.simulation import ProbeSpec
+    from tests._stated_plan import stated_plan
+    sim, grid, probes = scene(base_scene, 'multi-device-graded')
+    product = build_measurement_plan(sim, grid, n_steps=60, path='run_distributed_nu')
+    stated = stated_plan(grid, [ProbeSpec(*node, component) for _, component, node, _ in probes],
+                         n_steps=60)
+    product_probes = tuple(o for o in product.owners if o.kind == 'probe')
+    assert len(product_probes) == len(probes), (len(product_probes), len(probes))
+    owners = compare(freeze(product_probes), freeze(stated.owners))
+    product_table, stated_table = (plan_tables(plan, n_probes=len(probes), port_specs=(),
+                                               dtype=jnp.float32)['probe_table']
+                                   for plan in (product, stated))
+    tables = compare(freeze(product_table), freeze(stated_table))
+    report('stated-plan', path='multi-device-graded', scene='A+Q', n_owners=len(product_probes),
+           owner_ids=[o.id for o in stated.owners], channels=stated_table.n_channels,
+           owners_equal=owners == [], tables_equal=tables == [], owners_diff=owners[:3],
+           tables_diff=tables[:3])
+    assert owners == [], owners[:3]
+    assert tables == [], tables[:3]
