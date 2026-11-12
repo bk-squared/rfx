@@ -1,5 +1,6 @@
 """Realization and edge reduction of spatial Lorentz pole declarations."""
 from dataclasses import dataclass, field
+from typing import Any
 import os
 
 import jax
@@ -16,9 +17,9 @@ from rfx.materials.relative_strength import RelativeStrength
 @jax.tree_util.register_dataclass
 @dataclass(frozen=True, eq=False)
 class SampledPoleMap:
-    omega_0: object
-    delta: object
-    kappa: object
+    omega_0: Any
+    delta: Any
+    kappa: Any
     centres: tuple
     source: object = field(metadata={"static": True})
     si_traced: bool = field(default=False, metadata={"static": True})

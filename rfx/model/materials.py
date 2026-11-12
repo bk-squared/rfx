@@ -8,7 +8,7 @@ Conductors own their realized products in rfx.model.conductors.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax
 
@@ -604,7 +604,7 @@ class EdgePoles(NamedTuple):
 
     debye_spec: object
     lorentz_spec: object
-    grid: object = None
+    grid: Any = None
 
     def at(self, cell, dt):
         lo = tuple(max(int(i) - 1, 0) for i in cell)
