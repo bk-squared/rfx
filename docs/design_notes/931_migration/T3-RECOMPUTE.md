@@ -59,10 +59,10 @@ cluster `remilab-c0`, `JAX_PLATFORMS=cpu` inside the job.
 
 | run | id | link |
 |---|---|---|
-| `rfx-931-post-t3-pytest` | 369367259208 | https://app.vessl.ai/remilab/runs/byungkwan/369367259208 |
-| `rfx-931-post-t3-measure` | 369367259209 | https://app.vessl.ai/remilab/runs/byungkwan/369367259209 |
-| `rfx-931-post-t3-pytest-r2` | 369367259214 | https://app.vessl.ai/remilab/runs/byungkwan/369367259214 |
-| `rfx-931-post-t3-pytest-r3` | 369367259223 | https://app.vessl.ai/remilab/runs/byungkwan/369367259223 |
+| `rfx-931-post-t3-pytest` | 369367259208 | https://app.vessl.ai/remilab/runs/<project>/369367259208 |
+| `rfx-931-post-t3-measure` | 369367259209 | https://app.vessl.ai/remilab/runs/<project>/369367259209 |
+| `rfx-931-post-t3-pytest-r2` | 369367259214 | https://app.vessl.ai/remilab/runs/<project>/369367259214 |
+| `rfx-931-post-t3-pytest-r3` | 369367259223 | https://app.vessl.ai/remilab/runs/<project>/369367259223 |
 
 Run 369367259208 read commit 6b8f9fae and returned **865 passed, 4 failed,
 4 xfailed in 28 min**. All four reds are accounted for:

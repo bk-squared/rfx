@@ -368,6 +368,4 @@ declared planes and keep their validity.
 - **#589**: the f64 replicate is unblocked (realized geometry no longer
   depends on the flag; the coax junction byte-identity chain that caught
   #802 is x64-invariant again).
-- **rfx-known-issues ledger**: gitignored and local to the primary
-  checkout — this worktree cannot update it; the merging session must
-  move #802/#807 to resolved there with this note as the artifact.
+- **Recorded status**: the merging session must mark #802/#807 as resolved with this note as the artifact.

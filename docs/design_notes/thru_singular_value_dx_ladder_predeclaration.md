@@ -187,7 +187,7 @@ on CPU.
 
 ## 8. R3 pre-launch line
 
-R3: memory=rfx-known-issues.md "#778/#779 stack merged" (#819 entry) +
+R3: memory="#778/#779 stack merged" (#819 entry) +
 "#313 RESOLVED" entry + feedback_negated_closing_keyword +
 project_thin_pec_sheet_live_ez_edge | R2-attempts=1 (this single pre-declared
 attempt on the mesh-resolution mechanism; the three earlier witnesses were
@@ -391,7 +391,7 @@ No gate or measured number touched (`_THRU_MAX_SINGULAR_VALUE = 1.01` asserted
 by the replay test). No rung re-run. Nothing folded into the waveguide
 battery. Issue #819 stays open; this note is its candidate-1 record.
 
-R3: memory=rfx-known-issues.md "#778/#779 stack merged" (#819 entry) +
+R3: memory="#778/#779 stack merged" (#819 entry) +
 feedback_gate_can_bind_artifact + feedback_label_mechanism_provenance +
 project_thin_pec_sheet_live_ez_edge + feedback_quote_the_measure_with_the_number
 | R2-attempts=1 (closed as non-closing; no second run on this mechanism) |

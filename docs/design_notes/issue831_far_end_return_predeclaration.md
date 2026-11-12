@@ -78,7 +78,7 @@ is what actually crosses observable against rig.
 ## 1. R1 — memory this plan is checked against
 
 
-1. `rfx-known-issues.md:4158` — *"in an empty WR-90 waveguide driven from port
+1. Recorded entry — *"in an empty WR-90 waveguide driven from port
    1, `|b1/a1|` ... scales with CPML thickness as 10 layers -> 11.7 %, 20 -> 4.2 %,
    40 -> 1.8 %"*, and the default was raised 8 -> 16 on that evidence.
    **Contradicts #831's trend.** A guided mode's reflection off a CPML fell
@@ -86,7 +86,7 @@ is what actually crosses observable against rig.
    opposite on a different guide. Either the guide (`eps = 12` dielectric slab
    vs hollow metal WR-90) changes the sign, or one of the two measurements is
    an artefact. That is what this lane decides.
-2. `rfx-known-issues.md:4247` — *"CPML guided-mode reflection ~-4 dB -> resolved:
+2. Recorded entry — *"CPML guided-mode reflection ~-4 dB -> resolved:
    D/B-equivalent UPML + subpixel smoothing. Material-independent PML loss
    (sigma/eps_0) ... Self-T = 0.995."* **Consistent with the code as it stands**:
    `rfx/boundaries/upml.py:232` (`loss_pml = sigma_perp * dt / (2 * eps_0)`)
@@ -94,13 +94,13 @@ is what actually crosses observable against rig.
    the D/B-equivalent form, which is impedance-matched in **any** material.
    The absorber therefore is not, on its face, mis-matched against the
    `eps_r = 12` pad.
-3. `rfx-known-issues.md:1989` — *"rfx UPML reflects ~25 dB MORE than CPML —
+3. Recorded entry — *"rfx UPML reflects ~25 dB MORE than CPML —
    measured clean floor -43.0 dB vs -68.3 dB"*. Both floors are ~40 dB below
    #831's measured 0.5 (-6 dB), and the CPML row of #831's table matches its
    UPML rows, so this entry bounds neither the level nor the trend.
    **Scope-limited, not contradicted.**
-4. `research/CLAUDE.md`, comparator-first rule, and the case ledger at
-   `rfx-known-issues.md:4343`: *every* case recorded in this workspace to date
+4. `research/CLAUDE.md`, comparator-first rule, and the recorded case history:
+   *every* case recorded in this workspace to date
    has closed as a comparator/extractor bug, not a solver/physics bug. The
    design's own N-scaling makes every absorber-side mechanism predict
    improvement with depth (section 2 below), so an extractor/record cause is the

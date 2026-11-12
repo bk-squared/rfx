@@ -15,7 +15,7 @@ window is derived from data it will judge (SPEC-00 §0.2-2).
 | `rfx/runners/nonuniform.py`, `rfx/auto_config.py` builders | confirmed |
 | `docs/guides/support_matrix.md`, `rfx/api/_preflight.py` | confirmed |
 | PR #775 (preserve_regions) "pending" | **STALE — MERGED** as `fc2b582`, in this base. Explicit-vector rule kept anyway (solver/builder separation). |
-| #672 dual-cell folds as open defect lens | **STALE — RESOLVED** 2026-08-20 (PR #684, merge `4eb7fa4`) per ledger `rfx-known-issues.md`. W1 still valuable as the *conserved-functional* witness the fold fixes never had. |
+| #672 dual-cell folds as open defect lens | **STALE — RESOLVED** 2026-08-20 (PR #684, merge `4eb7fa4`) per the recorded entry. W1 still valuable as the *conserved-functional* witness the fold fixes never had. |
 | Ledger mounted (`nu_known_limits.md` etc.) | confirmed, read in full |
 | dt = global min-cell CFL | confirmed: `make_nonuniform_grid` uses 0.99/(C0·sqrt(Σ 1/d_min²)) |
 

@@ -3362,7 +3362,7 @@ Scope: **8** literal `_..._results` JSON directories, **10** fixture directories
 | `/referee/broad_e5_replay/gate_test` | *absent* | `"tests/crossval/test_waveguide_broad_e5.py"` | — |
 | `/referee/broad_e5_replay/note` | *absent* | `"criterion 3(d) support set; replayed by its own gate test, not re-run here"` | — |
 | `/referee/conventions/dft` | *absent* | `"rectangular full-record DFT with kernel exp(-j omega t) (rfx.sources.waveguide_port._rect_dft)"` | — |
-| `/referee/conventions/external_phase_data` | *absent* | `"none enters; if it ever does it is conjugated first (rfx-known-issues.md, time-convention conjugation)"` | — |
+| `/referee/conventions/external_phase_data` | *absent* | `"none enters; if it ever does it is conjugated first (time-convention conjugation)"` | — |
 | `/referee/conventions/time` | *absent* | `"exp(+j omega t); forward wave exp(-j beta x)"` | — |
 | `/referee/conventions/yee_half_step` | *absent* | `"beta for plane shifts and the PEC-short oracle from _compute_beta(dt, dx) (Yee-discrete dispersion); the Airy oracle uses the continuous vacuum beta"` | — |
 | `/referee/pec_short/coarse|false/bins_above_1_03` | *absent* | `[]` | — |

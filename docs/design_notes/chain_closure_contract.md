@@ -93,7 +93,7 @@ reported, the ladder uninterpretable when the ratio-2 successive-delta ratio is 
 order) or 0.25 (second); each rung asserts rasterized cell counts scale with 1/dx.
 
 **(d) Referee.** One analytic or external referee inside a pinned tolerance, conventions recorded
-(Yee half-step; time-convention conjugation, `rfx-known-issues.md:4093-4112`). A magnitude-only flux
+(Yee half-step; time-convention conjugation). A magnitude-only flux
 gate satisfies (d) alone and can never support criterion 1 or 3(a), having no AD leg. Artifacts:
 `tests/test_<family>_chain_battery.py` (fast lane when ≤ 30 s, else slow with the shard named), the
 fixture JSON with measured values, and a design note pre-declaring every tolerance, position and
@@ -113,14 +113,14 @@ are never loosened to reach closure; a red gate needs a written root cause first
 waveguide (`n_modes > 1`): the host-side assembly at `rfx/sources/waveguide_port.py:2836`, `:3026`,
 `:3036` is documented, not fixed. Tracing `freqs` or the plane position as θ; both are static
 (`rfx/api/__init__.py:2472`, `waveguide_port.py:1679`). Phase agreement with external solvers (Airy
-suffices). `normalize=True` for reflection of strong reflectors (`rfx-known-issues.md:3384-3395`).
+suffices). `normalize=True` for reflection of strong reflectors.
 Runtime wiring of the reciprocity warning (`rfx/validation.py:468-486`, off at `:342`) — sequenced
 after WP2 measures the complex envelope, #854 item 4.
 - **The #812 artifact lane.** v1.8 consumes `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`
 as it stands, keeps its `STALE` label, and edits neither it nor the crossval gates
 cv02/03/04/09/10/14/20/21 or cv06b. That decision is #812 Phase 0 item 2
 (`docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md:5`) and the lane is owned
-elsewhere: `rfx-known-issues.md:107-108`, "The #812 lane belongs to the Mac-side session — not fixed
+elsewhere: "The #812 lane belongs to the Mac-side session — not fixed
 here."
 
 ## How a family is declared chain-closed

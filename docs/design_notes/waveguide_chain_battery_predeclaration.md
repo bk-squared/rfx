@@ -419,7 +419,7 @@ gate does not bind.
 
 ---
 
-R3: memory=rfx-known-issues.md:3096-3112,:3397-3408,:4106-4125,:4315,:3718-3726,:3525 + project_issue527_f32_comparator | R2-attempts=0 (no measurement in this lane) | falsifier=tests/unit/geometry/test_waveguide_chain_battery_geometry.py — 15 checks pass in 4.7 s CPU; a face moved off the 2.54 mm lattice or a rung not dividing a goes red before any physics runs
+R3: memory=recorded chain-battery entries + project_issue527_f32_comparator | R2-attempts=0 (no measurement in this lane) | falsifier=tests/unit/geometry/test_waveguide_chain_battery_geometry.py — 15 checks pass in 4.7 s CPU; a face moved off the 2.54 mm lattice or a rung not dividing a goes red before any physics runs
 
 ---
 

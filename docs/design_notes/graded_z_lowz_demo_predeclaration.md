@@ -4,7 +4,7 @@ Date: 2026-08-29 (written and committed BEFORE any FDTD run)
 Item: backlog `graded-z` — the ONE permitted R2-tight attempt (STOP fence:
 `2026-07-22_todo_plan_inventory.md:33`, RA-5 in
 `20260713_research_agenda_principle_based.md`; ledger entry
-`rfx-known-issues.md` "Graded-z efficiency demo ... honestly deferred").
+"Graded-z efficiency demo ... honestly deferred").
 Author agent branch: `agent/graded-z-lowz-demo`.
 
 ## Question under test

@@ -418,7 +418,7 @@ the case is `validation/crossval/11_waveguide_port_wr90.py` — and that file
 does not use 20: it derives its depth from the guide wavelength,
 `CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW_M / DX_M))` = **43** (its own
 comment weighs 46 against the 43 shipped; 20 appears nowhere in it). The claim
-came from `rfx-known-issues.md:4158`, whose 2026-04-22 sentence "`examples/
+came from a recorded entry, whose 2026-04-22 sentence "`examples/
 crossval/11_waveguide_port_wr90.py` uses 20 layers" was true when written and
 has since rotted on both halves — the file moved and its depth was re-derived.
 Quoting a memory entry is not the same as checking it, and this one was not
@@ -851,7 +851,7 @@ Reported, not absorbed. cv01's `expected_exit_codes` already admits 1; the CPU
 lane is untouched, because without Meep the case still exits 2 on G1 and G2
 alone; the weekly `crossval-external` lane is where this now shows.
 
-The #831 entry in `rfx-known-issues.md` says of this facet that "cv03's gates
+The recorded #831 entry says of this facet that "cv03's gates
 are green today (exit 2), so a fix moves values, not verdicts". That was scoped
 to cv03, which has no Meep leg of its own to gate. cv01 carries one **inside its
 record**, so G3 does run here, and it flips. The sentence does not carry over.
