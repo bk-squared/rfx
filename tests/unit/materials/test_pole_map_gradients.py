@@ -64,8 +64,8 @@ def test_a4_first_gradient(graded):
         assert np.all(relative <= 1e-4), relative
 
 
-def precondition(params, steps, graded, monkeypatch):
-    sim, _ = scene(params, graded)
+def precondition(params, steps, graded, monkeypatch, *, declaration='si'):
+    sim, _ = scene(params, graded, declaration=declaration)
     body, initial, xs = capture_scan(sim, steps, monkeypatch)
     def step(carry, x):
         carry, probes = body(carry, x)
@@ -78,23 +78,33 @@ def precondition(params, steps, graded, monkeypatch):
                 settling_db=float(20 * np.log10(np.max(abs(trace[-steps // 10:])) / np.max(abs(trace)))))
 
 
+@pytest.mark.slow
+@pytest.mark.highmem
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
-def test_p7_record_witness(monkeypatch, graded):
-    params = parameters()
-    steps = 4000
-    condition = precondition(params, steps, graded, monkeypatch)
-    record(f'P7-precondition-{graded}', condition)
+@pytest.mark.parametrize('declaration', ['scalar', 'relative'], ids=['scalar', 'map'])
+def test_p7_record_witness(monkeypatch, graded, declaration):
+    pinned = parameters()
+    params = pinned[:1] if declaration == 'scalar' else pinned
+    names = ['log_kappa0'] if declaration == 'scalar' else ['log_kappa0', 's']
+    def scene_params(p):
+        return (p[0], pinned[1]) if declaration == 'scalar' else p
+    steps = 13500 if graded else 9000
+    condition = precondition(scene_params(params), steps, graded, monkeypatch, declaration=declaration)
+    record(f'P7-precondition-{declaration}-{graded}', condition)
     assert condition['field_ratio'] <= 1e-3, f'cannot judge P7: {condition}'
-    witness = gradient_record_length_witness(lambda p, n: observable(p, n, graded),
-                                             params, steps, tol=1e-2, factor=1.5)
-    short = np.asarray(list(witness.grad.values()), float)
-    long = np.asarray(list(witness.grad_long.values()), float)
-    relative = abs(short - long) / np.maximum(abs(short), abs(long))
-    record(f'P7-{graded}', dict(**condition, grad=short.tolist(), grad_long=long.tolist(),
+    witness = gradient_record_length_witness(
+        lambda p, n: observable(scene_params(p), n, graded, declaration=declaration),
+        params, steps, tol=1e-2, factor=1.5)
+    short = np.asarray([witness.grad[f'[{i}]'] for i in range(len(params))], float)
+    long = np.asarray([witness.grad_long[f'[{i}]'] for i in range(len(params))], float)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        relative = abs(short - long) / np.maximum(abs(short), abs(long))
+    record(f'P7-{declaration}-{graded}', dict(**condition, steps=steps, steps_long=int(1.5 * steps),
+           parameters=names, bins=BINS.tolist(), grad=short.tolist(), grad_long=long.tolist(),
            relative=relative.tolist(), worst=float(witness.worst), passed=bool(witness.passed),
            cosine=np.asarray(witness.cosine_by_bin).tolist()))
-    assert np.isfinite(short[1]).all() and np.all(short[1] != 0), short
-    assert np.isfinite(long[1]).all() and np.all(long[1] != 0), long
+    assert np.isfinite(short).all() and np.all(short != 0), short
+    assert np.isfinite(long).all() and np.all(long != 0), long
     assert witness.passed, witness
     assert np.all(relative <= 1e-2), relative
 
@@ -141,3 +151,65 @@ def test_p9_richardson(monkeypatch, graded):
         assert np.all(rounding >= 1e-5), f'cannot judge P9 rounding: {rounding}'
         assert np.all(control <= 1e-4), f'cannot judge P9 FD control: {control}'
         assert np.all(error <= 1e-6), error
+
+
+def traced_map_coefficients(monkeypatch, graded, declaration):
+    import rfx.materials.lorentz as lorentz
+    original = lorentz.lorentz_e_coeffs
+    captured = []
+    def observe(*args, **kwargs):
+        coeffs = original(*args, **kwargs)
+        if coeffs.c[0].ndim == 4:
+            captured.append(coeffs)
+        return coeffs
+    def measure(params):
+        arms = []
+        for arm in ('scalar', declaration):
+            captured.clear()
+            sim, _ = scene(params, graded, declaration=arm)
+            capture_scan(sim, 200, monkeypatch, forward=True)
+            assert captured, arm
+            coeffs = captured[-1]
+            assert not isinstance(coeffs.damping, tuple), arm
+            assert not isinstance(coeffs.restoring, tuple), arm
+            reach = jnp.any(jnp.stack([v[0] != 0 for v in coeffs.c]), axis=0)
+            arms.append((coeffs.damping[0], coeffs.restoring[0], reach))
+        return tuple(arms)
+    with monkeypatch.context() as patch:
+        patch.setattr(lorentz, 'lorentz_e_coeffs', observe)
+        return jax.device_get(jax.jit(measure)(parameters()))
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('declaration', ['relative', 'si'])
+def test_constant_delta_map_damping_is_scalar(monkeypatch, graded, declaration):
+    """C7.4: a traced constant-delta map forms the scalar pole's damping and restoring bit for bit."""
+    scalar, mapped = traced_map_coefficients(monkeypatch, graded, declaration)
+    reach = np.asarray(mapped[2])
+    assert reach.any() and np.array_equal(np.asarray(scalar[2]), reach)
+    values = {}
+    for i, name in enumerate(('damping', 'restoring')):
+        got, reference = np.asarray(mapped[i])[reach], np.asarray(scalar[i])[reach]
+        assert got.dtype == reference.dtype == np.float32
+        values[name] = dict(bit_equal=got.tobytes() == reference.tobytes(), reached=int(reach.sum()),
+                            max_difference=float(np.max(abs(got.astype(float) - reference.astype(float)))))
+    record(f'C7.4-damping-{declaration}-{graded}', values)
+    for name, value in values.items():
+        assert value['bit_equal'], (name, value)
+
+
+@pytest.mark.parametrize('declaration', ['relative', 'si'])
+def test_constant_delta_map_gradient_memory(declaration):
+    """C7.4: a constant-delta map's reverse pass stores no more per step than a scalar pole's."""
+    def temp(arm, steps):
+        objective = lambda p: jnp.sum(observable(p, steps, False, declaration=arm))
+        analysis = jax.jit(jax.grad(objective)).lower(parameters()).compile().memory_analysis()
+        assert analysis is not None, 'memory_analysis() returned None'
+        return int(analysis.temp_size_in_bytes)
+    temps = {arm: (temp(arm, 200), temp(arm, 400)) for arm in ('scalar', declaration)}
+    jax.clear_caches()
+    slopes = {arm: (b - a) / 200 for arm, (a, b) in temps.items()}
+    ratio = slopes[declaration] / slopes['scalar']
+    record(f'C7.4-memory-{declaration}', dict(temp=temps, slope=slopes, ratio=ratio))
+    assert slopes['scalar'] > 0, slopes
+    assert ratio <= 1.10, (ratio, slopes)
