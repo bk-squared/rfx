@@ -385,7 +385,7 @@ def _medium_groups(shapes, grid, *, nominal_h_max=None):
         return True
 
     groups: OrderedDict = OrderedDict()
-    groups.declared = tuple(shapes)
+    groups.declared = tuple(shapes)  # type: ignore[attr-defined]
     latest: dict = {}
     group_of: list = []
     for index, (shape, eps_r) in enumerate(shapes):
@@ -401,7 +401,7 @@ def _medium_groups(shapes, grid, *, nominal_h_max=None):
             groups[key] = (eps_r, [shape])
         latest[medium] = key
         group_of.append(key)
-    groups.declaration_groups = tuple(group_of)
+    groups.declaration_groups = tuple(group_of)  # type: ignore[attr-defined]
     return groups
 
 

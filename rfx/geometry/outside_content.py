@@ -14,25 +14,25 @@ inverse permittivity, the one-medium select and its medium bounds.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax
 import numpy as np
 
 
 class _LinePieces(NamedTuple):
-    lo: object
-    hi: object
-    eps: object
-    face: object
+    lo: Any
+    hi: Any
+    eps: Any
+    face: Any
 
 
 class _SegmentContent(NamedTuple):
-    eps: object
-    inv: object
-    single: object
-    eps_min: object
-    eps_max: object
+    eps: Any
+    inv: Any
+    single: Any
+    eps_min: Any
+    eps_max: Any
 
 
 def _line_interval(xp, shape, points, normal, reach):
@@ -141,7 +141,7 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
     declaration_groups = getattr(groups, 'declaration_groups', None)
     intervals = []
     face = -distance
-    keys = {}
+    keys: dict = {}
     source_count = 0
     for declared_index, (shape, eps) in enumerate(entries):
         if declaration_groups is not None:

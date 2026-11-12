@@ -5,7 +5,7 @@ Fractions analytically clip edges and dual faces against one local plane.
 Concrete inputs accumulate in host float64; tracers use the field dtype.
 """
 from itertools import product
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -139,12 +139,12 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
 
 
 class _TripletOutside(NamedTuple):
-    operand: object
-    edge_eps: object
-    edge_inv: object
-    edge_single: object
-    face_eps: object
-    face_single: object
+    operand: Any
+    edge_eps: Any
+    edge_inv: Any
+    edge_single: Any
+    face_eps: Any
+    face_single: Any
 
 
 def accurate_tensor(xp, normal, lengths, areas, eps1, eps2):
