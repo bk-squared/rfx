@@ -738,6 +738,7 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
 @pytest.mark.parametrize('name', ['scene2'])
 def test_cpml_two_vs_three_bitwise_and_bars(name):
     from tests._distributed_dispersive_cpml import scene, measure, check
+    host_devices(3)  # skip before the 1- and 2-device forwards in a 2-device lane
     sim = scene('debye') if name == 'debye' else cpml_scene(name)
     outputs = [sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
         **({} if n == 1 else dict(distributed=True, devices=host_devices(n))))
