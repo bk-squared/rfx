@@ -143,7 +143,8 @@ class MeshShape:
 
     def __init__(self, mesh, *, validate: bool = True):
         _require_trimesh()  # ensure trimesh is importable even on the direct path
-        if validate and not bool(getattr(mesh, "is_watertight", False)):
+        self._is_watertight = bool(getattr(mesh, "is_watertight", False))
+        if validate and not self._is_watertight:
             raise ValueError(
                 "MeshShape requires a watertight mesh — the given mesh has holes or "
                 "non-manifold edges, so the inside/outside test is undefined and the "
@@ -239,11 +240,11 @@ class MeshShape:
     def mask_on_coords(self, x, y, z):
         """(Nx, Ny, Nz) bool occupancy at cell centres via point-in-mesh containment.
 
-        Only cell centres inside the mesh bounding box are ray-tested (the rest are
-        trivially outside), so cost scales with the object's footprint, not the whole
-        domain.
+        Watertight meshes use scanline parity within the bounding box. With
+        ``validate=False``, non-watertight meshes retain the legacy oblique-ray
+        path; their occupancy is direction-dependent and mathematically undefined.
 
-        Host-side only: rasterisation runs through ``trimesh.contains``, so this cannot be
+        Host-side only: rasterisation uses NumPy, so this cannot be
         traced/jitted or used as a differentiable mesh — a traced coordinate raises a clear
         error rather than a cryptic JAX array-conversion failure."""
         from rfx.core.jax_utils import is_tracer
@@ -258,7 +259,7 @@ class MeshShape:
         y = np.asarray(y, dtype=np.float64).ravel()
         z = np.asarray(z, dtype=np.float64).ravel()
 
-        # Cache the occupancy by coordinate CONTENT: trimesh.contains (a ray-cast) is the
+        # Cache the occupancy by coordinate CONTENT: containment is the
         # expensive step and otherwise reruns on every material build — the S-parameter paths
         # rebuild materials repeatedly, so a large imported part would be re-contained each time.
         key = (x.tobytes(), y.tobytes(), z.tobytes())
@@ -280,16 +281,22 @@ class MeshShape:
         iy = np.where((y >= loy - eps) & (y <= hiy + eps))[0]
         iz = np.where((z >= loz - eps) & (z <= hiz + eps))[0]
         if ix.size and iy.size and iz.size:
-            X, Y, Z = np.meshgrid(x[ix], y[iy], z[iz], indexing="ij")
-            pts = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
             # NOT ``self._mesh.contains`` — that path re-decides any
             # near-surface point along an OS-entropy-random ray direction
             # (nondeterministic; see the module block above). The cache key
             # and the bbox window use the caller's coordinates unchanged;
             # only the ray-cast origin carries the tie-break nudge.
-            inside = np.asarray(
-                _contains_deterministic(self._intersector(), pts)
-            ).reshape(ix.size, iy.size, iz.size)
+            if self._is_watertight:
+                from rfx.geometry._mesh_scanline import scanline_mask
+                inside = scanline_mask(
+                    self._mesh.triangles, x[ix] + eps * _D1[0],
+                    y[iy] + eps * _D1[1], z[iz] + eps * _D1[2])
+            else:
+                X, Y, Z = np.meshgrid(x[ix], y[iy], z[iz], indexing="ij")
+                pts = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+                inside = np.asarray(
+                    _contains_deterministic(self._intersector(), pts)
+                ).reshape(ix.size, iy.size, iz.size)
             out[np.ix_(ix, iy, iz)] = inside
 
         result = jnp.asarray(out)
