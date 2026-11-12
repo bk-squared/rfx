@@ -9,6 +9,10 @@ moves that week's pull request forward; it never adds a second one. Prices are r
 significant figures when merged, so a refresh rewrites only the prices that moved. Before this
 rule, four re-pricings in two weeks changed about 144,000 lines.
 
+2026-11-12: from this date the fast suite runs in 20 groups (PI, pi-desk 254).
+`.test_durations` is unchanged; pytest-split recomputes the groups from it. The fast
+regeneration job in `regen-durations.yml` also runs in 20 groups.
+
 2026-11-12: fast prices re-priced. `regen-durations` run
 [43150712878](https://github.com/bk-squared/rfx/actions/runs/43150712878) (`lanes=fast`, main
 `ed1470068`), normalised to the EPYC 7763 with the unchanged 2026-10-29 factors below. All 12 jobs
@@ -750,7 +754,7 @@ are plugin estimates, including mean-duration fallback, not observed CI wall tim
 | slow (5-way) | 5 | 113.90 |
 | slow (5-way) | max | 119.63 |
 
-Since 2026-10-06 (PI decision), the fast lane uses a 12-way split; historical measurements below retain their original split counts.
+From 2026-10-06 until 2026-11-12 (PI decisions), the fast lane used a 12-way split; historical measurements below retain their original split counts.
 
 Earlier balance records follow.
 
