@@ -97,7 +97,7 @@ refiled; the problem does not.
 Run every short gate locally first. `bash scripts/ci/local.sh` runs them in the order
 CI runs them, each reporting even after an earlier one fails, then (only if all passed) the tests the diff selects; it calls
 the same scripts the workflows call, and a file path argument checks a pull-request
-body too. It does not run the twelve simulator shards or the guard suite in full, so a
+body too. It does not run the twenty simulator shards or the guard suite in full, so a
 green local run is a pass on the short gates and the selected tests only. The step list
 and what each one costs are in [What runs on a PR, and
 how to run it
@@ -108,7 +108,7 @@ in-flight CI run and starts a new one. Merge-group runs are never cancelled;
 `pr-tests` does not run on pushes to `main`.
 
 The heavy lane is path-aware, so what a push costs depends on what it touches. A diff
-confined to docs, most of `scripts/` or `changelog.d/` skips the twelve simulator shards
+confined to docs, most of `scripts/` or `changelog.d/` skips the twenty simulator shards
 and runs the contract tests in their place; anything touching `rfx/`, `tests/`,
 `validation/`, `examples/` or the lane configuration runs everything, as does any push
 to `main`. What the shards cost when they do
@@ -230,8 +230,8 @@ gh api repos/bk-squared/rfx/rules/branches/main \
   --jq '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
 ```
 
-Seventeen contexts are required: `ruff`, `guards-and-preflight`,
-`fast-suite (1)`…`(12)`, `changes`, `pr-body-contract` and `changelog-fragment`. That
+Twenty-five contexts are required: `ruff`, `guards-and-preflight`,
+`fast-suite (1)`…`(20)`, `changes`, `pr-body-contract` and `changelog-fragment`. That
 they bind, and that nothing older binds instead:
 
 ```
@@ -253,7 +253,7 @@ whether it blocks a merge:
 
 | context | required |
 |---|---|
-| `ruff`, `guards-and-preflight`, `fast-suite (1)`…`(12)` | yes |
+| `ruff`, `guards-and-preflight`, `fast-suite (1)`…`(20)` | yes |
 | `changes` | yes, for the reason below |
 | `pr-body-contract`, `changelog-fragment` | yes |
 | `lane-label`, `agent-docs-hygiene`, `public-docs-source`, `api-reference`, `docs-consistency` | no |
