@@ -237,6 +237,39 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
 
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+def test_p2c_lorentz_restoring_per_component(graded, monkeypatch):
+    """C9.3: omega_0 > 0, so restoring = omega_0**2 dt**2 / (1 + delta_e dt) is not 0 on any edge."""
+    import rfx.materials.lorentz as lorentz
+    from tests.unit.materials.test_pole_map_runs import record
+    W0 = 2 * np.pi * 3e9
+    grid, xyz, mask = rig(graded)
+    pole = LorentzPoleMap(W0, lambda x, y, z: np.where(x < .0025, 1e9, 2e9) + 1e10 * y,
+                         lambda x, y, z: WP**2 * (1 + 40 * x + 20 * y))
+    observed_delta = []
+    def observe(omega_0, delta, kappa, dt, field_dtype=None):
+        if np.ndim(delta) == 3:
+            observed_delta.append(np.asarray(delta))
+        return pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype)
+    monkeypatch.setattr(lorentz, 'pole_update_coeffs', observe)
+    coeffs, _ = init(pole, grid, mask)
+    assert len(observed_delta) == 3
+    assert isinstance(coeffs.restoring, tuple) and len(coeffs.restoring) == 3
+    restoring = [np.asarray(v) for v in coeffs.restoring]
+    assert all(not np.array_equal(restoring[a], restoring[b]) for a, b in ((0, 1), (0, 2), (1, 2)))
+    t = np.float64(np.float32(grid.dt))
+    worst = 0
+    for comp, cell in itertools.product(range(3), itertools.product(range(3, 10), repeat=3)):
+        d = np.float64(np.float32(observed_delta[comp][cell]))
+        want = np.float32(W0**2 * t**2 / (1 + d * t))
+        got = np.float32(restoring[comp][(0,) + cell])
+        assert want != 0 and np.signbit(got) == np.signbit(want)
+        spacings = abs(int(got.view(np.uint32)) - int(want.view(np.uint32)))
+        worst = max(worst, spacings)
+        assert spacings <= 8, (comp, cell, got, want, spacings)
+    record(f'C9-restoring-{graded}', dict(restoring_worst_spacings=worst, edges=3 * 7**3))
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_p2c_float64_edge_mean(graded):
     from tests._x64_compat import enable_x64
     from tests.unit.materials.test_pole_map_runs import record
