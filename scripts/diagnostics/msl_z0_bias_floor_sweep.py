@@ -353,7 +353,7 @@ DX_GRID = [
 
 OUT_DIR = REPO / "scripts" / "diagnostics" / "msl_z0_bias_floor_sweep"
 SOURCE_JSON = OUT_DIR / "msl_z0_bias_floor_sweep.json"
-_SOURCE_SHA256 = "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362"
+_SOURCE_SHA256 = "d6e76cc2aba39b0c8064623ec55ee55017e42b4156637673c7b3a2bbd770d14a"
 
 
 def run_one(label: str, dx: float) -> dict:
@@ -476,6 +476,7 @@ def main(argv=None) -> int:
             "Use --show-archive to inspect that record; new validation needs "
             "matched field/geometry provenance and a separate output location.")
     source_bytes = SOURCE_JSON.read_bytes()
+    # Original bytes are in git at 647262587.
     if hashlib.sha256(source_bytes).hexdigest() != _SOURCE_SHA256:
         parser.error("The frozen source record changed; restore its recorded bytes before inspection.")
     print(json.dumps({

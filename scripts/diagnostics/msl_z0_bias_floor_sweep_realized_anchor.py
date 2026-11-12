@@ -102,8 +102,8 @@ SOURCE_JSON = (
     / "msl_z0_bias_floor_sweep.json"
 )
 ANCHOR_JSON = SOURCE_JSON.parent / "msl_z0_bias_floor_sweep_realized_anchor.json"
-_SOURCE_SHA256 = "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362"
-_ANCHOR_SHA256 = "fbf7985d970a3976652f53a9a0fe1b65e7e7dd9e733041c04b94430b3db6863c"
+_SOURCE_SHA256 = "d6e76cc2aba39b0c8064623ec55ee55017e42b4156637673c7b3a2bbd770d14a"
+_ANCHOR_SHA256 = "6982ed00d5e9c0cab72666c673eeb149812b2614a57b2d2df4c30fe41ca24ab2"
 
 
 def _build_sim_no_solve(dx: float) -> Simulation:
@@ -164,8 +164,10 @@ def main(argv=None) -> int:
             "comparison requires geometry and field measurements from the same run.")
     source_bytes = SOURCE_JSON.read_bytes()
     anchor_bytes = ANCHOR_JSON.read_bytes()
+    # Original bytes are in git at 647262587.
     if hashlib.sha256(source_bytes).hexdigest() != _SOURCE_SHA256:
         parser.error("The frozen source record changed; restore its recorded bytes before inspection.")
+    # Original bytes are in git at 647262587.
     if hashlib.sha256(anchor_bytes).hexdigest() != _ANCHOR_SHA256:
         parser.error("The frozen anchor record changed; restore its recorded bytes before inspection.")
     print(json.dumps({

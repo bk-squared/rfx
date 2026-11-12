@@ -11,7 +11,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCOPE = ("rfx/", "tests/")
+SCOPE = ("rfx/", "tests/", "scripts/")
 pytestmark = pytest.mark.source_scan
 
 PATTERNS = {
@@ -149,11 +149,9 @@ def test_git_prefilter_covers_every_class(tmp_path):
 
 # A blank literal exempts a whole file while it still contains matching text.
 NAMED_EXCEPTIONS = (
+    ('scripts/memory_reduction_planning_artifact.py', 'default=Path(', "an argparse default into the repository's gitignored note folder; behaviour"),
+    ('scripts/diagnostics/build_msl_openems_sparameter_comparison.py', 'DEFAULT_REFERENCE =', "an argparse default into the repository's gitignored note folder; behaviour"),
     ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '', 'The pin holds the patterns and synthetic cases, and its only hits are such text.'),
-    ('tests/contracts/test_layer_structure.py', '(PI to decide how far 2.0 reaches)', 'the producer in scripts/ changes this text in the next cleanup step'),
-    ('tests/contracts/test_changelog_fragments.py', 'bk-squared/rfx-archive', 'the producer in scripts/ changes this text in the next cleanup step'),
-    ('tests/contracts/test_data_budget.py', 'bk-squared/rfx-archive', 'the producer in scripts/ changes this text in the next cleanup step'),
-    ('tests/contracts/test_data_budget.py', 'rfx/records/<YYYYMMDD>-<topic>/', 'the producer in scripts/ changes this text in the next cleanup step'),
     ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/research_notes/', 'The contract proves the research-note directory is untracked.'),
     ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/agent-memory', 'The contract proves the local-only ledger directory is untracked.'),
     ('tests/contracts/test_source_carries_no_tracker_history.py', 'docs/research_notes/2000-01-02_sample.md', 'Synthetic citation proves private provenance is detected.'),

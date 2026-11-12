@@ -1,9 +1,9 @@
 {
   "label": "head",
   "provenance": {
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_under_repo_root": true,
-    "driver_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
+    "driver_root": "<workspace>/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
     "driver_commit": "58b7198a65a7cd9a179696f5ac6c84162a1790c3",
     "branch": "fix/1043-cpml-subpixel-coefficients"
   },

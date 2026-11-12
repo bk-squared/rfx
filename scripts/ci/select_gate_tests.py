@@ -188,7 +188,7 @@ class Selection:
             "source-scan tests deselected by stage-2 markers: "
             f"{self.source_scan_deselected_count} tests, "
             f"recorded {self.source_scan_deselected_seconds:.6f} s",
-            f"not run (돌리지 않은 시험): {self.not_run_count} recorded tests, "
+            f"not run: {self.not_run_count} recorded tests, "
             f"{self.not_run_seconds:.6f} s",
             "Counts use .test_durations nodeids; contracts run in stage 1 are excluded. "
             "Source-scan markers are read from AST; the selector does not collect or import tests.",

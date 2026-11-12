@@ -13,6 +13,7 @@ resources:
 # onto that node and passed.
 image: ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
   # OMP_NUM_THREADS=1: openEMS's own numThreads (passed explicitly as
@@ -34,6 +35,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
   echo "=== The MSL notch filter: openEMS reference from openEMS's own tutorial ==="
   date
 
@@ -87,7 +89,7 @@ run: |-
   fi
   "$PY" -c "import numpy; print('numpy', numpy.__version__)"
 
-  primary=/root/workspace/byungkwan-workspace/research/rfx
+  primary=/root/workspace/$RFX_WORKSPACE/research/rfx
   out="$primary/.omx/msl-notch-openems/$(date -u +%Y%m%dT%H%M%SZ)-$short"
   mkdir -p "$out"
   echo "$sha" > "$out/commit.txt"

@@ -34,7 +34,7 @@ STAMP=$MARKER_DIR/marker
 cp "$YAML" "$MARKER_DIR/run.yaml"
 OUT=$(cd "$MARKER_DIR" && vessl run create -f run.yaml 2>&1)
 echo "$OUT"
-ID=$(echo "$OUT" | grep -o 'runs/byungkwan/[0-9]*' | tail -1 | grep -o '[0-9]*$')
+ID=$(echo "$OUT" | grep -o 'runs/[^/]*/[0-9]*' | tail -1 | grep -o '[0-9]*$')
 [ -n "$ID" ] || { echo "FATAL: could not parse a run id from the create output"; exit 3; }
 echo "run id: $ID"
 

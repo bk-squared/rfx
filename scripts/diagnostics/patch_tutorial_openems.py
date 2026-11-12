@@ -15,7 +15,7 @@ the record-first ordering caveat is stated in the fixture meta):
   f_res 2.4221 GHz (harminv on port V, Q 20.1), S11 dip 2.4300 GHz (-27.8 dB),
   broadside D 6.79 dBi, E/H-plane peaks 0/0 deg, stopped on EndCriteria=1e-4 at
   step 8671 with energy -41.09 dB.
-- Log: docs/research_notes/vessl_logs/patch_tutorial_openems_GOOD_369367246713.log
+- Log: the measurement notes
   (local-only; the earlier run 369367246711 failed with the lumped port off-grid
   — "Unused primitive", zero energy for the whole run — fixed by the explicit
   feed mesh lines marked CRITICAL below).

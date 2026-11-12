@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
   OMP_NUM_THREADS: "4"
@@ -14,12 +15,13 @@ env:
   JAX_PLATFORMS: "cpu"
   JAX_ENABLE_X64: "0"
   RFX_PREDECLARATION_SHA: "88c24a38"
-  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-lattice-ownership"
   RFX_SHA: "HEAD"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
+  export RFX_CHECKOUT="/root/workspace/$RFX_WORKSPACE/research/rfx-lattice-ownership"
   echo "=== rfx #931 post-change: WR-90 chain battery ==="
   date
   PY=python
