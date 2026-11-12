@@ -228,9 +228,9 @@ passes on CPU; `scripts/ci/local.sh` green.
 
 ## 10. Who does what
 
-Implementation: one Opus instance from this note alone. The leader reads the
-JSON, the figure and the preflight text, and writes the Results section and
-every sentence that interprets a number. Review: a separate Opus instance,
+Implementation: one Opus instance from this note alone. The Results section and
+every sentence that interprets a number are written after the JSON, the figure
+and the preflight text are read. Review: a separate Opus instance,
 fresh eyes, one round; P1/P2 fixes back to the same reviewer. Documentation
 mismatches go to #1171.
 

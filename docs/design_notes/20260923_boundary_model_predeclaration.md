@@ -313,7 +313,7 @@ separate Opus instance reviews each PR, two directions over 200 lines of `rfx/` 
 
 ## 6. Who does what, and the other lanes
 Measurements and implementation: Codex from written briefs; judgments, this note and every interpreting
-sentence: the leader. The NU lane owns `boundaries/cpml.py`'s metric (its 0b) and `grid.py` (its 0c): B2
+sentence are kept apart from the implementation. The NU lane owns `boundaries/cpml.py`'s metric (its 0b) and `grid.py` (its 0c): B2
 and B3 onwards follow it module by module. #1205 was done in this lane by another session; its rule is
 this design's seed, and its tests are rewritten in B3 with the reason. The one-cell PMC line —
 #1205's `test_magnetic_wall_faces_not_shorted.py` and the ports lane's two #1162 tests on the same
@@ -379,7 +379,7 @@ uniform behaviour as a regression baseline (it guarded #876's clamp, not the phy
 result change: the record's realized depth is the pad (0 on those faces), and `init_cpml` keeps its
 present profile depth for faces outside the grid's absorbing axes, labelled in code as the legacy dual
 declaration with a pointer here; the structural contract allow-lists exactly that line. The dual
-declaration itself (grid axes vs the runner argument) is a separate decision, raised with the lead: the
+declaration itself (grid axes vs the runner argument) is a separate decision, raised: the
 candidate is that the runner reads the grid's axes and refuses a conflicting explicit argument, with
 the #876 test rewritten with its reason. That change moves results on the low-level API and does not
 belong in this PR.
@@ -423,7 +423,7 @@ resolution moving from registration to dispatch). Stage S1's judge is "expected 
 Decision: two PRs.
 PR3a — no computed result changes; what was silently rewritten is refused or must be declared.
  1. Waveguide. This departs from decision 4, which refused every full-aperture guide whose transverse
-    faces are absorbing, the default included. Reason (lead, 2026-10-07): `Simulation`'s `boundary`
+    faces are absorbing, the default included. Reason (2026-10-07): `Simulation`'s `boundary`
     defaults to `cpml`, so that rule breaks every waveguide script over an absorber the user never
     declared. Rule now, for a guide whose REALIZED aperture equals the realized cross-section:
     - `boundary` not passed (the default applied): the transverse faces default to PEC, the guide's
@@ -645,14 +645,14 @@ the graded mesh, multi-device graded, subgridded coarse grid (survey step 5; to 
 The kernel parameter `pec_axes` of the low-level functions (`rfx.run`, `rfx.simulation`) stays: a low-level caller's
 explicit flags are the caller's declaration (same stance as Addendum 5c (5)). High-level entries stop passing it.
 
-### Classes W and R — predeclared inclusion rule (lead condition 3)
+### Classes W and R — predeclared inclusion rule (condition 3)
 W (waveguide-port entries: the absorber on the port axis is unbacked on run AND on the S calculator) and R (oblique
 RCS) are changed in the same commit series but INCLUDED in this PR only if, with the change, every committed lock,
 oracle and contract that reads them passes without touching a pinned value or tolerance. If any pin moves beyond its
 committed tolerance, that class is reverted to today's selection in this PR, listed with the measured shifts, and goes
 to PR3b. The contract test below then carries an explicit, named exception list (not a per-entry computation).
 
-### Judges (lead condition 1)
+### Judges (condition 1)
 1. `tests/contracts/test_backing_wall_one_rule.py`, always-on, no field step (stop at the kernel factory):
    for each declaration in a matrix {all absorbing; absorber on x only + PEC elsewhere; PMC pair on one axis; one
    periodic axis; lo absorber / hi PEC on one axis; default plane wave; closed_box plane wave; full-aperture guide with
@@ -668,7 +668,7 @@ to PR3b. The contract test below then carries an explicit, named exception list 
 4. Mutations (helper calls kept): the forward entry passes "axes not absorbing" again → 1 and 3 red; the multi-device
    wall set drops positive-depth absorbers → 1 red; the plane-wave branch passes "" → 1 red.
 
-### Census (lead condition 2)
+### Census (condition 2)
 Before/after on the same base, serial: tests/locks, tests/oracle, tests/contracts, tests/unit/{autodiff,sparams,
 runners,boundaries,sources,ports,preflight} and the weekly `slow`/`slow_physics` selection on VESSL CPU long. Report
 every test whose outcome changes and, for each value compared with a tolerance in a changed-outcome test, the shift.

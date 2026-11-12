@@ -128,7 +128,7 @@ directory.
 
 ### G1 ablation — pre-declared (2026-09-07, written BEFORE the first GPU run)
 
-Premise check (lead, 2026-09-07): under the CPML-8 bench condition the
+Premise check (2026-09-07): under the CPML-8 bench condition the
 uniform lane's fused fast path is gated OFF (`_fast_eligible` requires no
 CPML, `rfx/simulation.py` ~2000-2025), so BOTH lanes run their slow
 steppers (`update_h`/`update_e` vs `update_h_nu`/`update_e_nu`) and both
@@ -294,7 +294,7 @@ failed at 400^3 (0.270 > 0.140); nothing from this run is used for an
 implementation decision.** For the record: nu-z-scalar-inv is the only
 arm that met the candidate rule (bit-identical, +19.2 % / +11.5 %, both
 > 2x spread), and it is blocked by the sum check alone, not by spread.
-Next instrument revision (lead decision, not taken here): add the
+Next instrument revision (decision, not taken here): add the
 combined arm and a smaller-constant hoist variant (e.g. hoist only
 `sigma_dt_2eps`, or hoist as scan carry/closure instead of an embedded
 constant) so the 400^3 hoist effect is either explained or disappears,
@@ -456,7 +456,7 @@ Harvested with `harvest.sh 369367259965 rfx-nu-cost-g1b-ablation`:
 NFS artifacts: `<workspace>/rfx/runs/nu-cost-ablation-g1b/20260910T034258Z-fe86c11b/`.
 The run JSON was copied unchanged to
 `validation/research/nu_cost/results/w8b_nu_kernel_ablation_4090.json`
-(SHA256 `6d478a046e2889ae15748e13d773f565223bc37a6470c957c21bb92a4bde30e4`).
+(SHA256 `7e6cd7c0f2279b854703cc0eb7251c37dd51fcbe0914793a91b273a7930dd7d9`). Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-13); the original bytes are in git at 2bea5c3f1 under the same path.
 
 Table A — CPML-8. Rates and spreads are Mcells/s; spread is max minus min
 of the three windows, not a confidence interval. Every timing ratio uses

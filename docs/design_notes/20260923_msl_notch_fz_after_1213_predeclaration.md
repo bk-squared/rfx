@@ -131,8 +131,8 @@ singularity at the strip edge in the plane normal to the sheet (R2 §0's origina
 
 ## 7. Who does what
 
-One Opus instance implements from this note and submits the jobs. The leader reads the records
-and writes the Conclusions. A separate Opus instance reviews.
+One Opus instance implements from this note and submits the jobs. The Conclusions are written
+after the records are read. A separate Opus instance reviews.
 
 ## Results (facts)
 

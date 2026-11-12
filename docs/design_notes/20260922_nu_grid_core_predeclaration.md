@@ -168,6 +168,6 @@ reviews each; PRs over 200 lines in `rfx/` get the two-direction review.
 ## 6. Who does what
 
 Implementation: one Opus instance per sub-step PR, from this note. Review: a
-separate Opus instance per PR. The leader reads every judge's output and
-writes any sentence that interprets a number. Documentation mismatches go
+separate Opus instance per PR. Any sentence that interprets a number is written
+after every judge's output is read. Documentation mismatches go
 to #1171; the support-matrix rows move only in the release pass.

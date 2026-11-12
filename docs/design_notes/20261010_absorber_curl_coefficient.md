@@ -112,7 +112,7 @@ Leontovich/thin-conductor sheets, lossy films) and dispersive media in pads move
 pinned number a user receives is re-pinned in the PR with the cause sentence.
 
 ## Stopgap content while the fix is in review
-`docs/guides/known_limitations.md` wording (lead, 2026-10-10 — no "s >= 1" criterion is published): 'a conductor or
+`docs/guides/known_limitations.md` wording (2026-10-10 — no "s >= 1" criterion is published): 'a conductor or
 lossy medium running into a CPML face; measured: vacuum-side sheets at or below about 108 ohm/sq grow, a lossy eps_r 4
 medium grows earlier'. Since the fix PR pins the invariant with committed tests, the PR carries no entry (an entry
 leaves when a committed test pins the fix); the text above is for a PR that merges before the fix (idm's fallback).

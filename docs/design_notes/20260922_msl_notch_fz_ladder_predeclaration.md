@@ -132,8 +132,8 @@ stub length and width held exact.
 
 ## 7. Who does what
 
-Implementation: one Opus instance from this note. The leader reads the
-record and writes the conclusions. Review: a separate Opus instance, one
+Implementation: one Opus instance from this note. The conclusions are written
+after the record is read. Review: a separate Opus instance, one
 round; P1/P2 fixes back to the same reviewer. Documentation to #1171.
 
 ## A.2 C_off re-measured at the ladder's commit (declared after review, before running)
