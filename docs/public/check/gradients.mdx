@@ -297,7 +297,7 @@ leaf's largest gradient, against 1 %. A NaN in either gradient fails it.
 | a gradient with respect to a declared shape's size or position (a sphere radius, a box corner) | `NotImplementedError` naming the supported routes, on `run()` and `forward()` | differentiate through material overrides (`eps_override`) or a design region |
 | `forward(ringdown=...)` with more than one wire port on a uniform mesh | refused | use a graded mesh |
 | `gradient_witness(..., against="early_start")` without `ringdown=` | `TypeError` | pass the call's `out.ringdown` |
-| `gradient_witness(..., pole_target=..., against="longer_record")` | `ValueError` | use the default `against="early_start"` with the call's `out.ringdown` |
+| `gradient_witness(..., pole_target=..., against="longer_record")` without a result pair | needs `ringdown=(res, res_longer)` | pass each record's concrete, unbatched `out.ringdown`, in gradient order |
 | `out.ringdown.pole(f_target, window=...)` with a window other than `"main"` or `"long"` | `ValueError` | pass one of the two |
 | `out.ringdown.pole(...)` on a result batched by `jax.vmap` | `ValueError` naming the shape | take one element first: `jax.tree_util.tree_map(lambda a: a[i], result)` |
 
