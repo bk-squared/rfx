@@ -351,6 +351,8 @@ def synthetic(tmp_path, monkeypatch):
 
 def mock_base(monkeypatch, previous):
     def git(repo, *args):
+        if args == ("ls-tree", "base", "--", gate.PLAN_READ_BASELINE):
+            return b""
         if args == ("ls-tree", "base", "--", gate.BASELINE):
             return b"present"
         assert args == ("show", f"base:{gate.BASELINE}")
@@ -1390,3 +1392,30 @@ def test_check_refuses_a_load_chain(synthetic, capsys):
         chain="rfx.stepping.a -> rfx.helper -> rfx.simulation") + "\n"
     write(synthetic, "rfx/helper.py", "def local():\n    from rfx.simulation import run\n")
     assert gate.main(["--repo", str(synthetic)]) == 0
+
+
+@pytest.mark.parametrize("before,after,expected", [
+    ({"multi-device-uniform": ["probe"]}, {"multi-device-uniform": []}, 1),
+    ({"multi-device-graded": ["probe"]}, {"multi-device-graded": ["probe", "lumped_wire_vi"]}, 0),
+    (None, {"multi-device-uniform": ["probe"]}, 0),
+    ({"multi-device-graded": ["probe"]}, None, 1),
+])
+def test_plan_read_baseline_may_only_rise(synthetic, capsys, before, after, expected):
+    git_snapshot(synthetic, "init", "-q")
+    if before is not None:
+        write(synthetic, gate.PLAN_READ_BASELINE, json.dumps(before))
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "base plan reads")
+    base = git_snapshot(synthetic, "rev-parse", "HEAD")
+    if after is None:
+        (synthetic / gate.PLAN_READ_BASELINE).unlink()
+    else:
+        write(synthetic, gate.PLAN_READ_BASELINE, json.dumps(after))
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "head plan reads")
+    head = git_snapshot(synthetic, "rev-parse", "HEAD")
+    assert gate.main(["--repo", str(synthetic), "--base", base]) == expected
+    assert ("may only rise" in capsys.readouterr().err) == bool(expected)
+    write(synthetic, gate.PLAN_READ_BASELINE, "unreadable working tree")
+    assert gate.main(["--repo", str(synthetic), "--base", base, "--head", head]) == expected
+    assert ("may only rise" in capsys.readouterr().err) == bool(expected)

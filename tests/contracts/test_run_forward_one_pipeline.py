@@ -31,6 +31,10 @@ EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
     'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
 
 ASSEMBLY_ROWS = (
+    ('B-cpml', 'multi-device-uniform'),
+    ('P-lumped', 'multi-device-uniform'),
+    ('P-wire-driven', 'multi-device-uniform'),
+    ('P-wire', 'multi-device-uniform'),
     ('C-conformal', 'uniform'),
     ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
