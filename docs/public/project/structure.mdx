@@ -1,0 +1,56 @@
+---
+title: "How rfx is built"
+description: "The stages every simulation goes through in rfx 2.0 (declaration, realized model, time step, recording, results), which solver paths share each stage, and the one place where the paths still differ."
+sidebar:
+  order: 5
+---
+
+This page is for readers who want to know how rfx turns a declared model into a
+result: contributors, and users who want to know which part of the code a
+setting reaches. You do not need it to use rfx.
+
+<img src="/rfx/project/assets/structure.png" alt="rfx 2.0 structure: a Simulation declaration is assembled into a realized model, advanced by one shared time-step order with measurements recorded at hook points, and turned into S-parameters and far field after the run. On several devices, DFT planes, flux and far field are recorded in slab records." />
+
+## The stages
+
+1. **Declaration.** You describe the model on a `Simulation`: the grid, the
+   materials and shapes, the sources and ports, and what to measure (`add_*`
+   methods; `rfx/api/`).
+2. **Model assembly.** `run()` and `forward()` both start with the same front:
+   the preflight checks (`rfx/preflight/`), the assembly of the realized model,
+   which is the geometry and materials as they land on the grid (`rfx/model/`),
+   and the choice of solver path (`rfx/api/_dispatch.py`). What the grid
+   built is what `sim.realized_geometry()` and `sim.fidelity_report()` show.
+3. **Time step.** One step order advances the fields: the H update, the E
+   update, the boundaries and the sources, in a fixed sequence with named
+   hook points between them (`rfx/stepping/sequence.py`). The uniform-mesh and
+   graded-mesh paths use it on one device. On several devices, each slab of the
+   grid runs the same step, and the exchanges between slabs are attached at
+   its hook points (`rfx/stepping/slab_wrap_uniform.py`,
+   `rfx/stepping/slab_wrap.py`).
+4. **Recording.** Before the run, rfx builds a measurement plan from your
+   declarations: probes, ports, DFT planes, flux monitors, the far-field box and
+   current-moment monitors (`rfx/measurement/`). On one device, the step
+   records each of them at its hook points from that plan.
+5. **Results.** After the run, S-parameters and the far-field transform are
+   formed from those records (`rfx/measurement/`, `rfx/sparams/`). `run()`
+   returns them in a result object; `forward()` returns the time signals as
+   JAX arrays, so you can differentiate them (see
+   [run() and forward()](/rfx/run/run-and-forward/)).
+
+## Where the paths still differ
+
+On several devices, the probe and port samples come through the shared step,
+but DFT planes, flux, current moments, far field and snapshots are recorded
+in the slab code (`rfx/runners/_distributed_records.py`), not from the
+measurement plan. The figure marks this in colour. The recorded quantities are
+the same; the code that records them is not yet shared.
+
+Paths the figure leaves out:
+
+- A graded mesh on several devices with PMC faces runs its own slab loop
+  instead of the shared step.
+- Subgridding (`add_refinement` on a uniform mesh) is outside the 2.0 supported
+  scope and is refused by default; it has its own step loop. See
+  [solver paths](/rfx/support/#solver-paths).
+- ADI time stepping has been removed. A model that asks for it is refused.
