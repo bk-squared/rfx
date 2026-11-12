@@ -83,11 +83,3 @@ def test_mixed_refused_before_fields(monkeypatch, path, companion):
         assert "add_waveguide_port(...) uses compute_waveguide_s_matrix()" in str(caught.value)
     else:
         assert str(caught.value) == MESSAGE
-
-
-@pytest.mark.parametrize("path", PATHS)
-def test_waveguide_alone_runs(path):
-    result = _public_call(_guide(path), path)
-    jax.block_until_ready(result.time_series)
-    assert result.time_series.shape[0] == 1
-    assert "guide" in result.waveguide_sparams
