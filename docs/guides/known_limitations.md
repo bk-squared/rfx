@@ -268,7 +268,7 @@ A traced permittivity with `"full_tensor"` is refused by name in any scene. With
 
 ### Subpixel smoothing retains one source face and point rules for bodies without exact line intervals.
 
-Tracker: #2397
+Tracker: #2624
 
 The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. The source shape's own fill still sees one face when that shape is thinner than a cell.
 Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
