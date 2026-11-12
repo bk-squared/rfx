@@ -126,7 +126,8 @@ probes and DFT plane probes. A model with a port of any kind, a plane wave
 (TFSF), Debye, Lorentz or Drude poles, a lumped RLC element, a surface-impedance
 sheet (`surface_impedance_f0=`), a flux monitor, an NTFF box, UPML or a graded
 mesh falls back to running the cases one by one through `run()`, with a
-`ConfigurationWarning`.
+`ConfigurationWarning`. `run()` then applies its own refusals: a coaxial port,
+or more than one waveguide port, is refused after the warning.
 
 A model that takes the fast path is refused, not run one by one, when it holds
 an input the fast path does not carry: among them a Kerr material, a PMC face,
