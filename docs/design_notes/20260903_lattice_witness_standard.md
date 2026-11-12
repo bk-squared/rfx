@@ -27,10 +27,10 @@ the `lattice_witness.json` files the VESSL run of 2026-09-03 wrote (§9.1), whic
 are post-processing of those, the same class as `--meep-ladder-summary` and
 `--refit-tail-fits`.
 
-**PI decision this note implements (2026-09-03, verbatim):** "격자별로 테스트
-하고 다른 유사한 이슈들도 있으니 같은 엄밀성 기준을 쓰자" — test per lattice
-(each dx rung), and apply the same rigor standard to the other cases with the
-same kind of issue.
+
+
+
+
 
 ## 0. Why this exists
 
@@ -38,11 +38,11 @@ cv23 round 1 (`docs/design_notes/20260902_cv23_lossy_slab_predeclaration.md`
 §12.2) found that rfx's residual against the CONTINUUM transfer matrix is not
 error: it is the Yee lattice's own second-order term, reproduced to 3e-5 by an
 exact 1-D Yee-lattice time-harmonic solution with no fitted parameter. cv23 §14.6
-put two options to the PI — carry `W_lat` inside the continuum window, or refine
+presented two options — carry `W_lat` inside the continuum window, or refine
 the one under-resolved arm — and took the second, keeping the lattice solution as
 a REPORTED witness (§13.3).
 
-The PI has now decided a third thing, which is neither: **the continuum window
+A third approach is adopted: **the continuum window
 stays exactly as it is, and a SECOND, independent gate is added at every dx rung
 every slab-family case runs.** The continuum gate says "rfx reproduces the
 transfer matrix inside a window derived from a committed envelope". The lattice
@@ -149,8 +149,8 @@ Per case:
 | cv22 Drude | `drude` | ε∞ = 3, fp = 7 GHz, γ = 2π·3 GHz | as Lorentz with ω0 = 0, κ = ωp², δ = γ/2 |
 | cv23 | `conductive` | ε′ = 4, σ ∈ {0.15577, 1.5577, 4.6731} S/m | `ε′ − jσ(x/tan x)/(ωε0)` |
 
-**No arm is excluded.** The PI's condition ("if a pole model cannot be done
-exactly, exclude that arm and say why") does not bite: all three cv22 pole models
+**No arm is excluded.** An arm whose pole model cannot be done exactly is excluded with its
+reason; that condition does not bite here: all three cv22 pole models
 are exact through the same identity, and §5.2 shows the lattice model predicts
 each arm's measured continuum residual a priori.
 
@@ -443,7 +443,7 @@ that stayed is the lattice.
 ### 5.3 cv04 — the witness was REPORTED, not gated; the derivation said why, and the settling-extension fix (2026-09-10) closed it
 
 **UPDATE 2026-09-10, read this first.** Section 8.3 below declined to give
-cv04 its own settled record ("no new physics"); the PI overrode that call --
+cv04 its own settled record ("no new physics"); that disposition is superseded --
 a case that cannot settle its own spectra cannot gate its own case, and the
 un-extendable legacy record was the defect this campaign exists to fix, not a
 constraint to protect. cv04 now runs the SAME settling-extension mechanism
@@ -675,7 +675,7 @@ so that the non-change is a decision and not an omission:
 1. Tightening `W_mean,R` to 0.001 would turn seven green cases red for a reason
    that is not a defect — the mesh, not the solver. The remedy for a
    discretisation-limited gate is resolution, and choosing which rungs to refine
-   (and paying for them) is a PI decision, not a review action.
+   (and paying for them) is a decision, not a review action.
 2. The re-derived 0.001 is itself only as good as the settled rung it comes
    from; it inherits that rung's own truncation and float32 terms (§3), and
    §7's F4 shows the record length, not the mesh, is what limits several arms.
@@ -707,7 +707,7 @@ THIS lane depends on it, and this lane's gates are unaffected either way.
 - **SUPERSEDED, 2026-09-10.** This bullet described the 2026-09-03 state only:
   no case's exit code depended on the lattice gate, `--lattice-witness` was a
   separate post-processing invocation with its own exit code, and wiring it
-  into a case's own verdict was left as a PI call. That call was made twice
+  into a case's own verdict was left undecided. That integration happened twice
   since: issue #970 wired cv23's `main()` (`GL_witness` folds into `e2_ok`,
   live on this run's own freshly-computed R/T, `23_lossy_slab_fresnel.py`),
   and PR #974 round 2 (B1) wired cv04's `main()` the same way -- the witness
@@ -765,7 +765,7 @@ as cv23 §12.2 established — so `sep/W(R)` is 0.94 and F1 there is carried by 
 (174×) and by the 113 per-bin R failures, not by the R band mean. **On a lossless
 slab A ≡ 0 identically**, so the A column is vacuous for cv04's material; that is
 geometry, not a gate weakness. The margin is "computed a priori" in the sense the
-PI asked: none of these numbers uses `|rfx − lattice|`, only the model and the
+definition requires: none of these numbers uses `|rfx − lattice|`, only the model and the
 window.
 
 ### F2 — the deliberately wrong model: the continuum instead of the lattice
@@ -906,7 +906,7 @@ material that has a correction) are asserted analytically in
 
 ## 8. New rungs — pre-declared with cost, then run
 
-The PI's rule is "add a rung only if a claim requires it, and say what it costs".
+Add a rung only if a claim requires it, and state its cost.
 Two claims require one. **Both were pre-declared below BEFORE they ran, and both
 then ran, as legs of `scripts/vessl_lattice_witness.yaml` on the 2026-09-03
 VESSL run** (§9.1). The predictions are left exactly as they were written; the
@@ -1015,11 +1015,11 @@ lane as well as on the committed artifact.
   and they are cheap (~4× and ~16× of a 1 s arm). They are NOT added, because no
   claim in this note requires them: the single-rung lattice gate is already a
   rigorous statement at that rung, and F2's convergence reading is supplied by
-  cv23's ladder on the same rig. If the PI wants cv22's ladder, it is
+  cv23's ladder on the same rig. To run cv22's ladder, it is
   `--dx-div 2|4 --tag <arm>_dx<K>` and about 30 s of pod time.
 - **A cv04 rung at the settled recipe with cv04's own script.**
-  **SUPERSEDED 2026-09-10** -- see §5.3's top UPDATE. The PI overrode this
-  call: cv04 now has its own record derivation (the settling-extension loop,
+  **SUPERSEDED 2026-09-10** -- see §5.3's top UPDATE.
+  cv04 now has its own record derivation (the settling-extension loop,
   `slab_family.NX_GROW_CELLS`) and a settled rung, on its own script, not
   borrowed from cv23. Kept below, struck through in spirit, because the
   reasoning explains why this bullet existed before the override, not
@@ -1184,7 +1184,7 @@ Recorded because the record is the point.
    separate invocation with its own rc. Wiring it changes what a red case means
    and should follow a green VESSL run, not precede it. The run has now happened
    and is green on all 12 rungs (§9.1), so the precondition is met and the wiring
-   is a PI call, not a blocker — still NOT done in this lane.
+   remains undecided, not a blocker — still NOT done in this lane.
 8. **The committed cv23 `arms.<arm>.lattice.R_lattice` arrays reproduce to
    7e-15 (measured maximum 6.9e-15, on `tand3`'s R), not bit-for-bit,** when
    recomputed today. The note first said "1e-15", which the measurement does not
@@ -1297,7 +1297,7 @@ under `validation/crossval/_22_dispersive_diag/` — deliberately NOT under
 untouched.
 
 **Not done, and why.** No window is widened or tightened anywhere in this lane —
-including the one §5.4 shows is discretisation-limited. That is a PI decision
+including the one §5.4 shows is discretisation-limited. That is a decision
 with a compute cost, and it is proposed in §5.4 rather than taken here.
 
 ## 13. Revision 2026-09-14 — GL1's validity domain, and why the budget was not widened (#1015)
@@ -1543,8 +1543,8 @@ nothing there, and the arm is judged on G7.
   and cv23's `lattice_witness.json` under this revision and under the commit
   before it, in one process, and comparing the serialized text.
 - cv26 reports `domain_R` / `domain_T` per arm and an updated
-  `GL1_not_gated_reason`. **`GL1_gated` stays `false`** — the PI decision of
-  2026-09-14 (cv26 close note §10.4) is unchanged, and the 135 in-domain
+  `GL1_not_gated_reason`. **`GL1_gated` stays `false`** — the rule in
+  cv26 close note §10.4 is unchanged, and the 135 in-domain
   breaches are why: declaring the domain does not make cv26's GL1 green.
 - **Nothing numeric moved anywhere.** Every number the cv26 replay artifact
   already carried is bit-identical after regeneration; the diff is 33 added

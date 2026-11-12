@@ -1,6 +1,6 @@
 # Design — tracker 1589: the absorber's auxiliary term uses the E update's own curl coefficient (leader, 2026-10-10)
 
-Status: cause measured (rfx-archive `rfx/records/20261010-1589-lossy-medium-through-cpml/`); design fixed here before any code.
+Status: cause measured; design fixed here before any code.
 
 ## Physics
 Inside an absorber layer the E update is `E += Cb * (curl H + psi-term)`: the absorber's auxiliary term is a correction
@@ -140,8 +140,8 @@ stated, 6-16 layers.
   value where the update forms it in the loop.
 
 ## Decision record, 2026-10-10 (leader) — judges after the first two measured rounds; the text above is not edited
-Measured on the base tree (00a7328dc) and on the fix, records in rfx-archive
-`rfx/records/20261010-1589-lossy-medium-through-cpml/`:
+Measured on the base tree (00a7328dc) and on the fix:
+
 1. Judge 1's scene. A one-face layout in a 12x10x8-cell box does not grow on main (h5_scene.log); in a 24x24x12 box it
    grows for the plain arm on five of six faces and for the eps_inf 1 Drude+sigma arm on two, and the eps_r 4, Debye
    and mixed arms decay on main on every face. So the one-face scene witnesses the defect for plain conductors only.
@@ -151,8 +151,8 @@ Measured on the base tree (00a7328dc) and on the fix, records in rfx-archive
    tree is measured and stated in the PR; a case that decays on main stays as a regression check and is not called a
    witness. The scenes are not adjusted further to make a case fail on main.
 2. The Lorentz-family arm moves to eps_inf 2. The materials lane measured the Drude update's own bulk limit
-   (omega_p*dt <= 2*sqrt(eps_inf - s^2): 0.28 at eps_inf 1, about 2.0 at eps_inf 2; rfx-archive
-   `rfx/records/20261010-pole-stability-limit/`); fp 50 GHz at dx 1 mm is omega_p*dt = 0.6, above the bulk limit at
+   (omega_p*dt <= 2*sqrt(eps_inf - s^2): 0.28 at eps_inf 1, about 2.0 at eps_inf 2);
+   fp 50 GHz at dx 1 mm is omega_p*dt = 0.6, above the bulk limit at
    eps_inf 1 and bounded there only because the slab is one cell thick. The earlier Drude+sigma measurement (h4,
    eps_inf 1) stands as measured, with that caveat.
 3. The cross-path comparison is removed from judge 1 ("equals the uniform run's record within the cross-path bar").

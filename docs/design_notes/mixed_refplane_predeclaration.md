@@ -26,8 +26,8 @@ text or snapshot is changed by this document or by the runs it declares.
 - Predecessor artifact (step 1, PR #543, already on main):
   `scripts/diagnostics/i517_mixed_solve_vs_ratio/i517_mixed_solve_vs_ratio.json`
   (referred to below as **the committed JSON**).
-- Authorization: the PI authorized THE MEASUREMENT (a refplane-instrumented rfx
-  run and an openEMS referee on `remilab-c0`). The PI has **not** decided the
+- Scope: THE MEASUREMENT (a refplane-instrumented rfx
+  run and an openEMS referee on `remilab-c0`). There is **no** decision on the
   sequencing question on #776/#778 + the parked #683 uniform flip, therefore
   **no lumped/wire ("lw") diagonal number may be pinned** by anything downstream
   of this document. See §10.
@@ -44,7 +44,7 @@ text or snapshot is changed by this document or by the runs it declares.
 | 2 | F1 must account for the bidirectional launch: predeclare a `-x` flux surface and state F1 as `plane(+x) + plane(-x)` vs box; note the box's y half-width limitation | §6.1 |
 | 3 | Fix F3's normalization before the run (`_b_msl` is already divided by `2·sqrt(Zhj)`; `refplane_split` returns volts) | §6.3, §1.2(c), §4.3 (test **T3**) |
 | 4 | Make F2 two-sided: predeclare the alternative reading (~0.43) if the MSL diagonal is the liar, with the command; declare the "consistent, non-discriminating" branch explicitly | §6.2 |
-| 5 | Order the work so no lw-diagonal number is pinned before the PI sequencing decision | §9.3, §10 |
+| 5 | Order the work so no lw-diagonal number is pinned before the sequencing decision | §9.3, §10 |
 | 6 | Extend the crossing guard to walk `self._msl_ports` probe ladders; keep the "reach past another port" message class; add the n_probes 5/3 pair as bookkeeping tests | §4.2, §4.3 (test **T2**) |
 
 ### 1.2 Corrections to the corrections (found by re-deriving from the code, with evidence)
@@ -489,7 +489,7 @@ referee:
 - landing at **0.38–0.40** vindicates the shipped value and moves the residual to
   the flux surfaces / MSL side.
 
-**No F4 outcome may be pinned anywhere** until the PI's sequencing decision
+**No F4 outcome may be pinned anywhere** until the sequencing decision
 (§10).
 
 ---
@@ -525,8 +525,8 @@ and carries the record.
 *This repo's recorded reproduction:* `f_res = 2.4221 GHz` (harminv on port V,
 Q 20.1), S11 dip 2.4300 GHz at −27.8 dB, broadside `D = 6.79 dBi`, stopped on
 `EndCriteria = 1e-4` at step 8671 with energy −41.09 dB (VESSL run
-`369367246713`, log
-`docs/research_notes/vessl_logs/patch_tutorial_openems_GOOD_369367246713.log`).
+`369367246713`).
+
 *Gate:* `|f_res − 2.4221 GHz| / 2.4221 GHz ≤ 0.01` **and** broadside
 `D ≥ 6.0 dBi`.
 
@@ -588,7 +588,7 @@ non-zero. No rfx-vs-openEMS number may exist in an artifact whose
 >    actually solves has HJ `Z0` = **62.652 Ω** on the node-span reading
 >    (**57.463 Ω** on the cell-span reading) — a **20–31 % anchor gap**.
 >    REPORTED, NEVER GATED: this does not replace the analytic anchor anywhere
->    (§10 stands), and it pins nothing. It is listed for the PI in the referee
+>    (§10 stands), and it pins nothing. It is listed in the referee
 >    implementation's `findings_needing_pi` because it can push `B` into the
 >    predeclaration's own *"B > 0.15 → anchor non-discriminating"* escape.
 >
@@ -758,7 +758,7 @@ runs the primary checkout.
    the support-matrix `known_limits` text stay **unchanged** in that PR.
 2. **This measurement** (F1 → F2 → F3), report-only, monkeypatch instrumentation.
 3. **openEMS referee** (§7), after F1–F3.
-4. **Only then**, and only after the PI's sequencing decision on #776/#778 + the
+4. **Only then**, and only after the sequencing decision on #776/#778 + the
    parked #683 flip, may any lw-diagonal number be discussed for pinning. If the
    mixed-lane refplane guard is ever lifted, `docs/guides/sparameter_support_matrix.md`
    and `.json` must be edited **together** (parity gate:
@@ -772,7 +772,7 @@ runs the primary checkout.
 
 1. **Any lumped/wire ("lw") diagonal value** — the shipped 0.38–0.40, the
    predicted 0.21 ± 0.03, `sqrt(n_live)`-rescaled variants, or anything the
-   external referee reads. The PI sequencing decision on #776/#778 + the parked
+   external referee reads. The sequencing decision on #776/#778 + the parked
    #683 uniform flip is undecided; F4 is a prediction, not a result.
 2. **`reciprocity_tol = 0.06`** — stays exactly as shipped.
 3. **The docs' 9.0 % / 55 % quotes**, and the lane's `known_limits` text in
@@ -865,7 +865,7 @@ on verified inputs.
 
 ---
 
-## 12. Open questions for the PI (not answered here)
+## 12. Open questions (not answered here)
 
 1. **Sequencing.** Does the mixed lane's lw side adopt the whole-port frame
    together with the #776/#778 merges (and the parked #683 uniform flip) before

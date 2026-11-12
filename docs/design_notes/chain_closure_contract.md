@@ -6,10 +6,10 @@
 
 Status: contract document, the first v1.8 deliverable
 (`docs/agent-memory/rfx-known-issues.md:196-197`). Criteria source: `ROADMAP.md:25-32`. Audited
-base: main 1c38b0d7, 2026-09-02. The seven questions raised here were decided by the PI on the same
-day (the plan's "Decisions"); deferred items are #854.
+base: main 1c38b0d7, 2026-09-02. The seven questions raised here are settled in
+the plan's "Decisions"; deferred items are #854.
 
-**Revised 2026-09-21 (PI decision).** The waveguide battery stays the standard. For the three
+**Revised 2026-09-21.** The waveguide battery stays the standard. For the three
 remaining families the battery is run in the REDUCED form of the section "The v2.0 battery for
 lumped/wire, MSL and coax" below: same tests, the project's v2 accuracy bar instead of per-bin
 measured envelopes, one short pre-declaration, one run. Criteria 1-4 below remain the definition
@@ -130,7 +130,7 @@ One PR that (1) links the four artifacts by path, (2) adds the ledger row, (3) u
 R3 line, (5) is signed off by a verifier that did not author it. Until `ROADMAP.md:41` redefines the
 matrix, wording stays "limited"/"experimental" plus "chain-closed (v1.8)"; "supported" is a v2.0 word.
 
-## The v2.0 battery for lumped/wire, MSL and coax (PI, 2026-09-21)
+## The v2.0 battery for lumped/wire, MSL and coax
 
 rfx v2 is an open-source simulator with basic feature support. The waveguide family was closed
 with 185 stored verdicts over three pre-declared runs; repeating that three more times is not the
@@ -157,16 +157,16 @@ its reciprocity gate is 0.01, doubled here for V-I extractors), not new measurem
 cannot meet them is reported with its curve, not re-gated.
 
 A case that cannot be judged by the bar because of what it is (a deep null, a high-Q resonance, a
-phase-only quantity) is taken to the PI before another criterion is chosen.
+phase-only quantity) requires a criterion review before another criterion is chosen.
 
-**Deep nulls (PI ruling, 2026-09-21).** A quantity that is near zero by construction — a matched
+**Deep nulls.** A quantity that is near zero by construction — a matched
 line's |S11|, the bottom of a notch, a reflection zero — is not compared in dB from rung to rung or
 against a referee. It is held to an upper bound (-20 dB) and recorded as that structure's floor;
 inside the core of a null (bins where the finest rung or the closed form is at or below -20 dB) the
 verdict is the null's FREQUENCY against 1 %, and its depth is recorded without a comparison. The 2 dB
 comparison applies everywhere else.
 
-**Electrical length (PI 2026-09-24).** A line's phase delay is the least-squares slope of its
+**Electrical length.** A line's phase delay is the least-squares slope of its
 unwrapped transmission phase against frequency, `polyfit(f, unwrap(angle(S21)), 1)`, over the bins
 where |S21| is above -20 dB; for a one-port it is the slope of the reflection phase over the bins
 where it reflects above -20 dB. It is within 1 % of the reference's slope over the same bins:

@@ -5,7 +5,7 @@ the ADI layer move (#2209) lands post-cut; this plan is written against that
 branch's layout (`rfx/adi.py` shim, `rfx/stepping/adi.py`, `rfx/model/adi_admission.py`).
 No code commit lands on this branch before #2209 is on main.
 
-Decision being implemented: the PI decided on 2026-10-05 to remove ADI in 2.1
+Scope: remove ADI in 2.1
 rather than fix it (#1487 body). Measured causes: interior PEC forced by
 overwrite (spectral radius 1.001 inside CFL), an unmatched sigma sponge
 (-10.4 dB at 10 GHz against -93 dB for CPML), dielectric faces half a cell off
@@ -23,7 +23,7 @@ Modules deleted:
 | `rfx/runners/adi.py` | `_run_adi_from_materials` lane runner |
 | `rfx/model/adi_admission.py` | interior-PEC and interface refusals |
 | `rfx/_adi_notice.py` | `ADI_WARNING`, `ADI_SPONGE_REFUSAL`, `ExperimentalADIWarning` |
-| `scripts/diagnostics/adi_pec_stability.py`, `adi_pec_report.py` | research diagnostics; their records stay in rfx-archive |
+| `scripts/diagnostics/adi_pec_stability.py`, `adi_pec_report.py` | research diagnostics; their records remain archived |
 
 Code removed from modules that stay:
 
@@ -158,7 +158,7 @@ in 5; `"adi"` re-added to the admitted solver set goes red in 1.
 1. A "removed in 2.1" line in the 2.0 final's ADI warning and upgrading page: yes or no (it would land in the release, not here).
 2. Keeping `adi_cfl_factor` for one release with a refusal, against removing it in 2.1 (then a 2.0 script gets `TypeError` without the reason).
 
-## 8. Decision record (rfx-core-desk, 2026-10-29)
+## 8. Decision record (2026-10-29)
 
 1. Yes, a "removed in 2.1" line, docs only: the upgrading page and the ADI row
    of the support matrix, in docs-2.0's final 2.0 PR. No change to

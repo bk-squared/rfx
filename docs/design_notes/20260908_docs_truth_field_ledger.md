@@ -4747,10 +4747,10 @@ Scope: **8** literal `_..._results` JSON directories, **10** fixture directories
 | `/cases/2/captured/0/sigma/shape` | *absent* | `[201, 131, 1]` | 0–2 |
 | `/cases/2/case` | *absent* | `"03_straight_waveguide_flux"` | — |
 | `/cases/2/error` | *absent* | `null` | — |
-| `/repo` | *absent* | `"/root/workspace/byungkwan-workspace/research/rfx-baseline-d990e18c"` | — |
+| `/repo` | *absent* | `"<workspace>/research/rfx-baseline-d990e18c"` | — |
 | `/repo_commit` | *absent* | `"d990e18ce0870ac7a893a86627e7232d1cf92c7b"` | — |
 | `/repo_dirty` | *absent* | `false` | — |
-| `/rfx_module` | *absent* | `"/root/workspace/byungkwan-workspace/research/rfx-baseline-d990e18c/rfx/__init__.py"` | — |
+| `/rfx_module` | *absent* | `"rfx/__init__.py"` | — |
 | `/rfx_version` | *absent* | `"1.8.0"` | — |
 
 ## validation/crossval/_05_patch_results/control_witness_2b/control_merged_b4961b56.json
@@ -4814,10 +4814,10 @@ Scope: **8** literal `_..._results` JSON directories, **10** fixture directories
 | `/cases/2/captured/0/sigma/shape` | *absent* | `[201, 131, 1]` | 0–2 |
 | `/cases/2/case` | *absent* | `"03_straight_waveguide_flux"` | — |
 | `/cases/2/error` | *absent* | `null` | — |
-| `/repo` | *absent* | `"/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a"` | — |
+| `/repo` | *absent* | `"<workspace>/research/rfx-931-XA-crossval-a"` | — |
 | `/repo_commit` | *absent* | `"b4961b56059d051e83efc6700be88424444f8871"` | — |
 | `/repo_dirty` | *absent* | `false` | — |
-| `/rfx_module` | *absent* | `"/root/workspace/byungkwan-workspace/research/rfx-931-XA-crossval-a/rfx/__init__.py"` | — |
+| `/rfx_module` | *absent* | `"rfx/__init__.py"` | — |
 | `/rfx_version` | *absent* | `"1.8.0"` | — |
 
 ## validation/crossval/_05_patch_results/cv05_run_openems_369367259142.json

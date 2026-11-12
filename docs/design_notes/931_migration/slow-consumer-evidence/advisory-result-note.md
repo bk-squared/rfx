@@ -1,8 +1,8 @@
-# Coarse advisory witness: numerical attribution and PI stop
+# Coarse advisory witness: numerical attribution and unresolved qualification
 
 The unchanged `(2.25, 3]` interval is tied to the retired realization and an
-invalid reference-plane placement. Leave this test failing pending a PI
-choice of a qualified live advisory witness. No gate, fixture or operator was
+invalid reference-plane placement. Leave this test failing pending
+qualification of a live advisory witness. No gate, fixture or operator was
 changed in the test or production code.
 
 Four serial diagnostic calls used the current worktree and current solver;
@@ -109,7 +109,7 @@ A further diagnostic distinction: the test's `_soft_fired` helper searches
 for any `ADVISORY`. Current coarse results do contain a **reciprocity**
 advisory even though the soft **column-power** advisory is absent. The table
 above identifies the actual column-power warning, not this broad substring.
-No helper change is made while the physical witness awaits a PI decision.
+No helper change is made while the physical witness remains unqualified.
 
 ## Artifacts and inspection
 

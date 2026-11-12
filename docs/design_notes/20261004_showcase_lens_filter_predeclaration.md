@@ -1,8 +1,8 @@
 # Pre-declaration: two showcase designs from printable dielectrics (issue 1359)
 
 **Status: PRE-DECLARATION. Written and pushed before any run of this batch.** Nothing below comes
-from a run of this batch. Choices and thresholds are the lane leader's (showcase session,
-2026-10-04, after the PI chose the examples). The implementer reads this file and never edits it;
+from a run of this batch. Choices and thresholds were written on
+2026-10-04. The implementer reads this file and never edits it;
 a change is appended as a dated amendment by the leader, before the runs it governs.
 
 Two designs an RF engineer would build, each with permittivity that a 3-D printer can make:
@@ -25,8 +25,8 @@ Memory consulted (R1): `research_stop_differentiable_iris_gradient_m2.md` (metal
 in a waveguide are not the continuum shape derivative) — consistent: B moves no metal, only cell
 permittivity. `research_stop_loaded_two_pole_m6.md` / `research_stop_iris_coupled_cavity_stage1.md`
 (coupling-coefficient extraction in coupled-resonator filters failed) — consistent: B claims no
-coupling coefficient, only the two-port S curves against a mask. #1359 record (rfx-archive
-`20260928-design-beam-cells`): the stored final iterate was not the best (D(30°) 11.07 vs 11.72 dBi)
+coupling coefficient, only the two-port S curves against a mask. #1359 record:
+the stored final iterate was not the best (D(30°) 11.07 vs 11.72 dBi)
 — answered here by a decaying step and best-iterate selection (§1.3, §2.3).
 
 Every number below is **judged** (carries a threshold declared here) or **reported**. A number that
@@ -180,13 +180,13 @@ This is diagnostic; no trial number is published. Continue to the full run only 
 If not, the case stops and the leader writes an amendment before any further run.
 
 ## 4. Compute and records
-VESSL only, with a `Resource choice:` record per submission (rfx-archive `RESOURCE_CHOICE.md`).
+VESSL only, with a `Resource choice:` record per submission.
 The lab rule holds: when the chosen preset has pending jobs, at most two GPU runs of this project
 at a time. Estimated scale (to be replaced by the trial's timing): A ≈ 3.2 M cells × about 2 600
 steps per gradient at 1.0 mm; B ≈ 0.12 M cells × about 2 × 15 000 steps per gradient at a/36.
-Records go to rfx-archive `rfx/records/20261004-showcase-lens/` and `.../20261004-showcase-filter/`,
+Records use
 schema `rfx-showcase-result/1`, rewritten after every iterate. Promotional originals (4K stills,
-video) go to the private `bk-squared/rfx-research` repository, branch `showcase`, not to this
+video) are kept outside this
 repository.
 
 ## 5. Two outputs from one record
@@ -227,12 +227,12 @@ Two points the text left open, found by the implementer before any run:
    30.52 mm on the 1.5 / 1.0 / 0.75 mm meshes (issue #1138's sheet-edge offset). The sheet is not
    moved; §1.5.4's mesh trend therefore includes a reflector converging toward its drawn size, and
    the record states this beside the trend.
-6. **Run outputs** are written on NFS under `byungkwan-workspace/rfx-showcase-runs/` (outside every
-   git clone) and copied into rfx-archive by the leader; the job clones the public repository from
+6. **Run outputs** are written on NFS under `<workspace>/rfx-showcase-runs/` (outside every
+   git clone) and archived; the job clones the public repository from
    GitHub at the given commit.
 
-## Amendment 3 (2026-10-05, leader; after the PI's review of the first showcase, before the runs it governs)
-The PI judged that start S2 (three εr = 6 slabs) hands the optimiser the resonator layout, so a filter
+## Amendment 3 (2026-10-05, after review of the first showcase, before the runs it governs)
+Start S2 (three εr = 6 slabs) hands the optimiser the resonator layout, so a filter
 grown from it does not show what the gradient finds. The S2 run and its three-mesh re-solve stay in the
 record unchanged; this amendment adds a second filter run and a rule for the frame the showcase shows.
 1. **Filter run F2, from the uniform start S1** (εr = 1.5 in every pixel). Same structure, mask,
@@ -255,7 +255,7 @@ record unchanged; this amendment adds a second filter run and a rule for the fra
    of 10, ending at the start, whose witness passed), and the frame's caption names the iterate used.
 
 ## Amendment 5 (2026-10-08, leader; before any run it governs) — two more objectives on the same lens
-(Number 4 is not used in this note.) The PI asked that the showcase state its optimisation problem
+(Number 4 is not used in this note.) The showcase must state its optimisation problem
 plainly and show that the same code serves other objectives. The first lens run (§1) maximises
 boresight directivity. This amendment adds two runs on the **same structure, variables, bounds, mesh,
 record rules, optimiser and start** (§1.1, §1.3: 2,250 free values, 1 ≤ εr ≤ 2.7, Adam 0.10 → 0.01 over
@@ -301,7 +301,7 @@ with δ = 0.1 dB: a smooth measure of the worst violations in R (dB²), zero whe
    mask inequality at all three frequencies on the 0.75 mm mesh and passes the witnesses. Otherwise the
    showcase shows the achieved pattern against the mask without those words, with the achieved worst
    values, and the result is reported as it is. The mask levels above are not adjusted after a run;
-   a different mask is a new amendment decided with the PI.
+   a different mask is a new amendment.
 6. **What is shown.** For each run: the frame at k\* and at the reported design, the pattern cut against
    its mask, the three-mesh values. The first run's film is unchanged; the two runs appear beside it as
    "the same two passes, another objective". Every showcase output names its objective in words before
@@ -324,15 +324,15 @@ J at iteration 30 ≤ 0.5 × J at the start, no NaN.
 **Why.** Objective M (Amendment 5) ran and did not meet its mask: the largest directivity beyond 25° stayed
 4.5–4.9 dB above the −2 dBi ceiling at 1.0 mm because the skirt of a 3 λ0 aperture's main beam itself crosses
 25°; the mask had been written without reference to the aperture. Objective F never ran its descent (the
-start check's float64 repeat did not fit a 48 GB card). The PI then asked that further objectives be derived
+start check's float64 repeat did not fit a 48 GB card). Further objectives must be derived
 from the literature, and chose a **wide flat-top beam (wide field of view)**. Objective F (13–15 dBi inside
 12.5°) is withdrawn; objective M stays reported as it ran. This amendment declares objective W on the
 **same structure, variables, bounds, mesh, record rules, optimiser and start** as §1 (2,250 free values,
 1 ≤ εr ≤ 2.7, Adam 0.10 → 0.01 over 150 iterations, start εr = 1.85), reading the same directivity pattern
 D_f(θ, φ) in dBi on the 73 × 73 grid at 9.5, 10.0, 10.5 GHz.
 
-**1. What "wide flat-top" means in the literature read** (23 sources, 14 in full text; record: private archive,
-`rfx/records/20261004-showcase-lens/objective-survey/extraction_E_wide_flat_top.md`; two papers' numbers
+**1. What "wide flat-top" means in the literature read** (23 sources, 14 in full text;
+two papers' numbers
 re-read by the leader in the downloaded originals: Kumar & Ghosh, PIER Letters 100, 2021; Hong & Nguyen,
 J. Electromagn. Eng. Sci., 2026). For lenses, metasurfaces, transmitarrays and superstrates of 1.8–18 λ over
 one feed: the flat region is stated as the angular width within 1 dB (sometimes 2 dB) of the flat level;
@@ -393,7 +393,7 @@ the reported design and at every iterate a film shows; per-bin settling at the s
 **6. Outcome rule, fixed now.** The words "a ±30° flat-top beam" are used only if both judged conditions of
 item 4 hold at all three frequencies on the 0.75 mm mesh and the witnesses pass. Otherwise the showcase shows
 the achieved pattern with its ripple and minimum, without those words. The sector, τ and the two levels are
-not adjusted after a run; a different sector is a new amendment decided with the PI.
+not adjusted after a run; a different sector is a new amendment.
 
 **7. What is shown.** The pattern cut over the ±30° sector with the 2 dB band drawn at the achieved level,
 for the source alone, the first design and this design; the three-mesh values; the frames of Amendment 3.
@@ -406,7 +406,7 @@ check. Ledger: the lens entries (settled at the declared record on every mesh; g
 151 iterates of the first run) — consistent, the run reuses the record length and re-witnesses it.
 
 **Amendment 6, note (2026-10-09, leader; geometry only, no run) — what a wider sector would take.**
-Asked by the lead while the PI decides whether ±30° on the present block is the wanted "wide" field of view.
+Asked while it was still open whether ±30° on the present block is the wanted "wide" field of view.
 Full-thickness coverage half-angle θc of a block of width W and thickness t = 30 mm whose lower face is h above
 the source: tan θc = (W/2) / (h + t). Present block: W = 90 mm, h = 45 mm, θc = 31°. Cell counts are for the
 driver's domain rule (18 mm of air round the block and above it, plate 18 mm above the floor, source 9 mm above
@@ -442,7 +442,7 @@ or targets without numbers). None of these geometries is declared; a change of g
 ## Amendment 7 (2026-10-11, leader; declared before any run) — objective N: a fan beam, wide in one plane and narrow in the other
 
 **1. Why.** Objective W (Amendment 6) ended with 4.5–5.3 dB of ripple over the ±30° cone on the 0.75 mm mesh and
-is not shown as a flat-top beam (item 6 there). The PI then stated what "wide field of view" means for this
+is not shown as a flat-top beam (item 6 there). The following defines what "wide field of view" means for this
 example (2026-10-11): a wide beamwidth, as in automotive radar, where the antenna covers a detection region
 shaped on purpose — wide in azimuth, narrow in elevation — and the radome has to support that pattern. Objective
 N is that pattern on the same block and source: flat over ±30° in one principal plane, narrow in the other.
@@ -450,7 +450,7 @@ N is that pattern on the same block and source: flat over ±30° in one principa
 **2. What was wrong with Amendment 6, kept here so it is not repeated.** (a) The objective raised a soft minimum
 only while the judged quantity was the ripple; nothing pushed the maximum down, and the design kept a boresight
 peak. (b) The level bar (7.5 dBi) came from the source's boresight directivity, not from the power the sector
-can hold. (c) The sector was a cone, not the shaped region the PI meant. For objective N the objective contains
+can hold. (c) The sector was a cone, not the intended shaped region. For objective N the objective contains
 the judged ripple, and the levels below come from a power and aperture estimate made before the run.
 
 **3. Estimate made before the run (no FDTD run; scripts and numbers in the private record).** A thin-screen model
@@ -489,7 +489,7 @@ beamwidth by at most 1.0°; the reported outside level by at most 1.0 dB.
 **7. Outcome rule, fixed now.** The words "a fan beam, flat within 2 dB over ±30°" are used only if the three
 judged conditions hold at all three frequencies on the 0.75 mm mesh and the witnesses pass. If the ripple
 condition fails, the thick block does not behave as the thin screen of item 3 and no further objective is run on
-this block without a new argument put to the PI (this is the third objective on it: Amendments 5, 6 and 7).
+this block without a new argument (this is the third objective on it: Amendments 5, 6 and 7).
 If only the level or the beamwidth is slightly outside, the pattern is shown with its numbers and without those
 words.
 

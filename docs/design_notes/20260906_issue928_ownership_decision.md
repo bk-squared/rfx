@@ -191,7 +191,7 @@ undertaken because a gap exists rather than because a user or a claim needs it.
 Scope limit: it does not forbid correctness work, and it does not forbid
 finishing something a live claim depends on. It forbids self-assigned breadth.
 
-Supersession: a request from the PI, or a defect that a claim already made
+Supersession: an explicit scope change, or a defect that a claim already made
 depends on. Under that bar the present arc qualifies — public pages carry
 numbers whose provenance was a UI fixture — and the work stayed inside that
 justification rather than expanding to the whole manifest.

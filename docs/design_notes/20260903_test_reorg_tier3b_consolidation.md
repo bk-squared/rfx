@@ -4,8 +4,8 @@
 
 Date: 2026-09-03. Branch `agent/reorg-tier3b-consolidate`, stacked on tier 4b
 (`agent/reorg-tier4b-unit`, tip `3bafe2f` = the BEFORE reference of every
-count below). PI instruction, verbatim: "3b도 진행해 누락되는거 있나 점검 하면
-되잖아" — do 3b too, just check nothing gets dropped. This note is the
+count below).
+This note is the
 mechanical nothing-lost proof; it is append-only (dated sections at the end).
 
 Rules applied (from the tier brief): a consolidated file keeps every

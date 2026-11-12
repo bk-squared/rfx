@@ -20,7 +20,7 @@ The five files `w6_band_builder.py`, `chain_model.py`,
 lane (`git diff --stat` on them is empty at every commit). No `rfx/`
 change.
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-full/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary
 checkout). Every JSON the instrument writes records `rfx.__file__`,
 `git_sha`, `git_dirty`, `argv`, `started_utc`. The chain-model
@@ -44,7 +44,7 @@ form), and the first FDTD-measured in-plane reflection numbers.
 
 Everything the program document specifies for Lane 1 (4.2 instrument,
 4.3 arms, 4.4 windows, 4.5 reading rule, 4.6 regression, 4.7 cost, 4.8
-PI confirmation) is taken as written. Section 1 records what was found
+confirmation) is taken as written. Section 1 records what was found
 while turning it into code, with zero FDTD; where the program's wording
 could not be built as written, the declared alternative is stated there
 BEFORE any run.
@@ -365,8 +365,8 @@ interiors, any absorber.
 
 ## 4. Run commands (declared) and output
 
-From the worktree, `PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-full
-/Users/byungkwankim/Documents/rfx/.venv/bin/python -m validation.research.
+From the worktree, `PYTHONPATH=<workspace>/Documents/rfx-nu-full
+<workspace>/Documents/rfx/.venv/bin/python -m validation.research.
 multiband_nu.e5_multilevel_axes ...`, in this order, each one Bash call:
 
 1. `--model-only --out results/e5_model.json` (this commit; zero FDTD).
@@ -579,7 +579,7 @@ Smallest margin over every arm and axis: 0.2560 ns (expectation >= 0.256 ns).
 
 ### Measured (instrument `be606f45`, tests `ea208024`, measurements `b4646528`; no window above changed)
 
-Every JSON records `rfx_file` under `/Users/byungkwankim/Documents/rfx-nu-full/rfx/__init__.py`
+Every JSON records `rfx_file` under `rfx/__init__.py`
 and `git_sha ea208024` (the tests commit, the last before any FDTD).
 `git_dirty` is true in every measurement JSON: the flag is `git status
 --porcelain` at the START of the call, and the results JSON the previous

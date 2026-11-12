@@ -2,7 +2,7 @@
 
 Owner: the tests-crossval migration group, #931 phase 2 section T.
 Branch `feat/931-t5-crossval-tests`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-T5-crossval-tests`.
+`<workspace>/research/rfx-931-T5-crossval-tests`.
 
 This file is for the merge / ingest agents. Everything below concerns files
 section T does **not** own; the measurements were taken on the migrated branch
@@ -196,7 +196,7 @@ One line section T needs present, for the carriers above:
    * thru and slab are unchanged to 1.1e-5, and the nine
      `forward_identity|*|flux|*` failures the run-2 fixture carries are gone.
 
-5. **The eps FD leg's step is outside the Courant limit — a PI decision, not a
+5. **The eps FD leg's step is outside the Courant limit — a decision, not a
    re-pin.** All six `ad_vs_fd|pec_short|*|eps|*` legs come back with
    `g_fd = nan`. Cause, traced and measured (`RECOMPUTE.md`): the minus arm
    evaluates the vacuum θ window at `eps_r = 0.95` while dt is picked at 0.99
@@ -230,7 +230,7 @@ One line section T needs present, for the carriers above:
       correct and unaffordable: dt changes, and every recorded number in the
       battery changes with it.
 
-   PI decision 2026-09-08: (b), for all eps legs including the slab; see the
+   Decision: (b), for all eps legs including the slab; see the
    dated amendment in `waveguide_chain_battery_predeclaration.md`. Theta0 and
    dt stay fixed. The old 0.498123 slab figure above was WINDOW-interior only,
    not a global certificate: vacuum elsewhere sets the global ratio to 0.99
