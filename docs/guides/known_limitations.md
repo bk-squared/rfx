@@ -303,11 +303,11 @@ A dielectric `Sphere` or a `Cylinder` crossed through its radius that spans abou
 |---|---|---:|---:|
 | sphere, radius 1 mm, 2 mm cells | 1 | 2.41 | 2.56 |
 | rod across the field, radius 0.5 mm, 2 mm cells | 0.5 | 3.34 | 6.35 |
-| sphere, radius 1 mm, 1.5 mm cells | 1.33 | 1.58 | 1.15 |
+| sphere, radius 1 mm, 1.5 mm cells (cavity realized as 19.5 × 10.5 × 19.5 mm; its closed form uses those lengths) | 1.33 | 1.58 | 1.15 |
 | sphere, radius 1 mm, 1 mm cells | 2 | 1.30 | 1.25 |
 
-Scattered power goes as the square: 7.6–10.5 dB high at one cell or less, 2.3 dB at two cells. The ratio also depends on where the body sits on the mesh, and the rows above were taken at one position each. Put more cells across such a body, for example with a graded mesh around it, until the result stops moving.
-A body that no primal-cell centre falls inside is refused ("rasterizes to ZERO cells"), with or without smoothing, so whether a body this small runs at all depends on its position: in the same cavity the 1 mm sphere ran on 2 mm and 1.5 mm cells and was refused on 2.5 mm cells, and a 0.5 mm rod along the field was refused on 2.5, 2 and 1.5 mm cells. A sweep of, or a gradient through, such a body's position can cross from a result to a refusal.
+Scattered power goes as the square: with smoothing 7.6–10.5 dB high at one cell or less and 2.3 dB at two cells; without smoothing 8.2–16.1 dB and 1.9 dB. The ratio also depends on where the body sits on the mesh, and the rows above were taken at one position each. Put more cells across such a body until the result stops moving (measured on uniform meshes; a graded mesh that refines around the body adds cells there but was not measured).
+A body that no primal-cell centre falls inside is refused ("rasterizes to ZERO cells"), with or without smoothing, so whether a body this small runs at all depends on its position: in the same cavity the 1 mm sphere ran on 2 mm and 1.5 mm cells and was refused on 2.5 mm cells, and a rod of radius 0.5 mm along the field was refused on 2.5, 2 and 1.5 mm cells; each cell size moves the cell centres relative to the body. A sweep of, or a gradient through, such a body's position can cross from a result to a refusal.
 Under `"full_tensor"` a thin non-Box body keeps the one-face rule: a `Cylinder` disc 0.3 of a cell thick (εr 4) reads Ez 1.951 on the diagonal where the series average is 1.290 (51 % high), on uniform and graded meshes.
 Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
 On a curved face, full-tensor dual-face averages still use a first-order planar model.
