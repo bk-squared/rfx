@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.geometry.outside_content import _merge_stream, _own_stream
+from rfx.model.line_streams import _merge_stream, _own_stream
 
 # Merge stream: sorted ends per column (low = ends[:-1], high = ends[1:]),
 # one code and value per piece; code 0 is the background.
