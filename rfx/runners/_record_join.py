@@ -93,6 +93,8 @@ The chunk axes have identical extents on every owner (x is not chunked).
         branches.append(write)
 
     def join(local, *, rank):
+        # Flatten inside the compiled program so snapshot carries need no eager copy.
+        local = local.reshape((1, -1))
         def body(index, result):
             starts = tuple((index // prod(counts[a + 1:]) % counts[a]) * c
                            for a, c in enumerate(chunk))
@@ -115,4 +117,4 @@ zeros in each real/imaginary component, with the tangent of the floating sum.
     owners = tuple(tuple(pieces) for pieces in owners)
     chunk = chunk_shape(shape, dtype, record_size, x_axis)
     program = _join_program(kind, mesh, owners, shape, dtype, chunk, summed)
-    return program(mesh_ranks(mesh), buffer.reshape((mesh.size, -1)))
+    return program(mesh_ranks(mesh), buffer)

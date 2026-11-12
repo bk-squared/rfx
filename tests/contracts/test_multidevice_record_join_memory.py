@@ -39,6 +39,7 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
     jax.block_until_ready(carry)
     own = [sum(a.addressable_shards[r].data.nbytes for a in jax.tree.leaves(carry)) for r in range(2)]
     peaks = own.copy()
+    post_call_peaks = [0] * len(own)
     analyses = []
     original = join._join_program
     original_chunk_shape = join.chunk_shape
@@ -62,18 +63,30 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
             assert stats is not None, 'compiled join memory unavailable'
             analyses.append(dict(shape=shape, chunk=chunk, A=int(np.prod(chunk))*dtype.itemsize,
                                  row_bytes=row_bytes.get((shape, dtype, chunk)), temporary=stats.temp_size_in_bytes))
-            return compiled(ranks, buffer)
+            result = compiled(ranks, buffer)
+            jax.block_until_ready(result)
+            # Keep the compiled call's argument alive while sampling its result.
+            current = sample()
+            for rank, total in enumerate(current):
+                post_call_peaks[rank] = max(post_call_peaks[rank], total)
+            return result
         return measured
     monkeypatch.setattr(join, '_join_program', instrument)
     watched = {'_record_join.py', '_distributed_records.py', '_distributed_ntff.py', '_record_join_frozen.py'}
 
+    def sample():
+        current = buffers()
+        totals = []
+        for rank, device in enumerate(layout.mesh.devices.flat):
+            total = sum(size for (d, pointer), size in current.items()
+                        if d == device.id and (d, pointer) not in baseline)
+            peaks[rank] = max(peaks[rank], total)
+            totals.append(total)
+        return totals
+
     def checkpoint(frame, event, arg):
         if event in ('line', 'return') and Path(frame.f_code.co_filename).name in watched:
-            current = buffers()
-            for rank, device in enumerate(layout.mesh.devices.flat):
-                total = sum(size for (d, pointer), size in current.items()
-                            if d == device.id and (d, pointer) not in baseline)
-                peaks[rank] = max(peaks[rank], total)
+            sample()
         return checkpoint
 
     previous = sys.gettrace()
@@ -92,6 +105,7 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
         row['temporary_bar'] = 3*row['A'] + .05*record_size + 1024
     report = dict(kind=kind, size=size, single_frequency=single, R=record_size, C=own, A=largest,
                   P=peaks, P_over_R=[p/record_size for p in peaks], temporary=temporary,
+                  post_call_P=post_call_peaks, post_call_P_over_R=[p/record_size for p in post_call_peaks],
                   temporary_bar=live_allowance+1024, peak_bar=[c+record_size+live_allowance for c in own], programs=analyses)
     (tmp_path / 'memory.json').write_text(json.dumps(report))
     print(json.dumps(report), flush=True)

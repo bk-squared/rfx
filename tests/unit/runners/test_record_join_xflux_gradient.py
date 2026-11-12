@@ -15,7 +15,9 @@ from tests.unit.runners._graded_records_scene import measure, coordinate
 
 
 @pytest.mark.parametrize('side', ['low', 'high'])
-def test_x_face_gradient(side, monkeypatch):
+@pytest.mark.parametrize('scale', [pytest.param(.1, marks=pytest.mark.slow), 1.,
+                                  pytest.param(10., marks=pytest.mark.slow)])
+def test_x_face_gradient(side, scale, monkeypatch):
     def build(amplitude):
         profile = np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3]
         sim = Simulation(freq_max=15e9, domain=(15e-3, 8e-3, 8e-3), dx=1e-3,
@@ -50,19 +52,15 @@ def test_x_face_gradient(side, monkeypatch):
                                 if distributed else {}))
         return jnp.sum(flux_spectrum(result.flux_monitors['flux'])/power_scale)*scale
 
-    rows = []
-    for scale in (.1, 1., 10.):
-        expected = jax.grad(lambda e: objective(e, False, scale))(eps)
-        actual = jax.grad(lambda e: objective(e, True, scale))(eps)
-        with monkeypatch.context() as patch:
-            patch.setattr(PlaneRecords, 'assemble', lambda self, buffer, **kw: frozen_plane(self, buffer))
-            old = jax.grad(lambda e: objective(e, True, scale))(eps)
-        row = dict(side=side, objective_scale=scale, field_peak=normalized_field,
-                   old=measure(old, expected), new=measure(actual, expected), join_change=measure(actual, old))
-        rows.append(row)
-    print(json.dumps(rows), flush=True)
-    assert all(row['new']['peak'] > 1e-20 for row in rows), 'x-face gradient above floor'
-    assert all(np.isfinite(row['new']['max_abs']) for row in rows), 'x-face gradient finite'
-    assert all(row['join_change']['max_abs'] <= 9*np.spacing(np.float32(row['join_change']['peak']))
-               for row in rows), ('x-face join changed gradient', rows)
-    assert all(row['new']['relative'] <= 1e-4 for row in rows), ('x-face one-device gradient bar', rows)
+    expected = jax.grad(lambda e: objective(e, False, scale))(eps)
+    actual = jax.grad(lambda e: objective(e, True, scale))(eps)
+    with monkeypatch.context() as patch:
+        patch.setattr(PlaneRecords, 'assemble', lambda self, buffer, **kw: frozen_plane(self, buffer))
+        old = jax.grad(lambda e: objective(e, True, scale))(eps)
+    row = dict(side=side, objective_scale=scale, field_peak=normalized_field,
+               old=measure(old, expected), new=measure(actual, expected), join_change=measure(actual, old))
+    print(json.dumps(row), flush=True)
+    assert row['new']['peak'] > 1e-20, 'x-face gradient above floor'
+    assert np.isfinite(row['new']['max_abs']), 'x-face gradient finite'
+    assert row['join_change']['max_abs'] <= 9*np.spacing(np.float32(row['join_change']['peak'])), ('x-face join changed gradient', row)
+    assert row['new']['relative'] <= 1e-4, ('x-face one-device gradient bar', row)
