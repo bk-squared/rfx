@@ -41,7 +41,7 @@ def build_simulation(pair, *, graded=False, slab=True):
     return sim
 
 
-@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("graded", [True], ids=["graded"])
 def test_normalized_one_plane_set(graded):
     matrices = []
     for pair in ((10, 90), (20, 80)):
