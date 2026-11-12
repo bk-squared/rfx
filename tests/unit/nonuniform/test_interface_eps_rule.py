@@ -179,6 +179,7 @@ def test_invalid_rule():
         fixture(interface_eps="harmonic")
 
 
+@pytest.mark.source_scan
 def test_e3_replay():
     if not RESULT.exists():
         pytest.skip("E3 ladder not measured yet")
