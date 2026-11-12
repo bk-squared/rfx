@@ -47,44 +47,47 @@ def longer_record_poles():
         print('longer-record pole ' + json.dumps({
             'record_wall_s': walls, 'wall_s': time.monotonic() - start,
             'gradients': [g.tolist() for g in gradients]}, sort_keys=True))
-        yield tuple(records), gradients
+    yield tuple(records), gradients
 
 
 def test_p1_longer_record_selected(longer_record_poles):
-    records, gradients = longer_record_poles
-    assert not any(isinstance(leaf, jax.core.Tracer)
-                   for leaf in jax.tree_util.tree_leaves(records))
-    g, g_other = (values[0] for values in gradients)
-    assert np.isfinite([g, g_other]).all()
-    baseline = rd.gradient_witness(g, g_other, against='longer_record')
-    w = rd.gradient_witness(g, g_other, against='longer_record',
-                            pole_target=8e9, ringdown=records)
-    assert w.judged is True and w.ok is True
-    assert np.float64(w.value).tobytes() == np.float64(baseline.value).tobytes()
-    assert w.value <= w.bar == 1e-2
-    # Independently formatted from the design's measured start values.
-    selected = f'f={7.996492e9:.6g} Hz, 1/Q={3.8458e-4:.4g}'
-    assert w.note == (f'selected at pole_target={8e9:.6g} Hz: '
-                      f"grad's record ({12:.4g} ns): {selected}; "
-                      f"grad_other's record ({24:.4g} ns): {selected}; record ratio {2:.3g}")
+    with enable_x64():
+        records, gradients = longer_record_poles
+        assert not any(isinstance(leaf, jax.core.Tracer)
+                       for leaf in jax.tree_util.tree_leaves(records))
+        g, g_other = (values[0] for values in gradients)
+        assert np.isfinite([g, g_other]).all()
+        baseline = rd.gradient_witness(g, g_other, against='longer_record')
+        w = rd.gradient_witness(g, g_other, against='longer_record',
+                                pole_target=8e9, ringdown=records)
+        assert w.judged is True and w.ok is True
+        assert np.float64(w.value).tobytes() == np.float64(baseline.value).tobytes()
+        assert w.value <= w.bar == 1e-2
+        # Independently formatted from the design's measured start values.
+        selected = f'f={7.996492e9:.6g} Hz, 1/Q={3.8458e-4:.4g}'
+        assert w.note == (f'selected at pole_target={8e9:.6g} Hz: '
+                          f"grad's record ({12:.4g} ns): {selected}; "
+                          f"grad_other's record ({24:.4g} ns): {selected}; record ratio {2:.3g}")
 
 
 def test_p2_longer_record_neither_selected(longer_record_poles):
-    records, gradients = longer_record_poles
-    g, g_other = (values[1] for values in gradients)
-    assert np.isnan([g, g_other]).all()
-    w = rd.gradient_witness(g, g_other, against='longer_record',
-                            pole_target=9e9, ringdown=records)
-    assert w.judged is False and w.ok is False and np.isnan(w.value)
-    assert w.note == ("cannot judge: grad's record (12 ns): none within delta (radius 166.7 MHz); "
-                      "grad_other's record (24 ns): none within delta (radius 83.33 MHz)")
+    with enable_x64():
+        records, gradients = longer_record_poles
+        g, g_other = (values[1] for values in gradients)
+        assert np.isnan([g, g_other]).all()
+        w = rd.gradient_witness(g, g_other, against='longer_record',
+                                pole_target=9e9, ringdown=records)
+        assert w.judged is False and w.ok is False and np.isnan(w.value)
+        assert w.note == ("cannot judge: grad's record (12 ns): none within delta (radius 166.7 MHz); "
+                          "grad_other's record (24 ns): none within delta (radius 83.33 MHz)")
 
 
 def test_p3_longer_record_only_short_selected(longer_record_poles):
-    records, gradients = longer_record_poles
-    g, g_other = (values[2] for values in gradients)
-    assert np.isfinite(g) and np.isnan(g_other)
-    w = rd.gradient_witness(g, g_other, against='longer_record',
-                            pole_target=8.12e9, ringdown=records)
-    assert w.judged is False and w.ok is False and np.isnan(w.value)
-    assert w.note == "cannot judge: grad_other's record (24 ns): none within delta (radius 83.33 MHz)"
+    with enable_x64():
+        records, gradients = longer_record_poles
+        g, g_other = (values[2] for values in gradients)
+        assert np.isfinite(g) and np.isnan(g_other)
+        w = rd.gradient_witness(g, g_other, against='longer_record',
+                                pole_target=8.12e9, ringdown=records)
+        assert w.judged is False and w.ok is False and np.isnan(w.value)
+        assert w.note == "cannot judge: grad_other's record (24 ns): none within delta (radius 83.33 MHz)"
