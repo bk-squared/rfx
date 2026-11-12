@@ -5,6 +5,7 @@ LANE_CHECK_SAVE (even to an empty value) to save each full float64 record
 beside this script. Comparisons are emitted after both lengths: the verdict
 is joint, because agreement requires both lengths to pass the declared bars.
 Wall time includes scene construction, grid building, running and extraction.
+Set LANE_CHECK_LOSSLESS (even to an empty value) for the lossless PEC control.
 """
 
 import contextlib
@@ -22,7 +23,11 @@ with contextlib.redirect_stdout(sys.stderr):
     from rfx.ringdown import identify
 
 
+LOSSLESS = "LANE_CHECK_LOSSLESS" in os.environ
+
+
 def emit(row):
+    row["lossless"] = LOSSLESS
     print(json.dumps(row, allow_nan=False), flush=True)
 
 
@@ -30,7 +35,8 @@ def make_scene(lane):
     kwargs = {"dy_profile": np.full(12, .001)} if lane == "G" else {}
     sim = Simulation(freq_max=10e9, domain=(.030, .012, .024), dx=.001,
                      boundary="pec", snap="declared", **kwargs)
-    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi"))
+    if not LOSSLESS:
+        sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi"))
     sim.add_source((.0073, .0041, .0059), "ey",
                    waveform=GaussianPulse(f0=8e9, bandwidth=.25),
                    amplitude_kind="current")
@@ -43,23 +49,35 @@ def measure(sim, lane, record_ns, dt, n_steps, setup_s):
     with contextlib.redirect_stdout(sys.stderr):
         result = sim.run(n_steps=n_steps, compute_s_params=False)
         series = np.asarray(result.time_series)
-        model = identify(series, dt, int(np.ceil(2e-9 / dt)), len(series),
-                         freq_max=10e9)
-    pole = model.s[np.argmin(np.abs(model.s.imag / (2 * np.pi) - 7.998e9))]
     x = np.asarray(series, dtype=np.float64).reshape(-1)
     if len(series) != n_steps or x.size != n_steps or not np.all(np.isfinite(x)):
         raise ValueError(f"{lane}: expected one finite probe record of {n_steps} steps")
+    extraction = dict(Q=None, pole_frequency_hz=None, rank=None,
+                      n_invalid=None, n_growing_discarded=None)
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            model = identify(series, dt, int(np.ceil(2e-9 / dt)), len(series),
+                             freq_max=10e9)
+        pole = model.s[np.argmin(np.abs(model.s.imag / (2 * np.pi) - 7.998e9))]
+        q = float(pole.imag / (-2 * pole.real))
+        frequency = float(pole.imag / (2 * np.pi))
+        if LOSSLESS and (not math.isfinite(q) or not math.isfinite(frequency)):
+            raise ValueError("identification returned non-finite Q or pole frequency")
+        extraction = dict(Q=q, pole_frequency_hz=frequency,
+                          rank=int(model.rank), n_invalid=int(model.n_invalid),
+                          n_growing_discarded=int(model.n_growing_discarded))
+    except Exception as exc:
+        if not LOSSLESS:
+            raise
+        extraction["identify_error"] = f"{type(exc).__name__}: {exc}"
     row = dict(kind="lane", pair="y", lane=lane, record_ns=record_ns,
-               Q=float(pole.imag / (-2 * pole.real)),
-               pole_frequency_hz=float(pole.imag / (2 * np.pi)),
-               rank=int(model.rank), n_invalid=int(model.n_invalid),
-               n_growing_discarded=int(model.n_growing_discarded),
+               **extraction,
                dt=dt, n_steps=n_steps, record_peak=float(np.max(np.abs(x))),
                wall_s=setup_s + time.monotonic() - started,
                uses_nonuniform_mesh=sim._uses_nonuniform_mesh)
     if "LANE_CHECK_SAVE" in os.environ:
         np.save(Path(__file__).resolve().with_name(
-            f"lane_check_{lane}_{record_ns}ns.npy"),
+            f"lane_check_{lane}_{record_ns}ns{'_lossless' if LOSSLESS else ''}.npy"),
             np.asarray(series, dtype=np.float64), allow_pickle=False)
     emit(row)
     return row, x
@@ -67,7 +85,10 @@ def measure(sim, lane, record_ns, dt, n_steps, setup_s):
 
 def compare(record_ns, rows, records, dt, n_steps):
     u, g = records["U"], records["G"]
-    phase = np.exp(-1j * 2 * np.pi * rows["U"]["pole_frequency_hz"]
+    frequency = rows["U"]["pole_frequency_hz"]
+    if LOSSLESS and (frequency is None or not math.isfinite(frequency)):
+        frequency = 7.998e9
+    phase = np.exp(-1j * 2 * np.pi * frequency
                    * np.arange(n_steps, dtype=np.float64) * dt)
     du, dg = np.sum(u * phase), np.sum(g * phase)
     peak = rows["U"]["record_peak"]
@@ -75,9 +96,14 @@ def compare(record_ns, rows, records, dt, n_steps):
         raise ValueError("U record peak or D_U is zero; comparison is undefined")
     return dict(kind="comparison", pair="y", record_ns=record_ns,
                 dt=dt, n_steps=n_steps,
-                dQ=rows["G"]["Q"] / rows["U"]["Q"] - 1,
-                df=rows["G"]["pole_frequency_hz"]
-                / rows["U"]["pole_frequency_hz"] - 1,
+                dft_frequency_hz=frequency,
+                dQ=(rows["G"]["Q"] / rows["U"]["Q"] - 1
+                    if all(rows[lane]["Q"] is not None for lane in ("U", "G"))
+                    else None),
+                df=(rows["G"]["pole_frequency_hz"]
+                    / rows["U"]["pole_frequency_hz"] - 1
+                    if all(rows[lane]["pole_frequency_hz"] is not None
+                           for lane in ("U", "G")) else None),
                 per_step_relative_max=float(np.max(np.abs(u - g)) / peak),
                 D_U={"real": float(du.real), "imag": float(du.imag)},
                 D_G={"real": float(dg.real), "imag": float(dg.imag)},
@@ -85,6 +111,10 @@ def compare(record_ns, rows, records, dt, n_steps):
 
 
 def verdict(comparisons):
+    if LOSSLESS:
+        if all(c["r"] <= 1e-4 for c in comparisons):
+            return "lossless control places the lane difference in the wall-loss sheet."
+        return "lossless control places the lane difference in the PEC box or common stepping."
     if all(c["r"] <= 1e-4 and abs(c["dQ"]) <= 2e-5 for c in comparisons):
         return ("the lanes agree; the residual sits in the reference or the Q "
                 "extraction. Ledger line (magnitude, mesh-independence, uniform "
