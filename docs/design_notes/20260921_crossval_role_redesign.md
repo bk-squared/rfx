@@ -84,7 +84,7 @@ become a new gate inside the case.
 The rfx agent rules say "Gates pin measured envelopes." That rule stays for locks. It does not apply to
 `tests/crossval/`: there the threshold is the v2 bar. When a case cannot meet the bar because of what it
 is — a high-Q resonance, a deep null, a phase-only comparison, a reference good to a few percent — the
-PI chooses the criterion, as the v2 bar already says.
+criterion requires a separate decision, as the v2 bar already says.
 
 ## Order of work
 

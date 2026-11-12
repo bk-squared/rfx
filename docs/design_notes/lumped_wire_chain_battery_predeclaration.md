@@ -79,7 +79,7 @@ Falsifiers declared now:
   the fixture is not the 1-D line it claims to be and nothing else is read until that is explained.
 - If `|S11|` exceeds 1.02 on a settled record at the claims rung, the family does not close.
 - If the resistive cases' `|S11|` is more than 2 dB from 1/3 anywhere in band at the claims rung,
-  the family does not close on this battery; the curve is reported and the PI decides.
+  the family does not close on this battery; the curve is reported and the disposition remains open.
 - If AD, FD and the closed-form derivative disagree by more than 5 % pairwise where the FD is
   interpretable, criterion 3a is open.
 
@@ -109,7 +109,7 @@ Written after the battery ran. Nothing above is edited; what changed is recorded
    sine ratio to 5 % at every rung (2.345 measured against 2.456 predicted at 1000 um). Feeding the
    closed form the rung's own fitted electrical length removes about a third of the distance
    (0.270 -> 0.153 at 250 um), not all of it; the rest is not attributed.
-   PI decision: criterion 3a is carried by AD against FD, as the contract defines it, and is MET.
+   Decision: criterion 3a is carried by AD against FD, as the contract defines it, and is MET.
    The closed-form derivative stays in the record as a third witness that converges at first order
    and is NOT held to 5 %. The falsifier as I wrote it was stricter than the contract and asked a
    continuum formula to match a lattice derivative at a cell size where the VALUE itself is only
@@ -166,7 +166,7 @@ Decision (lead, 2026-10-06 for the matched row; 2026-10-08 for the others):
    row: the network is a one-port there, so the reflection-phase slope with the port's own
    reflection removed (`tests/_electrical_length.py`), within 1 %. No new observable (no ripple
    spacing) is introduced. If that slope cannot be formed on this circuit, the curve and the
-   reason go to the PI as a criterion question before anything else is chosen.
+   reason are reported for a criterion decision before anything else is chosen.
 3. The raw port `|S11|` is reported with every row and not judged.
 
 This is a correction of the comparator, not a change of a bar: the floors and tolerances are the

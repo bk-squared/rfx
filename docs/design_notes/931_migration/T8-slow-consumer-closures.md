@@ -107,7 +107,7 @@ extraction and a NumPy/JAX extractor comparison are recorded to test other
 possible explanations. The two meshes' different acquisition durations are
 held fixed across the operator comparison.
 
-**Measured disposition: PI decision; leave the 5% gate failing.**
+**Measured disposition: decision pending; leave the 5% gate failing.**
 
 | Edge operator | Uniform power metric | Graded power metric | Local-cell discrepancy | Scalar-cell discrepancy |
 |---|---:|---:|---:|---:|
@@ -126,7 +126,7 @@ The old integrated-power agreement did not certify angular equivalence:
 normalized pattern L2 discrepancies are 18.73% current and 18.84% historical.
 Both source and NTFF metadata were checked, but the original finite windows
 and abrupt 2.5-ratio grading are not a convergence study. A redesigned
-integration oracle or a qualified physical envelope needs the PI's decision.
+integration oracle or a qualified physical envelope requires a separate decision.
 See the [full trace analysis](slow-consumer-evidence/farfield-result-note.md)
 and [inspected angular figure](slow-consumer-evidence/farfield-attribution.png).
 
@@ -152,7 +152,7 @@ plane now lies on the near wall, across the short from its source. Full
 incident/outgoing spectra and probe records are therefore needed to interpret
 the change; a lower column power alone cannot certify physical accuracy.
 
-**Measured disposition: PI decision; leave `(2.25,3]` failing.**
+**Measured disposition: decision pending; leave `(2.25,3]` failing.**
 
 | Arm | Maximum column power | Soft column-power advisory |
 |---|---:|---|
@@ -182,7 +182,7 @@ original assertions, including absence of an advisory. That result alone
 does not qualify its reference-plane placement. Another discovered limitation
 is that `_soft_fired` matches any `ADVISORY`, including reciprocity; the
 analysis distinguishes the actual column-power warning. This helper and the
-entire physical witness test remain untouched for the PI decision.
+entire physical witness test remain untouched for the decision.
 
 See the [full matrices/record analysis](slow-consumer-evidence/advisory-result-note.md)
 and [inspected power/trace figure](slow-consumer-evidence/advisory-attribution.png).
@@ -192,8 +192,8 @@ and [inspected power/trace figure](slow-consumer-evidence/advisory-attribution.p
 All runs use `PYTHONPATH=$PWD JAX_PLATFORMS=cpu`, at most four pytest workers,
 and one pytest controller at a time. No VESSL job is launched.
 
-**Nine original tests closed; two attribution cases require additional PI
-decisions. The two original PI-blocked historical locks remain untouched.**
+**Nine original tests closed; two attribution cases require additional
+decisions. The two original blocked historical locks remain untouched.**
 
 | Original test | Final disposition |
 |---|---|
@@ -206,10 +206,10 @@ decisions. The two original PI-blocked historical locks remain untouched.**
 | `test_mu_r_override_fenced_on_nonuniform` | PASS, expanded to six axis/profile variants; refusal unchanged |
 | `test_dc_limit_pins_receive_sign` | PASS; actual sign gate and sign-flip falsifier executed |
 | `test_ad_smoke_eps_override_grad_finite_with_sheet` | PASS; gradient -0.1739357, finite and nonzero |
-| `test_graded_inplane_mesh_integrates_with_local_cell_sizes` | FAIL unchanged; operator attribution reaches PI stop |
-| `test_soft_advisory_real_coarse_pec_short_witness` | FAIL unchanged; sampling/reference-plane attribution reaches PI stop |
-| `test_compute_msl_s_matrix_end_to_end_matches_historical_base` | Original PI block; no edits or re-pin; not rerun |
-| `test_v173a_baseline_bit_identity` | Original PI block; no edits or re-pin; not rerun |
+| `test_graded_inplane_mesh_integrates_with_local_cell_sizes` | FAIL unchanged; operator attribution reaches an unresolved decision |
+| `test_soft_advisory_real_coarse_pec_short_witness` | FAIL unchanged; sampling/reference-plane attribution reaches an unresolved decision |
+| `test_compute_msl_s_matrix_end_to_end_matches_historical_base` | Original block; no edits or re-pin; not rerun |
+| `test_v173a_baseline_bit_identity` | Original block; no edits or re-pin; not rerun |
 
 | Completed selection | Passed | Failed | Existing xfailed | Total |
 |---|---:|---:|---:|---:|
@@ -259,7 +259,7 @@ Ruff. The worktree-local evidence directory is `.validation-931-closures/`.
 
 No VESSL job was launched. Launch the following as **separate CPU jobs** on
 this commit; retain the real run IDs and the entire `output/931-closures/`
-directory. The physics job is expected to report the two PI-decision failures;
+directory. The physics job is expected to report the two decision failures;
 neither job invokes either originally blocked historical lock. Run controllers
 serially when using the shared pod. Common environment:
 
@@ -332,6 +332,6 @@ test files and both attribution test files are byte-identical to the base.
 GPU/distributed, the complete repository default/slow suites, continuum or
 time-window convergence, and qualification of replacement locks are not
 claimed. The two original MSL/V173A decisions and the two new attribution
-decisions remain with the PI. The committed matrices, port and angular traces,
+decisions remain open. The committed matrices, port and angular traces,
 figures and analysis notes are evidence artifacts, not replacement baselines.
 Full raw NTFF arrays and test logs/XML remain in `.validation-931-closures/`.

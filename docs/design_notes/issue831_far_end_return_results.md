@@ -469,5 +469,5 @@ trace.
 **This lane stops at the diagnosis.** The fix is in `rfx/runners/uniform.py`,
 i.e. solver-side, not a cv03 rig fix, and it changes physics for every
 subpixel-smoothed run with a dielectric at the boundary. Section 7 of the
-pre-declaration holds the landing pre-declaration for the PI. Nothing under
+pre-declaration holds the landing pre-declaration for review. Nothing under
 `rfx/` or `validation/` is modified here.

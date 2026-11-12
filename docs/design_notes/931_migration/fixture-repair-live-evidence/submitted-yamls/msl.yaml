@@ -15,7 +15,7 @@ env:
   LANG: "C.UTF-8"
   JAX_PLATFORMS: "cpu"
   MPLBACKEND: "Agg"
-  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds"
+  RFX_CHECKOUT: "<workspace>/research/rfx-931-fastlane-reds"
   RFX_SHA: "b36fc46cdf21d1c57f221e6a057654bcad60bae2"
   RFX_LABEL: "msl-base"
 mount:

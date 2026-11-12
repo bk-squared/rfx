@@ -421,8 +421,8 @@ superseded key). Output
 `validation/research/multiband_nu/results/e2_thin_layer_subpixel.json`.
 
 ```
-cd /Users/byungkwankim/Documents/rfx-nu-exp2 && PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp2 \
-  /Users/byungkwankim/Documents/rfx/.venv/bin/python -c "import rfx; print(rfx.__file__)"
+cd <workspace>/Documents/rfx-nu-exp2 && PYTHONPATH=<workspace>/Documents/rfx-nu-exp2 \
+  <workspace>/Documents/rfx/.venv/bin/python -c "import rfx; print(rfx.__file__)"
 PYTHONPATH=... python -m validation.research.multiband_nu.e2_thin_layer_subpixel --selfcheck --out validation/research/multiband_nu/results/e2_thin_layer_subpixel.json
 PYTHONPATH=... python -m validation.research.multiband_nu.e2_thin_layer_subpixel --ladders L1,L2,T --scales 2 --out ...
 PYTHONPATH=... python -m validation.research.multiband_nu.e2_thin_layer_subpixel --ladders L1,L2,T --scales 1 --out ...

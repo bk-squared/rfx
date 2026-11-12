@@ -14,7 +14,7 @@ W5 `w5_ad_consistency`, the committed cavity oracles
 based on `feat/nu-band-profile @ 7c6e3997` (which sits on
 `origin/main d990e18c`).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Every JSON the instrument writes records `rfx.__file__`, `git_sha`,
 `git_dirty`, `argv` and `started_utc` (the W6 convention, commit `5bf9d16b`).
@@ -383,7 +383,7 @@ band, ~11 ps, and reflects within the cores). Loss `L = sum(ts^2)`.
 > committed AD1 rows differ by 8.9e-8 in loss0 = 3 f32 ulp and 1.8e-5 in
 > max relative gradient: the same f32 computation twice. The row is
 > reported, not gated, so nothing changes here — but the first-pass
-> Results asked the PI to decide on "an x64-loss AD3", which does not
+> Results proposed "an x64-loss AD3", which does not
 > exist without an `rfx/` dtype change this lane does not make; that
 > question is withdrawn in the second-pass Results. The selfcheck now
 > records the dtype probe (`ad1_loss_dtype`).
@@ -684,8 +684,8 @@ dt, n_steps, cells, wallclock, the harminv line list, `f_meas`, every
 model term, every gate value and verdict.
 
 ```
-cd /Users/byungkwankim/Documents/rfx-nu-accuracy && PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-accuracy \
-  /Users/byungkwankim/Documents/rfx/.venv/bin/python -c "import rfx; print(rfx.__file__)"
+cd <workspace>/Documents/rfx-nu-accuracy && PYTHONPATH=<workspace>/Documents/rfx-nu-accuracy \
+  <workspace>/Documents/rfx/.venv/bin/python -c "import rfx; print(rfx.__file__)"
 PYTHONPATH=... python -m validation.research.multiband_nu.w7_accuracy_ad --selfcheck --out validation/research/multiband_nu/results/w7_accuracy_ad.json
 PYTHONPATH=... python -m validation.research.multiband_nu.w7_accuracy_ad --arms a1 --scales 2,1 --out validation/research/multiband_nu/results/w7_accuracy_ad.json
 PYTHONPATH=... python -m validation.research.multiband_nu.w7_accuracy_ad --arms a1 --scales 0.5 --out validation/research/multiband_nu/results/w7_accuracy_ad.json
@@ -779,7 +779,7 @@ recorded and neither changed here:**
 Measured 2026-09-07 06:42-06:53 UTC on the shared machine (load ~10, a
 test battery running in another worktree). Instrument commit `5fdfced9`
 (A1), `4c5f6476` (A2/A3), `15a59c33` (AD1-4); `rfx.__file__ =
-/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py` printed by
+rfx/__init__.py` printed by
 every call; no `rfx/` source touched. The `git_dirty = true` on the A1
 rows is the results JSON itself being written into the tree between
 commits; nothing else was modified. One attempt per unit, no unit
@@ -945,7 +945,7 @@ its exact model; #931 stands.
   joint-gradient error of up to 1.0x on cells that contribute < 1 % of
   the gradient norm — the declared instrument cannot tell these apart,
   and this note does not choose. The joint dx/dy/dz gradient claim is
-  therefore NOT supported by this lane; it is not refuted either. A PI
+  therefore NOT supported by this lane; it is not refuted either. A
   decision is needed on whether an x64-loss AD3 (the AD1 x64 context,
   which was declared there but not here) is a new declared arm.
 
@@ -969,7 +969,7 @@ AD arm differentiates w.r.t. the realized cell vector (or eps by index).
 `tests/unit/nonuniform/test_band_accuracy_ad_replay.py` against the
 results JSON: **14 passed, 1 failed** — `test_replay_ad3` red at
 `worst dominant AD-vs-FD 5.224e-01 > 0.15`, by design. It stays red; the
-answer is a PI decision, not a tolerance edit.
+answer is a decision, not a tolerance edit.
 
 **Decision (2026-09-11, taken by the lead session on the PI's instruction
 to bring the stack to merge; the PI can overturn it here).** The record
@@ -1201,8 +1201,8 @@ all 142 cells; the y / z FIRED rows of attempt 1 were the FD reference
 reading its own round-off (3-17 quanta), as the reviewer diagnosed. The
 attempt-1 record stays FIRED in the JSON and `test_replay_ad3` stays
 red; `test_replay_ad3_second_attempt` is green. The first-pass request
-for a PI decision on "an x64-loss AD3" is withdrawn (no such arm exists
-without an `rfx/` dtype change). What remains for the PI: whether the
+for a decision on "an x64-loss AD3" is withdrawn (no such arm exists
+without an `rfx/` dtype change). What remains for consideration: whether the
 second attempt is accepted as the AD3 record, in which case the red
 attempt-1 replay is retired by a recorded decision, not by this lane.
 

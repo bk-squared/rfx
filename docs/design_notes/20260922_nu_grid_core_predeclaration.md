@@ -82,7 +82,7 @@ physics witnesses and are separate declarations.
    under a declared float32 tolerance, not by bit identity. Retiring the
    uniform kernel is a later decision from a GPU measurement (ms/step of
    both kernels and the baked path at the notch-ladder sizes 1 M, 3 M,
-   13 M cells); the threshold is the PI's.
+   13 M cells); the threshold remains undecided.
 5. **Conventions the merged grid inherits from the uniform lane:** the
    `dt` formula (`dx_min/(c√3)·0.99`, and its 2-D form) and the source unit
    (field increment). The NU lane's current-normalized injection becomes an

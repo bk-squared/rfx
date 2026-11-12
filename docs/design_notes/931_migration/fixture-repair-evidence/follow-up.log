@@ -1,7 +1,7 @@
 ============================= test session starts ==============================
 platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python
 cachedir: .pytest_cache
-rootdir: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds
+rootdir: <workspace>/research/rfx-931-fastlane-reds
 configfile: pyproject.toml
 plugins: split-0.11.0, xdist-3.8.0, anyio-4.9.0
 created: 4/4 workers
@@ -149,7 +149,7 @@ ____________________ test_float32_deployment_delta_bounded _____________________
   (Production float32 delta vs float64 structural result.)
   MSL Z0 staircase physics error at DX=80µm is >5% — delta is negligible.
 [test_float32_deployment_delta_bounded] PASS
-- generated xml file: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/follow-up/junit.xml -
+- generated xml file: <workspace>/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/follow-up/junit.xml -
 =========================== short test summary info ============================
 PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
 PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]

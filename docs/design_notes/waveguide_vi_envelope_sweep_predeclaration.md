@@ -1162,7 +1162,7 @@ Recorded so it is not re-argued. Both reviews recomputed the archives independen
   is list-identical across all rungs of a locked lane.
 - **A band-aggregate mixture cannot explain the per-bin antisymmetric scatter** — it
   scatters through zero on every fitting convention tried.
-- **The deliverable answers the PI directive in shape**: `r_min` is delivered as intervals
+- **Deliverable form**: `r_min` is delivered as intervals
   indexed by the finest rung, never as a point, and the failing bracket is named in advance
   so a confirming result cannot be sold as a discovery.
 - **Preflight expectations were checked against the source**, not the prose:

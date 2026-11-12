@@ -110,7 +110,7 @@ nothing above 3.3e-5 (post-merge review, `20260905_post_merge_review_20_prs.md`)
 
 ## R3
 
-- Memory: `project_v18_kickoff_state` (PI decisions recorded), `project_precision_carry_dtype_family`
+- Memory: `project_v18_kickoff_state` (decisions recorded), `project_precision_carry_dtype_family`
   (f64 cost), consistent with `feedback_root_cause_before_gate_change` — no tolerance moves; the
   one new gate is the pre-declaration's own branch language promoted, and only for the leg it
   was written for.

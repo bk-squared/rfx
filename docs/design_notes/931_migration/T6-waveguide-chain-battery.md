@@ -67,7 +67,7 @@ agreement above shows is intact.
 
 ## Ingest follow-through — 2026-09-08
 
-The PI-adjudicated run **369367259427** is now ingested byte-for-byte as
+The run **369367259427** is now ingested byte-for-byte as
 `fixture_931_realized_pec_forward2_run369367259427.json`, and the live cell
 comparisons use it. The old sigma-fill artifact remains historical. See the
 [ingest record](T6-chain-fixture-ingest-20260908.md) for provenance, CPU validation,

@@ -232,9 +232,9 @@ the replay test; none is computed by hand.
 ## 4. Declared commands, outputs, tests
 
 ```
-cd /Users/byungkwankim/Documents/rfx-nu-exp3
-export PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp3
-PY=/Users/byungkwankim/Documents/rfx/.venv/bin/python
+cd <workspace>/Documents/rfx-nu-exp3
+export PYTHONPATH=<workspace>/Documents/rfx-nu-exp3
+PY=<workspace>/Documents/rfx/.venv/bin/python
 $PY -c "import rfx; print(rfx.__file__)"          # must be this tree
 # E3-B(a): batteries, before (fea9f078) and after, counts recorded in Results
 $PY -m pytest tests/unit/nonuniform tests/unit/geometry tests/unit/materials tests/oracle \
@@ -346,7 +346,7 @@ Baseline provenance: branch `exp/nu-experiments-e3`, git SHA
 `4129591bb7cef863adf0f8249c788d31c9b4337c`, CPU only (`JAX_PLATFORMS=cpu`),
 `rfx.__file__ = /Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py`.
 Every Python invocation used the requested venv interpreter with
-`PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp3`. `git diff
+`PYTHONPATH=<workspace>/Documents/rfx-nu-exp3`. `git diff
 fea9f078 4129591b` contains only this predeclaration, so the tested
 production source is exactly the declared baseline source.
 
@@ -543,7 +543,7 @@ The after battery finished with the **identical argv and marker set** as
 its baseline, including all four known-red tests (no deselections by name):
 
 ```sh
-JAX_PLATFORMS=cpu PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp3 /Users/byungkwankim/Documents/rfx/.venv/bin/python -m pytest tests/unit/nonuniform tests/unit/geometry tests/unit/materials tests/oracle -q -o addopts="" -m "not gpu and not slow" -p no:cacheprovider
+JAX_PLATFORMS=cpu PYTHONPATH=<workspace>/Documents/rfx-nu-exp3 <workspace>/Documents/rfx/.venv/bin/python -m pytest tests/unit/nonuniform tests/unit/geometry tests/unit/materials tests/oracle -q -o addopts="" -m "not gpu and not slow" -p no:cacheprovider
 ```
 
 Verbatim before summary:

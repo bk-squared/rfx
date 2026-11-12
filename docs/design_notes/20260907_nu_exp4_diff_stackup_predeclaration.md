@@ -359,8 +359,8 @@ grid's f32 value), every loss value used, every AD / FD / FD+ / FD- value,
 quanta, every gate value and verdict, the tie table, wallclock.
 
 ```
-cd /Users/byungkwankim/Documents/rfx-nu-exp4 && PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp4 \
-  /Users/byungkwankim/Documents/rfx/.venv/bin/python -c "import rfx; print(rfx.__file__)"
+cd <workspace>/Documents/rfx-nu-exp4 && PYTHONPATH=<workspace>/Documents/rfx-nu-exp4 \
+  <workspace>/Documents/rfx/.venv/bin/python -c "import rfx; print(rfx.__file__)"
 PYTHONPATH=... python -m validation.research.multiband_nu.e4_diff_stackup --selfcheck --out validation/research/multiband_nu/results/e4_diff_stackup.json
 PYTHONPATH=... python -m validation.research.multiband_nu.e4_diff_stackup --smoke --out validation/research/multiband_nu/results/e4_diff_stackup.json
 PYTHONPATH=... python -m validation.research.multiband_nu.e4_diff_stackup --arms l1 --out validation/research/multiband_nu/results/e4_diff_stackup.json

@@ -63,7 +63,7 @@ Falsifiers declared now:
 - If the notch frequency's successive differences do not shrink (ratio >= 1), the ladder is not
   interpretable and no cell size is recommended.
 - If the 25 um notch is more than 1 % from the analytic value, the family does not close on this
-  battery; the curve and the realized stub length are reported and the PI decides.
+  battery; the curve and the realized stub length are reported and the disposition remains open.
 - If the raw column power exceeds 1.02 at the claims rung on a settled record, the family does not
   close; `enforce_passivity=True` is not used to pass it.
 - If plane invariance fails in magnitude by more than 2 dB anywhere outside the notch core, the

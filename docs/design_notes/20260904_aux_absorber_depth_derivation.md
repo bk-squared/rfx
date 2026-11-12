@@ -6,7 +6,7 @@
 **Branch:** `agent/issue-888-aux-absorber` (b27dc2bb), base `origin/main` @ `b59e1d9`. Superseded by `fix/888-aux-absorber-r2` (PR #1005), rebased onto `d56f68eb`.
 **Issue:** #888 · **PI decision A (2026-09-04):** deepen the auxiliary absorber, re-derive
 its profile from a reflection target, and fix `predict_settling`'s echo cancellation.
-**PI directive carried in:** gates must map where the model is valid; no lock-in on one
+**Scope:** gates must map where the model is valid; no lock-in on one
 frequency or geometry, and "a port that does not work everywhere" is an acceptable,
 statable limit.
 
@@ -376,7 +376,7 @@ measurable. It is NOT resolved by widening `W(f)` -- the working agreement
 forbids that and it would be wrong anyway, since the window already carries the
 lattice shift it was built for.
 
-**Three resolutions, and this is a PI decision because it changes what cv04
+**Three resolutions, and this is a decision because it changes what cv04
 gates:**
 
 1. **Restrict the fringe gate to the gated band.** Only fringe 2 survives; the
@@ -469,7 +469,7 @@ pre-declared verdict is now recorded as false, and this section is the record.
 
 ## 9. cv04's rig: the band was never illuminated (PI decision, 2026-09-04)
 
-Section 7 left the fringe gate red and put three resolutions to the PI. The PI
+Section 7 left the fringe gate red and proposed three resolutions. The subsequent decision
 chose **widen the rig**. Measured, at cv04's own rig with only `bw` changed:
 
 | bw | fringe 3 (GHz) | dev vs analytic | max \|R+T-1\| | T max err | R+T mean |
@@ -1005,7 +1005,7 @@ carried and what is dropped is listed in 14.3.
 
 * **cv26 stays where PR #924 left it.** The arm gate table (#928's proposal C) and
   the section-5 defect are that PR's, and whether cv26's grazing arms are gated,
-  modelled or dropped is a separate PI decision. This branch touches no cv26 file.
+  modelled or dropped is a separate decision. This branch touches no cv26 file.
 
 * **No crossval measurement is re-run here.** cv04, cv22 and cv23 carry records
   produced with the 20-cell absorber. They are declared pending in

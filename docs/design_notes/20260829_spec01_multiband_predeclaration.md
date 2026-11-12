@@ -14,7 +14,7 @@ window is derived from data it will judge (SPEC-00 §0.2-2).
 | `rfx/nonuniform.py` (`run_nonuniform`, profile paths) | confirmed |
 | `rfx/runners/nonuniform.py`, `rfx/auto_config.py` builders | confirmed |
 | `docs/guides/support_matrix.md`, `rfx/api/_preflight.py` | confirmed |
-| PR #775 (preserve_regions) "계류 중" | **STALE — MERGED** as `fc2b582`, in this base. Explicit-vector rule kept anyway (solver/builder separation). |
+| PR #775 (preserve_regions) "pending" | **STALE — MERGED** as `fc2b582`, in this base. Explicit-vector rule kept anyway (solver/builder separation). |
 | #672 dual-cell folds as open defect lens | **STALE — RESOLVED** 2026-08-20 (PR #684, merge `4eb7fa4`) per ledger `rfx-known-issues.md`. W1 still valuable as the *conserved-functional* witness the fold fixes never had. |
 | Ledger mounted (`nu_known_limits.md` etc.) | confirmed, read in full |
 | dt = global min-cell CFL | confirmed: `make_nonuniform_grid` uses 0.99/(C0·sqrt(Σ 1/d_min²)) |
@@ -1229,7 +1229,7 @@ correction.
    UNCOVERED**. The 3-D energy witness (P-B) is transverse-UNIFORM at
    1.5 mm and grades z alone; the sentence asserted a run that never
    happened.
-3. Section 1's P-B description "(+선택: x/y 동시 grading)" was an option in
+3. Section 1's P-B description "(+optional: simultaneous x/y grading)" was an option in
    the SPEC-01 work package that was never exercised; no P-B arm ever used
    a `dx_profile` or `dy_profile`.
 

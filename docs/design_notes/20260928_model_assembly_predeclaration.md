@@ -53,7 +53,7 @@ Why the table missed the ADI case: a `carries` cell asks whether declaring the i
    - it records every departure as a strict xfail, naming its issue;
    - it measures the three READ-ONLY cases above.
 
-   Each later PR moves one convention on the paths that depart from it. It shows before/after on the physical check and on the user-facing numbers it moves, as #1341 did with the patch cross-validation. It asks the PI before merging when a published or gallery number moves.
+   Each later PR moves one convention on the paths that depart from it. It shows before/after on the physical check and on the user-facing numbers it moves, as #1341 did with the patch cross-validation. A published or gallery number moving requires review before merging.
 5. **Scope freeze per PR.** A departure found during a PR becomes a table cell (xfail against its issue), not new PR work.
 6. **P0 scope.**
    - Quantities:
@@ -73,7 +73,7 @@ Why the table missed the ADI case: a `carries` cell asks whether declaring the i
 
 Physical checks against analytic cases (the convention table's right-hand column) belong to the phase that moves each convention, not to P0.
 
-## 4. Open questions for the PI
+## 4. Open questions
 
 - **The four-cell mean on a graded mesh.** The four cells around an edge have different widths, and today they are averaged equally. The width-weighted mean is the consistent generalization and equals today's rule on a constant axis. It would move graded results only where a dielectric face sits next to a size change. P0 measures how much before anyone decides.
 - **Boundaries are not an open question here.** #1221 is a defect to fix; the PI said so on 2026-09-28. Its design is already on main (#1220, `docs/design_notes/20260923_boundary_model_predeclaration.md`), and it is the absorber lane's campaign B1–B6. #1355 covered most of B1.5. This note does not re-decide boundaries. The boundary row of the convention table points to that campaign.

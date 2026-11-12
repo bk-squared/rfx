@@ -4,15 +4,15 @@
     "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
     "inputs": [
       {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/capture.json",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/capture.json",
         "sha256": "b9080e1fdee295233a3285abb45439bc723a76de9ded67d4f705d30615285f44"
       },
       {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/capture.npz",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/capture.npz",
         "sha256": "b0d3bf17ab221f35d4d31c8a0a8cec829fa15c1ee54f3c1fc407109206b1b09e"
       },
       {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/v173a-traces.npz",
+        "path": "docs/design_notes/931_migration/fixture-repair-evidence/v173a-traces.npz",
         "sha256": "66e238b17349d4b5b36308b6ff2e9cc396f4f1f6d5f8cdf70a69096f8c6fa9e5"
       },
       {
@@ -20,12 +20,12 @@
         "sha256": "ff7eeceef3cf04888fafcf9f0c113a4b1bbf73fc8ee7ec6864594d64490154fa"
       },
       {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/run_id.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/run_id.txt",
         "sha256": "94f041176d5061fe09def24f7651337c867b84291898d3718d9bb903c714fc4e"
       }
     ],
     "script": {
-      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/diagnostics/inspect_931_v173a_capture.py",
+      "path": "scripts/diagnostics/inspect_931_v173a_capture.py",
       "sha256": "879ccb58e2d30847819b024d3b5faa6b3a81ab3823dceb737d12583c9d7b10bb"
     }
   },
@@ -137,7 +137,7 @@
   ],
   "fft_minimum_is_uppermost_band_bin": true,
   "figure": {
-    "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/v173a-live-ringdown-spectrum.png",
+    "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/v173a/v173a-live-ringdown-spectrum.png",
     "sha256": "6cb3196b7eb4dc87f6c71d985f508f0811f8f9c49de7634e7aba16ac42bebf75"
   }
 }

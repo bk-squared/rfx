@@ -11,7 +11,7 @@ remain for VESSL.
 
 ## Physical drawing and mesh
 
-The PI-authorized board is retained: lossless RO4350B-like eps_r=3.66,
+The board is retained: lossless RO4350B-like eps_r=3.66,
 **254 um laminate**, **600 um trace**, nominal 35 um copper represented
 by a PEC sheet at **z=254 um**, and ground at z=0. The corrected domain
 is **14 x 3.4 x 1.978 mm**. The trace spans x=0--14 mm and

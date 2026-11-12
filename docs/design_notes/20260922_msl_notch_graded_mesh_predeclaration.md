@@ -165,7 +165,7 @@ VESSL: `scripts/vessl_msl_notch_graded.yaml`, GPU preset copied from
 `scripts/vessl_gpu_suite.yaml`, one job per arm submitted through
 `scripts/vessl_submit.sh` (run id recorded by the submitter), log tee'd and
 collected under a trap, pytest not involved (the instrument is a script).
-Concurrency per the queue rule (agent-rules research/CLAUDE.md 2026-09-22).
+Concurrency per the queue rule (2026-09-22).
 
 ## 5. Frozen windows
 

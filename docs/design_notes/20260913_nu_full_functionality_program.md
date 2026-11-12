@@ -7,16 +7,16 @@ this document, and the executors act on it alone. Every window in sections
 4 and 5 is frozen from this commit onward; results are appended to each
 lane's own pre-declaration note, never edited into these windows. One
 attempt per declared arm; a fired window is a result. Lanes 3+ are planned,
-not executed, and each states the PI decision it waits on.
+not executed, and each states the decision it waits on.
 **Tree:** worktree `rfx-nu-full`, branch `feat/nu-full-functionality`, based
 on `feat/nu-ad-directional @ 88460d24` (on `origin/main fa392913`).
 **Import provenance for every number cited:** the three reviews that feed
 the gap map ran on this tree with `rfx.__file__` under
-`/Users/byungkwankim/Documents/rfx-nu-full/rfx/__init__.py`, CPU only.
+`rfx/__init__.py`, CPU only.
 Every JSON a lane writes records `rfx.__file__`, `git_sha`, `git_dirty`,
 `argv`, `started_utc` (the `run_e1` provenance block,
 `w6_band_builder.py:693-703`).
-**PI rules applied throughout:** physical fidelity first; measure the
+**Rules applied throughout:** physical fidelity first; measure the
 validity domain (a law with its range), never a single fixture; one lane at
 a time; experimental features stay opt-in (no E2/E3-style default moves;
 `_MULTIBAND_RATIO_CAP = 1.4`, `_INPLANE_RATIO_CAP = 1.3` unchanged); a
@@ -136,14 +136,14 @@ Severity is the reviews' own. "Blocks" names the lane the gap blocks.
 
 ## 3. Lane order and the rule for moving between lanes
 
-Lanes run one at a time (PI). A lane opens with its own pre-declaration
+Lanes run one at a time. A lane opens with its own pre-declaration
 note (windows copied from here verbatim, plus the chain-model or map
 numbers that this document says "the instrument freezes before any run"),
 runs its arms once, appends results, and closes with a replay test. The
 next lane does not open until the previous lane's results section is
-committed. Order and what each lane needs from the PI:
+committed. Order and each lane's open decisions:
 
-| lane | name | executes | needs a PI decision? |
+| lane | name | executes | needs a decision? |
 |---|---|---|---|
 | 1 | Multi-level unequal bands on x, y, z | now (this program) | none blocking; one confirmation (4.8) |
 | 2 | In-plane design-variable autodiff | after Lane 1 closes | two confirmations (5.8), none blocking |
@@ -429,13 +429,13 @@ profiles nz ~ 450-700). Three `--model-only` + three measuring calls, each
 far under the 600 s Bash cap. The cost is the pre-declaration and the
 model JSON, not compute.
 
-### 4.8 PI decision needed
+### 4.8 Decision needed
 
 None blocking. One confirmation, stated so silence is not consent: the
 in-plane instrument uses `boundary_cell` end pins (two extra cells per
 end, stripped before the chain solve) instead of relaxing the
 `make_nonuniform_grid` x/y end-cell guard. The alternative is a production
-change and belongs to Lane 3. If the PI prefers the guard relaxed first,
+change and belongs to Lane 3. If the guard is relaxed first,
 Lane 3's item 1 runs before Lane 1's L1-X.
 
 ## 5. Lane 2 — in-plane design-variable autodiff (fully specified)
@@ -634,17 +634,17 @@ sub-range the windows hold on). Cannot: anything about coordinate-
 rasterized geometry (`Box` gradient 0), about ports (host-coerced on
 traced x/y, G9), about an absorber (cpml 0, G11), about y (the same map
 applies by relabeling but is not measured here; a y arm is a Lane 2b
-sub-lane if the PI asks), or about `interface_eps='dual_average'` under
+sub-lane if added), or about `interface_eps='dual_average'` under
 trace (G8).
 
-### 5.8 PI decisions needed
+### 5.8 Decisions needed
 
 Two confirmations, none blocking:
 
 1. The "trace-width surrogate" is a PEC strip whose edges are the band
    edges, attached by node index — the lane verifies AD along the design
    variable on the index-attached path and says nothing about
-   `Box`/coordinate rasterization. If the PI wants the coordinate path
+   `Box`/coordinate rasterization. If the coordinate path is to be
    covered, that is Lane 9 (differentiable builder in `rfx/`), not this
    lane.
 2. The smooth spectral observable is a physical-time Hann taper plus a
@@ -690,7 +690,7 @@ realized runway ratio; window: the advisory's 1e-6 deviation is replaced
 by a measured number from Lane 3's own absorber arm, not guessed. Cost:
 ~1 day instrument + minutes of runs. Decision: YES — a production
 boundary-contract change in `rfx/nonuniform.py` and `cpml.py`; opt-in is
-not meaningful here (the guard either exists or not), so the PI decides
+not meaningful here (the guard either exists or not), so the open question is
 whether relaxing it (with the per-face CPML fix) is authorized.
 
 **Lane 4 — waveguide-port injection at the local cell.** Question: with
@@ -734,7 +734,7 @@ auto-placed around a declared feature. Regression: `auto_configure` z
 output bit-identical on every existing fixture (no dz change). Cost: 1-2
 days. Decision: YES — policy: "fine band around features" (a protected
 band of the feature's extent plus a declared margin, cap ramps outside)
-versus edge fitting is the PI's call; this program recommends the former
+versus edge fitting remains undecided; this program recommends the former
 (the builder already realizes it; edge fitting is the argmin path with
 zero gradient, G8).
 

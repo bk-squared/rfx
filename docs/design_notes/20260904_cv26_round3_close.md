@@ -26,7 +26,7 @@ this read greener, and the working tree is left uncommitted for a human to decid
 
 ## 1. Tree as observed (not as reported)
 
-Verified 2026-09-05 in `/Users/byungkwankim/Documents/rfx-worktrees/gap-oblique`.
+Verified 2026-09-05 in `<workspace>/Documents/rfx-worktrees/gap-oblique`.
 
 ```
 $ git status --short
@@ -43,7 +43,7 @@ Diffstat: 3 files, +473 / −86. **Nothing is committed.** No `rfx/` source file
 modified by this lane; the #888 constants arrive through the rebase.
 
 Environment check (the brief's trap): `rfx.sources.tfsf_2d` resolves to
-`/Users/byungkwankim/Documents/rfx-worktrees/gap-oblique/rfx/sources/tfsf_2d.py` with
+`rfx/sources/tfsf_2d.py` with
 `AUX_N_CPML == 200`. **But see finding B-6: the brief's PYTHONPATH premise is false for
 this lane's entry points and its prescribed check cannot detect the trap it names.**
 
@@ -614,7 +614,7 @@ statement that it converged there -- for te_60 / tm_60 at dx it did not.
 **What follows.** A declared record needs a convergence witness of its own: the value at
 the derivation length must agree with the value at an adjacent length within one
 extension quantum (`RECORD_EXTEND_STEPS`), or the key is declared NON-CONVERGED and
-carries its spread. This is a derivation rule, not a window, and it is put to the PI
+carries its spread. This is a derivation rule, not a window, and it is proposed
 with the numbers above rather than applied here.
 
 **Measured settling on the absorber that ships**, from the case itself run FROM the
@@ -815,7 +815,7 @@ B-2): the scope is declared in the pre-declaration (the compact box is the absor
 witness, judged against the lattice WITH the absorber), the verdict rule did not follow.
 The consistent fix is to mark `G3_passivity` and `G3_closure` N/A on the compact arms,
 declared in the artifact, and judge them on G6 / G7 and the tail witness. It changes what
-two arms gate, so it is put to the PI here and not applied.
+two arms gate, so it is proposed here and not applied.
 
 
 ## 10. This lane refutes the pre-declaration's ≤3e-4 lattice-witness prediction (2026-09-14, append-only)

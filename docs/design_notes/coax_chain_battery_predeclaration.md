@@ -71,7 +71,7 @@ Falsifiers declared now:
 
 - If the bead's reflection-zero frequencies at the claims rung are more than 1 % from the analytic
   values, or |S21| / |S11| outside the cores more than 2 dB from the analytic curve, the family
-  does not close on this battery; the curves are reported and the PI decides.
+  does not close on this battery; the curves are reported and the disposition remains open.
 - If the successive ladder differences do not shrink, no annulus cell count is recommended.
 - If the raw column power exceeds 1.02 on a settled record at the claims rung, the family does not
   close.
@@ -134,13 +134,13 @@ where they apply.
    4 cells), the identity's bead arm, and the two-port AD leg on its 16 mm board (bead 16
    cells, 5.68 mm). Nothing else is re-run; the other records are carried from `ca6da2b1`,
    whose `rfx/` tree is the same git object as the re-run's.
-9. **The battery closes without the open termination (PI, P1).** Every open record stays in
+9. **The battery closes without the open termination (P1).** Every open record stays in
    the fixture as measured, marked `judged: false` with the reason "open end inside the lane's
    closed PEC can (absorbers on z only); its reflection does not settle at 9 annulus cells —
    energy near the outer region's first cutoff grows with record length
    (open_absorber_diagnostic.json); PI 2026-09-23". The passivity and settling checks skip the
    open with that reason; nothing else about the open or the other terminations changes.
-10. **Criterion 1(2) is the identity within the traced path (PI, P2).** The bead in a numpy and
+10. **Criterion 1(2) is the identity within the traced path (P2).** The bead in a numpy and
     in a jnp container is held to rtol 1e-5 / atol 1e-7 as declared. The untraced call (float64
     NumPy assembly) and the traced call (float32 jnp) are two functions by design; the
     contract's identity clause applies where the traced and untraced call are the same
@@ -157,7 +157,7 @@ where they apply.
 
 ## Addendum 3 (2026-09-24, after the review of the re-run)
 
-12. **Settling is judged by the contract's form, not by item 3's "0.1 dB" (PI).** Item 3
+12. **Settling is judged by the contract's form, not by item 3's "0.1 dB".** Item 3
     wrote the record-doubling substitute as "a change above 0.1 dB anywhere in band". That
     misstated the contract, which asks for the shift below one tenth of the magnitude gate:
     `max |d|S|| <= (10^(2/20) - 1) / 10 = 0.0259` in amplitude, which is 0.22 dB at |S| = 1
@@ -167,4 +167,4 @@ where they apply.
     recorded in the fixture as the same closed-can footprint as the open's (issue 1218),
     not as a failure.
 
-Addendum (2026-09-25, leader): re-run after both coax lanes absorb on all three axes (issue 1218: the lateral PEC can held the field that leaves an unshielded conductor end). Board, rungs, drives and record lengths are the merged job specifications'. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 → 24 traversals, shift below 0.0259). The loads' closed-can footprint ruling of 2026-09-24 lapses with the fix. Column power on lossless records is recorded; the contract's 1e-3 condition is not applied (PI question open).
+Addendum (2026-09-25, leader): re-run after both coax lanes absorb on all three axes (issue 1218: the lateral PEC can held the field that leaves an unshielded conductor end). Board, rungs, drives and record lengths are the merged job specifications'. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 → 24 traversals, shift below 0.0259). The loads' closed-can footprint ruling of 2026-09-24 lapses with the fix. Column power on lossless records is recorded; the contract's 1e-3 condition is not applied (criterion question open).

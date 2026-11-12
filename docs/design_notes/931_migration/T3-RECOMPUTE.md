@@ -122,7 +122,7 @@ The MSL row is an OPEN QUESTION, not a result of this migration — see the
 group note, finding 3.
 
 Both read this worktree
-(`/root/workspace/byungkwan-workspace/research/rfx-931-T3-nu-runners-grid-subgrid`)
+(`<workspace>/research/rfx-931-T3-nu-runners-grid-subgrid`)
 as it stands on disk, so a later commit on this branch is NOT in them — check
 `commit.txt` in the run's output directory before reading a verdict.
 

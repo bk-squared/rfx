@@ -1,7 +1,7 @@
 # T1 (tests/unit/autodiff, geometry, boundaries) — recompute record
 
 Branch `feat/931-t1-autodiff-geometry-boundaries`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-T1-autodiff-geometry-boundaries`.
+`<workspace>/research/rfx-931-T1-autodiff-geometry-boundaries`.
 
 PI rule, 2026-09-07: the shared pod runs no test lane and no solve longer than
 about a minute. Everything below ran on VESSL, one run per case, reading this
@@ -91,7 +91,7 @@ retargeted to this worktree.
 `scripts/vessl_931_t1_unit_tests.yaml` differs from the fast lane only in:
 
     name: rfx-931-post-t1-unit-tests
-    env.RFX_CHECKOUT: /root/workspace/byungkwan-workspace/research/rfx-931-T1-autodiff-geometry-boundaries
+    env.RFX_CHECKOUT: <workspace>/research/rfx-931-T1-autodiff-geometry-boundaries
     env.RFX_LABEL: t1
     pytest target: tests/unit/autodiff tests/unit/geometry tests/unit/boundaries
     OUT: /root/workspace/claude-workspace/rfx/runs/issue931-post-t1-<ts>-<sha>

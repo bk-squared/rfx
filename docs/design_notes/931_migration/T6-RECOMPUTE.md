@@ -14,7 +14,7 @@ by that evidence. Ez is also now predicted from each mode's E/H relation at
 its actual Yee samples, rather than using the Hy alpha for both components.
 
 Branch `feat/931-t6-oracle-contracts-locks-studio`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-T6-oracle-contracts-locks-studio`.
+`<workspace>/research/rfx-931-T6-oracle-contracts-locks-studio`.
 
 Everything below is a RE-SOLVE, not a re-tune. Each row says what moved in the
 realization, what was pre-declared before the run, and where the run writes.

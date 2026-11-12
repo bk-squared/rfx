@@ -1,7 +1,7 @@
 # Group T (tests) — recompute ledger for #931
 
 Branch `feat/931-t4-materials-api-misc`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-T4-materials-api-misc`.
+`<workspace>/research/rfx-931-T4-materials-api-misc`.
 Directories: tests/unit/{materials,api,misc,sources,farfield}.
 
 ## VESSL runs submitted: NONE
@@ -34,7 +34,7 @@ This migration left `farfield/test_oblique_rcs_absolute_sigma` untouched:
 its plate is a `rasterize(..., PEC_SIGMA)` sigma fill, which design
 note §1.8 fences out of the contract. crossval-C and the critic pass agree on
 this; tests-crossval's four GPU re-runs for the RCS family are unnecessary
-unless the PI extends the contract to sigma fills.
+unless the contract is extended to sigma fills.
 
 The level statement is superseded by the settled four-mesh result (λ/30–λ/120):
 +0.08 to +0.16 dB from PO at 5 GHz for this plate at 20° and 40°, converged within

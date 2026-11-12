@@ -12,7 +12,7 @@ The review texts are kept off-repo under `bk-workspace/.boundary-model/`; the me
 committed under `scripts/diagnostics/boundary_model/`, and the reviews' scripts with the output they
 printed under its `reviews/` (its README says how they were kept). Written by the absorber-lane leader. Model for the shape: the
 NU grid-core note (`20260922_nu_grid_core_predeclaration.md`).
-**Lane:** absorber. **Order (PI):** this campaign, then PR #1012; after that the PI chooses #952 or a
+**Lane:** absorber. **Order:** this campaign, then PR #1012; after that the choice is #952 or a
 periodic unit-cell campaign.
 
 ## 0. The physics, what is wrong, and what changes for a user
@@ -303,7 +303,7 @@ mixing CPML and UPML; Kottke smoothing's even extension at a magnetic face and f
 reflecting face (refused until each is designed); the absorber-adjacent graded transition (NU G16); the
 continuation contract's own rules (#1167 — this note changes where absorbing faces are read from, not
 what continues through them); the periodic unit-cell feature itself (sheet source with the Bloch phase,
-TE/TM, higher Floquet orders, witnesses), which the PI schedules after #1012.
+TE/TM, higher Floquet orders, witnesses), scheduled after #1012.
 
 ## 5. Regression requirement, every PR
 `scripts/ci/local.sh` green; `tests/unit/boundaries`, `tests/contracts`, `tests/locks` green; no frozen

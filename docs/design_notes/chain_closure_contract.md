@@ -157,7 +157,7 @@ its reciprocity gate is 0.01, doubled here for V-I extractors), not new measurem
 cannot meet them is reported with its curve, not re-gated.
 
 A case that cannot be judged by the bar because of what it is (a deep null, a high-Q resonance, a
-phase-only quantity) is taken to the PI before another criterion is chosen.
+phase-only quantity) requires a criterion review before another criterion is chosen.
 
 **Deep nulls (PI ruling, 2026-09-21).** A quantity that is near zero by construction — a matched
 line's |S11|, the bottom of a notch, a reflection zero — is not compared in dB from rung to rung or

@@ -117,7 +117,7 @@ recorded separately from the exact controlled identity. See
 source fingerprints, connected port planes and trace comparisons.
 
 No product change is indicated by this gate miss. The historical live advisory
-assertion remains visible and red under the PI's unchanged constraints;
+assertion remains visible and red under the unchanged constraints;
 synthetic helper tests retain the warning interval and hard-limit coverage.
 This is not absolute reflection qualification: the coarse record fails -40 dB
 settling, and both absorbers are shallower than their documented discipline.
