@@ -441,7 +441,7 @@ _________ test_compute_msl_s_matrix_end_to_end_matches_historical_base _________
     def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
         """End-to-end drift lock: full FDTD + assembly vs the committed golden.
 
-        FIXTURE REPAIRED 2026-09-08 (#931): retain the PI-authorized 254 um
+        FIXTURE REPAIRED 2026-09-08 (#931): retain the 254 um
         substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
         dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
         substrate, declare the foil at its actual interface, and hold domain/absorber thickness fixed under refinement.
@@ -547,152 +547,152 @@ f[09]=5.000000000e+09 S00=-1.122841238976e-02-8.699029684067e-03j S01=+7.6277136
 [WI-1 MSL raw qualification] {'failures': ['unexcited/unreliable full-spectrum bins', 'raw S21 electrical-length phase differs from drawing by >=5 degrees'], 'physics_band_hz': [3000000000.0, 4500000000.0], 'oracle_z0_ohm': 47.89480046631184, 'oracle_beta_rad_per_m': [17.751034755444348, 35.502069510888695, 53.25310426633305, 71.0041435660423, 88.75517377722174, 106.5062176211959, 124.25725237664022, 142.0082871320846, 159.75932188752893, 177.51034755444348], 'raw_sigma_max': [1.000015377998352, 1.0000507831573486, 1.0000762939453125, 1.0001187324523926, 1.000118374824524, 1.000121831893921, 1.000124216079712, 1.0000861883163452, 1.0000410079956055, 0.9999904632568359], 'raw_s21_phase_error_deg': [6.145365247720168, 12.290482448994018, 18.43482598045428, 24.57823567250488, 30.721302595837766, 36.864124859845276, 43.00598782242787, 49.146968236804724, 55.28718786412509, 61.42696905682657], 'raw_complex_reciprocity_abs': [1.1390609870431945e-05, 1.6464939562865766e-06, 4.153576810494997e-06, 3.3692444958433043e-06, 5.0387084229441825e-06, 1.1112590073025785e-05, 3.905355242750375e-06, 1.298232382396236e-05, 9.271731869375799e-06, 9.369311555929016e-06]}
 =============================== warnings summary ===============================
 tests/contracts/test_lattice_ownership_contract.py::test_sub_cell_non_box_sheet_is_realized_from_its_mid_plane_cross_section
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:629: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  tests/contracts/test_lattice_ownership_contract.py:629: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(
 
 tests/contracts/test_lattice_ownership_contract.py::test_pec_thin_conductor_is_a_sheet_not_a_cell
 tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.003)),
 
 tests/contracts/test_lattice_ownership_contract.py::test_g4_pec_sheet_and_f0_sheet_share_footprint_and_edge_set
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: surface_impedance_f0=5000000000.0 Hz — Leontovich surface-resistance sheet with Rs0 = 1.405 ohm/sq. Rs is FREQUENCY-FLAT within the run, frozen at f0, with relative band error |sqrt(f/f0)-1|; the reactive part Xs = Rs (internal inductance) is NOT modeled, so resonances read slightly high.
+  tests/contracts/test_lattice_ownership_contract.py:527: UserWarning: add_thin_conductor: surface_impedance_f0=5000000000.0 Hz — Leontovich surface-resistance sheet with Rs0 = 1.405 ohm/sq. Rs is FREQUENCY-FLAT within the run, frozen at f0, with relative band error |sqrt(f/f0)-1|; the reactive part Xs = Rs (internal inductance) is NOT modeled, so resonances read slightly high.
     sim.add_thin_conductor(Box((0.002, 0.003, 0.003), (0.006, 0.007, 0.003)),
 
 tests/contracts/test_lattice_ownership_contract.py::test_zero_thickness_pec_box_via_add_is_a_sheet_declaration
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:590: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  tests/contracts/test_lattice_ownership_contract.py:590: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(box)
 
 tests/contracts/test_lattice_ownership_contract.py::test_fidelity_report_realized_extent_comes_from_the_wall_planes
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_lattice_ownership_contract.py:962: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. You passed thickness=1e-06 m, which is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  tests/contracts/test_lattice_ownership_contract.py:962: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. You passed thickness=1e-06 m, which is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(Box((4e-3, 4e-3, 5e-3), (16e-3, 16e-3, 5e-3)),
 
 tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_mesh.py:143: AutoMeshWarning: Auto mesh: dx=0.500mm (60 cells/λ), non-uniform z (158 cells). Set dx= explicitly to suppress.
+  rfx/api/_mesh.py:143: AutoMeshWarning: Auto mesh: dx=0.500mm (60 cells/λ), non-uniform z (158 cells). Set dx= explicitly to suppress.
     return (self._build_nonuniform_grid() if self._uses_nonuniform_mesh
 
 tests/contracts/test_frozen_mesh_construction.py::test_freeze_keeps_automatic_profiles_and_extent_after_geometry_edit
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_mesh.py:143: AutoMeshWarning: Non-uniform z mesh enabled: 158 cells, dz=0.133–0.497 mm
+  rfx/api/_mesh.py:143: AutoMeshWarning: Non-uniform z mesh enabled: 158 cells, dz=0.133–0.497 mm
     return (self._build_nonuniform_grid() if self._uses_nonuniform_mesh
 
 tests/contracts/test_frozen_mesh_construction.py::test_freeze_before_first_geometry_survives_execution[run]
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/contracts/test_frozen_mesh_construction.py:34: UserWarning: no field energy was recorded — the source may not have coupled (position off-grid, wrong component, or zero amplitude) (issue #336)
+  tests/contracts/test_frozen_mesh_construction.py:34: UserWarning: no field energy was recorded — the source may not have coupled (position off-grid, wrong component, or zero amplitude) (issue #336)
     result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
 
 tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.001-10]
 tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual_port_planes_describe_one_fixed_network[0.002-8]
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/sources/waveguide_port.py:906: UserWarning: Explicitly requested dtype float64 requested in zeros is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
+  rfx/sources/waveguide_port.py:906: UserWarning: Explicitly requested dtype float64 requested in zeros is not available, and will be truncated to dtype float32. To enable more dtypes, set the jax_enable_x64 configuration option or the JAX_ENABLE_X64 shell environment variable. See https://github.com/jax-ml/jax#current-gotchas for more.
     real_dtype = jnp.zeros((), dtype=freqs.dtype).dtype if hasattr(freqs, 'dtype') else jnp.float32
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+  rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
     _warn_msl_wave_split_unreliable(reliable, freqs_arr)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 5 bins in [0.5000, 5.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+  rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 5 bins in [0.5000, 5.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
     _warn_msl_beta_scan_railed(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:240: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 90.38 ohm deviates 93.6% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:240: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 90.38 ohm deviates 93.6% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:240: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 90.35 ohm deviates 94.4% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:240: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 90.35 ohm deviates 94.4% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 1 bins in [1.0000, 1.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+  rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 1 bins in [1.0000, 1.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
     _warn_msl_beta_scan_railed(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 2317.12 ohm deviates 13369.5% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 2317.12 ohm deviates 13369.5% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: V·I-split |S11| = 1.090 > 1 for MSL port 'msl_1' at f = 1.0000 GHz — non-physical for a passive structure. the closed Ampere-loop current is likely mismeasured (sign/scale); the extracted S11/S21 at this bin are UNRELIABLE.
+  tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: V·I-split |S11| = 1.090 > 1 for MSL port 'msl_1' at f = 1.0000 GHz — non-physical for a passive structure. the closed Ampere-loop current is likely mismeasured (sign/scale); the extracted S11/S21 at this bin are UNRELIABLE.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = -2317.12 ohm deviates 13441.7% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:561: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = -2317.12 ohm deviates 13441.7% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:120: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:120: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
     - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
     u_res = _sim().run(n_steps=400)
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:120: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:120: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
     u_res = _sim().run(n_steps=400)
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:121: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:121: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
     - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
     g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=400)
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:121: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:121: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
     g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=400)
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:148: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:148: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
     - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
     u_res = _sim().run(n_steps=600)
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:148: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:148: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
     u_res = _sim().run(n_steps=600)
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:149: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:149: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
     - this simulation requests NTFF far-field output but registers no point probe. run() scores its ring-down settling witness from the probe time series, so its Result will carry settling_db=None and those DFT numbers will have no truncation guard (#885); add sim.add_probe(position, component) somewhere the field is live. forward() attaches no settling witness at all yet, so a forward()-driven simulation stays unguarded whatever it registers (tracked separately).
     g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=600)
 
 tests/unit/farfield/test_farfield_inplane_nonuniform.py::test_graded_inplane_mesh_integrates_with_local_cell_sizes
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/farfield/test_farfield_inplane_nonuniform.py:149: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
+  tests/unit/farfield/test_farfield_inplane_nonuniform.py:149: UserWarning: no ring-down settling witness on this run: this run recorded no probe time series: add a point probe (sim.add_probe(position, component)) so the run records a time series the witness can score, or drive the run with run(until_decay=...) so the stop criterion bounds the ring-down instead. This run requests NTFF and/or field-DFT output, so its truncation is unguarded (#885); settling_db is None, which is not a pass.
     g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=600)
 
 tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
 tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:50: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
+  scripts/harnesses/v173a_physics_equivalence.py:50: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
     sim = Simulation(
 
 tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
 tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:58: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  scripts/harnesses/v173a_physics_equivalence.py:58: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(Box(lo, hi), sigma_bulk=5.8e7, thickness=35e-6)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
 tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:141: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  tests/unit/autodiff/test_msl_sparam_ad.py:141: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(
 
 tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_baseline_bit_identity
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:112: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+  scripts/harnesses/v173a_physics_equivalence.py:112: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
     - all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
     result = sim.run(n_steps=n_steps)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4195: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
+  rfx/api/_sparams.py:4195: UserWarning: [run] preflight found 1 advisory issue(s) - pass skip_preflight=True to suppress:
     - all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) — add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)
     result = self.run(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 2 bins in [4.5000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+  rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 2 bins in [4.5000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
     _warn_msl_wave_split_unreliable(reliable, freqs_arr)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4808: UserWarning: S-matrix projected onto the passive set (singular values clipped to 1): 9 of 10 frequency bins were non-passive as extracted, worst sigma_max = 1.000 at 3.500 GHz. Raw values are preserved in S_raw; corrections per bin in passivity_correction.
+  rfx/api/_sparams.py:4808: UserWarning: S-matrix projected onto the passive set (singular values clipped to 1): 9 of 10 frequency bins were non-passive as extracted, worst sigma_max = 1.000 at 3.500 GHz. Raw values are preserved in S_raw; corrections per bin in passivity_correction.
     _warn_if_passivity_projected(passivity_correction, freqs_arr)
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
@@ -786,7 +786,7 @@ _______________________ test_v173a_baseline_bit_identity _______________________
   "ringdown_tail_to_peak": 0.768401026725769,
   "sha": "949e1845b84b26826d4e5309363bea4c2ffa5920",
   "harness_sha256": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
-  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "rfx_import": "rfx/__init__.py",
   "jax_version": "0.6.2",
   "backend": "cpu",
   "x64": false,

@@ -39,7 +39,7 @@ unless the contract is extended to sigma fills.
 The level statement is superseded by the settled four-mesh result (λ/30–λ/120):
 +0.08 to +0.16 dB from PO at 5 GHz for this plate at 20° and 40°, converged within
 0.006 dB from λ/60 to λ/120. The gate now locks +0.0833/+0.1583 dB within 0.03 dB
-(rfx-archive rfx/records/20261031-oblique-rcs-level-1991).
+
 
 ## Local runs (this machine, JAX_PLATFORMS=cpu, -n 4)
 

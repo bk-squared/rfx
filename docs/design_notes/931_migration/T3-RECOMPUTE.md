@@ -1,6 +1,6 @@
 # T3 — recompute (#931, branch `feat/931-t3-nu-runners-grid-subgrid`)
 
-Machine rule (PI, 2026-09-07): the shared pod runs no solve longer than about
+Machine rule: the shared pod runs no solve longer than about
 a minute and one small pytest at a time. Everything below goes to VESSL, one
 run per case, preset `gpu-rtx4090`, `JAX_PLATFORMS=cpu` inside the job, source
 read from this worktree — so the branch is committed before each submission.

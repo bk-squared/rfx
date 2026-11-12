@@ -1,6 +1,6 @@
 # Adjudicate the repaired fixtures on pinned live runs
 
-Continuation of [T9](T9-fixture-repair.md), under the PI's 2026-09-09 full
+Continuation of [T9](T9-fixture-repair.md), under the full
 VESSL authority. Work is confined to `rfx-931-fastlane-reds`, branch
 `feat/931-fixture-repair`. All physics jobs clone
 `b36fc46cdf21d1c57f221e6a057654bcad60bae2` to unique node-local directories.

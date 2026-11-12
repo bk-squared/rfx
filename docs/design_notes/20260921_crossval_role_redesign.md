@@ -1,6 +1,6 @@
 # What cross-validation is for, and where it lives
 
-2026-09-21. PI decision, recorded by the crossval lane. This is a note about how the repository is
+2026-09-21. This is a note about how the repository is
 organized, not a physics finding.
 
 ## Decision
@@ -103,9 +103,9 @@ criterion requires a separate decision, as the v2 bar already says.
    the domain walls changes), which is the behaviour issue #820 measures on the PEC sphere and the one
    open question in this lane whose suspected cause is in the product. The two-band cavity test does
    not answer issue #810, which asks about S-parameters on a multi-band mesh.
-4. Which cases stay was delegated to the lane by the PI (2026-09-21). Rebuilt under the rules above, one per PR: the MSL notch filter, the Sheen low-pass filter, the RT5880 patch antenna (with a finite-element reference, which answers #715). The WR-90 inductive iris is compared with in-repo mode matching, not with an external solver, so it became an analytic test (tests/oracle/test_wr90_inductive_iris_mode_matching.py). Removed: the WR-90 waveguide port (closed forms), the five-iris band-pass filter (high-Q, no external data of known provenance), the coax thru line (closed forms). The MSL thru-line phase case waits for the MSL lane, whose probe-fed referee loads it.
+4. Rebuilt under the rules above, one per PR: the MSL notch filter, the Sheen low-pass filter, the RT5880 patch antenna (with a finite-element reference, which answers #715). The WR-90 inductive iris is compared with in-repo mode matching, not with an external solver, so it became an analytic test (tests/oracle/test_wr90_inductive_iris_mode_matching.py). Removed: the WR-90 waveguide port (closed forms), the five-iris band-pass filter (high-Q, no external data of known provenance), the coax thru line (closed forms). The MSL thru-line phase case waits for the MSL lane, whose probe-fed referee loads it.
 5. When the last case has moved: delete `manifest.json`, the exit-code evidence machinery and the
    contracts that exist only to keep them consistent; narrow the numeric-provenance gate to public pages.
 
-Public pages are not rewritten along the way. They are regenerated from code results afterwards
-(PI, 2026-09-21); a removal PR touches a page only as far as CI needs.
+Public pages are not rewritten along the way. They are regenerated from code results afterwards;
+a removal PR touches a page only as far as CI needs.

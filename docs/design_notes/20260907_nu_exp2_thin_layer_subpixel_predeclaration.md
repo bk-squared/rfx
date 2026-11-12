@@ -14,7 +14,7 @@ reused, not re-derived).
 `feat/nu-band-accuracy-ad @ fea9f078` (which carries `feat/nu-band-profile`
 and `origin/main d990e18c`).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-exp2/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Every JSON the instrument writes records `rfx.__file__`, `git_sha`,
 `git_dirty`, `argv` and `started_utc` (the W6/W7 convention).
@@ -502,7 +502,7 @@ Measured 2026-09-07 (KST) on the shared machine, CPU only, one process
 at a time. Instrument commits `70b008f9` (s = 2 units), `8d4df8bd` (s = 1),
 `8c30f33a` (s = 0.5) — the same instrument source at every sha (the
 commits between them are the replay test and the results snapshot);
-`rfx.__file__ = /Users/byungkwankim/Documents/rfx-nu-exp2/rfx/__init__.py`
+`rfx.__file__ = rfx/__init__.py`
 printed by every call; `git_dirty = false` on all 49 rows; no `rfx/`
 source touched. One attempt per unit, no unit re-run, no `--force`, no
 window edited. Everything below is read from

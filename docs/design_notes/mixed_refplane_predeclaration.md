@@ -525,8 +525,8 @@ and carries the record.
 *This repo's recorded reproduction:* `f_res = 2.4221 GHz` (harminv on port V,
 Q 20.1), S11 dip 2.4300 GHz at −27.8 dB, broadside `D = 6.79 dBi`, stopped on
 `EndCriteria = 1e-4` at step 8671 with energy −41.09 dB (VESSL run
-`369367246713`, log
-`docs/research_notes/vessl_logs/patch_tutorial_openems_GOOD_369367246713.log`).
+`369367246713`).
+
 *Gate:* `|f_res − 2.4221 GHz| / 2.4221 GHz ≤ 0.01` **and** broadside
 `D ≥ 6.0 dBi`.
 

@@ -184,12 +184,12 @@ artifact exporters and gallery manifests. Coordinate first with `#1271` on publi
 Target flow:
 
 ```text
-고정 코드 SHA + 공개 example builder + config
+Fixed code SHA + public example builder + config
   → model / preflight
-  → 계산 결과와 관측량 배열
-  → 검증 근거와 범위
+  → Computed results and observable arrays
+  → Validation evidence and scope
   → plot / video / poster / downloadable data
-  → 사례 페이지 / 예제 카드 / API recipe / README 일부
+  → Case page / example card / API recipe / part of README
 ```
 
 If fields, S-parameters and gradients require multiple runs, record each run identity and their shared geometry/config hash.
@@ -313,14 +313,14 @@ Follow the current family-site deployment procedure instead of the older contain
 Planned flow:
 
 ```text
-RFX release tag 또는 명시한 dev SHA
-  → 문서·API·예제 metadata 검증
-  → checksum을 포함한 public docs bundle
-  → 그 SHA와 bundle을 고정한 GitOps 변경
+RFX release tag or explicit development SHA
+  → Validate documentation, API, and example metadata
+  → Public documentation bundle with checksums
+  → GitOps change pinning that SHA and bundle
   → Astro build + family renderer
-  → candidate HTTP/화면/asset 검사
-  → 기존 원자적 activation
-  → 공개 HTTP·본문·media checksum·version manifest 확인
+  → Check candidate HTTP responses, screens, and assets
+  → Existing atomic activation
+  → Verify public HTTP responses, body, media checksums, and version manifest
 ```
 
 Automation responding to RFX changes creates a matching, reviewable GitOps snapshot PR/bundle.

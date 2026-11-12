@@ -3,7 +3,7 @@
 Branch `feat/931-t1-autodiff-geometry-boundaries`, worktree
 `<workspace>/research/rfx-931-T1-autodiff-geometry-boundaries`.
 
-PI rule, 2026-09-07: the shared pod runs no test lane and no solve longer than
+Machine rule: the shared pod runs no test lane and no solve longer than
 about a minute. Everything below ran on VESSL, one run per case, reading this
 worktree from NFS as it stands (commit first — the job does not clone).
 

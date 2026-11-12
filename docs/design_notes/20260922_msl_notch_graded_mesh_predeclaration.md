@@ -6,7 +6,7 @@ edited into §5. One attempt per arm (R2). Lane: nu-mesh. Tracker: #810 (the
 graded-mesh S-parameter question) and #928 (the case).
 **Tree:** branch `nu/msl-notch-graded` on top of `crossval/msl-notch-filter`
 (PR #1177, the case this arm extends); main 12da9104 is contained.
-**Written by** the NU lane leader (bk-workspace, Fable) on 2026-09-22 after
+**Written by** the NU lane leader on 2026-09-22 after
 reading the case, the MSL port's graded-mesh paths, the band-profile builder,
 the edge-offset builder and the ledger entries named below, and after one
 build-only feasibility run on CPU (§2).

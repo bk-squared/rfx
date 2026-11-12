@@ -37,7 +37,7 @@ tests/unit/sparams/test_sparam_passivity_guard.py:260: AssertionError</failure><
     def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
         """End-to-end drift lock: full FDTD + assembly vs the committed golden.
 
-        FIXTURE REPAIRED 2026-09-08 (#931): retain the PI-authorized 254 um
+        FIXTURE REPAIRED 2026-09-08 (#931): retain the 254 um
         substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
         dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
         substrate, declare the foil at its actual interface, and hold domain/absorber thickness fixed under refinement.

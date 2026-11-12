@@ -230,7 +230,7 @@ One line section T needs present, for the carriers above:
       correct and unaffordable: dt changes, and every recorded number in the
       battery changes with it.
 
-   PI decision 2026-09-08: (b), for all eps legs including the slab; see the
+   Decision: (b), for all eps legs including the slab; see the
    dated amendment in `waveguide_chain_battery_predeclaration.md`. Theta0 and
    dt stay fixed. The old 0.498123 slab figure above was WINDOW-interior only,
    not a global certificate: vacuum elsewhere sets the global ratio to 0.99

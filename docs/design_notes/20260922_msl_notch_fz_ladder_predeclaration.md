@@ -6,7 +6,7 @@ follows `20260922_msl_notch_graded_mesh_predeclaration.md` (the record
 `validation/research/multiband_nu/results/msl_notch_graded.json`, whose arms
 are reused here and not re-run). Independent of the grid-core step 0
 (`20260922_nu_grid_core_predeclaration.md`); it runs in parallel.
-**Written by** the NU lane leader (bk-workspace, Fable) after the
+**Written by** the NU lane leader after the
 independent design review of 2026-09-22 asked for exactly this ladder.
 
 ## 0. The question, physically

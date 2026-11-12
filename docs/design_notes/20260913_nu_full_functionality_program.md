@@ -648,8 +648,8 @@ Two confirmations, none blocking:
    covered, that is Lane 9 (differentiable builder in `rfx/`), not this
    lane.
 2. The smooth spectral observable is a physical-time Hann taper plus a
-   0.5 GHz comb integral (5.2). If the PI prefers a differentiable
-   resonance-frequency estimator instead, it does not exist on the tree
+   0.5 GHz comb integral (5.2). A differentiable
+   resonance-frequency estimator does not exist on the tree
    (`harminv` is host numpy) and would be new instrument code, declared
    in a separate pre-declaration before Lane 2 runs.
 

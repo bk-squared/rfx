@@ -88,7 +88,7 @@ number.
    `bandwidth = 1.0` instead of the shipped `f0 = 3.5 GHz`, `bandwidth = 0.8`, because the shipped
    pulse is about 39 dB below its own peak at 7 GHz and leaves 6.4 - 7.0 GHz unreliable on both
    ports. Both pilots are in the fixture.
-2. **Deep nulls (PI ruling, 2026-09-21).** A quantity that is near zero by construction is not
+2. **Deep nulls.** A quantity that is near zero by construction is not
    compared in dB from rung to rung. (a) The thru's |S11| is held to an upper bound, -20 dB at every
    bin of every rung, and recorded as the line's own reflection floor. (b) The 2 dB comparison
    applies to the thru's |S21| and to the notch's |S21| and |S11| OUTSIDE the notch core — the bins

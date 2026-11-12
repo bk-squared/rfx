@@ -823,7 +823,7 @@ the 60-degree nfft-convergence flags (re-measured at 80, not carried from 20).
 absorber term does not explain; a compact-box G6 that stops firing on its depth_half
 falsifier; the 160-cell rung reading anything but the lattice floor.
 
-## 18. The verdict rule of the two compact grazing arms — PI decision 2026-09-13 (append-only)
+## 18. The verdict rule of the two compact grazing arms (append-only)
 
 Round 3 closed with `graze_pec` and `graze_te` reading FAIL while their own witnesses
 passed, and left the rule question open rather than changing it (close note §9.7). The

@@ -10,10 +10,10 @@
 > users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
 > the lattice").
 
-PI 지시(09-05): v1.8이 닫히면 (1) 메시 래스터화 가시화, (2) 시뮬레이션 preflight, (3) CST
-교차검증 교훈 적용을 #819/#888/v1.9보다 앞에. 근거는 이 세션 자체다 — #868 하나를 빼면 찾은
-결함 전부가 물리가 아니라 **측정 셋업**(기록 창, 흡수체 배치, witness)이었고, 그건 GPU 시간을
-쓰기 전에 보였어야 할 것들이다.
+After v1.8 closes, prioritize (1) mesh rasterization visualization, (2) simulation preflight, and (3) lessons from CST
+cross-validation before #819/#888/v1.9. Except for #868, all defects found in this work were in
+the **measurement setup** (record windows, absorber placement, witnesses), rather than physics.
+These should have been visible before spending GPU time.
 
 This is a plan. Its numbers come from measurements in this investigation; the code is not implemented yet.
 

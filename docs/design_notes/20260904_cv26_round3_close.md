@@ -562,7 +562,7 @@ the other checkout and dies with `AttributeError: module has no attribute 'AUX_N
 **No cv26 run artifact is committed in this repo.** `validation/crossval/_26_oblique_results/`
 does not exist. Every artifact cited above lives in an **uncommitted scratchpad**
 directory under
-`/private/tmp/claude-501/-Users-byungkwankim/50935fff-b722-4069-86b0-f259802f7b01/scratchpad/`
+`<workspace>/scratchpad/`
 (`wf_baseline/rfx.json`, `wf_fals_<name>/rfx__falsifier_<name>.json`,
 `wf_ladder_<tag>/rfx__<tag>.json`, and `aux-echo-arrival/gate_table.json`).
 
@@ -951,15 +951,15 @@ because the separation is now against a green one, but still **0.39× short of t
 declared bar**. Recorded, not re-declared: F1's margin is the weakest of the four and the
 5° angle offset is the smallest defect in the set.
 
-### 10.4 Where the GL1 finding belongs: the standard, not this case (PI decision 2026-09-14)
+### 10.4 Where the GL1 finding belongs: the standard, not this case
 
-§10.2 records that GL1 breaches on `tm_45` and `tm_60`. The PI decision of 2026-09-14 is
-that GL1 stays **reported and not gated**, and that the finding is recorded as a
+§10.2 records that GL1 breaches on `tm_45` and `tm_60`. GL1 stays
+**reported and not gated**, and the finding is recorded as a
 limitation of `docs/design_notes/20260903_lattice_witness_standard.md`, not of cv26.
 
-The reasoning, in the PI's words: a first-order window that closes like `√R_lat` has no
-validity at a reflection null, so a red there would measure the standard's own envelope
-rather than the solver. cv26 gates on GL2, which passes on all seven primary arms.
+
+
+cv26 gates on GL2, which passes on all seven primary arms.
 
 What the standard's §3 window does not cover, with this lane's numbers:
 

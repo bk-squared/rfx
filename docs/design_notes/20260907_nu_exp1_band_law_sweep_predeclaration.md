@@ -17,7 +17,7 @@ mode added (the lane-A F7/F8 code paths are untouched; the lane-A replay
 test `tests/unit/nonuniform/test_band_builder_chain_model.py` passes on the
 changed file, 15 passed).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-exp1/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Every JSON the instrument writes records `rfx.__file__`, `git_sha`,
 `git_dirty`, `argv` and `started_utc`. The chain-model predictions in

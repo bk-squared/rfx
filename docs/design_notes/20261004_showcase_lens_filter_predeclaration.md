@@ -1,8 +1,8 @@
 # Pre-declaration: two showcase designs from printable dielectrics (issue 1359)
 
 **Status: PRE-DECLARATION. Written and pushed before any run of this batch.** Nothing below comes
-from a run of this batch. Choices and thresholds are the lane leader's (showcase session,
-2026-10-04, after the PI chose the examples). The implementer reads this file and never edits it;
+from a run of this batch. Choices and thresholds were written on
+2026-10-04. The implementer reads this file and never edits it;
 a change is appended as a dated amendment by the leader, before the runs it governs.
 
 Two designs an RF engineer would build, each with permittivity that a 3-D printer can make:
@@ -25,8 +25,8 @@ Memory consulted (R1): `research_stop_differentiable_iris_gradient_m2.md` (metal
 in a waveguide are not the continuum shape derivative) — consistent: B moves no metal, only cell
 permittivity. `research_stop_loaded_two_pole_m6.md` / `research_stop_iris_coupled_cavity_stage1.md`
 (coupling-coefficient extraction in coupled-resonator filters failed) — consistent: B claims no
-coupling coefficient, only the two-port S curves against a mask. #1359 record (rfx-archive
-`20260928-design-beam-cells`): the stored final iterate was not the best (D(30°) 11.07 vs 11.72 dBi)
+coupling coefficient, only the two-port S curves against a mask. #1359 record:
+the stored final iterate was not the best (D(30°) 11.07 vs 11.72 dBi)
 — answered here by a decaying step and best-iterate selection (§1.3, §2.3).
 
 Every number below is **judged** (carries a threshold declared here) or **reported**. A number that
@@ -184,9 +184,9 @@ VESSL only, with a `Resource choice:` record per submission.
 The lab rule holds: when the chosen preset has pending jobs, at most two GPU runs of this project
 at a time. Estimated scale (to be replaced by the trial's timing): A ≈ 3.2 M cells × about 2 600
 steps per gradient at 1.0 mm; B ≈ 0.12 M cells × about 2 × 15 000 steps per gradient at a/36.
-Records go to rfx-archive `rfx/records/20261004-showcase-lens/` and `.../20261004-showcase-filter/`,
+Records use
 schema `rfx-showcase-result/1`, rewritten after every iterate. Promotional originals (4K stills,
-video) go to the private `bk-squared/rfx-research` repository, branch `showcase`, not to this
+video) are kept outside this
 repository.
 
 ## 5. Two outputs from one record
@@ -231,7 +231,7 @@ Two points the text left open, found by the implementer before any run:
    git clone) and archived; the job clones the public repository from
    GitHub at the given commit.
 
-## Amendment 3 (2026-10-05, leader; after the PI's review of the first showcase, before the runs it governs)
+## Amendment 3 (2026-10-05, after review of the first showcase, before the runs it governs)
 Start S2 (three εr = 6 slabs) hands the optimiser the resonator layout, so a filter
 grown from it does not show what the gradient finds. The S2 run and its three-mesh re-solve stay in the
 record unchanged; this amendment adds a second filter run and a rule for the frame the showcase shows.
@@ -331,8 +331,8 @@ from the literature, and chose a **wide flat-top beam (wide field of view)**. Ob
 1 ≤ εr ≤ 2.7, Adam 0.10 → 0.01 over 150 iterations, start εr = 1.85), reading the same directivity pattern
 D_f(θ, φ) in dBi on the 73 × 73 grid at 9.5, 10.0, 10.5 GHz.
 
-**1. What "wide flat-top" means in the literature read** (23 sources, 14 in full text; record: private archive,
-`rfx/records/20261004-showcase-lens/objective-survey/extraction_E_wide_flat_top.md`; two papers' numbers
+**1. What "wide flat-top" means in the literature read** (23 sources, 14 in full text;
+two papers' numbers
 re-read by the leader in the downloaded originals: Kumar & Ghosh, PIER Letters 100, 2021; Hong & Nguyen,
 J. Electromagn. Eng. Sci., 2026). For lenses, metasurfaces, transmitarrays and superstrates of 1.8–18 λ over
 one feed: the flat region is stated as the angular width within 1 dB (sometimes 2 dB) of the flat level;

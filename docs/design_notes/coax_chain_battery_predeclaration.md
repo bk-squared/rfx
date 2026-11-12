@@ -2,7 +2,7 @@
 
 Status: written BEFORE the first battery solve. Contract:
 [`chain_closure_contract.md`](chain_closure_contract.md), section "The v2.0 battery for
-lumped/wire, MSL and coax". The verdict numbers are that section's, with the PI's 2026-09-21
+lumped/wire, MSL and coax". The verdict numbers are that section's, with the
 ruling on deep nulls (below); this note fixes the line, the rungs, the DUTs, the referee and what
 each stage records.
 
@@ -47,7 +47,7 @@ Two-port:
 One-port (exists already, re-measured on the same three rungs): PEC short, open, 25 ohm and
 100 ohm resistive loads.
 
-## Deep nulls (PI ruling, 2026-09-21)
+## Deep nulls
 
 A quantity that is by construction near zero is not compared in dB from rung to rung. The thru's
 |S11| is held to an upper bound, -20 dB at every bin of every rung, and recorded as the line's own
@@ -119,8 +119,8 @@ it. Corrections to the text above, each a fact from the repository, not a change
 
 ## Addendum 2 (2026-09-23, after the first re-run on the fixed conductors)
 
-Appended after the first re-run's records were read. Items 8 and 11 are the leader's; items
-9 and 10 are the PI's decisions of 2026-09-23 and are cited in the fixture and the replay test
+Appended after the first re-run's records were read. Items 8 and 11, and items
+9 and 10 are cited in the fixture and the replay test
 where they apply.
 
 8. **The bead is four annulus widths, a whole number of cells at every rung (leader).** The
@@ -138,7 +138,7 @@ where they apply.
    the fixture as measured, marked `judged: false` with the reason "open end inside the lane's
    closed PEC can (absorbers on z only); its reflection does not settle at 9 annulus cells —
    energy near the outer region's first cutoff grows with record length
-   (open_absorber_diagnostic.json); PI 2026-09-23". The passivity and settling checks skip the
+   (open_absorber_diagnostic.json)". The passivity and settling checks skip the
    open with that reason; nothing else about the open or the other terminations changes.
 10. **Criterion 1(2) is the identity within the traced path (P2).** The bead in a numpy and
     in a jnp container is held to rtol 1e-5 / atol 1e-7 as declared. The untraced call (float64
@@ -152,7 +152,7 @@ where they apply.
     -20 dB at every bin, on the finest rung or in its closed form (the thru's |S11| and |S22|),
     is judged by the -20 dB bound at every rung, never by a dB comparison. A quantity deep only
     inside a reflection zero's core (the bead's |S11| and |S22|) is compared in dB outside the
-    core; inside it the verdict stays the zero's frequency (PI ruling of 2026-09-21). The
+    core; inside it the verdict stays the zero's frequency. The
     thru's rung verdict therefore reads on |S21| within 2 dB and on the bound.
 
 ## Addendum 3 (2026-09-24, after the review of the re-run)
@@ -162,7 +162,7 @@ where they apply.
     misstated the contract, which asks for the shift below one tenth of the magnitude gate:
     `max |d|S|| <= (10^(2/20) - 1) / 10 = 0.0259` in amplitude, which is 0.22 dB at |S| = 1
     and 0.66 dB at |Gamma| = 0.33. The contract's form governs, as the replay test already
-    implements it (PI 2026-09-24). Under it the 25 and 100 ohm loads stay judged at 9
+    implements it. Under it the 25 and 100 ohm loads stay judged at 9
     annulus cells. Their narrowband doubling changes near 6.7-6.9 and 9.7-10.6 GHz are
     recorded in the fixture as the same closed-can footprint as the open's (issue 1218),
     not as a failure.

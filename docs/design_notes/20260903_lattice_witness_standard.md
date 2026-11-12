@@ -27,10 +27,10 @@ the `lattice_witness.json` files the VESSL run of 2026-09-03 wrote (§9.1), whic
 are post-processing of those, the same class as `--meep-ladder-summary` and
 `--refit-tail-fits`.
 
-**PI decision this note implements (2026-09-03, verbatim):** "격자별로 테스트
-하고 다른 유사한 이슈들도 있으니 같은 엄밀성 기준을 쓰자" — test per lattice
-(each dx rung), and apply the same rigor standard to the other cases with the
-same kind of issue.
+
+
+
+
 
 ## 0. Why this exists
 
@@ -149,8 +149,8 @@ Per case:
 | cv22 Drude | `drude` | ε∞ = 3, fp = 7 GHz, γ = 2π·3 GHz | as Lorentz with ω0 = 0, κ = ωp², δ = γ/2 |
 | cv23 | `conductive` | ε′ = 4, σ ∈ {0.15577, 1.5577, 4.6731} S/m | `ε′ − jσ(x/tan x)/(ωε0)` |
 
-**No arm is excluded.** The PI's condition ("if a pole model cannot be done
-exactly, exclude that arm and say why") does not bite: all three cv22 pole models
+
+**No arm is excluded.** All three cv22 pole models
 are exact through the same identity, and §5.2 shows the lattice model predicts
 each arm's measured continuum residual a priori.
 
@@ -1018,8 +1018,8 @@ lane as well as on the committed artifact.
   cv23's ladder on the same rig. To run cv22's ladder, it is
   `--dx-div 2|4 --tag <arm>_dx<K>` and about 30 s of pod time.
 - **A cv04 rung at the settled recipe with cv04's own script.**
-  **SUPERSEDED 2026-09-10** -- see §5.3's top UPDATE. The PI overrode this
-  call: cv04 now has its own record derivation (the settling-extension loop,
+  **SUPERSEDED 2026-09-10** -- see §5.3's top UPDATE.
+  cv04 now has its own record derivation (the settling-extension loop,
   `slab_family.NX_GROW_CELLS`) and a settled rung, on its own script, not
   borrowed from cv23. Kept below, struck through in spirit, because the
   reasoning explains why this bullet existed before the override, not
@@ -1543,8 +1543,8 @@ nothing there, and the arm is judged on G7.
   and cv23's `lattice_witness.json` under this revision and under the commit
   before it, in one process, and comparing the serialized text.
 - cv26 reports `domain_R` / `domain_T` per arm and an updated
-  `GL1_not_gated_reason`. **`GL1_gated` stays `false`** — the PI decision of
-  2026-09-14 (cv26 close note §10.4) is unchanged, and the 135 in-domain
+  `GL1_not_gated_reason`. **`GL1_gated` stays `false`** — the rule in
+  cv26 close note §10.4 is unchanged, and the 135 in-domain
   breaches are why: declaring the domain does not make cv26's GL1 green.
 - **Nothing numeric moved anywhere.** Every number the cv26 replay artifact
   already carried is bit-identical after regeneration; the diff is 33 added

@@ -2,7 +2,7 @@
 
 Status: written BEFORE the first battery solve. Contract:
 [`chain_closure_contract.md`](chain_closure_contract.md), section "The v2.0 battery for
-lumped/wire, MSL and coax", with the PI's 2026-09-21 ruling on deep nulls (below).
+lumped/wire, MSL and coax", with the rule on deep nulls (below).
 
 Chain scope (contract, per-family table): the differentiable **S11** of
 `Simulation.forward(port_s11_freqs=...)`, for a lumped port (`add_port(..., extent=None)`) and a
@@ -45,7 +45,7 @@ that is recorded — the referee is the 1-D line either way.
    with the line's phase.
 4. **Matched**, `R = Zc` (control): `S11 = 0` in the ideal line. A deep null — see the ruling.
 
-## Deep nulls (PI ruling, 2026-09-21)
+## Deep nulls
 
 The matched case is held to an upper bound, `|S11| <= -20 dB` at every bin of every rung, and
 recorded as the port's own reflection floor (this number is what a user most needs from the
@@ -91,7 +91,7 @@ fallback and aborts on a dirty tree; a failed stage ships its partial JSON. An a
 records into `tests/fixtures/lumped_wire_chain_battery/fixture.json`, which one replay test
 re-derives every assembled number from.
 
-## Addendum 2026-09-21 (leader; PI decision of the same day)
+## Addendum 2026-09-21
 
 Written after the battery ran. Nothing above is edited; what changed is recorded here.
 
@@ -160,8 +160,8 @@ Decision (lead, 2026-10-06 for the matched row; 2026-10-08 for the others):
    circuit actually built (formula written in the test file, no product extractor): short `-1`,
    half `-1/3`, double `+1/3`, matched `0` (floor `|Gamma_L| <= -20 dB`), open `+1` — an open
    element must be invisible. Magnitude within 2 dB; phase against the prediction that adds the
-   measured one-cell element inductance (`0.214 mu0 dx` per element, rfx-archive
-   `rfx/records/20261007-1162-lumped-cell-inductance/`), judged as a three-mesh trend, not at one bin.
+   measured one-cell element inductance (`0.214 mu0 dx` per element),
+   judged as a three-mesh trend, not at one bin.
 2. Electrical length is judged by the bar's own definition (v2 bar item 5), once, on the short
    row: the network is a one-port there, so the reflection-phase slope with the port's own
    reflection removed (`tests/_electrical_length.py`), within 1 %. No new observable (no ripple

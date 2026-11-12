@@ -4,7 +4,7 @@
 
 **Status:** MEASUREMENT + PRE-DECLARATION (no case re-run yet) · **Opened:** 2026-09-04
 **Branch:** `agent/issue-888-aux-absorber` (b27dc2bb), base `origin/main` @ `b59e1d9`. Superseded by `fix/888-aux-absorber-r2` (PR #1005), rebased onto `d56f68eb`.
-**Issue:** #888 · **PI decision A (2026-09-04):** deepen the auxiliary absorber, re-derive
+**Issue:** #888 · **Scope:** deepen the auxiliary absorber, re-derive
 its profile from a reflection target, and fix `predict_settling`'s echo cancellation.
 **Scope:** gates must map where the model is valid; no lock-in on one
 frequency or geometry, and "a port that does not work everywhere" is an acceptable,
@@ -467,7 +467,7 @@ pre-declared verdict is now recorded as false, and this section is the record.
 
 ---
 
-## 9. cv04's rig: the band was never illuminated (PI decision, 2026-09-04)
+## 9. cv04's rig: the band was never illuminated
 
 Section 7 left the fringe gate red and proposed three resolutions. The subsequent decision
 chose **widen the rig**. Measured, at cv04's own rig with only `bw` changed:
@@ -689,7 +689,7 @@ The witness now rejects the continuum model by 2.7x its own window. **T did not
 follow**: `W_witness,T` = 1.39e-02 still exceeds its 1.17e-02 ceiling and the
 continuum falsifier separates only 0.38 there, so T stays reported.
 
-**TURNED ON for R** (PI decision, 2026-09-04), T and A stay reported.
+**TURNED ON for R**, T and A stay reported.
 `04_multilayer_fresnel.py` writes `gated_channels = ["R"]` and exits non-zero
 when the R channel fails; `tests/crossval/test_cv04_fringe_measurability.py`
 replays it from the committed artifact so it bites in CI, not only under the
@@ -935,7 +935,7 @@ field -- the subtraction cancels more of the pattern error when the incident car
 4.4 % echo. It is a property of the #280 correction, measured here, not a regression this
 lane introduced in it.
 
-**PI decision, 2026-09-06: re-derive the bar from the clean-injection measurement.**
+**Re-derive the bar from the clean-injection measurement.**
 `gate_from_envelope(0.705, quantum=100) = 1.06`, through the shared policy, with the
 measurement pinned beside it so a further degradation is visible. A bar that moved
 because the measurement got worse must be shown to still kill what it killed, so

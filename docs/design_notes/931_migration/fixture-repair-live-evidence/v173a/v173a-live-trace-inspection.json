@@ -16,7 +16,7 @@
         "sha256": "66e238b17349d4b5b36308b6ff2e9cc396f4f1f6d5f8cdf70a69096f8c6fa9e5"
       },
       {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/data/v173a_aligned_composition.json",
+        "path": "tests/data/v173a_aligned_composition.json",
         "sha256": "ff7eeceef3cf04888fafcf9f0c113a4b1bbf73fc8ee7ec6864594d64490154fa"
       },
       {

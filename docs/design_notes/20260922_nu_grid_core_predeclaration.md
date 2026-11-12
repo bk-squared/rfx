@@ -1,14 +1,14 @@
 # One grid for the uniform and the non-uniform lane — step 0 pre-declaration
 
-**Status:** pre-declaration for the core change the PI approved on 2026-09-22
-after an independent design review (Fable, separate instance; its text and the
-two scripts it ran are kept off-repo under `bk-workspace/rfx-nu/notes/`). This
+**Status:** pre-declaration for the core change
+after an independent design review that ran two scripts.
+This
 note fixes what step 0 builds, what it must not change, and how each part is
 judged, before any code. Later parts (the mesher, step 1; the physics witnesses
 G14/G16; the differentiable map) get their own notes.
 **Lane:** nu-mesh. **Trackers:** #810 (graded-mesh observables), the program
 document's gap map G9/G11/G13/G16/G17 (`20260913_nu_full_functionality_program.md`).
-**Written by** the NU lane leader (bk-workspace, Fable).
+
 
 ## 0. What is wrong, and what changes for a user
 
@@ -97,7 +97,7 @@ physics witnesses and are separate declarations.
    `runners/uniform.py`, `simulation.py:913`): the user result is unchanged
    and only fusion order would move. Coaxial-port sites (27) migrate
    mechanically under uniform bit identity only; coax on a graded mesh stays
-   unsupported by policy (`support_matrix.md`, the PI's 2026-09-20 decision).
+   unsupported by policy (`support_matrix.md`).
 
 ## 3. Scope and judges, per sub-step
 

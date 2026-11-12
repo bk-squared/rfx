@@ -16,7 +16,7 @@
 > users `docs/public/guide/materials-geometry.mdx` ("How conductors land on
 > the lattice").
 
-Status: DIRECTION (PI-endorsed 2026-08-25). Not a commitment; a recorded target
+Status: DIRECTION. Not a commitment; a recorded target
 for the next architecture review. Triggers to revisit: the in-plane
 discretization verdict of the current crossval campaign, and an external
 design review (Codex) of this note's open questions.

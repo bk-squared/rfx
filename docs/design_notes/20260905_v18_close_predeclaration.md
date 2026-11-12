@@ -30,7 +30,7 @@ pair resolves 2.25e7 ULP against a 1e4 floor (the span helper is dtype-aware; no
 class). No precision defect to fix, and no pre-declared branch fits cleanly: run 2's x64 AD
 is 3.34× off run 1's, just outside the remeasure note's "factor 3, same sign" branch.
 
-## 1. The declaration (PI decision 2026-09-05)
+## 1. The declaration
 
 > **Contract criterion 1 (forward identity) and criterion 3(a) (AD-vs-FD) are evaluated
 > under x64 on the differentiable lanes.** The forward default stays `precision="float32"`.
@@ -40,7 +40,7 @@ case (default; every claims-bearing artifact; 15 of 21 crossval scripts) and has
 short there; it has failed four times on the differentiation side (#527, #477 FD comparators;
 #630 Yee arithmetic dtype; run 2's tape reassociation and zero-derivative leg); x64 costs
 1.25–1.49× wall and 2× memory on the RTX 4090 with forward physics identical (+0.073 % band
-mean, asy equal to four digits) — `docs/research_notes/20260904_vi_envelope_predeclaration.md`.
+mean, asy equal to four digits).
 
 What this is NOT: a tolerance change. rtol 1e-5 / atol 1e-7 and rel 0.05 are untouched. The
 float32 readings stay in the artifact as the recorded envelope of the float32 tape.

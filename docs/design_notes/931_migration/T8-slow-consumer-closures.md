@@ -5,9 +5,9 @@ Starting source: `5ce0de652d6bb58a70735504dce42da83ddd8b16`.
 
 ## Scope and governing evidence
 
-The user authorized repairs to nine tests and numerical attribution of two
-others, while explicitly reserving the historical MSL and V173A locks for the
-PI. Those two tests, their fixtures and their baselines are unchanged.
+The scope covers repairs to nine tests and numerical attribution of two
+others. The historical MSL and V173A locks are unchanged:
+those two tests, their fixtures and their baselines are unchanged.
 
 No `docs/agent-memory/` directory exists in this worktree. The read-first
 substitutes are the normative

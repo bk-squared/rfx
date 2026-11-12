@@ -12,7 +12,7 @@
 > interior) is a clipped measurement. The harness now carries `record_rule="far_boundary"`
 > and `"grid_extent"`; the plateau is rung-dependent because the criterion is relative and
 > the remnant is absolute (N=18 at T/τ≈3, N=36 at ≈5, N=72 deeper). The measured boundary is
-> NOT yet converged; see `docs/research_notes/20260904_vi_envelope_predeclaration.md`. This
+> NOT yet converged. This
 > document is kept as written so the prediction and the outcome can be compared.
 > **Second annotation (2026-09-05, later).** §3.1's layout rule — every clearance a fixed
 > multiple of λ_g(f_low) — is itself a defect: a box sized for a band's low edge serves that

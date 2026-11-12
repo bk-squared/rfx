@@ -971,8 +971,8 @@ results JSON: **14 passed, 1 failed** — `test_replay_ad3` red at
 `worst dominant AD-vs-FD 5.224e-01 > 0.15`, by design. It stays red; the
 answer is a decision, not a tolerance edit.
 
-**Decision (2026-09-11, taken by the lead session on the PI's instruction
-to bring the stack to merge; the PI can overturn it here).** The record
+
+The record
 for the joint (dx, dy, dz) gradient is the **second attempt**
 (`ad3_second_attempt`, HELD on x, y, z, second-pass section below).
 Attempt 1 stays in the JSON under `ad3` with `fired = true`, unchanged,

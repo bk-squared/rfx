@@ -28,7 +28,7 @@ Mac-side session (`rfx-known-issues.md:107-108`).
 
 ---
 
-## Decisions (PI, 2026-09-02)
+## Decisions
 
 The seven questions this plan raised in Appendix B were decided on 2026-09-02. Deferred work is
 collected in issue **#854**; the reasoning for each is in Appendix B.
@@ -517,7 +517,7 @@ the measure named. A bare percentage with no measure is what the ledger's
 
 ## Appendix B — decisions taken (2026-09-02)
 
-All seven were decided by the PI on 2026-09-02. Each entry gives the decision, then why. Deferred
+Each entry gives the decision, then why. Deferred
 work is collected in **#854**; the one-line summary is the "Decisions" section at the top.
 
 ---

@@ -14,7 +14,7 @@ NO production (`rfx/`) change.
 `feat/nu-band-accuracy-ad @ fea9f078` (which carries `feat/nu-band-profile`
 and `origin/main d990e18c`).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-exp4/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Every JSON the instrument writes records `rfx.__file__`, `git_sha`,
 `git_dirty`, `git_modified_tracked`, `argv` and `started_utc` (the W6/W7
@@ -431,7 +431,7 @@ Two records for #931 (geometry -> lattice ownership), neither changed here:
 Measured 2026-09-07 (KST) on the shared machine (load 5-8, a GPU lane
 running elsewhere), CPU only. Instrument commit for both arms
 `694fdd2b`; `rfx.__file__ =
-/Users/byungkwankim/Documents/rfx-nu-exp4/rfx/__init__.py` printed by every
+rfx/__init__.py` printed by every
 call; `git_dirty = false`, `git_modified_tracked = []` on both arm rows; no
 `rfx/` source touched. One attempt per arm, no re-run, no window edited.
 Everything below is read from

@@ -1,6 +1,6 @@
 # Pre-declaration — what the near field at the driven port's reference plane is made of
 
-Lane: issue #873, option 1 of the three the leader session put to the PI on 2026-09-16.
+Lane: issue #873, option 1 of three.
 A **new mechanism hypothesis** — the transverse composition of the source's own near
 field — distinct from the two lanes already closed on this issue:
 

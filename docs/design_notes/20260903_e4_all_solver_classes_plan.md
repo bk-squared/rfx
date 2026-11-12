@@ -18,7 +18,7 @@
 > the lattice").
 
 **Status:** PLAN (no simulation run, no code changed; this note only) · **Opened:** 2026-09-03 · **Author:** planning agent
-**PI decision (2026-09-03, verbatim):** "crossval 들에서 한 종류가 아니라 시뮬레이션 가능한 모든 class (ems/meep/palace)를 추가하는걸로 해줘" — every crossval case gets every external solver class that can simulate it (openEMS, Meep, Palace), not one.
+Every crossval case gets every external solver class that can simulate it (openEMS, Meep, Palace).
 **Branch:** `agent/e4-all-solvers-plan` (worktree `~/Documents/rfx-worktrees/e4-plan`, base `origin/main` @ `6d13df7`).
 **Inputs read:** `validation/crossval/manifest.json` (21 cases), `validation/README.md`, `docs/public/guide/benchmarks.mdx`, `docs/guides/physics_validation_evidence_rule.md`, `scripts/crossval/meep_cv22_dispersive_slab.py`, `scripts/crossval/meep_cv23_lossy_slab.py`, `scripts/diagnostics/{palace_notch_referee,palace_sheen_referee,wr90_port,openems_thru_referee}/`, `scripts/diagnostics/build_*_{openems,palace,meep}_*.py`, `scripts/vessl_crossval_external.yaml`, `scripts/vessl_cv22*.yaml`, `scripts/vessl_cv23*.yaml`, `scripts/vessl_cv24_nu_cavity.yaml`, `docker/openems-lane/Dockerfile`, the cv22 / cv23 / cv24 pre-declaration notes, `docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md`, and the upstream solver sources named in §1.
 
@@ -138,7 +138,7 @@ Self-invariant regression lock ("not an external cross-solver claim", `manifest.
 #### cv14 `14_rect_cavity_pozar` — claims-bearing A, E2 — **N/A × 3**
 "Deliberately NARROW E2 envelope … against an EXACT analytic oracle … No external solver and no meshing tolerance enter the oracle" (`manifest.json::cases[14].claim_scope`). Any discretized solver is a worse oracle than the closed form; a leg would be decorative.
 
-#### cv15 `15_patch_antenna_rt5880` — diagnostic-reporter B, E2+E4 (PI 2026-09-03: "cv15 stays diagnostic; move on")
+#### cv15 `15_patch_antenna_rt5880` — diagnostic-reporter B, E2+E4
 - **openEMS — DONE.** In-script `run_openems` (`15_patch_antenna_rt5880.py:688-775`), `validation/crossval/_15_patch_results/openems.json` (`::f_dip_hz = 2330000000`, `::runtime_s = 46.89`).
 - **Meep — FEASIBLE** (f0 by ring-down, D by `near2far`; no S11), as cv05. **Gate fed:** f0 within the 8 % window (known blind to the #740 one-plane-ground realization — the leg does not repair that; it adds a third f0), D within 3 dB. **Cost:** minutes with MPI.
 - **Palace — FEASIBLE** (f0 by Eigenmode, S11 dip by Driven + LumpedPort; D conditional on ≥ v0.15). **Cost:** tens of minutes GPU.
@@ -181,7 +181,7 @@ Ranked last among FEASIBLE legs.
 
 #### cv23 `23_lossy_slab_fresnel` — claims-bearing A, E2+E4, conductive slab R/T/A
 - **Meep — DONE.** `scripts/crossval/meep_cv23_lossy_slab.py`; `validation/crossval/_23_lossy_results/meep_{tand0p1,tand1,tand3}.json` (80/40/40 px/cm); ladders; `rfx.json::verdict.exit_code = 0`.
-- **openEMS — FEASIBLE**, trivially: `AddMaterial(epsilon=4, kappa=σ)` on the cv04 TEM-box rig, σ = 0.15577 / 1.5577 / 4.6731 S/m. **Gate fed:** R/T/A windows (`rfx.json::arms.tand0p1.mean_window_R = 0.01`, `::mean_window_T = 0.017`, `::mean_window_A = 0.027`); the tand3 T gate is vacuous there too and is declared so. **Falsifier (B):** σ × 1.5 on the reference (rfx twin `rfx__falsifier_tand3_sigma_x1p5.json::arms.tand3.mean_dR_gated = 0.085`). **Cost:** seconds; the exact 1-D Yee-lattice witness (`rfx.json::arms.tand3.lattice.mean_dR_lattice_gated = 3e-5`) applies to openEMS's Yee grid as well and is reused as the reported witness (PI decision 2 of 2026-09-03: lattice-witness standardisation).
+- **openEMS — FEASIBLE**, trivially: `AddMaterial(epsilon=4, kappa=σ)` on the cv04 TEM-box rig, σ = 0.15577 / 1.5577 / 4.6731 S/m. **Gate fed:** R/T/A windows (`rfx.json::arms.tand0p1.mean_window_R = 0.01`, `::mean_window_T = 0.017`, `::mean_window_A = 0.027`); the tand3 T gate is vacuous there too and is declared so. **Falsifier (B):** σ × 1.5 on the reference (rfx twin `rfx__falsifier_tand3_sigma_x1p5.json::arms.tand3.mean_dR_gated = 0.085`). **Cost:** seconds; the exact 1-D Yee-lattice witness (`rfx.json::arms.tand3.lattice.mean_dR_lattice_gated = 3e-5`) applies to openEMS's Yee grid as well and is reused as the reported witness.
 - **Palace — FEASIBLE**, the first non-FDTD referee of dielectric loss: `Conductivity` material (§1.3) in the TEM box with wave ports (frequency-independent σ, so an ordinary sweep), `A = 1 − |S11|² − |S21|²`. **Gate fed:** the same R/T/A windows; Palace-vs-TMM gated first. **Falsifier:** σ × 1.5. **Cost:** seconds–minutes.
 
 #### cv24 `24_nu_rect_cavity_pozar` — claims-bearing A, E2 (exact Pozar + exact discrete-lattice witness to 4 ppm) — **N/A × 3**

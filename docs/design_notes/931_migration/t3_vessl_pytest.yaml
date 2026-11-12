@@ -19,7 +19,7 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
-  SRC=/root/workspace/byungkwan-workspace/research/rfx-931-T3-nu-runners-grid-subgrid
+  SRC=<workspace>/research/rfx-931-T3-nu-runners-grid-subgrid
   test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
   git config --global --add safe.directory "$SRC" || true
   cd "$SRC"
