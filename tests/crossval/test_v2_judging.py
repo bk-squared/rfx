@@ -6,7 +6,7 @@ feature frequencies the cases' GPU runs printed (VESSL 369367264046, log on
 the lab share under research/rfx/.omx/msl-cases-ladder-post1213/
 20260923T144706Z-6e6f07a0/ladder.log, for the notch and Sheen filters; the
 RT5880 patch antenna's ladder values as the crossval-lane brief of 2026-09-24
-quotes them).  The input-resistance and level-crossing rules (PI 2026-09-24)
+quotes them).  The input-resistance and level-crossing rules
 are tested on closed-form curves written here.
 """
 

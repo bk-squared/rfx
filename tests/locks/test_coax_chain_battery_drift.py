@@ -26,8 +26,7 @@ battery is judged by:
   that sees it grow longer: with every edge permittivity above vacuum read
   5 % high its |S21| moves 0.010 dB and its electrical length 2.48 % (run
   369367264558);
-* the thru's |S11| and |S22| held to -20 dB, a deep null compared with nothing
-  (the PI's 2026-09-21 ruling);
+* the thru's |S11| and |S22| held to -20 dB, a deep null compared with nothing;
 * the bead's reflection zero — the vertex of the parabola through |S11|^2, the
   battery's own estimator — within 1 %, and its |S11| and |S22| within 2 dB
   outside the zero's core: the bins where the stored curve or the closed form

@@ -5,12 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import subprocess
+from time import perf_counter
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCOPE = ("rfx/", "tests/contracts/", "tests/unit/", ":(top,glob)tests/*")
+SCOPE = ("rfx/", "tests/")
 pytestmark = pytest.mark.source_scan
 
 PATTERNS = {
@@ -25,6 +26,12 @@ PATTERNS = {
         r"|(?<![\w-])acc-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-\d{8}t\d{6}z-[0-9a-f]+(?![\w-])"
     ),
 }
+# Deliberately broader than PATTERNS; Git selects lines, Python judges them.
+CANDIDATE_PATTERN = (
+    r"byungkwan|/Users/|PI|professor|rfx|agent-rules|pi-desk|[DL]:|MSL-PLANE"
+    r"|ledger|records? 20|research_notes|bk-workspace|remilab-cnu|acc-"
+    r"|[^ -~]"  # All non-ASCII text includes every Hangul range, in any locale.
+)
 MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
 
 
@@ -35,27 +42,32 @@ def matching_classes(line):
 
 
 def test_public_text_has_no_pi_or_agent_traces():
-    paths = subprocess.check_output(
-        ["git", "ls-files", "-z", "--", *SCOPE], cwd=ROOT,
-    ).decode().split("\0")
+    started = perf_counter()
+    result = subprocess.run(
+        ["git", "grep", "-n", "-I", "-z", "-E", "-i", CANDIDATE_PATTERN,
+         "--", *SCOPE], cwd=ROOT, capture_output=True,
+    )
+    selected = perf_counter()
+    assert result.returncode in (0, 1), result.stderr.decode(errors="replace")
     errors = []
-    for name in filter(None, paths):
-        data = (ROOT / name).read_bytes()
-        if b"\0" in data:
+    for record in result.stdout.split(b"\n"):
+        if not record:
             continue
+        name, number, source = record.split(b"\0", 2)
+        name = name.decode("utf-8")
         try:
-            source = data.decode("utf-8")
+            line = source.decode("utf-8")
         except UnicodeDecodeError:
-            continue
-        if not any(pattern.search(source) for pattern in PATTERNS.values()):
             continue
         exceptions = tuple(literal for path, literal, reason in NAMED_EXCEPTIONS
                            if path == name)
-        for number, line in enumerate(source.splitlines(), 1):
-            if exceptions and any(literal in line for literal in exceptions):
-                continue
-            if classes := matching_classes(line):
-                errors.append(f"{name}:{number}: {', '.join(classes)}: {line.strip()}")
+        if exceptions and any(literal in line for literal in exceptions):
+            continue
+        if classes := matching_classes(line):
+            errors.append(f"{name}:{number.decode()}: {', '.join(classes)}: {line.strip()}")
+    finished = perf_counter()
+    print(f"public-text scan: git grep={selected - started:.3f}s "
+          f"Python={finished - selected:.3f}s")
     assert not errors, "\n".join(errors)
 
 
@@ -69,7 +81,7 @@ def test_math_and_identifiers_are_allowed(line):
     assert matching_classes(line) == []
 
 
-@pytest.mark.parametrize(("line", "expected"), [
+PRIVATE_TEXT_CASES = [
     ("# /Users/byungkwankim/x", "C1"),
     ("# -Users-byungkwankim-x", "C1"),
     ("# byungkwan-workspace/x", "C1"),
@@ -103,9 +115,34 @@ def test_math_and_identifiers_are_allowed(line):
     ("# bk-workspace", "C4"),
     ("# remilab-cnu/paper", "C4"),
     ("# acc-admem-g1-20261016t043022z-648d9", "C4"),
-])
+]
+
+
+@pytest.mark.parametrize(("line", "expected"), PRIVATE_TEXT_CASES)
 def test_each_private_text_form_is_detected(line, expected):
     assert matching_classes(line) == [expected]
+
+
+def test_git_prefilter_covers_every_class(tmp_path):
+    assert {expected for _, expected in PRIVATE_TEXT_CASES} == set(PATTERNS)
+    lines = [line for line, _ in PRIVATE_TEXT_CASES]
+    # Include every endpoint of the Hangul ranges, not just a common syllable.
+    lines.extend(chr(point) for point in (
+        0x1100, 0x11ff, 0x3130, 0x318f, 0xa960, 0xa97f,
+        0xac00, 0xd7af, 0xd7b0, 0xd7ff,
+    ))
+    sample = tmp_path / "samples.txt"
+    sample.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    for engine in ("-E", "-P"):
+        result = subprocess.run(
+            ["git", "grep", "--no-index", "-n", "-I", "-z", engine, "-i",
+             CANDIDATE_PATTERN, "--", sample.name],
+            cwd=tmp_path, capture_output=True,
+        )
+        assert result.returncode == 0, (engine, result.stderr)
+        selected = [record.split(b"\0", 2)[2].decode("utf-8")
+                    for record in result.stdout.split(b"\n") if record]
+        assert selected == lines, engine
 
 
 # A blank literal exempts a whole file while it still contains matching text.

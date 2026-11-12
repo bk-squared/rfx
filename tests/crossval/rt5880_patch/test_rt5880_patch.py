@@ -58,7 +58,7 @@ on node planes on every rung (issue #723).  In plane, a PEC sheet realizes the
 nodes inside its drawn footprint and the substrate, a volume, whole cells, so
 the two realize different edges, and an edge that falls between nodes
 realizes a different length on each h/n.  The board therefore puts every edge
-just outside a node common to h/4, h/8 and h/12 (PI 2026-09-25; the patch
+just outside a node common to h/4, h/8 and h/12 (the patch
 centre is a node): the patch covers node columns 39.6875 mm and rows
 49.2125 mm apart and the ground 55.5625 × 65.0875 mm on all three rungs, and
 the substrate one cell more than the ground's node span along x and along y.
@@ -69,16 +69,14 @@ widths.  The rungs that pass are h/4, h/8 and h/12 (793.75, 396.875 and
 264.583 µm).
 
 The thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude)
-and the three rules the PI approved with the MSL notch filter's plan on
-2026-09-22: the mesh statement (the last two rungs within 1 %), the deep-null
+and the three rules shared with the MSL notch filter: the mesh statement (the last two rungs within 1 %), the deep-null
 exclusion (a bin where either curve is below −20 dB is judged by position only)
-and the ring-down witness (−40 dB, the repo's rule); and what the PI
-approved on 2026-09-24: a ladder step within 0.1 % is flat, not a direction,
-and this case is judged by decision (가).  The shared constants are in
+and the ring-down witness (−40 dB, the repo's rule); and the further rules: a ladder step within 0.1 % is flat, not a direction,
+and this case judges resonance frequency and input resistance.  The shared constants are in
 ``tests/crossval/_v2_judging.py``, the rest below, each with its source.  No
 threshold is derived from a run, and this case commits no record of a run.
 
-What is judged (decision (가), PI 2026-09-24): the TM010 resonance frequency
+What is judged: the TM010 resonance frequency
 f0 within 1 % (``FREQ_BAR``), and the input RESISTANCE there,
 |R_rfx − R_ref| / R_ref within 2 % (``RESISTANCE_BAR``).  f0 is where Re(Zin)
 peaks (the lane leader's decision of 2026-09-24, after #715's request for a
@@ -159,7 +157,7 @@ EPS0 = 8.8541878128e-12
 # The loss tangent as a conductivity at 2.4 GHz — the retired builder's and the
 # openEMS record's own ``kappa`` (``stand_in.materials.sub.kappa``).
 SIGMA_SUB = 2.0 * math.pi * 2.4e9 * EPS0 * EPS_R * TAN_DELTA
-# PI 2026-09-25: the board every rung can represent.  Each edge sits just
+# the board every rung can represent.  Each edge sits just
 # outside a node common to h/4, h/8 and h/12 (the patch centre is a node):
 # half-extents 25, 31, 35 and 41 cells of h/4 plus 6.25, 18.75, 18.75 and
 # 6.25 µm.  The retired script's board was 40 × 50 mm on a 56 × 66 mm ground;
@@ -178,7 +176,7 @@ _Q = H_SUB / 4
 PATCH_NODE_SPAN_M = (2 * 25 * _Q, 2 * 31 * _Q)      # 39.6875 × 49.2125 mm
 GROUND_NODE_SPAN_M = (2 * 35 * _Q, 2 * 41 * _Q)     # 55.5625 × 65.0875 mm
 SPAN_REALIZED_TOL_M = 1e-9
-# The probe, off centre along the resonant length.  PI 2026-09-24: moved from
+# The probe, off centre along the resonant length.  Moved from
 # the retired script's −9.0 mm to −8.73125 mm = −11, −22 and −33 cells of h/4,
 # h/8 and h/12 from the patch centre, a lattice node on every rung, so the
 # ladder solves one board; the openEMS maker declares the same move (its
@@ -369,12 +367,11 @@ NUM_PERIODS = 60.0
 WITNESS_PROBE_OFFSET_M = (15.0e-3, 5.0e-3, H_SUB / 2)
 
 # ------------------------------------------------------------ thresholds
-# The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB; PI 2026-09-20), the
+# The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB), the
 # mesh statement (LADDER_AGREEMENT 1 %, FLAT_STEP 0.1 %), the deep-null level
-# (DEEP_NULL_DB −20 dB) and the input-resistance bar (RESISTANCE_BAR 2 %,
-# decision (가)) are imported from tests/crossval/_v2_judging.py, with the
-# rules that use them (PI 2026-09-22 and 2026-09-24).  MAG_BAR_DB judges
-# nothing here since decision (가): the magnitude is reported.
+# (DEEP_NULL_DB −20 dB) and the input-resistance bar (RESISTANCE_BAR 2 %) are imported from tests/crossval/_v2_judging.py, with the
+# rules that use them.  MAG_BAR_DB judges
+# nothing here: the magnitude is reported.
 # Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive one-port cannot reflect more power than it receives, so |S11| more
@@ -798,7 +795,7 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
                 f"more than one cell from the declared {declared*1e3:.3f} mm.")
 
     # --- one board on every rung: the sheets and the substrate -------------------
-    # PI 2026-09-25: the patch and ground node spans are the common nodes, and
+    # the patch and ground node spans are the common nodes, and
     # the substrate's cells span the ground's node span under centre sampling on every
     # rung.  A rung that realizes anything else solves a different antenna, and
     # a ladder through it would put that change into the mesh trend.
@@ -1100,7 +1097,7 @@ def _stage_curve(stage: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def _compare(label: str, rung: dict, stage: dict) -> dict:
-    """The two judged quantities (decision (가)) and the reported ones.
+    """The two judged quantities and the reported ones.
 
     Judged, by ``input_resistance`` in ``tests/crossval/_v2_judging.py``: f0
     (the Re(Zin) peak, ``refined_remax``) and R at it, each located on its own
@@ -1111,10 +1108,10 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
     reference at every bin of the record where BOTH curves are above the
     deep-null level, taken twice by ``aligned_magnitude``: on the two axes as
     solved (the two grids are the same 901 bins, so nothing is interpolated)
-    and with rfx's axis scaled by f0_ref / f0_rfx.  Rule R-b (PI 2026-09-24)
+    and with rfx's axis scaled by f0_ref / f0_rfx.  Rule R-b
     judges the magnitude after aligning the JUDGED feature; the judged
     feature is f0 now, so the alignment is on f0, but R-b's 2 dB judgement
-    does not apply to this case: decision (가) reports the magnitude and
+    does not apply to this case: the rule reports the magnitude and
     judges nothing on it.
 
     The deep-null exclusion is two-sided on purpose: a bin where one curve is
@@ -1156,8 +1153,7 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
 _MAX_TABLE_ROWS = 90
 
 
-# Why the magnitude features are reported and not judged (decision (가),
-# PI 2026-09-24); printed beside them with the two reactances filled in.
+# Why the magnitude features are reported and not judged; printed beside them with the two reactances filled in.
 REPORTED_REASON = (
     "neither solver declares a probe radius, so each solver's feed cell sets "
     "the probe's series reactance; the input reactance at resonance differs "
@@ -1448,13 +1444,13 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
 
     # ---- (a) the mesh statements come first: without them nothing is judged -
     # f0 not shown to converge — a step larger than FLAT_STEP against the trend
-    # (PI 2026-09-24), or the last two rungs LADDER_AGREEMENT or more apart
-    # (PI 2026-09-22) — states the numbers and xfails; it is not a failure.
+    # or the last two rungs LADDER_AGREEMENT or more apart
+    # — states the numbers and xfails; it is not a failure.
     # f0 converged but R not: f0 is judged, then R's statement xfails. Both
     # converged: both are judged. Every witness above has already hard-failed
     # a bad rung.
     if mesh_stmt["verdict"] != CONVERGED:
-        # PI decisions 2026-09-22 and 2026-09-24, carried over from the MSL
+        # Rules carried over from the MSL
         # notch filter case: the v2 bar is never loosened, and a case that
         # cannot meet it says so with its numbers. The xfail is IMPERATIVE, so
         # every witness above — the ring-down, the passivity excess, the
@@ -1462,7 +1458,7 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         # below (resonance, input resistance) are held back. When the mesh converges this branch is no
         # longer taken and the comparison judges for real.
         pytest.xfail(
-            "known limitation (PI 2026-09-22, 2026-09-24): the uniform mesh is "
+            "known limitation: the uniform mesh is "
             f"not shown to converge — {mesh_stmt['reason']}. The finest rung's f0 "
             f"sits {fine['f0_pct']:+.3f} % from the openEMS record's "
             f"{fine['resistance']['ref']['f0_hz']/1e9:.6f} GHz and its input "
@@ -1480,14 +1476,13 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         # R's ladder, not f0's, is what is not shown to converge: f0 has just
         # been judged; R is held back, imperatively, with its numbers.
         pytest.xfail(
-            "known limitation (PI 2026-09-24): f0 converges and is judged "
+            "known limitation: f0 converges and is judged "
             f"({fine['f0_pct']:+.3f} %, bar {FREQ_BAR*100:.0f} %), but the input "
             f"resistance R(f0) is not shown to converge along the ladder — "
             f"{r_stmt['reason']}. The finest rung's R is {zr['r_ours_ohm']:.3f} Ω "
             f"against the record's {zr['r_ref_ohm']:.3f} Ω ({zr['rel']*100:.3f} %), "
             "reported, not judged.")
     # The input resistance at f0, each curve read at its own Re(Zin) peak
-    # (decision (가), PI 2026-09-24).
     assert zr["passed"], (
         f"the input resistance at f0 differs by {zr['rel']*100:.3f} % "
         f"(bar {zr['bar']*100:g} %): rfx R {zr['r_ours_ohm']:.3f} Ω at "

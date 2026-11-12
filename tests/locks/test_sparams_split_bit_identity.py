@@ -241,7 +241,7 @@ _LEGS = (
      ("s_params", "freqs", "reference_planes", "settling_db",
       "s21_phase_residual_deg_rms")),
     # sigma_max_excess joined MSLSMatrixResult when enforce_passivity stopped
-    # being the default (PI, 2026-09-21): a numeric field the dataclass
+    # being the default: a numeric field the dataclass
     # carries, so the witness has to name it. On this leg's own record the
     # projection was active only in the float32 noise around a passive
     # |S21| = 1 thru (raw sigma_max 1.000000003 to 1.000000119), so S_raw and

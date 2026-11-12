@@ -1219,7 +1219,7 @@ def test_the_package_no_longer_exports_run_distributed():
     assert v1.run_distributed is not v2.run_distributed, (
         "rfx.runners.distributed.run_distributed and "
         "rfx.runners.distributed_v2.run_distributed collapsed to one object. "
-        "PI decision 2026-09-15 is that v1 is NOT merged into v2 -- they are "
+        "v1 is NOT merged into v2 -- they are "
         "not bit-identical and they disagree on the odd-nx rule.")
     assert v1.run_distributed.__module__ == "rfx.runners.distributed"
     assert v2.run_distributed.__module__ == "rfx.runners.distributed_v2"
