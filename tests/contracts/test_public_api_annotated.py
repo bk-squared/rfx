@@ -16,19 +16,19 @@ pytestmark = pytest.mark.source_scan
 PARAMETER_ALLOWLIST = {
     ('rfx.simulation.make_port_source', 'port'):
         "capped file at its limit; no import line for LumpedPort",
-    ('rfx.probes.probes.wire_port_voltage', 'state'):
+    ('rfx.measurement.probes.wire_port_voltage', 'state'):
         "capped file at its limit; no import line for FDTDState",
-    ('rfx.probes.probes.wire_port_voltage', 'grid'):
+    ('rfx.measurement.probes.wire_port_voltage', 'grid'):
         "capped file at its limit; no import line for NonUniformGrid",
-    ('rfx.probes.probes.wire_port_voltage', 'pec_edge_masks'):
+    ('rfx.measurement.probes.wire_port_voltage', 'pec_edge_masks'):
         "capped file at its limit; no import line for np.ndarray",
-    ('rfx.probes.probes.wire_port_current', 'state'):
+    ('rfx.measurement.probes.wire_port_current', 'state'):
         "capped file at its limit; no import line for FDTDState",
-    ('rfx.probes.probes.wire_port_current', 'grid'):
+    ('rfx.measurement.probes.wire_port_current', 'grid'):
         "capped file at its limit; no import line for NonUniformGrid",
-    ('rfx.probes.probes.wire_port_current', 'pec_edge_masks'):
+    ('rfx.measurement.probes.wire_port_current', 'pec_edge_masks'):
         "capped file at its limit; no import line for np.ndarray",
-    ('rfx.probes.probes.extract_s_matrix_wire', 'materials'):
+    ('rfx.measurement.probes.extract_s_matrix_wire', 'materials'):
         "capped file at its limit; no import line for MaterialArrays",
 }
 
