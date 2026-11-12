@@ -186,7 +186,8 @@ def make_uniform_step(
             if ctx.use_cpml:
                 frame.st, frame.cpml_new = absorb(
                     ctx.apply_cpml_h, frame.st, frame.carry["cpml"],
-                    materials=materials, periodic=periodic)
+                    materials=materials, periodic=periodic,
+                    h_row_factors=invariants["h_row_factors"])
             # After CPML-H, intersect the old full-node (smooth) or pairwise
             # (binary) mask with H whose every curl driver is frozen. This
             # retains PEC damping while releasing field-driven corner H.

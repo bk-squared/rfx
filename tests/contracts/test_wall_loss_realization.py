@@ -243,3 +243,63 @@ def test_uniform_graded_high_face_row_parity(monkeypatch):
                 np.testing.assert_array_equal(factor, expected,
                                               err_msg=f"realized-factor shape={shape} axis={axis}")
         print(f"realized-factor rows={len(realized)*3} wall_s={time.monotonic()-started:.6f}")
+
+
+def test_withheld_cpml_high_h_rows():
+    """A live outer E face must not drive the six outside tangential H rows."""
+    import math
+    import jax
+    import jax.numpy as jnp
+    from rfx import GaussianPulse
+    from rfx.core.yee import init_materials
+    from rfx.simulation import run, SourceSpec
+
+    with jax.enable_x64():
+        h = 2**-10
+        sim = Simulation(freq_max=10e9, domain=(30*h, 12*h, 24*h),
+                         dx=h, boundary="cpml", snap="declared", precision="float64")
+        grid = sim._build_grid()
+        assert grid.shape == (63, 45, 57)
+        steps = math.ceil(5e-9 / grid.dt)
+        # S2's Ey current location, independently rounded onto its Yee edge.
+        node = (round(.0073/h) + 16, round(.0041/h - .5) + 16,
+                round(.0059/h) + 16)
+        pulse = GaussianPulse(f0=8e9, bandwidth=.25)
+        wave = jax.vmap(pulse)(jnp.arange(steps) * grid.dt)
+        wave = wave * (grid.dt / (8.8541878128e-12 * h**3))
+        result = run(grid, init_materials(grid.shape), steps, boundary="cpml",
+                     pec_axes="", return_state=True, field_dtype=jnp.float64,
+                     sources=[SourceSpec(*node, "ey", wave)])
+        state = result.state
+        for name in ("ex", "ey", "ez", "hx", "hy", "hz"):
+            field = np.asarray(getattr(state, name))
+            assert field.dtype == np.float64
+            assert np.isfinite(field).all(), ("withheld-finite", name)
+        for axis in range(3):
+            row = [slice(None)] * 3
+            row[axis] = -1
+            for component in range(3):
+                if component == axis:
+                    continue
+                h_row = np.asarray(getattr(state, "h" + "xyz"[component]))[tuple(row)]
+                e_row = np.asarray(getattr(state, "e" + "xyz"[component]))[tuple(row)]
+                h_max, e_max = float(np.max(np.abs(h_row))), float(np.max(np.abs(e_row)))
+                print(f"withheld axis={axis} component={component} H_max={h_max:.17g} E_max={e_max:.17g}")
+                assert h_max == 0., ("withheld-H", axis, component, h_max)
+                assert e_max > 0., ("withheld-E-live", axis, component, e_max)
+
+
+def test_graded_cpml_faces_have_realized_pec_backing():
+    """Graded's CPML writer relies on backing; a new withhold route must fail."""
+    from rfx.boundaries.setup import nonuniform_boundaries
+
+    h = 2**-10
+    sim = Simulation(freq_max=10e9, domain=(30*h, 12*h, 24*h), dx=h,
+                     boundary="cpml", snap="declared", dy_profile=np.full(12, h))
+    grid = sim._build_nonuniform_grid()
+    realized = nonuniform_boundaries(grid, "xyz", (), ())
+    assert realized[0]
+    assert realized[4] == "xyz"
+    expected = frozenset(("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
+    print(f"graded realized PEC backing={sorted(realized[6])}")
+    assert realized[6] == expected, ("graded-PEC-backing", realized[6])
