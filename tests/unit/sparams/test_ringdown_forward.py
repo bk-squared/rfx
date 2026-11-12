@@ -728,8 +728,8 @@ def _loss(S):
 
 @pytest.mark.slow
 def test_plain_and_jitted_gradients_agree_on_a_witness_passing_record():
-    """Pin float32 plain/jitted ring-down gradients from rfx/records/20261112-2485-plain-jit/.
-    Witnesses come first so an untrusted short record cannot establish agreement.
+    """On a record both witnesses pass, jax.grad and jax.jit(jax.grad) agree (#2485).
+    Witnesses come first: at 800 steps report.ok holds while the gradient witness fails.
     """
     n = 1000
     sim = _box("uniform")
