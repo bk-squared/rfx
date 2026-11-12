@@ -453,7 +453,7 @@ no instrument fix or resubmission. No `rfx/` source change.
 Harvested with `harvest.sh 369367259965 rfx-nu-cost-g1b-ablation`:
 `~/Documents/vessl-run-logs/369367259965_rfx-nu-cost-g1b-ablation.log`
 (461 lines); CLI confirmed `Deleted #369367259965`.
-NFS artifacts: `claude-workspace/rfx/runs/nu-cost-ablation-g1b/20260910T034258Z-fe86c11b/`.
+NFS artifacts: `<workspace>/rfx/runs/nu-cost-ablation-g1b/20260910T034258Z-fe86c11b/`.
 The run JSON was copied unchanged to
 `validation/research/nu_cost/results/w8b_nu_kernel_ablation_4090.json`
 (SHA256 `6d478a046e2889ae15748e13d773f565223bc37a6470c957c21bb92a4bde30e4`).

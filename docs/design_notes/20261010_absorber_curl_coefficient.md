@@ -1,4 +1,4 @@
-# Design — tracker 1589: the absorber's auxiliary term uses the E update's own curl coefficient (leader, 2026-10-10)
+# Design — tracker 1589: the absorber's auxiliary term uses the E update's own curl coefficient (2026-10-10)
 
 Status: cause measured; design fixed here before any code.
 
@@ -64,7 +64,7 @@ by the one update (2.0 step "multi-device paths call the one CPML update"). Publ
 keyword-only arguments on a function in the API reference → regenerate the inventory in the PR.
 
 ## Per-path table (to be filled by a code-fact survey, then by builds)
-Call sites on origin/main 00a7328dc (leader, by grep; the survey confirms and fills owner columns):
+Call sites on origin/main 00a7328dc (by grep; the survey confirms and fills owner columns):
 | path | call site | coefficient today |
 |---|---|---|
 | uniform run / forward | `rfx/stepping/uniform.py:288` (`ctx.apply_cpml_e`, `inv_eps_r_update=cpml_inv_eps_r` from `rfx/simulation.py:1917-1935`) | `dt/eps` per component |
@@ -139,7 +139,7 @@ stated, 6-16 layers.
 - Ledger cross-trace entry, "a coefficient moved out of the compiled loop": the reason the absorber takes the in-loop
   value where the update forms it in the loop.
 
-## Decision record, 2026-10-10 (leader) — judges after the first two measured rounds; the text above is not edited
+## Decision record, 2026-10-10 — judges after the first two measured rounds; the text above is not edited
 Measured on the base tree (00a7328dc) and on the fix:
 
 1. Judge 1's scene. A one-face layout in a 12x10x8-cell box does not grow on main (h5_scene.log); in a 24x24x12 box it

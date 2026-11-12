@@ -3,7 +3,7 @@
 **Status: PRE-DECLARATION. Written and pushed before any run of this batch.** Nothing below comes
 from a run of this batch. Choices and thresholds were written on
 2026-10-04. The implementer reads this file and never edits it;
-a change is appended as a dated amendment by the leader, before the runs it governs.
+a change is appended as a dated amendment, before the runs it governs.
 
 Two designs an RF engineer would build, each with permittivity that a 3-D printer can make:
 
@@ -177,7 +177,7 @@ schedule truncated, not rescaled), with every iterate recorded. Purpose: does th
 This is diagnostic; no trial number is published. Continue to the full run only if:
 - A: the band-mean boresight D at iteration 30 is ≥ 2 dB above the start's, no NaN;
 - B: J at iteration 30 is ≤ 0.5 × J at the start for the chosen start, no NaN.
-If not, the case stops and the leader writes an amendment before any further run.
+If not, the case stops and an amendment is written before any further run.
 
 ## 4. Compute and records
 VESSL only, with a `Resource choice:` record per submission.
@@ -198,7 +198,7 @@ repository.
   geometry with dimensions; response with baselines and mask; objective history with the best
   iterate marked; gradient checks (FD and record length) in separate panels; mesh trend.
 
-## Amendment 1 (2026-10-04, leader; before any run)
+## Amendment 1 (2026-10-04; before any run)
 Two points the text left open, found by the implementer before any run:
 1. **B's starting record.** `num_timesteps(num_periods=240)` at f_max = 1.05 × 12.4 GHz =
    13.02 GHz (about 18.4 ns, about 15 000 steps at a/36), rounded up to a multiple of the
@@ -209,7 +209,7 @@ Two points the text left open, found by the implementer before any run:
    insert centre), the full guide width. §2.5.1's FD pixels are pixels 6, 16 and 26 on the guide
    centre line (the centre pixel of the 9 across the width).
 
-## Amendment 2 (2026-10-04, leader; after the CPU smokes, before any VESSL run)
+## Amendment 2 (2026-10-04; after the CPU smokes, before any VESSL run)
 1. **Record rounding (both cases).** The declared record `num_timesteps(...)` is rounded up to a
    multiple of ⌊√n⌋, so that reverse-mode checkpointing keeps about √n segments. Without it the
    lens records (2498 steps at 1.0 mm, 3331 at 0.75 mm) have no divisor near √n and would hold
@@ -254,7 +254,7 @@ record unchanged; this amendment adds a second filter run and a rule for the fra
    fails, the frame uses the last iterate before k\* whose witness passes (searched downward in steps
    of 10, ending at the start, whose witness passed), and the frame's caption names the iterate used.
 
-## Amendment 5 (2026-10-08, leader; before any run it governs) — two more objectives on the same lens
+## Amendment 5 (2026-10-08; before any run it governs) — two more objectives on the same lens
 (Number 4 is not used in this note.) The showcase must state its optimisation problem
 plainly and show that the same code serves other objectives. The first lens run (§1) maximises
 boresight directivity. This amendment adds two runs on the **same structure, variables, bounds, mesh,
@@ -312,7 +312,7 @@ with δ = 0.1 dB: a smooth measure of the worst violations in R (dB²), zero whe
    into designs that do not settle on that record") — applies here too, which is why item 4 keeps the
    per-bin settling witness on the reported design and the gradient witness on every shown iterate.
 
-**Amendment 5, clarifications (2026-10-08, leader; found while the driver was written, before any run).**
+**Amendment 5, clarifications (2026-10-08; found while the driver was written, before any run).**
 (a) The regions S, C, O are defined on the grid's nominal angles (multiples of 2.5°). The grid's rows
 sit up to 1e-4 rad from those angles, and a literal comparison would have left the row at nominal
 12.5° out of C; C is the six rows 0°–12.5° (432 directions), S the rows from 25°, O the rows from 32.5°.
@@ -320,7 +320,7 @@ sit up to 1e-4 rad from those angles, and a literal comparison would have left t
 the boresight objective. The trials of objectives M and F continue to the full run by rule B's form:
 J at iteration 30 ≤ 0.5 × J at the start, no NaN.
 
-## Amendment 6 (2026-10-09, leader; before any run it governs) — a wide flat-top beam; objective F withdrawn
+## Amendment 6 (2026-10-09; before any run it governs) — a wide flat-top beam; objective F withdrawn
 **Why.** Objective M (Amendment 5) ran and did not meet its mask: the largest directivity beyond 25° stayed
 4.5–4.9 dB above the −2 dBi ceiling at 1.0 mm because the skirt of a 3 λ0 aperture's main beam itself crosses
 25°; the mask had been written without reference to the aperture. Objective F never ran its descent (the
@@ -333,7 +333,7 @@ D_f(θ, φ) in dBi on the 73 × 73 grid at 9.5, 10.0, 10.5 GHz.
 
 **1. What "wide flat-top" means in the literature read** (23 sources, 14 in full text;
 two papers' numbers
-re-read by the leader in the downloaded originals: Kumar & Ghosh, PIER Letters 100, 2021; Hong & Nguyen,
+re-read in the downloaded originals: Kumar & Ghosh, PIER Letters 100, 2021; Hong & Nguyen,
 J. Electromagn. Eng. Sci., 2026). For lenses, metasurfaces, transmitarrays and superstrates of 1.8–18 λ over
 one feed: the flat region is stated as the angular width within 1 dB (sometimes 2 dB) of the flat level;
 achieved half-widths run from ±10° to ±30°, the widest read in full text being ±29°/±30° at −1 dB from a 1.76 λ
@@ -405,7 +405,7 @@ aperture physics failed; check beamwidth, geometry and the literature's own term
 check. Ledger: the lens entries (settled at the declared record on every mesh; gradient witnesses pass at all
 151 iterates of the first run) — consistent, the run reuses the record length and re-witnesses it.
 
-**Amendment 6, note (2026-10-09, leader; geometry only, no run) — what a wider sector would take.**
+**Amendment 6, note (2026-10-09; geometry only, no run) — what a wider sector would take.**
 Asked while it was still open whether ±30° on the present block is the wanted "wide" field of view.
 Full-thickness coverage half-angle θc of a block of width W and thickness t = 30 mm whose lower face is h above
 the source: tan θc = (W/2) / (h + t). Present block: W = 90 mm, h = 45 mm, θc = 31°. Cell counts are for the
@@ -439,7 +439,7 @@ centre below the source's own boresight level to lift the edges by 8–9 dB. (iv
 achieved flat-top wider than ±30° from an aperture under 5 λ0 in full text (wider ones are templates for 18 λ0
 or targets without numbers). None of these geometries is declared; a change of geometry is a new amendment.
 
-## Amendment 7 (2026-10-11, leader; declared before any run) — objective N: a fan beam, wide in one plane and narrow in the other
+## Amendment 7 (2026-10-11; declared before any run) — objective N: a fan beam, wide in one plane and narrow in the other
 
 **1. Why.** Objective W (Amendment 6) ended with 4.5–5.3 dB of ripple over the ±30° cone on the 0.75 mm mesh and
 is not shown as a flat-top beam (item 6 there). The following defines what "wide field of view" means for this

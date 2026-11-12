@@ -6,7 +6,7 @@ edited into §5. One attempt per arm (R2). Lane: nu-mesh. Tracker: #810 (the
 graded-mesh S-parameter question) and #928 (the case).
 **Tree:** branch `nu/msl-notch-graded` on top of `crossval/msl-notch-filter`
 (PR #1177, the case this arm extends); main 12da9104 is contained.
-**Written by** the NU lane leader on 2026-09-22 after
+**Written** on 2026-09-22 after
 reading the case, the MSL port's graded-mesh paths, the band-profile builder,
 the edge-offset builder and the ledger entries named below, and after one
 build-only feasibility run on CPU (§2).
@@ -46,7 +46,7 @@ asked for.
 | MSL port on a graded mesh | `mode="laplace"` only; per-cell sizes read at the trace's first width cell and the substrate's first normal cell, uniform inside the port box assumed; probe planes must be set explicitly when the propagation axis is graded | `rfx/sparams/msl.py:280-296`, `rfx/sources/msl_port.py:755-830`, preflight text of §2 |
 | prior art | a graded transition adjacent to the substrate SPLITS the microstrip mode (cv05, 2026-07-16): the fine band must contain the whole substrate with no transition next to it | ledger history 2026-07-16; #1083 results note §8 |
 
-## 2. What the leader verified on this tree (FACT) and what is not yet measured (ASSUMPTION)
+## 2. What was verified on this tree (FACT) and what is not yet measured (ASSUMPTION)
 
 FACT — a build-only run (no time step) of the board below on the current
 tree, `scratchpad/notch/graded_feasibility.py`, CPU, jax 0.10.2:
@@ -438,7 +438,7 @@ Both sides of the two cost ratios are grid cells and wall seconds measured by th
 
 The GPU model is not recorded for A_on, A_off, B_off, C_off, A_off_longarms: those arms ran before the instrument read `device_kind`, and their blocks are left as they were measured rather than back-filled.
 
-### Conclusions (leader, after reading the record, the eight figures, R.0 and A.1)
+### Conclusions (after reading the record, the eight figures, R.0 and A.1)
 
 **The physics.** On a mesh that is fine only across the metal edges and through
 the substrate, the stub notch converges from above along the substrate-cell
