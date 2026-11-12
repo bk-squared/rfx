@@ -59,20 +59,13 @@ def sample_spec(spec, grid, shape):
              else cell_sizes_from_uniform_grid(grid))
     centres = cell_centres_from_nodes(coords, sizes)
     axes = (centres.x, centres.y, centres.z)
-    axp = jnp if any(is_tracer(v) for v in axes) else np
-    full = tuple(axp.broadcast_to(axp.reshape(v, tuple(-1 if i == a else 1 for i in range(3))), shape)
-                 for a, v in enumerate(axes))
+    xyz = tuple(v.reshape(tuple(-1 if i == a else 1 for i in range(3)))
+                for a, v in enumerate(axes))
     sampled = []
     for pole, mask in zip(poles, masks):
         if not is_map(pole) or isinstance(pole, SampledPoleMap):
             sampled.append(pole)
             continue
-        # Unoccupied centres move to the first occupied one, so neither the callable
-        # nor its derivative is read outside its declared support.
-        cxp = jnp if is_tracer(mask) or axp is jnp else np
-        inside = cxp.ones(shape, dtype=bool) if mask is None else cxp.broadcast_to(mask, shape).astype(bool)
-        first = cxp.argmax(inside.reshape(-1))
-        xyz = tuple(cxp.where(inside, v, cxp.asarray(v).reshape(-1)[first]) for v in full)
         relative = isinstance(pole.kappa, RelativeStrength)
         strength = pole.kappa.value if relative else pole.kappa
         values = [v(*xyz) if callable(v) else v for v in (pole.delta, strength)]
