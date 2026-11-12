@@ -3,6 +3,7 @@
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 
 import numpy as np
+import jax.numpy as jnp
 import pytest
 
 from rfx.grid import Grid, C0
@@ -225,3 +226,62 @@ def test_late_time_stability():
     assert drift < 0.05, f"Energy drift {drift*100:.2f}% exceeds 5%"
     assert not np.isnan(energy_final)
     assert not np.isinf(energy_final)
+
+
+# =========================================================================
+# Bonus: Dielectric-filled PEC cavity resonance
+# =========================================================================
+
+@pytest.mark.slow_physics
+def test_dielectric_cavity_resonance():
+    """PEC cavity filled with dielectric: TM110 shifts by 1/sqrt(eps_r).
+
+    Analytical: f_filled = f_empty / sqrt(eps_r).
+    For eps_r=4: f_filled = f_empty / 2.
+    """
+    eps_r = 4.0
+    CAVITY_A, CAVITY_B, CAVITY_D = 0.1, 0.1, 0.05
+
+    F_EMPTY = (C0 / 2.0) * np.sqrt((1 / CAVITY_A)**2 + (1 / CAVITY_B)**2)
+    F_FILLED = F_EMPTY / np.sqrt(eps_r)
+
+    grid = Grid(freq_max=5e9, domain=(CAVITY_A, CAVITY_B, CAVITY_D),
+                dx=0.002, cpml_layers=0)
+    state = init_state(grid.shape)
+    materials = init_materials(grid.shape)
+    materials = materials._replace(
+        eps_r=jnp.full(grid.shape, eps_r, dtype=jnp.float32)
+    )
+
+    pulse = GaussianPulse(f0=F_FILLED, bandwidth=0.8)
+    src_i = grid.nx // 3
+    src_j = grid.ny // 3
+    src_k = grid.nz // 2
+    probe_i = 2 * grid.nx // 3
+    probe_j = 2 * grid.ny // 3
+    probe_k = grid.nz // 2
+
+    num_steps = grid.num_timesteps(num_periods=80)
+    dt, dx = grid.dt, grid.dx
+
+    ts = np.zeros(num_steps)
+    for n in range(num_steps):
+        t = n * dt
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = apply_pec(state)
+        ez = state.ez.at[src_i, src_j, src_k].add(pulse(t))
+        state = state._replace(ez=ez)
+        ts[n] = float(state.ez[probe_i, probe_j, probe_k])
+
+    f_peak = _fft_peak_freq(ts, dt, F_FILLED * 0.5, F_FILLED * 1.5)
+    err = abs(f_peak - F_FILLED) / F_FILLED
+
+    print(f"\nDielectric cavity (eps_r={eps_r}):")
+    print(f"  Empty TM110:  {F_EMPTY / 1e9:.4f} GHz")
+    print(f"  Filled TM110: {F_FILLED / 1e9:.4f} GHz (analytic)")
+    print(f"  Numerical:    {f_peak / 1e9:.4f} GHz")
+    print(f"  Error: {err * 100:.4f}%")
+
+    assert err < 0.005, \
+        f"Dielectric cavity error {err*100:.3f}% exceeds 0.5%"

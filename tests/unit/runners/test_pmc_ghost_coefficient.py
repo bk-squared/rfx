@@ -78,7 +78,7 @@ def test_pmc_high_ghost_bit_identity(pec_box_records):
      for devices in (1, 2)
      for graded in (False, True)
      for axis in 'xyz'
-     if not (graded and axis == 'x')],
+     if not (graded and axis == 'x' and devices == 1)],
 )
 def test_pmc_high_ghost_with_transverse_cpml(axis, graded, devices):
     check_ghosts(record(scene(axis=axis, cpml=True, graded=graded), devices), axis,
