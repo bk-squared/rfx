@@ -975,3 +975,213 @@ def test_s2b_coverage_preserves_tail_value_and_nonpass_reason(status, db):
     assert witness["coverage"] == coverage.rows()
     assert witness["status"] == ("undetermined" if status in {"pass", "absent"} else status)
     assert witness["reason"] == ("cannot judge: coverage" if status in {"pass", "absent"} else "tail reason")
+
+
+_RECORD_END_FILES = (
+    'sparams/_tail_witness.py', 'measurement/settling.py', 'probes/sparam_driver.py',
+    'measurement/waveguide_s.py', 'sparams/waveguide.py', 'sparams/_common.py',
+    'sparams/_settling_warning.py', 'sparams/_msl_stages.py',
+    'sparams/_mixed_stages.py', 'sparams/_coax_oneport_record.py', 'sparams/coax.py',
+)
+
+
+def test_s4_record_end_comparisons_have_one_owner():
+    # This source-name check misses comparisons on other names. Ring-down,
+    # gradients, decay and coverage (S5-S7) are not yet covered.
+    violations = []
+    for name in _RECORD_END_FILES:
+        source = (REPO / 'rfx' / name).read_text()
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Compare):
+                continue
+            operands = [node.left, *node.comparators]
+            def is_bar(value):
+                if isinstance(value, ast.UnaryOp) and isinstance(value.op, (ast.USub, ast.UAdd)):
+                    value = value.operand
+                return isinstance(value, ast.Constant) and value.value in (1e-2, 1e-3, 40)
+            if any(is_bar(value) for value in operands) and any(
+                    re.search('share|tail|error|settl|db|witness',
+                              ast.get_source_segment(source, value) or '', re.I)
+                    for value in operands if not is_bar(value)):
+                violations.append((name, node.lineno))
+    assert not violations
+
+
+def test_s4_tail_delegate_and_reader_sites():
+    tree = ast.parse((REPO / 'rfx/sparams/_tail_witness.py').read_text())
+    body = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                and n.name == 'tail_share_witness')
+    assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+               and n.func.id == 'record_end_error' for n in ast.walk(body))
+    for name, function, minimum in (
+            ('probes/sparam_driver.py', 'port_record_witness', 1),
+            ('sparams/_record_selection.py', 'port_record_witness', 1),
+            ('measurement/waveguide_s.py', 'settling_db_from_port_records', 2)):
+        tree = ast.parse((REPO / 'rfx' / name).read_text())
+        calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                 and isinstance(n.func, ast.Name) and n.func.id == function
+                 and any(k.arg == 'reader' for k in n.keywords)]
+        assert len(calls) >= minimum, name
+
+
+def _s4_closed_record(n, dt, poles, residues, bins, kind='E', factor=1.):
+    z = np.exp(poles * dt)
+    q = z[None, :] * np.exp(-2j * np.pi * bins[:, None] * dt)
+    samples = np.exp(np.arange(n)[:, None] * poles[None, :] * dt) @ residues
+    stamp = factor * np.exp(-2j * np.pi * bins * dt * (1. if kind == 'E' else .5))
+    inside = stamp * dt * ((1 - q**n) / (1 - q) @ residues)
+    # Whole-record origin: tail = dt exp(-iwNdt) sum c z**N/(1-z exp(-iwdt)).
+    tail = stamp * dt * np.exp(-2j * np.pi * bins * n * dt) * (
+        z[None, :]**n / (1 - q) @ residues)
+    return samples.astype(np.complex128), inside, tail
+
+
+@pytest.mark.parametrize('frame', ['wire-whole', 'wire-legacy', 'lumped', 'waveguide'])
+def test_s4_reader_closed_pole_tail(frame):
+    from types import SimpleNamespace
+    from rfx.measurement.record_readers import port_s_reader, waveguide_s_reader
+    from rfx.measurement.record_end import record_end_error
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._settling_groups import port_column_groups
+    from rfx.sparams._tail_witness import tail_share_witness
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    waveguide = frame == 'waveguide'
+    specs = ([('port0/v_ref_t', 'E', [1., .8]), ('port0/i_ref_t', 'H', [.007, .004]),
+              ('port0/v_probe_t', 'E', [2., 1.]), ('port0/i_probe_t', 'H', [.01, .02])]
+             if waveguide else [('V', 'E', [2., 1.]), ('I', 'H', [.007, .004]),
+                                ('V_port', 'E', [1., .8]), ('V_ref', 'E', [.9, 1.2])])
+    arrays, spectra, tails = {}, {}, {}
+    for name, kind, residues in specs:
+        arrays[name], spectra[name], tails[name] = _s4_closed_record(
+            n, dt, poles, np.array(residues), bins, kind, 2. if waveguide else 1.)
+    if waveguide:
+        from rfx.model.waveguide_modes import PortMedium
+        cfg = SimpleNamespace(freqs=bins, f_cutoff=0., mode_type='TE', medium=PortMedium(),
+                              dt=dt, dx=0., direction='+x')
+        # Zero cutoff is a TEM-like modal impedance, sqrt(mu0/eps0).
+        from rfx.core.yee import MU_0, EPS_0
+        z = np.sqrt(MU_0 / EPS_0)
+        reader = waveguide_s_reader([cfg], 0)
+        records = tuple(arrays.items())
+        groups, labels = {name: name.split('_')[0] for name in arrays}, None
+        operands = ({'port0/v_ref_t': .5, 'port0/i_ref_t': -.5*z},
+                    {'port0/v_ref_t': .5, 'port0/i_ref_t': .5*z})
+    else:
+        kind = 'lumped' if frame == 'lumped' else 'wire'
+        record = PortTimeRecord('p', kind, tuple(arrays), np.column_stack(list(arrays.values())))
+        reader = port_s_reader([record], {'p': (50., 3, True)}, whole_port=frame != 'wire-legacy')
+        records = (('p', record.samples),)
+        groups, labels = port_column_groups([record])
+        voltage = 'V' if frame == 'lumped' else 'V_port'
+        sign = 1.
+        if frame == 'wire-legacy':
+            voltage, sign = 'V_ref', -1.
+        operands = ({voltage: sign, 'I': -50.}, {voltage: sign, 'I': 50.})
+    expected = sum(sum(abs(w)*abs(tails[name]) for name, w in operand.items()) /
+                   abs(sum(w*spectra[name] for name, w in operand.items())) for operand in operands)
+    expected_kappa = sum(sum(abs(w)*abs(spectra[name]) for name, w in operand.items()) /
+                         abs(sum(w*spectra[name] for name, w in operand.items())) for operand in operands)
+    actual = record_end_error(records, dt, 0, bins, freq_max=12e9,
+                              reader=reader, scale_groups=groups, _channel_labels=labels)
+    legacy = tail_share_witness(records, dt, 0, bins, freq_max=12e9,
+                                scale_groups=groups, _channel_labels=labels)
+    np.testing.assert_allclose(actual.record_end_error_per_bin, expected, rtol=2e-4)
+    np.testing.assert_allclose(actual.kappa_per_bin, expected_kappa, rtol=2e-5)
+    np.testing.assert_allclose(actual.share_per_bin, legacy.share_per_bin, rtol=1e-9)
+    for name, tail in tails.items():
+        label = name if waveguide else f'p[{name}]'
+        np.testing.assert_allclose(actual.tails_per_channel[label], tail, rtol=2e-4, atol=1e-18)
+
+
+def test_s4_deep_null_fails():
+    from rfx.measurement.record_readers import port_s_reader
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._tail_witness import port_record_witness
+    n, dt, z0 = 1500, 1e-12, 50.
+    bins = np.array([9e9])
+    poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    q = np.exp((poles - 2j*np.pi*bins[0])*dt)
+    d = dt*(1-q**n)/(1-q)
+    delta = 1e-3*abs(sum(d))/(.1*abs(d[0]))
+    a = np.ones(2)
+    b = .1*np.array([1, -(1-delta)*d[0]/d[1]])
+    v, _, _ = _s4_closed_record(n, dt, poles, (a+b)/2, bins)
+    i, _, _ = _s4_closed_record(n, dt, poles, (a-b)/(2*z0), bins, 'H')
+    record = PortTimeRecord('p', 'wire', ('V_port', 'I'), np.column_stack([v, i]))
+    _, result = port_record_witness([record], dt, 0, bins, freq_max=12e9,
+                                    reader=port_s_reader([record], {'p': (z0, 1, True)}))
+    assert result['share_per_bin'][0] < 1e-2
+    assert result['status'] == 'fail', result
+    assert result['record_end_error_per_bin'][0] > 1e-2
+
+
+@pytest.mark.parametrize('seed', range(20))
+def test_s4_noisy_two_poles_nonpass(seed):
+    from rfx.sparams._tail_witness import tail_share_witness
+    n, dt = 2400, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    lo, hi = 1e-10, 1e-9
+    for _ in range(60):
+        tau = (lo+hi)/2
+        poles = -1/tau + 2j*np.pi*np.array([9e9, 12e9])
+        signal, inside, tail = _s4_closed_record(n, dt, poles, np.ones(2), bins)
+        if max(abs(tail)/abs(inside)) < .03:
+            lo = tau
+        else:
+            hi = tau
+    signal += np.random.default_rng(seed).normal(0, 1e-4*max(abs(signal)), n)
+    result = tail_share_witness([('M3', signal)], dt, 0, bins, freq_max=12e9)
+    assert result.status != 'pass', (seed, result)
+
+
+@pytest.fixture(scope='module')
+def s4_spg_records():
+    import time
+    import rfx.measurement.waveguide_s as extraction
+    from tests.oracle.test_waveguide_port_validation_battery import _build_sim
+    captured, results = [], {}
+    original = extraction.settling_db_from_port_records
+    def observe(configs, **kwargs):
+        captured.append(tuple(configs))
+        return original(configs, **kwargs)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(extraction, 'settling_db_from_port_records', observe)
+        for periods in (30, 40):
+            sim = _build_sim(np.linspace(4.5e9, 8.0e9, 10), solved_domain=True,
+                obstacles=[((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)],
+                waveform='modulated_gaussian')
+            start = time.monotonic()
+            result = sim.compute_waveguide_s_matrix(num_periods=periods, normalize=False)
+            elapsed = time.monotonic() - start
+            results[periods] = (result, tuple(captured[-2:]), elapsed)
+            print(f'SP-g P{periods}: {elapsed:.6f} seconds')
+    return results
+
+
+def test_s4_b8_realized_transit_window(s4_spg_records):
+    result, runs, _ = s4_spg_records[40]
+    for configs, witness in zip(runs, result.settling_witness):
+        n, dt = len(configs[0].v_ref_t), configs[0].dt
+        expected = 0
+        for cfg in configs:
+            if not cfg.src_amp:
+                continue
+            table = abs(np.asarray(cfg.e_inc_table))
+            off = int(np.flatnonzero(table[:n] > 1e-6*max(table[:n]))[-1]) + 1
+            reach = max(abs(float(point) - float(cfg.source_x_m)) for other in configs
+                        for point in (other.reference_x_m, other.probe_x_m))
+            expected = max(expected, off + math.ceil(reach / (C0*dt)))
+        assert expected == 2181
+        assert witness['window_starts'][n][0] == max(round(n/2), expected)
+
+
+def test_s4_spg_s11_lengthening_reduces_error(s4_spg_records):
+    short = s4_spg_records[30][0].settling_witness[0]
+    long = s4_spg_records[40][0].settling_witness[0]
+    assert short['status_per_entry']['S11'] == 'fail', short
+    e30 = short['record_end_error_per_entry']['S11'][-1]
+    e40 = long['record_end_error_per_entry']['S11'][-1]
+    assert e30 > 1e-2
+    assert e40 < e30

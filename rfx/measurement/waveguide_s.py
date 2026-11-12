@@ -603,9 +603,10 @@ def extract_waveguide_s_matrix(
         if len(final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
         if return_settling:
+            from rfx.measurement.record_readers import waveguide_s_reader
             value, detail = settling_db_from_port_records(
                 final_cfgs, freq_max=getattr(grid, "freq_max", None),
-                return_detail=True)
+                return_detail=True, reader=waveguide_s_reader(final_cfgs, drive_idx))
             settling_runs.append(value)
             if settling_details is not None:
                 settling_details.append(detail)
@@ -1353,8 +1354,10 @@ def extract_multimode_s_matrix(
         )
         final_cfgs = result.waveguide_ports or ()
         if settling_details is not None:
+            from rfx.measurement.record_readers import waveguide_s_reader
             _, detail = settling_db_from_port_records(
-                final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True,
+                reader=waveguide_s_reader(final_cfgs, drive_flat_idx))
             settling_details.append(detail)
         if len(final_cfgs) != n_total:
             raise RuntimeError(

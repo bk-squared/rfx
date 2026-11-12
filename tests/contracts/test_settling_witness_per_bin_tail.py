@@ -353,7 +353,10 @@ def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout
     if family == 'wire':
         ports = dict(s_params=np.zeros((1, 1, 1), np.complex64),
                      sparam_read_ids=SReadPorts(('port:0:mode:0',)),
-                     sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None]),))
+                     sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V_port', 'I'),
+                    np.column_stack([port, port/100.]), ('ez', 0, 0, 0)),),
+                     wire_port_sparams=((SimpleNamespace(impedance=50., live_cells=((0, 0, 0),),
+                         component='ez', mid_i=0, mid_j=0, mid_k=0, excite=True), None),))
     else:
         incident = np.zeros(len(t))
         incident[0] = 1.

@@ -93,7 +93,7 @@ def test_user_probe_advisories_and_332_still_fire():
     load-bearing (see _validate_cfg_absorber_placement's docstring)."""
     sim = _thru()
     # interior probe above the trace: sees real signal -> hot tail at
-    # num_periods=2 -> #332 must fire on the USER column
+    # num_periods=2. The former #332 energy-envelope warning is removed.
     sim.add_probe(position=(0.006, 0.004, 0.0012), component="ez")
     # one cell inside the domain (node 9 of pad=8) -> absorber_proximity
     sim.add_probe(position=(0.0002, 0.004, 0.0012), component="ez")
@@ -110,7 +110,7 @@ def test_user_probe_advisories_and_332_still_fire():
         "within 2 cells" in m and "CPML absorber" in m and "fringe/reflection" in m
         for m in msgs
     ), msgs
-    assert any("ring-down truncated" in m for m in msgs), msgs
+    assert not any("ring-down truncated" in m for m in msgs), msgs
     # user probes survive the call
     assert len(sim._probes) == 2
     assert sim._internal_probe_indices == set()

@@ -4,7 +4,6 @@ from __future__ import annotations
 from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
-import math
 
 import numpy as np
 
@@ -23,7 +22,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                    record_noun="port records", return_detail=False,
                                    rounding_groups=None, _warn_stacklevel=2,
                                    known_drives=None, n_record=None,
-                                   scale_groups=None, _channel_labels=None):
+                                   scale_groups=None, _channel_labels=None, reader=None):
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
     ``rounding_groups`` maps record names to co-located same-kind groups
@@ -39,7 +38,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                 rounding_groups=rounding_groups,
                                 scale_groups=scale_groups, _channel_labels=_channel_labels,
                                 known_drives=known_drives, n_record=n_record,
-                                _record_results=per_record if return_detail else None)
+                                _record_results=per_record if return_detail else None, reader=reader)
     if not return_detail:
         return result.db
     finite = {name: value for name, value in per_record.items() if np.isfinite(value)}
@@ -50,7 +49,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
 
 
 def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
-                                   return_detail: bool = False):
+                                   return_detail: bool = False, reader=None):
     """Per-bin pole-tail value witness over the four modal records per port.
 
     sensitivities are judged by a separate witness
@@ -102,7 +101,7 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
         freqs=bins, freq_max=freq_max, record_noun="port records",
         known_drives=known_drives if isinstance(known_drives, ValueError) else (known_drives or None),
         n_record=n_record,
-        return_detail=return_detail, _warn_stacklevel=3)
+        return_detail=return_detail, _warn_stacklevel=3, reader=reader)
 
 
 def warn_postrun_energy_witness(
@@ -112,12 +111,11 @@ def warn_postrun_energy_witness(
     fixed_num_periods: bool,
     until_decay: float | None,
 ) -> None:
-    """Warn about measured late energy or an exactly zero excitation.
+    """Warn when no field energy was recorded.
 
     Tracer-safe: a no-op under a JAX transformation.
     """
     from rfx.core.jax_utils import is_tracer
-    from rfx.sources.sources import GaussianPulse
 
     import warnings
 
@@ -151,24 +149,6 @@ def warn_postrun_energy_witness(
             )
             return
 
-        pulsed = any(
-            isinstance(getattr(source, "waveform", None), GaussianPulse)
-            for source in (*sim._ports, *sim._msl_ports)
-        )
-        open_boundary = sim._boundary_spec.absorber_type in ("cpml", "upml")
-        if open_boundary and pulsed and fixed_num_periods and until_decay is None:
-            tail_samples = max(1, math.ceil(magnitude.shape[0] * 0.05))
-            tail = float(np.max(magnitude[-tail_samples:]))
-            tail_db = -math.inf if tail == 0.0 else 20.0 * math.log10(tail / peak)
-            from rfx.api._sparams import settling_verdict as _verdict
-            if _verdict(tail_db) == "fail":
-                warnings.warn(
-                    f"run ended at {tail_db:.1f} dB of peak — ring-down "
-                    "truncated; Harminv/DFT/NTFF quantities may carry "
-                    "transient error; consider until_decay or more periods"
-                    "", AccuracyWarning,
-                    stacklevel=user_stacklevel(),
-                )
         return
 
     state = getattr(result, "state", None)
@@ -241,11 +221,15 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
                      else "worst bin undetermined")
         shares = np.asarray(witness["share_per_bin"])
         peak = float(np.max(shares)) if shares.size else float("nan")
+        errors = np.asarray(witness.get('record_end_error_per_bin', ()))
+        kappas = np.asarray(witness.get('kappa_per_bin', ()))
+        quantity = (f", e_Q {np.max(errors):.9g}, kappa_Q {np.max(kappas):.9g}"
+                    if errors.size and kappas.size else "")
         warning_witness = {**witness, "reason": witness["reason"] if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in witness["reason"] else f"share {peak:.9g}"}
         _warn_if_ringdown_truncated(
             [settling_db], (), witnesses=[warning_witness],
             n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
-            drive_labels=(f"S-channel {bin_label}, share {peak:.9g}",),
+            drive_labels=(f"S-channel {bin_label}, share {peak:.9g}{quantity}",),
             consequence="S-parameter truncation is suspect")
         return result
 

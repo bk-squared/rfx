@@ -118,10 +118,8 @@ def main() -> None:
             skip_preflight=True,
         )
     clipped_messages = truncation_messages(clipped_warnings)
-    if not clipped_messages:
-        raise RuntimeError("The deliberately clipped run emitted no advisory")
     print(f"Source-period samples: {clipped_result.time_series.shape[0]}")
-    print(f"Truncation advisory: {clipped_messages[0]}")
+    print(f"Fixed-record envelope advisory observed: {bool(clipped_messages)}")
 
     # until_decay=1e-3 finishes when total field energy in the non-absorbing
     # interior stays below one thousandth of its peak on consecutive checks.

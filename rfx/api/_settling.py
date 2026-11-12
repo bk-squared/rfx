@@ -29,14 +29,22 @@ def run_settling_witness(self, result):
         prior_bins = np.asarray(getattr(result, "freqs", None), dtype=float).reshape(-1)
         if len(prior['share_per_bin']) != bins.size:
             aligned = {}
-            for key in ('share_per_bin', 'error_per_bin', 'drive_share_per_bin'):
-                if key == 'drive_share_per_bin' and not len(prior.get(key, ())):
+            for key in ('share_per_bin', 'error_per_bin', 'drive_share_per_bin',
+                        'record_end_error_per_bin', 'kappa_per_bin', 'record_end_floor_per_bin'):
+                if key not in ('share_per_bin', 'error_per_bin') and not len(prior.get(key, ())):
                     aligned[key] = ()
                     continue
                 values = np.zeros(bins.size)
                 if len(prior.get(key, ())):
                     np.maximum.at(values, np.searchsorted(bins, prior_bins), prior[key])
                 aligned[key] = values
+            for key in ('record_end_error_per_entry', 'tails_per_channel', 'second_tails_per_channel'):
+                if prior.get(key):
+                    aligned[key] = {}
+                    for name, samples in prior[key].items():
+                        values = np.zeros(bins.size, dtype=np.asarray(samples).dtype)
+                        values[np.searchsorted(bins, prior_bins)] = samples
+                        aligned[key][name] = values
             prior = {**prior, **aligned}
         rows.append(prior)
     db, detail = build_settling_witness(

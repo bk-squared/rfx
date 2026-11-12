@@ -309,7 +309,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                                          subpixel_smoothing=subpixel_smoothing, _drive_scan=True,
                                          waveguide_reference_only=True)
             columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
-            raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt}
+            raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt,
+                   "wire": record.wire_port_sparams, "lumped": record.lumped_port_sparams}
         elif devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
                                                   n_steps, devices,
@@ -362,9 +363,22 @@ def compute_lumped_wire_s_matrix_via_scan(
                 receivers_by_id[f"{port_id}/plane{plane}"] = replace(pe, position=tuple(position))
             receivers = [receivers_by_id[record.id] for record in raw.get("sparam_time_records", ())]
             end = injection_end(n_steps, grid.dt, records=receivers, grid=grid, sim=driven_sim)
+            from rfx.measurement.record_readers import port_s_reader, realized_port_metadata
+            time_records = raw.get("sparam_time_records", ())
+            # The uniform mixed scan can hold lumped specs in the wire list.
+            pairs = []
+            for family in ('wire', 'lumped'):
+                for meta, _ in raw.get(family) or ():
+                    kind = ('wire' if not hasattr(meta, 'impedance') or hasattr(meta, 'live_cells')
+                            else 'lumped')
+                    pairs.append((kind, meta))
+            reader = (None if raw.get('wire_refplane') else port_s_reader(
+                time_records, realized_port_metadata(time_records, pairs),
+                drive_id=f'port:{eligible_ids[j]}:mode:0',
+                whole_port=True if graded else None))
             settling_runs.append(port_record_witness(
-                raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
-                end, freqs, freq_max=sim._freq_max))
+                time_records, raw.get("dt", grid.dt),
+                end, freqs, freq_max=sim._freq_max, reader=reader))
         if graded:
             continue
         accs = raw["wire"] if wire_mode else raw["lumped"]

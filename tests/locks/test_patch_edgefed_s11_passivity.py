@@ -54,7 +54,7 @@ WHAT IS GATED, AND THE BAND'S PROVENANCE (measured 2026-09-01, post-#702 tree)
 ------------------------------------------------------------------------------
 Evidence run: ``scripts/diagnostics/patch_edgefed_s11_band_repin.py`` — this exact
 config (same builder import, freqs 6-14 GHz x 81, num_periods = 280), CPU
-(``JAX_PLATFORMS=cpu``), both arms settled (#332 witness silent), every preflight
+(``JAX_PLATFORMS=cpu``), both arms settled (record-end witness silent), every preflight
 advisory captured (7 in the CPU provenance run — three are environment x64 notes — including the +25.2 % substrate column under the
 MSL port — the half-open rasterizer rounds the off-node substrate face UP under the
 port; part of this board's identity, quoted in the run log). Per-bin traces:
@@ -289,7 +289,7 @@ def _build_patch_sim() -> Simulation:
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
-    # #402 settling witness: the framework's #332 ring-down witness evaluates the
+    # #402 settling witness: the framework's record-end witness evaluates the
     # tail-vs-peak envelope of a POINT-PROBE time series, so the internal
     # compute_msl_s_matrix run needs at least one probe or the witness has no
     # data and can never fire. This Ez probe under the patch (0.7·L along it)
@@ -421,10 +421,10 @@ def test_patch_edgefed_s11_passive_and_match():
     sim = _build_patch_sim()
 
     # #402 guard: the settling assertion below is only meaningful if a point probe
-    # exists to feed the #332 witness. Without it, #332 has no series, never fires,
-    # and `assert not _trunc` becomes silently always-green. Fail loudly instead.
+    # exists to feed the record-end witness. Without it, the witness has no series,
+    # and a warning-absence assertion becomes silently always-green. Fail loudly instead.
     assert getattr(sim, "_probes", None), (
-        "settling-witness probe missing — #332 ring-down witness cannot evaluate; "
+        "settling-witness probe missing — record-end witness cannot evaluate; "
         "the settling assertion would be vacuous (issue #402)"
     )
 
@@ -439,22 +439,14 @@ def test_patch_edgefed_s11_passive_and_match():
     # witness) — above the -40 dB bar; the badly-matched patch reflects strongly
     # so it drains slowly. 280 clears the bar (N_SUB=2 ladder 120->-23.8,
     # 200->-36.2, 280->settled; and the 2026-09-01 CPU provenance run of THIS
-    # config confirms the witness silent at 280). If #332 fires, this test goes
+    # config confirms the witness silent at 280). If the record-end witness does not pass, this test goes
     # RED (surfacing the truncation); it does not pass silently.
     with warnings.catch_warnings(record=True) as _settling:
         warnings.simplefilter("always")
         res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs), num_periods=280.0)
-    _trunc = [
-        str(w.message) for w in _settling
-        if "ring-down truncated" in str(w.message)
-    ]
-    print("[PATCH-EDGEFED/118-SETTLING] framework #332 ring-down energy witness: "
-          f"{_trunc if _trunc else 'no truncation advisory — domain drained below -40 dB of peak'}")
-    assert not _trunc, (
-        "ring-down NOT settled at the gated num_periods — the DFT-extracted |S11| may carry "
-        f"truncation error (issue #402; framework #332 witness fired): {_trunc}. Raise "
-        "num_periods; do NOT trust the |S11| envelope from a truncated record."
-    )
+    assert res.settling_witness
+    assert all(row['status'] == 'pass' for row in res.settling_witness), res.settling_witness
+
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
     # Pins are probe-0-plane quantities (module docstring): undo the shift.
