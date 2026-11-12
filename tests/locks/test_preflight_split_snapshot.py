@@ -98,6 +98,12 @@ reaches: the two remaining ``precision_*`` guards,
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
 
+SNAPSHOT CHANGE, 2026-11-13 (the wire-port-without-radius advisory names the declared port's contour storage).
+Written before the regeneration. wire_port_microstrip, wire_port_dead_extent, refplane_near_field,
+refplane_partial_optin, wire_port_end_gap, wire_port_dead_cell_nu: that advisory gains five numeric tokens (0.20,
+0.027, 11 and 21 from S11 and S21, 0.5) from the added sentence; codes, counts, severity, order and every other
+number are unchanged.
+
 SNAPSHOT CHANGE, 2026-11-05 (one realization verdict). Written before the regeneration.
 congruence_off_lattice: +2 realization error; PEC boxes x 1.0–4.5 mm and 6.02–9.52 mm on 1 mm cells are solved 3 and 4 cells against 3.5 drawn (−14.3 %, +14.3 %): the off-lattice pair this scene exists to show; strict refuses metal.
 sheet_congruence_off_lattice: +2 realization error; Patterned sheets, area-equivalent length −2.5 % and −16.7 %: the footprint verdict for non-Box sheets (Box sheets keep sheet_effective_size; one quantity, one rule).
