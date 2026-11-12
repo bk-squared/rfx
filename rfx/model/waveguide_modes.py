@@ -615,10 +615,13 @@ def init_waveguide_port(
         )
 
     if isinstance(aperture_grid, Grid):
+        from rfx._internal._uniform_specs import resolve_periodic
         from rfx.boundaries.pec import resolve_wall_faces
         from rfx.model.waveguide_aperture import validate_waveguide_aperture
 
-        periodic = tuple(axis in aperture_grid.periodic_axes for axis in "xyz")
+        periodic = resolve_periodic(
+            aperture_grid, tuple(axis in aperture_grid.periodic_axes for axis in "xyz"),
+        )
         faces, _ = resolve_wall_faces(aperture_grid, periodic, None)
         try:
             validate_waveguide_aperture(
@@ -627,8 +630,9 @@ def init_waveguide_port(
             )
         except ValueError as error:
             raise ValueError(
-                f"{error} These walls are the Grid's declared faces; an axis "
-                "overridden as periodic or PMC by a run must be declared on the Grid."
+                f"{error} These walls are the Grid's declared faces; overrides by a run "
+                "or extractor (an axis made periodic, a PMC face, or an axis withheld "
+                "by pec_axes) must be declared on the Grid."
             ) from error
 
     nu_port = u_hi - u_lo

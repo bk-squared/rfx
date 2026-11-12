@@ -106,8 +106,9 @@ def test_initializers_refuse_uniform_node_plane(scene, axis, multimode, grid_kin
         initializer(_ports(grid, axis)[0], metric, freqs, f0=6e9,
                     dft_total_steps=steps, **kwargs)
     assert str(error.value).endswith(
-        "These walls are the Grid's declared faces; an axis "
-        "overridden as periodic or PMC by a run must be declared on the Grid."
+        "These walls are the Grid's declared faces; overrides by a run "
+        "or extractor (an axis made periodic, a PMC face, or an axis withheld "
+        "by pec_axes) must be declared on the Grid."
     )
     # Expected bounds come directly from node counts, independently of validation.
     valid = initializer(_ports(grid)[0], metric, freqs, f0=6e9,
@@ -115,6 +116,31 @@ def test_initializers_refuse_uniform_node_plane(scene, axis, multimode, grid_kin
     for cfg in valid if multimode else [valid]:
         assert (cfg.u_lo, cfg.u_hi) == (0, grid.ny - 1)
         assert (cfg.v_lo, cfg.v_hi) == (0, grid.nz - 1)
+
+
+@pytest.mark.parametrize("multimode", [False, True])
+@pytest.mark.parametrize("grid_kind", ["explicit", "grid_dx"])
+def test_2d_initializers_and_loop_accept_whole_z_plane(scene, monkeypatch, multimode, grid_kind):
+    _, freqs, steps = scene
+    grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.002), dx=0.002,
+                cpml_layers=10, cpml_axes="x", mode="2d_tez")
+    assert grid.nz == 1
+    assert "z" not in grid.periodic_axes
+    initializer = init_multimode_waveguide_port if multimode else init_waveguide_port
+    kwargs = {"n_modes": 2} if multimode else {}
+    metric = grid if grid_kind == "grid_dx" else grid.dx
+    if grid_kind == "explicit":
+        kwargs["grid"] = grid
+    port = _ports(grid, "z")[0]._replace(b=grid.dx)
+    whole = initializer(port, metric, freqs, f0=6e9, dft_total_steps=steps, **kwargs)
+    configs = whole if multimode else [whole]
+    for cfg in configs:
+        assert (cfg.u_lo, cfg.u_hi) == (0, grid.ny - 1)
+        assert (cfg.v_lo, cfg.v_hi) == (0, grid.nz)
+    monkeypatch.setattr(uniform_loop, "_build_step_setup", _accepted_setup)
+    with pytest.raises(_SetupReached):
+        uniform_loop.run(grid, init_materials(grid.shape), 1, boundary="cpml",
+                         cpml_axes="x", waveguide_ports=configs)
 
 
 @pytest.mark.parametrize("walls", ["periodic", "pmc_hi"])
