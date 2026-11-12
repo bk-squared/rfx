@@ -738,9 +738,10 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
 @pytest.mark.parametrize('name', ['scene2'])
 def test_cpml_two_vs_three_bitwise_and_bars(name):
     from tests._distributed_dispersive_cpml import scene, measure, check
+    three_devices = host_devices(3)
     sim = scene('debye') if name == 'debye' else cpml_scene(name)
     outputs = [sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
-        **({} if n == 1 else dict(distributed=True, devices=host_devices(n))))
+        **({} if n == 1 else dict(distributed=True, devices=three_devices if n == 3 else host_devices(2))))
         for n in (1, 2, 3)]
     # Forward omits gathered fields, so use the run entry for final-field identity.
     from rfx.runners import _distributed_nu_wrapped as runner
@@ -754,7 +755,7 @@ def test_cpml_two_vs_three_bitwise_and_bars(name):
     with patch.object(runner, 'reduce', gather):
         for n in (2, 3):
             sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
-                        distributed=True, devices=host_devices(n))
+                        distributed=True, devices=three_devices if n == 3 else host_devices(2))
     assert_bits((outputs[1].time_series, states[0]), (outputs[2].time_series, states[1]))
     for result in outputs[1:]:
         if name == 'debye':
