@@ -48,6 +48,69 @@ def test_b6_2_si_guard(monkeypatch, graded):
 
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+def test_b6_2_si_guard_jit(monkeypatch, graded):
+    objective = objective_for(graded, False)
+    def with_aux(params):
+        value = objective(params)
+        return value, value
+
+    def evaluate():
+        # Retrace after changing the switch: arming is decided at trace time.
+        jax.clear_caches()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            result = jax.block_until_ready(jax.jit(jax.grad(with_aux, has_aux=True))(parameters()))
+            jax.effects_barrier()
+        found = [w.message for w in caught if issubclass(w.category, AccuracyWarning)]
+        return result, found
+
+    monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
+    checked, found = evaluate()
+    monkeypatch.delenv('RFX_POLE_UNDERFLOW_CHECK')
+    unchecked, _ = evaluate()
+    equal = all(np.asarray(a).tobytes() == np.asarray(b).tobytes()
+                for a, b in zip(jax.tree.leaves(checked), jax.tree.leaves(unchecked)))
+    record(f'B6.2-jit-{graded}', dict(warnings=len(found), counts=[getattr(w, 'count', None) for w in found],
+           objective=float(checked[1]), gradient=np.asarray(checked[0]).tolist(), bitwise_equal=equal))
+    assert len(found) == 1
+    assert equal
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+def test_b6_10_delta_only_guard(monkeypatch, graded):
+    import rfx.materials.lorentz as lorentz
+
+    sim, grid = scene(parameters(), graded)
+    def objective(q):
+        pole = LorentzPoleMap(0., lambda x, y, z: jnp.exp(q)*(1+.4*(x-.015)/.0093),
+                             lambda x, y, z: float(KAPPA)*(1+.4*(x-.015)/.0093))
+        sim._materials['plasma'].lorentz_poles[:] = [pole]
+        result = sim.forward(n_steps=200, checkpoint=True, skip_preflight=True)
+        trace = jnp.asarray(result.time_series).reshape(200, -1)[:, 0]
+        kernel = jnp.exp(-2j*jnp.pi*jnp.asarray(BINS)[:, None]*jnp.arange(200)[None, :]*grid.dt)*grid.dt
+        return jnp.sum(jnp.abs(kernel@trace)**2)
+
+    entries = []
+    guard = lorentz.pole_underflow_guard
+    def spy(out, factors, *, scalar=True):
+        entries.append(dict(scalar=scalar, factor_shapes=[list(np.shape(v)) for v in factors]))
+        return guard(out, factors, scalar=scalar)
+
+    monkeypatch.setattr(lorentz, 'pole_underflow_guard', spy)
+    monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
+    jax.clear_caches()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        gradient = jax.block_until_ready(jax.jit(jax.grad(objective))(jnp.log(jnp.float32(2e9))))
+        jax.effects_barrier()
+    found = [w.message for w in caught if issubclass(w.category, AccuracyWarning)]
+    record(f'B6.10-{graded}', dict(entries=entries, warnings=len(found),
+           counts=[getattr(w, 'count', None) for w in found], gradient=float(gradient)))
+    assert not entries, entries
+    assert not found, found
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_b6_3_relative_guard(monkeypatch, graded):
     objective = objective_for(graded, True)
     monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
