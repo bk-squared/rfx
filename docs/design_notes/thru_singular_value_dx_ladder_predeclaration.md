@@ -162,7 +162,7 @@ on CPU.
 
 ## 7. Memory (R1)
 
-- `docs/agent-memory/rfx-known-issues.md`, entry "Added 2026-09-01 —
+- Entry "Added 2026-09-01 —
   #778/#779 stack merged" (the plan cites it at `:137-141` of main 1c38b0d7;
   the ledger has grown since, so the entry is named by heading): "f64 fields,
   4x/2x step counts and complex128 algebra all reproduce 1.003227 (falling
@@ -344,7 +344,7 @@ are. The replay test imports the live constant and asserts it is 1.01.
 ### 9.5 STOP — memory re-read, alternative architectures, redesign (R2)
 
 Memory (R1), re-read after the verdict:
-- `docs/agent-memory/rfx-known-issues.md`, "#778/#779 stack merged" (#819
+- "#778/#779 stack merged" (#819
   entry): "the excess is systematic with mechanism unidentified". Consistent.
   This ladder adds two facts: the 3 GHz excess is not invariant to dx (10× on
   the first halving), so it is not a fixed extraction offset; and it crosses

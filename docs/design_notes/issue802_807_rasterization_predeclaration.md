@@ -17,7 +17,7 @@ worktree branched from `main` @ 92018513.
 
 ## R1 memory citations
 
-- `docs/agent-memory/rfx-known-issues.md` line 24: "#802 realized cells depend
+- "#802 realized cells depend
   on JAX_ENABLE_X64 — f32 node rounding at node-aligned faces". This change
   implements the issue's own proposed direction (exact host coordinates,
   traced path preserved). Consistent.

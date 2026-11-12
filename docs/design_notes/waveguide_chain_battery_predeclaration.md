@@ -36,8 +36,7 @@ construction, import `rfx/probes/refplane.py` into the waveguide path, or use
 
 ## 1. Memory (R1)
 
-Line numbers are those of `docs/agent-memory/rfx-known-issues.md` in the primary checkout
-on 2026-09-02; the plan's numbers (in parentheses) drifted by a few lines since its base.
+The entries below were read on 2026-09-02.
 
 - **`:3096-3112` (plan `:3093-3099`)** — "End-to-end AD through `compute_*_s_matrix` —
   RESOLVED 2026-05-25 … public-API `jax.grad` flows, FD↔AD rel_err 2.0e-4." *Consistent*:

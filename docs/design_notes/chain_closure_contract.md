@@ -4,8 +4,8 @@
 
 > The WR-90 inductive iris case was removed on 2026-09-22; the artifacts cited here are at commit e367e7bf.
 
-Status: contract document, the first v1.8 deliverable
-(`docs/agent-memory/rfx-known-issues.md:196-197`). Criteria source: `ROADMAP.md:25-32`. Audited
+Status: contract document, the first v1.8 deliverable.
+Criteria source: `ROADMAP.md:25-32`. Audited
 base: main 1c38b0d7, 2026-09-02. The seven questions raised here are settled in
 the plan's "Decisions"; deferred items are #854.
 
@@ -102,7 +102,7 @@ drive setting **before** the first run.
 ## Criterion 4 — artifacts
 
 Pinned envelope JSONs under replay gates with a bounded-margin lock; a fidelity-snapshot entry for
-the fixture host; a per-lane row in `docs/agent-memory/rfx-known-issues.md` giving status against
+the fixture host; a per-lane row giving status against
 criteria 1–3 with file:line; re-capture commands that either run from a clean checkout or name a
 tracked VESSL YAML. Failure of any single pass condition means the family is not chain-closed. Gates
 are never loosened to reach closure; a red gate needs a written root cause first.

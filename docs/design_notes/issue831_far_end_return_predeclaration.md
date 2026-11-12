@@ -68,7 +68,7 @@ is what actually crosses observable against rig.
 - **Boundary family is not the answer either.** #831's own table has
   `cpml`, 40 cells at 0.605 against `upml`, 40 cells at 0.598 — the same
   number. Whatever this is, it is not UPML-specific, so
-  `docs/agent-memory/rfx-known-issues.md:1989` ("rfx UPML reflects ~25 dB MORE
+  the recorded claim ("rfx UPML reflects ~25 dB MORE
   than CPML"; mechanism: the parallel-E component attenuated only indirectly
   through curl coupling) cannot carry it alone. Arm A runs both families at
   all three depths so this is measured rather than argued.
@@ -77,8 +77,6 @@ is what actually crosses observable against rig.
 
 ## 1. R1 — memory this plan is checked against
 
-Read read-only at the primary checkout
-`docs/agent-memory`.
 
 1. `rfx-known-issues.md:4158` — *"in an empty WR-90 waveguide driven from port
    1, `|b1/a1|` ... scales with CPML thickness as 10 layers -> 11.7 %, 20 -> 4.2 %,
@@ -564,7 +562,7 @@ divergent is worse than the facet.
 
 ### 8.6 If this lands it is the first of its kind in the case ledger
 
-`docs/agent-memory/rfx-known-issues.md:4343` is the comparator-bug case ledger,
+The comparator-bug cases are
 currently 13 of 13 closed as comparator/extractor defects, and
 `research/CLAUDE.md` states that as an invariant rather than a tally. This one
 would close as a **solver-assembly** defect: the comparator (cv03's two-wave

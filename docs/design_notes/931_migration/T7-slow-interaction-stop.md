@@ -25,7 +25,7 @@ into PEC edges". This proposal is consistent with both: retain these owners and
 make every consumer evaluate them against one explicit mesh snapshot. The
 §6 amendment says an exactly placed sheet "prints nothing". Reviving that
 advisory solely to satisfy a stale consumer would contradict the amendment.
-No `docs/agent-memory/` directory exists in this worktree; no other worktree
+No other worktree
 was read or modified. The current normative note and prior audit notes were
 read instead of assuming inaccessible private memory describes current code.
 

@@ -40,9 +40,7 @@ reviews were told the port-asymmetry archive had been destroyed with its worktre
 that is wrong — the NFS run directory kept full-precision per-case JSON. Everything
 attributed to it below has been re-checked against
 `/root/workspace/claude-workspace/rfx/runs/vi_envelope_presweep/20260904T113144Z-b59e1d99-chk2sym/`
-(`chk2_results.json`, 52 rows; `cases_m4/*.json`, full float). All four are mirrored at
-`docs/research-archive/rfx/research_notes/vi_envelope_presweep_archive/` in the workspace
-repo, commit `2c29d5f`.
+(`chk2_results.json`, 52 rows; `cases_m4/*.json`, full float).
 
 Two cautions that survive the recovery:
 - The port-asymmetry rows at a converged absorber for N = 9/18/36 carry a

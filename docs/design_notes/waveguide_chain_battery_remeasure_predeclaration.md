@@ -31,8 +31,7 @@ use `normalize=True`.
 
 ## 1. Memory (R1)
 
-Line numbers are those of `docs/agent-memory/rfx-known-issues.md` in the primary checkout on
-2026-09-03.
+The entries below were read on 2026-09-03.
 
 - **`:99`** — the waveguide chain-status row, rewritten against the measured battery:
   "the de-embedding β is wrong because `_discrete_te_mode_profiles` … solves the Neumann

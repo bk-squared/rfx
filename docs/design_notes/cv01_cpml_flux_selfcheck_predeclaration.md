@@ -117,7 +117,7 @@ varies only where the plane sits.
 
 cv01 pins `cpml_n = 10`, below rfx's own `Simulation(cpml_layers=16)` default —
 and that default is 16 *because* CPML guided-mode reflection was measured here
-(`docs/agent-memory/rfx-known-issues.md`, "CPML guided-mode reflection ~12% at
+("CPML guided-mode reflection ~12% at
 default 8-10 layers": 10 layers → 11.7 %, 20 → 4.2 %, 40 → 1.8 %). So the rig
 runs at the layer count that entry says is the worst of the three.
 
@@ -344,9 +344,9 @@ fraction's magnitude, 8.56, is already **below** the retired threshold of 8.68
 the absorber and changing nothing else recovers it monotonically, and what it
 recovers is the off-guide part — the aperture arms conserve at ≈0.99 at every
 layer count, so the guided channel was never where the deficit lived. This is
-*consistent with* `docs/agent-memory/rfx-known-issues.md:4158` ("CPML
+*consistent with* the recorded "CPML
 guided-mode reflection ~12% at default 8-10 layers ... 10 layers → 11.7 %, 20 →
-4.2 %, 40 → 1.8 %"), the entry that raised rfx's own `cpml_layers` default from
+4.2 %, 40 → 1.8 %", the entry that raised rfx's own `cpml_layers` default from
 8 to 16. A different observable (|b1/a1| on WR-90) and a different structure,
 but the same monotone-in-thickness shape and the same verdict on 10 layers.
 
@@ -408,7 +408,7 @@ absorber needs more depth than a radiating one. The WR-90 slab measurement
 that fixed rfx's phase-alignment constants ran at it
 (`scripts/verify_phase_alignment.py:40`, "Measured on 2026-04-22 WR-90 slab,
 cpml_layers=20 on both sides"), and it is the middle rung of the layer ladder
-in `docs/agent-memory/rfx-known-issues.md:4158` ("20 → 4.2 %").
+("20 → 4.2 %").
 
 **Correction, round-1 review.** The first version of this paragraph, of the
 comment in cv01 and of PR #1027's body said 20 was "what
