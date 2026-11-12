@@ -334,8 +334,8 @@ PRODUCERS = [
             v.rows(_h_widths(s.grid)[0]),) + _h_widths(s.grid)[1:], high_wall=(False, False, False))),
     Producer(
         "pole_component_weights",
-        lambda s: [pole_component_weights(m, PERIODIC, cell_sizes=_x_widths(s), high_wall=(False, False, False)) for m in s.debye[1]],
-        lambda s, v: [pole_component_weights(v.rows(m), PERIODIC, cell_sizes=_cut_widths(_x_widths(s), v), high_wall=(False, False, False))
+        lambda s: [pole_component_weights(m, PERIODIC, field_dtype=s.eps_r.dtype, cell_sizes=_x_widths(s), high_wall=(False, False, False)) for m in s.debye[1]],
+        lambda s, v: [pole_component_weights(v.rows(m), PERIODIC, field_dtype=s.eps_r.dtype, cell_sizes=_cut_widths(_x_widths(s), v), high_wall=(False, False, False))
                       for m in s.debye[1]],
         scenes=("poles",)),
     Producer(

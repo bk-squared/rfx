@@ -85,7 +85,8 @@ def compute_conformal_weights_sdf(grid: Grid, pec_shapes: list):
 
     Call ``compute_conformal_fractions`` when forming H operands too.
     """
-    return compute_conformal_fractions(grid, pec_shapes)[0]
+    # Item 1 CONTRACT: public helper on no runner path.
+    return compute_conformal_fractions(grid, pec_shapes, field_dtype=jnp.float32)[0]
 
 
 def validate_conformal_min_weight(value):

@@ -52,7 +52,7 @@ def conformal_b_floor(lengths, areas, q):
     return tuple(result)
 
 
-def conformal_fractions_from_table(table, grid, conformal_pec, *, clamp=True, pec_shapes=(), field_dtype=jnp.float32):
+def conformal_fractions_from_table(table, grid, conformal_pec, *, clamp=True, pec_shapes=(), field_dtype):
     """Apply the operand rule and physical slice at the run coefficient dtype."""
     dtype = jnp.promote_types(field_dtype, jnp.float32)
     lengths, areas = table.lengths, table.areas

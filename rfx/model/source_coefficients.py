@@ -449,7 +449,8 @@ def dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=None, *,
     if debye_spec is None and lorentz_spec is None and grid is None:
         return materials
     from rfx.model.materials import EdgePoles
-    return materials._replace(components=EdgePoles(debye_spec, lorentz_spec, grid))
+    return materials._replace(components=EdgePoles(
+        debye_spec, lorentz_spec, grid, field_dtype=materials.eps_r.dtype))
 
 
 def debye_pole_term(drive_model, cell, component, dt):

@@ -176,7 +176,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         table = build_cell_table(grid, pec_shapes, include_trailing_node=conformal == "cut_cell_floor")
         conformal_weights, conformal_areas = conformal_fractions_from_table(
             table, grid, conformal, pec_shapes=pec_shapes,
-            field_dtype=resolve_field_dtype(sim._precision) or jnp.float32)
+            field_dtype=materials.eps_r.dtype)
 
         # The 1/w permittivity is formed below, once the run's final
         # periodic flags are known.

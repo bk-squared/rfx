@@ -111,7 +111,7 @@ def test_frozen_capture_calls(scene, rule):
     with record_cell_table_capture(grid, shapes) as calls:
         compute_conformal_fractions(
             grid, pec_shapes=shapes, clamp=rule != 'raw',
-            conformal_pec='cut_cell_floor' if rule == 'floor' else None)
+            conformal_pec='cut_cell_floor' if rule == 'floor' else None, field_dtype=np.float32)
     prefix = f'{scene}_{rule}_'
     actual = {f'{prefix}call_count': np.asarray(len(calls))}
     for index, call in enumerate(calls):
@@ -138,7 +138,7 @@ def test_frozen_operands(scene, rule):
     table = cell_table.build_cell_table(grid, shapes, include_trailing_node=rule == "floor")
     actual = conformal_fractions_from_table(
         table, grid, 'cut_cell_floor' if rule == 'floor' else None,
-        clamp=rule != 'raw')
+        clamp=rule != 'raw', field_dtype=np.float32)
     with np.load(REFERENCE) as frozen:
         for kind, values in zip(('edges', 'faces'), actual):
             for axis, value in enumerate(values):
@@ -176,6 +176,6 @@ def test_node_holding_band_matches_main(rule):
     kwargs = dict(conformal_pec='cut_cell_floor' if rule == 'floor' else None,
                   clamp=rule != 'raw')
     accepted, refused = (.014, .0155) if rule == 'floor' else (.0155, .014)
-    compute_conformal_fractions(grid, [Sphere((accepted, .006, .006), .0007)], **kwargs)
+    compute_conformal_fractions(grid, [Sphere((accepted, .006, .006), .0007)], **kwargs, field_dtype=np.float32)
     with pytest.raises(NotImplementedError, match='holds no grid node'):
-        compute_conformal_fractions(grid, [Sphere((refused, .006, .006), .0007)], **kwargs)
+        compute_conformal_fractions(grid, [Sphere((refused, .006, .006), .0007)], **kwargs, field_dtype=np.float32)

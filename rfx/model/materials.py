@@ -599,7 +599,8 @@ class ComponentMaterials:
 from types import SimpleNamespace  # noqa: E402
 
 
-class EdgePoles(NamedTuple):
+@dataclass(frozen=True)
+class EdgePoles:
     """Pole specs for a lane that keeps no whole-domain realization (the
     distributed runners): carried in the ``components`` slot of the materials
     handed to the drive builders only. An edge's ADE terms are built from the
@@ -608,6 +609,7 @@ class EdgePoles(NamedTuple):
     debye_spec: object
     lorentz_spec: object
     grid: Any = None
+    field_dtype: object = field(kw_only=True)
 
     def at(self, cell, dt):
         lo = tuple(max(int(i) - 1, 0) for i in cell)
@@ -634,7 +636,7 @@ class EdgePoles(NamedTuple):
             terms = _realize_poles(cut, (False,) * 3, kind, SimpleNamespace(dt=dt), shape,
                                    high_wall=tuple(wall and w.stop == n for wall, w, n in
                                        zip(unpadded_high_walls(self.grid), window, self.grid.shape)),
-                                   cell_sizes=widths).coefficients
+                                   cell_sizes=widths, field_dtype=self.field_dtype).coefficients
             out.append(jax.tree.map(lambda value: value[local], terms))
         return out
 
@@ -754,7 +756,7 @@ def electric_grid_kwargs(grid):
     return dict(grid=grid)
 
 
-def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None, field_dtype=jnp.float32):
+def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None, field_dtype):
     """Dual-volume pole occupancy, using the electric material rule."""
     if mask is None:
         return None
@@ -762,7 +764,7 @@ def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: t
                                 high_wall=high_wall, cell_sizes=cell_sizes)
 
 
-def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None, field_dtype=jnp.float32):
+def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None, field_dtype):
     if spec is None:
         return None
     from rfx.materials.pole_map import sample_spec, is_map, build_map_coeffs

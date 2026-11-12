@@ -76,7 +76,7 @@ def _cavity_trace(ppw, conformal):
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     if conformal:
-        lengths, areas = compute_conformal_fractions(grid, [cylinder], clamp=False)
+        lengths, areas = compute_conformal_fractions(grid, [cylinder], clamp=False, field_dtype=np.float32)
         areas = tuple(1 - a for a in areas)
         weights = tuple(jnp.asarray(w) for w in sc_clamp(
             tuple(1 - np.asarray(w) for w in lengths), tuple(np.asarray(a) for a in areas)))
@@ -184,7 +184,7 @@ def _assert_identified(result):
 def test_t0_complement_weights():
     """The cavity's open-edge weights follow an independent radial formula."""
     grid, cylinder = _cavity_geometry(16)
-    lengths, _ = compute_conformal_fractions(grid, [cylinder], clamp=False)
+    lengths, _ = compute_conformal_fractions(grid, [cylinder], clamp=False, field_dtype=np.float32)
     cx, cy, _ = cylinder.center
     # Independent end-node radial distances, before complementing and SC.
     for component, length in enumerate(lengths):
@@ -266,7 +266,7 @@ class TestConformalConvergence:
         state = init_state(grid.shape)
         materials = init_materials(grid.shape)
 
-        (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl])
+        (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl], field_dtype=np.float32)
         materials = finish_conformal_mu(with_components(
             materials, grid, periodic=(False,) * 3), areas)
         eps_ex, eps_ey, eps_ez = conformal_eps_correction(

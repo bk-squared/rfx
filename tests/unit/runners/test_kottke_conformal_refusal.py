@@ -267,7 +267,7 @@ def test_cut_cell_floor_grid_tolerance_and_reference(monkeypatch):
     grid = Grid(20e9, (.012,) * 3, dx=.001, cpml_layers=0)
     grid.dt = .5 * Grid.courant_dt(.001)
     wall = Box((-1.,) * 3, (.0029, 1., 1.))
-    weights, _ = compute_conformal_fractions(grid, [wall], clamp=False)
+    weights, _ = compute_conformal_fractions(grid, [wall], clamp=False, field_dtype=np.float32)
     mats = with_components(init_materials(grid.shape), grid, periodic=(False,) * 3)
     eps, _, reference = form_reference_operands(
         grid, mats, subpixel_smoothing=False, conformal_weights=weights,

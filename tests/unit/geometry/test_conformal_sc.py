@@ -36,7 +36,7 @@ def test_plane_lengths_and_areas_on_every_component(axis, fraction):
     plane = (2 - pads[axis] + fraction) * grid.widths[axis]
     lo, hi = [-1.] * 3, [1.] * 3
     hi[axis] = plane
-    lengths, areas = compute_conformal_fractions(grid, [Box(tuple(lo), tuple(hi))], clamp=False)
+    lengths, areas = compute_conformal_fractions(grid, [Box(tuple(lo), tuple(hi))], clamp=False, field_dtype=np.float32)
     for component in range(3):
         expected_l = np.empty(grid.shape)
         expected_s = np.empty(grid.shape)
@@ -57,7 +57,7 @@ def test_sphere_faces_against_circle_rectangle_integral(normal):
     center = [.002] * 3
     center[u] = .0024 - .2
     radius = .2
-    _, areas = compute_conformal_fractions(grid, [Sphere(tuple(center), radius)], clamp=False)
+    _, areas = compute_conformal_fractions(grid, [Sphere(tuple(center), radius)], clamp=False, field_dtype=np.float32)
     for n, j in ((1, 1), (2, 2), (3, 3)):
         index = [0] * 3
         index[normal], index[u], index[v] = n, 2, j
@@ -97,7 +97,7 @@ def test_union_is_taken_at_nodes_before_edge_roots():
     grid = RectGrid(widths=(1.,) * 3, pad_x_lo=0, pad_y_lo=0, pad_z_lo=0)
     shapes = [Box((-10.,) * 3, (.25, 10., 10.)),
               Box((.75, -10., -10.), (10.,) * 3)]
-    lengths, _ = compute_conformal_fractions(grid, shapes, clamp=False)
+    lengths, _ = compute_conformal_fractions(grid, shapes, clamp=False, field_dtype=np.float32)
     assert float(lengths[0][0, 1, 1]) == 0.  # Both union endpoints are metal.
 
 
@@ -115,7 +115,7 @@ def test_mu_faces_and_reference_wall_geometry():
     mats = with_components(init_materials(grid.shape), grid, periodic=(False,) * 3)
     wall = Box((-1.,) * 3, (.0027, 1., 1.))
     obstacle = Sphere((.007,) * 3, .0015)
-    weights, _ = compute_conformal_fractions(grid, [wall, obstacle])
+    weights, _ = compute_conformal_fractions(grid, [wall, obstacle], field_dtype=np.float32)
     eps, inv, reference = form_reference_operands(
         grid, mats, subpixel_smoothing=False, conformal_weights=weights, boundary_pec_shapes=[wall])
     assert inv is None
@@ -190,8 +190,8 @@ def test_collapsed_2d_geometry_repeats_the_node_slice():
     grid = Grid(20e9, (.012, .012, .001), dx=.001, cpml_layers=0, mode='2d_tmz')
     sphere = Sphere((.006, .006, 0.), .0023)
     cylinder = Cylinder((.006, .006, 0.), .0023, 1., axis='z')
-    for actual, expected in zip(compute_conformal_fractions(grid, [sphere]),
-                                 compute_conformal_fractions(grid, [cylinder])):
+    for actual, expected in zip(compute_conformal_fractions(grid, [sphere], field_dtype=np.float32),
+                                 compute_conformal_fractions(grid, [cylinder], field_dtype=np.float32)):
         np.testing.assert_array_equal(actual, expected)
 
 
@@ -277,9 +277,9 @@ def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, 
     grid = Grid(10e9, (.012, .012, .012), dx=.001, cpml_layers=0, periodic_axes=periodic)
     if refused:
         with pytest.raises(NotImplementedError, match='cell off the node lattice'):
-            compute_conformal_fractions(grid, [Box(*box)])
+            compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
     elif not periodic:
-        lengths, areas = compute_conformal_fractions(grid, [Box(*box)])
+        lengths, areas = compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
         # Corners / dx give nodes (4, 4, 6) to (8, 8, 7), inclusive.
         # E spans one interval along its component; H spans the other two.
         # These six ranges contain 40, 40, 25 edges and 20, 20, 32 faces.
@@ -296,5 +296,5 @@ def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, 
                 np.testing.assert_array_equal(actual, expected,
                                               err_msg=f'box1: {label}{"xyz"[component]} closed set')
     else:
-        lengths, areas = compute_conformal_fractions(grid, [Box(*box)])
+        lengths, areas = compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
         assert all(float(jnp.min(a)) == 1. for a in lengths + areas)

@@ -127,7 +127,7 @@ def test_distributed_drive_window_reads_weighted_poles(kind):
     m = MaterialArrays(jnp.asarray(1 + 3*mask, dtype=jnp.float32),
                        jnp.asarray(.2*mask, dtype=jnp.float32), jnp.ones(g.shape))
     c = realize_components(ComponentCells(m, db, lr), g, periodic=(False,)*3)
-    drive = m._replace(components=EdgePoles(db, lr, g))
+    drive = m._replace(components=EdgePoles(db, lr, g, field_dtype=m.eps_r.dtype))
     for cell in ((1, 1, 1), (0, 0, 0)):
         for a in range(3):
             expected = reference(np.asarray(m.eps_r), g.widths, a, cell, (False,)*3)[0]
@@ -249,7 +249,7 @@ def test_plain_distributed_drive_keeps_equal_cell_host_bits():
     eps = jnp.arange(27, dtype=jnp.float32).reshape(g.shape)/17+1
     sigma = jnp.arange(27, dtype=jnp.float32).reshape(g.shape)/71
     raw = MaterialArrays(eps, sigma, jnp.ones(g.shape))
-    carried = raw._replace(components=EdgePoles(None, None, g))
+    carried = raw._replace(components=EdgePoles(None, None, g, field_dtype=raw.eps_r.dtype))
     for component in ('ex','ey','ez'):
         old = e_update_coefficient_at(raw, (1,1,1), component, g.dt, host=True, grid=g)
         new = e_update_coefficient_at(carried, (1,1,1), component, g.dt, host=True, grid=g)
@@ -277,7 +277,7 @@ def test_lorentz_occupancy_and_recurrence_against_hand_reference(periodic, term)
     raw = MaterialArrays(eps, jnp.zeros_like(eps), jnp.ones_like(eps))
     realized = realize_components(ComponentCells(raw, None, ([pole], mask)),
                                   grid, periodic=periodic)
-    fractions = pole_component_weights(mask, periodic, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
+    fractions = pole_component_weights(mask, periodic, field_dtype=eps.dtype, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
     expected = np.empty((3, *shape))
     for axis in range(3):
         for cell in np.ndindex(shape):
