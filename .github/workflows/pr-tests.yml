@@ -346,7 +346,74 @@ jobs:
         run: |
           set -- -p no:cacheprovider --splits 12 --group ${{ matrix.group }}
           pytest --collect-only -q "$@" > "$RUNNER_TEMP/fast-suite-collection.txt" || echo "::warning::collect-only failed; the run below reports the collection error"
-          pytest -q -ra "$@"
+          collected=$(grep -c '::' "$RUNNER_TEMP/fast-suite-collection.txt" || true)
+          echo "collected-in-shard: $collected"
+          : > "$RUNNER_TEMP/mem.tsv"
+          python -u - "$RUNNER_TEMP/mem.tsv" <<'PY' &
+          import pathlib
+          import sys
+          import time
+
+          with open(sys.argv[1], "a", buffering=1) as log:
+              while True:
+                  epoch = int(time.time())
+                  mem = dict(line.split(":", 1) for line in pathlib.Path("/proc/meminfo").read_text().splitlines())
+                  used = int(mem["MemTotal"].split()[0]) - int(mem["MemAvailable"].split()[0])
+                  print(f"{epoch}\t{used}", file=log)
+                  for proc in pathlib.Path("/proc").glob("[0-9]*"):
+                      try:
+                          args = proc.joinpath("cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
+                          if "python" not in args:
+                              continue
+                          status = dict(line.split(":", 1) for line in proc.joinpath("status").read_text().splitlines())
+                          rss = int(status.get("VmRSS", "0 kB").split()[0])
+                          args = args[:100].replace("\t", " ").replace("\n", " ").replace("\r", " ")
+                          print(f"{epoch}\t{proc.name}\t{rss}\t{args}", file=log)
+                      except (OSError, ProcessLookupError):
+                          continue
+                  time.sleep(2)
+          PY
+          mem_pid=$!
+          trap 'kill "$mem_pid" 2>/dev/null || true; wait "$mem_pid" 2>/dev/null || true' EXIT
+          set +e
+          # TRIAL (never merged): two workers per shard, rfx-core-desk D:a2e7f1, 2026-11-12.
+          pytest -v -ra -n 2 --dist loadfile "$@" 2>&1 | tee "$RUNNER_TEMP/fast-suite-run.txt"
+          pytest_status=${PIPESTATUS[0]}
+          kill "$mem_pid" 2>/dev/null
+          wait "$mem_pid" 2>/dev/null
+          trap - EXIT
+          python - "$RUNNER_TEMP/mem.tsv" <<'PY'
+          import datetime
+          import sys
+
+          system = []
+          peaks = {}
+          with open(sys.argv[1]) as log:
+              for line in log:
+                  fields = line.rstrip("\n").split("\t")
+                  if len(fields) == 2:
+                      system.append((int(fields[1]), int(fields[0])))
+                  elif len(fields) == 4:
+                      _, pid, rss, args = fields
+                      if int(rss) > peaks.get(pid, (-1, ""))[0]:
+                          peaks[pid] = (int(rss), args)
+          if system:
+              used, epoch = max(system, key=lambda sample: sample[0])
+              utc = datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+              print(f"mem-peak-sys-MiB: {used / 1024:.2f} at {utc}")
+          for pid, (rss, args) in sorted(peaks.items(), key=lambda item: item[1][0], reverse=True)[:3]:
+              print(f"mem-peak-pid: {pid} {rss / 1024:.2f} {args}")
+          PY
+          if [ "$pytest_status" -ne 0 ]; then
+            mapfile -t failed_ids < <(sed -n -E '/^(FAILED|ERROR) /{s/^(FAILED|ERROR) //; s/ - .*//; p;}' "$RUNNER_TEMP/fast-suite-run.txt" | sort -u)
+            if [ "${#failed_ids[@]}" -gt 0 ]; then
+              pytest -q -ra -p no:cacheprovider "${failed_ids[@]}" > "$RUNNER_TEMP/serial-recheck.txt" 2>&1
+              serial_status=$?
+              echo "serial-recheck-exit: $serial_status"
+              cat "$RUNNER_TEMP/serial-recheck.txt"
+            fi
+          fi
+          exit "$pytest_status"
 
       - name: Upload this shard's test list
         if: always()
@@ -355,7 +422,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fast-suite-collection-${{ matrix.group }}
-          path: ${{ runner.temp }}/fast-suite-collection.txt
+          path: |
+            ${{ runner.temp }}/fast-suite-collection.txt
+            ${{ runner.temp }}/mem.tsv
           overwrite: true
           if-no-files-found: ignore
           retention-days: 14
