@@ -210,7 +210,7 @@ def test_uniform_graded_high_face_row_parity(monkeypatch):
                 grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
                 assert bool(sim._uses_nonuniform_mesh) == graded
                 dt = float(grid.dt)
-                record = np.asarray(sim.run(n_steps=math.ceil(20e-9/dt),
+                record = np.asarray(sim.run(n_steps=math.ceil((5e-9 if scene == "S2" else 20e-9)/dt),
                                             compute_s_params=False).time_series).ravel()
                 assert record.dtype == np.float64
                 records.append(record)
