@@ -1281,7 +1281,7 @@ def preflight_wire_port_radius(sim, warn) -> None:
         f"coarser mesh; on this mesh 0.20*d = "
         f"{_fmt_len(MAX_RADIUS_RATIO * d_min)}). "
         "A declared radius also adds the port contour's electric storage on the four E edges "
-        "around the port, which the port without a radius lacks, so S changes even at a = 0.20*d "
+        "around each port cell, which the port without a radius lacks, so S changes even at a = 0.20*d "
         "(by up to 0.027 in S11 and S21 on a microstrip thru at d = 0.5 mm); "
         "the declared port is the closer of the two to the parallel-plate closed form. "
         "The model needs square, "
