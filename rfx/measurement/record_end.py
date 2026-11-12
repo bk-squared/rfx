@@ -369,7 +369,7 @@ from rfx.measurement.ringdown_resolution import in_window_shares, pole_classes
 _ROUNDING_ONLY_EPS_MULTIPLE = 2e4
 # measured rounding records' peaks up to about 1.2e3 eps of the co-located
 # same-kind peak; 2.4e3 is twice that. Their last-10 % levels on the box
-# are 120 and 235 eps (rfx-archive rfx/records/20261024-settle-skip-tail/).
+# are 120 and 235 eps.
 _ROUNDING_TAIL_EPS_MULTIPLE = 2.4e3
 
 
@@ -852,16 +852,23 @@ def record_end_error(records, dt, source_end, freqs, *, identification: Identifi
         other += kappa * drive
         errors[entry], kappas[entry], floors[entry] = error, kappa, floor
         second_errors[entry] = other
+        entry_reason = ''
         if result.status in {'undetermined', 'absent'}:
             status = 'undetermined'
         elif not np.isfinite(error).all() or not np.isfinite(other).all():
             status = 'undetermined'
-            reasons.append(f'{entry}: non-finite tail or zero in-record DFT')
+            entry_reason = 'non-finite tail or zero in-record DFT'
         elif np.any((error > 1e-2) != (other > 1e-2)):
             status = 'undetermined'
-            reasons.append(f'{entry}: windows disagree')
+            entry_reason = 'windows disagree'
         else:
             status = 'fail' if np.any(error > 1e-2) else 'pass'
+        if all(np.all(columns[name] == 0) for name, weight in operands[0].items()
+               if np.any(np.asarray(weight) != 0)):
+            entry_reason = ('no field recorded at the receiving port over the whole record; '
+                            'the record cannot tell an isolated port from a wave that has not arrived')
+        if entry_reason:
+            reasons.append(f'{entry}: {entry_reason}')
         statuses[entry] = status
     if not statuses:
         return result._replace(status='undetermined', db=float('nan'), reason='no S reader entries')

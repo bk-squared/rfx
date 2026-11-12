@@ -1168,6 +1168,57 @@ def test_s4_two_port_closed_pole_tail(whole_port):
     np.testing.assert_allclose(measured, expected, rtol=2e-4)
 
 
+def test_s4_zero_receive_port_is_undetermined():
+    """No received field cannot distinguish isolation from a wave yet to arrive."""
+    from rfx.measurement.record_readers import port_s_reader
+    from rfx.measurement.port_time import PortTimeRecord
+    from rfx.sparams._tail_witness import port_record_witness
+
+    n, dt = 1500, 1e-12
+    bins = np.array([9e9, 10.5e9, 12e9])
+    poles = -np.log(1000)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
+    residues = {'V': [2., 1.], 'V_port': [1., .8],
+                'V_ref': [.9, 1.2], 'I': [.007, .004]}
+    samples, spectra, tails = [], {}, {}
+    for name, values in residues.items():
+        signal, spectra[name], tails[name] = _s4_closed_record(
+            n, dt, poles, np.array(values), bins, 'H' if name == 'I' else 'E')
+        samples.append(signal)
+    drive = PortTimeRecord('drive', 'wire', tuple(residues), np.column_stack(samples))
+    # S11 by hand: b = V_port - 50 I, a = V_port + 50 I.
+    expected = sum((abs(tails['V_port']) + 50*abs(tails['I'])) /
+                   abs(spectra['V_port'] + sign*50*spectra['I']) for sign in (-1, 1))
+    no_field = ('no field recorded at the receiving port over the whole record; '
+                'the record cannot tell an isolated port from a wave that has not arrived')
+    for case in ('Z', 'N'):
+        received = np.zeros_like(drive.samples)
+        if case == 'N':
+            received[:, drive.channels.index('I')] = _s4_closed_record(
+                n, dt, poles, np.array([.003, .008]), bins, 'H')[0]
+        assert np.count_nonzero(np.any(received != 0, axis=0)) == (case == 'N')
+        receive = PortTimeRecord('receive', 'wire', drive.channels, received)
+        records = (drive, receive)
+        db, actual = port_record_witness(records, dt, 0, bins, freq_max=12e9,
+            reader=port_s_reader(records, {'drive': (50., 3, True), 'receive': (80., 4, False)},
+                                 whole_port=True))
+        measured = actual['record_end_error_per_entry']
+        print(f'zero-receive case={case}: bins={bins}, S11 e_Q={measured["drive/drive"]}, '
+              f'expected={expected}, S21 e_Q={measured["receive/drive"]}, '
+              f'statuses={actual["status_per_entry"]}, status={actual["status"]}, '
+              f'settling_db={db}, reason={actual["reason"]!r}')
+        assert actual['status_per_entry']['drive/drive'] == 'pass', actual
+        np.testing.assert_allclose(measured['drive/drive'], expected, rtol=2e-4)
+        if case == 'Z':
+            assert actual['status_per_entry']['receive/drive'] == 'undetermined', \
+                'Z: an all-zero receiving port must remain undetermined'
+            assert f'receive/drive: {no_field}' in actual['reason'], actual
+            assert np.isnan(measured['receive/drive']).all(), actual
+            assert actual['status'] == 'undetermined' and np.isnan(db), actual
+        else:
+            assert no_field not in actual['reason'], \
+                'N: a nonzero weighted receive channel must not get the no-field reason'
+
+
 def test_s4_dropped_channel_tail_decides_verdict():
     """A small in-record DFT does not remove its weighted absolute tail."""
     from rfx.measurement.record_end import record_end_error
