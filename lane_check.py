@@ -114,16 +114,16 @@ def main():
                         else sim._build_grid())
             sims[lane], dts[lane] = sim, float(grid.dt)
             setup_times[lane] = time.monotonic() - started
-        if dts["U"] != dts["G"]:
+        if abs(dts["U"] / dts["G"] - 1) > 1e-12:
             emit({"stop": "lane timesteps differ", "dt_U": dts["U"],
-                  "dt_G": dts["G"]})
+                  "dt_G": dts["G"], "relative_difference": dts["U"] / dts["G"] - 1})
             return 4
         dt = dts["U"]
         n_steps = math.ceil(record_ns * 1e-9 / dt)
         rows, records = {}, {}
         for lane in ("U", "G"):
             rows[lane], records[lane] = measure(
-                sims[lane], lane, record_ns, dt, n_steps, setup_times[lane])
+                sims[lane], lane, record_ns, dts[lane], n_steps, setup_times[lane])
         comparisons.append(compare(record_ns, rows, records, dt, n_steps))
     decision = verdict(comparisons)
     for row in comparisons:
