@@ -12,6 +12,11 @@ from tests._x64_compat import enable_x64
 from tests.oracle._sheet_rs_pole_scene import BINS, RS0, SIGMA, scene
 
 
+# Design amendment 1 item 7: mark P1-P3 slow if wall time exceeds 3x the same-run oracle.
+# Measured: 7.8x and 6.6x of tests/oracle/test_sheet_rs_pole_derivative.py.
+pytestmark = pytest.mark.slow
+
+
 @pytest.fixture(scope='module')
 def longer_record_poles():
     # Share exactly one forward and one vmapped pullback per record across P1-P3.
