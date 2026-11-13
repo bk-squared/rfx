@@ -1,4 +1,4 @@
-"""Predeclared P/P-ey angle witnesses (DESIGN Addenda 1–3, F1–F7)."""
+"""Bloch-wave probe fields and slab transmission differentiated with respect to incidence angle."""
 import json
 import sys
 import time
@@ -16,8 +16,8 @@ N1, N2 = 1798, 3148
 T_PROBE = 12
 
 
-def emit(bar, **values):
-    print("PWANGLE_IMPL " + json.dumps(dict(bar=bar, **values)), file=sys.stderr, flush=True)
+def emit(quantity, **values):
+    print("RFX_ANGLE_GRADIENT " + json.dumps(dict(quantity=quantity, **values)), file=sys.stderr, flush=True)
 
 
 def scene(pol="ez", theta=30., *, slab=True, h=.002, thickness=.025,
@@ -110,34 +110,35 @@ def gradient(pol="ez", n=N2, compiled=False):
 
 
 @pytest.mark.slow
-def test_00_first_job_stop_quantities():
-    assert not jax.config.jax_enable_x64, "F5 requires the default complex64 DFT"
+def test_override_reproduces_declared_slab_transmission():
+    assert not jax.config.jax_enable_x64, "Transmission finite differences use the default complex64 DFT"
     facts = functions()[4]
     value = float(transmission(jnp.asarray(declared("ez", 30.)), facts["dt"]))
-    emit("F7", shape=facts["shape"], n=N2, value=value, reference=.759503228792,
+    # |T| of the declared 25 mm eps_r=4 slab at 30 deg, h=2 mm, 3148 steps.
+    emit("declared_slab_transmission", shape=facts["shape"], n=N2, value=value, reference=.759503228792,
          difference=value-.759503228792)
-    assert abs(value-.759503228792) <= 1e-5, "F7 STOP: declared P differs from reference"
+    assert abs(value-.759503228792) <= 1e-5, "Declared slab transmission differs from the reference"
     fd = traced_fd()
     scatter = abs(fd[.25]-fd[.5])/abs(fd[.25])
-    emit("F5", fd025=fd[.25], fd05=fd[.5], relative_scatter=scatter)
-    assert scatter <= 4e-4, "F5 STOP: traced FD scatter exceeds 4e-4"
+    emit("transmission_finite_difference_scatter", fd025=fd[.25], fd05=fd[.5], relative_scatter=scatter)
+    assert scatter <= 4e-4, "Transmission finite differences disagree between angle increments"
 
 
 @pytest.mark.parametrize("pol", ["ez", "ey"])
-@pytest.mark.parametrize("theta", [30., 30.25], ids=["B1a", "B1b"])
-def test_concrete_equal_requests(pol, theta):
+@pytest.mark.parametrize("theta", [30., 30.25], ids=["declared-angle", "other-angle"])
+def test_concrete_override_matches_declared_probe_series(pol, theta):
     target = declared(pol, theta)
     for i, slab in enumerate((True, False)):
         sim, _ = scene(pol, slab=slab)
         actual = np.asarray(run(sim, N2, theta).time_series)
-        emit("B1a" if theta == 30 else "B1b", pol=pol, slab=slab,
+        emit("declared-angle" if theta == 30 else "other-angle", pol=pol, slab=slab,
              max_difference=float(np.max(np.abs(actual-target[i]))))
-        assert np.array_equal(actual, target[i]), f"B1 unequal probes: {pol}, {theta}, slab={slab}"
+        assert np.array_equal(actual, target[i]), f"Concrete override and declared probe series differ: {pol}, {theta}, slab={slab}"
 
 
 @pytest.mark.parametrize("pol", ["ez", "ey"])
-@pytest.mark.parametrize("theta", [30., 30.25], ids=["B2a", "B2b"])
-def test_traced_primal_growth(pol, theta):
+@pytest.mark.parametrize("theta", [30., 30.25], ids=["declared-angle", "other-angle"])
+def test_traced_override_probe_error_follows_field_accumulation(pol, theta):
     fields, _, _, _, facts = functions(pol)
     actual, _ = jax.jvp(fields, (jnp.float32(theta),), (jnp.float32(1),))
     actual, target = np.asarray(actual), declared(pol, theta)
@@ -146,49 +147,49 @@ def test_traced_primal_growth(pol, theta):
             delta = np.max(np.abs(actual[i, :n]-target[i, :n]), axis=0)
             scale = float(np.max(np.abs(target[i])))
             accumulated = float(np.sum(np.max(np.abs(target[i, :n]), axis=1), dtype=np.float64))
-            emit("B2", pol=pol, theta=theta, slab=slab, n=n, per_probe=delta.tolist(),
+            emit("traced_probe_error", pol=pol, theta=theta, slab=slab, n=n, per_probe=delta.tolist(),
                  peak=scale, accumulated=accumulated, law_bound=1.2e-7*accumulated)
-            assert np.all(delta <= 1e-4*scale), "B2 fixed-peak bar"
-            assert np.max(delta) <= 1.2e-7*accumulated, "B2 accumulated law"
+            assert np.all(delta <= 1e-4*scale), "Traced probe error exceeds the reference-record peak tolerance"
+            assert np.max(delta) <= 1.2e-7*accumulated, "Traced probe error exceeds accumulated field roundoff"
         value = float(transmission(jnp.asarray(actual), facts["dt"], n))
         ref = float(transmission(jnp.asarray(target), facts["dt"], n))
-        emit("B2_T", pol=pol, theta=theta, n=n, value=value, reference=ref)
-        assert abs(value-ref) <= 1e-4*abs(ref), "B2 transmission bar"
+        emit("traced_transmission", pol=pol, theta=theta, n=n, value=value, reference=ref)
+        assert abs(value-ref) <= 1e-4*abs(ref), "Traced transmission differs from declared transmission"
 
 
 @pytest.mark.slow
-def test_cross_trace_grad_and_jit():
+def test_transmission_angle_gradient_matches_jitted_gradient():
     eager, compiled = gradient(), gradient(compiled=True)
-    emit("B3a", grad=eager, jit_grad=compiled, relative=abs(eager-compiled)/abs(eager))
-    assert abs(eager-compiled) <= 1e-4*abs(eager), "B3 grad versus jit grad"
+    emit("transmission_gradient_jit", grad=eager, jit_grad=compiled, relative=abs(eager-compiled)/abs(eager))
+    assert abs(eager-compiled) <= 1e-4*abs(eager), "Eager and jitted transmission gradients differ"
 
 
-def test_cross_trace_vmap():
+def test_batched_angles_match_individual_probe_series():
     _, _, fields, _, facts = functions()
     angles = jnp.array([29.75, 30.25], dtype=jnp.float32)
     batch = np.asarray(jax.vmap(fields)(angles))
     for i, theta in enumerate(angles):
         ref = np.asarray(fields(theta))
         per_step = np.max(np.abs(batch[i]-ref), axis=(0, 2))
-        peak = np.max(np.abs(ref), axis=(0, 2))
+        peak = np.max(np.abs(ref))
         bound = 9*2**-23*peak
         value, target = [float(transmission(jnp.asarray(a), facts["dt"])) for a in (batch[i], ref)]
-        emit("B3b", theta=float(theta), max_difference=float(np.max(per_step)), bound=bound.tolist(),
+        emit("batched_angle_probe_series", theta=float(theta), max_difference=float(np.max(per_step)), bound=bound.tolist(),
              value=value, reference=target)
-        assert np.all(per_step <= bound), "B3 vmap probe series"
-        assert abs(value-target) <= 1e-4*abs(target), "B3 vmap transmission"
+        assert np.all(per_step <= bound), "Batched probe series differ from individual angles"
+        assert abs(value-target) <= 1e-4*abs(target), "Batched transmission differs from individual angles"
 
 
 @pytest.mark.parametrize("pol", ["ez", pytest.param("ey", marks=pytest.mark.slow)])
-def test_angle_gradient_finite_difference(pol):
+def test_transmission_angle_gradient_matches_finite_difference(pol):
     ad = gradient(pol)
     for step, fd in traced_fd(pol).items():
-        emit("B4", pol=pol, step=step, ad=ad, fd=fd, relative=abs(ad-fd)/abs(fd))
-        assert abs(ad-fd) <= 1e-3*abs(fd), f"B4 derivative versus FD({step})"
+        emit("transmission_angle_derivative", pol=pol, step=step, ad=ad, fd=fd, relative=abs(ad-fd)/abs(fd))
+        assert abs(ad-fd) <= 1e-3*abs(fd), f"Transmission angle derivative versus finite difference({step})"
 
 
 @pytest.mark.parametrize("pol", ["ez", pytest.param("ey", marks=pytest.mark.slow)])
-def test_complex_slab_dft_gradient(pol):
+def test_complex_transmitted_field_gradient_matches_finite_difference(pol):
     fields, _, _, _, facts = functions(pol)
     fn = lambda theta: dft(fields(theta)[0], facts["dt"])
     compiled = jax.jit(fn)
@@ -196,32 +197,32 @@ def test_complex_slab_dft_gradient(pol):
     for step in (.5, .25):
         fd = (compiled(jnp.float32(30+step))-compiled(jnp.float32(30-step)))/(2*step)
         ad_c, fd_c = complex(ad), complex(fd)
-        emit("B4phi", pol=pol, step=step, ad=[ad_c.real, ad_c.imag],
+        emit("complex_transmitted_field_derivative", pol=pol, step=step, ad=[ad_c.real, ad_c.imag],
              fd=[fd_c.real, fd_c.imag], relative=abs(ad_c-fd_c)/abs(fd_c))
-        assert abs(ad_c-fd_c) <= 1e-3*abs(fd_c), f"B4phi complex derivative FD({step})"
+        assert abs(ad_c-fd_c) <= 1e-3*abs(fd_c), f"Complex transmitted field derivative versus finite difference({step})"
 
 
 @pytest.mark.slow
-def test_gradient_record_length():
+def test_transmission_angle_gradient_is_settled():
     short, long = gradient(n=N1), gradient(n=N2)
-    emit("B5", N1=N1, N2=N2, short=short, long=long, relative=abs(short-long)/abs(long))
-    assert abs(short-long) <= 1e-3*abs(long), "B5 gradient record length"
+    emit("transmission_gradient_record_length", short_steps=N1, long_steps=N2, short=short, long=long, relative=abs(short-long)/abs(long))
+    assert abs(short-long) <= 1e-3*abs(long), "Transmission angle gradient has not settled with record length"
 
 
-def test_source_end_concrete_override():
+def test_concrete_angle_source_end_matches_redeclaration():
     sim, _ = scene()
     ref, _ = scene(theta=36.)
     actual, expected = run(sim, N2, 36.), run(ref, N2)
-    emit("B8a", angle=actual.tfsf_angle_deg, actual=actual.settling_source_end_index,
+    emit("concrete_angle_source_end", angle=actual.tfsf_angle_deg, actual=actual.settling_source_end_index,
          reference=expected.settling_source_end_index,
          actual_probe=actual.settling_probe_source_end_index,
          reference_probe=expected.settling_probe_source_end_index)
     assert actual.tfsf_angle_deg == 36.
-    assert actual.settling_source_end_index == expected.settling_source_end_index, "B8 source end"
-    assert actual.settling_probe_source_end_index == expected.settling_probe_source_end_index, "B8 probe source end"
+    assert actual.settling_source_end_index == expected.settling_source_end_index, "Source end differs from the re-declared angle"
+    assert actual.settling_probe_source_end_index == expected.settling_probe_source_end_index, "Probe source end differs from the re-declared angle"
 
 
-def test_source_end_traced_override():
+def test_traced_angle_has_no_concrete_source_end():
     sim, _ = scene()
     captured = []
     def fn(theta):
@@ -229,5 +230,5 @@ def test_source_end_traced_override():
         captured.append(result.settling_source_end_index)
         return result.time_series
     jax.jvp(fn, (jnp.float32(30),), (jnp.float32(1),))
-    emit("B8b", captured=captured)
+    emit("traced_angle_source_end", captured=captured)
     assert captured and all(value is None for value in captured)

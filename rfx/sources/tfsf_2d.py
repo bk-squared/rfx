@@ -311,8 +311,8 @@ def init_tfsf_2d(
         src_tau=float(tau),
         src_fcen=float(f0),
         theta=float(theta),
-        cos_theta=cos_theta,
-        sin_theta=sin_theta,
+        cos_theta=float(cos_theta),
+        sin_theta=float(sin_theta),
         k_transverse=float(k_transverse),
         electric_component=electric_component,
         magnetic_component=magnetic_component,
@@ -628,5 +628,7 @@ def with_angle(cfg, theta_deg):
         theta_deg = float(theta_deg)
     theta, cosine, sine, transverse = oblique_angle_fields(
         theta_deg, cfg.src_fcen, cfg.direction_sign, xp)
+    if xp is np:
+        theta, cosine, sine, transverse = map(float, (theta, cosine, sine, transverse))
     return cfg._replace(theta=theta, cos_theta=cosine, sin_theta=sine,
                         k_transverse=transverse)

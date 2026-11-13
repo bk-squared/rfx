@@ -1,4 +1,4 @@
-"""F3/Addendum 2: first refusal, named overrides, no field scan."""
+"""Unsupported plane-wave angle overrides are refused by name before field stepping."""
 import inspect
 
 import jax
@@ -27,7 +27,7 @@ ROWS = ["graded_x", "graded_out", "distributed", "graded_distributed", "adjoint"
 
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("row", ROWS)
-def test_first_refusal(row, skip, no_scan):
+def test_override_refusals_are_named(row, skip, no_scan):
     options = dict(n_steps=10, skip_preflight=skip, tfsf_angle_override=30.)
     expected, words = RfxUnsupported, ["tfsf_angle_override"]
     if row.startswith("closed"):
@@ -63,26 +63,26 @@ def test_first_refusal(row, skip, no_scan):
     with pytest.raises(expected) as caught:
         sim.forward(**options)
     message = str(caught.value)
-    emit("B7", row=row, skip_preflight=skip, exception=type(caught.value).__name__, message=message)
+    emit("angle_override_refusal", row=row, skip_preflight=skip, exception=type(caught.value).__name__, message=message)
     assert all(word in message for word in words), (row, words, message)
 
 
-def test_first_job_traced95_message():
-    # F3 runtime wrapping is itself measured; a host-only admission mock cannot test it.
+def test_traced_override_beyond_90_degrees_is_refused():
+    # Exercise the compiled range check so its exception names the angle override.
     sim, _ = scene()
     fn = jax.jit(lambda angle: sim.forward(n_steps=10, tfsf_angle_override=angle,
                                           skip_preflight=False).time_series)
     with pytest.raises(Exception) as caught:
         fn(jnp.float32(95)).block_until_ready()
     message = str(caught.value)
-    emit("F3", exception=type(caught.value).__name__, message=message)
-    assert "tfsf_angle_override" in message, "F3 STOP: runtime wrapping lost override name: " + message
+    emit("traced_angle_range_refusal", exception=type(caught.value).__name__, message=message)
+    assert "tfsf_angle_override" in message, "Compiled angle-range refusal lost the override name: " + message
     assert "< 90" in message
 
 
 @pytest.mark.parametrize("name", ["f0", "bandwidth", "amplitude", "angle_deg", "theta_deg", "phi_deg", "direction_tol_deg"])
 @pytest.mark.parametrize("closed", [False, True])
-def test_traced_declaration_named(name, closed, no_scan):
+def test_traced_source_parameters_are_refused_by_name(name, closed, no_scan):
     sim = Simulation(freq_max=10e9, domain=(.30, .016, .008), dx=.002, boundary="cpml")
     def fn(value):
         sim.add_tfsf_source(**{name: value}, closed_box=closed)
@@ -90,32 +90,32 @@ def test_traced_declaration_named(name, closed, no_scan):
     with pytest.raises(RfxRefusal) as caught:
         jax.jit(fn)(jnp.float32(1))
     message = str(caught.value)
-    emit("B7_declaration", name=name, closed=closed, message=message)
+    emit("traced_source_parameter_refusal", name=name, closed=closed, message=message)
     assert name in message and "incident source" in message
     if "deg" in name:
         assert "tfsf_angle_override" in message
 
 
-def test_run_has_no_override():
+def test_run_has_no_angle_override():
     assert "tfsf_angle_override" not in inspect.signature(Simulation.run).parameters
 
 
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("kind", ["normal", "bloch", "methodB"])
-def test_first_job_dispatch_reachability(kind, graded, no_scan):
+def test_multidevice_dispatch_refuses_open_plane_waves(kind, graded, no_scan):
     sim, _ = scene(theta=0. if kind == "normal" else 30., boundary="cpml",
                    graded="x" if graded else None, method="methodB" if kind == "methodB" else "bloch")
-    # Direct dispatch is the claimed earlier refusal site. No override check runs here.
+    # Open plane waves are unsupported on both multi-device mesh types.
     with pytest.raises(RfxUnsupported) as caught:
         sim._dispatch_plan(mode="forward", n_steps=10, num_periods=1,
                            distributed=True, emit_time_series=True)
     message = str(caught.value)
-    emit("Addendum2_dispatch", kind=kind, graded=graded, exception=type(caught.value).__name__, message=message)
+    emit("multidevice_plane_wave_refusal", kind=kind, graded=graded, exception=type(caught.value).__name__, message=message)
     assert ("graded multi-device lane" if graded else "is not supported on forward_distributed") in message
 
 
-def test_first_job_closed_box_two_devices_returns():
-    # Existing case's normal closed box and interior sheet; recheck after removal too.
+def test_normal_closed_box_runs_on_two_devices():
+    # A normal-incidence closed box with an interior sheet supports two devices.
     from tests.unit.runners.test_distributed_admission_refusals import test_closed_box_late_sheet_inside_runs
     test_closed_box_late_sheet_inside_runs("forward", 2)
-    emit("Addendum2_closed_box", devices=2, admitted=True)
+    emit("normal_closed_box_two_devices", devices=2, admitted=True)

@@ -1,4 +1,4 @@
-"""B4R/B6: re-declaration and an independent float64 TE Airy oracle."""
+"""Slab transmission and its angle derivative against re-declaration and float64 TE Airy theory."""
 import math
 
 import jax
@@ -37,21 +37,21 @@ def redeclared_value(pol, theta, h, n, *, layers=16):
 
 
 @pytest.mark.parametrize("pol", ["ez", "ey"])
-def test_b4r_redeclaration_derivative(pol):
+def test_angle_derivative_matches_redeclaration(pol):
     dt = functions(pol)[4]["dt"]
     fd = (float(transmission(jnp.asarray(declared(pol, 30.25)), dt)) -
           float(transmission(jnp.asarray(declared(pol, 29.75)), dt)))/.5
     ad = gradient(pol)
-    emit("B4R", pol=pol, n=N2, ad=ad, fd=fd, relative=abs(ad-fd)/abs(fd))
-    assert abs(ad-fd) <= 1e-3*abs(fd), "B4R AD versus re-declaration FD"
+    emit("redeclared_transmission_derivative", pol=pol, n=N2, ad=ad, fd=fd, relative=abs(ad-fd)/abs(fd))
+    assert abs(ad-fd) <= 1e-3*abs(fd), "Transmission angle derivative versus re-declaration finite difference"
 
 
 @pytest.mark.parametrize("pol", ["ez", "ey"])
-def test_b6_airy_mesh_trend(pol):
+def test_slab_transmission_and_derivative_converge_to_airy(pol):
     values, derivatives = [], []
     for h in (.002, .001, .0005):
         _, facts = scene(pol, h=h, thickness=.024)
-        # The construction's first prefix: N_long / 1.75, quoted as 6.9 ns.
+        # Use a settled pulse record of approximately 6.9 ns on each mesh.
         n = int(math.ceil(12e-9/facts["dt"])/1.75)
         _, fn, _, compiled, _ = functions(pol, n, h, .024)
         value = float(compiled(jnp.float32(30)))
@@ -60,17 +60,16 @@ def test_b6_airy_mesh_trend(pol):
         fd = (redeclared_value(pol, 30.25, h, n)-redeclared_value(pol, 29.75, h, n))/.5
         reference = float(abs(airy(30., facts["thickness"])))
         derivative = airy_derivative(30., facts["thickness"])
-        padded = {.002: .7595029419210677, .001: .7519246022624299, .0005: .7500933902129858}[h]
         values.append(abs(value-reference))
         derivatives.append(abs(ad-derivative))
-        emit("B6", pol=pol, h=h, n=n, record_seconds=n*facts["dt"], facts=facts,
-             value=value, padded_construction=padded, difference_from_padded=value-padded, airy=reference, airy_declared=float(abs(airy(30., .024))),
+        emit("slab_airy_error", pol=pol, h=h, n=n, record_seconds=n*facts["dt"], facts=facts,
+             value=value, airy=reference, airy_declared=float(abs(airy(30., .024))),
              error=value-reference, ad=ad, fd=fd, airy_derivative=derivative,
              derivative_error=ad-derivative, fd_relative=abs(ad-fd)/abs(fd))
-        assert abs(ad-fd) <= 1e-3*abs(fd), "B6(ii) AD versus re-declaration FD"
+        assert abs(ad-fd) <= 1e-3*abs(fd), "Transmission angle derivative versus re-declaration finite difference"
         jax.clear_caches()
     ratios = [values[i]/values[i+1] for i in (0, 1)]
-    emit("B6_trend", pol=pol, magnitude_errors=values, ratios=ratios, derivative_errors=derivatives)
-    assert all(3.5 <= ratio <= 4.6 for ratio in ratios), "B6(i) Airy convergence ratio"
-    assert derivatives[-1] < derivatives[0], "B6(iii) derivative refinement"
-    assert derivatives[-1] <= .005*abs(derivative), "B6(iii) fine derivative error"
+    emit("slab_airy_mesh_convergence", pol=pol, magnitude_errors=values, ratios=ratios, derivative_errors=derivatives)
+    assert all(3.5 <= ratio <= 4.6 for ratio in ratios), "Slab transmission error must converge quadratically to Airy theory"
+    assert derivatives[-1] < derivatives[0], "Transmission angle derivative error must decrease with mesh refinement"
+    assert derivatives[-1] <= .005*abs(derivative), "Fine-mesh transmission angle derivative differs from Airy theory"
