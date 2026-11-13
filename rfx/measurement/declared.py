@@ -16,7 +16,7 @@ def package_declared_measurements(sim, grid, *, entry, flux_monitors, waveguide_
     """Return named declared monitors, port records and reported-plane S."""
     from rfx.api._spec import WaveguideSParamResult
     from rfx.measurement.waveguide_s import (
-        extract_waveguide_sparams, extract_waveguide_s_column, waveguide_plane_positions,
+        _extract_waveguide_sparams, extract_waveguide_s_column, waveguide_plane_positions,
     )
     from rfx.sparams._waveguide_planes import resolve_reported_planes
 
@@ -59,7 +59,7 @@ def package_declared_measurements(sim, grid, *, entry, flux_monitors, waveguide_
             measured_probe_plane = plane_positions["probe"]
             reference_plane, probe_plane, calibration_preset = reported[index]
             if index in driven:
-                s11, s21 = extract_waveguide_sparams(
+                s11, s21 = _extract_waveguide_sparams(
                     cfg,
                     ref_shift=reference_plane - measured_reference_plane,
                     probe_shift=probe_plane - measured_probe_plane,

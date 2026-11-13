@@ -373,7 +373,6 @@ def extract_waveguide_sparams(
     i_ref_dft: jnp.ndarray | None = None,
     v_probe_dft: jnp.ndarray | None = None,
     i_probe_dft: jnp.ndarray | None = None,
-    warn_cutoff: bool = True,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Extract (S11, S21) with optional reference-plane shifts.
 
@@ -402,10 +401,31 @@ def extract_waveguide_sparams(
         planes. When all are given the wave decomposition runs against
         them directly; otherwise the recorded time-series on ``cfg`` is
         used.
-    warn_cutoff : bool
-        Emit the cutoff notice; the declared-measurement packager disables
-        this after warning once for its entire column.
     """
+    return _extract_waveguide_sparams(
+        cfg,
+        ref_shift=ref_shift,
+        probe_shift=probe_shift,
+        v_ref_dft=v_ref_dft,
+        i_ref_dft=i_ref_dft,
+        v_probe_dft=v_probe_dft,
+        i_probe_dft=i_probe_dft,
+        warn_cutoff=True,
+    )
+
+
+def _extract_waveguide_sparams(
+    cfg: WaveguidePortConfig,
+    *,
+    ref_shift: float = 0.0,
+    probe_shift: float = 0.0,
+    v_ref_dft: jnp.ndarray | None = None,
+    i_ref_dft: jnp.ndarray | None = None,
+    v_probe_dft: jnp.ndarray | None = None,
+    i_probe_dft: jnp.ndarray | None = None,
+    warn_cutoff: bool = True,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Extract S entries, optionally suppressing an already emitted cutoff notice."""
     require_probe_medium(cfg)
     beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
     step_sign = 1 if cfg.direction.startswith("+") else -1
