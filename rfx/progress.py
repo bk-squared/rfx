@@ -57,12 +57,15 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from rfx.stepping.progress_scan import scan_with_progress
 
+from rfx.stepping.events import events
+
 from rfx.stepping.progress import (
     _CONCAT_GROUP, _PREFIX, _TRACED_MSG, ProgressReporter, _fmt_hms, check_not_traced,
     concat_chunks, validate_report_every,
 )
 
 __all__ = [
+    "events",
     "ProgressReporter",
     "check_not_traced",
     "concat_chunks",

@@ -6,6 +6,8 @@ simulation, avoiding the need to store full time-series.
 
 from __future__ import annotations
 
+from rfx.stepping.events import extractor_scope
+
 from rfx.errors import AccuracyWarning; from rfx._warning_origin import user_stacklevel  # noqa: E702
 from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass
@@ -1612,63 +1614,64 @@ def extract_s_matrix(
     )
 
     curl_boundary = _port_curl_boundary(grid, (False, False, False))
-    for j in range(n_ports):
-        state = init_state(grid.shape)
-        sprobes = [init_sparam_probe(grid, p, freqs, dft_total_steps=n_steps) for p in ports]
-        cpml_state = cpml_state_init if use_cpml else None
-        debye_state = debye[1] if debye is not None else None
-        lorentz_state = lorentz[1] if lorentz is not None else None
+    with extractor_scope('extract_s_matrix', grid, n_ports, locals()):
+        for j in range(n_ports):
+            state = init_state(grid.shape)
+            sprobes = [init_sparam_probe(grid, p, freqs, dft_total_steps=n_steps) for p in ports]
+            cpml_state = cpml_state_init if use_cpml else None
+            debye_state = debye[1] if debye is not None else None
+            lorentz_state = lorentz[1] if lorentz is not None else None
 
-        from rfx.stepping.probe_loop import run_probe_loop
-        carry, sprobes = run_probe_loop(
-            grid, mats, ports, j, n_steps=n_steps, dt=dt, state=state,
-            sprobes=sprobes, cpml_state=cpml_state, debye_state=debye_state,
-            lorentz_state=lorentz_state, use_cpml=use_cpml,
-            cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
-            debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
-            curl_boundary=curl_boundary, wire=False)
+            from rfx.stepping.probe_loop import run_probe_loop
+            carry, sprobes = run_probe_loop(
+                grid, mats, ports, j, n_steps=n_steps, dt=dt, state=state,
+                sprobes=sprobes, cpml_state=cpml_state, debye_state=debye_state,
+                lorentz_state=lorentz_state, use_cpml=use_cpml,
+                cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
+                debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
+                curl_boundary=curl_boundary, wire=False)
 
-        # Collect per-(drive j, receive i) V/I DFT phasors for the shared
-        # wave decomposer (``decompose_lumped_s_matrix``) — single source of
-        # truth for the lumped decomposition shared with the production-scan
-        # driver (item-5 Stage 1).  The dump schema stores ``-V`` (voltage
-        # positive into the DUT); the FDTD-sign V is fed to the decomposer.
-        for i in range(n_ports):
-            v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
-            i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
-            vref_all[j, i, :] = np.asarray(sprobes[i].v_ref_dft,
-                                           dtype=np.complex128)
-            if return_vi_dump:
-                # ``port_voltage`` returns the FDTD-sign voltage used by the
-                # legacy extractor (V = -E·dx).  The portable dump schema uses
-                # voltage positive into the DUT, so store ``-V``.  With current
-                # positive into the DUT, the drive-port replay formulas
-                # a=(V+ZI)/2√Z, b=(V−ZI)/2√Z reproduce the production
-                # DIAGONAL below exactly; the production
-                # PASSIVE-port b-wave is role-selected — in the dump's
-                # into-DUT convention b_recv=−(V+ZI)/2√Z (sign pinned by the
-                # DC falsifier) — so an off-diagonal replay must apply the
-                # same per-role convention.
-                raw_v[j, i, :] = np.asarray(-sprobes[i].v_dft, dtype=np.complex128)
-                raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
+            # Collect per-(drive j, receive i) V/I DFT phasors for the shared
+            # wave decomposer (``decompose_lumped_s_matrix``) — single source of
+            # truth for the lumped decomposition shared with the production-scan
+            # driver (item-5 Stage 1).  The dump schema stores ``-V`` (voltage
+            # positive into the DUT); the FDTD-sign V is fed to the decomposer.
+            for i in range(n_ports):
+                v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
+                i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
+                vref_all[j, i, :] = np.asarray(sprobes[i].v_ref_dft,
+                                               dtype=np.complex128)
+                if return_vi_dump:
+                    # ``port_voltage`` returns the FDTD-sign voltage used by the
+                    # legacy extractor (V = -E·dx).  The portable dump schema uses
+                    # voltage positive into the DUT, so store ``-V``.  With current
+                    # positive into the DUT, the drive-port replay formulas
+                    # a=(V+ZI)/2√Z, b=(V−ZI)/2√Z reproduce the production
+                    # DIAGONAL below exactly; the production
+                    # PASSIVE-port b-wave is role-selected — in the dump's
+                    # into-DUT convention b_recv=−(V+ZI)/2√Z (sign pinned by the
+                    # DC falsifier) — so an off-diagonal replay must apply the
+                    # same per-role convention.
+                    raw_v[j, i, :] = np.asarray(-sprobes[i].v_dft, dtype=np.complex128)
+                    raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
 
-    z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
-    S = np.asarray(
-        decompose_lumped_s_matrix(v_all, i_all, z0_arr, v_ref=vref_all),
-        dtype=np.complex64)
+        z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
+        S = np.asarray(
+            decompose_lumped_s_matrix(v_all, i_all, z0_arr, v_ref=vref_all),
+            dtype=np.complex64)
 
-    if return_vi_dump:
-        return PortVIReplayBundle(
-            s_params=S,
-            freqs=jnp.asarray(freqs),
-            voltages=raw_v,
-            currents=raw_i,
-            port_impedances=np.asarray([p.impedance for p in ports], dtype=np.float64),
-            port_names=tuple(f"port_{idx}" for idx in range(n_ports)),
-            driven_port_indices=tuple(range(n_ports)),
-        )
+        if return_vi_dump:
+            return PortVIReplayBundle(
+                s_params=S,
+                freqs=jnp.asarray(freqs),
+                voltages=raw_v,
+                currents=raw_i,
+                port_impedances=np.asarray([p.impedance for p in ports], dtype=np.float64),
+                port_names=tuple(f"port_{idx}" for idx in range(n_ports)),
+                driven_port_indices=tuple(range(n_ports)),
+            )
 
-    return S
+        return S
 
 
 def extract_lumped_s11(
@@ -1854,62 +1857,63 @@ def extract_s_matrix_wire(
     port_cell_counts = np.asarray(port_n_live, dtype=np.int64)
 
     curl_boundary = _port_curl_boundary(grid, (False, False, False))
-    for j in range(n_ports):
-        state = init_state(grid.shape)
-        sprobes = [
-            init_wire_sparam_probe(grid, p, freqs, dft_total_steps=n_steps,
-                                   pec_edge_masks=pec_edge_masks)
-            for p in ports
-        ]
-        cpml_state = cpml_state_init if use_cpml else None
-        debye_state = debye[1] if debye is not None else None
-        lorentz_state = lorentz[1] if lorentz is not None else None
+    with extractor_scope('extract_s_matrix_wire', grid, n_ports, locals()):
+        for j in range(n_ports):
+            state = init_state(grid.shape)
+            sprobes = [
+                init_wire_sparam_probe(grid, p, freqs, dft_total_steps=n_steps,
+                                       pec_edge_masks=pec_edge_masks)
+                for p in ports
+            ]
+            cpml_state = cpml_state_init if use_cpml else None
+            debye_state = debye[1] if debye is not None else None
+            lorentz_state = lorentz[1] if lorentz is not None else None
 
-        from rfx.stepping.probe_loop import run_probe_loop
-        carry, sprobes = run_probe_loop(
-            grid, mats, ports, j, n_steps=n_steps, dt=dt, state=state,
-            sprobes=sprobes, cpml_state=cpml_state, debye_state=debye_state,
-            lorentz_state=lorentz_state, use_cpml=use_cpml,
-            cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
-            debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
-            curl_boundary=curl_boundary, wire=True)
+            from rfx.stepping.probe_loop import run_probe_loop
+            carry, sprobes = run_probe_loop(
+                grid, mats, ports, j, n_steps=n_steps, dt=dt, state=state,
+                sprobes=sprobes, cpml_state=cpml_state, debye_state=debye_state,
+                lorentz_state=lorentz_state, use_cpml=use_cpml,
+                cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
+                debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
+                curl_boundary=curl_boundary, wire=True)
 
-        # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
-        # shared wire wave decomposer (``decompose_wire_s_matrix``) — single
-        # source of truth shared with the production-scan driver.  Wire dump
-        # stores the FDTD-sign V (no negation, unlike lumped).
-        for i in range(n_ports):
-            v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
-            i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
-            vp_all[j, i, :] = np.asarray(sprobes[i].v_port_dft,
-                                         dtype=np.complex128)
-            vref_all[j, i, :] = np.asarray(sprobes[i].v_ref_dft,
-                                           dtype=np.complex128)
-            if return_vi_dump:
-                raw_v[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
-                raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
+            # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
+            # shared wire wave decomposer (``decompose_wire_s_matrix``) — single
+            # source of truth shared with the production-scan driver.  Wire dump
+            # stores the FDTD-sign V (no negation, unlike lumped).
+            for i in range(n_ports):
+                v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
+                i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
+                vp_all[j, i, :] = np.asarray(sprobes[i].v_port_dft,
+                                             dtype=np.complex128)
+                vref_all[j, i, :] = np.asarray(sprobes[i].v_ref_dft,
+                                               dtype=np.complex128)
+                if return_vi_dump:
+                    raw_v[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
+                    raw_i[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
 
-    z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
-    # The whole-port gap-voltage channel feeds both diagonal and off-diagonal
-    # entries with a consistent wave pair. v_ref is carried for the
-    # legacy/replay path only.
-    S = np.asarray(
-        decompose_wire_s_matrix(v_all, i_all, z0_arr, port_cell_counts,
-                                v_port=vp_all, v_ref=vref_all),
-        dtype=np.complex64)
+        z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
+        # The whole-port gap-voltage channel feeds both diagonal and off-diagonal
+        # entries with a consistent wave pair. v_ref is carried for the
+        # legacy/replay path only.
+        S = np.asarray(
+            decompose_wire_s_matrix(v_all, i_all, z0_arr, port_cell_counts,
+                                    v_port=vp_all, v_ref=vref_all),
+            dtype=np.complex64)
 
-    if return_vi_dump:
-        return WirePortVIReplayBundle(
-            s_params=S,
-            freqs=jnp.asarray(freqs),
-            raw_voltages_fdt=raw_v,
-            raw_currents=raw_i,
-            port_impedances=np.asarray([p.impedance for p in ports], dtype=np.float64),
-            port_cell_counts=port_cell_counts,
-            port_names=tuple(f"wire_{idx}" for idx in range(n_ports)),
-            driven_port_indices=tuple(range(n_ports)),
-            raw_port_voltages_fdt=vp_all,
-            raw_drive_ref_voltages_fdt=vref_all,
-        )
+        if return_vi_dump:
+            return WirePortVIReplayBundle(
+                s_params=S,
+                freqs=jnp.asarray(freqs),
+                raw_voltages_fdt=raw_v,
+                raw_currents=raw_i,
+                port_impedances=np.asarray([p.impedance for p in ports], dtype=np.float64),
+                port_cell_counts=port_cell_counts,
+                port_names=tuple(f"wire_{idx}" for idx in range(n_ports)),
+                driven_port_indices=tuple(range(n_ports)),
+                raw_port_voltages_fdt=vp_all,
+                raw_drive_ref_voltages_fdt=vref_all,
+            )
 
-    return S
+        return S

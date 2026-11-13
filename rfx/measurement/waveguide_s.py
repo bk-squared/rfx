@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.stepping.events import extractor_scope
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -501,7 +503,7 @@ def extract_waveguide_s_matrix(
     *,
     boundary: str = "cpml",
     cpml_axes: str | None = None,
-    pec_axes: str = "yz",
+    pec_axes: str | None = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
@@ -580,79 +582,80 @@ def extract_waveguide_s_matrix(
             n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
         )
 
-    for drive_idx in range(n_ports):
-        driven_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
-            for idx, cfg in enumerate(template_cfgs)
-        ]
-        _wg_checkpoint = checkpoint_segments is not None
-        result = run_simulation(
-            grid,
-            materials,
-            n_steps,
-            boundary=boundary,
-            cpml_axes=cpml_axes,
-            pec_axes=pec_axes,
-            periodic=periodic,
-            debye=debye,
-            lorentz=lorentz,
-            waveguide_ports=driven_cfgs,
-            aniso_eps=aniso_eps,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            pec_edge_masks=pec_edge_masks,
-            checkpoint=_wg_checkpoint,
-            checkpoint_segments=checkpoint_segments,
-            sheet_impedance=sheet_impedance,
-            field_dtype=field_dtype,
-        )
-        final_cfgs = result.waveguide_ports or ()
-        if len(final_cfgs) != n_ports:
-            raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
-        if return_settling:
-            value, detail = settling_db_from_port_records(
-                final_cfgs, freq_max=getattr(grid, "freq_max", None),
-                return_detail=True)
-            settling_runs.append(value)
-            if settling_details is not None:
-                settling_details.append(detail)
-
-        # NB: run() stamps grid.dt onto every returned waveguide cfg, so the
-        # post-scan rect-DFT extractor below uses the correct Δt even when the
-        # cfgs were built via init_waveguide_port without dt=.
-
-        a_drive, b_drive = _s_matrix_port_waves(
-            final_cfgs[drive_idx],
-            ref_shift=ref_shifts[drive_idx],
-        )
-        safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
-        col_slices: list[jnp.ndarray] = []
-        for recv_idx, cfg in enumerate(final_cfgs):
-            _a_recv, b_recv = _s_matrix_port_waves(
-                cfg,
-                ref_shift=ref_shifts[recv_idx],
+    with extractor_scope('extract_waveguide_s_matrix', grid, n_ports, locals()):
+        for drive_idx in range(n_ports):
+            driven_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+                for idx, cfg in enumerate(template_cfgs)
+            ]
+            _wg_checkpoint = checkpoint_segments is not None
+            result = run_simulation(
+                grid,
+                materials,
+                n_steps,
+                boundary=boundary,
+                cpml_axes=cpml_axes,
+                pec_axes=pec_axes,
+                periodic=periodic,
+                debye=debye,
+                lorentz=lorentz,
+                waveguide_ports=driven_cfgs,
+                aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                pec_edge_masks=pec_edge_masks,
+                checkpoint=_wg_checkpoint,
+                checkpoint_segments=checkpoint_segments,
+                sheet_impedance=sheet_impedance,
+                field_dtype=field_dtype,
             )
-            # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
-            drive_cfg = final_cfgs[drive_idx]
-            defined = power_wave_pair(cfg, drive_cfg)
-            ratio = finite_wave_ratio(b_recv, safe_a, defined)
-            if cfg.medium != drive_cfg.medium:
-                zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
-                                             medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
-                zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
-                                             medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
-                ratio = ratio * jnp.sqrt(finite_wave_ratio(zj, zi, defined) +
-                                         jnp.where(defined, 0, 1))
-            col_slices.append(mask_power_wave(ratio, defined))
-        # Stack recv slices into column (n_ports, n_freqs).
-        s_cols.append(jnp.stack(col_slices, axis=0))
+            final_cfgs = result.waveguide_ports or ()
+            if len(final_cfgs) != n_ports:
+                raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+            if return_settling:
+                value, detail = settling_db_from_port_records(
+                    final_cfgs, freq_max=getattr(grid, "freq_max", None),
+                    return_detail=True)
+                settling_runs.append(value)
+                if settling_details is not None:
+                    settling_details.append(detail)
 
-    # Assemble full S-matrix: stack drive columns along axis=1 →
-    # (n_ports, n_ports, n_freqs).
-    s_matrix = jnp.stack(s_cols, axis=1).astype(complex_dtype)
-    if return_settling:
-        return s_matrix, np.asarray(settling_runs, dtype=float)
-    return s_matrix
+            # NB: run() stamps grid.dt onto every returned waveguide cfg, so the
+            # post-scan rect-DFT extractor below uses the correct Δt even when the
+            # cfgs were built via init_waveguide_port without dt=.
+
+            a_drive, b_drive = _s_matrix_port_waves(
+                final_cfgs[drive_idx],
+                ref_shift=ref_shifts[drive_idx],
+            )
+            safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
+            col_slices: list[jnp.ndarray] = []
+            for recv_idx, cfg in enumerate(final_cfgs):
+                _a_recv, b_recv = _s_matrix_port_waves(
+                    cfg,
+                    ref_shift=ref_shifts[recv_idx],
+                )
+                # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
+                drive_cfg = final_cfgs[drive_idx]
+                defined = power_wave_pair(cfg, drive_cfg)
+                ratio = finite_wave_ratio(b_recv, safe_a, defined)
+                if cfg.medium != drive_cfg.medium:
+                    zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
+                                                 medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
+                    zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
+                                                 medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
+                    ratio = ratio * jnp.sqrt(finite_wave_ratio(zj, zi, defined) +
+                                             jnp.where(defined, 0, 1))
+                col_slices.append(mask_power_wave(ratio, defined))
+            # Stack recv slices into column (n_ports, n_freqs).
+            s_cols.append(jnp.stack(col_slices, axis=0))
+
+        # Assemble full S-matrix: stack drive columns along axis=1 →
+        # (n_ports, n_ports, n_freqs).
+        s_matrix = jnp.stack(s_cols, axis=1).astype(complex_dtype)
+        if return_settling:
+            return s_matrix, np.asarray(settling_runs, dtype=float)
+        return s_matrix
 
 
 def extract_waveguide_s_matrix_flux(
@@ -664,7 +667,7 @@ def extract_waveguide_s_matrix_flux(
     *,
     boundary: str = "cpml",
     cpml_axes: str | None = None,
-    pec_axes: str = "yz",
+    pec_axes: str | None = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
@@ -822,152 +825,153 @@ def extract_waveguide_s_matrix_flux(
         periodic=periodic,
     )
 
-    for drive_idx in range(n_ports):
-        # --- Reference run (empty guide, port drive_idx driven) ---
-        ref_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
-            for idx, cfg in enumerate(template_cfgs)
-        ]
-        # Per-port matched-straight-guide reference for junctions (else vacuum).
-        ref_mat_drive = (
-            ref_materials_per_port[drive_idx]
-            if ref_materials_per_port is not None else ref_materials
-        )
-        _flux_checkpoint = checkpoint_segments is not None
-        # the vacuum/straight-guide REFERENCE deliberately runs with
-        # NO sheet ctx (explicit strip — the sheet no longer rides
-        # materials.sigma, so vacuum materials alone do not strip it).
-        _ref_edges = (
-            None if ref_pec_edge_masks_per_port is None
-            else ref_pec_edge_masks_per_port[drive_idx])
-        from rfx.model.tensor_operands import reference_conformal_materials
-        ref_mat = reference_conformal_materials(
-            grid, ref_mat_drive, ref_conformal, periodic)
-        ref_result = run_simulation(
-            grid, ref_mat, n_steps,
-            debye=ref_debye, lorentz=ref_lorentz,
-            waveguide_ports=ref_cfgs,
-            flux_monitors=_make_flux_monitors(),
-            aniso_eps=ref_aniso_eps,
-            aniso_inv_eps=ref_aniso_inv_eps,
-            conformal_weights=None if ref_conformal is None else ref_conformal[0],
-            pec_edge_masks=_ref_edges,
-            checkpoint=_flux_checkpoint,
-            checkpoint_segments=checkpoint_segments,
-            field_dtype=field_dtype,
-            **common_run_kw,
-        )
-        ref_final_cfgs = ref_result.waveguide_ports or ()
-        ref_final_mons = ref_result.flux_monitors or ()
-        if len(ref_final_cfgs) != n_ports:
-            raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+    with extractor_scope('extract_waveguide_s_matrix_flux', grid, n_ports * 2, locals()):
+        for drive_idx in range(n_ports):
+            # --- Reference run (empty guide, port drive_idx driven) ---
+            ref_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+                for idx, cfg in enumerate(template_cfgs)
+            ]
+            # Per-port matched-straight-guide reference for junctions (else vacuum).
+            ref_mat_drive = (
+                ref_materials_per_port[drive_idx]
+                if ref_materials_per_port is not None else ref_materials
+            )
+            _flux_checkpoint = checkpoint_segments is not None
+            # the vacuum/straight-guide REFERENCE deliberately runs with
+            # NO sheet ctx (explicit strip — the sheet no longer rides
+            # materials.sigma, so vacuum materials alone do not strip it).
+            _ref_edges = (
+                None if ref_pec_edge_masks_per_port is None
+                else ref_pec_edge_masks_per_port[drive_idx])
+            from rfx.model.tensor_operands import reference_conformal_materials
+            ref_mat = reference_conformal_materials(
+                grid, ref_mat_drive, ref_conformal, periodic)
+            ref_result = run_simulation(
+                grid, ref_mat, n_steps,
+                debye=ref_debye, lorentz=ref_lorentz,
+                waveguide_ports=ref_cfgs,
+                flux_monitors=_make_flux_monitors(),
+                aniso_eps=ref_aniso_eps,
+                aniso_inv_eps=ref_aniso_inv_eps,
+                conformal_weights=None if ref_conformal is None else ref_conformal[0],
+                pec_edge_masks=_ref_edges,
+                checkpoint=_flux_checkpoint,
+                checkpoint_segments=checkpoint_segments,
+                field_dtype=field_dtype,
+                **common_run_kw,
+            )
+            ref_final_cfgs = ref_result.waveguide_ports or ()
+            ref_final_mons = ref_result.flux_monitors or ()
+            if len(ref_final_cfgs) != n_ports:
+                raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
 
-        # Incident power: signed flux at driven port in the reference guide.
-        # |F_ref| = P_inc regardless of port direction (+x vs −x).
-        # jnp-native: no np.array() concretization — keeps
-        # the whole flux extraction on the AD tape for
-        # eps_override-traced gradients.
-        F_ref_drive = flux_spectrum(ref_final_mons[drive_idx])  # (n_freqs,)
-        P_inc = jnp.abs(F_ref_drive)
-        safe_P_inc = jnp.where(P_inc > 1e-60, P_inc, jnp.ones_like(P_inc))
+            # Incident power: signed flux at driven port in the reference guide.
+            # |F_ref| = P_inc regardless of port direction (+x vs −x).
+            # jnp-native: no np.array() concretization — keeps
+            # the whole flux extraction on the AD tape for
+            # eps_override-traced gradients.
+            F_ref_drive = flux_spectrum(ref_final_mons[drive_idx])  # (n_freqs,)
+            P_inc = jnp.abs(F_ref_drive)
+            safe_P_inc = jnp.where(P_inc > 1e-60, P_inc, jnp.ones_like(P_inc))
 
-        # Modal incident wave (reference run) — used to determine phase reference
-        a_inc_ref, _ = _s_matrix_port_waves(
-            ref_final_cfgs[drive_idx], ref_shift=ref_shifts[drive_idx]
-        )
+            # Modal incident wave (reference run) — used to determine phase reference
+            a_inc_ref, _ = _s_matrix_port_waves(
+                ref_final_cfgs[drive_idx], ref_shift=ref_shifts[drive_idx]
+            )
 
-        # --- Device run (port drive_idx driven) ---
-        dev_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
-            for idx, cfg in enumerate(template_cfgs)
-        ]
-        dev_result = run_simulation(
-            grid, materials, n_steps,
-            debye=debye, lorentz=lorentz,
-            waveguide_ports=dev_cfgs,
-            flux_monitors=_make_flux_monitors(),
-            aniso_eps=aniso_eps,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            pec_edge_masks=pec_edge_masks,
-            checkpoint=_flux_checkpoint,
-            checkpoint_segments=checkpoint_segments,
-            sheet_impedance=sheet_impedance,
-            field_dtype=field_dtype,
-            **common_run_kw,
-        )
-        dev_final_cfgs = dev_result.waveguide_ports or ()
-        dev_final_mons = dev_result.flux_monitors or ()
-        if len(dev_final_cfgs) != n_ports:
-            raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
-        for idx, (ref_cfg, dev_cfg) in enumerate(zip(ref_final_cfgs, dev_final_cfgs)):
-            if ref_cfg.medium != dev_cfg.medium:
-                # P_inc and a_inc from a guide with another modal impedance would scale |S| silently.
-                raise ValueError(
-                    f"waveguide S-matrix: port {idx}'s reference guide resolved medium {ref_cfg.medium} but the "
-                    f"device port resolved {dev_cfg.medium}; a reference run must share its port's medium "
-                    "(fill the reference guide like the device's port section)")
+            # --- Device run (port drive_idx driven) ---
+            dev_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+                for idx, cfg in enumerate(template_cfgs)
+            ]
+            dev_result = run_simulation(
+                grid, materials, n_steps,
+                debye=debye, lorentz=lorentz,
+                waveguide_ports=dev_cfgs,
+                flux_monitors=_make_flux_monitors(),
+                aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                pec_edge_masks=pec_edge_masks,
+                checkpoint=_flux_checkpoint,
+                checkpoint_segments=checkpoint_segments,
+                sheet_impedance=sheet_impedance,
+                field_dtype=field_dtype,
+                **common_run_kw,
+            )
+            dev_final_cfgs = dev_result.waveguide_ports or ()
+            dev_final_mons = dev_result.flux_monitors or ()
+            if len(dev_final_cfgs) != n_ports:
+                raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
+            for idx, (ref_cfg, dev_cfg) in enumerate(zip(ref_final_cfgs, dev_final_cfgs)):
+                if ref_cfg.medium != dev_cfg.medium:
+                    # P_inc and a_inc from a guide with another modal impedance would scale |S| silently.
+                    raise ValueError(
+                        f"waveguide S-matrix: port {idx}'s reference guide resolved medium {ref_cfg.medium} but the "
+                        f"device port resolved {dev_cfg.medium}; a reference run must share its port's medium "
+                        "(fill the reference guide like the device's port section)")
+            if return_settling:
+                # worst over BOTH runs of the pair: the reference run's records
+                # feed P_inc/a_inc, so its truncation corrupts the same S values
+                # (review finding — max is the conservative composition; NaN
+                # from a traced run propagates instead of being max()-eaten)
+                _sd_dev, _detail_dev = settling_db_from_port_records(
+                    dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                _sd_ref, _detail_ref = settling_db_from_port_records(
+                    ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                settling_runs.append(
+                    float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
+                    else max(_sd_dev, _sd_ref))
+                if settling_details is not None:
+                    from rfx.sparams._tail_witness import combine_witness_details
+                    settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
+
+            F_dev_drive = flux_spectrum(dev_final_mons[drive_idx])
+
+            col_entries = []
+            for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
+                # Phase from modal V/I decomposition of device run
+                _, b_recv_dev = _s_matrix_port_waves(
+                    dev_cfg, ref_shift=ref_shifts[recv_idx]
+                )
+                safe_a = jnp.where(jnp.abs(a_inc_ref) > 1e-60, a_inc_ref, jnp.ones_like(a_inc_ref))
+                # AD-safe angle (double-where): angle() has an undefined
+                # gradient at 0; angle(1)=0 matches np.angle(0)=0 so the
+                # primal is unchanged.
+                defined = power_wave_pair(dev_cfg, ref_final_cfgs[drive_idx])
+                ratio = finite_wave_ratio(b_recv_dev, safe_a, defined)
+                ratio_ok = jnp.abs(ratio) > 0.0
+                phase = jnp.angle(jnp.where(ratio_ok, ratio, jnp.ones_like(ratio)))
+
+                if recv_idx == drive_idx:
+                    # Reflection: ref_flux − dev_flux = power that turned around
+                    P_num = jnp.abs(F_ref_drive - F_dev_drive)
+                else:
+                    # Transmission: net flux through receiving port's probe plane
+                    P_num = jnp.abs(flux_spectrum(dev_final_mons[recv_idx]))
+                # AD-safe sqrt (double-where): a perfect match/null makes the
+                # power ratio exactly 0, where d(sqrt)/dx = inf would leak
+                # 0*inf=nan through the backward pass; primal stays exactly
+                # sqrt(x) for x>0 and exactly 0 at x=0.
+                p_ratio = finite_wave_ratio(P_num, safe_P_inc, defined)
+                p_ok = p_ratio > 0.0
+                mag = jnp.where(
+                    p_ok, jnp.sqrt(jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))), 0.0
+                )
+
+                # Modal records and flux accumulators use the precision selected
+                # for this run, including the reference's incident spectrum.
+                col_entries.append(mask_power_wave(mag * jnp.exp(1j * phase), defined))
+
+            # (n_ports, n_freqs) column for this drive port
+            s_columns.append(jnp.stack(col_entries, axis=0))
+
+        # Stack drive columns on axis 1 -> (recv, drive, n_freqs)
+        s_matrix = jnp.stack(s_columns, axis=1).astype(complex_dtype)
         if return_settling:
-            # worst over BOTH runs of the pair: the reference run's records
-            # feed P_inc/a_inc, so its truncation corrupts the same S values
-            # (review finding — max is the conservative composition; NaN
-            # from a traced run propagates instead of being max()-eaten)
-            _sd_dev, _detail_dev = settling_db_from_port_records(
-                dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
-            _sd_ref, _detail_ref = settling_db_from_port_records(
-                ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
-            settling_runs.append(
-                float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
-                else max(_sd_dev, _sd_ref))
-            if settling_details is not None:
-                from rfx.sparams._tail_witness import combine_witness_details
-                settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
-
-        F_dev_drive = flux_spectrum(dev_final_mons[drive_idx])
-
-        col_entries = []
-        for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
-            # Phase from modal V/I decomposition of device run
-            _, b_recv_dev = _s_matrix_port_waves(
-                dev_cfg, ref_shift=ref_shifts[recv_idx]
-            )
-            safe_a = jnp.where(jnp.abs(a_inc_ref) > 1e-60, a_inc_ref, jnp.ones_like(a_inc_ref))
-            # AD-safe angle (double-where): angle() has an undefined
-            # gradient at 0; angle(1)=0 matches np.angle(0)=0 so the
-            # primal is unchanged.
-            defined = power_wave_pair(dev_cfg, ref_final_cfgs[drive_idx])
-            ratio = finite_wave_ratio(b_recv_dev, safe_a, defined)
-            ratio_ok = jnp.abs(ratio) > 0.0
-            phase = jnp.angle(jnp.where(ratio_ok, ratio, jnp.ones_like(ratio)))
-
-            if recv_idx == drive_idx:
-                # Reflection: ref_flux − dev_flux = power that turned around
-                P_num = jnp.abs(F_ref_drive - F_dev_drive)
-            else:
-                # Transmission: net flux through receiving port's probe plane
-                P_num = jnp.abs(flux_spectrum(dev_final_mons[recv_idx]))
-            # AD-safe sqrt (double-where): a perfect match/null makes the
-            # power ratio exactly 0, where d(sqrt)/dx = inf would leak
-            # 0*inf=nan through the backward pass; primal stays exactly
-            # sqrt(x) for x>0 and exactly 0 at x=0.
-            p_ratio = finite_wave_ratio(P_num, safe_P_inc, defined)
-            p_ok = p_ratio > 0.0
-            mag = jnp.where(
-                p_ok, jnp.sqrt(jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))), 0.0
-            )
-
-            # Modal records and flux accumulators use the precision selected
-            # for this run, including the reference's incident spectrum.
-            col_entries.append(mask_power_wave(mag * jnp.exp(1j * phase), defined))
-
-        # (n_ports, n_freqs) column for this drive port
-        s_columns.append(jnp.stack(col_entries, axis=0))
-
-    # Stack drive columns on axis 1 -> (recv, drive, n_freqs)
-    s_matrix = jnp.stack(s_columns, axis=1).astype(complex_dtype)
-    if return_settling:
-        return s_matrix, np.asarray(settling_runs, dtype=float)
-    return s_matrix
+            return s_matrix, np.asarray(settling_runs, dtype=float)
+        return s_matrix
 
 
 def assemble_normalized_waveguide_column(
@@ -1004,7 +1008,7 @@ def extract_waveguide_s_params_normalized(
     *,
     boundary: str = "cpml",
     cpml_axes: str | None = None,
-    pec_axes: str = "yz",
+    pec_axes: str | None = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
@@ -1140,106 +1144,107 @@ def extract_waveguide_s_params_normalized(
     # benefits if the smoothed ε is applied to the device run.
 
     settling_runs: list[float] = []
-    for drive_idx in range(n_ports):
-        # --- Reference run: extract waves at all ports ---
-        ref_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
-            for idx, cfg in enumerate(template_cfgs)
-        ]
-        _norm_checkpoint = checkpoint_segments is not None
-        # the vacuum REFERENCE deliberately runs with NO sheet ctx
-        # (explicit strip — vacuum materials alone do not strip a sheet
-        # that no longer rides materials.sigma).
-        from rfx.model.tensor_operands import reference_conformal_materials
-        ref_mat = reference_conformal_materials(
-            grid, ref_materials, ref_conformal, periodic)
-        ref_result = run_simulation(
-            grid, ref_mat, n_steps,
-            debye=ref_debye, lorentz=ref_lorentz,
-            waveguide_ports=ref_cfgs,
-            aniso_eps=ref_aniso_eps,
-            aniso_inv_eps=ref_aniso_inv_eps,
-            conformal_weights=None if ref_conformal is None else ref_conformal[0],
-            checkpoint=_norm_checkpoint,
-            checkpoint_segments=checkpoint_segments,
-            field_dtype=field_dtype,
-            **common_run_kw,
-        )
-        ref_final_cfgs = ref_result.waveguide_ports or ()
-        if len(ref_final_cfgs) != n_ports:
-            raise RuntimeError(
-                "waveguide S-matrix extraction expected one final config per port"
+    with extractor_scope('extract_waveguide_s_params_normalized', grid, n_ports * 2, locals()):
+        for drive_idx in range(n_ports):
+            # --- Reference run: extract waves at all ports ---
+            ref_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+                for idx, cfg in enumerate(template_cfgs)
+            ]
+            _norm_checkpoint = checkpoint_segments is not None
+            # the vacuum REFERENCE deliberately runs with NO sheet ctx
+            # (explicit strip — vacuum materials alone do not strip a sheet
+            # that no longer rides materials.sigma).
+            from rfx.model.tensor_operands import reference_conformal_materials
+            ref_mat = reference_conformal_materials(
+                grid, ref_materials, ref_conformal, periodic)
+            ref_result = run_simulation(
+                grid, ref_mat, n_steps,
+                debye=ref_debye, lorentz=ref_lorentz,
+                waveguide_ports=ref_cfgs,
+                aniso_eps=ref_aniso_eps,
+                aniso_inv_eps=ref_aniso_inv_eps,
+                conformal_weights=None if ref_conformal is None else ref_conformal[0],
+                checkpoint=_norm_checkpoint,
+                checkpoint_segments=checkpoint_segments,
+                field_dtype=field_dtype,
+                **common_run_kw,
             )
-
-        # Incident wave at the driven port normalizes the whole column.
-        a_inc_ref, _ = _s_matrix_port_waves(
-            ref_final_cfgs[drive_idx],
-            ref_shift=ref_shifts[drive_idx],
-        )
-        a_inc_ref_np = np.array(a_inc_ref)
-
-        # Reference outgoing waves supply the driven-port subtraction.
-        b_out_ref = []
-        for recv_idx in range(n_ports):
-            _, b_ref_i = _s_matrix_port_waves(
-                ref_final_cfgs[recv_idx],
-                ref_shift=ref_shifts[recv_idx],
+            ref_final_cfgs = ref_result.waveguide_ports or ()
+            if len(ref_final_cfgs) != n_ports:
+                raise RuntimeError(
+                    "waveguide S-matrix extraction expected one final config per port"
                 )
-            b_out_ref.append(np.array(b_ref_i))
 
-        # --- Device run: extract outgoing waves at every port ---
-        dev_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
-            for idx, cfg in enumerate(template_cfgs)
-        ]
-        dev_result = run_simulation(
-            grid, materials, n_steps,
-            debye=debye, lorentz=lorentz,
-            waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            pec_edge_masks=pec_edge_masks,
-            checkpoint=_norm_checkpoint,
-            checkpoint_segments=checkpoint_segments,
-            sheet_impedance=sheet_impedance,
-            field_dtype=field_dtype,
-            **common_run_kw,
-        )
-        dev_final_cfgs = dev_result.waveguide_ports or ()
-        if len(dev_final_cfgs) != n_ports:
-            raise RuntimeError(
-                "waveguide S-matrix extraction expected one final config per port"
+            # Incident wave at the driven port normalizes the whole column.
+            a_inc_ref, _ = _s_matrix_port_waves(
+                ref_final_cfgs[drive_idx],
+                ref_shift=ref_shifts[drive_idx],
             )
+            a_inc_ref_np = np.array(a_inc_ref)
+
+            # Reference outgoing waves supply the driven-port subtraction.
+            b_out_ref = []
+            for recv_idx in range(n_ports):
+                _, b_ref_i = _s_matrix_port_waves(
+                    ref_final_cfgs[recv_idx],
+                    ref_shift=ref_shifts[recv_idx],
+                    )
+                b_out_ref.append(np.array(b_ref_i))
+
+            # --- Device run: extract outgoing waves at every port ---
+            dev_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_idx))
+                for idx, cfg in enumerate(template_cfgs)
+            ]
+            dev_result = run_simulation(
+                grid, materials, n_steps,
+                debye=debye, lorentz=lorentz,
+                waveguide_ports=dev_cfgs, aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                pec_edge_masks=pec_edge_masks,
+                checkpoint=_norm_checkpoint,
+                checkpoint_segments=checkpoint_segments,
+                sheet_impedance=sheet_impedance,
+                field_dtype=field_dtype,
+                **common_run_kw,
+            )
+            dev_final_cfgs = dev_result.waveguide_ports or ()
+            if len(dev_final_cfgs) != n_ports:
+                raise RuntimeError(
+                    "waveguide S-matrix extraction expected one final config per port"
+                )
+            if return_settling:
+                # worst over BOTH runs of the pair (same reasoning as the flux
+                # variant: the reference run produces the normalization records)
+                _sd_dev, _detail_dev = settling_db_from_port_records(
+                    dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                _sd_ref, _detail_ref = settling_db_from_port_records(
+                    ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                settling_runs.append(
+                    float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
+                    else max(_sd_dev, _sd_ref))
+                if settling_details is not None:
+                    from rfx.sparams._tail_witness import combine_witness_details
+                    settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
+
+            b_out_dev = []
+            for recv_idx, cfg in enumerate(dev_final_cfgs):
+                _, b_recv_dev = _s_matrix_port_waves(
+                    cfg,
+                    ref_shift=ref_shifts[recv_idx],
+                )
+                b_out_dev.append(np.array(b_recv_dev))
+            s_matrix[:, drive_idx, :] = assemble_normalized_waveguide_column(
+                b_out_dev, b_out_ref, a_inc_ref_np, drive_idx,
+                port_cfgs=dev_final_cfgs, diagonal_floor=1e-30, transmission_floor=1e-30, xp=np,
+            )
+
         if return_settling:
-            # worst over BOTH runs of the pair (same reasoning as the flux
-            # variant: the reference run produces the normalization records)
-            _sd_dev, _detail_dev = settling_db_from_port_records(
-                dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
-            _sd_ref, _detail_ref = settling_db_from_port_records(
-                ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
-            settling_runs.append(
-                float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
-                else max(_sd_dev, _sd_ref))
-            if settling_details is not None:
-                from rfx.sparams._tail_witness import combine_witness_details
-                settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
-
-        b_out_dev = []
-        for recv_idx, cfg in enumerate(dev_final_cfgs):
-            _, b_recv_dev = _s_matrix_port_waves(
-                cfg,
-                ref_shift=ref_shifts[recv_idx],
-            )
-            b_out_dev.append(np.array(b_recv_dev))
-        s_matrix[:, drive_idx, :] = assemble_normalized_waveguide_column(
-            b_out_dev, b_out_ref, a_inc_ref_np, drive_idx,
-            port_cfgs=dev_final_cfgs, diagonal_floor=1e-30, transmission_floor=1e-30, xp=np,
-        )
-
-    if return_settling:
-        import numpy as _np
-        return jnp.asarray(s_matrix), _np.asarray(settling_runs, dtype=float)
-    return jnp.asarray(s_matrix)
+            import numpy as _np
+            return jnp.asarray(s_matrix), _np.asarray(settling_runs, dtype=float)
+        return jnp.asarray(s_matrix)
 
 
 def extract_multimode_s_matrix(
@@ -1338,58 +1343,59 @@ def extract_multimode_s_matrix(
         )
 
     # Drive each mode one at a time
-    for drive_flat_idx in range(n_total):
-        driven_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
-            for idx, cfg in enumerate(flat_cfgs)
-        ]
-        # Set the driven mode amplitude to the original first-mode amplitude
-        orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
-        driven_cfgs[drive_flat_idx] = driven_cfgs[drive_flat_idx]._replace(
-            src_amp=orig_amp,
-        )
-
-        result = run_simulation(
-            grid, materials, n_steps,
-            boundary=boundary,
-            cpml_axes=cpml_axes,
-            pec_axes=pec_axes,
-            periodic=periodic,
-            debye=debye,
-            lorentz=lorentz,
-            waveguide_ports=driven_cfgs,
-            aniso_eps=aniso_eps,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            pec_edge_masks=pec_edge_masks,
-            field_dtype=field_dtype,
-        )
-        final_cfgs = result.waveguide_ports or ()
-        if settling_details is not None:
-            _, detail = settling_db_from_port_records(
-                final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
-            settling_details.append(detail)
-        if len(final_cfgs) != n_total:
-            raise RuntimeError(
-                f"Expected {n_total} final waveguide configs, got {len(final_cfgs)}"
+    with extractor_scope('extract_multimode_s_matrix', grid, n_total, locals()):
+        for drive_flat_idx in range(n_total):
+            driven_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+                for idx, cfg in enumerate(flat_cfgs)
+            ]
+            # Set the driven mode amplitude to the original first-mode amplitude
+            orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+            driven_cfgs[drive_flat_idx] = driven_cfgs[drive_flat_idx]._replace(
+                src_amp=orig_amp,
             )
 
-        a_drive, _ = _s_matrix_port_waves(
-            final_cfgs[drive_flat_idx],
-            ref_shift=flat_ref_shifts[drive_flat_idx],
-        )
-        safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
-
-        for recv_idx, cfg in enumerate(final_cfgs):
-            _, b_recv = _s_matrix_port_waves(
-                cfg,
-                ref_shift=flat_ref_shifts[recv_idx],
+            result = run_simulation(
+                grid, materials, n_steps,
+                boundary=boundary,
+                cpml_axes=cpml_axes,
+                pec_axes=pec_axes,
+                periodic=periodic,
+                debye=debye,
+                lorentz=lorentz,
+                waveguide_ports=driven_cfgs,
+                aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                pec_edge_masks=pec_edge_masks,
+                field_dtype=field_dtype,
             )
-            s_matrix[recv_idx, drive_flat_idx, :] = np.array(power_wave_ratio(
-                b_recv, safe_a, cfg, final_cfgs[drive_flat_idx],
-            ))
+            final_cfgs = result.waveguide_ports or ()
+            if settling_details is not None:
+                _, detail = settling_db_from_port_records(
+                    final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                settling_details.append(detail)
+            if len(final_cfgs) != n_total:
+                raise RuntimeError(
+                    f"Expected {n_total} final waveguide configs, got {len(final_cfgs)}"
+                )
 
-    return jnp.asarray(s_matrix), mode_map
+            a_drive, _ = _s_matrix_port_waves(
+                final_cfgs[drive_flat_idx],
+                ref_shift=flat_ref_shifts[drive_flat_idx],
+            )
+            safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
+
+            for recv_idx, cfg in enumerate(final_cfgs):
+                _, b_recv = _s_matrix_port_waves(
+                    cfg,
+                    ref_shift=flat_ref_shifts[recv_idx],
+                )
+                s_matrix[recv_idx, drive_flat_idx, :] = np.array(power_wave_ratio(
+                    b_recv, safe_a, cfg, final_cfgs[drive_flat_idx],
+                ))
+
+        return jnp.asarray(s_matrix), mode_map
 
 
 def _modal_net_power(cfg: WaveguidePortConfig) -> np.ndarray:
@@ -1529,84 +1535,85 @@ def extract_multimode_s_matrix_flux(
     )
     orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
 
-    for drive_flat_idx in range(n_total):
-        # --- Reference run (empty guide, channel drive_flat_idx driven) ---
-        ref_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
-            for idx, cfg in enumerate(flat_cfgs)
-        ]
-        ref_cfgs[drive_flat_idx] = ref_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
-        from rfx.model.tensor_operands import reference_conformal_materials
-        ref_mat = reference_conformal_materials(
-            grid, ref_materials, ref_conformal, periodic)
-        ref_result = run_simulation(
-            grid, ref_mat, n_steps,
-            debye=ref_debye, lorentz=ref_lorentz,
-            waveguide_ports=ref_cfgs,
-            aniso_eps=ref_aniso_eps,
-            aniso_inv_eps=ref_aniso_inv_eps,
-            conformal_weights=None if ref_conformal is None else ref_conformal[0],
-            field_dtype=field_dtype,
-            **common_run_kw,
-        )
-        ref_final_cfgs = ref_result.waveguide_ports or ()
-        if len(ref_final_cfgs) != n_total:
-            raise RuntimeError("multimode flux extraction expected one final config per channel")
-
-        F_ref = [_modal_net_power(cfg) for cfg in ref_final_cfgs]
-        P_inc = np.abs(F_ref[drive_flat_idx])
-        safe_P_inc = np.where(P_inc > 1e-60, P_inc, np.ones_like(P_inc))
-        a_inc_ref, _ = _s_matrix_port_waves(
-            ref_final_cfgs[drive_flat_idx],
-            ref_shift=flat_ref_shifts[drive_flat_idx],
-        )
-        a_inc_ref = np.array(a_inc_ref)
-        safe_a_inc = np.where(np.abs(a_inc_ref) > 1e-60, a_inc_ref, np.ones_like(a_inc_ref))
-
-        # --- Device run (channel drive_flat_idx driven) ---
-        dev_cfgs = [
-            _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
-            for idx, cfg in enumerate(flat_cfgs)
-        ]
-        dev_cfgs[drive_flat_idx] = dev_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
-        dev_result = run_simulation(
-            grid, materials, n_steps,
-            debye=debye, lorentz=lorentz,
-            waveguide_ports=dev_cfgs,
-            aniso_eps=aniso_eps,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            pec_edge_masks=pec_edge_masks,
-            field_dtype=field_dtype,
-            **common_run_kw,
-        )
-        dev_final_cfgs = dev_result.waveguide_ports or ()
-        if settling_details is not None:
-            from rfx.sparams._tail_witness import combine_witness_details
-            _, ref_detail = settling_db_from_port_records(
-                ref_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
-            _, dev_detail = settling_db_from_port_records(
-                dev_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
-            settling_details.append(combine_witness_details(dev_detail, ref_detail))
-        if len(dev_final_cfgs) != n_total:
-            raise RuntimeError("multimode flux extraction expected one final config per channel")
-
-        F_dev = [_modal_net_power(cfg) for cfg in dev_final_cfgs]
-
-        for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
-            _, b_recv_dev = _s_matrix_port_waves(
-                dev_cfg, ref_shift=flat_ref_shifts[recv_idx]
+    with extractor_scope('extract_multimode_s_matrix_flux', grid, n_total * 2, locals()):
+        for drive_flat_idx in range(n_total):
+            # --- Reference run (empty guide, channel drive_flat_idx driven) ---
+            ref_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+                for idx, cfg in enumerate(flat_cfgs)
+            ]
+            ref_cfgs[drive_flat_idx] = ref_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
+            from rfx.model.tensor_operands import reference_conformal_materials
+            ref_mat = reference_conformal_materials(
+                grid, ref_materials, ref_conformal, periodic)
+            ref_result = run_simulation(
+                grid, ref_mat, n_steps,
+                debye=ref_debye, lorentz=ref_lorentz,
+                waveguide_ports=ref_cfgs,
+                aniso_eps=ref_aniso_eps,
+                aniso_inv_eps=ref_aniso_inv_eps,
+                conformal_weights=None if ref_conformal is None else ref_conformal[0],
+                field_dtype=field_dtype,
+                **common_run_kw,
             )
-            defined = power_wave_pair(dev_cfg, ref_final_cfgs[drive_flat_idx])
-            phase = np.angle(finite_wave_ratio(np.array(b_recv_dev), safe_a_inc, defined, xp=np))
+            ref_final_cfgs = ref_result.waveguide_ports or ()
+            if len(ref_final_cfgs) != n_total:
+                raise RuntimeError("multimode flux extraction expected one final config per channel")
 
-            if recv_idx == drive_flat_idx:
-                P_refl = np.abs(F_ref[recv_idx] - F_dev[recv_idx])
-                mag = np.sqrt(finite_wave_ratio(P_refl, safe_P_inc, defined, xp=np))
-            else:
-                P_out = np.abs(F_dev[recv_idx])
-                mag = np.sqrt(finite_wave_ratio(P_out, safe_P_inc, defined, xp=np))
+            F_ref = [_modal_net_power(cfg) for cfg in ref_final_cfgs]
+            P_inc = np.abs(F_ref[drive_flat_idx])
+            safe_P_inc = np.where(P_inc > 1e-60, P_inc, np.ones_like(P_inc))
+            a_inc_ref, _ = _s_matrix_port_waves(
+                ref_final_cfgs[drive_flat_idx],
+                ref_shift=flat_ref_shifts[drive_flat_idx],
+            )
+            a_inc_ref = np.array(a_inc_ref)
+            safe_a_inc = np.where(np.abs(a_inc_ref) > 1e-60, a_inc_ref, np.ones_like(a_inc_ref))
 
-            s_matrix[recv_idx, drive_flat_idx, :] = mask_power_wave(mag * np.exp(1j * phase), defined, xp=np)
+            # --- Device run (channel drive_flat_idx driven) ---
+            dev_cfgs = [
+                _reset_cfg(cfg, drive_enabled=(idx == drive_flat_idx))
+                for idx, cfg in enumerate(flat_cfgs)
+            ]
+            dev_cfgs[drive_flat_idx] = dev_cfgs[drive_flat_idx]._replace(src_amp=orig_amp)
+            dev_result = run_simulation(
+                grid, materials, n_steps,
+                debye=debye, lorentz=lorentz,
+                waveguide_ports=dev_cfgs,
+                aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                pec_edge_masks=pec_edge_masks,
+                field_dtype=field_dtype,
+                **common_run_kw,
+            )
+            dev_final_cfgs = dev_result.waveguide_ports or ()
+            if settling_details is not None:
+                from rfx.sparams._tail_witness import combine_witness_details
+                _, ref_detail = settling_db_from_port_records(
+                    ref_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                _, dev_detail = settling_db_from_port_records(
+                    dev_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                settling_details.append(combine_witness_details(dev_detail, ref_detail))
+            if len(dev_final_cfgs) != n_total:
+                raise RuntimeError("multimode flux extraction expected one final config per channel")
 
-    return jnp.asarray(s_matrix), mode_map
+            F_dev = [_modal_net_power(cfg) for cfg in dev_final_cfgs]
+
+            for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
+                _, b_recv_dev = _s_matrix_port_waves(
+                    dev_cfg, ref_shift=flat_ref_shifts[recv_idx]
+                )
+                defined = power_wave_pair(dev_cfg, ref_final_cfgs[drive_flat_idx])
+                phase = np.angle(finite_wave_ratio(np.array(b_recv_dev), safe_a_inc, defined, xp=np))
+
+                if recv_idx == drive_flat_idx:
+                    P_refl = np.abs(F_ref[recv_idx] - F_dev[recv_idx])
+                    mag = np.sqrt(finite_wave_ratio(P_refl, safe_P_inc, defined, xp=np))
+                else:
+                    P_out = np.abs(F_dev[recv_idx])
+                    mag = np.sqrt(finite_wave_ratio(P_out, safe_P_inc, defined, xp=np))
+
+                s_matrix[recv_idx, drive_flat_idx, :] = mask_power_wave(mag * np.exp(1j * phase), defined, xp=np)
+
+        return jnp.asarray(s_matrix), mode_map

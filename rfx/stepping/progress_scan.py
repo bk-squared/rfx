@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.stepping.events import current, tick
 from rfx._host_limits import check_map_count
 from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
 
@@ -74,8 +75,10 @@ def scan_with_progress(
     import jax
 
     if stop_fn is None:
-        every = validate_report_every(report_every, n_steps=n_steps)
-        step = every
+        every = (None if report_every is None and current() is not None
+                 else validate_report_every(report_every, n_steps=n_steps))
+        cadence = getattr(current(), "cadence", None)
+        step = (cadence or max(1, (int(n_steps) + 99) // 100)) if every is None else every
     else:
         every = (None if report_every is None
                  else validate_report_every(report_every, n_steps=n_steps))
@@ -136,6 +139,7 @@ def scan_with_progress(
                 stop_fn is None or done - reporter.last_reported >= every
                 or done >= n_steps):
             reporter.report(done)
+        tick(done, carry, every=every)
         if stop_fn is not None and stop_fn(done, carry, chunk_outputs):
             break
 

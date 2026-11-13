@@ -384,21 +384,25 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
 
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
-        self._resolve_field_dtype()
-        guard_shape_tangents(self)
-        distributed = bool(kwargs.get("distributed", False))
-        if run:
-            devices = kwargs.get("devices")
-            distributed = devices is not None and len(devices) > 1
-            if (kwargs.get("until_decay") is not None
-                    or kwargs.get("report_every") is not None
-                    or kwargs.get("until_identified", False) is not False
-                    or self._refinement is not None):
-                return entry(self, *args, **kwargs)
-        if _setup_evaluated_at_trace_time(distributed=distributed):
-            from rfx.core.jax_utils import declaration_setup
-            with declaration_setup():
-                if not _staged_by_an_outer_trace():
-                    return entry(self, *args, **kwargs)
-        return entry(self, *args, **kwargs)
+        from contextlib import nullcontext
+        from rfx.runners.progress_events import entry_scope, result_ready
+        with (entry_scope(self, "forward", dict(kwargs, _args=args), deferred=True)
+              if entry.__name__ == "forward" else nullcontext()):
+            self._resolve_field_dtype()
+            guard_shape_tangents(self)
+            distributed = bool(kwargs.get("distributed", False))
+            if run:
+                devices = kwargs.get("devices")
+                distributed = devices is not None and len(devices) > 1
+                if (kwargs.get("until_decay") is not None
+                        or kwargs.get("report_every") is not None
+                        or kwargs.get("until_identified", False) is not False
+                        or self._refinement is not None):
+                    return result_ready(entry(self, *args, **kwargs))
+            if _setup_evaluated_at_trace_time(distributed=distributed):
+                from rfx.core.jax_utils import declaration_setup
+                with declaration_setup():
+                    if not _staged_by_an_outer_trace():
+                        return result_ready(entry(self, *args, **kwargs))
+            return result_ready(entry(self, *args, **kwargs))
     return staged_entry
