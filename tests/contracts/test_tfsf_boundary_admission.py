@@ -1,4 +1,4 @@
-"""Realized TF/SF transverse invariance, before stepping any fields."""
+"""TF/SF invariance before stepping; an invariant slab is admitted and steps once."""
 import rfx.stepping.uniform_loop as uniform_loop
 import gc
 
@@ -15,8 +15,9 @@ def release_boards(monkeypatch):
     def no_steps(*args, **kwargs):
         raise AssertionError("admission judge reached a field scan")
 
+    original_scan = jax.lax.scan
     monkeypatch.setattr(jax.lax, "scan", no_steps)
-    yield
+    yield original_scan
     gc.collect()
 
 
@@ -274,13 +275,13 @@ def test_graded_plane_wave_keeps_absorbers(skip, distributed, monkeypatch):
     assert_graded_admitted(sim, skip, distributed, monkeypatch)
 
 
-def oblique_plane(finite_axis, polarization):
-    sim = Simulation(10e9, (.02, .01, .01), dx=.001, cpml_layers=2)
+def oblique_plane(finite_axis, polarization, *, method="bloch", **mesh):
+    sim = Simulation(10e9, (.02, .01, .01), dx=.001, cpml_layers=2, **mesh)
     lo, hi = [.008, -1., -1.], [.012, 1., 1.]
     lo["xyz".index(finite_axis)], hi["xyz".index(finite_axis)] = .003, .007
     sim.add_material("box", eps_r=2.5)
     sim.add(Box(tuple(lo), tuple(hi)), material="box")
-    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method="bloch", polarization=polarization)
+    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method=method, polarization=polarization)
     return sim
 
 
@@ -316,13 +317,108 @@ def test_oblique_method_b_finding_names_only_the_wrapped_axis(monkeypatch):
 
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("polarization,tilt", [("ez", "y"), ("ey", "z")])
-def test_oblique_tilt_finite_box_reports_unjudged(skip, polarization, tilt, monkeypatch):
-    sim = oblique_plane(tilt, polarization)
-    findings = [issue for issue in sim.preflight(check_ntff=False) if issue.code == "tfsf_transverse_periodic"]
+def test_oblique_tilt_finite_box_refuses(skip, polarization, tilt):
+    # Both polarizations judge their tilt-axis material arrays at oblique incidence.
+    with pytest.raises(ValueError, match=rf"TF/SF {tilt}_lo, {tilt}_hi: .*periodic.*closed_box=True, theta_deg"):
+        oblique_plane(tilt, polarization).run(n_steps=1, skip_preflight=skip)
+
+
+def oblique_slab(polarization, *, boundary="cpml"):
+    sim = Simulation(freq_max=10e9, domain=(.02, .01, .01), dx=.001,
+                     cpml_layers=2, boundary=boundary)
+    sim.add_material("slab", eps_r=2.5)
+    sim.add(Box((.008, -1., -1.), (.012, 1., 1.)), material="slab")
+    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method="bloch", polarization=polarization)
+    return sim
+
+
+@pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("polarization", ["ez", "ey"])
+def test_oblique_invariant_slab_admitted(skip, polarization, monkeypatch):
+    # A field phase is not a material variation.
+    sim = oblique_slab(polarization)
+    findings = [issue for issue in sim.preflight(check_ntff=False)
+                if issue.code == "tfsf_transverse_periodic"]
     assert len(findings) == 1
     text = str(findings[0])
     assert all(face in text for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
-    assert f"not judged for invariance along {tilt} at oblique incidence" in text
+    assert "not judged" not in text and "invariance" not in text
     stop_at_runner(monkeypatch)
     with pytest.raises(Admitted):
         sim.run(n_steps=1, skip_preflight=skip)
+
+
+@pytest.mark.parametrize("skip", [False, True])
+def test_oblique_method_b_finite_tilt_keeps_absorber(skip, monkeypatch):
+    # The finite-y box stays inside the Method B injection planes.
+    sim = oblique_plane("y", "ez", method="methodB")
+    seen = []
+
+    def stop(*args, **kwargs):
+        seen.append(tuple(kwargs["periodic"]))
+        raise Admitted
+
+    monkeypatch.setattr(uniform_loop, "_build_step_setup", stop)
+    with pytest.raises(Admitted):
+        sim.run(n_steps=1, skip_preflight=skip)
+    assert seen == [(False, False, True)]
+
+
+def test_normal_finite_box_message_unchanged():
+    # Literal copied from a run of main before this change, not built by a product helper.
+    from rfx.errors import RfxRefusal
+    with pytest.raises(RfxRefusal) as caught:
+        plane(finite=True).run(n_steps=1, skip_preflight=True)
+    assert str(caught.value) == (
+        "TF/SF y_lo, y_hi: update.materials.eps_r prevents an invariant periodic "
+        "replacement; declare boundary with y='periodic' to solve an array, "
+        "or use closed_box=True for a finite scatterer.")
+
+
+@pytest.mark.parametrize("skip", [False, True])
+def test_oblique_padded_period_bar_refuses(skip):
+    # The declared 16 mm period would have wrapped 49 mm at dx=1 mm (#2693).
+    sim = Simulation(freq_max=10e9, domain=(.30, .016, .004), dx=.001, boundary="cpml")
+    sim.add_material("bar", eps_r=4)
+    sim.add(Box((.043, .003, .0), (.053, .009, .004)), material="bar")
+    sim.add_tfsf_source(f0=5e9, bandwidth=.15, direction="+x", angle_deg=30,
+                        waveform="modulated_gaussian", polarization="ez")
+    with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi: .*periodic.*closed_box=True, theta_deg"):
+        sim.run(n_steps=1, skip_preflight=skip)
+
+
+@pytest.mark.parametrize("skip", [False, True])
+def test_oblique_explicit_absorbers_name_closed_box_angles(skip):
+    # Source registration refuses the explicit side-face declaration.
+    with pytest.raises(ValueError, match="closed_box=True, theta_deg") as caught:
+        oblique_slab("ez", boundary={"x": "cpml", "y": "cpml", "z": "cpml"}).run(
+            n_steps=1, skip_preflight=skip)
+    assert "graded mesh" not in str(caught.value)
+
+
+def test_graded_oblique_message_unchanged():
+    # x-profile scene; main's diagnostic calls this a nonuniform z mesh.
+    with pytest.raises(ValueError) as caught:
+        oblique_plane("y", "ez", dx_profile=np.full(20, .001)).run(
+            n_steps=1, skip_preflight=True)
+    assert type(caught.value) is ValueError
+    assert str(caught.value) == (
+        "TFSF oblique incidence (angle_deg != 0) is not yet supported on nonuniform "
+        "z mesh — the 2D auxiliary grid is uniform-only. Use angle_deg=0 or run on the uniform lane.")
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("smoothing", [True, "full_tensor"])
+@pytest.mark.parametrize("polarization", ["ez", "ey"])
+def test_oblique_invariant_slab_steps_once(entry, skip, smoothing, polarization, monkeypatch, release_boards):
+    # This test steps once; the other admission tests keep no_steps.
+    import jax
+    monkeypatch.setattr(jax.lax, "scan", release_boards)
+    sim = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)
+    sim.add_material("slab", eps_r=4.)
+    sim.add(Box((.010, -1., -1.), (.014, 1., 1.)), material="slab")
+    sim.add_tfsf_source(f0=10e9, bandwidth=.8, direction="+x", angle_deg=30.,
+                        polarization=polarization, method="bloch")
+    result = getattr(sim, entry)(n_steps=1, skip_preflight=skip, subpixel_smoothing=smoothing)
+    assert result.time_series.shape[0] == 1
