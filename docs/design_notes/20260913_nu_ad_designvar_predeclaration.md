@@ -261,7 +261,7 @@ slope DOWN toward 1; a correct gradient gives 2 (or 3 when `c` is small).
 h_air's gradient is small, so R1 clears the 32-quantum floor only at the
 coarse end, where the cubic term contaminates a 4-point window. Its dt-path
 share is exactly zero and its gradient is bit-identical with and without
-the dt path. **Reviewer note (lead):** the band's upper edge 2.2 carries no
+the dt path. **Reviewer note:** the band's upper edge 2.2 carries no
 gradient-correctness meaning; I adopted it from the delegated draft without
 catching that. It stays frozen here. A lower-side criterion (R1 slope >= 1.8)
 is reported as a separate, labelled diagnostic in the second attempt below,

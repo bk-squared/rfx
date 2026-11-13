@@ -1,6 +1,6 @@
 # .test_durations — provenance
 
-**When these files change (rfx-lead 2026-10-26).** `.test_durations` and `.test_durations_weekly`
+**When these files change.** `.test_durations` and `.test_durations_weekly`
 change at most once a week, in one pull request, built with `merge_test_durations.py` from that
 week's weekly-lane artifacts (`weekly-durations-<k>`, for the weekly prices) and one
 `regen-durations` dispatch with `lanes=fast` (for the fast prices; the weekly lane does not run the
@@ -9,7 +9,7 @@ moves that week's pull request forward; it never adds a second one. Prices are r
 significant figures when merged, so a refresh rewrites only the prices that moved. Before this
 rule, four re-pricings in two weeks changed about 144,000 lines.
 
-2026-11-12: from this date the fast suite runs in 20 groups (PI, pi-desk 254).
+2026-11-12: from this date the fast suite runs in 20 groups.
 `.test_durations` is unchanged; pytest-split recomputes the groups from it. The fast
 regeneration job in `regen-durations.yml` also runs in 20 groups.
 
@@ -31,7 +31,7 @@ normalised actual / new-price prediction median 0.988, p10 0.821, p90 1.142,
 range 0.749-1.510; all CPUs have existing factors, with no exclusions or refit.
 `.test_durations_weekly` unchanged: the 11-09 validation run was red, the method requires a green
 weekly run, and the 11-16 run feeds the next refresh. Inputs, scripts, readings and the growth
-breakdown: rfx-archive `rfx/records/20261112-prices-refresh/`.
+breakdown: the record repository.
 
 2026-11-05: both files re-priced. Fast prices: `regen-durations` run
 [41949007467](https://github.com/bk-squared/rfx/actions/runs/41949007467) (`lanes=fast`, main
@@ -45,14 +45,14 @@ full-inventory-or-freshly-measured prune rule drops 3,443 old entries at `e190f8
 The explicit fast collection (`not gpu and not slow and not slow_physics`, 28,694 tests on macOS,
 no CAD extra) has 551 unpriced tests, down from 2,741; the default addopts additionally excludes
 `docs_consistency`. pytest-split predicts 42.9-48.5 min per shard (7763 basis), versus old
-46.9-49.2 min; the old split under new prices costs 39.2-53.6 min. Leader verdict: the condition
+46.9-49.2 min; the old split under new prices costs 39.2-53.6 min. The condition
 that binds is the longest shard against the 75-min job limit: old 49.2 min, new 48.5 min.
 Shards 1-11 span 46.7-48.5 min; shard 12 at 42.9 min is the remainder duration_based_chunks leaves
 in the last group. The design's 2-min spread condition measured the wrong quantity and is withdrawn
 in this record.
 Check on 115 readings from the 10 recent green pr-tests runs, using each shard's own test list:
 normalised actual / new-price prediction median 1.016, p10 0.925, p90 1.105;
-5 readings on CPUs absent from factors.json are excluded by leader decision and listed in the record.
+5 readings on CPUs absent from factors.json are excluded and listed in the record.
 Weekly prices: run [41565185166](https://github.com/bk-squared/rfx/actions/runs/41565185166)
 (main `b45900a67`), raw runner seconds; fast fallback 304, old weekly file, weekly jobs 1-16,
 all pruned to the 29,144-test weekly collection. 30,570 → **29144 entries**, 3,873 old entries dropped,
@@ -60,8 +60,8 @@ all pruned to the 29,144-test weekly collection. 30,570 → **29144 entries**, 3
 sums are within their pytest-step duration. Weekly job 14 has no session line (565-line log ends
 02:30:52Z); its artifact sum is 3,556.06 s, below the metadata step upper bound
 02:18:36Z-03:19:06Z = 3,630 s. Weekly prediction: 53.9-67.2 min (old 56.4-66.4),
-headroom projection 7,780 s of 9,180. Inputs, scripts and readings: rfx-archive
-`rfx/records/20261105-prices-refresh/`.
+headroom projection 7,780 s of 9,180. Inputs, scripts and readings: the record repository.
+
 
 2026-10-29: both files re-priced. In the 11 green pr-tests runs of 2026-10-28 that ran the fast suite,
 the longest shard's pytest session took 53.8-58.9 min (shards 10 and 11; jobs 55-60 min with install,
@@ -83,7 +83,7 @@ sibling prices). pytest-split predicts 45.5-45.9 min per shard (7763 basis). Und
 old split's shards cost 33.3-57.9 min; its shard 11 at 57.9 min matches the 56-60 min observed. Check on
 the same 132 readings: actual time (normalised) over the new-price prediction is 0.94-1.07 per shard
 (median of all readings 1.02, p10 0.93, p90 1.09). Weekly prices: `.test_durations_weekly` section.
-Inputs, scripts and readings: rfx-archive `rfx/records/20261029-prices-refresh/`.
+Inputs, scripts and readings: the record repository.
 
 2026-10-21: fast lane re-priced. fast-suite shard 8 ran 55 min on average over 36 runs (61 over its
 successful runs; 75-76 when cancelled at the 75-min job limit); shard 9 averaged 45 min. They held
@@ -98,11 +98,11 @@ result-line timestamps, and the tests it never reached (`test_distributed_record
 unpriced. Merged over the previous file (later wins): 24,640 → 27107 entries in the file, of which
 625 of them carried unchanged (same node id, same price); the fast collection of
 26,716 tests has 159 unpriced. pytest-split predicts 39.9–43.4 min per shard on the 7763 basis; under
-the new prices the old shard 8 costs 84.6 min. Inputs, the build and prediction scripts: rfx-archive
-`rfx/records/20261021-fast-prices-refresh/`.
+the new prices the old shard 8 costs 84.6 min. Inputs, the build and prediction scripts: the record repository.
+
 
 2026-10-20: Removed 12 obsolete workflow/job test node IDs from each duration file
-after moving the A6000 and monthly ladder jobs to agent-rules. Remaining prices
+after moving the A6000 and monthly ladder jobs out of this repository's workflows. Remaining prices
 are unchanged; the entry counts below reflect this pruning.
 
 Regenerated 2026-10-16 at `edd70b41efe86a5cf09fc15424a0e1efe5dea363` (branch `ci/cached-durations`,
@@ -391,7 +391,7 @@ only, from GitHub log timestamps, test i's start to test i+1's start — an **ap
 aborted test is left out); then measured `weekly-durations-1`, `-2`, `-3`, `-4`, `-6`, `-7`, `-8`
 from run `39378910883`; then `s5_never_run_estimates.json`. Later input wins; retain only the
 weekly collection (27,741 tests with `RFX_S0_FULL=1` on this change); round to 0.01 s.
-The inputs and a script that rebuilds this file are in rfx-archive `rfx/records/20261020-weekly-prices-refresh/` (commit 625522eb0).
+The inputs and a script that rebuilds this file are in the record repository (commit 625522eb0).
 `s5_never_run_estimates.json` holds **estimates, not measurements**, for four shard-5 tests the
 abort left unrun: the aborted lossy-Lorentz test and `..._mixed.py` at the median of the measured
 Debye and Lorentz siblings (227.06 s), `..._mixed_800_weekly.py` and `..._mixed_1600_weekly.py` at
@@ -424,14 +424,14 @@ the same collection predicts max 123.4 min and shard 5 at 109.4, the 56 unpriced
 The uncached weekly lane uses its own file; the fast lane and gate keep
 `.test_durations`. Weekly run `39220415396`, at main `f0e3805d9` on 2026-10-19,
 measured the uncached prices. The old fast-lane prices underpredicted measured
-weekly work by x1.05–1.48 (leader's per-shard comparison); shard 4 used 9270 s,
+weekly work by x1.05–1.48 (per-shard comparison); shard 4 used 9270 s,
 above the 85 % budget, and shard 5 was cancelled at the 180-minute limit.
 
 2026-10-19: 27,370 entries, with 87 fast-lane fallback prices. After the 2026-10-20 refresh:
 27,719 entries in the weekly file, with at most 87 fast-lane fallback prices (carried from
 2026-10-19; this refresh added none).
 Values are rounded to 0.01 s and the file keeps only test ids the weekly selection collects
-(rfx-lead D:b089a0): 3,290,060 bytes at regeneration, before the pruning noted above.
+: 3,290,060 bytes at regeneration, before the pruning noted above.
 Weekly collection contains 27,440 tests, of which 58 have no entry in any
 input and receive pytest-split's mean-of-recorded-selection estimate. The fast-lane
 fallback count refers to retained `.test_durations` entries with no weekly source,
@@ -754,7 +754,7 @@ are plugin estimates, including mean-duration fallback, not observed CI wall tim
 | slow (5-way) | 5 | 113.90 |
 | slow (5-way) | max | 119.63 |
 
-From 2026-10-06 until 2026-11-12 (PI decisions), the fast lane used a 12-way split; historical measurements below retain their original split counts.
+From 2026-10-06 until 2026-11-12, the fast lane used a 12-way split; historical measurements below retain their original split counts.
 
 Earlier balance records follow.
 

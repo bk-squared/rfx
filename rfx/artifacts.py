@@ -261,6 +261,7 @@ def _simulation_summary(sim: Any) -> dict[str, Any]:
 
 def _material_summary(material: Any) -> dict[str, Any]:
     from rfx.materials.relative_strength import RelativeStrength
+    from rfx.materials.pole_map import is_map
     from rfx.interop._materials import material_to_dict
 
     out = {
@@ -271,7 +272,7 @@ def _material_summary(material: Any) -> dict[str, Any]:
         "debye_poles": _sequence_summary(getattr(material, "debye_poles", None)),
         "lorentz_poles": _sequence_summary(getattr(material, "lorentz_poles", None)),
     }
-    if any(isinstance(p.kappa, RelativeStrength) for p in (getattr(material, "lorentz_poles", None) or ())):
+    if any(isinstance(p.kappa, RelativeStrength) and not is_map(p) for p in (getattr(material, "lorentz_poles", None) or ())):
         # material_from_dict restores this declaration, including its static reference.
         out["definition"] = material_to_dict(material, preserve_relative=True)
     return out

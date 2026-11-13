@@ -203,7 +203,7 @@ def test_chain_load_plane_magnitude(kind, dut, record_property):
 
 
 def complex_load_plane_limit(line, dut):
-    """Leader's declared complex identity margin, with the same pure inverse.
+    """Declared complex identity margin, with the same pure inverse.
 
     e_pred(f) = |Gamma_L,pred(f) - Gamma_ideal|, where prediction includes
     0.214*mu0*dx at port and load and is passed through the same pure

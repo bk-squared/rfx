@@ -41,9 +41,9 @@ Usage (from a clean checkout; the ``rfx`` import must resolve to this tree)::
         --assemble --out <dir with every arm JSON> --run-index <json> \\
         --artifact-out <path outside the repository>
 
-Measurement records stay out of this repository (PI, 2026-09-24). The record of
-2026-09-23 is ``rfx/records/20260924-coax-closed-can/open_absorber_diagnostic.json``
-in ``bk-squared/rfx-archive``.
+Measurement records stay out of this repository. The record of
+2026-09-23 is retained
+in the record repository.
 """
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ SCHEMA = "rfx.coax_open_absorber_diagnostic"
 SCHEMA_VERSION = 1
 DRIVER = "scripts/diagnostics/coax_open_absorber_diagnostic.py"
 BATTERY_ARTIFACT = battery.ARTIFACT
-PREDECLARATION = ("the leader's pre-declaration, a local note that is not committed; the "
+PREDECLARATION = ("the pre-declaration, a local note that is not committed; the "
                   "arms and thresholds it declares are restated in this artifact's "
                   "'predeclared' block")
 
@@ -464,7 +464,7 @@ LANE_UPPER_END_COMMENTS = (
      ":func:`stamp_coaxial_annular_resistor`."),
 )
 
-# The leader's revision of the hypothesis and of A2's role. It arrived after
+# The revision of the hypothesis and of A2's role. It arrived after
 # every job of the campaign had finished, so the arms below ran under the
 # original declaration; this is kept verbatim beside the arms as run.
 REVISION_AFTER_THE_RUN = {
@@ -716,7 +716,7 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
         "per_geometry": geometry,
     }
 
-    # --- the leader's revision, beside the arms as they actually ran --------
+    # --- the revision, beside the arms as they actually ran --------
     two_b = 2.0 * battery.port_radii()[1]
     as_run = {}
     for key, g in geometry.items():

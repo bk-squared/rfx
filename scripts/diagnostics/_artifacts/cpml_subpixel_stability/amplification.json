@@ -1,7 +1,7 @@
 {
   "provenance": {
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b/rfx/__init__.py",
-    "repo_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
+    "rfx_file": "rfx/__init__.py",
+    "repo_root": "<workspace>/research/rfx/.claude/worktrees/agent-ac585302d6176235b",
     "driver_commit": "b8b08dabd2abbf6c1b61ca687af01193e1c8dbf9"
   },
   "model_owner": "tests/unit/boundaries/test_cpml_subpixel_coefficient_consistency.py::amplification_rho",

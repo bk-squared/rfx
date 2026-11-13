@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   XLA_PYTHON_CLIENT_PREALLOCATE: "false"
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -14,7 +15,8 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
-  cd /root/workspace/byungkwan-workspace/research/rfx
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
+  cd /root/workspace/$RFX_WORKSPACE/research/rfx
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
   git config --global --add safe.directory "$(pwd)" || true
   echo "=== MSL matched-thru |S11| mesh-convergence (mode-vs-mesh bottleneck test) ==="

@@ -182,27 +182,22 @@ REVIEWED = {
     "scripts/build_public_docs_bundle.py":
         (3, "three forbidden path segments used only to reject private paths from public bundles; no file reads"),
     # Assertion / warning text that happens to cite a note. No path resolution.
-    "scripts/capture_msl_replay_fixture.py":
-        (1, "prose inside a retirement message"),
-    "scripts/diagnostics/probe_fed_msl_openems_referee.py":
-        (2, "prose stating that the named log is LOCAL-ONLY"),
     "tests/contracts/test_source_carries_no_tracker_history.py":
         (1, "a synthetic citation fed to the contract's own keep rule; "
             "the contract compares it as text and reads no file"),
     "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py":
-        (10, "the ledger synthetic line and its exception path and literal add "
-            "three segment literals to the prior seven; "
-            "the C4 pattern, Git prefilter and synthetic lines name segments as text "
-            "to flag; the exception table names the segment for contracts that "
-            "name it as text; the contract reads no file there"),
+        (12, "the ledger synthetic line and its exception path and literal add "
+            "three segment literals to the prior seven; the C4 guard tokens in "
+            "matching_classes add two more; "
+            "the C4 pattern, Git prefilter, guard tokens and synthetic lines name "
+            "segments as text to flag; the exception table names the segment for "
+            "contracts that name it as text; the contract reads no file there"),
     "tests/contracts/test_guide_citations_resolve.py":
         (4, "sample TEXT fed to that file's own predicate -- the two dead "
             "links it was written to catch, the prose that replaced them, "
             "and the reference-style [id]: and angle-bracket (<path>) forms "
             "of the same link, one per link syntax the gate must not miss; "
             "it resolves none of them and reads no file there (#752)"),
-    "scripts/diagnostics/build_msl_broad_e5_envelope.py":
-        (2, "scope sentence copied into the emitted JSON"),
 
     # WRITE targets. The script creates the directory and writes into it; it
     # never expects to find anything there, so a clone losing the path is fine.

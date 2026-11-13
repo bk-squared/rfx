@@ -688,8 +688,8 @@ def test_a_violation_exits_1_and_says_where_the_data_goes(repo: Path, monkeypatc
     base, head = _violating_pr(repo)
     assert _main(monkeypatch, repo, base, head) == 1
     err = capsys.readouterr().err
-    assert "bk-squared/rfx-archive" in err
-    assert "rfx/records/<YYYYMMDD>-<topic>/" in err
+    assert "the record repository" in err
+    assert "<record root>/<YYYYMMDD>-<topic>/" in err
     assert "archive commit in the PR" in err
     assert "data-budget-exception" in err
     # The frozen-data homes are named only to say records do not belong there.
@@ -746,7 +746,7 @@ def test_a_failure_is_written_to_the_step_summary(repo: Path, monkeypatch, tmp_p
     monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
     assert budget.main(["--base", base, "--head", head, "--repo", str(repo)]) == 1
     written = summary.read_text(encoding="utf-8")
-    assert "Data budget failed" in written and "bk-squared/rfx-archive" in written
+    assert "Data budget failed" in written and "the record repository" in written
 
 
 def test_a_push_has_nothing_to_measure(repo: Path, monkeypatch, capsys) -> None:

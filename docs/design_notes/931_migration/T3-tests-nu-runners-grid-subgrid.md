@@ -196,7 +196,7 @@ fixture.
 
 `compute_msl_s_matrix(freqs = 2-18 GHz, num_periods = 6)`, dx = 0.2 mm,
 eps_r 2.2 substrate 0.8 mm, ports at x = 2 and 10 mm. Logs:
-`/root/workspace/claude-workspace/rfx/runs/issue931-post-t3-msl-witness-20260907T141743Z/`
+`<workspace>/rfx/runs/issue931-post-t3-msl-witness-20260907T141743Z/`
 (`three_traces.log`, `shorting_wall_control.log`), local CPU runs:
 
 | declared trace | \|S21\| @10.7 GHz | beta[6] | Re Z0[6] |

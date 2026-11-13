@@ -59,7 +59,7 @@ This script is the committed re-measurement #525's own follow-up comment
      mode;
   4. BOTH mesh classes: aligned (dx = h_sub/3, frac(h_sub/dx) = 0) and
      bisecting (dx = 80 µm, frac = 0.175, the MESH-ALIGNMENT RULE danger
-     zone — docs/agent-memory/rfx-known-issues.md, "Added 2026-07-30").
+     zone — the recorded findings, "Added 2026-07-30").
 
 CONVENTION (assert, not comment)
 ---------------------------------

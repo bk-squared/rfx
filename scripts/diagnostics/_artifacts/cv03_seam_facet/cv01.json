@@ -18,9 +18,9 @@
     ]
   },
   "rfx_provenance_check": {
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-abc84d82ee93bc208/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "under_repo_root": true,
-    "repo_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-abc84d82ee93bc208",
+    "repo_root": "<workspace>/research/rfx/.claude/worktrees/agent-abc84d82ee93bc208",
     "rfx_version": "1.8.0"
   },
   "stages": {
