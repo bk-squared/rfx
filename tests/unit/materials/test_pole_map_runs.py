@@ -188,11 +188,6 @@ def test_p1_fields(monkeypatch, graded, callables):
 ])
 @pytest.mark.parametrize('pin', ['P2a', 'P2b'])
 def test_p2_staircase(monkeypatch, graded, pin, precision, request):
-    if pin == 'P2b' and graded and precision == 'float64':
-        request.applymarker(pytest.mark.xfail(
-            strict=True, raises=AssertionError,
-            reason="rfx#2613: the scalar reference's edge fractions are float32 in a float64 run; "
-                   "the map is judged at coefficient level by test_c2_graded_float64_coefficients"))
     if pin == 'P2b' and not graded and precision == 'float32':
         request.applymarker(pytest.mark.xfail(
             strict=True, raises=AssertionError,
