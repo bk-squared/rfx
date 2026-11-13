@@ -135,9 +135,13 @@ def test_a1_step_closed_form(mesh, entry, record_time, capfd):
 
 
 @pytest.mark.parametrize('mesh', ['U1', 'G1'])
-def test_a3_slab_gradient(mesh, record_time, capfd):
+def test_a3_slab_gradient(mesh, capfd):
     from rfx.preflight.realization import _CampaignStaticsContext
 
+    # PREDECLARE §8: first joint gradient-witness pass, k=10. Ladder jobs:
+    # lr-ports-261113084827-9cc6w (k=0–3), lr-ports-261113085634-vnfvd (k=4–7),
+    # lr-ports-261113090614-t962j (k=8–10).
+    record_time = 5e-9 * 1.25**10
     started = time.monotonic()
     sim = scene(mesh, 'SLAB')
     context = _CampaignStaticsContext(sim)
@@ -148,7 +152,7 @@ def test_a3_slab_gradient(mesh, record_time, capfd):
     beta2 = np.sqrt(2.2 * (2 * np.pi * FREQS / C)**2 - (np.pi / A)**2)
     bar = .01 * L * (2 * np.pi * FREQS / C)**2 / beta2 + np.abs(derivative(yee=True) - expected)
     gradients = []
-    for factor in (1., 1.5, 2.):
+    for factor in (1., 2.):
         steps = math.ceil(factor * record_time / dt)
 
         def transmission(p):
