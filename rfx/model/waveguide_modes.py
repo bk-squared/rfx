@@ -676,7 +676,7 @@ def init_waveguide_port(
                 "(a configuration built from a scalar dx or a graded grid); "
                 "build with a uniform Grid to have them checked, or use the "
                 "cell span `(lo, hi - 1)`.",
-                code="waveguide-aperture-size-unchecked", source="init_waveguide_port",
+                code="waveguide_aperture_size_unchecked", source="init_waveguide_port",
             ), stacklevel=2)
 
     # Cell-centre coordinates (cumulative-sum midpoints). For uniform
