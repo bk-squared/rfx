@@ -204,7 +204,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
 
     w_band = 1.5 * 2.0 * np.pi * self._freq_max
 
-    def _classify_poles(mat):
+    def _classify_poles(mat, entry):
         """Every declared pole with a short label, plus whether any
         of them is in the divergence-risk class (high-Q in-band
         Lorentz, or Drude). Classify all families: the
@@ -214,7 +214,8 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
         risk = False
         for pole in (getattr(mat, "lorentz_poles", None) or ()):
             w0 = float(pole.omega_0)
-            delta = float(pole.delta)
+            from rfx.materials.pole_map import minimum_damping
+            delta = minimum_damping(pole, self, entry)
             if w0 == 0.0:
                 texts.append("Drude")
                 risk = True
@@ -238,7 +239,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
             mat = self._resolve_material(entry.material_name)
         except KeyError:
             continue
-        pole_txts, risk = _classify_poles(mat)
+        pole_txts, risk = _classify_poles(mat, entry)
         if not pole_txts:
             continue
         if not hasattr(entry.shape, "bounding_box"):
