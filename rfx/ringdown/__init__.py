@@ -26,8 +26,9 @@ The method (every rule fixed here, none tuned per board)
 1. Window: samples ``[n_start, n_stop)`` of the record.
 2. Anti-alias decimation of every channel with ``rfx.harminv``'s own plan and
    FIR stage (``_decimation_plan`` toward ``4 x freq_max`` sampling, harminv's
-   default pencil fraction and model capacity; ``scipy.signal.decimate`` with
-   a zero-phase FIR of order ``20 q``, the ten outputs at each end dropped).
+   default pencil fraction and model capacity; a capacity-keeping fallback
+   only on memory refusal; zero-phase FIR of order ``20 q``, with ten outputs
+   dropped at each end).
    The reference is the run's ``freq_max``: a fixed reference below the band
    filters the band's own modes out before the pencil sees them.
 3. One multichannel matrix pencil: each channel's Hankel pair, scaled by that
@@ -109,6 +110,7 @@ from rfx.ringdown._pencil import (
     _check_run_identification_memory,
     _witness_identification,
     _check_identification_memory,
+    _identification_plan,
     _decimate,
     _fit_residues,
     _pencil,
@@ -439,7 +441,7 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     dt, freq_max = float(dt), float(freq_max)
     win = Y[n_start:n_stop]
     win = win.astype(np.float64 if np.isrealobj(win) else np.complex128)
-    factors, _kept = decimation_plan(win.shape[0], dt, freq_max)
+    factors, _kept = _identification_plan(win.shape[0], dt, freq_max, win.shape[1])
     Yd = _decimate(win, factors) if factors else win
     D = int(np.prod(factors)) if factors else 1
     _check_identification_memory(
@@ -2091,11 +2093,11 @@ def static_pole_bound(n_window: int, n_channels: int, dt: float, freq_max: float
 
     The pencil's eigenvalue count is its rank, at most ``min(M, C L)`` for the
     stacked ``M x (C L)`` Hankel matrix of ``C`` channels; ``L`` and ``M``
-    follow from the decimation plan and harminv's pencil shape, functions of
-    the window length alone. ``forward(ringdown=...)`` pads to the smaller of
+    follow from the memory-bounded identification plan and pencil shape.
+    ``forward(ringdown=...)`` pads to the smaller of
     this algebraic bound and :data:`TRACED_POLE_BUDGET` for a fixed traced shape.
     """
-    _factors, kept = decimation_plan(int(n_window), float(dt), float(freq_max))
+    _factors, kept = _identification_plan(int(n_window), float(dt), float(freq_max), int(n_channels))
     L = int(_harminv._pencil_columns(int(kept), PENCIL_PARAMETER))
     return max(1, int(min(int(kept) - L, int(n_channels) * L)))
 
