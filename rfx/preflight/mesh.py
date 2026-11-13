@@ -132,19 +132,20 @@ def _realized_cell_samples(self, cache):
     return cache[0]
 
 
-def _warn_small_curved_body(self, entry, cache) -> None:
+def _warn_small_curved_body(self, entry, cache, is_pec) -> None:
     """Warn for an admitted dielectric Sphere, or a Cylinder across its
     radius, whose diameter is under three widths of the cell containing its
     centre along an axis across it. A body below the size rule of
     :mod:`rfx.geometry.curved_body_size` is refused at assembly instead, and
     gets no warning here. A Cylinder thin only along its own axis is planar
-    and is not judged here."""
+    and is not judged here. ``is_pec`` is the mesh check's own decision for
+    the entry's material."""
     import warnings as _w
     from rfx.geometry.curved_body_size import body_size_threshold, is_below_size
     shape = entry.shape
     if is_tracer(shape.radius) or any(is_tracer(v) for v in shape.center):
         return
-    if self._resolve_material(entry.material_name).sigma >= self._PEC_SIGMA_THRESHOLD:
+    if is_pec:
         return
     centres, sizes = _realized_cell_samples(self, cache)
     rule = body_size_threshold(shape, centres, sizes)
@@ -209,8 +210,6 @@ def _validate_mesh_quality(self) -> None:
     for entry in self._geometry:
         shape = entry.shape
         mat_name = entry.material_name
-        if isinstance(shape, (Sphere, Cylinder)):
-            _warn_small_curved_body(self, entry, realized_cells)
 
         # Imported CAD mesh: warn when the thinnest dimension (bbox extent — a
         # tessellation-independent proxy, e.g. a plate/wall thickness) falls below ~2 cells;
@@ -409,6 +408,9 @@ def _validate_mesh_quality(self) -> None:
                             ),
                             stacklevel=3,
                         )
+
+        if isinstance(shape, (Sphere, Cylinder)):
+            _warn_small_curved_body(self, entry, realized_cells, is_pec)
 
     # Check gaps between PEC structures
     from rfx.model.materials import assembled_as_pec
