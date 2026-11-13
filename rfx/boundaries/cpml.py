@@ -480,7 +480,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     n = grid.cpml_layers
     dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
 
-    dtype = jnp.promote_types(field_dtype, jnp.float32)
+    dtype = jnp.promote_types(jnp.finfo(field_dtype).dtype, jnp.float32)
     noop = _cpml_noop_profile(n, dtype=dtype)
     # Per-face active layer counts. The allocation
     # budget ``n`` stays uniform (CPMLState shape unchanged, JIT cache

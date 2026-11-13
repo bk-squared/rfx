@@ -148,3 +148,45 @@ def test_msl_owner_float64(direction):
     from tests.contracts.test_measurement_plan import test_msl_calculator_setup_and_projector
     with enable_x64():
         test_msl_calculator_setup_and_projector('graded', direction, precision='float64')
+
+
+def oblique_bloch_cpml_run(*, n_steps=2):
+    """Read the realized profiles and complex state on the public run path."""
+    import sys
+    from rfx import Simulation
+
+    observed = []
+
+    def observe(frame, event, value):
+        if (event == 'return' and frame.f_code.co_name == 'init_cpml'
+                and frame.f_globals.get('__name__') == 'rfx.boundaries.cpml'):
+            observed.append((frame.f_locals['field_dtype'], value))
+
+    with jax.enable_x64(False):
+        sim = Simulation(freq_max=5e9, domain=(.12, .12, .006), dx=.004,
+                         boundary='cpml', cpml_layers=4, precision='float32')
+        sim.add_tfsf_source(f0=5e9, bandwidth=.2, margin=3,
+                            polarization='ez', angle_deg=30.)
+        sim.add_probe((.04, .06, .003), 'ez')
+        previous = sys.getprofile()
+        try:
+            sys.setprofile(observe)
+            result = sim.run(n_steps=n_steps, compute_s_params=False)
+            jax.block_until_ready(result)
+        finally:
+            sys.setprofile(previous)
+    assert observed
+    return observed, result
+
+
+def test_float32_oblique_bloch_real_cpml_profiles():
+    observed, _ = oblique_bloch_cpml_run()
+    for field_dtype, (profiles, psi) in observed:
+        assert jnp.dtype(field_dtype) == jnp.dtype('complex64'), 'precondition'
+        for array in jax.tree_util.tree_leaves(psi):
+            assert array.dtype == jnp.complex64
+        for family in (profiles, profiles.magnetic):
+            for face in FACES:
+                for quantity in QUANTITIES:
+                    array = getattr(getattr(family, face), quantity)
+                    assert array.dtype == jnp.float32, (face, quantity, array.dtype)
