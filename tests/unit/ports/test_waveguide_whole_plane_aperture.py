@@ -427,7 +427,10 @@ def test_cell_span_s_equals_merge_base(scene, name):
         dtype=expected["dtype"],
     ).reshape(shape)
     delta = np.abs(actual - expected_array)
-    scale = np.max(np.abs(expected_array))
-    assert np.all(delta <= 1e-4 * scale), (
-        f"max|delta| / max|expected| = {np.max(delta) / scale:.9g}"
-    )
+    # Each S entry against its own peak over frequency: a below-cutoff entry's
+    # near-zero incident wave must not set the scale of the physical entries.
+    # The flux extractors' diagonal entries are exactly zero and must stay so.
+    scale = np.max(np.abs(expected_array), axis=-1, keepdims=True)
+    ratio = np.divide(delta, scale, out=np.where(delta > 0, np.inf, 0.0),
+                      where=scale > 0)
+    assert np.all(ratio <= 1e-4), f"max|delta| / own peak = {np.max(ratio):.9g}"
