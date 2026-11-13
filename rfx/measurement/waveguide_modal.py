@@ -296,6 +296,7 @@ def extract_waveguide_sparams_overlap(
         S-parameters at the (optionally shifted) planes.
     """
     from rfx.measurement.waveguide_s import require_probe_medium
+    from rfx.measurement.waveguide_power import power_wave_ratio, warn_power_waves
     require_probe_medium(cfg)
     beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
     z_mode = _compute_mode_impedance(
@@ -340,8 +341,9 @@ def extract_waveguide_sparams_overlap(
     safe_ref = jnp.where(
         jnp.abs(a_inc_ref) > 0, a_inc_ref, jnp.ones_like(a_inc_ref)
     )
-    s11 = a_out_ref / safe_ref
-    s21 = a_inc_probe / safe_ref
+    warn_power_waves([cfg])
+    s11 = power_wave_ratio(a_out_ref, safe_ref, cfg, cfg)
+    s21 = power_wave_ratio(a_inc_probe, safe_ref, cfg, cfg)
 
     return s11, s21
 
