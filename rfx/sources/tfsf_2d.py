@@ -273,11 +273,12 @@ def init_tfsf_2d(
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    prof = _cpml_profile(n_cpml_2d, dt, dx, **profile_options)
+    # CONTRACT: auxiliary CPML retains float32 until its run-dtype plumbing lands.
+    prof = _cpml_profile(n_cpml_2d, dt, dx, dtype=jnp.float32, **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_2d, dt, dx, sample_offset=0.5, **profile_options)
+        n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_2d, dt, dx, sample_offset=-0.5, **profile_options)
+        n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=-0.5, **profile_options)
     b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
     # Source waveform

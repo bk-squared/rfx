@@ -104,6 +104,7 @@ def build_nonuniform_grid(
     cpml_layers: int,
     dz_profile: np.ndarray,
     *,
+    dtype,
     dx_profile: np.ndarray | None = None,
     dy_profile: np.ndarray | None = None,
     pec_faces: set[str] | None = None,
@@ -175,7 +176,7 @@ def build_nonuniform_grid(
         dx, dx_profile, dy_profile, dz_profile))
     with nullcontext() if traced else jax.ensure_compile_time_eval():
         return make_nonuniform_grid(
-            domain_xy, dz_profile, dx, cpml_layers,
+            domain_xy, dz_profile, dx, cpml_layers, dtype=dtype,
             dx_profile=dx_profile, dy_profile=dy_profile,
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
             face_layers=face_layers, boundary_depths=depths,

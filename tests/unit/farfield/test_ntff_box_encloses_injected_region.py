@@ -226,7 +226,7 @@ def test_nonuniform_run_refuses_the_same_placement():
 
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
     domain = (0.08, 0.006, float(np.sum(dz)))
-    grid = build_nonuniform_grid(8e9, domain, 0.001, 8, dz)
+    grid = build_nonuniform_grid(8e9, domain, 0.001, 8, dz, dtype="float32")
     cfg, _ = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8,
                        tfsf_margin=3, f0=4e9, bandwidth=0.5,
                        polarization="ez", direction="+x")

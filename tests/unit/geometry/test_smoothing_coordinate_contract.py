@@ -128,7 +128,7 @@ put("mask_eps_jit", jax.jit(lambda t: sm.compute_smoothed_eps(
 D = cfg["D"]; dz = np.asarray(cfg["dz"], dtype=np.float64)
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("always")
-    g = build_nonuniform_grid(12e9, (30 * D, 20 * D, float(dz.sum())), D, 8, dz)
+    g = build_nonuniform_grid(12e9, (30 * D, 20 * D, float(dz.sum())), D, 8, dz, dtype=jnp.float32)
 res["nu_warnings"] = np.array([str(ww.message) for ww in w])
 res["nu_shape"] = np.array(g.shape)
 coords = coords_from_nonuniform_grid(g)

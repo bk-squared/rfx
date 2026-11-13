@@ -238,7 +238,7 @@ def test_thin_conductor_nonuniform_reflects_like_a_declared_sheet():
                 sigma_bulk=5.8e7, thickness=35e-6)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=(sim._boundary_spec.pec_faces()
                        if sim._boundary_spec is not None else None),
@@ -336,7 +336,7 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
 
     def nu_grid(sim):
         return build_nonuniform_grid(
-            sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
+            sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile, dtype="float32",
             dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
             pec_faces=(sim._boundary_spec.pec_faces() if sim._boundary_spec else None),
             pmc_faces=(sim._boundary_spec.pmc_faces() if sim._boundary_spec else None),
@@ -412,7 +412,7 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
                                sigma_bulk=sigma_bulk, thickness=t)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=(sim._boundary_spec.pec_faces()
                        if sim._boundary_spec is not None else None),
@@ -474,7 +474,7 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
                            sigma_bulk=sigma_bulk, thickness=t0)
     shape = sim._thin_conductors[0].shape
     grid = build_nonuniform_grid(
-        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
+        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile, dtype="float32",
         dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
         pec_faces=(sim._boundary_spec.pec_faces()
                    if sim._boundary_spec is not None else None),
@@ -564,7 +564,7 @@ def _nu_graded_grid(sim):
     from rfx.runners.nonuniform import build_nonuniform_grid
     return build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-        sim._dz_profile, dx_profile=sim._dx_profile,
+        sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
         dy_profile=sim._dy_profile,
         pec_faces=(sim._boundary_spec.pec_faces()
                    if sim._boundary_spec is not None else None),

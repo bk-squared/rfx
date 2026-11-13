@@ -152,7 +152,7 @@ def amplification_rho(n_layers, dx, dt, eps_a, eps_b, n=24, absorber=True):
     b = np.ones(n)
     c = np.zeros(n)
     if absorber:
-        p = _cpml_profile(n_layers, dt, dx)
+        p = _cpml_profile(n_layers, dt, dx, dtype="float32")
         b[:n_layers] = np.asarray(p.b, dtype=float)
         c[:n_layers] = np.asarray(p.c, dtype=float)
     ea = np.full(n, float(eps_a))

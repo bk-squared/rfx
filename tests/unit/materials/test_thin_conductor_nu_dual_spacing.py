@@ -121,7 +121,7 @@ def test_dual_spacing_is_the_e_update_metric():
                  [0.25e-3] * 3 + [1.0e-3] * 4,
                  [0.5e-3, 0.5e-3, 0.25e-3, 1.5e-3, 0.75e-3, 0.75e-3]):
         arr = np.asarray(prof, dtype=np.float64)
-        inv_d_e, _ = _profile_to_inv_arrays(arr)
+        inv_d_e, _ = _profile_to_inv_arrays(arr, dtype="float32")
         dual = np.asarray(e_node_dual_spacings(jnp.asarray(arr,
                                                            dtype=jnp.float32)))
         np.testing.assert_allclose(dual * np.asarray(inv_d_e), 1.0, rtol=1e-6)
@@ -148,7 +148,7 @@ def _graded_sheet_sigma(zc, *, realized=False, profile=None, **tc_kwargs):
             Box((6 * dx, 6 * dx, zc), (18 * dx, 18 * dx, zc)), **tc_kwargs)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=sim._boundary_spec.pec_faces(),
             pmc_faces=sim._boundary_spec.pmc_faces(),
@@ -248,7 +248,7 @@ def test_graded_fold_stays_on_the_ad_path():
             sigma_bulk=sigma_bulk, thickness=t0)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=sim._boundary_spec.pec_faces(),
             pmc_faces=sim._boundary_spec.pmc_faces(),
@@ -363,7 +363,7 @@ def _build_guide_nu(profile_mm, sheet_shape=None):
 def _nu_grid_of(sim):
     return build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-        sim._dz_profile, dx_profile=sim._dx_profile,
+        sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
         dy_profile=sim._dy_profile,
         pec_faces=sim._boundary_spec.pec_faces(),
         pmc_faces=sim._boundary_spec.pmc_faces(),

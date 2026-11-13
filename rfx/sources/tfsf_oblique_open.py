@@ -252,11 +252,12 @@ def init_tfsf_methodB(
     # Keep the existing sigma_max = 0.8*4/(eta*d_aux), expressed through
     # the shared grading law. H samples lie half a cell from the E nodes.
     profile_options = dict(R_asymptotic=np.exp(-1.6 * n_cpml_1d))
-    electric = _cpml_profile(n_cpml_1d, dt, d_aux, **profile_options)
+    # CONTRACT: auxiliary CPML retains float32 until its run-dtype plumbing lands.
+    electric = _cpml_profile(n_cpml_1d, dt, d_aux, dtype=jnp.float32, **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_1d, dt, d_aux, sample_offset=0.5, **profile_options)
+        n_cpml_1d, dt, d_aux, dtype=jnp.float32, sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_1d, dt, d_aux, sample_offset=-0.5, **profile_options)
+        n_cpml_1d, dt, d_aux, dtype=jnp.float32, sample_offset=-0.5, **profile_options)
 
     src_tau, src_t0 = pulse_timing(waveform, f0, bandwidth)
 

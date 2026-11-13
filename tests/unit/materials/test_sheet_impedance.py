@@ -1644,7 +1644,7 @@ def _uniform_sigma(shape, **kw):
 def _nu_grid(sim):
     return build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-        sim._dz_profile, dx_profile=sim._dx_profile,
+        sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
         dy_profile=sim._dy_profile,
         pec_faces=sim._boundary_spec.pec_faces(),
         pmc_faces=sim._boundary_spec.pmc_faces(),

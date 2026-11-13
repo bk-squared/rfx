@@ -516,12 +516,13 @@ def init_tfsf(
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC_1D if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    _prof = _cpml_profile(n_cpml_1d, dt, float(primal_widths[0]), **profile_options)
-    _prof_hi = _cpml_profile(n_cpml_1d, dt, float(primal_widths[-1]), **profile_options)
+    # CONTRACT: auxiliary CPML retains float32 until its run-dtype plumbing lands.
+    _prof = _cpml_profile(n_cpml_1d, dt, float(primal_widths[0]), dtype=jnp.float32, **profile_options)
+    _prof_hi = _cpml_profile(n_cpml_1d, dt, float(primal_widths[-1]), dtype=jnp.float32, **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_1d, dt, float(primal_widths[0]), sample_offset=0.5, **profile_options)
+        n_cpml_1d, dt, float(primal_widths[0]), dtype=jnp.float32, sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_1d, dt, float(primal_widths[-1]), sample_offset=-0.5, **profile_options)
+        n_cpml_1d, dt, float(primal_widths[-1]), dtype=jnp.float32, sample_offset=-0.5, **profile_options)
     b_prof, c_prof = _prof.b, _prof.c
 
     tau, t0 = pulse_timing(waveform, f0, bandwidth)

@@ -478,6 +478,7 @@ class _CompileMixin:
         synthesised from the scalar ``dx`` when the profile is not set.
         """
         from rfx.runners.nonuniform import build_nonuniform_grid
+        from rfx._internal._precision import resolve_field_dtype
         from rfx.boundaries.depths import resolve_face_depths
         periodic = self._periodic_axes or ""
         if cpml_axes is None:
@@ -494,6 +495,7 @@ class _CompileMixin:
         grid = build_nonuniform_grid(
             self._freq_max, self._domain, self._dx, self._cpml_layers,
             self._dz_profile, periodic_axes=self._periodic_axes or "",
+            dtype=jnp.promote_types(resolve_field_dtype(self._precision) or jnp.float32, jnp.float32),
             dx_profile=self._dx_profile,
             dy_profile=self._dy_profile,
             face_layers=face_layers, pec_faces=pec_faces, pmc_faces=pmc_faces,
