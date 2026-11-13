@@ -144,3 +144,18 @@ def test_msl_fields_and_planes(reference, length):
         assert row["delta"] <= 1e-4 * row["peak"], (name, row)
     for name, row in report["vi"].items():
         assert np.all(np.asarray(row["delta"]) <= 1e-5 * np.asarray(row["reference"])), (name, row)
+
+
+@pytest.mark.parametrize("script", ["check_layer_structure", "check_file_size_ratchet",
+                                    "check_changelog_fragment"])
+def test_msl_repository_checks(script):
+    """Run the required PR checks through labrun's named-pytest-file route."""
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[3]
+    command = [sys.executable, f"scripts/ci/{script}.py", "--base", "831180f12", "--head", "HEAD"]
+    result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+    print("CHECK", command, "exit", result.returncode, result.stdout, result.stderr)
+    assert result.returncode == 0, result.stdout + result.stderr
