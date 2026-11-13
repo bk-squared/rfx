@@ -279,6 +279,15 @@ Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a con
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
 
+### A traced pole-map profile that is undefined outside its material gives a NaN gradient.
+
+Tracker: #2650
+
+A `LorentzPoleMap` (or `drude_pole_map`, `lorentz_pole_map`) callable is evaluated at every cell centre, and only the occupied cells' values are kept.
+Under `jax.grad` the unoccupied cells still pass a zero cotangent through the callable's derivative, so a profile whose value or derivative is not finite there (a square root of a negative number, a division by zero) gives a NaN gradient while the objective is finite.
+A concrete run is not affected.
+Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
+
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
 Tracker: #2441
@@ -877,7 +886,7 @@ gradient (an estimate, not measured). Only kappa was traced; other pole paramete
 measured. What to do: declare the strength as `RelativeStrength(reference, value)`, choosing a
 reference near its largest value, so that the differentiated variable is of order 1;
 `drude_pole(omega_p, gamma, density=...)` and
-`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it. Otherwise divide the objective
+`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it; maps use `drude_pole_map(..., density=)` or `lorentz_pole_map(..., relative=True)`. Otherwise divide the objective
 by a constant of its order, such as its value at the starting design given as a Python float,
 or run with `precision="float64"` and JAX x64. An optional warning is off by default: set
 `RFX_POLE_UNDERFLOW_CHECK=1` before the first call (a cached compile keeps the old setting).
