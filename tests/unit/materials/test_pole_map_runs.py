@@ -194,19 +194,18 @@ def test_p2_staircase(monkeypatch, graded, pin, precision, request):
     if pin == 'P2b' and not graded and precision == 'float32':
         request.applymarker(pytest.mark.xfail(
             strict=True, raises=AssertionError,
-            reason="cannot judge P2b in float32 on main's core: scalar control 0.1255 uniform > 0.1 "
-                   "(rfx-archive MERGE-MAIN.md A7.3d @5cf6b6730); judged by "
-                   "the float64 twin (A7.3e, desk D:091839)"))
+            reason="cannot judge P2b in float32 on main's core: scalar control 0.1255 uniform > 0.1; "
+                   "judged by the float64 twin"))
     if pin == 'P2a' and precision == 'float32' and platform.machine() in ('x86_64', 'AMD64'):
         request.applymarker(pytest.mark.xfail(
             strict=True, raises=AssertionError,
             reason=("cannot judge P2a in float32 on x86_64: scalar control 0.1201 graded > 0.1 "
-                    "(0.0721 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged; "
-                    "rfx-archive MERGE-MAIN.md C7c @73460c51a, desk D:eb4608); no live judge on x86_64 "
+                    "(0.0721 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
+                    "no live judge on x86_64 "
                     "until #2613 PR B lifts the float64 twin's xfail") if graded else
                    ("cannot judge P2a in float32 on x86_64: scalar control 0.1179 uniform > 0.1 "
-                    "(0.0796 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged; "
-                    "rfx-archive MERGE-MAIN.md C7c @73460c51a, desk D:eb4608); judged by "
+                    "(0.0796 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
+                    "judged by "
                     "P2a-uniform-float64 (1e-9 bar)")))
     with enable_x64() if precision == 'float64' else nullcontext():
         try:
