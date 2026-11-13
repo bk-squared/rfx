@@ -306,7 +306,7 @@ A dielectric `Sphere` or a `Cylinder` crossed through its radius that spans abou
 | rod across the field, radius 0.5 mm, 0.5 mm cells | 2 | 1.10 | 1.13 |
 
 Scattered power goes as the square of the ratio, 20·log10 of it in dB: with smoothing, 7.6 dB high for the sphere one cell across, 10.5 dB for the rod half a cell across, 3.8 dB for the rod one cell across, and 0.9–2.3 dB at two cells; without smoothing 8.2, 16.1, 4.1 and 1.1–1.9 dB. Each row was taken at one position; the ratio is expected to depend on where the body sits on the mesh, which was not swept. With smoothing, put more cells across such a body until the result stops moving (without smoothing the measured curves do not approach the reference monotonically; measured on uniform meshes; a graded mesh that refines around the body adds cells there but was not measured).
-A body that no primal-cell centre falls inside is refused ("rasterizes to ZERO cells"), with or without smoothing, so whether a body this small runs at all depends on its position: in the same cavity the sphere of radius 1 mm ran on 2 mm and 1.5 mm cells and was refused on 2.5 mm cells, and a rod of radius 0.5 mm along the field was refused on 2.5, 2 and 1.5 mm cells; each cell size moves the cell centres relative to the body. A sweep of, or a gradient through, such a body's position can cross from a result to a refusal.
+A `Sphere`, or a `Cylinder` crossed through its radius, that is not PEC is refused wherever it is placed when its radius is below half the diagonal of the cell containing its centre: 0.866 of the cell on a uniform mesh, and for a `Cylinder` half the diagonal of that cell's cross-section, 0.707 of the cell. Such a body may contain no primal-cell centre, so before this rule it ran at some positions and was refused as "rasterizes to ZERO cells" at others. A sweep of, or a gradient through, its position could cross from a result to a refusal. The rule is not applied on a 2D grid, for a traced centre or traced cell widths, or for a centre outside the grid; there the empty-cell refusal alone decides. `preflight()` warns ("Small dielectric body:") for an admitted dielectric `Sphere`, or a `Cylinder` across its radius, under three cells across. A PEC `Sphere` or `Cylinder` keeps the earlier rule: below a cell, whether it runs depends on its position. Bodies just above the size threshold are still over-polarized, as in the table above.
 Under `"full_tensor"` a thin non-Box body keeps the one-face rule: a `Cylinder` disc 0.3 of a cell thick (εr 4) reads Ez 1.951 on the diagonal where the series average is 1.290 (51 % high), on uniform and graded meshes.
 Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
 On a curved face, full-tensor dual-face averages still use a first-order planar model.
@@ -686,18 +686,6 @@ and the settling check fails that record (−39.7 dB against −40 dB). From
 not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 7.0–7.9 GHz
 (f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
-
-### A low-level `WaveguidePort` given the whole node plane drives the row outside the high PEC wall.
-
-Tracker: #2665
-
-A port built with the low-level API (`rfx.sources.waveguide_port.WaveguidePort` and its `init_*`/`extract_*`
-functions) whose transverse slices cover the whole node plane, `y_slice=(0, grid.ny)` or `z_slice=(0, grid.nz)`, on an
-axis whose high face is PEC drives and reads the row outside that wall. Its higher-mode S entries are then wrong by more
-than their size. In an empty 120 × 40 × 20 mm guide with 2 mm cells and two modes over 4–10 GHz, the flux extractor's
-S[0,1] differs by 0.214 from the cell-span port's 0.080, and the direct extractor's second-mode reflection differs by
-0.229; the TE10 entries agree within 2.5e-4. Ports built through `Simulation.add_waveguide_port` use the cell span and
-are not affected. What to do: give a low-level port the cell span, `y_slice=(0, ny - 1)` and `z_slice=(0, nz - 1)`.
 
 ### On an aperture where two waveguide modes share a cutoff, a port stores a mix of the two that the eigensolver chooses.
 
