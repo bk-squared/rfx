@@ -36,6 +36,20 @@ from tests.contracts.float64_pending import (
 from tests.contracts.float64_readpoints import SCENES, capture
 
 
+def test_lowlevel_material_assembly_refuses_float64_without_x64():
+    """The passive low-level path must refuse before allocating coefficients."""
+    from rfx import Simulation
+    from rfx._internal._precision import FLOAT64_MODE_ERROR
+
+    with enable_x64(False):
+        sim = Simulation(freq_max=10e9, domain=(.01, .01, .01), dx=.001,
+                         boundary="pec", precision="float64")
+        grid = sim._build_grid()
+        with pytest.raises(ValueError) as error:
+            sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])
+        assert str(error.value) == FLOAT64_MODE_ERROR
+
+
 @pytest.fixture(scope="module")
 def captured_scenes():
     """One capture per scene, shared by dtype and independent value rows."""

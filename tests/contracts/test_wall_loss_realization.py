@@ -166,11 +166,13 @@ def test_wall_parameters_keep_closed_form_derivatives():
 def test_uniform_graded_high_face_row_parity(monkeypatch):
     """Pin lossy, lossless and padded high rows on identical dyadic cells.
 
-    bk-squared/rfx#2613 owns the 4.553e-8 lane amplitude scale: the uniform
-    current-source coefficient forms eps_r * EPS_0 in float32 at
-    rfx/core/yee.py:1014, even in a float64 run. Its fix PR must tighten
-    these record bars to the rounding-only control (exactly 0 on this box
-    in Stage A) and write the cause.
+    The uniform current-source coefficient formed eps_r * EPS_0 in float32
+    at rfx/core/yee.py:1014, causing the 4.553e-8 lane amplitude scale.
+    Float64 material assembly now keeps that product in float64. The bars
+    bound the remaining accumulated rounding between the two lanes, using
+    the larger x86/arm64 control over all three scenes. Record: rfx-archive,
+    rfx/plans/idm/20261112-float64-edge-fractions/DESIGN.md,
+    "#2615 control measured, and the bar".
     """
     import math
     import time
@@ -227,8 +229,11 @@ def test_uniform_graded_high_face_row_parity(monkeypatch):
                       for x, dt in zip(records, dts)]
             r = float(abs(du-dg) / abs(du))
             print(f"{scene} per_step={per_step:.17g} r={r:.17g}")
-            assert per_step <= 2e-7, (scene, "per_step", per_step)
-            assert r <= 2e-7, (scene, "r", r)
+            # max(4 * 4.948e-12, 9 * 2**-52) = 1.98e-11; floor 2.0e-15.
+            assert per_step <= 2.0e-11, (scene, "per_step", per_step)
+            # max(4 * 1.0429e-11, 1e-4 * 2**-53 / 2**-24) = 4.17e-11;
+            # floor 1.86e-13. Both bars round the control product upward.
+            assert r <= 4.2e-11, (scene, "r", r)
             if scene == "S1":
                 q_relative = abs(qs[0]/qs[1]-1)
                 print(f"S1 Q_U={qs[0]:.17g} Q_G={qs[1]:.17g} Q_relative={q_relative:.17g}")
