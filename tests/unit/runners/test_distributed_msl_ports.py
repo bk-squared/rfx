@@ -107,7 +107,7 @@ def reference(request, device_count):
     jax.clear_caches()
 
 
-@pytest.mark.parametrize("length", [1050, 1400, 2100])
+@pytest.mark.parametrize("length", [1050, 1400, pytest.param(2100, marks=pytest.mark.slow)])
 def test_msl_fields_and_planes(reference, length):
     sim, geometry, longest, devices, metadata = reference
     expected = longest if length == 2100 else sim.run(
