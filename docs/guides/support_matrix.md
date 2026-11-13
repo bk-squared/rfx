@@ -873,3 +873,5 @@ field. Results: record kept with the project; shortened arms of the energy, sing
 - Before using a result outside a listed range, repeat mesh/time convergence and
   compare against an analytic or independent solver reference suitable for that
   configuration.
+
+Uniform single-device Bloch plane waves support incidence-angle gradients and angle batches through `forward(tfsf_angle_override=)` (degrees, fixed carrier f0); normal incidence, Method B, closed boxes and graded meshes refuse this override.

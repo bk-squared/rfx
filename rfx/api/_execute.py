@@ -989,6 +989,7 @@ class _ExecuteMixin:
     def forward(
         self,
         *,
+        tfsf_angle_override: object = None,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
         mu_r_override: jnp.ndarray | None = None,
@@ -1026,6 +1027,9 @@ class _ExecuteMixin:
 
         Parameters
         ----------
+        tfsf_angle_override : scalar, optional
+            Uniform Bloch incidence angle in degrees at fixed f0; supports grad/jvp/vmap/jit.
+            Declare the largest |angle| used: the cutoff warning grows with |angle|.
         subpixel_smoothing : bool or str
             False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
             "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
@@ -1479,6 +1483,8 @@ class _ExecuteMixin:
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override),
         )
+        from rfx.boundaries import admit_tfsf_angle_override
+        admit_tfsf_angle_override(self, plan.lane, tfsf_angle_override, ringdown=ringdown, gradient=gradient)
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if plan.lane == "fwd_distributed":
@@ -1534,14 +1540,6 @@ class _ExecuteMixin:
                 f"single-device lane, not {plan.lane!r} (which discards chi3 → silent "
                 "linear physics + linear gradient). Use a uniform mesh + single device "
                 "for differentiable nonlinear (Kerr) design."
-            )
-
-        # Both single-device lanes build TFSF; distributed lanes do not.
-        if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
-            raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward refuses distributed "
-                f"lanes, including {plan.lane!r}. Use a uniform or graded "
-                "single-device forward lane for TFSF/plane-wave inverse design."
             )
 
         # mu_r_override is wired only on the uniform lane; the NU/distributed
@@ -1749,6 +1747,7 @@ class _ExecuteMixin:
                 "pec_mask": pec_mask_override,
                 "pec_occupancy": pec_occupancy_override,
             },
+            tfsf_angle_override=tfsf_angle_override,
             lane="fwd_uniform",
             diagnostics=_solve_assembly.diagnostics,
         )

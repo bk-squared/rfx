@@ -45,6 +45,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -218,9 +219,6 @@ def init_tfsf_2d(
     else:
         mode = "TEz"
 
-    theta = np.radians(theta_deg)
-    cos_theta = float(np.cos(theta))
-    sin_theta = float(np.sin(theta))
 
     # TFSF box boundaries in x
     offset = cpml_layers + tfsf_margin
@@ -300,9 +298,8 @@ def init_tfsf_2d(
     # k_y = k0·sinθ at the carrier f0; the sign is chosen so that a positive
     # angle_deg tilts the injected energy flow toward +transverse (matching the
     # legacy time-delay convention). Verified against poynting_angle.py.
-    c0 = 1.0 / np.sqrt(EPS_0 * MU_0)
-    k0 = 2.0 * np.pi * f0 / c0
-    k_transverse = -direction_sign * k0 * sin_theta
+    theta, cos_theta, sin_theta, k_transverse = oblique_angle_fields(
+        float(theta_deg), f0, direction_sign, np)
 
     config = TFSF2DConfig(
         x_lo=x_lo, x_hi=x_hi,
@@ -611,3 +608,25 @@ _LAZY_EXPORTS = {
 def __getattr__(name):
     from rfx._moved_names import resolve_moved
     return resolve_moved(__name__, _LAZY_EXPORTS, name)
+
+
+def oblique_angle_fields(theta_deg, f0, direction_sign, xp):
+    """Carrier-angle fields in NumPy or JAX, with the launch direction's sign."""
+    theta = xp.radians(theta_deg)
+    cos_theta = xp.cos(theta)
+    sin_theta = xp.sin(theta)
+    c0 = 1.0 / np.sqrt(EPS_0 * MU_0)
+    k0 = 2.0 * np.pi * f0 / c0
+    k_transverse = -direction_sign * k0 * sin_theta
+    return theta, cos_theta, sin_theta, k_transverse
+
+
+def with_angle(cfg, theta_deg):
+    """Replace stepped angle fields; retain the declaration's kind and sizes."""
+    xp = jnp if isinstance(theta_deg, jax.Array) else np
+    if xp is np:
+        theta_deg = float(theta_deg)
+    theta, cosine, sine, transverse = oblique_angle_fields(
+        theta_deg, cfg.src_fcen, cfg.direction_sign, xp)
+    return cfg._replace(theta=theta, cos_theta=cosine, sin_theta=sine,
+                        k_transverse=transverse)

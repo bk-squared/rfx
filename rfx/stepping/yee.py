@@ -22,7 +22,7 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              stencil_order: int = 2,
              bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool],
              magnetic_factors=(None, None, None),
-             h_row_factors=(None, None, None)) -> FDTDState:
+             h_row_factors=(None, None, None), bloch_operand=None) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -38,6 +38,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         Bloch field-transformation.  When set, the fields must be a
         complex dtype (the transformed envelope P); requires stencil_order=2.
     """
+    if bloch_operand is not None:
+        bloch = bloch_operand
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
@@ -198,7 +200,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
              bloch: tuple | None = None, *, boundary=None, high_wall: tuple[bool, bool, bool],
-             frame=None, owned=None) -> FDTDState:
+             frame=None, owned=None, bloch_operand=None) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -221,6 +223,8 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         Bloch field-transformation; requires stencil_order=2 and complex
         fields.  The backward differences use the conjugate phase automatically.
     """
+    if bloch_operand is not None:
+        bloch = bloch_operand
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")

@@ -995,6 +995,7 @@ class ForwardResult(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     adjoint_settling: object = None
+    tfsf_angle_deg: object = None
     settling_source_end_index: object = None
     settling_accumulator_end_index: int | None = None
     settling_coverage: object = None

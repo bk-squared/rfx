@@ -55,6 +55,7 @@ def _update_e_with_optional_dispersion(
     aniso_inv_eps: tuple | None = None,
     stencil_order: int = 2,
     bloch: tuple | None = None,
+    bloch_operand=None,
     boundary=None,
     frame=None,
     owned=None,
@@ -88,7 +89,7 @@ def _update_e_with_optional_dispersion(
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
                                   dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall,
+                        stencil_order=stencil_order, bloch=bloch, bloch_operand=bloch_operand, boundary=boundary, high_wall=high_wall,
                         frame=frame, owned=owned), None, None
 
     if debye is not None and lorentz is None:

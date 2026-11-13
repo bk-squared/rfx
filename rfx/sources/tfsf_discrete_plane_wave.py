@@ -1,7 +1,7 @@
 """Exact rational plane waves on the uniform three-dimensional Yee lattice."""
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxRefusal
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -600,6 +600,13 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
+    from rfx.core.jax_utils import is_tracer
+    for name, value in (("f0", f0), ("bandwidth", bandwidth), ("amplitude", amplitude),
+                        ("angle_deg", angle_deg), ("theta_deg", theta_deg),
+                        ("phi_deg", phi_deg), ("direction_tol_deg", direction_tol_deg)):
+        if is_tracer(value):
+            hint = " Use forward(tfsf_angle_override=) on the uniform Bloch line." if "deg" in name else ""
+            raise RfxRefusal(f"incident source {name} must be concrete at declaration.{hint}")
     from rfx.sources.tfsf import is_oblique, resolve_waveform
     if closed_box:
         validate_declaration(self, theta_deg, phi_deg, direction_tol_deg,
@@ -669,22 +676,7 @@ def add_tfsf_source(
             )
 
     if method == "bloch" and is_oblique(angle_deg):  # the 2D-aux dispatch test in tfsf.py
-        cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
-        if cutoff_db > -60.0:
-            import warnings
-
-            source_f0 = f0 if f0 is not None else self._freq_max / 2
-            cutoff_ghz = source_f0 * abs(math.sin(math.radians(angle_deg))) / 1e9
-            warnings.warn(
-                f"Bloch TF/SF angle={angle_deg:g} deg, bandwidth={bandwidth:g}: "
-                f"{cutoff_db:.2f} dB relative to f0 at f_c={cutoff_ghz:.6g} GHz; "
-                "a rectangular-window DFT of this path's probe time series picks up "
-                "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
-                "depends on the record length. Narrow the bandwidth, or taper "
-                "the tail of the time series before the DFT.",
-                AccuracyWarning,
-                stacklevel=2,
-            )
+        warn_bloch_cutoff(angle_deg, bandwidth, f0 if f0 is not None else self._freq_max / 2)
 
     self._tfsf = _TFSFEntry(
         f0=f0,
@@ -733,3 +725,22 @@ def document_fields(_NUM, _INT, _STR, _BOOL, _opt):
         "direction_tol_deg": _NUM,
         "max_component": _INT,
     }
+
+
+def warn_bloch_cutoff(angle_deg, bandwidth, f0):
+    """Shared concrete declaration/override cutoff advisory."""
+    cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
+    if cutoff_db > -60.0:
+        import warnings
+
+        cutoff_ghz = f0 * abs(math.sin(math.radians(angle_deg))) / 1e9
+        warnings.warn(
+            f"Bloch TF/SF angle={angle_deg:g} deg, bandwidth={bandwidth:g}: "
+            f"{cutoff_db:.2f} dB relative to f0 at f_c={cutoff_ghz:.6g} GHz; "
+            "a rectangular-window DFT of this path's probe time series picks up "
+            "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
+            "depends on the record length. Narrow the bandwidth, or taper "
+            "the tail of the time series before the DFT.",
+            AccuracyWarning,
+            stacklevel=3,
+        )
