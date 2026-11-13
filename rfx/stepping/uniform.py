@@ -171,7 +171,8 @@ def make_uniform_step(
             else:
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
                     high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch,
-                    magnetic_factors=invariants["magnetic_factors"])
+                    magnetic_factors=invariants["magnetic_factors"],
+                    h_row_factors=invariants["h_row_factors"])
 
     def h_boundary(frame: UniformFrame):
         """Correct incident H, absorb outgoing H, and damp conductor cells."""
@@ -185,7 +186,8 @@ def make_uniform_step(
             if ctx.use_cpml:
                 frame.st, frame.cpml_new = absorb(
                     ctx.apply_cpml_h, frame.st, frame.carry["cpml"],
-                    materials=materials, periodic=periodic)
+                    materials=materials, periodic=periodic,
+                    h_row_factors=invariants["h_row_factors"])
             # After CPML-H, intersect the old full-node (smooth) or pairwise
             # (binary) mask with H whose every curl driver is frozen. This
             # retains PEC damping while releasing field-driven corner H.
