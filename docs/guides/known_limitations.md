@@ -456,10 +456,10 @@ Tracker: #1432
 stamp on the `Simulation`, so repeated inspection calls share them. A solve (`run()`, `forward()`, the S-matrix
 calculators, `topology_optimize()`) releases them when it is dispatched; a refused solve keeps them, and
 `Simulation.clear_inspection_cache()` frees them for a model you only inspect
-(`tests/contracts/test_inspection_release.py`). A `realized_geometry()` record you keep still holds what it refers to:
-on a synthetic model of 161 thin sheets on 3.05 M cells, 1.43 GiB of device memory stayed reachable from its
-`conductors`. Measured before the thin-sheet change below, the held arrays took about 21 bytes per cell (21.1 B on
-81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33); this has not been measured since. On main after 2.0.0, thin PEC sheets keep only
+(`tests/contracts/test_inspection_release.py`). A `realized_geometry()` record you keep still holds the arrays it
+refers to. Measured before the thin-sheet change below, the held arrays took about 21 bytes per cell (21.1 B on
+81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33), and 1.43 GiB of device memory stayed reachable from a kept record's
+`conductors` on a synthetic model of 161 thin sheets on 3.05 M cells; neither has been measured since. On main after 2.0.0, thin PEC sheets keep only
 their plane masks, so the GPU memory these arrays hold no longer grows with the number of sheets (host memory not
 measured): a board of 161 sheets on 3.05 M cells, with `preflight()`, `realized_geometry()` and a second model kept in
 the same process, completes with the GPU pool capped at about 5.6 GiB at a 0.46 GiB peak, where 2.0.0 ran out of
@@ -886,13 +886,13 @@ the polarization runs on the graded mesh, and on the uniform mesh only on an axi
 
 Tracker: #2693
 
-On the uniform mesh, `add_tfsf_source` at an oblique angle with absorbing side faces (no `boundary`, or
-`boundary="cpml"`) solves the side axes periodic with their absorber pads inside the period. A structure that varies
+On the uniform mesh, `add_tfsf_source` at an oblique angle with the default `method="bloch"` and absorbing side faces
+(no `boundary`, or `boundary="cpml"`) solves the side axes periodic with their absorber pads inside the period. A structure that varies
 along the tilt axis is then solved as an array whose period is the padded domain, not the drawn one, and that period
 changes with the mesh. Measured with a 30° TE wave through a lossless εr 4 bar, 10 mm thick and 6 mm wide, drawn every
-16 mm: the solved period is 82, 49 and 32.5 mm at 2, 1 and 0.5 mm cells; at 1 mm the transmission behind the bar is
-2.3–3.5 dB above the declared-periodic result over the band, and four probes across the period differ by 2.8 dB at
-4.98 GHz, so the result does not converge with the mesh. Preflight reports the side faces as periodic with their pads
+16 mm: the solved period is 82, 49 and 32.5 mm at 2, 1 and 0.5 mm cells; at 1 mm the transmission behind the bar, read
+at y = 13 mm, is 2.3–3.5 dB above the declared-periodic result over the band, and four probes across the period differ
+by 2.8 dB at 4.98 GHz, so the result does not converge with the mesh. Preflight reports the side faces as periodic with their pads
 and the tilt axis as not judged, and the run proceeds. A structure that does not vary along the tilt axis is not
 affected. What to do: declare the side axes periodic for an array, or use `add_tfsf_source(closed_box=True,
 theta_deg=...)` for a finite scatterer.
