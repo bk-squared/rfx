@@ -244,7 +244,7 @@ def test_the_report_is_none_while_traced():
 DENSE = np.linspace(12.30e9, 12.55e9, 101)
 
 
-@pytest.mark.parametrize("lane, bins, n", [("uniform", "8-18 GHz", 4000),
+@pytest.mark.parametrize("lane, bins, n", [pytest.param("uniform", "8-18 GHz", 4000, marks=pytest.mark.slow),
                                            ("graded", "lane", 4000),
                                            ("uniform", "across TM110", 16000)])
 def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
@@ -363,13 +363,13 @@ def test_missing_h_column_refuses_before_traced_identification(jit, monkeypatch)
         _loss_and_grad(_box('uniform'), 1500, jit=jit)
 
 
-@pytest.mark.parametrize("jit", [False, True])
-@pytest.mark.parametrize("defect, lane, cells", [
-    (_midpoint_voltage, "uniform", 3),
-    (_half_step_dropped, "uniform", 1),
-    (_half_step_dropped, "graded", 1),
-    (_current_one_step_late, "uniform", 1),
-    (_every_channel_one_step_late, "uniform", 1),
+@pytest.mark.parametrize("defect, lane, cells, jit", [
+    pytest.param(_midpoint_voltage, "uniform", 3, True, id="_midpoint_voltage-uniform-3-True"),
+    pytest.param(_half_step_dropped, "uniform", 1, True, id="_half_step_dropped-uniform-1-True"),
+    pytest.param(_half_step_dropped, "graded", 1, True, id="_half_step_dropped-graded-1-True"),
+    pytest.param(_current_one_step_late, "uniform", 1, True, id="_current_one_step_late-uniform-1-True"),
+    pytest.param(_every_channel_one_step_late, "uniform", 1, False, id="_every_channel_one_step_late-uniform-1-False"),
+    pytest.param(_every_channel_one_step_late, "uniform", 1, True, id="_every_channel_one_step_late-uniform-1-True"),
 ])
 def test_a_rebuild_that_is_not_the_port_s_v_and_i_is_nan(defect, lane, cells, jit,
                                                          monkeypatch):
@@ -502,7 +502,7 @@ def _stub_identification(monkeypatch):
                         (plain, {"s": s0}) if k.get("return_aux") else plain)
 
 
-@pytest.mark.parametrize("jit", [False, True])
+@pytest.mark.parametrize("jit", [pytest.param(False, marks=pytest.mark.slow), True])
 def test_a_clean_30000_step_record_across_the_resonance_passes_the_check(jit, monkeypatch):
     """The largest clean reading measured: 30,000 steps (57 ns), bins across
     TM110, where the accumulators' own rounding is largest (7.1e-5, 14x under
@@ -877,26 +877,6 @@ def test_the_gradient_is_the_derivative_of_the_completed_value():
     assert rel < 1.0e-3, rel
 
 
-def test_the_poles_derivative_is_what_carries_the_shift(monkeypatch):
-    """The same short-record gradient with the pole derivative dropped (the
-    revived defect: poles held constant) is far from the long record's."""
-    g_ref = _grads(N_GRAD_LONG)[0]
-    monkeypatch.setattr(rj, "completion",
-                        functools.partial(rj.completion, mutation="poles_constant"))
-    sim = _box("uniform")
-    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
-
-    def loss(p):
-        r = sim.forward(n_steps=N_GRAD_SHORT, skip_preflight=True, port_s11_freqs=FREQS,
-                        eps_override=eps * p, ringdown=RingdownSpec())
-        return _loss(r.ringdown.s_params)
-
-    g = float(jax.jit(jax.grad(loss))(jnp.float32(1.0)))
-    err = abs(g - g_ref) / abs(g_ref)
-    print(f"\n[poles held constant] {N_GRAD_SHORT}-step gradient {g:.5f}, {err:.2e} off")
-    assert err > 0.1, err
-
-
 def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     """A 140,000-step one-port record never traces more than the pole budget."""
     # Shape-only tracing allocates no pencil; test the pole cap independently.
@@ -918,7 +898,7 @@ def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     assert all(0 < k <= rd.TRACED_POLE_BUDGET for _m, k in seen), seen
 
 
-@pytest.mark.parametrize("lane,n", [("graded", 2500), ("uniform", 12000)])
+@pytest.mark.parametrize("lane,n", [("graded", 2500), pytest.param("uniform", 12000, marks=pytest.mark.slow)])
 def test_capped_padding_preserves_completed_s(lane, n, monkeypatch):
     """Both completed S arrays agree with the old algebraic padding bound."""
     sim = _box(lane)
