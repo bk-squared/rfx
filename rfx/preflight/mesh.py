@@ -1075,6 +1075,7 @@ def _validate_cfg_nonuniform_limitations(
     self, _w, cpml_thickness: float
 ) -> None:
     """P2: Non-uniform mesh shadow-lane limitations."""
+    from rfx.sources.tfsf import is_oblique
     # Keyed on "is this the non-uniform lane", not on "was a z profile
     # given". A dx-only or dy-only mesh used to skip both checks below and
     # report All checks passed, though the TFSF auxiliary line runs along x
@@ -1097,7 +1098,7 @@ def _validate_cfg_nonuniform_limitations(
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
-            if abs(self._tfsf.angle_deg) > 0.01:
+            if is_oblique(self._tfsf.angle_deg):
                 raise PreflightConfigError(
                     "TFSF oblique incidence is not yet supported on "
                     "a nonuniform mesh. Use angle_deg=0 with a uniform x axis.",

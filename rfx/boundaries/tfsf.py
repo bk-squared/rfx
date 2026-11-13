@@ -171,15 +171,16 @@ def invariant(value, axis, shape, *, periodic=(False, False, False)):
 
 def _open_oblique_method_b(cfg):
     """Accept both registration entries and initialized Method B configs."""
-    from rfx.sources.tfsf import is_tfsf_methodB
+    from rfx.sources.tfsf import is_oblique, is_tfsf_methodB
     return not getattr(cfg, "closed_box", False) and (
         is_tfsf_methodB(cfg) or (getattr(cfg, "method", None) == "methodB"
-                                and abs(getattr(cfg, "angle_deg", 0.)) > .01))
+                                and is_oblique(getattr(cfg, "angle_deg", 0.))))
 
 
 def _finite_scatterer_remedy(cfg, *, mode="3d"):
     """Name an admissible finite-scatterer declaration for this source."""
-    if getattr(cfg, "angle_deg", 0) != 0 and not _open_oblique_method_b(cfg):
+    from rfx.sources.tfsf import is_oblique
+    if is_oblique(getattr(cfg, "angle_deg", 0)) and not _open_oblique_method_b(cfg):
         if mode in ("2d_tmz", "2d_tez"):
             return ""
         return ("use add_tfsf_source(closed_box=True, theta_deg=…, phi_deg=…, "
@@ -204,6 +205,7 @@ def _refuse(axis, feature, *, cfg=None, grid=None, nonuniform=False):
 
 def replacement_axes(cfg, grid, *, requirements=(), records=None, nonuniform=False):
     """Validate admissible face pairs and return absorber axes to check."""
+    from rfx.sources.tfsf import is_oblique
     if getattr(cfg, "closed_box", False):
         return ()
     electric = getattr(cfg, "electric_component", getattr(cfg, "polarization", "ez"))[-1]
@@ -215,7 +217,7 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None, nonuniform=Fal
         # Only Method B absorbs on the uniform tilt axis. The graded
         # lane retains its own oblique-incidence refusal.
         if axis == magnetic and (_open_oblique_method_b(cfg) or
-                                 (nonuniform and getattr(cfg, "angle_deg", 0) != 0)):
+                                 (nonuniform and is_oblique(getattr(cfg, "angle_deg", 0)))):
             continue
         if grid.shape["xyz".index(axis)] == 1:
             continue  # the invariant 2-D lane
@@ -237,6 +239,7 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None, nonuniform=Fal
 
 def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=None,
                  active_axes=None, nonuniform=False):
+    from rfx.sources.tfsf import is_oblique
     axes = replacement_axes(cfg, grid, requirements=requirements, records=records,
                             nonuniform=nonuniform)
     if active_axes is not None:
@@ -269,7 +272,7 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
             tensor = getattr(getattr(materials, 'components', None), 'tensor', None)
             if (getattr(tensor, 'node_smoothing', None) is not None
                     and ('tensor.eps.' in feature or 'aniso_eps.' in feature)
-                    and getattr(cfg, 'angle_deg', 0) != 0
+                    and is_oblique(getattr(cfg, 'angle_deg', 0))
                     and any(getattr(grid, f'pad_{axis}_{side}') for side in ('lo', 'hi'))):
                 raise ValueError(
                     "full_tensor's diagonal is not invariant along a padded periodic axis "
@@ -318,10 +321,11 @@ def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
 
 
 def report(sim, issues, *, root=None, material_overrides=()):
+    from rfx.sources.tfsf import is_oblique
     from rfx.preflight._common import PreflightIssue
     axes = admit_simulation(sim, root=root, material_overrides=material_overrides)
     if (not sim._uses_nonuniform_mesh and sim._tfsf is not None
-            and not sim._tfsf.closed_box and sim._tfsf.angle_deg != 0):
+            and not sim._tfsf.closed_box and is_oblique(sim._tfsf.angle_deg)):
         grid = root.grid if root is not None else sim._build_realized_grid()
         # The registration entry, not an initialized config: open oblique
         # Method B absorbs on y and wraps z only (sources/tfsf.py).
@@ -350,6 +354,7 @@ def boundary_flags(cfg, grid=None):
 
 def require_tfsf_side_faces(sim):
     """Refuse explicit side faces the uniform TF/SF lane would replace."""
+    from rfx.sources.tfsf import is_oblique
     if sim._tfsf is None or sim._tfsf.closed_box or sim._uses_nonuniform_mesh:
         return
     from rfx.boundaries.model import declared_nonperiodic_faces
@@ -361,7 +366,7 @@ def require_tfsf_side_faces(sim):
         # Declarations reaching different lanes must not silently change the solved
         # model, including TF/SF side faces.
         remedy = _finite_scatterer_remedy(sim._tfsf, mode=sim._mode)
-        oblique_bloch = sim._tfsf.angle_deg != 0 and not _open_oblique_method_b(sim._tfsf)
+        oblique_bloch = is_oblique(sim._tfsf.angle_deg) and not _open_oblique_method_b(sim._tfsf)
         suffix = (f"; {remedy}" if remedy else "")
         suffix += "." if oblique_bloch else ", or a graded mesh, which keeps declared side faces."
         raise ValueError(
