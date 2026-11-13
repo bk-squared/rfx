@@ -8,12 +8,13 @@ regression gates:
 * FAST lane (default addopts, ~2 min): reduced witness arms — exact-conservation
   lock of the Remis dual-cell energy (f64), a reduced-step F-S1 envelope
   arm (f32), one W2 single-transition reflection arm at the cap ratio,
-  the W5 multiband AD check, the W4R3 F-S4 z-dominance gates (analytic)
-  and reduced ladder, the W4R3 grading-side revert-proof (which must
-  FIRE), and the WP6 preflight advisory contract.
+  the W5 multiband AD check, the W4R3 reduced ladder with its fixture
+  gates G1/G2/G3, and the WP6 preflight advisory contract.
 * SLOW/GPU lane: the full pre-declared arms — 1e6-step 1D energy audits
-  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), and the full
-  four-scale W4R3 supraconvergence ladder (``slow_physics``).
+  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), the full
+  four-scale W4R3 supraconvergence ladder (``slow_physics``), and the
+  W4R3 grading-side revert-proof on the reduced ladder (``slow``; it must
+  FIRE).
 
 Every threshold below is either the pre-declared falsifier window
 (F-S1/F-S2 from the design note, frozen before measurement) or the
@@ -134,27 +135,6 @@ def _w4r3_rows(scales, defect=False):
             for s in scales for mb in (False, True)}
 
 
-def test_fs4_fixture_is_z_dominant():
-    """BL2 gate (note WP6R.3): the F-S4 fixture's error budget must be
-    carried by the GRADED axis, or its order gate cannot fail for a
-    grading reason. Pure analytic decomposition, no FDTD — G1 (the z
-    share of the modelled error budget) >= 0.80 in both arms at every
-    scale, and G2 (the grading-SPECIFIC share) >= 0.20 at every scale."""
-    from validation.research.multiband_nu import w4r3_zdominant_cavity as W
-    from validation.research.multiband_nu.analytic_dispersion import decompose
-    W.assert_planes_realizable()
-    for s in W.SCALES:
-        d = {}
-        for mb in (False, True):
-            prof = W.mb_profile(s) if mb else W.uc_profile(s)
-            grid, _m = build_pec_fixture(prof, (W.A_X, W.B_Y), W.DXY0 * s)
-            d[mb] = decompose(prof, W.DXY0 * s, W.A_X, float(grid.dt),
-                              W.M_X, W.P_Z, W.L_Z)
-            assert d[mb]["z_fraction"] >= W.G1_Z_FRACTION_MIN, (s, mb, d[mb])
-        share = abs(d[True]["e_z"] - d[False]["e_z"]) / abs(d[True]["e_total"])
-        assert share >= W.G2_GRADING_SHARE_MIN, (s, share)
-
-
 def test_fs4_supraconvergence_reduced():
     """F-S4 fast gate: the W4R3 ladder on the three coarse scales, judged
     by the committed judge — the frozen W4R.3 rule (fixture gate
@@ -170,6 +150,7 @@ def test_fs4_supraconvergence_reduced():
     assert not out["anomaly_a4"], out["verdict"]
 
 
+@pytest.mark.slow
 def test_fs4_grading_defect_fires():
     """Revert-proof for the ORDER witness (note WP6R.4): with the
     CORE-C2-class metric defect on ONE multiband transition node — an
