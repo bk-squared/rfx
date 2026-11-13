@@ -15,6 +15,9 @@ from rfx.measurement.matrix_pencil import (
     _pencil as _core_pencil,
     _to_original_rate as _core_to_original_rate,
     _fit_residues,
+    _decimation_factors,
+    _FIR_HALF_OUTPUT_SAMPLES,
+    _MIN_PENCIL_SAMPLES,
 )
 
 # Import the module rather than rfx's re-exported harminv function.
@@ -93,8 +96,8 @@ def _check_run_identification_memory(plan):
     peak = (float(np.float32(plan.sim._freq_max)) if bins is None else
             float(np.max(np.asarray(bins, dtype=np.float32 if plan.lane == "graded" else np.float64))))
     n_win = plan.n_steps - plan.n_start
-    _, Nd = rd.decimation_plan(n_win, float(plan.dt), max(plan.freq_max, peak))
     C = 2 * len(plan.wire_entries) + len(plan.identification_keys)
+    _, Nd = _identification_plan(n_win, float(plan.dt), max(plan.freq_max, peak), C)
     rd._check_identification_memory(n_win, (Nd, C), bound=bound, pencil_parameter=rd.PENCIL_PARAMETER)
 
 
@@ -116,6 +119,44 @@ def decimation_plan(n_samples: int, dt: float, freq_max: float) -> tuple:
         int(n_samples), float(dt), float(freq_max), "auto",
         pencil_parameter=PENCIL_PARAMETER, max_modes=HARMINV_MAX_MODES)
     return tuple(int(q) for q in factors), int(kept)
+
+
+def _identification_plan(n_window, dt, freq_max, n_channels):
+    """Keep accepted plans; try capacity-preserving plans only after refusal."""
+    from rfx import ringdown as rd
+
+    default = decimation_plan(n_window, dt, freq_max)
+    bound = rd.IDENTIFY_MEMORY_BOUND_BYTES
+    parameter = rd.PENCIL_PARAMETER
+    try:
+        _check_identification_memory(
+            n_window, (default[1], n_channels), bound=bound, pencil_parameter=parameter)
+        return default
+    except IdentificationMemoryRefused:
+        pass
+    columns = _harminv._pencil_columns(n_window, parameter)
+    capacity = min(rd.HARMINV_MAX_MODES + 1, columns, n_window - columns)
+    target = int(1.0 / dt / (4.0 * freq_max))
+    trim = 2 * _FIR_HALF_OUTPUT_SAMPLES
+    # Every full plan keeps at most ceil(n_window / q) - trim samples.
+    # Skip effective factors that cannot even retain capacity samples.
+    target = min(target, (n_window - 1) // (max(_MIN_PENCIL_SAMPLES, capacity) + trim - 1))
+    for q in range(target, 1, -1):
+        factors = tuple(_decimation_factors(q))
+        kept = n_window
+        for factor in factors:
+            kept = (kept + factor - 1) // factor - trim
+            columns = _harminv._pencil_columns(kept, parameter)
+            if kept < _MIN_PENCIL_SAMPLES or min(columns, kept - columns) < capacity:
+                break
+        else:
+            try:
+                _check_identification_memory(
+                    n_window, (kept, n_channels), bound=bound, pencil_parameter=parameter)
+                return factors, kept
+            except IdentificationMemoryRefused:
+                pass
+    return default
 
 
 def _decimate(Y: np.ndarray, factors) -> np.ndarray:
