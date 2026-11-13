@@ -1118,11 +1118,13 @@ def validate_subgrid_setup(
                     )
                 )
         if spec.debye_poles or spec.lorentz_poles or spec.chi3:
+            from rfx.materials.pole_map import is_map
+            map_label = " LorentzPoleMap" if any(is_map(p) for p in spec.lorentz_poles or ()) else ""
             issues.append(
                 _issue(
                     "error",
                     "dispersive_or_nonlinear_material",
-                    f"material {name!r} uses dispersion/nonlinearity not wired into the subgrid runner",
+                    f"material {name!r}{map_label} uses dispersion/nonlinearity not wired into the subgrid runner",
                 )
             )
 
