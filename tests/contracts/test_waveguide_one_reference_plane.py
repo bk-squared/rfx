@@ -138,13 +138,11 @@ def test_d1b_graded_forward_crossing_refuses_like_run():
 def test_calculator_measured_planes(graded, n_modes, normalize, record_property):
     sim = _port_sim(graded=graded, preset="measured")
     sim._waveguide_ports = [replace(sim._waveguide_ports[0], x_position=5.2 * DX,
-                                   n_modes=n_modes,
-                                   mode_profile="analytic" if n_modes > 1 else "discrete")]
+                                   n_modes=n_modes)]
     sim.add_waveguide_port(
         sim._domain[0] - 5.25 * DX, direction="-x", name="right",
         freqs=np.linspace(8.4e9, 11.6e9, 5), f0=10e9,
         ref_offset=3, probe_offset=10, n_modes=n_modes, calibration_preset="measured",
-        mode_profile="analytic" if n_modes > 1 else "discrete",
     )
     if graded:
         # A reflected wave makes a wrong extraction shift observable after normalization.

@@ -159,7 +159,7 @@ def test_omitted_range_spans_the_domain_with_unequal_pads(absorbing):
                    ((0, .004, rim[0]), (.032, .016, rim[1]))):
         sim.add(Box(lo, hi), material="pec")
     sim.add_waveguide_port(.008, direction="+x", y_range=(.006, .014),
-                           f0=25e9, freqs=[24e9, 26e9], ref_offset=1, probe_offset=2, mode_profile="analytic")
+                           f0=25e9, freqs=[24e9, 26e9], ref_offset=1, probe_offset=2)
     admit_waveguide(sim)
     grid = sim._build_grid()
     assert getattr(grid, f"pad_z_{absorbing}") == 4

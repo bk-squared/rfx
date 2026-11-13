@@ -712,7 +712,6 @@ def test_advisory_dedupe_key_keeps_axes_apart_when_their_cutoffs_coincide():
     for pos, direction in ((0.02, "+x"), (0.02, "+z")):
         sim.add_waveguide_port(
             pos, direction=direction, mode=(1, 0), mode_type="TE",
-            mode_profile="analytic",
             freqs=jnp.asarray(_FREQS), f0=float(np.mean(_FREQS)), bandwidth=0.6)
 
     grid = sim._build_grid()
@@ -766,7 +765,7 @@ def test_advisory_uses_the_lowest_cutoff_mode_of_a_multimode_port():
     )
     for pos, direction in ((0.02, "+x"), (0.10, "-x")):
         sim.add_waveguide_port(
-            pos, direction=direction, mode=(1, 0), mode_type="TE", n_modes=2, mode_profile="analytic",
+            pos, direction=direction, mode=(1, 0), mode_type="TE", n_modes=2,
             freqs=jnp.asarray(_FREQS), f0=float(np.mean(_FREQS)), bandwidth=0.6)
 
     grid = sim._build_grid()

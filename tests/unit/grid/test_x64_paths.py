@@ -38,8 +38,7 @@ def exercise(path, feature):
                             method='methodB' if feature == 'oblique_open' else 'bloch')
     elif feature == 'waveguide':
         sim.add_waveguide_port(.003, y_range=(0., domain[1]), z_range=(0., domain[2]),
-                              f0=20e9, freqs=np.array([20e9]), probe_offset=2, ref_offset=1,
-                              mode_profile='analytic' if path == 'uniform' else 'discrete')
+                              f0=20e9, freqs=np.array([20e9]), probe_offset=2, ref_offset=1)
     elif feature == 'ringdown':
         sim.add_port((.004, .004, .001), 'ez', extent=.002,
                      waveform=lambda t: jnp.where(t < 1e-12, 1., 0.))

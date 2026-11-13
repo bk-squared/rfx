@@ -229,8 +229,7 @@ def test_waveguide_realized_exterior(aperture, boundary, faces, entry, monkeypat
     kwargs = {} if boundary == "default" else {"boundary": "cpml"}
     sim = Simulation(freq_max=15e9, domain=(.024, .012, .012), dx=.001, **kwargs)
     port = {} if aperture == "full" else {"y_range": (.002, .010), "z_range": (.002, .010)}
-    sim.add_waveguide_port(.006, direction="+x", f0=7.5e9,
-                           mode_profile="analytic" if aperture == "small" else "discrete", **port)
+    sim.add_waveguide_port(.006, direction="+x", f0=7.5e9, **port)
     if aperture == "small":
         for lo, hi in (
             ((0., .001, .001), (.016, .002, .011)),

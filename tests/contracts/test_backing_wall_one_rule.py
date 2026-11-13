@@ -352,8 +352,7 @@ def test_class_W_calculator(normalize, n_modes):
     for position, direction in ((.01, '+x'), (.03, '-x')):
         sim.add_waveguide_port(position, direction=direction, f0=20e9,
                               freqs=np.array([20e9]), n_modes=n_modes,
-                              probe_offset=2, ref_offset=1,
-                              mode_profile="analytic" if n_modes > 1 else "discrete")
+                              probe_offset=2, ref_offset=1)
     got = capture(sim, 'calculator', 'uniform', invoke=lambda: sim.compute_waveguide_s_matrix(
         n_steps=1, normalize=normalize))
     assert got['faces'] == expected_faces(sim, got['grid'], 'W-guide', 'uniform')

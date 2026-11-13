@@ -1024,7 +1024,7 @@ def test_s2_aperture_table_subjects():
                      cpml_layers=4, snap='declared')
     sim.add_waveguide_port(.00523, direction='+x', y_range=(.00217, .00873),
                           z_range=(.00129, .00761), freqs=[80e9], f0=80e9,
-                          ref_offset=1, probe_offset=2, mode_profile="analytic")
+                          ref_offset=1, probe_offset=2)
     report = sim.preflight(check_ntff=False, check_resolution=False)
     check_report(sim, report)
     findings = report.by_code('port_aperture_snap')

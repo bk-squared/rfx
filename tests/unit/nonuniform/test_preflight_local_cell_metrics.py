@@ -65,7 +65,7 @@ def test_waveguide_reference_plane_verdict_uses_local_cells(axis):
     for sign, source, reference in (("+", 8, 8), ("-", 12, 12.375)):
         sim.add_waveguide_port(source * U, direction=sign + axis,
                               reference_plane=reference * U, freqs=freqs,
-                              ref_offset=1, probe_offset=2, mode_profile="analytic")
+                              ref_offset=1, probe_offset=2)
     grid = sim._build_realized_grid()
     for coordinate in (8 * U, 12.375 * U):
         assert grid.cells(axis)[grid.index_of(axis, coordinate)] == U / 2
@@ -160,7 +160,7 @@ def test_waveguide_different_reference_cells_choose_min(axis, fine_plane):
     for sign, source, reference in (("+", 6, 6), ("-", 14, 14.375)):
         sim.add_waveguide_port(source * U, direction=sign + axis,
                               reference_plane=reference * U, freqs=np.array([80e9]),
-                              ref_offset=1, probe_offset=2, mode_profile="analytic")
+                              ref_offset=1, probe_offset=2)
     grid = sim._build_realized_grid()
     expected_sizes = (U / 2, U) if fine_plane == "plus" else (U, U / 2)
     for coordinate, size in zip((6, 14.375), expected_sizes):
