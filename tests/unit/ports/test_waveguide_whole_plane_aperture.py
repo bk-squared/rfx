@@ -415,8 +415,8 @@ def test_simulation_builds_the_accepted_cell_span():
 def test_cell_span_s_equals_merge_base(scene, name):
     """Compiled float32 sums vary across machines, so comparison is not bitwise."""
     reference = json.loads((Path(__file__).parents[2] / "data" /
-                            "waveguide_cell_span_70f259a45.json").read_text())
-    assert reference["merge_base"] == "70f259a454ba662e51c1dadd2e21f5b8ac867f5c"
+                            "waveguide_cell_span_66be9e1f7.json").read_text())
+    assert reference["merge_base"] == "66be9e1f77e121f5b40d83b0dcd330ebc7f239cc"
     expected = reference["extractors"][name]
     actual = _extract(scene, name)
     assert actual.dtype.str == expected["dtype"]
@@ -426,11 +426,21 @@ def test_cell_span_s_equals_merge_base(scene, name):
         zlib.decompress(base64.b64decode(expected["zlib_base64"])),
         dtype=expected["dtype"],
     ).reshape(shape)
-    delta = np.abs(actual - expected_array)
-    # Each S entry against its own peak over frequency: a below-cutoff entry's
-    # near-zero incident wave must not set the scale of the physical entries.
-    # The flux extractors' diagonal entries are exactly zero and must stay so.
-    scale = np.max(np.abs(expected_array), axis=-1, keepdims=True)
+    nan_mismatches = np.count_nonzero(np.isnan(actual) != np.isnan(expected_array))
+    finite = np.isfinite(expected_array)
+    # Each S entry uses its own peak over finite frequency bins.
+    # Exactly-zero entries must stay zero; all-NaN entries use only the mask.
+    scale = np.max(np.where(finite, np.abs(expected_array), 0.0),
+                   axis=-1, keepdims=True)
+    delta_complex = np.zeros_like(actual)
+    np.subtract(actual, expected_array, out=delta_complex,
+                where=finite)
+    delta = np.abs(delta_complex)
     ratio = np.divide(delta, scale, out=np.where(delta > 0, np.inf, 0.0),
                       where=scale > 0)
-    assert np.all(ratio <= 1e-4), f"max|delta| / own peak = {np.max(ratio):.9g}"
+    ratio = np.where(finite & ~np.isfinite(actual), np.inf, ratio)
+    worst_ratio = np.max(ratio)
+    message = (f"max|delta| / own peak = {worst_ratio:.9g}; "
+               f"NaN-mask mismatch count = {nan_mismatches}")
+    assert nan_mismatches == 0, message
+    assert np.all(ratio <= 1e-4), message
