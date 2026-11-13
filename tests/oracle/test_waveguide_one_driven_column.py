@@ -65,7 +65,7 @@ def derivative(*, yee=False):
 
 def emit(label, **values):
     def serial(value):
-        return value.tolist() if isinstance(value, np.ndarray) else value
+        return value.tolist() if isinstance(value, (np.ndarray, np.generic)) else value
     print('ONE_DRIVEN ' + json.dumps(dict(label=label, **values), default=serial), flush=True)
 
 
@@ -153,10 +153,12 @@ def test_a3_slab_gradient(mesh, record_time, capfd):
 
         def transmission(p):
             result = sim.forward(eps_override=base + p * mask, n_steps=steps,
-                                 skip_preflight=True, checkpoint=True, checkpoint_every=64)
+                                 skip_preflight=True, checkpoint=False)
             return jnp.abs(result.waveguide_sparams['p2'].s_driven)
 
-        gradient = np.asarray(jax.jacrev(transmission)(jnp.asarray(0., dtype=base.dtype)))
+        # One scalar material parameter: forward-mode AD evaluates all bins
+        # in one tangent scan without retaining a reverse-mode field history.
+        gradient = np.asarray(jax.jacfwd(transmission)(jnp.asarray(0., dtype=base.dtype)))
         gradients.append(gradient)
         with capfd.disabled():
             emit('A3', mesh=mesh, factor=factor, steps=steps, rfx=gradient,
