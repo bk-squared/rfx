@@ -42,6 +42,9 @@ on each cropped face slab and its collocation halo. Compensation cotangents
 are zero by cancellation in the Kahan update. NTFF-only calls take their bins
 from the box; all registered monitors must share those bins. The second scan
 switches off NTFF accumulation and drops its carry, alongside plane carries.
+In float32, a hand-written intensity/power quotient gives a NaN gradient on
+every gradient path when radiated power is below about 5e-20 at rfx's field
+scale, while `maximize_directivity`'s log ratio stays finite.
 
 Interior uniform dual volumes are V=dx^3: reciprocal density sources use
 b/V and the overlap uses V, so these factors cancel. CPML and boundary

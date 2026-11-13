@@ -17,6 +17,7 @@ import pytest
 
 from rfx import Box, gradient_record_length_witness
 from rfx.core.yee import MU_0
+from rfx.optimize_objectives import maximize_directivity
 from rfx.measurement.farfield import (
     NTFFBox, accumulate_ntff, init_ntff_data, compute_far_field_jax,
 )
@@ -54,7 +55,9 @@ def scene(kind, precision, lossy):
     return sim, eps
 
 
-def loss_function(sim, kind, mode):
+def loss_function(sim, kind, mode, objective="quotient"):
+    directivity_objective = (maximize_directivity(theta_target=np.pi/2, phi_target=0.)
+                            if objective == "maximize_directivity" else None)
     def loss(eps, steps):
         result = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=eps,
                              n_steps=steps, checkpoint_segments=8,
@@ -63,6 +66,8 @@ def loss_function(sim, kind, mode):
             spectrum = result.dft_planes["out"].accumulator / result.dt
             weights = jnp.arange(spectrum.size).reshape(spectrum.shape) + 1
             return jnp.sum(weights * jnp.abs(spectrum)**2)
+        if directivity_objective is not None:
+            return directivity_objective(result)
         # Three polar samples, two bins; a discrete sphere quadrature defines
         # radiated power. This objective depends on both E and H NTFF channels.
         theta = jnp.array([np.pi/6, np.pi/2, 5*np.pi/6])
@@ -102,23 +107,27 @@ def settled_reference(loss, eps, record_property):
 @pytest.mark.parametrize("precision", ["float64", "float32"])
 def test_g1_g2_g3_g4(kind, collocation, lossy, precision, record_property):
     start = time.monotonic()
+    # Amendment 3 changes only float32 NTFF, including its float64 comparator.
+    objective = ("maximize_directivity" if precision == "float32" and kind == "ntff"
+                 else "quotient")
+    record_property("objective", objective)
+    record_property("gate", "G3" if precision == "float32" else "G1" if kind == "h" else "G2")
     with enable_x64() if precision == "float64" else nullcontext():
         with collocation_mode(collocation):
             # Amendment 2: both dtypes use the same settled float64 comparator.
             # Materialize on the host before leaving x64 so G3 keeps its precision.
             with enable_x64():
                 reference_sim, reference_eps = scene(kind, "float64", lossy)
-                reference_loss = loss_function(reference_sim, kind, "autodiff")
+                reference_loss = loss_function(reference_sim, kind, "autodiff", objective)
                 steps, reference = settled_reference(reference_loss, reference_eps, record_property)
                 reference = np.asarray(reference)
             record_property("reference_precision", str(reference.dtype))
             sim, eps = scene(kind, precision, lossy)
-            adjoint_loss = loss_function(sim, kind, "adjoint")
+            adjoint_loss = loss_function(sim, kind, "adjoint", objective)
             # Explicit user jit is covered for both H-plane and NTFF-only calls.
             actual = jax.jit(jax.grad(adjoint_loss), static_argnums=1)(eps, steps)
             error = errors(actual, reference)[0]
             record_property("gradient_error", error)
-            record_property("gate", "G1" if kind == "h" else "G2")
             assert error <= (1e-5 if precision == "float64" else 1e-4), "G1/G2/G3 gradient agreement"
             witness = gradient_record_length_witness(
                 adjoint_loss, eps, steps, tol=1e-2, factor=2.0)
