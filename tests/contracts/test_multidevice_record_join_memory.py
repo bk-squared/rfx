@@ -131,7 +131,7 @@ def test_time_plane_memory_mutations(mutation, monkeypatch, tmp_path):
             jax.block_until_ready(whole)
             return result
         monkeypatch.setattr(TimePlaneRecords, 'assemble', replicated)
-        expected = 'join distinct-buffer bound'
+        expected = '(compiled temporary|join distinct-buffer) bound'
     else:
         monkeypatch.setattr(join, 'chunk_shape', lambda shape, *args: tuple(shape))
         expected = 'chunk bound'
