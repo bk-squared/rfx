@@ -9,6 +9,30 @@ moves that week's pull request forward; it never adds a second one. Prices are r
 significant figures when merged, so a refresh rewrites only the prices that moved. Before this
 rule, four re-pricings in two weeks changed about 144,000 lines.
 
+2026-11-13: fast prices re-priced. `regen-durations` run
+[43386942054](https://github.com/bk-squared/rfx/actions/runs/43386942054) (`lanes=fast`, main
+`e5058e49d`), normalised to the EPYC 7763 with the unchanged 2026-10-29 factors below. All 20 jobs
+uploaded artifacts; none needed log pricing. Jobs 15 and 18 ran on a CPU with no factor (Xeon 6975P-C)
+and were not merged; their 1,875 tests keep the 2026-11-12 prices. No result-line gap exceeds its artifact value by 600 s
+(largest excess 32.6 s); each artifact sum is 1.00-2.61 % below its session time. The unchanged
+full-inventory-or-freshly-measured prune rule drops 37 old entries at `fae5f90e9`; all freshly
+measured IDs are in this Mac's full collection. Merged in the 10-29 order
+(old file, jobs 1-9, 11-14, 16-17, 19-20, then job 10), rounded to two significant figures:
+31,137 → **31579 entries in the file**, of which **2556 carried unchanged** (not re-measured).
+The explicit fast collection (`not gpu and not slow and not slow_physics`, 31,829 tests on macOS,
+no CAD extra) has 602 unpriced tests, down from 1,081; the default addopts additionally excludes
+`docs_consistency`. pytest-split predicts 24.4-40.4 min per shard (7763 basis), versus old
+25.7-38.5 min; the old split under new prices costs 24.4-72.0 min.
+Check on 187 readings from the 10 most recent green pr-tests code runs, using each shard's own test list:
+normalised actual / new-price prediction median 0.997, p10 0.873, p90 1.193,
+range 0.735-1.379; 13 group readings on CPUs absent from the factor table were excluded;
+all retained readings use existing factors, with no refit. Each retained run has at least 15 usable groups.
+Newly priced files: `tests/unit/materials/test_pole_map_gradients.py`,
+`tests/unit/materials/test_pole_map_runs.py`, and `tests/contracts/test_measurement_plan_ringdown.py`.
+`.test_durations_weekly` unchanged: the 11-09 validation run was red, the method requires a green
+weekly run, and the 11-16 run feeds the next refresh. Inputs, scripts, readings and file-price details:
+the refresh record.
+
 2026-11-12: from this date the fast suite runs in 20 groups.
 `.test_durations` is unchanged; pytest-split recomputes the groups from it. The fast
 regeneration job in `regen-durations.yml` also runs in 20 groups.
