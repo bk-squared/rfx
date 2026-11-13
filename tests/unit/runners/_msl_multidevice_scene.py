@@ -40,10 +40,15 @@ class Scene:
 
 def build_scene(name="T1", *, mode="laplace", excite_all=False):
     """Declare a J0 scene; optionally enable both microstrip S-matrix drives."""
-    if name.removesuffix("_graded") not in ("T1", "T2", "Y1", "T1L"):
+    base = name.removesuffix("_graded")
+    if base not in ("T1", "T2", "Y1", "T1L", "T1A", "Y1A"):
         raise ValueError(f"Unknown scene {name!r}")
     is_y = name.startswith("Y1")
     domain = (0.008, 0.012, 0.0032) if is_y else (0.012, 0.008, 0.0032)
+    if base == "T1A":
+        domain = (0.0124, 0.008, 0.0032)
+    elif base == "Y1A":
+        domain = (0.008, 0.0124, 0.0032)
     options = {}
     if name.endswith("graded"):
         options["dz_profile"] = np.r_[
@@ -87,7 +92,10 @@ def build_scene(name="T1", *, mode="laplace", excite_all=False):
             name=f"p{index + 1}",
             mode=mode,
             excite=excite_all or index == 0,
-            n_probe_offset=16 if name.removesuffix("_graded") == "T2" and index == 0 else 12,
+            n_probe_offset=(
+                16 if (base == "T2" and index == 0)
+                or (base in ("T1A", "Y1A") and index == 1) else 12
+            ),
             n_probe_spacing=3,
             n_probes=5,
         )
