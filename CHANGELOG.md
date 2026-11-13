@@ -4200,7 +4200,7 @@ for material Boxes and PEC volumes on uniform and graded meshes.
   15 f32 ulps away from the x64=1 value (PR #1088's drift pin: max rel 1.131e-06 / 6.467e-07 /
   1.025e-06 for ex/ey/ez on the boundary-voxel Box fixture, dx = 2.54e-4 m, ε 4). Coordinate
   routing alone could not close that — the coordinates were already the correctly rounded
-  float32 of the exact spine. Option (a), PI decision 2026-09-16: when every input is concrete
+  float32 of the exact spine. Option (a), decided 2026-09-16: when every input is concrete
   (host node/centre spine, Python-float shape parameters and permittivities) the whole chain now
   runs in numpy float64 and is cast to the active JAX dtype ONCE at the end. The formulas
   (Kottke averaging, SDFs, `f = clip(0.5 − sdf/ℓ)`, nearest-face normals) and the output
@@ -4348,7 +4348,7 @@ for material Boxes and PEC volumes on uniform and graded meshes.
   lane) was bit-identical at both flags. A measured cross-flag **drift pin** now records this
   envelope in `tests/unit/geometry/test_smoothing_coordinate_contract.py`; it is not the
   acceptance. Whether to compute Kottke fill fractions in host float64 for concrete shapes
-  (option a) or ratify the envelope (option b) is recorded on #833 as the PI's decision.
+  (option a) or ratify the envelope (option b) is left open on #833.
 ### Fixed — the example-fidelity gate described coverage it no longer has, and cv21's port span was asserted against its own literal (#737, #739)
 
 - Tests and docs only: no library code, no gate threshold and no snapshot value changed.
@@ -5617,7 +5617,7 @@ to patch conductively. The two solvers were not modelling the same feed.
   -0.3448 dB was measured 2026-09-01 (design note
   `20260901_patch_mode_identification_predeclaration.md` section 6.6, `main`
   today row) and -0.3182 dB on 2026-09-06 at `495e180c`
-  (`docs/research_notes/audit-2026-09-02/i920/solve/A2_pre920_span_495e180c.json`,
+  (run record kept with the project,
   Z_in 45.77 - 347.00j at 2.320 GHz, settling -54.0 dB SETTLED; independently
   the #920 spot-check's E1_a run reads the same to four digits). The 2.7 mdB
   between them is the extractor moving again, not the fixture; it is not
@@ -7993,10 +7993,9 @@ corrections to fixes that had not yet shipped.
   — so it is not a `jacobian_fwd` fence at all any more.)
 - Provenance: the issue's own author downgraded #577 to nice-to-have on
   2026-08-06 in favour of #579 (a reverse-mode scalar-objective need);
-  #579 shipped (PR #619, 2026-08-10). The PI directed this session, in
-  the same window after #579 shipped, to proceed to #577 following
-  #622/#582. `docs/agent-memory/` carries no forward-mode/jvp/jacfwd STOP
-  or do-not-repeat entry.
+  #579 shipped (PR #619, 2026-08-10). #577 was taken up after #579
+  shipped, following #622/#582. No recorded stop or do-not-repeat note
+  covers forward mode, jvp or jacfwd.
 - New docs: `docs/agent/recipe-design-loop.mdx` gains a `jacobian_fwd`
   section; `docs/guides/api_symbol_inventory.json` regenerated
   (`rfx.jacobian_fwd`'s parameter names `sim_fn, params, tangents,
@@ -9095,8 +9094,7 @@ GPU gate green: `pytest -m gpu` on the release commit = 187 passed / 62 skipped 
   (187 passed / 62 skipped / 2 xfailed). A new contract test
   (`tests/test_waveguide_modes_extraction_contract.py`) pins the re-export
   surface and the pure-NumPy (no-import-cycle) invariant. (PR #219)
-- Removed 23 dangling references to gitignored internal docs
-  (`docs/agent-memory/…`, `docs/research_notes/…`, `.claude/…`, `CLAUDE.md`) from
+- Removed 23 dangling references to gitignored internal docs from
   shipped code and examples — public clones do not contain those paths — and
   repointed the two with public equivalents to `docs/agent/recipe-*.mdx`. Added a
   CI guard (`.github/workflows/lint.yml` `agent-docs-hygiene`) so the class cannot
