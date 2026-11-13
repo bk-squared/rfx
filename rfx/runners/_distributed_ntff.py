@@ -12,6 +12,7 @@ import numpy as np
 from jax import lax
 from rfx.runners._rank import rank_shard_map
 from rfx.stepping.slab import place
+from rfx.stepping.record_join import join_owned, packed_pieces, record_bytes
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.farfield import (NTFFData, accumulate_ntff, init_ntff_data,
@@ -80,14 +81,36 @@ class SlabNTFF:
                               (local[0], fields, n))[None]
         return update_local(ranks, buffer, state, step)
 
-    def assemble(self, buffer):
+    def assemble(self, buffer, *, multi_process=False):
+        """Reduce disjoint owned chunks; keep the gathered host path explicit."""
+        if multi_process:
+            return self._assemble_host(buffer)
+        template = jax.eval_shape(lambda: init_ntff_data(
+            self.box, field_dtype=jnp.float64 if self.dtype == jnp.complex128 else jnp.float32))
+        owners: list[list[list[tuple]]] = [[[] for _ in self.parts] for _ in template]
+        arrays = list(template)
+        for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):
+            for index, (offset, shape) in enumerate(packed_pieces(shapes, sizes)):
+                face = index % 6
+                if face < 2 and not faces[face]:
+                    continue
+                start = 0 if face < 2 else lo - self.box.i_lo
+                owners[index][rank].append((offset, shape, (0, start, 0, 0), shape))
+                if face < 2:
+                    arrays[index] = jax.ShapeDtypeStruct(shape, buffer.dtype)
+        record_size = record_bytes(arrays)
+        return NTFFData(*(join_owned(buffer, pieces, a.shape, a.dtype, mesh=self.mesh,
+                                    kind="ntff", record_size=record_size,
+                                    x_axis=None if index % 6 < 2 else 1)
+                          for index, (pieces, a) in enumerate(zip(owners, arrays))))
+
+    def _assemble_host(self, buffer):
         """Place each cell once, preserving compensation; no spatial sum."""
         result = list(init_ntff_data(self.box, field_dtype=jnp.float64
                                     if self.dtype == jnp.complex128 else jnp.float32))
-        # Indexing the x-sharded buffer by rank compiles a gather with an
-        # XLA partition-id; replicate it first, which stays
-        # differentiable. The multi-process caller passes an already
-        # gathered host array, which needs neither.
+        # The multi-process caller passes the gathered host array. On one
+        # process, assemble reduces owner chunks inside rank_shard_map instead
+        # of indexing an x-sharded carry or replicating it first.
         if isinstance(buffer, (jax.Array, jax.core.Tracer)):
             buffer = place(buffer, NamedSharding(self.mesh, P()))
         for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):

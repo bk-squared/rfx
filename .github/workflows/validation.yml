@@ -329,6 +329,15 @@ jobs:
           tests/unit/runners/test_distributed_uniform_directivity_parity.py
           tests/unit/runners/test_distributed_tfsf_slab.py
 
+      - name: Run three-device owned record join cases
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_record_join.py
+
       - name: Run three-device uniform and graded CPML lumped RLC S4 contracts
         if: ${{ !cancelled() }}
         env:
