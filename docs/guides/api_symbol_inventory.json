@@ -2678,6 +2678,7 @@
       "raw_3probe_dump_path",
       "strict_extractor",
       "eps_override",
+      "devices",
       "checkpoint_every",
       "checkpoint_segments",
       "enforce_passivity",

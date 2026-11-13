@@ -70,7 +70,7 @@ def compute_msl_s_matrix(
     raw_3probe_dump_path: str | None = None,
     strict_extractor: bool = False,
     eps_override: "jnp.ndarray | None" = None,
-    devices=None,
+    devices: list | None = None,
     checkpoint_every: int | None = None,
     checkpoint_segments: int | None = None,
     enforce_passivity: bool = False,
@@ -252,6 +252,10 @@ def compute_msl_s_matrix(
         ~``sqrt(n_steps)*carry`` instead of ``n_steps*carry`` — required for
         converged ``num_periods>=20`` AD that otherwise OOMs (G-AD-CHECKPOINT).
         Default ``None`` leaves forward-only runs and small-period AD unchanged.
+    devices : list or None
+        Devices for each per-drive run, as in ``run(devices=...)``. S and the
+        settling witness equal one device's. Refused together with
+        ``eps_override``, ``checkpoint_every`` or ``checkpoint_segments``.
     checkpoint_every : int or None
         Non-uniform-mesh counterpart of ``checkpoint_segments`` (chunk size,
         not segment count). Forwarded to :meth:`forward`; raises
