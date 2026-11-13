@@ -1,8 +1,6 @@
-### Fixed — Refuse ambiguous discrete waveguide modes (#PR)
+### Fixed — Preserve requested modes on degenerate waveguide apertures (#PR)
 
-A square-guide TE10 port could launch a 45-degree mix of TE10 and TE01
-that depends on the machine; a 2:1 guide's second mode likewise mixed TE01
-and TE20. Discrete profiles are now refused when the requested mode shares
-its discrete cutoff with another mode within roundoff. The error names the
-modes and aperture cells. Use `mode_profile="analytic"`, or an aperture
-whose cell counts give the modes distinct cutoffs.
+Square and 2:1 apertures now launch the requested discrete mode independently of the eigensolver basis.
+Before, square TE10 could be a machine-dependent 0.707/0.707 TE10/TE01 mix; 2:1 TE01 mixed with TE20.
+Measured max |Ey| / max |Ez|: D1 TE10 9.22e-15; D2b TE20 6.41e-14.
+Default float32 public TE10 (D9): 9.22e-15 uniform and 7.33e-15 graded-x.
