@@ -13,7 +13,7 @@ name: pr-tests
 # contracts when it did not. Their NAMES are unchanged, which is
 # what the ruleset reads. The contract tests run either way.
 # No push-to-main run: every merge lands a tree tested by its PR or batch run.
-# Measured 61/61 green push runs on 2026-10-29..11-01 (record 20261101-devops-measure).
+# Measured 61/61 green push runs on 2026-10-29..11-01.
 #
 # `changes` MUST BE A REQUIRED CHECK, alongside `ruff`, `guards-and-preflight`
 # and `fast-suite (1)`..`(20)`, and the `main` ruleset has required it since
@@ -136,7 +136,7 @@ jobs:
         if: github.event_name == 'merge_group'
         run: echo 'PR-level gate, passed on the PR'
 
-      - name: Data budget — measurement records go to rfx-archive
+      - name: Data budget — measurement records go to the record repository
         if: github.event_name != 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -255,8 +255,8 @@ jobs:
     # the contexts main's ruleset requires, and a matrix that renames
     # them to `fast-suite (3.11, 1)` leaves every required check permanently
     # unreported, so no PR can merge.
-    # 2026-10-06 PI: twelve shards target ~25-30 min PR and merge-train test execution.
-    # 2026-11-12 PI (pi-desk 254): twenty shards; one trial run's slowest shard 38.3 min.
+    # Twelve shards target ~25-30 min PR and merge-train test execution.
+    # Twenty shards; one trial run's slowest shard 38.3 min.
     name: fast-suite (${{ matrix.group }})
     runs-on: ubuntu-latest
     # (Superseded 2026-10-16, see below.) 12-way pytest-split estimate at 728b1eccb: max 1726 s (28.8 min); x1.22 runner variance ~35 min, plus install and JAX import ~40 min, so 60 min leaves margin.

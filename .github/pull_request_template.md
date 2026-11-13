@@ -9,7 +9,7 @@ The text must be non-empty, without angle brackets. `none` (case-insensitive)
 requires a reason after an em dash (—), en dash (–), or hyphen (-).
   Review: <who read it> (separate instance) - ACCEPT   |   ... - ACCEPT WITH CHANGES
   Review: skipped - (a) <easily reverted pure docs/comment change>
-  Review: skipped - (b) <the PI instructed the skip>
+  Review: skipped - (b) <the maintainer instructed the skip>
 An unedited `<...>` placeholder does not pass.
 
 `lane:*` labels appear on this PR automatically, from the paths it touches. They

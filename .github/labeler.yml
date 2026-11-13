@@ -90,7 +90,7 @@
           - "tests/**/*ntff*"
           - "tests/**/*farfield*"
           - "tests/**/*rcs*"
-          # The run()/forward() one-pipeline contract (owner absorber, PI 2026-10-12).
+          # The run()/forward() one-pipeline contract (owner absorber).
           - "tests/contracts/*run_forward*"
 
 "lane:nu-mesh":
