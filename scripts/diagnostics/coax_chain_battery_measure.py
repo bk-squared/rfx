@@ -1995,7 +1995,7 @@ RULINGS = {
         "implemented, max |d|S|| <= one tenth of the magnitude gate in amplitude; the "
         "pre-declaration's addendum item 3 wrote it as 0.1 dB, which misstated it"),
     "open_judged_all_axis_absorption": (
-        "Issue 1218: both "
+        "The pre-declaration's addendum of 2026-09-25 (issue 1218): both "
         "coax lanes absorb on all three axes, so the lateral PEC can that held the field "
         "leaving an unshielded conductor end is gone. The open termination is judged again, "
         "like the short and the loads: magnitude within the bar, passivity 1.02, and "

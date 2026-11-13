@@ -102,7 +102,7 @@ the new prices the old shard 8 costs 84.6 min. Inputs, the build and prediction 
 
 
 2026-10-20: Removed 12 obsolete workflow/job test node IDs from each duration file
-after moving the A6000 and monthly ladder jobs to the job scheduler. Remaining prices
+after moving the A6000 and monthly ladder jobs out of this repository's workflows. Remaining prices
 are unchanged; the entry counts below reflect this pruning.
 
 Regenerated 2026-10-16 at `edd70b41efe86a5cf09fc15424a0e1efe5dea363` (branch `ci/cached-durations`,
