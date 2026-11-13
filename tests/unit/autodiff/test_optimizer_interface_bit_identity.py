@@ -524,22 +524,69 @@ def _equal_optimize(actual, reference):
     assert np.any(np.asarray(actual.latent) != 0)
 
 
-def _compare_multistart(cost, init, **kwargs):
+def _compare_multistart(cost, inits, **kwargs):
     actual_count, reference_count = [0], [0]
-    actual = optimize_module._adam_multistart(cost, [init], it_count=actual_count, **kwargs)
+    actual = optimize_module._adam_multistart(cost, inits, it_count=actual_count, **kwargs)
     reference = _reference_adam_multistart_04b960c1c(
-        cost, [init], it_count=reference_count, **kwargs)
-    for a, b in zip(actual, reference):
+        cost, inits, it_count=reference_count, **kwargs)
+    assert len(actual) == len(reference) == 4
+    for a, b in zip(actual, reference, strict=True):
         _equal(a, b)
     assert actual_count == reference_count == [kwargs["n_iters"]]
-    assert np.any(np.asarray(actual[0]) != np.asarray(init))
+    assert np.any(np.asarray(actual[0]) != np.asarray(inits[actual[3]]))
+    assert len(actual[2]) == len(inits)
+    for history in actual[2]:
+        assert len(history) == kwargs["n_iters"]
+        assert np.all(np.isfinite(history))
+        assert history[0] != history[-1]  # Every start moves, including the loser.
 
 
-def test_multistart_eager_step_clamp():
+@pytest.mark.parametrize("best_iterate", [False, True], ids=["final", "best-iterate"])
+def test_multistart_eager_step_clamp(best_iterate):
+    inits = [jnp.asarray(values, dtype=jnp.float32)
+             for values in ([0.5, -0.3, 1.2], [-0.8, 0.4, -0.2])]
+    target = jnp.asarray([1.0, -1.0, 0.5], dtype=jnp.float32)
+    _compare_multistart(lambda x: jnp.sum((x - target) ** 2), inits,
+                       n_iters=3, lr=0.1, step_clamp=0.05, jit=False,
+                       best_iterate=best_iterate)
+
+
+def test_multistart_nan_restores_last_good():
     init = jnp.asarray([0.5, -0.3, 1.2], dtype=jnp.float32)
     target = jnp.asarray([1.0, -1.0, 0.5], dtype=jnp.float32)
-    _compare_multistart(lambda x: jnp.sum((x - target) ** 2), init,
-                       n_iters=3, lr=0.1, step_clamp=0.05, jit=False)
+    evaluations = 0
+
+    def cost(x):
+        nonlocal evaluations
+        evaluations += 1
+        if evaluations == 3:
+            return jnp.asarray(jnp.nan, dtype=x.dtype)
+        return jnp.sum((x - target) ** 2)
+
+    results, counts = [], []
+    for run in (optimize_module._adam_multistart, _reference_adam_multistart_04b960c1c):
+        evaluations = 0
+        count = [0]
+        with pytest.warns(AccuracyWarning, match="non-finite loss/gradient .*iteration 2"):
+            result = run(cost, [init], n_iters=5, lr=0.1, jit=False, it_count=count)
+        assert evaluations == 3
+        assert len(result[1]) == 2
+        results.append(result)
+        counts.append(count)
+
+    assert len(results[0]) == len(results[1]) == 4
+    for actual, reference in zip(*results, strict=True):
+        _equal(actual, reference)
+    _equal(counts[0], counts[1])
+    assert counts == [[2], [2]]
+    # The second finite evaluation visits the result of the first update.
+    # Restore that latent, rather than the second update sent to the NaN call.
+    first_step, _, _ = _adam_update(jnp.zeros_like(init), jnp.zeros_like(init),
+                                    2 * (init - target), 0, 0.1, 0.9, 0.999, 1e-8, None)
+    for result in results:
+        _equal(result[0], init - first_step)
+        assert np.all(np.isfinite(result[1]))
+        assert result[1][0] != result[1][1]
 
 
 def test_multistart_jitted_fdtd():
@@ -551,7 +598,7 @@ def test_multistart_jitted_fdtd():
         return _obj(sim.forward(eps_override=jnp.broadcast_to(eps, shape),
                                 n_steps=20, skip_preflight=True))
 
-    _compare_multistart(cost, jnp.asarray(0.2, dtype=jnp.float32),
+    _compare_multistart(cost, [jnp.asarray(0.2, dtype=jnp.float32)],
                        n_iters=3, lr=0.1, jit=True)
 
 
