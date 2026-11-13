@@ -110,7 +110,7 @@ def test_user_cadence_identity_and_unchanged_text(graded, decay, capsys, monkeyp
     # Freeze the existing human reporter clock, leaving all solver computations real.
     monkeypatch.setattr('rfx.stepping.progress.time.perf_counter', lambda: 100.0)
     sim = small_sim(graded)
-    kw = dict(n_steps=40, report_every=10, report_label='한' * 200,
+    kw = dict(n_steps=40, report_every=10, report_label='\ud55c' * 200,
               compute_s_params=False, skip_preflight=True)
     if decay:
         kw.update(until_decay=1e-12, decay_max_steps=40, decay_min_steps=0, decay_check_interval=10)

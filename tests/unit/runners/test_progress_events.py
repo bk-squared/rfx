@@ -19,12 +19,12 @@ def test_schema_size_and_unicode_label():
     rows = []
     with events(rows.append), transport.scope('compute_waveguide_s_matrix', 'multi-device', ['p1', 'p2']):
         state = transport.current()
-        state.emit('phase_start', phase='step', label='한' * 200)
+        state.emit('phase_start', phase='step', label='\ud55c' * 200)
         state.emit('progress', phase='step', steps_done=50000, steps_total=50000,
                    total_is_cap=True, rate_steps_per_s=123.45678901234567,
                    eta_s=123.45678901234567, criterion='conserved_energy',
                    criterion_value=1.2345678901234567e-12, criterion_threshold=1e-12)
-    start = next(r for r in rows if r.get('label', '').startswith('한'))
+    start = next(r for r in rows if r.get('label', '').startswith('\ud55c'))
     assert start['label'].endswith('…') and len(start['label']) <= 48
     progress = next(r for r in rows if r['kind'] == 'progress')
     assert set(progress) == {'v', 't', 'kind', 'path', 'entry', 'run_id', 'phase',
