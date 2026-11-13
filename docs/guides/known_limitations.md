@@ -310,9 +310,9 @@ A body that no primal-cell centre falls inside is refused ("rasterizes to ZERO c
 Under `"full_tensor"` a thin non-Box body keeps the one-face rule: a `Cylinder` disc 0.3 of a cell thick (εr 4) reads Ez 1.951 on the diagonal where the series average is 1.290 (51 % high), on uniform and graded meshes.
 Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
 On a curved face, full-tensor dual-face averages still use a first-order planar model.
-A later group's pass with a crossed normal can jump when its face enters the cell.
+A later group's pass with a crossed normal steps when its face enters the cell; measured and listed under subpixel smoothing in the support matrix.
 Full-tensor spectral bounds include zero-weight portions, whose medium just beyond the face can step; a bound that clips then makes the tensor step too.
-Periodic images ±2 of traced shapes near an end of the admitted interval [−L, 2L] can reach beyond the domain edge and be missed by the existing image range.
+A traced shape on a periodic axis is admitted while its bounds lie inside [−L, 2L], but smoothing evaluates only its images −1, 0 and +1. If the shape is declared a full period outside the domain, with its upper bound less than half a cell below 2L, the smoothing samples at the domain's low face miss its copy across the seam and read the background. On 1 mm cells, 0.23 mm below 2L, Ey reads 1.000 where the body gives 1.810. The low end of the interval is affected only on a graded mesh with an oblique face normal: dx 1 mm, dy = dz 3 mm, 0.23 mm above −L, 0.318 off. A shape declared inside [0, L], or across one seam, is not affected. Declare traced periodic shapes there. A refusal of traced bounds closer than one padding length (half the first cell along the axis plus the largest cell) to −L or 2L is planned.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
