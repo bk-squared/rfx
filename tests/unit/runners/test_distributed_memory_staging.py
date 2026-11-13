@@ -390,7 +390,7 @@ def _measure(case, multi_process):
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
-    if case == 'nu':
+    if graded:
         loop.lax = SimpleNamespace(**{**vars(jax.lax), "scan": traced_scan})
         runner.lax = loop.lax
     else:
