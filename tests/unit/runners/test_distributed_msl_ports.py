@@ -87,31 +87,43 @@ def vi(result, geometry, port):
     return voltage, current
 
 
-@pytest.fixture(scope="module", params=[2, 3], ids=lambda n: f"n{n}")
+@pytest.fixture(scope="module", params=[2, pytest.param(3, marks=pytest.mark.slow)],
+                ids=lambda n: f"n{n}")
 def device_count(request):
     devices = host_devices(request.param)  # before ANY reference solve
     return request.param, devices
 
 
 @pytest.fixture(scope="module", params=[
-    (scene, lane, mode) for scene in ("T1", "T2", "Y1", "T1L")
+    pytest.param((scene, lane, mode),
+                 marks=() if scene in ("Y1", "T1L") and mode == "laplace" else pytest.mark.slow)
+    for scene in ("T1", "T2", "Y1", "T1L")
     for lane in ("uniform", "graded") for mode in ("laplace", "uniform")
 ], ids=lambda case: "-".join(case))
 def reference(request, device_count):
     n, devices = device_count
     name, lane, mode = request.param
     sim, geometry = observed_scene(name, lane, mode, n)
-    ref = sim.run(n_steps=2100, compute_s_params=False, skip_preflight=True)
-    jax.block_until_ready(ref.time_series)
-    yield sim, geometry, ref, devices, dict(scene=name, lane=lane, mode=mode, n=n)
+    references = {}
+
+    def reference_at(length):
+        # Only a selected length and the mandatory 2100-step scale are solved.
+        if length not in references:
+            references[length] = sim.run(n_steps=length, compute_s_params=False,
+                                         skip_preflight=True)
+            jax.block_until_ready(references[length].time_series)
+        return references[length]
+
+    longest = reference_at(2100)
+    yield sim, geometry, longest, reference_at, devices, dict(scene=name, lane=lane, mode=mode, n=n)
     jax.clear_caches()
 
 
-@pytest.mark.parametrize("length", [1050, 1400, pytest.param(2100, marks=pytest.mark.slow)])
+@pytest.mark.parametrize("length", [1050, pytest.param(1400, marks=pytest.mark.slow),
+                                    pytest.param(2100, marks=pytest.mark.slow)])
 def test_msl_fields_and_planes(reference, length):
-    sim, geometry, longest, devices, metadata = reference
-    expected = longest if length == 2100 else sim.run(
-        n_steps=length, compute_s_params=False, skip_preflight=True)
+    sim, geometry, longest, reference_at, devices, metadata = reference
+    expected = reference_at(length)
     started = perf_counter()
     actual = sim.run(n_steps=length, devices=devices, compute_s_params=False,
                      skip_preflight=True)
