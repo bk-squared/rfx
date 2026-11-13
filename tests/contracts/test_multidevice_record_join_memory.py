@@ -116,3 +116,25 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
                for row in analyses), ('chunk bound', report)
     assert all(row['temporary'] <= row['temporary_bar'] for row in analyses), ('compiled temporary bound', report)
     assert all(p <= c+record_size+live_allowance for p, c in zip(peaks, own)), ('join distinct-buffer bound', report)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('mutation', ['M1', 'M3'])
+def test_time_plane_memory_mutations(mutation, monkeypatch, tmp_path):
+    from jax.sharding import NamedSharding, PartitionSpec as P
+    from rfx.runners._distributed_records import TimePlaneRecords
+    if mutation == 'M1':
+        original = TimePlaneRecords.assemble
+        def replicated(self, buffer, **kwargs):
+            whole = jax.tree.map(lambda a: jax.device_put(a, NamedSharding(self.mesh, P())), buffer)
+            result = original(self, whole, **kwargs)
+            jax.block_until_ready(whole)
+            return result
+        monkeypatch.setattr(TimePlaneRecords, 'assemble', replicated)
+        expected = 'join distinct-buffer bound'
+    else:
+        monkeypatch.setattr(join, 'chunk_shape', lambda shape, *args: tuple(shape))
+        expected = 'chunk bound'
+    with pytest.raises(AssertionError, match=expected) as error:
+        test_join_memory('time_planes', 1, False, monkeypatch, tmp_path)
+    print(f'time_planes {mutation} RED {error.value}', flush=True)

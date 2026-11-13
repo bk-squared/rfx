@@ -94,7 +94,7 @@ def compare_records(actual, expected, actual_runs, expected_runs):
     return rows
 
 
-def parity(scene_name, lane, n, length, monkeypatch):
+def parity(scene_name, lane, n, length, monkeypatch, mutate=None):
     started = time.monotonic()
     scene = build_scene(scene_name + ('_graded' if lane == 'graded' else ''), excite_all=True)
     owners = assert_owners(scene, n)
@@ -113,6 +113,8 @@ def parity(scene_name, lane, n, length, monkeypatch):
         expected = scene.sim.compute_msl_s_matrix(freqs=FREQS, n_steps=length)
         expected_runs = runs[:]
         runs.clear()
+        if mutate is not None:
+            mutate(patch)
         actual = scene.sim.compute_msl_s_matrix(freqs=FREQS, n_steps=length, devices=devices)
     assert len(calls) == 4, ('one scan per drive', calls)
     assert calls == [None, None, devices, devices], ('M4 devices reaches variant.run', calls)
@@ -137,3 +139,64 @@ def test_msl_devices_refuses_forward_options(graded, name):
     scene = build_scene('T1A_graded' if graded else 'T1A', excite_all=True)
     with pytest.raises(NotImplementedError, match=name + '.*devices.*(forward|gradient)'):
         scene.sim.compute_msl_s_matrix(devices=host_devices(2), **{name: 1})
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('mutation,scene', [('M3', 'T1A'), ('M4', 'T1A'),
+                                           ('M9', 'T1A'), ('M9', 'T1'),
+                                           ('M10', 'T1A'), ('M10', 'T1')])
+def test_mutation_bars(mutation, scene, monkeypatch):
+    from dataclasses import replace
+    from rfx.runners import _distributed_records as records
+    from rfx.sparams import msl, _msl_stages
+
+    def mutate(patch):
+        if mutation == 'M3':
+            original = records.join_owned
+            def drop(buffer, owners, *args, **kwargs):
+                if kwargs['kind'] == 'time_planes':
+                    owners = [owners[0], []]
+                return original(buffer, owners, *args, **kwargs)
+            patch.setattr(records, 'join_owned', drop)
+        elif mutation in ('M4', 'M10'):
+            original = Simulation.run
+            def changed(sim, **kwargs):
+                if mutation == 'M4':
+                    kwargs.pop('devices', None)
+                else:
+                    entries = sim._msl_ports
+                    sim._msl_ports = [replace(e, excite=entries[1-i].excite,
+                                             waveform=entries[1-i].waveform)
+                                      for i, e in enumerate(entries)]
+                return original(sim, **kwargs)
+            patch.setattr(Simulation, 'run', changed)
+        else:
+            # Exchange port-labelled wave records before the solve, and their
+            # reference-plane metadata before shifting. This yields P S P^T.
+            solve = msl.msl_solve_s_from_waves
+            shift = _msl_stages._shift_msl_reference_planes
+            patch.setattr(msl, 'msl_solve_s_from_waves',
+                          lambda a, b: solve([row[::-1] for row in a], [row[::-1] for row in b]))
+            def relabel(*args):
+                args = list(args)
+                for index in (3, 4, 8, 9, 10, 12):
+                    if args[index] is not None:
+                        args[index] = args[index][::-1]
+                return shift(*args)
+            patch.setattr(_msl_stages, '_shift_msl_reference_planes', relabel)
+
+    if mutation == 'M9' and scene == 'T1':
+        # B2-a only: symmetric scenes cannot identify exchanged port labels.
+        original = compare_records
+        with monkeypatch.context() as patch:
+            patch.setattr(__import__(__name__, fromlist=['compare_records']), 'compare_records',
+                          lambda *args: [])
+            parity(scene, 'uniform', 2, 1050, patch, mutate)
+        assert compare_records is original
+        print('mutation M9 T1 GREEN B2-a', flush=True)
+    else:
+        expected = {'M3': 'B2-b records', 'M4': 'M4 devices',
+                    'M9': 'B2-a', 'M10': 'B2-b records'}[mutation]
+        with pytest.raises(AssertionError, match=expected) as error:
+            parity(scene, 'uniform', 2, 1050, monkeypatch, mutate)
+        print(f'mutation {mutation} {scene} RED {error.value}', flush=True)
