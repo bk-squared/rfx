@@ -882,21 +882,6 @@ mesh's cells the probe record equals the uniform mesh's within 2×10⁻⁶ of it
 request, solved as declared or refused: periodic faces run on the uniform mesh only; CPML or the wall pair that suits
 the polarization runs on the graded mesh, and on the uniform mesh only on an axis it does not wrap (Method B's y). One transverse operator for both meshes is planned after 2.0.
 
-### An oblique plane wave over a structure that varies along the tilt axis, with absorbing side faces, is solved as an array of the padded period.
-
-Tracker: #2693
-
-On the uniform mesh, `add_tfsf_source` at an oblique angle with the default `method="bloch"` and absorbing side faces
-(no `boundary`, or `boundary="cpml"`) solves the side axes periodic with their absorber pads inside the period. A structure that varies
-along the tilt axis is then solved as an array whose period is the padded domain, not the drawn one, and that period
-changes with the mesh. Measured with a 30° TE wave through a lossless εr 4 bar, 10 mm thick and 6 mm wide, drawn every
-16 mm: the solved period is 82, 49 and 32.5 mm at 2, 1 and 0.5 mm cells; at 1 mm the transmission behind the bar, read
-at y = 13 mm, is 2.3–3.5 dB above the declared-periodic result over the band, and four probes across the period differ
-by 2.8 dB at 4.98 GHz, so the result does not converge with the mesh. Preflight reports the side faces as periodic with their pads
-and the tilt axis as not judged, and the run proceeds. A structure that does not vary along the tilt axis is not
-affected. What to do: declare the side axes periodic for an array, or use `add_tfsf_source(closed_box=True,
-theta_deg=...)` for a finite scatterer.
-
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/sources/test_tfsf_bloch_cutoff_warning.py::test_bloch_cutoff_warning)
