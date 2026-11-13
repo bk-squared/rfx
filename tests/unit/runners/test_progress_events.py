@@ -11,6 +11,58 @@ from rfx.progress import events
 from rfx.stepping import events as transport
 
 
+def test_derived_chunk_lengths():
+    import numpy as np
+    from rfx.stepping.progress_scan import scan_with_progress
+
+    for n_steps in range(1, 401):
+        # Independent oracle: ceil(n / 100), minimum two, then merge tail 1.
+        width = max(2, (n_steps + 99) // 100)
+        full, tail = divmod(n_steps, width)
+        expected = [width] * full
+        if tail == 1 and expected:
+            expected[-1] += 1
+        elif tail:
+            expected.append(tail)
+        lengths = []
+
+        def record_chunk(carry, xs_chunk, lo):
+            assert lo == sum(lengths)
+            lengths.append(len(xs_chunk))
+            return carry, None
+
+        with events(lambda row: None), transport.scope('run', 'uniform'):
+            scan_with_progress(None, None, np.arange(n_steps),
+                               n_steps=n_steps, report_every=None,
+                               chunk_scan=record_chunk)
+        assert lengths == expected, n_steps
+        assert sum(lengths) == n_steps
+        assert n_steps == 1 or 1 not in lengths
+
+
+@pytest.mark.parametrize('mode', ['direct', 'inherited', 'stop'])
+def test_explicit_chunk_lengths_unchanged(mode):
+    import io
+    import numpy as np
+    from rfx.stepping.progress_scan import scan_with_progress
+
+    lengths = []
+
+    def record_chunk(carry, xs_chunk, lo):
+        lengths.append(len(xs_chunk))
+        return carry, None
+
+    with events(lambda row: None), transport.scope('run', 'uniform'):
+        if mode == 'inherited':
+            transport.current().cadence = 2
+        scan_with_progress(None, None, np.arange(5), n_steps=5,
+                           report_every=2 if mode == 'direct' else None,
+                           stream=io.StringIO(), chunk_scan=record_chunk,
+                           stop_fn=(lambda *args: False) if mode == 'stop' else None,
+                           chunk=2 if mode == 'stop' else None)
+    assert lengths == ([2, 3] if mode == 'stop' else [2, 2, 1])
+
+
 def encoded(row):
     return 'RFX_EVENT ' + json.dumps(row, separators=(',', ':'), ensure_ascii=True) + '\n'
 
@@ -25,7 +77,7 @@ def test_schema_size_and_unicode_label():
                    eta_s=123.45678901234567, criterion='conserved_energy',
                    criterion_value=1.2345678901234567e-12, criterion_threshold=1e-12)
     start = next(r for r in rows if r.get('label', '').startswith('\ud55c'))
-    assert start['label'].endswith('…') and len(start['label']) <= 48
+    assert start['label'].endswith('\u2026') and len(start['label']) <= 48
     progress = next(r for r in rows if r['kind'] == 'progress')
     assert set(progress) == {'v', 't', 'kind', 'path', 'entry', 'run_id', 'phase',
                              'steps_done', 'steps_total', 'total_is_cap', 'rate_steps_per_s',

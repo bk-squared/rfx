@@ -103,6 +103,26 @@ def test_run_default_identity_and_ticks(graded, capsys):
     assert next(r for r in rows if r['kind'] == 'phase_end' and r['phase'] == 'step')['stop'] == 'steps_done'
 
 
+@pytest.mark.parametrize('n_steps', [37, 101, 650])
+def test_run_pec_derived_chunk_identity(n_steps, monkeypatch):
+    monkeypatch.delenv('RFX_EVENTS', raising=False)
+    sim = Simulation(freq_max=10e9, domain=(.00703, .00602, .00501), dx=.001,
+                     boundary='pec', cpml_layers=0)
+    sim.add_source((.0021, .0018, .0022), 'ez', amplitude_kind='current',
+                   waveform=lambda t: jnp.exp(-((t / 1e-11 - 3) / 2) ** 2))
+    sim.add_probe((.0048, .0039, .0037), 'ez')
+    sim.add_flux_monitor(axis='x', coordinate=.0048,
+                         freqs=jnp.array([3e9, 5e9]), name='flux')
+    kw = dict(n_steps=n_steps, compute_s_params=False, skip_preflight=True)
+    reference = sim.run(**kw)
+    rows = []
+    with events(rows.append):
+        actual = sim.run(**kw)
+    assert any(row['kind'] == 'progress' for row in rows)
+    assert 'flux' in reference.flux_monitors and 'flux' in actual.flux_monitors
+    assert digest(actual) == digest(reference), 'R1: events changed the PEC record'
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('decay', [False, True])
