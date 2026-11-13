@@ -287,7 +287,8 @@ def floquet_port_source(grid, entry, freq_max, domain, n_steps, *, dtype):
         component = {"z": "ey", "x": "ez", "y": "ez"}[entry.axis]
     cell = field_index(grid, tuple(center), component)
     table = uniform_source_table(grid, cell, component, waveform, n_steps, None, dtype=dtype)
-    return tuple(center), SourceSpec(*cell, component, table)
+    return tuple(center), SourceSpec(i=cell[0], j=cell[1], k=cell[2],
+                                     component=component, waveform=table)
 
 
 # ---------------------------------------------------------------------------

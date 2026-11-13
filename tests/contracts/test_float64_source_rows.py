@@ -102,8 +102,8 @@ def test_e4_occupancy_store_and_topology():
     sim.add_probe((.010, .008, .008), 'ez')
     region = TopologyDesignRegion((.004,)*3, (.008,)*3, material_bg='air', material_fg='pec')
     with observe() as rows:
-        result = topology_optimize(sim, region, lambda r: jnp.sum(r.time_series**2),
-                                   n_iterations=1, jit=False, verbose=False)
+        topology_optimize(sim, region, lambda r: jnp.sum(r.time_series**2),
+                          n_iterations=1, jit=False, verbose=False)
     local, _ = rows['topology_optimize'][-1]
     assert local['init_density'].dtype == jnp.float64
     assert rows['occupancy_from_design']
