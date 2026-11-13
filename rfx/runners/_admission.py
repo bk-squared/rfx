@@ -854,6 +854,9 @@ for _row, _lanes in _ADMITTED_ON.items():
     _ADMITTED_ON[_row] = (_lanes - {"fwd_distributed"}) | (
         {"fwd_distributed"} if "run_distributed" in _lanes else set())
 
+# Microstrip stepping is admitted only for run: its distributed gradient is untested.
+_ADMITTED_ON[("_msl_ports", "msl_port")] -= {"fwd_distributed"}
+
 ADMITS: dict[str, frozenset] = {
     lane: frozenset(row for row, lanes in _ADMITTED_ON.items() if lane in lanes)
     for lane in LANES + CALCULATORS

@@ -208,7 +208,8 @@ def report_realized(scene, n_devices):
             result["ownership_flags"].append("T2 p1 ladder does not cross seam")
     result["lumped_ports"] = []
     for entry in scene.sim._ports:
-        cell = grid.position_to_index(entry.position)
+        cell = tuple(grid.index_of(axis, coordinate)
+                     for axis, coordinate in zip("xyz", entry.position))
         result["lumped_ports"].append(_cells_report([cell], slab))
         if (
             n_devices == 2
