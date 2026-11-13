@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 import subprocess
 from time import perf_counter
@@ -11,7 +12,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCOPE = ("rfx/", "tests/", "scripts/")
+SCOPE = ("rfx/", "tests/", "scripts/", "docs/design_notes/", "validation/")
 pytestmark = pytest.mark.source_scan
 
 PATTERNS = {
@@ -36,20 +37,41 @@ CANDIDATE_PATTERN = (
     r"|_pi_20|leader|claude-workspace"
     r"|[^ -~]"  # All non-ASCII text includes every Hangul range, in any locale.
 )
+# Byte-oriented Git matching avoids locale overhead; Python judges Unicode.
+GREP_ENV = {**os.environ, "LC_ALL": "C"}
 MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
 
 
 def matching_classes(line):
     """Allow mathematical uses without hiding attribution elsewhere on a line."""
+    # Necessary conditions only: the original regexes still decide every hit.
+    # Most selected source lines contain ordinary package names or Unicode text.
+    possible = {
+        "C2-key": "_pi_20" in line,
+        "C2-attribution": "leader" in line.lower(),
+        "C1-agent": "claude-workspace" in line,
+        "C1": "byungkwan" in line,
+        "C2": "PI" in line or "the professor" in line,
+        "C3": not line.isascii(),
+        "C4": any(token in line for token in (
+            "rfx", "agent-rules", "pi-desk", "D:", "L:", "MSL-PLANE.md",
+            "ledger", "record", "docs/research_notes/", "docs/agent-memory",
+            "bk-workspace", "remilab-cnu/paper", "acc-",
+        )),
+    }
     return [name for name, pattern in PATTERNS.items()
-            if pattern.search(MATH_PI.sub("", line) if name == "C2" and "PI" in line else line)]
+            if possible[name] and pattern.search(
+                MATH_PI.sub("", line) if name == "C2" and "PI" in line else line)]
 
 
+@pytest.mark.reads_docs_for_gate(
+    reason="public text must not carry the maintainer's name, orders or agent traces; "
+    "scans tracked text, never judges the prose")
 def test_public_text_has_no_pi_or_agent_traces():
     started = perf_counter()
     result = subprocess.run(
         ["git", "grep", "-n", "-I", "-z", "-E", "-i", CANDIDATE_PATTERN,
-         "--", *SCOPE], cwd=ROOT, capture_output=True,
+         "--", *SCOPE], cwd=ROOT, capture_output=True, env=GREP_ENV,
     )
     selected = perf_counter()
     assert result.returncode in (0, 1), result.stderr.decode(errors="replace")
@@ -151,7 +173,7 @@ def test_git_prefilter_covers_every_class(tmp_path):
         result = subprocess.run(
             ["git", "grep", "--no-index", "-n", "-I", "-z", engine, "-i",
              CANDIDATE_PATTERN, "--", sample.name],
-            cwd=tmp_path, capture_output=True,
+            cwd=tmp_path, capture_output=True, env=GREP_ENV,
         )
         assert result.returncode == 0, (engine, result.stderr)
         selected = [record.split(b"\0", 2)[2].decode("utf-8")
