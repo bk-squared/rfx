@@ -110,7 +110,8 @@ def _record(first, checks, iteration):
             first[name] = iteration
 
 
-@pytest.mark.parametrize('n', [1000, 100000])
+# n = 1e5 runs about 80-140 s on the cluster CPU lane; the weekly lane runs it, n = 1e3 runs before every merge
+@pytest.mark.parametrize('n', [1000, pytest.param(100000, marks=pytest.mark.slow)])
 @pytest.mark.parametrize('two', [False, True], ids=['T1a', 'T1b'])
 def test_bounded_closed_form(n, two):
     a, w, b, nu, star, e_sum, _, safe, _ = _reference(n, two)
