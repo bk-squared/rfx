@@ -993,7 +993,7 @@ def make_nonuniform_grid(
     traced_cells = admit_traced_windows(nominal_profiles)
     for axis, window in (traced_cells or {}).items():
         profile = (dx_profile, dy_profile, dz_profile)["xyz".index(axis)]
-        _assert_traced_cells_match_nominal(profile, nominal_cells[axis], window, axis)
+        _assert_traced_cells_match_nominal(profile, nominal_cells[axis], window, axis, dtype=dtype)
 
     inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full, dtype=dtype, periodic="x" in periodic_axes)
     inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full, dtype=dtype, periodic="y" in periodic_axes)
@@ -1018,19 +1018,19 @@ def make_nonuniform_grid(
     )
 
 
-def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
-    """Check fixed widths within four float32 eps times the nominal width.
+def _assert_traced_cells_match_nominal(profile, nominal, window, axis, *, dtype):
+    """Check fixed widths within four store-dtype eps times the nominal width.
 
     This reads values, not tangents: at the primal point a tangent outside
     the window is unseen. It is caught once values move, for example on a
     later optimisation step reusing the declaration.
     """
-    realized = jnp.asarray(profile, dtype=jnp.float32)
-    nominal32 = jnp.asarray(nominal, dtype=jnp.float32)
+    realized = jnp.asarray(profile, dtype=dtype)
+    nominal_store = jnp.asarray(nominal, dtype=dtype)
     from rfx.model.graded_admission import window_mask
     outside = ~window_mask(window, realized.shape[0])
-    tolerance = 4 * jnp.finfo(jnp.float32).eps * nominal32
-    bad = outside & ~(jnp.abs(realized - nominal32) <= tolerance)
+    tolerance = 4 * jnp.finfo(dtype).eps * nominal_store
+    bad = outside & ~(jnp.abs(realized - nominal_store) <= tolerance)
     first = jnp.argmax(bad)
 
     def _check(failed, cell, width, expected):
@@ -1041,7 +1041,7 @@ def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
                 f"outside declared traced_cells window {window!r}.")
 
     from rfx._traced_check import traced_check
-    traced_check("graded mesh", "fixed cells", _check, jnp.any(bad), first, realized[first], nominal32[first])
+    traced_check("graded mesh", "fixed cells", _check, jnp.any(bad), first, realized[first], nominal_store[first])
 
 
 def _assert_traced_window_total(profile, nominal, window, axis):

@@ -37,7 +37,9 @@ def invoke(site, x):
     elif site == "graded floor":
         graded_grid._assert_declared_floor_at_runtime(x, 1.0, "y", 0.1, 0.2)
     elif site == "graded fixed cells":
-        graded_grid._assert_traced_cells_match_nominal(x, np.ones(2), (0, 1), "y")
+        # CONTRACT: this backend-admission fixture uses the float32 store.
+        graded_grid._assert_traced_cells_match_nominal(
+            x, np.ones(2), (0, 1), "y", dtype=jnp.float32)
     elif site == "graded node index":
         graded_grid._assert_traced_index_matches_realized(x, 0, 0, 1.0, 0, "y")
     elif site == "pole stability":
