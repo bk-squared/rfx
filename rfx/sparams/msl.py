@@ -70,12 +70,17 @@ def compute_msl_s_matrix(
     raw_3probe_dump_path: str | None = None,
     strict_extractor: bool = False,
     eps_override: "jnp.ndarray | None" = None,
+    devices=None,
     checkpoint_every: int | None = None,
     checkpoint_segments: int | None = None,
     enforce_passivity: bool = False,
     report_every: int | None = None,
 ) -> "MSLSMatrixResult":
     """Compute MSL S from probe-plane V/I with fitted line diagnostics.
+
+    ``devices`` selects the devices for every drive run on uniform or graded
+    meshes. With ``eps_override`` it is refused: multi-device microstrip forward
+    has no gradient parity bar. Per-step settling records retain stop_gradient.
 
     Returned S uses power waves referenced to each port's declared
     ``impedance=`` (default 50 ohm): a=(V+R*I)/(2*sqrt(R)),
@@ -284,6 +289,14 @@ def compute_msl_s_matrix(
         cannot run on a tracer, so the solve result is taken as-is — see
         ``cond_a``).
     """
+    if devices is not None:
+        for name, value, reason in (
+            ("eps_override", eps_override, "microstrip forward has no multi-device gradient parity bar"),
+            ("checkpoint_every", checkpoint_every, "the multi-device run does not use forward checkpoints"),
+            ("checkpoint_segments", checkpoint_segments, "the multi-device run does not use forward checkpoints"),
+        ):
+            if value is not None:
+                raise RfxUnsupported(f"compute_msl_s_matrix({name}=..., devices=...): {reason}")
     resolve_field_dtype(self._precision)
     _diagnostics = ()
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
@@ -416,6 +429,7 @@ def compute_msl_s_matrix(
             # swallowed by a fallback except and surfaced as
             # DID-NOT-WARN instead.
             result = variant.run(
+                **({} if devices is None else {"devices": devices}),
                 n_steps=n_steps,
                 num_periods=num_periods,
                 compute_s_params=False,

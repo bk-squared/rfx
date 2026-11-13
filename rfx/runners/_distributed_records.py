@@ -22,11 +22,11 @@ from rfx.measurement import accumulators
 from rfx.measurement.plane_records import time_recorded_dft_selection
 
 
-def refuse_record_options(sim, options):
+def refuse_record_options(sim, options, *, run=False):
     names = [name for name in ("record_dft", "dft_time_records", "dft_planes",
                                "flux_monitors", "current_moments")
              if options.get(name) is not None and options.get(name) is not False]
-    if any(time_recorded_dft_selection(sim)):
+    if not run and any(time_recorded_dft_selection(sim)):
         names.append("dft_time_records (record_dft from _time_recorded_dft_planes)")
     if names:
         raise RfxUnsupported(f"{', '.join(names)} is not supported on the distributed record path")
@@ -186,6 +186,74 @@ class PlaneRecords(Packed):
         return tuple(t._replace(**dict(zip(("e1_dft", "e2_dft", "h1_dft", "h2_dft")
                                            if self.flux else ("accumulator",), values)))
                      for t, values in zip(self.templates, result))
+
+
+class TimePlaneRecords:
+    """Selected real plane frames, with histories outside the rank conditional."""
+
+    def __init__(self, mesh, templates, shape, nx_per, n_steps, dtype):
+        layout = PlaneRecords(mesh, templates, shape, nx_per)
+        self.mesh, self.templates, self.parts = mesh, templates, layout.parts
+        self.frames, self.dtype = n_steps, dtype
+        self.shapes = []
+        for number, template in enumerate(templates):
+            widths = [meta[-1][1] - meta[-1][0] for part in self.parts
+                      for index, meta, _ in part if index == number]
+            self.shapes.append((max(widths), template.accumulator.shape[2]))
+
+    def initial(self):
+        return tuple(place(np.zeros((self.mesh.size, self.frames) + shape, self.dtype),
+                           NamedSharding(self.mesh, P("x"))) for shape in self.shapes)
+
+    def update(self, buffer, state, dt, step, *, ranks):
+        branches = []
+        for part in self.parts:
+            def branch(fields, part=part):
+                frames = [jnp.zeros(shape, self.dtype) for shape in self.shapes]
+                for number, (channel, axis, index, _, region), _ in part:
+                    value = accumulators.plane_sample(fields, channel.name, axis, index, region)
+                    frames[number] = jnp.pad(value, tuple((0, cap - size) for cap, size in
+                                            zip(self.shapes[number], value.shape))).astype(self.dtype)
+                return tuple(frames)
+            branches.append(branch)
+
+        @partial(rank_shard_map, mesh=self.mesh,
+                 in_specs=(P("x"), _field_specs(state), P()), out_specs=P("x"), check_rep=False)
+        def apply(local, fields, n, *, rank):
+            frames = lax.switch(rank, branches, fields)
+            return tuple(lax.stop_gradient(lax.dynamic_update_slice(
+                history, value[None, None], (0, n, 0, 0)))
+                for history, value in zip(local, frames))
+        return apply(ranks, buffer, state, step)
+
+    def assemble(self, buffer, *, multi_process=False):
+        shapes = [(self.frames,) + t.accumulator.shape[1:] for t in self.templates]
+        record_size = sum(int(np.prod(s)) for s in shapes) * np.dtype(self.dtype).itemsize
+        result = []
+        for number, (history, shape) in enumerate(zip(buffer, shapes)):
+            owners = []
+            for part in self.parts:
+                pieces = []
+                for index, meta, destinations in part:
+                    if index == number:
+                        region = meta[-1]
+                        extent = (self.frames, region[1] - region[0], region[3] - region[2])
+                        pieces.append((0, (self.frames,) + self.shapes[number],
+                                       (0, destinations[0].start or 0, 0), extent))
+                owners.append(pieces)
+            if multi_process:
+                value = np.zeros(shape, self.dtype)
+                for rank, pieces in enumerate(owners):
+                    for _, _, destination, extent in pieces:
+                        rows = slice(destination[1], destination[1] + extent[1])
+                        value[:, rows] = np.asarray(history[rank])[:, :extent[1]]
+            else:
+                value = join_owned(history, owners, shape, self.dtype, mesh=self.mesh,
+                                   kind="time_planes", record_size=record_size,
+                                   x_axis=None if self.templates[number].axis == 0 else 1)
+                value = lax.stop_gradient(value)
+            result.append(value)
+        return tuple(result)
 
 
 class SnapshotRecords:
@@ -368,6 +436,10 @@ class SlabRecords:
             raise NotImplementedError("x-normal flux at global x index 0 is not supported on the distributed path; use one device")
         if planes:
             self.layouts["planes"] = PlaneRecords(mesh, planes, grid.shape, nx_per)
+        selected = tuple(p for p, keep in zip(planes, time_recorded_dft_selection(sim)) if keep)
+        if selected:
+            self.layouts["time_planes"] = TimePlaneRecords(
+                mesh, selected, grid.shape, nx_per, n_steps, field_dtype)
         if flux:
             self.layouts["flux"] = PlaneRecords(mesh, flux, grid.shape, nx_per, flux=True,
                 window_from_state=not sim._uses_nonuniform_mesh)
@@ -401,6 +473,9 @@ class SlabRecords:
                       current_moment_data=values.get("moments"), current_moment_monitor=self.monitor)
         if "planes" in values:
             result["dft_planes"] = {e.name: p for e, p in zip(self.sim._dft_planes, values["planes"])}
+        if "time_planes" in values:
+            from rfx.measurement.plane_records import named_plane_records
+            result["dft_time_records"] = named_plane_records(self.sim, values["time_planes"])
         if "flux" in values:
             result["flux_monitors"] = {e.name: m for e, m in zip(self.sim._flux_monitors, values["flux"])}
         if "snapshots" in values:

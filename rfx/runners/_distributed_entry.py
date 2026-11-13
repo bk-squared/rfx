@@ -171,7 +171,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
             dt=grid.dt,
             freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
             realized_geometry=geometry_record,
-            **{key: result.get(key) for key in ("dft_planes", "flux_monitors",
+            **{key: result.get(key) for key in ("dft_planes", "dft_time_records", "flux_monitors",
                 "ntff_data", "ntff_box", "current_moment_data", "current_moment_monitor",
                 "snapshots", "snapshot_axes")},
         )

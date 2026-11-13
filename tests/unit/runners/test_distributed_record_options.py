@@ -45,14 +45,26 @@ def test_direct_record_options_refused_by_name(name):
         run_distributed(sim, n_steps=4, devices=jax.devices("cpu")[:2], **{name: True})
 
 
-def test_internal_plane_time_records_refused():
+@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_internal_plane_time_records(graded, entry):
     sim, _, _ = model("pec", 2)
     sim.add_dft_plane_probe(axis="x", coordinate=6e-3, freqs=[3e9])
     sim.add_probe((6e-3, 4e-3, 3e-3), "ez")
+    if graded:
+        sim._dz_profile = np.full(7, 1e-3)
     sim._internal_probe_indices = {0}
     sim._time_recorded_dft_planes = {sim._dft_planes[0].name}
-    with pytest.raises(NotImplementedError, match="dft_time_records.*record_dft"):
-        sim.run(n_steps=4, devices=jax.devices("cpu")[:2], skip_preflight=True)
+    kwargs = dict(n_steps=4, devices=jax.devices("cpu")[:2], skip_preflight=True)
+    if entry == "forward":
+        with pytest.raises(NotImplementedError, match="dft_time_records.*record_dft"):
+            sim.forward(distributed=True, **kwargs)
+    else:
+        result = sim.run(**kwargs)
+        reference = sim.run(n_steps=4, skip_preflight=True)
+        assert result.dft_time_records.keys() == reference.dft_time_records.keys()
+        for name in reference.dft_time_records:
+            np.testing.assert_array_equal(result.dft_time_records[name], reference.dft_time_records[name])
 
 
 @pytest.mark.source_scan

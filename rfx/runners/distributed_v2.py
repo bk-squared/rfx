@@ -376,7 +376,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     )
 
     from rfx.runners._distributed_records import refuse_record_options
-    refuse_record_options(sim, kwargs)
+    refuse_record_options(sim, kwargs, run=lane == "run_distributed")
 
     from rfx.api import Result
 
