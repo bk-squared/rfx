@@ -1,0 +1,5 @@
+### Fixed — Waveguide ports on square and 2:1 apertures launch the requested mode (#PR)
+
+Where the requested mode shares its discrete cutoff with another (TE10/TE01 on a square guide, TE01/TE20 on a guide twice as wide as high, in whole cells), the default discrete port profile was a mix chosen by the eigensolver, 0.707/0.707 on a square guide, and could differ between machines.
+The port now launches and reads the requested mode itself: on a 10 x 10-cell square guide the TE10 port's max |Ey| / max |Ez| is 9.2e-15 on a uniform mesh and 7.3e-15 on a graded one, and on a 20 x 10-cell guide the second mode, TE01, has max |Ez| / max |Ey| of 3.6e-14.
+On every other aperture the port profiles and S are unchanged, bit for bit.
