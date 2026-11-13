@@ -8,7 +8,7 @@ authors:
     email: "byungkwan.kim@cnu.ac.kr"
     affiliation: "REMI Lab, Chungnam National University"
 version: "2.2.0"
-date-released: "2026-11-03"
+date-released: "2026-11-16"
 license: MIT
 repository-code: "https://github.com/bk-squared/rfx"
 url: "https://remilab.ai/rfx/"
