@@ -687,19 +687,11 @@ not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 
 (f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
 
-### On an aperture where two waveguide modes share a cutoff, a port stores a mix of the two that the eigensolver chooses.
+### When two modes of a waveguide cross-section share a cutoff (for example TE10 and TE01 on a square guide, or TE20 and TE01 on a guide twice as wide as it is high), `rfx.eigenmode.solve_waveguide_modes` returns that pair in an arbitrary basis chosen by the eigensolver, which can differ between machines.
 
-Tracker: #2707
+Tracker: #2725
 
-With the default `mode_profile="discrete"`, a waveguide port on an aperture where two modes have equal discrete cutoffs
-stores, launches and reads a combination of the pair that the eigensolver picks. This happens on a square aperture for
-the dominant mode, on an aperture whose sides are exactly 2:1 in whole cells (WR-28 and WR-75 are 2:1) for the second
-mode, and on any other aperture where two modes share a cutoff. On a 20 × 20 mm guide with 2 mm cells the TE10 port's profile was 0.707 TE10 and 0.707 TE01; on a 40 × 20 mm
-aperture with two modes, the TE10-to-second-mode S entries changed sign between two machines. On an empty straight guide
-S moved by at most 2.9e-7 of its peak. On a structure that treats the two transverse axes differently (an iris, a post,
-a partial fill) the port reads the S of a mixed wave that depends on the machine; that error has not been measured, nor
-has the TM branch. What to do: use `mode_profile="analytic"`, which builds closed-form shapes, or an aperture whose cell
-counts give the pair different cutoffs.
+The waveguide ports' own mode profiles do not have this problem: they take the requested mode within the pair.
 
 ### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
 
