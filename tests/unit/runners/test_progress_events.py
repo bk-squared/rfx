@@ -40,7 +40,7 @@ def test_derived_chunk_lengths():
         assert n_steps == 1 or 1 not in lengths
 
 
-@pytest.mark.parametrize('mode', ['direct', 'inherited', 'stop'])
+@pytest.mark.parametrize('mode', ['direct', 'inherited', 'inherited-1', 'stop'])
 def test_explicit_chunk_lengths_unchanged(mode):
     import io
     import numpy as np
@@ -53,14 +53,15 @@ def test_explicit_chunk_lengths_unchanged(mode):
         return carry, None
 
     with events(lambda row: None), transport.scope('run', 'uniform'):
-        if mode == 'inherited':
-            transport.current().cadence = 2
+        if mode.startswith('inherited'):
+            transport.current().cadence = 1 if mode == 'inherited-1' else 2
         scan_with_progress(None, None, np.arange(5), n_steps=5,
                            report_every=2 if mode == 'direct' else None,
                            stream=io.StringIO(), chunk_scan=record_chunk,
                            stop_fn=(lambda *args: False) if mode == 'stop' else None,
                            chunk=2 if mode == 'stop' else None)
-    assert lengths == ([2, 3] if mode == 'stop' else [2, 2, 1])
+    # A user report_every keeps its chunks; event-only chunks never end in one step.
+    assert lengths == ([2, 2, 1] if mode == 'direct' else [2, 3])
 
 
 def encoded(row):

@@ -82,8 +82,10 @@ def scan_with_progress(
         every = (None if report_every is None and current() is not None
                  else validate_report_every(report_every, n_steps=n_steps))
         cadence = getattr(current(), "cadence", None)
-        step = (cadence or max(2, (int(n_steps) + 99) // 100)) if every is None else every
-        merge_tail = every is None and cadence is None
+        # Without a user report_every nothing is printed, so the chunks only
+        # carry events: never a one-step piece (an inherited cadence too).
+        step = max(2, cadence or (int(n_steps) + 99) // 100) if every is None else every
+        merge_tail = every is None
     else:
         every = (None if report_every is None
                  else validate_report_every(report_every, n_steps=n_steps))
