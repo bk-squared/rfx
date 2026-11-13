@@ -390,7 +390,8 @@ jobs:
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
         run: >
           pytest -q -p no:cacheprovider -o addopts=""
-          tests/unit/runners/test_distributed_msl_ports.py -k n3
+          'tests/unit/runners/test_distributed_msl_ports.py::test_msl_fields_and_planes[T1L-uniform-laplace-n3-1050]'
+          'tests/unit/runners/test_distributed_msl_ports.py::test_msl_fields_and_planes[T1L-graded-laplace-n3-1050]'
 
       - name: Job time against the job limit
         if: always()
