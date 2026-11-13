@@ -6,5 +6,5 @@ z (`ey`), so a structure finite along that axis ran without the check that refus
 0° (a plane wave on the graded mesh holds only for a structure uniform along y and z).
 It is now refused with the message and remedy given at 0°. On the uniform mesh these
 angles now give the 0° refusal text and remedy. `compute_rcs` also treats them as normal
-incidence; before, it took its oblique route, which refuses `ey`, graded grids and targets
-that vary along z. Scenes admitted before run unchanged.
+incidence; before, above 1e-6° it took its oblique route, which refuses `ey`, graded grids
+and targets that vary along z. Scenes admitted before run unchanged.
