@@ -64,7 +64,7 @@ def test_cylindrical_pec_dual_path_equivalent():
                          axis="z"), material="pec")
         sim.add_waveguide_port(
             0.005, direction="+x", mode=(1, 0), mode_type="TE",
-            f0=8e9, bandwidth=0.5, name="src", probe_offset=3,
+            f0=8e9, bandwidth=0.5, name="src", probe_offset=3, mode_profile="analytic",
         )
         # This field comparison does not measure transmission through the PEC.
         # Keep its incidental modal probe in the uniform launch section.

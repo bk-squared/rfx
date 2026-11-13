@@ -175,11 +175,11 @@ def test_default_simulation_run_unchanged():
     )
     sim_a.add_waveguide_port(
         0.020, direction="+x", mode=(1, 0), mode_type="TE",
-        f0=8e9, bandwidth=0.5, name="left",
+        f0=8e9, bandwidth=0.5, name="left", mode_profile="analytic",
     )
     sim_b.add_waveguide_port(
         0.020, direction="+x", mode=(1, 0), mode_type="TE",
-        f0=8e9, bandwidth=0.5, name="left",
+        f0=8e9, bandwidth=0.5, name="left", mode_profile="analytic",
     )
 
     n = 20
@@ -227,7 +227,7 @@ def test_dual_path_dielectric_only_equivalent_to_ulp():
                 material="substrate")
         sim.add_waveguide_port(
             0.020, direction="+x", mode=(1, 0), mode_type="TE",
-            f0=8e9, bandwidth=0.5, name="left",
+            f0=8e9, bandwidth=0.5, name="left", mode_profile="analytic",
         )
         return sim
 

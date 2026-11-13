@@ -1296,7 +1296,8 @@ def test_aperture_verdict_boundary(lane, miss, snap):
         sim.add(Box(tuple(np.array(lo)*D), tuple(np.array(hi)*D)), material="pec")
     sim.add_waveguide_port(5*D, direction="+x", y_range=ranges[0], z_range=ranges[1],
                           freqs=np.array([80e9]), f0=80e9, bandwidth=.4,
-                          ref_offset=1, probe_offset=2)
+                          ref_offset=1, probe_offset=2,
+                          mode_profile="discrete" if graded else "analytic")
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     spans = []
     for a, bounds in zip((1, 2), ranges):

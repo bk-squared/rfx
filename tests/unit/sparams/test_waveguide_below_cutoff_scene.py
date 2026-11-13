@@ -27,7 +27,7 @@ def scene(multimode):
                               freqs=jnp.asarray(freqs), f0=f0,
                               bandwidth=max(.2, min(.8, (freqs[-1]-freqs[0])/f0)),
                               waveform="modulated_gaussian", n_modes=2 if multimode else 1,
-                              name=name)
+                              name=name, mode_profile="analytic" if multimode else "discrete")
     return sim
 
 

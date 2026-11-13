@@ -156,7 +156,7 @@ class TestInitMultimodeWaveguidePort:
             x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
             a=a, b=b, mode=(1, 0), mode_type="TE", direction="+x",
         )
-        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=2)
+        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=2, mode_profile="analytic")
         assert len(cfgs) == 2
 
         # First mode (TE10) should be driven (nonzero amplitude)
@@ -205,7 +205,7 @@ class TestInitMultimodeWaveguidePort:
             x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
             a=a, b=b, mode=(1, 0), mode_type="TE", direction="+x",
         )
-        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=3)
+        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=3, mode_profile="analytic")
 
         # Check pairwise orthogonality of E-field profiles
         for i in range(len(cfgs)):
@@ -593,7 +593,7 @@ class TestNearCutoffRobustness:
             x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
             a=a, b=b, mode=(1, 0), mode_type="TE", direction="+x",
         )
-        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=2, f0=10e9)
+        cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=2, f0=10e9, mode_profile="analytic")
         assert len(cfgs) == 2
 
         # Both cutoffs should be nearly equal (degenerate)
