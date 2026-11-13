@@ -964,7 +964,6 @@ def _subgrid_opted_in(sim) -> bool:
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
 
 LANE_GATES: dict[str, dict[Row, Callable]] = {
-    "run_distributed": {("_ports", "passive_port"): lambda sim, grid: bool(sim._msl_ports)},
     **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
        for lane in ("run_nonuniform", "fwd_nonuniform")},
     "run_subgridded": {

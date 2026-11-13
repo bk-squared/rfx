@@ -96,7 +96,7 @@ def build_scene(name="T1", *, mode="laplace"):
             position=(0.008, centre, 0.0004),
             component="ez",
             impedance=50.0,
-            excite=False,
+            excite=True,
         )
     return Scene(name, sim)
 

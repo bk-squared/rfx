@@ -268,7 +268,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
         refuse_distributed_lumped_s_pmc(sim, entry="forward" if forward else "run")
 
-    if any(not pe.excite for pe in ports) and not (allow_msl_run and sim._msl_ports):
+    if any(not pe.excite for pe in ports):
         raise RfxUnsupported(
             "add_port(..., excite=False) (passive port) is not supported "
             f"on the {lane} path; the lane would drive the port with its "
@@ -510,7 +510,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             port_specs.append((pe.component, (mid,), 'lumped', mid, _port_index))
             materials = setup_lumped_port(grid, lp, materials)
             conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
-            if pe.excite and (_source_port_indices is None or port_idx in _source_port_indices):
+            if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
         elif pe.impedance > 0.0 and pe.extent is not None:
             from rfx.sources.sources import wire_port_from_entry, setup_wire_port
@@ -527,7 +527,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
                 component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
             materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
-            if pe.excite and (_source_port_indices is None or port_idx in _source_port_indices):
+            if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,
                               grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
         elif pe.is_soft_source:
