@@ -95,7 +95,6 @@ CODE_SCOPE = {
     'upml_nonuniform_lane_unsupported': 'model',
     'upml_refinement': 'model',
     'wall_axis_off_node': 'model',
-    'waveguide_aperture_size_unchecked': 'object',
     'waveguide_port_obstacle_before_reference': 'object',
     'waveguide_reference_plane': 'object',
     'wire_port_dead_cell_classification_unavailable': 'object',
