@@ -32,7 +32,7 @@ is a CI check, a repository setting, or a row in a weekly report.
 
 ## Before you start
 
-Find the current campaign. Work belongs to the open milestone unless the PI says
+Find the current campaign. Work belongs to the open milestone unless the maintainer says
 otherwise:
 
 ```
@@ -52,7 +52,7 @@ never the session driving it; which session drives a lane is recorded in the pri
 governance appendix that the engineering standard points at, not in an issue. Before
 starting an issue, look for a `Taken by <session>` comment on it; if there is none,
 post one. Do not pick up an issue in another lane without a comment on that issue from
-its owner or from the PI. The convention this replaced was a lock emoji in a comment, and
+its owner or from the maintainer. The convention this replaced was a lock emoji in a comment, and
 under it an issue was closed on 2026-09-16 under another session's claim.
 
 ## One task, one worktree, one branch
@@ -171,7 +171,7 @@ list. The first looks at the places that were fixed; the second looks at what th
 fixing introduced.
 
 Two exceptions, and only two: (a) an easily reverted pure docs or comment change, and
-(b) the PI said to skip. Either one is recorded on the `Review: skipped` line with its
+(b) the maintainer said to skip. Either one is recorded on the `Review: skipped` line with its
 literal `(a)` or `(b)`, so the weekly audit can say which was claimed.
 
 ## Landing: the merge train
@@ -244,7 +244,7 @@ on 2026-09-19, which is why the first command reads the rules endpoint and not
 `branches/main/protection`. All three run on a token that can only read the repository,
 which is the point of listing them. The ruleset's bypass list is the exception: it is
 reported empty, but GitHub does not return that field to a non-administrator, so no
-agent can confirm it and checking it stays the PI's to do. A branch must be up to date
+agent can confirm it and checking it stays the maintainer's to do. A branch must be up to date
 with `main` before it merges, which the merge train takes care of; GitHub's own merge
 queue is not in use.
 
