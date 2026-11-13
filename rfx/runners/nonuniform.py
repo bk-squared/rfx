@@ -374,11 +374,11 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
 
 
 def _port_drive_source(grid, cell, component, excitation, n_steps, *, materials,
-                      sigma_port, unit_field):
+                      sigma_port, unit_field, dtype):
     """NU tuple source, built from the final realized materials."""
     waveform = port_drive_waveform(
         grid, cell, component, excitation, n_steps, materials,
-        sigma_port=sigma_port, unit_field=unit_field, dtype=materials.eps_r.dtype)
+        sigma_port=sigma_port, unit_field=unit_field, dtype=dtype)
     return (*cell, component, waveform)
 
 
@@ -472,7 +472,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
             grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
             sources.defer(make_msl_port_sources,
-                grid if source_grid is None else source_grid, mp, n_steps=n_steps, mode_profile=mode_profile,
+                grid if source_grid is None else source_grid, mp, n_steps=n_steps, mode_profile=mode_profile, dtype=resolve_coefficient_dtype(sim._precision),
             )
         # Only the SUBSTRATE-NORMAL component: the edge the modal
         # source drives.  The three-component form opened a
@@ -920,11 +920,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                    else field_index(grid, pe.position, pe.component))
             sources.defer(make_current_source,
                           source_grid, idx, pe.component, pe.waveform, sizing_n,
-                          amplitude_kind=pe.amplitude_kind)
+                          amplitude_kind=pe.amplitude_kind, dtype=resolve_coefficient_dtype(sim._precision))
         for cell, component, waveform, sigma_port, unit_field in drives_by_port.get(port_index, ()):
             sources.defer(_port_drive_source,
                           source_grid, cell, component, waveform, sizing_n,
-                          sigma_port=sigma_port, unit_field=unit_field)
+                          sigma_port=sigma_port, unit_field=unit_field, dtype=resolve_coefficient_dtype(sim._precision))
 
     from rfx.measurement.identification import read_ringdown_probes
     for pe in (*sim._probes, *read_ringdown_probes(sim._probes, "runners/nonuniform.py")):

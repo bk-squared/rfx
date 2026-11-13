@@ -115,7 +115,8 @@ class TopologyMaterialFields:
     sigma: jnp.ndarray
     pec_occupancy: jnp.ndarray | None = None
 
-def apply_density_filter(rho: jnp.ndarray, radius_cells: float, *, dtype) -> jnp.ndarray:
+# CONTRACT: standalone public helpers retain float32; run callers pass dtype.
+def apply_density_filter(rho: jnp.ndarray, radius_cells: float, *, dtype=jnp.float32) -> jnp.ndarray:
     """Cone-shaped density filter for minimum feature size control.
 
     Convolves the density field with a normalized cone kernel:
@@ -231,7 +232,7 @@ def density_to_material_fields(
     *,
     pec_bg: bool = False,
     pec_fg: bool = False,
-    dtype,
+    dtype=jnp.float32,  # CONTRACT: outside a run the public default stays float32.
 ) -> TopologyMaterialFields:
     """Convert density to differentiable material fields.
 

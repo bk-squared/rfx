@@ -52,8 +52,17 @@ def test_e1_empty_tables(realized, label):
     assert drive_table([], (), 2, dtype=jnp.float64).dtype == jnp.float64
     actual = drive_columns((jnp.ones((2,)*3, jnp.float64),)*3,
         (jnp.zeros((2,)*3, jnp.float64),)*3, None, (), (),
-        jnp.zeros((2, 0), jnp.float64), (), 1e-12)
+        jnp.zeros((2, 0), jnp.float64), (), 1e-12, dtype=jnp.float64)
     assert actual.dtype == jnp.float64
+
+
+def test_e1_closed_empty_electric_table(realized):
+    rows = realized('closed')['run']
+    tables = [local['xs'][1] for local, _ in rows if 'xs' in local]
+    assert tables
+    for table in tables:
+        assert table.shape[-1] == 0
+        assert table.dtype == jnp.float64
 
 
 @pytest.mark.parametrize('label', ['U-tfsf', 'G-tfsf', 'methodB'])
@@ -176,11 +185,15 @@ def test_e10_e11_delayed_window_launch(realized):
     cfg, state = realized('closed')['init_plane_wave'][-1][1]
     assert [len(w.nodes) for w in cfg.source_windows] == [17, 17, 16]
     step = 63
-    delays = np.concatenate([w.delays for w in cfg.source_windows])
-    assert np.count_nonzero((step-delays).astype(np.float32).astype(np.float64) != step-delays) > 0
+    axes = [axis for axis in range(3) if cfg.incidence["e_hat"][axis] != 0]
+    assert axes
+    for axis in axes:
+        delays = np.asarray(cfg.source_windows[axis].delays)
+        assert np.any((step-delays).astype(np.float32).astype(np.float64) != step-delays)
     state = state._replace(step=jnp.asarray(step, jnp.int32))
     actual = update_line_e(cfg, state, cfg.dx_1d, cfg.dt)
-    for axis, component in enumerate(('ex', 'ey', 'ez')):
+    for axis in axes:
+        component = ('ex', 'ey', 'ez')[axis]
         window = cfg.source_windows[axis]
         offset = window.nodes.astype(np.float64)+cfg.origin+cfg.fractions[axis]-cfg.source_p
         weight = np.exp(-.5*(offset/cfg.window_sigma)**2); weight /= np.sum(weight)
@@ -188,6 +201,7 @@ def test_e10_e11_delayed_window_launch(realized):
         time = (step-delay)*cfg.dt
         amplitude = cfg.src_amp*float(cfg.incidence['e_hat'][axis])
         reference = amplitude*pulse(time, cfg.src_tau, cfg.src_t0/cfg.src_tau)*weight
+        assert np.max(np.abs(reference)) > 0
         assert_value(np.asarray(getattr(actual, component))[window.nodes], reference, 135)
 
 
@@ -216,6 +230,7 @@ def test_e14_public_time_axes(realized, label):
     calls = rows['port_drive_waveform' if label == 'port' else 'uniform_source_table']
     assert calls
     for local, actual in calls:
+        assert type(local['grid'].dt) is float
         waveform = local['excitation' if label == 'port' else 'waveform']
         times = np.arange(local['n_steps'], dtype=np.float64)*local['grid'].dt
         assert_value(local['times'], times, 0)

@@ -94,11 +94,11 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     material_drive.append((volume, sc.debye_pole_term(drive_model, cell, pe.component, grid.dt)))
                 elif ports_present and not overridden:
                     queue.defer(make_current_source, grid, cell, pe.component, pe.waveform,
-                        n_steps, amplitude_kind=pe.amplitude_kind)
+                        n_steps, amplitude_kind=pe.amplitude_kind, dtype='float32')
                     material_drive.append(None)
                 else:
                     queue.append(make_current_source(grid, cell, pe.component, pe.waveform,
-                        n_steps, drive_model, amplitude_kind=pe.amplitude_kind))
+                        n_steps, drive_model, amplitude_kind=pe.amplitude_kind, dtype='float32'))
                     material_drive.append(None)
             for cell, component, waveform, sigma_port, unit_field in drives.get(index, ()):
                 if overridden:
@@ -106,7 +106,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     material_drive.append((None, 0., sigma_port, unit_field))
                 else:
                     queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
-                        sigma_port=sigma_port, unit_field=unit_field)
+                        sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
                     material_drive.append(None)
         if ports_present and not overridden:
             from rfx.model.materials import with_components

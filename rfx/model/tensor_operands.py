@@ -77,7 +77,7 @@ def full_tensor_eps(sim, grid, materials, shape_eps_pairs):
     return compute_node_tensor_eps(
         grid, shape_eps_pairs, background_eps=1.0,
         nominal_h_max=smoothing_nominal_h_max(sim, grid),
-        field_dtype=(jnp.float64 if sim._precision == 'float64' else materials.eps_r.dtype))
+        field_dtype=resolve_coefficient_dtype(sim._precision))
 
 
 def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
@@ -239,7 +239,7 @@ def form_reference_operands(grid, materials, *, dtype, subpixel_smoothing,
             dielectric_shapes=[],
             pec_shapes=boundary_pec_shapes,
             background_eps=1.0,
-        dtype=materials.eps_r.dtype)
+            dtype=dtype)
     reference = None
     if conformal_weights is not None:
         from rfx.geometry.cell_table import build_cell_table

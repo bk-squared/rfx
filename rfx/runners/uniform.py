@@ -460,8 +460,7 @@ def run_uniform(
                 else:
                     sources.defer(make_msl_port_sources,
                         grid, mp, n_steps=sizing_n,
-                        mode_profile=mode_profile,
-                    )
+                        mode_profile=mode_profile, dtype=resolve_coefficient_dtype(sim._precision))
             # Only the SUBSTRATE-NORMAL component over the
             # cross-section: that is the edge the modal source drives
             # (V = sum(E_n * d_n)).  Releasing the two in-plane

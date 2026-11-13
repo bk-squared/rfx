@@ -1088,8 +1088,9 @@ class _ScaledWaveform:
         return self.base(t) * self.scale
 
 
+# CONTRACT: standalone calls keep float32 sampling; run callers pass their dtype.
 def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
-                          *, mode_profile: dict | None = None):
+                          *, mode_profile: dict | None = None, dtype=jnp.float32):
     """Drive w volts through this port's own stamped load.
 
     setup_msl_port records each actual sigma and its unit-voltage field.
@@ -1108,7 +1109,7 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
     for cell, (sigma_port, unit_field) in port._drive_stamps.items():
         waveform = port_drive_waveform(
             grid, cell, "ez", port.excitation, n_steps, materials,
-            sigma_port=sigma_port, unit_field=unit_field, dtype=materials.eps_r.dtype)
+            sigma_port=sigma_port, unit_field=unit_field, dtype=dtype)
         specs.append(SourceSpec(i=int(cell[0]), j=int(cell[1]), k=int(cell[2]),
                                 component="ez", waveform=waveform))
     return specs

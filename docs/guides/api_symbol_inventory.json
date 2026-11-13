@@ -1336,7 +1336,8 @@
         "waveform_fn",
         "n_steps",
         "materials",
-        "amplitude_kind"
+        "amplitude_kind",
+        "dtype"
       ]
     },
     "make_nonuniform_grid": {

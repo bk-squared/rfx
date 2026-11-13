@@ -1896,6 +1896,7 @@ def kottke_inv_eps_from_occupancy(
     *,
     aniso_inv_eps_baseline: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
     background_eps: float = 1.0,
+    dtype=jnp.float32,  # CONTRACT: standalone calls retain float32.
     periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Inverse-permittivity tensor from a continuous-fill PEC occupancy.
@@ -1963,9 +1964,7 @@ def kottke_inv_eps_from_occupancy(
     from rfx.boundaries.pec import _volume_occupancy_masks
     from rfx.model.occupancy import clip_occupancy
 
-    # CONTRACT: standalone calls without a realized baseline retain float32.
-    dtype = (jnp.promote_types(jnp.float32, aniso_inv_eps_baseline[0].dtype)
-             if aniso_inv_eps_baseline is not None else jnp.float32)
+    dtype = jnp.promote_types(jnp.float32, dtype)
     f = clip_occupancy(pec_occupancy.astype(dtype))
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
     # pinned zero.

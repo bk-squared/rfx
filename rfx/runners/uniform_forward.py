@@ -529,7 +529,7 @@ def _forward_from_materials(
             if pe.excite and pe.waveform is not None:
                 sources.defer(make_msl_port_sources,
                     grid, mp, n_steps=n_steps,
-                    mode_profile=mode_profile,
+                    mode_profile=mode_profile, dtype=resolve_coefficient_dtype(self._precision),
                 )
             # Clear PEC mask over the cross-section so the source/σ cells
             # are not zeroed by the PEC update.

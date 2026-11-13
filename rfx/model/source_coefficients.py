@@ -24,7 +24,7 @@ from rfx.grid import Grid
 from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacing_at
 
 
-def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None):
+def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None, dtype=jnp.float32):
     """Build graded increments from local realized edges in source order.
 
     Run eagerly (including eager vmap over ranks): compiling these products
@@ -56,7 +56,7 @@ def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=No
             column = column * jnp.where(owned[n], keep[axis][cell], 0.)
         columns.append(column)
     return (jnp.stack(columns, axis=-1) if columns else
-            jnp.zeros((samples.shape[0], 0), dtype=jnp.promote_types(eps[0].dtype, jnp.float32)))
+            jnp.zeros((samples.shape[0], 0), dtype=jnp.promote_types(dtype, jnp.float32)))
 
 
 def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
@@ -244,8 +244,9 @@ def current_source_volume(grid, position_ijk, component):
     return dx_local * dy_local * dz_local, grid_traced
 
 
+# CONTRACT: standalone calls keep float32 sampling; run callers pass their dtype.
 def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], component: str,
-                        waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
+                        waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None, *, dtype=jnp.float32) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
     """Create a properly normalized current source for non-uniform grid.
 
     The waveform specifies CURRENT (Amperes). The E-field addition is:
@@ -279,7 +280,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], compo
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
     waveform = source_table(
-        current_source_samples(grid, waveform_fn, n_steps, dtype=materials.eps_r.dtype), amplitude_kind,
+        current_source_samples(grid, waveform_fn, n_steps, dtype=dtype), amplitude_kind,
         native="cb_over_dv", volume=dV,
         coefficient=lambda: e_update_coefficient_at(
             materials, (i, j, k), component, grid.dt, periodic=tuple(a in grid.periodic_axes for a in "xyz"), host=True, grid=grid))
