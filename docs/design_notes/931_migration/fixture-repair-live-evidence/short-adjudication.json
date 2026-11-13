@@ -1,18 +1,19 @@
 {
+  "pin_note": "Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-12); the original bytes are in git at 647262587 under the same path.",
   "provenance": {
     "run_id": "369367259618",
     "source_sha": "b36fc46cdf21d1c57f221e6a057654bcad60bae2",
     "adjudicator": {
-      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/diagnostics/adjudicate_931_short_repair.py",
+      "path": "scripts/diagnostics/adjudicate_931_short_repair.py",
       "sha256": "c27e07e5ce9f36883e81a080cc696f9619a0041df9f10506ac2d65929467a48d"
     },
     "run_id_witnesses": {
       "coarse": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/run_id.txt",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/run_id.txt",
         "sha256": "dfa500c44797aa987d82d0ab2a39d84c5cd4a9f4b959434f6758182c8c1cb561"
       },
       "fine": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/run_id.txt",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/run_id.txt",
         "sha256": "dfa500c44797aa987d82d0ab2a39d84c5cd4a9f4b959434f6758182c8c1cb561"
       }
     }
@@ -52,18 +53,18 @@
   },
   "causal_identity_inputs": [
     {
-      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_current_records.npz",
+      "path": "docs/design_notes/931_migration/slow-consumer-evidence/advisory_current_records.npz",
       "sha256": "7351473f191c7690b471bc80f6d2bcb18495dadaff9e39e39517ecc540947680"
     },
     {
-      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-coarse-traces.npz",
+      "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-coarse-traces.npz",
       "sha256": "14f09abc1e8e49b70beeee52e238be88c9da8090469a495ca9378994a39233fa"
     }
   ],
   "historical": {
     "current": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_current.json",
+        "path": "docs/design_notes/931_migration/slow-consumer-evidence/advisory_current.json",
         "sha256": "b975191d78c1e145985ed2c22e30e7dba80bf881d2d70d9f317a88f8e14eac27"
       },
       "bins": [
@@ -373,7 +374,7 @@
     },
     "node_volume": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_node_volume.json",
+        "path": "docs/design_notes/931_migration/slow-consumer-evidence/advisory_node_volume.json",
         "sha256": "475536b5c5606ced975d991fd63ac30bb3ccae39b2d4fff418cf3041c4471fc3"
       },
       "bins": [
@@ -683,7 +684,7 @@
     },
     "legacy_sigma": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/slow-consumer-evidence/advisory_legacy_sigma.json",
+        "path": "docs/design_notes/931_migration/slow-consumer-evidence/advisory_legacy_sigma.json",
         "sha256": "f9520165f482c5fa59a4974a441cb1e3bcf2c71080fe3c2c5132d7c35f8f0a10"
       },
       "bins": [
@@ -995,19 +996,19 @@
   "live": {
     "coarse": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse/advisory_current.json",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse/advisory_current.json",
         "sha256": "f39235c153a750f114975dffc78d327df38633ae77b620817a9607aef274ec61"
       },
       "records": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse/advisory_current_records.npz",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse/advisory_current_records.npz",
         "sha256": "c5faa5c8368e0993c971661056a772640da5e1e0e5e63a754fb9ada1fc2fd2aa"
       },
       "committed_reference": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-coarse.json",
-        "sha256": "b723ee81ad7a9c05d4e5acc0b014905ff5bbd9beb1f178a1d9da1ce9be1953cc"
+        "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-coarse.json",
+        "sha256": "e710b21010e110cfdb0be0b941036cee4b064bc646f2e0fa980d47ad5fcd019b"
       },
       "committed_records": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-coarse-traces.npz",
+        "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-coarse-traces.npz",
         "sha256": "14f09abc1e8e49b70beeee52e238be88c9da8090469a495ca9378994a39233fa"
       },
       "bins": [
@@ -1679,19 +1680,19 @@
     },
     "fine": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine/advisory_current_fine.json",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine/advisory_current_fine.json",
         "sha256": "eb3abc4bd4c8fed1faf74b1b5e701e7723ca0bbc509ee8e088fa916a1e836a12"
       },
       "records": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine/advisory_current_fine_records.npz",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine/advisory_current_fine_records.npz",
         "sha256": "b240dfb483f4e022fb2e7884f963d5448a2816bbcaaf014fae3fec0f4f5bd5a8"
       },
       "committed_reference": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-fine.json",
-        "sha256": "671af0fff5199ae02be6ca3b18791690b9356678efea4aadeb93717bbc82d671"
+        "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-fine.json",
+        "sha256": "55fa2ee5f972752267c588dcfc2c82179a686e03931fcf51f905f2405cfe6b6e"
       },
       "committed_records": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-evidence/short-fine-traces.npz",
+        "path": "docs/design_notes/931_migration/fixture-repair-evidence/short-fine-traces.npz",
         "sha256": "14feab41cd3297573cdb04ae1c4e4de0a4078ee30afc9ac27b7735c32ccd6bb6"
       },
       "bins": [

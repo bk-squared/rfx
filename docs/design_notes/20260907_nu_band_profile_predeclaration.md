@@ -9,13 +9,13 @@ siblings #740, #745, #752, #811).
 **Tree:** worktree `rfx-nu-band`, branch `feat/nu-band-profile`, based on
 `origin/main d990e18c` (`d990e18ce0870ac7a893a86627e7232d1cf92c7b`).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-band/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Date: 2026-09-07 (KST).
 
 ## 1. Defects, re-reproduced on this tree (zero FDTD)
 
-The lead measured all three on `main d990e18c`. Each was re-run here with
+All three were measured on `main d990e18c`. Each was re-run here with
 the tree pinned; numbers match unless a discrepancy is stated.
 
 ### Defect 1 — `rfx/auto_config.py::_make_dz_profile` on a 5-layer PCB stack
@@ -36,7 +36,7 @@ adjacent ratios > 1.4, every declared interface on a node (max error
  51.2, 66.5, 86.5, 102.3, 133.0, 153.5, 153.5, 153.5]
 ```
 
-Matches the lead (nz 45, 8.333 um, ratio 8.000 at idx 30, 25 ratios > 1.4).
+Matches the reported measurement (nz 45, 8.333 um, ratio 8.000 at idx 30, 25 ratios > 1.4).
 Cause, confirmed by reading the code: each feature block is realized
 uniform (`n = max(4, ceil(thickness/dx))`), `apply_thirds_rule` then splits
 the cells on BOTH sides of every boundary index into 2/3 + 1/3, and
@@ -44,7 +44,7 @@ the cells on BOTH sides of every boundary index into 2/3 + 1/3, and
 between two adjacent protected blocks (core | prepreg: 200/3 = 66.7 um next
 to 25/3 = 8.33 um) can never receive a ramp.
 
-Two facts the reading adds to the lead's statement:
+Two facts the reading adds to the statement:
 
 - The thirds rule fires at **every** feature boundary index, including a
   dielectric | dielectric seam (core | prepreg) where its stated rationale
@@ -73,7 +73,7 @@ boundary cell the docstring ("fine -> coarse -> fine") implies. Cells (um):
  188.2 x4 | 50, 70, 80 | 50, 70, 98, 137.2, 192.1, 188.2 x4]
 ```
 
-Matches the lead (ratio 4.53, 226.4 -> 50 um, last cell 188 um). Cause:
+Matches the reported measurement (ratio 4.53, 226.4 -> 50 um, last cell 188 um). Cause:
 the per-segment loop ramps up from the left edge only and fills the rest
 with coarse cells; nothing ramps back down before the next feature. Only
 caller: `docs/public/guide/nonuniform-mesh.mdx` (lines 97-113), which then
@@ -93,16 +93,16 @@ missed by 46.2 um (nearest realized edge 1.1538 mm); preflight
 (implied 4.0)** over z-span [1mm, 1.2mm)". The same signature appears at
 max_ratio 1.4 (column 3.0671 mm, edge missed by 44.9 um).
 
-**Discrepancy with the lead's numbers:** the lead quotes "1 z cells
+**Discrepancy with the reported numbers:** the quoted values are "1 z cells
 (implied 3.0)". A sweep over slab position (2-5 coarse cells below), fine
 count (3, 4) and ratio (1.3, 1.4) on this tree never produced that pair; the
 3-cell variants stay silent (2 nodes >= ceil(0.5 x 3)), the 4-cell variants
 report "2 (implied 4.0)". Same defect class and mechanism (transition cells
 inserted, downstream interfaces shifted, #325 advisory reproduced); the
-lead's exact fixture was not recovered from the numbers given. Recorded, not
+exact fixture was not recovered from the numbers given. Recorded, not
 resolved.
 
-## 2. The design (the lead's decision, with refinements where the code read contradicts it)
+## 2. The design (the decision, with refinements where the code read contradicts it)
 
 New public builder in `rfx/nonuniform.py`, exported from `rfx/__init__.py`:
 
@@ -214,7 +214,7 @@ make_band_profile(edges, cell_sizes, *, max_ratio=1.4, protected=None,
   F5 dx/dy round trip must call it with `max_ratio=1.3`, and the auto z
   path keeps its current 1.3 (the #763 air-run pin `<= 1.301`). Neither
   is a cap move.
-- **R7 — absorber runway (open decision for the lead).** `boundary_cell`
+- **R7 — absorber runway (open decision).** `boundary_cell`
   pins ONE cell per end; preflight's `nu_grading_reaches_absorber`
   (`rfx/api/_preflight.py`) wants `cpml_layers` uniform interior cells
   against each absorbing face, ratio deviation <= 1e-6. Under R2 the
@@ -227,7 +227,7 @@ make_band_profile(edges, cell_sizes, *, max_ratio=1.4, protected=None,
   ramp ratio rho <= cap; feasible here with a 10-cell runway and a 3-cell
   ramp at rho = 1.23). Not required by I1-I5; F5 therefore REPORTS this
   advisory and the realized end-run cells, and gates on the invariants
-  only. If the lead wants the runway inside the builder, it is a
+  only. If the runway is wanted inside the builder, it is a
   `boundary_cells: int` argument added BEFORE F5 is measured, with F5's
   report line promoted to a gate in the same commit — not after.
 - **R8 — `_make_dz_profile` dispatch.** `min_cells_per_feature=4` maps to
@@ -333,7 +333,7 @@ NEW profile:
 
 - **F7a (frozen):** `total |R(P)|^2 <= 1.5 x (Σ_steps |R_step|)^2` on the
   builder's actual output P. Reference window **2.409e-8**, reference total
-  **3.303e-9**. This is the lead's rule with the sum taken in AMPLITUDE
+  **3.303e-9**. This is the rule with the sum taken in AMPLITUDE
   (coherent), not power. Reason, from the chain model itself: the W2
   r = 1.4 two-step ramp (two steps of 1.1832) reflects **1.9536e-3**, while
   one 1.1832 step reflects **8.307e-4** — steps closer than a wavelength add
@@ -414,8 +414,8 @@ cells/lambda) — quote the law, not the dB.
 Run commands (declared) and output:
 
 ```
-cd /Users/byungkwankim/Documents/rfx-nu-band && PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-band \
-  /Users/byungkwankim/Documents/rfx/.venv/bin/python -m validation.research.multiband_nu.w6_band_builder \
+cd <workspace>/Documents/rfx-nu-band && PYTHONPATH=<workspace>/Documents/rfx-nu-band \
+  <workspace>/Documents/rfx/.venv/bin/python -m validation.research.multiband_nu.w6_band_builder \
   --widths 2,4,8,16 --out validation/research/multiband_nu/results/w6_band_builder.json
 ```
 
@@ -463,7 +463,7 @@ does not drift: thin copper sheets register on a NODE PLANE, never as a
 ## Results (appended after measurement; no window above changed)
 
 Measured 2026-09-07 (KST) on this tree, `rfx.__file__` =
-`/Users/byungkwankim/Documents/rfx-nu-band/rfx/__init__.py`. Commits:
+`rfx/__init__.py`. Commits:
 `a61d0a89` (builder, both rewires, tests, W6 instrument), `d79ad615`
 (engine exact-endpoint fix, before any FDTD ran), `d51879a7` (W6
 provenance-loader fix, before any FDTD ran), then this commit (results,
@@ -555,7 +555,7 @@ end cells 1e-3 exactly. Same profile as `dz_profile`: clean as well.
 four in-plane faces — end run `[1.0, 0.9606 x 10, 0.7727, 0.6216, 0.5]` mm,
 ratio deviation 0.0394 (lo faces) / 0.041 (hi faces) inside the 8-cell
 runway. The pinned cell is one cell; a `boundary_cells` runway argument
-remains the lead's decision (R7), not added here.
+remains an open decision (R7), not added here.
 
 ### F6 — batteries and moved values
 
@@ -882,7 +882,7 @@ reproduced. What moved is the eighth figure of the two rule rows above,
 and the R_total / T_total pair by the linux-vs-macOS solve difference
 alone (4.5e-7 OLD, 4.0e-8 NEW, 2.8e-12 T).
 
-Open, for the lead: R_total and T_total still come from the dense solve,
+Open: R_total and T_total still come from the dense solve,
 and the OLD row's 4.5e-7 cross-platform spread uses 45 % of the replay's
 1e-6 budget — flipping one cell of the OLD profile by a single ulp moves
 R_total by up to 3.2e-7, so that budget is about one ulp-flip wide. A

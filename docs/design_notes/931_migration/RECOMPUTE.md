@@ -17,9 +17,9 @@ explicitly not used as a prediction.
 
 * **yaml**: `scripts/vessl_931_docs_sheet_vs_volume_ab.yaml`
 * **preset**: `gpu-rtx4090`, cluster `remilab-c0`, `JAX_PLATFORMS=cpu`
-* **reads**: `/root/workspace/byungkwan-workspace/research/rfx-931-Docs-docs`
+* **reads**: `<workspace>/research/rfx-931-Docs-docs`
   (branch `feat/931-docs`), copied to `/root/work/rfx931-docs-ab`
-* **writes**: `/root/workspace/claude-workspace/rfx/runs/issue931-post-docs-ab-<ts>/`
+* **writes**: `<workspace>/rfx/runs/issue931-post-docs-ab-<ts>/`
 * **steps**
   1. `scripts/diagnostics/sheet_vs_volume_patch_radiation_ab.py --check` —
      the build-time realized-plane gate, no solve. It runs FIRST and the job
@@ -124,10 +124,10 @@ Submit command (from a directory that is NOT a git worktree — the VESSL CLI
 reads `.git` as a directory and a worktree's `.git` is a file):
 
     cd /tmp && vessl run create -f \
-      /root/workspace/byungkwan-workspace/research/rfx-931-Docs-docs/scripts/vessl_931_docs_sheet_vs_volume_ab.yaml
+      scripts/vessl_931_docs_sheet_vs_volume_ab.yaml
 
 Read the result at
-`/root/workspace/claude-workspace/rfx/runs/issue931-post-docs-ab-<ts>/`:
+`<workspace>/rfx/runs/issue931-post-docs-ab-<ts>/`:
 `gate_realized_planes.log` first (it must show one plane per foil in the sheet
 arm and two in the volume arm), then `sheet_vs_volume_ab.log` and
 `patch_sheet_realization_ladder.log`. Read the settling witness before any Q.
@@ -137,7 +137,7 @@ arm and two in the volume arm), then `sheet_vs_volume_ab.log` and
 
 # RESULT — run 369367259157 (`rfx-931-post-docs-ab`), read 2026-09-07
 
-Artifacts: `/root/workspace/claude-workspace/rfx/runs/issue931-post-docs-ab-20260907T101615Z/`
+Artifacts: `<workspace>/rfx/runs/issue931-post-docs-ab-20260907T101615Z/`
 
 ## Gate 0 — build-time realized planes, no solve: PASS
 
@@ -273,7 +273,7 @@ only tracked ones are historical files under `scripts/archive/`, which predate
 that rule. So do not go looking for it in `git show`: what survives review is
 this ledger — the run id, the preset, the worktree the job copied, the output
 directory, the steps in order, and the pre-declared reading — plus the run's own
-logs under `/root/workspace/claude-workspace/rfx/runs/`.
+logs under `<workspace>/rfx/runs/`.
 
 To resubmit, rebuild the block from this section: preset `gpu-rtx4090` on
 cluster `remilab-c0`, image `ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8`,

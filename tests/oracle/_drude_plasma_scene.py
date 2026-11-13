@@ -6,7 +6,7 @@ source-off. Call build AND run inside enable_x64() for the float64 lane.
 
 import numpy as np
 
-from rfx import Box, GaussianPulse, Simulation, drude_pole
+from rfx import Box, GaussianPulse, Simulation, drude_pole, lorentz_pole
 
 
 EPS0 = 8.8541878128e-12
@@ -80,3 +80,37 @@ def scene(nu, precision, n_periods, waveform):
     f_cf = references(nu, grid.dt)["f_cf"]
     n_steps = int(np.ceil(n_periods / (f_cf * grid.dt)))
     return sim, grid, n_steps
+
+
+def lorentz_reference(nu, dt):
+    """Hand-built longitudinal map and residual, without coefficient helpers."""
+    w0 = 2 * np.pi * 3e9
+    ddt = np.float64(nu) / 2 * np.float64(dt)
+    restoring = w0**2 * dt**2 / (1 + ddt)
+    exact = ((2 - w0**2 * dt**2) / (1 + ddt),
+             -(1 - ddt) / (1 + ddt), EPS0 * 2 * w0**2 * dt**2 / (1 + ddt))
+    rounded = tuple(float(np.float32(v)) for v in exact)
+    return dict(a=float(exact[0]), b=float(exact[1]), c=float(exact[2]),
+                a32=rounded[0], b32=rounded[1], c32=rounded[2], Cc=1 / EPS0,
+                r=rounded[0] + rounded[1] - 1 + restoring,
+                f_cf=map_frequency(*exact, 1 / EPS0, dt),
+                f_main=map_frequency(*rounded, 1 / EPS0, dt))
+
+
+def lorentz_scene(nu):
+    pulse = GaussianPulse(f0=5.5e9, bandwidth=1.0)
+    sim = Simulation(freq_max=16e9, domain=DOMAIN, dx=DX,
+                     boundary="pec", precision="float32")
+    sim.add_material("lorentz", eps_r=1., sigma=0.,
+                     lorentz_poles=[lorentz_pole(2., 2 * np.pi * 3e9, nu / 2)])
+    sim.add(Box((0., 0., 0.), DOMAIN), material="lorentz")
+    sim.add_source(SOURCE, component="ez", waveform=pulse, amplitude_kind="current")
+    for position in PROBES:
+        sim.add_probe(position, component="ez")
+    grid = sim._build_grid()
+    selected = next((1e7 + k * 1e4 for k in range(100001)
+                     if abs(lorentz_reference(1e7 + k * 1e4, float(grid.dt))["r"]) >= 2**-24), None)
+    if selected != nu:
+        raise ValueError(f"Lorentz selection rule gives {selected}, requested {nu}")
+    ref = lorentz_reference(nu, float(grid.dt))
+    return sim, grid, int(np.ceil(8 / (ref["f_cf"] * grid.dt))), pulse, ref

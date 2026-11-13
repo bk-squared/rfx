@@ -49,7 +49,7 @@ class ConductorWidthAxis:
 
 
 def f0_uses_solved_span(spec):
-    """D:c1d171: compare the assembled model's Rs = 1/G with 0.01 eta0."""
+    """Compare the assembled model's Rs = 1/G with 0.01 eta0."""
     from rfx.core.yee import MU_0, EPS_0
     return abs(1.0 / float(spec.g_sheet)) <= 1e-2 * np.sqrt(MU_0 / EPS_0)
 
@@ -812,7 +812,7 @@ def preview_port_stages(sim, conductors):
             if label not in done:
                 port = msl_port_from_entry(entry)
                 support = list(_msl_yz_cells(grid, port))
-                if conductors.lane == 'nonuniform' or getattr(entry, "mode", "laplace") != "uniform":
+                if getattr(entry, "mode", "laplace") != "uniform":
                     from rfx.sources.msl_port import compute_msl_mode_profile, msl_cross_section_span, msl_cell
                     span = msl_cross_section_span(grid, port)
                     centre = msl_cell(entry.direction, span["i_feed"], span["w_centre"],

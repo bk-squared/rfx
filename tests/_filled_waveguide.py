@@ -99,7 +99,7 @@ def _resolved_ports(call):
 
 def record_steps(cells):
     """The predeclared record: the a/45 settled table's worst tail share at 16000 steps is 2.0e-3 (empty) and 1.8e-3
-    (step), record 20261025-nu-settled-wr90 LEADER-READING."""
+    (step)."""
     return round(16000*cells/45)
 
 

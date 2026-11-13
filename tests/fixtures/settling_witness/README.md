@@ -1,6 +1,4 @@
-Frozen records copied without cropping or downsampling from
-rfx-archive `rfx/records/20261002-settling-witness-1426-audit/` @ `5ea04b56`
-(`measure.py`, `analyze.py`, and the npz files there).
+Frozen records copied without cropping or downsampling.
 
 | File | Bytes | Read bins | Identification freq_max | Source end |
 |---|---:|---|---:|---:|

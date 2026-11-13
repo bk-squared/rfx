@@ -8,7 +8,7 @@ workflows call the scripts, that the scripts exist and are executable, and that
 
 The other half is the path-aware lane. `pr-tests.yml` must keep reporting the
 contexts the `main` ruleset requires (`guards-and-preflight`, `fast-suite (1)`
-through `(12)`) on every event, while running only contracts in the shards when
+through `(20)`) on every event, while running only contracts in the shards when
 the diff is not code. That is a shape a later edit can break silently -- a
 renamed job leaves a required context permanently unreported and no pull request
 can merge again -- so the shape is pinned here rather than discovered on a
@@ -172,9 +172,9 @@ def test_the_required_job_names_still_exist() -> None:
         assert name in jobs, f"pr-tests.yml no longer defines a `{name}` job"
 
 
-def test_the_fast_suite_still_reports_twelve_groups_under_the_protected_names() -> None:
+def test_the_fast_suite_still_reports_twenty_groups_under_the_protected_names() -> None:
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
-    assert fast["strategy"]["matrix"]["group"] == list(range(1, 13))
+    assert fast["strategy"]["matrix"]["group"] == list(range(1, 21))
     assert fast["name"] == "fast-suite (${{ matrix.group }})"
 
 
@@ -212,7 +212,7 @@ def test_duration_regeneration_splits_with_the_prices_the_fast_suite_splits_with
 
 def test_the_fast_suite_uses_only_python_311_on_both_events() -> None:
     matrix = load(PR_TESTS)["jobs"]["fast-suite"]["strategy"]["matrix"]
-    assert matrix == {"python-version": ["3.11"], "group": list(range(1, 13))}
+    assert matrix == {"python-version": ["3.11"], "group": list(range(1, 21))}
 
 
 @pytest.mark.parametrize("path", workflow_files(), ids=lambda p: p.name)
@@ -299,7 +299,7 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
     assert len(installs) == 2, installs
     assert shlex.split(installs[0], comments=True) == ["pip", "install", "-e", ".[dev]"], installs[0]
-    # The pair goes in over pyproject's cap with its own dependencies (acceleration D:996c06), then pip check.
+    # The pair goes in over pyproject's cap with its own dependencies, then pip check.
     over, *check = installs[1].strip().splitlines()
     over = shlex.split(over)
     assert over[:3] == ["pip", "install", "-U"] and "--no-deps" not in over, installs[1]
@@ -420,7 +420,7 @@ def _is_runner_setup(job: str, step: dict) -> bool:
 #: Gates about the DIFF rather than the code, which must run on both branches
 #: because a "not code" diff is exactly what they judge: a PR adding records
 #: under docs/ or scripts/ never reaches the code branch. Only in the job named
-#: here -- in `fast-suite` the same step would run six times.
+#: here -- in `fast-suite` the same step would run twenty times.
 BOTH_BRANCH_GATES = {"guards-and-preflight": (
     "scripts/ci/check_data_budget.py", "scripts/ci/check_file_size_ratchet.py",
     "scripts/ci/check_layer_structure.py",
@@ -541,7 +541,7 @@ def test_a_skipped_job_says_why_in_its_log(job: str) -> None:
 #: it: otherwise marking one test `slow` quietly removes it from a gate that is
 #: still reported green, and nobody finds out. The explicit `-m` puts back the
 #: CPU-safety half and the documentation half -- a documentation mismatch never
-#: holds a merge (PI, 2026-09-22), so `docs_consistency` tests run only in the
+#: holds a merge, so `docs_consistency` tests run only in the
 #: non-required docs-consistency workflow -- and `--strict-markers` makes a
 #: marker typo an error instead of a no-op.
 GATE_PYTEST_FLAGS = ('-o addopts=""', '-m "not gpu and not docs_consistency"',
@@ -640,9 +640,9 @@ def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
     assert "pytest tests/contracts " in suite
     assert "--collect-only" not in suite
     assert "--ignore" not in suite
-    assert re.findall(r"--splits\s+(\d+)", suite) == ["12"]
+    assert re.findall(r"--splits\s+(\d+)", suite) == ["20"]
     assert "--group ${{ matrix.group }}" in suite
-    assert fast["strategy"]["matrix"]["group"] == list(range(1, 13))
+    assert fast["strategy"]["matrix"]["group"] == list(range(1, 21))
 
     floors = [
         step for step in jobs["guards-and-preflight"]["steps"]
@@ -660,7 +660,7 @@ def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
 
 
 def test_the_contract_tests_run_when_the_diff_is_code() -> None:
-    """On the code branch the twelve shards collect the whole tree, contracts included."""
+    """On the code branch the twenty shards collect the whole tree, contracts included."""
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
     suite = _physics_suite_step(fast)["run"]
     assert "--splits" in suite, "the fast-suite job no longer runs a sharded pytest"
@@ -668,7 +668,7 @@ def test_the_contract_tests_run_when_the_diff_is_code() -> None:
     # the uploaded test list and the real run cannot drift apart, and neither can drop the split.
     lines = [line.strip() for line in suite.splitlines() if line.strip()]
     sets = [line for line in lines if line.startswith("set -- ")]
-    assert len(sets) == 1 and "--splits 12 --group ${{ matrix.group }}" in sets[0], sets
+    assert len(sets) == 1 and "--splits 20 --group ${{ matrix.group }}" in sets[0], sets
     calls = [line for line in lines if re.match(r"(?:python -m )?pytest\s", line)]
     assert len(calls) == 2, calls
     assert re.fullmatch(r'pytest --collect-only -q "\$@" > "\$RUNNER_TEMP/[\w.-]+"(?: \|\| .*)?', calls[0]), calls
@@ -729,7 +729,7 @@ def test_the_data_budget_runs_once_on_both_branches() -> None:
     A PR that adds records under docs/ or scripts/ is a not-code diff, so a
     step gated on the code branch would never see the case it exists for. It
     lives in an existing required job because a new check context binds only
-    once the PI adds it to the ruleset.
+    once it is added to the ruleset.
     """
     steps = _data_budget_steps("guards-and-preflight")
     assert len(steps) == 1, [s.get("name") for s in steps]

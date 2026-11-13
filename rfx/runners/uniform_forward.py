@@ -542,6 +542,10 @@ def _forward_from_materials(
         for pe in self._ports:
             probes.append(make_probe(grid, pe.position, pe.component))
 
+    from rfx.measurement.identification import read_ringdown_probes
+    for pe in read_ringdown_probes(self._probes, "runners/uniform_forward.py"):
+        probes.append(make_probe(grid, pe.position, pe.component))
+
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=periodic_bool,
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)

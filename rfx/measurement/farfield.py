@@ -985,7 +985,9 @@ def radiation_pattern(ff: FarFieldResult) -> np.ndarray:
 def directivity(ff: FarFieldResult) -> np.ndarray:
     """Directivity in dBi for each frequency.
 
-    Integrates radiated power over the full sphere using gradient weights
+    Integrates radiated power over the full sphere with periodic trapezoid
+    weights in φ (a repeated 0/2π seam sample counted once) and the
+    gradient weights in θ
     and computes D = 4π U_max / P_rad. Requires full-sphere coverage;
     a single phi cut assumes an axisymmetric pattern.
 

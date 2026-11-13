@@ -145,7 +145,7 @@ def _msl_thru():
     itself, which for a matched thru changes neither reading. ``beta/k0``
     is 0.872 on 8 of the 12 bins (eps_eff 0.76, below vacuum) and does not
     move with ``num_periods`` 6 -> 20 — the same class as
-    ``rfx-known-issues.md`` 2026-08-20, "MSL extractor reports non-physical
+    "MSL extractor reports non-physical
     Z0 / eps_eff ... DIAGNOSTIC-ONLY".
 
     So: nothing in this file is a physics gate on the trace, and the

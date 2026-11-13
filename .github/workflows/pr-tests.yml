@@ -9,14 +9,14 @@ name: pr-tests
 # the tripwire/regression-locks gate merges.
 #
 # Path-aware since 2026-09-18: the `changes` job decides whether this event
-# touched anything the physics suite can observe; the twelve shards run only
+# touched anything the physics suite can observe; the twenty shards run only
 # contracts when it did not. Their NAMES are unchanged, which is
 # what the ruleset reads. The contract tests run either way.
 # No push-to-main run: every merge lands a tree tested by its PR or batch run.
 # Measured 61/61 green push runs on 2026-10-29..11-01 (record 20261101-devops-measure).
 #
 # `changes` MUST BE A REQUIRED CHECK, alongside `ruff`, `guards-and-preflight`
-# and `fast-suite (1)`..`(12)`, and the `main` ruleset has required it since
+# and `fast-suite (1)`..`(20)`, and the `main` ruleset has required it since
 # 2026-09-19. Without it the gate has a hole: `needs: changes` means a `changes`
 # job that dies of a runner fault leaves the heavy jobs SKIPPED by dependency,
 # and a skipped job does not fail a required context — so a merge would go
@@ -48,8 +48,8 @@ jobs:
   #
   # The two heavy jobs below KEEP THEIR NAMES and still run on every event, so
   # the contexts main's ruleset requires (`guards-and-preflight`,
-  # `fast-suite (1)`..`(12)`) are always reported. When this job says the diff is
-  # not code, the twelve shards run the contract tests, and
+  # `fast-suite (1)`..`(20)`) are always reported. When this job says the diff is
+  # not code, the twenty shards run the contract tests, and
   # `guards-and-preflight` checks their collect-count floor instead of running
   # the guard suite. The contracts pin docs/, scripts/ and these
   # workflows, which is precisely what a "not code" diff changes.
@@ -174,7 +174,7 @@ jobs:
       # pinned by test_the_lint_scope_covers_this_gates_own_script, or change
       # scripts/dev/prune_worktrees.py past test_prune_worktrees.py, and the
       # forbidding test would never run. So the contracts run on BOTH branches:
-      # in the twelve shards, contracts alone when the diff is not code and
+      # in the twenty shards, contracts alone when the diff is not code and
       # inside the whole tree when it is. This step checks the collect-count floor.
       - name: Contract tests — collect-count floor (the shards run the tests)
         if: needs.changes.outputs.code_changed == 'false'
@@ -202,7 +202,7 @@ jobs:
             echo "FAIL: tests/contracts collected only $collected tests (<500) — silent deselection?"
             exit 1
           fi
-          echo 'The contract tests themselves run in the twelve fast-suite shards.'
+          echo 'The contract tests themselves run in the twenty fast-suite shards.'
 
       # `!= 'false'`, not `== 'true'`: an empty or unexpected output — a
       # classify step that died after its checkout, a future refactor that
@@ -256,19 +256,23 @@ jobs:
     # them to `fast-suite (3.11, 1)` leaves every required check permanently
     # unreported, so no PR can merge.
     # 2026-10-06 PI: twelve shards target ~25-30 min PR and merge-train test execution.
+    # 2026-11-12 PI (pi-desk 254): twenty shards; one trial run's slowest shard 38.3 min.
     name: fast-suite (${{ matrix.group }})
     runs-on: ubuntu-latest
     # (Superseded 2026-10-16, see below.) 12-way pytest-split estimate at 728b1eccb: max 1726 s (28.8 min); x1.22 runner variance ~35 min, plus install and JAX import ~40 min, so 60 min leaves margin.
     # 2026-10-16 stopgap: main's slowest shard measured 55.4-58.2 min over four runs, and the hosted
     # runner's CPU alone spreads a shard by ~1.4x (actual/predicted 0.71-0.85 on EPYC 9V74/9V45,
-    # 1.03-1.16 on EPYC 7763), so a correct PR was ~2 min from a false cancel. 75 until the shards
-    # fit again (shard count or runners-only group, being measured); then back to 60.
+    # 1.03-1.16 on EPYC 7763), so a correct PR was ~2 min from a false cancel.
+    # 2026-11-12: the limit stays 75. A re-price leaves a run's slowest shard about 1.3x the mean shard (18 runs
+    # after the 2026-11-05 re-price), so the suite total, not the prices, decides when 75 is reached again.
+    # 2026-11-12: twenty shards; 75 kept: predicted p90 slowest shard 42 min today, 54 min after two
+    # weeks at 12.4 min/day suite growth (60 would leave ~6 min then).
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11"]
-        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -302,7 +306,7 @@ jobs:
           lscpu | grep -E '^(Model name|CPU\(s\))'
           echo "SIMD flags: $(grep -m1 -oE 'avx512[a-z_0-9]*|avx2|fma' /proc/cpuinfo | sort -u | tr '\n' ' ')"
 
-      - name: Contract tests — shard ${{ matrix.group }} of 12 (the diff is not code)
+      - name: Contract tests — shard ${{ matrix.group }} of 20 (the diff is not code)
         if: needs.changes.outputs.code_changed == 'false'
         # The diff touches no file under rfx/, tests/, validation/ or examples/
         # and no build or lane configuration, so the physics tests would observe
@@ -310,7 +314,7 @@ jobs:
         # they pin docs/, scripts/ and these workflows, which IS what such a diff
         # changes. They ran in one job until 2026-10-09, when the suite (6052
         # tests) no longer fitted it: cancelled at 30 min serially, and again on
-        # three workers with 74 % done. Split over the twelve shards instead.
+        # three workers with 74 % done. Split over the twenty shards instead.
         # Same flags as the guard suite: `-o addopts=""` so a slow mark inside
         # tests/contracts cannot deselect from a required gate, the explicit -m
         # for a CPU-safe run without the docs_consistency tests, --strict-markers
@@ -318,9 +322,9 @@ jobs:
         run: >
           pytest tests/contracts -q -ra -p no:cacheprovider
           -o addopts="" -m "not gpu and not docs_consistency" --strict-markers
-          --splits 12 --group ${{ matrix.group }}
+          --splits 20 --group ${{ matrix.group }}
 
-      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 12
+      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 20
         if: needs.changes.outputs.code_changed != 'false'
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
@@ -344,7 +348,7 @@ jobs:
         # so a failure that depends on collection order can be replayed outside
         # CI (the list is uploaded by the next step, pass or fail).
         run: |
-          set -- -p no:cacheprovider --splits 12 --group ${{ matrix.group }}
+          set -- -p no:cacheprovider --splits 20 --group ${{ matrix.group }}
           pytest --collect-only -q "$@" > "$RUNNER_TEMP/fast-suite-collection.txt" || echo "::warning::collect-only failed; the run below reports the collection error"
           pytest -q -ra "$@"
 

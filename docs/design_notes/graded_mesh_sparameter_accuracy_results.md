@@ -355,7 +355,7 @@ term above says what any other band would cost without running it.
   Shadow unless they pass a co-refined analytic/external field or S-parameter
   oracle") is not lifted by this lane and this note proposes no support-matrix
   edit. Whether analytic oracles at one rung on one geometry class satisfy
-  "co-refined analytic … oracle" is the PI's call.
+  "co-refined analytic … oracle" remains undecided.
 * **No external solver.** cv11's Meep/openEMS legs are #854-deferred and were
   not used; every reference here is analytic.
 * **One rung** (`mid`, dx = 1.27 mm), **one geometry class** (single-mode
@@ -404,7 +404,7 @@ the analytic oracles, since arm E already shows the analytic-referenced gates
 pass while the phase leaves the reflection budget over the upper third of the
 band.
 
-**Two things this lane says the next attempt must carry, for the PI.**
+**Two things this lane says the next attempt must carry.**
 
 1. **The phase allowance needs the dispersion term, not just the reflection
    budget.** Whatever #810's Tier 1 does next, its allowance should be
@@ -426,7 +426,7 @@ band.
    where the graded axis carries the mode and the effects are expected to be
    small.
 
-**Prior art the next attempt must read first.** `rfx-known-issues.md`, entry
+**Prior art the next attempt must read first.** The recorded entry
 dated 2026-07-16 (cv05 demotion, #325 / PR #378): the #325 "fix" that
 re-registered the substrate to 6 fine cells is a **FIRED STOP** — *"the graded
 fine↔coarse transition SPLITS the mode"*, and *"a correct build needs a

@@ -422,8 +422,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
             # D5 "end-fed trace" fixture (dx=80um, h_sub=254um) the
             # trace's realization landed one full cell above the
             # wire's top. That historical D5 report described
-            # |S21| rising with frequency (docs/research_notes/
-            # 20260728_i488_falsifier_ledger.md). It motivated this
+            # |S21| rising with frequency. It motivated this
             # check, but a geometric gap alone does not identify its
             # electromagnetic coupling mechanism. No cell is dead in
             # that fixture, so the dead-cell advisories are correctly silent.
@@ -1181,8 +1180,8 @@ def wire_port_radius_findings(sim, grid=None) -> list[dict]:
     series inductance differs from a wire of fixed physical radius by
     ``(mu0 l / 2 pi) ln(0.20 d / a)``: every halving of d adds
     ``omega (mu0 l / 2 pi) ln 2`` of reactance and S at the port does not
-    converge with the mesh (rfx-archive ledger, "A wire port has no
-    radius"). A single-cell port (no extent, or a sub-cell extent realized as
+    converge with the mesh.
+    A single-cell port (no extent, or a sub-cell extent realized as
     one edge) has l = d, so its term shrinks with the mesh and is not
     reported.
 

@@ -121,8 +121,8 @@ def test_same_permittivity_mask_body_across_sdf_face(path, traced):
 
 
 @pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
-def test_gap_reads_same_medium_as_nearest_box_alone(traced):
-    """A half-cell beyond the nearest face is still in the 0.45 mm gap."""
+def test_cell_holding_both_walls_reads_content(traced):
+    """A cell holding both walls reads its content; other cells keep one wall."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     grid = sim.freeze_mesh()
@@ -151,6 +151,8 @@ def test_gap_reads_same_medium_as_nearest_box_alone(traced):
         assert np.any(selected)
         expected = np.where(near_lower[None, None, :], np.asarray(lower[axis]),
                             np.asarray(upper[axis]))[..., selected]
+        if axis == 2:
+            expected[..., np.flatnonzero(selected) == 4] = 1 / (.04/4 + .90 + .06/6)
         actual = np.asarray(combined[axis])[..., selected]
         print(f'GAP traced={traced} axis={axis} z={positions[selected].tolist()} '
               f'actual={actual[4, 4].tolist()} expected={expected[4, 4].tolist()}')

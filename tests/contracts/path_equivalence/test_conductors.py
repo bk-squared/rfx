@@ -447,6 +447,7 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     """The channel probes belong to stepping, not declaration preflight."""
     import rfx.model.conductors as products
     from rfx.ringdown import RingdownSpec
+    from rfx.measurement.identification import read_ringdown_probes
     from tests.unit.sparams.test_ringdown_run import _box
     sim = _box(lane)
     declared = tuple(map(id, sim._probes))
@@ -469,7 +470,8 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
         return preflight(**kw)
 
     def at_kernel(*a, **kw):
-        events.append(('kernel', tuple(map(id, sim._probes))))
+        events.append(('kernel', (tuple(map(id, sim._probes)),
+                                  len(read_ringdown_probes(sim._probes, "test")))))
         return kernel(*a, **kw)
 
     monkeypatch.setattr(sim, method, assemble_once)
@@ -481,8 +483,8 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     result = getattr(sim, entry)(n_steps=600, ringdown=RingdownSpec(), **kwargs)
     assert [event for event, _ in events] == ['assembly', 'preflight', 'kernel']
     assert events[0][1] == declared
-    assert events[2][1][:len(declared)] == declared
-    assert len(events[2][1]) > len(declared)
+    assert events[2][1][0] == declared
+    assert events[2][1][1] > 0
     assert tuple(map(id, sim._probes)) == declared
     assert result.time_series.shape == (600, len(declared))
 

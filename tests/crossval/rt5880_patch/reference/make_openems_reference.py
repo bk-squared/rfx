@@ -246,7 +246,7 @@ C0 = 2.99792458e8
 EPS_R = 2.2                 # RT/Duroid 5880
 TAN_DELTA = 1.0e-3
 H_SUB = 3.175e-3            # 1/8 inch
-# PI 2026-09-25: every edge of the board just outside a node common to the rfx
+# every edge of the board just outside a node common to the rfx
 # ladder's h/4, h/8 and h/12 (h = 3.175 mm; the patch centre is a node). Each
 # half-extent is k * h/4 plus a pad: L/2 = 25 h/4 + 6.25 um, W/2 = 31 h/4 +
 # 18.75 um, GP_X/2 = 35 h/4 + 18.75 um, GP_Y/2 = 41 h/4 + 6.25 um. Declared
@@ -256,7 +256,7 @@ L_PATCH = 39.7e-3          # resonant length (x)
 W_PATCH = 49.25e-3         # radiating width (y)
 GP_X = 55.6e-3
 GP_Y = 65.1e-3
-# PI 2026-09-24: the probe moves to a node on every rfx rung h/4, h/8, h/12
+# the probe moves to a node on every rfx rung h/4, h/8, h/12
 # (-11, -22, -33 cells of h/n from the patch centre); a declared departure from
 # the retired script's -9.0 mm, delta 9 and DECLARED_CONSTANT_DEPARTURES.
 FEED_OFFSET_X = -8.73125e-3
@@ -288,11 +288,11 @@ RETIRED_CONSTANT_LINES = {
 # The retired constants this maker does NOT keep: name -> (the retired value,
 # this maker's value, why). --self-check holds the retired line to the first and
 # the constant to the second, so the departure is stated, not silent.
-_BOARD_REASON = ("PI 2026-09-25: every edge just outside a node common to the rfx "
+_BOARD_REASON = ("every edge just outside a node common to the rfx "
                  "ladder's h/4, h/8 and h/12; delta 10")
 DECLARED_CONSTANT_DEPARTURES = {
     "FEED_OFFSET_X": (-9.0e-3, -8.73125e-3,
-                      "PI 2026-09-24: a node on every rfx rung h/4, h/8, h/12 "
+                      "a node on every rfx rung h/4, h/8, h/12 "
                       "(-11, -22, -33 cells of h/n); delta 9"),
     "L_PATCH": (40.0e-3, 39.7e-3, _BOARD_REASON),
     "W_PATCH": (50.0e-3, 49.25e-3, _BOARD_REASON),
@@ -1023,15 +1023,15 @@ DELTA_LIST = [
     "which deletes the LOWER of two lines closer than 1e-7 of the mean spacing, "
     "deleted the probe's y = 0 line, so openEMS would have driven no edge.",
     "DELTA 9 (probe position): FEED_OFFSET_X = -9.0e-3 becomes -8.73125e-3, the "
-    "probe 8.73125 mm off the patch centre along x instead of 9 mm (PI "
-    "2026-09-24). -8.73125 mm is -11, -22 and -33 cells of rfx's h/4, h/8 and "
+    "probe 8.73125 mm off the patch centre along x instead of 9 mm. "
+    "-8.73125 mm is -11, -22 and -33 cells of rfx's h/4, h/8 and "
     "h/12 (h = 3.175 mm) from the patch centre, a lattice node on every rung of "
     "rfx's uniform ladder, which put the -9 mm probe at 8.731 / 9.128 / 8.996 mm. "
     "The builder's line is unchanged (feed = FEED_OFFSET_X * 1e3); the port's x "
     "line, the comb clearance around it (delta 8) and the line check follow the "
     "constant.",
     "DELTA 10 (the board on the rfx lattice): L_PATCH 40 -> 39.7 mm, W_PATCH 50 -> "
-    "49.25 mm, GP_X 56 -> 55.6 mm, GP_Y 66 -> 65.1 mm (PI 2026-09-25). Every "
+    "49.25 mm, GP_X 56 -> 55.6 mm, GP_Y 66 -> 65.1 mm. Every "
     "edge now sits just outside a node common to rfx's h/4, h/8 and h/12 "
     "(h = 3.175 mm, the patch centre a node): half-extents 25, 31, 35 and 41 "
     "cells of h/4 plus 6.25, 18.75, 18.75 and 6.25 um, so each rung of rfx's "

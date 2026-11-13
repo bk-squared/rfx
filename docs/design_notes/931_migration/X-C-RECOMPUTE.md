@@ -1,7 +1,7 @@
 # X-C recompute index — issue #931, cases cv14 / cv15 / cv16 / cv17
 
 Branch `feat/931-crossval-C`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-XC-crossvalC`.
+`<workspace>/research/rfx-931-XC-crossvalC`.
 One VESSL run per case, preset `gpu-rtx4090`, cluster `remilab-c0`,
 `JAX_PLATFORMS=cpu`. Per-case detail lives in each results directory:
 
@@ -19,12 +19,12 @@ One VESSL run per case, preset `gpu-rtx4090`, cluster `remilab-c0`,
 | cv17 | `369367259154` | `scripts/vessl_931_post_cv17.yaml` | `python -u validation/crossval/17_dielectric_sphere_mie.py` | 5-10 min | CONTROL — dielectric-only, bit-identical. **No** `--write-fixture` |
 
 Submitted 2026-09-07 10:07-10:09 UTC, organization `remilab`, project
-`byungkwan`; run pages at `https://app.vessl.ai/remilab/runs/byungkwan/<run id>`.
+`<project>`; run pages at `https://app.vessl.ai/remilab/runs/<project>/<run id>`.
 Submitted from a non-worktree directory: the `vessl` CLI walks the cwd's `.git`
 as a directory and a git worktree's `.git` is a file, so `vessl run create`
 raises `NotADirectoryError` if run from inside one.
 
-Outputs: `/root/workspace/claude-workspace/rfx/runs/issue931-post-<case>-<UTC>/`,
+Outputs: `<workspace>/rfx/runs/issue931-post-<case>-<UTC>/`,
 with a `…-<case>.latest` pointer beside it. Each job harvests every file newer
 than a start marker into `$OUT/produced/`.
 
@@ -79,7 +79,7 @@ the three lines that were wrong for a sheet-declared board.
 | cv15 production `rfx.json` | `369367259275` | re-solved, all six gates PASS, preflight text clean |
 | cv15 decomposition `rfx_decomposition_feed_pre931.json` | `369367259279` | re-run so both decomposition points sit on one code state |
 
-Outputs `/root/workspace/claude-workspace/rfx/runs/issue931-post-cv15-20260907T191128Z/`
+Outputs `<workspace>/rfx/runs/issue931-post-cv15-20260907T191128Z/`
 and `.../issue931-post-cv15-feeddecomp-20260907T192042Z/`. Full before/after,
 the driven-edge measurement and the re-read decomposition are in
 `validation/crossval/_15_patch_results/RECOMPUTE.md`, section "INGEST".

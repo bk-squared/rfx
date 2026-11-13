@@ -1200,9 +1200,9 @@
      "--rfx-tree-exported",
      "b91a81bf4fe2931fe94e7be255c12fc7ad45a710",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Cm-20260923T104428Z/msl_notch_graded_fz_after_1213.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Cm-20260923T104428Z/msl_notch_graded_fz_after_1213.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Cm-20260923T104428Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Cm-20260923T104428Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -7732,9 +7732,9 @@
      "--rfx-tree-exported",
      "b91a81bf4fe2931fe94e7be255c12fc7ad45a710",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z16m-20260923T104803Z/msl_notch_graded_fz_after_1213.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z16m-20260923T104803Z/msl_notch_graded_fz_after_1213.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z16m-20260923T104803Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z16m-20260923T104803Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -14240,9 +14240,9 @@
      "--rfx-tree-exported",
      "b91a81bf4fe2931fe94e7be255c12fc7ad45a710",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z6m-20260923T102832Z/msl_notch_graded_fz_after_1213.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z6m-20260923T102832Z/msl_notch_graded_fz_after_1213.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z6m-20260923T102832Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z6m-20260923T102832Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -20748,9 +20748,9 @@
      "--rfx-tree-exported",
      "2af37eafe9e1e1feefa3bb27ba80525bd81f53db",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z6r-20260923T103629Z/msl_notch_graded_fz_after_1213.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z6r-20260923T103629Z/msl_notch_graded_fz_after_1213.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z6r-20260923T103629Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z6r-20260923T103629Z"
     ],
     "git_describe": null,
     "git_dirty": null,
@@ -27262,9 +27262,9 @@
      "--rfx-tree-exported",
      "b91a81bf4fe2931fe94e7be255c12fc7ad45a710",
      "--out",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z8m-20260923T104032Z/msl_notch_graded_fz_after_1213.json",
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z8m-20260923T104032Z/msl_notch_graded_fz_after_1213.json",
      "--fig-dir",
-     "/root/workspace/bk-workspace/rfx-nu/runs/msl-notch-fz3-Z8m-20260923T104032Z"
+     "<workspace>/rfx-nu/runs/msl-notch-fz3-Z8m-20260923T104032Z"
     ],
     "git_describe": null,
     "git_dirty": null,

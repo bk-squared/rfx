@@ -1,7 +1,7 @@
 # Decide what the two numerical locks should protect
 
 Date: 2026-09-08. Reviewed branch: `feat/931-slow-regressions`,
-`4f0b3b1e2c92d63ad12046fb7d8b53e98fc62725`. **Proposal for PI decision.**
+`4f0b3b1e2c92d63ad12046fb7d8b53e98fc62725`. **Proposal for decision.**
 Only this note changes. No code, fixture, tolerance, or baseline is changed.
 
 My recommendation is to **keep the corrected 254 µm microstrip as a legitimate
@@ -42,9 +42,8 @@ Three kinds of evidence are distinguished throughout:
   stopped before assembly; the corrected invocation completed. No pytest,
   FDTD solve, or external-solver experiment was run in this discussion.
 
-The primary checkout's private `docs/agent-memory/development_methodology.md`
-§2.2 says pure code-motion refactors require a before/after bit-identical
-comparison. Its `rfx-known-issues.md` entry dated 2026-07-13 says V173A's earlier
+Pure code-motion refactors require a before/after bit-identical
+comparison. The entry dated 2026-07-13 says V173A's earlier
 red “was NOT solver drift”: Harminv's decimation default had changed. This
 proposal is consistent with both: preserve strict same-problem refactor checks,
 but distinguish a deliberate problem change from a numerically neutral refactor.
@@ -336,7 +335,7 @@ appropriate finite-ground and far-field/power witness; resonance alone cannot
 guard it. A source-amplitude invariance check would immediately reject the
 current FFT statistic as S11.
 
-If the PI only wants a cheap composition sentinel, keep an explicitly synthetic
+If the purpose is only a cheap composition sentinel, keep an explicitly synthetic
 V173A descendant with a documented fixed geometry and fixed instrument; call
 the FFT quantity a probe-spectrum statistic. It may have a tight output pin,
 but no antenna matching claim. Off-lattice tie behavior belongs primarily in
@@ -344,7 +343,7 @@ fast geometry contract tests. Once equivalent composition coverage exists,
 there is little value in paying for two identical V173A solves merely to read
 two statistics from the same deterministic trace.
 
-## Concrete samples for the PI to choose from
+## Concrete samples to choose from
 
 These are **unmeasured engineering proposals**, not validated replacements or
 requests to launch a mesh campaign now. A mesh making dimensions exact does
@@ -381,7 +380,7 @@ whether any aligned drawing recovers the old frequency; whether the candidate
 meshes converge; and whether either newly reported result merits a physics
 accuracy claim. I am not inferring those answers from preflight or rc alone.
 
-The PI's decision is therefore between a **qualified engineering fixture plus
+The decision is therefore between a **qualified engineering fixture plus
 an honestly scoped drift sentinel**, and retaining a **synthetic composition
 sentinel only** where its cost is justified. My preference is the former for
 MSL and reuse/redesign of existing physical patch coverage for V173A. No

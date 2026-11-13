@@ -495,7 +495,7 @@ def compute_coaxial_two_port(
     """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
 
     .. note::
-        Production edits to this lane need the PI's approval. **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
+        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
         ``docs/guides/sparameter_support_matrix.md``, the S-parameter
         family companion where this row lives). Covered: the two-port
         through-line class on this single coax geometry family, bracketed
@@ -528,8 +528,7 @@ def compute_coaxial_two_port(
     solve_two_port_from_wave_amplitudes` — the two-drive solve that does
     NOT assume the non-driven port sees zero incident wave (unlike the
     naive ``S[j,i] = b_j/a_i`` ratio, which has a hard terminator-
-    reflection floor on a through line; see that function's docstring
-    and ``docs/research_notes/20260729_i489_coax_two_port_design.md``).
+    reflection floor on a through line; see that function's docstring).
 
     Port 1 is the +z end (mirrors the 1-port fixture's own ``face='top'``
     orientation); port 2 is the -z end (mirror image, ``face='bottom'``).
@@ -1178,13 +1177,15 @@ def compute_coax_msl_transition(
     RuntimeError
         If no realized trace conductor is found above the substrate at the
         microstrip feed, or the runner returns no DFT-plane records.
+    RfxUnsupported
+        If the registered MSL port's mode is not ``"laplace"`` (the default).
 
     Limits
     ------
     Requires a float32, three-dimensional uniform Yee mesh with the default
     stencil order, positive CPML on all six faces, and no periodic axes or
     refinement. Register exactly one bottom-face coax port and one microstrip
-    port, no other ports, existing TFSF source, lumped RLC elements, probes,
+    port with ``mode="laplace"``, no other ports, existing TFSF source, lumped RLC elements, probes,
     DFT planes, flux monitors, or NTFF boxes. The registered geometry must
     be nonempty, and the microstrip source interval must meet its realized
     conductors. The coax ``position[2]`` locates the physical ground plane;

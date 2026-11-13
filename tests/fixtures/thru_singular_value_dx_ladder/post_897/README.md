@@ -17,12 +17,11 @@ post-correction record alongside it.
 | item | value |
 |---|---|
 | VESSL run | 369367258720 (`rfx-thru-sv-dx-ladder-post897`, remilab-c0 gpu-rtx4090, image nvcr.io/nvidia/jax:24.10-py3), all rungs rc=0, `thru_sv_dx_ladder_post897_failed_rungs=0` |
-| job YAML | `docs/research_notes/audit-2026-09-02/followup/i2_819_ladder_post897.yaml` (slim lane: fresh SHA-guarded clone into /tmp; NFS mount used for OUTPUT only) |
+| job YAML | measurement job (slim lane: fresh SHA-guarded clone into /tmp; NFS mount used for OUTPUT only) |
 | rfx commit | `f5ee3b59c3e83832f7df1682f0ad30abb260a42e` — SHA guard in the log: `HEAD=f5ee3b59… EXPECT=f5ee3b59… / sha guard passed` |
 | producer | `scripts/diagnostics/thru_singular_value_dx_ladder.py`, md5 `21b54da5ddeca8359789b7aa1391d218` at f5ee3b59 — the pre-#897 run's producer differs only by a docstring path, so the measurement code is unchanged |
 | half-step present | `rfx/core/dft_utils.py:54 def half_step_current_phase(...)`, 3 uses in `rfx/probes/probes.py`, 2 in `rfx/simulation.py` (quoted in the job log) |
 | run dir (originals) | `claude-workspace/rfx/runs/thru_sv_dx_ladder/20260906T071525Z-f5ee3b59-post897/` on the personal-workspaces NFS mount |
-| job + per-rung logs | `docs/research_notes/audit-2026-09-02/followup/i2_819_logs/` |
 | stack | jax 0.4.33.dev20241023+e3c6d6430, gpu (CudaDevice 0), `JAX_ENABLE_X64=0`, default field dtype, python 3.10.12, rfx 1.7.0 |
 | wall time (total) | 9.1 s / 15 s / 162 s |
 
@@ -33,7 +32,7 @@ post-correction record alongside it.
 | `rung_dx_over_1.json` | `2d58aa8d0c2210955ce583d9b2e7ed25fcb4099dd03c9fd5d5ffdd191ddc8c04` |
 | `rung_dx_over_2.json` | `da212fe4a5aade156a59b02f05d30011e4403bff876cc3975e7b10c30e81fbb8` |
 | `rung_dx_over_4.json` | `c9b06e6684cd0ad16fad52467a008159990a66601f8b0fb1a59b71e8612d6361` |
-| `verdict.json` | the pre-declared outcome table re-applied by `docs/research_notes/audit-2026-09-02/followup/i2_819_adjudicate.py` |
+| `verdict.json` | the pre-declared outcome table re-applied by the adjudicator |
 
 Note on condition B: section 3 writes the spread threshold as `0.20 * e1` (signed); the adjudicator
 applies `0.20 * |e1|`. With e1 < 0 the signed literal is negative and B is false under either
@@ -68,8 +67,7 @@ on every computed key. It was not re-aimed at this result.
   removes that growth.
 
 Verdict by the pre-declared table, applied literally: **C** again — see
-`verdict.json` (`verdict_text`, `outcome_table_scope_note`) and
-`docs/research_notes/audit-2026-09-02/followup/i2_819.md`.
+`verdict.json` (`verdict_text`, `outcome_table_scope_note`).
 
 ## Gates
 

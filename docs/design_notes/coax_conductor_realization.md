@@ -124,7 +124,7 @@ coarse rungs are recorded and not gated, because an oscillation is not a failure
 and a bar forbidding it would measure the rasterizer's phase rather than the
 discretisation.
 
-What this means for the S a user receives (leader, 2026-09-23, from the record):
+What this means for the S a user receives (2026-09-23, from the record):
 nothing directly. The electrostatic table is the capacitance of the primal-lattice
 cross-section, not the impedance the solver's TEM wave carries, and the two are
 not the same number on a staircased lattice. The witness that does not share the

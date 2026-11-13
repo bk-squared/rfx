@@ -1,8 +1,7 @@
 """Contract + bit-identity tests for the (2,4) fourth-order-in-space stencil
 option on the core ``update_e`` / ``update_h`` kernels (``rfx/core/yee.py``).
 
-Provenance: the A1 spike (``docs/research_notes/20260627_memory_efficiency_techniques_exploration.md``
-+ ``docs/research_notes/experiments/a1_fourth_order_spike/``). The 4th-order
+The 4th-order
 option cuts cells-per-WAVELENGTH ~2.5x for the same dispersion error (a SMOOTH-
 PROPAGATION / electrically-large lever). Gate-2 established it gives NO benefit
 at PEC / geometric features (it reverts to 2nd order in the 1-cell boundary

@@ -127,7 +127,7 @@ def test_old_s0_finite_box_is_refused():
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_archived_37mm_array_is_refused(skip):
-    # rfx-archive f8b3b79a, 20261005-tfsf-transverse-period/measure_period.py,
+    # Measured transverse period,
     # arm A, mesh 0. No archived time stepping is executed here.
     sim = Simulation(freq_max=10e9, domain=(.040, .020, .020), dx=.001,
                      cpml_layers=8, boundary="cpml")

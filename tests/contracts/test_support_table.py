@@ -37,8 +37,8 @@ WORDS = {
 SETTINGS = {"_precision", "_stencil_order", "_mode", "_dt_pin", "_dt_min_cell"}
 # All exemptions, with their reasons, live in this one dictionary.
 EXEMPTIONS = {
-    "run_adi": "ADI is experimental: one experimental row and no page, PI 2026-10-12",
-    "fwd_adi": "ADI is experimental: one experimental row and no page, PI 2026-10-12",
+    "run_adi": "ADI is experimental: one experimental row and no page",
+    "fwd_adi": "ADI is experimental: one experimental row and no page",
     "run_subgridded": "refused by default, tracker 1465; one combination row",
     "coaxial_line_reflection": "build their own coaxial line and take no other structure",
     "coaxial_two_port": "build their own coaxial line and take no other structure",

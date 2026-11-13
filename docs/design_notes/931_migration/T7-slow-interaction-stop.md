@@ -25,7 +25,7 @@ into PEC edges". This proposal is consistent with both: retain these owners and
 make every consumer evaluate them against one explicit mesh snapshot. The
 §6 amendment says an exactly placed sheet "prints nothing". Reviving that
 advisory solely to satisfy a stale consumer would contradict the amendment.
-No `docs/agent-memory/` directory exists in this worktree; no other worktree
+No other worktree
 was read or modified. The current normative note and prior audit notes were
 read instead of assuming inaccessible private memory describes current code.
 
@@ -224,7 +224,7 @@ JAX/jaxlib/CPU environment, full logs and artifacts with the actual VESSL run
 IDs. Neither command authorizes a re-pin. Do not run
 `scripts/capture_msl_e2e_golden.py`: it overwrites the committed golden. Before
 accepting new values, retain full time/field or angular traces and the realized
-geometry witness; quantify every changed lock and record the PI decision.
+geometry witness; quantify every changed lock and record the decision.
 The full impact/GPU jobs become meaningful after the architecture is
 implemented and the two re-pin decisions are resolved.
 

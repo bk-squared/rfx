@@ -4,12 +4,12 @@
 
 > The WR-90 inductive iris case was removed on 2026-09-22; the artifacts cited here are at commit e367e7bf.
 
-Status: contract document, the first v1.8 deliverable
-(`docs/agent-memory/rfx-known-issues.md:196-197`). Criteria source: `ROADMAP.md:25-32`. Audited
-base: main 1c38b0d7, 2026-09-02. The seven questions raised here were decided by the PI on the same
-day (the plan's "Decisions"); deferred items are #854.
+Status: contract document, the first v1.8 deliverable.
+Criteria source: `ROADMAP.md:25-32`. Audited
+base: main 1c38b0d7, 2026-09-02. The seven questions raised here are settled in
+the plan's "Decisions"; deferred items are #854.
 
-**Revised 2026-09-21 (PI decision).** The waveguide battery stays the standard. For the three
+**Revised 2026-09-21.** The waveguide battery stays the standard. For the three
 remaining families the battery is run in the REDUCED form of the section "The v2.0 battery for
 lumped/wire, MSL and coax" below: same tests, the project's v2 accuracy bar instead of per-bin
 measured envelopes, one short pre-declaration, one run. Criteria 1-4 below remain the definition
@@ -93,7 +93,7 @@ reported, the ladder uninterpretable when the ratio-2 successive-delta ratio is 
 order) or 0.25 (second); each rung asserts rasterized cell counts scale with 1/dx.
 
 **(d) Referee.** One analytic or external referee inside a pinned tolerance, conventions recorded
-(Yee half-step; time-convention conjugation, `rfx-known-issues.md:4093-4112`). A magnitude-only flux
+(Yee half-step; time-convention conjugation). A magnitude-only flux
 gate satisfies (d) alone and can never support criterion 1 or 3(a), having no AD leg. Artifacts:
 `tests/test_<family>_chain_battery.py` (fast lane when ≤ 30 s, else slow with the shard named), the
 fixture JSON with measured values, and a design note pre-declaring every tolerance, position and
@@ -102,7 +102,7 @@ drive setting **before** the first run.
 ## Criterion 4 — artifacts
 
 Pinned envelope JSONs under replay gates with a bounded-margin lock; a fidelity-snapshot entry for
-the fixture host; a per-lane row in `docs/agent-memory/rfx-known-issues.md` giving status against
+the fixture host; a per-lane row giving status against
 criteria 1–3 with file:line; re-capture commands that either run from a clean checkout or name a
 tracked VESSL YAML. Failure of any single pass condition means the family is not chain-closed. Gates
 are never loosened to reach closure; a red gate needs a written root cause first.
@@ -113,14 +113,14 @@ are never loosened to reach closure; a red gate needs a written root cause first
 waveguide (`n_modes > 1`): the host-side assembly at `rfx/sources/waveguide_port.py:2836`, `:3026`,
 `:3036` is documented, not fixed. Tracing `freqs` or the plane position as θ; both are static
 (`rfx/api/__init__.py:2472`, `waveguide_port.py:1679`). Phase agreement with external solvers (Airy
-suffices). `normalize=True` for reflection of strong reflectors (`rfx-known-issues.md:3384-3395`).
+suffices). `normalize=True` for reflection of strong reflectors.
 Runtime wiring of the reciprocity warning (`rfx/validation.py:468-486`, off at `:342`) — sequenced
 after WP2 measures the complex envelope, #854 item 4.
 - **The #812 artifact lane.** v1.8 consumes `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`
 as it stands, keeps its `STALE` label, and edits neither it nor the crossval gates
 cv02/03/04/09/10/14/20/21 or cv06b. That decision is #812 Phase 0 item 2
 (`docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md:5`) and the lane is owned
-elsewhere: `rfx-known-issues.md:107-108`, "The #812 lane belongs to the Mac-side session — not fixed
+elsewhere: "The #812 lane belongs to the Mac-side session — not fixed
 here."
 
 ## How a family is declared chain-closed
@@ -130,7 +130,7 @@ One PR that (1) links the four artifacts by path, (2) adds the ledger row, (3) u
 R3 line, (5) is signed off by a verifier that did not author it. Until `ROADMAP.md:41` redefines the
 matrix, wording stays "limited"/"experimental" plus "chain-closed (v1.8)"; "supported" is a v2.0 word.
 
-## The v2.0 battery for lumped/wire, MSL and coax (PI, 2026-09-21)
+## The v2.0 battery for lumped/wire, MSL and coax
 
 rfx v2 is an open-source simulator with basic feature support. The waveguide family was closed
 with 185 stored verdicts over three pre-declared runs; repeating that three more times is not the
@@ -157,16 +157,16 @@ its reciprocity gate is 0.01, doubled here for V-I extractors), not new measurem
 cannot meet them is reported with its curve, not re-gated.
 
 A case that cannot be judged by the bar because of what it is (a deep null, a high-Q resonance, a
-phase-only quantity) is taken to the PI before another criterion is chosen.
+phase-only quantity) requires a criterion review before another criterion is chosen.
 
-**Deep nulls (PI ruling, 2026-09-21).** A quantity that is near zero by construction — a matched
+**Deep nulls.** A quantity that is near zero by construction — a matched
 line's |S11|, the bottom of a notch, a reflection zero — is not compared in dB from rung to rung or
 against a referee. It is held to an upper bound (-20 dB) and recorded as that structure's floor;
 inside the core of a null (bins where the finest rung or the closed form is at or below -20 dB) the
 verdict is the null's FREQUENCY against 1 %, and its depth is recorded without a comparison. The 2 dB
 comparison applies everywhere else.
 
-**Electrical length (PI 2026-09-24).** A line's phase delay is the least-squares slope of its
+**Electrical length.** A line's phase delay is the least-squares slope of its
 unwrapped transmission phase against frequency, `polyfit(f, unwrap(angle(S21)), 1)`, over the bins
 where |S21| is above -20 dB; for a one-port it is the slope of the reflection phase over the bins
 where it reflects above -20 dB. It is within 1 % of the reference's slope over the same bins:

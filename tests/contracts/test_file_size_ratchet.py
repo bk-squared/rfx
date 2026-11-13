@@ -48,6 +48,8 @@ def mock_base(monkeypatch, cap=2, files=None, legacy=False):
     previous = json.dumps(previous).encode()
 
     def git(repo, *args):
+        if args == ("ls-tree", "base", "--", gate.PENDING):
+            return b""
         assert args in (("ls-tree", "base", "--", gate.BASELINE),
                         ("show", f"base:{gate.BASELINE}"))
         return b"present" if args[0] == "ls-tree" else previous
@@ -138,6 +140,8 @@ def test_head_and_base_environment_select_snapshots(tree, capsys, monkeypatch):
     monkeypatch.setenv("BASE_SHA", "base")
     monkeypatch.setenv("HEAD_SHA", "head")
     snapshots = {
+        ("ls-tree", "base", "--", gate.PENDING): b"",
+        ("ls-tree", "head", "--", gate.PENDING): b"",
         ("ls-tree", "base", "--", gate.BASELINE): b"present",
         ("show", f"base:{gate.BASELINE}"): json.dumps({"counts": "code-lines", "cap": 2, "files": {}}).encode(),
         ("show", f"head:{gate.BASELINE}"): json.dumps({"counts": "code-lines", "cap": 2, "files": {}}).encode(),
@@ -148,6 +152,40 @@ def test_head_and_base_environment_select_snapshots(tree, capsys, monkeypatch):
     code, err = run(tree, capsys)
     assert code == 1
     assert "rfx/a.py: baseline 2, count 3" in err
+
+
+@pytest.mark.parametrize("head", ["", "head"], ids=["working-tree", "snapshot"])
+@pytest.mark.parametrize("old,new,expected", [
+    ("9", "10", 1), ("10", "9", 0), ("9", "9", 0),
+    (None, "9", 0), ("unreadable", "9", 1), ("9", "True", 1),
+    ("9", "9 + 1", 1), ("9", "(", 1),
+], ids=["raised", "lowered", "equal", "adoption", "unreadable", "bool", "expression", "syntax"])
+def test_pending_ceiling_ratchets_against_base(tree, capsys, monkeypatch, head, old, new, expected):
+    write_tree(tree)
+    pending = tree / gate.PENDING
+    pending.parent.mkdir(parents=True)
+    pending.write_text(f"PENDING_CEILING = {new if not head else '0'}\n")
+    snapshots = {
+        ("ls-tree", "base", "--", gate.BASELINE): b"",
+        ("show", f"head:{gate.BASELINE}"): (tree / gate.BASELINE).read_bytes(),
+        ("ls-tree", "-r", "--name-only", "-z", "head", "--", "rfx/"): b"rfx/nested/a.py\0",
+        ("show", "head:rfx/nested/a.py"): (tree / "rfx/nested/a.py").read_bytes(),
+        ("ls-tree", "base", "--", gate.PENDING): b"present" if old is not None else b"",
+        ("ls-tree", "head", "--", gate.PENDING): b"present",
+        ("show", f"base:{gate.PENDING}"): f"PENDING_CEILING = {old}\n".encode(),
+        ("show", f"head:{gate.PENDING}"): f"PENDING_CEILING = {new}\n".encode(),
+    }
+
+    def git(repo, *args):
+        if old == "unreadable" and args == ("ls-tree", "base", "--", gate.PENDING):
+            raise subprocess.CalledProcessError(128, ["git", *args])
+        return snapshots[args]
+
+    monkeypatch.setattr(gate, "git", git)
+    code, err = run(tree, capsys, "--base", "base", "--head", head)
+    assert code == expected, err
+    if old == "9" and new == "10":
+        assert "PENDING_CEILING baseline 9, count 10" in err
 
 
 def test_baseline_matches_real_tree(capsys, monkeypatch):

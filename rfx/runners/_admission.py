@@ -1193,6 +1193,18 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    if sim._precision == "float64":
+        # UPML replaces the whole-grid update with float32 arithmetic.
+        if sim._boundary == "upml":
+            raise RfxUnsupported(
+                "precision='float64' with UPML would compute a float32 UPML update. "
+                "Declare precision='float32' or use boundary='cpml' for float64.")
+        # Oblique Bloch steps complex64 fields; Method B remains real-valued.
+        tfsf = sim._tfsf
+        if tfsf is not None and abs(tfsf.angle_deg) > .01 and tfsf.method == "bloch":
+            raise RfxUnsupported(
+                "precision='float64' with oblique Bloch would compute complex64 fields. "
+                "Declare precision='float32' or use normal incidence for float64.")
     if lane == "run_subgridded":
         from rfx.materials.relative_strength import RelativeStrength
         if any(isinstance(p.kappa, RelativeStrength)
@@ -1276,7 +1288,7 @@ def graded_lumped_default_s(sim):
     fields with S=None (two driven ports also warn, as forward() does; with no
     driven port there is no incident wave to form S from). A port
     set with a wire port keeps the wire default. Never a refusal: the user did
-    not ask for S (rfx-lead D:6b5bd8).
+    not ask for S.
     """
     ports = [p for p in sim._ports if p.is_port]
     if (not ports or any(p.extent is not None for p in ports)
@@ -1323,7 +1335,7 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
 def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=None):
     """run()'s S request after the plain-source rule: an explicit request with a
     plain source or 0-ohm port is refused; the default request warns and
-    resolves to False (fields, S=None), as graded run() does (rfx-lead D:c70245)."""
+    resolves to False (fields, S=None), as graded run() does."""
     # Subgridded runs opt into S explicitly; uniform/graded runs resolve
     # None from lumped/wire ports, graded lumped ports only when one is driven.
     # Passive single-wire main records warn and keep raw spectra with S disabled.

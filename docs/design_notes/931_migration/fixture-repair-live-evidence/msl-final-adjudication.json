@@ -9,7 +9,7 @@
       "scripts/capture_msl_e2e_golden.py": "d11a71096c4bb6431a065d272f6ef1ab0ecab3b9b8b2f977a406240286231f66"
     },
     "adjudicator": {
-      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/diagnostics/adjudicate_931_msl_live.py",
+      "path": "scripts/diagnostics/adjudicate_931_msl_live.py",
       "sha256": "6dda4ffd75ee622ccab22aacf03c4e600f51abdeccb1512968ad31447a36bbb9"
     },
     "run_ids": {
@@ -22,16 +22,16 @@
   "runs": {
     "base": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-base/base.json",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-base/base.json",
         "sha256": "13601004e6fbb2d8ebcf1e5c30bdb14b5f775c46f951d859c09e061e4a0eacad"
       },
       "run_id": "369367259636",
       "run_id_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-base/run_id.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-base/run_id.txt",
         "sha256": "c6a4b80270d8b9081d509d0df442a13ab37b602772a47e449a115f74d82c0bf8"
       },
       "commit_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-base/commit.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-base/commit.txt",
         "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
       },
       "run_name": "issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101-base",
@@ -980,16 +980,16 @@
     },
     "long": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-long/long.json",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-long/long.json",
         "sha256": "9ab2dd0d4ccec89b55861a9d2e68329c99a6e8a862223a6a7f264788c27925b6"
       },
       "run_id": "369367259637",
       "run_id_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-long/run_id.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-long/run_id.txt",
         "sha256": "f7bb6d625546f3c0b36fc2e67d93ee60e63958f969a100ce02de1b066b730558"
       },
       "commit_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-long/commit.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-long/commit.txt",
         "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
       },
       "run_name": "issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101-long",
@@ -1938,16 +1938,16 @@
     },
     "refine": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-refine/refine.json",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-refine/refine.json",
         "sha256": "4378631747f57ce7e33022e81ac9d3f88d032d439da56af0c6edc88869d35e35"
       },
       "run_id": "369367259648",
       "run_id_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-refine/run_id.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-refine/run_id.txt",
         "sha256": "f2400f1ab83b5ac5ccad67dbd89d548bf52c3049f9d17781699fa7ee64432098"
       },
       "commit_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-refine/commit.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-refine/commit.txt",
         "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
       },
       "run_name": "issue931-fixture-repair-msl-refine-20260909T021013Z-b36fc46cdf21-106-refine",
@@ -2896,16 +2896,16 @@
     },
     "confirm": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-confirm/confirm.json",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-confirm/confirm.json",
         "sha256": "d501fb3c15445bcb80c7aaf45deada8d006f3d08618fc5bb05fd023237b0b021"
       },
       "run_id": "369367259638",
       "run_id_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-confirm/run_id.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-confirm/run_id.txt",
         "sha256": "1c37e32b3b28161cba7b3fd2fc533c43447f3eee060cd3aa22cea3a5db222d11"
       },
       "commit_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-confirm/commit.txt",
+        "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-confirm/commit.txt",
         "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
       },
       "run_name": "msl-confirm-b36fc46cdf21d1c57f221e6a057654bcad60bae2-confirm",
@@ -4417,7 +4417,7 @@
   },
   "scope": "Fixed drawing; unchanged physical, mesh, and confirmation screens; predeclared temporal drift budget equals confirmation budget. No golden writes.",
   "figure": {
-    "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/msl-final-adjudication.png",
+    "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/msl-final-adjudication.png",
     "sha256": "a728d7052b3555146d5ebd768b6feb79c1088ff3cf7576df487caadc2ebb69a9"
   }
 }

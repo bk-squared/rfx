@@ -385,6 +385,7 @@ def _medium_groups(shapes, grid, *, nominal_h_max=None):
         return True
 
     groups: OrderedDict = OrderedDict()
+    groups.declared = tuple(shapes)  # type: ignore[attr-defined]
     latest: dict = {}
     group_of: list = []
     for index, (shape, eps_r) in enumerate(shapes):
@@ -400,6 +401,7 @@ def _medium_groups(shapes, grid, *, nominal_h_max=None):
             groups[key] = (eps_r, [shape])
         latest[medium] = key
         group_of.append(key)
+    groups.declaration_groups = tuple(group_of)  # type: ignore[attr-defined]
     return groups
 
 
@@ -1154,6 +1156,7 @@ def _kottke_tensor_eps(
     nx: jnp.ndarray,
     ny: jnp.ndarray,
     nz: jnp.ndarray,
+    *, outside_content=None, xp=jnp,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute the Kottke tensor-averaged ε and return its diagonals.
 
@@ -1171,6 +1174,9 @@ def _kottke_tensor_eps(
     """
     # Harmonic (perpendicular) inverse-eps
     inv_perp = f / eps_inside + (1.0 - f) / (eps_outside + 1e-30)
+    if outside_content is not None:
+        inv_perp = xp.where(outside_content.single, inv_perp,
+                            f / eps_inside + (1.0 - f) * outside_content.inv)
 
     # Arithmetic (parallel) eps, then invert
     eps_par = f * eps_inside + (1.0 - f) * eps_outside
@@ -1369,6 +1375,15 @@ def _bulk_outside(xp, groups, current, coords, distance, normal, length,
     return outside
 
 
+# The outside part of each normal support lives in its own module. It reads
+# _bulk_outside, _has_sdf, _host_path and medium_key from this module, so the
+# import stays here, after their definitions.
+from rfx.geometry.outside_content import (  # noqa: E402
+    _LinePieces, _SegmentContent, _line_interval, _outside_pieces, _depth_cdf,
+    _segment_content,
+)
+
+
 def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None,
                    nominal_h_max=None):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
@@ -1397,6 +1412,9 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
         give ``L = sqrt(sum((n_axis * d_axis)**2))`` for the selected normal,
         and ``f = clip(0.5 - sdf / L, 0, 1)``. This linear fill is exact for
         flat axis-aligned faces and approximate for oblique interfaces.
+        Where a run of planar own bodies has both faces inside the support,
+        the fill is the run's own length over L and the outside medium is
+        the declared content on both sides of it.
     eps : (eps_ex, eps_ey, eps_ez)
         Starting (background) arrays; returned updated.
     masks : {id(shape): bool mask or None}
@@ -1444,6 +1462,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                 if sdf_union is None:
                     owner = host_owner(s)
                     sdf_union = s
+                    best_s = s
                     best_abs_sdf = xp.abs(s)
                     best_nx, best_ny, best_nz = n_x, n_y, n_z
                     normal_source = xp.asarray(shape_index, dtype=xp.int32)
@@ -1453,6 +1472,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                     sdf_union = xp.minimum(sdf_union, s)
                     # Update normal where this shape's surface is closer
                     closer = xp.abs(s) < best_abs_sdf
+                    best_s = xp.where(closer, s, best_s)
                     normal_source = xp.where(closer, shape_index, normal_source)
                     normal_image = tuple(xp.where(closer, k, old)
                                          for k, old in zip(image, normal_image))
@@ -1465,6 +1485,21 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             extents = cell_len[comp] if isinstance(cell_len, dict) else cell_len
             length = _normal_cell_length(xp, extents, (best_nx, best_ny, best_nz))
             f = xp.clip(0.5 - sdf_union / length, 0.0, 1.0)
+            pieces = _outside_pieces(
+                xp, groups, key, (Xc, Yc, Zc), sdf_union,
+                (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
+                normal_source=normal_source, normal_image=normal_image,
+                best_s=best_s, nominal_h_max=nominal_h_max, own_fill=True)
+            content = _segment_content(xp, pieces, pieces.face, length / 2)
+            own = pieces.own
+            if own is not None:
+                # Both faces of a thin planar run lie in the support: the
+                # one-face fill would miss the far face. Elsewhere the
+                # selects keep the one-face operands bit for bit.
+                f = xp.where(own.thin, own.fill, f)
+                both_sides = _segment_content(xp, pieces, pieces.face, length / 2, gaps=own.gaps)
+                content = _SegmentContent(*(xp.where(own.thin, a, b)
+                                            for a, b in zip(both_sides, content)))
             from rfx.model.realization_integrals import capture
             capture(grid, sdf_shapes, f, owner, ("ex", "ey", "ez").index(comp))
 
@@ -1473,11 +1508,8 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             # Boundary voxels
             bnd = (f > 0.0) & (f < 1.0)
 
-            outside = _bulk_outside(
-                xp, groups, key, (Xc, Yc, Zc), sdf_union,
-                (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
-                normal_source=normal_source, normal_image=normal_image)
-            kt = _kottke_tensor_eps(f, eps_r, outside, best_nx, best_ny, best_nz)
+            kt = _kottke_tensor_eps(f, eps_r, content.eps, best_nx, best_ny, best_nz,
+                                    outside_content=content, xp=xp)
             smooth = kt[("ex", "ey", "ez").index(comp)]
 
             # Apply: interior -> bulk, boundary -> Kottke, exterior -> unchanged

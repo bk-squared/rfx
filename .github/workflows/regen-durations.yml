@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
       - uses: actions/checkout@v4
       - name: Raise the memory-mapping limit for the test process
@@ -44,7 +44,7 @@ jobs:
       - run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
       - name: Runner CPU (durations are runner-dependent; recorded for normalisation)
         run: lscpu | grep -E '^(Model name|CPU\(s\))'
-      - name: Fast selection, shard ${{ matrix.group }} of 12, store durations
+      - name: Fast selection, shard ${{ matrix.group }} of 20, store durations
         env:
           RFX_WEEKLY_RSS: "1"
           # Same compilation cache as pr-tests.yml's fast suite (#1779), so the stored durations
@@ -62,7 +62,7 @@ jobs:
           cp .test_durations durations/fast_${{ matrix.group }}.json &&
           cp .test_durations "$RUNNER_TEMP/fast-seed" &&
           pytest -v -ra -p no:cacheprovider
-          --splits 12 --group ${{ matrix.group }}
+          --splits 20 --group ${{ matrix.group }}
           --store-durations --clean-durations --durations-path durations/fast_${{ matrix.group }}.json
           || true
       # pytest-split writes the file only when the session ends: a killed session leaves the seed,

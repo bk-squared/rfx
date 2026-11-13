@@ -11,7 +11,6 @@ cancels. Two gates:
     |Γ| ~4-7% and ∠Γ ~180° (up to the ~11° Yee reference-plane offset) at θ=30°/45°; the
     complex-target RIS loss |Γ-Γ_target|² is differentiable (AD==FD).
 
-Harness: docs/research_notes/experiments/i404_oblique_20260720/oblique_complex_gamma_diff.py
 """
 import numpy as np
 import jax

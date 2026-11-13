@@ -1,10 +1,10 @@
 # T6 (oracle / contracts / locks / studio) — recompute ledger for #931
 
 **2026-09-13 correction for the Leontovich rows below:**
-#947's controlled comparison (written up under
-`docs/research_notes/2026-09-13_issue947_oracle_repair.md`, which
-`docs/.gitignore` excludes from the repository — named for provenance, not
-linked)
+#947's controlled comparison
+
+
+
 isolates a gap and eight displaced conductivity values in the absorber,
 introduced by #834 before #931. Correcting only its bounds recovers the
 historical O3 envelope and the original 0.72494 endpoint diagnostic, with
@@ -14,7 +14,7 @@ by that evidence. Ez is also now predicted from each mode's E/H relation at
 its actual Yee samples, rather than using the Hy alpha for both components.
 
 Branch `feat/931-t6-oracle-contracts-locks-studio`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-T6-oracle-contracts-locks-studio`.
+`<workspace>/research/rfx-931-T6-oracle-contracts-locks-studio`.
 
 Everything below is a RE-SOLVE, not a re-tune. Each row says what moved in the
 realization, what was pre-declared before the run, and where the run writes.
@@ -29,7 +29,7 @@ there. Source of truth for the yamls is `scripts/vessl_931/` (moved there from a
 
 All runs: cluster `remilab-c0`, preset `gpu-rtx4090`, `JAX_PLATFORMS=cpu`,
 image `ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8`, artifacts under
-`/root/workspace/claude-workspace/rfx/runs/issue931-post-<case>-<ts>/`
+`<workspace>/rfx/runs/issue931-post-<case>-<ts>/`
 (`pytest.log`, `junit.xml`, `commit.txt`; the latest path is echoed to
 `issue931-post-<case>.latest`).
 

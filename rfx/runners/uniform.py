@@ -470,7 +470,8 @@ def run_uniform(
                 released_edges=(mode_profile["cell_indices"] if mode_profile is not None else list(_msl_yz_cells(grid, mp))))
             pec_edge_masks = conductors.pec_edges
 
-    for pe in sim._probes:
+    from rfx.measurement.identification import read_ringdown_probes
+    for pe in (*sim._probes, *read_ringdown_probes(sim._probes, "runners/uniform.py")):
         probes.append(_simulation.make_probe(grid, pe.position, pe.component))
 
     axis_to_index = {"x": 0, "y": 1, "z": 2}

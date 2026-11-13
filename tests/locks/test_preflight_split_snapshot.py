@@ -4,8 +4,8 @@
 Issue #980 Phase 3 breaks the 9 376-line ``rfx/api/_preflight.py`` into an
 ``rfx/preflight/`` package a leg at a time, on the recipe the
 ``rfx/api/_sparams.py`` -> ``rfx/sparams/`` split just finished. Every leg is
-PURE CODE MOTION, and ``docs/agent-memory/development_methodology.md`` §2.2
-gates a code-motion refactor on an identity witness, not on "the checks still
+PURE CODE MOTION, and the code-motion rule requires bit-identical results
+before and after, witnessed by identity, not by "the checks still
 look right".
 
 This module is that witness for preflight.

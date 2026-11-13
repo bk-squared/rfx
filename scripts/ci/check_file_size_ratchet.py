@@ -10,11 +10,13 @@ string contents use the same byte-level rule, without token analysis.
 BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
 check the working tree, including uncommitted edits. An absent baseline at
 BASE_SHA permits the initial adoption; an unreadable revision fails closed.
+The float64 invariant's PENDING_CEILING follows the same numeric down-only rule.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 from pathlib import Path
@@ -23,6 +25,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[2]
 BASELINE = "scripts/ci/file_size_baseline.json"
+PENDING = "tests/contracts/float64_pending.py"
 SPLIT_ADVICE = "; split the file rather than raise the number."
 
 
@@ -56,6 +59,28 @@ def baseline(raw: bytes) -> dict:
     return data
 
 
+def pending_ceiling(repo: Path, revision: str = "") -> int | None:
+    if revision:
+        if not git(repo, "ls-tree", revision, "--", PENDING):
+            return None
+        raw = git(repo, "show", f"{revision}:{PENDING}")
+    else:
+        if not (repo / PENDING).exists():
+            return None
+        raw = (repo / PENDING).read_bytes()
+    try:
+        values = [node.value for node in ast.parse(raw).body
+                  if isinstance(node, (ast.Assign, ast.AnnAssign))
+                  and any(isinstance(target, ast.Name) and target.id == "PENDING_CEILING"
+                          for target in (node.targets if isinstance(node, ast.Assign) else [node.target]))]
+    except SyntaxError as exc:
+        raise ValueError(f"{PENDING}: unreadable PENDING_CEILING") from exc
+    if (len(values) != 1 or not isinstance(values[0], ast.Constant)
+            or type(values[0].value) is not int or values[0].value < 0):
+        raise ValueError(f"{PENDING}: PENDING_CEILING must be a nonnegative integer literal")
+    return values[0].value
+
+
 def check(repo: Path, base: str = "", head: str = "") -> int:
     read = (lambda path: git(repo, "show", f"{head}:{path}")) if head else (
         lambda path: (repo / path).read_bytes()
@@ -70,6 +95,14 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
     else:
         paths = [p.relative_to(repo).as_posix() for p in (repo / "rfx").rglob("*.py")]
     failures = []
+    ceiling = pending_ceiling(repo, head)
+    if base:
+        old_ceiling = pending_ceiling(repo, base)
+        if old_ceiling is not None and (ceiling is None or ceiling > old_ceiling):
+            failures.append(
+                f"{PENDING}: PENDING_CEILING baseline {old_ceiling}, count {ceiling}; "
+                "remove fixed entries rather than raise the ceiling."
+            )
     transition = False
     if base:
         # ls-tree fails for a bad revision but returns empty for an absent file.

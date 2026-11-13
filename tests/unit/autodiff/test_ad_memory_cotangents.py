@@ -135,7 +135,7 @@ def test_planner_peak_includes_batched_working_arrays(monkeypatch):
 
 
 def test_scene_s_measured_per_cotangent_anchor():
-    """Frozen GPU anchor: rfx/records/20261027-compiled-gradient-estimate/, T1/T4.
+    """Frozen GPU anchor, T1/T4.
 
     Public API scene S from the M2 harness; static accounting only, no solve.
     """

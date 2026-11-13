@@ -178,7 +178,7 @@ def test_warmup_truncation_error_grows_with_k():
     pre-loss-window): 6.6%, K=50: 12.1%, K=70: 35.2% -- growing as K
     approaches the loss window, consistent with a second independent
     design-cell placement measured out-of-band (see
-    docs/agent-memory/rfx-known-issues.md, issue #626 part 2, and the
+    issue #626 part 2, and the
     forward()/nonuniform.py docstrings this test backs). The K=0/K=10
     figures are hedged deliberately: an h-sweep of the FD oracle shows
     those two points sit INSIDE the oracle's own noise band (at h=0.05,

@@ -1,4 +1,4 @@
-"""The record check judges one budget, pole tail plus known drive, and says what to do (rfx-lead L:d09556).
+"""The record check judges one budget, pole tail plus known drive, and says what to do.
 
 until_decay stops on field energy, no earlier than the step where the known drive's share is 1e-2; it does not test
 the pole share (#2030 owns that in the loop). So a run it stops with s_poles = s_drive = 6e-3 must read fail in its

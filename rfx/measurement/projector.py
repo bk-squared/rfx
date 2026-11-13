@@ -198,7 +198,7 @@ def plan_port_owners(plan, specs):
 def plan_tables(plan, *, n_probes, port_specs, dtype):
     """Compile the step's probe and port tables from the attached plan's owners."""
     from dataclasses import replace
-    probes = tuple(o for o in plan.owners if o.kind == 'probe')
+    probes = tuple(o for o in plan.owners if o.kind in ('probe', 'identification'))
     if len(probes) != n_probes:
         raise ValueError(f'the measurement plan has {len(probes)} probe owners; '
                          f'the runner records {n_probes} probes')

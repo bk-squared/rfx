@@ -1,7 +1,7 @@
 # E — examples: recompute record (#931 lattice ownership contract)
 
 Branch `feat/931-examples`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-E-examples`.
+`<workspace>/research/rfx-931-E-examples`.
 All runs submitted at commit `7e0de966ad736606d3c6dbea2f0bd6d9b670d9de`
 (the second of this group's three commits; the third adds only these notes).
 
@@ -26,7 +26,7 @@ cd <a directory that is NOT inside a git checkout>
 vessl run create -f <case>.yaml        # retried 3x on Bad Gateway
 ```
 
-Outputs land in `/root/workspace/claude-workspace/rfx/runs/issue931-post-<case>-<ts>/`,
+Outputs land in `<workspace>/rfx/runs/issue931-post-<case>-<ts>/`,
 with the latest path echoed to `issue931-post-<case>.latest`. Each job harvests
 every file the run wrote into its staged checkout under `produced/`.
 

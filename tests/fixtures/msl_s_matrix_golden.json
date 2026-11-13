@@ -7,7 +7,7 @@
     "commit": "90c20337",
     "vessl_run_id": "369367265654",
     "result": "tests/unit/autodiff/test_msl_sparam_ad.py on VESSL CPU (JAX 0.6.2, numpy 2.2.6) at 5db5aad6, whose tree is identical to 90c20337: the live S equals this golden bit-identically (max |S - golden| = 0.0)",
-    "log": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_tests2-20260927T202436Z/r4_file_cpu.log"
+    "log": ""
   },
   "source_hashes": {
     "tests/unit/autodiff/test_msl_sparam_ad.py": "64640050765357b83faf7d01840ed523a2338934def83873a2d39f6e4547c92b",
@@ -779,8 +779,8 @@
   ],
   "old_golden_max_abs_delta": 0.011427236434856165,
   "qualification_reports": [
-    "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_msl-20260927T094725Z/msl_refinement.json",
-    "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_msl-20260927T094725Z/msl_confirmation.json"
+    "",
+    ""
   ],
-  "base_report": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_msl-20260927T094725Z/msl_base.json"
+  "base_report": ""
 }

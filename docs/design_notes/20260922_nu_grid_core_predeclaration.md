@@ -1,14 +1,14 @@
 # One grid for the uniform and the non-uniform lane — step 0 pre-declaration
 
-**Status:** pre-declaration for the core change the PI approved on 2026-09-22
-after an independent design review (Fable, separate instance; its text and the
-two scripts it ran are kept off-repo under `bk-workspace/rfx-nu/notes/`). This
+**Status:** pre-declaration for the core change
+after an independent design review that ran two scripts.
+This
 note fixes what step 0 builds, what it must not change, and how each part is
 judged, before any code. Later parts (the mesher, step 1; the physics witnesses
 G14/G16; the differentiable map) get their own notes.
 **Lane:** nu-mesh. **Trackers:** #810 (graded-mesh observables), the program
 document's gap map G9/G11/G13/G16/G17 (`20260913_nu_full_functionality_program.md`).
-**Written by** the NU lane leader (bk-workspace, Fable).
+
 
 ## 0. What is wrong, and what changes for a user
 
@@ -42,15 +42,15 @@ physics witnesses and are separate declarations.
 
 | fact | checked by |
 |---|---|
-| 167 scalar `grid.dx` read sites outside `rfx/nonuniform.py`/`rfx/grid.py`; 8 `isinstance(NonUniformGrid)` modules | leader, `grep` on main 5b8724be |
-| E and H use different metrics: `inv_d_h[k] = 1/d[k]` (`[N-1] = 0`), `inv_d_e[k] = 2/(d[k-1]+d[k])` (`[0] = 1/d[0]`), bounding node appended | leader read `rfx/nonuniform.py:151-246` |
+| 167 scalar `grid.dx` read sites outside `rfx/nonuniform.py`/`rfx/grid.py`; 8 `isinstance(NonUniformGrid)` modules | `grep` on main 5b8724be |
+| E and H use different metrics: `inv_d_h[k] = 1/d[k]` (`[N-1] = 0`), `inv_d_e[k] = 2/(d[k-1]+d[k])` (`[0] = 1/d[0]`), bounding node appended | read in `rfx/nonuniform.py:151-246` |
 | the sheet conductance uses the dual spacing, source `dV` and RLC the primal | reviewer read `thin_conductor.py:380-384`, `sources.py:70-100`; `sources.py:36-100` (#691) is the pattern to copy |
 | nodes derived from `i·dx` do not reproduce the cells: 47 of 50 cells differ from `dx` by 6e-15; the present raster lane identity (#807) comes from a closed-form special case for uniform axes (`rasterize_grid.py:117-120`) | reviewer RAN |
-| the two lanes' `dt` differ in the last bit on the same grid (`grid.py:151` vs `nonuniform.py:416-421`) | reviewer RAN; leader read both formulas |
+| the two lanes' `dt` differ in the last bit on the same grid (`grid.py:151` vs `nonuniform.py:416-421`) | reviewer RAN; both formulas read |
 | the two lanes' source units differ: NU injects a current (`E += dt/ε · I/dV`), uniform adds a field increment; the same script gives probe peaks `dt/(ε₀dx³) = 2.15e8` apart, 2.9e-5 after normalization | reviewer RAN (`notes/kernel_norm.py`) |
 | at a constant profile the NU kernel is slower on CPU: 48³ 1.45 vs 1.17 ms/step, 96³ 4.87 vs 4.14 (one host, PEC box, one run each); GPU not measured | reviewer RAN (`notes/kernel_time.py`) |
 | in float32, `a/d` and `a·(1/d)` agree bit-for-bit in only 70 % of cases, so a division kernel and a reciprocal-multiply kernel cannot be bit-identical | reviewer RAN |
-| the uniform lane alone has: the GPU baked-coefficient path (`simulation.py:1531, 2500-2545`), the 4th-order stencil, periodic/Bloch, UPML, 2-D modes, float64 storage | reviewer read; leader read `simulation.py` |
+| the uniform lane alone has: the GPU baked-coefficient path (`simulation.py:1531, 2500-2545`), the 4th-order stencil, periodic/Bloch, UPML, 2-D modes, float64 storage | reviewer read; `simulation.py` read |
 | the distributed runners carry their own copies: `distributed_nu.py:88-139` reads `inv_dx` directly, `_distributed_common.py:902-956` has its own curl, `distributed_v2.py:727` reads `grid.dx` | reviewer read |
 | the traced-profile `position_to_index` falls back to a uniform nominal mesh and returns the wrong cell silently (G9, `rfx/nonuniform.py:474-507`) | program document, reviewer read |
 | the uniform `dx` is public surface: `freeze_mesh().dx` (`test_frozen_mesh_construction.py:22`), `checkpoint.py:58`, `io.py:963` write it; `fidelity.py:80-96` already handles both grids as sizes/nodes | reviewer read |
@@ -82,7 +82,7 @@ physics witnesses and are separate declarations.
    under a declared float32 tolerance, not by bit identity. Retiring the
    uniform kernel is a later decision from a GPU measurement (ms/step of
    both kernels and the baked path at the notch-ladder sizes 1 M, 3 M,
-   13 M cells); the threshold is the PI's.
+   13 M cells); the threshold remains undecided.
 5. **Conventions the merged grid inherits from the uniform lane:** the
    `dt` formula (`dx_min/(c√3)·0.99`, and its 2-D form) and the source unit
    (field increment). The NU lane's current-normalized injection becomes an
@@ -97,7 +97,7 @@ physics witnesses and are separate declarations.
    `runners/uniform.py`, `simulation.py:913`): the user result is unchanged
    and only fusion order would move. Coaxial-port sites (27) migrate
    mechanically under uniform bit identity only; coax on a graded mesh stays
-   unsupported by policy (`support_matrix.md`, the PI's 2026-09-20 decision).
+   unsupported by policy (`support_matrix.md`).
 
 ## 3. Scope and judges, per sub-step
 
@@ -168,6 +168,6 @@ reviews each; PRs over 200 lines in `rfx/` get the two-direction review.
 ## 6. Who does what
 
 Implementation: one Opus instance per sub-step PR, from this note. Review: a
-separate Opus instance per PR. The leader reads every judge's output and
-writes any sentence that interprets a number. Documentation mismatches go
+separate Opus instance per PR. Any sentence that interprets a number is written
+after every judge's output is read. Documentation mismatches go
 to #1171; the support-matrix rows move only in the release pass.

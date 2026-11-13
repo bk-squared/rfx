@@ -1545,7 +1545,7 @@ class _PreflightMixin:
     #         e5_y.json: every transition inside the same chain
     #         window as z);
     #   F-S1 and F-S4 on a 40 x 34 x 10 mm PEC cavity graded on x and y
-    #         (rfx-archive records/20261029-inplane-cap-1p4: conserved energy
+    #         (conserved energy
     #         within 5.1e-7 over 1e6 steps; TM110/TM210 at order 1.92, 1.01-
     #         1.19 x the 1.30 error, simulation = discrete model to 3e-7;
     #         pinned by tests/unit/nonuniform/test_inplane_grading_witness.py).

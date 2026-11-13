@@ -3,7 +3,7 @@
 **Status:** plan (2026-09-07). Code work starts AFTER the accuracy/autodiff lane
 (branch `feat/nu-band-accuracy-ad`, note
 `docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md`) has
-reported, because G2 and G3 take their accuracy comparator from it (PI rule:
+reported, because G2 and G3 take their accuracy comparator from it (rule:
 one lane at a time; a policy that trades cells for accuracy is decided on a
 measured accuracy curve, not on cost alone).
 **Branch:** `feat/nu-cost-reduction` (from `feat/nu-band-profile` @ 7c6e3997).
@@ -128,7 +128,7 @@ directory.
 
 ### G1 ablation — pre-declared (2026-09-07, written BEFORE the first GPU run)
 
-Premise check (lead, 2026-09-07): under the CPML-8 bench condition the
+Premise check (2026-09-07): under the CPML-8 bench condition the
 uniform lane's fused fast path is gated OFF (`_fast_eligible` requires no
 CPML, `rfx/simulation.py` ~2000-2025), so BOTH lanes run their slow
 steppers (`update_h`/`update_e` vs `update_h_nu`/`update_e_nu`) and both
@@ -294,7 +294,7 @@ failed at 400^3 (0.270 > 0.140); nothing from this run is used for an
 implementation decision.** For the record: nu-z-scalar-inv is the only
 arm that met the candidate rule (bit-identical, +19.2 % / +11.5 %, both
 > 2x spread), and it is blocked by the sum check alone, not by spread.
-Next instrument revision (lead decision, not taken here): add the
+Next instrument revision (decision, not taken here): add the
 combined arm and a smaller-constant hoist variant (e.g. hoist only
 `sigma_dt_2eps`, or hoist as scan carry/closure instead of an embedded
 constant) so the 400^3 hoist effect is either explained or disappears,
@@ -453,10 +453,10 @@ no instrument fix or resubmission. No `rfx/` source change.
 Harvested with `harvest.sh 369367259965 rfx-nu-cost-g1b-ablation`:
 `~/Documents/vessl-run-logs/369367259965_rfx-nu-cost-g1b-ablation.log`
 (461 lines); CLI confirmed `Deleted #369367259965`.
-NFS artifacts: `claude-workspace/rfx/runs/nu-cost-ablation-g1b/20260910T034258Z-fe86c11b/`.
+NFS artifacts: `<workspace>/rfx/runs/nu-cost-ablation-g1b/20260910T034258Z-fe86c11b/`.
 The run JSON was copied unchanged to
 `validation/research/nu_cost/results/w8b_nu_kernel_ablation_4090.json`
-(SHA256 `6d478a046e2889ae15748e13d773f565223bc37a6470c957c21bb92a4bde30e4`).
+(SHA256 `7e6cd7c0f2279b854703cc0eb7251c37dd51fcbe0914793a91b273a7930dd7d9`). Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-13); the original bytes are in git at 2bea5c3f1 under the same path.
 
 Table A — CPML-8. Rates and spreads are Mcells/s; spread is max minus min
 of the three windows, not a confidence interval. Every timing ratio uses
