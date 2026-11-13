@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.stepping.events import begin_step, end_step, tick, next_solve, result_ready
+
 from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
@@ -254,6 +256,7 @@ def run(
     -------
     SimResult with final state, time series, and optional NTFF data.
     """
+    next_solve()
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     sources = sources or []
     probes = probes or []
@@ -493,6 +496,11 @@ def run(
             "a snapshot's frame axes and checkpoint_segments' segment lengths "
             "are fixed from n_steps before it.")
 
+    event_ticks = begin_step((carry_init, xs), total=n_steps,
+        ticks=gradient != "adjoint" and checkpoint_segments is None,
+        label=report_label, cap=stop_fn is not None,
+        probes=(_step_ctx.materials, pec_mask, pec_edge_masks, pec_occupancy,
+                kerr_chi3, debye, lorentz, tfsf))
     if gradient == "adjoint":
         if snapshot is not None or stop_fn is not None or report_every is not None:
             raise NotImplementedError(
@@ -532,9 +540,9 @@ def run(
                 stop_fn=_after_chunk,
                 chunk=int(stop_interval),
             )
-        elif report_every is None and snap_by_block:
+        elif report_every is None and not event_ticks and snap_by_block:
             final_carry, outputs = _make_recorder(body)(carry_init, xs, 0)
-        elif report_every is None:
+        elif report_every is None and not event_ticks:
             final_carry, outputs = recorded_scan(body, carry_init, xs)
         else:
             # same scan, driven from the host in chunks so a
@@ -633,6 +641,7 @@ def run(
             lambda a: a.reshape(a.shape[0] * a.shape[1], *a.shape[2:]),
             seg_outputs)
 
+    end_step((final_carry, outputs), outputs[0].shape[0])
     if use_snapshot:
         time_series = outputs[0]
         # outputs[1] is a list of arrays, each (n_steps // interval, ...)
@@ -703,7 +712,7 @@ def run(
                                      final_carry["wire_refplane_accs"])
         )
 
-    return SimResult(
+    return result_ready(SimResult(
         state=final_carry["fdtd"] if return_state else None,
         time_series=time_series,
         ntff_data=final_carry.get("ntff"),
@@ -724,7 +733,7 @@ def run(
         current_moment_data=final_carry.get("current_moments"),
         current_moment_monitor=current_moments,
         adjoint_settling=final_carry.get("adjoint_settling"),
-    )
+    ))
 
 
 def run_until_decay(
@@ -896,6 +905,7 @@ def run_until_decay(
     -------
     SimResult
     """
+    next_solve()
     check_map_count()
     warn_unused_decay_monitor(monitor_component, monitor_position)
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
@@ -1144,6 +1154,9 @@ def run_until_decay(
 
     # Like scan_with_progress, call lax.scan directly: full chunks share
     # its executable and only the ragged tail needs another length.
+    begin_step(carry, total=max_steps, ticks=True, label=report_label, cap=True,
+               probes=(_step_ctx.materials, pec_mask, pec_edge_masks, pec_occupancy,
+                       kerr_chi3, debye, lorentz, tfsf))
     pending_tail = None
     while actual_steps < max_steps:
         # All checks use completed counts k * check_interval.
@@ -1195,6 +1208,7 @@ def run_until_decay(
                 actual_steps, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
         else:
             stopped = stop_rule.check(actual_steps, lambda: energy(carry, actual_steps))
+        tick(actual_steps, carry, every=report_every, rule=stop_rule)
         if stopped is not None:
             decayed_fired = True
             break
@@ -1212,6 +1226,7 @@ def run_until_decay(
         state=carry["fdtd"],
         materials=materials, grid=grid, advisory=advisory, sources=sources)
 
+    end_step((carry, probe_chunks), actual_steps, decay_stop)
     # ---- assemble result ----
     time_series = concat_chunks(probe_chunks)
 
@@ -1266,7 +1281,7 @@ def run_until_decay(
         snap_axes = snapshot_axes(
             grid, snapshot, actual_steps, dt=_setup.dt)
 
-    return SimResult(
+    return result_ready(SimResult(
         state=carry["fdtd"] if return_state else None,
         time_series=time_series,
         ntff_data=carry.get("ntff"),
@@ -1285,7 +1300,7 @@ def run_until_decay(
         current_moment_data=carry.get("current_moments"),
         current_moment_monitor=current_moments,
         decay_stop=decay_stop,
-    )
+    ))
 
 
 run_uniform_loop = run

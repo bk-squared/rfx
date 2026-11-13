@@ -6,6 +6,8 @@ variants. The caller retains its declared port and observer containers.
 
 from __future__ import annotations
 
+from rfx.runners.progress_events import entry_scope, result_ready
+
 from rfx.sparams import _waveguide_stages
 
 from rfx.errors import AccuracyWarning, RfxUnsupported
@@ -284,470 +286,471 @@ def compute_waveguide_s_matrix(
         Material rasterization is a cell-centre step test on realized nodes.
         ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
-    conformal_pec = _waveguide_stages._admit_waveguide_options(
-        RfxUnsupported, conformal_pec, port_reference_sims, resolve_field_dtype, self, subpixel_smoothing,
-    )
-    if not normalize:
-        import warnings
-        warnings.warn(
-            "compute_waveguide_s_matrix(normalize=False): S21 and "
-            "S-parameter phase include Yee numerical dispersion. "
-            "normalize=True also retains propagation between the declared "
-            "planes, using the reference incident wave for every entry. "
-            "For |S11| of strong reflectors (PEC short, resonators) "
-            "normalize=False is more accurate — see the normalize "
-            "parameter docstring.", AccuracyWarning,
-            stacklevel=2,
+    with entry_scope(self, 'compute_waveguide_s_matrix', locals()):
+        conformal_pec = _waveguide_stages._admit_waveguide_options(
+            RfxUnsupported, conformal_pec, port_reference_sims, resolve_field_dtype, self, subpixel_smoothing,
         )
-    entries = _waveguide_stages._validate_waveguide_ports(
-        eps_override, normalize, port_reference_sims, self, sigma_override,
-    )
-
-    # audit: same silent NTFF drop class as the MSL path.
-    _warn_ntff_box_dropped(self, "compute_waveguide_s_matrix()")
-
-    # Non-uniform-mesh dispatch checks all three profiles, including a
-    # dz_profile-only mesh. The dedicated NU two-run extractor below is enabled
-    # when its supported scope is met (``normalize=True``, single-mode ports);
-    # otherwise raise so the user is not given silently-wrong numbers. Resolve
-    # the frequency grid here because the NU absorber advisory needs it; a
-    # shared resolver also applies the matching-grid check consistently.
-    from rfx.preflight.waveguide import resolve_waveguide_port_freqs
-
-    def _resolve_freqs(entry: _WaveguidePortEntry) -> jnp.ndarray:
-        # ONE definition, shared with preflight_sparameters(calculator=
-        # "waveguide") so the setup audits read the run's own band.
-        return resolve_waveguide_port_freqs(self, entry)
-
-    freqs = _resolve_freqs(entries[0])
-    for entry in entries[1:]:
-        entry_freqs = _resolve_freqs(entry)
-        if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
-            raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
-
-    if (any(profile is not None for profile in
-            (self._dx_profile, self._dy_profile, self._dz_profile))
-            and self._interface_eps == "dual_average"):
-        raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
-    from rfx.boundaries.pmc import refuse_waveguide_pmc
-    refuse_waveguide_pmc(self)
-    from rfx.runners._admission import admit
-    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
-    if port_reference_sims is not None:
-        for reference in port_reference_sims:
-            refuse_waveguide_pmc(reference)
-            admit(reference, "waveguide_s_matrix")
-
-    conformal_solve = None
-    if conformal_pec:
-        conformal_solve = self._auto_preflight(
-            skip=skip_preflight, prepare=True,
-            context="compute_waveguide_s_matrix", check_ntff="advisory",
-            conformal=True, realization_options=(subpixel_smoothing, conformal_pec),
-            tfsf_material_overrides=(eps_override, sigma_override, None))
-        report_diagnostics(conformal_solve.diagnostics)
-    elif not skip_preflight:
-        report_diagnostics(self._auto_preflight(
-            context="compute_waveguide_s_matrix", check_ntff="advisory",
-            tfsf_material_overrides=(eps_override, sigma_override, None)))
-
-    if (
-        self._dz_profile is not None
-        or self._dx_profile is not None
-        or self._dy_profile is not None
-    ):
-        _waveguide_stages._validate_waveguide_nu(
-            checkpoint_segments, entries, eps_override, normalize, port_reference_sims, sigma_override, subpixel_smoothing,
-        )
-        # Far-port absorber advisory, on the NU lane too.
-        # It used to sit ~110 lines below this branch's return, i.e. it was
-        # UNREACHABLE from here: the guard existed, its text named the exact
-        # remedy, and no NU caller ever asked it. That silence is why both NU
-        # fixture producers shipped 0.33 and 0.099 lambda_g stacks — patching
-        # the two producers would have left the next one to repeat it. Pure
-        # NumPy, no FDTD, so it costs a grid build and a few array ops.
-        # No bare `except: pass` around it: an advisory that can fail
-        # silently is the failure mode this finding IS. If the plumbing ever
-        # breaks, the caller hears about it as a warning rather than getting
-        # the same quiet all-clear that let 0.33 lambda_g ship.
-        from rfx.runners.nonuniform import _build_waveguide_port_config_nu
-        try:
-            _nu_grid = self._build_nonuniform_grid()
-            _nu_cfgs = [
-                # n_steps is still None here when the caller passed
-                # num_periods; the advisory reads only the config's
-                # propagation axis and modal cutoff, never anything derived
-                # from the step count, so a placeholder is honest rather
-                # than a lie about the run length.
-                _build_waveguide_port_config_nu(
-                    self, _e, _nu_grid, jnp.asarray(freqs),
-                    int(n_steps) if n_steps else 1)
-                for _e in entries
-            ]
-            from rfx.preflight.waveguide import resolve_preflight_port_configs
-            _nu_cfgs = resolve_preflight_port_configs(self, _nu_grid, _nu_cfgs,
-                eps_override=eps_override, sigma_override=sigma_override)
-        except (TimeoutError,):
-            raise
-        except Exception as _exc:  # noqa: BLE001 - recorded in the UNCHECKED AccuracyWarning
-            import warnings as _w
-            _w.warn(
-                "compute_waveguide_s_matrix: could not evaluate the far-port "
-                f"absorber advisory on the non-uniform lane ({_exc!r}). The "
-                "0.5 guide-wavelength discipline is therefore UNCHECKED for "
-                "this run — verify the absorber depth by hand.", AccuracyWarning,
+        if not normalize:
+            import warnings
+            warnings.warn(
+                "compute_waveguide_s_matrix(normalize=False): S21 and "
+                "S-parameter phase include Yee numerical dispersion. "
+                "normalize=True also retains propagation between the declared "
+                "planes, using the reference incident wave for every entry. "
+                "For |S11| of strong reflectors (PEC short, resonators) "
+                "normalize=False is more accurate — see the normalize "
+                "parameter docstring.", AccuracyWarning,
                 stacklevel=2,
             )
-        else:
-            _warn_thin_absorber_vs_guide_wavelength(
-                _nu_grid, _nu_cfgs, freqs, self._cpml_layers,
-                self._boundary_spec,
-            )
-            # Record-vs-far-boundary and port-index mirror audits
-            # (post-v1.8 plan item 2). Same shared hook the uniform lane
-            # below calls and preflight_sparameters(calculator=
-            # "waveguide") calls; the grid and configs this lane already
-            # built are passed in so no second mode solve is paid for.
-            import warnings as _wg_warnings_nu
-            self._preflight_waveguide_setup(
-                _wg_warnings_nu, freqs=freqs, num_periods=num_periods,
-                grid=_nu_grid, cfgs=_nu_cfgs,
-                n_steps=int(n_steps) if n_steps else None,
-            )
-
-        _res_nu = self._compute_waveguide_s_matrix_nu(
-            n_steps=n_steps,
-            num_periods=num_periods,
-            normalize=normalize,
-            eps_override=eps_override,
-            sigma_override=sigma_override,
-            checkpoint_segments=checkpoint_segments,
-            strict_passivity=strict_passivity,
+        entries = _waveguide_stages._validate_waveguide_ports(
+            eps_override, normalize, port_reference_sims, self, sigma_override,
         )
-        release_inspection(self)
-        return _res_nu
 
-    _waveguide_stages._validate_waveguide_uniform(
-        eps_override, is_tracer, normalize, port_reference_sims, self, sigma_override,
-    )
+        # audit: same silent NTFF drop class as the MSL path.
+        _warn_ntff_box_dropped(self, "compute_waveguide_s_matrix()")
 
-    grid = conformal_solve.realized().grid if conformal_solve is not None else self._build_grid()
-    _wg_sheet_specs: list = []
-    _wg_pec_sheets: list = []
-    _wg_pec_wires: list = []
-    from rfx.model.conductors import solve_conductors, assembled_materials
-    conductors = (conformal_solve.take() if conformal_solve is not None else solve_conductors(
-        self, grid, realization_options=(subpixel_smoothing, conformal_pec)))
-    base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
-        conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
-        pec_wires=_wg_pec_wires)
-    _wg_pec_sheets = tuple(_wg_pec_sheets)
-    _wg_pec_wires = tuple(_wg_pec_wires)
-    _waveguide_stages._validate_waveguide_materials(
-        conformal_pec, debye_spec, eps_override, lorentz_spec, pec_shapes, self, subpixel_smoothing,
-    )
-    from rfx.model.overrides import apply_material_overrides
-    materials = apply_material_overrides(base_materials, eps_override=eps_override,
-                                         sigma_override=sigma_override, keep_lumped=True)
+        # Non-uniform-mesh dispatch checks all three profiles, including a
+        # dz_profile-only mesh. The dedicated NU two-run extractor below is enabled
+        # when its supported scope is met (``normalize=True``, single-mode ports);
+        # otherwise raise so the user is not given silently-wrong numbers. Resolve
+        # the frequency grid here because the NU absorber advisory needs it; a
+        # shared resolver also applies the matching-grid check consistently.
+        from rfx.preflight.waveguide import resolve_waveguide_port_freqs
 
-    ref_materials_per_port, ref_pec_edge_masks_per_port, ref_pec_masks = _waveguide_stages._prepare_waveguide_references(
-        grid, port_reference_sims,
-    )
+        def _resolve_freqs(entry: _WaveguidePortEntry) -> jnp.ndarray:
+            # ONE definition, shared with preflight_sparameters(calculator=
+            # "waveguide") so the setup audits read the run's own band.
+            return resolve_waveguide_port_freqs(self, entry)
 
-    if n_steps is None:
-        n_steps = grid.num_timesteps(num_periods=num_periods)
-    from rfx.model.pole_stability import courant_budget
-    _, debye, lorentz = self._init_dispersion(
-        materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
-        periodic=self._periodic_flags(), grid=grid)
+        freqs = _resolve_freqs(entries[0])
+        for entry in entries[1:]:
+            entry_freqs = _resolve_freqs(entry)
+            if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
+                raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
 
-    has_multimode, raw_cfgs, reference_medium = _waveguide_stages._prepare_waveguide_configs(
-        _reference_medium, debye, entries, freqs, grid, lorentz, materials,
-        n_steps, normalize, pec_mask_wg, ref_materials_per_port, ref_pec_masks, self,
-    )
+        if (any(profile is not None for profile in
+                (self._dx_profile, self._dy_profile, self._dz_profile))
+                and self._interface_eps == "dual_average"):
+            raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
+        from rfx.boundaries.pmc import refuse_waveguide_pmc
+        refuse_waveguide_pmc(self)
+        from rfx.runners._admission import admit
+        admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
+        if port_reference_sims is not None:
+            for reference in port_reference_sims:
+                refuse_waveguide_pmc(reference)
+                admit(reference, "waveguide_s_matrix")
 
+        conformal_solve = None
+        if conformal_pec:
+            conformal_solve = self._auto_preflight(
+                skip=skip_preflight, prepare=True,
+                context="compute_waveguide_s_matrix", check_ntff="advisory",
+                conformal=True, realization_options=(subpixel_smoothing, conformal_pec),
+                tfsf_material_overrides=(eps_override, sigma_override, None))
+            report_diagnostics(conformal_solve.diagnostics)
+        elif not skip_preflight:
+            report_diagnostics(self._auto_preflight(
+                context="compute_waveguide_s_matrix", check_ntff="advisory",
+                tfsf_material_overrides=(eps_override, sigma_override, None)))
 
-    # Unify source waveform across all ports so that the S-matrix
-    # extraction uses identical excitation.  Different source spectra
-    # (from mismatched f0/bandwidth) cause S11 ≠ S22 artifacts in the
-    # unnormalized path because V/I decomposition error varies with
-    # frequency.  Use port 0's waveform as the canonical source.
-    def _flatten_cfgs(cfgs):
-        out = []
-        for c in cfgs:
-            if isinstance(c, list):
-                out.extend(c)
+        if (
+            self._dz_profile is not None
+            or self._dx_profile is not None
+            or self._dy_profile is not None
+        ):
+            _waveguide_stages._validate_waveguide_nu(
+                checkpoint_segments, entries, eps_override, normalize, port_reference_sims, sigma_override, subpixel_smoothing,
+            )
+            # Far-port absorber advisory, on the NU lane too.
+            # It used to sit ~110 lines below this branch's return, i.e. it was
+            # UNREACHABLE from here: the guard existed, its text named the exact
+            # remedy, and no NU caller ever asked it. That silence is why both NU
+            # fixture producers shipped 0.33 and 0.099 lambda_g stacks — patching
+            # the two producers would have left the next one to repeat it. Pure
+            # NumPy, no FDTD, so it costs a grid build and a few array ops.
+            # No bare `except: pass` around it: an advisory that can fail
+            # silently is the failure mode this finding IS. If the plumbing ever
+            # breaks, the caller hears about it as a warning rather than getting
+            # the same quiet all-clear that let 0.33 lambda_g ship.
+            from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+            try:
+                _nu_grid = self._build_nonuniform_grid()
+                _nu_cfgs = [
+                    # n_steps is still None here when the caller passed
+                    # num_periods; the advisory reads only the config's
+                    # propagation axis and modal cutoff, never anything derived
+                    # from the step count, so a placeholder is honest rather
+                    # than a lie about the run length.
+                    _build_waveguide_port_config_nu(
+                        self, _e, _nu_grid, jnp.asarray(freqs),
+                        int(n_steps) if n_steps else 1)
+                    for _e in entries
+                ]
+                from rfx.preflight.waveguide import resolve_preflight_port_configs
+                _nu_cfgs = resolve_preflight_port_configs(self, _nu_grid, _nu_cfgs,
+                    eps_override=eps_override, sigma_override=sigma_override)
+            except (TimeoutError,):
+                raise
+            except Exception as _exc:  # noqa: BLE001 - recorded in the UNCHECKED AccuracyWarning
+                import warnings as _w
+                _w.warn(
+                    "compute_waveguide_s_matrix: could not evaluate the far-port "
+                    f"absorber advisory on the non-uniform lane ({_exc!r}). The "
+                    "0.5 guide-wavelength discipline is therefore UNCHECKED for "
+                    "this run — verify the absorber depth by hand.", AccuracyWarning,
+                    stacklevel=2,
+                )
             else:
-                out.append(c)
-        return out
+                _warn_thin_absorber_vs_guide_wavelength(
+                    _nu_grid, _nu_cfgs, freqs, self._cpml_layers,
+                    self._boundary_spec,
+                )
+                # Record-vs-far-boundary and port-index mirror audits
+                # (post-v1.8 plan item 2). Same shared hook the uniform lane
+                # below calls and preflight_sparameters(calculator=
+                # "waveguide") calls; the grid and configs this lane already
+                # built are passed in so no second mode solve is paid for.
+                import warnings as _wg_warnings_nu
+                self._preflight_waveguide_setup(
+                    _wg_warnings_nu, freqs=freqs, num_periods=num_periods,
+                    grid=_nu_grid, cfgs=_nu_cfgs,
+                    n_steps=int(n_steps) if n_steps else None,
+                )
 
-    flat0 = _flatten_cfgs(raw_cfgs)
-    ref_t0 = flat0[0].src_t0
-    ref_tau = flat0[0].src_tau
-    need_unify = any(
-        c.src_t0 != ref_t0 or c.src_tau != ref_tau for c in flat0[1:]
-    )
-    if need_unify:
-        raw_cfgs = [
-            cfg._replace(src_t0=ref_t0, src_tau=ref_tau)
-            if not isinstance(cfg, list)
-            else [c._replace(src_t0=ref_t0, src_tau=ref_tau) for c in cfg]
-            for cfg in raw_cfgs
-        ]
+            _res_nu = self._compute_waveguide_s_matrix_nu(
+                n_steps=n_steps,
+                num_periods=num_periods,
+                normalize=normalize,
+                eps_override=eps_override,
+                sigma_override=sigma_override,
+                checkpoint_segments=checkpoint_segments,
+                strict_passivity=strict_passivity,
+            )
+            release_inspection(self)
+            return result_ready(_res_nu)
 
-    # Far-port absorber advisory for EVERY uniform two-port path. Emitted here, before the
-    # FDTD runs and before the
-    # single-mode / multimode split, because the functional entry points
-    # run no sim.preflight() and the port_reference_sims advisory below
-    # covers only the junction path.
-    _warn_thin_absorber_vs_guide_wavelength(
-        grid, raw_cfgs, freqs, self._cpml_layers, self._boundary_spec,
-    )
-
-    # Record-vs-far-boundary and port-index mirror audits (post-v1.8 plan
-    # item 2). The same shared hook the non-uniform lane above and
-    # preflight_sparameters(calculator="waveguide") call, given this
-    # lane's already-built grid, configs and step count.
-    import warnings as _wg_warnings
-    self._preflight_waveguide_setup(
-        _wg_warnings, freqs=freqs, num_periods=num_periods,
-        grid=grid, cfgs=raw_cfgs, n_steps=int(n_steps),
-    )
-
-    if subpixel_smoothing:
-        from rfx.geometry.smoothing import refuse_pmc_smoothing
-        refuse_pmc_smoothing(self, grid)
-    from rfx.model.tensor_operands import (
-        form_tensor_operands, finish_tensor_operands, finish_conformal_mu, form_reference_operands,
-    )
-    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable, conformal_areas = form_tensor_operands(
-        self, grid, materials, subpixel_smoothing=subpixel_smoothing,
-        conformal=conformal_pec, conformal_min_weight=0.1,
-        pec_shapes=pec_shapes, zero_inverse_on=pec_mask_wg)
-    if subpixel_smoothing:
-        from rfx.geometry.smoothing import warn_unextendable_shapes
-        warn_unextendable_shapes(_unextendable)
-    if conformal_weights is not None:
-        from rfx.model.materials import with_components
-        from rfx.simulation import resolve_periodic
-        materials = with_components(materials, grid, periodic=resolve_periodic(grid, None))
-    materials = finish_conformal_mu(materials, conformal_areas)
-    aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
-    _wg_pec_edge_masks, _wg_geometry_pec_edges, _wg_sheet_ctx = _waveguide_stages._prepare_waveguide_conductors(
-        conductors, subpixel_smoothing, conformal_weights)
-    ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
-        grid, materials, subpixel_smoothing=subpixel_smoothing,
-        conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
-        conformal_pec=conformal_pec,
-        reference_eps=float(reference_medium.eps_r))
-
-    from rfx.model.realization_table import finish_table
-    realization_record = finish_table(self, conductors, lane="waveguide_s_matrix")
-    from typing import Callable, cast
-    # with_forward_geometry adds the metadata keyword to the tuple constructor.
-    realization_result = cast(Callable[..., WaveguideSMatrixResult], WaveguideSMatrixResult)
-
-    if has_multimode and _wg_sheet_ctx is not None:
-        raise ValueError(
-            "surface-impedance (surface_impedance_f0) sheets are not "
-            "supported on the multimode waveguide S-matrix path"
-            ": the multimode extractors do not thread the "
-            "sheet operator ctx, so the runs would silently simulate "
-            "NO sheet. Use n_modes=1 ports or drop the f0 sheet.")
-    if has_multimode:
-        s_params, reference_planes, port_names_mm, port_directions_mm, settling_db_mm, settling_details_mm = _waveguide_stages._extract_waveguide_multimode(
-            _homogeneous_reference_materials, _wg_pec_edge_masks, aniso_eps, aniso_inv_eps, conformal_weights, debye, entries,
-            extract_multimode_s_matrix, extract_multimode_s_matrix_flux, grid, lorentz, materials, n_steps, normalize,
-            np, raw_cfgs, ref_aniso_eps, ref_aniso_inv_eps, ref_conformal, reference_medium, resolve_reported_planes,
-            self, waveguide_plane_positions,
+        _waveguide_stages._validate_waveguide_uniform(
+            eps_override, is_tracer, normalize, port_reference_sims, self, sigma_override,
         )
+
+        grid = conformal_solve.realized().grid if conformal_solve is not None else self._build_grid()
+        _wg_sheet_specs: list = []
+        _wg_pec_sheets: list = []
+        _wg_pec_wires: list = []
+        from rfx.model.conductors import solve_conductors, assembled_materials
+        conductors = (conformal_solve.take() if conformal_solve is not None else solve_conductors(
+            self, grid, realization_options=(subpixel_smoothing, conformal_pec)))
+        base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
+            conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
+            pec_wires=_wg_pec_wires)
+        _wg_pec_sheets = tuple(_wg_pec_sheets)
+        _wg_pec_wires = tuple(_wg_pec_wires)
+        _waveguide_stages._validate_waveguide_materials(
+            conformal_pec, debye_spec, eps_override, lorentz_spec, pec_shapes, self, subpixel_smoothing,
+        )
+        from rfx.model.overrides import apply_material_overrides
+        materials = apply_material_overrides(base_materials, eps_override=eps_override,
+                                             sigma_override=sigma_override, keep_lumped=True)
+
+        ref_materials_per_port, ref_pec_edge_masks_per_port, ref_pec_masks = _waveguide_stages._prepare_waveguide_references(
+            grid, port_reference_sims,
+        )
+
+        if n_steps is None:
+            n_steps = grid.num_timesteps(num_periods=num_periods)
+        from rfx.model.pole_stability import courant_budget
+        _, debye, lorentz = self._init_dispersion(
+            materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
+            periodic=self._periodic_flags(), grid=grid)
+
+        has_multimode, raw_cfgs, reference_medium = _waveguide_stages._prepare_waveguide_configs(
+            _reference_medium, debye, entries, freqs, grid, lorentz, materials,
+            n_steps, normalize, pec_mask_wg, ref_materials_per_port, ref_pec_masks, self,
+        )
+
+
+        # Unify source waveform across all ports so that the S-matrix
+        # extraction uses identical excitation.  Different source spectra
+        # (from mismatched f0/bandwidth) cause S11 ≠ S22 artifacts in the
+        # unnormalized path because V/I decomposition error varies with
+        # frequency.  Use port 0's waveform as the canonical source.
+        def _flatten_cfgs(cfgs):
+            out = []
+            for c in cfgs:
+                if isinstance(c, list):
+                    out.extend(c)
+                else:
+                    out.append(c)
+            return out
+
+        flat0 = _flatten_cfgs(raw_cfgs)
+        ref_t0 = flat0[0].src_t0
+        ref_tau = flat0[0].src_tau
+        need_unify = any(
+            c.src_t0 != ref_t0 or c.src_tau != ref_tau for c in flat0[1:]
+        )
+        if need_unify:
+            raw_cfgs = [
+                cfg._replace(src_t0=ref_t0, src_tau=ref_tau)
+                if not isinstance(cfg, list)
+                else [c._replace(src_t0=ref_t0, src_tau=ref_tau) for c in cfg]
+                for cfg in raw_cfgs
+            ]
+
+        # Far-port absorber advisory for EVERY uniform two-port path. Emitted here, before the
+        # FDTD runs and before the
+        # single-mode / multimode split, because the functional entry points
+        # run no sim.preflight() and the port_reference_sims advisory below
+        # covers only the junction path.
+        _warn_thin_absorber_vs_guide_wavelength(
+            grid, raw_cfgs, freqs, self._cpml_layers, self._boundary_spec,
+        )
+
+        # Record-vs-far-boundary and port-index mirror audits (post-v1.8 plan
+        # item 2). The same shared hook the non-uniform lane above and
+        # preflight_sparameters(calculator="waveguide") call, given this
+        # lane's already-built grid, configs and step count.
+        import warnings as _wg_warnings
+        self._preflight_waveguide_setup(
+            _wg_warnings, freqs=freqs, num_periods=num_periods,
+            grid=grid, cfgs=raw_cfgs, n_steps=int(n_steps),
+        )
+
+        if subpixel_smoothing:
+            from rfx.geometry.smoothing import refuse_pmc_smoothing
+            refuse_pmc_smoothing(self, grid)
+        from rfx.model.tensor_operands import (
+            form_tensor_operands, finish_tensor_operands, finish_conformal_mu, form_reference_operands,
+        )
+        aniso_eps, aniso_inv_eps, conformal_weights, _unextendable, conformal_areas = form_tensor_operands(
+            self, grid, materials, subpixel_smoothing=subpixel_smoothing,
+            conformal=conformal_pec, conformal_min_weight=0.1,
+            pec_shapes=pec_shapes, zero_inverse_on=pec_mask_wg)
+        if subpixel_smoothing:
+            from rfx.geometry.smoothing import warn_unextendable_shapes
+            warn_unextendable_shapes(_unextendable)
+        if conformal_weights is not None:
+            from rfx.model.materials import with_components
+            from rfx.simulation import resolve_periodic
+            materials = with_components(materials, grid, periodic=resolve_periodic(grid, None))
+        materials = finish_conformal_mu(materials, conformal_areas)
+        aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
+        _wg_pec_edge_masks, _wg_geometry_pec_edges, _wg_sheet_ctx = _waveguide_stages._prepare_waveguide_conductors(
+            conductors, subpixel_smoothing, conformal_weights)
+        ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
+            grid, materials, subpixel_smoothing=subpixel_smoothing,
+            conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
+            conformal_pec=conformal_pec,
+            reference_eps=float(reference_medium.eps_r))
+
+        from rfx.model.realization_table import finish_table
+        realization_record = finish_table(self, conductors, lane="waveguide_s_matrix")
+        from typing import Callable, cast
+        # with_forward_geometry adds the metadata keyword to the tuple constructor.
+        realization_result = cast(Callable[..., WaveguideSMatrixResult], WaveguideSMatrixResult)
+
+        if has_multimode and _wg_sheet_ctx is not None:
+            raise ValueError(
+                "surface-impedance (surface_impedance_f0) sheets are not "
+                "supported on the multimode waveguide S-matrix path"
+                ": the multimode extractors do not thread the "
+                "sheet operator ctx, so the runs would silently simulate "
+                "NO sheet. Use n_modes=1 ports or drop the f0 sheet.")
+        if has_multimode:
+            s_params, reference_planes, port_names_mm, port_directions_mm, settling_db_mm, settling_details_mm = _waveguide_stages._extract_waveguide_multimode(
+                _homogeneous_reference_materials, _wg_pec_edge_masks, aniso_eps, aniso_inv_eps, conformal_weights, debye, entries,
+                extract_multimode_s_matrix, extract_multimode_s_matrix_flux, grid, lorentz, materials, n_steps, normalize,
+                np, raw_cfgs, ref_aniso_eps, ref_aniso_inv_eps, ref_conformal, reference_medium, resolve_reported_planes,
+                self, waveguide_plane_positions,
+            )
+            _warn_if_ringdown_truncated(
+                settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
+                witnesses=settling_details_mm)
+            _res_mm = realization_result(
+                realized_geometry=realization_record,
+                s_params=s_params,
+                freqs=jnp.asarray(freqs),
+                port_names=tuple(port_names_mm),
+                port_directions=tuple(port_directions_mm),
+                reference_planes=reference_planes,
+                settling_db=settling_db_mm, settling_witness=tuple(settling_details_mm),
+            )
+            completed = _finalize_sparam_result(
+                _res_mm,
+                refused_positions=_refused_waveguide_positions(_flatten_cfgs(raw_cfgs)),
+                extractor="compute_waveguide_s_matrix",
+                strict=strict_passivity,
+                check_reciprocity=True,
+                passivity_tol=2.0 if normalize is False else 0.10,
+            )
+            release_inspection(self)
+            return result_ready(completed)
+
+        # Single-mode path (original behavior)
+        cfgs = raw_cfgs
+
+        # Far-port discipline advisories for interior-PEC junction references.
+        # Pure-numpy heuristics emitted BEFORE the FDTD runs; no simulation.
+        if port_reference_sims is not None:
+            _warn_junction_probe_clearance(
+                grid, cfgs, conductivity_envelope(materials),
+                [conductivity_envelope(m) for m in ref_materials_per_port], freqs,
+                device_pec_edges=_wg_geometry_pec_edges,
+                ref_pec_edges=ref_pec_edge_masks_per_port,
+            )
+            _warn_junction_cpml_thickness(
+                grid, cfgs, freqs, self._cpml_layers,
+            )
+
+        # ``cfg.u_lo/u_hi`` are CELL spans (the entries ``_plane_indexer``
+        # slices), so this compares exactly the field-array ranges the two
+        # ports would write to. Two apertures that meet at a shared wall node
+        # abut without sharing a cell and are NOT an overlap; the builders used
+        # to hand over node spans, one entry too long, so such a pair was
+        # rejected. ``test_abutting_apertures_on_one_face_share_no_cell``
+        # (tests/unit/ports/test_waveguide_port_aperture_cell_count.py) pins it.
+        def _slices_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
+            return max(a[0], b[0]) < min(a[1], b[1])
+
+        ref_shifts = _waveguide_stages._prepare_waveguide_apertures(
+            _slices_overlap, cfgs, entries, resolve_reported_planes, waveguide_plane_positions,
+        )
+
+        _pec_axes = None
+        # The CPML psi coefficient must read the same permittivity as the Yee half
+        # of the timestep: conformal_eps_correction sets aniso_eps to eps_eff =
+        # eps/w at wall cells, which is HIGHER than materials.eps_r, and those cells
+        # run through the x CPML pads. Measured |S21| at dx 3 / 2 / 1.5 mm was
+        # 0.7564 / 0.6974 / nan with mismatched permittivities, and 0.7796 / 0.6974
+        # / 0.7274 with matching values. This stability evidence does not establish
+        # conformal-PEC accuracy; accuracy measurements made with the mismatch
+        # require remeasurement.
+
+        settling_details = []
+        if normalize == "flux":
+            from rfx.core.yee import init_materials as _init_vacuum_materials
+            ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
+            s_params = extract_waveguide_s_matrix_flux(
+                grid,
+                materials,
+                ref_materials,
+                cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes=_pec_axes,
+                debye=debye,
+                lorentz=lorentz,
+                ref_debye=None,
+                ref_lorentz=None,
+                ref_shifts=ref_shifts,
+                aniso_eps=aniso_eps,
+                ref_aniso_eps=ref_aniso_eps, ref_conformal=ref_conformal,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                ref_aniso_inv_eps=ref_aniso_inv_eps,
+                ref_materials_per_port=ref_materials_per_port,
+                pec_edge_masks=_wg_pec_edge_masks,
+                ref_pec_edge_masks_per_port=ref_pec_edge_masks_per_port,
+                checkpoint_segments=checkpoint_segments,
+                return_settling=True, settling_details=settling_details,
+                sheet_impedance=_wg_sheet_ctx,
+                field_dtype=self._resolve_field_dtype(),
+            )
+            s_params, settling_db = s_params
+        elif normalize:
+            from rfx.core.yee import init_materials as _init_vacuum_materials
+            ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
+            s_params = extract_waveguide_s_params_normalized(
+                grid,
+                materials,
+                ref_materials,
+                cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes=_pec_axes,
+                debye=debye,
+                lorentz=lorentz,
+                ref_debye=None,
+                ref_lorentz=None,
+                ref_shifts=ref_shifts,
+                aniso_eps=aniso_eps,
+                ref_aniso_eps=ref_aniso_eps, ref_conformal=ref_conformal,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                ref_aniso_inv_eps=ref_aniso_inv_eps,
+                pec_edge_masks=_wg_pec_edge_masks,
+                checkpoint_segments=checkpoint_segments,
+                return_settling=True, settling_details=settling_details,
+                sheet_impedance=_wg_sheet_ctx,
+                field_dtype=self._resolve_field_dtype(),
+            )
+            s_params, settling_db = s_params
+        else:
+            s_params, settling_db = extract_waveguide_s_matrix(
+                grid,
+                materials,
+                cfgs,
+                n_steps,
+                boundary="cpml",
+                cpml_axes=grid.cpml_axes,
+                pec_axes=_pec_axes,
+                debye=debye,
+                lorentz=lorentz,
+                ref_shifts=ref_shifts,
+                aniso_eps=aniso_eps,
+                conformal_weights=conformal_weights,
+                aniso_inv_eps=aniso_inv_eps,
+                pec_edge_masks=_wg_pec_edge_masks,
+                checkpoint_segments=checkpoint_segments,
+                return_settling=True, settling_details=settling_details,
+                sheet_impedance=_wg_sheet_ctx,
+                field_dtype=self._resolve_field_dtype(),
+            )
+        reference_planes = np.array(
+            [
+                resolve_reported_planes(entry, cfg).reference
+                for entry, cfg in zip(entries, cfgs)
+            ],
+            dtype=float,
+        )
+        _port_names = tuple(entry.name for entry in entries)
+        # the energy ring-down witness reaches the waveguide
+        # path — same aggregate truncation warning as the lumped/MSL path.
+        # NaN entries (traced AD runs) are skipped by the warner's finite
+        # mask; the array itself is always attached for the record.
+        settling_db = np.asarray(settling_db, dtype=float)
         _warn_if_ringdown_truncated(
-            settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
-            witnesses=settling_details_mm)
-        _res_mm = realization_result(
+            settling_db, _port_names, num_periods=float(num_periods), witnesses=settling_details,
+        )
+        # Post-solve discretization witness (post-v1.8 plan item 5): one
+        # banner line after the settling line. Report-only.
+        _ph_rms, _ph_meta = _waveguide_s21_phase_residual(
+            s_params, freqs, reference_planes, cfgs, normalize=normalize,
+        )
+        _res_sm = realization_result(
             realized_geometry=realization_record,
             s_params=s_params,
             freqs=jnp.asarray(freqs),
-            port_names=tuple(port_names_mm),
-            port_directions=tuple(port_directions_mm),
+            port_names=_port_names,
+            port_directions=tuple(entry.direction for entry in entries),
             reference_planes=reference_planes,
-            settling_db=settling_db_mm, settling_witness=tuple(settling_details_mm),
+            settling_db=settling_db, settling_witness=tuple(settling_details),
+            s21_phase_residual_deg_rms=_ph_rms,
+            s21_phase_residual_meta=_ph_meta,
         )
         completed = _finalize_sparam_result(
-            _res_mm,
-            refused_positions=_refused_waveguide_positions(_flatten_cfgs(raw_cfgs)),
+            _res_sm,
+            refused_positions=_refused_waveguide_positions(cfgs),
             extractor="compute_waveguide_s_matrix",
             strict=strict_passivity,
             check_reciprocity=True,
             passivity_tol=2.0 if normalize is False else 0.10,
         )
         release_inspection(self)
-        return completed
-
-    # Single-mode path (original behavior)
-    cfgs = raw_cfgs
-
-    # Far-port discipline advisories for interior-PEC junction references.
-    # Pure-numpy heuristics emitted BEFORE the FDTD runs; no simulation.
-    if port_reference_sims is not None:
-        _warn_junction_probe_clearance(
-            grid, cfgs, conductivity_envelope(materials),
-            [conductivity_envelope(m) for m in ref_materials_per_port], freqs,
-            device_pec_edges=_wg_geometry_pec_edges,
-            ref_pec_edges=ref_pec_edge_masks_per_port,
-        )
-        _warn_junction_cpml_thickness(
-            grid, cfgs, freqs, self._cpml_layers,
-        )
-
-    # ``cfg.u_lo/u_hi`` are CELL spans (the entries ``_plane_indexer``
-    # slices), so this compares exactly the field-array ranges the two
-    # ports would write to. Two apertures that meet at a shared wall node
-    # abut without sharing a cell and are NOT an overlap; the builders used
-    # to hand over node spans, one entry too long, so such a pair was
-    # rejected. ``test_abutting_apertures_on_one_face_share_no_cell``
-    # (tests/unit/ports/test_waveguide_port_aperture_cell_count.py) pins it.
-    def _slices_overlap(a: tuple[int, int], b: tuple[int, int]) -> bool:
-        return max(a[0], b[0]) < min(a[1], b[1])
-
-    ref_shifts = _waveguide_stages._prepare_waveguide_apertures(
-        _slices_overlap, cfgs, entries, resolve_reported_planes, waveguide_plane_positions,
-    )
-
-    _pec_axes = None
-    # The CPML psi coefficient must read the same permittivity as the Yee half
-    # of the timestep: conformal_eps_correction sets aniso_eps to eps_eff =
-    # eps/w at wall cells, which is HIGHER than materials.eps_r, and those cells
-    # run through the x CPML pads. Measured |S21| at dx 3 / 2 / 1.5 mm was
-    # 0.7564 / 0.6974 / nan with mismatched permittivities, and 0.7796 / 0.6974
-    # / 0.7274 with matching values. This stability evidence does not establish
-    # conformal-PEC accuracy; accuracy measurements made with the mismatch
-    # require remeasurement.
-
-    settling_details = []
-    if normalize == "flux":
-        from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
-        s_params = extract_waveguide_s_matrix_flux(
-            grid,
-            materials,
-            ref_materials,
-            cfgs,
-            n_steps,
-            boundary="cpml",
-            cpml_axes=grid.cpml_axes,
-            pec_axes=_pec_axes,
-            debye=debye,
-            lorentz=lorentz,
-            ref_debye=None,
-            ref_lorentz=None,
-            ref_shifts=ref_shifts,
-            aniso_eps=aniso_eps,
-            ref_aniso_eps=ref_aniso_eps, ref_conformal=ref_conformal,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            ref_aniso_inv_eps=ref_aniso_inv_eps,
-            ref_materials_per_port=ref_materials_per_port,
-            pec_edge_masks=_wg_pec_edge_masks,
-            ref_pec_edge_masks_per_port=ref_pec_edge_masks_per_port,
-            checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
-            sheet_impedance=_wg_sheet_ctx,
-            field_dtype=self._resolve_field_dtype(),
-        )
-        s_params, settling_db = s_params
-    elif normalize:
-        from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
-        s_params = extract_waveguide_s_params_normalized(
-            grid,
-            materials,
-            ref_materials,
-            cfgs,
-            n_steps,
-            boundary="cpml",
-            cpml_axes=grid.cpml_axes,
-            pec_axes=_pec_axes,
-            debye=debye,
-            lorentz=lorentz,
-            ref_debye=None,
-            ref_lorentz=None,
-            ref_shifts=ref_shifts,
-            aniso_eps=aniso_eps,
-            ref_aniso_eps=ref_aniso_eps, ref_conformal=ref_conformal,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            ref_aniso_inv_eps=ref_aniso_inv_eps,
-            pec_edge_masks=_wg_pec_edge_masks,
-            checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
-            sheet_impedance=_wg_sheet_ctx,
-            field_dtype=self._resolve_field_dtype(),
-        )
-        s_params, settling_db = s_params
-    else:
-        s_params, settling_db = extract_waveguide_s_matrix(
-            grid,
-            materials,
-            cfgs,
-            n_steps,
-            boundary="cpml",
-            cpml_axes=grid.cpml_axes,
-            pec_axes=_pec_axes,
-            debye=debye,
-            lorentz=lorentz,
-            ref_shifts=ref_shifts,
-            aniso_eps=aniso_eps,
-            conformal_weights=conformal_weights,
-            aniso_inv_eps=aniso_inv_eps,
-            pec_edge_masks=_wg_pec_edge_masks,
-            checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
-            sheet_impedance=_wg_sheet_ctx,
-            field_dtype=self._resolve_field_dtype(),
-        )
-    reference_planes = np.array(
-        [
-            resolve_reported_planes(entry, cfg).reference
-            for entry, cfg in zip(entries, cfgs)
-        ],
-        dtype=float,
-    )
-    _port_names = tuple(entry.name for entry in entries)
-    # the energy ring-down witness reaches the waveguide
-    # path — same aggregate truncation warning as the lumped/MSL path.
-    # NaN entries (traced AD runs) are skipped by the warner's finite
-    # mask; the array itself is always attached for the record.
-    settling_db = np.asarray(settling_db, dtype=float)
-    _warn_if_ringdown_truncated(
-        settling_db, _port_names, num_periods=float(num_periods), witnesses=settling_details,
-    )
-    # Post-solve discretization witness (post-v1.8 plan item 5): one
-    # banner line after the settling line. Report-only.
-    _ph_rms, _ph_meta = _waveguide_s21_phase_residual(
-        s_params, freqs, reference_planes, cfgs, normalize=normalize,
-    )
-    _res_sm = realization_result(
-        realized_geometry=realization_record,
-        s_params=s_params,
-        freqs=jnp.asarray(freqs),
-        port_names=_port_names,
-        port_directions=tuple(entry.direction for entry in entries),
-        reference_planes=reference_planes,
-        settling_db=settling_db, settling_witness=tuple(settling_details),
-        s21_phase_residual_deg_rms=_ph_rms,
-        s21_phase_residual_meta=_ph_meta,
-    )
-    completed = _finalize_sparam_result(
-        _res_sm,
-        refused_positions=_refused_waveguide_positions(cfgs),
-        extractor="compute_waveguide_s_matrix",
-        strict=strict_passivity,
-        check_reciprocity=True,
-        passivity_tol=2.0 if normalize is False else 0.10,
-    )
-    release_inspection(self)
-    return completed
+        return result_ready(completed)
 
 
 def _reference_medium(cfgs, normalize):

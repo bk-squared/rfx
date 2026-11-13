@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.stepping.events import current, tick
 from rfx._host_limits import check_map_count
 from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
 
@@ -31,6 +32,10 @@ def scan_with_progress(
     the unchunked scan would have fed it at those steps. All full chunks
     share one XLA executable (identical shapes); a ragged final chunk
     compiles once more.
+
+    With events and no user ``report_every``, chunks have at least two
+    steps and a one-step tail joins the previous chunk. A one-step run
+    stays one chunk. User-specified reporting keeps its exact chunks.
 
     ``trace_probes`` are extra pytrees checked for tracers alongside
     ``carry_init`` and ``xs``. Pass the material / geometry arrays here: a
@@ -67,15 +72,20 @@ def scan_with_progress(
       snapshot-recording run pays it on the snapshot stack too.
     * The join is grouped rather than one flat ``jnp.concatenate`` over
       every chunk, because a flat concatenate takes one ARGUMENT per chunk
-      and XLA's compile cost grows superlinearly in argument count — 232 s
+      and XLA's compile cost grows superlinearly in argument count - 232 s
       at 22,500 chunks, against 0.99 s grouped. See :func:`concat_chunks`.
     """
     check_map_count()
     import jax
 
     if stop_fn is None:
-        every = validate_report_every(report_every, n_steps=n_steps)
-        step = every
+        every = (None if report_every is None and current() is not None
+                 else validate_report_every(report_every, n_steps=n_steps))
+        cadence = getattr(current(), "cadence", None)
+        # Without a user report_every nothing is printed, so the chunks only
+        # carry events: never a one-step piece (an inherited cadence too).
+        step = max(2, cadence or (int(n_steps) + 99) // 100) if every is None else every
+        merge_tail = every is None
     else:
         every = (None if report_every is None
                  else validate_report_every(report_every, n_steps=n_steps))
@@ -84,6 +94,7 @@ def scan_with_progress(
                 f"scan_with_progress(stop_fn=...) needs chunk= a positive "
                 f"number of steps, got {chunk!r}")
         step = int(chunk)
+        merge_tail = True
     check_not_traced(carry_init, xs, *trace_probes)
 
     if chunk_scan is None:
@@ -118,10 +129,10 @@ def scan_with_progress(
     done = 0
     while done < n_steps:
         this = min(step, n_steps - done)
-        if stop_fn is not None and n_steps - done - this == 1:
+        if merge_tail and n_steps - done - this == 1:
             # never a one-step last chunk: XLA inlines a loop that runs once,
             # and the inlined step can move the last bit of a field against
-            # the single scan; the stopped record must be the single scan's.
+            # the single scan. Keep derived and stopped chunks free of it.
             this += 1
         lo, hi = done, done + this
         xs_chunk = jax.tree_util.tree_map(lambda a: a[lo:hi], xs)
@@ -136,6 +147,7 @@ def scan_with_progress(
                 stop_fn is None or done - reporter.last_reported >= every
                 or done >= n_steps):
             reporter.report(done)
+        tick(done, carry, every=every)
         if stop_fn is not None and stop_fn(done, carry, chunk_outputs):
             break
 

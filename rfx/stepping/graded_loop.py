@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.stepping.events import begin_step, end_step, tick, next_solve, result_ready
+
 from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
@@ -95,6 +97,7 @@ def run_nonuniform(
         identical to the uniform path (acc += field * exp(-j2pi f t) * dt);
         dt is scalar on both paths so no per-axis weighting is required.
     """
+    next_solve()
     setup = _build_nu_scan(
         grid, materials, n_steps,
         cpml_axes=cpml_axes,
@@ -135,6 +138,7 @@ def run_nonuniform(
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
 
+    begin_step((carry_init, xs), total=n_steps, ticks=False, probes=(materials,))
     # ---- n_warmup split --------------------------------------------------
     # When n_warmup > 0, run the first n_warmup steps with the carry
     # stop_gradient'd so AD builds no tape for that transient lead-in.
@@ -244,7 +248,8 @@ def run_nonuniform(
     else:
         time_series = opt_ys
 
-    return _assemble_nu_result(setup, final, time_series)
+    end_step((final, time_series), n_steps)
+    return result_ready(_assemble_nu_result(setup, final, time_series))
 
 
 def run_nonuniform_until_decay(
@@ -339,6 +344,7 @@ def run_nonuniform_until_decay(
         ``max(min_steps, n_end)`` on, on this dict only (not on ``Result``),
         for a caller verifying the fire condition (rule R5).
     """
+    next_solve()
     check_map_count()
     if check_interval < 1:
         raise ValueError(
@@ -445,6 +451,9 @@ def run_nonuniform_until_decay(
                                     total_is_cap=(decay_by > 0.0
                                                   or stop_fn is not None))
 
+    begin_step((carry, inv_args), total=max_steps, ticks=report_every is not None,
+               label=report_label, cap=decay_by > 0 or stop_fn is not None,
+               probes=(materials,))
     while steps_done < max_steps:
         this_chunk = min(int(check_interval), max_steps - steps_done)
         if stop_fn is not None and max_steps - steps_done - this_chunk == 1:
@@ -469,6 +478,7 @@ def run_nonuniform_until_decay(
                 steps_done, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
         else:
             stopped = stop_rule.check(steps_done, lambda: energy(carry, steps_done))
+        tick(steps_done, carry, every=report_every, rule=stop_rule)
         if stopped is not None:
             decayed_fired = True
             break
@@ -489,6 +499,7 @@ def run_nonuniform_until_decay(
         state=carry["fdtd"], materials=materials, grid=grid, advisory=advisory,
         sources=sources)
 
+    end_step((carry, ys_chunks), steps_done, decay_stop)
     # Per-chunk ys concatenate to exactly steps_done rows; the
     # emit_time_series=False convention ((steps, 0)) is preserved
     # because each chunk emits (this_chunk, 0).
@@ -497,4 +508,4 @@ def run_nonuniform_until_decay(
     result = _assemble_nu_result(setup, carry, time_series, n_record=steps_done)
     result["decay_checks"] = energy_stop.decay_checks
     result["decay_stop"] = decay_stop
-    return result
+    return result_ready(result)
