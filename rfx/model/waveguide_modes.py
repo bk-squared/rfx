@@ -337,54 +337,16 @@ def cutoff_frequency(a: float, b: float, m: int, n: int) -> float:
     return kc * C0_LOCAL / (2 * np.pi)
 
 
-def _refuse_degenerate_discrete_mode(
-    evals: np.ndarray, evecs: np.ndarray, rank: int,
-    mode_type: str, m: int, n: int, a: float, b: float,
-    u_widths: np.ndarray, v_widths: np.ndarray,
-) -> None:
-    """Refuse an arbitrary column of a degenerate transverse eigenspace."""
-    picked = float(evals[rank])
-    distances = np.abs(evals - picked)
-    partners = np.flatnonzero(
-        (distances <= 1e-9 * abs(picked)) & (np.arange(evals.size) != rank)
-    )
-    if partners.size == 0:
-        return
-
-    # Names are diagnostic only: the refusal uses the returned eigenvalues.
-    # Compare normalized scalar analytic shapes under the full operator mass,
-    # including on graded apertures. Exclude the requested name when naming
-    # its partners, since a mixed partner can overlap that shape too.
-    nu, nv = len(u_widths), len(v_widths)
-    u = np.cumsum(u_widths) - 0.5 * np.asarray(u_widths)
-    v = np.cumsum(v_widths) - 0.5 * np.asarray(v_widths)
-    mass = (np.asarray(u_widths)[:, None] * np.asarray(v_widths)[None, :]).ravel()
-    trig = np.cos if mode_type == "TE" else np.sin
-    start = 0 if mode_type == "TE" else 1
-    limit = max(4, m + 2, n + 2)
-    names, shapes = [], []
-    for pm in range(start, min(nu + start, limit + 1)):
-        for pn in range(start, min(nv + start, limit + 1)):
-            if (pm, pn) in ((0, 0), (m, n)):
-                continue
-            shape = (trig(pm * np.pi * u / a)[:, None]
-                     * trig(pn * np.pi * v / b)[None, :]).ravel()
-            norm = np.sqrt(np.sum(shape**2 * mass))
-            names.append(f"{mode_type}{pm}{pn}")
-            shapes.append(shape * mass / norm)
-    overlaps = np.abs(np.asarray(shapes) @ evecs[:, partners])
-    partner_names = sorted({names[i] for i in np.argmax(overlaps, axis=0)})
-    relative = distances[partners] / abs(picked) if picked else distances[partners]
-    gaps = ", ".join(f"{gap:.6e}" for gap in relative)
-    raise RfxRefusal(
-        f"Requested {mode_type}{m}{n} shares its discrete cutoff with "
-        f"{', '.join(partner_names)} on an aperture of {nu} x {nv} cells "
-        f"(relative eigenvalue distance(s): {gaps}; tolerance 1e-9). "
-        "The eigensolver may return any mix of these modes, so the launched "
-        "mode would not be the requested one and would depend on the machine. "
-        'Use mode_profile="analytic", or an aperture whose cell counts give '
-        "these modes distinct cutoffs."
-    )
+def _project_degenerate_mode(evals, evecs, rank, template, mass):
+    """Project the requested scalar shape into its mass-orthonormal eigenspace."""
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    basis = evecs[:, group]
+    projected = basis @ (basis.T @ (mass * template))
+    norm = np.sqrt(np.sum(mass * projected**2))
+    template_norm = np.sqrt(np.sum(mass * template**2))
+    if norm < 0.5 * template_norm:
+        raise RfxRefusal("Degenerate eigenspace contains less than half the requested template norm.")
+    return projected / norm, float(np.min(evals[group]))
 
 
 def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
@@ -394,7 +356,6 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
                                 aperture_dA: np.ndarray | None = None,
                                 h_offset: tuple[float, float] = (0.0, 0.0),
                                 _orthogonalize: bool = True,
-                                _check_degeneracy: bool = True,
                                 ) -> tuple[np.ndarray, np.ndarray,
                                            np.ndarray, np.ndarray, float]:
     """Discrete Yee-grid TE_mn mode profile.
@@ -439,11 +400,16 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
             evecs, evals, hx_ana.ravel(),
         )
         kc2 = float(max(evals[rank], 0.0))
-    if _check_degeneracy:
-        _refuse_degenerate_discrete_mode(
-            evals, evecs, rank, "TE", m, n, a, b, u_widths, v_widths,
-        )
     hx = evecs[:, rank].reshape(nu, nv)
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    if len(group) > 1:
+        try:
+            vector, kc2 = _project_degenerate_mode(
+                evals, evecs, rank, hx_ana.ravel(), np.kron(u_widths, v_widths),
+            )
+        except RfxRefusal as exc:
+            raise RfxRefusal(f"Requested TE{m}{n} on {nu} x {nv} cells: {exc}") from exc
+        hx = vector.reshape(nu, nv)
 
     # Align sign (eigh returns arbitrary sign).
     if float(np.sum(hx * hx_ana * dA)) < 0.0:
@@ -485,13 +451,18 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
         else:
             lower_modes = []
         for lm, ln in lower_modes:
-            ley, lez, lhy, lhz, _ = _discrete_te_mode_profiles(
-                a, b, lm, ln, u_widths, v_widths,
-                aperture_dA=aperture_dA,
-                h_offset=h_offset,
-                _orthogonalize=True,
-                _check_degeneracy=False,  # Only the requested mode must be unique.
-            )
+            try:
+                ley, lez, lhy, lhz, _ = _discrete_te_mode_profiles(
+                    a, b, lm, ln, u_widths, v_widths,
+                    aperture_dA=aperture_dA,
+                    h_offset=h_offset,
+                    _orthogonalize=True,
+                )
+            except RfxRefusal as exc:
+                raise RfxRefusal(
+                    f"Requested TE{m}{n} on {nu} x {nv} cells, "
+                    f"while building lower mode TE{lm}{ln}: {exc}"
+                ) from exc
             previous.append((ley, lez, lhy, lhz))
         if previous:
             ey, ez, hy, hz = _orthonormalize_profile_arrays(
@@ -545,10 +516,16 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
             evecs, evals, ex_ana.ravel(),
         )
         kc2 = float(max(evals[rank], 0.0))
-    _refuse_degenerate_discrete_mode(
-        evals, evecs, rank, "TM", m, n, a, b, u_widths, v_widths,
-    )
     ex = evecs[:, rank].reshape(nu, nv)
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    if len(group) > 1:
+        try:
+            vector, kc2 = _project_degenerate_mode(
+                evals, evecs, rank, ex_ana.ravel(), np.kron(u_widths, v_widths),
+            )
+        except RfxRefusal as exc:
+            raise RfxRefusal(f"Requested TM{m}{n} on {nu} x {nv} cells: {exc}") from exc
+        ex = vector.reshape(nu, nv)
 
     if float(np.sum(ex * ex_ana * dA)) < 0.0:
         ex = -ex
