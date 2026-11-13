@@ -40,7 +40,7 @@ class Scene:
 
 def build_scene(name="T1", *, mode="laplace"):
     """Declare one of the six J0 scenes, with p1 driven and p2 passive."""
-    if name not in SCENES:
+    if name.removesuffix("_graded") not in ("T1", "T2", "Y1", "T1L"):
         raise ValueError(f"Unknown scene {name!r}")
     is_y = name.startswith("Y1")
     domain = (0.008, 0.012, 0.0032) if is_y else (0.012, 0.008, 0.0032)
@@ -87,11 +87,11 @@ def build_scene(name="T1", *, mode="laplace"):
             name=f"p{index + 1}",
             mode=mode,
             excite=index == 0,
-            n_probe_offset=16 if name == "T2" and index == 0 else 12,
+            n_probe_offset=16 if name.removesuffix("_graded") == "T2" and index == 0 else 12,
             n_probe_spacing=3,
             n_probes=5,
         )
-    if name == "T1L":
+    if name.removesuffix("_graded") == "T1L":
         sim.add_port(
             position=(0.008, centre, 0.0004),
             component="ez",

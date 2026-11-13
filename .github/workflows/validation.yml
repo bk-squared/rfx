@@ -383,6 +383,15 @@ jobs:
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_poles.py
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_one_device.py
 
+      - name: Run three-device microstrip port cases
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -q -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed_msl_ports.py -k n3
+
       - name: Job time against the job limit
         if: always()
         run: |

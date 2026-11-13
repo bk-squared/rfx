@@ -86,6 +86,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
     ``sizing_n`` is retained in the assembly interface; drive sampling stays
     deferred in the caller until all material stamps have been applied.
     """
+    msl_geometry_edges = pec_edge_masks
     drives = []
     wire_port_specs = []
     lumped_port_specs = []
@@ -348,7 +349,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
         realized = realize_msl_ports(sim, grid, materials, conductors,
             eps_source=materials_drive.eps_r, stamp_drive_materials=materials_drive,
             edge_release="run", eigenmode="run_distributed_nu",
-            geometry_edges=pec_edge_masks)
+            geometry_edges=msl_geometry_edges)
         materials, materials_drive, conductors = realized[:3]
         drives.extend((len(sim._ports), drive) for drive in realized.drives)
 
