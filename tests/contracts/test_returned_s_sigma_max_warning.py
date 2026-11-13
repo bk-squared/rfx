@@ -397,8 +397,7 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
         with pytest.raises(ValueError) as caught:
             getattr(sim, entry)(n_steps=1, skip_preflight=True)
         assert str(caught.value) == (
-            "One run() or forward() record supports a single waveguide port; use "
-            "compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+            "One run() or forward() record supports at most one driven waveguide port; driven ports: port0, port1. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix."
         )
         return
     if case == "lumped":
@@ -498,7 +497,7 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path, n_ports):
     monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", check)
     if n_ports > 1:
         # #2449: refusal also precedes S extraction in a traced forward call.
-        with pytest.raises(ValueError, match="supports a single waveguide port"):
+        with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
             jax.grad(loss)(eps)
         assert not extracted
         assert not helper_calls

@@ -207,6 +207,12 @@ def build_p_waveguide2(path):
         .024, direction='-x', f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
 
 
+def build_p_waveguide2_one_driven(path):
+    return build_p_waveguide(path).add_waveguide_port(
+        .024, direction='-x', f0=10e9, freqs=np.array([10e9]),
+        probe_offset=3, ref_offset=2, amplitude=0.0)
+
+
 def build_p_floquet(path):
     # Port arguments imitate tests/contracts/boundary_cases.py:28.
     # Replaces boundary with x/y periodic, as required by a z-normal Floquet port.
@@ -340,6 +346,7 @@ BUILDERS = {
     'P-coax': build_p_coax, 'P-msl': build_p_msl,
     'P-waveguide': build_p_waveguide, 'P-waveguide-2mode': build_p_waveguide_2mode,
     'P-waveguide2': build_p_waveguide2,
+    'P-waveguide2-one-driven': build_p_waveguide2_one_driven,
     'P-floquet': build_p_floquet,
     'M-diel': build_m_diel, 'M-lossy': build_m_lossy, 'M-mu': build_m_mu,
     'M-debye': build_m_debye, 'M-lorentz': build_m_lorentz,

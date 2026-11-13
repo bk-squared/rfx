@@ -1,4 +1,4 @@
-"""#2449: one record cannot report isolated S for two declared guide ports.
+"""#2449: one record cannot report isolated S for two driven guide ports.
 
 WR-90, a=22.86 mm, b=10.16 mm, dx=a/9 (9 by 4 whole cells),
 48 cells long, eps_r=2.2 from cell 24. The graded z profile has the
@@ -14,8 +14,7 @@ from rfx import Box, Simulation
 
 
 MESSAGE = (
-    "One run() or forward() record supports a single waveguide port; use "
-    "compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+    "One run() or forward() record supports at most one driven waveguide port; driven ports: p1, p2. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix."
 )
 PATHS = ("uniform-run", "uniform-forward", "graded-run", "graded-forward")
 DX = .02286 / 9
@@ -63,7 +62,7 @@ def _forbidden(*args, **kwargs):
 
 
 @pytest.mark.parametrize("path", PATHS)
-@pytest.mark.parametrize("amplitude", [1., 0.], ids=["driven", "zero-amplitude"])
+@pytest.mark.parametrize("amplitude", [1.], ids=["driven"])
 def test_two_ports_refused_before_loop(monkeypatch, path, amplitude):
     _patch_loop(monkeypatch, path, _forbidden)
     with pytest.raises(ValueError) as caught:
