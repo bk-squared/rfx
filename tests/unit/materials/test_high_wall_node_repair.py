@@ -73,7 +73,7 @@ def test_debye_wall_replicates_static_and_pole_edges_together():
     mats, debye = result[:2]
     walls = unpadded_high_walls(grid)
     eps, sig = component_e_materials(mats, PERIODIC, high_wall=walls)
-    weights = pole_component_weights(debye[1][0], PERIODIC, high_wall=walls)
+    weights = pole_component_weights(debye[1][0], PERIODIC, field_dtype=mats.eps_r.dtype, high_wall=walls)
     index = (grid.shape[0]//2, grid.shape[1]-1, grid.pad_z_lo+3)
     # #808/#627b: promoting eps_inf without the poles is forbidden.
     # Stored outside cells stay vacuum; both inside Ex cells carry the pole.

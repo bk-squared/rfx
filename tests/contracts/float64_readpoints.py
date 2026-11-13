@@ -35,7 +35,7 @@ def scene(label):
         ('Debye', dict(debye_poles=[DebyePole(3., 1e-11)]), (20.15, 27.65), (15.15, 21.65)),
         ('magnetic', dict(mu_r=2.), (28.35, 33.65), (4.85, 11.65)),
     ]
-    if label.endswith('tfsf'):
+    if label.endswith('tfsf') or label == 'U-src':
         specs = specs[:1]
     elif label == 'U-kerr':
         specs = [('kerr', dict(eps_r=2., chi3=2.2e-19), (28.35, 33.65), (19.35, 24.65))]
@@ -54,6 +54,8 @@ def scene(label):
         sim.add_tfsf_source(f0=3e9, bandwidth=.5, amplitude=1., margin=3)
     else:
         sim.add_source(mm((9.85, 12.35, 10.85)), 'ez', waveform=GaussianPulse(f0=3e9))
+    if label == 'U-src':
+        sim.add_source(mm((15.35, 11.35, 12.85)), 'ez', waveform=GaussianPulse(f0=3e9))
     sim.add_probe(mm((30.35, 17.85, 14.35)), 'ez')
     return sim, dict(n_steps=200, subpixel_smoothing=label == 'U-smooth',
                      conformal_pec=label == 'U-conformal')
@@ -89,9 +91,12 @@ class Captured(BaseException):
     """Exit setup before the scan can step."""
 
 
-def capture(label):
+def capture(label, *, values=None):
     sim, options = scene(label)
     arrays, holders, builder, scan = [], {}, {}, {}
+    body_samples, tables = {}, {}
+    if values is not None:
+        values.update(poles=[], sources=[], conformal=[])
 
     def keep(point, name, value):
         if hasattr(value, 'dtype') and np.dtype(value.dtype).kind in 'fc':
@@ -101,6 +106,20 @@ def capture(label):
         if not frame.f_globals.get('__name__', '').startswith('rfx.'):
             return
         name, local = frame.f_code.co_name, frame.f_locals
+        if values is not None:
+            if event == 'call' and name == 'admit_setup':
+                values.update(grid=local['grid'], materials=local['materials'], updates=local['updates'])
+            if event == 'call' and name == 'build_cell_table':
+                body_samples.clear()
+            if event == 'return' and name == 'union_at':
+                body_samples[tuple(local['half_axes'])] = np.asarray(arg)
+            if event == 'return' and name == 'build_cell_table' and 'sdf' in local:
+                tables[id(arg)] = dict(sdf=local['sdf'], widths=local['widths'],
+                                      tol=local['tol'], midpoints=dict(body_samples))
+            if event == 'return' and name == 'conformal_fractions_from_table':
+                values['conformal'].append((tables[id(local['table'])], local['table'], arg))
+            if event == 'return' and name == 'pole_component_weights' and arg is not None:
+                values['poles'].append((np.asarray(local['mask']), local['cell_sizes'], arg))
         if event == 'call' and name == 'admit_setup':
             for record in realized_operands(local['grid'], local['materials'], local['updates'], local['localized']):
                 keep('R1', record.name, record.array)
@@ -138,11 +157,24 @@ def capture(label):
                 ancestor = ancestor.f_back
             raise Captured()
 
+    from unittest.mock import patch
+    import contextlib
+    import rfx.model.materials as material_module
+    original_coefficient = material_module.e_update_coefficient_at
+
+    def source_spy(*args, **kwargs):
+        result = original_coefficient(*args, **kwargs)
+        values["sources"].append((args[1], args[2], args[3], result))
+        return result
+
+    source_patch = (patch.object(material_module, "e_update_coefficient_at", source_spy)
+                    if values is not None else contextlib.nullcontext())
     previous = sys.getprofile()
     try:
         sys.setprofile(profile)
         try:
-            sim.run(**options)
+            with source_patch:
+                sim.run(**options)
         except Captured:
             pass
     finally:

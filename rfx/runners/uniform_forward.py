@@ -548,7 +548,8 @@ def _forward_from_materials(
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=periodic_bool,
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=self._resolve_field_dtype() or jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     _, debye, lorentz = self._init_dispersion(

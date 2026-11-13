@@ -49,6 +49,35 @@ def _forbid_field_initialization(*args, **kwargs):
     raise AssertionError("Unsupported waveguide input reached field initialization")
 
 
+def test_float64_waveguide_pole_weights(monkeypatch):
+    from rfx import Box
+    from rfx.materials.lorentz import drude_pole
+    from rfx.model import materials
+
+    captured = []
+    original = materials.pole_component_weights
+
+    def capture(*args, **kwargs):
+        weights = original(*args, **kwargs)
+        assert weights is not None
+        assert len(weights) == 3
+        for weight in weights:
+            assert weight.dtype == np.float64
+            assert np.any((np.asarray(weight) > 0) & (np.asarray(weight) < 1))
+        captured.append(weights)
+        return weights
+
+    monkeypatch.setattr(materials, "pole_component_weights", capture)
+    with jax.enable_x64():
+        sim = _guide(precision="float64")
+        sim.add_material("drude", eps_r=2.,
+                         lorentz_poles=[drude_pole(2 * np.pi * 1e9, 1e9)])
+        sim.add(Box((.035, .01, .005), (.045, .03, .015)), material="drude")
+        result = sim.compute_waveguide_s_matrix(n_steps=4, normalize=False)
+        assert np.isfinite(np.asarray(result.s_params)).all()
+    assert captured
+
+
 
 
 @pytest.mark.parametrize("precision,x64", [("float64", False), ("mixed", False), ("mixed", True)])

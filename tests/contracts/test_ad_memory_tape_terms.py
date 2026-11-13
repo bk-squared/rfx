@@ -100,12 +100,14 @@ def _assert_slope(label, estimated, compiled):
 @pytest.mark.parametrize("precision", ("mixed", "float64"))
 @pytest.mark.parametrize("box", (False, True))
 def test_uncalibrated_precision_refused(box, precision):
-    sim, _, corners, _ = _scene(precision=precision)
-    options = dict(design_box=corners if box else None)
-    with pytest.raises(ADMemoryUnavailable, match="fixed term and tape are calibrated on float32 only"):
-        sim.estimate_ad_memory(800, **options)
-    with pytest.raises(ADMemoryUnavailable, match="fixed term and tape are calibrated on float32 only"):
-        sim.plan_ad_memory(800, available_memory_gb=1., **options)
+    # Admit the float64 scene before testing the estimator's separate refusal.
+    with jax.enable_x64(precision == "float64"):
+        sim, _, corners, _ = _scene(precision=precision)
+        options = dict(design_box=corners if box else None)
+        with pytest.raises(ADMemoryUnavailable, match="fixed term and tape are calibrated on float32 only"):
+            sim.estimate_ad_memory(800, **options)
+        with pytest.raises(ADMemoryUnavailable, match="fixed term and tape are calibrated on float32 only"):
+            sim.plan_ad_memory(800, available_memory_gb=1., **options)
 
 
 def _scan_carries(jaxpr):

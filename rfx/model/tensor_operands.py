@@ -1,6 +1,7 @@
 """Form geometry permittivity and permeability operands in array order."""
 
 from rfx.errors import RfxUnsupported
+from rfx._internal._precision import resolve_field_dtype
 
 from dataclasses import dataclass, field, replace
 
@@ -174,7 +175,8 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             refuse_traced_conformal_shape(shape)
         table = build_cell_table(grid, pec_shapes, include_trailing_node=conformal == "cut_cell_floor")
         conformal_weights, conformal_areas = conformal_fractions_from_table(
-            table, grid, conformal, pec_shapes=pec_shapes)
+            table, grid, conformal, pec_shapes=pec_shapes,
+            field_dtype=resolve_field_dtype(sim._precision) or jnp.float32)
 
         # The 1/w permittivity is formed below, once the run's final
         # periodic flags are known.
@@ -219,7 +221,7 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     return SmoothedEps(aniso_eps, nodes) if nodes is not None else aniso_eps
 
 
-def form_reference_operands(grid, materials, *, subpixel_smoothing,
+def form_reference_operands(grid, materials, *, dtype, subpixel_smoothing,
                             conformal_weights, boundary_pec_shapes, reference_eps=1.0, conformal_pec=None):
     """Form the waveguide reference operands; conformal walls cut the reference medium (reference_eps)."""
     ref_aniso_inv_eps = None
@@ -242,7 +244,8 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
         from rfx.model.conformal_rules import conformal_fractions_from_table
         table = build_cell_table(grid, boundary_pec_shapes, include_trailing_node=conformal_pec == "cut_cell_floor")
         weights, areas = conformal_fractions_from_table(
-            table, grid, conformal_pec, pec_shapes=boundary_pec_shapes)
+            table, grid, conformal_pec, pec_shapes=boundary_pec_shapes,
+            field_dtype=dtype)
         ref_aniso_eps = conformal_module.conformal_eps_correction(
             jnp.full_like(materials.eps_r, reference_eps), *weights)
         reference = (weights, areas)

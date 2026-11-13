@@ -53,7 +53,7 @@ def test_default_operands_and_dt_match_main_in_process():
         grid, before = Grid(**kwargs), old['grid']['Grid'](**kwargs)
         assert np.float64(grid.dt).tobytes() == np.float64(before.dt).tobytes()
         shapes = [sphere if mode == '3d' else Sphere((.0061, .0058, 0.), .0023)]
-        current = compute_conformal_fractions(grid, shapes)
+        current = compute_conformal_fractions(grid, shapes, field_dtype=np.float32)
         previous = old['geometry/conformal_cells']['compute_conformal_fractions'](before, shapes)
         for arrays, baseline in zip(current, previous):
             for got, want in zip(arrays, baseline):
@@ -84,7 +84,7 @@ def test_uniform_modes_use_realized_pin_and_raw_edges():
                                  compute_s_params=False, skip_preflight=True)
             assert result.dt == q * ordinary
             grid = sim._build_grid()
-            raw = compute_conformal_fractions(grid, [sphere], clamp=False)[0]
+            raw = compute_conformal_fractions(grid, [sphere], clamp=False, field_dtype=np.float32)[0]
             for got, want in zip(captured[0][2], raw):
                 np.testing.assert_array_equal(got, want)
             assert all(np.isfinite(np.asarray(getattr(result.state, c))).all()
@@ -112,7 +112,7 @@ def test_closed_box_energy():
     for n in (1000, 2000):
         grid, a = run(n)
         _, b = run(n + 1)
-        lengths, areas = compute_conformal_fractions(grid, [sphere], conformal_pec='cut_cell_floor')
+        lengths, areas = compute_conformal_fractions(grid, [sphere], conformal_pec='cut_cell_floor', field_dtype=np.float32)
         eps = [np.where(v > 0, 1. / np.where(v > 0, v, 1.), 0.)
                for v in map(lambda x: np.asarray(x, np.float64), lengths)]
         mu = [np.where((s > 0) & (s < 1), s, 1.)

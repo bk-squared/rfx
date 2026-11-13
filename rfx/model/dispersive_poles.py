@@ -61,7 +61,8 @@ def pole_edge_fractions(mask, periodic=(False, False, False), *, high_wall: tupl
     pole: ``edge_mean_components`` of the pole's cell mask. ``None``
     (the pole everywhere) stays ``None``."""
     from rfx.model.materials import pole_component_weights
-    return pole_component_weights(mask, periodic, high_wall=high_wall)
+    # This public helper outside a run keeps float32 fractions.
+    return pole_component_weights(mask, periodic, high_wall=high_wall, field_dtype=jnp.float32)
 
 
 def pole_reach(fractions):
@@ -231,7 +232,8 @@ def init_debye(
 
     from rfx.model.materials import validate_dispersion, with_components
     components = with_components(materials, grid, periodic=periodic, high_wall=high_wall,
-        debye_spec=(poles, mask)).components
+        debye_spec=(poles, mask),
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32).components
     eps_c, sig_c = components.eps_update, components.sigma_update
     realized = components.debye
     if realized is None or len(realized.poles) != n_poles:

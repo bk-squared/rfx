@@ -21,7 +21,7 @@ def main():
         for rule, kwargs in (('sc', {}), ('raw', {'clamp': False}),
                              ('floor', {'conformal_pec': 'cut_cell_floor'})):
             with record_cell_table_capture(grid, shapes) as calls:
-                result = compute_conformal_fractions(grid, pec_shapes=shapes, **kwargs)
+                result = compute_conformal_fractions(grid, pec_shapes=shapes, **kwargs, field_dtype=np.float32)
             for kind, values in zip(('edges', 'faces'), result):
                 for axis, value in enumerate(values):
                     arrays[f'{name}_{rule}_{kind}_{axis}'] = np.asarray(value)

@@ -9,7 +9,7 @@ from rfx.model.conformal_rules import (
 )
 
 
-def compute_conformal_fractions(grid, pec_shapes, *, clamp=True, conformal_pec=None):
+def compute_conformal_fractions(grid, pec_shapes, *, field_dtype, clamp=True, conformal_pec=None):
     """Return E free lengths and H free areas on the uniform Yee lattice."""
     if pec_shapes:
         for axis in range(3):
@@ -18,4 +18,4 @@ def compute_conformal_fractions(grid, pec_shapes, *, clamp=True, conformal_pec=N
                 raise NotImplementedError('conformal PEC SC clamp requires uniform cells')
     return conformal_fractions_from_table(
         build_cell_table(grid, pec_shapes, include_trailing_node=conformal_pec == "cut_cell_floor"),
-        grid, conformal_pec, clamp=clamp, pec_shapes=pec_shapes)
+        grid, conformal_pec, clamp=clamp, pec_shapes=pec_shapes, field_dtype=field_dtype)
