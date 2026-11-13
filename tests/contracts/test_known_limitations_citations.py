@@ -6,7 +6,7 @@ of a standing limitation. The per-subject Tracker contract now lives in
 ``test_known_limitations_tracker.py``; ``scripts/ci/check_known_limitations.py``
 checks PR closures and the weekly governance sweep reads live states.
 
-Keep this inventory in sync when the leader removes or rewrites audited entries.
+Keep this inventory in sync when audited entries are removed or rewritten.
 """
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # -- `gh issue view 1257 --json state` read CLOSED that day. With the entry gone
 # the page no longer names #1236 either.
 # #1373 (ADI refuses a material interface until 2.1) joined on 2026-10-03 with
-# the "Solver lanes" section; OPEN, checked by the session leader that day.
+# the "Solver lanes" section; OPEN.
 # 2026-10-11 (2.0 documentation pass): the ADI-interface entry left with its
 # section -- the former material-interface refusal was covered by tests
 # and recorded in the

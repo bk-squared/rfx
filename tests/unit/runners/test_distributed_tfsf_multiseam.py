@@ -79,7 +79,7 @@ def build_box(name="B2", count=3, *, scale=1, steps=None):
 
     Boxes use half-open material node occupancy. At h the occupied x rows
     are 18..30 (B1) or 14..34 (B2/B4), with vacuum at/next to TF faces.
-    Finer dimensions use nearest-cell, half-up rounding (leader decision).
+    Finer dimensions use nearest-cell, half-up rounding.
     """
     assert name in ("B1", "B2", "B4")
     assert scale in (1, 1.5, 2)

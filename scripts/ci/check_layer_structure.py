@@ -949,7 +949,7 @@ def report(result: dict):
         print(summary + " " + " ".join(f"{r}={len(rules[r])}" for r in RULES))
     print("surface sizes: " + " ".join(f"{p}={n}" for p, n in result["surface_sizes"].items()))
     print("\noutside the layer packages — may only fall, not a 2.0 condition "
-          "(PI to decide how far 2.0 reaches)")
+          "(how far 2.0 reaches is not decided)")
     outside = result["baseline"]["outside"]
     for path, rules in sorted(outside.items(), key=lambda item: (
             -sum(len(names) for names in item[1].values()), item[0])):
