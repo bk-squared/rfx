@@ -268,7 +268,13 @@ class _MMA(_Optimizer[_MMAState]):
     def _design_point(x, dtype, shape, xmin, xmax):
         # Round the solution before storing history or asking for an evaluation.
         rounded = np.asarray(x, dtype=dtype)
-        rounded = np.clip(rounded, xmin.astype(dtype), xmax.astype(dtype))
+        lower, upper = xmin.astype(dtype), xmax.astype(dtype)
+        # A nearest-rounded bound can lie outside the original float64 box.
+        lower = np.where(lower < xmin, np.nextafter(lower, np.asarray(np.inf, dtype=dtype)), lower)
+        upper = np.where(upper > xmax, np.nextafter(upper, np.asarray(-np.inf, dtype=dtype)), upper)
+        if np.any(lower > upper):
+            raise ValueError('MMA rounded box is empty in the design dtype')
+        rounded = np.clip(rounded, lower, upper)
         return jnp.asarray(rounded.reshape(shape), dtype=dtype)
 
     def init(self, x0: jnp.ndarray, bounds) -> _MMAState:
