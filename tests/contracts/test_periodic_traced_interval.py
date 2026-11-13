@@ -56,17 +56,20 @@ def _smoothed(mesh, L, kind):
 
 REFUSED = [
     # [-L, 2L] admitted these with eps off by 0.81 (Ey 1.000 for 1.810), 0.318, and
-    # 2.800 for 3.610 (a 0.13 mm gap at the seam); the last two read correctly.
+    # 2.800 for 3.610 (a 0.13 mm gap at the seam); the rest read correctly.
     ('uniform', 10 * MM, 16.77 * MM, 19.77 * MM),
     ('graded', 10 * MM, -9.77 * MM, -6.77 * MM),
     ('uniform', 10 * MM, 9.9 * MM, 19.77 * MM),
     ('uniform', 10 * MM, 11 * MM, 14 * MM),
     ('uniform', 10 * MM, -9.77 * MM, 0.1 * MM),
+    ('uniform', 10 * MM, 8.6 * MM, 11.6 * MM),         # m = L + 0.1 mm
+    ('uniform', 10 * MM, -1.6 * MM, 1.4 * MM),         # m = -0.1 mm
 ]
 
 
 @pytest.mark.parametrize('mesh, L, lo, hi', REFUSED,
-                         ids=['high-end', 'graded-low-end', 'seam-gap', 'whole-period-out', 'low-overlap'])
+                         ids=['high-end', 'graded-low-end', 'seam-gap', 'whole-period-out', 'low-overlap',
+                              'm-just-above-L', 'm-just-below-0'])
 def test_traced_shape_with_its_midpoint_outside_the_period_is_refused(mesh, L, lo, hi):
     m = (lo + hi) / 2
     assert not 0 <= m <= L
@@ -87,11 +90,14 @@ ADMITTED = [
     ('uniform', 1 * MM, _box, 0.0, 1 * MM),            # a one-cell period
     ('uniform', 2 * MM, _box, 1.25 * MM, 2.75 * MM),   # midpoint on the high seam
     ('uniform', 10 * MM, _box, 8.5 * MM, 11.5 * MM),   # midpoint on the high seam
+    ('uniform', 10 * MM, _box, -1.4 * MM, 1.6 * MM),   # m = 0.1 mm
+    ('uniform', 10 * MM, _box, 8.4 * MM, 11.4 * MM),   # m = L - 0.1 mm
 ]
 
 
 @pytest.mark.parametrize('mesh, L, kind, lo, hi', ADMITTED,
-                         ids=['graded-3mm-sphere', 'graded-3mm-box', 'one-cell-period', 'seam-2mm', 'seam-10mm'])
+                         ids=['graded-3mm-sphere', 'graded-3mm-box', 'one-cell-period', 'seam-2mm', 'seam-10mm',
+                              'm-just-above-0', 'm-just-below-L'])
 def test_traced_shape_with_its_midpoint_in_the_period_is_admitted(mesh, L, kind, lo, hi):
     assert 0 <= (lo + hi) / 2 <= L
     eps = np.asarray(jax.block_until_ready(_smoothed(mesh, L, kind)(jnp.float32(lo), jnp.float32(hi))))
