@@ -165,7 +165,8 @@ def design_adjoint_scan(ctx, initial, xs):
                 raise NotImplementedError("gradient='adjoint' does not support final-field/time-domain objectives")
         if any(not isinstance(v, symbolic) for v in jax.tree.leaves(outputs_bar)):
             raise NotImplementedError("gradient='adjoint' does not support time-domain objectives; register E/H DFT or NTFF bins")
-        electric, magnetic = [], []
+        electric: list[tuple[str, tuple[int | slice, ...], jax.Array]] = []
+        magnetic: list[tuple[str, tuple[int | slice, ...], jax.Array]] = []
         for meta, a, b in zip(ctx.dft_meta, initial.get("dft_planes", ()),
                               last_bar.get("dft_planes", ())):
             target = jnp.zeros_like(a) if isinstance(b, symbolic) else b

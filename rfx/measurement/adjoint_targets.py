@@ -40,7 +40,8 @@ def ntff_target_spectra(box, cotangent, dtype):
     Return separate E/H lists of (component, global slice, bin targets).
     Shared edges receive the sum of their faces when injected.
     """
-    electric, magnetic = [], []
+    electric: list[tuple[str, tuple[slice, ...], jax.Array]] = []
+    magnetic: list[tuple[str, tuple[slice, ...], jax.Array]] = []
     for face, slot in enumerate(ntff_face_slabs(box)):
         axis, side = divmod(face, 2)
         shape = tuple(s.stop - s.start for s in slot)

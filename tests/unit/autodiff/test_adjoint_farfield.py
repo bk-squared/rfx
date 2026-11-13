@@ -104,9 +104,15 @@ def test_g1_g2_g3_g4(kind, collocation, lossy, precision, record_property):
     start = time.monotonic()
     with enable_x64() if precision == "float64" else nullcontext():
         with collocation_mode(collocation):
+            # Amendment 2: both dtypes use the same settled float64 comparator.
+            # Materialize on the host before leaving x64 so G3 keeps its precision.
+            with enable_x64():
+                reference_sim, reference_eps = scene(kind, "float64", lossy)
+                reference_loss = loss_function(reference_sim, kind, "autodiff")
+                steps, reference = settled_reference(reference_loss, reference_eps, record_property)
+                reference = np.asarray(reference)
+            record_property("reference_precision", str(reference.dtype))
             sim, eps = scene(kind, precision, lossy)
-            reference_loss = loss_function(sim, kind, "autodiff")
-            steps, reference = settled_reference(reference_loss, eps, record_property)
             adjoint_loss = loss_function(sim, kind, "adjoint")
             # Explicit user jit is covered for both H-plane and NTFF-only calls.
             actual = jax.jit(jax.grad(adjoint_loss), static_argnums=1)(eps, steps)
