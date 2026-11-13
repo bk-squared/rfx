@@ -22,6 +22,15 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### Discrete waveguide modes sharing a cutoff are refused
+
+Tracker: #2707
+
+Discrete mode profiles are refused when the requested mode shares its discrete
+cutoff with another mode within roundoff. The eigensolver can return a mix whose
+profile depends on the machine. Use `mode_profile="analytic"`, or an aperture
+whose cell counts give the modes distinct cutoffs.
+
 ### Traced full-tensor CPU builds on older jaxlib issue pieces serially
 
 Tracker: #2095
