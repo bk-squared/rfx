@@ -170,9 +170,8 @@ def test_uniform_graded_high_face_row_parity(monkeypatch):
     at rfx/core/yee.py:1014, causing the 4.553e-8 lane amplitude scale.
     Float64 material assembly now keeps that product in float64. The bars
     bound the remaining accumulated rounding between the two lanes, using
-    the larger x86/arm64 control over all three scenes. Record: rfx-archive,
-    rfx/plans/idm/20261112-float64-edge-fractions/DESIGN.md,
-    "#2615 control measured, and the bar".
+    the larger x86/arm64 control over all three scenes, measured on main
+    with only the float64 source coefficient before this change was read.
     """
     import math
     import time
