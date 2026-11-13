@@ -45,7 +45,7 @@ BOX_LO = (.0143, .0072, .0033)
 BOX_HI = (.0197, .0138, .0086)
 
 # Contract addendum 11: common arrays always compare; these sets govern
-# one-sided arrays only. Unknown one-sided roots require leader review.
+# one-sided arrays only. Unknown one-sided roots require review.
 MEASUREMENT_ROOTS = {
     'time_series', 'dft_planes', 'dft_time_records', 'flux_monitors',
     'ntff_data', 'ntff_box', 's_params', 'freqs', 'freqs_hz',

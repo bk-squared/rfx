@@ -396,7 +396,6 @@ def git_snapshot(repo, *args):
 
 
 def test_initial_adoption_and_head_environment_use_git_sources(synthetic, monkeypatch, capsys):
-    # Throwaway repositories under tmp_path are explicitly allowed by the leader.
     git_snapshot(synthetic, "init", "-q")
     (synthetic / gate.BASELINE).unlink()
     git_snapshot(synthetic, "add", ".")

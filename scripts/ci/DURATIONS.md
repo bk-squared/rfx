@@ -45,14 +45,14 @@ full-inventory-or-freshly-measured prune rule drops 3,443 old entries at `e190f8
 The explicit fast collection (`not gpu and not slow and not slow_physics`, 28,694 tests on macOS,
 no CAD extra) has 551 unpriced tests, down from 2,741; the default addopts additionally excludes
 `docs_consistency`. pytest-split predicts 42.9-48.5 min per shard (7763 basis), versus old
-46.9-49.2 min; the old split under new prices costs 39.2-53.6 min. Leader verdict: the condition
+46.9-49.2 min; the old split under new prices costs 39.2-53.6 min. The condition
 that binds is the longest shard against the 75-min job limit: old 49.2 min, new 48.5 min.
 Shards 1-11 span 46.7-48.5 min; shard 12 at 42.9 min is the remainder duration_based_chunks leaves
 in the last group. The design's 2-min spread condition measured the wrong quantity and is withdrawn
 in this record.
 Check on 115 readings from the 10 recent green pr-tests runs, using each shard's own test list:
 normalised actual / new-price prediction median 1.016, p10 0.925, p90 1.105;
-5 readings on CPUs absent from factors.json are excluded by leader decision and listed in the record.
+5 readings on CPUs absent from factors.json are excluded and listed in the record.
 Weekly prices: run [41565185166](https://github.com/bk-squared/rfx/actions/runs/41565185166)
 (main `b45900a67`), raw runner seconds; fast fallback 304, old weekly file, weekly jobs 1-16,
 all pruned to the 29,144-test weekly collection. 30,570 → **29144 entries**, 3,873 old entries dropped,
@@ -424,7 +424,7 @@ the same collection predicts max 123.4 min and shard 5 at 109.4, the 56 unpriced
 The uncached weekly lane uses its own file; the fast lane and gate keep
 `.test_durations`. Weekly run `39220415396`, at main `f0e3805d9` on 2026-10-19,
 measured the uncached prices. The old fast-lane prices underpredicted measured
-weekly work by x1.05–1.48 (leader's per-shard comparison); shard 4 used 9270 s,
+weekly work by x1.05–1.48 (per-shard comparison); shard 4 used 9270 s,
 above the 85 % budget, and shard 5 was cancelled at the 180-minute limit.
 
 2026-10-19: 27,370 entries, with 87 fast-lane fallback prices. After the 2026-10-20 refresh:

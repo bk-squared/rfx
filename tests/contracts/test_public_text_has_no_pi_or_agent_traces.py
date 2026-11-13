@@ -15,6 +15,9 @@ SCOPE = ("rfx/", "tests/", "scripts/")
 pytestmark = pytest.mark.source_scan
 
 PATTERNS = {
+    "C2-key": re.compile(r"_pi_20\d\d_\d\d_\d\d"),
+    "C2-attribution": re.compile(r"(?<!TODO-)\bleaders?\b", re.IGNORECASE),
+    "C1-agent": re.compile(r"claude-workspace"),
     "C1": re.compile(r"/Users/byungkwankim/|-Users-byungkwankim|byungkwan-workspace|runs/byungkwan/|Project: byungkwan"),
     "C2": re.compile(r"\b(?:PI|PI-directed|PI-gated|PI-approved)\b|the professor"),
     "C3": re.compile(r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff]"),
@@ -30,6 +33,7 @@ PATTERNS = {
 CANDIDATE_PATTERN = (
     r"byungkwan|/Users/|PI|professor|rfx|agent-rules|pi-desk|[DL]:|MSL-PLANE"
     r"|ledger|records?[ /]20|docs/agent-memory|research_notes|bk-workspace|remilab-cnu|acc-"
+    r"|_pi_20|leader|claude-workspace"
     r"|[^ -~]"  # All non-ASCII text includes every Hangul range, in any locale.
 )
 MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
@@ -73,6 +77,8 @@ def test_public_text_has_no_pi_or_agent_traces():
 
 @pytest.mark.parametrize("line", [
     "PI = math.pi", "PI =", "2 * PI", "math.pi", "np.pi", "PIL", "PIN",
+    "the leading term", "leaderboard", "TODO-LEADER", "Tracker: TODO-LEADER",
+    "foo_pi_1999_09_21", "foo_pi_2026_9_21",
     "API", "SPICE", "my_PI_value", "PI_value", "value_PI", "SPI2",
     "21^3", "20261016", "0.648", "acc-admem-g1-20261016t043022z-648d9-extra",
     "prefix-acc-admem-g1-20261016t043022z-648d9",
@@ -82,6 +88,12 @@ def test_math_and_identifiers_are_allowed(line):
 
 
 PRIVATE_TEXT_CASES = [
+    ('"foo_pi_2026_09_21": 1', "C2-key"),
+    ("# leader decision 2026-09-23", "C2-attribution"),
+    ("# Leader's declared rule", "C2-attribution"),
+    ("# LEADERS checked", "C2-attribution"),
+    ("# TODO-LEADER; leader decision", "C2-attribution"),
+    ("# /root/workspace/claude-workspace/x", "C1-agent"),
     ("# /Users/byungkwankim/x", "C1"),
     ("# -Users-byungkwankim-x", "C1"),
     ("# byungkwan-workspace/x", "C1"),

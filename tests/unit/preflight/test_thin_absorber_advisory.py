@@ -77,7 +77,7 @@ def test_nonabsorbing_faces_are_silent_at_zero_depth(graded, token):
 def test_measured_reflections_are_quoted_without_interpolation(depth, rows):
     sim = _vacuum(graded=False, depths=(depth, 16, 8, 16))
     issue, = sim.preflight().by_code("thin_absorber")
-    # These values come from the leader's measurement table, not the check's
+    # These values come from the measurement table, not the check's
     # constants. Extract the microwave quantities instead of locking prose.
     values = re.findall(
         r"(\d+) layers: (-?\d+) dB at 2 GHz, (-?\d+) dB at 10 GHz, "

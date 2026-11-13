@@ -256,8 +256,7 @@ point (misaligned 80um: beta_railed 0/60 bins, reliable 9/9 in the gate, Z0
 flat over the gate 38.960-39.076 ohm, imag 0.126). On that evidence none of
 the repo's reliability gates flags these numbers.
 
-RE-VERIFICATION CONCLUSION (issue #752, written by the leader session
-2026-09-20; pasted verbatim, wrapped only):
+RE-VERIFICATION CONCLUSION (issue #752):
 --------------------------------------------------------------------------
 Re-verification of #752 on main (2026-09-19/20). Six points re-solved with
 ``run_one``'s committed settings (artifact

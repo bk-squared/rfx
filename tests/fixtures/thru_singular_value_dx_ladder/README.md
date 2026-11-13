@@ -15,7 +15,7 @@ produced these files is `scripts/vessl_thru_singular_value_dx_ladder.yaml`.
 |---|---|
 | VESSL run | 369367257803 (`rfx-thru-sv-dx-ladder`, remilab-c0 gpu-rtx4090, image nvcr.io/nvidia/jax:24.10-py3), all rungs rc=0 |
 | rfx commit | 088281899727fcc644814f0ae9451b6b89a26af8 (SHA-pinned fetch; PR #858's head, on main as 30fad4bb) |
-| run dir (originals) | `claude-workspace/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189/` on the personal-workspaces NFS mount — `rung_dx_over_{1,2,4}.{json,log,rc}` |
+| run dir (originals) | `<workspace>/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189/` on the personal-workspaces NFS mount — `rung_dx_over_{1,2,4}.{json,log,rc}` |
 | job log backup | `docs/vessl-logs/rfx-thru-sv-dx-ladder_369367257803_completed.log` in the primary checkout (gitignored) |
 | stack | jax 0.4.33.dev20241023+e3c6d6430, gpu (cuda:0), `JAX_ENABLE_X64=0`, default field dtype, python 3.10.12 |
 | wall time (total) | 6.6 s / 12.2 s / 160.2 s |
