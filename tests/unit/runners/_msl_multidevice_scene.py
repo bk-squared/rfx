@@ -38,8 +38,8 @@ class Scene:
     sim: Simulation
 
 
-def build_scene(name="T1", *, mode="laplace"):
-    """Declare one of the six J0 scenes, with p1 driven and p2 passive."""
+def build_scene(name="T1", *, mode="laplace", excite_all=False):
+    """Declare a J0 scene; optionally enable both microstrip S-matrix drives."""
     if name.removesuffix("_graded") not in ("T1", "T2", "Y1", "T1L"):
         raise ValueError(f"Unknown scene {name!r}")
     is_y = name.startswith("Y1")
@@ -86,7 +86,7 @@ def build_scene(name="T1", *, mode="laplace"):
             eps_r_sub=2.2,
             name=f"p{index + 1}",
             mode=mode,
-            excite=index == 0,
+            excite=excite_all or index == 0,
             n_probe_offset=16 if name.removesuffix("_graded") == "T2" and index == 0 else 12,
             n_probe_spacing=3,
             n_probes=5,
