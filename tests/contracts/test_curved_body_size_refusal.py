@@ -1,0 +1,213 @@
+"""A material Sphere or Cylinder is admitted by its size, never by its position.
+
+A Sphere of radius r is refused when r is below half the diagonal of the primal
+cell that contains its centre; a Cylinder when its radius is below half the
+diagonal of that cell's cross-section. Expected outcomes come from the drawing
+and the test's own node lines, without raster or grid helpers. The positions
+are seeded draws inside one cell; on the graded mesh the straddle rows cross a
+width step, so each position is judged on its own containing cell. An admitted
+body owns at least one cell at every position. A Sphere centred on a node is
+the tie: radius D is refused, and D plus twice the shared node tie band holds
+the eight cells around the node.
+
+The preflight warning names an admitted dielectric Sphere, or a Cylinder across
+its radius, whose diameter is under three containing-cell widths along an axis
+across it; a PEC body of the same size is not named. A traced radius is
+compared through the shared traced check. The material sweep applies the size
+rule to a non-PEC body only: a PEC rod that holds a cell column is swept as
+before, and the same rod as a dielectric is refused.
+"""
+import warnings
+
+import jax
+import jax.numpy as jnp
+import numpy as np
+import pytest
+
+from rfx import Box, Cylinder, Simulation, Sphere, vmap_material_sweep
+from rfx._internal._grid_metric import node_tie_tol
+from rfx.errors import RfxRefusal
+from rfx.geometry.rasterize_grid import (
+    _material_cell_mask, cell_sizes_from_nonuniform_grid, centres_from_nonuniform_grid,
+    centres_from_uniform_grid, coords_from_nonuniform_grid, coords_from_uniform_grid,
+)
+from rfx.sources.sources import GaussianPulse
+
+H = 1e-3
+GRADED_Z = np.r_[np.full(6, 1.0e-3), np.full(6, 0.8e-3)]
+REFUSED = 'is smaller than one cell can hold at every position'
+DRAWS = np.random.default_rng(2624).random((64, 3))
+STRADDLE_Z = 5e-3 + 2e-3 * np.random.default_rng(2624).random(64)
+
+
+def _sim(graded=False, freq_max=30e9):
+    domain = (12 * H, 12 * H, float(GRADED_Z.sum()) if graded else 12 * H)
+    return Simulation(freq_max, domain, dx=H, cpml_layers=0, boundary='pec',
+                      **(dict(dz_profile=GRADED_Z) if graded else {}))
+
+
+def _sampling(graded):
+    grid = _sim(graded)._build_nonuniform_grid() if graded else _sim()._build_grid()
+    if graded:
+        coords = coords_from_nonuniform_grid(grid)
+        return dict(coords=coords, centres=centres_from_nonuniform_grid(grid, coords),
+                    cell_sizes=cell_sizes_from_nonuniform_grid(grid))
+    return dict(coords=coords_from_uniform_grid(grid), centres=centres_from_uniform_grid(grid), grid=grid)
+
+
+def _widths_at(point, graded):
+    """Widths of the drawing's cell holding ``point``, from the test's node lines."""
+    z_nodes = np.r_[0., np.cumsum(GRADED_Z)] if graded else np.arange(13) * H
+    k = int(np.searchsorted(z_nodes, point[2], side='right')) - 1
+    return (H, H, float(np.diff(z_nodes)[k]) if graded else H)
+
+
+def _threshold(kind, axis, widths):
+    across = (0, 1, 2) if kind == 'sphere' else {'z': (0, 1), 'y': (0, 2), 'x': (1, 2)}[axis]
+    return 0.5 * np.sqrt(sum(widths[a] ** 2 for a in across))
+
+
+def _body(kind, axis, centre, radius):
+    return Sphere(centre, radius) if kind == 'sphere' else Cylinder(centre, radius, 4 * H, axis)
+
+
+def _outcome(shape, sampling):
+    try:
+        mask = _material_cell_mask(shape, sampling['coords'], sampling['centres'], name='body',
+                                   grid=sampling.get('grid'), cell_sizes=sampling.get('cell_sizes'))
+    except RfxRefusal as caught:
+        assert REFUSED in str(caught)
+        return 'refused'
+    assert np.count_nonzero(np.asarray(mask)) >= 1
+    return 'admitted'
+
+
+def _cell_positions(kind, axis, lo, widths):
+    """64 seeded centres in the cell with low corner ``lo``; a Cylinder's axial centre stays at the cell centre."""
+    points = np.asarray(lo) + DRAWS * np.asarray(widths)
+    if kind == 'cylinder':
+        a = 'xyz'.index(axis)
+        points[:, a] = lo[a] + widths[a] / 2
+    return points
+
+
+CASES = ([('sphere', None, k) for k in (0.577, 0.993, 1.005, 1.155)]
+         + [('cylinder', axis, k) for axis in 'zxy' for k in (0.495, 0.990, 1.004, 1.414)])
+
+
+@pytest.mark.parametrize('kind, axis, k', CASES)
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded-0.8mm-cell'])
+def test_outcome_is_the_same_at_every_position_in_one_cell(graded, kind, axis, k):
+    lo = (5 * H, 5 * H, 7.6e-3 if graded else 5 * H)
+    widths = (H, H, 0.8e-3 if graded else H)
+    radius = k * _threshold(kind, axis, widths)
+    sampling = _sampling(graded)
+    outcomes = {_outcome(_body(kind, axis, tuple(p), radius), sampling)
+                for p in _cell_positions(kind, axis, lo, widths)}
+    assert outcomes == {'refused' if k < 1 else 'admitted'}
+
+
+@pytest.mark.parametrize('kind, axis, radius', [('sphere', None, 0.84e-3), ('cylinder', 'x', 0.68e-3)])
+def test_straddle_rows_follow_the_containing_cell(kind, axis, radius):
+    sampling = _sampling(True)
+    seen = set()
+    for z in STRADDLE_Z:
+        centre = (5.5e-3 if kind == 'cylinder' else 5.81e-3, 5.77e-3, float(z))
+        expected = ('refused' if radius < _threshold(kind, axis, _widths_at(centre, True))
+                    else 'admitted')
+        assert _outcome(_body(kind, axis, centre, radius), sampling) == expected
+        seen.add(expected)
+    assert seen == {'refused', 'admitted'}
+
+
+NODE = (5 * H, 6 * H, 7 * H)
+
+
+@pytest.mark.parametrize('bands, cells', [(0, None), (2, 8)], ids=['radius-D', 'radius-D-plus-2-bands'])
+def test_sphere_on_a_node_is_judged_against_the_band_above_the_half_diagonal(bands, cells):
+    """At radius D the eight nearest centres lie on the surface: a tie, refused."""
+    d = _threshold('sphere', None, (H, H, H))
+    tau = float(node_tie_tol(max(abs(v) for v in NODE), d))
+    shape = Sphere(NODE, d + bands * tau)
+    sampling = _sampling(False)
+    if cells is None:
+        with pytest.raises(RfxRefusal, match=REFUSED):
+            _material_cell_mask(shape, sampling['coords'], sampling['centres'], name='body', grid=sampling['grid'])
+    else:
+        mask = _material_cell_mask(shape, sampling['coords'], sampling['centres'], name='body', grid=sampling['grid'])
+        assert np.count_nonzero(np.asarray(mask)) == cells
+
+
+def _small_body_scene(shape, material='d'):
+    sim = _sim()
+    sim.add_material('d', eps_r=4.)
+    sim.add(shape, material=material)
+    sim.add_source((2.5 * H,) * 3, 'ez', waveform=GaussianPulse(f0=20e9, bandwidth=0.8))
+    return sim
+
+
+OFFSET = np.array([0.31, 0.27, 0.19]) * H
+CELL = np.full(3, 5.5 * H)
+WARN_ROWS = [
+    ('sphere-0.87h', Sphere(tuple(CELL + OFFSET), 0.87 * H), 'warn', 'd'),
+    ('sphere-1.0h', Sphere(tuple(CELL + OFFSET), 1.0 * H), 'warn', 'd'),
+    ('sphere-1.4h', Sphere(tuple(CELL + OFFSET), 1.4 * H), 'warn', 'd'),
+    ('sphere-1.6h', Sphere(tuple(CELL + OFFSET), 1.6 * H), 'quiet', 'd'),
+    ('cylinder-0.71h', Cylinder(tuple(CELL + OFFSET), 0.71 * H, 4 * H, 'z'), 'warn', 'd'),
+    ('disc', Cylinder(tuple(CELL + np.array([0.31, 0.27, 0.05]) * H), 4 * H, 0.3 * H, 'z'), 'quiet', 'd'),
+    ('box-1.5h', Box(tuple(CELL + OFFSET - 0.75 * H), tuple(CELL + OFFSET + 0.75 * H)), 'quiet', 'd'),
+    ('sphere-0.5h', Sphere(tuple(CELL + OFFSET), 0.5 * H), 'refused', 'd'),
+    ('pec-sphere-1.0h', Sphere(tuple(CELL + OFFSET), 1.0 * H), 'quiet', 'pec'),
+]
+
+
+@pytest.mark.parametrize('label, shape, expected, material', WARN_ROWS, ids=[row[0] for row in WARN_ROWS])
+def test_small_dielectric_body_warning(label, shape, expected, material):
+    sim = _small_body_scene(shape, material)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        report = sim.preflight()
+    warned = any(str(issue).startswith('Small dielectric body:') for issue in report)
+    assert warned == (expected == 'warn')
+    if expected == 'refused':
+        with pytest.raises(RfxRefusal, match=REFUSED):
+            sim.run(n_steps=1, skip_preflight=True)
+    else:
+        sim.run(n_steps=1, skip_preflight=True)
+
+
+def traced_sphere_mask(radius):
+    sampling = _sampling(False)
+    return _material_cell_mask(Sphere(tuple(CELL + OFFSET), radius), sampling['coords'], sampling['centres'],
+                               grid=sampling['grid'], name='d', refuse_empty=True)
+
+
+def test_traced_radius_below_the_cell_is_refused():
+    with pytest.raises(Exception, match=REFUSED):
+        jax.block_until_ready(jax.jit(traced_sphere_mask)(jnp.float32(0.80 * H)))
+    traced = np.asarray(jax.jit(traced_sphere_mask)(jnp.float32(0.95 * H)))
+    np.testing.assert_array_equal(traced, np.asarray(traced_sphere_mask(np.float32(0.95 * H))))
+    assert traced.any()
+
+
+ROD_CENTRE = (5.5 * H, 5.5 * H, 5.0 * H)  # a cell centre across the rod; its 4 mm height ends on nodes 3 and 7
+
+
+@pytest.mark.parametrize('material, swept, values, expected', [
+    (dict(eps_r=1.0, sigma=1e7), 'rod.sigma', (1e7, 2e7), 'admitted'),
+    (dict(eps_r=4.0, sigma=0.0), 'rod.eps_r', (4.0, 6.0), 'refused'),
+], ids=['P1-pec', 'P2-dielectric'])
+def test_material_sweep_applies_the_size_rule_to_a_non_pec_body_only(material, swept, values, expected):
+    """A rod of radius h/2 lies below its cross-section's half diagonal, h/sqrt(2), and holds its centre column."""
+    sim = _sim()
+    sim.add_material('rod', **material)
+    sim.add(Cylinder(ROD_CENTRE, 0.5 * H, 4 * H, 'z'), material='rod')
+    sim.add_source((2.5 * H, 2.5 * H, 5.5 * H), 'ez', waveform=GaussianPulse(f0=20e9, bandwidth=0.8))
+    sim.add_probe((8.5 * H, 8.5 * H, 5.5 * H), 'ez')
+    if expected == 'refused':
+        with pytest.raises(RfxRefusal, match=REFUSED):
+            vmap_material_sweep(sim, swept, np.asarray(values), n_steps=4)
+        return
+    series = np.asarray(vmap_material_sweep(sim, swept, np.asarray(values), n_steps=4).time_series)
+    assert series.shape == (2, 4, 1)
+    assert np.isfinite(series).all()

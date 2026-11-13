@@ -85,7 +85,7 @@ import numpy as np
 from rfx.grid import C0
 from rfx._internal._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
-from rfx.geometry.csg import Box
+from rfx.geometry.csg import Box, Cylinder, Sphere
 
 from rfx.preflight._common import (
     _fmt_freq,
@@ -114,6 +114,64 @@ def _local_cell(profile, lo, hi, fallback):
     if not inside.any():
         return fallback
     return float(d[inside].max())
+
+
+def _realized_cell_samples(self, cache):
+    """Primal-cell centres and widths of the grid the run builds, built once."""
+    if not cache:
+        from rfx.geometry.rasterize_grid import (
+            cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+            centres_from_nonuniform_grid, centres_from_uniform_grid,
+        )
+        grid = self._build_realized_grid()
+        graded = hasattr(grid, "dx_arr")
+        cache.append(((centres_from_nonuniform_grid(grid) if graded
+                       else centres_from_uniform_grid(grid)),
+                      (cell_sizes_from_nonuniform_grid(grid) if graded
+                       else cell_sizes_from_uniform_grid(grid))))
+    return cache[0]
+
+
+def _warn_small_curved_body(self, entry, cache, is_pec) -> None:
+    """Warn for an admitted dielectric Sphere, or a Cylinder across its
+    radius, whose diameter is under three widths of the cell containing its
+    centre along an axis across it. A body below the size rule of
+    :mod:`rfx.geometry.curved_body_size` is refused at assembly instead, and
+    gets no warning here. A Cylinder thin only along its own axis is planar
+    and is not judged here. ``is_pec`` is the mesh check's own decision for
+    the entry's material."""
+    import warnings as _w
+    from rfx.geometry.curved_body_size import body_size_threshold, is_below_size
+    shape = entry.shape
+    if is_tracer(shape.radius) or any(is_tracer(v) for v in shape.center):
+        return
+    if is_pec:
+        return
+    centres, sizes = _realized_cell_samples(self, cache)
+    rule = body_size_threshold(shape, centres, sizes)
+    if rule is None or is_below_size(shape, centres, sizes):
+        return
+    _, _, widths, axes = rule
+    diameter = 2.0 * float(shape.radius)
+    cells, axis = min((diameter / widths[a], a) for a in axes)
+    if cells >= 3.0:
+        return
+    _w.warn(
+        PreflightWarning(
+            f"Small dielectric body: '{entry.material_name}' ({type(shape).__name__}) "
+            f"diameter {_fmt_len(diameter)} is {cells:.2f} cells across along "
+            f"{'xyz'[axis]} (containing cell {_fmt_len(widths[axis])}). A body this "
+            "small is over-polarized: against the converged result a sphere two "
+            "cells across measured 1.30× with subpixel smoothing and 1.25× without, "
+            "and a rod two cells across 1.10× and 1.13×; its polarizability and "
+            "scattering are overestimated by about that much. A sphere four cells "
+            "across read 1.07×. Put more cells across the body.",
+            **finding_subjects(self, objects=(entry,)),
+            code="mesh_resolution",
+            source="_validate_mesh_quality",
+        ),
+        stacklevel=4,
+    )
 
 
 def _validate_mesh_quality(self) -> None:
@@ -148,6 +206,7 @@ def _validate_mesh_quality(self) -> None:
     else:
         min_dz = dx
 
+    realized_cells: list = []
     for entry in self._geometry:
         shape = entry.shape
         mat_name = entry.material_name
@@ -349,6 +408,9 @@ def _validate_mesh_quality(self) -> None:
                             ),
                             stacklevel=3,
                         )
+
+        if isinstance(shape, (Sphere, Cylinder)):
+            _warn_small_curved_body(self, entry, realized_cells, is_pec)
 
     # Check gaps between PEC structures
     from rfx.model.materials import assembled_as_pec
