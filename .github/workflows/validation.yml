@@ -15,10 +15,10 @@ permissions:
   contents: read
 
 jobs:
-  # A6000 checks now run on the merge train's Mac runner via agent-rules
-  # _configs/scripts/merge_train_weekly_gpu.py: one-card highmem + gpu suite
+  # A6000 checks now run on the merge train's runner:
+  # one-card highmem + gpu suite
   # and two-card multi_gpu on remi gpu-a6000, weekly and per release tag.
-  # Results go to rfx-lead; records: bk-workspace/.localci/weekly-gpu/.
+  # Results go to the maintainers; records: the lab's CI record folder.
   # The same runner runs kind crossval-ladder monthly on gpu-24gb.
   # ---------------------------------------------------------------------------
   # slow-tests (8-shard since 2026-10-19, was 6) excludes the serial highmem lane (issue #545 step 3).
@@ -49,7 +49,7 @@ jobs:
   #
   # The highmem selection moved off GitHub runners on 2026-09-07 because
   # the ~24 GB test never fit the ~16 GB ceiling, even serialized. It now
-  # runs on the A6000 through the Mac runner named above.
+  # runs on the A6000 through the merge train's runner named above.
   #
   # .test_durations interaction: the 4-shard job's selection (`not gpu and
   # not highmem`) now excludes the 7 highmem tests, so duration_based_chunks
@@ -161,7 +161,7 @@ jobs:
       # proof of this property.
       #
       # "not highmem" (issue #545 step 3): the 7 confirmed memory-heavy tests
-      # run serially on the A6000 via the Mac runner, see the block comment above
+      # run serially on the A6000 via the merge train's runner, see the block comment above
       # this job for why.
       #
       # `-m` on the command line REPLACES pyproject's addopts marker expression
@@ -381,9 +381,9 @@ jobs:
           echo "three-device job: $(( used / 60 )) min of a 75 min limit"
           test "$used" -le $(( 75 * 60 * 85 / 100 ))
 
-  # Python 3.12 with the newest jax release, no upper bound (rfx-core-desk 2026-10-27): jax 0.11 renamed scan parameters and
-  # estimate_ad_memory raised KeyError for every Python 3.12 user while all other lanes ran 3.11 with jax 0.10.2
-  # (record rfx-archive 20261027-jax-floor-options). Gradients and the contracts only; weekly, never a PR check.
+  # Python 3.12 with the newest jax release, no upper bound: jax 0.11 renamed scan parameters and
+  # estimate_ad_memory raised KeyError for every Python 3.12 user while all other lanes ran 3.11 with jax 0.10.2.
+  # Gradients and the contracts only; weekly, never a PR check.
   # Six shards balanced on .test_durations (recorded 3.11/jax 0.10.2: about 189 min single-process).
   latest-jax:
     runs-on: ubuntu-latest
@@ -413,7 +413,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       # Over pyproject's jax cap on purpose: this job exists to see the newest jax release, with no upper bound,
-      # because an upstream fix lands on the newest line first (rfx-core-desk L:5bac96, acceleration D:996c06; the 2.0
+      # because an upstream fix lands on the newest line first (the 2.0
       # cap below 0.11.2 is for the CPU step slowdown, openxla/xla#50977). pip's resolver does not hold a requested
       # package to an installed package's bounds, so -U installs the newest pair and upgrades what it needs, as a
       # user's `pip install -U jax` would. pip check then fails the job on any broken requirement except rfx's own
@@ -437,7 +437,7 @@ jobs:
 
       # XLA compiles its CPU code for the runner's own CPU, and GitHub's runners differ (AMD EPYC 9V45 and 7763,
       # Intel Xeon 8573C): on jax 0.12 two tests changed outcome with the CPU (#2166). Cap every process at AVX2,
-      # as the local gate does (rfx-core-desk L:3c69f6). A sitecustomize.py in site-packages appends the cap to a
+      # as the local gate does. A sitecustomize.py in site-packages appends the cap to a
       # child's own XLA_FLAGS too (about 25 tests start a child with XLA_FLAGS replaced).
       - name: Cap XLA's CPU instruction set at AVX2 in every process
         run: |

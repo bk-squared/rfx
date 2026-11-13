@@ -10,7 +10,7 @@ Excluded sources:
 
 - `working-on-rfx.mdx`: internal task ownership, review and session coordination.
 - `agent-runbook.mdx`: internal commands, ownership lanes and VESSL configuration.
-- `repo-map.mdx`: names a VESSL run and internal PI coordination.
+- `repo-map.mdx`: names a VESSL run and internal coordination.
 - `recipe-waveguide-sparams.mdx`: names VESSL run evidence; use the public
   sources/ports guide and support matrix instead.
 - `gpu-throughput.mdx`: lab hardware benchmark measurements.

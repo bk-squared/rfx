@@ -76,7 +76,7 @@ command is verified to return at least one hit on the current tree.
 For coaxial one-port workflows, use `Simulation.compute_coaxial_line_reflection(...)`
 inside its documented one-port transmission-line envelope. For coaxial 2-port
 workflows, `Simulation.compute_coaxial_two_port(...)` (issue #489 stage 2) is
-**VALIDATED WITH SCOPE** (PI decision 2026-08-06): an external openEMS referee
+**VALIDATED WITH SCOPE**: an external openEMS referee
 (crossval 21) brackets its own `|S21|` and, via the port's own measured `beta`,
 phase on the through-line class; a mesh-refinement convergence witness
 (`p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate close the remaining legs. It
@@ -89,8 +89,8 @@ settled run (VESSL `369367257614`, PR #837) the MSL side's power-wave normalizat
 over-reads power by about 3x, so the extracted matrix is NOT passive — max`|S|`
 `1.7046`, MSL-driven column power `2.9563` / `2.9172` / `2.8609` at 6/8/10 GHz — and the
 call refuses it by default (`strict_passivity=True`, raising `ValueError`);
-`strict_passivity=False` returns it with a `UserWarning` instead (issue #838). Per
-the PI decision of 2026-09-20 the cross-family transition lanes are not
+`strict_passivity=False` returns it with a `UserWarning` instead (issue #838).
+The cross-family transition lanes are not
 pursued further before 2.0, so that over-read will not be attributed or corrected; use the
 single-family extractors separately for anything citable. Any earlier reading of this lane,
 including the attempt-2 settled run, was taken through three instrument defects since
