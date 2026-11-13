@@ -1,9 +1,7 @@
 """A matched coax sheet preserves the physical end-capacitance floor.
 
 The vacuum cell formerly written by the annular resistor removed a shunt
-capacitance, cancelling part of the end reflection. The design is recorded in
-rfx-archive at ``rfx/records/20261107-coax-oneport-floor/PREDECLARE-load-fill.md``
-with its governing 2026-11-10 14:25 KST addendum. The independent reference is
+capacitance, cancelling part of the end reflection. The independent reference is
 31.49 fF across a 48.5914 ohm line: |Gamma| = x / sqrt(4 + x**2), x = omega C Z.
 Its 11-bin 4–6 GHz median is -32.386 dB; the declared mesh allowance is 0.717 dB.
 

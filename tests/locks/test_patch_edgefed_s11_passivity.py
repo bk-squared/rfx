@@ -19,7 +19,7 @@ WRONG PHYSICS for a *directly edge-fed* patch and is NOT achievable by refining 
     most optimistic fit needs ~7e8 cells to reach the then-target band. Mesh
     refinement is a diminishing-returns R2 loop here, not a fix.
 
-THE PLANE THESE PINS ARE AT (rfx-archive MSL-PLANE.md, decision record 14)
+THE PLANE THESE PINS ARE AT
 ------------------------------------------------------------------------
 Every pin below (the Im(Zin)=0 crossing band, the in-band Re(Zin) floor, the
 |S11| readings) was measured on S at the port's probe-0 plane, 3.94 mm (20

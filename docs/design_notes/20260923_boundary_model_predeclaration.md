@@ -1,16 +1,16 @@
 # One realized boundary for every kernel — pre-declaration
 
-> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are kept with the project, outside this repository. Historical paths below refer to those records; reproduction commands that read them need the archived files.
 
 **Status:** pre-declaration for the boundary-model campaign.
 The draft had three independent
 reviews before this text: a design review (Opus, separate instance, 4 P1 / 9 P2 / 4 P3, seven CPU
-reproductions), then the leader's recommendations reviewed by Codex and by a second Opus instance, each
+reproductions), then the recommendations reviewed by Codex and by a second Opus instance, each
 independently (both SOUND WITH CHANGES; their conditions are folded in below and named where they
 decided something). Both then rechecked this text (ACCEPT WITH CHANGES each); their changes are in it.
 The measurements are
 committed under `scripts/diagnostics/boundary_model/`, and the reviews' scripts with the output they
-printed under its `reviews/` (its README says how they were kept). Written by the absorber-lane leader. Model for the shape: the
+printed under its `reviews/` (its README says how they were kept). Model for the shape: the
 NU grid-core note (`20260922_nu_grid_core_predeclaration.md`).
 **Lane:** absorber. **Order:** this campaign, then PR #1012; after that the choice is #952 or a
 periodic unit-cell campaign.
@@ -98,17 +98,17 @@ depend on the wall separation. Declared and realized were not compared.
 
 | fact | checked by |
 |---|---|
-| the flattening of the spec | leader read `rfx/api/__init__.py:563-606, 699-704` |
+| the flattening of the spec | read in `rfx/api/__init__.py:563-606, 699-704` |
 | inventory: 1518 sites / 79 files / 92 APPLY in 12 lanes | Codex, `B0/INVENTORY.md`, `B0/inventory.csv` |
 | the realized-boundary matrix at 798ec64e (66 measured, 30 refused) | Codex, `B0/MATRIX.md`, `B0/MATRIX.json`, VESSL 369367263554–561 |
 | magnetic cavity: CPU at a4aaa862, GPU relaunch (electric walls on GPU: no (0,1), separation 24.02 / 24.005 / 24.001 mm) | Codex, `B0c/REPORT.md`, `B0c/RESULTS.json`, `B0c/gpu_relaunch/`, VESSL 369367263573–579 |
 | PEC cube W1, PMC line W3, backing W4 | Codex, `B0/WITNESS.md`, `B0/witness/*.json`, VESSL 369367263562–564 |
 | Floquet scan angle has no effect; RIS output is a normalized spectrum | Codex, `B0b/REPORT.md`, `B0b/angle_equalities.json`; `reviews/codex_review/checks.json` (normalization) |
-| what #1205 changed | leader read PR #1205 and `rfx/boundaries/pec.py` `resolve_wall_faces` at c2dbf922 |
+| what #1205 changed | read in PR #1205 and `rfx/boundaries/pec.py` `resolve_wall_faces` at c2dbf922 |
 | the image wall on rfx's kernels: second order on uniform and graded axes and with a dielectric face node; with the (2,4) ribbon its error equals the electric-wall ribbon's at two meshes; a post-step correction with vacuum coefficients is first order | prototypes in the three reviews, `reviews/` (1-D eigenvalue maps; a two-spacing 3-D cavity); Codex: a mirrored-domain comparison gives 0 V/m for vacuum, εr = 4 and εr = 4 with σ, and −0.0550 / −0.0563 / −0.0550 V/m on the Debye / Lorentz / mixed E updates unless each migrates — prototypes, not production-kernel validation |
 | the curl is spelled in at least ten places (smoothing/anisotropic, Debye, Lorentz, mixed ADE, UPML, fast path, graded kernels, port current loops, distributed, subgrid) | second Opus review, read with file:line |
-| periodic L + dx; RIS 10 → 10.5 mm; index map has no node in [L − dx/2, L] once the fence post goes | `reviews/opus_review1/periodic_period.py`, `ris_grid.py`; `reviews/opus_review2/d2_index.py`; mechanism read by the leader at `rfx/grid.py:212-227`, `rfx/core/yee.py:171-218` |
-| `add_tfsf_source` requires `boundary='cpml'` and refuses periodic overrides | second Opus review, `rfx/api/__init__.py:2301-2310` (leader read) |
+| periodic L + dx; RIS 10 → 10.5 mm; index map has no node in [L − dx/2, L] once the fence post goes | `reviews/opus_review1/periodic_period.py`, `ris_grid.py`; `reviews/opus_review2/d2_index.py`; mechanism read at `rfx/grid.py:212-227`, `rfx/core/yee.py:171-218` |
+| `add_tfsf_source` requires `boundary='cpml'` and refuses periodic overrides | second Opus review, `rfx/api/__init__.py:2301-2310` (read) |
 
 ## 2. Decisions
 
@@ -173,7 +173,7 @@ depend on the wall separation. Declared and realized were not compared.
    waveguide run; the refusal gives the PEC declaration to write, and B5 converts the committed scripts. The add-time guards of `add_tfsf_source` are
    lifted so that the admissible declarations can be written. (Codex disagreed with any rewrite and, on
    recheck, accepted the bounded rule with conditions (1) and (2); the second Opus review agreed under
-   the invariance condition; the leader takes the bounded rule because it is exact where it applies and
+   the invariance condition; the bounded rule is taken because it is exact where it applies and
    refuses everywhere else.)
 5. **Each kernel declares its capability, and tests hold it.** Refusals raise at dispatch — also with
    preflight bypassed — naming the face, the feature and the kernel. Enforced by: B0's matrix harness as
@@ -193,7 +193,7 @@ depend on the wall separation. Declared and realized were not compared.
    spelling lacks the image (the port current loops `_bwd_h` / `_bwd_neighbor`, flux and far-field planes
    on the face) are refused on that plane until each moves. (Codex preferred refusing every object on the
    plane; the second Opus review showed that this refuses the main use of a symmetry plane — a feed on
-   a bisected line or patch — and the TEz thin box #1205 recommends. The leader takes "full" with
+   a bisected line or patch — and the TEz thin box #1205 recommends. "full" is taken with
    per-consumer refusals.)
 7. **A periodic axis has the declared period (D2).** L/dx nodes; `position_to_index`/`index_of` wrap
    modulo N on a periodic axis (L maps to 0); a DFT plane at L and at 0 are the same plane (for Bloch
@@ -313,7 +313,7 @@ separate Opus instance reviews each PR, two directions over 200 lines of `rfx/` 
 
 ## 6. Who does what, and the other lanes
 Measurements and implementation: Codex from written briefs; judgments, this note and every interpreting
-sentence: the leader. The NU lane owns `boundaries/cpml.py`'s metric (its 0b) and `grid.py` (its 0c): B2
+sentence are kept apart from the implementation. The NU lane owns `boundaries/cpml.py`'s metric (its 0b) and `grid.py` (its 0c): B2
 and B3 onwards follow it module by module. #1205 was done in this lane by another session; its rule is
 this design's seed, and its tests are rewritten in B3 with the reason. The one-cell PMC line —
 #1205's `test_magnetic_wall_faces_not_shorted.py` and the ports lane's two #1162 tests on the same
@@ -358,7 +358,7 @@ Decisions:
      face reflects less than the shallower one by the margin the single-device run shows. The
      restored-#1346 mutation makes the graded x-high face read like 8 layers.
 
-Addendum, 2026-10-05 (leader, after the PR1 implementer stopped on a mismatch). The uniform and graded
+Addendum, 2026-10-05 (after the PR1 implementer stopped on a mismatch). The uniform and graded
 copies differ on two inputs: a per-face depth above the budget on a face of a non-absorbing axis (the
 uniform grid raises, the graded grid ignores it), and a fractional depth on an absorbing face (the
 uniform grid truncates 1.5 to 1, the graded grid raises). Neither input reaches either builder through
@@ -368,7 +368,7 @@ call of `Grid(…, face_layers=…)` or `make_nonuniform_grid(…, face_layers=�
 record applies the strict rule to every face it is given — an integer between 0 and the budget, raising
 otherwise — so the two builders agree; no public result changes. A test pins both inputs on both builders.
 
-Addendum 2, 2026-10-05 (leader, second implementer stop). A reachable difference, through the exported
+Addendum 2, 2026-10-05 (second implementer stop). A reachable difference, through the exported
 low-level `rfx.run(grid, materials, n_steps, boundary="cpml")`: a uniform grid built with
 `cpml_axes="z"` has zero pads on x and y, yet `init_cpml` still builds full 8-layer absorbing profiles on
 the x and y faces, and `rfx.run` applies them because its own `cpml_axes` argument defaults to "xyz". The
@@ -379,12 +379,12 @@ uniform behaviour as a regression baseline (it guarded #876's clamp, not the phy
 result change: the record's realized depth is the pad (0 on those faces), and `init_cpml` keeps its
 present profile depth for faces outside the grid's absorbing axes, labelled in code as the legacy dual
 declaration with a pointer here; the structural contract allow-lists exactly that line. The dual
-declaration itself (grid axes vs the runner argument) is a separate decision, raised with the lead: the
+declaration itself (grid axes vs the runner argument) is a separate decision, raised: the
 candidate is that the runner reads the grid's axes and refuses a conflicting explicit argument, with
 the #876 test rewritten with its reason. That change moves results on the low-level API and does not
 belong in this PR.
 
-Addendum 3, 2026-10-06 (leader, PR2 implementer stop). With a waveguide port, the grid absorbs only on
+Addendum 3, 2026-10-06 (PR2 implementer stop). With a waveguide port, the grid absorbs only on
 the port axis (`_waveguide_cpml_axes`, `api/_compile.py`): a model declared `cpml` on every face is
 solved with electric walls and no pad on the transverse faces, while preflight's own face reader
 (`_preflight_face_layers`, `preflight/absorber.py`) reports the declared absorber there (4 layers on
@@ -396,7 +396,7 @@ turning declared absorbing faces into walls — is the same class as the TF/SF t
 (§3 B5, decision 4: a full-aperture waveguide's admissible transverse set is {PEC}) and joins PR3:
 a declared absorber the feature cannot keep is refused or must be declared as the wall it becomes.
 
-Addendum 4, 2026-10-06 (leader, after PR2's two reviews). (1) Addendum 3's rule — preflight reports the
+Addendum 4, 2026-10-06 (after PR2's two reviews). (1) Addendum 3's rule — preflight reports the
 realized record — covers every feature that changes the realized faces, not only waveguide ports: with a
 Floquet port (which sets the periodic axes itself) preflight reports the periodic faces as unpadded; the
 PR lists every advisory that appears or disappears. (2) A face declared `cpml` with zero layers is an
@@ -423,7 +423,7 @@ resolution moving from registration to dispatch). Stage S1's judge is "expected 
 Decision: two PRs.
 PR3a — no computed result changes; what was silently rewritten is refused or must be declared.
  1. Waveguide. This departs from decision 4, which refused every full-aperture guide whose transverse
-    faces are absorbing, the default included. Reason (lead, 2026-10-07): `Simulation`'s `boundary`
+    faces are absorbing, the default included. Reason (2026-10-07): `Simulation`'s `boundary`
     defaults to `cpml`, so that rule breaks every waveguide script over an absorber the user never
     declared. Rule now, for a guide whose REALIZED aperture equals the realized cross-section:
     - `boundary` not passed (the default applied): the transverse faces default to PEC, the guide's
@@ -463,7 +463,7 @@ planes. Design note §2 decision 4 and §3 B5; Addendum 3. First-pass count of f
 `add_waveguide_port` without an explicit boundary declaration: 31 of 158 by text heuristic (the note's
 earlier heuristic said 17); the build-only census in the PR is authoritative.
 
-Addendum 5a, 2026-10-07 (leader, after the PR3a implementer stopped on a mismatch). Addendum 5 asked for
+Addendum 5a, 2026-10-07 (after the PR3a implementer stopped on a mismatch). Addendum 5 asked for
 the realized face record of a converted waveguide script to be bit-identical before and after. It cannot
 be: on main the transverse faces of a full-aperture guide are recorded as kind ABSORBER with realized
 depth 0 (the absorber's electric backing wall at the domain face, Addendum 4), and declaring them PEC —
@@ -477,7 +477,7 @@ PEC and nothing else in the record changes. Readers that branch on the kind (mul
 preflight, exporters) are in the reach table, each shown to give the same realized walls for
 "ABSORBER, depth 0" and "PEC".
 
-Addendum 5b, 2026-10-07 (leader, second implementer stop). Three points the stop raised.
+Addendum 5b, 2026-10-07 (second implementer stop). Three points the stop raised.
 (1) `FaceDepth.declared` on a wall face. On the committed two-port guide the transverse faces read
 (ABSORBER, declared 1, realized 0) and after the PEC declaration (PEC, declared 16, realized 0): a PEC
 face cannot carry a thickness (`Boundary` refuses it), so the field falls back to the scalar budget. On a
@@ -567,11 +567,11 @@ two-port contract fixture, |S11| is 14.5-19.4 dB lower on 16 of 20 bins and |S21
 5. What this assumes about each path, checked: uniform, distributed_v2, subgridded realize depth 0 and are governed
    by Addendum 5 (default -> walls with one warning; explicit absorber refused) — build outputs in the PR3a report
    (`BASE_PATHS`): pads (4,4,0,0,0,0). Non-uniform and distributed_nu realize real pads (4 on all faces) — same
-   report. ADI: not reachable (constructor refuses the absorber). Not checked by the leader: whether distributed_nu
+   report. ADI: not reachable (constructor refuses the absorber). Not checked: whether distributed_nu
    reaches the same dispatch point as the single-device graded path for the default-provenance test; the implementer
    confirms by reading and by a build, and reports.
 
-## Addendum 5e (2026-10-09, leader, after the verification review of PR3a) — the plane-wave rule applies only where the wrap is installed; the finding names every wrapped face
+## Addendum 5e (2026-10-09, after the verification review of PR3a) — the plane-wave rule applies only where the wrap is installed; the finding names every wrapped face
 
 Addendum 5 asked for the plane-wave (TF/SF) refusal "on every path". The premise was not checked per path, the same
 error Addendum 5c (1) corrected for the guide. Checked now by reading main: the graded-mesh stepper installs no
@@ -630,7 +630,7 @@ In code this is `rfx.boundaries.pec.resolve_wall_faces(grid, periodic)` called W
 equals `rfx.boundaries.model.electric_faces(record)` minus the faces of periodic axes. No high-level entry computes its
 own selection.
 
-### Sites that withhold the backing plane today (leader read on main 1c688c4c4)
+### Sites that withhold the backing plane today (read on main 1c688c4c4)
 | site | entry | today | change |
 |---|---|---|---|
 | `rfx/api/_execute.py:1700` | forward (and everything built on it: grad, optimize, topology, lumped/wire scan S, mixed S, MSL S with eps override) | `pec_axes` = axes not absorbing | pass None |
@@ -645,14 +645,14 @@ the graded mesh, multi-device graded, subgridded coarse grid (survey step 5; to 
 The kernel parameter `pec_axes` of the low-level functions (`rfx.run`, `rfx.simulation`) stays: a low-level caller's
 explicit flags are the caller's declaration (same stance as Addendum 5c (5)). High-level entries stop passing it.
 
-### Classes W and R — predeclared inclusion rule (lead condition 3)
+### Classes W and R — predeclared inclusion rule (Addendum 6 approval condition 3)
 W (waveguide-port entries: the absorber on the port axis is unbacked on run AND on the S calculator) and R (oblique
 RCS) are changed in the same commit series but INCLUDED in this PR only if, with the change, every committed lock,
 oracle and contract that reads them passes without touching a pinned value or tolerance. If any pin moves beyond its
 committed tolerance, that class is reverted to today's selection in this PR, listed with the measured shifts, and goes
 to PR3b. The contract test below then carries an explicit, named exception list (not a per-entry computation).
 
-### Judges (lead condition 1)
+### Judges (Addendum 6 approval condition 1)
 1. `tests/contracts/test_backing_wall_one_rule.py`, always-on, no field step (stop at the kernel factory):
    for each declaration in a matrix {all absorbing; absorber on x only + PEC elsewhere; PMC pair on one axis; one
    periodic axis; lo absorber / hi PEC on one axis; default plane wave; closed_box plane wave; full-aperture guide with
@@ -668,7 +668,7 @@ to PR3b. The contract test below then carries an explicit, named exception list 
 4. Mutations (helper calls kept): the forward entry passes "axes not absorbing" again → 1 and 3 red; the multi-device
    wall set drops positive-depth absorbers → 1 red; the plane-wave branch passes "" → 1 red.
 
-### Census (lead condition 2)
+### Census (Addendum 6 approval condition 2)
 Before/after on the same base, serial: tests/locks, tests/oracle, tests/contracts, tests/unit/{autodiff,sparams,
 runners,boundaries,sources,ports,preflight} and the weekly `slow`/`slow_physics` selection on VESSL CPU long. Report
 every test whose outcome changes and, for each value compared with a tolerance in a changed-outcome test, the shift.
@@ -681,7 +681,7 @@ Remove the `xfail(strict)` marks that name 1549 (ports' four-cell wire rows) whe
 Why the unterminated plane is unstable only with a closed tube and 20+ layers (not needed for the fix; ledger line).
 The Mac-only exact-equality failure of `test_grid_absorbing_axes[decay-graded]` (separate small PR).
 
-### Decision record (2026-10-11, leader) — classes W and R, and two statements above corrected
+### Decision record (2026-10-11) — classes W and R, and two statements above corrected
 1. The revert clause of "Classes W and R" names pinned values. The forward, multi-device and waveguide-pec cells of
    the frozen realized-boundary record (`tests/contracts/test_realized_boundary.py`) record the backing plane as
    missing (departure code `f`): they are this defect written down, not a pinned value. The file's convention is to
@@ -737,7 +737,7 @@ on the graded mesh:
    point 2, which it asserts by name. Mutations: the graded explicit-kind refusal removed → red; the graded message
    altered → red.
 
-Correction (2026-10-12, leader). Point 2's sentence on legacy documents is wrong for the graded mesh. On the graded mesh
+Correction (2026-10-12). Point 2's sentence on legacy documents is wrong for the graded mesh. On the graded mesh
 `restore_legacy_boundary` never records unknown provenance: `resolved_guide_spec` returns the declaration unchanged when
 the mesh is graded (`rfx/boundaries/serialization.py:15–16`), so the condition at :38 is false and an imported graded
 document stays explicit. An imported graded `boundary='cpml'` document is therefore refused by point 1, with the uniform
@@ -745,7 +745,7 @@ mesh's explicit-kind message, not by point 2. No public path produces unknown pr
 contract states that row by setting the internal flag, and states the imported graded document as its own row,
 compared with the uniform mesh's explicit `cpml`. The importer is unchanged.
 
-Correction (2026-10-12, leader, after the independent review). Point 2 names two differences; the review found two more
+Correction (2026-10-12, after the independent review). Point 2 names two differences; the review found two more
 that the contract's fixture (a whole number of cells) cannot see. Both are named in the contract with their current
 answers, and both are the graded refusal being the physically right answer while the uniform mesh admits a port without
 guide walls:

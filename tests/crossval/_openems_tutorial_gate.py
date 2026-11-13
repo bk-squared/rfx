@@ -185,7 +185,7 @@ REPRODUCE_GATE_RECORD = {
 # STAGE_A_GATE -- copied, with its justification, from the port's own
 # REPRODUCE_GATE_RECORD["gate"] (validation/crossval/20_msl_phase_referee.py, removed in #1232):
 #
-#   One-sided-low-biased band: docs/agent-memory/rfx-known-issues.md records
+#   One-sided-low-biased band: measurements showed
 #   openEMS reading ~7% LOW vs the fringing-free analytic on a DIFFERENT (not
 #   identical) line-length/domain combination of this SAME substrate/trace/stub
 #   -- PREDICTED, not yet measured for THIS exact tutorial geometry, hence the
@@ -202,8 +202,8 @@ STAGE_A_GATE = {
 # A frequency band alone does not say a notch is there. A through line with no
 # stub has a |S21| minimum somewhere in 2-7 GHz too, and it would sit inside the
 # band above. The gate therefore also requires the minimum to be a NOTCH: at
-# least 20 dB below unity -- the same deep-null level the case itself uses
-# (PI, 2026-09-22). A thru line fails it, which is what the self-check plants.
+# least 20 dB below unity -- the same deep-null level the case itself uses.
+# A thru line fails it, which is what the self-check plants.
 STAGE_A_MIN_DEPTH_DB = -20.0
 
 

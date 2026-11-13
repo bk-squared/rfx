@@ -86,7 +86,7 @@ its commit with no fallback and aborts on a dirty tree; a failed stage ships its
 assembler joins the stage records into `tests/fixtures/coax_chain_battery/fixture.json`, which one
 replay test re-derives every assembled number from.
 
-## Addendum (leader, 2026-09-23, before the battery is re-run on the fixed conductors)
+## Addendum (2026-09-23, before the battery is re-run on the fixed conductors)
 
 Written after the conductor realization fix (PR 1169, `02ff8849`) and before any battery solve on
 it. Corrections to the text above, each a fact from the repository, not a change of bar:
@@ -123,7 +123,7 @@ Appended after the first re-run's records were read. Items 8 and 11, and items
 9 and 10 are cited in the fixture and the replay test
 where they apply.
 
-8. **The bead is four annulus widths, a whole number of cells at every rung (leader).** The
+8. **The bead is four annulus widths, a whole number of cells at every rung.** The
    declared 6 mm rasterized to 17 / 25 / 38 cells, i.e. 6.035 / 5.917 / 5.996 mm at 4 / 6 / 9
    annulus cells. The reflection zero is fixed by the bead's length, so the 6-cell rung's zero
    sat 1.37 % from the 9-cell one while each rung was within 0.06-0.16 % of the closed form on
@@ -148,7 +148,7 @@ where they apply.
     measured envelope at 1.5x (1.041e-3). This supersedes the falsifier line "If the forward
     identity fails at the contract's tolerance on complex S, criterion 1(2) is open" for the
     thru arm only.
-11. **A deep quantity is judged by the bound on the ladder (leader).** A ladder quantity below
+11. **A deep quantity is judged by the bound on the ladder.** A ladder quantity below
     -20 dB at every bin, on the finest rung or in its closed form (the thru's |S11| and |S22|),
     is judged by the -20 dB bound at every rung, never by a dB comparison. A quantity deep only
     inside a reflection zero's core (the bead's |S11| and |S22|) is compared in dB outside the
@@ -167,4 +167,4 @@ where they apply.
     recorded in the fixture as the same closed-can footprint as the open's (issue 1218),
     not as a failure.
 
-Addendum (2026-09-25, leader): re-run after both coax lanes absorb on all three axes (issue 1218: the lateral PEC can held the field that leaves an unshielded conductor end). Board, rungs, drives and record lengths are the merged job specifications'. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 → 24 traversals, shift below 0.0259). The loads' closed-can footprint ruling of 2026-09-24 lapses with the fix. Column power on lossless records is recorded; the contract's 1e-3 condition is not applied (criterion question open).
+Addendum (2026-09-25): re-run after both coax lanes absorb on all three axes (issue 1218: the lateral PEC can held the field that leaves an unshielded conductor end). Board, rungs, drives and record lengths are the merged job specifications'. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 → 24 traversals, shift below 0.0259). The loads' closed-can footprint ruling of 2026-09-24 lapses with the fix. Column power on lossless records is recorded; the contract's 1e-3 condition is not applied (criterion question open).

@@ -416,8 +416,7 @@ def test_o3_loss_ladder_strictly_decreasing():
     ohm/sq (a parabola in ln Rs0 through 1, 2, 3 and 5 ohm/sq puts it at 2.4 ohm/sq), so
     the 5 ohm/sq sheet absorbs more of the in-band power than the 1 ohm/sq one (0.0065
     against 0.0058 on the current tree). That is a property of this fixture, not a law;
-    the values themselves are held by test_o3_mean_s21_drift_lock. Records:
-    bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R5).
+    the values themselves are held by test_o3_mean_s21_drift_lock.
     """
     ladder = ["rs_tiny", "rs1", "rs5"]
     s21 = {t: float(np.mean(np.abs(np.asarray(_settled(t)[0].S)[1, 0, GATE]))) for t in ladder}
@@ -445,7 +444,6 @@ def test_o3_loss_ladder_strictly_decreasing():
 #:   1 ohm/sq value at -4.77e-07 from the previous pin - this machine's -2.384e-07 move
 #:   plus an x86-versus-Mac offset of the same size on the new tree (below). The test
 #:   stopped there, so that runner's 5 ohm/sq reading was not taken.
-#:   Records: bk-squared/rfx-archive rfx/records/20261010-o3-lock-repin/.
 #: - re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); Mac CPU, a885f8d38.
 #:   Old values 0.9992086291313171 / 0.996432900428772 / 0.9962421655654907
 #:   (moved -6.557e-06 / -7.749e-07 / -5.007e-06).
@@ -484,8 +482,7 @@ def test_o3_mean_s21_drift_lock(record_property):
     the tolerance with no code change, add that reading here and re-derive the tolerance
     from the readings of this tree; the pinned values stay.
     For scale: the tree before #1213 (cd237692) reads 0.999843 / 0.997062 / 0.996813,
-    6.3e-4 / 6.3e-4 / 5.7e-4 away. Records: bk-squared/rfx-archive
-    rfx/records/20260927-1292-locked-results/ (R5).
+    6.3e-4 / 6.3e-4 / 5.7e-4 away.
 
     Every value is recorded as soon as it is read and all are judged afterwards, so one
     run shows the whole ladder on the machine that ran it.

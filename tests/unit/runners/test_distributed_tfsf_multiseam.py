@@ -1,6 +1,5 @@
 """Closed-box TF/SF multi-seam validation on up to four devices.
 
-Design: rfx-archive 4b8992b7e, 20261027-tfsf-multiseam-attempt2-PREDECLARE.md.
 
 CPU only. The scratch driver imports these builders and measurements. Steps
 are completed steps (1-based); all observer output goes to stderr.
@@ -206,7 +205,9 @@ def build_sphere(count, x_extra_cells=0):
     dx = C0 / f0 / geo["resolution_cells_per_lambda"]
     domain = list(geo["domain_m"])
     domain[0] += x_extra_cells * dx
-    sim = Simulation(freq_max=f0 * 1.5, domain=tuple(domain), dx=dx,
+    # A 12-cell sphere cannot lie on the grid; the Mie bar judges the staircase (as in
+    # test_distributed_tfsf_slab.py, same fixture).
+    sim = Simulation(snap="declared", freq_max=f0 * 1.5, domain=tuple(domain), dx=dx,
                      boundary="cpml", cpml_layers=geo["cpml_layers"])
     sim.add_material("PEC", eps_r=1., sigma=geo["pec_sigma_s_per_m"])
     sim.add(Sphere(center=tuple(d / 2 for d in domain), radius=radius), material="PEC")
@@ -292,7 +293,7 @@ def step_comparison(a, b):
     """Per step: float64 max |b - a|, float32 max |a|, first differing node [step, i, j, k] or None.
 
     Bit-equal to difference/first_difference over the whole record, one step at a time to avoid GB-scale
-    temporaries (rfx-archive rfx/records/20261112-b2-multiseam-measure/).
+    temporaries.
     """
     assert a.shape == b.shape
     assert a.dtype == b.dtype == np.float32

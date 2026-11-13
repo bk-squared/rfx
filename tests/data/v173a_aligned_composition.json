@@ -23,8 +23,8 @@
     "commit": "90c20337",
     "vessl_run_id": "369367265654",
     "result": "tests/unit/misc/test_v173a_physics_equivalence_slow.py on VESSL CPU (JAX 0.6.2, numpy 2.2.6) at 5db5aad6, whose tree is identical to 90c20337: dominant_probe_mode_hz 1954877968.4835823, bit-identical to this baseline",
-    "log": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_tests2-20260927T202436Z/r2_file_cpu.log",
-    "capture": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_v173a-20260927T084253Z/"
+    "log": "",
+    "capture": ""
   },
   "harness_sha256": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
   "rfx_import": "/tmp/pr-b9a387b0d6d3715692fd3f94911b3bef7bd00504/rfx/__init__.py",
@@ -68,6 +68,6 @@
     }
   },
   "run_name": "1292-v173a-rebaseline-20260927T084253Z",
-  "_scope": "Aligned synthetic composition drift sentinel. The mode is amplitude-ranked, not spatially identified; FFT minimum is not S11. No physical accuracy, matching, convergence or Q claim. Captured 2026-09-27 (issue 1292) by the harness itself: a full FDTD solve on VESSL CPU (run 369367265505, JAX 0.6.2, numpy 2.2.6) at the commit named in 'sha'. The dx ladder behind the re-pin is in bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R2).",
+  "_scope": "Aligned synthetic composition drift sentinel. The mode is amplitude-ranked, not spatially identified; FFT minimum is not S11. No physical accuracy, matching, convergence or Q claim. Captured 2026-09-27 (issue 1292) by the harness itself: a full FDTD solve on VESSL CPU (run 369367265505, JAX 0.6.2, numpy 2.2.6) at the commit named in 'sha'.",
   "vessl_run_id": "369367265505"
 }

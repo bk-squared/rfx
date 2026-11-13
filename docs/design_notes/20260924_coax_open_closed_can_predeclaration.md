@@ -1,6 +1,6 @@
 # Coax open termination in a closed can — cause, pre-declared (issue 1218)
 
-Written by the leader on 2026-09-24, committed before any run of this campaign.
+Written on 2026-09-24, committed before any run of this campaign.
 
 ## What a user receives
 
@@ -82,7 +82,7 @@ the stored 16 mm records.
 
 ## After the run
 
-The leader reads the per-bin |Γ| traces of every arm and writes the conclusion. If M holds, the fix
+The conclusion is written after the per-bin |Γ| traces of every arm are read. If M holds, the fix
 removes the unshielded ends and/or closes the can with absorbers, chosen on the arms' numbers, in a
 separate PR with the coax battery's open re-measured. If M is falsified, stop and report (rule R2:
 one attempt per mechanism).

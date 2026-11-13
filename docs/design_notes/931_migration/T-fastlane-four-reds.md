@@ -4,8 +4,7 @@ Worktree: `rfx-931-fastlane-reds`, branch `feat/931-fastlane-reds`.
 All measurements below used this worktree's imports (`PYTHONPATH=$PWD`),
 `JAX_PLATFORMS=cpu`. No binary fixture or numerical tolerance was changed.
 
-The local `docs/agent-memory/` and research notes are absent in this worktree;
-no sibling checkout was consulted. The load-bearing existing records are:
+No sibling checkout was consulted. The load-bearing existing records are:
 
 * Design §1.3: “an exact half-cell tie resolves to the LOWER plane” and
   “A sheet owns NO cell”. The plane and advisory fixes preserve both facts.

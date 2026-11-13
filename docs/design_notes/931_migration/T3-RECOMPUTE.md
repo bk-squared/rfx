@@ -17,7 +17,7 @@ live in docstrings and are pre-#931. Nothing is hand-edited from either.
 * command inside the job:
   `python -m pytest -q -n 8 -m "" tests/unit/nonuniform tests/unit/runners tests/unit/grid tests/unit/subgrid`
   with `XLA_FLAGS=--xla_force_host_platform_device_count=2`
-* outputs: `/root/workspace/claude-workspace/rfx/runs/issue931-post-t3-pytest-<ts>/`
+* outputs: `<workspace>/rfx/runs/issue931-post-t3-pytest-<ts>/`
   (`pytest.log`, `junit.xml`, `reds.txt`, `pytest.rc`)
 * expected runtime: ~35-60 min. The four directories are ~860 tests; the two
   `@pytest.mark.slow` WR-90 iris tests are two-run waveguide S-matrices at
@@ -33,7 +33,7 @@ live in docstrings and are pre-#931. Nothing is hand-edited from either.
   `docs/design_notes/931_migration/t3_remeasure.py`
 * command inside the job:
   `python -u docs/design_notes/931_migration/t3_remeasure.py "$OUT/t3_remeasure.json"`
-* outputs: `/root/workspace/claude-workspace/rfx/runs/issue931-post-t3-measure-<ts>/t3_remeasure.json`
+* outputs: `<workspace>/rfx/runs/issue931-post-t3-measure-<ts>/t3_remeasure.json`
 * expected runtime: ~40-90 min (dominated by the two iris S-matrices).
 * which values it replaces, and why each moves:
 
@@ -59,10 +59,10 @@ cluster `remilab-c0`, `JAX_PLATFORMS=cpu` inside the job.
 
 | run | id | link |
 |---|---|---|
-| `rfx-931-post-t3-pytest` | 369367259208 | https://app.vessl.ai/remilab/runs/byungkwan/369367259208 |
-| `rfx-931-post-t3-measure` | 369367259209 | https://app.vessl.ai/remilab/runs/byungkwan/369367259209 |
-| `rfx-931-post-t3-pytest-r2` | 369367259214 | https://app.vessl.ai/remilab/runs/byungkwan/369367259214 |
-| `rfx-931-post-t3-pytest-r3` | 369367259223 | https://app.vessl.ai/remilab/runs/byungkwan/369367259223 |
+| `rfx-931-post-t3-pytest` | 369367259208 | https://app.vessl.ai/remilab/runs/<project>/369367259208 |
+| `rfx-931-post-t3-measure` | 369367259209 | https://app.vessl.ai/remilab/runs/<project>/369367259209 |
+| `rfx-931-post-t3-pytest-r2` | 369367259214 | https://app.vessl.ai/remilab/runs/<project>/369367259214 |
+| `rfx-931-post-t3-pytest-r3` | 369367259223 | https://app.vessl.ai/remilab/runs/<project>/369367259223 |
 
 Run 369367259208 read commit 6b8f9fae and returned **865 passed, 4 failed,
 4 xfailed in 28 min**. All four reds are accounted for:

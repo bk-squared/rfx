@@ -13,7 +13,7 @@ from rfx.measurement.ringdown_resolution import in_window_shares, pole_classes
 _ROUNDING_ONLY_EPS_MULTIPLE = 2e4
 # measured rounding records' peaks up to about 1.2e3 eps of the co-located
 # same-kind peak; 2.4e3 is twice that. Their last-10 % levels on the box
-# are 120 and 235 eps (rfx-archive rfx/records/20261024-settle-skip-tail/).
+# are 120 and 235 eps.
 _ROUNDING_TAIL_EPS_MULTIPLE = 2.4e3
 
 

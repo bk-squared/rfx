@@ -154,7 +154,7 @@ def test_physics_cutover_does_not_exempt_lane_or_review() -> None:
         "Review: opus (separate instance) – ACCEPT",
         "Review: opus (separate instance) – ACCEPT WITH CHANGES",
         "Review: skipped — (a) pure docs change, one paragraph, trivially reverted",
-        "Review: skipped - (b) PI instructed the skip on 2026-09-18",
+        "Review: skipped - (b) the maintainer instructed the skip on 2026-09-18",
         "Review: skipped – (a) one comment typo, reverted with one click",
     ],
     ids=[
@@ -648,8 +648,8 @@ def test_a_closing_reference_that_starts_its_line_passes(line: str) -> None:
 @pytest.mark.parametrize(
     "line",
     [
-        # the two sentences that closed an open issue, verbatim from the merged PR bodies
-        "It does not close #737. The three decisions the tracker needs from the PI",  # PR #1086
+        # the two sentences from merged PR bodies, the first with its last words reworded
+        "It does not close #737. The three decisions the tracker needs from the maintainer",  # PR #1086
         "It was opened as `Fixes #752`; that is withdrawn. What it does fix still",  # PR #1125
         "Rejected: Close #726 from settling alone",
         "Fixes #752 is withdrawn from the PR body",

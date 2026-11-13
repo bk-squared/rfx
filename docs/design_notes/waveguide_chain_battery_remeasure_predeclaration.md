@@ -31,10 +31,9 @@ use `normalize=True`.
 
 ## 1. Memory (R1)
 
-Line numbers are those of `docs/agent-memory/rfx-known-issues.md` in the primary checkout on
-2026-09-03.
+The entries below were read on 2026-09-03.
 
-- **`:99`** — the waveguide chain-status row, rewritten against the measured battery:
+- **Waveguide chain-status row** — rewritten against the measured battery:
   "the de-embedding β is wrong because `_discrete_te_mode_profiles` … solves the Neumann
   eigenproblem on the FULL cell-centred operator over the aperture's `nu` entries, and the
   aperture defaults to the whole transverse field extent — N+1 for an N-cell guide", and
@@ -42,26 +41,26 @@ Line numbers are those of `docs/agent-memory/rfx-known-issues.md` in the primary
   the predicted rotation crosses ±180° where both sign hypotheses coincide mod 360°."
   *This note acts on both sentences*: PR #889 corrected the aperture (§2.2), and §4 re-declares
   the shift so the wrong-sign witness stops being degenerate. Neither is a tolerance change.
-- **`:64`** — "#729 node-vs-cell miscounts on three committed surfaces." *Consistent*: the
+- **#729 node-vs-cell class** — "#729 node-vs-cell miscounts on three committed surfaces." *Consistent*: the
   aperture defect PR #889 fixed is a fourth site of that class, and its own R3 line says so.
   The class entry is why a fifth site is worth looking for, not why this run is safe.
-- **`:3110-3122`** — "WAVEGUIDE end-to-end AD — RESOLVED 2026-05-25 (G-AD-WIRE-WG2, commit
+- **Waveguide end-to-end AD** — "WAVEGUIDE end-to-end AD — RESOLVED 2026-05-25 (G-AD-WIRE-WG2, commit
   f6dc361)". *Consistent*: this run re-measures objectives on a working tape; it
   re-implements no assembly. The expected AD-vs-FD order in §5 is taken from there.
-- **`:3413-3420`** — "The two-run diagonal formula `S11 = (b_dev − b_ref) / a_ref` does NOT
+- **Two-run diagonal formula** — "The two-run diagonal formula `S11 = (b_dev − b_ref) / a_ref` does NOT
   cancel Yee dispersion … ±10–20 % |S11| error with `normalize=True`." *Consistent*: lanes
   stay `normalize=False` and `normalize="flux"`.
-- **`:4129`** — "The offset is a **time-convention conjugation** … conjugate the Meep data."
+- **Time-convention conjugation** — "The offset is a **time-convention conjugation** … conjugate the Meep data."
   *Consistent*: the only phase referee here is rfx's own analytic Airy oracle; no external
   phase data enters.
-- **`:4336`** — "Do-not-repeat: never anchor a drive-side wave at the port cell." *Consistent*:
+- **Port-cell anchoring** — "Do-not-repeat: never anchor a drive-side wave at the port cell." *Consistent*:
   probe planes stay 25.40 mm inward of each port plane at every rung, unchanged from the
   parent note.
-- **`:3735-3752`** — the `aperture_dA` DROP-weight workaround. *Consistent, and checked*:
+- **Aperture DROP weight** — the `aperture_dA` DROP-weight workaround. *Consistent, and checked*:
   PR #889 records `aperture_dA.sum()` unchanged at 2.3225759287e-04 m², because the DROP
   weight had already zeroed the extra row and column — only the eigen-operator's size moved.
   This run does not reopen the weight.
-- **`:3546`** — "Production `compute_waveguide_s_matrix` on PEC-short geometry returns spread
+- **PEC-short spread** — "Production `compute_waveguide_s_matrix` on PEC-short geometry returns spread
   0.0004 at R=1 — Meep-class." *Consistent*: the ladder magnitude floor 0.005 is unchanged.
 - **auto-memory `project_issue527_f32_comparator`** — "a comparator-validity assert placed
   BEFORE the accuracy gate". *Consistent*: every FD leg still asserts its ULP span first.
@@ -706,7 +705,7 @@ first order, which is the signature §2.2 attributes to the one-cell width error
   single confirmation that the removed error was the first-order one-cell width term. The
   remaining reflection is then second order, i.e. ordinary Yee `Z_TE` error (#873).
 - **Fine-rung `|S11|` near 0.010 with ratios ≈ 2** — a first-order term survives the aperture
-  correction. #889 fixed a site of the node-vs-cell class (ledger `:64`); a surviving
+  correction. #889 fixed a site of the recorded node-vs-cell class; a surviving
   first-order term says there is a fifth site. Report the ratio sequence, do not adjust
   anything.
 - **Anything else below the frozen 0.0320** — i.e. every value/ratio combination the two
@@ -994,7 +993,7 @@ which are separate from the sibling's below:
 
   **The other 14 AD-vs-FD legs — predicted green, and now branched, because a prediction with
   only a pass branch is not a pre-declaration.** Predicted `rel` in **1e-4 … 1.2e-2** against
-  the 0.05 gate (first run: 1.018e-4 … 1.138e-2, ledger `:3110` expectation 1e-3). Seven of the
+  the 0.05 gate (first run: 1.018e-4 … 1.138e-2, recorded expectation 1e-3). Seven of the
   14 sit on the `normalize=False` lane — `pec_short|false|eps|{re_s11, im_s11}`,
   `pec_short|false|sigma|s11_mag2` and all four `slab|false|eps` legs — and their gradient
   *magnitudes* will move with `Z_TE`, which at the fine rung rises by **1.24 % … 4.07 %** across
@@ -1620,4 +1619,4 @@ finding; the frozen pin is not loosened to accommodate it.
 
 ---
 
-R3: memory=rfx-known-issues.md:99 (chain-status row — the N+1 aperture mechanism and the ±180° wrong-sign arithmetic, both acted on here), :64 (#729 node-vs-cell class), :3110-3122, :3413-3420, :4129, :4336, :3735-3752, :3546 + project_issue527_f32_comparator | R2-attempts=0 in this lane (no measurement; the second RUN is authorized by a changed instrument — PR #881 d6a3df5d and PR #889 0141f39e — not by a repeat of the first mechanism hypothesis) | falsifier=rebuilt the fixture on main 0141f39e and read the port back, comparing each quantity against ITSELF across the two instruments: the eigen-aperture entry count (cfg.ez_profile.shape[0]) is 9 / 18 / 36, down from 10 / 19 / 37; f_cutoff is 6.523901 / 6.548821 / 6.555060 GHz, up from the frozen artifact's fc_port_hz 5.877188 / 6.204954 / 6.378004 GHz; and the artifact's continuous-inversion metric port_cutoff_effective_width_cells will therefore read 9.045856 / 18.022867 / 36.011426, not 9/18/36, against the frozen 10.041242 / 19.021661 / 37.011117 — each pair matches the closed forms pi/(2 sin(pi/2M)) and (2/dx) sin(pi/2M) c/2pi at M = N and M = N+1 to 10+ digits. Meanwhile fc_TE10_numerical stays 6.557140 GHz and CPML stays 17/34/68, and tests/unit/geometry/test_waveguide_chain_battery_geometry.py is 15 passed, so the inherited geometry of section 3 is unchanged. Round 3 adds two more cheap checks, both run against the frozen artifact rather than asserted: (a) forward_identity.max_scaled_diff and max_abs_diff are bit-identical across the objectives of every one of the six (dut, lane, theta-kind) groups (0.0 / 0.0 / 1.064779 / 1.439853 / 0.0 / 1.439905), which is what licenses reading a group's x64 witness for each of its legs in section 5.6(i); (b) rel_change_predeclared_phi equals 2|sin(dphi/2)| with dphi the centre-bin rotation residual — 6.4799e-2 and 7.2896e-2 against the stored 6.480010e-2 and 7.289650e-2 — which is what makes section 5.9's 3.85e-4 / 2.89e-4 prediction a derivation rather than a guess. Round 4 adds five more, each counted from the committed fixture or run against the gate module rather than read out of this note's own prose (two of round 3's three findings were the note quoting itself wrong): (c) cells[].settling_degenerate_records is an 8-entry list on all six pec_short cells and empty on all twelve thru/slab cells, and the eight are call0/port1 plus call1/port0 on the false lane, call0/port1 plus call2/port0 on the flux lane; (d) the ladder_richardson verdicts count 5 pass and 3 report_only (not 4/4), and the five pinned_richardson_gate values 1.4 / 0.03 / 0.02 / 3.1 / 2.9 sit on exactly the five pass legs, so section 5.10's blocking branch now governs the same five section 7 names; (e) tests/_gate_policy.gate_from_envelope holds 0.001 at 1/1500 and returns 0.002 at 6.67e-4, so the trigger is stated as 1/1500; (f) of the 14 ad_vs_fd legs outside the zero-derivative pair, exactly four carry their own g_ad_x64 (pec_short|false|sigma|s11_mag2, pec_short|flux|sigma|s11_mag2, slab|false|eps|s11_mag2, slab|flux|eps|s11_mag2), and the pec_short|false|eps group's witness 7.7697e-5 is s11_mag2's gradient against re_s11's g_fd of -1.5698 — not comparable, which is why step (c) is now scoped to those four; (g) section 5.8's branch-1 interval [5e-8, 3e-7] maps to a ratio of 0.88-5.30 on pec_short|flux and 0.63-3.81 on slab|flux, so half the frozen value (2.83e-8, 3.94e-8) falls below that branch's own floor and the halved-lever conclusion moved to the branch that can fire
+R3: memory=(chain-status row — the N+1 aperture mechanism and the ±180° wrong-sign arithmetic, both acted on here), (#729 node-vs-cell class) + project_issue527_f32_comparator | R2-attempts=0 in this lane (no measurement; the second RUN is authorized by a changed instrument — PR #881 d6a3df5d and PR #889 0141f39e — not by a repeat of the first mechanism hypothesis) | falsifier=rebuilt the fixture on main 0141f39e and read the port back, comparing each quantity against ITSELF across the two instruments: the eigen-aperture entry count (cfg.ez_profile.shape[0]) is 9 / 18 / 36, down from 10 / 19 / 37; f_cutoff is 6.523901 / 6.548821 / 6.555060 GHz, up from the frozen artifact's fc_port_hz 5.877188 / 6.204954 / 6.378004 GHz; and the artifact's continuous-inversion metric port_cutoff_effective_width_cells will therefore read 9.045856 / 18.022867 / 36.011426, not 9/18/36, against the frozen 10.041242 / 19.021661 / 37.011117 — each pair matches the closed forms pi/(2 sin(pi/2M)) and (2/dx) sin(pi/2M) c/2pi at M = N and M = N+1 to 10+ digits. Meanwhile fc_TE10_numerical stays 6.557140 GHz and CPML stays 17/34/68, and tests/unit/geometry/test_waveguide_chain_battery_geometry.py is 15 passed, so the inherited geometry of section 3 is unchanged. Round 3 adds two more cheap checks, both run against the frozen artifact rather than asserted: (a) forward_identity.max_scaled_diff and max_abs_diff are bit-identical across the objectives of every one of the six (dut, lane, theta-kind) groups (0.0 / 0.0 / 1.064779 / 1.439853 / 0.0 / 1.439905), which is what licenses reading a group's x64 witness for each of its legs in section 5.6(i); (b) rel_change_predeclared_phi equals 2|sin(dphi/2)| with dphi the centre-bin rotation residual — 6.4799e-2 and 7.2896e-2 against the stored 6.480010e-2 and 7.289650e-2 — which is what makes section 5.9's 3.85e-4 / 2.89e-4 prediction a derivation rather than a guess. Round 4 adds five more, each counted from the committed fixture or run against the gate module rather than read out of this note's own prose (two of round 3's three findings were the note quoting itself wrong): (c) cells[].settling_degenerate_records is an 8-entry list on all six pec_short cells and empty on all twelve thru/slab cells, and the eight are call0/port1 plus call1/port0 on the false lane, call0/port1 plus call2/port0 on the flux lane; (d) the ladder_richardson verdicts count 5 pass and 3 report_only (not 4/4), and the five pinned_richardson_gate values 1.4 / 0.03 / 0.02 / 3.1 / 2.9 sit on exactly the five pass legs, so section 5.10's blocking branch now governs the same five section 7 names; (e) tests/_gate_policy.gate_from_envelope holds 0.001 at 1/1500 and returns 0.002 at 6.67e-4, so the trigger is stated as 1/1500; (f) of the 14 ad_vs_fd legs outside the zero-derivative pair, exactly four carry their own g_ad_x64 (pec_short|false|sigma|s11_mag2, pec_short|flux|sigma|s11_mag2, slab|false|eps|s11_mag2, slab|flux|eps|s11_mag2), and the pec_short|false|eps group's witness 7.7697e-5 is s11_mag2's gradient against re_s11's g_fd of -1.5698 — not comparable, which is why step (c) is now scoped to those four; (g) section 5.8's branch-1 interval [5e-8, 3e-7] maps to a ratio of 0.88-5.30 on pec_short|flux and 0.63-3.81 on slab|flux, so half the frozen value (2.83e-8, 3.94e-8) falls below that branch's own floor and the halved-lever conclusion moved to the branch that can fire

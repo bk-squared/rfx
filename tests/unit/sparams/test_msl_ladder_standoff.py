@@ -38,7 +38,7 @@ existing constant; the derivation is what licenses reusing it here and
 quantifies its margin (rho(5h) = 4.4e-3 against the 0.02 bar).
 
 Both instruments are REPORT-ONLY: no gate, no refusal, no
-``msl_fit_residual_max`` (explicitly out of scope, per the PI sequencing --
+``msl_fit_residual_max`` (explicitly out of scope, with
 standoff and witness first).
 """
 

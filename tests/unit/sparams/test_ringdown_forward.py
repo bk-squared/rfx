@@ -253,7 +253,7 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     accumulators differently with the probe series bit-identical: measured
     (JAX 0.10.2) 26 ULP / 1.9e-6 of the peak at 4,000 steps (uniform), and
     182 ULP / 1.1e-5 at 16,000 steps with the bins across the resonance --
-    over the earlier 1e-5 bar, inside W0's 1e-4 (PI decision 2026-09-25)."""
+    over the earlier 1e-5 bar, inside W0's 1e-4."""
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
@@ -724,6 +724,45 @@ def test_a_run_that_stepped_at_another_dt_is_not_completed(monkeypatch):
 
 def _loss(S):
     return jnp.sum(jnp.abs(S) ** 2)
+
+
+@pytest.mark.slow
+def test_plain_and_jitted_gradients_agree_on_a_witness_passing_record():
+    """On a record both witnesses pass, jax.grad and jax.jit(jax.grad) agree (#2485).
+    Witnesses come first: at 800 steps report.ok holds while the gradient witness fails.
+    """
+    n = 1000
+    sim = _box("uniform")
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+
+    def forward(p):
+        return sim.forward(n_steps=n, skip_preflight=True, port_s11_freqs=FREQS,
+                           eps_override=eps * p, ringdown=RingdownSpec()).ringdown
+
+    def obj(p):
+        return _loss(forward(p).s_params)
+
+    def both(p):
+        out = forward(p)
+        return (_loss(out.s_params), _loss(out.s_params_long)), out
+
+    (_l, _l_long), pullback, rd_out = jax.vjp(both, 1.0, has_aux=True)
+    report = rd_out.report
+    assert report.ok is True, (
+        f"ringdown report: failure={report.failure}; "
+        + "; ".join(f"{w.name}: value={w.value}, rule={w.rule}, note={w.note}"
+                    for w in report.witnesses if w.judged and not w.ok))
+
+    (g,) = pullback((1.0, 0.0))
+    (g_long,) = pullback((0.0, 1.0))
+    w = gradient_witness(g, g_long, ringdown=rd_out)
+    assert w.judged and w.value <= 1e-2, (
+        f"{w.name}: judged={w.judged}, value={w.value}, note={w.note}")
+
+    g_plain = float(jax.grad(obj)(1.0))
+    g_jit = float(jax.jit(jax.grad(obj))(1.0))
+    assert abs(g_plain - g_jit) <= 1e-4 * max(abs(g_plain), abs(g_jit)), (
+        f"g_plain={g_plain}, g_jit={g_jit}, gap={abs(g_plain - g_jit)}")
 
 
 @functools.lru_cache(maxsize=None)

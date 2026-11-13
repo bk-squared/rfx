@@ -2380,7 +2380,7 @@ def test_the_distributed_nu_forward_lane_carries_it():
     """Graded forward(distributed=True) carries the monitor since #1402 step 4g.
 
     CPML: the wrapped step differs from one device by compile-form rounding
-    (rfx-archive DESIGN.md 4g amendment 1), so the record-summed bar 1e-4.
+    so the record-summed bar 1e-4.
     """
     from tests._multi_device_scene import host_devices
     dz = np.full(10, DX)

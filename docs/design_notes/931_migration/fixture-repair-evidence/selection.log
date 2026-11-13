@@ -587,7 +587,7 @@ tests/contracts/test_pec_short_advisory_geometry.py::test_short_faces_and_actual
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+  rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see the recorded standing-wave-null entry
     _warn_msl_wave_split_unreliable(reliable, freqs_arr)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
@@ -688,7 +688,7 @@ tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_
     result = self.run(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base
-  rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 2 bins in [4.5000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+  rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 2 bins in [4.5000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see the recorded standing-wave-null entry
     _warn_msl_wave_split_unreliable(reliable, freqs_arr)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base

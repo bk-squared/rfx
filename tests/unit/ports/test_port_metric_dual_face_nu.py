@@ -531,7 +531,7 @@ def test_msl_mode_profile_uniform_regression_after_physical_span_correction():
     The old scalar/per-cell snapshot described FOUR cells under a declared
     three-cell substrate: it included the normal E edge above the trace.
     #729's wall-derived tests fail on that geometry before any snapshot is
-    changed (docs/research_notes/issue729/README.md, committed in 525b8001).
+    changed.
     This snapshot now describes the corrected source shape. It is a numerical
     regression record, not an independent accuracy oracle. The physical wall
     span, unit voltage and load identity are checked independently in

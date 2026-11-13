@@ -901,8 +901,8 @@ def _ulps(rebuilt, rfx_values) -> float:
 
 #: W0's bar: the rebuilt accumulators and the lane's S assembly on the run's
 #: own accumulators may differ from the run by at most this fraction of each
-#: array's peak, ``max |rebuilt - run| / max |run|``. The consistency policy (ledger archive
-#: 567dd2b, 3feae81): per-step quantities (fields, probe
+#: array's peak, ``max |rebuilt - run| / max |run|``. The consistency policy:
+#: per-step quantities (fields, probe
 #: samples) keep the cross-trace rule of at most 9 ULP at the peak; quantities
 #: summed over the record (the port DFT accumulators, the S built from them)
 #: pass at 1e-4 of the peak, because a program compiled differently (a user's

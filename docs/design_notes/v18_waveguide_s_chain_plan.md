@@ -12,11 +12,11 @@ Base: main 1c38b0d7 (2026-09-02). Every file:line below was re-checked against t
 
 **Rules binding every work package.** No gate loosening without a written root cause. No
 re-implementation of the in-graph S assembly or the flux-path AD — that work is DONE and
-recorded at `docs/agent-memory/rfx-known-issues.md:3093-3099` (RESOLVED 2026-05-25,
-FD↔AD rel_err 2.0e-4). The earlier note `docs/agent-memory/port_sparam_review_2026-05-19.md:11`
+recorded as RESOLVED 2026-05-25,
+FD↔AD rel_err 2.0e-4. The earlier note
 says the opposite ("WI-1/WI-2 jnp-ified only the OUTER assembly — end-to-end AD still does
 NOT flow"); it is **superseded** and must be cited only as history. `normalize=True` stays
-out of every reflection gate (`rfx-known-issues.md:3384-3395`). R2 at the rfx threshold:
+out of every reflection gate. R2 at the rfx threshold:
 one pre-declared attempt per mechanism hypothesis; a second needs a named new falsifier in
 writing. Every WP lands with an R3 line.
 
@@ -24,7 +24,7 @@ writing. Every WP lands with an R3 line.
 lane. WP6 does not refresh, re-pin or re-label
 `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json`, and no WP
 edits the crossval gates cv02/03/04/09/10/14/20/21 or cv06b. That lane is owned by the
-Mac-side session (`rfx-known-issues.md:107-108`).
+Mac-side session.
 
 ---
 
@@ -56,31 +56,27 @@ collected in issue **#854**; the reasoning for each is in Appendix B.
 ## WP0 — contract document and ledger hygiene (CPU, no physics)
 
 **Scope.** New `docs/design_notes/chain_closure_contract.md`. Three stale statements:
-- `docs/agent-memory/index.md:249` and `:280` still present the cv11 ∠S21 offset as an OPEN
-  residual pointing at roadmap W3.4; `rfx-known-issues.md:4093-4112` closed it on 2026-07-02
+- Two entries still present the cv11 ∠S21 offset as an OPEN
+  residual pointing at roadmap W3.4; a recorded entry closed it on 2026-07-02
   as a Meep time-convention conjugation.
-- `rfx-known-issues.md:3394` still reads "NU mesh not yet supported (raises)" for
+- A recorded entry still reads "NU mesh not yet supported (raises)" for
   `normalize="flux"`, which is now the gated NU lane.
-- The open-issue list at `rfx-known-issues.md:27-28` still carries #822 and #823. GitHub
-  reports both CLOSED, and `:120` records them closing with #837.
+- The recorded open-issue list still carries #822 and #823. GitHub
+  reports both CLOSED, and another entry records them closing with #837.
 
 Plus one new per-lane status row for the waveguide family.
 
-**Gitignore step (mandatory).** `docs/agent-memory/` is gitignored in this public repo, so
-these edits leave no history here. After editing, run the workspace's
-`scripts/sync_research_archive.sh` from the primary checkout and commit the refreshed mirror
-under `docs/research-archive/rfx/`. An unmirrored ledger edit is unreviewable.
 
-**Falsifier.** `grep -n "W3.4" docs/agent-memory/index.md` returns only rows that say
-RESOLVED 2026-07-02 with a pointer to `rfx-known-issues.md:4093-4112`; `grep -n "#822\|#823"`
-returns rows with one consistent state; `scripts/sync_research_archive.sh --check` is clean.
+**Falsifier.** The W3.4 entries say
+RESOLVED 2026-07-02; the #822 and #823 entries
+have one consistent state; the synchronized record check is clean.
 
-**Memory.** Consistent with `rfx-known-issues.md:4093-4112` ("Do not de-embed by the fitted
-slope/intercept; conjugate the Meep data") and `:196-197` (the contract doc is the first v1.8
-deliverable).
+**Memory.** Consistent with the recorded entry ("Do not de-embed by the fitted
+slope/intercept; conjugate the Meep data") and the entry stating that the contract doc is the first v1.8
+deliverable.
 
-**Must not.** Touch any test or extractor. Delete the cv11 row's half-step lesson at
-`index.md:249` (the "PEC-short per-freq spread 0.13 was a dump-comparator artefact" sentence
+**Must not.** Touch any test or extractor. Delete the cv11 row's half-step lesson
+(the "PEC-short per-freq spread 0.13 was a dump-comparator artefact" sentence
 stays).
 
 ---
@@ -185,7 +181,7 @@ in the PR body, and name the shard if it goes slow.
   `:556`, the bidirectional falsifier `:629-634`). Objectives: |S11|² (PEC-short and slab),
   |S21|² (slab), and Re/Im S21 (slab), at the band-centre bin. Pass `rel ≤ 0.05`
   (`tests/unit/autodiff/test_sparam_ad_end_to_end.py:298`, `tests/unit/autodiff/test_waveguide_flux_ad.py:84`). Expected
-  order 1e-3 (ledger 2.0e-4 at `:3093-3099`). An FD leg below the span floor skips with the
+  order 1e-3 (recorded 2.0e-4). An FD leg below the span floor skips with the
   span printed; it never passes.
 - **(b) Reference plane.** Shift left 0.02 m and right 0.08 m, the asymmetric pair actually
   used at `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257` (an earlier draft of this plan
@@ -220,7 +216,7 @@ in the PR body, and name the shard if it goes slow.
 
   **Gate (unchanged in shape).** `fine_delta ≤ coarse_delta + floor` on |S21| (`:474`), extended to
   |S11| and ∠S21. Floors, pre-declared: 0.005 for magnitude (the existing `:474` value, consistent
-  with the production PEC-short spread 0.0004 recorded at `rfx-known-issues.md:3512`), 1° for phase.
+  with the production PEC-short spread 0.0004 recorded previously), 1° for phase.
 
   **Two report-first witnesses**, written into the fixture JSON on the first run and pinned by
   `gate_from_envelope` only in a second step: (i) monotonicity of the three-point sequence together
@@ -253,10 +249,9 @@ measurement above that reported rather than absorbed.
 (b) must go red. `phase_gate:264` describes the wrong-sign error as ~50° and asserts
 `> 10°` at `:266`, so a flipped sign that stays inside 3° means the gate does not bind.
 
-**Memory.** Consistent with `rfx-known-issues.md:3093-3099` (AD is done; the battery adds
-objectives, not plumbing), `:3384-3395` (no `normalize=True`), `:4093-4112` and `:4315`
-(conjugate before any phase comparison), `project_issue527_f32_comparator` (FD validity before
-the accuracy gate), and `:3705-3716` (the aperture DROP weight — the ladder declares the
+**Memory.** Consistent with the recorded entries: AD is done; the battery adds
+objectives, not plumbing; no `normalize=True`; conjugate before any phase comparison; and `project_issue527_f32_comparator` (FD validity before
+the accuracy gate), and the recorded entry (the aperture DROP weight — the ladder declares the
 staircase envelope, it does not reopen the weight).
 
 **Must not.** Loosen any quoted tolerance. Introduce a new source construction (reuse
@@ -343,7 +338,7 @@ what the risk actually was.
 after any change: the gates at `nu_flux_ad:145-161` and `nu_nontrivial:491-500` must stay inside
 their own tolerances.
 
-**Memory.** Consistent with `rfx-known-issues.md:198-200` (the NU waveguide lane carries
+**Memory.** Consistent with the recorded entry (the NU waveguide lane carries
 `settling_db` since PR #841; #827 stays open for the general lane, so quote `settling_db` with
 every NU number) and with `project_msl_nu_extractor` (a `NonUniformGrid` has no `*_profile`
 attributes; read cell sizes from the grid arrays).
@@ -447,7 +442,7 @@ tolerance moved. The verifier's sign-off comment is the artifact.
 `tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py:722`
 (`test_thru_passivity_singular_values`). Recorded state: sv_max 1.003227 at 3 GHz falling
 monotonically to 0.9874 at 7 GHz (`:727-731`), reproduced under f64 fields, 4× and 2× step
-counts and complex128 algebra, mechanism unidentified (`rfx-known-issues.md:137-141`; gh #819
+counts and complex128 algebra, mechanism unidentified (gh #819
 OPEN, "Thru-fixture singular-value excess is systematic, not extraction float noise"). The
 gate `_THRU_MAX_SINGULAR_VALUE = 1.01` (`:326`) and every measured number are unchanged by
 that work.
@@ -466,7 +461,7 @@ committed before implementation, never widened), with the verdict recorded in
 `issue683_sampling_order_decision_protocol.md` §9 (results appended 2026-08-29; PRE refuted).
 Cheap refute: the G2 identity `V_pre = V_post + d_par·W` on bit-identical geometry.
 
-**Memory.** Consistent with `rfx-known-issues.md:4278-4306` (the #313 reference-plane lane;
+**Memory.** Consistent with the recorded entry (the #313 reference-plane lane;
 diagonals byte-frozen; never de-embed with ω/c or a nominal 50 Ω) and with
 `feedback_negated_closing_keyword` (keep "#819" away from fix/close words in PR titles until
 it is actually closed).
@@ -505,13 +500,13 @@ the measure named. A bare percentage with no measure is what the ledger's
 | **2a. Passivity** | VALIDATED (fast) — warn-only runtime guard plus live gates | Guard `_sparams.py:766-824` → `rfx/validation.py:447-466`, wired at `:2414`, `:2752`, `:2945` with `passivity_tol = 2.0` for `normalize=False` and `0.10` otherwise; warn unless `strict_passivity`. `_project_passive` (`:699`) is **not** applied on this family (only MSL `:4157`, mixed `:5101`). Live gates: `tests/oracle/test_waveguide_port_validation_battery.py:278-309` (flux, εr=4 DUT, max column power `<1.02` at `:307`, measured 1.0005); `:500-554` PEC-short on `normalize=False` (min `≥0.99` at `:541`, max `<1.03` at `:550`); `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:129-197` (dielectric, max column power `<1.05` at `:187`, measured 1.0128 at `:148`/`:183`) and `:199-231` (PEC-short, `<1.05` at `:226`, measured mean 0.9998 / max 1.0208 at `:224`); `tests/unit/sparams/test_sparam_passivity_guard.py` runs in the required `guards-and-preflight` job. | VALIDATED (slow) at the tight tolerance | `tests/unit/sparams/test_waveguide_nu_nontrivial.py:430-523` (dx-graded, flux, `|P_col − 1| < 0.02` on both drives at `:491` and `:496`). The fast lane carries only `tests/unit/sparams/test_waveguide_nu_flux.py:100-127` at 1.10 (`:121`). Graded-dy: frozen replay only. Multimode: ABSENT — `tests/unit/ports/test_multimode_waveguide.py:362-401` asserts shape and mode map only. | Nothing on values. Make the NU 0.02 gate visible in the PR lane or pin its shard (see WP5 for the wall-time arithmetic), and add the multimode scope statement. |
 | **2b. Reciprocity** | VALIDATED (fast) — **magnitude only** | `battery:320-342` mean `‖S21|−|S12‖/max < 0.01` at `:340` (measured 0.0005, `:337-338`); `:398-...` asymmetric case at `<0.10`; `contract_v1:196` `mean(recip) < 1e-3`; `tests/oracle/test_conservation_laws.py:170-202` `< 0.05` at `:201` (measured 0.0414). `rfx/validation.py:468-486` implements a reciprocity check, but the runtime guard never enables it — `check_reciprocity` defaults to `False` (`rfx/validation.py:342`) and `_sparams.py:816-824` passes only `check_passivity=True`. | VALIDATED (slow) — magnitude only | `tests/unit/sparams/test_waveguide_nu_nontrivial.py:500` (`recip.max() < 0.01`), where `recip = np.abs(s21_nu - s12_nu)` at `:480` is built from magnitudes taken at `:474-475` — so this is a magnitude gate, not a complex one. | A **complex** reciprocity gate `max_f |S21 − S12| / max|S|` on the same fixtures (WP3). Runtime wiring of `check_reciprocity` is optional and not a contract requirement. |
 | **2c. Power closure** | VALIDATED (fast) on flux; PARTIAL otherwise | Flux: `battery:278-309` (1.0005 against 1.02). `normalize=True`: `tests/oracle/test_conservation_laws.py:129-163` gates `0.6 < mean_power < 1.40` at `:161` around a measured ~0.73 — that documents a deficit, it does not demonstrate closure. The five committed E5 fixtures carry `unitarity_min`/`unitarity_max` fields, but `grep unitarity tests/crossval/test_waveguide_broad_e5.py` returns nothing, so no test reads them. Independent witness ABSENT: no `add_flux_monitor` appears in any waveguide test, and column power reuses the port's own Poynting integrals. | VALIDATED (slow) | `nu_nontrivial:491-513`; record-length witness `tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:170-199` (max\|S11\| shift under a doubled record window `< MAX_TOL/10`, column power at np=60 within 1e-3 of unity). | Assert `unitarity_min`/`unitarity_max` per case in the frozen E5 gate. Add one interior-flux-monitor witness of `1 − |S11|² − |S21|²` on a lossless DUT — two routes through the same port DFT are one witness, not two. |
-| **3a. AD-vs-FD on an S-native objective** | PARTIAL | `tests/unit/autodiff/test_sparam_ad_end_to_end.py:228-306`: objective `jnp.real(jnp.sum(jnp.abs(S[:,:,k0])**2))` at `:257-259`, `normalize=False`, `rel_err < 0.05` at `:298`, FD in float32 at h = 1e-3 (`:288`) with **no** ULP-span validity assert. The repo's ULP-span pattern is `_MIN_FD_ULP_SPAN = 1.0e4` at `tests/unit/autodiff/test_msl_ad_fd_converged.py:136` (gate assert `:556`, bidirectional falsifier `:629-634`), also used by `tests/unit/autodiff/test_coax_two_port_ad.py`. `tests/unit/autodiff/test_waveguide_flux_ad.py:73-86`: \|S21\|² at bin 2, flux, `rel ≤ 0.05` at `:84`, float32 FD at h = 0.05. | PARTIAL (slow) | `tests/unit/autodiff/test_waveguide_nu_flux_ad.py:145-161` (\|S21\|² flux, `rel ≤ 0.05`) and the perfect-null gradient test. No NU `sigma_override` FD test — stated in `docs/guides/sparameter_support_matrix.md:461-462`. | Float64 FD legs with a `_MIN_FD_ULP_SPAN`-style validity assert **before** the accuracy gate (the #527 class); add \|S11\|² and one complex-S objective; add the NU `sigma_override` leg. No new AD plumbing — the tape already carries complex S (`rfx-known-issues.md:3093-3099`, RESOLVED 2026-05-25). |
+| **3a. AD-vs-FD on an S-native objective** | PARTIAL | `tests/unit/autodiff/test_sparam_ad_end_to_end.py:228-306`: objective `jnp.real(jnp.sum(jnp.abs(S[:,:,k0])**2))` at `:257-259`, `normalize=False`, `rel_err < 0.05` at `:298`, FD in float32 at h = 1e-3 (`:288`) with **no** ULP-span validity assert. The repo's ULP-span pattern is `_MIN_FD_ULP_SPAN = 1.0e4` at `tests/unit/autodiff/test_msl_ad_fd_converged.py:136` (gate assert `:556`, bidirectional falsifier `:629-634`), also used by `tests/unit/autodiff/test_coax_two_port_ad.py`. `tests/unit/autodiff/test_waveguide_flux_ad.py:73-86`: \|S21\|² at bin 2, flux, `rel ≤ 0.05` at `:84`, float32 FD at h = 0.05. | PARTIAL (slow) | `tests/unit/autodiff/test_waveguide_nu_flux_ad.py:145-161` (\|S21\|² flux, `rel ≤ 0.05`) and the perfect-null gradient test. No NU `sigma_override` FD test — stated in `docs/guides/sparameter_support_matrix.md:461-462`. | Float64 FD legs with a `_MIN_FD_ULP_SPAN`-style validity assert **before** the accuracy gate (the #527 class); add \|S11\|² and one complex-S objective; add the NU `sigma_override` leg. No new AD plumbing — the tape already carries complex S (recorded as RESOLVED 2026-05-25). |
 | **3b. Reference-plane-shift invariance** | PARTIAL | `contract_v1:233-300`: shift is left 0.02 m / right 0.08 m (`:257`), `|S|` allclose `rtol=1e-3, atol=1e-4` at `:270`, complex S21 invariant at `:276`, S11 rotation asserted only as `> 0.1 rad` at `:285` — and the whole test runs on `normalize=True`. `phase_gate:211-266` checks the one-way βΔ on a single-port incident wave to 3°. Gradient invariance under a shift: ABSENT (`grep -l "jax.grad\|value_and_grad" tests/ | xargs grep -l reference_plane` → no hit). | ABSENT | No NU reference-plane test. The NU AD fixture sets non-zero planes (`tests/unit/autodiff/test_waveguide_nu_flux_ad.py:90`, `:95`) but never varies them. | A value gate on the two differentiable lanes asserting S11 rotation = 2βL against the Yee β to a pre-declared tolerance; a gradient-invariance falsifier; a NU sibling. |
 | **3c. Mesh-refinement consistency** | PARTIAL | `battery:449-479`: dx ∈ {3, 2, 1.5} mm at 6 GHz, `normalize=True`, `fine_delta ≤ coarse_delta + 0.005` at `:474` and `fine_delta < 0.10` at `:478`. cv18 Richardson replay: `tests/fixtures/wr90_iris_modematch/fixture.json` pins `richardson_measured_envelope_abs = 0.0051` against `richardson_gate_abs = 0.01`. The broad-E5 gates require ≥2 dx values per band (`tests/crossval/test_waveguide_broad_e5.py:81`) but make no monotonic statement. Conformal-PEC ladder is closed by a strict xfail (`tests/unit/geometry/test_subpixel_pec.py:614-637`). | ABSENT | The NU broad-E5 envelope varies the grading ratio at fixed base dx (`mesh_axis_kind = nonuniform_dy_profile_ratio`), never dx itself. | A ladder on \|S11\| and ∠S21 for PEC-short and slab on the flux/`False` lanes, and a NU base-dx ladder. Note the shape limitation: `fine ≤ coarse + floor` is a **non-increase** test, not a convergence test — decision 6 keeps that gate and adds the monotonicity and Richardson witnesses plus the integer-N rung, worst-bin and rasterization guards. |
 | **3d. External / analytic referee** | VALIDATED (fast, magnitude); phase = analytic Airy only | Airy magnitude, 5 bands: `tests/crossval/test_waveguide_broad_e5.py:73-98`, `MAX_TOL = 0.05` (`scripts/diagnostics/build_waveguide_band_broad_e5_envelope.py:33`), worst case WR-15 at 0.041399. Airy phase: `tests/crossval/test_waveguide_broad_e5.py:67-99`, `MAX_PHASE_TOL_DEG = 15.0` (`build_waveguide_band_broad_e5_phase_envelope.py:99`), worst WR-28 at 11.9897°. Palace E4: `tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json` — `summary.max_mag_abs_diff = 0.0707` against `max_mag_abs_tol = 0.1`, `summary.mean_mag_abs_diff = 0.009434` against `mean_mag_abs_tol = 0.07`, `provenance.status = "STALE (provenance settled; refresh decision open)"`. Meep T-junction: measured `max_mag_abs_diff = 0.09154` against `EXPECTED_XFDTD_TOL = 0.11` (`tests/crossval/test_waveguide_tjunction_e4e5_gates.py:103`). cv18: 0.0232 measured against 0.04. cv19: `f0_measured_envelope_mhz = 12.123` against `f0_gate_mhz = 19.0`. Group delay WR-340: worst 0.0320 ns against 0.042 ns (`tests/oracle/test_waveguide_group_delay_tolerance_envelope.py:36`). | VALIDATED (slow, magnitude, graded-dy only) | Airy: `MEASURED_MAX_ENVELOPE = 0.001081` (`tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:66`) under a derived `MAX_TOL` and an outside ceiling of 0.0013 (`:88`). Palace: **two measures, name which** — the per-pair worst max is 0.008529 and the per-pair worst mean is 0.002998 (`tests/crossval/test_waveguide_nu_broad_e4_comparison_gates.py:60-61`, ceilings 0.010 / 0.004 at `:83-84`); the *summary* mean 0.000709 is the number `docs/guides/sparameter_support_matrix.md:456` quotes, and `:57-58` records that deriving a gate from it "failed 1 of 5 pairs on its first run". No dz-graded evidence (#810, OPEN). | The #812 refresh decision on the uniform Palace artifact is **not** a v1.8 item (see the contract's exclusions). The analytic Airy is the v1.8 phase referee (decision 5); a gated conjugation-corrected Meep phase leg is #854 item 3. |
 | **4a. Pinned envelopes** | VALIDATED (fast) as replay plus bounded-margin locks; the re-capture chain is partly off-tree | Goldens sha-pinned (`tests/unit/autodiff/test_waveguide_sparam_ad.py:107-120`). Gate derivation is shared: `gate_from_envelope` (`tests/_gate_policy.py:89`) with `ENVELOPE_GATE_MULTIPLIER = 1.5` (`:81`). All five uniform magnitude envelopes carry `absorber_discipline.status = "below_floor_accepted"` (#496). Dangling pointers: every uniform `rfx_manifest_path` points into the gitignored `.omx/physics-gate/...`; the NU E5 one points into a different checkout (a different checkout's gitignored `.omx/...`); the WR-28 fixture's absorber note (`waveguide_wr28_kaband_broad_e5_envelope.json:180`) cites `scripts/vessl_i496_band_absorber_probe.yaml`, which `git ls-files` does not return. No committed waveguide fixture records an energy-based `settling_db`. | same | same | Fix the dangling re-capture pointers. Record the substitute settling witness explicitly in the ledger row, naming the record-length form (`tests/crossval/test_waveguide_nu_broad_e5_envelope_gates.py:170-199`) and the reason it is a substitute: that file's own docstring at `:175-176` states rfx exposes no total-energy monitor. |
 | **4b. Fidelity-snapshot entries** | PARTIAL | `tests/data/example_fidelity_snapshot.json` carries cv11, cv19, tmtt taper, tutorial and inverse-design variants, each stamped "NOT AUDITED by this report". cv18 **is** registered — `tests/_example_fidelity_lib.py:468-471` classifies `validation/crossval/18_wr90_iris_modematch.py` as `builder_fused_with_solve` (the builder and the solve live in one function), which is why it produces no separable builder entry. | same | same | Define what a snapshot entry pins for a port (realized aperture, cutoff, evanescent advisory), or state that the host-geometry entry is the whole deliverable. |
-| **4c. Ledger record** | PARTIAL | Live and correct: `rfx-known-issues.md:3093-3099` (waveguide end-to-end AD RESOLVED 2026-05-25, FD↔AD rel_err 2.0e-4), `:3384-3395` (`normalize=True` limitation), `:196-197` (the contract doc is the first v1.8 deliverable), `:198-200` (#827 stays open for the general lane), `:256-260` (v2.0 milestones). Stale: `docs/agent-memory/index.md:249` still calls the cv11 ∠S21 offset an OPEN residual and points at roadmap W3.4, and `:280` repeats it, while `rfx-known-issues.md:4093-4112` closed it on 2026-07-02 as a Meep time-convention conjugation. `rfx-known-issues.md:3394` still says "NU mesh not yet supported (raises)" for the flux lane, which is now the gated NU lane. The open-issue list at `:27-28` still carries #822 and #823, which GitHub reports CLOSED and `:120` records as closed with #837. No per-lane in-graph status table exists anywhere in the repo. | same | same | The contract document plus one per-lane row in `rfx-known-issues.md`; the three stale statements above. |
+| **4c. Ledger record** | PARTIAL | Live and correct: recorded entries for waveguide end-to-end AD (RESOLVED 2026-05-25, FD↔AD rel_err 2.0e-4), the `normalize=True` limitation, the contract doc as the first v1.8 deliverable, #827 staying open for the general lane, and v2.0 milestones. Stale: one entry still calls the cv11 ∠S21 offset an OPEN residual and points at roadmap W3.4, and another repeats it, while a recorded entry closed it on 2026-07-02 as a Meep time-convention conjugation. A recorded entry still says "NU mesh not yet supported (raises)" for the flux lane, which is now the gated NU lane. The recorded open-issue list still carries #822 and #823, which GitHub reports CLOSED and another entry records as closed with #837. No per-lane in-graph status table exists anywhere in the repo. | same | same | The contract document plus one recorded per-lane row; the three stale statements above. |
 
 ---
 
@@ -608,7 +603,7 @@ lane posture changes.
 ## 5. Phase referee beyond the analytic Airy — AIRY SUFFICES FOR v1.8
 
 **Decision: option (a).** rfx's ∠S21 matches the analytic Airy insertion phase to ≤ 0.89°
-(`rfx-known-issues.md:4113-4114`, the W3.4 cv11 resolution), and the frozen phase envelopes are
+(the recorded W3.4 cv11 resolution), and the frozen phase envelopes are
 gated at `MAX_PHASE_TOL_DEG = 15.0`
 (`scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py:99`), worst measured 11.9897°
 on WR-28. That is a real phase referee, and it is enough for a v1.8 chain-closure claim that already
@@ -616,7 +611,7 @@ fences phase as Airy-only.
 
 A conjugation-corrected **Meep** phase leg as a *gated* referee is **#854 item 3**, not a v1.8
 requirement, for three reasons. The conjugation is understood
-(`rfx-known-issues.md:4093-4112`: Meep carries `exp(-iωt)`, rfx reports `exp(+jωt)`), but the
+(Meep carries `exp(-iωt)`, rfx reports `exp(+jωt)`), but the
 2026-09-01 external lane still leaves a PEC-short residual of about 17.55° mean and 21.68° max
 *after* conjugation (VESSL run 369367257496) — a gate cannot be pinned on an unexplained residual of
 that size. Those two residual numbers are read from that run's log (the cv11 informational row

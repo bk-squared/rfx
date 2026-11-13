@@ -1,7 +1,7 @@
 """A test that reads prose is a documentation check, and a required lane runs none.
 
-Required checks compare numbers with a tolerance, never text (PI, 2026-09-24),
-and a documentation mismatch never holds a merge (PI, 2026-09-22). Four of the
+Required checks compare numbers with a tolerance, never text,
+and a documentation mismatch never holds a merge. Four of the
 nine red ``main`` runs of 2026-09-22/24 were a notes table compared with a
 script's output whose last printed digit followed the OpenBLAS kernel (#1262).
 So a test that reads a note, a guide or a README is marked ``docs_consistency``;
@@ -343,7 +343,7 @@ GATE_OPT_OUTS = {
     "tests/contracts/test_known_limitations_citations.py::"
     "test_every_pinned_issue_keeps_its_entry":
         "a known-limitations entry must stay while its defect is open: the one "
-        "page a PR must keep right (PI, 2026-09-22)",
+        "page a PR must keep right",
     "tests/contracts/test_docs_frontmatter.py::test_page_frontmatter_parses":
         "Parses the YAML frontmatter the site build parses; a page that does not parse blocks the merge train "
         "(PR 1704). It checks syntax and the presence of a title, never the prose.",

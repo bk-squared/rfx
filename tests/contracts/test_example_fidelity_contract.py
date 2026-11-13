@@ -83,7 +83,7 @@ What is still open is the OTHER reading of that comment, a bar of zero
 advisories at all. The rows that remain are true statements about the
 examples' own meshes and ports, so reaching zero means changing those
 examples -- separate work from this gate, which pins whatever they say.
-Whether it happens is a PI decision on #737. Until it is taken this file is
+This file is
 both things at once: a drift pin on what every audited example emits, and a
 bar on every pinned row carrying a written disposition.
 

@@ -1,5 +1,5 @@
 {
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-ad-quant/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "c3d0f21696e9918df9306705e752f45ae3456e95",
   "platform": "cpu",
   "git_status": "?? validation/research/multiband_nu/results/adq_revert_l1_nodt.started\n",

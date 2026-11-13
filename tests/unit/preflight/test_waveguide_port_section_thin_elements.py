@@ -196,7 +196,7 @@ def test_interior_conductor_edges_admitted_on_the_reference_path(traced):
     """An edge closed by PEC on every neighbouring cell is the conductor, not a
     sheet (m5, m6). The reference-sim path carries realized PEC edges and no
     cell mask (rfx/sparams/waveguide.py port_reference_sims); the section check
-    reads the same edges plain or traced (rfx-core-desk L:0bbcf4) and admits a
+    reads the same edges plain or traced and admits a
     port section inside the block. A block face on the reference plane stays
     refused (B4 scene b). Direct entries refuse this scene earlier (#1994)."""
     import jax

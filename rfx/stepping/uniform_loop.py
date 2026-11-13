@@ -324,7 +324,7 @@ def run(
     use_waveguide_ports = len(waveguide_ports) > 0
 
     # The GPU H+E fast lane measured slower for closed boxes; use the
-    # standard lane (rfx-archive rfx/records/20261026-fast-lane-sweep/).
+    # standard lane.
     _ctx = _setup.ctx_kwargs
     use_fast_he = False
     _fast_coeffs = None

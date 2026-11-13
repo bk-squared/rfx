@@ -181,7 +181,7 @@ series the traces hold. That claim is scoped to this section only: the Evidence
 section above is the ported research-lane record and has no receipt in this
 bundle, as its own disclaimer says.
 The originals are retained on remilab-fs at
-`personal-workspaces/claude-workspace/rfx/runs/cpml-stagger-20260913T160213Z/`.
+`<workspace>/rfx/runs/cpml-stagger-20260913T160213Z/`.
 
 ## Pre-existing limitation (out of scope)
 

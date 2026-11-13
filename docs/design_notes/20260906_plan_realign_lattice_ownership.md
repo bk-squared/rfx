@@ -371,7 +371,7 @@ Physics falsifiers, pre-declared before any recompute:
   correlated +0.265 with CST, one-plane +0.829. Under the contract the foils are sheets, so
   the board must stay at the one-plane figure; a drop below 0.8 blocks the default.
 
-R3 for every commit on the branch: `R3: memory=rfx-known-issues.md("top face plane is never
+R3 for every commit on the branch: `R3: memory=("top face plane is never
 zeroed" 2026-08-28; two_plane A/B verdict) | R2-attempts=0 (redesign, not a repeat) |
 falsifier=<the §5 item exercised>`.
 

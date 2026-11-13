@@ -2534,7 +2534,7 @@ def markdown_tables(arms: dict) -> str:
           f"ran before the instrument read `device_kind`, and their blocks are "
           f"left as they were measured rather than back-filled.")
         w("")
-    w("Conclusions: leader fills.")
+    w("Conclusions: written after the record is read.")
     w("")
     return "\n".join(out)
 
@@ -3440,7 +3440,7 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None,
         w("")
     out.extend(f6_markdown(estimator_comparison(
         arms, load_first_ladder() if first_ladder is None else first_ladder)))
-    w("Conclusions: leader fills.")
+    w("Conclusions: written after the record is read.")
     w("")
     return "\n".join(out)
 
@@ -3830,7 +3830,7 @@ def after_1213_markdown_tables(arms: dict) -> str:
     w("")
 
     if "W9" not in v:
-        w("Conclusions: leader fills.")
+        w("Conclusions: written after the record is read.")
         w("")
         return "\n".join(out)
 
@@ -3987,7 +3987,7 @@ def after_1213_markdown_tables(arms: dict) -> str:
     w(f"The finest rung, {r['finest_arm']}, from the reference: "
       f"{fin[p]:+.4f} % (|S21|^2), {fin['log']:+.4f} % (log).")
     w("")
-    w("Conclusions: leader fills.")
+    w("Conclusions: written after the record is read.")
     w("")
     return "\n".join(out)
 

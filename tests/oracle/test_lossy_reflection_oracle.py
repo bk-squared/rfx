@@ -21,7 +21,7 @@ phase offset (≈10.6°, matching the lossless sibling test's documented ~11°).
 Measured envelope (CPU, εr=4): |Γ| err vs analytic 0.8/0.9/1.2% at σ/ωε0=0/2/4; calibrated
 phase matches to ≤0.5°; |Γ| moves 0.333→0.385→0.452 — the σ>0 cases are ~13/36% above the
 lossless value, so a loss-blind reflection (stuck at 0.333/180°) FAILS by far more than the
-~1% discretization envelope. Harness: docs/research_notes/experiments/lossy_reflection_oracle.py
+~1% discretization envelope.
 """
 import numpy as np
 import jax.numpy as jnp

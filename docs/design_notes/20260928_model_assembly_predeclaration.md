@@ -13,7 +13,7 @@ Since #1355, every path refuses a declared input it does not carry. That closes 
 - **The same sweep covers different times.** `vmap_material_sweep` runs every swept value for one step count at its own dt (#1293).
 - **A dielectric lands on the wrong cells.** The NU smoothing fallback places some shapes on uniform-mesh cells (#1298).
 
-The leader's code reading (READ-ONLY, not yet measured) adds three more:
+The code reading (READ-ONLY, not yet measured) adds three more:
 - ADI uses one per-cell ε for Ex, Ey and Ez (`rfx/adi.py:807`), not the four-cell mean.
 - The distributed graded path uses the four-cell mean for its source drive but the owning cell for its E update (`rfx/runners/distributed_nu.py:1853-1914`), so there are two rules inside one path.
 - The subgridded lane uses the four-cell mean inside, but the per-cell ε in its coarse/fine interface terms (`rfx/subgridding/jit_runner.py:852-858`).

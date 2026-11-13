@@ -23,7 +23,7 @@ def test_flux(boundary, n_devices, entry):
         for component in ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft', 'dA', 'dA2'):
             values[f'{name}/{component}'] = measure(getattr(actual, component), getattr(expected, component))
         values[f'{name}/power'] = measure(flux_spectrum(actual), flux_spectrum(expected))
-    # CPML wrapped step: compile-form rounding, operands byte-equal (rfx-archive DESIGN.md 4g amendment 1).
+    # CPML wrapped step: compile-form rounding, operands byte-equal.
     with_bars(values, 'relative_peak' if boundary == 'cpml' else 'array_equal')
     with_bars({name: value for name, value in values.items()
                if name.endswith(('/dA', '/dA2'))}, 'array_equal')

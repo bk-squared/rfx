@@ -13,7 +13,7 @@ The separate `closure_witness.json` is documented below.
 
 `fixture.json` is frozen: it is the record of a port that no longer exists and is neither
 edited nor re-pinned. `fixture_guide_cell_aperture.json` is the record of run 2 as measured
-(float32 primary on every lane). `fixture_v18_close.json` is the historical run-3 record, with contract criterion 1
+(float32 primary on every lane). `fixture_v18_close.json` is the historical run-3 record (cleaned copy: one string value changed; original bytes are in git at 647262587), with contract criterion 1
 (forward identity) and 3(a) (AD-vs-FD) read under x64 on the `normalize="flux"` lane per the
 v1.8 closing declaration, the float32 reading stored beside the x64 one on every leg, and the
 pre-declared zero-derivative leg carried as `report_only`.
@@ -22,7 +22,7 @@ pre-declared zero-derivative leg carried as `report_only`.
 it is preserved unchanged and superseded because the device lane now applies realized PEC edges.
 
 The historical schema-4 reference is `fixture_931_realized_pec_forward2_run369367259427.json`,
-a byte-for-byte ingest of the PI-adjudicated run **369367259427**, commit `6df7ccaf`,
+a cleaned copy of run **369367259427**, commit `6df7ccaf`,
 schema 4, predeclaration `bcce73c9`. The filename identifies the realized-PEC
 operator, admissible second-order forward eps stencil, and source run. Its 18 cells,
 14 AD/FD legs and 178 verdicts recompute as **102 pass / 76 report_only / 0 fail /
@@ -35,7 +35,7 @@ Provenance caveat: the supplied JSON records `provenance.run_id` as
 `UNSET-see-log-filename` and `jax_default_backend` as `cpu`; the source run's
 adjacent `run_id.txt` supplies `369367259427`. These original fields are preserved,
 not silently repaired. The ingest does not establish a GPU live-test pass.
-SHA-256: `fcfef5cf89b0a736f187e358c6c73f4613521d6cbcee2bb0d556487400c0bf61`.
+SHA-256 of the cleaned copy: `d5a912789c0699cb33f3463f76dba3c594f2405d51edbf07d28655efc6fe3593`; only two string values changed, and the original bytes are in git at 647262587.
 
 **Open item — slab coarse/flux drift:** against historical `fixture_v18_close.json`,
 `max|S_new - S_old| = 1.0422476162860573e-5` (S11, 8.4 GHz). This was not
@@ -72,9 +72,7 @@ geometry, `cells` holds all 18 comparisons, and `cell_provenance` records each
 old/new source and max complex A−old-frozen, B−old-frozen and B−reference distance.
 
 The 12 thru/PEC-short cells and their provenance are retained exactly from
-`bk-squared/rfx-archive`
-`rfx/records/20260924-1012-cpml-half-cell/fixture_1012_cpml_half_cell_run369367264028.json`
-at `5e86eb5`, measured in VESSL **369367264028**
+the record at `5e86eb5`, measured in VESSL **369367264028**
 (arm B, commit `c0d2cfd035471768a0a8ad374110041afa205e00`). The six slab cells use
 arm B of VESSL **369367264100**, commit `315313793ae4c96c8e27af4eb48e3517db078082`;
 its comparison arm A was `1f7204630c8b83cf6b4530fdd45cc52353d699a6`.
