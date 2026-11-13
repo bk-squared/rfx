@@ -6,11 +6,14 @@ diagonal of that cell's cross-section. Expected outcomes come from the drawing
 and the test's own node lines, without raster or grid helpers. The positions
 are seeded draws inside one cell; on the graded mesh the straddle rows cross a
 width step, so each position is judged on its own containing cell. An admitted
-body owns at least one cell at every position.
+body owns at least one cell at every position. A Sphere centred on a node is
+the tie: radius D is refused, and D plus twice the shared node tie band holds
+the eight cells around the node.
 
 The preflight warning names an admitted dielectric Sphere, or a Cylinder across
 its radius, whose diameter is under three containing-cell widths along an axis
-across it. A traced radius is compared through the shared traced check.
+across it; a PEC body of the same size is not named. A traced radius is
+compared through the shared traced check.
 """
 import warnings
 
@@ -20,6 +23,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Cylinder, Simulation, Sphere
+from rfx._internal._grid_metric import node_tie_tol
 from rfx.errors import RfxRefusal
 from rfx.geometry.rasterize_grid import (
     _material_cell_mask, cell_sizes_from_nonuniform_grid, centres_from_nonuniform_grid,
@@ -57,7 +61,7 @@ def _widths_at(point, graded):
 
 
 def _threshold(kind, axis, widths):
-    across = (0, 1, 2) if kind == 'sphere' else {'z': (0, 1), 'x': (1, 2)}[axis]
+    across = (0, 1, 2) if kind == 'sphere' else {'z': (0, 1), 'y': (0, 2), 'x': (1, 2)}[axis]
     return 0.5 * np.sqrt(sum(widths[a] ** 2 for a in across))
 
 
@@ -86,7 +90,7 @@ def _cell_positions(kind, axis, lo, widths):
 
 
 CASES = ([('sphere', None, k) for k in (0.577, 0.993, 1.005, 1.155)]
-         + [('cylinder', axis, k) for axis in 'zx' for k in (0.495, 0.990, 1.004, 1.414)])
+         + [('cylinder', axis, k) for axis in 'zxy' for k in (0.495, 0.990, 1.004, 1.414)])
 
 
 @pytest.mark.parametrize('kind, axis, k', CASES)
@@ -114,10 +118,28 @@ def test_straddle_rows_follow_the_containing_cell(kind, axis, radius):
     assert seen == {'refused', 'admitted'}
 
 
-def _small_body_scene(shape, smoothing=False):
+NODE = (5 * H, 6 * H, 7 * H)
+
+
+@pytest.mark.parametrize('bands, cells', [(0, None), (2, 8)], ids=['radius-D', 'radius-D-plus-2-bands'])
+def test_sphere_on_a_node_is_judged_against_the_band_above_the_half_diagonal(bands, cells):
+    """At radius D the eight nearest centres lie on the surface: a tie, refused."""
+    d = _threshold('sphere', None, (H, H, H))
+    tau = float(node_tie_tol(max(abs(v) for v in NODE), d))
+    shape = Sphere(NODE, d + bands * tau)
+    sampling = _sampling(False)
+    if cells is None:
+        with pytest.raises(RfxRefusal, match=REFUSED):
+            _material_cell_mask(shape, sampling['coords'], sampling['centres'], name='body', grid=sampling['grid'])
+    else:
+        mask = _material_cell_mask(shape, sampling['coords'], sampling['centres'], name='body', grid=sampling['grid'])
+        assert np.count_nonzero(np.asarray(mask)) == cells
+
+
+def _small_body_scene(shape, material='d'):
     sim = _sim()
     sim.add_material('d', eps_r=4.)
-    sim.add(shape, material='d')
+    sim.add(shape, material=material)
     sim.add_source((2.5 * H,) * 3, 'ez', waveform=GaussianPulse(f0=20e9, bandwidth=0.8))
     return sim
 
@@ -125,20 +147,21 @@ def _small_body_scene(shape, smoothing=False):
 OFFSET = np.array([0.31, 0.27, 0.19]) * H
 CELL = np.full(3, 5.5 * H)
 WARN_ROWS = [
-    ('sphere-0.87h', Sphere(tuple(CELL + OFFSET), 0.87 * H), 'warn'),
-    ('sphere-1.0h', Sphere(tuple(CELL + OFFSET), 1.0 * H), 'warn'),
-    ('sphere-1.4h', Sphere(tuple(CELL + OFFSET), 1.4 * H), 'warn'),
-    ('sphere-1.6h', Sphere(tuple(CELL + OFFSET), 1.6 * H), 'quiet'),
-    ('cylinder-0.71h', Cylinder(tuple(CELL + OFFSET), 0.71 * H, 4 * H, 'z'), 'warn'),
-    ('disc', Cylinder(tuple(CELL + np.array([0.31, 0.27, 0.05]) * H), 4 * H, 0.3 * H, 'z'), 'quiet'),
-    ('box-1.5h', Box(tuple(CELL + OFFSET - 0.75 * H), tuple(CELL + OFFSET + 0.75 * H)), 'quiet'),
-    ('sphere-0.5h', Sphere(tuple(CELL + OFFSET), 0.5 * H), 'refused'),
+    ('sphere-0.87h', Sphere(tuple(CELL + OFFSET), 0.87 * H), 'warn', 'd'),
+    ('sphere-1.0h', Sphere(tuple(CELL + OFFSET), 1.0 * H), 'warn', 'd'),
+    ('sphere-1.4h', Sphere(tuple(CELL + OFFSET), 1.4 * H), 'warn', 'd'),
+    ('sphere-1.6h', Sphere(tuple(CELL + OFFSET), 1.6 * H), 'quiet', 'd'),
+    ('cylinder-0.71h', Cylinder(tuple(CELL + OFFSET), 0.71 * H, 4 * H, 'z'), 'warn', 'd'),
+    ('disc', Cylinder(tuple(CELL + np.array([0.31, 0.27, 0.05]) * H), 4 * H, 0.3 * H, 'z'), 'quiet', 'd'),
+    ('box-1.5h', Box(tuple(CELL + OFFSET - 0.75 * H), tuple(CELL + OFFSET + 0.75 * H)), 'quiet', 'd'),
+    ('sphere-0.5h', Sphere(tuple(CELL + OFFSET), 0.5 * H), 'refused', 'd'),
+    ('pec-sphere-1.0h', Sphere(tuple(CELL + OFFSET), 1.0 * H), 'quiet', 'pec'),
 ]
 
 
-@pytest.mark.parametrize('label, shape, expected', WARN_ROWS, ids=[row[0] for row in WARN_ROWS])
-def test_small_dielectric_body_warning(label, shape, expected):
-    sim = _small_body_scene(shape)
+@pytest.mark.parametrize('label, shape, expected, material', WARN_ROWS, ids=[row[0] for row in WARN_ROWS])
+def test_small_dielectric_body_warning(label, shape, expected, material):
+    sim = _small_body_scene(shape, material)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         report = sim.preflight()
