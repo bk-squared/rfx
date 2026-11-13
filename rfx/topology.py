@@ -53,7 +53,8 @@ import jax
 import jax.numpy as jnp
 
 from rfx._internal._precision import HIGHEST
-from rfx.optimize import _adam_update, _value_and_grad_with_fallback
+from rfx.optimize import _value_and_grad_with_fallback
+from rfx.optimizers import _Adam
 from rfx.preflight.realization import release_inspection
 
 
@@ -501,12 +502,12 @@ def topology_optimize(
     # logit(0.5) = 0
     init_logit = jnp.log(init_density / (1.0 - init_density + 1e-8) + 1e-8)
 
-    # Adam moments in logit space.
-    m = v = jnp.zeros_like(init_logit)
+    opt = _Adam(learning_rate)
+    state = opt.init(init_logit, bounds=None)
 
     logit = init_logit
     history = []
-    beta_history = []
+    beta_history: list[float] = []
 
     n_steps = grid.num_timesteps(num_periods=20.0)
 
@@ -565,9 +566,13 @@ def topology_optimize(
     last_good = logit  # last design with a confirmed-finite forward+gradient
     for it in range(n_iterations):
         beta = _get_beta(it, beta_schedule)
+        if beta_history and beta != beta_history[-1]:
+            state = opt.restart(state)
         beta_history.append(beta)
 
-        loss, grad = grad_fn(logit, jnp.asarray(beta, dtype=jnp.float32))
+        req = opt.ask(state)
+        logit = req.x
+        loss, grad = grad_fn(req.x, jnp.asarray(beta, dtype=jnp.float32))
 
         # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
         # gradient would silently poison ``logit`` via the Adam update and
@@ -591,8 +596,8 @@ def topology_optimize(
         loss_val = float(loss)
         history.append(loss_val)
 
-        step, m, v = _adam_update(m, v, grad, it, learning_rate, 0.9, 0.999, 1e-8)
-        logit = logit - step
+        state = opt.tell(state, req, loss, grad, None, None)
+        logit = state.x
 
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             rho_raw = jax.nn.sigmoid(logit)
