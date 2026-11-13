@@ -273,3 +273,37 @@ def test_e16_traced_wire():
     actual = jax.jit(lambda x, y, z: polyline_tube_mask(POINTS, radius, x, y, z))(
         *(jnp.asarray(v, jnp.float64) for v in coords))
     np.testing.assert_array_equal(np.asarray(actual)[select], (exact <= radius**2)[select])
+
+
+def test_float32_kottke_wide_eps_override():
+    from rfx import GaussianPulse, Simulation
+
+    with jax.enable_x64():
+        sim = Simulation(freq_max=15e9, domain=(.012,)*3, dx=.002,
+                         boundary='pec', precision='float32',
+                         pec_occupancy_model='kottke')
+        sim.add_source((.002, .004, .004), 'ez',
+                       waveform=GaussianPulse(f0=10e9, bandwidth=.8),
+                       amplitude_kind='field')
+        sim.add_probe((.010, .008, .008), 'ez')
+        grid = sim._build_realized_grid()
+        eps = jnp.asarray(np.linspace(1.1, 3.7, np.prod(grid.shape)).reshape(grid.shape),
+                          dtype=jnp.float64)
+        occupancy = jnp.asarray(
+            np.random.default_rng(2613).uniform(0, 1, grid.shape), dtype=jnp.float32)
+        with observe() as rows:
+            result = sim.forward(n_steps=2, checkpoint=False, eps_override=eps,
+                                 pec_occupancy_override=occupancy)
+            jax.block_until_ready(result)
+        assert rows['select_occupancy_operator']
+        for local, _ in rows['select_occupancy_operator']:
+            components = local['materials'].components.eps
+            assert all(e.dtype == jnp.float64 for e in components), 'precondition'
+            for actual, component in zip(local['inv_baseline'], components):
+                assert actual.dtype == jnp.float32
+                expected = (1 / np.asarray(component)).astype(np.float32)
+                np.testing.assert_array_equal(np.asarray(actual).view(np.uint32),
+                                              expected.view(np.uint32))
+        assert rows['kottke_inv_eps_from_occupancy']
+        for _, tensor in rows['kottke_inv_eps_from_occupancy']:
+            assert all(array.dtype == jnp.float32 for array in tensor)
