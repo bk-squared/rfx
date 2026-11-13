@@ -11,14 +11,14 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.runners import _admission as A
 
 
-def _scene(entry, source, *, pec=True, dt=None):
+def _scene(entry, source, *, pec=True, dt=None, precision="float32"):
     if entry.startswith("waveguide"):
         # Simulation/boundary/port setup from the validation battery's _build_sim.
         boundary = {"x": "cpml", "y": "pec", "z": "pec"}
         if source == "B":
             boundary["y"] = Boundary("pec", "pec", conformal=True)
         sim = Simulation(snap="declared", freq_max=9e9, domain=(.12, .04, .02), dx=.002,
-                         boundary=boundary, cpml_layers=10, dt=dt,
+                         boundary=boundary, cpml_layers=10, dt=dt, precision=precision,
                          **({"dz_profile": np.full(10, .002)}
                             if entry == "waveguide_graded" else {}))
         if pec:
@@ -291,3 +291,31 @@ def test_cut_cell_floor_grid_tolerance_and_reference(monkeypatch):
         assert np.isfinite(np.asarray(result.s_params)).all()
         assert captured[-1] == q * Grid.courant_dt(.002)
     assert len(captured) == 2
+
+
+def test_waveguide_reference_fractions_follow_run_with_float64_override(monkeypatch):
+    from rfx.model import tensor_operands
+
+    captured = []
+    original = tensor_operands.form_reference_operands
+
+    def capture(grid, materials, **kwargs):
+        assert materials.eps_r.dtype == np.float64
+        result = original(grid, materials, **kwargs)
+        fractions = result[2]
+        assert fractions is not None
+        for group in fractions:
+            assert len(group) == 3
+            for fraction in group:
+                assert fraction.dtype == np.float32
+        captured.append(fractions)
+        return result
+
+    monkeypatch.setattr(tensor_operands, "form_reference_operands", capture)
+    with jax.enable_x64():
+        sim = _scene("waveguide", "B", precision="float32")
+        override = np.full(sim._build_grid().shape, 2.345678901234, dtype=np.float64)
+        result = sim.compute_waveguide_s_matrix(
+            n_steps=4, normalize=True, eps_override=override, skip_preflight=True)
+        assert np.isfinite(np.asarray(result.s_params)).all()
+    assert len(captured) == 1

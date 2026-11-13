@@ -61,7 +61,7 @@ def pole_edge_fractions(mask, periodic=(False, False, False), *, high_wall: tupl
     pole: ``edge_mean_components`` of the pole's cell mask. ``None``
     (the pole everywhere) stays ``None``."""
     from rfx.model.materials import pole_component_weights
-    # Item 1 CONTRACT: public helper on no runner path.
+    # This public helper outside a run keeps float32 fractions.
     return pole_component_weights(mask, periodic, high_wall=high_wall, field_dtype=jnp.float32)
 
 
