@@ -38,6 +38,23 @@ def scene():
     return grid, jnp.linspace(4e9, 10e9, 15), grid.num_timesteps(num_periods=10)
 
 
+@pytest.fixture(scope="module")
+def multimode_scene():
+    grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.022), dx=0.002,
+                cpml_layers=10, cpml_axes="x")
+    assert grid.shape == (81, 21, 12)
+    a, b = (grid.ny - 1) * grid.dx, (grid.nz - 1) * grid.dx
+    modes = [(m, n) for m in range(4) for n in range(4) if m or n]
+    modes += [(m, n) for m in range(1, 4) for n in range(1, 4)]
+    cutoffs = np.sort([299792458.0 / 2 * np.sqrt((m / a)**2 + (n / b)**2)
+                       for m, n in modes])
+    # An exactly degenerate pair has no unique eigenvector.
+    assert cutoffs[2] - cutoffs[1] > 0.05 * cutoffs[1], (
+        "A degenerate second mode makes the stored profile depend on the LAPACK build"
+    )
+    return grid, jnp.linspace(4e9, 10e9, 15), grid.num_timesteps(num_periods=10)
+
+
 def _ports(grid, whole_axis=None):
     y_hi = grid.ny if whole_axis == "y" else grid.ny - 1
     z_hi = grid.nz if whole_axis == "z" else grid.nz - 1
@@ -412,12 +429,15 @@ def test_simulation_builds_the_accepted_cell_span():
 
 
 @pytest.mark.parametrize("name", EXTRACTORS)
-def test_cell_span_s_equals_merge_base(scene, name):
-    """Compiled float32 sums vary across machines, so comparison is not bitwise."""
+def test_cell_span_s_equals_merge_base(scene, request, name):
+    """Repository cross-trace bar for a quantity summed over the record: 1e-4 of the peak."""
     reference = json.loads((Path(__file__).parents[2] / "data" /
                             "waveguide_cell_span_66be9e1f7.json").read_text())
     assert reference["merge_base"] == "66be9e1f77e121f5b40d83b0dcd330ebc7f239cc"
     expected = reference["extractors"][name]
+    if "multimode" in name:
+        scene = request.getfixturevalue("multimode_scene")
+        assert expected["domain_m"] == list(scene[0].domain)
     actual = _extract(scene, name)
     assert actual.dtype.str == expected["dtype"]
     assert list(actual.shape) == expected["shape"]
@@ -428,10 +448,7 @@ def test_cell_span_s_equals_merge_base(scene, name):
     ).reshape(shape)
     nan_mismatches = np.count_nonzero(np.isnan(actual) != np.isnan(expected_array))
     finite = np.isfinite(expected_array)
-    # Each S entry uses its own peak over finite frequency bins.
-    # Exactly-zero entries must stay zero; all-NaN entries use only the mask.
-    scale = np.max(np.where(finite, np.abs(expected_array), 0.0),
-                   axis=-1, keepdims=True)
+    scale = np.max(np.where(finite, np.abs(expected_array), 0.0))
     delta_complex = np.zeros_like(actual)
     np.subtract(actual, expected_array, out=delta_complex,
                 where=finite)
@@ -440,7 +457,7 @@ def test_cell_span_s_equals_merge_base(scene, name):
                       where=scale > 0)
     ratio = np.where(finite & ~np.isfinite(actual), np.inf, ratio)
     worst_ratio = np.max(ratio)
-    message = (f"max|delta| / own peak = {worst_ratio:.9g}; "
+    message = (f"max|delta| / M = {worst_ratio:.9g}; "
                f"NaN-mask mismatch count = {nan_mismatches}")
     assert nan_mismatches == 0, message
     assert np.all(ratio <= 1e-4), message
