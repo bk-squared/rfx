@@ -20,11 +20,19 @@ waveguide S records, conformal PEC in waveguide S, a one-cell PEC box on a node
 plane, and directivity and gain on a φ grid that repeats the 0/2π seam or is
 uneven. Re-run any comparison that uses one of them.
 Several inputs that ran before are now refused: points inside the CPML pad, metal
-whose solved size misses its drawing by more than 1 % under strict snap, and a
-second waveguide port in one record.
+whose solved size misses its drawing by more than 1 % under strict snap, a second
+waveguide port in one record, a dielectric sphere or rod too small to hold a cell,
+and an oblique plane wave over a structure that varies along the tilt axis.
 
 ### Changed
 
+- **A dielectric `Sphere`, or a `Cylinder` crossed through its radius, too small to
+  hold a cell is refused at every position** (#2703): a body that is not PEC whose
+  radius is below half the diagonal of the cell containing its centre (0.866 of
+  the cell on a uniform mesh; 0.707 for a `Cylinder`'s cross-section). Before, it
+  ran at some positions and was refused at others, so a position sweep or gradient
+  could cross from a result to a refusal. `preflight()` warns for a dielectric body
+  under three cells across; such a body is over-polarized (see known limitations).
 - **A probe, point source or port inside the CPML pad is refused** (#2517). It
   was a warning. Set `allow_in_absorber=True` on the individual `add_*` call to
   keep the position; the attenuation warning remains. A position beyond the grid
@@ -161,6 +169,10 @@ second waveguide port in one record.
   - Waveguide S with conformal PEC uses one metal model (#2580): on a WR-90 PEC
     sphere, |S11| falls by 1.85–4.32 dB depending on the mesh.
   - Preflight uses the solver's side order and cutoff (#2552).
+  - A low-level waveguide port whose aperture includes the node row beyond a high
+    electric wall is refused against a uniform `Grid`, with the cell span to use
+    (#2696); its second-mode S entries could be wrong by more than their size.
+    Built from a scalar `dx` or a graded grid, it warns.
 - **A one-cell-thick PEC box on a node plane is kept** (#2580). `run()` dropped
   it: behind such a short the Ez energy relative to the front was 1.0003; it is
   now 0.
@@ -194,6 +206,11 @@ second waveguide port in one record.
   `run(until_decay=)` stops on an empty open box; results normalized by the
   incident spectrum move by about 5e-5. A graded-mesh plane wave with
   `"full_tensor"` smoothing is admitted when nothing varies across it (#2433).
+  An oblique plane wave over a structure that varies along the tilt axis, with
+  absorbing side faces, is refused (#2705): it was solved as an array of the
+  padded period, 2.3–3.5 dB off in transmission on a 16 mm-period bar at 1 mm
+  cells. For one scatterer use `add_tfsf_source(closed_box=True, theta_deg=...)`
+  with CPML on all six faces; for an array, declare that axis periodic.
 - **`until_decay` in a closed box on the uniform mesh stops on the after-drive
   energy** (#2420), as on the graded mesh; a lossy cube stopped at step 400 with
   98.4 % of its after-drive energy left. A lossless closed box runs to
