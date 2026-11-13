@@ -28,8 +28,7 @@ Pre-declared, before any solve, as three distinguishable outcomes:
   cross in and back out with refinement. Then neither board's number is a
   converged one and the quantity has not been shown to settle.
 
-**LEADER TO FILL** — what the outcome means, and what the gate's fixture
-should be. This script writes numbers; it changes no bar, no test and no
+This script writes numbers; it changes no bar, no test and no
 shipped code.
 
 Usage (one case per invocation; the generator shards them)::

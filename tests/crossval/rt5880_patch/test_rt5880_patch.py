@@ -79,7 +79,7 @@ threshold is derived from a run, and this case commits no record of a run.
 What is judged: the TM010 resonance frequency
 f0 within 1 % (``FREQ_BAR``), and the input RESISTANCE there,
 |R_rfx − R_ref| / R_ref within 2 % (``RESISTANCE_BAR``).  f0 is where Re(Zin)
-peaks (the lane leader's decision of 2026-09-24, after #715's request for a
+peaks (after #715's request for a
 port-independent resonant frequency): near the mode the port sees
 Zin ≈ jX_probe + R / (1 + jQ(f/f0 − f0/f)), so the Re(Zin) maximum sits at f0
 at height R whatever the probe's series reactance, while the |S11| minimum
@@ -1918,7 +1918,6 @@ def test_the_reference_file_is_what_the_provenance_says():
         assert rx["flags"] == []
         if n == OPENEMS_JUDGED_STAGE:
             # Frozen values the case's two judged quantities are held against
-            # (the lane leader's check of 2026-09-25 read the same numbers).
             assert rx["f0_hz"] == pytest.approx(2.319490e9, abs=1e3)
             assert rx["r_ohm"] == pytest.approx(73.457, abs=1e-3)
             assert rx["x_ohm"] == pytest.approx(42.95, abs=1e-2)

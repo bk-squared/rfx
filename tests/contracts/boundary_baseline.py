@@ -1,4 +1,4 @@
-"""Regenerate B1's two-step field record; Conclusion: leader fills.
+"""Regenerate B1's two-step field record.
 
 Run with OMP/BLAS threads pinned to one and two emulated CPU devices, e.g.
 XLA_FLAGS='--xla_cpu_multi_thread_eigen=false --xla_force_host_platform_device_count=2'
@@ -96,7 +96,7 @@ def b0_changes(cells, b0):
 
 
 def render_matrix(baseline, old_markdown):
-    # The leader's final paragraph is opaque text, independent of JSON's field.
+    # The final paragraph is opaque text, independent of JSON's field.
     # Preserve it byte-for-byte, along with the rest of the unregenerated tail.
     intro, rest = old_markdown.split("| Declaration |", 1)
     _, tail = rest.split("## Stopped comparisons", 1)
