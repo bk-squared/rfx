@@ -215,7 +215,8 @@ NAMED_EXCEPTIONS = (
 
 
 @pytest.mark.reads_docs_for_gate(
-    reason="checks that public-text scan exceptions still match tracked text")
+    reason="checks that public-text scan exceptions still match tracked text; "
+    "scans, never judges the prose")
 def test_named_exceptions_are_not_stale():
     tracked = set(subprocess.check_output(
         ["git", "ls-files", "-z"], cwd=ROOT).decode("utf-8").split("\0"))

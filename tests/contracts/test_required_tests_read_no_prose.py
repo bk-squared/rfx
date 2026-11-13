@@ -339,6 +339,10 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
 #: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
     "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py::"
+    "test_named_exceptions_are_not_stale":
+        "checks that public-text scan exceptions still match tracked text; "
+        "scans, never judges the prose",
+    "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py::"
     "test_public_text_has_no_pi_or_agent_traces":
         "public text must not carry the maintainer's name, orders or agent traces; "
         "scans tracked text, never judges the prose",
