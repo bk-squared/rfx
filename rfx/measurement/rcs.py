@@ -302,7 +302,7 @@ def compute_rcs(
         ny=grid.ny,
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
-        dtype=jnp.float32)  # This low-level route has no run-precision argument.
+        dtype=jnp.float32)  # CONTRACT: this float32-only route has no run-precision argument.
     # This calculator owns its NTFF request and bypasses Simulation dispatch.
     from rfx.boundaries.depths import FACES, grid_face_depths
     from rfx.boundaries.features import refuse_ntff_reflecting_faces
