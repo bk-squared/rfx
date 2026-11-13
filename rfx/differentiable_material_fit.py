@@ -526,7 +526,7 @@ def differentiable_material_fit(
         sim = (_fixture if _fixture is not None
                else sim_factory(eps_inf, debye_poles, lorentz_poles))
 
-        resolve_field_dtype(sim._precision)
+        field_dtype = resolve_field_dtype(sim._precision) or jnp.float32
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
@@ -559,7 +559,7 @@ def differentiable_material_fit(
         from rfx.model.materials import with_components
         periodic = resolve_periodic(grid, None)
         materials = with_components(materials, grid, periodic=periodic,
-            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+            debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
 
         # Initialize dispersion with traced poles
         debye = None

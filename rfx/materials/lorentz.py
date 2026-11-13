@@ -417,7 +417,8 @@ def init_lorentz(
         from rfx.model.pole_stability import courant_budget
         budget, grid_kind = courant_budget(grid), type(grid).__name__
     components = with_components(materials, grid, periodic=periodic, high_wall=high_wall,
-        lorentz_spec=(poles, mask), dt=dt, budget=budget, grid_kind=grid_kind).components
+        lorentz_spec=(poles, mask), dt=dt, budget=budget, grid_kind=grid_kind,
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32).components
     eps_c, sig_c = components.eps_update, components.sigma_update
     realized = components.lorentz
     if realized is None or len(realized.poles) != n_poles:

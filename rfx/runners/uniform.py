@@ -572,7 +572,8 @@ def run_uniform(
     materials = with_components(materials, grid,
         high_wall=unpadded_high_walls(grid),
         periodic=_simulation.resolve_periodic(grid, periodic),
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
     from rfx.model.source_coefficients import resolve_run_sources
     sources = resolve_run_sources(sources, materials, sim, grid,
         tensor=aniso_eps is not None or conformal_weights is not None)

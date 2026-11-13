@@ -801,13 +801,16 @@ def _view_wall_cells(array, grid, view, high_wall):
     return jnp.take(array, rows, axis=0)
 
 
-def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid", high_wall=None):
+def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid", high_wall=None,
+                       field_dtype=jnp.float32):
     """Realize final cells once, using the existing E/pole and H rules.
 
     ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
     ``grid=None`` is the uniform-metric compatibility path for direct ADE
     callers. E materials and pole fractions use the same primal dual-volume
     weights; constant transverse axes retain the original arithmetic.
+    Pole weights take the run's field dtype, with a float32 coefficient floor.
+    Raw callers without a run retain the float32 default.
     """
     if high_wall is None:
         if grid is None:
@@ -881,16 +884,17 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
         _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape,
                        high_wall=high_wall, cell_sizes=electric_widths, view=view,
-                       field_dtype=materials.eps_r.dtype),
+                       field_dtype=field_dtype),
         _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
                        high_wall=high_wall, cell_sizes=electric_widths, view=view,
-                       field_dtype=materials.eps_r.dtype),
+                       field_dtype=field_dtype),
         materials, tuple(periodic), _component_grid_key(grid, view),
         pole_sets_judged=pole_sets_judged)
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
-                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None, high_wall=None):
+                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None, high_wall=None,
+                    field_dtype=jnp.float32):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
@@ -904,7 +908,7 @@ def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=
     else:
         components = realize_components(
             ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
-            high_wall=high_wall,
+            high_wall=high_wall, field_dtype=field_dtype,
             **({} if view is None else dict(view=view)),
             **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
         materials = materials._replace(components=components)

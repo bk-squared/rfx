@@ -232,7 +232,8 @@ def init_debye(
 
     from rfx.model.materials import validate_dispersion, with_components
     components = with_components(materials, grid, periodic=periodic, high_wall=high_wall,
-        debye_spec=(poles, mask)).components
+        debye_spec=(poles, mask),
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32).components
     eps_c, sig_c = components.eps_update, components.sigma_update
     realized = components.debye
     if realized is None or len(realized.poles) != n_poles:

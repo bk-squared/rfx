@@ -37,8 +37,10 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.
     in_program = mesh.devices.size < 2
+    from rfx._internal._precision import resolve_field_dtype
+    field_dtype = resolve_field_dtype(sim._precision) or jnp.float32
     drive_model = sc.dispersive_drive_model(fold(sim, grid, materials), debye_spec, lorentz_spec, grid,
-                                          in_program=in_program)
+                                          in_program=in_program, field_dtype=field_dtype)
     if overridden:
         materials = apply_material_overrides(materials, eps_override=eps_override,
             sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec), in_program=in_program)
@@ -109,7 +111,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
         if ports_present and not overridden:
             from rfx.model.materials import with_components
             final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
-                debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+                debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
         else:
             final_drive_model = materials
         sources = [SourceSpec(int(i), int(j), int(k), component, jnp.asarray(waveform))
