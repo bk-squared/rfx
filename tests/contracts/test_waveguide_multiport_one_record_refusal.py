@@ -14,7 +14,7 @@ from rfx import Box, Simulation
 
 
 MESSAGE = (
-    "One run() or forward() record supports at most one driven waveguide port; driven ports: p1, p2. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix."
+    "One run() or forward() record supports at most one driven waveguide port; driven ports: p1, p2. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero."
 )
 PATHS = ("uniform-run", "uniform-forward", "graded-run", "graded-forward")
 DX = .02286 / 9

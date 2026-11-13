@@ -82,7 +82,7 @@ def test_different_bins_refused_before_fields(path, difference, monkeypatch):
     # #2449: multiple ports cannot report isolated S from one record,
     # regardless of whether their declared frequency grids match.
     assert str(caught.value) == (
-        "One run() or forward() record supports at most one driven waveguide port; driven ports: input, output. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix.")
+        "One run() or forward() record supports at most one driven waveguide port; driven ports: input, output. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero.")
 
 
 @pytest.mark.parametrize("path", SHARED_PATHS)

@@ -588,6 +588,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     from rfx.model.operands import _leaves, realized_operands
     from rfx.model.design_box import design_box_window
     from rfx.model.waveguide_modes import PortMedium, with_port_medium
+    from rfx.measurement.waveguide_power import driven_waveguide_indices
     from rfx.boundaries.pec import wall_edge_masks, resolve_wall_faces
 
     wall_masks = wall_edge_masks(grid.shape, resolve_wall_faces(
@@ -727,9 +728,11 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
             return matches, "; ".join(descriptions)
 
         if traced:
-            # The probe-plane medium cannot mark the config inside a trace, so a mismatch refuses the run.
+            # Only a driven port consumes its probe waves for its own S21.
             def judge_traced(*values):
                 medium = judge(*values[:len(arrays)])
+                if not driven_waveguide_indices([cfg], amplitude_field="src_amp"):
+                    return
                 matches, description = probe_medium(medium, *values[len(arrays):])
                 if not matches:
                     raise ValueError(prefix + "traced override puts another medium at the probe plane ("

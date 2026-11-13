@@ -397,7 +397,7 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
         with pytest.raises(ValueError) as caught:
             getattr(sim, entry)(n_steps=1, skip_preflight=True)
         assert str(caught.value) == (
-            "One run() or forward() record supports at most one driven waveguide port; driven ports: port0, port1. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix."
+            "One run() or forward() record supports at most one driven waveguide port; driven ports: port0, port1. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero."
         )
         return
     if case == "lumped":

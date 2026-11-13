@@ -12,10 +12,11 @@ from rfx.errors import RfxWarning
 from rfx.core.jax_utils import is_tracer
 
 
-def driven_waveguide_indices(ports):
+def driven_waveguide_indices(ports, *, amplitude_field="amplitude"):
     """Only a declared, concrete zero amplitude makes a port undriven."""
-    return [i for i, port in enumerate(ports)
-            if is_tracer(port.amplitude) or port.amplitude != 0.0]
+    amplitudes = (getattr(port, amplitude_field) for port in ports)
+    return [i for i, amplitude in enumerate(amplitudes)
+            if is_tracer(amplitude) or amplitude != 0.0]
 
 
 class WaveguideCutoffWarning(RfxWarning):

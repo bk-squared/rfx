@@ -1272,7 +1272,7 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
         raise ValueError(
             "One run() or forward() record supports at most one driven waveguide port; "
             f"driven ports: {names}. Set amplitude 0.0 on all but one, or use "
-            "compute_waveguide_s_matrix() for the full matrix."
+            "compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero."
         )
     excited = [(index, port) for index, port in enumerate(sim._ports)
                if port.impedance > 0 and port.excite]

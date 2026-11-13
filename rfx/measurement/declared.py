@@ -57,13 +57,15 @@ def package_declared_measurements(sim, grid, *, entry, flux_monitors, waveguide_
             measured_reference_plane = plane_positions["reference"]
             measured_probe_plane = plane_positions["probe"]
             reference_plane, probe_plane, calibration_preset = reported[index]
-            s11, s21 = extract_waveguide_sparams(
-                cfg,
-                ref_shift=reference_plane - measured_reference_plane,
-                probe_shift=probe_plane - measured_probe_plane,
-            )
-            if index not in driven:
-                s11, s21 = jnp.full_like(s11, jnp.nan), jnp.full_like(s21, jnp.nan)
+            if index in driven:
+                s11, s21 = extract_waveguide_sparams(
+                    cfg,
+                    ref_shift=reference_plane - measured_reference_plane,
+                    probe_shift=probe_plane - measured_probe_plane,
+                )
+            else:
+                dtype = jnp.result_type(cfg.v_ref_t.dtype, cfg.freqs.dtype, jnp.result_type(float), 1j)
+                s11 = s21 = jnp.full(cfg.freqs.shape, jnp.nan, dtype=dtype)
             s_driven = (jnp.full_like(s11, jnp.nan) if drive_idx is None else
                         s11 if column is None else column[index])
             sparams_result[port.name] = WaveguideSParamResult(
