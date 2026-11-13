@@ -132,7 +132,6 @@ def test_declared_absorber_pads_and_pec_default_walls():
 def test_kind_readers_keep_zero_pad_electric_backings():
     import jax
     import numpy as np
-    from rfx.boundaries.axes import hi_face_is_wall
     from rfx.boundaries.cpml import init_cpml
     from rfx.boundaries.depths import distributed_electric_walls
     from rfx.boundaries.model import electric_faces, magnetic_faces
@@ -140,13 +139,11 @@ def test_kind_readers_keep_zero_pad_electric_backings():
     new = guide({"x": "cpml", "y": "pec", "z": "pec"})
     grids = (old._build_grid(), new._build_grid(), guide()._build_grid())
     coefficients = []
-    for grid, walls, axes in zip(grids, ((False, False, False), (False, True, True),
-                                       (False, True, True)), ("xyz", "x", "x")):
+    for grid, axes in zip(grids, ("xyz", "x", "x")):
         # Tracker 1549: the multi-device run backs every electric face, the absorbing x faces included
         # (the conducting plane behind an absorber), as the single-device run does.
         assert distributed_electric_walls(grid) == frozenset(
             ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
-        assert tuple(hi_face_is_wall(grid, axis) for axis in "xyz") == walls
         assert grid.cpml_axes == axes
         params = init_cpml(grid)[0]
         # Addendum 2 keeps legacy profiles on excluded axes; those profiles

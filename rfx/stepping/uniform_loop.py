@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
+
 from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
@@ -260,6 +262,7 @@ def run(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     wire_refplane_sparams = wire_refplane_sparams or []
@@ -916,6 +919,7 @@ def run_until_decay(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     lumped_rlc = lumped_rlc or []
