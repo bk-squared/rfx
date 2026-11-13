@@ -109,6 +109,7 @@ def gradient(pol="ez", n=N2, compiled=False):
     return float((jax.jit(jax.grad(fn)) if compiled else jax.grad(fn))(jnp.float32(30)))
 
 
+@pytest.mark.slow
 def test_00_first_job_stop_quantities():
     assert not jax.config.jax_enable_x64, "F5 requires the default complex64 DFT"
     facts = functions()[4]
@@ -155,6 +156,7 @@ def test_traced_primal_growth(pol, theta):
         assert abs(value-ref) <= 1e-4*abs(ref), "B2 transmission bar"
 
 
+@pytest.mark.slow
 def test_cross_trace_grad_and_jit():
     eager, compiled = gradient(), gradient(compiled=True)
     emit("B3a", grad=eager, jit_grad=compiled, relative=abs(eager-compiled)/abs(eager))
@@ -177,7 +179,7 @@ def test_cross_trace_vmap():
         assert abs(value-target) <= 1e-4*abs(target), "B3 vmap transmission"
 
 
-@pytest.mark.parametrize("pol", ["ez", "ey"])
+@pytest.mark.parametrize("pol", ["ez", pytest.param("ey", marks=pytest.mark.slow)])
 def test_angle_gradient_finite_difference(pol):
     ad = gradient(pol)
     for step, fd in traced_fd(pol).items():
@@ -185,7 +187,7 @@ def test_angle_gradient_finite_difference(pol):
         assert abs(ad-fd) <= 1e-3*abs(fd), f"B4 derivative versus FD({step})"
 
 
-@pytest.mark.parametrize("pol", ["ez", "ey"])
+@pytest.mark.parametrize("pol", ["ez", pytest.param("ey", marks=pytest.mark.slow)])
 def test_complex_slab_dft_gradient(pol):
     fields, _, _, _, facts = functions(pol)
     fn = lambda theta: dft(fields(theta)[0], facts["dt"])
@@ -199,6 +201,7 @@ def test_complex_slab_dft_gradient(pol):
         assert abs(ad_c-fd_c) <= 1e-3*abs(fd_c), f"B4phi complex derivative FD({step})"
 
 
+@pytest.mark.slow
 def test_gradient_record_length():
     short, long = gradient(n=N1), gradient(n=N2)
     emit("B5", N1=N1, N2=N2, short=short, long=long, relative=abs(short-long)/abs(long))

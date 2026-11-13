@@ -55,7 +55,8 @@ def test_b6_airy_mesh_trend(pol):
         n = int(math.ceil(12e-9/facts["dt"])/1.75)
         _, fn, _, compiled, _ = functions(pol, n, h, .024)
         value = float(compiled(jnp.float32(30)))
-        ad = float(jax.grad(fn)(jnp.float32(30)))
+        _, tangent = jax.jvp(fn, (jnp.float32(30),), (jnp.float32(1),))
+        ad = float(tangent)
         fd = (redeclared_value(pol, 30.25, h, n)-redeclared_value(pol, 29.75, h, n))/.5
         reference = float(abs(airy(30., facts["thickness"])))
         derivative = airy_derivative(30., facts["thickness"])
