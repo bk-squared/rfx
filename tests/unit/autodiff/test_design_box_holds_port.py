@@ -267,12 +267,14 @@ def _peak_rel(a, b):
 
 @pytest.mark.parametrize("port", PORTS)
 def test_t1_uniform_run_equals_the_run_without_the_box_float64(port):
-    """float64 fields; float32 design values, so the grid's own
-    coefficients stay float32 and the two runs step the same numbers."""
+    """rfx#2613: float64 material and design values represent the same board.
+
+    The background no longer rounds its declared 2.2 through float32.
+    """
     with enable_x64():
         sim = _board(port, precision="float64")
         box = _box(port)
-        eps, _ = _background(sim, box, False)
+        eps, _ = _background(sim, box, False, jnp.float64)
         ref = _forward(_board(port, precision="float64"))
         for form, sigma in _sigma_forms(sim, box, False).items():
             got = _forward(_board(port, precision="float64"), box, eps=eps,
@@ -737,11 +739,12 @@ def _msl_forward(**kw):
 
 def test_the_msl_box_really_covers_the_passive_termination_load():
     """Realized, not declared: the load's stamps are inside the box."""
-    sim = _msl_board()
-    sl, eps, _, _ = _msl_design(sim)
-    with enable_x64(), _captured_box() as seen:
-        _msl_board().forward(design_box=MSL_BOX, design_eps_override=eps,
-                             n_steps=2, checkpoint=False, skip_preflight=True)
+    with enable_x64():
+        sim = _msl_board()
+        sl, eps, _, _ = _msl_design(sim)
+        with _captured_box() as seen:
+            _msl_board().forward(design_box=MSL_BOX, design_eps_override=eps,
+                                 n_steps=2, checkpoint=False, skip_preflight=True)
     (_, mats, _, _), = seen
     parts = [p for p in mats.sigma_lumped if p is not None]
     assert parts and sum(int(np.count_nonzero(np.asarray(p)[sl]))
@@ -809,7 +812,7 @@ def _lowlevel_passive(port):
     prb = _sim_mod.make_probe(grid, (12e-3, 8e-3, (KG + 0.5) * DX), "ez")
     box = _box(port)
     b = _box_bounds(sim, box, False)
-    eps, _ = _background(sim, box, False)
+    eps, _ = _background(sim, box, False, mats.eps_r.dtype)
 
     def run(m=mats, spec=None):
         return np.asarray(_sim_mod.run(
@@ -842,14 +845,15 @@ def test_lowlevel_permittivity_box_over_a_passive_port_is_exact(port):
 def test_lowlevel_per_edge_conductivity_over_a_passive_port(port):
     """Refused over the unheld load; accepted once its edges are listed; a
     listed edge outside the window is a caller error."""
-    run, mats, b, eps = _lowlevel_passive(port)
-    z = jnp.zeros_like(eps)
-    with pytest.raises(ValueError, match="per-edge design conductivity"):
-        run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps, sigma=(z, z, z)))
-    held = run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps,
-                                           sigma=(z, z, z),
-                                           held_edges=_port_edges(port)))
-    assert np.all(np.isfinite(held))
-    with pytest.raises(ValueError, match="not an \\(axis, i, j, k\\) E edge"):
-        run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps,
-                                        held_edges=((2, 0, 0, 0),)))
+    with enable_x64():
+        run, mats, b, eps = _lowlevel_passive(port)
+        z = jnp.zeros_like(eps)
+        with pytest.raises(ValueError, match="per-edge design conductivity"):
+            run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps, sigma=(z, z, z)))
+        held = run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps,
+                                               sigma=(z, z, z),
+                                               held_edges=_port_edges(port)))
+        assert np.all(np.isfinite(held))
+        with pytest.raises(ValueError, match="not an \\(axis, i, j, k\\) E edge"):
+            run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps,
+                                            held_edges=((2, 0, 0, 0),)))
