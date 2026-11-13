@@ -34,6 +34,11 @@ def monitor_frequencies(ctx):
                 or len(np.unique(f)) != len(f)):
             raise ValueError("gradient='adjoint' requires distinct positive sub-Nyquist bins")
     if any(not np.array_equal(f, bins[0]) for f in bins[1:]):
+        if ctx.use_ntff:
+            raise NotImplementedError(
+                "gradient='adjoint' requires identical monitor frequency bins; "
+                "NTFF boxes store bins as float32, so under float64 give DFT planes "
+                "the float32-rounded values (np.asarray(freqs, np.float32))")
         raise NotImplementedError("gradient='adjoint' requires identical monitor frequency bins")
     margin = ctx.grid.cpml_layers if ctx.use_cpml else 1
     for slot in slots:

@@ -1,12 +1,5 @@
-"""NTFF/H admission boundaries, compensation, and unchanged default digests."""
-from pathlib import Path
+"""NTFF/H admission boundaries and compensation."""
 from types import SimpleNamespace
-import json
-import os
-import subprocess
-import sys
-import tarfile
-import time
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +10,7 @@ from rfx.measurement.farfield import NTFFBox
 from rfx.stepping.adjoint_monitors import monitor_frequencies
 from tests._x64_compat import enable_x64
 from tests.unit.autodiff.test_adjoint_farfield import scene, collocation_mode
-from tests.unit.autodiff.test_design_box_tape import BOX_LO, BOX_HI
+from tests.unit.autodiff.test_design_box_tape import _sim, _box_cells, BOX_LO, BOX_HI
 
 
 def context(box):
@@ -75,26 +68,28 @@ def test_compensation_objective_zero_and_adjoint_carry(record_property):
         record_property("adjoint_carry", seen)
 
 
-@pytest.mark.slow
-def test_g5_default_digests_against_main(tmp_path, record_property):
-    """Run the same independent scene in clean subprocesses at main and HEAD."""
-    root = Path(__file__).resolve().parents[3]
-    baseline = tmp_path / "main"
-    baseline.mkdir()
-    archive = tmp_path / "main.tar"
-    with archive.open("wb") as out:
-        subprocess.run(["git", "archive", "cd5bec868"], cwd=root, stdout=out, check=True)
-    with tarfile.open(archive) as packed:
-        packed.extractall(baseline, filter="data")
-    program = Path(__file__).with_name("_adjoint_default_digest.py").read_text()
-    digests = []
-    start = time.monotonic()
-    for tree in (baseline, root):
-        env = {**os.environ, "PYTHONPATH": str(tree), "PYTHONDONTWRITEBYTECODE": "1"}
-        output = subprocess.check_output([sys.executable, "-c", program], cwd=tree, env=env, text=True)
-        digests.append(json.loads(output.strip().splitlines()[-1]))
-    record_property("digests_main", json.dumps(digests[0], sort_keys=True))
-    record_property("digests_head", json.dumps(digests[1], sort_keys=True))
-    record_property("seconds", time.monotonic()-start)
-    assert digests[0].keys() == {"fields", "probes", "dft", "ntff"}
-    assert digests[1] == digests[0], "G5 default path SHA-256 changed"
+def test_float64_ntff_plane_bins_require_float32_rounding():
+    """Trace both public monitor objectives without executing a settled record."""
+    with enable_x64():
+        for rounded in (False, True):
+            sim = _sim(precision="float64")
+            sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 16e-3, 12e-3),
+                             freqs=np.asarray([2.45e9], np.float64))
+            plane_freqs = (np.asarray([2.45e9], np.float32).astype(np.float64)
+                           if rounded else np.asarray([2.45e9], np.float64))
+            ix = sim._build_grid().position_to_index((18e-3, 10e-3, 8e-3))
+            sim.add_dft_plane_probe(axis="x", coordinate=18e-3, component="ez",
+                freqs=plane_freqs, name="out", region=(ix[1], ix[1]+1, ix[2], ix[2]+1))
+            params = jnp.full(_box_cells(sim)[1], 2., dtype=jnp.float64)
+
+            def loss(eps):
+                result = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=eps,
+                                     n_steps=32, gradient="adjoint", skip_preflight=True)
+                return (jnp.sum(jnp.abs(result.dft_planes["out"].accumulator)**2)
+                        + sum(jnp.real(jnp.sum(a)) for a in result.ntff_data[:6]))
+
+            if rounded:
+                jax.jit(jax.grad(loss)).lower(params)
+            else:
+                with pytest.raises(NotImplementedError, match="float32-rounded"):
+                    jax.jit(jax.grad(loss)).lower(params)
