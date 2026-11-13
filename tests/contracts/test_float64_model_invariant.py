@@ -9,8 +9,8 @@ P1 applies everywhere, P2 only at R4/R5. Equation outputs/literals are not read
 Limit: P2 tests the whole array; a mostly-float32 table with one true float64
 element does not flag, because not every element round-trips through float32.
 
-FLOAT32_UNSEEN_2613 records the unreached FIX sites and the reached conformal
-face areas consumed before the declared reads. U-smooth's True declaration
+FLOAT32_UNSEEN_2613 records the remaining unreached FIX sites.
+Conformal face areas now have an independent value row. U-smooth's True declaration
 selects full node tensors, already float64, not the old Kottke cast paths.
 UPML source coefficients (materials.py:692,694) fall with A1's refusal.
 
@@ -124,6 +124,9 @@ def test_material_edge_values(captured_scenes, label, quantity):
     _, data = captured_scenes(label)
     materials = data['materials']
     cells = materials.eps_r if quantity == 'eps' else materials.sigma
+    declared = (1.0, 4.0) if quantity == 'eps' else (0.0, 0.05)
+    np.testing.assert_array_equal(np.unique(np.asarray(cells)), np.asarray(declared, dtype=np.float64),
+                                  err_msg=f'{quantity} cells must equal the declared set')
     for axis, actual in enumerate(getattr(materials.components, quantity)):
         assert_spacings(actual, edge_reference(cells, data['grid'], axis), 19)
 
@@ -142,6 +145,8 @@ def test_uniform_mu_values(captured_scenes):
     from tests.contracts.float64_value_reference import assert_spacings
     _, data = captured_scenes('U-mat')
     mu = np.asarray(data['materials'].mu_r, dtype=np.float64)
+    np.testing.assert_array_equal(np.unique(mu), np.asarray((1.0, 2.0), dtype=np.float64),
+                                  err_msg='mu cells must equal the declared set')
     for axis, actual in enumerate(data['materials'].components.mu):
         lo = np.take(mu, np.maximum(np.arange(mu.shape[axis])-1, 0), axis=axis)
         expected = 2*lo*mu/(lo+mu)
