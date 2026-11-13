@@ -363,7 +363,6 @@ def j0_main():
         "metadata",
         {
             "purpose": "J0 only; never a bar",
-            "conclusion": "리더가 채움",
             "devices": [str(d) for d in jax.devices()],
             "tail_note": "Settling exposes pole-tail shares, not raw tail/peak L.",
         },
@@ -380,5 +379,5 @@ def j0_main():
         jax.clear_caches()
     emit(
         "complete",
-        {"wall_seconds": time.monotonic() - started, "conclusion": "리더가 채움"},
+        {"wall_seconds": time.monotonic() - started},
     )

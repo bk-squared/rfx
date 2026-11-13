@@ -528,7 +528,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_current_moments", "block_moments"): _NO_SHEETS | {"run_distributed"},
 }
 
-# forward(distributed=True) refuses these because it has no gradient parity bar (#2032).
+# forward(distributed=True) refuses these: no gradient parity bar exists for them.
 _MULTI_DEVICE_RUN_ONLY = frozenset({("_msl_ports", "msl_port")})
 
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
