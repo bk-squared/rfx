@@ -293,7 +293,20 @@ A traced permittivity with `"full_tensor"` is refused by name in any scene. With
 Tracker: #2624
 
 The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. Fixed for planar bodies under `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"`: where a `Box`, or a `Cylinder` cut cap to cap, has both faces inside one cell's averaging length, its fill is its own thickness and the medium outside it is read on both sides (an εr 4 slab 0.3 of a cell thick reads Ez 1.290, the series average, instead of 1.429).
-A thin `Sphere`, a `Cylinder` crossed through its radius, and a run of touching bodies that includes either still use one face for the fill. Their error was not measured; the plan is to measure a sphere and a radius-crossed cylinder smaller than a cell against the same bodies on a mesh where they span many cells.
+A thin `Sphere`, a `Cylinder` crossed through its radius, and a run of touching bodies that includes either still use one face for the fill.
+A dielectric `Sphere` or a `Cylinder` crossed through its radius that spans about two cells or fewer is over-polarized, with or without smoothing. Measured by the TE101 resonance shift (about 10.6 GHz) such a body causes in a 20 × 10 × 20 mm PEC cavity: the shift is proportional to the body's polarizability, and so to the field it scatters. The reference is the shift extrapolated from three finer meshes with smoothing (1, 0.5 and 0.25 mm cells: the sphere spans 2, 4 and 8 cells there, the rod 1, 2 and 4); it lies 3–4 % above the first-order perturbation closed form. Ratios to it, εr 4:
+
+| body | cells across | `subpixel_smoothing=True` | no smoothing |
+|---|---|---:|---:|
+| sphere, radius 1 mm, 2 mm cells | 1 | 2.41 | 2.56 |
+| rod across the field, radius 0.5 mm, 2 mm cells | 0.5 | 3.34 | 6.35 |
+| rod across the field, radius 0.5 mm, 1 mm cells | 1 | 1.55 | 1.60 |
+| sphere, radius 1 mm, 1.5 mm cells (cavity realized as 19.5 × 10.5 × 19.5 mm; its closed form uses those lengths) | 1.33 | 1.58 | 1.15 |
+| sphere, radius 1 mm, 1 mm cells | 2 | 1.30 | 1.25 |
+| rod across the field, radius 0.5 mm, 0.5 mm cells | 2 | 1.10 | 1.13 |
+
+Scattered power goes as the square of the ratio, 20·log10 of it in dB: with smoothing, 7.6 dB high for the sphere one cell across, 10.5 dB for the rod half a cell across, 3.8 dB for the rod one cell across, and 0.9–2.3 dB at two cells; without smoothing 8.2, 16.1, 4.1 and 1.1–1.9 dB. Each row was taken at one position; the ratio is expected to depend on where the body sits on the mesh, which was not swept. With smoothing, put more cells across such a body until the result stops moving (without smoothing the measured curves do not approach the reference monotonically; measured on uniform meshes; a graded mesh that refines around the body adds cells there but was not measured).
+A body that no primal-cell centre falls inside is refused ("rasterizes to ZERO cells"), with or without smoothing, so whether a body this small runs at all depends on its position: in the same cavity the sphere of radius 1 mm ran on 2 mm and 1.5 mm cells and was refused on 2.5 mm cells, and a rod of radius 0.5 mm along the field was refused on 2.5, 2 and 1.5 mm cells; each cell size moves the cell centres relative to the body. A sweep of, or a gradient through, such a body's position can cross from a result to a refusal.
 Under `"full_tensor"` a thin non-Box body keeps the one-face rule: a `Cylinder` disc 0.3 of a cell thick (εr 4) reads Ez 1.951 on the diagonal where the series average is 1.290 (51 % high), on uniform and graded meshes.
 Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
 On a curved face, full-tensor dual-face averages still use a first-order planar model.
