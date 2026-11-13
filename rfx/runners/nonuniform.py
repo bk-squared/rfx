@@ -628,7 +628,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             compute_s_params = False
 
     # every single-device non-uniform solve (run AND forward) enters here
-    from rfx.sources.tfsf import _refuse_extended_tfsf
+    from rfx.sources.tfsf import _refuse_extended_tfsf, is_oblique
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
     sim._require_mode_the_nonuniform_lane_solves()
     # compute_waveguide_s_matrix's graded branch reaches this lane without
@@ -1060,7 +1060,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     tfsf_pair = None
     if sim._tfsf is not None:
         entry = sim._tfsf
-        if abs(entry.angle_deg) > 0.01:
+        if is_oblique(entry.angle_deg):
             raise ValueError(
                 "TFSF oblique incidence (angle_deg != 0) is not yet "
                 "supported on nonuniform z mesh — the 2D auxiliary grid "

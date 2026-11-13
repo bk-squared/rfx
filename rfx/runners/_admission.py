@@ -91,13 +91,13 @@ SLAB_OWNER_ONLY_H_WRITERS = ("closed_box_tfsf",)
 
 def slab_tfsf_refusal(entry) -> str | None:
     """Return the slab refusal kind for a declaration or realized config."""
-    from rfx.sources.tfsf import is_tfsf_2d, is_tfsf_methodB
+    from rfx.sources.tfsf import is_oblique, is_tfsf_2d, is_tfsf_methodB
     if getattr(entry, "face_record", None) is not None:
         kind = "TFSF face_record replay"
-    elif is_tfsf_methodB(entry) or (abs(getattr(entry, "angle_deg", 0.)) > .01
+    elif is_tfsf_methodB(entry) or (is_oblique(getattr(entry, "angle_deg", 0.))
                                     and getattr(entry, "method", None) == "methodB"):
         kind = "TFSF Method B oblique (is_tfsf_methodB)"
-    elif is_tfsf_2d(entry) or abs(getattr(entry, "angle_deg", 0.)) > .01:
+    elif is_tfsf_2d(entry) or is_oblique(getattr(entry, "angle_deg", 0.)):
         kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
     elif getattr(entry, "closed_box", False) and (
         getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
@@ -1206,8 +1206,9 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
                 "precision='float64' with UPML would compute a float32 UPML update. "
                 "Declare precision='float32' or use boundary='cpml' for float64.")
         # Oblique Bloch steps complex64 fields; Method B remains real-valued.
+        from rfx.sources.tfsf import is_oblique
         tfsf = sim._tfsf
-        if tfsf is not None and abs(tfsf.angle_deg) > .01 and tfsf.method == "bloch":
+        if tfsf is not None and is_oblique(tfsf.angle_deg) and tfsf.method == "bloch":
             raise RfxUnsupported(
                 "precision='float64' with oblique Bloch would compute complex64 fields. "
                 "Declare precision='float32' or use normal incidence for float64.")
