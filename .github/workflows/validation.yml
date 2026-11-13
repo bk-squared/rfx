@@ -49,7 +49,7 @@ jobs:
   #
   # The highmem selection moved off GitHub runners on 2026-09-07 because
   # the ~24 GB test never fit the ~16 GB ceiling, even serialized. It now
-  # runs on the A6000 through the Mac runner named above.
+  # runs on the A6000 through the merge train's runner named above.
   #
   # .test_durations interaction: the 4-shard job's selection (`not gpu and
   # not highmem`) now excludes the 7 highmem tests, so duration_based_chunks
@@ -161,7 +161,7 @@ jobs:
       # proof of this property.
       #
       # "not highmem" (issue #545 step 3): the 7 confirmed memory-heavy tests
-      # run serially on the A6000 via the Mac runner, see the block comment above
+      # run serially on the A6000 via the merge train's runner, see the block comment above
       # this job for why.
       #
       # `-m` on the command line REPLACES pyproject's addopts marker expression

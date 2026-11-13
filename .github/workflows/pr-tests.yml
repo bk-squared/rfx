@@ -255,8 +255,8 @@ jobs:
     # the contexts main's ruleset requires, and a matrix that renames
     # them to `fast-suite (3.11, 1)` leaves every required check permanently
     # unreported, so no PR can merge.
-    # Twelve shards target ~25-30 min PR and merge-train test execution.
-    # Twenty shards; one trial run's slowest shard 38.3 min.
+    # Twelve shards first targeted ~25-30 min PR and merge-train test execution;
+    # now twenty shards, and one trial run's slowest shard took 38.3 min.
     name: fast-suite (${{ matrix.group }})
     runs-on: ubuntu-latest
     # (Superseded 2026-10-16, see below.) 12-way pytest-split estimate at 728b1eccb: max 1726 s (28.8 min); x1.22 runner variance ~35 min, plus install and JAX import ~40 min, so 60 min leaves margin.

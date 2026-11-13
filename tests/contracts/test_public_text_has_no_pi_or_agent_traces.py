@@ -220,10 +220,10 @@ NAMED_EXCEPTIONS = (
 def test_named_exceptions_are_not_stale():
     tracked = set(subprocess.check_output(
         ["git", "ls-files", "-z"], cwd=ROOT).decode("utf-8").split("\0"))
+    # A KEPT file is skipped whole and may lose its matches (ci regenerates the
+    # durations; the release PR cleans the changelog), so it must only stay tracked.
     for path, reason in KEPT:
         assert path in tracked, (path, reason)
-        assert any(matching_classes(line) for line in
-                   (ROOT / path).read_text(encoding="utf-8").splitlines()), (path, reason)
     for path, category, reason in CLASS_EXEMPTIONS:
         assert path in tracked, (path, category, reason)
         assert any(category in matching_classes(line) for line in
