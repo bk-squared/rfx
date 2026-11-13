@@ -1,7 +1,7 @@
 {
   "schema": "rfx.dz_dispatch_falsifier.v1",
   "issue": "#811",
-  "rfx_module_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/wf_7a4bcc28-1ea-4/rfx/__init__.py",
+  "rfx_module_file": "rfx/__init__.py",
   "generated_utc": "2026-09-01T06:40:57Z",
   "num_periods": 20.0,
   "normalize": "flux",

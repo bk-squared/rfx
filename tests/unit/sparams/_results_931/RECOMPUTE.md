@@ -68,7 +68,7 @@ is, so the branch must be committed before submitting.
   read a worktree's `.git` file). Run name `rfx-931-post-msl-sheet-golden`,
   preset `gpu-rtx4090`, `JAX_PLATFORMS=cpu`. Expected wall clock ~12 min
   (env install + two captures + a diff against the old golden).
-  Artifacts: `/root/workspace/claude-workspace/rfx/runs/issue931-post-msl-sheet-golden-<ts>/`.
+  Artifacts: `<workspace>/rfx/runs/issue931-post-msl-sheet-golden-<ts>/`.
 * **RESULT (run 369367259234, completed 14:49 UTC, rc=0).** Both captures
   byte-equal, `max |cap0 - cap1| = 0.0`, `settling_db = [-95.72, -103.10]`
   on both. Golden written as `complex64 (2, 2, 16)`.
@@ -84,7 +84,7 @@ is, so the branch must be committed before submitting.
   254 µm exactly with a zero-thickness foil. This is a witness for the
   contract, not just a re-baseline — but it is one solve, so it is REPORTED,
   not gated.
-* Artifacts: `/root/workspace/claude-workspace/rfx/runs/issue931-post-msl-sheet-golden-20260907T144330Z/`
+* Artifacts: `<workspace>/rfx/runs/issue931-post-msl-sheet-golden-20260907T144330Z/`
   (`capture.log`, `produced/tests/fixtures/golden_msl_sheet_thread_{s,freqs}_931.npy`).
 * **INGESTED 2026-09-07** (phase 2b): the two `.npy` files were copied
   verbatim from `produced/tests/fixtures/` (no hand edit), the test loads
@@ -113,7 +113,7 @@ is, so the branch must be committed before submitting.
 * Cost: cpu-hour class (three thru solves plus the length-invariance ladder).
 * **DONE — VESSL run 369367259284** (2026-09-07, preset gpu-rtx4090,
   JAX_PLATFORMS=cpu, rc=0, 6 min; 2 passed, 1 xfailed, 1 deselected).
-  Artifacts: `/root/workspace/claude-workspace/rfx/runs/issue931-post-msl-port-integration-20260907T194139Z/pytest.log`.
+  Artifacts: `<workspace>/rfx/runs/issue931-post-msl-port-integration-20260907T194139Z/pytest.log`.
   Submitted after the preflight merge, so it measured one geometry and one
   advisory set. **All three BOUNDS untouched and all three hold, with more
   margin than before:**
@@ -172,7 +172,7 @@ is, so the branch must be committed before submitting.
 * **VESSL run 369367259296** — resubmitted 2026-09-07 19:43 UTC after that fix.
   Job `tests/unit/sparams/_results_931/rfx-931-post-msl-replay-fixture.yaml`,
   preset `gpu-rtx4090`, `JAX_PLATFORMS=cpu`, expected ~10-15 min.
-  Artifacts: `/root/workspace/claude-workspace/rfx/runs/issue931-post-msl-replay-fixture-<ts>/`
+  Artifacts: `<workspace>/rfx/runs/issue931-post-msl-replay-fixture-<ts>/`
   (`capture.log`, `realized.log`, `produced/tests/fixtures/msl_replay_*`).
   **What to do with it:** copy both files
   (`msl_replay_accumulators.npz`, `msl_replay_golden_f64.npy`) from
@@ -247,7 +247,7 @@ is, so the branch must be committed before submitting.
   BEFORE it asserts, with a lane refusal writing `lane` (or `probe`) into
   `capture.rc` — so the next poll of the artifact directory answers "why did
   this stop" without reading the job console, which attempt 1 could not.
-  Artifacts: `/root/workspace/claude-workspace/rfx/runs/issue931-post-thru-sv-ladder-dx{1,2,4}-<ts>/`
+  Artifacts: `<workspace>/rfx/runs/issue931-post-thru-sv-ladder-dx{1,2,4}-<ts>/`
   (`rung.log`, `produced/tests/fixtures/thru_singular_value_dx_ladder/rung_dx_over_{1,2,4}.json`).
   **What to do with them:** commit the three JSONs from `produced/` as a NEW
   record beside the frozen 369367257803 ones (a new record, never a value
@@ -464,7 +464,7 @@ Stage-2 mesh (`test_referee_record_still_describes_the_fixture_it_names`).
 | R5 ladder dx/2 | **369367259305** | submitted 20:07, queued |
 | R5 ladder dx/4 | **369367259306** | submitted 20:07, queued |
 
-Poll `/root/workspace/claude-workspace/rfx/runs/issue931-post-<case>-<ts>/`;
+Poll `<workspace>/rfx/runs/issue931-post-<case>-<ts>/`;
 each case's `.latest` file names its newest directory. For the ladder rungs
 read `probe.log` first — it says which backend the job got before it decided
 anything.

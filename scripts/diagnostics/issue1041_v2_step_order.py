@@ -90,7 +90,7 @@ final field array for every arm) and prints the table below.
 MEASURED (2026-09-15, this pod: linux x86_64, 2 virtual CPU devices,
 python 3.11.16, jax 0.10.2, float32; 300 steps; legacy rev 541f703f)
 --------------------------------------------------------------------
-See ``docs/research_notes/2026-09-15_issue1041_v2_step_order.md`` and the
+See ``the measurement notes`` and the
 issue thread for the committed table.
 """
 

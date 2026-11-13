@@ -91,8 +91,7 @@ measured.
 The gate: the Stage A |S11| minimum, located with the repository's sub-bin
 estimator over the tutorial's whole 1-3 GHz grid, lies within +-1 % of 2.430 GHz
 AND is at least 10 dB deep. The -10 dB is the tutorial's own criterion for
-calling the minimum a resonance. The window is the v2 frequency bar, 1 % (crossval
-leader, 2026-09-24; the implementer proposed 2 %): the figure reads to 0.2 %, and
+calling the minimum a resonance. The window is the v2 frequency bar, 1 % (the proposed alternative was 2 %): the figure reads to 0.2 %, and
 the one recorded run of this tutorial file (the audit trail below) sits +0.10 %
 from it, so 1 % leaves room for the unmeasured differences just named. The transmission-line estimate for the
 tutorial's board is recorded beside the gate and is not part of it.

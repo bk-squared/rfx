@@ -338,6 +338,10 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
 #: Every required test allowed to read prose, and why. Adding one is a gate
 #: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
+    "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py::"
+    "test_public_text_has_no_pi_or_agent_traces":
+        "public text must not carry the maintainer's name, orders or agent traces; "
+        "scans tracked text, never judges the prose",
     "tests/contracts/test_known_limitations_tracker.py::test_every_limitation_has_a_valid_tracker":
         "Every known limitation must have an explicit tracker or accepted reason",
     "tests/contracts/test_known_limitations_citations.py::"

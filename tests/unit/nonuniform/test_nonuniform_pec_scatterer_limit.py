@@ -36,7 +36,7 @@ graded-``dy`` path within the uniform reflector class.
 RE-MEASURED under the #931 lattice ownership contract (VESSL run
 369367259209, commit 7b8d9921, ``JAX_PLATFORMS=cpu``; producer
 ``docs/design_notes/931_migration/t3_remeasure.py``, output
-``/root/workspace/claude-workspace/rfx/runs/issue931-post-t3-measure-20260907T123234Z/t3_remeasure.json``):
+``<workspace>/rfx/runs/issue931-post-t3-measure-20260907T123234Z/t3_remeasure.json``):
 
     uniform  |S11|max = 2.170   (was ~0.78-2.1)
     graded-dy |S11|max = 1.807  (was ~1.4-1.6)

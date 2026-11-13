@@ -23,7 +23,7 @@ and issues, so no per-PR gate can see them:
   PR labelled ``data-budget-exception`` merge records the budget would refuse,
   with a warning on that PR only. Whether the label became the way records land
   is a question about many PRs, so it is counted here.
-* **One campaign at a time.** The PI's standing instruction is that work runs
+* **One campaign at a time.** Work runs
   one campaign at a time, and an open milestone is how that is visible. A merged
   PR that closes an issue outside every open milestone is work that happened off
   the current campaign; a merged PR that closes no issue at all may be fine
@@ -127,7 +127,7 @@ SECTIONS = (
         "data-budget",
         "Merged PRs that carried the data-budget exception",
         "The data budget was not enforced on these: records, oversized files or "
-        "unread fixtures may have landed. Records belong in bk-squared/rfx-archive.",
+        "unread fixtures may have landed. Records belong in the record repository.",
     ),
     (
         "unlabelled",

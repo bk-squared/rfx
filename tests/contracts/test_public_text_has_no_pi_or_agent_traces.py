@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 import subprocess
 from time import perf_counter
@@ -11,10 +12,13 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCOPE = ("rfx/", "tests/")
+SCOPE = ("rfx/", "tests/", "scripts/", "docs/design_notes/", "validation/")
 pytestmark = pytest.mark.source_scan
 
 PATTERNS = {
+    "C2-key": re.compile(r"_pi_20\d\d_\d\d_\d\d"),
+    "C2-attribution": re.compile(r"(?<!TODO-)\bleaders?\b", re.IGNORECASE),
+    "C1-agent": re.compile(r"claude-workspace"),
     "C1": re.compile(r"/Users/byungkwankim/|-Users-byungkwankim|byungkwan-workspace|runs/byungkwan/|Project: byungkwan"),
     "C2": re.compile(r"\b(?:PI|PI-directed|PI-gated|PI-approved)\b|the professor"),
     "C3": re.compile(r"[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff]"),
@@ -30,22 +34,44 @@ PATTERNS = {
 CANDIDATE_PATTERN = (
     r"byungkwan|/Users/|PI|professor|rfx|agent-rules|pi-desk|[DL]:|MSL-PLANE"
     r"|ledger|records?[ /]20|docs/agent-memory|research_notes|bk-workspace|remilab-cnu|acc-"
+    r"|_pi_20|leader|claude-workspace"
     r"|[^ -~]"  # All non-ASCII text includes every Hangul range, in any locale.
 )
+# Byte-oriented Git matching avoids locale overhead; Python judges Unicode.
+GREP_ENV = {**os.environ, "LC_ALL": "C"}
 MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
 
 
 def matching_classes(line):
     """Allow mathematical uses without hiding attribution elsewhere on a line."""
+    # Necessary conditions only: the original regexes still decide every hit.
+    # Most selected source lines contain ordinary package names or Unicode text.
+    possible = {
+        "C2-key": "_pi_20" in line,
+        "C2-attribution": "leader" in line.lower(),
+        "C1-agent": "claude-workspace" in line,
+        "C1": "byungkwan" in line,
+        "C2": "PI" in line or "the professor" in line,
+        "C3": not line.isascii(),
+        "C4": any(token in line for token in (
+            "rfx", "agent-rules", "pi-desk", "D:", "L:", "MSL-PLANE.md",
+            "ledger", "record", "docs/research_notes/", "docs/agent-memory",
+            "bk-workspace", "remilab-cnu/paper", "acc-",
+        )),
+    }
     return [name for name, pattern in PATTERNS.items()
-            if pattern.search(MATH_PI.sub("", line) if name == "C2" and "PI" in line else line)]
+            if possible[name] and pattern.search(
+                MATH_PI.sub("", line) if name == "C2" and "PI" in line else line)]
 
 
+@pytest.mark.reads_docs_for_gate(
+    reason="public text must not carry the maintainer's name, orders or agent traces; "
+    "scans tracked text, never judges the prose")
 def test_public_text_has_no_pi_or_agent_traces():
     started = perf_counter()
     result = subprocess.run(
         ["git", "grep", "-n", "-I", "-z", "-E", "-i", CANDIDATE_PATTERN,
-         "--", *SCOPE], cwd=ROOT, capture_output=True,
+         "--", *SCOPE], cwd=ROOT, capture_output=True, env=GREP_ENV,
     )
     selected = perf_counter()
     assert result.returncode in (0, 1), result.stderr.decode(errors="replace")
@@ -73,6 +99,8 @@ def test_public_text_has_no_pi_or_agent_traces():
 
 @pytest.mark.parametrize("line", [
     "PI = math.pi", "PI =", "2 * PI", "math.pi", "np.pi", "PIL", "PIN",
+    "the leading term", "leaderboard", "TODO-LEADER", "Tracker: TODO-LEADER",
+    "foo_pi_1999_09_21", "foo_pi_2026_9_21",
     "API", "SPICE", "my_PI_value", "PI_value", "value_PI", "SPI2",
     "21^3", "20261016", "0.648", "acc-admem-g1-20261016t043022z-648d9-extra",
     "prefix-acc-admem-g1-20261016t043022z-648d9",
@@ -82,6 +110,12 @@ def test_math_and_identifiers_are_allowed(line):
 
 
 PRIVATE_TEXT_CASES = [
+    ('"foo_pi_2026_09_21": 1', "C2-key"),
+    ("# leader decision 2026-09-23", "C2-attribution"),
+    ("# Leader's declared rule", "C2-attribution"),
+    ("# LEADERS checked", "C2-attribution"),
+    ("# TODO-LEADER; leader decision", "C2-attribution"),
+    ("# /root/workspace/claude-workspace/x", "C1-agent"),
     ("# /Users/byungkwankim/x", "C1"),
     ("# -Users-byungkwankim-x", "C1"),
     ("# byungkwan-workspace/x", "C1"),
@@ -139,7 +173,7 @@ def test_git_prefilter_covers_every_class(tmp_path):
         result = subprocess.run(
             ["git", "grep", "--no-index", "-n", "-I", "-z", engine, "-i",
              CANDIDATE_PATTERN, "--", sample.name],
-            cwd=tmp_path, capture_output=True,
+            cwd=tmp_path, capture_output=True, env=GREP_ENV,
         )
         assert result.returncode == 0, (engine, result.stderr)
         selected = [record.split(b"\0", 2)[2].decode("utf-8")
@@ -149,11 +183,9 @@ def test_git_prefilter_covers_every_class(tmp_path):
 
 # A blank literal exempts a whole file while it still contains matching text.
 NAMED_EXCEPTIONS = (
+    ('scripts/memory_reduction_planning_artifact.py', 'default=Path(', "an argparse default into the repository's gitignored note folder; behaviour"),
+    ('scripts/diagnostics/build_msl_openems_sparameter_comparison.py', 'DEFAULT_REFERENCE =', "an argparse default into the repository's gitignored note folder; behaviour"),
     ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '', 'The pin holds the patterns and synthetic cases, and its only hits are such text.'),
-    ('tests/contracts/test_layer_structure.py', '(PI to decide how far 2.0 reaches)', 'the producer in scripts/ changes this text in the next cleanup step'),
-    ('tests/contracts/test_changelog_fragments.py', 'bk-squared/rfx-archive', 'the producer in scripts/ changes this text in the next cleanup step'),
-    ('tests/contracts/test_data_budget.py', 'bk-squared/rfx-archive', 'the producer in scripts/ changes this text in the next cleanup step'),
-    ('tests/contracts/test_data_budget.py', 'rfx/records/<YYYYMMDD>-<topic>/', 'the producer in scripts/ changes this text in the next cleanup step'),
     ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/research_notes/', 'The contract proves the research-note directory is untracked.'),
     ('tests/contracts/test_research_notes_are_not_tracked.py', 'docs/agent-memory', 'The contract proves the local-only ledger directory is untracked.'),
     ('tests/contracts/test_source_carries_no_tracker_history.py', 'docs/research_notes/2000-01-02_sample.md', 'Synthetic citation proves private provenance is detected.'),

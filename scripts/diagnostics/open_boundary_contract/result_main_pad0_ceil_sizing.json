@@ -1,6 +1,6 @@
 {
- "tree_root": "/root/workspace/bk-workspace/.801-measure/src-main",
- "rfx_file": "/root/workspace/bk-workspace/.801-measure/src-main/rfx/__init__.py",
+ "tree_root": "<workspace>/.801-measure/src-main",
+ "rfx_file": "rfx/__init__.py",
  "x64": false,
  "ceil_sizing": true,
  "num_periods": 150.0,
