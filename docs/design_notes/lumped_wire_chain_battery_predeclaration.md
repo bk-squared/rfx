@@ -154,7 +154,7 @@ SHUNT elements on a through line. Two consequences, both properties of the circu
   realized port and load node equals the node the closed form assumes (three meshes, two
   separations, both port kinds), and the same records agree with the exact shunt network.
 
-Decision (lead, 2026-10-06 for the matched row; 2026-10-08 for the others):
+Decision (2026-10-06 for the matched row; 2026-10-08 for the others):
 
 1. Every row is judged at the load plane: `Gamma_L` de-embedded with the exact network of the
    circuit actually built (formula written in the test file, no product extractor): short `-1`,
