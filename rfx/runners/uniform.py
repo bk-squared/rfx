@@ -181,6 +181,7 @@ def run_uniform(
         sim, grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal=conformal_pec, conformal_min_weight=conformal_min_weight,
         pec_shapes=pec_shapes)
+    tensor_smoothing = subpixel_smoothing if aniso_eps is not None or aniso_inv_eps is not None else False
     if subpixel_smoothing:
         from rfx.geometry.smoothing import warn_unextendable_shapes
         # Assembly already emitted the conductor findings for this run.
@@ -720,6 +721,7 @@ def run_uniform(
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
             aniso_inv_eps=aniso_inv_eps,
+            subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
@@ -759,6 +761,7 @@ def run_uniform(
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
             aniso_inv_eps=aniso_inv_eps,
+            subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
