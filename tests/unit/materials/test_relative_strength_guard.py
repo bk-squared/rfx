@@ -108,6 +108,7 @@ def test_scalar_calls_module_guard(monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(lorentz, "pole_underflow_guard", counted)
+    monkeypatch.setattr("rfx.model.dispersive_poles.pole_underflow_guard", counted)
     monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", "1")
     jax.jvp(lambda k: lorentz.pole_update_coeffs(0., 2e9, k, 1e-12)[2],
             (jnp.float32(KAPPA),), (jnp.float32(1.),))

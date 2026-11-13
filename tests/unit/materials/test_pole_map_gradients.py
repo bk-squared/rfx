@@ -181,6 +181,7 @@ def traced_map_coefficients(monkeypatch, graded, declaration):
         return tuple(arms)
     with monkeypatch.context() as patch:
         patch.setattr(lorentz, 'lorentz_e_coeffs', observe)
+        patch.setattr('rfx.model.dispersive_poles.lorentz_e_coeffs', observe)
         return jax.device_get(jax.jit(measure)(parameters()))
 
 

@@ -97,6 +97,7 @@ def test_b6_10_delta_only_guard(monkeypatch, graded):
         return guard(out, factors, scalar=scalar)
 
     monkeypatch.setattr(lorentz, 'pole_underflow_guard', spy)
+    monkeypatch.setattr('rfx.model.dispersive_poles.pole_underflow_guard', spy)
     monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
     jax.clear_caches()
     with warnings.catch_warnings(record=True) as caught:

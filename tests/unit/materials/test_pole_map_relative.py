@@ -61,6 +61,7 @@ def test_b6_5_relative_coefficients(graded, monkeypatch):
             captured.append(np.asarray(damping))
         return core(omega, damping, strength, dt, field_dtype)
     monkeypatch.setattr(lorentz, 'pole_update_coeffs', observe)
+    monkeypatch.setattr('rfx.model.dispersive_poles.pole_update_coeffs', observe)
     coeffs, _ = init(pole, grid, mask)
     assert len(captured) == 3
     worst = dict(delta_ulp=0., damping_spacings=0, c_spacings=0)

@@ -72,10 +72,10 @@ BUILDERS = {
     ("rfx/model/dispersive_poles.py", "init_debye"): "Debye initialization",
     ("rfx/model/dispersive_poles.py", "debye_e_coeffs"):
         "Debye ADE ca/cb/cc, including distributed in-loop builders",
-    ("rfx/materials/lorentz.py", "init_lorentz"): "Lorentz initialization",
-    ("rfx/materials/lorentz.py", "lorentz_e_coeffs"):
+    ("rfx/model/dispersive_poles.py", "init_lorentz"): "Lorentz initialization",
+    ("rfx/model/dispersive_poles.py", "lorentz_e_coeffs"):
         "Lorentz ADE ca/cb/cc, including distributed in-loop builders",
-    ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"):
+    ("rfx/model/dispersive_poles.py", "mixed_e_component_coeffs"):
         "mixed Debye+Lorentz ca/cb/cc on every supported lane",
     ("rfx/stepping/uniform_setup.py", "_update_e_with_optional_dispersion"):
         "uniform mixed Debye+Lorentz update",
@@ -109,7 +109,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         "a recorded field difference; no permittivity, traced or not, is divided through it",
     ("rfx/model/dispersive_poles.py", "debye_pole_coeffs"):
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
-    ("rfx/materials/lorentz.py", "pole_update_coeffs"):
+    ("rfx/model/dispersive_poles.py", "pole_update_coeffs"):
         "material-independent ADE c: EPS_0 multiplies the pole strength",
 
 
@@ -180,8 +180,8 @@ HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
     ("rfx/core/yee.py", "e_update_coeffs"),
     ("rfx/model/dispersive_poles.py", "debye_e_coeffs"),
-    ("rfx/materials/lorentz.py", "lorentz_e_coeffs"),
-    ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"),
+    ("rfx/model/dispersive_poles.py", "lorentz_e_coeffs"),
+    ("rfx/model/dispersive_poles.py", "mixed_e_component_coeffs"),
 }
 ROUTES = {HELPER} | {name for _, name in SHARED_ROUTES}
 _EPS_0 = "EPS_0"
