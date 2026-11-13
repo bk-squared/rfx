@@ -19,6 +19,9 @@ from rfx.model.waveguide_modes import (
     _compute_beta,
     _compute_mode_impedance,
 )
+from rfx.measurement.waveguide_power import (
+    power_wave_pair, finite_wave_ratio, mask_power_wave, power_wave_ratio, warn_power_waves,
+)
 from rfx.measurement.settling import (
     settling_db_from_port_records,
 )
@@ -417,8 +420,9 @@ def extract_waveguide_sparams(
     a_ref, b_ref = _shift_modal_waves(a_ref, b_ref, beta, ref_shift, step_sign)
     a_probe, b_probe = _shift_modal_waves(a_probe, b_probe, beta, probe_shift, step_sign)
     safe_ref = jnp.where(jnp.abs(a_ref) > 0, a_ref, jnp.ones_like(a_ref))
-    s11 = b_ref / safe_ref
-    s21 = a_probe / safe_ref
+    warn_power_waves([cfg])
+    s11 = power_wave_ratio(b_ref, safe_ref, cfg, cfg)
+    s21 = power_wave_ratio(a_probe, safe_ref, cfg, cfg)
     return s11, s21
 
 
@@ -441,7 +445,9 @@ def extract_waveguide_s11(cfg: WaveguidePortConfig,
                           ref_shift: float = 0.0) -> jnp.ndarray:
     """Extract S11 from backward/forward modal amplitudes with optional de-embedding."""
     a_ref, b_ref = extract_waveguide_port_waves(cfg, ref_shift=ref_shift)
-    return b_ref / jnp.where(jnp.abs(a_ref) > 0, a_ref, jnp.ones_like(a_ref))
+    warn_power_waves([cfg])
+    safe_ref = jnp.where(jnp.abs(a_ref) > 0, a_ref, jnp.ones_like(a_ref))
+    return power_wave_ratio(b_ref, safe_ref, cfg, cfg)
 
 
 def extract_waveguide_port_waves(
@@ -550,6 +556,7 @@ def extract_waveguide_s_matrix(
     from rfx.stepping.uniform_loop import run as run_simulation
 
     template_cfgs = tuple(port_cfgs)
+    warn_power_waves(template_cfgs)
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
     n_ports = len(template_cfgs)
     # G-AD-WIRE: use a list-of-columns accumulator so the final jnp.stack
@@ -626,18 +633,17 @@ def extract_waveguide_s_matrix(
                 ref_shift=ref_shifts[recv_idx],
             )
             # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
-            ratio = b_recv / safe_a
             drive_cfg = final_cfgs[drive_idx]
+            defined = power_wave_pair(cfg, drive_cfg)
+            ratio = finite_wave_ratio(b_recv, safe_a, defined)
             if cfg.medium != drive_cfg.medium:
                 zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
                                              medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
                 zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
                                              medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
-                # A power wave needs both ports propagating: where either is at or below its own
-                # cutoff (its Z is the evanescent sentinel) the entry has no power meaning.
-                below = (cfg.freqs <= cfg.f_cutoff) | (drive_cfg.freqs <= drive_cfg.f_cutoff)
-                ratio = jnp.where(below, jnp.nan, ratio * jnp.sqrt(zj / zi))
-            col_slices.append(ratio)
+                ratio = ratio * jnp.sqrt(finite_wave_ratio(zj, zi, defined) +
+                                         jnp.where(defined, 0, 1))
+            col_slices.append(mask_power_wave(ratio, defined))
         # Stack recv slices into column (n_ports, n_freqs).
         s_cols.append(jnp.stack(col_slices, axis=0))
 
@@ -765,6 +771,7 @@ def extract_waveguide_s_matrix_flux(
     _AXIS_IDX = {"x": 0, "y": 1, "z": 2}
 
     template_cfgs = tuple(port_cfgs)
+    warn_power_waves(template_cfgs)
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
     n_ports = len(template_cfgs)
     freqs = template_cfgs[0].freqs
@@ -928,7 +935,8 @@ def extract_waveguide_s_matrix_flux(
             # AD-safe angle (double-where): angle() has an undefined
             # gradient at 0; angle(1)=0 matches np.angle(0)=0 so the
             # primal is unchanged.
-            ratio = b_recv_dev / safe_a
+            defined = power_wave_pair(dev_cfg, ref_final_cfgs[drive_idx])
+            ratio = finite_wave_ratio(b_recv_dev, safe_a, defined)
             ratio_ok = jnp.abs(ratio) > 0.0
             phase = jnp.angle(jnp.where(ratio_ok, ratio, jnp.ones_like(ratio)))
 
@@ -942,7 +950,7 @@ def extract_waveguide_s_matrix_flux(
             # power ratio exactly 0, where d(sqrt)/dx = inf would leak
             # 0*inf=nan through the backward pass; primal stays exactly
             # sqrt(x) for x>0 and exactly 0 at x=0.
-            p_ratio = P_num / safe_P_inc
+            p_ratio = finite_wave_ratio(P_num, safe_P_inc, defined)
             p_ok = p_ratio > 0.0
             mag = jnp.where(
                 p_ok, jnp.sqrt(jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))), 0.0
@@ -950,7 +958,7 @@ def extract_waveguide_s_matrix_flux(
 
             # Modal records and flux accumulators use the precision selected
             # for this run, including the reference's incident spectrum.
-            col_entries.append(mag * jnp.exp(1j * phase))
+            col_entries.append(mask_power_wave(mag * jnp.exp(1j * phase), defined))
 
         # (n_ports, n_freqs) column for this drive port
         s_columns.append(jnp.stack(col_entries, axis=0))
@@ -963,7 +971,7 @@ def extract_waveguide_s_matrix_flux(
 
 
 def assemble_normalized_waveguide_column(
-    b_dev, b_ref, a_inc_ref, drive_idx, *, diagonal_floor, transmission_floor, xp,
+    b_dev, b_ref, a_inc_ref, drive_idx, *, port_cfgs, diagonal_floor, transmission_floor, xp,
 ):
     """Assemble one column at the declared planes using reference incidence.
 
@@ -978,8 +986,11 @@ def assemble_normalized_waveguide_column(
         xp.abs(a_inc_ref) > transmission_floor, a_inc_ref, xp.ones_like(a_inc_ref),
     )
     return xp.stack([
-        (b_dev[i] - b_ref[i]) / safe_diagonal if i == drive_idx
-        else b_dev[i] / safe_transmission
+        power_wave_ratio(
+            b_dev[i] - b_ref[i] if i == drive_idx else b_dev[i],
+            safe_diagonal if i == drive_idx else safe_transmission,
+            port_cfgs[i], port_cfgs[drive_idx], xp=xp,
+        )
         for i in range(len(b_dev))
     ])
 
@@ -1099,6 +1110,7 @@ def extract_waveguide_s_params_normalized(
     from rfx.stepping.uniform_loop import run as run_simulation
 
     template_cfgs = tuple(port_cfgs)
+    warn_power_waves(template_cfgs)
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
     n_ports = len(template_cfgs)
     n_freqs = len(template_cfgs[0].freqs)
@@ -1221,7 +1233,7 @@ def extract_waveguide_s_params_normalized(
             b_out_dev.append(np.array(b_recv_dev))
         s_matrix[:, drive_idx, :] = assemble_normalized_waveguide_column(
             b_out_dev, b_out_ref, a_inc_ref_np, drive_idx,
-            diagonal_floor=1e-30, transmission_floor=1e-30, xp=np,
+            port_cfgs=dev_final_cfgs, diagonal_floor=1e-30, transmission_floor=1e-30, xp=np,
         )
 
     if return_settling:
@@ -1295,6 +1307,7 @@ def extract_multimode_s_matrix(
             m_idx = _mode_indices_from_config(cfg)
             mode_map.append((port_idx, mode_within, cfg.mode_type, m_idx))
 
+    warn_power_waves(flat_cfgs, port_indices=[row[0] for row in mode_map])
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, flat_cfgs)
     n_total = len(flat_cfgs)
     n_freqs = len(flat_cfgs[0].freqs)
@@ -1372,7 +1385,9 @@ def extract_multimode_s_matrix(
                 cfg,
                 ref_shift=flat_ref_shifts[recv_idx],
             )
-            s_matrix[recv_idx, drive_flat_idx, :] = np.array(b_recv / safe_a)
+            s_matrix[recv_idx, drive_flat_idx, :] = np.array(power_wave_ratio(
+                b_recv, safe_a, cfg, final_cfgs[drive_flat_idx],
+            ))
 
     return jnp.asarray(s_matrix), mode_map
 
@@ -1479,6 +1494,7 @@ def extract_multimode_s_matrix_flux(
             "extract_multimode_s_matrix_flux requires at least two modal channels"
         )
 
+    warn_power_waves(flat_cfgs, port_indices=[row[0] for row in mode_map])
     record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, flat_cfgs)
     n_total = len(flat_cfgs)
     n_freqs = len(flat_cfgs[0].freqs)
@@ -1581,15 +1597,16 @@ def extract_multimode_s_matrix_flux(
             _, b_recv_dev = _s_matrix_port_waves(
                 dev_cfg, ref_shift=flat_ref_shifts[recv_idx]
             )
-            phase = np.angle(np.array(b_recv_dev) / safe_a_inc)
+            defined = power_wave_pair(dev_cfg, ref_final_cfgs[drive_flat_idx])
+            phase = np.angle(finite_wave_ratio(np.array(b_recv_dev), safe_a_inc, defined, xp=np))
 
             if recv_idx == drive_flat_idx:
                 P_refl = np.abs(F_ref[recv_idx] - F_dev[recv_idx])
-                mag = np.sqrt(P_refl / safe_P_inc)
+                mag = np.sqrt(finite_wave_ratio(P_refl, safe_P_inc, defined, xp=np))
             else:
                 P_out = np.abs(F_dev[recv_idx])
-                mag = np.sqrt(P_out / safe_P_inc)
+                mag = np.sqrt(finite_wave_ratio(P_out, safe_P_inc, defined, xp=np))
 
-            s_matrix[recv_idx, drive_flat_idx, :] = mag * np.exp(1j * phase)
+            s_matrix[recv_idx, drive_flat_idx, :] = mask_power_wave(mag * np.exp(1j * phase), defined, xp=np)
 
     return jnp.asarray(s_matrix), mode_map
