@@ -308,7 +308,12 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
 def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
                         grid=None, cell_sizes=None, domain_faces=None, name=None,
                         refuse_empty=True):
-    """Sample a material volume and refuse a declaration owning no cells."""
+    """Sample a material volume and refuse a declaration owning no cells.
+
+    With ``refuse_empty`` a Sphere or Cylinder too small to hold a primal-cell
+    centre at every position is refused first, by its size
+    (:mod:`rfx.geometry.curved_body_size`); the empty-mask test stays behind it.
+    """
     if cell_sizes is None:
         cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
                       else cell_sizes_from_uniform_grid(grid) if grid is not None
@@ -319,6 +324,8 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
                                  cell_sizes=cell_sizes, domain_faces=domain_faces)
     if refuse_empty:
         from rfx.geometry.curved import CurvedPatch
+        from rfx.geometry.curved_body_size import refuse_small_body
+        refuse_small_body(shape, centres, cell_sizes, name)
         empty = (True if isinstance(shape, CurvedPatch) else
                  _volume_is_empty(shape, centres, mask, cell_sizes,
                                   grid=grid, domain_faces=domain_faces))
