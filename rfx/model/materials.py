@@ -8,7 +8,7 @@ Conductors own their realized products in rfx.model.conductors.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax
 
@@ -470,6 +470,10 @@ def assemble_cells(
 
     debye_spec = _spec_from_pole_masks(debye_masks_by_pole)
     lorentz_spec = _spec_from_pole_masks(lorentz_masks_by_pole)
+    from rfx.materials.pole_map import sample_spec, refuse_maps
+    if n_devices > 1 and lorentz_spec is not None:
+        refuse_maps(lorentz_spec[0], "distributed_v2 / distributed_nu")
+    lorentz_spec = sample_spec(lorentz_spec, grid, grid.shape)
 
     if not nonuniform:
         pec_mask = _optional_pec_mask(pec_mask, has_pec_cells)
@@ -600,7 +604,7 @@ class EdgePoles(NamedTuple):
 
     debye_spec: object
     lorentz_spec: object
-    grid: object = None
+    grid: Any = None
 
     def at(self, cell, dt):
         lo = tuple(max(int(i) - 1, 0) for i in cell)
@@ -612,8 +616,14 @@ class EdgePoles(NamedTuple):
             if spec is None:
                 out.append(None)
                 continue
+            from rfx.materials.pole_map import SampledPoleMap, sample_spec
+            if kind == "Lorentz":
+                spec = sample_spec(spec, self.grid, self.grid.shape)
             poles, masks = spec
             masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
+            poles = [replace(p, delta=p.delta[window], kappa=p.kappa[window],
+                             centres=tuple(a[w] for a, w in zip(p.centres, window)))
+                     if isinstance(p, SampledPoleMap) else p for p in poles]
             cut = (poles, [m if m is None else m[window] for m in masks])
             widths = electric_cell_sizes(self.grid)
             widths = None if widths is None else tuple(
@@ -622,8 +632,7 @@ class EdgePoles(NamedTuple):
                                    high_wall=tuple(wall and w.stop == n for wall, w, n in
                                        zip(unpadded_high_walls(self.grid), window, self.grid.shape)),
                                    cell_sizes=widths).coefficients
-            out.append(tuple(tuple(v[local] for v in t) if isinstance(t, tuple) else t[local]
-                             for t in terms))
+            out.append(jax.tree.map(lambda value: value[local], terms))
         return out
 
 
@@ -699,8 +708,7 @@ def e_update_coefficient_at(materials, cell, component, dt,
             alpha, beta = c.debye.coefficients
             dt_terms = (alpha[pole_cell], tuple(b[pole_cell] for b in beta))
         if c.lorentz is not None:
-            damping, restoring, strength = c.lorentz.coefficients
-            lt_terms = (damping[pole_cell], restoring[pole_cell], tuple(v[pole_cell] for v in strength))
+            lt_terms = jax.tree.map(lambda value: value[pole_cell], c.lorentz.coefficients)
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
     if host:
         from rfx.model.source_coefficients import current_source_cb
@@ -754,6 +762,9 @@ def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: t
 def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None):
     if spec is None:
         return None
+    from rfx.materials.pole_map import sample_spec, is_map, build_map_coeffs
+    if kind == "Lorentz":
+        spec = sample_spec(spec, grid, shape)
     poles, masks = spec
     if isinstance(masks, (tuple, list)):
         if len(masks) != len(poles):
@@ -764,6 +775,10 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=N
                     high_wall=high_wall, cell_sizes=cell_sizes) for m in masks)
     if grid is None:
         return ComponentDispersion(tuple(poles), None, weights, None)
+    if any(is_map(p) for p in poles):
+        terms = build_map_coeffs(poles, masks, grid.dt, shape, weights, periodic=periodic,
+                                 high_wall=high_wall, cell_sizes=cell_sizes)
+        return ComponentDispersion(tuple(poles), terms, None, grid.dt)
     if kind == "Debye":
         from rfx.materials.debye import debye_pole_coeffs as build
     else:
@@ -802,6 +817,8 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
         materials, debye_spec, lorentz_spec = cells
     else:
         materials, debye_spec, lorentz_spec = cells, None, None
+    from rfx.materials.pole_map import sample_spec
+    lorentz_spec = sample_spec(lorentz_spec, grid, materials.eps_r.shape)
     from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
     if view is not None and periodic[0]:
         raise ValueError("slab realization of an x-periodic grid: the first slab's "
@@ -981,8 +998,12 @@ def validate_dispersion(realized, poles, dt):
                           and jnp.ndim(a) == jnp.ndim(b) == 0 and bool(a == b))
     if not same(realized.dt, dt):
         raise ValueError("realized ADE coefficients have a different timestep")
-    if not all(same(a, b) for p, q in zip(realized.poles, poles)
-               for a, b in zip(p, q)):
+    from rfx.materials.pole_map import is_map
+    def same_pole(p, q):
+        if is_map(p) or is_map(q):
+            return getattr(p, "source", p) is getattr(q, "source", q)
+        return all(same(a, b) for a, b in zip(p, q))
+    if len(realized.poles) != len(poles) or not all(same_pole(p, q) for p, q in zip(realized.poles, poles)):
         raise ValueError("realized ADE coefficients have different pole parameters")
 
 

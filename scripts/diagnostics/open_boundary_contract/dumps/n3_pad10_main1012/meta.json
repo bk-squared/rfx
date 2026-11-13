@@ -2,7 +2,7 @@
  "label": "n3_pad10_main1012",
  "out_label": "n3_pad10_main1012",
  "tree": "src-main-plus-1012",
- "tree_root": "/root/workspace/bk-workspace/.801-measure/src-main-plus-1012",
+ "tree_root": "<workspace>/.801-measure/src-main-plus-1012",
  "arm": {
   "n": 3,
   "pad_h": 10,

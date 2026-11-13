@@ -31,7 +31,7 @@ from rfx.api._port_kind import PortKind
 from rfx.geometry.csg import Shape
 from rfx.sources.sources import GaussianPulse
 from rfx.materials.debye import DebyePole
-from rfx.materials.lorentz import LorentzPole
+from rfx.materials.lorentz import LorentzPole, LorentzPoleMap
 
 
 # ---------------------------------------------------------------------------
@@ -1057,7 +1057,7 @@ class MaterialSpec:
     sigma: float = 0.0
     mu_r: float = 1.0
     debye_poles: list[DebyePole] | None = None
-    lorentz_poles: list[LorentzPole] | None = None
+    lorentz_poles: list[LorentzPole | LorentzPoleMap] | None = None
     chi3: float = 0.0  # Third-order Kerr susceptibility (m^2/V^2)
 
 

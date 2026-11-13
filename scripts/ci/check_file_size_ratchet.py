@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Enforce the down-only line-count baseline for rfx Python sources.
 
-PI 2026-10-05 and the structure plan §11 put file structure in the 2.0 bar.
+The structure plan §11 puts file structure in the 2.0 bar.
 The only way to add lines to a listed file is to remove at least as many from
 it. Split the file instead of raising its baseline; comparisons use numbers,
 never source text. Counts exclude blank and comment-only terminated lines;

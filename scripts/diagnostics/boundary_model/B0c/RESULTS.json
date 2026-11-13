@@ -8,7 +8,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-cpu",
         "1"
       ],
@@ -412,7 +412,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-cpu",
         "0.5"
       ],
@@ -864,7 +864,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-cpu",
         "0.25"
       ],
@@ -1412,7 +1412,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "forward-cpu",
         "1"
       ],
@@ -1816,7 +1816,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "forward-cpu",
         "0.5"
       ],
@@ -2268,7 +2268,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "forward-cpu",
         "0.25"
       ],
@@ -2816,7 +2816,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "sweep-cpu",
         "1"
       ],
@@ -3161,7 +3161,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "sweep-cpu",
         "0.5"
       ],
@@ -3554,7 +3554,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "sweep-cpu",
         "0.25"
       ],
@@ -4043,7 +4043,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "nonuniform-cpu",
         "1"
       ],
@@ -4372,7 +4372,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "nonuniform-cpu",
         "0.5"
       ],
@@ -4757,7 +4757,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "nonuniform-cpu",
         "0.25"
       ],
@@ -5243,7 +5243,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-gpu",
         "1"
       ],
@@ -5404,7 +5404,7 @@
       "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
       "n_steps": 4096,
       "exception": "RuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.",
-      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
+      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<workspace>/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"<workspace>/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
       "events": [
         {
           "event": "call",
@@ -5502,7 +5502,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-gpu",
         "0.5"
       ],
@@ -5711,7 +5711,7 @@
       "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
       "n_steps": 8192,
       "exception": "RuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.",
-      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
+      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<workspace>/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"<workspace>/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
       "events": [
         {
           "event": "call",
@@ -5809,7 +5809,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-gpu",
         "0.25"
       ],
@@ -6114,7 +6114,7 @@
       "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
       "n_steps": 16384,
       "exception": "RuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.",
-      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
+      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<workspace>/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"<workspace>/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
       "events": [
         {
           "event": "call",
@@ -6205,5 +6205,5 @@
       "preflight_stdout_file": "witness/run-gpu__0p25.preflight.stdout.txt"
     }
   ],
-  "conclusion": "leader fills."
+  "conclusion": "Conclusion pending"
 }

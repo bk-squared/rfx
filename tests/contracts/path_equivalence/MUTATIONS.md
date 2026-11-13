@@ -27,4 +27,4 @@ All eleven mutation runs were killed. The pytest summaries were one failure
 for each of the five m1 variants, each m2 variant, and m4;
 one collection error for m3; one failure and one pass for m5.
 
-Conclusions: in the S0 PR body (leader)
+Conclusions: in the S0 PR body

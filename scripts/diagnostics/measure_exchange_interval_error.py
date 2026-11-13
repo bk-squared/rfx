@@ -4,7 +4,7 @@
 
 Run from the worktree root (no pytest):
   JAX_PLATFORMS=cpu XLA_FLAGS=--xla_force_host_platform_device_count=4 \
-    PYTHONPATH=$PWD /Users/byungkwankim/Documents/rfx/.venv/bin/python \
+    PYTHONPATH=$PWD .venv/bin/python \
     scripts/diagnostics/measure_exchange_interval_error.py
 
 Only this diagnostic and its output directory are written. Solver code and

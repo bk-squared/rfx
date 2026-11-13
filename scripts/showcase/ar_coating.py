@@ -52,7 +52,7 @@ FD_STEPS = (0.02, 0.01, 0.005)   # in eps_r, per component
 FD_JUDGED_STEP = 0.01
 FD_REL_BAR = 0.05
 WITNESS_FACTOR = 1.5             # record-length witness: 1.5 x the example's N_STEPS
-WITNESS_TOL = 0.05               # Amendment 1 (lane leader): judged per component
+WITNESS_TOL = 0.05               # Amendment 1: judged per component
 # The example's gates (examples/inverse_design/multilayer_ar_coating.py, main()):
 GATE_TMM_RATIO = 1.2
 GATE_GEO_RATIO = 0.7
@@ -267,7 +267,7 @@ def main(argv=None) -> int:
     witness_claims = [
         _record.claim(f"record-length witness: |g_1.5x - g_1.0x| / |g_1.5x|, d cost / d eps_r{i + 1}, "
                       "start point", float(rel[i]), "1", "record_length_witness.json",
-                      threshold=WITNESS_TOL, rule="Amendment 1 (lane leader)")
+                      threshold=WITNESS_TOL, rule="Amendment 1")
         for i in range(ex.N_LAYERS)]
     witness_claims.append(_record.claim(
         "record-length witness, helper norm ||g_1.5x - g_1.0x|| / ||g_1.5x||", float(w.worst), "1",

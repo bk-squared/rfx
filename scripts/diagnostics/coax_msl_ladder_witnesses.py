@@ -876,7 +876,7 @@ def compute_witnesses(d):
                 "interior top, tighter than the predeclared zt = 3.4 mm, so a closure residual "
                 "here cannot be separated from face placement) and NO shell-tightness strips (it "
                 "ASSUMES the tightness the predeclared instrument MEASURES). These numbers are "
-                "not directly comparable to that instrument's; the PI arbitrates.",
+                "not directly comparable to that instrument's.",
             "h1_sign": "coax drive, POST-#822: msl_x20 > 0 (net power LEAVES the junction at the "
                        "NON-DRIVEN port, whose +x branch the assembler now labels b_out) => labels "
                        "consistent, H1 KILLED; msl_x20 < 0 => labels inverted, H1 supported. NOT "

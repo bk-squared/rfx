@@ -152,18 +152,6 @@ front of a PEC face that must carry loss for every field orientation, use a PEC 
 Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
 from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
-### `add_wall_loss` on a uniform mesh: each lossy high domain face dissipates slightly more power than the surface-impedance model
-
-Tracker: #2615
-
-Each lossy high domain face (x_hi, y_hi, z_hi) dissipates slightly more power than the surface-impedance model, because
-the uniform update also drives the magnetic row half a cell outside that face. Cavity Q comes out low by 2.4e-4 of its
-value with the x pair lossy, 1.8e-4 with the y pair and 1.5e-4 with the z pair (wall conductivity 5.8e5 S/m, one
-hundredth of copper; TE101 near 8 GHz, 1 mm cells), against a graded mesh with the same cells, which does not drive that
-row. Lossless walls are unaffected.
-What to do now: give one axis an explicit profile of equal cells (for example `dy_profile=np.full(ny, dx)`); the run then
-takes the graded path on the same cells, which does not drive that row.
-
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
 Tracker: #1958
@@ -278,6 +266,15 @@ With the default `skip_preflight=False`, `forward()` with a traced `eps_r` still
 Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a concrete value.
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
+
+### A traced pole-map profile that is undefined outside its material gives a NaN gradient.
+
+Tracker: #2650
+
+A `LorentzPoleMap` (or `drude_pole_map`, `lorentz_pole_map`) callable is evaluated at every cell centre, and only the occupied cells' values are kept.
+Under `jax.grad` the unoccupied cells still pass a zero cotangent through the callable's derivative, so a profile whose value or derivative is not finite there (a square root of a negative number, a division by zero) gives a NaN gradient while the objective is finite.
+A concrete run is not affected.
+Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
 
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
@@ -884,7 +881,7 @@ gradient (an estimate, not measured). Only kappa was traced; other pole paramete
 measured. What to do: declare the strength as `RelativeStrength(reference, value)`, choosing a
 reference near its largest value, so that the differentiated variable is of order 1;
 `drude_pole(omega_p, gamma, density=...)` and
-`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it. Otherwise divide the objective
+`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it; maps use `drude_pole_map(..., density=)` or `lorentz_pole_map(..., relative=True)`. Otherwise divide the objective
 by a constant of its order, such as its value at the starting design given as a Python float,
 or run with `precision="float64"` and JAX x64. An optional warning is off by default: set
 `RFX_POLE_UNDERFLOW_CHECK=1` before the first call (a cached compile keeps the old setting).

@@ -122,6 +122,9 @@ def run(
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
         all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     periodic : (bool, bool, bool) or None
         Per-axis periodic boundary flags. If None, defaults to
         ``(False, False, False)`` in 3D and ``(False, False, True)``
@@ -832,6 +835,12 @@ def run_until_decay(
     monitor_position : tuple or None
         Legacy monitor position (x, y, z); does not affect the stop.
         Non-default values warn of deprecation.
+    pec_axes : axes string or None
+        Axes on which to enforce PEC after each update. If None, uses
+        all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     checkpoint_segments : int or None
         **Not supported** (a host-driven early stop); a non-None value
         raises ``NotImplementedError``.

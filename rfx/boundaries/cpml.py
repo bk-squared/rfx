@@ -1072,7 +1072,7 @@ def apply_cpml_e(
 def apply_cpml_h(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None, *, periodic=None, faces=ALL_FACES,
-    frame=None, owned=None,
+    frame=None, owned=None, h_row_factors=(None, None, None),
 ) -> tuple:
     """Apply slab-local CPML correction to the selected H-field faces.
 
@@ -1112,9 +1112,17 @@ def apply_cpml_h(
 
     def _h_face(component, axis, lo):
         arr = ch[component]
-        if jnp.ndim(arr) == 0:
-            return arr
-        return arr[windows[f"{'xyz'[axis]}_{'lo' if lo else 'hi'}"]]
+        window = windows[f"{'xyz'[axis]}_{'lo' if lo else 'hi'}"]
+        if jnp.ndim(arr) != 0:
+            arr = arr[window]
+        # Slice in the field's index frame, including transverse high rows
+        # on low-face windows. Slab callers supply already placed factors.
+        for b, factor in enumerate(h_row_factors):
+            if b != component and factor is not None:
+                shape = [1, 1, 1]
+                shape[b] = -1
+                arr = arr * jnp.asarray(factor[window[b]], dtype=arr.dtype).reshape(shape)
+        return arr
 
     # H derivatives live at the half-cell coordinates, not E nodes.
     if isinstance(cpml_params, CPMLAxisParams) and cpml_params.magnetic is not None:

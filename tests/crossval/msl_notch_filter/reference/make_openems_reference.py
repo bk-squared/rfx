@@ -69,7 +69,7 @@ STAGE B -- the record this case needs: the tutorial's geometry, three mesh rungs
         ``MeasPlaneShift = MSL_length/3`` is a length and does not move.
 
 An earlier draft shortened the line arms to 10 000 um each side. It was dropped
-(leader decision, 2026-09-22) for a reason that is geometry, not taste: at
+for a reason that is geometry, not taste: at
 10 000 um the tutorial's own ``MeasPlaneShift = MSL_length/3`` is 3.333 mm while
 the x PML_8 is about 3.500 mm deep at the tutorial's resolution, so the port's
 measurement plane falls INSIDE the absorber and upstream of the feed -- that is
@@ -250,7 +250,7 @@ DELTA_LIST = [
     "side of centre, and so does everything the tutorial derives from it -- the x "
     "mesh extent, the substrate's x extent, FeedShift = 10*resolution and "
     "MeasPlaneShift = MSL_length/3. An earlier draft shortened the arms; it was "
-    "dropped (leader decision, 2026-09-22) because at 50000/5 the tutorial's own "
+    "dropped because at 50000/5 the tutorial's own "
     "MeasPlaneShift lands inside the x PML at the tutorial's resolution, which is "
     "no longer the tutorial's port model. The shorter-arm question moves to rfx's "
     "own box.",
