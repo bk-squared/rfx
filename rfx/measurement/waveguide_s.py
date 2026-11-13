@@ -495,6 +495,35 @@ def _s_matrix_port_waves(cfg, *, ref_shift):
     return tuple(wave.astype(complex_dtype) for wave in waves)
 
 
+def extract_waveguide_s_column(configs, drive_idx, ref_shifts):
+    """Raw power-wave column (receiving port, frequency), on the JAX tape."""
+    a_drive, _b_drive = _s_matrix_port_waves(
+        configs[drive_idx],
+        ref_shift=ref_shifts[drive_idx],
+    )
+    safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
+    col_slices: list[jnp.ndarray] = []
+    for recv_idx, cfg in enumerate(configs):
+        _a_recv, b_recv = _s_matrix_port_waves(
+            cfg,
+            ref_shift=ref_shifts[recv_idx],
+        )
+        # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
+        drive_cfg = configs[drive_idx]
+        defined = power_wave_pair(cfg, drive_cfg)
+        ratio = finite_wave_ratio(b_recv, safe_a, defined)
+        if cfg.medium != drive_cfg.medium:
+            zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
+                                         medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
+            zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
+                                         medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
+            ratio = ratio * jnp.sqrt(finite_wave_ratio(zj, zi, defined) +
+                                     jnp.where(defined, 0, 1))
+        col_slices.append(mask_power_wave(ratio, defined))
+    # Stack recv slices into column (n_ports, n_freqs).
+    return jnp.stack(col_slices, axis=0)
+
+
 def extract_waveguide_s_matrix(
     grid: Grid,
     materials: MaterialArrays,
@@ -624,31 +653,7 @@ def extract_waveguide_s_matrix(
         # post-scan rect-DFT extractor below uses the correct Δt even when the
         # cfgs were built via init_waveguide_port without dt=.
 
-        a_drive, b_drive = _s_matrix_port_waves(
-            final_cfgs[drive_idx],
-            ref_shift=ref_shifts[drive_idx],
-        )
-        safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
-        col_slices: list[jnp.ndarray] = []
-        for recv_idx, cfg in enumerate(final_cfgs):
-            _a_recv, b_recv = _s_matrix_port_waves(
-                cfg,
-                ref_shift=ref_shifts[recv_idx],
-            )
-            # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
-            drive_cfg = final_cfgs[drive_idx]
-            defined = power_wave_pair(cfg, drive_cfg)
-            ratio = finite_wave_ratio(b_recv, safe_a, defined)
-            if cfg.medium != drive_cfg.medium:
-                zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
-                                             medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
-                zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
-                                             medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
-                ratio = ratio * jnp.sqrt(finite_wave_ratio(zj, zi, defined) +
-                                         jnp.where(defined, 0, 1))
-            col_slices.append(mask_power_wave(ratio, defined))
-        # Stack recv slices into column (n_ports, n_freqs).
-        s_cols.append(jnp.stack(col_slices, axis=0))
+        s_cols.append(extract_waveguide_s_column(final_cfgs, drive_idx, ref_shifts))
 
     # Assemble full S-matrix: stack drive columns along axis=1 →
     # (n_ports, n_ports, n_freqs).
