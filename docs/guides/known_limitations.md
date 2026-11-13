@@ -793,11 +793,13 @@ extension for 2.0; they stay refusals.
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused)
 
-At normal incidence, on the uniform and the graded mesh alike, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
+At normal incidence on both meshes, and at oblique Bloch incidence on the uniform mesh, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
 materials on the grid, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
-`closed_box=True` or `rfx.rcs.compute_rcs`. On the graded mesh, for propagation along x with E along z, the
+`closed_box=True` or `rfx.rcs.compute_rcs`. For an oblique finite scatterer, use
+`add_tfsf_source(closed_box=True, theta_deg=…, phi_deg=…, polarization='s' or 'p')`
+in 3-D with CPML on all six faces. On the graded mesh, for propagation along x with E along z, the
 admitted wall pairs are PMC on y and PEC on z. Each
 transverse axis takes only a matched pair: both faces absorbing, both the wall
 that suits the polarization, or both periodic (`rfx/boundaries/tfsf.py::replacement_axes`).
@@ -808,9 +810,9 @@ structure with those walls is refused. UPML remains unsupported for TF/SF.
 The uniform plane-wave path solves y and z (Method B: z) periodic, including their pads, when no
 boundary or `boundary='cpml'` is given, and reports the affected faces in preflight. Its grid and period do not
 change. On the uniform mesh it refuses absorbing or wall faces declared explicitly on those axes (a `BoundarySpec`,
-`Boundary` or dict), since it would solve them periodic: declare them periodic, omit them, or use the graded mesh. Traced material overrides retain the legacy operator
-with a warning when invariance cannot be judged. At oblique incidence the tilt
-axis keeps its operator and is reported as not judged for invariance.
+`Boundary` or dict), since it would solve them periodic: declare them periodic or omit them. At normal incidence the graded mesh also keeps the declared side faces. Traced material overrides retain the legacy operator
+with a warning when invariance cannot be judged. Open oblique Method B keeps its
+absorbing y faces; its z faces remain periodic.
 The graded mesh keeps its transverse absorbers under a plane wave (no wrap) but
 applies the same rule: a laterally invariant structure runs, and on a graded profile with the uniform mesh's cells
 its probe record equals the uniform mesh's within 2×10⁻⁶ of its peak

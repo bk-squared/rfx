@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Cylinder, GaussianPulse, Simulation, Sphere
+from rfx import Box, Cylinder, GaussianPulse, Simulation, Sphere
 
 
 def test_mixed_tensor_uses_diagonal_permittivity_dtype(monkeypatch):
@@ -67,7 +67,14 @@ def test_oblique_full_tensor_pad_refusal_is_specific(entry):
     sim.add_material('rod', eps_r=4.)
     sim.add(Cylinder((.0121, .0058, .006), .0029, .1, 'z'), material='rod')
     sim.add_tfsf_source(f0=10e9, bandwidth=.8, direction='+x', polarization='ez', angle_deg=30.)
-    # The same realized material is invariant for diagonal smoothing.
-    getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=True)
-    with pytest.raises(ValueError, match="full_tensor's diagonal is not invariant along a padded periodic axis"):
-        getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
+    # D2: the finite-y rod is refused before either smoothing path steps.
+    for smoothing in (True, 'full_tensor'):
+        with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi: .*periodic.*closed_box=True, theta_deg"):
+            getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=smoothing)
+    # D1(b): the invariant S8 slab admits the full-tensor path and steps once.
+    slab = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)
+    slab.add_material('slab', eps_r=4.)
+    slab.add(Box((.010, -1., -1.), (.014, 1., 1.)), material='slab')
+    slab.add_tfsf_source(f0=10e9, bandwidth=.8, direction='+x', polarization='ez', angle_deg=30.)
+    result = getattr(slab, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
+    assert result.time_series.shape[0] == 1
