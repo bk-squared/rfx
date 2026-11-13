@@ -542,7 +542,8 @@ def test_power_wave_entries_below_either_cutoff_are_nan():
     s = np.asarray(execute(sim, "compute_waveguide_s_matrix", normalize=False).s_params)
     assert np.all(np.isnan(s[1, 0, 0])) and np.all(np.isnan(s[0, 1, 0])), "transmission below the vacuum cutoff"
     assert np.all(np.isfinite(s[:, :, 1])), "both ports propagate at 8 GHz"
-    assert np.isfinite(s[0, 0, 0]) and np.isfinite(s[1, 1, 0]), "reflections are not renormalized"
+    assert np.isnan(s[0, 0, 0]), "the vacuum port has no power wave at 5 GHz, including reflection"
+    assert np.isfinite(s[1, 1, 0]), "the filled port's reflection remains defined at 5 GHz"
 
 
 def test_traced_override_at_probe_plane_refused():
