@@ -8,7 +8,7 @@ import numpy as np
 from rfx.core.jax_utils import is_tracer
 from rfx.errors import ConfigurationWarning
 from rfx._warning_origin import user_stacklevel
-from rfx.measurement.waveguide_power import driven_waveguide_indices
+from rfx.measurement.waveguide_power import driven_waveguide_indices, warn_power_waves
 from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 
 
@@ -43,6 +43,7 @@ def package_declared_measurements(sim, grid, *, entry, flux_monitors, waveguide_
         if drive_idx is not None and len(waveguide_cfgs) > 1:
             ref_shifts = [planes[0] - waveguide_plane_positions(cfg)["reference"]
                           for planes, cfg in zip(reported, waveguide_cfgs)]
+            warn_power_waves(waveguide_cfgs, port_indices=[port.name for port in sim._waveguide_ports])
             column = extract_waveguide_s_column(waveguide_cfgs, drive_idx, ref_shifts)
         undriven = [port.name for i, port in enumerate(sim._waveguide_ports) if i not in driven]
         if undriven:
@@ -62,6 +63,7 @@ def package_declared_measurements(sim, grid, *, entry, flux_monitors, waveguide_
                     cfg,
                     ref_shift=reference_plane - measured_reference_plane,
                     probe_shift=probe_plane - measured_probe_plane,
+                    warn_cutoff=column is None,
                 )
             else:
                 dtype = jnp.result_type(cfg.v_ref_t.dtype, cfg.freqs.dtype, jnp.result_type(float), 1j)

@@ -1,5 +1,6 @@
 """#2449 A2/A5: reported-plane wiring and undefined own-port entries."""
 
+from dataclasses import replace
 import math
 from types import SimpleNamespace
 import warnings
@@ -11,6 +12,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.errors import ConfigurationWarning
+from rfx.measurement.waveguide_power import WaveguideCutoffWarning
 from rfx.runners._admission import require_isolated_s_drive
 from tests.oracle.test_waveguide_one_driven_column import (
     A, B, LX, H, FREQS, scene, grid_for, select_record_time, emit,
@@ -145,3 +147,28 @@ def test_a5b_undriven_probe_medium(mesh, entry, traced):
 def test_a5b_driven_probe_medium_still_refused():
     with pytest.raises(ValueError, match='probe plane.*port medium'):
         probe_medium_scene('U1', amplitudes=(0., 1.)).run(n_steps=350, skip_preflight=True)
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_one_driven_receiver_cutoff_notice(entry, capfd):
+    sim = scene('U1', amplitudes=(0., 1.))
+    freqs = np.linspace(5.5e9, 7.9e9, 7)
+    sim._waveguide_ports = [replace(port, freqs=freqs) for port in sim._waveguide_ports]
+    # Dry-run Yee transverse eigenvalue: kc = 2 sin(pi h / (2 a)) / h.
+    cutoff = 299792458. * np.sin(np.pi * H / (2 * A)) / (np.pi * H)
+    below = freqs <= cutoff
+    options = {'checkpoint': False} if entry == 'forward' else {}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        result = getattr(sim, entry)(n_steps=350, skip_preflight=True, **options)
+    p1, p2 = (result.waveguide_sparams[name] for name in ('p1', 'p2'))
+    notices = [w for w in caught if issubclass(w.category, WaveguideCutoffWarning)]
+    with capfd.disabled():
+        emit('receiver-cutoff', entry=entry, freqs=freqs, cutoff=cutoff, expected_nan=below,
+             p1_nan=np.isnan(p1.s_driven), p2_nan=np.isnan(p2.s_driven),
+             warning_count=len(notices), warning_text=[str(w.message) for w in notices])
+    np.testing.assert_array_equal(np.isnan(p1.s_driven), below)
+    assert np.isfinite(p1.s_driven[~below]).all()
+    assert np.isfinite(p2.s_driven).all(), 'Driven p2 reflection is finite at every bin'
+    assert len(notices) == 1, 'Exactly one cutoff warning for the one-driven column'
+    assert 'port p1,' in str(notices[0].message), 'Cutoff warning names the undriven receiver'

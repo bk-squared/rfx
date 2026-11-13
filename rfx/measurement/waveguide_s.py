@@ -373,6 +373,7 @@ def extract_waveguide_sparams(
     i_ref_dft: jnp.ndarray | None = None,
     v_probe_dft: jnp.ndarray | None = None,
     i_probe_dft: jnp.ndarray | None = None,
+    warn_cutoff: bool = True,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Extract (S11, S21) with optional reference-plane shifts.
 
@@ -401,6 +402,9 @@ def extract_waveguide_sparams(
         planes. When all are given the wave decomposition runs against
         them directly; otherwise the recorded time-series on ``cfg`` is
         used.
+    warn_cutoff : bool
+        Emit the cutoff notice; the declared-measurement packager disables
+        this after warning once for its entire column.
     """
     require_probe_medium(cfg)
     beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
@@ -422,7 +426,8 @@ def extract_waveguide_sparams(
     a_ref, b_ref = _shift_modal_waves(a_ref, b_ref, beta, ref_shift, step_sign)
     a_probe, b_probe = _shift_modal_waves(a_probe, b_probe, beta, probe_shift, step_sign)
     safe_ref = jnp.where(jnp.abs(a_ref) > 0, a_ref, jnp.ones_like(a_ref))
-    warn_power_waves([cfg])
+    if warn_cutoff:
+        warn_power_waves([cfg])
     s11 = power_wave_ratio(b_ref, safe_ref, cfg, cfg)
     s21 = power_wave_ratio(a_probe, safe_ref, cfg, cfg)
     return s11, s21
