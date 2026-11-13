@@ -13,7 +13,9 @@ the eight cells around the node.
 The preflight warning names an admitted dielectric Sphere, or a Cylinder across
 its radius, whose diameter is under three containing-cell widths along an axis
 across it; a PEC body of the same size is not named. A traced radius is
-compared through the shared traced check.
+compared through the shared traced check. The material sweep applies the size
+rule to a non-PEC body only: a PEC rod that holds a cell column is swept as
+before, and the same rod as a dielectric is refused.
 """
 import warnings
 
@@ -22,7 +24,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Cylinder, Simulation, Sphere
+from rfx import Box, Cylinder, Simulation, Sphere, vmap_material_sweep
 from rfx._internal._grid_metric import node_tie_tol
 from rfx.errors import RfxRefusal
 from rfx.geometry.rasterize_grid import (
@@ -186,3 +188,26 @@ def test_traced_radius_below_the_cell_is_refused():
     traced = np.asarray(jax.jit(traced_sphere_mask)(jnp.float32(0.95 * H)))
     np.testing.assert_array_equal(traced, np.asarray(traced_sphere_mask(np.float32(0.95 * H))))
     assert traced.any()
+
+
+ROD_CENTRE = (5.5 * H, 5.5 * H, 5.0 * H)  # a cell centre across the rod; its 4 mm height ends on nodes 3 and 7
+
+
+@pytest.mark.parametrize('material, swept, values, expected', [
+    (dict(eps_r=1.0, sigma=1e7), 'rod.sigma', (1e7, 2e7), 'admitted'),
+    (dict(eps_r=4.0, sigma=0.0), 'rod.eps_r', (4.0, 6.0), 'refused'),
+], ids=['P1-pec', 'P2-dielectric'])
+def test_material_sweep_applies_the_size_rule_to_a_non_pec_body_only(material, swept, values, expected):
+    """A rod of radius h/2 lies below its cross-section's half diagonal, h/sqrt(2), and holds its centre column."""
+    sim = _sim()
+    sim.add_material('rod', **material)
+    sim.add(Cylinder(ROD_CENTRE, 0.5 * H, 4 * H, 'z'), material='rod')
+    sim.add_source((2.5 * H, 2.5 * H, 5.5 * H), 'ez', waveform=GaussianPulse(f0=20e9, bandwidth=0.8))
+    sim.add_probe((8.5 * H, 8.5 * H, 5.5 * H), 'ez')
+    if expected == 'refused':
+        with pytest.raises(RfxRefusal, match=REFUSED):
+            vmap_material_sweep(sim, swept, np.asarray(values), n_steps=4)
+        return
+    series = np.asarray(vmap_material_sweep(sim, swept, np.asarray(values), n_steps=4).time_series)
+    assert series.shape == (2, 4, 1)
+    assert np.isfinite(series).all()
