@@ -393,6 +393,7 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
                                 aperture_dA: np.ndarray | None = None,
                                 h_offset: tuple[float, float] = (0.0, 0.0),
                                 _orthogonalize: bool = True,
+                                _check_degeneracy: bool = True,
                                 ) -> tuple[np.ndarray, np.ndarray,
                                            np.ndarray, np.ndarray, float]:
     """Discrete Yee-grid TE_mn mode profile.
@@ -437,9 +438,10 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
             evecs, evals, hx_ana.ravel(),
         )
         kc2 = float(max(evals[rank], 0.0))
-    _refuse_degenerate_discrete_mode(
-        evals, evecs, rank, "TE", m, n, a, b, u_widths, v_widths,
-    )
+    if _check_degeneracy:
+        _refuse_degenerate_discrete_mode(
+            evals, evecs, rank, "TE", m, n, a, b, u_widths, v_widths,
+        )
     hx = evecs[:, rank].reshape(nu, nv)
 
     # Align sign (eigh returns arbitrary sign).
@@ -487,6 +489,7 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
                 aperture_dA=aperture_dA,
                 h_offset=h_offset,
                 _orthogonalize=True,
+                _check_degeneracy=False,  # Only the requested mode must be unique.
             )
             previous.append((ley, lez, lhy, lhz))
         if previous:

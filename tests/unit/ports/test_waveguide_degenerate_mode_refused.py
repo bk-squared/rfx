@@ -1,6 +1,7 @@
 """#2707: a degenerate cutoff cannot identify one discrete launched mode."""
 import numpy as np
 import pytest
+from jax import enable_x64
 
 from rfx import Simulation
 from rfx.model.waveguide_modes import (
@@ -115,19 +116,38 @@ def test_direct_profiles_refuse_with_and_without_aperture(kind, mode, partner, g
     _message(caught, f"{kind}{mode[0]}{mode[1]}", partner, (10, 10))
 
 
-def test_lower_mode_orthogonalisation_refuses():
+def test_lower_mode_orthogonalisation_preserves_requested_te30():
     # TE30 is distinct on this aperture; its lower TE20 shares TE01's cutoff.
     values = _spectrum(20, 10, .002)
     target = (2 / .002 * np.sin(3 * np.pi / 40))**2
     rank = np.argmin(np.abs(values - target))
     assert np.min(np.abs(np.delete(values, rank) - values[rank])) > 1e-9 * target
-    with pytest.raises(ValueError) as caught:
-        init_waveguide_port(_port(20, 10, mode=(3, 0)), .002,
-                            np.array([15e9]), f0=15e9)
-    _message(caught, "TE20", "TE01", (20, 10))
+    u_widths, v_widths = np.full(20, .002), np.full(10, .002)
+    aperture_dA = u_widths[:, None] * v_widths[None, :]
+    # Co-located E/H templates isolate orthogonality from dual-grid smoothing.
+    with enable_x64():
+        cfg = init_waveguide_port(_port(20, 10, mode=(3, 0)), .002,
+                                  np.array([15e9]), f0=15e9, field_dtype=np.float64,
+                                  h_offset=(0., 0.))
+    np.testing.assert_array_equal(cfg.aperture_dA, aperture_dA)
+    reference = _discrete_te_mode_profiles(
+        .04, .02, 3, 0, u_widths, v_widths, aperture_dA=aperture_dA,
+        h_offset=(0., 0.), _orthogonalize=False,
+    )
+    stored = np.stack([cfg.ey_profile, cfg.ez_profile, cfg.hy_profile, cfg.hz_profile])
+    difference = np.max(np.abs(stored - np.stack(reference[:4])))
+    peak = np.max(np.abs(stored))
+    print(f"TE30 profile difference / peak: {difference / peak:.16e}")
+    assert difference <= 1e-12 * peak
 
 
 def test_single_mode_multimode_initializer_refuses():
     with pytest.raises(ValueError) as caught:
         init_multimode_waveguide_port(_port(), .002, np.array([10e9]), n_modes=1)
+    _message(caught, "TE10", "TE01", (10, 10))
+
+
+def test_square_two_mode_initializer_refuses():
+    with pytest.raises(ValueError) as caught:
+        init_multimode_waveguide_port(_port(), .002, np.array([10e9]), n_modes=2)
     _message(caught, "TE10", "TE01", (10, 10))
