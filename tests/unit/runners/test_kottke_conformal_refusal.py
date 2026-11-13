@@ -270,7 +270,7 @@ def test_cut_cell_floor_grid_tolerance_and_reference(monkeypatch):
     weights, _ = compute_conformal_fractions(grid, [wall], clamp=False, field_dtype=np.float32)
     mats = with_components(init_materials(grid.shape), grid, periodic=(False,) * 3)
     eps, _, reference = form_reference_operands(
-        grid, mats, subpixel_smoothing=False, conformal_weights=weights,
+        grid, mats, dtype=np.float32, subpixel_smoothing=False, conformal_weights=weights,
         boundary_pec_shapes=[wall], conformal_pec='cut_cell_floor')
     assert float(eps[0][2, 5, 5]) == pytest.approx(10.)
     for normal in (1, 2):
@@ -278,10 +278,11 @@ def test_cut_cell_floor_grid_tolerance_and_reference(monkeypatch):
     from rfx.model import tensor_operands
     captured = []
     original = tensor_operands.form_reference_operands
-    def capture(*args, **kwargs):
+    def capture(*args, dtype, **kwargs):
+        assert dtype == np.float32
         assert kwargs['conformal_pec'] == 'cut_cell_floor'
         captured.append(float(args[0].dt))
-        return original(*args, **kwargs)
+        return original(*args, dtype=dtype, **kwargs)
     monkeypatch.setattr(tensor_operands, 'form_reference_operands', capture)
     for q in (.5, .25):
         sim = _scene('waveguide', 'B', dt=q * Grid.courant_dt(.002))

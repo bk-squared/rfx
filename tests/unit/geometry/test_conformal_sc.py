@@ -117,7 +117,7 @@ def test_mu_faces_and_reference_wall_geometry():
     obstacle = Sphere((.007,) * 3, .0015)
     weights, _ = compute_conformal_fractions(grid, [wall, obstacle], field_dtype=np.float32)
     eps, inv, reference = form_reference_operands(
-        grid, mats, subpixel_smoothing=False, conformal_weights=weights, boundary_pec_shapes=[wall])
+        grid, mats, dtype=np.float32, subpixel_smoothing=False, conformal_weights=weights, boundary_pec_shapes=[wall])
     assert inv is None
     assert float(reference[0][0][7, 7, 7]) == 1.
     assert float(weights[0][7, 7, 7]) == 0.
@@ -235,7 +235,7 @@ def test_waveguide_reference_conformal_eps_is_the_port_medium():
     grid = Simulation(10e9, (.02, .02, .02), dx=.002, boundary='pec')._build_grid()
     wall = Box((-1., .0125, -1.), (1., 1., 1.))
     eps, _, (lengths, _) = form_reference_operands(
-        grid, init_materials(grid.shape), subpixel_smoothing=False, conformal_weights=(None,),
+        grid, init_materials(grid.shape), dtype=np.float32, subpixel_smoothing=False, conformal_weights=(None,),
         boundary_pec_shapes=[wall], reference_eps=2.5)
     ex, ey = np.asarray(eps[0]), np.asarray(eps[1])
     ly = np.asarray(lengths[1])
@@ -298,3 +298,34 @@ def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, 
     else:
         lengths, areas = compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
         assert all(float(jnp.min(a)) == 1. for a in lengths + areas)
+
+
+@pytest.mark.parametrize('precision,field_dtype,expected_dtype', [
+    ('mixed', jnp.float16, jnp.float32),
+    ('float32', jnp.float32, jnp.float32),
+    ('float64', jnp.float64, jnp.float64),
+])
+@pytest.mark.parametrize('material_dtype', [jnp.float32, jnp.float64])
+def test_conformal_operand_dtype_follows_run(precision, field_dtype, expected_dtype, material_dtype):
+    """User permittivity precision does not select the conformal fraction dtype."""
+    from tests._x64_compat import enable_x64
+    from rfx.model.tensor_operands import form_tensor_operands
+
+    with enable_x64():
+        sim = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec', precision=precision)
+        sphere = Sphere((.0061, .0058, .0057), .0023)
+        sim.add(sphere, material='pec')
+        grid = sim._build_grid()
+        materials = init_materials(grid.shape)._replace(
+            eps_r=jnp.full(grid.shape, 2.5, dtype=material_dtype))
+        _, _, lengths, _, areas = form_tensor_operands(
+            sim, grid, materials, subpixel_smoothing=False, conformal=True,
+            conformal_min_weight=.1, pec_shapes=[sphere])
+        _, _, reference = form_reference_operands(
+            grid, materials, dtype=field_dtype, subpixel_smoothing=False,
+            conformal_weights=lengths, boundary_pec_shapes=[sphere])
+        for fractions in ((lengths, areas), reference):
+            for components in fractions:
+                assert all(array.dtype == expected_dtype for array in components)
+                assert any(np.any((np.asarray(array) > 0) & (np.asarray(array) < 1))
+                           for array in components)
