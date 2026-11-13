@@ -11,6 +11,233 @@ This page summarizes user-visible changes: what moved, and what to change in
 your scripts. The repository's `CHANGELOG.md` has the full detail, including
 the measurements behind each entry.
 
+## v2.2.0 — November 16, 2026
+
+2.2 moves results with subpixel smoothing where dielectric bodies touch, nest,
+repeat a permittivity or are thinner than a cell; with coaxial ports, whose waves
+now refer to the line the mesh builds; with float32 Drude and Lorentz media; with
+waveguide S records, conformal PEC in waveguide S, a one-cell PEC box on a node
+plane, and directivity and gain on a φ grid that repeats the 0/2π seam or is
+uneven. Re-run any comparison that uses one of them.
+Several inputs that ran before are now refused: points inside the CPML pad, metal
+whose solved size misses its drawing by more than 1 % under strict snap, a second
+waveguide port in one record, a dielectric sphere or rod too small to hold a cell,
+and an oblique plane wave over a structure that varies along the tilt axis.
+
+### Changed
+
+- **A dielectric `Sphere`, or a `Cylinder` crossed through its radius, too small to
+  hold a cell is refused at every position** (#2703): a body that is not PEC whose
+  radius is below half the diagonal of the cell containing its centre (0.866 of
+  the cell on a uniform mesh; 0.707 for a `Cylinder`'s cross-section). Before, it
+  ran at some positions and was refused at others, so a position sweep or gradient
+  could cross from a result to a refusal. `preflight()` warns for a dielectric body
+  under three cells across; such a body is over-polarized (see known limitations).
+- **A probe, point source or port inside the CPML pad is refused** (#2517). It
+  was a warning. Set `allow_in_absorber=True` on the individual `add_*` call to
+  keep the position; the attenuation warning remains. A position beyond the grid
+  is always refused. On a graded grid the opt-in now uses the padded node index;
+  these points used to move to the interior edge.
+- **Off-grid metal whose solved size misses its drawing by more than 1 % is
+  refused under strict snap** and warns under declared snap (#2439). Material
+  volumes warn in either mode, with the extent and centroid differences in one
+  message per volume. Conductors a port builds (wire-port wires, the coax pin and
+  shell) are judged by the port instead.
+- **`subpixel_smoothing="kottke_pec"` with a PEC volume warns** that it is
+  experimental and not recommended for metal (#2403); see the known limitation "A
+  metal face resting on a dielectric between grid nodes".
+- **Resonance lists use the ring-down matrix pencil** (#2478).
+  `rfx.matrix_pencil`, `Result.find_resonances` and `matrix_pencil_from_probe`
+  give the same frequencies and Q on decaying modes to float64 rounding. Records
+  with a peak below about 1e-27 now return their modes, and an all-NaN record
+  returns an empty list instead of raising `LinAlgError`. On a lossless record
+  the reported Q can change; the frequency does not.
+- **Multi-device uniform runs use the one-device time step on each slab** (#2355,
+  #2413), closed-box TF/SF included. Results are bit-identical. Multi-device
+  graded runs no longer copy the whole Ez slab each step (#2428): about 3 %
+  faster on two GPUs, with gradients on the exchanged row moving by float32
+  rounding.
+- **Each run carries one measurement plan** built from its own grid, conductors
+  and periodic flags (#2424, #2459, #2499, #2525, #2572). One-device runs record
+  probes, ports, DFT planes, flux, far-field boxes and current moments from it.
+  Results are bit-identical, except that waveguide V/I records may move by float32
+  rounding of the aperture sum. A traced probe, plane, flux or NTFF position is
+  refused before the first step with `TracedStructureRefusal`.
+- **Internal modules moved; public imports are unchanged.** Private modules live
+  in `rfx._internal` (#2333); the S-parameter calculators are split into private
+  stages (#2387, #2388, #2389, #2399); far field, probes, S-parameter helpers and
+  coax records are built in `rfx.measurement` (#2493, #2606, #2617, #2642); coax,
+  lumped and wire stamping and Debye coefficients are built in `rfx.model`
+  (#2578, #2591, #2597). Every old public import path gives the same object; the
+  private paths `rfx._realized` and its siblings are gone.
+- **Docstrings state what the code does without tracker numbers, dates or
+  attributions** (#2310, #2648). No executable code changed.
+
+### Added
+
+- **`Simulation.add_wall_loss`: conductor loss on PEC solids and domain faces**
+  (#2566, #2615). Declare a frozen-frequency loss with `sigma_bulk`, `f0` and a
+  shape or faces. A 30 × 12 × 24 mm cavity's TE101 Q matches the closed form per
+  wall pair within 1 % on a 1.5 mm mesh and 0.22 % on 0.75 mm. Paths that do not
+  carry the declaration refuse it by name.
+- **Spatial Drude and Lorentz pole maps** (#2658): one pole whose strength and
+  damping are functions of the cell-centre coordinates (`LorentzPoleMap`,
+  `drude_pole_map`, `lorentz_pole_map`), on uniform and graded meshes. A map with
+  one value everywhere gives the scalar pole's fields bit for bit. Multi-device,
+  subgridded runs and design export refuse maps by name.
+- **`rfx.RelativeStrength(reference, value)`** for a Lorentz or Drude strength
+  (#2581), so its float32 reverse gradient no longer flushes to zero.
+  `drude_pole(..., density=...)` and `lorentz_pole(..., relative=True)` accept the
+  dimensionless form.
+- **`precision="float64"` on single-device graded Yee meshes** (#2538): `run()`,
+  `forward()`, the waveguide S-matrix and the wire/lumped S calculator. Uniform
+  float64 CPML now forms its coefficients in float64.
+- **Lumped RLC elements and wire ports with a radius on several devices** (#2243,
+  #2590), uniform and graded, through `run(devices=...)` and
+  `forward(distributed=True)`, using the one-device element and radius models.
+- **Differentiable ring-down poles** (#2494, #2634). `forward(ringdown=...)`
+  returns poles for both windows; select a resonance with `pole(f_target)` to
+  differentiate its frequency and 1/Q. `gradient_witness(..., against=
+  "longer_record", pole_target=f)` compares the pole selection of the two records
+  and returns `judged=False` when it cannot judge.
+- **Uniform `forward()` and lumped/wire S scans carry the default conformal PEC**
+  that `run()` uses (#2595). Material and source parameters may be differentiated;
+  traced PEC geometry stays refused.
+- **A realized-geometry table on run and forward results** (#2353): declared and
+  solved spans, misses in cells and percent, and placement shifts. Preflight
+  findings name the affected objects by their realization labels and carry grid
+  bounds (#2470).
+- **Coax one-port settling** (#2506): reflection results carry `settling_db` and
+  `settling_witness` for short, open and matched loads, with the two-port's
+  −40 dB check.
+- **Preflight warns where an f0 surface-impedance sheet loses its conductor
+  loss** (#2504): conductors on both sides, or edges shared with PEC. An f0 sheet
+  on a PEC domain face is refused.
+- **A warning on Linux hosts whose `vm.max_map_count` is below 262,144** (#2432),
+  with remedies for compiling many distinct grids.
+
+### Fixed
+
+- **Subpixel smoothing reads touching, nested, thin and repeated dielectric
+  bodies as declared.** Re-run any smoothed model with touching or thin
+  dielectrics.
+  - Touching volumes of different permittivity use both bulk values (#2386): in
+    a PEC cavity with touching εr 3.38 and 10.2 layers, the 0.5 mm mesh's TM
+    resonance error goes from +1.5171 % to −0.0571 %. Touching shapes of one
+    permittivity read its bulk value at the shared face (#2392).
+  - A later shape whose εr repeats an earlier one is painted in declared order
+    (#2567). An εr 4 Box nested in an εr 10.2 Box read 10.2 inside when another
+    εr 4 shape was declared first.
+  - A dielectric gap thinner than half a cell is seen (#2623): two εr 4 Boxes with
+    a 0.1 mm gap on 0.5 mm cells read 2.5 across it instead of 4.0.
+  - A `Box`, or a `Cylinder` cut cap to cap, thinner than a cell reads its own
+    thickness and the medium on both sides (#2659): on a uniform mesh an εr 4
+    slab 0.3 of a cell thick reads Ez 1.290, the series average (it read 1.429).
+    A thin `Sphere` keeps the earlier rule (known limitations).
+  - `"full_tensor"` no longer jumps at a Box edge on a grid node (#2497). With a
+    Box in the scene, a traced shape coordinate or mesh profile is now refused by
+    name under `"full_tensor"`.
+  - Beside a periodic seam, conformal PEC and dielectric smoothing read the
+    nearest image (#2600).
+  - `jax.grad`, `jax.jit` and `jax.vmap` over `eps_r` pass through smoothing
+    (#2462); they stopped with `TypeError: unhashable type`. `"full_tensor"`
+    refuses a traced `eps_r` by name.
+- **Coaxial ports refer their waves to the line the mesh builds** (#2490). The
+  50-ohm S parameters use the built line impedance (40–44 ohm for a drawn
+  48.6 ohm on the tested meshes), and `line_impedances` reports it. A matched coax
+  through-line now reads a 50-ohm |S11| of up to about 0.14, from the staircased
+  line, not the port. Coax matched sheets keep the line's dielectric (#2589): the
+  matched reflection reads −31.9 dB at 0.4 mm, where it read −40.2 dB.
+- **Float32 Drude and Lorentz media no longer grow without bound or shift ε
+  below the plasma frequency** (#2582). A Drude-filled PEC box resonates within
+  3.5e-7 of the closed form; the float64 workaround is no longer needed.
+- **A float64 run with UPML or an oblique Bloch TF/SF source is refused** (#2630);
+  it stepped in float32. Use `boundary="cpml"`, normal incidence or
+  `precision="float32"`.
+- **Waveguide ports.**
+  - An N-step run's waveguide V/I record holds N samples (#2510). On a settled
+    40-period WR-90 record S moved by at most 1.9e-5; a record that ends with
+    field still in the guide moves more (1.6e-2 on a 4-period WR-90 record).
+  - Modes at or below cutoff report NaN for every affected S entry, with one
+    warning (#2676); before, |S| could reach 7.5e25.
+  - A second waveguide port in one `forward()` or graded run is refused (#2488);
+    each port's S11 included the other's drive. Use
+    `compute_waveguide_s_matrix()` for multiport S.
+  - With `f0` omitted on a graded mesh, the port is driven at the centre of its
+    measurement band, as on a uniform mesh (#2465, #2475). It was driven at
+    `freq_max/2`: 6.2 GHz for `freq_max=12.4 GHz`, below the WR-90 TE10 cutoff.
+  - Waveguide S with conformal PEC uses one metal model (#2580): on a WR-90 PEC
+    sphere, |S11| falls by 1.85–4.32 dB depending on the mesh.
+  - Preflight uses the solver's side order and cutoff (#2552).
+  - A low-level waveguide port whose aperture includes the node row beyond a high
+    electric wall is refused against a uniform `Grid`, with the cell span to use
+    (#2696); its second-mode S entries could be wrong by more than their size.
+    Built from a scalar `dx` or a graded grid, it warns.
+- **A one-cell-thick PEC box on a node plane is kept** (#2580). `run()` dropped
+  it: behind such a short the Ez energy relative to the front was 1.0003; it is
+  now 0.
+- **Low-level runs whose `pec_axes` withholds a face's PEC** (#2615). A face with
+  neither a wall nor an absorber now ends as a magnetic wall half a cell outside
+  it, so resonances move: a 24 mm cube with `pec_axes=""` goes from 5.09 to
+  8.48 GHz. A low-level `WaveguidePort` given the whole node plane drives and reads
+  the row outside the high wall: in a two-mode test its second-mode S entries move
+  by 11 % of the largest flux-extracted entry. `Simulation` runs and ports do not move.
+- **Microstrip ports.** A `mode="uniform"` port on a graded grid gets the uniform
+  feed (#2641): uniform and graded runs give equal S on identical cells.
+  `compute_coax_msl_transition` refuses MSL modes other than `"laplace"` (#2646).
+- **Wire ports.** With `reference_plane_cells` on every wire port, `run()` returns
+  S between the planes in one wave definition (#2509): |S11| of a 16 mm thru is
+  0.0005–0.0025. `run()` refuses the option when fewer than two wire ports are in
+  the S solve, and a partial opt-in. `forward()` refuses `reference_plane_cells`,
+  which it ignored (#2492). The radius advisory names the finest mesh of a refinement ladder
+  (#2479, #2678), and a YAML config's wire port accepts `radius` (#2536).
+- **Directivity and gain on a φ grid that repeats the 0/2π seam or is unevenly
+  spaced** (#2639) read low, and `antenna_efficiency()` read high. They now use
+  periodic weights that sum to 2π. A repeated seam on N samples read low by
+  10·log10(N/(N−1)) dB: 0.09 dB on 49 samples. On φ = [0, 1, 2, 5] rad a Hertzian
+  dipole reads 1.7609 dBi, where it read 1.2917 dBi. A θ grid may now stop up to
+  0.02 rad short of a pole beyond its end sample's cell.
+- **Far-field gradients keep one NTFF face's phase factor at a time** (#2448), so
+  their memory falls to about 0.13 of the full phase array. Split and unsplit
+  calls agree to float rounding, no longer to the bit. On a flat NTFF box the
+  transform is slower: 0.7 s to 2.1 s for the far-field step alone on a
+  64×64×6-cell box, and 1.22–1.24× for a whole differentiated run at 200 steps.
+- **Plane waves.** The default TF/SF pulse starts without a jump (#1952), so
+  `run(until_decay=)` stops on an empty open box; results normalized by the
+  incident spectrum move by about 5e-5. A graded-mesh plane wave with
+  `"full_tensor"` smoothing is admitted when nothing varies across it (#2433).
+  An oblique plane wave over a structure that varies along the tilt axis, with
+  absorbing side faces, is refused (#2705): it was solved as an array of the
+  padded period, 2.3–3.5 dB off in transmission on a 16 mm-period bar at 1 mm
+  cells. For one scatterer use `add_tfsf_source(closed_box=True, theta_deg=...)`
+  with CPML on all six faces; for an array, declare that axis periodic.
+- **`until_decay` in a closed box on the uniform mesh stops on the after-drive
+  energy** (#2420), as on the graded mesh; a lossy cube stopped at step 400 with
+  98.4 % of its after-drive energy left. A lossless closed box runs to
+  `decay_max_steps` with a cap warning instead of stopping on a quiet sample.
+  `decay_monitor_component` and `decay_monitor_position` raise a
+  `DeprecationWarning`.
+- **Admission and setup.**
+  - `topology_optimize()` and multiport `run()` S admit a CPML domain that
+    `forward()` admits (#2483).
+  - A soft point source is no longer listed as a lumped port (#2444); `add_port`
+    and `add_msl_port` refuse a non-finite impedance.
+  - A shape crossing the absorber on two axes gets a finding for each (#2553).
+  - Settling checks drop channels at a voltage null (#2507).
+  - A float32 graded profile whose end cells equal the boundary width within
+    float32 resolution is admitted (#2460).
+- **Speed and memory.**
+  - A watertight imported mesh's occupancy is counted per grid line (#2612): a
+    20,480-triangle sphere took 9 min and 34 GiB, now 0.06 s.
+  - Graded setup no longer spends 0.5 ms per declared point (#2680).
+  - Preflight's cached products are released before the solve (#2265);
+    `Simulation.clear_inspection_cache()` frees them.
+- **Multi-device under `jax.jit` and `jax.grad`.** Constant Lorentz materials run
+  under a caller's `jax.jit` on several devices (#1844); such a run holds more
+  setup constants on each device (known limitations). A gradient over one packed
+  parameter array on the graded multi-device path returns instead of raising
+  `Received incompatible devices` (#2412).
+
 ## v2.1.0 — November 3, 2026
 
 2.1 moves results with conformal PEC, subpixel smoothing on non-cubic or graded
