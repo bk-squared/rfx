@@ -168,7 +168,7 @@ def test_low_level_explicit_wrap_keeps_caller_declaration(monkeypatch, broadcast
     grid = sim._build_grid()
     materials = sim._assemble_materials(grid)[0]
     source = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=2,
-                       tfsf_margin=1, f0=5e9, bandwidth=.5)
+                       tfsf_margin=1, f0=5e9, bandwidth=.5, dtype='float32')
     # The y variation stays inside the total-field region, one cell clear of
     # the injection planes x_lo-1, x_lo, x_hi, x_hi+1: the H update there
     # reads mu averaged with its x neighbour, which must be vacuum too (#1676).

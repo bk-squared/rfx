@@ -49,7 +49,7 @@ def test_topology_occupancy_reaches_uniform_solve_with_kottke_tensor(monkeypatch
     grid = sim._build_grid()
     materials = sim._assemble_materials(grid)[0]
     occupancy = occupancy_from_design(
-        grid.shape, (slice(2, 5),) * 3, jnp.full((3,) * 3, .5))
+        grid.shape, (slice(2, 5),) * 3, jnp.full((3,) * 3, .5), dtype='float32')
     with pytest.raises(SolveReached):
         sim._forward_from_materials(grid, materials, None, None,
                                     n_steps=1, pec_occupancy=occupancy)

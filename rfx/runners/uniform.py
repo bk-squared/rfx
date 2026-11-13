@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
 
 import numpy as np
@@ -223,7 +225,7 @@ def run_uniform(
         tfsf = tfsf_from_declaration(
             sim._tfsf, grid, sim._freq_max, n_steps=n_steps,
             line_steps=decay_max_steps if until_decay is not None else n_steps,
-        )
+        dtype=resolve_coefficient_dtype(sim._precision))
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
 
@@ -453,7 +455,8 @@ def run_uniform(
                     # Schelkunoff J+M one-sided launch: both E and H sources
                     sources.defer(deferred_msl_sources_jm, grid, mp,
                                   n_steps=sizing_n, eigenmode_data=eigenmode_data,
-                                  magnetic_sources=mag_sources)
+                                  magnetic_sources=mag_sources,
+                                  dtype=resolve_coefficient_dtype(sim._precision))
                 else:
                     sources.defer(make_msl_port_sources,
                         grid, mp, n_steps=sizing_n,
@@ -566,7 +569,7 @@ def run_uniform(
         # A soft source at the centre of the port plane (one builder, read
         # again by the source-end collector).
         from rfx.floquet import floquet_port_source
-        sources.append(floquet_port_source(grid, fpe, sim._freq_max, sim._domain, sizing_n)[1])
+        sources.append(floquet_port_source(grid, fpe, sim._freq_max, sim._domain, sizing_n, dtype=resolve_coefficient_dtype(sim._precision))[1])
 
     from rfx.model.materials import with_components
     from rfx.geometry.rasterize_grid import unpadded_high_walls

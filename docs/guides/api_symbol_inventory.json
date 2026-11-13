@@ -364,7 +364,8 @@
       "kind": "function",
       "params": [
         "rho",
-        "radius_cells"
+        "radius_cells",
+        "dtype"
       ]
     },
     "apply_projection": {

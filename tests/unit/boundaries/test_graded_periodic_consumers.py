@@ -18,8 +18,8 @@ def _sim(graded):
 
 def test_smoothed_seam_matches_uniform():
     block = Box((.0095, .002, .003), (.012, .005, .006))
-    uniform = compute_smoothed_eps(_sim(False)._build_grid(), [(block, 4.)])
-    graded = compute_smoothed_eps_nonuniform(_sim(True)._build_nonuniform_grid(), [(block, 4.)])
+    uniform = compute_smoothed_eps(_sim(False)._build_grid(), [(block, 4.)], dtype='float32')
+    graded = compute_smoothed_eps_nonuniform(_sim(True)._build_nonuniform_grid(), [(block, 4.)], dtype='float32')
     for actual, expected in zip(graded, uniform, strict=True):
         np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-6)
     for eps in (uniform, graded):

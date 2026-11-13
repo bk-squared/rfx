@@ -424,7 +424,7 @@ def _build_nu_scan(
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
     materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
-        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"), dtype=state.ex.dtype)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
 

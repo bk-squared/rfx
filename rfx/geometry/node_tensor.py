@@ -152,7 +152,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
             masks, grid=grid, nominal_h_max=nominal_h_max)
     else:
         midpoint = smooth._smoothed_eps_uniform(
-            xp, grid, coords, shapes, background_eps, masks, nominal_h_max=nominal_h_max)
+            xp, grid, coords, shapes, background_eps, masks, nominal_h_max=nominal_h_max, dtype=field_dtype)
         samples = smooth._uniform_sample_coords(xp, coords, uniform_cell(grid))
         mid_length = None
     x, y, z = (xp.asarray(a, dtype=acc_dtype) for a in coords[:3])

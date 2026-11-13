@@ -212,7 +212,7 @@ def test_msl_jm_each_component(kind):
         materials,
         2,
         em,
-    )
+    dtype='float32')
     for spec, eps, fraction, sign in zip(electric, (1.5, 2.0), (0.5, 1.0), (1, -1)):
         beta = (
             EPS * 2 * grid.dt / (2 / (2 * np.pi * 9e9) + grid.dt) * fraction

@@ -89,6 +89,7 @@ from rfx.runners.nonuniform import build_nonuniform_grid
 cfg = json.loads(sys.argv[1]); out = sys.argv[2]
 res = {"x64": np.array(bool(jax.config.jax_enable_x64)),
        "rfx_file": np.array(rfx.__file__)}
+# CONTRACT: these standalone comparisons retain float32 under both x64 flags.
 # --- uniform smoothed eps on the boundary-voxel fixture
 grid = Grid(**cfg["uniform"])
 def put(prefix, arrs):
@@ -102,12 +103,12 @@ cyl = Cylinder(tuple(cfg["cylinder"]["center"]), cfg["cylinder"]["radius"],
 pec_sph = Sphere(tuple(cfg["pec_sphere"]["center"]), cfg["pec_sphere"]["radius"])
 pec_cyl = Cylinder(tuple(cfg["pec_cylinder"]["center"]), cfg["pec_cylinder"]["radius"],
                    cfg["pec_cylinder"]["height"], cfg["pec_cylinder"]["axis"])
-put("u_box", sm.compute_smoothed_eps(grid, [(box, cfg["eps"])], background_eps=1.0))
-put("u_sphere", sm.compute_smoothed_eps(grid, [(sph, cfg["eps"])], background_eps=1.0))
-put("u_cylinder", sm.compute_smoothed_eps(grid, [(cyl, cfg["eps"])], background_eps=1.0))
-put("inv_box", sm.compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, cfg["eps"])]))
+put("u_box", sm.compute_smoothed_eps(grid, [(box, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("u_sphere", sm.compute_smoothed_eps(grid, [(sph, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("u_cylinder", sm.compute_smoothed_eps(grid, [(cyl, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("inv_box", sm.compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, cfg["eps"])], dtype=jnp.float32))
 put("inv_box_pec", sm.compute_inv_eps_tensor_diag(
-    grid, dielectric_shapes=[(box, cfg["eps"])], pec_shapes=[pec_sph, pec_cyl]))
+    grid, dielectric_shapes=[(box, cfg["eps"])], pec_shapes=[pec_sph, pec_cyl], dtype=jnp.float32))
 # --- mask-only shapes (no SDF): concrete staircase fallback, and the same
 #     mask made a TRACER under jax.jit (closes over a traced scalar) -- must
 #     route through the jax.numpy path and build, as it did before #833.
@@ -118,12 +119,12 @@ class MaskOnly:
 class TracedMask(MaskOnly):
     def __init__(self, inner, t): self.inner, self.t = inner, t
     def mask(self, g): return jnp.asarray(self.inner.mask(g)) & (self.t > 0)
-put("mask_inv", sm.compute_inv_eps_tensor_diag(grid, pec_shapes=[MaskOnly(pec_box)]))
+put("mask_inv", sm.compute_inv_eps_tensor_diag(grid, pec_shapes=[MaskOnly(pec_box)], dtype=jnp.float32))
 put("mask_inv_jit", jax.jit(lambda t: sm.compute_inv_eps_tensor_diag(
-    grid, pec_shapes=[TracedMask(pec_box, t)]))(1.0))
-put("mask_eps", sm.compute_smoothed_eps(grid, [(MaskOnly(pec_box), cfg["eps"])]))
+    grid, pec_shapes=[TracedMask(pec_box, t)], dtype=jnp.float32))(1.0))
+put("mask_eps", sm.compute_smoothed_eps(grid, [(MaskOnly(pec_box), cfg["eps"])], dtype=jnp.float32))
 put("mask_eps_jit", jax.jit(lambda t: sm.compute_smoothed_eps(
-    grid, [(TracedMask(pec_box, t), cfg["eps"])]))(1.0))
+    grid, [(TracedMask(pec_box, t), cfg["eps"])], dtype=jnp.float32))(1.0))
 # --- NU centres on the graded fixture
 D = cfg["D"]; dz = np.asarray(cfg["dz"], dtype=np.float64)
 with warnings.catch_warnings(record=True) as w:
@@ -155,9 +156,9 @@ nb = cfg["nu_box"]; ns = cfg["nu_sphere"]; nc = cfg["nu_cylinder"]
 nu_box = Box(tuple(v * D for v in nb["lo"]), tuple(v * D for v in nb["hi"]))
 nu_sph = Sphere(tuple(v * D for v in ns["center"]), ns["radius"] * D)
 nu_cyl = Cylinder(tuple(v * D for v in nc["center"]), nc["radius"] * D, nc["height"] * D, nc["axis"])
-put("nu_box", sm.compute_smoothed_eps_nonuniform(g, [(nu_box, cfg["eps"])], background_eps=1.0))
-put("nu_sphere", sm.compute_smoothed_eps_nonuniform(g, [(nu_sph, cfg["eps"])], background_eps=1.0))
-put("nu_cylinder", sm.compute_smoothed_eps_nonuniform(g, [(nu_cyl, cfg["eps"])], background_eps=1.0))
+put("nu_box", sm.compute_smoothed_eps_nonuniform(g, [(nu_box, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("nu_sphere", sm.compute_smoothed_eps_nonuniform(g, [(nu_sph, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("nu_cylinder", sm.compute_smoothed_eps_nonuniform(g, [(nu_cyl, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
 np.savez(out, **res)
 """
 
@@ -304,8 +305,8 @@ def test_traced_shape_parameter_takes_the_jax_path():
 
     grid = Grid(**UNIFORM_FIXTURE)
     centre, radius = SPHERE["center"], SPHERE["radius"]
-    concrete = compute_smoothed_eps(grid, [(Sphere(centre, radius), BOX_EPS)])
-    traced = jax.jit(lambda r: compute_smoothed_eps(grid, [(Sphere(centre, r), BOX_EPS)]))(radius)
+    concrete = compute_smoothed_eps(grid, [(Sphere(centre, radius), BOX_EPS)], dtype='float32')
+    traced = jax.jit(lambda r: compute_smoothed_eps(grid, [(Sphere(centre, r), BOX_EPS)], dtype='float32'))(radius)
     for k, c, t in zip(("ex", "ey", "ez"), concrete, traced):
         c, t = np.asarray(c, np.float64), np.asarray(t, np.float64)
         assert np.isfinite(t).all(), k

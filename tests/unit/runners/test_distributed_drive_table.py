@@ -42,7 +42,7 @@ def test_t1_literal_products():
     # Four incident half-filled cells leave exactly 1/16 on an E edge.
     expected = np.array([[.0625, -3., .0078125], [-.125, 2., .25]], np.float32)
     samples = [jnp.array(v, jnp.float32) for v in ([1., -2.], [-3., 2.], [.125, 4.])]
-    _bits(drive_table(samples, meta, 2, occupancy=jnp.full((3, 3, 3), .5)), expected)
+    _bits(drive_table(samples, meta, 2, occupancy=jnp.full((3, 3, 3), .5), dtype='float32'), expected)
 
 
 def _scene(kind='field', devices=2, seam=False, debye=False):

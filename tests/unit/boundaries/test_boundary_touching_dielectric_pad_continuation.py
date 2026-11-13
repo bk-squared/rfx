@@ -490,7 +490,7 @@ def test_the_nonuniform_runner_continues_a_boundary_touching_slab():
     assert pairs[0][0].corner_lo[0] < 0.0 and pairs[0][0].corner_hi[0] > lx
 
     _, _, eps_ez = compute_smoothed_eps_nonuniform(
-        grid, pairs, background_eps=1.0)
+        grid, pairs, background_eps=1.0, dtype='float32')
     arr = np.asarray(eps_ez)
     # Index off the REALIZED node lines. z is the graded axis here, so
     # "10 cells in" is not node 10 — assuming it is was how the first draft of

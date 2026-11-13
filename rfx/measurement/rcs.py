@@ -302,7 +302,7 @@ def compute_rcs(
         ny=grid.ny,
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
-    )
+    dtype=materials.eps_r.dtype)
     # This calculator owns its NTFF request and bypasses Simulation dispatch.
     from rfx.boundaries.depths import FACES, grid_face_depths
     from rfx.boundaries.features import refuse_ntff_reflecting_faces

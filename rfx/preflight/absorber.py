@@ -70,6 +70,8 @@ and it reads no ``pec_geometry`` module global -- it holds only
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.preflight._subjects import finding_subjects, absorber_region
 
 import math
@@ -1501,7 +1503,7 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
                 from rfx.sources.tfsf import tfsf_from_declaration
                 from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
                 entry = self._tfsf
-                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True)
+                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(self._precision))
                 periodic, _ = tfsf_boundary_flags(cfg, grid)
     except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError):
         # An unavailable grid has no realized depth to report. Keep the

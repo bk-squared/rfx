@@ -44,11 +44,12 @@ def polyline_tube_mask(points, radius, x, y, z):
             mask_np |= dist2 <= r2_thresh
         return jnp.asarray(mask_np)
 
-    # Traced coordinates (mesh-as-design-variable): jnp path unchanged.
+    # Traced coordinates carry the run dtype, with the existing float32 floor.
     # Pre-compute segment data as JAX arrays: (n_valid, 3) and (n_valid,)
-    A_j = jnp.array(A, dtype=jnp.float32)
-    D_j = jnp.array(D, dtype=jnp.float32)
-    seg_len2_j = jnp.array(seg_len2, dtype=jnp.float32)
+    dtype = jnp.result_type(jnp.float32, x.dtype, y.dtype, z.dtype)
+    A_j = jnp.array(A, dtype=dtype)
+    D_j = jnp.array(D, dtype=dtype)
+    seg_len2_j = jnp.array(seg_len2, dtype=dtype)
 
     # 3D coordinate grids (Nx, Ny, Nz)
     X = x[:, None, None]

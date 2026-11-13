@@ -273,7 +273,7 @@ def init_tfsf_2d(
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    # CONTRACT: auxiliary CPML retains float32 until its run-dtype plumbing lands.
+    # CONTRACT: float64 oblique Bloch is refused by runners/_admission.py.
     prof = _cpml_profile(n_cpml_2d, dt, dx, dtype=jnp.float32, **profile_options)
     magnetic_lo = _cpml_profile(
         n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=0.5, **profile_options)

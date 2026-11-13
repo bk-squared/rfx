@@ -1,6 +1,8 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.errors import RfxUnsupported
 
 from rfx.api._spec import ForwardResult
@@ -204,7 +206,7 @@ def _forward_from_materials(
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_run = tfsf_from_declaration(
             self._tfsf, grid, self._freq_max, n_steps=n_steps,
-        )
+        dtype=resolve_coefficient_dtype(self._precision))
         from dataclasses import replace
         from rfx.api._ad_memory_model import face_record_pays
         if face_record_pays(tfsf_run[0], n_steps, checkpoint=checkpoint,
@@ -613,7 +615,7 @@ def _forward_from_materials(
     if self._floquet_ports:
         from rfx.floquet import floquet_port_source
         for fpe in self._floquet_ports:
-            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
+            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps, dtype=resolve_coefficient_dtype(self._precision))[1])
 
     if aniso_inv_eps is not None:
         aniso_inv_eps_run = aniso_inv_eps

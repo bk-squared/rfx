@@ -211,11 +211,11 @@ def publish_slab_occupancy(materials, cut_occupancy, mesh):
     return materials._replace(edge_keep=local(cut_occupancy))
 
 
-def occupancy_from_design(shape, window, values):
-    """Topology's existing full-grid float32 occupancy input, before release."""
+def occupancy_from_design(shape, window, values, *, dtype):
+    """Topology's existing full-grid run-typed occupancy input, before release."""
     if values is None:
         return None
-    return jnp.zeros(shape, dtype=jnp.float32).at[window].set(values)
+    return jnp.zeros(shape, dtype=jnp.promote_types(dtype, jnp.float32)).at[window].set(values)
 
 
 def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
@@ -240,7 +240,7 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
         # The plain path's four-cell edge mean, not the per-cell
         # value: occupancy only scales it where a conductor sits.
         inv_baseline = tuple(
-            (1.0 / eps_c).astype(jnp.float32)
+            (1.0 / eps_c).astype(eps_c.dtype)
             for eps_c in materials.components.eps)
         aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
             grid,

@@ -142,7 +142,7 @@ def test_the_1d_path_refuses_a_kappa_it_cannot_realize():
     ignored -- the silent-inconsistency class this lane exists to remove."""
     with pytest.raises(ValueError, match="carries no kappa"):
         init_tfsf(150, 1e-3, 1.9e-12, cpml_layers=20, tfsf_margin=5,
-                  aux_cpml_kappa_max=7.0)
+                  aux_cpml_kappa_max=7.0, dtype='float32')
 
 
 def test_the_oblique_dispatch_carries_the_override_instead_of_dropping_it():
@@ -155,10 +155,10 @@ def test_the_oblique_dispatch_carries_the_override_instead_of_dropping_it():
     must produce a 30-cell auxiliary grid, and the default must not.
     """
     cfg_default, _ = init_tfsf(160, 1e-3, 1.9e-12, ny=160, cpml_layers=10,
-                               tfsf_margin=5, angle_deg=30.0, bandwidth=0.1)
+                               tfsf_margin=5, angle_deg=30.0, bandwidth=0.1, dtype='float32')
     cfg_override, _ = init_tfsf(160, 1e-3, 1.9e-12, ny=160, cpml_layers=10,
                                 tfsf_margin=5, angle_deg=30.0, bandwidth=0.1,
-                                **SHIPPED_2D)
+                                **SHIPPED_2D, dtype='float32')
     assert cfg_default.n_cpml == AUX_N_CPML
     assert cfg_override.n_cpml == SHIPPED_2D["aux_n_cpml"] != AUX_N_CPML
     # and the profile itself, not only the depth: kappa is 1 on the derived
@@ -177,7 +177,7 @@ def test_method_b_refuses_an_override_it_would_not_honour():
     waveform guard beside it exists to prevent, so it raises."""
     with pytest.raises(ValueError, match="methodB"):
         init_tfsf(160, 1e-3, 1.9e-12, ny=160, cpml_layers=10, tfsf_margin=5,
-                  angle_deg=30.0, method="methodB", aux_n_cpml=200)
+                  angle_deg=30.0, method="methodB", aux_n_cpml=200, dtype='float32')
 
 
 # ==========================================================================

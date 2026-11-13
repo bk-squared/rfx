@@ -201,7 +201,7 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
 
 def _run_1d(nx: int, n_steps: int, probe_rel, dt: float, bw: float, **aux):
     cfg, st = init_tfsf(nx, DX_M, dt, cpml_layers=20, tfsf_margin=5, f0=F0_HZ,
-                        bandwidth=bw, polarization="ez", direction="+x", **aux)
+                        bandwidth=bw, polarization="ez", direction="+x", **aux, dtype='float32')
     ii = jnp.asarray(np.asarray(probe_rel) + int(cfg.src_idx))
     rec = np.empty((n_steps, len(probe_rel)))
     for n in range(n_steps):

@@ -93,7 +93,7 @@ def test_run_oblique_matches_handrolled_and_low_leakage():
         f0=5e9, bandwidth=0.15, amplitude=1.0, polarization="ez",
         direction="+x", angle_deg=angle, ny=grid.ny, nz=grid.nz,
         waveform="modulated_gaussian",
-    )
+    dtype='float32')
     assert is_tfsf_2d(cfg)
     bloch = bloch_phase_tuple(cfg, dx)
     per = (False, True, True)

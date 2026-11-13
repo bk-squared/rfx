@@ -1108,7 +1108,7 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
     for cell, (sigma_port, unit_field) in port._drive_stamps.items():
         waveform = port_drive_waveform(
             grid, cell, "ez", port.excitation, n_steps, materials,
-            sigma_port=sigma_port, unit_field=unit_field)
+            sigma_port=sigma_port, unit_field=unit_field, dtype=materials.eps_r.dtype)
         specs.append(SourceSpec(i=int(cell[0]), j=int(cell[1]), k=int(cell[2]),
                                 component="ez", waveform=waveform))
     return specs
@@ -1120,7 +1120,7 @@ def make_msl_port_sources_jm(
     materials,
     n_steps: int,
     eigenmode_data,
-):
+ *, dtype):
     """Build Schelkunoff J+M one-sided source specs for an MSL eigenmode.
 
     Returns ``(e_specs, h_specs)`` where ``e_specs`` are
@@ -1179,9 +1179,9 @@ def make_msl_port_sources_jm(
     dx = float(grid.dx)
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(port.excitation, dt):
-        times_e = jnp.arange(n_steps, dtype=jnp.float32) * dt
+        times_e = jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * dt
         # H lives at half-integer steps: t_{n+1/2} = (n + 0.5) * dt
-        times_h = (jnp.arange(n_steps, dtype=jnp.float32) + 0.5) * dt
+        times_h = (jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) + 0.5) * dt
         base_wave_e = jax.vmap(port.excitation)(times_e)
         base_wave_h = jax.vmap(port.excitation)(times_h)
 
@@ -1233,7 +1233,7 @@ def make_msl_port_sources_jm(
             e_specs.append(SourceSpec(
                 i=int(i), j=int(j), k=int(k),
                 component="ez",
-                waveform=jnp.array(-sign * coeff_E * hy_w, dtype=jnp.float32) * base_wave_e,
+                waveform=jnp.array(-sign * coeff_E * hy_w, dtype=jnp.promote_types(dtype, jnp.float32)) * base_wave_e,
             ))
 
         # Ey += +sign * coeff_E * hz_mode * wave_e
@@ -1241,7 +1241,7 @@ def make_msl_port_sources_jm(
             e_specs.append(SourceSpec(
                 i=int(i), j=int(j), k=int(k),
                 component="ey",
-                waveform=jnp.array(sign * coeff_Ey * hz_w, dtype=jnp.float32) * base_wave_e,
+                waveform=jnp.array(sign * coeff_Ey * hz_w, dtype=jnp.promote_types(dtype, jnp.float32)) * base_wave_e,
             ))
 
         # --- H correction at i_feed - 1 (driven by E profile) ---
@@ -1253,7 +1253,7 @@ def make_msl_port_sources_jm(
             h_specs.append(MagneticSourceSpec(
                 i=i_h, j=int(j), k=int(k),
                 component="hy",
-                waveform=jnp.array(sign * coeff_H * ez_w, dtype=jnp.float32) * base_wave_h,
+                waveform=jnp.array(sign * coeff_H * ez_w, dtype=jnp.promote_types(dtype, jnp.float32)) * base_wave_h,
             ))
 
         # Hz += -sign * coeff_H * ey_mode * wave_h
@@ -1261,7 +1261,7 @@ def make_msl_port_sources_jm(
             h_specs.append(MagneticSourceSpec(
                 i=i_h, j=int(j), k=int(k),
                 component="hz",
-                waveform=jnp.array(-sign * coeff_H * ey_w, dtype=jnp.float32) * base_wave_h,
+                waveform=jnp.array(-sign * coeff_H * ey_w, dtype=jnp.promote_types(dtype, jnp.float32)) * base_wave_h,
             ))
 
     return e_specs, h_specs
@@ -1663,9 +1663,9 @@ def msl_loop_current(
 
 
 def deferred_msl_sources_jm(grid, port, n_steps, eigenmode_data,
-                            magnetic_sources, *, materials):
+                            magnetic_sources, *, materials, dtype):
     """Resolve both launch corrections together after the final stamp."""
     electric, magnetic = make_msl_port_sources_jm(
-        grid, port, materials, n_steps, eigenmode_data)
+        grid, port, materials, n_steps, eigenmode_data, dtype=dtype)
     magnetic_sources.extend(magnetic)
     return electric

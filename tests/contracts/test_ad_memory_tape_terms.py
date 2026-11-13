@@ -255,7 +255,7 @@ def test_box_incident_line_is_resident_not_per_step_tape(n_steps):
 
     sim, grid, corners, _ = _scene()
     state = jax.eval_shape(lambda: tfsf_from_declaration(
-        sim._tfsf, grid, sim._freq_max, n_steps=n_steps)[1])
+        sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype='float32')[1])
     # Independent forward initializer, not the estimator's matching helper.
     arrays = [getattr(state, name) for name in ("ex", "ey", "ez", "hx", "hy", "hz")]
     expected_resident = sum(math.prod(a.shape) * a.dtype.itemsize for a in arrays)
@@ -306,7 +306,7 @@ def test_closed_box_record_memory_slope(segments, record_chosen):
     sim, grid, _, _ = _scene()
     rows = []
     for n in (800, 1600):
-        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n)
+        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n, dtype='float32')
         assert face_record_pays(cfg, n, checkpoint=True, checkpoint_segments=segments) == record_chosen
         rows.append(_measure(n, box=False, checkpoint=True, k=segments))
         jax.clear_caches()

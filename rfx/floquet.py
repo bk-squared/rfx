@@ -265,14 +265,16 @@ class FloquetPort:
     amplitude: float = 1.0
 
 
-def floquet_port_source(grid, entry, freq_max, domain, n_steps):
+def floquet_port_source(grid, entry, freq_max, domain, n_steps, *, dtype):
     """The soft source a Floquet port declaration drives: ``(center, SourceSpec)``.
 
     A GaussianPulse at the centre of the port plane, on the first (TE) or
     second (TM) tangential E component. The uniform run() and forward()
     runners inject it; the source-end collector reads its table.
     """
-    from rfx.simulation import make_source
+    from rfx.model.source_coefficients import uniform_source_table
+    from rfx._internal._grid_metric import field_index
+    from rfx._internal._uniform_specs import SourceSpec
     from rfx.sources.sources import GaussianPulse
 
     f0 = entry.f0 if entry.f0 is not None else freq_max / 2
@@ -283,7 +285,9 @@ def floquet_port_source(grid, entry, freq_max, domain, n_steps):
         component = {"z": "ex", "x": "ey", "y": "ex"}[entry.axis]
     else:
         component = {"z": "ey", "x": "ez", "y": "ez"}[entry.axis]
-    return tuple(center), make_source(grid, tuple(center), component, waveform, n_steps)
+    cell = field_index(grid, tuple(center), component)
+    table = uniform_source_table(grid, cell, component, waveform, n_steps, None, dtype=dtype)
+    return tuple(center), SourceSpec(*cell, component, table)
 
 
 # ---------------------------------------------------------------------------

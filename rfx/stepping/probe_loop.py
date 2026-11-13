@@ -32,7 +32,7 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
         return jnp.stack([port_drive_waveform(
             grid, cell, port.component, port.excitation, None, materials,
             sigma_port=stamped_drive(port, cell)[0],
-            unit_field=stamped_drive(port, cell)[1], time=t) for cell in cells])
+            unit_field=stamped_drive(port, cell)[1], time=t, dtype=materials.eps_r.dtype) for cell in cells])
 
     def before_sources(frame):
         # Probe updates belong to this frame, never to the caller's input dict.

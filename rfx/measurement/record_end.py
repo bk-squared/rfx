@@ -27,6 +27,8 @@ its launch-to-box reach.
 """
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 import numpy as np
 
 TRACED = "cannot judge: traced"
@@ -297,7 +299,7 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse):
         import jax
         from rfx.floquet import floquet_port_source
         with jax.ensure_compile_time_eval():  # the declared pulse is concrete under a trace
-            center, spec = floquet_port_source(grid, pe, sim._freq_max, sim._domain, n_steps)
+            center, spec = floquet_port_source(grid, pe, sim._freq_max, sim._domain, n_steps, dtype=resolve_coefficient_dtype(sim._precision))
             table = np.asarray(spec.waveform)
         drives.append((name, table, _points_reach([np.asarray(center)])))
     tf = getattr(sim, "_tfsf", None)
@@ -307,7 +309,7 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse):
         else:
             from rfx.measurement.settling import tfsf_source_drive
             from rfx.sources.tfsf import tfsf_from_declaration
-            cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps)
+            cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))
             drives.append(("TF/SF source", *tfsf_source_drive(cfg, grid)))
     for index, _ in enumerate(getattr(sim, "_coaxial_ports", ()) or ()):
         refuse(f"coaxial port[{index}]", "unavailable",

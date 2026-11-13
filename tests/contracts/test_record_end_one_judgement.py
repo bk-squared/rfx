@@ -127,7 +127,7 @@ def test_s2b_r1_tfsf_hand_reach(kind):
     from rfx.sources.tfsf import tfsf_from_declaration
     sim = _s2b_tfsf(kind)
     grid = sim._build_realized_grid()
-    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=1200)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=1200, dtype='float32')
     from rfx.measurement.tfsf_reach import tfsf_corner_paths
     for inset in (0, 1):
         _, hand_corners, hand_paths = _hand_tfsf_geometry(cfg, grid, inside=bool(inset))
@@ -179,7 +179,7 @@ def test_s2b_r1_envelope_estimator_self_check(check, delay, record_property):
     grid = sim._build_grid()
     n, f0 = 1200, 5e9
     bandwidth = .8 if check == "delay" else .2
-    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n, dtype='float32')
     t = np.arange(n)*grid.dt - cfg.src_t0
     waveform = cfg.src_amp * np.exp(-(t/cfg.src_tau)**2) * np.cos(2*np.pi*f0*t)
     delayed_t = t - delay*grid.dt
@@ -203,7 +203,7 @@ def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
     sim = _s2b_tfsf(kind)
     grid = sim._build_realized_grid()
     n = 1200
-    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, line_steps=n, dtype='float32')
     from rfx.measurement.tfsf_reach import tfsf_corner_paths
     indices, _, _ = _hand_tfsf_geometry(cfg, grid, inside=True)
     corners, paths = tfsf_corner_paths(cfg, grid, inset=1)
@@ -264,7 +264,7 @@ def test_s2b_r2_scene_b_echo():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         result = sim.run(n_steps=900, skip_preflight=True)
-    cfg, _ = tfsf_from_declaration(sim._tfsf, result.grid, sim._freq_max, line_steps=900)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, result.grid, sim._freq_max, line_steps=900, dtype='float32')
     _, corners, paths = _hand_tfsf_geometry(cfg, result.grid)
     probe = np.array(sim._probes[0].position)
     expected = _off(_hand_tfsf_samples(cfg, result.grid, 900)) + _transit(

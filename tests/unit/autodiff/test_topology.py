@@ -97,7 +97,7 @@ class TestDensityFilter:
                     rho = rho.at[i, j].set(1.0)
 
         # Apply filter with radius = 3 cells
-        rho_filtered = apply_density_filter(rho, radius_cells=3.0)
+        rho_filtered = apply_density_filter(rho, radius_cells=3.0, dtype='float32')
 
         # The filtered field should be smoother: less variance
         var_before = float(jnp.var(rho))
@@ -114,7 +114,7 @@ class TestDensityFilter:
         ii, jj, kk = jnp.meshgrid(idx, idx, idx, indexing="ij")
         rho = ((ii + jj + kk) % 2).astype(jnp.float32)
 
-        rho_filtered = apply_density_filter(rho, radius_cells=2.0)
+        rho_filtered = apply_density_filter(rho, radius_cells=2.0, dtype='float32')
 
         var_before = float(jnp.var(rho))
         var_after = float(jnp.var(rho_filtered))
@@ -126,7 +126,7 @@ class TestDensityFilter:
     def test_density_filter_preserves_uniform(self):
         """Filtering a uniform field should leave it unchanged."""
         rho = 0.6 * jnp.ones((15, 15), dtype=jnp.float32)
-        rho_filtered = apply_density_filter(rho, radius_cells=3.0)
+        rho_filtered = apply_density_filter(rho, radius_cells=3.0, dtype='float32')
         diff = float(jnp.max(jnp.abs(rho_filtered - rho)))
         # Small tolerance for edge effects
         assert diff < 0.05, f"Uniform field changed by {diff:.6f}"
@@ -134,13 +134,13 @@ class TestDensityFilter:
     def test_density_filter_small_radius_noop(self):
         """Radius < 0.5 cells should be a no-op."""
         rho = jnp.array([[0.0, 1.0], [1.0, 0.0]], dtype=jnp.float32)
-        rho_filtered = apply_density_filter(rho, radius_cells=0.3)
+        rho_filtered = apply_density_filter(rho, radius_cells=0.3, dtype='float32')
         np.testing.assert_array_equal(rho, rho_filtered)
 
     def test_density_filter_is_differentiable(self):
         """jax.grad should flow through the density filter."""
         def loss_fn(rho):
-            return jnp.sum(apply_density_filter(rho, radius_cells=2.0) ** 2)
+            return jnp.sum(apply_density_filter(rho, radius_cells=2.0, dtype='float32') ** 2)
 
         rho = 0.5 * jnp.ones((8, 8), dtype=jnp.float32)
         grad = jax.grad(loss_fn)(rho)
@@ -270,7 +270,7 @@ def test_density_to_material_fields_pec_foreground_uses_occupancy():
         sigma_bg=0.0,
         sigma_fg=1e10,
         pec_fg=True,
-    )
+    dtype='float32')
 
     assert fields.pec_occupancy is not None
     np.testing.assert_allclose(np.array(fields.eps), 2.2, atol=1e-3)
@@ -619,7 +619,7 @@ def test_pec_foreground_gradient_is_finite_and_nonzero():
             sigma_bg=0.0,
             sigma_fg=1e10,
             pec_fg=True,
-        )
+        dtype='float32')
         si, sj, sk = lo_idx
         ei, ej, ek = hi_idx
         eps_r = base_materials.eps_r.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.eps)

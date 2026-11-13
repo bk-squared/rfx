@@ -127,7 +127,7 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
         grid = Grid(freq_max=F0 * 1.5, domain=(DOMAIN,) * 3, dx=dx, cpml_layers=CPML)
         dt = float(grid.dt)
         cfg, st = init_tfsf(nx=grid.nx, dx=dx, dt=grid.dt, cpml_layers=CPML,
-                            tfsf_margin=3, f0=F0, bandwidth=BW)
+                            tfsf_margin=3, f0=F0, bandwidth=BW, dtype='float32')
         launched = measure_normal_incident_spectrum(cfg, st, n_steps, FREQS, grid.dt)
 
         t = np.arange(n_steps) * dt

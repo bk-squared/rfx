@@ -469,7 +469,7 @@ def test_face_record_refused_before_split(monkeypatch):
     sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001, cpml_layers=4)
     sim.add_tfsf_source(f0=7.5e9, closed_box=True)
     grid = sim._build_grid()
-    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=4)
+    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=4, dtype='float32')
     cfg = replace(cfg, face_record=(np.zeros((4, 1)), np.zeros((4, 1))))
     monkeypatch.setattr("rfx.sources.tfsf.tfsf_from_declaration", lambda *a, **k: (cfg, line))
     monkeypatch.setattr(slab_tfsf, "split_tables", lambda *a: pytest.fail("split a replay"))
@@ -581,7 +581,7 @@ def test_realized_oblique_closed_box_refused(angles):
     from rfx.runners._admission import refuse_slab_tfsf
     from rfx.sources.tfsf import tfsf_from_declaration
     sim = _closed_box_scene(polarization="s", **angles)
-    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4, dtype='float32')
     with pytest.raises(NotImplementedError, match="oblique closed-box TFSF"):
         refuse_slab_tfsf(cfg)
 

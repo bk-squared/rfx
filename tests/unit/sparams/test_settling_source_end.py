@@ -105,7 +105,7 @@ def test_tfsf_uses_its_waveform_and_launch_to_box_reach():
 
     grid = Grid(freq_max=10e9, domain=(.03, .03, .03), dx=.003, cpml_layers=4)
     cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=4,
-                      ny=grid.ny, nz=grid.nz, closed_box=True, n_steps=300)
+                      ny=grid.ny, nz=grid.nz, closed_box=True, n_steps=300, dtype='float32')
     waveform, distance = tfsf_source_drive(cfg, grid)
     expected_distance = (cfg.x_hi - cfg.source_p) * grid.dx
     assert distance(None) == pytest.approx(expected_distance)

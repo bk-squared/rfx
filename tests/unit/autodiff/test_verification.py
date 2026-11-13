@@ -55,7 +55,7 @@ def test_gradient_through_tfsf():
         cpml_layers=grid.cpml_layers,
         tfsf_margin=3,
         f0=4e9, bandwidth=0.5, amplitude=1.0,
-    )
+    dtype='float32')
     periodic = (False, True, True)
 
     probe = ProbeSpec(
@@ -228,7 +228,7 @@ def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
     f0 = 5e9
     cfg, aux0 = init_tfsf(grid.nx, dx, dt, cpml_layers=grid.cpml_layers,
                           tfsf_margin=5, f0=f0, bandwidth=bw, amplitude=1.0,
-                          polarization="ez", angle_deg=theta_deg, ny=grid.ny)
+                          polarization="ez", angle_deg=theta_deg, ny=grid.ny, dtype='float32')
     assert is_tfsf_2d(cfg)
     bloch = bloch_phase_tuple(cfg, dx)
     x_iface = grid.nx // 4

@@ -273,6 +273,7 @@ def init_tfsf(
     *, n_steps: int | None = None, theta_deg: float = 0.0, phi_deg: float = 0.0,
     direction_tol_deg: float = 0.1, max_component: int = 100,
     x_cells=None,
+    dtype,
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -365,7 +366,7 @@ def init_tfsf(
             tfsf_margin=tfsf_margin, f0=f0, bandwidth=bandwidth, amplitude=amplitude,
             polarization=polarization, direction=direction, theta_deg=theta_deg,
             phi_deg=phi_deg, direction_tol_deg=direction_tol_deg,
-            max_component=max_component, waveform=waveform, n_steps=n_steps)
+            max_component=max_component, waveform=waveform, n_steps=n_steps, dtype=dtype)
     # continuous_wave lives only in the 1D-auxiliary (normal-incidence) injector; the 2D
     # oblique grid carries only an analytic MG, so reject it here rather than
     # silently drop it (fail-loud, not right-guard-mis-gated).
@@ -415,7 +416,7 @@ def init_tfsf(
             direction=direction,
             theta_deg=angle_deg,
             waveform=waveform,
-        )
+        dtype=dtype)
     # Dispatch to 2D auxiliary grid for oblique angles (Bloch field-transform).
     # The 2D grid naturally matches the 3D numerical dispersion at any angle.
     if is_oblique(angle_deg):
@@ -516,13 +517,13 @@ def init_tfsf(
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC_1D if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    # CONTRACT: auxiliary CPML retains float32 until its run-dtype plumbing lands.
-    _prof = _cpml_profile(n_cpml_1d, dt, float(primal_widths[0]), dtype=jnp.float32, **profile_options)
-    _prof_hi = _cpml_profile(n_cpml_1d, dt, float(primal_widths[-1]), dtype=jnp.float32, **profile_options)
+    # Auxiliary profiles take the run dtype with a float32 floor.
+    _prof = _cpml_profile(n_cpml_1d, dt, float(primal_widths[0]), dtype=jnp.promote_types(jnp.float32, dtype), **profile_options)
+    _prof_hi = _cpml_profile(n_cpml_1d, dt, float(primal_widths[-1]), dtype=jnp.promote_types(jnp.float32, dtype), **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_1d, dt, float(primal_widths[0]), dtype=jnp.float32, sample_offset=0.5, **profile_options)
+        n_cpml_1d, dt, float(primal_widths[0]), dtype=jnp.promote_types(jnp.float32, dtype), sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_1d, dt, float(primal_widths[-1]), dtype=jnp.float32, sample_offset=-0.5, **profile_options)
+        n_cpml_1d, dt, float(primal_widths[-1]), dtype=jnp.promote_types(jnp.float32, dtype), sample_offset=-0.5, **profile_options)
     b_prof, c_prof = _prof.b, _prof.c
 
     tau, t0 = pulse_timing(waveform, f0, bandwidth)
@@ -540,7 +541,7 @@ def init_tfsf(
 
     direction_sign = 1.0 if direction == "+x" else -1.0
 
-    fdtype = jnp.result_type(float)  # float32 normally, float64 with x64
+    fdtype = jnp.promote_types(jnp.result_type(float), dtype)  # float32 normally, float64 with x64
 
     config = TFSFConfig(
         x_lo=x_lo,
@@ -619,7 +620,7 @@ def refuse_graded_propagation_axis(entry, grid):
 
 
 def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=None,
-                          bounds_only=False, record_faces=False):
+                          bounds_only=False, record_faces=False, dtype):
     """The TF/SF configuration a plane-wave declaration realizes on ``grid``.
 
     One builder for every entry (run on the uniform and graded lanes, forward,
@@ -648,7 +649,7 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
         theta_deg=entry.theta_deg, phi_deg=entry.phi_deg,
         direction_tol_deg=entry.direction_tol_deg, max_component=entry.max_component,
         n_steps=line_steps if line_steps is not None else n_steps,
-        x_cells=grid.cells("x"))
+        x_cells=grid.cells("x"), dtype=dtype)
     if record_faces and entry.closed_box:
         from dataclasses import replace
         pair = (replace(pair[0], record_faces=True), pair[1])

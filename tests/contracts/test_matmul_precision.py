@@ -288,7 +288,7 @@ def test_topology_density_filter(shape):
         # The filter turns its radius into an int with jnp.ceil: keep that
         # constant arithmetic concrete so the filter can be staged at all.
         with jax.ensure_compile_time_eval():
-            return apply_density_filter(r, 2.0)
+            return apply_density_filter(r, 2.0, dtype='float32')
 
     text = jax.jit(filt).lower(jnp.ones(shape, jnp.float32)).as_text()
     # The normalising convolution of a constant is evaluated while staging;

@@ -45,10 +45,10 @@ def option_arrays(sim, option):
     grid = sim._build_grid()
     built = sim._assemble_materials(grid)
     if option == 'subpixel':
-        return compute_smoothed_eps(grid, [(e.shape, 3.7) for e in sim._geometry])
+        return compute_smoothed_eps(grid, [(e.shape, 3.7) for e in sim._geometry], dtype='float32')
     if option == 'conformal':
         return compute_conformal_weights_sdf(grid, built[4])
-    return compute_inv_eps_tensor_diag(grid, pec_shapes=built[4])
+    return compute_inv_eps_tensor_diag(grid, pec_shapes=built[4], dtype='float32')
 
 
 def option_trace(kind, option, shift=0):
@@ -88,7 +88,7 @@ def traced_smoothing(lo, hi, *, periodic=True):
     sim.add_material('dielectric', eps_r=3.7)
     # Unequal face offsets also avoid a nearest-normal tie between x and y.
     sim.add(Box((lo, .87 * DX, .64 * DX), (hi, 5.23 * DX, 4.17 * DX)), material='dielectric')
-    return compute_smoothed_eps(sim._build_grid(), [(sim._geometry[0].shape, 3.7)])
+    return compute_smoothed_eps(sim._build_grid(), [(sim._geometry[0].shape, 3.7)], dtype='float32')
 
 
 def test_traced_negative_box_sdf_keeps_negative_image_and_gradient():

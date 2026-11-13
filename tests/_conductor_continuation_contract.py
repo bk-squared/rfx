@@ -37,7 +37,7 @@ def assembled_arrays(sim, *, include_smoothed=True):
     if not nu and include_smoothed:
         pairs, _ = smoothed_shape_pairs(sim, grid)
         tensor = compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs,
-                                             pec_shapes=pec_shapes, background_eps=1.)
+                                             pec_shapes=pec_shapes, background_eps=1., dtype='float32')
         for axis, arr in zip("xyz", tensor):
             arrays["tensor_"+axis] = np.asarray(arr)
         from rfx.boundaries.pec import kottke_fenced_edge_masks
@@ -49,7 +49,7 @@ def assembled_arrays(sim, *, include_smoothed=True):
         from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
         pairs, _ = smoothed_shape_pairs(sim, grid)
         if pairs:
-            tensor = compute_smoothed_eps_nonuniform(grid, pairs, background_eps=1.)
+            tensor = compute_smoothed_eps_nonuniform(grid, pairs, background_eps=1., dtype='float32')
             for axis, arr in zip("xyz", tensor):
                 arrays["smoothed_"+axis] = np.asarray(arr)
     poles = []
@@ -121,7 +121,7 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
                 if any(key.startswith("tensor_") for key in arrays):
                     from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
                     tensor = compute_inv_eps_tensor_diag(grid, dielectric_shapes=[],
-                                                        pec_shapes=[shape], background_eps=1.)
+                                                        pec_shapes=[shape], background_eps=1., dtype='float32')
                 smoothed = None
                 if any(key.startswith("smoothed_") for key in arrays):
                     # The NU smoothed lane carries a conducting entry as an
@@ -129,7 +129,7 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
                     # shape alone moves a background that is not 1.
                     from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
                     smoothed = compute_smoothed_eps_nonuniform(
-                        grid, [(shape, 1.0)], background_eps=2.)
+                        grid, [(shape, 1.0)], background_eps=2., dtype='float32')
                 counts = {}
                 for key in arrays:
                     support = None

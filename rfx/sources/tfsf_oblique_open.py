@@ -13,7 +13,7 @@ clean and the TFSF leakage is low.
 Design invariant (Stage-2 relevant): ``MethodBConfig`` is a NEW ``NamedTuple``,
 NOT a ``TFSF2DConfig`` subclass, so ``is_tfsf_2d(cfg)`` is ``False`` — the
 oblique-Bloch complex64/NTFF-reject lane never fires and fields stay real
-``float32``.
+values at the selected precision (including the existing x64 promotion).
 
 STAGE 1 (this module + the standalone driver) only: the per-step kernels here
 are ``jnp`` + functional (no numpy in-place, no python-data-dependent indexing;
@@ -106,7 +106,7 @@ class MethodBConfig(NamedTuple):
     # --- 8 precomputed face-projection gather tables (jnp, static geometry) ---
     #   naming <face>_<read>: read=e -> gather e1d (H-correction);
     #                         read=h -> gather h1d half-node (E-correction).
-    #   each triple (base:int32, w0:float32, w1:float32); base clipped to
+    #   each triple (base:int32, w0/w1:coefficient dtype); base clipped to
     #   [0, n_aux-2] so base+1 is always in range.
     xlo_e_base: jnp.ndarray; xlo_e_w0: jnp.ndarray; xlo_e_w1: jnp.ndarray
     xhi_e_base: jnp.ndarray; xhi_e_w0: jnp.ndarray; xhi_e_w1: jnp.ndarray
@@ -152,20 +152,21 @@ def _dx_aux_matched(omega, k_num, dt):
     return 0.5 * (lo + hi)
 
 
-def _gather_table(idx: np.ndarray, n_aux: int):
+def _gather_table(idx: np.ndarray, n_aux: int, *, dtype):
     """Build (base, w0, w1) linear-interp gather triple from float indices.
 
     Matches the prototype's per-step ``interp``: floor -> fractional weight from
     the UNCLIPPED floor -> clip base to [0, n_aux-2] (so base+1 <= n_aux-1).
-    Runs in numpy at init; only the int32/float32 results cross into jnp.
+    Runs in numpy at init; int32 indices and run-typed weights cross into jnp.
     """
+    dtype = jnp.promote_types(jnp.float32, dtype)
     fl = np.floor(idx)
-    w1 = (idx - fl).astype(np.float32)
-    w0 = (1.0 - w1).astype(np.float32)
+    w1 = (idx - fl).astype(dtype)
+    w0 = (1.0 - w1).astype(dtype)
     base = np.clip(fl.astype(np.int32), 0, n_aux - 2)
     return (jnp.asarray(base, dtype=jnp.int32),
-            jnp.asarray(w0, dtype=jnp.float32),
-            jnp.asarray(w1, dtype=jnp.float32))
+            jnp.asarray(w0, dtype=dtype),
+            jnp.asarray(w1, dtype=dtype))
 
 
 def init_tfsf_methodB(
@@ -184,6 +185,7 @@ def init_tfsf_methodB(
     polarization: str = "ez",
     direction: str = "+x",
     theta_deg: float = 0.0,
+    dtype,
 ) -> tuple[MethodBConfig, MethodBState]:
     """Build the Method-B config + zero 1D-aux state (open-domain oblique TFSF).
 
@@ -252,12 +254,12 @@ def init_tfsf_methodB(
     # Keep the existing sigma_max = 0.8*4/(eta*d_aux), expressed through
     # the shared grading law. H samples lie half a cell from the E nodes.
     profile_options = dict(R_asymptotic=np.exp(-1.6 * n_cpml_1d))
-    # CONTRACT: auxiliary CPML retains float32 until its run-dtype plumbing lands.
-    electric = _cpml_profile(n_cpml_1d, dt, d_aux, dtype=jnp.float32, **profile_options)
+    # Auxiliary profiles take the run dtype with a float32 floor.
+    electric = _cpml_profile(n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_1d, dt, d_aux, dtype=jnp.float32, sample_offset=0.5, **profile_options)
+        n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_1d, dt, d_aux, dtype=jnp.float32, sample_offset=-0.5, **profile_options)
+        n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), sample_offset=-0.5, **profile_options)
 
     src_tau, src_t0 = pulse_timing(waveform, f0, bandwidth)
 
@@ -278,20 +280,20 @@ def init_tfsf_methodB(
     ix_face = np.arange(x_lo, x_hi + 1)  # y-faces vary ix over [x_lo, x_hi]
 
     # H-face tables (gather e1d) — projection at the E-node coordinate.
-    xlo_e = _gather_table(idx_E(x_lo,       iy_face), n_aux)
-    xhi_e = _gather_table(idx_E(x_hi + 1,   iy_face), n_aux)
-    ylo_e = _gather_table(idx_E(ix_face,    y_lo),    n_aux)
-    yhi_e = _gather_table(idx_E(ix_face,    y_hi + 1), n_aux)
+    xlo_e = _gather_table(idx_E(x_lo,       iy_face), n_aux, dtype=dtype)
+    xhi_e = _gather_table(idx_E(x_hi + 1,   iy_face), n_aux, dtype=dtype)
+    ylo_e = _gather_table(idx_E(ix_face,    y_lo),    n_aux, dtype=dtype)
+    yhi_e = _gather_table(idx_E(ix_face,    y_hi + 1), n_aux, dtype=dtype)
 
     # E-face tables (gather h1d, half-node) — fractional cell coord + (-0.5).
-    xlo_h = _gather_table(idx_H(x_lo - 0.5, iy_face), n_aux)
-    xhi_h = _gather_table(idx_H(x_hi + 0.5, iy_face), n_aux)
-    ylo_h = _gather_table(idx_H(ix_face,    y_lo - 0.5), n_aux)
-    yhi_h = _gather_table(idx_H(ix_face,    y_hi + 0.5), n_aux)
+    xlo_h = _gather_table(idx_H(x_lo - 0.5, iy_face), n_aux, dtype=dtype)
+    xhi_h = _gather_table(idx_H(x_hi + 0.5, iy_face), n_aux, dtype=dtype)
+    ylo_h = _gather_table(idx_H(ix_face,    y_lo - 0.5), n_aux, dtype=dtype)
+    yhi_h = _gather_table(idx_H(ix_face,    y_hi + 0.5), n_aux, dtype=dtype)
 
     # Real auxiliary fields follow dt's promotion, with a float32 floor.
     # A numpy float64 dt promotes the shared 1-D update under x64.
-    fdtype = jnp.promote_types(jnp.result_type(float, dt), jnp.float32)
+    fdtype = jnp.promote_types(jnp.result_type(float, dt), dtype)
     cfg = MethodBConfig(
         x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi,
         cos_theta=ct, sin_theta=st,

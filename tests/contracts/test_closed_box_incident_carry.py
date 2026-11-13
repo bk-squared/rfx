@@ -79,7 +79,7 @@ def test_face_record_overrun_reads_nan():
     from rfx.sources.tfsf_discrete_plane_wave import IncidentStep, table_operands
     from rfx.stepping.incident_line import prepare_tfsf_for_scan
     sim, grid, _, _ = _scene()
-    pair = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=8, record_faces=True)
+    pair = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=8, record_faces=True, dtype='float32')
     cfg, _ = prepare_tfsf_for_scan(pair, grid.dx, grid.dt)
     for magnetic, tables in ((True, cfg.tables_h), (False, cfg.tables_e)):
         assert bool(jnp.all(jnp.isfinite(table_operands(cfg, IncidentStep(jnp.int32(7)), tables[0], 0, magnetic))))

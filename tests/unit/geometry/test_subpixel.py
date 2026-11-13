@@ -73,7 +73,7 @@ def _run_sphere_cavity(
     if use_smoothing:
         eps_ex, eps_ey, eps_ez = compute_smoothed_eps(
             grid, [(sphere, sphere_eps)], background_eps=1.0
-        )
+        , dtype='float32')
         aniso_eps = (eps_ex, eps_ey, eps_ez)
 
     state = init_state(grid.shape)

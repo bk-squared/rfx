@@ -90,7 +90,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                 cell = _grid_metric.field_index(grid, pe.position, pe.component)
                 if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
                     volume, _ = current_source_volume(grid, cell, pe.component)
-                    queue.append((*cell, pe.component, current_source_samples(grid, pe.waveform, n_steps)))
+                    queue.append((*cell, pe.component, current_source_samples(grid, pe.waveform, n_steps, dtype='float32')))
                     material_drive.append((volume, sc.debye_pole_term(drive_model, cell, pe.component, grid.dt)))
                 elif ports_present and not overridden:
                     queue.defer(make_current_source, grid, cell, pe.component, pe.waveform,
@@ -102,7 +102,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     material_drive.append(None)
             for cell, component, waveform, sigma_port, unit_field in drives.get(index, ()):
                 if overridden:
-                    queue.append((*cell, component, current_source_samples(grid, waveform, n_steps)))
+                    queue.append((*cell, component, current_source_samples(grid, waveform, n_steps, dtype='float32')))
                     material_drive.append((None, 0., sigma_port, unit_field))
                 else:
                     queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,

@@ -1,5 +1,7 @@
 """Form geometry permittivity and permeability operands in array order."""
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.errors import RfxUnsupported
 from rfx._internal._precision import resolve_field_dtype
 
@@ -116,7 +118,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             pec_shapes=pec_shapes or [],
             background_eps=1.0,
             nominal_h_max=smoothing_nominal_h_max(sim, grid),
-        )
+        dtype=resolve_coefficient_dtype(sim._precision))
         # Yee-stagger correction: the Kottke union reaches inv=0
         # on Yee-staggered components only when the cell-center
         # AND the offset position are both inside the PEC shape.
@@ -158,7 +160,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 from rfx.geometry.smoothing import compute_smoothed_eps
                 aniso_eps = compute_smoothed_eps(
                     grid, shape_eps_pairs, background_eps=1.0,
-                    nominal_h_max=smoothing_nominal_h_max(sim, grid))
+                    nominal_h_max=smoothing_nominal_h_max(sim, grid), dtype=resolve_coefficient_dtype(sim._precision))
 
     # Conformal PEC: form node lengths, face areas, and the SC clamp.
     # Entry admission refuses this with Stage 2; keep the exclusion
@@ -237,7 +239,7 @@ def form_reference_operands(grid, materials, *, dtype, subpixel_smoothing,
             dielectric_shapes=[],
             pec_shapes=boundary_pec_shapes,
             background_eps=1.0,
-        )
+        dtype=materials.eps_r.dtype)
     reference = None
     if conformal_weights is not None:
         from rfx.geometry.cell_table import build_cell_table
