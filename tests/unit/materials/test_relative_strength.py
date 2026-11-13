@@ -197,6 +197,7 @@ def test_distributed_relative_strength_uses_core(lane, entry, monkeypatch):
                 print(f"Unexpected field SI call: caller={caller} w={w!r} d={d!r} k={k!r} args={args!r} kwargs={kwargs!r}")
         return original(w, d, k, *args, **kwargs)
     monkeypatch.setattr(lorentz, "pole_update_coeffs", counted)
+    monkeypatch.setattr("rfx.model.dispersive_poles.pole_update_coeffs", counted)
     results = []
     for relative in (True, False):
         options = {"dx_profile": np.r_[.002, np.linspace(.0018, .0022, 14), .002]} if lane == "graded" else {}

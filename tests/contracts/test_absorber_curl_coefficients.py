@@ -77,6 +77,7 @@ def observe(monkeypatch, sim):
         return out
 
     monkeypatch.setattr(lorentz, 'mixed_e_component_coeffs', mixed)
+    monkeypatch.setattr('rfx.model.dispersive_poles.mixed_e_component_coeffs', mixed)
     counter = 0
     if importlib.util.find_spec('rfx.boundaries.electric_coefficient') is not None:
         import rfx.boundaries.electric_coefficient as coefficients

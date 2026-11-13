@@ -109,6 +109,7 @@ def capture_scan(sim, steps, monkeypatch, *, forward=False, perturb=False, pertu
         patch.setattr(graded, 'recorded_scan', capture)
         if perturb:
             patch.setattr(lorentz, 'lorentz_e_coeffs', perturbed)
+            patch.setattr('rfx.model.dispersive_poles.lorentz_e_coeffs', perturbed)
         with pytest.raises(_Captured):
             if forward:
                 sim.forward(n_steps=steps, checkpoint=False, skip_preflight=True)
@@ -425,6 +426,7 @@ def test_p2c_prime_all_zero(monkeypatch, graded, forward):
         candidate, _, _ = zero_scene(graded, True, scale)
         with monkeypatch.context() as patch:
             patch.setattr(lorentz, 'pole_update_coeffs', checked_builder)
+            patch.setattr('rfx.model.dispersive_poles.pole_update_coeffs', checked_builder)
             scan = capture_scan(candidate, 400, monkeypatch, forward=forward)
         return scan, jnp.all(jnp.stack(finite)) if finite else jnp.asarray(True)
 
