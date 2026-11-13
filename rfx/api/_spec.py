@@ -499,26 +499,6 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
     )
 
 
-def _auto_source_decay_time(fr, waveform=None) -> float:
-    """Auto Harminv window start: twice the source pulse-completion scale.
-
-    The historical hardcode was ``2.0*3.0*tau`` — the cutoff=3
-    ``GaussianPulse`` envelope (``t0 = 3*tau``). A waveform exposing its
-    own ``t0`` (``GaussianPulse``/``ModulatedGaussian``:
-    ``t0 = cutoff*tau``) makes the window scale with the actual onset —
-    ``2*t0`` = ``9*tau`` at cutoff=4.5 — instead of assuming the cutoff=3
-    envelope. Without a waveform this returns
-    ``2.0*(3.0*tau)``, bitwise-identical to the historical
-    ``2.0*3.0*tau`` (scaling by 2.0 is exact in binary floating point),
-    with ``tau`` derived from the frequency range at the historical
-    bw=0.8.
-    """
-    f_center = (fr[0] + fr[1]) / 2
-    bw = 0.8
-    tau = 1.0 / (f_center * bw * np.pi)
-    return 2.0 * float(getattr(waveform, "t0", 3.0 * tau))
-
-
 def _frequency_vector_hz(freqs) -> np.ndarray:
     """Return stored Hz bins as a host array, preserving the absent-bin error."""
     if freqs is None:
@@ -664,7 +644,7 @@ class Result(NamedTuple):
         list of MatrixPencilMode
         """
         import warnings
-        from rfx.harminv import _ring_down_modes
+        from rfx.harminv import _auto_source_decay_time, _ring_down_modes
         ts = np.asarray(self.time_series)
         if ts.ndim == 2:
             ts = ts[:, probe_idx]

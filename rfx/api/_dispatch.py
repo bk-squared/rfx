@@ -57,6 +57,7 @@ def _dispatch_plan(
     num_periods: float,
     # forward-only inputs
     tfsf_material_overrides: tuple = (),
+    tfsf_angle_override=None,
     distributed: bool = False,
     port_s11_freqs: object | None = None,
     checkpoint_segments: int | None = None,
@@ -171,6 +172,11 @@ def _dispatch_plan(
         raise ValueError("boundary='upml' does not support distributed execution")
 
     if mode == "forward":
+        def _admit_forward_plan(plan: _DispatchPlan) -> _DispatchPlan:
+            from rfx.boundaries import admit_tfsf_angle_override
+            admit_tfsf_angle_override(self, plan.lane, tfsf_angle_override)
+            return plan
+
         if isinstance(checkpoint_segments, tuple):
             raise ValueError("forward checkpoint_segments must be an int; use checkpoint_every for levels on the graded path")
         def _fwd_nu_n_steps() -> int:
@@ -195,7 +201,7 @@ def _dispatch_plan(
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
                 release_inspection(self)
-                return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
+                return _admit_forward_plan(_DispatchPlan(lane="fwd_distributed", n_steps=_n))
             # Uniform and graded distributed runners admit PMC faces.
             # The curl reads the declared magnetic image; no separate
             # post-H face write is dispatched here. Uniform slabs use
@@ -207,7 +213,7 @@ def _dispatch_plan(
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_distributed_nu")
             release_inspection(self)
-            return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
+            return _admit_forward_plan(_DispatchPlan(lane="fwd_distributed_nu", n_steps=_n))
 
         if is_nonuniform:
             # Let the NU runner build grid/materials so it can apply the
@@ -216,7 +222,7 @@ def _dispatch_plan(
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_nonuniform")
             release_inspection(self)
-            return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
+            return _admit_forward_plan(_DispatchPlan(lane="fwd_nonuniform", n_steps=_n))
 
         # Uniform forward lane: the remaining kwargs are NU-only.
         if not emit_time_series:
@@ -250,7 +256,7 @@ def _dispatch_plan(
         # n_steps for the uniform forward lane is resolved by the caller
         # from the grid it builds and reuses for material assembly.
         release_inspection(self)
-        return _DispatchPlan(lane="fwd_uniform", n_steps=n_steps)
+        return _admit_forward_plan(_DispatchPlan(lane="fwd_uniform", n_steps=n_steps))
 
     # mode == "run"
     distributed_run = multi_device

@@ -464,7 +464,7 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
     return waveguide_ports
 
 
-def admit_tfsf_angle_override(sim, lane, override, *, ringdown, gradient):
+def admit_tfsf_angle_override(sim, lane, override):
     """Admit an angle operand after the existing forward dispatch refusals."""
     if override is None:
         return

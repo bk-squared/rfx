@@ -1482,9 +1482,8 @@ class _ExecuteMixin:
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override),
+            tfsf_angle_override=tfsf_angle_override,
         )
-        from rfx.boundaries import admit_tfsf_angle_override
-        admit_tfsf_angle_override(self, plan.lane, tfsf_angle_override, ringdown=ringdown, gradient=gradient)
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if plan.lane == "fwd_distributed":
