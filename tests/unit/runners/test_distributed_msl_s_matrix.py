@@ -41,8 +41,10 @@ def assert_owners(scene, n):
             assert [[q['x_owners'][0] for q in p['ladder']] for p in row['ports']] == [
                 [0, 0, 0, 0, 1], [1, 0, 0, 0, 0]]
     elif scene.name == 'Y1A':
-        assert row['seams'] == ([29] if n == 2 else [20, 40])
+        assert row['seams'] == ([29] if n == 2 else [19, 38])
+        assert row['grid_shape'][0] == 57
         for port in row['ports']:
+            assert port['feed']['x_indices'] == list(range(23, 33))
             assert port['feed']['counts_per_rank'] == ([24, 16] if n == 2 else [0, 40, 0])
     return row
 
