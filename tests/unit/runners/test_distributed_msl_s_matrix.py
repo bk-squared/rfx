@@ -40,6 +40,9 @@ def assert_owners(scene, n):
                 [30, 33, 36, 39, 42], [42, 39, 36, 33, 30]]
             assert [[q['x_owners'][0] for q in p['ladder']] for p in row['ports']] == [
                 [0, 0, 0, 0, 1], [1, 0, 0, 0, 0]]
+    elif scene.name == 'T1':
+        assert [p['feed']['x_indices'] for p in row['ports']] == [[18], [58]]
+        assert [p['feed']['x_owners'] for p in row['ports']] == [[0], [n - 1]]
     elif scene.name == 'Y1A':
         assert row['seams'] == ([29] if n == 2 else [19, 38])
         assert row['grid_shape'][0] == 57
@@ -119,7 +122,10 @@ def parity(scene_name, lane, n, length, monkeypatch, mutate=None):
             mutate(patch)
         actual = scene.sim.compute_msl_s_matrix(freqs=FREQS, n_steps=length, devices=devices)
     assert len(calls) == 4, ('one scan per drive', calls)
-    assert calls == [None, None, devices, devices], ('M4 devices reaches variant.run', calls)
+    device_counts = sorted({len(plane.accumulator.sharding.device_set)
+                            for result in runs for plane in result.dft_planes.values()})
+    assert calls == [None, None, devices, devices], (
+        'M4 devices reaches variant.run', calls, 'accumulator device counts', device_counts, 'required', n)
     for result in runs:
         for plane in result.dft_planes.values():
             assert len(plane.accumulator.sharding.device_set) == n, 'M4 accumulator device count'
