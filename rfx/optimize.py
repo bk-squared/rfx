@@ -80,9 +80,25 @@ def _latent_to_eps(latent: jnp.ndarray, eps_min: float, eps_max: float) -> jnp.n
     return eps_min + (eps_max - eps_min) * jax.nn.sigmoid(latent)
 
 
+@dataclass(frozen=True)
+class _PreparedScalarObjective:
+    """Share one compiled evaluator and fallback decision across starts."""
+    fun: Callable
+    evaluate: Callable
+
+    def __call__(self, x):
+        return self.fun(x)
+
+
 def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
     """Compile once, falling back only for a first-call trace-time host read."""
-    eager = jax.value_and_grad(fn)
+    if isinstance(fn, _PreparedScalarObjective):
+        return fn.evaluate
+    return _jit_with_fallback(jax.value_and_grad(fn), jit, caller)
+
+
+def _jit_with_fallback(eager: Callable, jit: bool, caller: str):
+    """Use the same first-call host-read fallback for either AD transform."""
     if not jit:
         return eager
     compiled = jax.jit(eager)
@@ -132,6 +148,88 @@ def _adam_update(
         step = jnp.where(snorm > step_clamp,
                          step * (step_clamp / snorm), step)
     return step, m, v
+
+
+def _run_optimizer(
+    opt, fun, x0, bounds, *, n_iters, m=0, jacobian="rev", jit,
+    verbose=False, it_count=None, keep_iterates=False, name="optimize",
+):
+    """Run one start, returning x, f0 history, optional iterates and solve counts."""
+    if m < 0:
+        raise ValueError("m must be nonnegative")
+    if m == 0:
+        evaluate = _value_and_grad_with_fallback(fun, jit, name)
+    else:
+        if jacobian not in ("rev", "fwd"):
+            raise ValueError("jacobian must be 'rev' or 'fwd'")
+
+        def with_values(x):
+            values = fun(x)
+            # has_aux returns the primal values from this same forward.
+            return values, values
+
+        transform = jax.jacrev if jacobian == "rev" else jax.jacfwd
+        evaluate = _jit_with_fallback(transform(with_values, has_aux=True), jit, name)
+
+    state = opt.init(x0, bounds)
+    latent = state.x
+    last_good = latent
+    loss_history: list[float] = []
+    latents: list | None = [] if keep_iterates else None
+    solves = {"forward": 0, "reverse": 0, "forward_mode": 0}
+    for it in range(n_iters):
+        req = opt.ask(state)
+        latent = req.x
+        # Count mathematical solves, including a non-finite evaluation, not
+        # tracing/retries: scalar = 1 forward + 1 reverse; jacrev = 1 forward
+        # + (m+1) reverse; jacfwd = x.size forward-mode, no extra forward.
+        if m == 0:
+            loss, grad = evaluate(req.x)
+            cons_values = cons_grads = None
+            solves["forward"] += 1
+            solves["reverse"] += 1
+        else:
+            jac, values = evaluate(req.x)
+            loss, cons_values = values[0], values[1:]
+            grad, cons_grads = jac[0], jac[1:]
+            if jacobian == "rev":
+                solves["forward"] += 1
+                solves["reverse"] += m + 1
+            else:
+                solves["forward_mode"] += req.x.size
+
+        finite = bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))
+        if m > 0:
+            finite = (finite and bool(jnp.all(jnp.isfinite(cons_values)))
+                      and bool(jnp.all(jnp.isfinite(cons_grads))))
+        if not finite:
+            warnings.warn(
+                f"{name}: non-finite loss/gradient (NaN or Inf) at iteration "
+                f"{it} — the FDTD forward almost certainly diverged. Common "
+                f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
+                f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
+                f"returning the last finite design (from before iteration "
+                f"{it}).", AccuracyWarning,
+                stacklevel=2,
+            )
+            latent = last_good
+            break
+
+        last_good = latent
+        if it_count is not None:
+            it_count[0] = it + 1
+        loss_val = float(loss)
+        loss_history.append(loss_val)
+        if latents is not None:
+            latents.append(latent)
+
+        state = opt.tell(state, req, loss, grad, cons_values, cons_grads)
+        latent = state.x
+
+        if verbose and (it % 10 == 0 or it == n_iters - 1):
+            print(f"  iter {it:4d}  loss = {loss_val:.6e}")
+
+    return latent, loss_history, latents, solves
 
 
 def _adam_multistart(
@@ -212,52 +310,16 @@ def _adam_multistart(
     if step_clamp is not None and step_clamp <= 0:
         raise ValueError(f"optimize: step_clamp must be > 0, got {step_clamp}")
 
-    grad_fn = _value_and_grad_with_fallback(cost_fn, jit, "optimize")
-    opt = _Adam(lr, beta1, beta2, eps_adam, step_clamp)
+    cost_fn = _PreparedScalarObjective(
+        cost_fn, _value_and_grad_with_fallback(cost_fn, jit, "optimize"),
+    )
 
     def _run_one(init_lat):
-        state = opt.init(init_lat, bounds=None)
-        latent = init_lat
-        loss_history: list[float] = []
-        # Only retain visited iterates when best-iterate is requested, so the
-        # default path holds no extra design tensors in memory.
-        latents: list = [] if best_iterate else None
-        last_good = latent  # last design with a confirmed-finite forward+gradient
-        for it in range(n_iters):
-            req = opt.ask(state)
-            latent = req.x
-            loss, grad = grad_fn(req.x)
-
-            # NaN/Inf gradient guard (unchanged from the legacy loop): a
-            # non-finite gradient silently poisons ``latent`` and every later
-            # iteration, so stop fast and RESTORE the last finite design.
-            if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
-                import warnings as _w
-                _w.warn(
-                    f"optimize: non-finite loss/gradient (NaN or Inf) at iteration "
-                    f"{it} — the FDTD forward almost certainly diverged. Common "
-                    f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
-                    f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
-                    f"returning the last finite design (from before iteration "
-                    f"{it}).", AccuracyWarning,
-                    stacklevel=2,
-                )
-                latent = last_good
-                break
-
-            last_good = latent  # this design produced a finite forward+gradient
-            if it_count is not None:
-                it_count[0] = it + 1
-            loss_val = float(loss)
-            loss_history.append(loss_val)
-            if latents is not None:
-                latents.append(latent)
-
-            state = opt.tell(state, req, loss, grad, None, None)
-            latent = state.x
-
-            if verbose and (it % 10 == 0 or it == n_iters - 1):
-                print(f"  iter {it:4d}  loss = {loss_val:.6e}")
+        latent, loss_history, latents, _solves = _run_optimizer(
+            _Adam(lr, beta1, beta2, eps_adam, step_clamp), cost_fn, init_lat, None,
+            n_iters=n_iters, m=0, jit=jit, verbose=verbose, it_count=it_count,
+            keep_iterates=best_iterate,
+        )
 
         if loss_history:
             if best_iterate:
@@ -270,7 +332,7 @@ def _adam_multistart(
         else:
             # No finite loss was recorded (diverged at iter 0): fail-soft,
             # return the last-good design (== init_lat) with no score.
-            ret_latent = last_good
+            ret_latent = latent
             score = None
         return loss_history, ret_latent, score
 

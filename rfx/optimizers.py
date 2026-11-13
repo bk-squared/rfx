@@ -69,6 +69,46 @@ class _Adam(_Optimizer[_AdamState]):
         return state
 
 
+@dataclass(frozen=True)
+class _ProjectedAdamState(_AdamState):
+    lower: jnp.ndarray
+    upper: jnp.ndarray
+
+
+@dataclass(frozen=True)
+class _ProjectedAdam(_Optimizer[_ProjectedAdamState]):
+    lr: float
+    beta1: float = 0.9
+    beta2: float = 0.999
+    eps: float = 1e-8
+    native_box = True
+
+    def init(self, x0: jnp.ndarray, bounds) -> _ProjectedAdamState:
+        if bounds is None:
+            raise ValueError("ProjectedAdam requires bounds")
+        lower, upper = (jnp.asarray(b, dtype=x0.dtype) for b in bounds)
+        x = jnp.clip(x0, lower, upper)
+        return _ProjectedAdamState(x, jnp.zeros_like(x), jnp.zeros_like(x),
+                                   0, lower, upper)
+
+    def ask(self, state: _ProjectedAdamState) -> _Request:
+        return _Request(state.x, need_grad=True, iterate=True)
+
+    def tell(self, state: _ProjectedAdamState, request: _Request, value, grad,
+             cons_values, cons_grads) -> _ProjectedAdamState:
+        from rfx.optimize import _adam_update
+
+        step, m, v = _adam_update(
+            state.m, state.v, grad, state.it, self.lr,
+            self.beta1, self.beta2, self.eps,
+        )
+        x = jnp.clip(request.x - step, state.lower, state.upper)
+        return _ProjectedAdamState(x, m, v, state.it + 1, state.lower, state.upper)
+
+    def restart(self, state: _ProjectedAdamState) -> _ProjectedAdamState:
+        return state
+
+
 # Implemented from the equations in Svanberg, MMA and GCMMA (2007),
 # sections 3 and 5. No MATLAB implementation or GPL port is used here.
 @dataclass(frozen=True)
