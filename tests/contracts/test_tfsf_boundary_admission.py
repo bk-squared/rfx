@@ -235,7 +235,7 @@ def test_traced_singleton_transverse_axis_is_constant():
     assert bool(check(jnp.arange(15.).reshape(15, 1, 1)))
 
 
-def assert_graded_admitted(sim, skip, distributed, monkeypatch):
+def assert_graded_admitted(sim, skip, distributed, monkeypatch, *, wall_pair=False):
     import jax
     import rfx.stepping.graded_loop as kernel
 
@@ -245,8 +245,9 @@ def assert_graded_admitted(sim, skip, distributed, monkeypatch):
     def stop(grid, *args, **kwargs):
         # Literals measured on main 4acbd7925; the real factory includes
         # the low-level admission and NTFF enclosure check, but no step.
-        assert grid.shape == (25, 15, 15)
-        assert tuple(getattr(grid, f"pad_{a}_{s}") for a in "xyz" for s in ("lo", "hi")) == (2,) * 6
+        if not wall_pair:
+            assert grid.shape == (25, 15, 15)
+            assert tuple(getattr(grid, f"pad_{a}_{s}") for a in "xyz" for s in ("lo", "hi")) == (2,) * 6
         original(grid, *args, **kwargs)
         raise Admitted
 
@@ -275,13 +276,13 @@ def test_graded_plane_wave_keeps_absorbers(skip, distributed, monkeypatch):
     assert_graded_admitted(sim, skip, distributed, monkeypatch)
 
 
-def oblique_plane(finite_axis, polarization, *, method="bloch", **mesh):
+def oblique_plane(finite_axis, polarization, *, method="bloch", angle_deg=20, **mesh):
     sim = Simulation(10e9, (.02, .01, .01), dx=.001, cpml_layers=2, **mesh)
     lo, hi = [.008, -1., -1.], [.012, 1., 1.]
     lo["xyz".index(finite_axis)], hi["xyz".index(finite_axis)] = .003, .007
     sim.add_material("box", eps_r=2.5)
     sim.add(Box(tuple(lo), tuple(hi)), material="box")
-    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method=method, polarization=polarization)
+    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=angle_deg, method=method, polarization=polarization)
     return sim
 
 
@@ -323,12 +324,12 @@ def test_oblique_tilt_finite_box_refuses(skip, polarization, tilt):
         oblique_plane(tilt, polarization).run(n_steps=1, skip_preflight=skip)
 
 
-def oblique_slab(polarization, *, boundary="cpml"):
+def oblique_slab(polarization, *, boundary="cpml", angle_deg=20, eps_r=2.5, **mesh):
     sim = Simulation(freq_max=10e9, domain=(.02, .01, .01), dx=.001,
-                     cpml_layers=2, boundary=boundary)
-    sim.add_material("slab", eps_r=2.5)
+                     cpml_layers=2, boundary=boundary, **mesh)
+    sim.add_material("slab", eps_r=eps_r)
     sim.add(Box((.008, -1., -1.), (.012, 1., 1.)), material="slab")
-    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method="bloch", polarization=polarization)
+    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=angle_deg, method="bloch", polarization=polarization)
     return sim
 
 
@@ -405,6 +406,38 @@ def test_graded_oblique_message_unchanged():
     assert str(caught.value) == (
         "TFSF oblique incidence (angle_deg != 0) is not yet supported on nonuniform "
         "z mesh — the 2D auxiliary grid is uniform-only. Use angle_deg=0 or run on the uniform lane.")
+
+
+@pytest.mark.parametrize("scene,graded,polarization,tilt", [
+    pytest.param(scene, graded, polarization, tilt,
+                 id=f"{polarization}-{'graded' if graded else 'uniform'}-{scene}")
+    for scene in ("finite", "invariant")
+    for graded in (False, True)
+    for polarization, tilt in (("ez", "y"), ("ey", "z"))
+] + [pytest.param("wall_pair", True, "ez", "y", id="ez-graded-wall-pair")])
+def test_small_angle_has_normal_incidence_admission(scene, graded, polarization, tilt, monkeypatch):
+    mesh = {"dx_profile": np.full(20, .001)} if graded else {}
+    if scene == "finite":
+        with pytest.raises(ValueError) as normal:
+            oblique_plane(tilt, polarization, angle_deg=0, **mesh).run(
+                n_steps=1, skip_preflight=True)
+        with pytest.raises(type(normal.value)) as small:
+            oblique_plane(tilt, polarization, angle_deg=.005, **mesh).run(
+                n_steps=1, skip_preflight=True)
+        assert type(small.value) is type(normal.value)
+        assert str(small.value) == str(normal.value)
+    elif scene == "wall_pair":
+        sim = oblique_slab(polarization, angle_deg=.005, eps_r=4.,
+                           boundary={"x": "cpml", "y": "pmc", "z": "pec"}, **mesh)
+        assert_graded_admitted(sim, True, False, monkeypatch, wall_pair=True)
+    else:
+        sim = oblique_slab(polarization, angle_deg=.005, **mesh)
+        if graded:
+            assert_graded_admitted(sim, True, False, monkeypatch)
+        else:
+            stop_at_runner(monkeypatch)
+            with pytest.raises(Admitted):
+                sim.run(n_steps=1, skip_preflight=True)
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
