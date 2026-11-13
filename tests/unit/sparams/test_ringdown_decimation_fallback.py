@@ -68,6 +68,15 @@ def test_b3_accepted_default_plans_do_not_move():
             accepted += 1
         elif actual != default:
             assert _stage1_bytes(actual[1], channels) <= rd.IDENTIFY_MEMORY_BOUND_BYTES
+            columns = max(4, min(int(n_window * 0.33), n_window - 2))
+            capacity = min(51, columns, n_window - columns)
+            samples = n_window
+            for factor in actual[0]:
+                assert 2 <= factor <= 13
+                samples = (samples + factor - 1) // factor - 20
+                columns = max(4, min(int(samples * 0.33), samples - 2))
+                assert samples >= 10 and min(columns, samples - columns) >= capacity
+            assert samples == actual[1]
             rescued += 1
     assert accepted > 0
     assert rescued > 0
@@ -106,3 +115,19 @@ def test_configured_memory_bound_preserves_default_when_no_fallback(monkeypatch,
         assert refused.value.stage == 1
         assert refused.value.Nd == 1400
         assert refused.value.needed_bytes == _stage1_bytes(1400, 72)
+
+
+def test_refused_window_at_decimation_guard_has_no_fallback(monkeypatch):
+    dt, freq_max, samples = 0.125, 1.0, 1400
+    assert 1.0 / dt == 8 * freq_max
+    # A q=2 plan would fit, but equality does not permit decimation.
+    bound = (_stage1_bytes(680, 1) + _stage1_bytes(samples, 1)) / 2
+    monkeypatch.setattr(rd, "IDENTIFY_MEMORY_BOUND_BYTES", bound)
+    assert rd.decimation_plan(samples, dt, freq_max) == ((), samples)
+    assert _identification_plan(samples, dt, freq_max, 1) == ((), samples)
+    y = np.exp((-0.1 + 2j * np.pi * 0.4) * np.arange(samples) * dt)
+    with pytest.raises(rd.IdentificationMemoryRefused) as refused:
+        rd.identify(y, dt, 0, samples, freq_max=freq_max)
+    assert refused.value.stage == 1
+    assert refused.value.Nd == samples
+    assert refused.value.needed_bytes == _stage1_bytes(samples, 1)

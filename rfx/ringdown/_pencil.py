@@ -16,6 +16,7 @@ from rfx.measurement.matrix_pencil import (
     _to_original_rate as _core_to_original_rate,
     _fit_residues,
     _decimation_factors,
+    DECIMATION_GUARD,
     _FIR_HALF_OUTPUT_SAMPLES,
     _MIN_PENCIL_SAMPLES,
 )
@@ -134,6 +135,8 @@ def _identification_plan(n_window, dt, freq_max, n_channels):
         return default
     except IdentificationMemoryRefused:
         pass
+    if not (1.0 / dt > DECIMATION_GUARD * freq_max):
+        return default
     columns = _harminv._pencil_columns(n_window, parameter)
     capacity = min(rd.HARMINV_MAX_MODES + 1, columns, n_window - columns)
     target = int(1.0 / dt / (4.0 * freq_max))
