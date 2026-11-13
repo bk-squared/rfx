@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 from rfx.boundaries.axes import hi_face_is_wall
 from rfx.core.yee import EPS_0, MU_0
+from rfx.errors import RfxRefusal
 from rfx.model.waveguide_waveform import waveguide_waveform_error
 from rfx.model.waveguide_mode_solver import (
     _aperture_area,
@@ -375,7 +376,7 @@ def _refuse_degenerate_discrete_mode(
     partner_names = sorted({names[i] for i in np.argmax(overlaps, axis=0)})
     relative = distances[partners] / abs(picked) if picked else distances[partners]
     gaps = ", ".join(f"{gap:.6e}" for gap in relative)
-    raise ValueError(
+    raise RfxRefusal(
         f"Requested {mode_type}{m}{n} shares its discrete cutoff with "
         f"{', '.join(partner_names)} on an aperture of {nu} x {nv} cells "
         f"(relative eigenvalue distance(s): {gaps}; tolerance 1e-9). "

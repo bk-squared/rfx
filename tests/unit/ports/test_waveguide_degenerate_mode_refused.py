@@ -116,7 +116,7 @@ def test_direct_profiles_refuse_with_and_without_aperture(kind, mode, partner, g
     _message(caught, f"{kind}{mode[0]}{mode[1]}", partner, (10, 10))
 
 
-def test_lower_mode_orthogonalisation_preserves_requested_te30():
+def test_lower_mode_basis_does_not_change_requested_te30(monkeypatch):
     # TE30 is distinct on this aperture; its lower TE20 shares TE01's cutoff.
     values = _spectrum(20, 10, .002)
     target = (2 / .002 * np.sin(3 * np.pi / 40))**2
@@ -124,21 +124,57 @@ def test_lower_mode_orthogonalisation_preserves_requested_te30():
     assert np.min(np.abs(np.delete(values, rank) - values[rank])) > 1e-9 * target
     u_widths, v_widths = np.full(20, .002), np.full(10, .002)
     aperture_dA = u_widths[:, None] * v_widths[None, :]
-    # Co-located E/H templates isolate orthogonality from dual-grid smoothing.
-    with enable_x64():
-        cfg = init_waveguide_port(_port(20, 10, mode=(3, 0)), .002,
-                                  np.array([15e9]), f0=15e9, field_dtype=np.float64,
-                                  h_offset=(0., 0.))
-    np.testing.assert_array_equal(cfg.aperture_dA, aperture_dA)
-    reference = _discrete_te_mode_profiles(
-        .04, .02, 3, 0, u_widths, v_widths, aperture_dA=aperture_dA,
-        h_offset=(0., 0.), _orthogonalize=False,
-    )
-    stored = np.stack([cfg.ey_profile, cfg.ez_profile, cfg.hy_profile, cfg.hz_profile])
-    difference = np.max(np.abs(stored - np.stack(reference[:4])))
-    peak = np.max(np.abs(stored))
-    print(f"TE30 profile difference / peak: {difference / peak:.16e}")
-    assert difference <= 1e-12 * peak
+
+    def build():
+        with enable_x64():
+            cfg = init_waveguide_port(_port(20, 10, mode=(3, 0)), .002,
+                                      np.array([15e9]), f0=15e9, field_dtype=np.float64)
+        assert cfg.h_offset == (.5, .5)
+        np.testing.assert_array_equal(cfg.aperture_dA, aperture_dA)
+        return np.stack([cfg.ey_profile, cfg.ez_profile, cfg.hy_profile, cfg.hz_profile])
+
+    # Uniform mass: the normalized analytic TE01 shape is also its psi basis.
+    e01 = np.broadcast_to(np.cos(np.pi * (np.arange(10) + .5) / 10), (20, 10)).ravel()
+    e01 = e01 / np.linalg.norm(e01)
+    eigh = np.linalg.eigh
+    angle = np.pi / 6
+    rotation = np.array([[np.cos(angle), -np.sin(angle)],
+                         [np.sin(angle), np.cos(angle)]])
+    reference = build()
+    peak = np.max(np.abs(reference))
+    ratios = []
+    for change in ("rotate-30-degrees", "negate-TE01"):
+        changed_clusters = []
+
+        def changed_eigh(*args, **kwargs):
+            eigenvalues, vectors = eigh(*args, **kwargs)
+            start = 0
+            while start < len(eigenvalues):
+                stop = start + 1
+                while (stop < len(eigenvalues)
+                       and eigenvalues[stop] - eigenvalues[start]
+                       <= 1e-9 * abs(eigenvalues[start])):
+                    stop += 1
+                if stop - start > 1:
+                    original = vectors[:, start:stop].copy()
+                    if change == "rotate-30-degrees":
+                        # Adjacent Givens rotations also cover clusters larger than two.
+                        for column in range(start, stop - 1):
+                            vectors[:, column:column + 2] = vectors[:, column:column + 2] @ rotation
+                    else:
+                        vectors[:, start:stop] = original - 2 * np.outer(e01, e01 @ original)
+                    changed_clusters.append(np.max(np.abs(vectors[:, start:stop] - original)))
+                start = stop
+            return eigenvalues, vectors
+
+        with monkeypatch.context() as patch:
+            patch.setattr(np.linalg, "eigh", changed_eigh)
+            stored = build()
+        assert changed_clusters and max(changed_clusters) > 1e-3
+        ratio = np.max(np.abs(stored - reference)) / peak
+        print(f"TE30 {change} profile difference / peak: {ratio:.16e}")
+        ratios.append(ratio)
+    assert max(ratios) <= 1e-12
 
 
 def test_single_mode_multimode_initializer_refuses():

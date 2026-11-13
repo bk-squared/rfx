@@ -1,4 +1,4 @@
-### Fixed - Refuse ambiguous discrete waveguide modes (#PR)
+### Fixed — Refuse ambiguous discrete waveguide modes (#PR)
 
 A square-guide TE10 port could launch a 45-degree mix of TE10 and TE01
 that depends on the machine; a 2:1 guide's second mode likewise mixed TE01
