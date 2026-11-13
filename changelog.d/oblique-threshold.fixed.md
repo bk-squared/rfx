@@ -5,4 +5,5 @@ still treated these angles as oblique and skipped the invariance check along y (
 z (`ey`), so a structure finite along that axis was solved, without a message, as an array
 whose period includes the absorber pads. It is now refused with the message and remedy
 given at 0°. On the uniform mesh these angles now give the 0° refusal text and remedy.
+`compute_rcs` treats these angles as normal incidence too; before, it refused or failed on them.
 Scenes admitted before run unchanged.
