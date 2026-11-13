@@ -151,16 +151,15 @@ def test_small_dielectric_body_warning(label, shape, expected):
         sim.run(n_steps=1, skip_preflight=True)
 
 
-def traced_sphere_objective(radius):
-    sim = _sim()
-    sim.add_material('d', eps_r=4.)
-    sim.add(Sphere(tuple(CELL + OFFSET), radius), material='d')
-    sim.add_source((2.5 * H, 6.5 * H, 6.5 * H), 'ez', waveform=GaussianPulse(f0=20e9, bandwidth=0.8))
-    sim.add_probe((9.5 * H, 6.5 * H, 7.5 * H), 'ez')
-    result = sim.forward(n_steps=200, subpixel_smoothing=True, skip_preflight=True)
-    return jnp.sum(jnp.asarray(result.time_series) ** 2)
+def traced_sphere_mask(radius):
+    sampling = _sampling(False)
+    return _material_cell_mask(Sphere(tuple(CELL + OFFSET), radius), sampling['coords'], sampling['centres'],
+                               grid=sampling['grid'], name='d', refuse_empty=True)
 
 
 def test_traced_radius_below_the_cell_is_refused():
     with pytest.raises(Exception, match=REFUSED):
-        jax.block_until_ready(jax.jit(traced_sphere_objective)(jnp.float32(0.80 * H)))
+        jax.block_until_ready(jax.jit(traced_sphere_mask)(jnp.float32(0.80 * H)))
+    traced = np.asarray(jax.jit(traced_sphere_mask)(jnp.float32(0.95 * H)))
+    np.testing.assert_array_equal(traced, np.asarray(traced_sphere_mask(np.float32(0.95 * H))))
+    assert traced.any()
