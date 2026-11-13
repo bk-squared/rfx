@@ -405,7 +405,7 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
     if len(group) > 1:
         try:
             vector, kc2 = _project_degenerate_mode(
-                evals, evecs, rank, hx_ana.ravel(), np.kron(u_widths, v_widths),
+                evals, evecs, rank, hx_ana.ravel(), np.kron(mu, mv),
             )
         except RfxRefusal as exc:
             raise RfxRefusal(f"Requested TE{m}{n} on {nu} x {nv} cells: {exc}") from exc
@@ -521,7 +521,7 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
     if len(group) > 1:
         try:
             vector, kc2 = _project_degenerate_mode(
-                evals, evecs, rank, ex_ana.ravel(), np.kron(u_widths, v_widths),
+                evals, evecs, rank, ex_ana.ravel(), np.kron(mu, mv),
             )
         except RfxRefusal as exc:
             raise RfxRefusal(f"Requested TM{m}{n} on {nu} x {nv} cells: {exc}") from exc
