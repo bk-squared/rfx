@@ -124,6 +124,9 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
         specs['magnetic_factors'] = tuple(
             None if a is None else P('x') if axis == 0 else P()
             for axis, a in enumerate(invariants['magnetic_factors']))
+        specs['h_row_factors'] = tuple(
+            None if a is None else P('x') if axis == 0 else P()
+            for axis, a in enumerate(invariants['h_row_factors']))
         carry_spec = jax.tree.map(lambda a: P() if np.ndim(a) == 0 else P('x'), carry)
         if context.use_tfsf:
             carry_spec['tfsf'] = jax.tree.map(lambda _: P(), carry['tfsf'])
@@ -241,11 +244,14 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         inputs['pec_edge_masks'] = jax.tree.map(
             lambda mask: mask & real[:, None, None], inputs['pec_edge_masks'])
     inputs.update(profiles)
-    from rfx.boundaries.pmc import magnetic_update_factors
+    from rfx.boundaries.pmc import high_face_row_factors, magnetic_update_factors
     factors = magnetic_update_factors(pmc_faces, grid.shape, ctx.periodic)
     inputs['magnetic_factors'] = tuple(
         cut(a, layout, 'pmc_h_factor', mesh=mesh) if axis == 0 and a is not None else a
         for axis, a in enumerate(factors))
+    inputs['h_row_factors'] = tuple(
+        cut(a, layout, 'pmc_h_factor', mesh=mesh) if axis == 0 and a is not None else None if a is None else jnp.asarray(a)
+        for axis, a in enumerate(high_face_row_factors(grid.shape, ctx.periodic)))
     for family, bundle in (('debye', debye), ('lorentz', lorentz)):
         if bundle is not None:
             inputs[family + '_coeffs'] = bundle[0]

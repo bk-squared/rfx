@@ -5,7 +5,9 @@ reports ``cpml_axes == "xyz"``; ``forward()`` derived its PEC axes as "the
 axes without CPML" and so handed the scan ``pec_axes == ""`` — an open box.
 Measured before the fix: the 24 mm cube's strongest mode read 5.091 GHz
 through ``forward()`` and 8.831 GHz through ``run()`` (analytic TM110
-8.833 GHz); ``rfx.simulation.run(pec_axes="")`` reproduces the 5.091.
+8.833 GHz). Before #2615 ``rfx.simulation.run(pec_axes="")`` reproduced the 5.091;
+since then a face with no wall ends as a magnetic wall half a cell outside,
+and that call reads 8.48 GHz.
 Pinned as an invariant: the two entry points agree on the ring-down, and the
 resonance is the cavity's.
 
