@@ -92,7 +92,7 @@ def test_t_jit_coordinates(traced_values, axis):
 def test_t_jit_dt(traced_values):
     c0 = 1/np.sqrt(EPS0*MU0)
     expected = .99/(c0*np.sqrt(sum(1/p.min()**2 for p in (X, Y, Z))))
-    assert_spacings(traced_values[0]['dt'], expected, 8)
+    assert_scaled(traced_values[0]['dt'], expected, 8)
 
 
 @pytest.mark.parametrize('face', FACES)
