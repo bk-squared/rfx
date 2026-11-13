@@ -10,6 +10,19 @@ import jax.numpy as jnp
 import numpy as np
 
 
+def _box_in_dtype(xmin, xmax, dtype):
+    xmin, xmax = (np.asarray(b, dtype=np.float64) for b in (xmin, xmax))
+    if np.any(xmin >= xmax):
+        raise ValueError('Box requires strictly ordered bounds')
+    lower, upper = xmin.astype(dtype), xmax.astype(dtype)
+    # A nearest-rounded bound can lie outside the original float64 box.
+    lower = np.where(lower < xmin, np.nextafter(lower, np.asarray(np.inf, dtype=dtype)), lower)
+    upper = np.where(upper > xmax, np.nextafter(upper, np.asarray(-np.inf, dtype=dtype)), upper)
+    if np.any(lower > upper):
+        raise ValueError('The rounded box is empty in the design dtype')
+    return lower, upper
+
+
 @dataclass(frozen=True)
 class _Request:
     x: jnp.ndarray
@@ -86,7 +99,11 @@ class _ProjectedAdam(_Optimizer[_ProjectedAdamState]):
     def init(self, x0: jnp.ndarray, bounds) -> _ProjectedAdamState:
         if bounds is None:
             raise ValueError("ProjectedAdam requires bounds")
-        lower, upper = (jnp.asarray(b, dtype=x0.dtype) for b in bounds)
+        xmin, xmax = (np.broadcast_to(np.asarray(b, dtype=np.float64), x0.shape) for b in bounds)
+        if not np.all(np.isfinite(xmin)) or not np.all(np.isfinite(xmax)):
+            raise ValueError('ProjectedAdam requires finite bounds')
+        lower, upper = (jnp.asarray(b, dtype=x0.dtype)
+                        for b in _box_in_dtype(xmin, xmax, x0.dtype))
         x = jnp.clip(x0, lower, upper)
         return _ProjectedAdamState(x, jnp.zeros_like(x), jnp.zeros_like(x),
                                    0, lower, upper)
@@ -308,12 +325,7 @@ class _MMA(_Optimizer[_MMAState]):
     def _design_point(x, dtype, shape, xmin, xmax):
         # Round the solution before storing history or asking for an evaluation.
         rounded = np.asarray(x, dtype=dtype)
-        lower, upper = xmin.astype(dtype), xmax.astype(dtype)
-        # A nearest-rounded bound can lie outside the original float64 box.
-        lower = np.where(lower < xmin, np.nextafter(lower, np.asarray(np.inf, dtype=dtype)), lower)
-        upper = np.where(upper > xmax, np.nextafter(upper, np.asarray(-np.inf, dtype=dtype)), upper)
-        if np.any(lower > upper):
-            raise ValueError('MMA rounded box is empty in the design dtype')
+        lower, upper = _box_in_dtype(xmin, xmax, dtype)
         rounded = np.clip(rounded, lower, upper)
         return jnp.asarray(rounded.reshape(shape), dtype=dtype)
 

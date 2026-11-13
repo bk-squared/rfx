@@ -155,6 +155,8 @@ def _run_optimizer(
     verbose=False, it_count=None, keep_iterates=False, name="optimize",
 ):
     """Run one start, returning x, f0 history, optional iterates and solve counts."""
+    if bounds is not None and not opt.native_box:
+        raise ValueError('Bounds require an optimizer with native_box=True')
     if m < 0:
         raise ValueError("m must be nonnegative")
     if m == 0:
@@ -179,6 +181,8 @@ def _run_optimizer(
     solves = {"forward": 0, "reverse": 0, "forward_mode": 0}
     for it in range(n_iters):
         req = opt.ask(state)
+        if not req.iterate or not req.need_grad:
+            raise NotImplementedError('The optimizer loop requires iterate=True and need_grad=True')
         latent = req.x
         # Count mathematical solves, including a non-finite evaluation, not
         # tracing/retries: scalar = 1 forward + 1 reverse; jacrev = 1 forward

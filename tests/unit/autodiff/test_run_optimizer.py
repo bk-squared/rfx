@@ -70,6 +70,93 @@ def test_projected_adam_init_restart_and_runner():
     assert counts == {"forward": 4, "reverse": 4, "forward_mode": 0}
 
 
+def test_projected_adam_box_in_design_dtype():
+    x0 = jnp.asarray([-0.1, 0.1, -0.1, 0.1], dtype=jnp.float32)
+    expected_init = np.array([-0.09999999403953552, 0.09999999403953552,
+                              -0.09999999403953552, 0.09999999403953552], dtype=np.float64)
+    expected_final = np.array([0.09999999403953552, -0.09999999403953552,
+                               0.09999999403953552, -0.09999999403953552], dtype=np.float64)
+    final, history, visited, counts = _run_optimizer(
+        _ProjectedAdam(0.05), lambda x: -x[0] + x[1] - x[2] + x[3],
+        x0, (-0.1, 0.1), n_iters=30, m=0, jit=True, keep_iterates=True,
+    )
+    assert len(history) == len(visited) == 30
+    np.testing.assert_array_equal(np.asarray(visited[0], dtype=np.float64), expected_init)
+    np.testing.assert_array_equal(np.asarray(final, dtype=np.float64), expected_final)
+    for point in [*visited, final]:
+        assert point.dtype == jnp.float32
+        point64 = np.asarray(point, dtype=np.float64)
+        assert np.all((point64 >= -0.1) & (point64 <= 0.1))
+    assert counts == {"forward": 30, "reverse": 30, "forward_mode": 0}
+
+
+@pytest.mark.parametrize("bounds, message", [
+    ((0.7, 0.70000001), "rounded box is empty"),
+    ((0.5, 0.5), "strictly ordered bounds"),
+    ((0.6, 0.5), "strictly ordered bounds"),
+])
+def test_projected_adam_refuses_invalid_box(bounds, message):
+    with pytest.raises(ValueError, match=message):
+        _ProjectedAdam(0.05).init(jnp.asarray([0.7], dtype=jnp.float32), bounds)
+
+
+@pytest.mark.parametrize("bounds", [(-np.inf, 1), (0, np.inf), (np.nan, 1), (0, np.nan)])
+def test_projected_adam_refuses_nonfinite_bounds(bounds):
+    with pytest.raises(ValueError, match="finite bounds"):
+        _ProjectedAdam(0.05).init(jnp.zeros((2, 3), dtype=jnp.float32), bounds)
+
+
+def test_projected_adam_broadcasts_bounds():
+    state = _ProjectedAdam(0.05).init(
+        jnp.asarray([[-1, 2], [-1, 2]], dtype=jnp.float32),
+        (np.array([-0.1, 0.7]), 0.9),
+    )
+    assert state.lower.shape == state.upper.shape == state.x.shape == (2, 2)
+    assert state.lower.dtype == state.upper.dtype == state.x.dtype == jnp.float32
+    np.testing.assert_array_equal(np.asarray(state.lower, dtype=np.float64),
+                                  [[-0.09999999403953552, 0.7000000476837158]] * 2)
+    np.testing.assert_array_equal(np.asarray(state.upper, dtype=np.float64),
+                                  [[0.8999999761581421, 0.8999999761581421]] * 2)
+    np.testing.assert_array_equal(np.asarray(state.x, dtype=np.float64),
+                                  [[-0.09999999403953552, 0.8999999761581421]] * 2)
+
+
+def test_run_optimizer_refuses_bounds_for_adam_before_init(monkeypatch):
+    def unexpected_init(*args):
+        pytest.fail("init must not run for an unsupported box")
+
+    monkeypatch.setattr(_Adam, "init", unexpected_init)
+    with pytest.raises(ValueError, match="native_box"):
+        _run_optimizer(_Adam(0.05), lambda x: jnp.sum(x**2),
+                       jnp.zeros(1, dtype=jnp.float32), (0, 1), n_iters=1, jit=False)
+
+
+def test_run_optimizer_refuses_trial_request_before_evaluation():
+    class TrialOptimizer(_Adam):
+        def ask(self, state):
+            return _Request(state.x, need_grad=True, iterate=False)
+
+    def unexpected_evaluation(x):
+        pytest.fail("a trial request must not be evaluated")
+
+    with pytest.raises(NotImplementedError, match="iterate=True"):
+        _run_optimizer(TrialOptimizer(0.05), unexpected_evaluation,
+                       jnp.zeros(1, dtype=jnp.float32), None, n_iters=1, jit=False)
+
+
+def test_run_optimizer_refuses_value_only_request_before_evaluation():
+    class ValueOnlyOptimizer(_Adam):
+        def ask(self, state):
+            return _Request(state.x, need_grad=False, iterate=True)
+
+    def unexpected_evaluation(x):
+        pytest.fail("a value-only request must not be evaluated")
+
+    with pytest.raises(NotImplementedError, match="need_grad=True"):
+        _run_optimizer(ValueOnlyOptimizer(0.05), unexpected_evaluation,
+                       jnp.zeros(1, dtype=jnp.float32), None, n_iters=1, jit=False)
+
+
 def _closed_form_test_t1a_loop(a32, x0):
     """Evaluation/update block from test_mma_closed_form.test_bounded_closed_form.
 
