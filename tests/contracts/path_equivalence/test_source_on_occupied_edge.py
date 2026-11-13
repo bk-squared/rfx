@@ -1,4 +1,4 @@
-"""PI 2026-10-09: occupancy weights sources on each single-device lane."""
+"""Occupancy weights sources on each single-device lane."""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -97,7 +97,7 @@ def test_g1c_probe_peak_ratio(graded_records, w, record_property):
     assert abs(ratio - 1.) <= 1e-3
 
 
-# rfx-archive records/20261008-occupancy-weight-order, main-era one-device peaks.
+# Main-era one-device peaks.
 # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); Mac CPU, float32.
 # Old values: uniform (0.033985, 0.0086755, 0.0070076, 0.0070738),
 # graded (0.035304, 0.0087263, 0.0070309, 0.0070737),

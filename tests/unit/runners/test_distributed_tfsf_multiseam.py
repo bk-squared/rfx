@@ -1,6 +1,5 @@
 """Closed-box TF/SF multi-seam validation on up to four devices.
 
-Design: rfx-archive 4b8992b7e, 20261027-tfsf-multiseam-attempt2-PREDECLARE.md.
 
 CPU only. The scratch driver imports these builders and measurements. Steps
 are completed steps (1-based); all observer output goes to stderr.
@@ -294,7 +293,7 @@ def step_comparison(a, b):
     """Per step: float64 max |b - a|, float32 max |a|, first differing node [step, i, j, k] or None.
 
     Bit-equal to difference/first_difference over the whole record, one step at a time to avoid GB-scale
-    temporaries (rfx-archive rfx/records/20261112-b2-multiseam-measure/).
+    temporaries.
     """
     assert a.shape == b.shape
     assert a.dtype == b.dtype == np.float32

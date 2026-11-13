@@ -380,11 +380,14 @@ def test_waveguide_port_propagation():
 
 
 def test_te10_below_cutoff_evanescent():
-    """Below cutoff, TE10 mode should be evanescent (|S21| -> 0).
+    """Below cutoff, TE10 modal voltage decays and power-wave S is undefined.
 
     At f < f_cutoff, the mode cannot propagate. Modal voltage at the
     downstream probe should be much smaller than at the reference probe.
     """
+    from rfx.measurement.waveguide_power import WaveguideCutoffWarning
+    from rfx.measurement.waveguide_s import _rect_dft
+
     a_wg = 0.04
     b_wg = 0.02
     length = 0.10
@@ -399,20 +402,40 @@ def test_te10_below_cutoff_evanescent():
         probe_offset=15, ref_offset=3,
     )
 
-    s21 = extract_waveguide_s21(port_cfg)
-    s21_mag = np.abs(np.array(s21))
+    # Use the same port-record DFT as extract_waveguide_port_waves.
+    v_ref = np.asarray(_rect_dft(
+        port_cfg.v_ref_t, freqs, dt, port_cfg.n_steps_recorded,
+    ))
+    v_probe = np.asarray(_rect_dft(
+        port_cfg.v_probe_t, freqs, dt, port_cfg.n_steps_recorded,
+    ))
+    voltage_ratio = np.abs(v_probe / v_ref)
 
     f_arr = np.array(freqs)
     below_cutoff = f_arr < f_c * 0.7
-    s21_below = s21_mag[below_cutoff]
-    s21_below_db = 20 * np.log10(np.maximum(np.mean(s21_below), 1e-10))
+    voltage_below = voltage_ratio[below_cutoff]
+    voltage_below_db = 20 * np.log10(np.maximum(np.mean(voltage_below), 1e-10))
+    planes = waveguide_plane_positions(port_cfg)
+    d = abs(planes["probe"] - planes["reference"])
+    alpha = (2 * np.pi / C0) * np.sqrt(f_c**2 - f_arr**2)
+    closed_form = np.exp(-alpha * d)
+    closed_form_db = 20 * np.log10(np.mean(closed_form[below_cutoff]))
 
     print("\nWaveguide port TE10 below cutoff:")
     print(f"  f_cutoff = {f_c/1e9:.2f} GHz, f0 = {f0/1e9:.1f} GHz")
-    print(f"  |S21| below cutoff (mean): {np.mean(s21_below):.4f} ({s21_below_db:.1f} dB)")
+    print(f"  Plane spacing: {d:.6f} m")
+    print(f"  |V_probe/V_ref| below 0.7 f_c (mean): {np.mean(voltage_below):.6f} ({voltage_below_db:.6f} dB)")
+    print(f"  Closed-form decay below 0.7 f_c (mean): {np.mean(closed_form[below_cutoff]):.6f} ({closed_form_db:.6f} dB)")
+    for f, measured, expected in zip(f_arr, voltage_ratio, closed_form):
+        print(f"  {f/1e9:.6f} GHz: measured={measured:.6f}, exp(-alpha*d)={expected:.6f}")
 
     # Below cutoff: evanescent mode decays exponentially with distance.
     # With 12 cells between ref and probe (24mm) and f well below cutoff,
     # expect significant attenuation.
-    assert s21_below_db < -3, \
-        f"Mean |S21| below cutoff = {s21_below_db:.1f} dB, expected < -3 dB"
+    assert voltage_below_db < -3, \
+        f"Mean |V_probe/V_ref| below cutoff = {voltage_below_db:.1f} dB, expected < -3 dB"
+
+    with pytest.warns(WaveguideCutoffWarning, match="below cutoff") as caught:
+        s21 = extract_waveguide_s21(port_cfg)
+    assert len(caught) == 1
+    assert np.all(np.isnan(np.asarray(s21)[f_arr <= f_c]))

@@ -1,5 +1,5 @@
 {
- "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-full/rfx/__init__.py",
+ "rfx_file": "rfx/__init__.py",
  "argv": [
   "--relabel",
   "--z-json",

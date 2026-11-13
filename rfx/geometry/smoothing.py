@@ -1412,6 +1412,9 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
         give ``L = sqrt(sum((n_axis * d_axis)**2))`` for the selected normal,
         and ``f = clip(0.5 - sdf / L, 0, 1)``. This linear fill is exact for
         flat axis-aligned faces and approximate for oblique interfaces.
+        Where a run of planar own bodies has both faces inside the support,
+        the fill is the run's own length over L and the outside medium is
+        the declared content on both sides of it.
     eps : (eps_ex, eps_ey, eps_ez)
         Starting (background) arrays; returned updated.
     masks : {id(shape): bool mask or None}
@@ -1482,6 +1485,21 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             extents = cell_len[comp] if isinstance(cell_len, dict) else cell_len
             length = _normal_cell_length(xp, extents, (best_nx, best_ny, best_nz))
             f = xp.clip(0.5 - sdf_union / length, 0.0, 1.0)
+            pieces = _outside_pieces(
+                xp, groups, key, (Xc, Yc, Zc), sdf_union,
+                (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
+                normal_source=normal_source, normal_image=normal_image,
+                best_s=best_s, nominal_h_max=nominal_h_max, own_fill=True)
+            content = _segment_content(xp, pieces, pieces.face, length / 2)
+            own = pieces.own
+            if own is not None:
+                # Both faces of a thin planar run lie in the support: the
+                # one-face fill would miss the far face. Elsewhere the
+                # selects keep the one-face operands bit for bit.
+                f = xp.where(own.thin, own.fill, f)
+                both_sides = _segment_content(xp, pieces, pieces.face, length / 2, gaps=own.gaps)
+                content = _SegmentContent(*(xp.where(own.thin, a, b)
+                                            for a, b in zip(both_sides, content)))
             from rfx.model.realization_integrals import capture
             capture(grid, sdf_shapes, f, owner, ("ex", "ey", "ez").index(comp))
 
@@ -1490,12 +1508,6 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             # Boundary voxels
             bnd = (f > 0.0) & (f < 1.0)
 
-            pieces = _outside_pieces(
-                xp, groups, key, (Xc, Yc, Zc), sdf_union,
-                (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
-                normal_source=normal_source, normal_image=normal_image,
-                best_s=best_s, nominal_h_max=nominal_h_max)
-            content = _segment_content(xp, pieces, pieces.face, length / 2)
             kt = _kottke_tensor_eps(f, eps_r, content.eps, best_nx, best_ny, best_nz,
                                     outside_content=content, xp=xp)
             smooth = kt[("ex", "ey", "ez").index(comp)]

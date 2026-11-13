@@ -88,7 +88,7 @@ BAND = np.linspace(6e9, 10e9, 21)
 NULL_BAND = np.linspace(7.0e9, 10.0e9, 121)
 MAG_BAR_DB = 2.0     # v2 accuracy bar, magnitude
 NULL_BAR = 0.01      # v2 accuracy bar, frequency
-DEEP_NULL_DB = -20.0  # PI ruling 2026-09-21: bins at or below it are judged by the null's frequency
+DEEP_NULL_DB = -20.0  # bins at or below it are judged by the null's frequency
 
 
 # --------------------------------------------------------------------------- #
@@ -390,8 +390,7 @@ def test_ram_lossy_layer_matches_tmm_at_realized_thickness(ram_run):
     0.16 % on the same ladder. The fixture's |Gamma(8 GHz)| = 0.153
     is the TMM of the realized 4.50 mm layer (0.155). The old 0.131 matched the drawn
     4.69 mm (TMM 0.132) only because the half-cell error (+0.28 mm) offset the 0.19 mm
-    rasterization shortfall. Records: bk-squared/rfx-archive
-    rfx/records/20260927-1292-locked-results/ (R1).
+    rasterization shortfall.
     """
     d = ram_run["d_raster"]
     v = _realized_tmm_comparison(ram_run["g_lossy"], ram_run["g_lossy_null"], d)

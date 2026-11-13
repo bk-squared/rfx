@@ -1,7 +1,7 @@
 # grcwa install recipe (RCWA referee, #491 step 1)
 
 Validated 2026-08-09 on the primary rfx checkout
-(`/root/workspace/byungkwan-workspace/research/rfx`, Python 3.11.15, numpy 2.4.6).
+(`<workspace>/research/rfx`, Python 3.11.15, numpy 2.4.6).
 
 ## Install
 
@@ -10,7 +10,7 @@ The rfx venv is uv-managed and has **no pip** (`.venv/bin/pip` does not exist,
 interpreter:
 
 ```bash
-cd /root/workspace/byungkwan-workspace/research/rfx
+cd <workspace>/research/rfx
 uv pip install --python .venv/bin/python grcwa
 ```
 
@@ -29,7 +29,7 @@ cd <scratch>
 curl -sL -o grcwa-0.1.2.tar.gz \
   https://files.pythonhosted.org/packages/a9/4d/d79d7dfcf73bb402890bc573ad482036d524f39d1868383da7c4a47c2a4b/grcwa-0.1.2.tar.gz
 tar xzf grcwa-0.1.2.tar.gz && cd grcwa-0.1.2
-/root/workspace/byungkwan-workspace/research/rfx/.venv/bin/python -m pytest \
+<workspace>/research/rfx/.venv/bin/python -m pytest \
   tests/test_rcwa.py tests/test_kbloch.py -v
 # expected: 10 passed  (reference log: logs/20260809_grcwa012_shipped_tests.log)
 ```
@@ -42,7 +42,7 @@ against the **installed** venv package and prints its import path.
 Then run the gate script:
 
 ```bash
-cd /root/workspace/byungkwan-workspace/research/rfx
+cd <workspace>/research/rfx
 .venv/bin/python validation/research/rcwa_referee/rcwa_referee_step1.py
 # expected: "RESULT: ALL GATES PASS", exit 0
 ```

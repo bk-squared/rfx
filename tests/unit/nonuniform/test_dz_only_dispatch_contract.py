@@ -19,7 +19,7 @@ six sibling S-matrix dispatches all tested dz. This file locks the CLASS:
   dx_profile and dy_profile must test dz_profile too";
 - a slow_physics falsifier asserts two genuinely DIFFERENT graded z meshes
   change the answer (a uniform-valued profile tests plumbing, never NU
-  metrics — rfx-known-issues lesson).
+  metrics).
 
 No module-level jax x64 config here (process-global; contaminates the
 shard), and no FDTD outside the slow_physics tests.

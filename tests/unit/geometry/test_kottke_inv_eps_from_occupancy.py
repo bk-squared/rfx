@@ -155,7 +155,7 @@ def test_baseline_min_preserves_dielectric_outside():
     # PEC cell j=ny-1, dilating j=0 to PEC (inv→0).  That wrap never fires in production
     # (microstrip PEC is interior, far from the domain edges); it is a test-setup
     # artifact of filling PEC to the grid boundary.  Same stale-test cause as
-    # test_half_fill_y_normal (see docs rfx-known-issues "Kottke occupancy dilation").
+    # test_half_fill_y_normal.
     assert jnp.allclose(inv_xx[:, 1:ny // 2 - 2, :], 0.25, atol=1e-3)
     # PEC side (occ=1): all components 0
     assert jnp.allclose(inv_xx[:, ny // 2 + 1:, :], 0.0, atol=1e-3)

@@ -2,7 +2,7 @@
 
 The reference is an independent per-step loop with the inline v4 rule in
 _until_decay_reference.py. These are driver contracts, not accuracy claims.
-The PI's 2026-09-29 decision uses the existing A/B lock's derived floors
+The comparison uses the existing A/B lock's derived floors
 for outputs against both the old loop and forced-N run(). Stop steps remain
 exact, and report on/off remains bit-exact. ULP values are measurements only.
 """

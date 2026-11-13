@@ -69,8 +69,7 @@ assertion -- and the fix PR removed the marker (with the fix in place and
 the marker still on, pytest reported ``[XPASS(strict)] #589 H1: ...``).
 
 Disposition of the two mechanism pins, which this docstring originally
-predeclared deleting BOTH of (changed deliberately, not silently; routed
-to the PI as design open question 7):
+predeclared deleting BOTH of (changed deliberately, not silently; design open question 7):
 
 * ``test_h1_diagnostic_unmodified_assembler_returns_inverse_of_s_true``
   is DELETED as predeclared -- it asserted a property of code that no

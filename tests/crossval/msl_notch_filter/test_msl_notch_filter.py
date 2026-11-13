@@ -55,13 +55,12 @@ drawn edge, and the trace and the stub are solved at their drawn 600 µm on
 every rung.  On the uniform ladder they were not: the trace was solved 470,
 552 and 580 µm wide and the notch did not converge (steps +0.002 %, then
 −0.380 %); the realized geometry predicted −0.378 % of that second step.
-With the edges held the steps are +0.068 % and +0.047 % (rfx-archive
-rfx/records/20261026-msl-notch-stage0/ and 20261026-msl-notch-stage1/).  The
+With the edges held the steps are +0.068 % and +0.047 %.  The
 thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude) and
-the three rules the PI approved with it on 2026-09-22: the mesh statement
+the three rules: the mesh statement
 (the last two rungs within 1 %), the deep-null exclusion (a bin where either
 curve is below −20 dB is judged by position only) and the ring-down witness
-(−40 dB, the repo's rule); and the two the PI approved on 2026-09-24: a
+(−40 dB, the repo's rule); and two further rules: a
 ladder step within 0.1 % is flat, not a direction, and the magnitude is
 compared with rfx's frequency axis scaled so the two notches coincide.  The
 shared ones are named constants in ``tests/crossval/_v2_judging.py``, the
@@ -209,8 +208,7 @@ DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754
 # 0.0005 dB in |S21| over the band. The 20 periods of the retired script had
 # passed the old end-level witness (−65 dB at this rung on 2026-10-01), which
 # is not a record-length witness for a resonance. Remi job
-# ci-1912-notch-witness-sxk77, 2026-10-20; records in rfx-archive
-# rfx/records/20261020-1912-notch-witness/.
+# ci-1912-notch-witness-sxk77, 2026-10-20.
 NUM_PERIODS = 40.0
 # Frequency points of rfx's sweep (DFT bins; they cost nothing in time steps).
 # 400 over 0.7–7 GHz is a 15.8 MHz bin, under half the 1 % frequency bar at
@@ -223,10 +221,10 @@ N_FREQS = 400
 REFERENCE_BAND_HZ = (2.0e9, 7.0e9)
 
 # ------------------------------------------------------------ thresholds
-# The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB; PI 2026-09-20), the
+# The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB), the
 # mesh statement (LADDER_AGREEMENT 1 %, FLAT_STEP 0.1 %) and the deep-null
 # level (DEEP_NULL_DB −20 dB) are imported from tests/crossval/_v2_judging.py,
-# with the rules that use them (PI 2026-09-22 and 2026-09-24).
+# with the rules that use them.
 # Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive structure cannot scatter more power than it receives, so a raw
@@ -238,7 +236,7 @@ SETTLING_DB = -40.0
 PASSIVITY_EXCESS_BAR = 0.01
 # The solved trace width, stub width and stub length, read from the grid, must
 # each be within 1 % of the drawn size on every rung, the tolerance of the
-# preflight's own sheet-size check (rfx-lead 2026-10-26).  Solved = node span
+# preflight's own sheet-size check.  Solved = node span
 # plus EDGE_OFFSET of the adjacent cell at each free edge.
 SOLVED_SIZE_TOL = 0.01
 
@@ -751,7 +749,7 @@ def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag, key: str = "s21") -
     The ΔdB is taken twice, by ``aligned_magnitude`` in
     ``tests/crossval/_v2_judging.py``: on the two frequency axes as solved
     (reported), and with rfx's axis scaled by f_ref_notch / f_rfx_notch so the
-    two notches coincide (the value the 2 dB bar judges, PI 2026-09-24).  In
+    two notches coincide (the value the 2 dB bar judges).  In
     both, rfx's |S21| is interpolated in dB onto the reference frequencies (dB
     is what the 2 dB bar is stated in).
 
@@ -844,8 +842,7 @@ ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
 # comparison's budget. The witness runs on the first two rungs of the ladder
 # and is JUDGED on the second (h/4); the coarsest rung is reported as the
 # trend. Measured on the edge-aware ladder (remi job
-# ports-notch-edge-ladder-x8km9, rfx-archive
-# rfx/records/20261026-msl-notch-edge-ladder/): the trace is solved at its
+# ports-notch-edge-ladder-x8km9): the trace is solved at its
 # drawn 600 µm on both rungs, a 47.1 Ω line at h/2 and 47.7 Ω at h/4 (fitted
 # Z0) against the 50 Ω port reference. The quasi-static closed form
 # (Hammerstad–Jensen, zero thickness) gives 47.7 Ω for this line, so the
@@ -1092,8 +1089,8 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
 
     # ---- (b) the mesh statement comes first: without it nothing is judged --
     # Not shown to converge — a step larger than FLAT_STEP against the trend
-    # (PI 2026-09-24), or the last two rungs LADDER_AGREEMENT or more apart
-    # (PI 2026-09-22) — states the numbers and xfails; it is not a failure.
+    # or the last two rungs LADDER_AGREEMENT or more apart
+    # — states the numbers and xfails; it is not a failure.
     # Every witness above has already hard-failed a bad rung.
     if mesh_stmt["verdict"] != CONVERGED:
         # The current solve supplies the notch ladder to mesh_statement above.
@@ -1101,7 +1098,7 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         # converged ladder proceeds to the reference comparison below.
         # Ring-down, passivity and arm-length witnesses have already run.
         pytest.xfail(
-            "known limitation (PI 2026-09-22, 2026-09-24): the edge-aware mesh "
+            "known limitation: the edge-aware mesh "
             f"is not shown to converge — {mesh_stmt['reason']}. The finest rung "
             f"sits {fine['notch_pct']:.3f} % from the openEMS tutorial's "
             f"{fine['ref_notch_ghz']:.4f} GHz and its |S21| differs by up to "
@@ -1114,7 +1111,7 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         f"rfx reads {fine['our_notch_ghz']:.4f} GHz on the "
         f"{finest['dx_m']*1e6:.2f} µm mesh.")
     # The magnitude, judged with the notch offset the frequency bar has just
-    # judged taken out (PI 2026-09-24): rfx's axis scaled by f_ref / f_rfx.
+    # judged taken out: rfx's axis scaled by f_ref / f_rfx.
     assert fine["aligned_max_abs_delta_db"] <= MAG_BAR_DB, (
         f"|S21| differs from the openEMS tutorial record by up to "
         f"{fine['aligned_max_abs_delta_db']:.3f} dB at "

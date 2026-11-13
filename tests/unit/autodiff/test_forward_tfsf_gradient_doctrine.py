@@ -1,8 +1,7 @@
 """Gradient-doctrine contract for differentiable TFSF plane-wave forward.
 
 Hardens the merged differentiable-TFSF forward (PR #415) per the anyscale
-differentiability doctrine (rfx-adv/docs/plans/anyscale-book/07_differentiability.md
-§5 composition contract + §6 verification):
+differentiability doctrine (composition contract and verification):
 
   * FD STEP-SWEEP, not a single h — assert the AD gradient matches the
     finite-difference PLATEAU across h in {2e-2 .. 3e-4} (ch07 §6: "never a

@@ -116,5 +116,5 @@ a fingerprint preserve which failures each cell accepts. `cells` maps records
 to cause IDs, with a witness-variant reference only when it differs from the
 default. The loader expands this into the existing strict-finding checks.
 Measurement records, per-cell timings and DFT step dumps are in untracked
-`.s0-work/`, for the leader to move to rfx-archive. See FINDINGS.md and MUTATIONS.md
+`.s0-work/`. See FINDINGS.md and MUTATIONS.md
 for short review summaries. Conclusions: in the S0 PR body (leader)

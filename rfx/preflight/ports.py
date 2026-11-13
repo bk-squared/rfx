@@ -1270,7 +1270,7 @@ def preflight_wire_port_radius(sim, warn) -> None:
             f"f_c = {_fmt_freq(f['f_c'])} ({f['f_c_from']}); "
             f"dX per mesh halving = {f['dX']:.3g} ohm")
     warn.warn(PreflightWarning(
-        "Wire port without radius: the port is a filament of the lattice's "
+        "Wire port without radius: the port's series inductance is that of a filament of the lattice's "
         "own radius, about 0.20*d, so each halving of the transverse cell d "
         "adds at least dX = 2*pi*f_c*(mu0*l/(2*pi))*ln2 of series reactance "
         "(the wire's own term; a feed meeting sheet edges measured up to "
@@ -1279,7 +1279,12 @@ def preflight_wire_port_radius(sim, warn) -> None:
         "Remedy: pass add_port(..., radius=a) with a <= 0.20*d at the "
         "finest transverse cell you will run (one fixed a then serves every "
         f"coarser mesh; on this mesh 0.20*d = "
-        f"{_fmt_len(MAX_RADIUS_RATIO * d_min)}); the model needs square, "
+        f"{_fmt_len(MAX_RADIUS_RATIO * d_min)}). "
+        "A declared radius also adds the port contour's electric storage on the four E edges "
+        "around each port cell, which the port without a radius lacks, so S changes even at a = 0.20*d "
+        "(by up to 0.027 in S11 and S21 on a microstrip thru at d = 0.5 mm); "
+        "the declared port is the closer of the two to the parallel-plate closed form. "
+        "The model needs square, "
         "locally uniform transverse cells at the port and uniform spacing "
         "along it, and is supported on single-device run()/forward(); "
         "elsewhere it refuses.",

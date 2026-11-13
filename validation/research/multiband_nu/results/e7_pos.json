@@ -1,7 +1,7 @@
 {
  "arm": "pos",
  "provenance": {
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-lane2b/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "d0fab837fe8dabd4032f8dc40ecd9dd04901b4bf",
   "git_dirty": true,
   "jax": "0.10.2",

@@ -24,8 +24,8 @@ stepping (``test_forward_jit_contract.py`` gates the rule on one model per
 host-read class). The predicate test below pins that scope: restoring a
 per-model whitelist turns it red.
 
-The jitted value and gradient are compared with the plain call under the PI's
-cross-trace rule (2026-09-23): bit-identical is the aim, and a difference up
+The jitted value and gradient are compared with the plain call under the
+cross-trace rule: bit-identical is the aim, and a difference up
 to single-digit float32 ULP is allowed. The unit is ULP AT THE PEAK of each
 compared array — ``max|plain - jitted|`` over the float32 spacing at
 ``max|plain|`` — expressed once, in ``_ulp_at_peak``; per-element ULP near
@@ -60,7 +60,7 @@ SUB_H = 1.5e-3
 BOX = ((10e-3, 7e-3, Z_GND + 0.25e-3), (11e-3, 9e-3, Z_GND + 1.25e-3))
 N_STEPS = 30
 
-# The PI's cross-trace tolerance (2026-09-23): single-digit ULP at the peak.
+# The cross-trace tolerance: single-digit ULP at the peak.
 MAX_ULP_AT_PEAK = 9
 
 
@@ -255,8 +255,7 @@ def test_repeat_calls_of_the_jitted_gradient_do_not_compile():
     assert float(jnp.max(jnp.abs(g0))) > 0.0
 
 
-#: The PI's rule for quantities summed over the record (2026-09-25, ledger
-#: archive 3feae81): port DFT accumulators and the S built from them pass at
+#: The rule for quantities summed over the record: port DFT accumulators and the S built from them pass at
 #: this fraction of each array's peak; per-step quantities keep MAX_ULP_AT_PEAK.
 MAX_REL_SUMMED = 1.0e-4
 
@@ -303,8 +302,7 @@ def _realistic_record(lane):
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_a_realistic_record_jitted_sums_stay_within_1e_4_of_the_peak(lane):
     """Sums over the record (the port DFT accumulators and S), which the
-    whole-program compile rounds differently: within 1e-4 of the peak (PI
-    2026-09-25). The 30-step boards above keep their 9-ULP gate."""
+    whole-program compile rounds differently: within 1e-4 of the peak. The 30-step boards above keep their 9-ULP gate."""
     _du_ts, rel = _realistic_record(lane)
     assert max(rel.values()) <= MAX_REL_SUMMED, rel
 
@@ -312,7 +310,7 @@ def test_a_realistic_record_jitted_sums_stay_within_1e_4_of_the_peak(lane):
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_a_realistic_record_jitted_probe_series_stay_within_9_ulp(lane):
     """Per-step quantities (the probe series) of the jitted call: within 9
-    float32 ULP at the peak of the plain call's (PI 2026-09-23)."""
+    float32 ULP at the peak of the plain call's."""
     du_ts, _rel = _realistic_record(lane)
     assert du_ts <= MAX_ULP_AT_PEAK, du_ts
 
