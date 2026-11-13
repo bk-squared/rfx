@@ -459,6 +459,8 @@ def compute_waveguide_s_matrix(
     from rfx.model.pole_stability import courant_budget
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
+        # Keep the existing ambient ADE state dtype for lower-precision runs.
+        field_dtype=resolve_field_dtype(self._precision) if self._precision == "float64" else None,
         periodic=self._periodic_flags(), grid=grid)
 
     has_multimode, raw_cfgs, reference_medium = _waveguide_stages._prepare_waveguide_configs(
