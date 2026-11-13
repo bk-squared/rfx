@@ -88,7 +88,7 @@ def test_jd_path_identity():
         assert {d['code'] for d in family} == EXPECTED
         assert all(d['path'] is None for d in family)  # Common checks precede dispatch.
         signatures[path] = sorted((d['code'], d['subject'], d['message']) for d in family)
-        assert result['status'] == ('refuses' if path.startswith('distributed') else 'returns')
+        assert result['status'] == 'returns'
     # This aligned, constant-profile structure needs none of the listed wording variants.
     # A path-specific wording mutation must fail here even if its code survives.
     assert all(signature == signatures['uniform'] for signature in signatures.values())

@@ -493,7 +493,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     port_idx = -1
     wire_edges = None
     port_entries, port_specs = [], []
-    msl_geometry_edges = conductors.pec_edges
+    msl_geometry_edges = conductors.pec_edges if sim._msl_ports else None
     from rfx.model.conductors import lumped_port_stage, publish_port_release
     for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
@@ -548,6 +548,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             edge_release="run", eigenmode="run_distributed",
             geometry_edges=msl_geometry_edges, sources=sources, n_steps=n_steps)
         materials, conductors = msl.materials, msl.conductors
+        del msl
     if _record_probes is None:
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -577,7 +578,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
                                             in_program=mesh.devices.size < 2)
     sources = sources.resolve(drive_materials)
-    del wire_edges, drive_materials
+    del wire_edges, drive_materials, msl_geometry_edges
 
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "distributed.sources")
