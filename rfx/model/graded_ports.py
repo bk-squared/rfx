@@ -78,7 +78,7 @@ def port_metric(value, host):
 
 
 def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
-                          pec_edge_masks, sizing_n, lane, s_param_freqs, compute_s_params=None):
+                          pec_edge_masks, sizing_n, lane, s_param_freqs, compute_s_params=None, msl=False):
     """Stamp positive-impedance ports without owning the source queue.
 
     Liveness precedes each port's release. Only lumped releases advance the
@@ -342,6 +342,15 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 'record_only': not (s_param_freqs is not None or (lane == 'run_nonuniform' and (
                     compute_s_params is True or passive_record_diagnostic(sim)))),
             })
+
+    if msl and sim._msl_ports:
+        from rfx.model.msl_stamp import realize_msl_ports
+        realized = realize_msl_ports(sim, grid, materials, conductors,
+            eps_source=materials_drive.eps_r, stamp_drive_materials=materials_drive,
+            edge_release="run", eigenmode="run_distributed_nu",
+            geometry_edges=pec_edge_masks)
+        materials, materials_drive, conductors = realized[:3]
+        drives.extend((len(sim._ports), drive) for drive in realized.drives)
 
     # Preserve wire indices when explicit bins also include lumped ports.
     wire_port_specs.extend(lumped_port_specs)

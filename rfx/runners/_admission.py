@@ -492,7 +492,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_ports", "lumped_port"): _OTHER_RUNNERS,
     ("_ports", "passive_port"): _OTHER_RUNNERS - {"run_distributed"},
     ("_ports", "wire_port"): _OTHER_RUNNERS,
-    ("_msl_ports", "msl_port"): _NO_SHEETS,
+    ("_msl_ports", "msl_port"): (_NO_SHEETS - {"fwd_distributed"}) | {"run_distributed", "run_distributed_nu"},
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"fwd_distributed"},
     # One configuration per port is all the single-run assembly takes; the
     # per-mode list is driven only by compute_waveguide_s_matrix().
@@ -956,6 +956,7 @@ def _subgrid_opted_in(sim) -> bool:
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
 
 LANE_GATES: dict[str, dict[Row, Callable]] = {
+    "run_distributed": {("_ports", "passive_port"): lambda sim, grid: bool(sim._msl_ports)},
     **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
        for lane in ("run_nonuniform", "fwd_nonuniform")},
     "run_subgridded": {
