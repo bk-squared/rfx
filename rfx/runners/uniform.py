@@ -499,7 +499,10 @@ def run_uniform(
         )
 
     if sim._waveguide_ports:
-        from rfx.preflight.waveguide import resolve_waveguide_port_freqs
+        from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs, resolve_waveguide_port_freqs
+
+        if len(sim._waveguide_ports) > 1:
+            resolve_shared_waveguide_port_freqs(sim, route="uniform run()")
 
         cpml_axes = grid.cpml_axes
         pec_axes = None

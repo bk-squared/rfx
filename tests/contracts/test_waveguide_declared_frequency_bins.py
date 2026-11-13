@@ -86,6 +86,26 @@ def test_different_bins_refused_before_fields(path, difference, monkeypatch):
 
 
 @pytest.mark.parametrize("path", SHARED_PATHS)
+@pytest.mark.parametrize("difference", ["values", "shape", "n_freqs"])
+def test_one_driven_different_bins_refused_before_fields(path, difference, monkeypatch):
+    import rfx.stepping.uniform_setup as uniform_setup
+    import rfx.stepping.graded_setup as graded_setup
+
+    def unexpected_fields(*args, **kwargs):
+        pytest.fail("fields were built before differing port bins were refused")
+
+    monkeypatch.setattr(uniform_setup, "init_state", unexpected_fields)
+    monkeypatch.setattr(graded_setup, "init_state", unexpected_fields)
+    first = np.array([10e9, 12e9, 14e9])
+    second = np.array([10e9, 13e9, 14e9]) if difference == "values" else np.array([11e9, 13e9])
+    declarations = [("input", {"freqs": first}), ("output", {"freqs": second, "amplitude": 0.0})]
+    if difference == "n_freqs":
+        declarations = [("input", {"n_freqs": 7}), ("output", {"n_freqs": 5, "amplitude": 0.0})]
+    with pytest.raises(ValueError, match="requires one shared waveguide frequency vector"):
+        _solve(_scene(path, declarations), path)
+
+
+@pytest.mark.parametrize("path", SHARED_PATHS)
 def test_equal_explicit_bins_on_both_ports_refused(path):
     expected = np.array([10e9, 12e9, 14e9])
     declarations = [(name, {"freqs": expected}) for name in ("input", "output")]
