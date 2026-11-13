@@ -37,6 +37,7 @@ from rfx.stepping import slab_update, slab_graded_legacy_loop
 from rfx.runners._distributed_common import _split_materials
 from rfx.runners._distributed_common import shard_stacked
 from rfx.simulation import ProbeSpec, SourceSpec
+from tests._stated_plan import stated_plan
 
 pytestmark = pytest.mark.distributed
 ROOT = Path(__file__).resolve().parents[3]
@@ -147,6 +148,7 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
               for pe in self._probes]
     result = nu.run_nonuniform_distributed_pec(
         sg, placed, pec, n_steps, sources=sources, probes=probes,
+        measurement=stated_plan(sg, probes, n_steps=n_steps),
         n_devices=len(devices), exchange_interval=1, debye=db, lorentz=lr,
         devices=devices, cpml_params=cpml_params, cpml_state=cpml,
         sharded_pec_occupancy=occupancy, checkpoint_every=checkpoint_every,

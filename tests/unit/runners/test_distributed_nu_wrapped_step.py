@@ -11,6 +11,7 @@ from rfx import Simulation
 from rfx.core.yee import EPS_0, MU_0, MaterialArrays
 from tests.contracts.path_equivalence.test_one_vs_several_devices_occupancy import BINS_HZ
 from tests._multi_device_scene import host_devices
+from tests._stated_plan import stated_plan
 from rfx.model.electric_metrics import stage_forward_materials
 from rfx.stepping.graded_setup import _build_nu_scan
 from rfx.nonuniform import make_current_source, run_nonuniform
@@ -65,6 +66,7 @@ def several(data, steps, devices, *, edge_masks=None, **kw):
     result = run_nonuniform_distributed_pec(sg, stage_forward_materials(mat, sg.layout, mesh),
         cut(edge_masks, sg.layout, 'pec_edge', mesh=mesh), steps, sources=[SourceSpec(*s) for s in sources], probes=[ProbeSpec(*p) for p in probes],
         n_devices=devices, devices=selected,
+        measurement=stated_plan(sg, [ProbeSpec(*p) for p in probes], n_steps=steps),
         sharded_pec_occupancy=cut(occ, sg.layout, 'pec_occupancy', mesh=mesh), **kw)
     return result['time_series'], result['final_state']
 
@@ -921,6 +923,7 @@ def _item6_identity(case, devices, mode='plain', mutate=None):
         d = stage_dispersion(material, grid.dt, db, grid, layout, mesh, 'debye')
         lorentz = stage_dispersion(material, grid.dt, lr, grid, layout, mesh, 'lorentz')
         setup = build_setup(grid, material, layout, mesh, 3, sources, probes,
+            measurement=stated_plan(grid, probes, n_steps=3),
             debye=d, lorentz=lorentz, occupancy=cut(occ, layout, 'pec_occupancy', mesh=mesh),
             pec_mask=stage_pec(mask, sheets, wires, grid, layout, mesh))
         result = finish(setup.invariants, setup.carry_init, layout, mesh,

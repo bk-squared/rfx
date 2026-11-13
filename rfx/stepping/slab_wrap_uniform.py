@@ -139,7 +139,8 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
 
 def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                     *, n_steps, boundary, debye_spec, lorentz_spec, port_plan,
-                    record_vref=True, tfsf=None, exchange_interval=1, rlc_metas=()):
+                    record_vref=True, tfsf=None, exchange_interval=1, rlc_metas=(),
+                    measurement=None):
     """Form every spatial step operand from its owning slab's material rows."""
     from types import SimpleNamespace
     from jax.sharding import NamedSharding
@@ -148,7 +149,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx.core.drives import drive_layout
     from rfx.core.yee import FDTDState, CurlBoundary
     from rfx.model.materials import kernel_materials
-    from rfx.stepping.graded import graded_probe_table
+    from rfx.measurement.projector import plan_tables
     from rfx.stepping.slab_setup import realize_materials, stage_dispersion, input_materials
     from rfx.stepping.slab_wrap import cut, split
     from rfx.stepping.slab import place
@@ -222,8 +223,13 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                 (layout.n_devices, len(m.freqs)),
                 jnp.result_type(jnp.complex64, jnp.float64), device=sharding)
                 for _ in range(count)) for m in metas)
-    table = graded_probe_table([(p.i, p.j, p.k, p.component) for p in probes],
-                               grid.shape, dtype=jnp.float32)
+    if measurement is None:
+        raise ValueError('the wrapped uniform step reads its probe and port tables '
+                         'from the attached measurement plan; none was given')
+    tables = plan_tables(measurement, n_probes=len(probes), port_specs=port_plan.specs,
+                         dtype=jnp.float32)
+    port_plan.use_plan_tables(tables['port_owners'], tables['port_table'])
+    table = tables['probe_table']
     inputs = dict(materials=local_materials,
         pec_edge_masks=cut(pec_edges, layout, 'pec_edge', mesh=mesh),
         cpml_inv_eps_r=inverse, e_loss=loss, sheet_coeffs=None, conformal_zero_masks=None,
@@ -271,7 +277,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
 
 def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
                 boundary, dispersion, port_plan, record_vref=True, tfsf=None,
-                exchange_interval=1, rlc_metas=()):
+                exchange_interval=1, rlc_metas=(), measurement=None):
     """Transfer dense setup operands to slabs before entering the time loop."""
     grid, materials, pec_edges = operands
     operands.clear()
@@ -280,7 +286,8 @@ def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_s
     prepared = prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         n_steps=n_steps, boundary=boundary, debye_spec=debye_spec,
         lorentz_spec=lorentz_spec, port_plan=port_plan, record_vref=record_vref,
-        tfsf=tfsf, exchange_interval=exchange_interval, rlc_metas=rlc_metas)
+        tfsf=tfsf, exchange_interval=exchange_interval, rlc_metas=rlc_metas,
+        measurement=measurement)
     del materials, pec_edges, debye_spec, lorentz_spec
     return run_prepared(prepared, records, mesh, n_steps=n_steps)
 
