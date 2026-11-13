@@ -203,8 +203,7 @@ def test_p2_staircase(monkeypatch, graded, pin, precision, request):
             strict=True, raises=AssertionError,
             reason=("cannot judge P2a in float32 on x86_64: scalar control 0.1201 graded > 0.1 "
                     "(0.0721 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
-                    "no live judge on x86_64 "
-                    "until #2613 PR B lifts the float64 twin's xfail") if graded else
+                    "judged by P2a-graded-float64 (1e-9 bar)") if graded else
                    ("cannot judge P2a in float32 on x86_64: scalar control 0.1179 uniform > 0.1 "
                     "(0.0796 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
                     "judged by "
