@@ -1,4 +1,4 @@
-"""#2707, predeclaration §§1–3,8: basis-independent degenerate port modes."""
+"""#2707, predeclaration §§1–3,8–10: basis-independent degenerate port modes."""
 from contextlib import nullcontext
 import json
 
@@ -12,7 +12,7 @@ from rfx.model import waveguide_modes as wm
 
 B = 1e-12
 FIELDS = ('ey_profile', 'ez_profile', 'hy_profile', 'hz_profile')
-ROWS = ('D1', 'D2a', 'D2b', 'D3', 'D7', 'D8a', 'D8b', 'D9-uniform', 'D9-graded-x', 'D10')
+ROWS = ('D1', 'D2a', 'D2b', 'D3', 'D7', 'D7f', 'D8a', 'D8b', 'D9-uniform', 'D9-graded-x', 'D10')
 
 
 def _shape(u, v, mode, kind='TE', transverse=False):
@@ -40,8 +40,11 @@ def _axis_values(widths, kind):
 def _scene(row):
     nu = 20 if row in ('D2a', 'D2b', 'D8b', 'D10') else 10
     u, v = np.full(nu, .002), np.full(10, .002)
-    if row == 'D7':
+    if row in ('D7', 'D7f'):
         u = v = np.array([.0015, .0025] * 5)
+    if row == 'D7f':
+        # Numpy expectations use the realized widths in the float64 eigh mass.
+        u = v = u.astype(np.float32).astype(np.float64)
     kind = 'TM' if row == 'D3' else 'TE'
     target = (1, 2) if kind == 'TM' else ((2, 0) if nu == 20 else (1, 0))
     guard_u, guard_v = (u.astype(np.float32).astype(np.float64), v.astype(np.float32).astype(np.float64)) if row == 'D9-graded-x' else (u, v)
@@ -115,13 +118,15 @@ def _config_arrays(cfg):
 
 
 def _build(row, u, v):
+    if row == 'D7f':
+        u, v = u.astype(np.float32), v.astype(np.float32)
     mode = (1, 2) if row == 'D3' else ((3, 0) if row in ('D8b', 'D10') else (1, 0))
     kind = 'TM' if row == 'D3' else 'TE'
     dA = u[:, None] * v[None, :]
     if row in ('D8a', 'D8b'):
         dA[-1, :] = 0
         dA[:, -1] = 0
-    if row in ('D7', 'D8a', 'D8b'):
+    if row in ('D7', 'D7f', 'D8a', 'D8b'):
         result = wm._discrete_te_mode_profiles(u.sum(), v.sum(), *mode, u, v, aperture_dA=dA)
         return [result], [mode], dA
     if row.startswith('D9'):
