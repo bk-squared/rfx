@@ -468,6 +468,7 @@ def admit_tfsf_angle_override(sim, lane, override, *, ringdown, gradient):
     """Admit an angle operand after the existing forward dispatch refusals."""
     if override is None:
         return
+    from rfx.sources.tfsf import is_oblique
     entry = sim._tfsf
     if entry is None:
         kind = "missing incident source"
@@ -475,7 +476,7 @@ def admit_tfsf_angle_override(sim, lane, override, *, ringdown, gradient):
         kind = "closed box"
     elif entry.method != "bloch":
         kind = entry.method
-    elif abs(entry.angle_deg) <= 0.01:
+    elif not is_oblique(entry.angle_deg):
         kind = "normal incidence"
     else:
         kind = None
