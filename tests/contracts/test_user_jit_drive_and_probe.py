@@ -53,13 +53,14 @@ for _path, _kinds in (
     ('uniform', ('point', 'lumped', 'wire', 'waveguide', 'msl', 'msl-eigenmode',
                  'tfsf-open', 'tfsf-closed')),
     ('graded', ('point', 'lumped', 'wire', 'waveguide', 'msl', 'tfsf-open')),
-    ('multi-uniform', ('point', 'lumped', 'wire', 'tfsf-closed')),
-    ('multi-graded', ('point', 'lumped', 'wire')),
+    ('multi-uniform', ('point', 'lumped', 'wire', 'msl', 'tfsf-closed')),
+    ('multi-graded', ('point', 'lumped', 'wire', 'msl')),
 
 ):
     for _kind in _kinds:
         _entries = ('forward',) if _kind == 'tfsf-closed' else (
-            ('run',) if _kind == 'msl-eigenmode' else ('run', 'forward'))
+            ('run',) if _kind == 'msl-eigenmode' or (_path.startswith('multi-') and _kind == 'msl')
+            else ('run', 'forward'))
         for _entry in _entries:
             _always = ((_path in ('uniform', 'graded') and _kind == 'lumped') or (_path == 'multi-uniform' and _kind == 'point')
                        or _kind == 'msl-eigenmode')
@@ -320,7 +321,7 @@ REFUSALS.append(('uniform', 'msl-eigenmode', 'forward', False, False, NotImpleme
                  "MSL port mode='eigenmode' is supported on the"))
 for _path in ('multi-uniform', 'multi-graded'):
     for _kind, _fragment in (('waveguide', 'waveguide'), ('msl', 'microstrip')):
-        for _entry in ('run', 'forward'):
+        for _entry in (('forward',) if _kind == 'msl' else ('run', 'forward')):
             REFUSALS.append((_path, _kind, _entry, False, False, NotImplementedError, _fragment))
 REFUSALS.append(('multi-uniform', 'point', 'forward', True, False, NotImplementedError,
                  'eps_override'))

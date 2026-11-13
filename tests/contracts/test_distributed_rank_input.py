@@ -36,8 +36,13 @@ CASES = [
 CASES += [("uniform", kind, "cpml") for kind in
           ("planes", "flux", "moments", "snapshots", "farfield")]
 
+CASES += [(lane, "msl", "cpml") for lane in ("uniform", "graded")]
+
 
 def model(lane, mode, boundary):
+    if mode == "msl":
+        from tests.unit.runners.test_distributed_msl_ports import observed_scene
+        return observed_scene("T1", lane, "laplace", 2)[0]
     material_kind = mode.split("-")[-1]
     mode = mode.split("-")[0]
     profile = np.full(15, 1e-3)

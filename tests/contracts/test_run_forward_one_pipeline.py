@@ -18,6 +18,8 @@ from tests.contracts.run_forward_census import (
 )
 
 KNOWN_ROWS = (
+    ('P-msl', 'multi-device-graded', 'admission', 'A7', '#2032: forward(distributed=True) refuses microstrip ports until a gradient parity bar admits it'),
+    ('P-msl', 'multi-device-uniform', 'admission', 'A7', '#2032: forward(distributed=True) refuses microstrip ports until a gradient parity bar admits it'),
 )
 
 # Declarations with ports compare equal S requests in both directions (#1373):
@@ -304,6 +306,8 @@ ADMISSION_ROWS = (
     ('O-ntff', 'multi-device-uniform'),
     ('O-vector', 'multi-device-uniform'),
     ('P-lumped', 'multi-device-uniform'),
+    ('P-msl', 'multi-device-graded'),
+    ('P-msl', 'multi-device-uniform'),
     ('P-wire', 'graded'),
     ('P-wire', 'multi-device-uniform'),
     ('P-wire', 'uniform'),
@@ -336,8 +340,6 @@ BOTH_REFUSE_ROWS = tuple((declaration, path)
     ('P-coax', 'uniform'),
     ('P-floquet', 'multi-device-uniform'),
     ('P-lumped2', 'multi-device-uniform'),
-    ('P-msl', 'multi-device-graded'),
-    ('P-msl', 'multi-device-uniform'),
     ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'multi-device-uniform'),
     ('P-waveguide-2mode', 'graded'),
@@ -363,6 +365,8 @@ BOTH_REFUSE_ROWS = tuple((declaration, path)
 CONSEQUENCE_PAIRS = (
 )
 ID_PATTERNS = {
+    'A7': {'run': ('admitted',), 'forward': ('raised', 'RfxUnsupported',
+            'microstrip forward has no gradient parity bar')},
     'D4': {'L1': ('/carry_init/flux_monitors/*', '/init/flux_monitors/*',
                   '/ctx/flux_meta/*', '/invariants/ctx/flux_meta/*',
                   '/ctx/use_flux_monitors', '/invariants/ctx/use_flux_monitors'),

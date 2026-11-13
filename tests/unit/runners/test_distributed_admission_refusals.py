@@ -360,12 +360,43 @@ def test_subgrid_refinement_is_refused(entry):
     _assert_refused(sim, entry, "add_refinement()")
 
 
-@pytest.mark.parametrize("entry", ENTRIES)
-def test_msl_port_is_refused(entry):
-    """Before the refusal a trace fed by an MSL port read exactly 0 under the
-    trace on two devices (22.3 on one) - review of #1239."""
-    sim = _build(entry=entry, msl=True)
-    _assert_refused(sim, entry, "add_msl_port()")
+@pytest.mark.parametrize("lane", ("uniform", "graded"))
+@pytest.mark.parametrize("entry", ("run_eigenmode", "forward"))
+def test_msl_named_refusals(lane, entry):
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1" + ("_graded" if lane == "graded" else ""),
+                      mode="eigenmode" if entry == "run_eigenmode" else "laplace").sim
+    reason = "magnetic-source channel" if entry == "run_eigenmode" else "gradient parity bar"
+    with pytest.raises(NotImplementedError, match=reason) as error:
+        kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
+        if entry == "run_eigenmode":
+            sim.run(**kwargs, compute_s_params=False)
+        else:
+            sim.forward(**kwargs, distributed=True, checkpoint=False)
+    assert "add_msl_port()" in str(error.value)
+    if entry == "run_eigenmode":
+        assert "eigenmode" in str(error.value)
+
+
+def test_msl_s_scan_refused():
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1").sim
+    sim.add_port((.008, .004, .0004), "ez", impedance=50.)
+    with pytest.raises(NotImplementedError, match="compute_msl_s_matrix"):
+        compute_lumped_wire_s_matrix_via_scan(
+            sim, [10e9], n_steps=2, devices=_devices(), skip_preflight=True)
+
+
+def test_msl_graded_pmc_refused():
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1_graded").sim
+    sim._boundary_spec = BoundarySpec(x=Boundary(lo="pmc", hi="cpml"), y="cpml", z="cpml")
+    with pytest.raises(NotImplementedError, match="Graded multi-device ports require the wrapped step"):
+        sim.run(n_steps=2, devices=_devices(), compute_s_params=False, skip_preflight=True)
 
 
 # How the multi-device lane treats every Simulation attribute is the

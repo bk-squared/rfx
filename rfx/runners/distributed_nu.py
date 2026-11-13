@@ -513,7 +513,7 @@ def run_nonuniform_distributed_pec(
     pmc_faces: frozenset = frozenset(),
     gather_final_state: bool = True,
     material_drive=None,
-    port_plan=None, rlc_metas=(),
+    port_plan=None, msl_ports=False, rlc_metas=(),
     prepare_only=False, slab_records=None,
 ) -> dict:
     """Phase 2B/2C/2D sharded NU scan body — hard PEC, ghost exchange,
@@ -790,7 +790,7 @@ def run_nonuniform_distributed_pec(
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
 
-    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None) == "wrapped":
+    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None or msl_ports) == "wrapped":
         from rfx.runners._distributed_nu_wrapped import run_wrapped
         return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
             n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,

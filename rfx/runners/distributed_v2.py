@@ -229,7 +229,7 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         )
 
 
-def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):
+def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=(), allow_msl_run=False):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
     Periodic/Bloch boundaries, reference-plane or passive ports, Kerr materials,
@@ -292,15 +292,17 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         )
 
     msl = getattr(sim, "_msl_ports", None) or ()
-    if msl:
+    if msl and (not allow_msl_run or any(p.mode == "eigenmode" for p in msl)):
         from rfx._diagnostic_transport import diagnostic_refusal
+        reason = (
+            "mode='eigenmode' needs a magnetic-source channel for its J+M launch; slabs have none"
+            if allow_msl_run else
+            "microstrip forward has no gradient parity bar" if forward else
+            "this caller does not drive or terminate microstrip ports; use compute_msl_s_matrix for microstrip S"
+        )
         raise diagnostic_refusal(RfxUnsupported(
             f"add_msl_port() port(s) ({len(msl)}): not supported on the {lane} path; "
-            "the lane never drives or terminates microstrip ports, so a model fed "
-            "only by them returns a zero field, with no warning "
-            "(rfx.runners.distributed_v2.run_distributed / "
-            "rfx.runners.distributed.run_distributed have no MSL port update). "
-            f"Remove the MSL ports, or {single_device_hint}."
+            f"{reason} (rfx.runners.distributed_v2). {single_device_hint}."
         ), diagnostics)
 
     if getattr(sim, "_refinement", None) is not None:
@@ -368,6 +370,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     refuse_unsupported_distributed_features(
         sim,
         lane="distributed (v2) runner",
+        allow_msl_run=lane == "run_distributed",
         bloch=kwargs.get("bloch"),
         diagnostics=diagnostics,
     )
@@ -490,6 +493,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     port_idx = -1
     wire_edges = None
     port_entries, port_specs = [], []
+    msl_geometry_edges = conductors.pec_edges if sim._msl_ports else None
     from rfx.model.conductors import lumped_port_stage, publish_port_release
     for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
@@ -537,6 +541,14 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 sources.defer(make_source, grid, pe.position, pe.component,
                               pe.waveform, n_steps,
                               amplitude_kind=pe.amplitude_kind)
+    if sim._msl_ports:
+        from rfx.model.msl_stamp import realize_msl_ports
+        msl = realize_msl_ports(sim, grid, materials, conductors,
+            eps_source=materials.eps_r, stamp_drive_materials=None,
+            edge_release="run", eigenmode="run_distributed",
+            geometry_edges=msl_geometry_edges, sources=sources, n_steps=n_steps)
+        materials, conductors = msl.materials, msl.conductors
+        del msl
     if _record_probes is None:
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -566,7 +578,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
                                             in_program=mesh.devices.size < 2)
     sources = sources.resolve(drive_materials)
-    del wire_edges, drive_materials
+    del wire_edges, drive_materials, msl_geometry_edges
 
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "distributed.sources")
