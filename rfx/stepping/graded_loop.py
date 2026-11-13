@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model.waveguide_aperture import validate_graded_waveguide_ports
+
 from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
@@ -95,6 +97,7 @@ def run_nonuniform(
         identical to the uniform path (acc += field * exp(-j2pi f t) * dt);
         dt is scalar on both paths so no per-axis weighting is required.
     """
+    validate_graded_waveguide_ports(grid, waveguide_ports, pec_faces, pmc_faces)
     setup = _build_nu_scan(
         grid, materials, n_steps,
         cpml_axes=cpml_axes,
@@ -350,6 +353,7 @@ def run_nonuniform_until_decay(
     absorbing = grid.cpml_layers > 0 and padded_axes(grid, resolve_cpml_axes(grid, cpml_axes))
     refuse_radiated_flux_stop(radiated_flux_box, decay_by, "cpml" if absorbing else "pec")
 
+    validate_graded_waveguide_ports(grid, waveguide_ports, pec_faces, pmc_faces)
     setup = _build_nu_scan(
         grid, materials, max_steps,
         cpml_axes=cpml_axes,

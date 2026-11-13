@@ -219,7 +219,7 @@ Peak host memory is unchanged on CPU (0.91 to 1.01 times).
 jax 0.11.0 and 0.11.1 run the CPU step at jax 0.10.2's speed (1.00 to 1.01 times, 8 domain-sized copies); jax 0.12.0 is slower (5.6 times at 0.53 M cells, 2.4 times at 3.05 M cells).
 On CPU, every domain-sized copy that jaxlib 0.11.2 adds comes from the absorber (CPML) write-back. That write-back is a chain of partial updates of each field, and from 0.11.2 the compiler recomputes such chains (openxla/xla#50977). This holds in 40 of 43 measured scenes.
 On the GPU the write-back takes another form, and the extra copies do not appear; the cause of the GPU's 1.18 times at 3.05 M cells is not measured.
-An rfx-side change, a compiler barrier after each absorber update on CPU, removed the extra copies. With it, the step on 0.11.2 took 0.98 to 1.00 times jax 0.10.2's time, and the fields stayed bit-identical. It is planned for 2.1, together with lifting the install cap.
+An rfx-side change, a compiler barrier after each absorber update on CPU, removed the extra copies. With it, the step on 0.11.2 took 0.98 to 1.00 times jax 0.10.2's time, and the fields stayed bit-identical. It is not in 2.2; it is planned together with lifting the install cap.
 These step times come from a second CPU node; on it, the unchanged step on 0.11.2 took 1.5 to 1.7 times jax 0.10.2's time, so the size of the slowdown depends on the machine.
 No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propagation=false` leaves it 2.4 to 3.0 times slower, and jaxlib 0.11.2 rejects `--xla_cpu_use_fusion_emitters`.
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
@@ -284,7 +284,7 @@ The full-tensor build gave each node one plane, the nearest face. At a box edge 
 Fixed for axis-aligned Boxes, also overlapping ones: a node within 1.25 times the reach of its edge supports (1.53 cells on a uniform mesh, from the realized cell sizes on a graded one) of a Box takes, on each support, the exact content of the Boxes that meet it, painted in declared order as the assembled model paints them. On the on-node and the bisector box scenes a face moved by 1e-12 m changes no diagonal value by more than one float32 step. Every node farther from all Boxes keeps the one-plane values bit for bit.
 Next to a non-Box shape the exact and the one-plane triplets are blended over one cell, with the weight rising from 0 at the reach from the shape's bounding box to 1 one cell farther; within the reach the one-plane rule stays, with its jumps where a box face plane ties. Measured on an eps_r 10 box beside an eps_r 10 sphere of radius 1.5 mm whose bounding box sits at the reach, half a cell and one cell beyond it, the sphere moved by 2e-9 m: no diagonal value changes by more than the one-plane build changes it plus 1.7e-6 of the value (uniform and 1.0 / 0.8 mm graded meshes); 26 to 50 nodes are blended; the 20-step loss does not change in float32.
 Within that reach the jump is large. A 12 mm PEC box with εr 10 shapes was measured on 1 mm cells (record kept with the project), uniform and graded in z (1.0 / 0.8 mm). Moving a shape coordinate by 1e-12 m changed the 20-step probe loss by 0.39 % to 39 % at a Cylinder rim on grid nodes, whether the cap was translated or the radius changed, along x, y or z. At a Box edge on a node with a sphere 1 cell away it changed by 10.7 % (uniform) and 24 % (graded); at a Box edge with nodes on its bisector, with those nodes 1.4 mm from the sphere's bounding box, by 7.6 % and 12 %. There the jump is the one-plane face flip at the bisector nodes; the nodes next to it, whose normal comes from the sphere and reaches the Box within one cell, count the Box's content along that normal, and that corrected model responds more to the same flip (measured: main's model with this fix's values at only those nodes gives this fix's losses exactly, on both meshes). The diagonal jumped by up to 6.5×10⁶ float32 steps in 20 to 56 cells. A gradient or a sweep through such a coordinate sees a step. Until one content rule covers every shape, use `subpixel_smoothing=True` near cylinders and spheres (measured for cylinder coordinates and for a Box face beside a sphere; a sphere's own coordinates were not moved). On the same scenes and meshes, `True` was measured continuous: at ±1e-12 m no cell moved by a float32 step and the loss did not change, and from 1e-9 to 1e-6 m its changes grow with the move. Its slope can differ on the two sides of a face that lies on a node (a kink, not a step). Its accuracy against `"full_tensor"` near curved shapes was not measured. A non-Box body thinner than a cell keeps the one-plane rule too: a `Cylinder` disc (εr 4) 0.3 of a cell thick reads a diagonal Ez of 1.951 where the series average is 1.290, on uniform and graded meshes, while `True` reads 1.290 there. `OrientedBox` is not reachable under `"full_tensor"`: it raises `NotImplementedError` by name.
-Where a later Box of one permittivity sits inside an earlier Box of another, the triplets now carry the later Box's value; a diagonal cell whose four end triplets and Yee midpoint are all bulk still takes the diagonal smoother's value, which follows the grouping by permittivity value (inside the later box the diagonal reads 10.2 on edges whose ends are all bulk, and values from 4 to 10.2 on edges near its faces). `subpixel_smoothing=True` and `"kottke_pec"` keep that grouping everywhere.
+Where a later Box of one permittivity sits inside an earlier Box of another, the triplets carry the later Box's value. A later shape whose permittivity repeats an earlier one is painted in declared order with `True`, `"kottke_pec"` and `"full_tensor"` alike: in an εr 4 Box nested in an εr 10.2 Box after another εr 4 shape, every mode reads 4.0 inside the nested Box.
 A traced permittivity with `"full_tensor"` is refused by name in any scene. With a Box in the scene a traced shape coordinate or mesh profile is also refused by name: the scope of the exact content is decided on concrete coordinates and realized cell sizes, and under a trace the build runs in float32 (plain and `jax.jit` losses 9.7×10⁻⁴ apart with a traced sphere radius beside a concrete εr 2 box, 8.8×10⁻³ with a traced permittivity on an εr 4 box). This is a capability change: main admitted a traced Box coordinate, and its build equalled the host build in shared-face scenes and moved a plain-versus-jit loss by up to 9.65×10⁻⁴ elsewhere (a traced sphere radius beside a Box); restoring it with the exact content formed on traced coordinates is #2473. More than eight boxes meeting one edge support are refused by name. Use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
 → [#2473](https://github.com/bk-squared/rfx/issues/2473)
 
@@ -293,13 +293,26 @@ A traced permittivity with `"full_tensor"` is refused by name in any scene. With
 Tracker: #2624
 
 The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. Fixed for planar bodies under `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"`: where a `Box`, or a `Cylinder` cut cap to cap, has both faces inside one cell's averaging length, its fill is its own thickness and the medium outside it is read on both sides (an εr 4 slab 0.3 of a cell thick reads Ez 1.290, the series average, instead of 1.429).
-A thin `Sphere`, a `Cylinder` crossed through its radius, and a run of touching bodies that includes either still use one face for the fill. Their error was not measured; the plan is to measure a sphere and a radius-crossed cylinder smaller than a cell against the same bodies on a mesh where they span many cells.
+A thin `Sphere`, a `Cylinder` crossed through its radius, and a run of touching bodies that includes either still use one face for the fill.
+A dielectric `Sphere` or a `Cylinder` crossed through its radius that spans about two cells or fewer is over-polarized, with or without smoothing. Measured by the TE101 resonance shift (about 10.6 GHz) such a body causes in a 20 × 10 × 20 mm PEC cavity: the shift is proportional to the body's polarizability, and so to the field it scatters. The reference is the shift extrapolated from three finer meshes with smoothing (1, 0.5 and 0.25 mm cells: the sphere spans 2, 4 and 8 cells there, the rod 1, 2 and 4); it lies 3–4 % above the first-order perturbation closed form. Ratios to it, εr 4:
+
+| body | cells across | `subpixel_smoothing=True` | no smoothing |
+|---|---|---:|---:|
+| sphere, radius 1 mm, 2 mm cells | 1 | 2.41 | 2.56 |
+| rod across the field, radius 0.5 mm, 2 mm cells | 0.5 | 3.34 | 6.35 |
+| rod across the field, radius 0.5 mm, 1 mm cells | 1 | 1.55 | 1.60 |
+| sphere, radius 1 mm, 1.5 mm cells (cavity realized as 19.5 × 10.5 × 19.5 mm; its closed form uses those lengths) | 1.33 | 1.58 | 1.15 |
+| sphere, radius 1 mm, 1 mm cells | 2 | 1.30 | 1.25 |
+| rod across the field, radius 0.5 mm, 0.5 mm cells | 2 | 1.10 | 1.13 |
+
+Scattered power goes as the square of the ratio, 20·log10 of it in dB: with smoothing, 7.6 dB high for the sphere one cell across, 10.5 dB for the rod half a cell across, 3.8 dB for the rod one cell across, and 0.9–2.3 dB at two cells; without smoothing 8.2, 16.1, 4.1 and 1.1–1.9 dB. Each row was taken at one position; the ratio is expected to depend on where the body sits on the mesh, which was not swept. With smoothing, put more cells across such a body until the result stops moving (without smoothing the measured curves do not approach the reference monotonically; measured on uniform meshes; a graded mesh that refines around the body adds cells there but was not measured).
+A `Sphere`, or a `Cylinder` crossed through its radius, that is not PEC is refused wherever it is placed when its radius is below half the diagonal of the cell containing its centre: 0.866 of the cell on a uniform mesh, and for a `Cylinder` half the diagonal of that cell's cross-section, 0.707 of the cell. Such a body may contain no primal-cell centre, so before this rule it ran at some positions and was refused as "rasterizes to ZERO cells" at others. A sweep of, or a gradient through, its position could cross from a result to a refusal. The rule is not applied on a 2D grid, for a traced centre or traced cell widths, or for a centre outside the grid; there the empty-cell refusal alone decides. `preflight()` warns ("Small dielectric body:") for an admitted dielectric `Sphere`, or a `Cylinder` across its radius, under three cells across. A PEC `Sphere` or `Cylinder` keeps the earlier rule: below a cell, whether it runs depends on its position. Bodies just above the size threshold are still over-polarized, as in the table above.
 Under `"full_tensor"` a thin non-Box body keeps the one-face rule: a `Cylinder` disc 0.3 of a cell thick (εr 4) reads Ez 1.951 on the diagonal where the series average is 1.290 (51 % high), on uniform and graded meshes.
 Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
 On a curved face, full-tensor dual-face averages still use a first-order planar model.
-A later group's pass with a crossed normal can jump when its face enters the cell.
+A later group's pass with a crossed normal steps when its face enters the cell; measured and listed under subpixel smoothing in the support matrix.
 Full-tensor spectral bounds include zero-weight portions, whose medium just beyond the face can step; a bound that clips then makes the tensor step too.
-Periodic images ±2 of traced shapes near an end of the admitted interval [−L, 2L] can reach beyond the domain edge and be missed by the existing image range.
+A traced shape on a periodic axis is admitted while its bounds lie inside [−L, 2L], but smoothing evaluates only its images −1, 0 and +1. If the shape is declared a full period outside the domain, with its upper bound less than half a cell below 2L, the smoothing samples at the domain's low face miss its copy across the seam and read the background. On 1 mm cells, 0.23 mm below 2L, Ey reads 1.000 where the body gives 1.810. The low end of the interval is affected only on a graded mesh with an oblique face normal: dx 1 mm, dy = dz 3 mm, 0.23 mm above −L, 0.318 off. A shape declared inside [0, L], or across one seam, is not affected. Declare traced periodic shapes there.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
@@ -435,20 +448,23 @@ What to do: record fewer frames (`SnapshotSpec(interval=...)`); the measured pea
 A 2-D slice normal to y or z (`slice_axis=1` or `2` with `slice_index`) lowers the peak with its size; fewer components
 lower it by less than the record shrinks. Or run a snapshot-heavy case on one device.
 
-### A preflight keeps its whole-domain realization arrays until the Simulation is deleted
+### `preflight()` and `realized_geometry()` keep the model's whole-domain inspection arrays until a solve or `clear_inspection_cache()`
 
 Tracker: #1432
 
-`preflight()`, `realized_geometry()` and the automatic preflight of `run()`, `forward()` and the S-matrix calculators
-leave their whole-domain realization arrays on the `Simulation` after the call returns. Measured before the thin-sheet
-change below: about 21 bytes per cell (21.1 B on 81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33), and on a board of about
-1e8 graded cells with many sheets about 31 GiB of host memory and 15.5 GiB of GPU memory held through the solve, so that
-the run did not start on a 64 GiB host. Neither has been measured since. On main after 2.0.0, thin PEC sheets keep only
+`preflight()` and `realized_geometry()` keep the model's assembly context, its realized-geometry record and the coax
+stamp on the `Simulation`, so repeated inspection calls share them. A solve (`run()`, `forward()`, the S-matrix
+calculators, `topology_optimize()`) releases them when it is dispatched; a refused solve keeps them, and
+`Simulation.clear_inspection_cache()` frees them for a model you only inspect
+(`tests/contracts/test_inspection_release.py`). A `realized_geometry()` record you keep still holds the arrays it
+refers to. Measured before the thin-sheet change below, the held arrays took about 21 bytes per cell (21.1 B on
+81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33), and 1.43 GiB of device memory stayed reachable from a kept record's
+`conductors` on a synthetic model of 161 thin sheets on 3.05 M cells; neither has been measured since. On main after 2.0.0, thin PEC sheets keep only
 their plane masks, so the GPU memory these arrays hold no longer grows with the number of sheets (host memory not
 measured): a board of 161 sheets on 3.05 M cells, with `preflight()`, `realized_geometry()` and a second model kept in
 the same process, completes with the GPU pool capped at about 5.6 GiB at a 0.46 GiB peak, where 2.0.0 ran out of
-memory. No public call frees the arrays before `run()`. Deleting the `Simulation` frees them only while no
-`realized_geometry()` record is kept: the record holds the same arrays.
+memory. What to do: call `clear_inspection_cache()` after inspecting a model you will not solve, and drop any
+`realized_geometry()` record before a large solve.
 
 ## Ports and extraction
 
@@ -648,7 +664,14 @@ The field increment a source adds on its edge is the update's coefficient times 
 - A waveguide port with `subpixel_smoothing` is refused when smoothing changes the permittivity in the port section.
 - A plane-wave source (`add_tfsf_source`) refuses a smoothed or conformal edge on its injection planes, on every path (`tests/contracts/test_tfsf_vacuum_planes.py::test_treated_edges_on_injection_planes`).
 
-Not fixed in 2.1.0. Read absolute amplitudes from a port beside a conformal wall as high by these amounts, or put the walls on mesh nodes. Measured 2026-11-03 on the cut-cell conformal model; record kept with the project.
+Not fixed in 2.2.0. Read absolute amplitudes from a port beside a conformal wall as high by these amounts, or put the walls on mesh nodes. Measured 2026-11-03 on the cut-cell conformal model; record kept with the project.
+
+### A waveguide port built without a uniform Grid is unchecked in a caller's own loop.
+
+A configuration built with scalar `dx` or a graded grid warns when the aperture exceeds the declared guide size by more than half the last cell on either transverse axis; the walls remain unchecked when stepped through `inject_waveguide_port` and `update_waveguide_port_probe` in the caller's own loop.
+A whole node plane there drives and reads the row outside the high electric wall; use the cell span `(0, n - 1)`, as `Simulation` builds it.
+
+Tracker: none — accepted limitation (warns at default: tests/unit/ports/test_waveguide_whole_plane_aperture.py::test_initializers_warn_without_uniform_grid)
 
 ### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 
@@ -663,6 +686,20 @@ and the settling check fails that record (−39.7 dB against −40 dB). From
 not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 7.0–7.9 GHz
 (f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
+
+### On an aperture where two waveguide modes share a cutoff, a port stores a mix of the two that the eigensolver chooses.
+
+Tracker: #2707
+
+With the default `mode_profile="discrete"`, a waveguide port on an aperture where two modes have equal discrete cutoffs
+stores, launches and reads a combination of the pair that the eigensolver picks. This happens on a square aperture for
+the dominant mode, on an aperture whose sides are exactly 2:1 in whole cells (WR-28 and WR-75 are 2:1) for the second
+mode, and on any other aperture where two modes share a cutoff. On a 20 × 20 mm guide with 2 mm cells the TE10 port's profile was 0.707 TE10 and 0.707 TE01; on a 40 × 20 mm
+aperture with two modes, the TE10-to-second-mode S entries changed sign between two machines. On an empty straight guide
+S moved by at most 2.9e-7 of its peak. On a structure that treats the two transverse axes differently (an iris, a post,
+a partial fill) the port reads the S of a mixed wave that depends on the machine; that error has not been measured, nor
+has the TM branch. What to do: use `mode_profile="analytic"`, which builds closed-form shapes, or an aperture whose cell
+counts give the pair different cutoffs.
 
 ### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
 
@@ -793,11 +830,13 @@ extension for 2.0; they stay refusals.
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused)
 
-At normal incidence, on the uniform and the graded mesh alike, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
+At normal incidence on both meshes, and at oblique Bloch incidence on the uniform mesh, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
 materials on the grid, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
-`closed_box=True` or `rfx.rcs.compute_rcs`. On the graded mesh, for propagation along x with E along z, the
+`closed_box=True` or `rfx.rcs.compute_rcs`. For an oblique finite scatterer, use
+`add_tfsf_source(closed_box=True, theta_deg=…, phi_deg=…, polarization='s' or 'p')`
+in 3-D with CPML on all six faces. On the graded mesh, for propagation along x with E along z, the
 admitted wall pairs are PMC on y and PEC on z. Each
 transverse axis takes only a matched pair: both faces absorbing, both the wall
 that suits the polarization, or both periodic (`rfx/boundaries/tfsf.py::replacement_axes`).
@@ -808,9 +847,9 @@ structure with those walls is refused. UPML remains unsupported for TF/SF.
 The uniform plane-wave path solves y and z (Method B: z) periodic, including their pads, when no
 boundary or `boundary='cpml'` is given, and reports the affected faces in preflight. Its grid and period do not
 change. On the uniform mesh it refuses absorbing or wall faces declared explicitly on those axes (a `BoundarySpec`,
-`Boundary` or dict), since it would solve them periodic: declare them periodic, omit them, or use the graded mesh. Traced material overrides retain the legacy operator
-with a warning when invariance cannot be judged. At oblique incidence the tilt
-axis keeps its operator and is reported as not judged for invariance.
+`Boundary` or dict), since it would solve them periodic: declare them periodic or omit them. At normal incidence the graded mesh also keeps the declared side faces. Traced material overrides retain the legacy operator
+with a warning when invariance cannot be judged. Open oblique Method B keeps its
+absorbing y faces; its z faces remain periodic.
 The graded mesh keeps its transverse absorbers under a plane wave (no wrap) but
 applies the same rule: a laterally invariant structure runs, and on a graded profile with the uniform mesh's cells
 its probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
@@ -918,29 +957,6 @@ cannot be formed, compare against a record 1.5–2 times longer.
 The weak-port cavity contract is in
 `tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
 identification-probe option; port-only identification remains the default).
-
-### Plain and `jax.jit` gradients through `forward(ringdown=...)` differed on one short, lossy test box.
-
-Tracker: #2485
-
-`jax.grad` and `jax.jit(jax.grad)` of one objective through
-`forward(ringdown=...)` should agree within 1e-4, the bar for a quantity summed
-over the record. On a closed PEC 600-step test box, lossy, with poles near
-12.4 GHz (1/Q 0.14) and 38.6 GHz (1/Q 0.87), the gradient of `sum |S|^2` with
-respect to one scalar scaling `eps_override` has a relative gap
-|plain − jit| / |plain| of 1.5e-3 in float32, 7.9e-4 in the x64 context with a
-float32 override, and 1.7e-2 in the x64 context with a float64 override. The
-gradients of 1/Q from the traced pole outputs (`RingdownForwardResult.pole`)
-differ by more on that box. On another closed PEC box, with a weak 10 kΩ wire
-port, Q about 3700, 3997 steps and `precision="float64"`, the largest per-cell
-difference over the largest per-cell gradient is 2.7e-11 for the `sum |S|^2`
-gradient and 1.1e-12 for the gradients of the mode's frequency and 1/Q.
-
-The cause is not determined, and it is not known which property of the first
-box matters, so a longer or less lossy record is not known to be safe. What to
-do: treat a plain-to-jit gap above 1e-4 as an unexplained gradient. Agreement
-between the two does not validate a gradient; check it with `gradient_witness`
-or the same gradient from a longer record.
 
 ### A gradient can be wrong by tens of percent on a record whose value is converged.
 

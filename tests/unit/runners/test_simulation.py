@@ -39,6 +39,7 @@ from rfx.probes.probes import (
 from rfx.sources.waveguide_port import (
     WaveguidePort, init_waveguide_port, inject_waveguide_port,
     update_waveguide_port_probe, extract_waveguide_s21, extract_waveguide_s_matrix,
+    extract_waveguide_port_waves,
 )
 
 
@@ -561,6 +562,8 @@ class _CompiledWgGrid:
 
 def test_compiled_runner_waveguide_port_matches_manual_loop():
     """Compiled runner should preserve waveguide-port source/probe behavior."""
+    import sys
+
     a_wg = 0.04
     b_wg = 0.02
     length = 0.12
@@ -570,13 +573,16 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
 
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
-    freqs = jnp.linspace(4.5e9, 8e9, 12)
+    # TE20 cutoff c/a = 7.49 GHz for a = 40 mm; above it the single-mode V-I
+    # extractor is not physical. Use the same band as
+    # test_extract_waveguide_s_matrix_two_port_reciprocity.
+    freqs = jnp.linspace(5.0e9, 7.0e9, 12)
     n_steps = grid.num_timesteps(num_periods=30)
 
     port = WaveguidePort(
         x_index=nc + 5,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -619,7 +625,7 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
     s21_compiled = np.array(extract_waveguide_s21(compiled_cfg))
     s21_manual = np.array(extract_waveguide_s21(manual_cfg))
     max_err = np.max(np.abs(s21_compiled - s21_manual))
-    print(f"\nCompiled waveguide vs manual loop max S21 error: {max_err:.2e}")
+    print(f"\nCompiled waveguide vs manual loop max|dS21| (5-7 GHz): {max_err:.9e}", file=sys.stderr)
     assert max_err < 1e-3, f"Compiled waveguide runner diverged from manual loop: {max_err:.2e}"
 
 
@@ -645,8 +651,8 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
 
     port0 = WaveguidePort(
         x_index=nc + 5,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -655,8 +661,8 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
     )
     port1 = WaveguidePort(
         x_index=grid.nx - nc - 6,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -730,7 +736,7 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
     # and a port aperture holding wall material is refused (rfx#1994).
     xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)))
     yslice = (pady + int(round(0.04 / dx)), pady + int(round(0.08 / dx)))
-    zslice = (padz, grid.nz - padz)
+    zslice = (padz, grid.nz - padz - 1)
 
     left = WaveguidePort(
         x_index=nc + 5,

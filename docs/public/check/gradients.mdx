@@ -264,11 +264,11 @@ Limits:
   are False, `check.value` is NaN and `check.note` starts `cannot judge:`.
 - **The two windows are matched by frequency only.** The match assumes isolated
   neighbours. `gradient_witness` is the check for a wrong match.
-- **Plain and `jax.jit` gradients can differ.** On the 1.0 mm box above the pole
+- **Plain and `jax.jit` gradients agree once the witnesses pass.** On the 1.0 mm box above the pole
   gradients agree to 1.1e-12 and the gradient of `sum |S|^2` to 2.7e-11. On a short lossy 600-step test box the gradient of `sum |S|^2`
-  differs by up to 1.7e-2, and the pole outputs inherit and enlarge that gap. The cause is
-  not determined
-  ([tracked here](https://github.com/bk-squared/rfx/issues/2485)).
+  differs by up to 1.7e-2, and the pole outputs differ more; that record is too short, and both
+  `report.ok` and the early-start `gradient_witness` reject it. From 1200 steps on that box, where both pass, the
+  two agree within 5.5e-6. Read a gradient through `forward(ringdown=...)` only when its witnesses pass.
 
 ## How the checks work
 

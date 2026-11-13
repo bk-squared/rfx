@@ -5,9 +5,9 @@ from __future__ import annotations
 from rfx.model.graded_admission import host_cells
 
 from typing import NamedTuple
+import warnings
 import jax.numpy as jnp
 import numpy as np
-from rfx.boundaries.axes import hi_face_is_wall
 from rfx.core.yee import EPS_0, MU_0
 from rfx.errors import RfxRefusal
 from rfx.model.waveguide_waveform import waveguide_waveform_error
@@ -616,18 +616,18 @@ def init_waveguide_port(
     ref_offset : int
         Cells downstream from source for reference probe.
     grid : Grid or None
-        Optional Grid object for face-aware aperture pruning. When passed,
-        the modal V/I aperture excludes "ghost" cells whose centre lies
-        inside a PEC conductor (the cell at the array boundary on a +face
-        marked PEC). Without this, uniform-Grid callers integrate over
-        the ghost row, producing an ~8% PEC-short |S11| deficit.
+        Validate the aperture against a uniform Grid's declared electric,
+        magnetic and periodic boundaries.
     """
-    # Explicit grid supplies uniform boundary detection.
+    from rfx.grid import Grid
+
+    aperture_grid = dx if isinstance(dx, Grid) else grid
     grid_obj = None
-    if hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
+    if isinstance(dx, Grid):
+        dx = float(dx.dx)
+    elif hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
         grid_obj = dx
         dx = float(grid_obj.dx)
-    boundary_grid = grid_obj if grid_obj is not None else grid
     m, n = port.mode
     normal_axis = port.normal_axis
     if normal_axis not in ("x", "y", "z"):
@@ -652,18 +652,33 @@ def init_waveguide_port(
             "non-x-normal ports require u_slice and v_slice explicit transverse aperture slices"
         )
 
+    if isinstance(aperture_grid, Grid):
+        from rfx._internal._uniform_specs import resolve_periodic
+        from rfx.boundaries.pec import resolve_wall_faces
+        from rfx.model.waveguide_aperture import validate_waveguide_aperture
+
+        periodic = resolve_periodic(
+            aperture_grid, tuple(axis in aperture_grid.periodic_axes for axis in "xyz"),
+        )
+        faces, _ = resolve_wall_faces(aperture_grid, periodic, None)
+        try:
+            validate_waveguide_aperture(
+                normal_axis, (u_lo, u_hi), (v_lo, v_hi), aperture_grid.shape,
+                faces, name=port.direction,
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"{error} These walls are the Grid's declared faces; overrides by a run "
+                "or extractor (an axis made periodic, a PMC face, or an axis withheld "
+                "by pec_axes) must be declared on the Grid."
+            ) from error
+
     nu_port = u_hi - u_lo
     nv_port = v_hi - v_lo
 
     # --- Per-axis cell widths covering the transverse aperture ---
     # The mapping (u,v) → (x,y,z) depends on normal_axis and is the same
     # one used by `_plane_indexer`.
-    # (u, v) → (axis name, grid size along that axis) mapping for the
-    # transverse-aperture face-PEC heuristic below. Filled from the grid
-    # object when one is available (NU duck-typed grid_obj, or explicit
-    # uniform Grid via the `grid=` kwarg).
-    u_axis_name = v_axis_name = None
-    u_grid_size = v_grid_size = -1
     if grid_obj is not None:
         dx_arr_np = host_cells(grid_obj, "x", store=True)
         dy_arr_np = host_cells(grid_obj, "y", store=True)
@@ -671,91 +686,42 @@ def init_waveguide_port(
         if normal_axis == "x":
             u_widths_np = dy_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
-            u_axis_name, v_axis_name = "y", "z"
-            u_grid_size, v_grid_size = dy_arr_np.shape[0], dz_arr_np.shape[0]
         elif normal_axis == "y":
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
-            u_axis_name, v_axis_name = "x", "z"
-            u_grid_size, v_grid_size = dx_arr_np.shape[0], dz_arr_np.shape[0]
         else:  # z-normal
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dy_arr_np[u_lo:u_hi] if False else dy_arr_np[v_lo:v_hi]
-            u_axis_name, v_axis_name = "x", "y"
-            u_grid_size, v_grid_size = dx_arr_np.shape[0], dy_arr_np.shape[0]
     else:
         u_widths_np = np.full(nu_port, float(dx))
         v_widths_np = np.full(nv_port, float(dx))
-        if grid is not None:
-            # Uniform Grid: cell widths are scalar dx but boundary
-            # information is still on the Grid object.
-            if normal_axis == "x":
-                u_axis_name, v_axis_name = "y", "z"
-                u_grid_size, v_grid_size = grid.ny, grid.nz
-            elif normal_axis == "y":
-                u_axis_name, v_axis_name = "x", "z"
-                u_grid_size, v_grid_size = grid.nx, grid.nz
-            else:
-                u_axis_name, v_axis_name = "x", "y"
-                u_grid_size, v_grid_size = grid.nx, grid.ny
+
+    if not isinstance(aperture_grid, Grid):
+        transverse_axes = [axis for axis in "xyz" if axis != normal_axis]
+        oversized_axes = [
+            axis for axis, widths, declared_size in zip(
+                transverse_axes, (u_widths_np, v_widths_np), (port.a, port.b),
+            )
+            if len(widths) and np.sum(widths) - declared_size > 0.5 * widths[-1]
+        ]
+        if oversized_axes:
+            from rfx.preflight._common import PreflightWarning
+
+            warnings.warn(PreflightWarning(
+                "The aperture reaches past the declared guide size on "
+                f"{', '.join(oversized_axes)}; the walls are not checked on this path "
+                "(a configuration built from a scalar dx or a graded grid); "
+                "build with a uniform Grid to have them checked, or use the "
+                "cell span `(lo, hi - 1)`.",
+                code="waveguide_aperture_size_unchecked", source="init_waveguide_port",
+            ), stacklevel=2)
 
     # Cell-centre coordinates (cumulative-sum midpoints). For uniform
     # widths this collapses to the original `np.linspace(0.5*dx, ...)`.
     u_coords = np.cumsum(u_widths_np) - 0.5 * u_widths_np
     v_coords = np.cumsum(v_widths_np) - 0.5 * v_widths_np
 
-    # ----- Aperture dA with face-aware boundary-cell weighting -----
-    # Why: when a transverse face is PEC and the port slice reaches the array
-    # boundary on that side, the last Yee cell at index Nu-1 (or Nv-1) sits
-    # at-or-past the conductor surface. Including it with full weight in the
-    # modal V/I integral lets a spurious Ez (which apply_pec_faces does NOT
-    # zero — Ez is "normal" at z_hi by staircase convention) contaminate the
-    # extraction. Empirically this drops PEC-short WR-90 |S11| from 1.0 to
-    # 0.91 (see scripts/_aperture_trim_test.py and ../_aperture_trapezoidal_test.py).
-    #
-    # Convention: DROP PEC +face cells (weight=0.0). This matches the
-    # OpenEMS convention — its mode-function probe integration box is
-    # specified to the physical aperture, naturally excluding ghost
-    # cells that sit past the conductor (see /usr/lib/python3/dist-packages
-    # /openEMS/ports.py:347-360 for the WaveguidePort probe construction).
-    # Empirically: weight 0.5
-    # gives PEC-short min |S11| ≈ 0.94, weight 0.0 (DROP, OpenEMS-equivalent)
-    # gives min |S11| = 0.9997. Half-weight caps PEC-short closure.
-    #
-    #  test_mesh_convergence_s21_scaled_cpml in
-    # tests/oracle/test_waveguide_port_validation_battery.py is a LIVE, currently
-    # green committed gate under DROP, not xfail. The block comment above that test ("Test 6 —
-    # Mesh convergence of |S21|...") attributes jitter to Box.mask_on_coords closed-closed
-    # semantics rather than the DROP weight.
-    #
-    # The hi-face drop (``hi_face_is_wall``) does NOT fire for a port built by ``Simulation``/``run_nonuniform``: those
-    # hand ``WaveguidePort`` the guide's CELL span, which ends one
-    # index short of the array edge, so there is no cell past the wall left to
-    # drop. It still fires for a low-level caller that passes the whole node
-    # plane (``y_slice=(0, grid.ny)``), which is what it was written for.
-    u_aperture_weights = np.ones_like(u_widths_np)
-    v_aperture_weights = np.ones_like(v_widths_np)
-    if boundary_grid is not None and u_axis_name is not None:
-        # Stage 1 conformal PEC: when a +face is conformal, the
-        # Dey-Mittra eps_correction handles the staircase shift at the
-        # boundary cell. Zeroing the same cell here in the modal V/I
-        # integral would be a second copy of that correction — measured when PEC-short |S11|
-        # diff vs OpenEMS regressed 0.025 → 0.094.
-        conformal_faces = getattr(boundary_grid, "conformal_faces", set()) or set()
-        u_hi_face_pec = hi_face_is_wall(boundary_grid, u_axis_name)
-        v_hi_face_pec = hi_face_is_wall(boundary_grid, v_axis_name)
-        u_hi_face_conformal = f"{u_axis_name}_hi" in conformal_faces
-        v_hi_face_conformal = f"{v_axis_name}_hi" in conformal_faces
-        if (u_hi == u_grid_size and u_hi_face_pec
-                and not u_hi_face_conformal and u_widths_np.size > 0):
-            u_aperture_weights[-1] = 0.0
-        if (v_hi == v_grid_size and v_hi_face_pec
-                and not v_hi_face_conformal and v_widths_np.size > 0):
-            v_aperture_weights[-1] = 0.0
-    aperture_dA_np = (
-        (u_widths_np * u_aperture_weights)[:, None]
-        * (v_widths_np * v_aperture_weights)[None, :]
-    )
+    aperture_dA_np = u_widths_np[:, None] * v_widths_np[None, :]
 
     if mode_profile not in ("analytic", "discrete"):
         raise ValueError(
@@ -1065,8 +1031,7 @@ def _aperture_dA(cfg: WaveguidePortConfig) -> jnp.ndarray:
     """Per-cell area element (nu, nv) on the port aperture.
 
     Returns the precomputed `cfg.aperture_dA` when populated by
-    `init_waveguide_port` (which applies face-aware ghost-cell pruning at
-    PEC boundaries). Falls back to the legacy `u_widths × v_widths`
+    `init_waveguide_port`. Falls back to the legacy `u_widths × v_widths`
     product when called on a cfg built without the precomputed area
     (low-level test fixtures predating this field).
     """
@@ -1291,13 +1256,22 @@ def init_multimode_waveguide_port(
         # Only the first (dominant) mode is actively driven
         mode_amplitude = amplitude if mode_idx == 0 else 0.0
 
-        cfg = init_waveguide_port(
-            mode_port, dx, freqs, f0=f0, bandwidth=bandwidth,
-            amplitude=mode_amplitude, probe_offset=probe_offset,
-            ref_offset=ref_offset, dft_total_steps=dft_total_steps,
-            dt=dt, waveform=waveform, mode_profile=mode_profile,
-            grid=grid, h_offset=h_offset, field_dtype=field_dtype,
-        )
+        # All modes share one aperture; report its size only on the first mode.
+        from rfx.preflight._common import PreflightWarning
+
+        with warnings.catch_warnings():
+            if mode_idx:
+                warnings.filterwarnings(
+                    "ignore", message="The aperture reaches past the declared guide size",
+                    category=PreflightWarning,
+                )
+            cfg = init_waveguide_port(
+                mode_port, dx, freqs, f0=f0, bandwidth=bandwidth,
+                amplitude=mode_amplitude, probe_offset=probe_offset,
+                ref_offset=ref_offset, dft_total_steps=dft_total_steps,
+                dt=dt, waveform=waveform, mode_profile=mode_profile,
+                grid=grid, h_offset=h_offset, field_dtype=field_dtype,
+            )
         cfgs.append(cfg._replace(multimode=True))
 
     return _gram_schmidt_modes(cfgs)

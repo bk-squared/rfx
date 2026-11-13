@@ -47,8 +47,8 @@ is the one thing this design exists to make impossible.
 A fragment is at most 12 lines, heading included, and says what changed for a
 user: the new behaviour, the number a user now gets, what to change in their
 script. Measurement, falsifiers and review history belong in the PR body, and
-the records behind them in `bk-squared/rfx-archive` under
-`rfx/records/<YYYYMMDD>-<topic>/`. Blank lines between bullets count; blank
+the records behind them in the record repository under
+`<record root>/<YYYYMMDD>-<topic>/`. Blank lines between bullets count; blank
 lines at the start and end do not, since the assembler drops them.
 
 ## Assembling

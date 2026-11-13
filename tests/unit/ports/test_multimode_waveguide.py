@@ -281,12 +281,12 @@ class TestMultiModeSMatrix:
         ny, nz = grid.ny, grid.nz
 
         port_in = WaveguidePort(
-            x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+            x_index=nc + 5, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
             a=(ny - 1) * dx, b=(nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction="+x",
         )
         port_out = WaveguidePort(
-            x_index=grid.nx - nc - 6, y_slice=(0, ny), z_slice=(0, nz),
+            x_index=grid.nx - nc - 6, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
             a=(ny - 1) * dx, b=(nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction="-x",
         )

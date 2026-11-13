@@ -41,7 +41,7 @@ import jax  # noqa: E402
 import pytest  # noqa: E402
 
 # A test that reads a note, a guide or a README must be marked docs_consistency,
-# which only the non-required docs-consistency workflow runs (PI, 2026-09-24).
+# which only the non-required docs-consistency workflow runs.
 # With RFX_DURATIONS_LOG set, every test phase's duration is appended as it ends
 # (the weekly lane; tests/_durations_log.py).
 pytest_plugins = ("tests._prose_reads", "tests._durations_log", "tests._module_cache_clear", "tests._jax_version_xfails", "tests._whole_file_shards")

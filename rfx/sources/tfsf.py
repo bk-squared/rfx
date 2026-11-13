@@ -80,9 +80,14 @@ def pulse_timing(waveform, f0, bandwidth):
     return tau, t0
 
 
+def is_oblique(angle_deg):
+    """Whether the plane wave uses an oblique auxiliary source above 0.01 degrees."""
+    return abs(angle_deg) > 0.01
+
+
 def resolve_waveform(waveform, angle_deg, method):
     """Resolve the declared default, preserving CustomWaveform identity."""
-    bloch = abs(angle_deg) > 0.01 and method == "bloch"
+    bloch = is_oblique(angle_deg) and method == "bloch"
     if waveform is None:
         return "modulated_gaussian" if bloch else "differentiated_gaussian"
     if bloch and waveform == "differentiated_gaussian":
@@ -364,7 +369,7 @@ def init_tfsf(
     # continuous_wave lives only in the 1D-auxiliary (normal-incidence) injector; the 2D
     # oblique grid carries only an analytic MG, so reject it here rather than
     # silently drop it (fail-loud, not right-guard-mis-gated).
-    if waveform == "continuous_wave" and abs(angle_deg) > 0.01:
+    if waveform == "continuous_wave" and is_oblique(angle_deg):
         raise ValueError(
             "waveform='continuous_wave' is only supported at normal incidence "
             f"(angle_deg=0); got angle_deg={angle_deg}"
@@ -375,7 +380,7 @@ def init_tfsf(
     # Angle alone cannot disambiguate this from the Bloch 2D-aux path, so it is
     # selected explicitly via method='methodB'. angle_deg=0 falls through to the
     # normal 1D-aux path below regardless of method (byte-unchanged).
-    if abs(angle_deg) > 0.01 and method == "methodB":
+    if is_oblique(angle_deg) and method == "methodB":
         # Method B builds its own 1-D auxiliary absorber (tfsf_oblique_open.py:
         # 20 cells, sigma_max = 0.8 * 4/(eta d_aux), rho**3) -- its own heuristic,
         # independent of this lane. Accepting an aux_* override here
@@ -413,7 +418,7 @@ def init_tfsf(
         )
     # Dispatch to 2D auxiliary grid for oblique angles (Bloch field-transform).
     # The 2D grid naturally matches the 3D numerical dispersion at any angle.
-    if abs(angle_deg) > 0.01:
+    if is_oblique(angle_deg):
         from rfx.sources.tfsf_2d import init_tfsf_2d
         if ny is None:
             ny = nx  # default: square grid
@@ -600,7 +605,7 @@ def refuse_graded_propagation_axis(entry, grid):
                          "profile (mesh as design variable) is not supported")
     if is_one_cell_size(cells):
         return
-    if axis == "x" and abs(entry.angle_deg) <= 0.01 and not entry.closed_box:
+    if axis == "x" and not is_oblique(entry.angle_deg) and not entry.closed_box:
         return
     sizes = np.asarray(cells, dtype=float)
     raise RfxRefusal(
