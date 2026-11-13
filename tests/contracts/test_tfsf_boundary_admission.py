@@ -1,4 +1,4 @@
-"""TF/SF invariance before stepping, plus invariant S8 one-step admission."""
+"""TF/SF invariance before stepping; an invariant slab is admitted and steps once."""
 import rfx.stepping.uniform_loop as uniform_loop
 import gc
 
@@ -318,7 +318,7 @@ def test_oblique_method_b_finding_names_only_the_wrapped_axis(monkeypatch):
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("polarization,tilt", [("ez", "y"), ("ey", "z")])
 def test_oblique_tilt_finite_box_refuses(skip, polarization, tilt):
-    # R1: both polarizations must judge their tilt-axis material arrays.
+    # Both polarizations judge their tilt-axis material arrays at oblique incidence.
     with pytest.raises(ValueError, match=rf"TF/SF {tilt}_lo, {tilt}_hi: .*periodic.*closed_box=True, theta_deg"):
         oblique_plane(tilt, polarization).run(n_steps=1, skip_preflight=skip)
 
@@ -335,7 +335,7 @@ def oblique_slab(polarization, *, boundary="cpml"):
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("polarization", ["ez", "ey"])
 def test_oblique_invariant_slab_admitted(skip, polarization, monkeypatch):
-    # R2: a field phase is not a material variation.
+    # A field phase is not a material variation.
     sim = oblique_slab(polarization)
     findings = [issue for issue in sim.preflight(check_ntff=False)
                 if issue.code == "tfsf_transverse_periodic"]
@@ -350,7 +350,7 @@ def test_oblique_invariant_slab_admitted(skip, polarization, monkeypatch):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_oblique_method_b_finite_tilt_keeps_absorber(skip, monkeypatch):
-    # R3: the finite-y box stays inside the Method B injection planes.
+    # The finite-y box stays inside the Method B injection planes.
     sim = oblique_plane("y", "ez", method="methodB")
     seen = []
 
@@ -365,7 +365,7 @@ def test_oblique_method_b_finite_tilt_keeps_absorber(skip, monkeypatch):
 
 
 def test_normal_finite_box_message_unchanged():
-    # R4: literal captured on 66be9e1f7 by labrun, not a product helper.
+    # Literal copied from a run of main before this change, not built by a product helper.
     from rfx.errors import RfxRefusal
     with pytest.raises(RfxRefusal) as caught:
         plane(finite=True).run(n_steps=1, skip_preflight=True)
@@ -377,7 +377,7 @@ def test_normal_finite_box_message_unchanged():
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_oblique_padded_period_bar_refuses(skip):
-    # R5: #2693's declared 16 mm period would have wrapped 49 mm at dx=1 mm.
+    # The declared 16 mm period would have wrapped 49 mm at dx=1 mm (#2693).
     sim = Simulation(freq_max=10e9, domain=(.30, .016, .004), dx=.001, boundary="cpml")
     sim.add_material("bar", eps_r=4)
     sim.add(Box((.043, .003, .0), (.053, .009, .004)), material="bar")
@@ -389,7 +389,7 @@ def test_oblique_padded_period_bar_refuses(skip):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_oblique_explicit_absorbers_name_closed_box_angles(skip):
-    # R6: source registration refuses the explicit side-face declaration.
+    # Source registration refuses the explicit side-face declaration.
     with pytest.raises(ValueError, match="closed_box=True, theta_deg") as caught:
         oblique_slab("ez", boundary={"x": "cpml", "y": "cpml", "z": "cpml"}).run(
             n_steps=1, skip_preflight=skip)
@@ -397,7 +397,7 @@ def test_oblique_explicit_absorbers_name_closed_box_angles(skip):
 
 
 def test_graded_oblique_message_unchanged():
-    # R7: x-profile scene; main's diagnostic calls this a nonuniform z mesh.
+    # x-profile scene; main's diagnostic calls this a nonuniform z mesh.
     with pytest.raises(ValueError) as caught:
         oblique_plane("y", "ez", dx_profile=np.full(20, .001)).run(
             n_steps=1, skip_preflight=True)
@@ -411,8 +411,8 @@ def test_graded_oblique_message_unchanged():
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("smoothing", [True, "full_tensor"])
 @pytest.mark.parametrize("polarization", ["ez", "ey"])
-def test_oblique_invariant_s8_steps(entry, skip, smoothing, polarization, monkeypatch, release_boards):
-    # R8 / D1(b): this row explicitly steps once; the other rows retain no_steps.
+def test_oblique_invariant_slab_steps_once(entry, skip, smoothing, polarization, monkeypatch, release_boards):
+    # This test steps once; the other admission tests keep no_steps.
     import jax
     monkeypatch.setattr(jax.lax, "scan", release_boards)
     sim = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)

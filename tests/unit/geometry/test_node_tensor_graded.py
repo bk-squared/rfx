@@ -332,7 +332,7 @@ def test_graded_tfsf_keeps_oblique_refusal(entry):
                 getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
             messages.append(str(info.value))
         else:
-            # D1(b), D2: S8 reaches the uniform full-tensor step.
+            # The invariant slab reaches the uniform full-tensor step.
             result = getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
             assert result.time_series.shape[0] == 1
             messages.append('admitted; completed n_steps=1')
