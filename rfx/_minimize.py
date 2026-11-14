@@ -165,8 +165,11 @@ def minimize(
       coating on an eps = 12 substrate.
     - R is computed by FDTD, at dx = 0.25 mm with a 20-cell CPML, at the 15
       DFT bins from 8.2 to 11.8 GHz.
-    - Every run starts from the geometric ladder and uses 120 solves. A
+    - Every run starts from the geometric ladder and uses 120 loop solves. A
       forward, a reverse and a forward-mode pass each count as one solve.
+      "mma" with worst_case=True also runs one setup forward before the
+      loop, which these counts leave out.
+    - "Final value" means a run's last evaluated value.
     The numbers describe this problem; another objective can behave
     differently.
 
@@ -176,17 +179,16 @@ def minimize(
     "projected_adam"
         Adam on p = (x - lo) / (hi - lo), clipped to the box after every
         step, with no sigmoid flattening near a bound. On the mean
-        reflectance:
-        - it ended at the cost of "adam" (ratio 0.9998);
-        - it came within 1 % of its final value after 52 solves, against 68
-          for "adam";
-        - it used lr 0.0375, against 0.15 for "adam".
+        reflectance it ended at the cost of "adam" (ratio 0.9998), with lr
+        0.0375 against 0.15 for "adam".
     "mma" with worst_case=True
         The method of moving asymptotes in its minimax form. On the worst-bin
         reflectance:
-        - it came within 1 % of its final value after 12 solves, against 68
-          for "adam" on the q = 32 soft-max of the 15 bins;
-        - from iteration 7 it held that value within 6.1e-7;
+        - it first came within 1 % of its final value after 12 solves and
+          stayed there; from iteration 7 it held that value within 6.2e-7;
+        - "adam" on the q = 32 soft-max of the 15 bins first came within
+          1 % of its own final value after 68 solves, then left that band
+          again;
         - it ended equal-ripple, with three bins within 2.1e-7 of each other;
         - it needs no q or learning rate.
         This is not a claim of a lower worst-bin value than Adam can reach.
@@ -194,8 +196,10 @@ def minimize(
         With n >= m + 2 variables, the rows use reverse mode, at m + 2 passes
         per iteration.
     "mma" on a scalar objective
-        Can cycle on its move limit. On the mean reflectance:
-        - over its last 20 iterations it moved every variable by 0.0087-0.0090
+        Can cycle on its move limit. Once the asymptotes reach their floor
+        of 0.01 of the box, that limit is 0.9 of it, 0.009 of the box. On
+        the mean reflectance:
+        - over its last 20 iterations it moved every variable by 0.0086-0.0090
           of the box at each step, alternating between two points;
         - it ended at 1.27 times the cost of "adam".
         For an unconstrained scalar cost, use "adam" or "projected_adam".
