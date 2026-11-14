@@ -240,7 +240,7 @@ def test_declared_run_forward_records(entry, monkeypatch):
     import rfx.sparams._waveguide_planes as planes
 
     cfg = record()
-    sim = Record(_flux_monitors=[], _waveguide_ports=[Record(name="launch")])
+    sim = Record(_flux_monitors=[], _waveguide_ports=[Record(name="launch", amplitude=1.0)])
     monkeypatch.setattr(ws, "_compute_beta", lambda *a, **kw: jnp.zeros(4))
     monkeypatch.setattr(ws, "_extract_port_waves_from_time_series", lambda *a: (jnp.full(4, 2.), jnp.ones(4)))
     monkeypatch.setattr(ws, "waveguide_plane_positions", lambda cfg: dict(source=0., reference=0., probe=.01))

@@ -55,3 +55,33 @@ class WaveguideSMatrixResult(NamedTuple):
     s21_phase_residual_meta: dict | None = None
     settling_witness: tuple | None = None
 
+
+class WaveguideSParamResult(NamedTuple):
+    """High-level calibrated waveguide S-parameter data.
+
+    driven_port: Name of the single driven waveguide port; None when no
+        single waveguide port is driven.
+    s_driven: This port's outgoing power wave divided by the driven port's
+        incident wave at the reported planes; NaN when no single waveguide
+        port is driven (None on records constructed without this field).
+    """
+    freqs: np.ndarray
+    s11: np.ndarray
+    s21: np.ndarray
+    calibration_preset: str
+    source_plane: float
+    measured_reference_plane: float
+    measured_probe_plane: float
+    reference_plane: float
+    probe_plane: float
+    driven_port: str | None = None
+    s_driven: np.ndarray | None = None
+
+
+WaveguideSParamResult.driven_port.__doc__ = (
+    "Name of the single driven waveguide port; None when no single waveguide port is driven."
+)
+WaveguideSParamResult.s_driven.__doc__ = (
+    "Outgoing/incident power-wave ratio at the reported planes; NaN when no single waveguide "
+    "port is driven, or None when this trailing field was omitted at construction."
+)

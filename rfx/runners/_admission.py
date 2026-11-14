@@ -1264,10 +1264,15 @@ def _warn_implicit_s(message):
 
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
-    # Waveguide S is always formed, including for an amplitude-zero entry.
-    if len(sim._waveguide_ports) > 1:
+    from rfx.measurement.waveguide_power import driven_waveguide_indices
+
+    driven = driven_waveguide_indices(sim._waveguide_ports)
+    if len(driven) > 1:
+        names = ", ".join(sim._waveguide_ports[i].name for i in driven)
         raise ValueError(
-            "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+            "One run() or forward() record supports at most one driven waveguide port; "
+            f"driven ports: {names}. Set amplitude 0.0 on all but one, or use "
+            "compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero."
         )
     excited = [(index, port) for index, port in enumerate(sim._ports)
                if port.impedance > 0 and port.excite]
