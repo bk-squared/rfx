@@ -95,7 +95,7 @@ def eps_of(base, masks, p):
 
 
 def forward_s(sim, eps, length, devices=None, spy=None):
-    """D:f77a43 route: shared preparation, forward planes, shared assembly."""
+    """Gradient route: shared drive preparation, forward plane accumulators, shared assembly."""
     from rfx.sparams import msl as calc, _msl_stages as stages
     from rfx.sources.msl_port import (
         msl_h_plane_stencil, msl_port_from_entry, msl_probe_x_coords_n,
