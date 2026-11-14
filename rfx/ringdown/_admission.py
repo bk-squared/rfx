@@ -24,7 +24,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
             f"{caller}(ringdown=...) completes a record of fixed length; until_decay= "
             "stops the record on field energy instead, and the two are not "
             "combined. Pass n_steps= or num_periods=.")
-    if compute_s_params is False:
+    if compute_s_params is False and spec.probe_freqs is None:
         raise RfxRefusal(
             f"{caller}(ringdown=...) completes the port S-parameters, but "
             "compute_s_params=False asks for none.")
@@ -55,6 +55,18 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
             f"{caller}(ringdown=...) is not supported with a Kerr (chi3) material: "
             "after the pulse the update is not linear, so the record is not a "
             "sum of fixed damped oscillations.")
+    if spec.probe_freqs is not None:
+        if (any(not pe.is_soft_source for pe in sim._ports)
+                or any(getattr(sim, attr, None) for attr in
+                       ("_msl_ports", "_waveguide_ports", "_coaxial_ports", "_floquet_ports"))):
+            raise RfxUnsupported(
+                "completed probe channels and port S-parameters in one call are not "
+                "offered in this version; run them as two calls")
+        if not spec.identification_probes:
+            raise RfxRefusal("probe_freqs completes the identification probes; none is declared")
+        if not any(pe.is_soft_source and pe.waveform is not None for pe in sim._ports):
+            raise RfxRefusal("nothing drives the model")
+        return
     for attr, what in (("_msl_ports", "microstrip (add_msl_port)"),
                        ("_waveguide_ports", "waveguide (add_waveguide_port)"),
                        ("_coaxial_ports", "coaxial (add_coaxial_port)"),
@@ -128,12 +140,14 @@ def refuse_forward_request(sim, spec, *, distributed, emit_time_series) -> None:
 
 
 
-def refuse_forward_lane(lane: str, n_wire_ports: int, *, port_s11_freqs) -> None:
+def refuse_forward_lane(lane: str, n_wire_ports: int, *, port_s11_freqs, spec=None) -> None:
     """Lane-dependent refusals, once ``forward()`` has chosen its lane."""
     if lane not in ("fwd_uniform", "fwd_nonuniform"):
         raise RfxUnsupported(
             f"forward(ringdown=...) supports the uniform and graded-mesh lanes; "
             f"this call takes the {lane!r} lane.")
+    if spec is not None and spec.probe_freqs is not None:
+        return
     if lane == "fwd_uniform":
         if n_wire_ports > 1:
             raise RfxUnsupported(
@@ -167,6 +181,10 @@ def refuse_until_identified(sim, spec, until_identified, *, until_decay,
             "run(until_identified=True) ends the run once the ring-down "
             "completion of the wire-port S-parameters is witnessed; it needs "
             "ringdown=RingdownSpec(...).")
+    if isinstance(spec, RingdownSpec) and spec.probe_freqs is not None:
+        raise RfxUnsupported(
+            "the early stop is written on the port S witness (`_floor_pole`, the stop "
+            "check); not offered for probe channels in this version")
     if until_decay is not None:
         raise RfxRefusal(
             "run(until_identified=True) and until_decay= are two rules for "

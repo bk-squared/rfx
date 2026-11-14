@@ -193,9 +193,13 @@ class RingdownSpec:
         Read-only field channels appended after port V/I for pole identification.
         Positions are physical (x, y, z); components are ex/ey/ez/hx/hy/hz.
         Port residues and S assembly retain their original channels. These
-        extra channels have no W0-style accumulator witness. Port channels
-        are always included; probe-only identification is not offered. A
-        closed structure still needs a weakly coupled driven wire port.
+        extra channels have no W0-style accumulator witness. With probe_freqs=None,
+        port channels are always included, the original scope of #1428.
+        probe_freqs supersedes that restriction for models driven by soft sources.
+    probe_freqs : tuple or None
+        Positive concrete frequency bins for completing the identification probes
+        without ports. Spectra use each field kind's physical DFT clock. WE and
+        W2 use each channel's peak over these bins as their relative scale.
     window_start : float
         Start of the identification window as a fraction of the record; the
         window is ``[window_start * T, T]``. The source must be off there
@@ -232,8 +236,14 @@ class RingdownSpec:
     passivity_tol: float = 1.0e-3
     source_off_tol: float = 1.0e-6
     identification_probes: tuple = ()
+    probe_freqs: tuple | None = None
 
     def __post_init__(self):
+        if self.probe_freqs is not None:
+            bins = host_bins(self.probe_freqs, np.float64, caller="RingdownSpec", argument="probe_freqs")
+            if bins.ndim != 1 or not bins.size or not np.all(np.isfinite(bins) & (bins > 0)):
+                raise ValueError("RingdownSpec.probe_freqs must be 1-D, non-empty, finite and positive")
+            object.__setattr__(self, "probe_freqs", tuple(float(f) for f in bins))
         probes = []
         for position, component in self.identification_probes:
             position = tuple(float(v) for v in position)
@@ -280,7 +290,7 @@ class RingdownWitness(NamedTuple):
 
 @dataclass(frozen=True)
 class RingdownReport:
-    """What a completed S-matrix rests on: the window, the poles, the witnesses.
+    """What a completed spectrum rests on: the window, the poles, the witnesses.
 
     When a check that decides whether the completion can be trusted at all
     fails (W0, W1, the identification), nothing is completed: ``failure``
@@ -338,7 +348,7 @@ class RingdownReport:
 
     @property
     def completed(self) -> bool:
-        """True when the completed S-matrix was produced."""
+        """True when the requested port S or probe spectra were produced."""
         return self.failure is None
 
     @property
@@ -386,13 +396,16 @@ class RingdownResult(NamedTuple):
     at those bins rounded to float32, and so does the completion). It is
     ``None`` when the report says the completion was not produced. ``stop``
     is the :class:`RingdownStopReport` of ``run(..., until_identified=True)``
-    and ``None`` otherwise.
+    and ``None`` otherwise. In probe mode, ``s_params`` is None and
+    ``probe_spectra`` holds complex128 (nf, P) spectra at the declared float64
+    bins; it is None if completion failed. Read ``report.completed``.
     """
 
     s_params: np.ndarray | None
     freqs: np.ndarray
     report: RingdownReport
     stop: object = None
+    probe_spectra: np.ndarray | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -809,7 +822,7 @@ class _NotCompleted(Exception):
         self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
-def _require_source_off_rows(entries, rows, caller):
+def _require_source_off_rows(entries, rows, caller, probe_mode=False):
     """Refuse the first drive whose off time cannot be judged on the host."""
     from rfx._traced_refusal import TracedStructureRefusal
 
@@ -822,7 +835,8 @@ def _require_source_off_rows(entries, rows, caller):
                 "identification window: its waveform samples or the time step are traced "
                 "(a waveform parameter, or a graded mesh without dt=, under jax.grad, "
                 "jax.jvp, jax.vmap or jax.jit). Declare that waveform with concrete values "
-                "(S does not depend on the drive's amplitude), or pin dt=.")
+                + ("(a completed probe spectrum is linear in the drive: scale it outside the call)"
+                   if probe_mode else "(S does not depend on the drive's amplitude)") + ", or pin dt=.")
 
 
 class RingdownRun:
@@ -839,12 +853,16 @@ class RingdownRun:
 
     #: The entry point named in refusal messages.
     caller = "run"
+    probe_mode = False
 
     def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid, bins=None, warn_identification=True):
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
+        self.probe_mode = spec.probe_freqs is not None
         self.bins = None if bins is None else host_bins(bins, np.float64, caller=self.caller, argument="s_param_freqs" if self.caller == "run" else "port_s11_freqs")
+        if self.probe_mode:
+            self.bins = np.asarray(spec.probe_freqs, dtype=np.float64)
         from rfx.core.yee import CurlBoundary
         self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
                                           periodic=sim._periodic_flags())
@@ -885,7 +903,7 @@ class RingdownRun:
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in entries], self.n_steps, field_time_step(self.dt, self.sim._precision),
             tolerance=self.spec.source_off_tol, return_detail=True)
-        _require_source_off_rows(entries, samples, self.caller)
+        _require_source_off_rows(entries, samples, self.caller, self.probe_mode)
         rows = []
         ratio_long = 0.0
         for pe, (w, peak, _) in zip(entries, samples, strict=True):
@@ -989,6 +1007,9 @@ class RingdownRun:
     # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
+        if self.probe_mode:
+            from rfx.ringdown._probe_channels import finish_probe_run
+            return finish_probe_run(self, result, n_user)
         full = result.time_series
         ts_all = np.asarray(full)
         n_int = len(self.probe_keys)
@@ -1031,6 +1052,9 @@ class RingdownRun:
         Memory refusals raise; other failed checks are reported. A probe layout
         missing a table node raises ``ValueError`` before identification.
         """
+        if self.probe_mode:
+            from rfx.ringdown._probe_channels import host_probe_report
+            return host_probe_report(self, result, ts_all, n_user)
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
                                                             dtype=np.float64))))
@@ -1921,6 +1945,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
                      pole_target: float | None = None) -> RingdownWitness:
     """The witness of a completed gradient: two gradients of one objective, compared.
 
+    In probe mode differentiate ``probe_spectra`` and ``probe_spectra_long``.
+
     ``grad`` is the gradient of an objective through
     ``ForwardResult.ringdown.s_params``. ``grad_other`` is the gradient of
     the SAME objective through
@@ -2124,6 +2150,9 @@ class _ForwardReportContext:
         from types import SimpleNamespace
 
         plan = self.plan
+        if plan.probe_mode:
+            from rfx.ringdown._probe_channels import forward_probe_report
+            return forward_probe_report(self, res)
         s_plain = np.asarray(res._s_plain)
         if plan.lane == "uniform":
             # run()'s container for the uniform lane's single wire port
@@ -2217,6 +2246,9 @@ class RingdownForward(RingdownRun):
         return stripped._replace(ringdown=completed)
 
     def _traced(self, result, channels) -> RingdownForwardResult:
+        if self.probe_mode:
+            from rfx.ringdown._probe_channels import traced_probe_completion
+            return traced_probe_completion(self, result, channels)
         import jax
         import jax.numpy as jnp
 

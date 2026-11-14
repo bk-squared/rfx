@@ -1457,7 +1457,7 @@ class _ExecuteMixin:
             )
 
         refuse_coaxial_port(self, "forward")
-        if port_s11_freqs is not None or ringdown is not None:
+        if port_s11_freqs is not None or (ringdown is not None and ringdown.probe_freqs is None):
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
@@ -1509,7 +1509,7 @@ class _ExecuteMixin:
             refuse_forward_lane(plan.lane, sum(
                 1 for p in self._ports
                 if float(p.impedance) > 0.0 and p.extent is not None),
-                port_s11_freqs=port_s11_freqs)
+                port_s11_freqs=port_s11_freqs, spec=ringdown)
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
         # loudly rather than silently returning a zero gradient on a lane that
