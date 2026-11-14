@@ -661,11 +661,15 @@ def compare_methods(mesh, output_dir=SCRIPT_DIR):
                    solves_history=result.solves_history[:end], diagnostic_forwards=len(trace))
         if name == "gcmma_mean":
             trials = (np.diff(run["solves_history"]) - 2).tolist()
+            # The rise is read on the loop's own values (the objective each
+            # accepted iterate was evaluated at), the quantity the acceptance
+            # test bounds, not on the separate diagnostic forwards above.
+            loop = [float(v) for v in run["objective_history"]]
             rises = [dict(iteration=i + 1, next_iteration=i + 2,
-                          rise=trace[i + 1]["f"] - trace[i]["f"],
-                          tau_0=50 * float(np.spacing(np.asarray(abs(trace[i]["f"]),
+                          rise=loop[i + 1] - loop[i],
+                          tau_0=50 * float(np.spacing(np.asarray(abs(loop[i]),
                                                                  dtype=R.dtype))))
-                     for i in range(len(trace) - 1)]
+                     for i in range(len(loop) - 1)]
             run.update(
                 reading_iteration=end, solve_budget=120,
                 stays_within_one_percent=all(
