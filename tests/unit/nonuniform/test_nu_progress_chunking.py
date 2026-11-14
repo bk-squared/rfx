@@ -5,7 +5,8 @@ uses, with the stop disabled (decay_by=0.0 forced-N escape) — so the whole
 claim rests on chunk re-entry threading the carry EXACTLY. These tests lock:
 
 1. bit-identity: report_every=N produces bit-identical probe series and
-   final fields to the single-scan run (same build, same steps);
+   final fields to the single-scan run (same build, same steps), and to
+   one chunk;
 2. progress lines actually appear (that was the point — a 29-hour silent
    solve on this lane was diagnosed by thermometer, 2026-08-26);
 3. the incompatible combos (checkpoint / n_warmup) fall back with a warning
@@ -83,33 +84,25 @@ def test_chunked_progress_reports_and_reenters_bit_exactly(capsys):
             "chunk re-entry not bit-exact on final ez (one-chunk vs multi-chunk)"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "issue 1678: with a real drive the chunked route and the single scan "
-    "differ by 2.15e-5 of the probe peak (bar 1e-5); the scene was driven "
-    "only by a one-sample impulse before"))
 def test_chunked_route_matches_the_single_scan(capsys):
+    """The chunked progress route runs each chunk as the scan the single run
+    runs (the same recorded_scan of the same step function), so the two are
+    one compiled form and agree bit for bit. When the chunk was a separate
+    jitted program, its non-per-cell operands were compile-time constants
+    there and arguments in the single scan, and the probe differed by up to
+    175 float32 ULP of its peak while the source drove the scene."""
     r_plain = _build().run(n_steps=N_STEPS)
-    ts_plain = np.asarray(r_plain.time_series)
     r_chunk = _build().run(n_steps=N_STEPS, report_every=150,
                            report_label="nu-chunk-test")
-    ts_chunk = np.asarray(r_chunk.time_series)
     capsys.readouterr()
 
-    assert ts_plain.shape == ts_chunk.shape
-    # Two-tier equality (measured 2026-08-26): the chunked route and the
-    # legacy single scan are DIFFERENT functions whose setup order differs at
-    # float32 ULP scale (measured rel 3.6e-7 on the scene driven only by the
-    # old pulse's jump at t=0).
-    scale = float(np.max(np.abs(ts_plain))) or 1.0
-    rel = float(np.max(np.abs(ts_plain - ts_chunk))) / scale
-    assert rel < 1e-5, f"chunked route deviates from single scan: rel {rel:.3e}"
-
-    ez_p = getattr(getattr(r_plain, "state", None), "ez", None)
-    ez_c = getattr(getattr(r_chunk, "state", None), "ez", None)
-    if ez_p is not None and ez_c is not None:
-        e_scale = float(np.max(np.abs(np.asarray(ez_p)))) or 1.0
-        e_rel = float(np.max(np.abs(np.asarray(ez_p) - np.asarray(ez_c)))) / e_scale
-        assert e_rel < 1e-5, f"final ez deviates from single scan: rel {e_rel:.3e}"
+    assert np.array_equal(np.asarray(r_plain.time_series),
+                          np.asarray(r_chunk.time_series)), (
+        "chunked route probe series differs from the single scan")
+    for name in ("ex", "ey", "ez", "hx", "hy", "hz"):
+        assert np.array_equal(np.asarray(getattr(r_plain.state, name)),
+                              np.asarray(getattr(r_chunk.state, name))), (
+            f"chunked route final {name} differs from the single scan")
 
 
 def test_checkpoint_falls_back_with_warning():

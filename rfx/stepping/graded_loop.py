@@ -301,9 +301,9 @@ def run_nonuniform_until_decay(
 ) -> dict:
     """Run non-uniform FDTD until the field energy left after the drive decays.
 
-    A Python loop drives constant-length jitted chunks (``chunk =
-    check_interval`` steps) of the SAME ``step_fn`` that
-    :func:`run_nonuniform` scans, threading the SAME carry (NTFF Kahan
+    A Python loop drives constant-length chunks (``chunk =
+    check_interval`` steps), each the same ``recorded_scan`` of the SAME
+    ``step_fn`` that :func:`run_nonuniform` runs, threading the SAME carry (NTFF Kahan
     compensation arrays included) across chunks. Per-chunk ``xs``
     continue the GLOBAL step indices, exactly like the ``n_warmup``
     split in :func:`run_nonuniform`, so source waveforms / DFT phases
@@ -400,16 +400,26 @@ def run_nonuniform_until_decay(
     elif n_have > max_steps:
         src_waveforms = src_waveforms[:max_steps]
 
-    # One compiled program per chunk length: full chunks share one XLA
-    # executable; the final partial chunk (if any) compiles once more. The
-    # per-cell arrays are an argument, not constants compiled into it.
+    # Every chunk is the scan run_nonuniform runs: the same eager scan of the
+    # same step function, so a chunked run equals the single scan bit for bit.
+    # The scan takes the arrays its body closes over as operands, so none is
+    # compiled into the loop as a constant. Full chunks share one executable;
+    # a shorter final chunk compiles once more.
+    step_fn = setup.step_fn
+
+    def run_chunk(carry_in, xs):
+        return recorded_scan(step_fn, carry_in, xs)
+
+    # The energy stop's one step runs inside the jitted energy measure, so it
+    # takes the per-cell arrays as arguments, not as constants compiled into
+    # that program. It never enters the stored record.
     from rfx.core.jax_utils import split_loop_invariants
     inv_args, inv_rebuild = split_loop_invariants(
         setup.invariants, (grid.nx, grid.ny, grid.nz))
     step_fn_inv = setup.step_fn_inv
 
     @jax.jit
-    def _run_chunk(carry_in, xs, inv_args):
+    def _stop_side_step(carry_in, xs, inv_args):
         step = partial(step_fn_inv, invariants=inv_rebuild(inv_args))
         return jax.lax.scan(step, carry_in, xs)
 
@@ -428,7 +438,7 @@ def run_nonuniform_until_decay(
         measurement_grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
         consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
         rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
-        waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
+        waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _stop_side_step(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
     stop_rule = energy_stop
     if use_flux_stop:
@@ -457,7 +467,7 @@ def run_nonuniform_until_decay(
             jnp.arange(steps_done, steps_done + this_chunk, dtype=jnp.int32),
             src_waveforms[steps_done:steps_done + this_chunk],
         )
-        carry, ys = _run_chunk(carry, xs, inv_args)
+        carry, ys = run_chunk(carry, xs)
         ys_chunks.append(ys)
         steps_done += this_chunk
         if reporter is not None and (

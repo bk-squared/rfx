@@ -1,0 +1,12 @@
+### Changed — graded runs with progress or a stop rule give the plain run's numbers (#PR)
+
+- On a graded mesh, `run(report_every=...)`, `run(until_decay=...)`, `run(until_identified=True)` and a `stop_fn`
+  now step each chunk with the same scan as the plain run, so the record equals the plain run of the same length bit
+  for bit. Before, the chunked program compiled the absorber profiles and other fixed arrays in as constants while the plain run passed them as arguments, and the two rounded differently.
+- What moves: a probe record by up to 2.1e-5 of its peak on a driven 600-step scene and up to 2.1e-3 of its peak on an
+  11772-step lossy-wall cavity; the final field of a closed lossless box by up to 1.6e-4 of its peak after 1200
+  steps; S-parameters and port records by up to 1.3e-6.
+- An `until_decay` run can stop one or two energy checks earlier or later (50 to 100 steps in the tests) where its
+  energy sat within rounding of the threshold.
+- These runs now step at the plain run's speed: about 10 % slower per step than before on an 8.1 M-cell graded grid,
+  plus a fixed cost per chunk that a longer `report_every` interval amortises.
