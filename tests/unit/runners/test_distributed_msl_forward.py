@@ -85,3 +85,26 @@ def test_microstrip_vmap(n):
     emit('vmap', n=n, relative=delta/peak)
     assert np.isfinite(actual).all()
     assert np.all(delta <= 9e-6*peak), delta/peak
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize('n', [2, 3])
+def test_occupancy_fields(n):
+    """Public field parity supplements the contract's exact occupancy release."""
+    devices = host_devices(n)
+    sim = scene_for('T1A', 'graded', 'laplace', n)
+    _, masks = parameter_blocks(sim, 'T1A')
+    options = dict(pec_occupancy_override=.5 * masks[2])
+    longest = np.asarray(sim.forward(n_steps=2100, **options).time_series)
+    expected = np.asarray(sim.forward(n_steps=1050, **options).time_series)
+    actual = np.asarray(sim.forward(n_steps=1050, distributed=True, devices=devices,
+                                    **options).time_series)
+    peak = np.max(np.abs(longest), axis=0)
+    delta = np.max(np.abs(actual-expected), axis=0)
+    assert np.all(peak > 0)
+    ulp = delta / np.spacing(peak.astype(np.float32))
+    emit('occupancy', scene='T1A', lane='graded', n=n, length=1050,
+         delta=delta, peak=peak, relative=delta/peak, ulp=ulp,
+         hold=bool(np.any(ulp > 9)))
+    assert np.isfinite(actual).all()
+    assert np.all(delta <= 9e-6*peak), (delta/peak, ulp)
