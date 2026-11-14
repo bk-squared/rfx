@@ -15,8 +15,8 @@ from tests._multi_device_scene import host_devices
 from tests.unit.runners._msl_multidevice_scene import FREQS, build_scene, report_realized
 
 
-def observed_scene(name, lane, mode, n):
-    scene = build_scene(name + ("_graded" if lane == "graded" else ""), mode=mode)
+def observed_scene(name, lane, mode, n, *, excite_all=False):
+    scene = build_scene(name + ("_graded" if lane == "graded" else ""), mode=mode, excite_all=excite_all)
     sim = scene.sim
     grid = sim._build_realized_grid()
     realized = report_realized(scene, n)
