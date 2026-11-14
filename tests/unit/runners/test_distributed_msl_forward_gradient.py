@@ -33,8 +33,13 @@ def test_s_gradient_and_longer_record(name, n, length):
     sim = build_scene(name, excite_all=True).sim
     realized = report_realized(build_scene(name, excite_all=True), n)
     assert not realized['ownership_flags'], realized
-    for port in realized['ports']:
-        assert sum(port['feed']['counts_per_rank']) > 0
+    if name.startswith('Y'):
+        for port in realized['ports']:
+            assert port['feed']['x_indices'] == list(range(23, 33))
+            assert port['feed']['counts_per_rank'] == ([24, 16] if n == 2 else [0, 40, 0])
+    else:
+        assert [port['feed']['x_indices'] for port in realized['ports']] == [[18], [58]]
+        assert [port['feed']['x_owners'] for port in realized['ports']] == [[0], [n - 1]]
     base, masks = parameter_blocks(sim, name)
     # Independent public call: pins assembly extraction and the removal of
     # per-step witness selection bitwise, before any derivative comparison.

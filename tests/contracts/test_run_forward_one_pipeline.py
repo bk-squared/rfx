@@ -565,6 +565,7 @@ def check_fields(declaration, path, direction=None):
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-conformal', 'P-conformal') or row in (
+    ('P-msl', 'multi-device-uniform'), ('P-msl', 'multi-device-graded'),
     ('R-rlc', 'multi-device-graded'), ('R-rlc', 'multi-device-uniform'),
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),

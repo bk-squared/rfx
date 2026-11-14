@@ -2,8 +2,11 @@
 import gc
 import json
 import os
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from time import perf_counter
+from unittest.mock import patch
 
 import jax
 import jax.numpy as jnp
@@ -15,6 +18,25 @@ from tests.unit.runners._msl_multidevice_scene import FREQS, _json
 
 def emit(bar, **values):
     print('MSL_FORWARD ' + json.dumps(_json(dict(bar=bar, **values))), flush=True)
+
+
+@contextmanager
+def sampled_memory():
+    """Job cgroup usage, sampled every second and at both endpoints like J0g."""
+    current = Path('/sys/fs/cgroup/memory.current')
+    peak = [int(current.read_text())]
+    done = threading.Event()
+    def sample():
+        while not done.wait(1):
+            peak[0] = max(peak[0], int(current.read_text()))
+    sampler = threading.Thread(target=sample)
+    sampler.start()
+    try:
+        yield peak
+    finally:
+        peak[0] = max(peak[0], int(current.read_text()))
+        done.set()
+        sampler.join()
 
 
 @pytest.fixture(autouse=True)
@@ -95,9 +117,13 @@ def forward_s(sim, eps, length, devices=None, spy=None):
             ports, len(entries), observers, meta, xs, sim, trace_k)
         variant._time_recorded_dft_planes = set()
         options = {} if devices is None else dict(distributed=True, devices=devices)
-        if spy is not None:
-            spy(variant, options)
-        result = variant.forward(eps_override=eps, n_steps=length, **options)
+        original_forward = variant.forward
+        def observed_forward(*args, **kwargs):
+            if spy is not None:
+                spy(variant, kwargs)
+            return original_forward(*args, **kwargs)
+        with patch.object(variant, 'forward', side_effect=observed_forward):
+            result = variant.forward(eps_override=eps, n_steps=length, **options)
         assert result.dft_planes
         if devices is not None and not isinstance(eps, jax.core.Tracer):
             for plane in result.dft_planes.values():
@@ -124,17 +150,27 @@ def jacobian(sim, base, masks, length, devices=None):
         s = forward_s(sim, eps_of(base, masks, p), length, devices, spy)
         return jnp.abs(s[1, 0]) ** 2
     started = perf_counter()
-    value, pullback = jax.vjp(objective, jnp.zeros(4, jnp.float32))
-    g0 = pullback(jnp.array([1., 0., 0., 0.], value.dtype))[0]
-    g1 = pullback(jnp.array([0., 1., 0., 0.], value.dtype))[0]
-    g2 = pullback(jnp.array([0., 0., 1., 0.], value.dtype))[0]
-    g3 = pullback(jnp.array([0., 0., 0., 1.], value.dtype))[0]
-    result = np.asarray(jnp.stack((g0, g1, g2, g3)))
+    with sampled_memory() as peak:
+        value, pullback = jax.vjp(objective, jnp.zeros(4, jnp.float32))
+        value.block_until_ready()
+        reverse_started = perf_counter()
+        g0 = pullback(jnp.array([1., 0., 0., 0.], value.dtype))[0]
+        g0.block_until_ready()
+        g1 = pullback(jnp.array([0., 1., 0., 0.], value.dtype))[0]
+        g1.block_until_ready()
+        g2 = pullback(jnp.array([0., 0., 1., 0.], value.dtype))[0]
+        g2.block_until_ready()
+        g3 = pullback(jnp.array([0., 0., 0., 1.], value.dtype))[0]
+        g3.block_until_ready()
+        result = np.asarray(jnp.stack((g0, g1, g2, g3)))
+        reverse_seconds = perf_counter() - reverse_started
     assert len(calls) == len(sim._msl_ports)
     assert np.isfinite(result).all(), result
     assert np.all(np.max(np.abs(result), axis=0) > 0), result
     emit('J', scene=sim._msl_ports[0].direction, n=1 if devices is None else len(devices),
-         length=length, J=result, seconds=perf_counter() - started)
+         length=length, J=result, seconds=perf_counter() - started,
+         reverse_seconds=reverse_seconds, sampled_peak_bytes=peak[0],
+         memory_method='job cgroup memory.current, 1s samples plus endpoints; CPU devices share process memory')
     del pullback
     jax.clear_caches()
     gc.collect()
