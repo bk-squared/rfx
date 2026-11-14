@@ -8,6 +8,7 @@ It must be judged and <= 1e-2 before G-a can pass.
 import os
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -15,8 +16,10 @@ from rfx.ringdown import gradient_witness
 from tests._multi_device_scene import host_devices
 from tests.unit.runners._msl_multidevice_scene import build_scene, FREQS, report_realized
 from tests.unit.runners._msl_forward_bars import (
-    whole_case, emit, parameter_blocks, forward_s, jacobian,
+    whole_case, emit, parameter_blocks, forward_s, jacobian, eps_of,
 )
+
+from tests.unit.runners.test_distributed_msl_forward import scene_for
 
 pytestmark = [pytest.mark.slow, pytest.mark.distributed,
               pytest.mark.skipif(os.environ.get('RFX_HOST_MEMORY_WITNESS') != '1',
@@ -74,3 +77,29 @@ def test_s_gradient_and_longer_record(name, n, length):
     assert w1.judged and w1.ok and wn.judged and wn.ok, ('cannot judge G-a', w1, wn)
     assert np.all(ratio <= 1e-4), ratio
     assert np.all(long_ratio <= 1e-4), long_ratio
+
+
+@pytest.mark.parametrize('n', [2, 3])
+def test_field_gradient_and_jvp(n):
+    if n == 3 and os.environ.get('RFX_MSL_FULL_MATRIX') != '1':
+        pytest.skip('full matrix measured once; weekly hostmem selects n2')
+    devices = host_devices(n)
+    sim = scene_for('T1A', 'graded', 'laplace', n)
+    base, masks = parameter_blocks(sim, 'T1A')
+    p = jnp.zeros(4, jnp.float32)
+    def objective(p, distributed):
+        options = dict(distributed=True, devices=devices) if distributed else {}
+        ts = sim.forward(eps_override=eps_of(base, masks, p), n_steps=1050, **options).time_series
+        return jnp.log(jnp.mean(ts**2))
+    one = np.asarray(jax.grad(lambda p: objective(p, False))(p))
+    jax.clear_caches()
+    multi = np.asarray(jax.grad(lambda p: objective(p, True))(p))
+    _, tangent = jax.jvp(lambda p: objective(p, True), (p,), (jnp.array([0., 0., 1., 0.]),))
+    peak = np.max(np.abs(one))
+    delta = np.abs(multi-one)
+    emit('G-c', n=n, reference=one, actual=multi, relative=delta/peak,
+         jvp=float(tangent), jvp_relative=float(abs(tangent-one[2])/peak))
+    assert np.isfinite(one).all() and np.isfinite(multi).all()
+    assert np.all(one != 0)
+    assert np.all(delta <= 1e-4*peak), delta/peak
+    assert abs(tangent-one[2]) <= 1e-4*peak

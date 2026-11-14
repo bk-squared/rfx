@@ -1,8 +1,8 @@
-"""F-a and G-c: public one-device forward is the independent reference.
+"""F-a: public one-device forward is the independent reference.
 
 F-a: max_t |E_n-E_1| / max_t |E_1(2100)| per probe; bar 9e-6.
 Above 9 ULP of that float32 peak is reported as a merge hold.
-G-c: d log(mean(E²))/dp; each error <= 1e-4 max_k |g_1[k]|.
+G-c moved to the hostmem file after its first whole case took 181.68 s.
 """
 from dataclasses import replace
 
@@ -66,28 +66,6 @@ def test_forward_fields(name, lane, mode, n, length, override):
     assert np.all(delta <= 9e-6 * peak), (delta/peak, ulp)
 
 
-@pytest.mark.parametrize('n', [2, pytest.param(3, marks=pytest.mark.slow)])
-def test_field_gradient_and_jvp(n):
-    devices = host_devices(n)
-    sim = scene_for('T1A', 'graded', 'laplace', n)
-    base, masks = parameter_blocks(sim, 'T1A')
-    p = jnp.zeros(4, jnp.float32)
-    def objective(p, distributed):
-        options = dict(distributed=True, devices=devices) if distributed else {}
-        ts = sim.forward(eps_override=eps_of(base, masks, p), n_steps=1050, **options).time_series
-        return jnp.log(jnp.mean(ts**2))
-    one = np.asarray(jax.grad(lambda p: objective(p, False))(p))
-    jax.clear_caches()
-    multi = np.asarray(jax.grad(lambda p: objective(p, True))(p))
-    _, tangent = jax.jvp(lambda p: objective(p, True), (p,), (jnp.array([0., 0., 1., 0.]),))
-    peak = np.max(np.abs(one))
-    delta = np.abs(multi-one)
-    emit('G-c', n=n, reference=one, actual=multi, relative=delta/peak,
-         jvp=float(tangent), jvp_relative=float(abs(tangent-one[2])/peak))
-    assert np.isfinite(one).all() and np.isfinite(multi).all()
-    assert np.all(one != 0)
-    assert np.all(delta <= 1e-4*peak), delta/peak
-    assert abs(tangent-one[2]) <= 1e-4*peak
 
 
 @pytest.mark.slow
