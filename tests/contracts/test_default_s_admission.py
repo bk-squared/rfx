@@ -196,3 +196,33 @@ def test_microstrip_only_default_run_keeps_fields_without_impedance_s():
     result = sim.run(n_steps=1, skip_preflight=True)
     assert result.s_params is None
     assert result.time_series.shape[0] == 1
+
+
+def test_ntff_sweep_lumped_port_matches_plain_run():
+    from rfx.ntff_sweep import ntff_sweep
+    freqs = np.array([4e9, 5e9])
+    sim = Simulation(freq_max=10e9, domain=(.016, .016, .016), dx=.001,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_port((.008, .008, .008), "ez", impedance=50., excite=True,
+                 waveform=GaussianPulse(f0=5e9, bandwidth=.8))
+    sim.add_ntff_box((.004, .004, .004), (.012, .012, .012), freqs=freqs)
+    plain = sim.run(n_steps=32, compute_s_params=False)
+    default = sim.run(n_steps=32)
+    assert plain.s_params is None
+    assert default.s_params is not None
+    faces = ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+    arrays = faces + tuple("c_" + face for face in faces)
+    for face in faces:
+        assert np.any(np.asarray(getattr(plain.ntff_data, face)) != 0), face
+    for name in arrays:
+        expected = np.asarray(getattr(plain.ntff_data, name))
+        actual = np.asarray(getattr(default.ntff_data, name))
+        assert actual.shape == expected.shape, name
+        assert np.max(np.abs(actual - expected)) == 0, name
+    swept, returned_freqs = ntff_sweep(sim, freqs, run_kwargs={"n_steps": 32})
+    np.testing.assert_array_equal(returned_freqs, freqs)
+    for name in arrays:
+        expected = np.asarray(getattr(plain.ntff_data, name))
+        actual = np.asarray(getattr(swept, name))
+        assert actual.shape == expected.shape, name
+        assert np.max(np.abs(actual - expected)) == 0, name
