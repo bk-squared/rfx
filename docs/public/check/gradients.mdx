@@ -296,6 +296,7 @@ leaf's largest gradient, against 1 %. A NaN in either gradient fails it.
 | `forward(ringdown=...)` without `port_s11_freqs=`, on either mesh | refused | pass the frequencies |
 | a gradient with respect to a declared shape's size or position (a sphere radius, a box corner) | `NotImplementedError` naming the supported routes, on `run()` and `forward()` | differentiate through material overrides (`eps_override`) or a design region |
 | `forward(ringdown=...)` with more than one wire port on a uniform mesh | refused | use a graded mesh |
+| `forward(ringdown=...)` or `run(ringdown=...)` under `jax.grad`, `jax.jvp`, `jax.vmap` or `jax.jit` with a traced drive waveform, or on a traced graded mesh without `dt=` | refused: the drive's off time inside the fit window cannot be judged | declare the waveform with concrete values (S does not depend on the drive's amplitude), or pin `dt=` |
 | `gradient_witness(..., against="early_start")` without `ringdown=` | `TypeError` | pass the call's `out.ringdown` |
 | `gradient_witness(..., pole_target=..., against="longer_record")` without a result pair | needs `ringdown=(res, res_longer)` | pass each record's concrete, unbatched `out.ringdown`, in gradient order |
 | `out.ringdown.pole(f_target, window=...)` with a window other than `"main"` or `"long"` | `ValueError` | pass one of the two |
