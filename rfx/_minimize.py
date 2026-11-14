@@ -257,10 +257,13 @@ def minimize(
         - it first came within 1 % of its final value after 35 solves and
           stayed there; "adam" first did so after 68 solves;
         - it took 1 to 4 trials per iteration, 2.4 on average;
-        - from one iterate to the next, the value the loop evaluated rose
-          by at most 9.3e-8, within the tolerance there (1.9e-7); no
-          subproblem and no inner loop reached its cap.
-        Each iterate costs two solves plus the trials before it.
+        - from one iterate to the next, the value the loop evaluated
+          (history) rose by at most 9.32e-8, within the tolerance there
+          (1.86e-7); no subproblem and no inner loop reached its cap.
+        Each iterate costs two solves plus the trials before it. The f
+        the example prints at each iterate is a separate evaluation outside
+        the compiled loop and can differ from history in the last digits,
+        so a rise read on those printed values can exceed the tolerance.
     """
     if not isinstance(method, str) or method.lower() not in ("adam", "projected_adam", "mma", "gcmma"):
         raise RfxRefusal("method must be adam, projected_adam, mma or gcmma; for SciPy methods use scipy.optimize.minimize")
