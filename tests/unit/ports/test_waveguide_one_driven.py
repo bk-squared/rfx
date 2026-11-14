@@ -30,7 +30,8 @@ def test_a2_uniform_raw_matrix_column(record_time, capfd):
     steps = math.ceil(record_time / float(grid_for(sim, 'U1').dt))
     result = sim.forward(n_steps=steps, skip_preflight=True, checkpoint=False)
     actual = np.stack([result.waveguide_sparams[name].s_driven for name in ('p1', 'p2')])
-    expected = np.asarray(scene('U1').compute_waveguide_s_matrix(
+    # PREDECLARE §10: the calculator zeroes every non-driven port per drive run, so p2's declared amplitude cannot enter column 0.
+    expected = np.asarray(scene('U1', amplitudes=(1., 1.)).compute_waveguide_s_matrix(
         n_steps=steps, normalize=False, skip_preflight=True).s_params)[:, 0]
     np.testing.assert_array_equal(np.isnan(actual), np.isnan(expected))
     assert np.isfinite(actual).all() and np.isfinite(expected).all()
