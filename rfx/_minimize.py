@@ -262,6 +262,8 @@ def minimize(
         if values.ndim != 1 or values.size == 0:
             raise RfxRefusal("fun must return a nonempty vector with worst_case=True, or a scalar otherwise")
         m = values.size
+        if np.iscomplexobj(values):
+            raise RfxRefusal("worst_case fun must return real values, such as |S|^2, not complex amplitudes")
         if not np.all(np.isfinite(values)) or np.any(values < 0) or np.max(values) <= 0:
             raise RfxRefusal("worst_case fun entries at x0 must be finite and nonnegative with a positive maximum")
         scale = float(np.max(values))

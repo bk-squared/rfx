@@ -165,6 +165,7 @@ def test_mma_worst_case_circumcentre():
     ("zero", {"method": "mma", "bounds": [(0, 1)], "worst_case": True}, "worst_case"),
     ("infinite", {"method": "mma", "bounds": [(0, 1)], "worst_case": True}, "worst_case"),
     ("nan", {"method": "mma", "bounds": [(0, 1)], "worst_case": True}, "worst_case"),
+    ("complex", {"method": "mma", "bounds": [(0, 1)], "worst_case": True}, "complex"),
 ])
 def test_refusals(case, kwargs, message):
     functions = {
@@ -173,6 +174,7 @@ def test_refusals(case, kwargs, message):
         "negative": lambda x: jnp.array([-1.0, 1.0]),
         "zero": lambda x: x * 0, "infinite": lambda x: x * jnp.inf,
         "nan": lambda x: x * jnp.nan,
+        "complex": lambda x: jnp.stack((x[0] + 1j, x[0] + 2j)),
     }
     options = dict(x0=[0.5], n_iters=1, jit=False)
     options.update(kwargs)
