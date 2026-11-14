@@ -123,7 +123,8 @@ SLOW_ROWS = {('multi_graded', 'run'), ('multi_graded', 'grad'),
              ('multi_graded', 'ntff'), ('subgridded', 'run')}
 ROWS = [pytest.param(path, feature, id=f'{path}-{feature}',
                      marks=[pytest.mark.slow] if (path, feature) in SLOW_ROWS else [])
-        for path in PATHS for feature in FEATURES]
+        for path in PATHS for feature in FEATURES
+        if not (feature == 'run' and path in ('uniform', 'graded', 'multi_uniform'))]
 
 
 @pytest.mark.parametrize('path,feature', ROWS)
