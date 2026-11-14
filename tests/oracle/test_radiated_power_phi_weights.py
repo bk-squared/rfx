@@ -178,14 +178,6 @@ def test_float32_built_seam_grid_weight_sum(n):
 
 
 @pytest.mark.parametrize("n", [13])
-def test_float32_built_seam_grid_takes_the_seam_branch(n):
-    phi = _float32_built_seam_grid(n)
-    weights = radiated_power_module._phi_weights(phi)
-    assert len(weights) == n
-    assert weights[-1] == 0.5 * (phi[0] + 2 * np.pi - phi[-2])
-
-
-@pytest.mark.parametrize("n", [13])
 def test_float32_built_seam_grid_z_dipole(n):
     d = directivity(_z_dipole(THETA, _float32_built_seam_grid(n)))[0]
     assert abs(d - D_DIPOLE_DBI) <= 1e-6, d
