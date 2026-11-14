@@ -219,11 +219,9 @@ def test_constant_delta_map_gradient_memory(declaration):
     assert ratio <= 1.10, (ratio, slopes)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="known defect rfx#2650: a traced callable that is "
-                   "not finite outside the material gives a NaN reverse-mode gradient")
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_traced_profile_non_finite_outside_support(graded):
-    """Known defect rfx#2650: a profile that is NaN outside its Box, sqrt(1 - ((x - 6 mm)/3 mm)**2), should keep a finite gradient."""
+    """Sample only inside the Box so an exterior NaN derivative cannot poison the gradient."""
     x0, R = .006, .003   # the Box spans x .004-.008, inside |x - x0| < R
 
     def objective(s, clamped):

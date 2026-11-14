@@ -33,6 +33,12 @@ def objective_for(graded, relative):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_b6_2_si_guard(monkeypatch, graded):
+    """The float32 SI-scale gradient is underflow-limited (rfx#2561).
+
+    Per-cell cotangents fall below float32's normal range; the gradient sits
+    about 14 % from the RelativeStrength value and is sensitive to reverse-pass
+    order. RelativeStrength is the documented route for traced SI-scale strengths.
+    """
     objective = objective_for(graded, False)
     monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
     with pytest.warns(AccuracyWarning) as caught:
@@ -49,6 +55,12 @@ def test_b6_2_si_guard(monkeypatch, graded):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_b6_2_si_guard_jit(monkeypatch, graded):
+    """The float32 SI-scale gradient is underflow-limited (rfx#2561).
+
+    Per-cell cotangents fall below float32's normal range; the gradient sits
+    about 14 % from the RelativeStrength value and is sensitive to reverse-pass
+    order. RelativeStrength is the documented route for traced SI-scale strengths.
+    """
     objective = objective_for(graded, False)
     def with_aux(params):
         value = objective(params)
