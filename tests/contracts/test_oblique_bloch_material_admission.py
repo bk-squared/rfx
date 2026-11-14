@@ -123,3 +123,36 @@ def test_supported_material_reaches_step(kind, entry, polarization, skip, monkey
     with pytest.raises(StepAdmitted):
         getattr(sim, entry)(**options)
     assert completed == [True]
+
+
+def test_low_level_oblique_tensor_refused_before_scan(monkeypatch):
+    import rfx
+    from rfx.core.yee import init_materials
+    from rfx.grid import Grid
+    from rfx.sources.tfsf import init_tfsf
+
+    grid = Grid(freq_max=5e9, domain=(0.06, 0.06, 0.006), dx=0.004,
+                cpml_layers=6)
+    materials = init_materials(grid.shape)
+    cfg, state = init_tfsf(grid.nx, grid.dx, grid.dt,
+                           cpml_layers=grid.cpml_layers, tfsf_margin=3,
+                           f0=5e9, bandwidth=0.2, amplitude=1.0,
+                           polarization="ez", angle_deg=30.0, ny=grid.ny)
+    eps_x = materials.eps_r.at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(2.0)
+    tensor = (eps_x, materials.eps_r, materials.eps_r)
+    calls = []
+
+    def no_scan(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("unsupported electric update reached a scan")
+
+    monkeypatch.setattr(jax.lax, "scan", no_scan)
+    with pytest.raises(RfxUnsupported) as caught:
+        rfx.run(grid, materials, 8, boundary="cpml", cpml_axes="x",
+                periodic=(False, True, True), tfsf=(cfg, state), aniso_eps=tensor)
+    assert str(caught.value) == (
+        "An oblique Bloch plane wave (angle_deg=30.0, method='bloch') cannot be combined with "
+        "an anisotropic permittivity tensor (aniso_eps or aniso_inv_eps): the electric-field "
+        "update for it does not apply the Bloch phase, so the fields would be wrong. "
+        "Use normal incidence, or no anisotropic permittivity tensor.")
+    assert calls == []
