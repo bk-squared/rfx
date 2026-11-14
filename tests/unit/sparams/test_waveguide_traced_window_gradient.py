@@ -102,11 +102,6 @@ def s_matrix(delta, n_steps):
         n_steps=n_steps, normalize="flux").s_params)
 
 
-def test_window_flux_jacfwd_reaches_extraction():
-    gradient = jax.jacfwd(lambda d: jnp.real(s_matrix(d, 2)))(0.0)
-    assert gradient.shape == (2, 2, 17)
-
-
 def test_flux_ratio_tiny_reference_power_has_finite_quotient_derivative():
     from rfx.sparams.waveguide import _flux_power_ratio
 

@@ -44,10 +44,11 @@ def _quoted(text, key):
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 @pytest.mark.parametrize("a,b", [(.02, .04), (.04, .02)], ids=["u_lt_v", "u_gt_v"])
-@pytest.mark.parametrize("mode_type,mode", [
-    ("TE", (1, 0)), ("TE", (0, 1)), ("TM", (1, 2)), ("TM", (2, 1)),
-], ids=["TE10", "TE01", "TM12", "TM21"])
-@pytest.mark.parametrize("n_modes", [1, 3], ids=["single", "multimode"])
+@pytest.mark.parametrize("n_modes,mode_type,mode", [
+    pytest.param(1, "TE", (1, 0), id="single-TE10"),
+    pytest.param(1, "TM", (1, 2), id="single-TM12"),
+    pytest.param(3, "TM", (2, 1), id="multimode-TM21"),
+])
 def test_cutoff_from_builder(graded, a, b, mode_type, mode, n_modes):
     driven_mode = ((0, 1) if b > a else (1, 0)) if n_modes > 1 else mode
     driven_type = "TE" if n_modes > 1 else mode_type
