@@ -321,7 +321,22 @@ def test_mixed_calculator_unions_own_report_and_each_drive(monkeypatch):
 def test_forward_unsupported_lanes_retain_preflight_records():
     for distributed in (False, True):
         sim = structure()
-        if not distributed:
+        if distributed:
+            # Multi-device forward supports uniform ports but still refuses eigenmode.
+            sim._msl_ports.clear()
+            sim.add_msl_port(
+                (4 * U, 6 * U, 0),
+                width=4 * U,
+                height=2 * U,
+                direction="+x",
+                name="checked",
+                mode="eigenmode",
+                eps_r_sub=3.66,
+                n_probe_offset=3,
+                n_probe_spacing=2,
+                n_probes=3,
+            )
+        else:
             sim.add_refinement(
                 z_range=(U, 3 * U),
                 ratio=2,
