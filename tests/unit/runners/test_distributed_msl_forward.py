@@ -66,8 +66,6 @@ def test_forward_fields(name, lane, mode, n, length, override):
     assert np.all(delta <= 9e-6 * peak), (delta/peak, ulp)
 
 
-
-
 @pytest.mark.slow
 @pytest.mark.parametrize('n', [2, 3])
 def test_microstrip_vmap(n):

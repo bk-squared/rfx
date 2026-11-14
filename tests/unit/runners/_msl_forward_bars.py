@@ -157,24 +157,26 @@ def jacobian(sim, base, masks, length, devices=None):
     with sampled_memory() as peak:
         value, pullback = jax.vjp(objective, jnp.zeros(4, jnp.float32))
         value.block_until_ready()
-        reverse_started = perf_counter()
-        g0 = pullback(jnp.array([1., 0., 0., 0.], value.dtype))[0]
-        g0.block_until_ready()
-        g1 = pullback(jnp.array([0., 1., 0., 0.], value.dtype))[0]
-        g1.block_until_ready()
-        g2 = pullback(jnp.array([0., 0., 1., 0.], value.dtype))[0]
-        g2.block_until_ready()
-        g3 = pullback(jnp.array([0., 0., 0., 1.], value.dtype))[0]
-        g3.block_until_ready()
-        result = np.asarray(jnp.stack((g0, g1, g2, g3)))
-        reverse_seconds = perf_counter() - reverse_started
-    assert len(calls) == len(sim._msl_ports)
-    assert np.isfinite(result).all(), result
-    assert np.all(np.max(np.abs(result), axis=0) > 0), result
+        with sampled_memory() as reverse_peak:
+            reverse_started = perf_counter()
+            g0 = pullback(jnp.array([1., 0., 0., 0.], value.dtype))[0]
+            g0.block_until_ready()
+            g1 = pullback(jnp.array([0., 1., 0., 0.], value.dtype))[0]
+            g1.block_until_ready()
+            g2 = pullback(jnp.array([0., 0., 1., 0.], value.dtype))[0]
+            g2.block_until_ready()
+            g3 = pullback(jnp.array([0., 0., 0., 1.], value.dtype))[0]
+            g3.block_until_ready()
+            result = np.asarray(jnp.stack((g0, g1, g2, g3)))
+            reverse_seconds = perf_counter() - reverse_started
     emit('J', scene=sim._msl_ports[0].direction, n=1 if devices is None else len(devices),
          length=length, J=result, seconds=perf_counter() - started,
          reverse_seconds=reverse_seconds, sampled_peak_bytes=peak[0],
+         reverse_sampled_peak_bytes=reverse_peak[0],
          memory_method='job cgroup memory.current, 1s samples plus endpoints; CPU devices share process memory')
+    assert len(calls) == len(sim._msl_ports)
+    assert np.isfinite(result).all(), result
+    assert np.all(np.max(np.abs(result), axis=0) > 0), result
     del pullback
     jax.clear_caches()
     gc.collect()
