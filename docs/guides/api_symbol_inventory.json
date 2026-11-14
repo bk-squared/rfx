@@ -139,6 +139,9 @@
     "MATERIAL_LIBRARY": {
       "kind": "object"
     },
+    "MMASubproblemCapWarning": {
+      "kind": "class"
+    },
     "MSLProbeClearance": {
       "kind": "class"
     },
@@ -158,6 +161,9 @@
       "kind": "class"
     },
     "MeshShape": {
+      "kind": "class"
+    },
+    "MinimizeResult": {
       "kind": "class"
     },
     "MixedSMatrixResult": {
@@ -1477,6 +1483,20 @@
         "z0",
         "height",
         "eps_r"
+      ]
+    },
+    "minimize": {
+      "kind": "function",
+      "params": [
+        "fun",
+        "x0",
+        "bounds",
+        "method",
+        "worst_case",
+        "n_iters",
+        "lr",
+        "best_iterate",
+        "jit"
       ]
     },
     "minimize_reflected_energy": {
