@@ -271,7 +271,7 @@ def _build_step_setup(
     aniso_eps: "tuple | None",
     aniso_inv_eps: "tuple | None",
     aniso_inv_eps_smooth: bool,
-    subpixel_smoothing: bool | str = False,
+    subpixel_smoothing: object = False,
     pec_mask: object,
     pec_sheets: object,
     pec_wires: object,
