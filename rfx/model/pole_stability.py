@@ -212,9 +212,9 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
             "profile or a traced Sphere radius). Any subset of them could share a cell, so all "
             f"{2**len(poles) - 1} subsets would be judged; at most 8 poles (255 subsets) are judged. "
             "Give poles that describe one medium equal values or one pole object (equal values "
-            "count once), keep that axis or shape concrete, or take the gradient with jax.grad "
-            "or jax.jvp without jax.jit or jax.vmap, where the cells are concrete and any number "
-            "of poles is judged."
+            "count once), keep that axis or shape concrete, or, for a traced mesh profile, take "
+            "the gradient with jax.grad or jax.jvp without jax.jit or jax.vmap, where the cells "
+            "are concrete and any number of poles is judged."
         )
     if view is not None:
         from types import SimpleNamespace
