@@ -419,7 +419,7 @@ def run_nonuniform_until_decay(
     step_fn_inv = setup.step_fn_inv
 
     @jax.jit
-    def _energy_side_step(carry_in, xs, inv_args):
+    def _stop_side_step(carry_in, xs, inv_args):
         step = partial(step_fn_inv, invariants=inv_rebuild(inv_args))
         return jax.lax.scan(step, carry_in, xs)
 
@@ -438,7 +438,7 @@ def run_nonuniform_until_decay(
         measurement_grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
         consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
         rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
-        waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _energy_side_step(c, xs, inv)[0],
+        waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _stop_side_step(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
     stop_rule = energy_stop
     if use_flux_stop:

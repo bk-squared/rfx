@@ -324,6 +324,10 @@ def test_graded_chunks_are_the_single_scan(graded_run):
 
 def test_graded_jits_close_over_no_cell_array(graded_run):
     """View (ii): no jit in the graded loop or the energy measure closes over a per-cell array."""
+    # The chunks run the eager scan; a jit around them would compile its operands in as constants
+    # whatever way the step function reaches it, so the energy side step is the only jit allowed here.
+    jitted = sorted({getattr(fn, "__name__", repr(fn)) for fn in graded_run["jits"]})
+    assert set(jitted) <= {"_stop_side_step"}, f"the graded loop jits {jitted}"
     assert not graded_run["jit_captures"], (
         f"a jit in the graded loop closes over per-cell arrays: {graded_run['jit_captures'][:4]}")
     assert not graded_run["energy_captures"], (
