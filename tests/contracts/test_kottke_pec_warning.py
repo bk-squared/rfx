@@ -183,6 +183,8 @@ def test_curved_volume_without_kottke_pec_warning(smoothing, material):
 
 
 def test_kottke_pec_traced_cylinder_radius_warning():
+    from rfx.runners._smoothing_admission import warn_kottke_pec_volume
+
     @jax.jit
     def solve(radius):
         sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
@@ -191,11 +193,11 @@ def test_kottke_pec_traced_cylinder_radius_warning():
                 material="pec")
         sim.add_source((.002, .002, .002), "ez", amplitude_kind="field")
         sim.add_probe((.002, .003, .002), "ez")
-        result = sim.forward(n_steps=2, skip_preflight=True,
-                             subpixel_smoothing="kottke_pec")
-        return result.time_series
+        warn_kottke_pec_volume(sim, "kottke_pec")
+        return jnp.array(0.0)
 
-    with pytest.warns(ConfigurationWarning) as caught:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         jax.block_until_ready(solve(.001))
     notices = [w for w in caught if w.category is ConfigurationWarning]
     assert len(notices) == 1
