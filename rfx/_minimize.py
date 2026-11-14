@@ -12,17 +12,21 @@ import numpy as np
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
 from rfx.optimize import _run_optimizer
-from rfx.optimizers import _Adam, _MMA, _ProjectedAdam, _box_in_dtype
+from rfx.optimizers import _Adam, _GCMMA, _MMA, _ProjectedAdam, _box_in_dtype
 
 
 @dataclass(frozen=True)
 class MinimizeResult:
     """An evaluated solution and its finite objective and parameter histories.
 
-    ``nfev`` includes a non-finite evaluation, but excludes ``setup_forwards``.
+    ``x``, ``fun`` and both histories cover finite gradient-evaluated iterates.
+    ``nfev`` includes trials and non-finite evaluations, but not ``setup_forwards``.
     ``solves`` counts forward, reverse and forward-mode passes in the loop.
     ``scale`` is the initial largest entry for worst-case problems, else None.
-    ``subproblem_caps`` counts unconverged MMA subproblems' cap events.
+    ``solves_history`` holds cumulative loop solves at each finite iterate.
+    ``subproblem_caps`` counts capped MMA and GCMMA subproblem solves, including
+    inner solves. ``inner_caps`` counts GCMMA inner caps (zero otherwise).
+    ``stopped_nonfinite`` means fewer than the requested iterates were recorded.
     """
 
     x: jax.Array
@@ -31,10 +35,12 @@ class MinimizeResult:
     history: list[float]
     x_history: jax.Array
     solves: dict[str, int]
+    solves_history: list[int]
     setup_forwards: int
     method: str
     jacobian: str
     subproblem_caps: int
+    inner_caps: int
     stopped_nonfinite: bool
     scale: float | None
 
@@ -56,6 +62,24 @@ class _RecordingMMA(_MMA):
                 )
         updated = super().tell(state, request, value, grad, cons_values, cons_grads)
         self.caps.append(updated.caps_hit - state.caps_hit)
+        return updated
+
+
+@dataclass(frozen=True)
+class _RecordingGCMMA(_GCMMA):
+    ask_log: list[bool] = field(default_factory=list, compare=False)
+    caps: list[int] = field(default_factory=list, compare=False)
+    inner_caps_log: list[int] = field(default_factory=list, compare=False)
+
+    def ask(self, state):
+        request = super().ask(state)
+        self.ask_log.append(request.iterate)
+        return request
+
+    def tell(self, state, request, value, grad, cons_values, cons_grads):
+        updated = super().tell(state, request, value, grad, cons_values, cons_grads)
+        self.caps.append(updated.caps_hit - state.caps_hit)
+        self.inner_caps_log.append(updated.inner_caps - state.inner_caps)
         return updated
 
 
@@ -106,12 +130,16 @@ def minimize(
         Scalar lb or ub broadcasts. x0 must lie inside the original bounds.
         Values passed to fun are clipped to the inward-rounded box in x's
         dtype, preserving the gradient of the parameter map.
-    method : {"adam", "projected_adam", "mma"}
+    method : {"adam", "projected_adam", "mma", "gcmma"}
         Case-insensitive. Adam uses x directly without bounds, or latent u
         with x = lo + (hi - lo) sigmoid(u). The initial logit is clipped to
         +/-13.8, placing a boundary start about 1e-6 of the box inside it.
-        Projected Adam and MMA require bounds and use p in [0, 1]. MMA uses
-        the standard moving-asymptote constants and no learning rate.
+        Projected Adam, MMA and GCMMA require bounds and use p in [0, 1].
+        MMA and GCMMA use the standard moving-asymptote constants and no
+        learning rate. GCMMA tests conservativeness with a tolerance of 50
+        units in the last place of |f|, in the objective value's dtype.
+        This tolerance is relative to |f|: an objective whose float32 noise
+        stays absolute while f approaches zero is outside what was measured.
     worst_case : bool
         MMA only: minimise the largest entry using epigraph rows fun(x)/s,
         with a0=1, a=1, c=1000, d=1 and s the initial maximum. One setup
@@ -119,18 +147,20 @@ def minimize(
         For n parameters and m entries, use forward mode if n < m + 2,
         otherwise reverse mode. Scalar objectives use value-and-gradient.
     n_iters : int
-        Positive evaluation budget, default 50. There is no convergence test.
+        Positive iterate budget, default 50: points where the gradient is
+        evaluated. There is no convergence test.
     lr : float, optional
-        Defaults to 0.01 for either Adam method; refused for MMA. A step on u
-        for bounded Adam, in x's units for unbounded Adam, and on p for
+        Defaults to 0.01 for either Adam method; refused for MMA and GCMMA.
+        A step on u for bounded Adam, in x's units for unbounded Adam, and on p for
         projected Adam. At the midpoint, a quarter of a latent learning rate
         gives the same first design step on p.
     best_iterate : bool
-        Return the finite evaluated point with the lowest objective instead
-        of the last finite evaluated point.
+        Return the finite iterate with the lowest objective instead of the
+        last finite iterate. Trials are excluded, even when accepted.
     jit : bool
         Compile the differentiated evaluation once, with the shared loop's
-        fallback for objectives that cannot be compiled.
+        fallback for objectives that cannot be compiled. GCMMA also compiles
+        a value-only function; each function can emit ConfigurationWarning.
 
     Returns
     -------
@@ -140,12 +170,21 @@ def minimize(
         mapped outside the compiled function, and can differ from the points
         fun received by one unit in the last place; fun is the value at the
         received point. history holds finite objectives (the unscaled
-        maximum for worst_case); x_history has shape (k, n). nfev includes a
-        non-finite evaluation and excludes setup_forwards, which is 1 for
-        worst_case and 0 otherwise. solves counts only loop passes. jacobian
+        maximum for worst_case); x_history has shape (k, n). x, fun, history,
+        x_history and best_iterate cover iterates only; neither rejected nor
+        accepting GCMMA trials are iterates. nfev counts every evaluation,
+        including trials and a non-finite evaluation, and excludes
+        setup_forwards, which is 1 for worst_case and 0 otherwise. solves counts only loop passes. jacobian
         is "value_and_grad", "forward" or "reverse". On a non-finite first
         evaluation, x is the mapped start, fun is nan and both histories are
-        empty. stopped_nonfinite reports such a stop at any evaluation.
+        empty. stopped_nonfinite is len(history) < n_iters, including a stop
+        at a non-finite trial. solves_history is a list of cumulative loop
+        solve counts after each finite iterate, excluding setup_forwards.
+        Scalar iterates cost two solves and GCMMA trials one; worst_case MMA
+        iterates cost n in forward mode or m + 2 in reverse mode.
+        subproblem_caps counts every capped MMA or GCMMA subproblem solve,
+        including inner solves. inner_caps counts GCMMA inner caps and is
+        zero for other methods.
 
     Raises
     ------
@@ -203,16 +242,17 @@ def minimize(
           of the box at each step, alternating between two points;
         - it ended at 1.27 times the cost of "adam".
         For an unconstrained scalar cost, use "adam" or "projected_adam".
+    "gcmma": method guide written with the example's reproduction run.
     """
-    if not isinstance(method, str) or method.lower() not in ("adam", "projected_adam", "mma"):
-        raise RfxRefusal("method must be adam, projected_adam or mma; for SciPy methods use scipy.optimize.minimize")
+    if not isinstance(method, str) or method.lower() not in ("adam", "projected_adam", "mma", "gcmma"):
+        raise RfxRefusal("method must be adam, projected_adam, mma or gcmma; for SciPy methods use scipy.optimize.minimize")
     method = method.lower()
     if worst_case and method != "mma":
-        raise RfxRefusal('worst_case requires method="mma", or use a soft-max of the entries')
+        raise RfxRefusal('worst_case is measured only with method="mma"')
     if method != "adam" and bounds is None:
         raise RfxRefusal(f"bounds are required for method={method!r}")
-    if method == "mma" and lr is not None:
-        raise RfxRefusal("lr is not accepted for method='mma'")
+    if method in ("mma", "gcmma") and lr is not None:
+        raise RfxRefusal(f"lr is not accepted for method={method!r}")
     if isinstance(n_iters, (bool, np.bool_)) or not isinstance(n_iters, (int, np.integer)) or n_iters < 1:
         raise RfxRefusal("n_iters must be a positive integer")
     try:
@@ -278,7 +318,8 @@ def minimize(
 
     rate = 0.01 if lr is None else lr
     opt = (_Adam(rate) if method == "adam" else _ProjectedAdam(rate)
-           if method == "projected_adam" else _RecordingMMA(m=m, a=1.0, scale=scale))
+           if method == "projected_adam" else _RecordingGCMMA(m=0, e=0, _ulp_multiple=50)
+           if method == "gcmma" else _RecordingMMA(m=m, a=1.0, scale=scale))
     mode = "fwd" if m and start.size < m + 2 else "rev"
     _, history, visited, solves = _run_optimizer(
         opt, objective, start, (0.0, 1.0) if opt.native_box else None,
@@ -288,14 +329,26 @@ def minimize(
     if worst_case:
         history = opt.history
     nfev = solves["forward_mode"] // start.size if mode == "fwd" else solves["forward"]
+    if isinstance(opt, _RecordingGCMMA):
+        cumulative = 0
+        solves_history = []
+        for iterate in opt.ask_log:
+            cumulative += 2 if iterate else 1
+            if iterate:
+                solves_history.append(cumulative)
+        solves_history = solves_history[:len(history)]
+    else:
+        per_iterate = int(start.size) if mode == "fwd" else m + 2
+        solves_history = [per_iterate * (i + 1) for i in range(len(history))]
     x_history = jnp.stack([physical(point) for point in visited]) if visited else jnp.empty((0, start.size), dtype=dtype)
     index = int(np.argmin(history)) if best_iterate and history else -1
     return MinimizeResult(
         x=x_history[index] if history else physical(start),
         fun=history[index] if history else float("nan"), nfev=nfev,
-        history=history, x_history=x_history, solves=solves,
+        history=history, x_history=x_history, solves=solves, solves_history=solves_history,
         setup_forwards=int(worst_case), method=method,
         jacobian="value_and_grad" if not m else "forward" if mode == "fwd" else "reverse",
-        subproblem_caps=sum(opt.caps) if isinstance(opt, _RecordingMMA) else 0,
-        stopped_nonfinite=nfev > len(history), scale=scale,
+        subproblem_caps=sum(opt.caps) if isinstance(opt, (_RecordingMMA, _RecordingGCMMA)) else 0,
+        inner_caps=sum(opt.inner_caps_log) if isinstance(opt, _RecordingGCMMA) else 0,
+        stopped_nonfinite=len(history) < n_iters, scale=scale,
     )

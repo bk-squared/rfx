@@ -409,10 +409,10 @@ class GCMMAInnerCapWarning(AccuracyWarning):
     """A GCMMA trial was accepted at the inner cap without conservativeness."""
 
 
-def _gcmma_tolerance(values, e, dtype):
-    """Ten times the larger measured row error or design-dtype ULP."""
+def _gcmma_tolerance(values, e, dtype, multiple=10):
+    """A multiple of the larger measured row error or value-dtype ULP."""
     values = np.asarray(values, dtype=dtype)
-    return 10 * np.maximum(np.asarray(e, dtype=np.float64),
+    return multiple * np.maximum(np.asarray(e, dtype=np.float64),
                            np.spacing(np.abs(values)).astype(np.float64))
 
 
@@ -472,6 +472,7 @@ class _GCMMA(_Optimizer[_GCMMAState]):
     max_newton: int = 500
     tol: object = None
     e: object = None
+    _ulp_multiple: int = 10
     _inner_cap: int = 20
     native_box = True
 
@@ -588,7 +589,7 @@ class _GCMMA(_Optimizer[_GCMMAState]):
         rho = (np.maximum(1e-6, 0.1 / x.size * np.sum(np.abs(derivatives) * width, axis=1))
                if state.rho is None else np.maximum(0.1 * state.rho, 1e-6))
         values = np.concatenate((f0.reshape(1), f))
-        tol = self.tol if self.tol is not None else _gcmma_tolerance(values, self.e, request.x.dtype)
+        tol = self.tol if self.tol is not None else _gcmma_tolerance(values, self.e, np.asarray(value).dtype, self._ulp_multiple)
         return self._solve(replace(state, x=request.x, xold1=x.copy(), xold2=state.xold1,
                                    low=low, upp=upp, alpha=alpha, beta=beta, k=k,
                                    gradient=derivatives, values=values, rho=rho, tol=tol,
