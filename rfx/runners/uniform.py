@@ -641,7 +641,8 @@ def run_uniform(
     admit(
         sim,
         "run_uniform",
-        run_args={"compute_s_params": compute_s_params, "conformal_pec": conformal_pec},
+        run_args={"compute_s_params": compute_s_params, "conformal_pec": conformal_pec,
+                  "subpixel_smoothing": subpixel_smoothing},
         diagnostics=diagnostics,
     )
     from rfx.runners._admission import admit_run_s_matrix
@@ -649,7 +650,7 @@ def run_uniform(
     if compute_s_params is not False:
         refuse_partial_wire_reference_planes(sim._port_sparameter_entries())
     admit_run_s_matrix(sim, compute_s_params=compute_s_params,
-                       conformal_pec=conformal_pec)
+                       conformal_pec=conformal_pec, subpixel_smoothing=subpixel_smoothing)
     # the early stop reads the record so far through the scan's
     # chunk hook, with the bins the single-wire fast path below reports.
     _stop_kwargs = {}

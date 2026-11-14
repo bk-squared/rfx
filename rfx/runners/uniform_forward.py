@@ -670,7 +670,8 @@ def _forward_from_materials(
             self,
             lane,
             diagnostics=diagnostics,
-            run_args={"tfsf_materials": materials} if self._tfsf is not None else None,
+            run_args={"subpixel_smoothing": subpixel_smoothing,
+                      **({"tfsf_materials": materials} if self._tfsf is not None else {})},
         )
 
     from rfx.stepping import prepared as prepared_step
