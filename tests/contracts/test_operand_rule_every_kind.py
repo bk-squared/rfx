@@ -115,7 +115,7 @@ def _build(rule, kind):
                                    sigma_bulk=1e3, thickness=1e-5)
             return sim, dict(ELEMENTS)["film"]
         if kind == OperandKind.PORT_STAMP:
-            # Provisional reviewer label: the no-port control must also pass.
+            # On this path the MSL stamp is folded into the scalar conductivity.
             return _tfsf_msl_scene(with_port=True), r"conductivity \(materials\.sigma\)"
         if kind == OperandKind.SOURCE_STAMP:
             sim = scene()
@@ -161,11 +161,7 @@ def _note(rule, kind):
 
 
 @pytest.mark.parametrize("rule,kind", [
-    pytest.param(rule, kind, id=f"{rule}-{kind.name}-{_note(rule, kind)}",
-                 marks=pytest.mark.xfail(strict=True, reason=(
-                     "UNEXPECTED: TF/SF MSL no-port control refuses at x_lo-1: "
-                     "PEC edge (volume, sheet, wire or pinned sheet) (pec_edge_masks.0)"
-                 )) if (rule, kind) == (TFSF, OperandKind.PORT_STAMP) else ())
+    pytest.param(rule, kind, id=f"{rule}-{kind.name}-{_note(rule, kind)}")
     for rule in OPERAND_RULES for kind in OperandKind
 ])
 def test_operand_rule_every_kind(rule, kind):
@@ -186,12 +182,12 @@ def test_operand_rule_every_kind(rule, kind):
             with pytest.raises(RfxRefusal) as caught:
                 _run(rule, sim)
             message = str(caught.value)
-            if kind == OperandKind.PORT_STAMP:
-                print(f"{rule}: {message}")
             if (rule, kind) == (TFSF, OperandKind.PORT_STAMP):
-                # Do not pin the provisional label until this control runs.
-                execute(_tfsf_msl_scene(with_port=False), "run_uniform")
-                # The MSL stamp is folded into scalar conductivity before the rule reads it.
+                # The strip and ground the port needs cross the plane too, so the
+                # no-port control is refused by its metal; the conductivity is the stamp's.
+                with pytest.raises(RfxRefusal, match=r"x_lo-1: PEC edge") as control:
+                    execute(_tfsf_msl_scene(with_port=False), "run_uniform")
+                assert "conductivity" not in str(control.value), control.value
             pattern = (re.escape(VACUUM) + r"x_(?:lo|hi)(?:[-+]1)?: " + label + "$"
                        if rule == TFSF else r"Waveguide port 'right': section cells .*: "
                        + label + r" at cell .*; " + re.escape(THIN))
