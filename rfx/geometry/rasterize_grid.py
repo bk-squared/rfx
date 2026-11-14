@@ -1157,6 +1157,17 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         from rfx.materials.thin_conductor import sheet_bounds
         bb_lo, bb_hi = sheet_bounds(shape)
         if bb_lo is not None and bb_hi is not None:
+            # Resolved-volume checks on a concrete mesh require concrete bounds.
+            if any(is_tracer(value) for value in jax.tree_util.tree_leaves((bb_lo, bb_hi))):
+                kind = type(shape).__name__
+                fields = " and ".join(
+                    field for field in ("radius", "height", "center")
+                    if any(is_tracer(value) for value in
+                           jax.tree_util.tree_leaves(getattr(shape, field, None)))
+                ) or "dimension"
+                raise TracedShapeDimensionError(
+                    f"A PEC {kind} with a traced {fields} cannot check its resolved "
+                    f"volume. Use a concrete {fields} outside jit/vmap.")
             subcell = _subcell_axes(bb_lo, bb_hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)
