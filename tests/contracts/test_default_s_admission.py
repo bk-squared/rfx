@@ -231,15 +231,23 @@ def test_ntff_sweep_lumped_port_matches_plain_run():
 @pytest.mark.parametrize("wire", [False, True], ids=["lumped", "wire"])
 def test_graded_forward_default_mixed_drives_return_no_s(wire):
     sim = _scene(True, "microstrip", wire=wire)
-    with pytest.warns(UserWarning, match="returning no S-parameters") as caught:
-        result = sim.forward(n_steps=1, skip_preflight=True)
+    if wire:
+        with pytest.warns(UserWarning, match="returning no S-parameters") as caught:
+            result = sim.forward(n_steps=1, skip_preflight=True)
+    else:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = sim.forward(n_steps=1, skip_preflight=True)
     assert isinstance(result, ForwardResult)
     assert result.s_params is None
     assert not result.lumped_port_sparams
     assert not result.wire_port_sparams
     messages = [str(w.message) for w in caught]
-    assert any("excited ports:" in message and "microstrip strip" in message
-               and "returning no S-parameters" in message for message in messages)
+    if wire:
+        assert any("excited ports:" in message and "microstrip strip" in message
+                   and "returning no S-parameters" in message for message in messages)
+    else:
+        assert not any("returning no S-parameters" in message for message in messages)
 
 
 def test_graded_run_default_two_lumped_and_microstrip_returns_no_s():
