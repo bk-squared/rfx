@@ -210,7 +210,8 @@ def test_low_level_poles_with_tensor_refused(angle, inverse, monkeypatch):
     from rfx.materials.debye import init_debye
 
     grid, materials, tensor, options = low_level(angle)
-    poles = init_debye([DebyePole(1., 1e-10)], materials, grid.dt, periodic=(False, True, True))
+    poles = init_debye([DebyePole(1., 1e-10)], materials, grid.dt,
+                       periodic=(False, True, True), grid=grid)
     options["aniso_inv_eps" if inverse else "aniso_eps"] = tuple(1/e for e in tensor) if inverse else tensor
     def stop(*args, **kwargs):
         raise AssertionError("poles with a tensor reached a scan")
