@@ -170,7 +170,7 @@ def jacobian(sim, base, masks, length, devices=None):
             result = np.asarray(jnp.stack((g0, g1, g2, g3)))
             reverse_seconds = perf_counter() - reverse_started
     emit('J', scene=sim._msl_ports[0].direction, n=1 if devices is None else len(devices),
-         length=length, J=result, seconds=perf_counter() - started,
+         length=length, J=result, primal=np.asarray(value), seconds=perf_counter() - started,
          reverse_seconds=reverse_seconds, sampled_peak_bytes=peak[0],
          reverse_sampled_peak_bytes=reverse_peak[0],
          memory_method='job cgroup memory.current, 1s samples plus endpoints; CPU devices share process memory')

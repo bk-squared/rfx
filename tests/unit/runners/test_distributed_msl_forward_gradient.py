@@ -57,7 +57,8 @@ def test_s_gradient_and_longer_record(name, n, length):
     multi_s = np.asarray(forward_s(sim, base, length, devices, spy))
     assert len(calls) == len(sim._msl_ports)
     emit('S-sanity', scene=name, n=n, length=length, bitwise_public=True,
-         max_delta=float(np.max(np.abs(multi_s-one_s))))
+         max_delta=float(np.max(np.abs(multi_s-one_s))),
+         S_real=multi_s.real, S_imag=multi_s.imag)
     jax.clear_caches()
     one = jacobian(sim, base, masks, length)
     multi = jacobian(sim, base, masks, length, devices)
