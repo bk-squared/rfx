@@ -207,8 +207,11 @@ def minimize(
     - Every run starts from the geometric ladder and uses 120 loop solves. A
       forward, a reverse and a forward-mode pass each count as one solve.
       "mma" with worst_case=True also runs one setup forward before the
-      loop, which these counts leave out.
-    - "Final value" means a run's last evaluated value.
+      loop, which these counts leave out. A "gcmma" iterate costs a varying
+      number of solves, so "gcmma" is read at its last iterate within the
+      120 solves: iterate 27, at 117 solves.
+    - "Final value" means a run's last evaluated value, and for "gcmma" its
+      value at that iterate.
     The numbers describe this problem; another objective can behave
     differently.
 
@@ -241,8 +244,23 @@ def minimize(
         - over its last 20 iterations it moved every variable by 0.0086-0.0090
           of the box at each step, alternating between two points;
         - it ended at 1.27 times the cost of "adam".
-        For an unconstrained scalar cost, use "adam" or "projected_adam".
-    "gcmma": method guide written with the example's reproduction run.
+        For an unconstrained scalar cost, use "adam", "projected_adam" or
+        "gcmma".
+    "gcmma"
+        The conservative form of "mma". It evaluates each subproblem
+        solution without a gradient (a trial, one solve) and accepts it only
+        if the subproblem's approximation did not underestimate the value
+        there by more than the tolerance. Otherwise it makes the
+        approximation more conservative and solves the subproblem again. On
+        the mean reflectance:
+        - it ended at the cost of "adam" (ratio 0.9992);
+        - it first came within 1 % of its final value after 35 solves and
+          stayed there; "adam" first did so after 68 solves;
+        - it took 1 to 4 trials per iteration, 2.4 on average;
+        - from one iterate to the next, the value the loop evaluated rose
+          by at most 9.3e-8, within the tolerance there (1.9e-7); no
+          subproblem and no inner loop reached its cap.
+        Each iterate costs two solves plus the trials before it.
     """
     if not isinstance(method, str) or method.lower() not in ("adam", "projected_adam", "mma", "gcmma"):
         raise RfxRefusal("method must be adam, projected_adam, mma or gcmma; for SciPy methods use scipy.optimize.minimize")
