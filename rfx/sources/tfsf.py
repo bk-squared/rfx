@@ -624,7 +624,7 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
     One builder for every entry (run on the uniform and graded lanes, forward,
     the injection-plane query), so no two entries build different sources.
     With ``n_steps``, a CustomWaveform is checked over that record first.
-    ``line_steps`` independently sizes the closed-box line; ``bounds_only``
+    ``line_steps`` independently bounds the closed-box record; ``bounds_only``
     returns closed-box metadata without allocating that line.
     ``record_faces`` marks a closed box selected by forward's static memory
     rule: the field scan reads a face record instead of carrying the line.
