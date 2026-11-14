@@ -628,7 +628,8 @@ def _forward_from_materials(
     # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
     # this branch — the two would double-correct at sigmoid edges.
     pec_occupancy_for_run, aniso_inv_eps_run, _occupancy_tensor = _occupancy.select_occupancy_operator(
-        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
+        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy,
+        debye=debye, lorentz=lorentz)
     _inv_eps_smooth = aniso_inv_eps is None and aniso_inv_eps_run is not None
     if aniso_inv_eps is not None:
         aniso_inv_eps_run = aniso_inv_eps

@@ -441,7 +441,8 @@ def _build_step_setup(
                                  aniso_inv_eps_smooth=aniso_inv_eps_smooth,
                                  subpixel_smoothing=subpixel_smoothing,
                                  node_smoothing=tensor is not None and tensor.node_smoothing is not None,
-                                 pec_present=use_pec_edges or use_pec_occupancy)
+                                 pec_present=use_pec_edges or use_pec_occupancy,
+                                 use_upml=use_upml)
 
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Plain ints,

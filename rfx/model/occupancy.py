@@ -219,7 +219,7 @@ def occupancy_from_design(shape, window, values):
 
 
 def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
-                              periodic_bool, design_occupancy):
+                              periodic_bool, design_occupancy, *, debye=None, lorentz=None):
     """Keep the existing optional tensor path and all of its refusals."""
     if (self._pec_occupancy_model == "kottke"
             and design_occupancy is not None and pec_occupancy_local is None):
@@ -232,6 +232,12 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
     pec_occupancy_for_run = pec_occupancy_local
     tensor = pec_occupancy_local is not None and self._pec_occupancy_model == "kottke"
     if tensor:
+        if debye is not None or lorentz is not None:
+            raise RfxUnsupported(
+                "pec_occupancy_override with pec_occupancy_model='kottke' cannot be "
+                "combined with a Debye or Lorentz pole material: the dispersive "
+                "electric-field update does not use the occupancy inverse permittivity tensor. "
+                "Use no pec_occupancy_override, or a material without poles.")
         from rfx.current_moments import refuse_h_side_conductor
         refuse_h_side_conductor(
             self, "the Kottke occupancy lane (pec_occupancy_model='kottke')")

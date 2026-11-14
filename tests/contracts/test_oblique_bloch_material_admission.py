@@ -28,11 +28,11 @@ def release_arrays():
     gc.collect()
 
 
-def slab(kind, entry, polarization, skip, angle, *, steps=1):
+def slab(kind, entry, polarization, skip, angle, *, steps=1, occupancy_model="edge_keep"):
     boundary = {"x": "cpml", "y": "periodic", "z": "periodic"}
     sim = Simulation(freq_max=10e9, domain=((.30, .016, .008) if polarization == "ez" else (.30, .008, .016)), dx=.002,
                      mode="3d", cpml_layers=16, boundary=boundary,
-                     **({"pec_occupancy_model": "kottke"} if kind == "occupancy" else {}))
+                     pec_occupancy_model="kottke" if kind == "occupancy" else occupancy_model)
     sim.add_tfsf_source(f0=5e9, bandwidth=.15, direction="+x", angle_deg=angle,
                         waveform="modulated_gaussian", polarization=polarization, method="bloch")
     grid = sim._build_grid()
@@ -225,10 +225,13 @@ def test_low_level_poles_with_tensor_refused(angle, inverse, monkeypatch):
 
 
 @pytest.mark.parametrize("pec_input", ["mask", "occupancy"])
-def test_low_level_kottke_with_pec_refused(pec_input, monkeypatch):
+@pytest.mark.parametrize("labelled", [False, True])
+def test_low_level_kottke_with_pec_refused(pec_input, labelled, monkeypatch):
     import rfx
 
     grid, materials, tensor, options = low_level()
+    if labelled:
+        options["subpixel_smoothing"] = "kottke_pec"
     mask = jnp.zeros(grid.shape, dtype=bool).at[12:14, :, :].set(True)
     options["pec_mask" if pec_input == "mask" else "pec_occupancy"] = mask if pec_input == "mask" else mask.astype(jnp.float32)
     def stop(*args, **kwargs):
@@ -236,8 +239,52 @@ def test_low_level_kottke_with_pec_refused(pec_input, monkeypatch):
     monkeypatch.setattr(jax.lax, "scan", stop)
     with pytest.raises(RfxUnsupported) as caught:
         rfx.run(grid, materials, 2, aniso_inv_eps=tuple(1/e for e in tensor),
-                subpixel_smoothing="kottke_pec", **options)
-    assert str(caught.value) == REFUSALS["kottke_shape"]
+                **options)
+    expected = REFUSALS["kottke_shape"] if labelled else (
+        "An oblique Bloch plane wave (angle_deg=30.0, method='bloch') cannot be combined with "
+        "an inverse permittivity tensor (aniso_inv_eps) with a PEC mask or occupancy: "
+        "the electric-field update for it does not apply the Bloch phase, so the fields would be wrong. "
+        "Use normal incidence, or no aniso_inv_eps.")
+    assert str(caught.value) == expected
+
+
+@pytest.mark.parametrize("angle", [0., 30.])
+@pytest.mark.parametrize("kind", ["debye", "lorentz"])
+@pytest.mark.parametrize("skip", [False, True])
+def test_forward_kottke_occupancy_with_poles_refused(angle, kind, skip, monkeypatch):
+    sim, options = slab(kind, "forward", "ez", skip, angle, occupancy_model="kottke")
+    occupancy = np.zeros(sim._build_grid().shape, dtype=np.float32)
+    occupancy[39:51, :, :] = .5
+    options["pec_occupancy_override"] = occupancy
+    def stop(*args, **kwargs):
+        raise AssertionError("Kottke occupancy with poles reached a scan")
+    monkeypatch.setattr(jax.lax, "scan", stop)
+    with pytest.raises(RfxUnsupported) as caught:
+        sim.forward(**options)
+    assert str(caught.value) == (
+        "pec_occupancy_override with pec_occupancy_model='kottke' cannot be "
+        "combined with a Debye or Lorentz pole material: the dispersive "
+        "electric-field update does not use the occupancy inverse permittivity tensor. "
+        "Use no pec_occupancy_override, or a material without poles.")
+
+
+@pytest.mark.parametrize("tensor", [False, True])
+def test_low_level_oblique_upml_refused(tensor, monkeypatch):
+    import rfx
+
+    grid, materials, eps, options = low_level()
+    options["boundary"] = "upml"
+    if tensor:
+        options["aniso_eps"] = eps
+    def stop(*args, **kwargs):
+        raise AssertionError("oblique UPML reached a scan")
+    monkeypatch.setattr(jax.lax, "scan", stop)
+    with pytest.raises(RfxUnsupported) as caught:
+        rfx.run(grid, materials, 2, **options)
+    assert str(caught.value) == (
+        "An oblique Bloch plane wave (angle_deg=30.0, method='bloch') cannot be combined with "
+        "the UPML absorber: the electric-field update for it does not apply the Bloch phase, "
+        "so the fields would be wrong. Use normal incidence, or the CPML absorber.")
 
 
 def test_smoothed_dielectric_with_conformal_pec_keeps_only_pec_refusal(monkeypatch):

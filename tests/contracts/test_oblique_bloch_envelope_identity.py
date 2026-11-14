@@ -1,5 +1,6 @@
 """Electric updates commute with the physical-field envelope transformation."""
 import json
+import sys
 from functools import lru_cache
 
 import jax
@@ -88,4 +89,4 @@ def test_electric_envelope_identity(branch, pol, axis, m, phase_kind):
         error = float(np.max(np.abs(mapped-target)))
         errors[name] = error/ulp
         assert error <= 64*ulp, (branch, pol, m, phase_kind, name, error, peak, error/ulp)
-    print("envelope_identity " + json.dumps(dict(branch=branch, pol=pol, m=m, phase=phase_kind, ulps=errors)))
+    print("envelope_identity " + json.dumps(dict(branch=branch, pol=pol, m=m, phase=phase_kind, ulps=errors)), file=sys.stderr)
