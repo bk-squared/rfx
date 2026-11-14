@@ -47,25 +47,29 @@ def registry_problems(registry, rows, exceptions):
     return problems
 
 
-def test_boundary_registry_matches_the_source():
+@pytest.fixture(scope="module")
+def tree_rows():
+    """Share one scan of rfx/ across the three tree tests."""
+    return tuple(boundary_registry.scan_tree(ROOT))
+
+
+def test_boundary_registry_matches_the_source(tree_rows):
     registry = json.loads((ROOT / "tests/contracts/boundary_registry.json").read_text())
-    rows = boundary_registry.scan_tree(ROOT)
-    problems = registry_problems(registry, rows, EXCEPTIONS)
+    problems = registry_problems(registry, tree_rows, EXCEPTIONS)
     assert problems == [], "\n".join(problems)
 
 
-def test_stale_registry_row_is_detected():
+def test_stale_registry_row_is_detected(tree_rows):
     registry = json.loads((ROOT / "tests/contracts/boundary_registry.json").read_text())
     registry["sites"].append(dict(file="rfx/stale_boundary.py", function="stale_unit", kind="difference"))
-    problems = registry_problems(registry, boundary_registry.scan_tree(ROOT), EXCEPTIONS)
+    problems = registry_problems(registry, tree_rows, EXCEPTIONS)
     assert len(problems) == 1
     assert "removed sites: rfx/stale_boundary.py :: stale_unit [difference]" in problems[0]
 
 
-def test_unregistered_scanned_unit_is_detected():
+def test_unregistered_scanned_unit_is_detected(tree_rows):
     registry = json.loads((ROOT / "tests/contracts/boundary_registry.json").read_text())
-    rows = boundary_registry.scan_tree(ROOT)
-    rows += boundary_registry.scan_source(
+    rows = list(tree_rows) + boundary_registry.scan_source(
         "def new_unit(a):\n    return a[1:] - a[:-1]\n", "rfx/new_boundary.py",
     )
     problems = registry_problems(registry, rows, EXCEPTIONS)
