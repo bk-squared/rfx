@@ -83,11 +83,13 @@ def _update_e_with_optional_dispersion(
         if aniso_inv_eps is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
-                                      dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
+                                      dt, dx, periodic=periodic, bloch=bloch, bloch_operand=bloch_operand,
+                                      boundary=boundary, high_wall=high_wall), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                  dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
+                                  dt, dx, periodic=periodic, bloch=bloch, bloch_operand=bloch_operand,
+                                  boundary=boundary, high_wall=high_wall), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
                         stencil_order=stencil_order, bloch=bloch, bloch_operand=bloch_operand, boundary=boundary, high_wall=high_wall,
                         frame=frame, owned=owned), None, None
@@ -98,7 +100,7 @@ def _update_e_with_optional_dispersion(
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
             state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary,
-            frame=frame, owned=owned)
+            frame=frame, owned=owned, bloch=bloch, bloch_operand=bloch_operand)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
@@ -107,7 +109,7 @@ def _update_e_with_optional_dispersion(
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
             state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary,
-            frame=frame, owned=owned)
+            frame=frame, owned=owned, bloch=bloch, bloch_operand=bloch_operand)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz update.
@@ -126,8 +128,10 @@ def _update_e_with_optional_dispersion(
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
+    if bloch_operand is not None:
+        bloch = bloch_operand
     curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
+        hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
@@ -315,6 +319,12 @@ def _build_step_setup(
         high_wall=unpadded_high_walls(grid), tensor=step_tensor(materials,
         TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth)))
     tensor = materials.components.tensor
+    if tensor is not None and (debye is not None or lorentz is not None):
+        from rfx.errors import RfxUnsupported
+        raise RfxUnsupported(
+            "Debye or Lorentz poles cannot be combined with a permittivity tensor: "
+            "the dispersive electric-field update does not use the tensor. "
+            "Use a material without poles, or no permittivity tensor.")
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
     conformal_weights = tensor.conformal_weights if tensor else None
     aniso_inv_eps_smooth = tensor.inv_eps_smooth if tensor else False
@@ -429,7 +439,9 @@ def _build_step_setup(
                                  aniso_eps=aniso_eps, aniso_inv_eps=aniso_inv_eps,
                                  conformal_weights=conformal_weights,
                                  aniso_inv_eps_smooth=aniso_inv_eps_smooth,
-                                 subpixel_smoothing=subpixel_smoothing, debye=debye, lorentz=lorentz)
+                                 subpixel_smoothing=subpixel_smoothing,
+                                 node_smoothing=tensor is not None and tensor.node_smoothing is not None,
+                                 pec_present=use_pec_edges or use_pec_occupancy)
 
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Plain ints,
@@ -529,10 +541,16 @@ def _build_step_setup(
 
     if use_debye:
         debye_coeffs, debye_state = debye
+        if _oblique_bloch:
+            debye_state = jax.tree.map(
+                lambda leaf: leaf.astype(jnp.promote_types(leaf.dtype, _field_dtype)), debye_state)
         carry_init["debye"] = debye_state
 
     if use_lorentz:
         lorentz_coeffs, lorentz_state = lorentz
+        if _oblique_bloch:
+            lorentz_state = jax.tree.map(
+                lambda leaf: leaf.astype(jnp.promote_types(leaf.dtype, _field_dtype)), lorentz_state)
         carry_init["lorentz"] = lorentz_state
 
     if use_tfsf:
