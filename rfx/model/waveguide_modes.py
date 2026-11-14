@@ -9,6 +9,7 @@ import warnings
 import jax.numpy as jnp
 import numpy as np
 from rfx.core.yee import EPS_0, MU_0
+from rfx.errors import RfxRefusal
 from rfx.model.waveguide_waveform import waveguide_waveform_error
 from rfx.model.waveguide_mode_solver import (
     _aperture_area,
@@ -336,6 +337,18 @@ def cutoff_frequency(a: float, b: float, m: int, n: int) -> float:
     return kc * C0_LOCAL / (2 * np.pi)
 
 
+def _project_degenerate_mode(evals, evecs, rank, template, mass):
+    """Project the requested scalar shape into its mass-orthonormal eigenspace."""
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    basis = evecs[:, group]
+    projected = basis @ (basis.T @ (mass * template))
+    norm = np.sqrt(np.sum(mass * projected**2))
+    template_norm = np.sqrt(np.sum(mass * template**2))
+    if norm < 0.5 * template_norm:
+        raise RfxRefusal("Degenerate eigenspace contains less than half the requested template norm.")
+    return projected / norm, float(np.min(evals[group]))
+
+
 def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
                                 u_widths: np.ndarray,
                                 v_widths: np.ndarray,
@@ -388,6 +401,15 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
         )
         kc2 = float(max(evals[rank], 0.0))
     hx = evecs[:, rank].reshape(nu, nv)
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    if len(group) > 1:
+        try:
+            vector, kc2 = _project_degenerate_mode(
+                evals, evecs, rank, hx_ana.ravel(), np.kron(mu, mv),
+            )
+        except RfxRefusal as exc:
+            raise RfxRefusal(f"Requested TE{m}{n} on {nu} x {nv} cells: {exc}") from exc
+        hx = vector.reshape(nu, nv)
 
     # Align sign (eigh returns arbitrary sign).
     if float(np.sum(hx * hx_ana * dA)) < 0.0:
@@ -429,12 +451,18 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
         else:
             lower_modes = []
         for lm, ln in lower_modes:
-            ley, lez, lhy, lhz, _ = _discrete_te_mode_profiles(
-                a, b, lm, ln, u_widths, v_widths,
-                aperture_dA=aperture_dA,
-                h_offset=h_offset,
-                _orthogonalize=True,
-            )
+            try:
+                ley, lez, lhy, lhz, _ = _discrete_te_mode_profiles(
+                    a, b, lm, ln, u_widths, v_widths,
+                    aperture_dA=aperture_dA,
+                    h_offset=h_offset,
+                    _orthogonalize=True,
+                )
+            except RfxRefusal as exc:
+                raise RfxRefusal(
+                    f"Requested TE{m}{n} on {nu} x {nv} cells, "
+                    f"while building lower mode TE{lm}{ln}: {exc}"
+                ) from exc
             previous.append((ley, lez, lhy, lhz))
         if previous:
             ey, ez, hy, hz = _orthonormalize_profile_arrays(
@@ -489,6 +517,15 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
         )
         kc2 = float(max(evals[rank], 0.0))
     ex = evecs[:, rank].reshape(nu, nv)
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    if len(group) > 1:
+        try:
+            vector, kc2 = _project_degenerate_mode(
+                evals, evecs, rank, ex_ana.ravel(), np.kron(mu, mv),
+            )
+        except RfxRefusal as exc:
+            raise RfxRefusal(f"Requested TM{m}{n} on {nu} x {nv} cells: {exc}") from exc
+        ex = vector.reshape(nu, nv)
 
     if float(np.sum(ex * ex_ana * dA)) < 0.0:
         ex = -ex
