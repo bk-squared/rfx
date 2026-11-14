@@ -31,6 +31,7 @@ from rfx._traced_refusal import TracedStructureRefusal
 from rfx.optimizers import _Adam
 
 import math
+import operator
 import warnings
 from dataclasses import dataclass
 from typing import Callable
@@ -155,6 +156,7 @@ def _run_optimizer(
     verbose=False, it_count=None, keep_iterates=False, name="optimize",
 ):
     """Run one start, returning x, f0 history, optional iterates and solve counts."""
+    n_iters = operator.index(n_iters)
     if bounds is not None and not opt.native_box:
         raise ValueError('Bounds require an optimizer with native_box=True')
     if m < 0:

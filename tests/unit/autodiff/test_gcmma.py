@@ -178,6 +178,62 @@ def test_hand_values(monkeypatch):
     assert zs.trial is None and len(zs.records) == 1
 
 
+@pytest.mark.parametrize('gradient,trial_value,tol,accepted', [
+    ([0., 0.], 1., 0., False),
+    ([1., 0.], -.1, -1., False),
+    ([0., 0.], 0., -1., True),
+], ids=['positive-trial', 'nonzero-gradient', 'nonpositive-trial'])
+def test_zero_row_exemption(monkeypatch, gradient, trial_value, tol, accepted):
+    monkeypatch.setattr(optimizers, '_mma_subproblem', fake_solver([.375, 1.5]))
+    opt = _GCMMA(1, tol=np.array([0., tol]))
+    state = opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
+    state = opt.tell(state, opt.ask(state), 1., np.zeros(2), np.array([0.]), np.array([gradient]))
+    # For the zero-gradient row, rho=1e-6 and d=1/3, so f~=1e-6/3 < 1.
+    # For gradient (1,0), rho=.025 and f~=.2585: f~ - 1 < -.1.
+    # Only the zero-gradient row with trial value 0 may bypass a negative tol.
+    state = opt.tell(state, opt.ask(state), 1., None, np.array([trial_value]), None)
+    assert (state.trial is None) == accepted
+    assert len(state.records) == int(accepted)
+    assert state.inner_count == 1 and state.inner_caps == 0
+
+
+def test_rho_carry_over_after_rejection(monkeypatch):
+    monkeypatch.setattr(optimizers, '_mma_subproblem', fake_solver([.375, 1.5]))
+    opt = _GCMMA(1, tol=np.zeros(2))
+    state = opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
+    state = opt.tell(state, opt.ask(state), 1., np.zeros(2), np.array([3.]), np.array([[2., -1.]]))
+    # Initial rho=(1e-6, .1/2*(2*.5+1*3))=(1e-6,.2).
+    # Row 1: p=(.150125,.15225), q=(.025125,2.40225), r=.596.
+    # At (.375,1.5), f~=.150125/.125+.025125/.375+2.5545/1.5+.596=3.567.
+    # d=.5*.125^2/(.125*.375*.5)=1/3. A gap 1/6 gives delta=.5;
+    # rho_last=min(1.1*(.2+.5),10*.2)=.77, without hitting the 10*rho cap.
+    rejected = opt.tell(state, opt.ask(state), 1., None, np.array([3.733666666666667]), None)
+    np.testing.assert_allclose(rejected.rho, [1e-6, .77], rtol=1e-14, atol=0)
+    assert rejected.trial is not None
+    accepted = opt.tell(rejected, opt.ask(rejected), 0., None, np.array([0.]), None)
+    assert accepted.trial is None
+    following = opt.tell(accepted, opt.ask(accepted), 1., np.zeros(2), np.array([3.]), np.array([[2., -1.]]))
+    # Carry the LAST rho: max(.1*(1e-6,.77),1e-6)=(1e-6,.077).
+    # The first row is strictly below the floor before max; the second is above.
+    np.testing.assert_allclose(following.rho, [1e-6, .077], rtol=1e-14, atol=0)
+
+
+def test_delta_through_tell(monkeypatch):
+    monkeypatch.setattr(optimizers, '_mma_subproblem', fake_solver([.375, 1.5]))
+    opt = _GCMMA(0, tol=np.zeros(1))
+    state = opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
+    state = opt.tell(state, opt.ask(state), 3., np.array([2., -1.]), None, None)
+    # rho=.2; p=(.150125,.15225), q=(.025125,2.40225), r=.596.
+    # f~(.375,1.5)=1.201+.067+1.703+.596=3.567.
+    # d=.5*.125^2/(.125*.375*.5)=1/3; gap=1/6, delta=(1/6)/(1/3)=.5.
+    # Therefore rho_new=min(1.1*(.2+.5),2)=.77. Without division it is .403333...;
+    # doubling d instead gives .495. Neither erroneous result hits the cap.
+    rejected = opt.tell(state, opt.ask(state), 3.733666666666667, None, None, None)
+    np.testing.assert_allclose(rejected.rho, [.77], rtol=1e-14, atol=0)
+    assert rejected.trial is not None and rejected.inner_count == 1
+    assert rejected.k == 1 and rejected.inner_caps == 0 and not rejected.records
+
+
 def test_asymptotes(monkeypatch):
     calls = []
     solve = fake_solver([.6, .6, .6])

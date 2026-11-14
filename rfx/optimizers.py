@@ -547,7 +547,7 @@ class _GCMMA(_Optimizer[_GCMMAState]):
                                      np.empty(0) if cons_values is None else np.asarray(cons_values, dtype=np.float64)))
             approximation = state.r + np.sum(state.p / (state.upp - point) + state.q / (point - state.low), axis=1)
             state = replace(state, inner_count=state.inner_count + 1)
-            zero = (state.values == 0) & np.all(state.gradient == 0, axis=1)
+            zero = (state.values == 0) & np.all(state.gradient == 0, axis=1) & (values <= 0)
             if np.all(zero | (approximation + state.tol >= values)):
                 return self._accept(state, request.x, approximation, values)
             if state.inner_count >= self._inner_cap:
