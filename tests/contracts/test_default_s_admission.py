@@ -6,7 +6,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import GaussianPulse, Simulation
+from rfx import ForwardResult, GaussianPulse, Simulation
 from rfx.errors import RfxUnsupported
 from rfx.runners._admission import default_run_forms_s, s_drive_inventory
 from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
@@ -226,3 +226,27 @@ def test_ntff_sweep_lumped_port_matches_plain_run():
         actual = np.asarray(getattr(swept, name))
         assert actual.shape == expected.shape, name
         assert np.max(np.abs(actual - expected)) == 0, name
+
+
+@pytest.mark.parametrize("wire", [False, True], ids=["lumped", "wire"])
+def test_graded_forward_default_mixed_drives_return_no_s(wire):
+    sim = _scene(True, "microstrip", wire=wire)
+    with pytest.warns(UserWarning, match="returning no S-parameters") as caught:
+        result = sim.forward(n_steps=1, skip_preflight=True)
+    assert isinstance(result, ForwardResult)
+    assert result.s_params is None
+    assert not result.lumped_port_sparams
+    assert not result.wire_port_sparams
+    messages = [str(w.message) for w in caught]
+    assert any("excited ports:" in message and "microstrip strip" in message
+               and "returning no S-parameters" in message for message in messages)
+
+
+def test_graded_run_default_two_lumped_and_microstrip_returns_no_s():
+    sim = _scene(True, "microstrip", wire=False)
+    sim.add_port((.003, .0015, 0.), "ez", impedance=50., excite=True)
+    with pytest.warns(UserWarning, match="returning no S-parameters"):
+        result = sim.run(n_steps=1, skip_preflight=True)
+    assert result.s_params is None
+    assert not result.lumped_port_sparams
+    assert not result.wire_port_sparams

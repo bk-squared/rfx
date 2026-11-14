@@ -1335,7 +1335,7 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
         message += "; use compute_mixed_s_matrix() for lumped/wire + microstrip S"
     if fields_only or foreign:
         message += "; use run(compute_s_params=False) for fields only"
-    if implicit and not foreign and not sim._waveguide_ports:
+    if implicit and not sim._waveguide_ports:
         _warn_implicit_s(message + "; returning no S-parameters.")
         return False
     raise ValueError(message)
