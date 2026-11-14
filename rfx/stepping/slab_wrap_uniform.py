@@ -131,6 +131,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
             in_specs=(carry_spec, (P(), P('x')), specs),
             out_specs=(carry_spec, P('x')), check_rep=False)(ranks, carry, xs, invariants)
 
+    setattr(mapped, "context", context)
     return mapped
 
 
@@ -295,6 +296,7 @@ def run_prepared(prepared, records, mesh, *, n_steps):
             records.grid.dt, xs[0], ranks=ranks, previous=previous)
         return final, samples
 
+    setattr(advance, "context", field_advance.context)
     ranks = mesh_ranks(mesh)
     final, samples = run_steps(carry, invariants, waves, ranks, advance,
         n_steps=n_steps, n_warmup=0, checkpoint_every=None)

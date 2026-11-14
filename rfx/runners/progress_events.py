@@ -3,11 +3,21 @@ from contextlib import contextmanager
 from rfx.stepping.events import scope, result_ready, current, enabled, in_scope
 
 
-def _path(sim, kw):
+def _path(sim, kw, *, resolved_only=False):
     if kw.get("distributed") or len(kw.get("devices") or ()) > 1:
         return "multi-device"
     if getattr(sim, "_refinement", None) is not None:
         return "subgridded"
+    if resolved_only:
+        state = sim.__dict__
+        mesh = state.get("_frozen_mesh")
+        if mesh is None:
+            cached = state.get("_mesh_resolution")
+            mesh = cached[1] if cached is not None else sim._declared_mesh
+            if mesh["_dx"] is None and (state.get("_geometry") or state.get("_thin_conductors")):
+                raise ValueError("Mesh has not been resolved")
+        return "graded" if any(mesh[k] is not None for k in (
+            "_dx_profile", "_dy_profile", "_dz_profile")) else "uniform"
     return "graded" if sim._uses_nonuniform_mesh else "uniform"
 
 
@@ -63,11 +73,14 @@ def entry_scope(sim, entry, arguments, *, deferred=False):
     if in_scope() or not enabled():
         yield
         return
-    path = _path(sim, arguments)
-    refusal = "path_not_wired" if deferred or path in ("multi-device", "subgridded") else None
-    with scope(entry, path, _passes(sim, entry, arguments), arguments.get("report_label", ""),
-               refusal=refusal, probes=(arguments,)):
-        state = current()
+    held = deferred and entry == "forward"
+    path = "unresolved" if held else _path(sim, arguments)
+    passes = [] if held else _passes(sim, entry, arguments)
+    resolver = (lambda: (_path(sim, arguments, resolved_only=True),
+                         _passes(sim, entry, arguments))) if held else None
+    with scope(entry, path, passes, arguments.get("report_label", ""),
+               refusal="path_not_wired" if deferred else None, probes=(arguments,), resolver=resolver):
+        state = current(pending=True)
         if state is not None and not hasattr(state, "cadence"):
             state.cadence = arguments.get("report_every")
             state.extractor = "ringdown" if arguments.get("ringdown") is not None else None

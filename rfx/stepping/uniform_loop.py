@@ -496,8 +496,7 @@ def run(
     event_ticks = begin_step((carry_init, xs), total=n_steps,
         ticks=gradient != "adjoint" and checkpoint_segments is None,
         label=report_label, cap=stop_fn is not None,
-        probes=(_step_ctx.materials, pec_mask, pec_edge_masks, pec_occupancy,
-                kerr_chi3, debye, lorentz, tfsf))
+        probes=(_step_ctx,))
     if gradient == "adjoint":
         if snapshot is not None or stop_fn is not None or report_every is not None:
             raise NotImplementedError(
@@ -1146,8 +1145,7 @@ def run_until_decay(
     # Like scan_with_progress, call lax.scan directly: full chunks share
     # its executable and only the ragged tail needs another length.
     begin_step(carry, total=max_steps, ticks=True, label=report_label, cap=True,
-               probes=(_step_ctx.materials, pec_mask, pec_edge_masks, pec_occupancy,
-                       kerr_chi3, debye, lorentz, tfsf))
+               probes=(_step_ctx,))
     pending_tail = None
     while actual_steps < max_steps:
         # All checks use completed counts k * check_interval.

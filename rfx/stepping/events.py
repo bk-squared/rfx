@@ -45,15 +45,22 @@ def in_scope():
     return _SCOPE.get() is not None
 
 
-def current():
+def current(*, pending=False):
     scope = _SCOPE.get()
-    return scope if scope is not None and not scope.refused else None
+    return scope if scope is not None and (not scope.refused or (
+        pending and getattr(scope, "pending", False))) else None
 
 
 def traced(*trees):
     import jax
     from rfx.core.jax_utils import is_tracer
-    return any(is_tracer(x) for x in jax.tree_util.tree_leaves(trees))
+    for x in jax.tree_util.tree_leaves(trees):
+        if is_tracer(x):
+            return True
+        if is_dataclass(x) and not isinstance(x, type):
+            if traced(tuple(getattr(x, f.name) for f in fields(x))):
+                return True
+    return False
 
 
 def ready(outputs):
@@ -67,8 +74,9 @@ def ready(outputs):
 
 
 class Scope:
-    def __init__(self, sink, entry, path, passes, label):
+    def __init__(self, sink, entry, path, passes, label, resolver=None):
         self.sink, self.entry, self.path = sink, entry, path
+        self.resolver, self.opened = resolver, time.time()
         self.passes, self.label = passes, label
         self.run_id = uuid.uuid4().hex[:12]
         self.index, self.phase, self.outputs = 0, None, None
@@ -86,7 +94,7 @@ class Scope:
                 original = event[name]
                 limit = min(48, len(original)) if name == "label" else len(original)
                 while True:
-                    event[name] = original if limit == len(original) else original[:max(0, limit - 1)] + "…"
+                    event[name] = original if limit == len(original) else original[:max(0, limit - 1)] + "\u2026"
                     if len(_line(event).encode()) <= 500 or limit == 0:
                         break
                     limit -= 1
@@ -94,8 +102,8 @@ class Scope:
             raise ValueError("RFX event exceeds 500 bytes")
         self.sink(event)
 
-    def plan(self):
-        stamp, parts = time.time(), 1
+    def plan(self, stamp=None):
+        stamp, parts = time.time() if stamp is None else stamp, 1
         while True:
             groups, group = [], []
             for label in self.passes:
@@ -135,7 +143,7 @@ class Scope:
 
 
 @contextmanager
-def scope(entry, path, passes=(), label="", refusal=None, probes=()):
+def scope(entry, path, passes=(), label="", refusal=None, probes=(), resolver=None):
     if _SCOPE.get() is not None:
         yield
         return
@@ -150,7 +158,7 @@ def scope(entry, path, passes=(), label="", refusal=None, probes=()):
         def sink(event):
             sys.stderr.write(_line(event))
             sys.stderr.flush()
-    state = Scope(sink, entry, path, list(passes), label)
+    state = Scope(sink, entry, path, list(passes), label, resolver)
     token = _SCOPE.set(state)
     try:
         is_traced = traced(*probes)
@@ -192,7 +200,7 @@ def next_solve():
 
 
 def begin_step(outputs, *, total, ticks, label="", cap=False, probes=()):
-    resolve_deferred((outputs, probes))
+    resolve_deferred((outputs, probes), stepping=True)
     state = current()
     if state is None:
         return False
@@ -257,20 +265,30 @@ def end_step(outputs, done, diagnostic=None):
         "s_matrix" if state.passes or state.entry.startswith("compute_") else "dft"))
 
 
-def resolve_deferred(probes):
+def resolve_deferred(probes, *, stepping=False):
     state = _SCOPE.get()
     if state is None or not getattr(state, "pending", False):
         return
     state.pending = False
+    if state.resolver is not None:
+        try:
+            state.path, state.passes = state.resolver()
+        except Exception:
+            # Reporting cannot replace an assembly error or retry mesh planning.
+            state.path, state.passes = "unresolved", []
     is_traced = traced(probes, state.probes)
     key = (state.entry, state.path)
     if is_traced and key in _TRACED:
         return
-    state.plan()
+    state.plan(stamp=state.opened if stepping and not is_traced else None)
     if is_traced:
         _TRACED.add(key)
-    state.refuse("traced" if is_traced else "path_not_wired",
-                 "Host timing is unavailable under a transform" if is_traced else "This path is deferred")
+    if stepping and not is_traced:
+        state.refused, state.index = False, 1
+        state.start("assemble", t=state.opened)
+    else:
+        state.refuse("traced" if is_traced else "path_not_wired",
+                     "Host timing is unavailable under a transform" if is_traced else "This path is deferred")
 
 
 def result_ready(result):

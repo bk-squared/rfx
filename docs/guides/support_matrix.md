@@ -99,7 +99,7 @@ low band; the measured Option B was not adopted.
 Current-moment far fields have a range the tests cover on thin planar boards with
 wire or lumped ports. Radiating geometry must lie strictly inside the monitor
 slab; its extent and material/boundary refusals still apply. See
-`tests/unit/farfield/test_current_moment_monitor.py`.
+`tests/unit/farfield/test_current_moment_monitor.py`. On GPUs the monitor's block reduction is a scatter-add whose order is not fixed, so two identical runs can differ by up to about 3e-10 of the accumulated moments' peak (below one float32 ULP of the peak; measured on one GPU over 101 steps); with `XLA_FLAGS=--xla_gpu_deterministic_ops=true` the runs are bit-identical.
 
 The edge-fed patch resonance has a measured mesh ladder against openEMS in
 `tests/locks/test_patch_edgefed_resonance_harminv.py`.

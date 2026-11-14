@@ -251,6 +251,7 @@ def wrap(step, layout, mesh, *, table, port_table=None):
         return rank_shard_map(local, mesh=mesh,
             in_specs=(carry_spec, (P(), P('x')), specs),
             out_specs=(carry_spec, P()), check_rep=False)(ranks, carry, xs, invariants)
+    setattr(mapped, "context", context)
     return mapped
 
 
@@ -268,6 +269,8 @@ def reduce(records, state, layout, *, gather=True):
 def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, checkpoint_every,
               compile_loop=jax.jit, scan_loop=jax.lax.scan):
     """Drive canonical slab steps, including warmup and checkpoint segments."""
+    from rfx.stepping.events import begin_step, end_step, next_solve
+    next_solve()
     check_map_count()
     @compile_loop
     def run_fn(carry, invariants, waves, ranks):
@@ -286,7 +289,17 @@ def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, ch
         return carry, records
 
     from rfx.stepping.sharded import recorded_sharded_call
-    return recorded_sharded_call(run_fn, carry, invariants, waves, ranks)
+    ticks = begin_step((carry, invariants, waves, ranks), total=n_steps,
+                       ticks=n_warmup == 0 and checkpoint_every is None,
+                       probes=(getattr(advance, "context", None),))
+    if ticks:
+        from rfx.stepping.progress_sharded import run_chunks
+        result = run_chunks(carry, invariants, waves, ranks, advance,
+                            n_steps=n_steps, compile_loop=compile_loop, scan_loop=scan_loop)
+    else:
+        result = recorded_sharded_call(run_fn, carry, invariants, waves, ranks)
+    end_step(result, n_steps)
+    return result
 
 
 def validate_scan_controls(n_steps, n_warmup, checkpoint_every, *, path="slab_wrap"):

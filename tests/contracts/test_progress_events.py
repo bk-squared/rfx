@@ -189,8 +189,9 @@ def test_run_drive_passes(graded, wire):
 
 
 @pytest.mark.slow
+@pytest.mark.distributed
 @pytest.mark.parametrize('path', ['multi-device', 'subgridded'])
-def test_deferred_run_paths_never_silently_drop_step(path):
+def test_run_paths_never_silently_drop_step(path):
     from tests.unit.runners.test_silent_drop_warnings import _distributed_sim, _subgrid_sim
     sim = _distributed_sim() if path == 'multi-device' else _subgrid_sim()
     kw = dict(n_steps=8, compute_s_params=False, skip_preflight=True)
@@ -202,12 +203,12 @@ def test_deferred_run_paths_never_silently_drop_step(path):
     with events(rows.append):
         actual = digest(sim.run(**kw))
     assert actual == reference
-    check_phases(rows, path, deferred=True)
+    check_phases(rows, path)
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize('graded', [False, True])
-def test_forward_eager_deferred_identity(graded):
+def test_forward_eager_identity(graded):
     sim = small_sim(graded)
     kw = dict(n_steps=20, skip_preflight=True)
     reference = digest(sim.forward(**kw))
@@ -215,13 +216,14 @@ def test_forward_eager_deferred_identity(graded):
     with events(rows.append):
         actual = digest(sim.forward(**kw))
     assert actual == reference
-    check_phases(rows, 'graded' if graded else 'uniform', deferred=True)
+    check_phases(rows, 'graded' if graded else 'uniform')
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize('transform', ['jit', 'grad', 'vmap'])
 @pytest.mark.parametrize('graded', [False, True])
 def test_traced_forward_once_per_entry_path(transform, graded, monkeypatch):
+    monkeypatch.delenv('RFX_EVENTS', raising=False)
     from rfx.stepping import events as transport
     monkeypatch.setattr(transport, '_TRACED', set())
     sim = small_sim(graded)
@@ -370,9 +372,10 @@ def test_other_calculators_explicit_refusal_and_identity(entry):
 
 
 @pytest.mark.slow
+@pytest.mark.distributed
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_distributed_both_meshes_deferred(graded, entry):
+def test_distributed_both_meshes(graded, entry):
     sim = Simulation(freq_max=15e9, domain=(.024, .012, .012), dx=.001, boundary='pec',
                      **({'dz_profile': np.full(12, .001)} if graded else {}))
     sim.add_source((.006, .006, .006), 'ez', amplitude_kind='field')
@@ -386,7 +389,7 @@ def test_distributed_both_meshes_deferred(graded, entry):
     with events(rows.append):
         actual = digest(call(**kw))
     assert actual == reference
-    check_phases(rows, 'multi-device', deferred=True)
+    check_phases(rows, 'multi-device')
 
 
 @pytest.mark.slow
@@ -411,9 +414,8 @@ def test_ringdown_and_identification_accounting(lane, entry):
     with events(rows.append):
         actual = digest(call(**kw))
     assert actual == reference
-    check_phases(rows, lane, deferred=entry == 'forward')
-    if entry != 'forward':
-        assert any(r.get('extractor') == 'ringdown' for r in rows)
+    check_phases(rows, lane)
+    assert any(r.get('extractor') == 'ringdown' for r in rows)
     if entry == 'until_identified':
         assert next(r for r in rows if r['kind'] == 'phase_end' and r['phase'] == 'step')['stop'] in ['threshold', 'cap']
 
@@ -431,9 +433,7 @@ def test_uniform_incompatible_chunk_options_keep_scan(option):
     kw.update(n_steps=20, skip_preflight=True)
     reference = digest(sim.forward(**kw))
     rows = []
-    # Exercise the shared inner loop as an inherited calculator pass. Top-level
-    # forward's explicit refusal is separately locked above.
-    with events(rows.append), scope('compute_waveguide_s_matrix', 'uniform'):
+    with events(rows.append):
         actual = digest(sim.forward(**kw))
     assert actual == reference
     check_phases(rows, 'uniform')
