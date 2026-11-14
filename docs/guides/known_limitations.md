@@ -720,6 +720,16 @@ power reading near its plane (entry above) probably contributes, because the fee
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
 
+### A completed forward ring-down value can have a failed lazy report without warning.
+
+Tracker: #1961
+
+A `forward(ringdown=...)` completion whose error witness, passivity or traced
+witness fails returns finite `s_params` and warns nothing; read
+`result.ringdown.report.ok` (the report is `None` while traced) and
+`rfx.ringdown.gradient_witness` before trusting a completed value or its gradient.
+`run(ringdown=...)` warns on the same failures.
+
 ### A pair of modes that no window of the record separates is completed as one mode, and every early-window vs late-window comparison agrees.
 
 Tracker: #1514

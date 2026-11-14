@@ -312,6 +312,18 @@ class PinnedSheet:
     name: str | None = None
 
     def __post_init__(self):
+        from rfx._traced_refusal import TracedStructureRefusal
+        from rfx.core.jax_utils import is_tracer
+
+        indices = (self.normal_axis, self.plane_index, self.i_range, self.j_range)
+        if any(is_tracer(v) for v in jax.tree_util.tree_leaves(indices)):
+            raise TracedStructureRefusal(
+                "add_pinned_sheet: normal_axis, plane_index, i_range and j_range are node "
+                "indices; a traced value (under jax.grad, jax.jvp, jax.vmap or jax.jit) "
+                "cannot place the sheet, and a derivative with respect to a node index "
+                "is not defined: the sheet moves by whole nodes. Pass Python ints. "
+                "To move the sheet continuously, keep its node index fixed and trace "
+                "the cell widths around it (a graded mesh with nominal_profiles=).")
         a = int(self.normal_axis)
         if a not in (0, 1, 2):
             raise ValueError(
@@ -336,7 +348,6 @@ class PinnedSheet:
                 "sheet folds sigma_bulk*thickness into the cell it sits in, "
                 "which the node-pinned declaration does not carry; declare it "
                 "with add_thin_conductor(shape, sigma_bulk=...).")
-        from rfx.core.jax_utils import is_tracer
         if is_tracer(self.eps_r) or self.eps_r != 1:
             raise ValueError(
                 f"add_pinned_sheet: eps_r={self.eps_r!r} is not modelled; "
