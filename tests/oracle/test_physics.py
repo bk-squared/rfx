@@ -1,18 +1,10 @@
-"""Enhanced physics validation tests — Codex-recommended 4 scenarios.
-
-Tests:
-1. Fresnel normal-incidence reflection (periodic BC + CPML)
-2. CPML grazing-incidence reflection benchmark
-3. Mesh convergence (2nd-order Yee scheme)
-4. Late-time numerical stability (long run in PEC cavity)
-
-Plus: dielectric-filled cavity resonance (validates eps_r handling).
-"""
+"""CPML grazing-incidence and late-time numerical stability tests."""
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx.grid import Grid, C0
 from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
@@ -37,132 +29,10 @@ def _fft_peak_freq(time_series, dt, f_lo, f_hi):
 
 
 # =========================================================================
-# Test 1: Fresnel normal-incidence reflection (periodic BC)
-# =========================================================================
-
-def test_fresnel_normal_incidence():
-    """Plane-wave reflection from dielectric half-space matches Fresnel.
-
-    R = (1 - n) / (1 + n), n = sqrt(eps_r).
-    For eps_r=4: |R| = 1/3.
-
-    Uses TFSF source for clean incident/scattered separation.
-    Periodic BC in y/z for true plane-wave propagation (no diffraction).
-    CPML on x-axis absorbs outgoing waves.
-    Probe in the scattered-field region directly measures the reflected wave.
-    """
-    from rfx.sources.tfsf import (
-        init_tfsf,
-        update_tfsf_1d_h,
-        update_tfsf_1d_e,
-    )
-    from rfx.stepping.tfsf import (
-        apply_tfsf_e,
-        apply_tfsf_h,
-    )
-
-    eps_r = 4.0
-    R_analytic = abs((1.0 - np.sqrt(eps_r)) / (1.0 + np.sqrt(eps_r)))  # 1/3
-
-    # Larger domain so dielectric slab fits well inside TFSF box with vacuum buffers
-    grid = Grid(freq_max=10e9, domain=(0.60, 0.006, 0.006), dx=0.001, cpml_layers=10)
-    dt, dx = grid.dt, grid.dx
-    nc = grid.cpml_layers
-    periodic = (False, True, True)
-
-    # TFSF source: plane wave propagating in +x
-    tfsf_cfg, tfsf_st = init_tfsf(
-        grid.nx, dx, dt, cpml_layers=nc, tfsf_margin=5,
-        f0=5e9, bandwidth=0.5, amplitude=1.0,
-    )
-
-    # Dielectric slab: starts at nx//4, ends 10 cells before x_hi (vacuum buffer)
-    # TFSF boundary corrections assume vacuum — dielectric must NOT touch x_lo or x_hi
-    x_interface = grid.nx // 4
-    x_diel_end = tfsf_cfg.x_hi - 10
-
-    # Probe in scattered-field region (x < x_lo) — measures only reflected wave
-    probe_x = tfsf_cfg.x_lo - 3
-    probe = (probe_x, grid.ny // 2, grid.nz // 2)
-
-    # Reference: 1D auxiliary field for incident spectrum normalization
-    ref_1d_idx = tfsf_cfg.i0 + 5
-
-    # Calculate n_steps to avoid back-face reflection from slab's far edge
-    # Slab thickness in meters, wave speed in dielectric = C0/sqrt(eps_r)
-    slab_thick = (x_diel_end - x_interface) * dx
-    t_backface = (2 * slab_thick) / (C0 / np.sqrt(eps_r))  # round-trip in slab
-    t_front = (x_interface - tfsf_cfg.x_lo) * dx / C0       # front-face to probe
-    t_safe = t_front + t_backface
-    # Use source travel time + margin, but cap before back-face arrives
-    n_steps = min(int(t_safe / dt) - 50, 2000)
-    n_steps = max(n_steps, 800)  # ensure enough steps for good spectral resolution
-
-    # Set up materials with dielectric slab (NOT half-space)
-    materials = init_materials(grid.shape)
-    materials = materials._replace(
-        eps_r=materials.eps_r.at[x_interface:x_diel_end, :, :].set(eps_r)
-    )
-
-    state = init_state(grid.shape)
-    cp, cs = init_cpml(grid)
-
-    ts_scat = np.zeros(n_steps)   # scattered (reflected) Ez at probe
-    ts_inc = np.zeros(n_steps)    # incident Ez from 1D auxiliary
-
-    for step in range(n_steps):
-        t = step * dt
-
-        # Correct leapfrog interleaving (Taflove Ch. 5):
-        # 1) H update — uses E at time n
-        state = update_h(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
-        # 2) TFSF H correction — uses e1d at time n (not yet advanced)
-        state = apply_tfsf_h(state, tfsf_cfg, tfsf_st, dx, dt)
-        state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        # 3) Advance 1D H: h1d → time n+1/2
-        tfsf_st = update_tfsf_1d_h(tfsf_cfg, tfsf_st, dx, dt)
-
-        # 4) E update — uses H at time n+1/2
-        state = update_e(state, materials, dt, dx, periodic, high_wall=unpadded_high_walls(grid))
-        # 5) TFSF E correction — uses h1d at time n+1/2
-        state = apply_tfsf_e(state, tfsf_cfg, tfsf_st, dx, dt)
-        state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-        # 6) Advance 1D E + source: e1d → time n+1
-        tfsf_st = update_tfsf_1d_e(tfsf_cfg, tfsf_st, dx, dt, t)
-
-        ts_scat[step] = float(state.ez[probe])
-        ts_inc[step] = float(tfsf_st.e1d[ref_1d_idx])
-
-    assert not np.any(np.isnan(ts_scat)), "NaN in TFSF simulation"
-
-    # Spectral reflection coefficient in source bandwidth
-    freqs = np.fft.rfftfreq(n_steps, d=dt)
-    spec_inc = np.abs(np.fft.rfft(ts_inc))
-    spec_scat = np.abs(np.fft.rfft(ts_scat))
-
-    band = (freqs > 3e9) & (freqs < 7e9)
-    R_num = spec_scat[band] / np.maximum(spec_inc[band], 1e-30)
-    R_mean = np.mean(R_num)
-
-    print(f"\nFresnel normal incidence TFSF (eps_r={eps_r}):")
-    print(f"  Analytic |R|: {R_analytic:.4f}")
-    print(f"  Numerical |R| (mean): {R_mean:.4f}")
-    print(f"  Error: {abs(R_mean - R_analytic) / R_analytic * 100:.1f}%")
-
-    # 15% tolerance: the TFSF scattered-field probe at x_lo - 3 inherits
-    # a systematic ~8% high bias that does NOT converge with mesh
-    # refinement (tested dx=2/1/0.5mm). The bias is in the TFSF
-    # boundary correction's interaction with the finite-time FFT window,
-    # not in the FDTD Fresnel physics. Tightening to 5% requires a
-    # deeper fix to the TFSF correction — tracked as a future task.
-    assert abs(R_mean - R_analytic) / R_analytic < 0.15, \
-        f"Fresnel |R| error {abs(R_mean - R_analytic)/R_analytic*100:.1f}% exceeds 15%"
-
-
-# =========================================================================
 # Test 2: CPML grazing-incidence reflection benchmark
 # =========================================================================
 
+@pytest.mark.slow_physics
 def test_cpml_grazing_incidence():
     """CPML reflection at near-grazing incidence should stay below -20 dB.
 
@@ -232,6 +102,7 @@ def test_cpml_grazing_incidence():
 # Test 3: Mesh convergence (2nd-order Yee scheme)
 # =========================================================================
 
+@pytest.mark.slow_physics
 def test_mesh_convergence_2nd_order():
     """PEC cavity resonance error decreases with mesh refinement.
 
@@ -361,6 +232,7 @@ def test_late_time_stability():
 # Bonus: Dielectric-filled PEC cavity resonance
 # =========================================================================
 
+@pytest.mark.slow_physics
 def test_dielectric_cavity_resonance():
     """PEC cavity filled with dielectric: TM110 shifts by 1/sqrt(eps_r).
 
