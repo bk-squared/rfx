@@ -245,3 +245,45 @@ def test_traced_profile_non_finite_outside_support(graded):
     assert np.isfinite(value) and np.isfinite(grad), (float(value), float(grad))
     assert np.isfinite(control) and control != 0, float(control)
     assert relative <= 1e-4, (float(grad), float(control), relative)
+
+
+def test_traced_profile_completely_covered(monkeypatch):
+    """A later material removes every map cell, including its parameter dependence."""
+    from rfx.core.jax_utils import is_tracer
+    import rfx.materials.pole_map as pole_map
+
+    realized_masks = []
+    original = pole_map.sample_spec
+
+    def sample_spec(spec, grid, shape):
+        # Observe assembly's actual mask before sampling, without rebuilding geometry.
+        if spec is not None:
+            poles, masks = spec
+            masks = masks if isinstance(masks, (list, tuple)) else [masks] * len(poles)
+            realized_masks.extend(mask for pole, mask in zip(poles, masks)
+                                  if isinstance(pole, LorentzPoleMap))
+        return original(spec, grid, shape)
+
+    monkeypatch.setattr(pole_map, 'sample_spec', sample_spec)
+
+    def objective(s):
+        def kappa(x, y, z):
+            return s * KAPPA * jnp.sqrt(1 - ((x - .006) / .003) ** 2)
+        sim = Simulation(freq_max=6e9, domain=(.012,) * 3, dx=.0005, cpml_layers=8)
+        sim.add_material('m', eps_r=1., lorentz_poles=[LorentzPoleMap(0., 1e9, kappa)])
+        sim.add(Box((.004,) * 3, (.008,) * 3), material='m')
+        sim.add_material('cover', eps_r=2.)
+        sim.add(Box((.0035,) * 3, (.0085,) * 3), material='cover')
+        sim.add_source((.00285, .00535, .00485), 'ez', waveform=GaussianPulse(f0=3e9))
+        sim.add_probe((.00935, .00685, .00585), 'ez')
+        return jnp.sum(jnp.asarray(sim.forward(n_steps=60, skip_preflight=True).time_series) ** 2)
+
+    value, grad = jax.value_and_grad(objective)(jnp.float32(1.))
+    occupied = [None if mask is None or is_tracer(mask) else int(np.count_nonzero(mask))
+                for mask in realized_masks]
+    record('C9-completely-covered', dict(value=float(value), grad=float(grad), occupied=occupied))
+    assert occupied and all(count == 0 for count in occupied), occupied
+    assert np.isfinite(value), float(value)
+    assert np.isfinite(grad), float(grad)
+    # The map has no cells, so the objective does not depend on its parameter.
+    assert float(grad) == 0.0, float(grad)

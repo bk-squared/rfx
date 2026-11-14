@@ -68,15 +68,19 @@ def sample_spec(spec, grid, shape):
         if not is_map(pole) or isinstance(pole, SampledPoleMap):
             sampled.append(pole)
             continue
-        # Unoccupied centres move to the first occupied one, so neither the callable
-        # nor its derivative is read outside its declared support.
-        cxp = jnp if is_tracer(mask) or axp is jnp else np
-        inside = cxp.ones(shape, dtype=bool) if mask is None else cxp.broadcast_to(mask, shape).astype(bool)
-        first = cxp.argmax(inside.reshape(-1))
-        xyz = tuple(cxp.where(inside, v, cxp.asarray(v).reshape(-1)[first]) for v in full)
         relative = isinstance(pole.kappa, RelativeStrength)
         strength = pole.kappa.value if relative else pole.kappa
-        values = [v(*xyz) if callable(v) else v for v in (pole.delta, strength)]
+        # A traced all-False mask cannot be decided at trace time.
+        if mask is not None and not is_tracer(mask) and not np.any(np.asarray(mask)):
+            values = [0. if callable(v) else v for v in (pole.delta, strength)]
+        else:
+            # Unoccupied centres move to the first occupied one, so neither the callable
+            # nor its derivative is read outside its declared support.
+            cxp = jnp if is_tracer(mask) or axp is jnp else np
+            inside = cxp.ones(shape, dtype=bool) if mask is None else cxp.broadcast_to(mask, shape).astype(bool)
+            first = cxp.argmax(inside.reshape(-1))
+            xyz = tuple(cxp.where(inside, v, cxp.asarray(v).reshape(-1)[first]) for v in full)
+            values = [v(*xyz) if callable(v) else v for v in (pole.delta, strength)]
         si_traced = not relative and is_tracer(values[1])
         xp = jnp if any(is_tracer(v) for v in values) or is_tracer(mask) else np
         occupied = xp.ones(shape, dtype=bool) if mask is None else xp.broadcast_to(mask, shape).astype(bool)

@@ -35,8 +35,9 @@ def objective_for(graded, relative):
 def test_b6_2_si_guard(monkeypatch, graded):
     """The float32 SI-scale gradient is underflow-limited (rfx#2561).
 
-    Per-cell cotangents fall below float32's normal range; the gradient sits
-    about 14 % from the RelativeStrength value and is sensitive to reverse-pass
+    Per-cell cotangents fall below float32's normal range. On the uniform mesh
+    this float32 SI-map gradient sits about 14 % below the RelativeStrength value;
+    on the graded mesh it is exactly zero. The gradient is sensitive to reverse-pass
     order. RelativeStrength is the documented route for traced SI-scale strengths.
     """
     objective = objective_for(graded, False)
@@ -57,8 +58,9 @@ def test_b6_2_si_guard(monkeypatch, graded):
 def test_b6_2_si_guard_jit(monkeypatch, graded):
     """The float32 SI-scale gradient is underflow-limited (rfx#2561).
 
-    Per-cell cotangents fall below float32's normal range; the gradient sits
-    about 14 % from the RelativeStrength value and is sensitive to reverse-pass
+    Per-cell cotangents fall below float32's normal range. On the uniform mesh
+    this float32 SI-map gradient sits about 14 % below the RelativeStrength value;
+    on the graded mesh it is exactly zero. The gradient is sensitive to reverse-pass
     order. RelativeStrength is the documented route for traced SI-scale strengths.
     """
     objective = objective_for(graded, False)
