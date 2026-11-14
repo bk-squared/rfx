@@ -13,6 +13,8 @@ from tests.unit.materials.test_pole_map_runs import capture_scan, assert_float64
 BINS = np.array([3.5e9, 4.5e9])
 KAPPA = (2 * np.pi * 3e9)**2
 GRADED_X = np.r_[.0005, np.linspace(.00025, .00075, 58), .0005]
+# Shortest record measured to keep all three preconditions and the 1e-6 bar at about two thirds of the memory.
+P9_RECORD_STEPS = 1000
 
 
 def parameters():
@@ -122,14 +124,14 @@ def test_p9_richardson(monkeypatch, graded):
         params = parameters()
         sim, _ = scene(params, graded, 'float64')
         try:
-            captured = capture_scan(sim, 2000, monkeypatch, forward=True)
+            captured = capture_scan(sim, P9_RECORD_STEPS, monkeypatch, forward=True)
         except NotImplementedError as error:
             assert graded and 'precision' in str(error), str(error)
             record('P9-graded-float64-refusal', dict(message=str(error)))
             raise
         assert_float64_scan(captured)
-        objective = lambda p: observable(p, 2000, graded, 'float64')
-        values, trace = observable(params, 2000, graded, 'float64', with_trace=True)
+        objective = lambda p: observable(p, P9_RECORD_STEPS, graded, 'float64')
+        values, trace = observable(params, P9_RECORD_STEPS, graded, 'float64', with_trace=True)
         ad = np.asarray([jax.grad(lambda p: objective(p)[k])(params)
                          for k in range(len(BINS))], float).T
         fd = []
