@@ -9,6 +9,12 @@ from typing import Protocol, TypeVar
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.errors import AccuracyWarning
+
+
+class MMASubproblemCapWarning(AccuracyWarning):
+    """An MMA step comes from a subproblem that reached a solver cap."""
+
 
 def _box_in_dtype(xmin, xmax, dtype):
     xmin, xmax = (np.asarray(b, dtype=np.float64) for b in (xmin, xmax))
@@ -145,7 +151,7 @@ class _MMASubproblemResult:
 
 
 def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
-                    *, max_halvings=50, max_newton=500):
+                    *, max_halvings=50, max_newton=500, outer_iteration=None):
     """Solve (5.1) in host float64; p/q/r include the objective row.
 
     Return primal variables and the dual/slack witness for (5.9). The constant
@@ -197,7 +203,11 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
             continue
         if steps >= max_newton:
             caps += 1
-            warnings.warn('MMA subproblem reached max_newton', RuntimeWarning, stacklevel=2)
+            warnings.warn(
+                f'MMA subproblem reached max_newton at outer iteration {outer_iteration}; '
+                'the step taken comes from an unconverged subproblem',
+                MMASubproblemCapWarning, stacklevel=2,
+            )
             break
         x, y, z, lam, xi, eta, mu, zeta, s = w
         # Reuse the quantities evaluated by the accepted line-search trial.
@@ -263,7 +273,11 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
         steps += 1
         if not accepted:
             caps += 1
-            warnings.warn('MMA subproblem reached max_halvings', RuntimeWarning, stacklevel=2)
+            warnings.warn(
+                f'MMA subproblem reached max_halvings at outer iteration {outer_iteration}; '
+                'the step taken comes from an unconverged subproblem',
+                MMASubproblemCapWarning, stacklevel=2,
+            )
             break
     x, y, z, lam, xi, eta, mu, zeta, s = w
     return _MMASubproblemResult(x, y, float(z[0]), lam, xi, eta, mu,
@@ -380,7 +394,8 @@ class _MMA(_Optimizer[_MMAState]):
         r = np.concatenate((f0.reshape(1), f)) - np.sum(p / (upp - x) + q / (x - low), axis=1)
         result = _mma_subproblem(low, upp, alpha, beta, p, q, r,
                                  self.a0, self.a, self.c, self.d,
-                                 max_halvings=self.max_halvings, max_newton=self.max_newton)
+                                 max_halvings=self.max_halvings, max_newton=self.max_newton,
+                                 outer_iteration=k)
         point = self._design_point(result.x, request.x.dtype, request.x.shape, state.xmin, state.xmax)
         return _MMAState(point, state.xmin, state.xmax, x.copy(), state.xold1,
                          low, upp, k, result.y, result.z, result.newton_steps,
