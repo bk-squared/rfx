@@ -240,6 +240,15 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
         )
         msl_cond_a = cond_a
 
+    if line_eps_per_port is not None:
+        from rfx.stepping.slab import forward_sharding, place
+        sharding = forward_sharding(S)
+        if sharding is not None:
+            # Reference-plane epsilon also depends directly on the design.
+            # An explicit transfer returns its cotangent to that input's
+            # placement before it joins the field-solve cotangent.
+            line_eps_per_port = [place(eps, sharding) for eps in line_eps_per_port]
+
     S, msl_planes, s_line_refs = _msl_stages._shift_msl_reference_planes(
         S, _complex_dtype, _reported, entries, eps_r_ref_per_port, freqs_arr,
         grid, jnp, line_eps_per_port, msl_ports, probe_xs, renormalize_power_waves, z0_hj_per_port,
