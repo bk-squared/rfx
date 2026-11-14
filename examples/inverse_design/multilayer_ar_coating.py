@@ -44,6 +44,9 @@ mean R²), so Adam and L-BFGS can land on different εr triples that
 both reach the same cost.  The cost-level agreement is the meaningful
 cross-validation; the per-layer εr is not.
 
+The method comparison quoted by ``rfx.minimize`` documentation is
+``--compare-methods --mesh fine`` (dx = 0.25 mm, 20 CPML cells).
+
 Run: python examples/inverse_design/multilayer_ar_coating.py
 Gradient-only CPU smoke: JAX_PLATFORMS=cpu python -B \
     examples/inverse_design/multilayer_ar_coating.py --gradient-witness-only
@@ -51,6 +54,7 @@ Gradient-only CPU smoke: JAX_PLATFORMS=cpu python -B \
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -65,7 +69,7 @@ import jax
 import jax.numpy as jnp
 from scipy.optimize import minimize as _scimin
 
-from rfx import Simulation, GaussianPulse, gradient_record_length_witness
+from rfx import Simulation, GaussianPulse, gradient_record_length_witness, minimize
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -104,50 +108,101 @@ N_PERIODS = 30
 # ---------------------------------------------------------------------------
 # Simulation builder
 # ---------------------------------------------------------------------------
-def _build_simulation() -> Simulation:
-    sim = Simulation(
-        freq_max=F_MAX,
-        domain=(LX, LY, LZ),
-        dx=DX,
-        cpml_layers=10,
+def _simulation_kwargs(dx, cpml_cells):
+    return dict(
+        freq_max=F_MAX, domain=(LX, dx, dx), dx=dx,
+        cpml_layers=cpml_cells,
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="periodic", hi="periodic"),
             z=Boundary(lo="periodic", hi="periodic"),
         ),
     )
-    bw = (F_HI - F_LO) / F0 * 1.6   # ≈ 0.64 — covers the X-band cleanly
+
+
+def _add_excitation(sim, dx):
+    bw = (F_HI - F_LO) / F0 * 1.6
     sim.add_source(
-        (X_SRC, LY / 2, LZ / 2),
-        "ez",
+        (X_SRC, dx / 2, dx / 2), "ez",
         waveform=GaussianPulse(f0=F0, bandwidth=bw, amplitude=1.0),
         amplitude_kind="current",
     )
-    sim.add_probe((X_REFL, LY / 2, LZ / 2), "ez")
-    sim.add_probe((X_TRANS, LY / 2, LZ / 2), "ez")
+    sim.add_probe((X_REFL, dx / 2, dx / 2), "ez")
+    sim.add_probe((X_TRANS, dx / 2, dx / 2), "ez")
     return sim
 
 
-# Build once to read grid metadata
-_SIM_PROBE = _build_simulation()
-_GRID = _SIM_PROBE.freeze_mesh()
-NX = _GRID.shape[0]
-DT = float(_GRID.dt)
-N_STEPS = int(round(N_PERIODS / F0 / DT))
-
-# Cell indices for design / substrate
-i_design_lo = int(round(X_DESIGN_LO / DX))
-i_design_hi = int(round(X_DESIGN_HI / DX))
-i_sub_lo = i_design_hi
-i_sub_hi = NX  # substrate runs through the right-side CPML for clean absorption
-LAYER_EDGES_C = [
-    int(round((X_DESIGN_LO + i * LAYER_THK) / DX))
-    for i in range(N_LAYERS + 1)
-]
-LAYER_CELLS = [LAYER_EDGES_C[i + 1] - LAYER_EDGES_C[i] for i in range(N_LAYERS)]
+def _build_simulation() -> Simulation:
+    """Build the default mesh without solving (also used by fidelity checks)."""
+    return _add_excitation(Simulation(**_simulation_kwargs(DX, 10)), DX)
 
 
-def _print_setup() -> None:
+class _ARMesh:
+    """Simulation and all mesh-dependent geometry and frequency samples."""
+
+    def __init__(self, sim, dx, cpml_cells):
+        self.sim = sim
+        self.dx = dx
+        self.cpml_cells = cpml_cells
+        grid = sim.freeze_mesh()
+        self.nx = grid.shape[0]
+        self.dt = float(grid.dt)
+        self.n_steps = int(round(N_PERIODS / F0 / self.dt))
+        # eps_override includes the CPML pad outside the declared domain.
+        self.edges = [
+            cpml_cells + int(round((X_DESIGN_LO + i * LAYER_THK) / dx))
+            for i in range(N_LAYERS + 1)
+        ]
+        self.cells = np.diff(self.edges)
+        self.nfft = 1 << (self.n_steps - 1).bit_length()
+        all_bins = np.fft.rfftfreq(self.nfft, self.dt)
+        self.band_indices = np.flatnonzero((all_bins >= F_LO) & (all_bins <= F_HI))
+        self.bins = all_bins[self.band_indices]
+
+    def vacuum(self):
+        return jnp.ones((self.nx, 1, 1), dtype=jnp.float32)
+
+    def base(self):
+        return self.vacuum().at[self.edges[-1]:, :, :].set(EPS_SUB)
+
+    def render(self, layer_eps):
+        eps = self.base()
+        for i in range(N_LAYERS):
+            eps = eps.at[self.edges[i]:self.edges[i + 1], :, :].set(layer_eps[i])
+        return eps
+
+    def forward(self, eps):
+        return self.sim.forward(
+            eps_override=eps, n_steps=self.n_steps,
+            skip_preflight=True).time_series
+
+    def metadata(self):
+        return dict(dx_m=self.dx, cpml_cells=self.cpml_cells, NX=self.nx,
+                    DT=self.dt, N_STEPS=self.n_steps, layer_edges=self.edges,
+                    layer_cells=self.cells.tolist(),
+                    thicknesses_m=(self.cells * self.dx).tolist(),
+                    nfft=self.nfft, bins_hz=self.bins.tolist())
+
+
+def _build_mesh(dx, cpml_cells):
+    """Build a mesh with one cell in each periodic transverse direction."""
+    sim = _add_excitation(Simulation(**_simulation_kwargs(dx, cpml_cells)), dx)
+    return _ARMesh(sim, dx, cpml_cells)
+
+
+_DEFAULT_MESH = _ARMesh(_build_simulation(), DX, 10)
+NX, DT, N_STEPS = _DEFAULT_MESH.nx, _DEFAULT_MESH.dt, _DEFAULT_MESH.n_steps
+LAYER_EDGES_C = _DEFAULT_MESH.edges
+LAYER_CELLS = _DEFAULT_MESH.cells.tolist()
+i_design_lo, i_design_hi = LAYER_EDGES_C[0], LAYER_EDGES_C[-1]
+i_sub_lo, i_sub_hi = i_design_hi, NX
+
+
+def _print_setup(mesh=None) -> None:
+    mesh = _DEFAULT_MESH if mesh is None else mesh
+    DX, NX, DT, N_STEPS = mesh.dx, mesh.nx, mesh.dt, mesh.n_steps
+    LAYER_CELLS, LAYER_EDGES_C = mesh.cells, mesh.edges
+    i_sub_lo, i_sub_hi = mesh.edges[-1], mesh.nx
     print("=" * 72)
     print("Multilayer AR coating — rfx FDTD (JAX-grad-Adam) vs analytic TMM")
     print("=" * 72)
@@ -156,7 +211,8 @@ def _print_setup() -> None:
     print(f"  λ0 = {LAMBDA0*1e3:.2f} mm, n_ref = {N_REF:.3f}, "
           f"layer thk = {LAYER_THK*1e3:.3f} mm  ({LAYER_CELLS[0]} cells)")
     print(f"  dx = {DX*1e3:.2f} mm, LX = {LX*1e3:.1f} mm, "
-          f"NX = {NX}, dt = {DT*1e12:.2f} ps, n_steps = {N_STEPS}")
+          f"NX = {NX}, dt = {DT*1e12:.2f} ps, n_steps = {N_STEPS}, "
+          f"CPML cells = {mesh.cpml_cells}")
     print(f"  layer-edge cells: {LAYER_EDGES_C}, "
           f"substrate cells [{i_sub_lo}, {i_sub_hi})")
 
@@ -166,22 +222,16 @@ def _print_setup() -> None:
 # ---------------------------------------------------------------------------
 def _vacuum_eps_array() -> jnp.ndarray:
     """All-vacuum reference: pure incident — no substrate, no coating."""
-    return jnp.ones((NX, 1, 1), dtype=jnp.float32)
+    return _DEFAULT_MESH.vacuum()
 
 
 def _base_eps_array() -> jnp.ndarray:
-    """Vacuum design region + fixed substrate on the right."""
-    eps = jnp.ones((NX, 1, 1), dtype=jnp.float32)
-    return eps.at[i_sub_lo:i_sub_hi, :, :].set(EPS_SUB)
+    """Vacuum design region + fixed substrate on the padded grid."""
+    return _DEFAULT_MESH.base()
 
 
 def _render_design_eps(layer_eps: jnp.ndarray) -> jnp.ndarray:
-    eps = _base_eps_array()
-    for i in range(N_LAYERS):
-        lo = LAYER_EDGES_C[i]
-        hi = LAYER_EDGES_C[i + 1]
-        eps = eps.at[lo:hi, :, :].set(layer_eps[i])
-    return eps
+    return _DEFAULT_MESH.render(layer_eps)
 
 
 def _latent_to_eps(latent: jnp.ndarray) -> jnp.ndarray:
@@ -214,9 +264,10 @@ def load_meep_reference(name: str) -> dict | None:
 # ---------------------------------------------------------------------------
 def tmm_R(layer_eps: np.ndarray, freqs: np.ndarray,
           eps_sub: float = EPS_SUB,
-          layer_thk: float = LAYER_THK) -> np.ndarray:
+          layer_thk: float | np.ndarray = LAYER_THK) -> np.ndarray:
     """|R(f)|² for normal-incidence multilayer (vacuum-coatings-substrate)."""
     n_layers = len(layer_eps)
+    thicknesses = np.broadcast_to(layer_thk, (n_layers,))
     n0 = 1.0
     n_sub = float(np.sqrt(eps_sub))
     R = np.zeros_like(freqs, dtype=float)
@@ -227,7 +278,7 @@ def tmm_R(layer_eps: np.ndarray, freqs: np.ndarray,
         M = np.eye(2, dtype=complex)
         for li in range(n_layers):
             n_l = float(np.sqrt(layer_eps[li]))
-            beta = 2.0 * np.pi * f * n_l * layer_thk / C0
+            beta = 2.0 * np.pi * f * n_l * thicknesses[li] / C0
             cos_b, sin_b = np.cos(beta), np.sin(beta)
             ML = np.array([[cos_b,            1j * sin_b / n_l],
                            [1j * n_l * sin_b, cos_b           ]], dtype=complex)
@@ -248,25 +299,26 @@ def tmm_band_cost(layer_eps: np.ndarray, eps_sub: float = EPS_SUB) -> float:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def record_length_check():
+def record_length_check(mesh=None):
     """Print the coating reflection gradient's record-length witness.
 
     Uses the existing smallest transverse domain (one cell per periodic
     axis). The tolerance is a demonstration choice, not an accuracy claim.
     Both records use the same frequency samples and their own vacuum reference.
     """
-    sim_ref = _build_simulation()
-    sim_design = _build_simulation()
+    mesh = _DEFAULT_MESH if mesh is None else mesh
+    N_STEPS, DT = mesh.n_steps, mesh.dt
+    sim_ref = sim_design = mesh.sim
     nfft = int(2 ** np.ceil(np.log2(N_STEPS)))
     bins = np.fft.rfftfreq(nfft, d=DT)
     freqs = jnp.asarray(bins[(bins >= F_LO) & (bins <= F_HI)])
 
     def objective(layer_eps, n_steps):
         incident = sim_ref.forward(
-            eps_override=_vacuum_eps_array(), n_steps=n_steps,
+            eps_override=mesh.vacuum(), n_steps=n_steps,
             skip_preflight=True).time_series[:, 0]
         total = sim_design.forward(
-            eps_override=_render_design_eps(layer_eps), n_steps=n_steps,
+            eps_override=mesh.render(layer_eps), n_steps=n_steps,
             skip_preflight=True).time_series[:, 0]
         phase = jnp.exp(-2j * jnp.pi * freqs[:, None]
                         * (jnp.arange(n_steps) * DT)[None, :])
@@ -285,9 +337,11 @@ def record_length_check():
     return witness
 
 
-def main() -> int:
-    _print_setup()
-    record_length_check()
+def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
+    mesh = _DEFAULT_MESH if mesh is None else mesh
+    N_STEPS, DT = mesh.n_steps, mesh.dt
+    _print_setup(mesh)
+    record_length_check(mesh)
 
     # ---- TMM optimum ------------------------------------------------------
     print("\n[TMM] L-BFGS-B optimisation against analytic R(f)...")
@@ -308,10 +362,10 @@ def main() -> int:
 
     # ---- Vacuum reference forward ----------------------------------------
     print("\n[ref] vacuum forward (one-shot, for incident-wave subtraction)...")
-    sim_ref = _build_simulation()
+    sim_ref = mesh.sim
     t0 = time.time()
     result_ref = sim_ref.forward(
-        eps_override=_vacuum_eps_array(),
+        eps_override=mesh.vacuum(),
         n_steps=N_STEPS,
         skip_preflight=True,
     )
@@ -326,10 +380,10 @@ def main() -> int:
     band_mask = (freqs_fft >= F_LO) & (freqs_fft <= F_HI)
     band_norm = float(jnp.sum(band_mask))
 
-    sim_design = _build_simulation()
+    sim_design = mesh.sim
 
     def _design_ts(layer_eps: jnp.ndarray) -> jnp.ndarray:
-        eps = _render_design_eps(layer_eps)
+        eps = mesh.render(layer_eps)
         res = sim_design.forward(
             eps_override=eps,
             n_steps=N_STEPS,
@@ -337,8 +391,7 @@ def main() -> int:
         )
         return res.time_series
 
-    def cost_with_aux(latent: jnp.ndarray):
-        layer_eps = _latent_to_eps(latent)
+    def cost_with_aux(layer_eps: jnp.ndarray):
         ts = _design_ts(layer_eps)
         ts_total_refl = ts[:, 0]
         ts_scat = ts_total_refl - ts_inc_refl
@@ -348,61 +401,33 @@ def main() -> int:
         cost = jnp.sum(R * band_mask) / band_norm
         return cost, R
 
-    def cost_only(latent):
-        return cost_with_aux(latent)[0]
+    def cost_only(layer_eps):
+        return cost_with_aux(layer_eps)[0]
 
-    grad_fn = jax.value_and_grad(cost_only)
-
-    # ---- Adam loop --------------------------------------------------------
+    # ---- Adam through the public scalar-parameter interface ---------------
     print("\n[rfx] Adam optimisation through differentiable forward...")
     n_iters = 60
-    lr = 0.15
-    beta1, beta2, adam_eps = 0.9, 0.999, 1e-8
-
-    # Warm start: geometric-ladder εr is the well-known closed-form
-    # approximation to the broadband AR optimum.  Initialising from there
-    # puts Adam in the basin of attraction of the TMM optimum from step 0
-    # rather than relying on it to traverse a potentially noisy gradient
-    # surface from the εr-mid initialisation.
-    p_geo = (geo_ladder - 1.0) / (EPS_SUB - 1.0)
-    p_geo = np.clip(p_geo, 1e-3, 1.0 - 1e-3)
-    latent_init = np.log(p_geo / (1.0 - p_geo))
-    latent = jnp.asarray(latent_init, dtype=jnp.float32)
-    m = jnp.zeros_like(latent)
-    v = jnp.zeros_like(latent)
-
-    losses: list[float] = []
-    eps_trace: list[np.ndarray] = []
-
     t0 = time.time()
-    initial_R: np.ndarray | None = None
-    for it in range(n_iters):
-        cost, grad = grad_fn(latent)
-        cost_val = float(cost)
-        eps_now = np.asarray(_latent_to_eps(latent))
-        losses.append(cost_val)
-        eps_trace.append(eps_now)
-
-        if it == 0:
-            _, R0 = cost_with_aux(latent)
-            initial_R = np.asarray(R0)
-
-        m = beta1 * m + (1 - beta1) * grad
-        v = beta2 * v + (1 - beta2) * grad ** 2
-        m_hat = m / (1 - beta1 ** (it + 1))
-        v_hat = v / (1 - beta2 ** (it + 1))
-        latent = latent - lr * m_hat / (jnp.sqrt(v_hat) + adam_eps)
-
-        if it % 5 == 0 or it == n_iters - 1:
+    result = minimize(
+        cost_only, np.asarray(geo_ladder, dtype=np.float32),
+        method="adam", bounds=[(1.0, EPS_SUB)] * N_LAYERS,
+        lr=0.15, n_iters=n_iters,
+    )
+    elapsed = time.time() - t0
+    losses = result.history
+    eps_trace = np.asarray(result.x_history)
+    for it, (cost_val, eps_now) in enumerate(zip(losses, eps_trace)):
+        if it % 5 == 0 or it == len(losses) - 1:
             print(f"  iter {it:3d}  cost = {cost_val:.4e}  εr = "
                   f"[{eps_now[0]:.3f}, {eps_now[1]:.3f}, {eps_now[2]:.3f}]")
-    elapsed = time.time() - t0
-    print(f"  {n_iters} iters in {elapsed:.1f}s ({elapsed/n_iters:.2f}s/iter)")
+    print(f"  {result.nfev} iters in {elapsed:.1f}s "
+          f"({elapsed/result.nfev:.2f}s/iter)")
 
-    final_eps = np.asarray(_latent_to_eps(latent))
-    _, R_final = cost_with_aux(latent)
-    R_final = np.asarray(R_final)
-    final_cost = losses[-1]
+    final_eps = np.asarray(result.x)
+    _, initial_R = cost_with_aux(result.x_history[0])
+    _, R_final = cost_with_aux(result.x)
+    initial_R, R_final = np.asarray(initial_R), np.asarray(R_final)
+    final_cost = result.fun
 
     # ---- Meep cross-validation (loaded from VESSL job output) ------------
     meep_rfx = load_meep_reference("rfx_final")
@@ -496,7 +521,8 @@ def main() -> int:
         fontsize=12, fontweight="bold",
     )
     plt.tight_layout()
-    out_png = os.path.join(SCRIPT_DIR, "multilayer_ar_coating.png")
+    os.makedirs(output_dir, exist_ok=True)
+    out_png = os.path.join(output_dir, "multilayer_ar_coating.png")
     plt.savefig(out_png, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"  plot saved: {out_png}")
@@ -546,9 +572,129 @@ def main() -> int:
     return 0 if all_ok else 1
 
 
+def _ladder_start():
+    return np.asarray([
+        EPS_SUB ** ((i + 1) / (N_LAYERS + 1)) for i in range(N_LAYERS)
+    ], dtype=np.float32)
+
+
+def _reflectance_function(mesh):
+    """Freeze one vacuum forward; return the plain 15-bin design forward."""
+    incident = jnp.asarray(mesh.forward(mesh.vacuum())[:, 0])
+    spectrum_inc = jnp.fft.rfft(incident, n=mesh.nfft)
+    indices = jnp.asarray(mesh.band_indices)
+
+    def vector(layer_eps):
+        total = mesh.forward(mesh.render(layer_eps))[:, 0]
+        scattered = jnp.fft.rfft(total - incident, n=mesh.nfft)
+        return ((jnp.abs(scattered) / (jnp.abs(spectrum_inc) + 1e-30)) ** 2)[indices]
+
+    return vector
+
+
+def _comparison_specs(vector):
+    def mean(layer_eps):
+        return jnp.mean(vector(layer_eps))
+
+    def q32(layer_eps):
+        values = vector(layer_eps)
+        scale = jax.lax.stop_gradient(jnp.max(values))
+        return scale * jnp.mean((values / scale) ** 32) ** (1.0 / 32)
+
+    return [
+        ("adam_mean", mean, dict(method="adam", lr=0.15, n_iters=60)),
+        ("projected_mean", mean, dict(method="projected_adam", lr=0.0375, n_iters=60)),
+        ("mma_mean", mean, dict(method="mma", n_iters=60)),
+        ("mma_worst", vector, dict(method="mma", worst_case=True, n_iters=40)),
+        ("adam_q32", q32, dict(method="adam", lr=0.15, n_iters=60, best_iterate=True)),
+    ]
+
+
+def compare_methods(mesh, output_dir=SCRIPT_DIR):
+    """Report plain-forward costs; diagnostic forwards are outside solves."""
+    if len(mesh.bins) != 15:
+        raise ValueError("method comparison requires the 15 X-band DFT bins")
+    vector = _reflectance_function(mesh)
+    report = dict(mesh=mesh.metadata(), vacuum_forwards=1, runs={})
+    print("mesh " + json.dumps(report["mesh"], sort_keys=True))
+    print("Iterations are 1-based evaluated points; trace forwards are uncounted.")
+    for name, objective, settings in _comparison_specs(vector):
+        result = minimize(objective, _ladder_start(),
+                          bounds=[(1.0, EPS_SUB)] * N_LAYERS, **settings)
+        trace = []
+        passes = N_LAYERS if result.jacobian == "forward" else 2
+        for iteration, x in enumerate(result.x_history, 1):
+            R = np.asarray(vector(x))
+            row = dict(iteration=iteration, solves=passes * iteration,
+                       x=np.asarray(x).tolist(), R=R.tolist(),
+                       f=float(np.mean(R)), w=float(np.max(R)))
+            trace.append(row)
+        metric = "w" if name in ("mma_worst", "adam_q32") else "f"
+        final = trace[-1] if trace else None
+        crossing = next((dict(iteration=row["iteration"], solves=row["solves"])
+                         for row in trace if row[metric] <= 1.01 * final[metric]), None)
+        run = dict(settings=settings, trace=trace, final=final, crossing_metric=metric,
+                   first_within_one_percent=crossing, solves=result.solves,
+                   setup_forwards=result.setup_forwards, subproblem_caps=result.subproblem_caps,
+                   nfev=result.nfev, stopped_nonfinite=result.stopped_nonfinite,
+                   jacobian=result.jacobian, scale=result.scale,
+                   objective_history=result.history, diagnostic_forwards=len(trace))
+        if final is not None:
+            R_tmm = tmm_R(np.asarray(final["x"]), mesh.bins,
+                          layer_thk=mesh.cells * mesh.dx)
+            run["e_real"] = float(np.max(np.abs(np.asarray(final["R"]) - R_tmm)))
+        if name == "adam_q32" and trace:
+            best_index = int(np.argmin(result.history))
+            run["best_iterate"] = dict(iteration=best_index + 1,
+                                       x=np.asarray(result.x).tolist(),
+                                       w=trace[best_index]["w"])
+        if name == "mma_mean":
+            xs = np.asarray(result.x_history)
+            run["last_20_steps"] = [
+                dict(iteration=i + 1, abs_delta_eps=np.abs(xs[i] - xs[i - 1]).tolist(),
+                     abs_delta_box=(np.abs(xs[i] - xs[i - 1]) / (EPS_SUB - 1)).tolist())
+                for i in range(max(1, len(xs) - 20), len(xs))
+            ]
+        report["runs"][name] = run
+        print(f"{name} settings=" + json.dumps(settings, sort_keys=True))
+        for row in trace:
+            print(f"  {row['iteration']:02d} solves={row['solves']:3d} "
+                  f"f={row['f']:.10g} w={row['w']:.10g}")
+        print(f"  first within 1% of final {metric}: " + json.dumps(crossing))
+        if final is not None:
+            print("  final eps=" + json.dumps(final["x"]))
+            print("  final R=" + json.dumps(final["R"]))
+            print(f"  e_real={run['e_real']:.10g}")
+        if "best_iterate" in run:
+            print("  best_iterate=True " + json.dumps(run["best_iterate"]))
+        for step in run.get("last_20_steps", []):
+            print("  step " + json.dumps(step))
+        print("  solves=" + json.dumps(result.solves, sort_keys=True)
+              + f" setup_forwards={result.setup_forwards} "
+              f"subproblem_caps={result.subproblem_caps} "
+              f"stopped_nonfinite={result.stopped_nonfinite}")
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, "multilayer_ar_comparison.json")
+    with open(path, "w") as stream:
+        json.dump(report, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+    print(f"JSON: {path}")
+    return report
+
+
 if __name__ == "__main__":
-    if "--gradient-witness-only" in sys.argv:
-        _print_setup()
-        record_length_check()
+    parser = argparse.ArgumentParser(description=__doc__)
+    routes = parser.add_mutually_exclusive_group()
+    routes.add_argument("--gradient-witness-only", action="store_true")
+    routes.add_argument("--compare-methods", action="store_true")
+    parser.add_argument("--mesh", choices=("default", "fine"), default="default")
+    parser.add_argument("--output-dir", default=SCRIPT_DIR)
+    args = parser.parse_args()
+    mesh = _build_mesh(0.25e-3, 20) if args.mesh == "fine" else _DEFAULT_MESH
+    if args.gradient_witness_only:
+        _print_setup(mesh)
+        record_length_check(mesh)
+    elif args.compare_methods:
+        compare_methods(mesh, args.output_dir)
     else:
-        sys.exit(main())
+        sys.exit(main(mesh, args.output_dir))
