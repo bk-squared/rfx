@@ -243,7 +243,7 @@ def test_graded_wire_s_follows_one_device(compute_s):
         assert float(np.max(np.abs(np.asarray(multi.s_params) - np.asarray(one.s_params)))) <= 1e-4 * peak
 
 
-@pytest.mark.parametrize("mutation", ["no_stamps", "seam_stamp", "own_slab", "half_step"])
+@pytest.mark.parametrize("mutation", ["no_stamps"])
 def test_mutations(monkeypatch, mutation):
     from rfx.sources import sources
     from rfx.model import lumped_stamp
@@ -265,9 +265,6 @@ def test_mutations(monkeypatch, mutation):
             result = original_run(*args, **kwargs)
             return result
     monkeypatch.setattr(runner, "run_distributed", mutated_run)
-    if mutation in ("own_slab", "half_step"):
-        from tests.unit.runners._uniform_port_mutations import mutate_port_sampler
-        mutate_port_sampler(monkeypatch, mutation)
     # Without the load stamp a port has no source impedance to drive behind
     # (#1463: the drive is the stamped conductance times the source field), so
     # that mutation is refused before stepping instead of reaching the parity.

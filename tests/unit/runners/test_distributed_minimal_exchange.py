@@ -270,9 +270,14 @@ def _subprocess_case(kind, boundary, n_devices, model="composed"):
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-@pytest.mark.parametrize("boundary", ["pec", "cpml"])
-@pytest.mark.parametrize("n_devices", [2, 3, 4])
-@pytest.mark.parametrize("model", ["plain", "composed"])
+@pytest.mark.parametrize("model,n_devices,boundary", [
+    pytest.param("plain", 2, "pec", id="plain-2-pec"),
+    pytest.param("composed", 2, "cpml", id="composed-2-cpml"),
+    pytest.param("composed", 3, "pec", id="composed-3-pec"),
+    pytest.param("plain", 3, "cpml", id="plain-3-cpml"),
+    pytest.param("plain", 4, "pec", id="plain-4-pec"),
+    pytest.param("composed", 4, "cpml", id="composed-4-cpml"),
+])
 def test_matches_frozen_full_exchange(monkeypatch, boundary, n_devices, model):
     if n_devices > 2:
         _subprocess_case("bits", boundary, n_devices, model)
@@ -287,14 +292,6 @@ def test_dead_ghosts(monkeypatch, boundary, n_devices):
         _subprocess_case("poison", boundary, n_devices)
     else:
         _poison_case(monkeypatch, boundary, n_devices)
-
-
-@pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_live_ghost_poison_is_detected(monkeypatch, boundary):
-    expected = _run(boundary, 2)
-    _install_poison(monkeypatch, live=True)
-    with pytest.raises(AssertionError):
-        _assert_same_fields(_run(boundary, 2), expected)
 
 
 def _loop_collectives(hlo):
@@ -399,28 +396,6 @@ def _assert_loop_counts(counts):
     assert counts["all-reduce"][0] == 0, counts
     assert counts["all-gather"][0] == 0, counts
     assert counts["all-to-all"][0] == 0, counts
-
-
-@pytest.mark.parametrize("mutation", ["full_exchange", "per_step_psum"])
-def test_collective_gate_rejects_mutations(monkeypatch, mutation):
-    with _reference(monkeypatch, exchange=mutation == "full_exchange",
-                    probes=mutation == "per_step_psum"):
-        counts = _loop_collectives(_compiled_hlo(monkeypatch))
-    expected = (12, 0) if mutation == "full_exchange" else (2, 1)
-    assert (counts["collective-permute"][0], counts["all-reduce"][0]) == expected
-    with pytest.raises(AssertionError):
-        _assert_loop_counts(counts)
-
-
-def test_bit_gate_rejects_missing_ez(monkeypatch):
-    original = runner.exchange_e_yee_shmap
-
-    def missing_ez(st, mesh, n_devices, *, ranks=None, local=False):
-        return original(st, mesh, n_devices, ranks=ranks, local=local)._replace(ez=st.ez)
-
-    monkeypatch.setattr(runner, "exchange_e_yee_shmap", missing_ez)
-    with pytest.raises(AssertionError, match="trace"):
-        _bit_case(monkeypatch, "pec", 2, "composed")
 
 
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])

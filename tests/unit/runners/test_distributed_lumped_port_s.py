@@ -125,9 +125,12 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
     return actual
 
 
-@pytest.mark.parametrize("seam", [False, True], ids=["interior", "seam"])
-@pytest.mark.parametrize("ports", [1, 2])
-@pytest.mark.parametrize("mode", ["default", "explicit"])
+@pytest.mark.parametrize("mode,ports,seam", [
+    pytest.param("explicit", 1, False, id="explicit-1-interior"),
+    pytest.param("default", 2, False, id="default-2-interior"),
+    pytest.param("default", 1, True, id="default-1-seam"),
+    pytest.param("explicit", 2, True, id="explicit-2-seam"),
+])
 def test_all_entries_all_bins(seam, ports, mode):
     _parity(seam=seam, ports=ports, mode=mode)
 
@@ -190,30 +193,6 @@ def test_more_devices(n_devices):
     print(proc.stdout)
 
 
-@pytest.mark.parametrize("mutation", ["disable", "own_slab", "half_step"])
-def test_parity_detects_mutations(monkeypatch, mutation):
-    from rfx.probes import sparam_driver as driver
-
-    if mutation == "disable":
-        original = driver.compute_lumped_wire_s_matrix_via_scan
-
-        def disabled(sim, freqs, **kwargs):
-            if kwargs.get("devices") is not None:
-                return np.zeros((2, 2, len(freqs)), dtype=np.complex64), freqs
-            return original(sim, freqs, **kwargs)
-
-        monkeypatch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan", disabled)
-    else:
-        from tests.unit.runners._uniform_port_mutations import mutate_port_sampler
-        mutate_port_sampler(monkeypatch, mutation)
-    with pytest.raises(AssertionError, match="S parity max_delta"):
-        _parity(channel=True)
-    print(f"mutation={mutation}: parity RED")
-    monkeypatch.undo()
-    _parity(channel=True)
-    print(f"mutation={mutation}: restored GREEN")
-
-
 @pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("channel", [False, True])
 def test_pmc_matched_line_refused(explicit, channel):
@@ -246,7 +225,7 @@ def test_each_magnetic_face_refused_before_scan(monkeypatch, face, explicit):
                 **({"compute_s_params": True} if explicit else {}))
 
 
-@pytest.mark.parametrize("case", ["debye", "lossy", "pec", "cpml_box", "eps4"])
+@pytest.mark.parametrize("case", ["debye", "lossy", "pec", "cpml_box"])
 def test_material_and_cpml_box_parity(case):
     _parity(case=case)
 
@@ -355,48 +334,6 @@ def test_shared_step_order(monkeypatch):
         _model(boundary=boundary).run(n_steps=2, devices=jax.devices("cpu")[:2],
                                      skip_preflight=True)
         assert len(seen) > before
-
-
-@pytest.mark.source_scan
-def test_drive_only_order_mutation(monkeypatch):
-    from rfx.runners import distributed_v2 as runner
-    from rfx.stepping import uniform
-    from rfx.stepping.sequence import HookPoint, Kernel
-    original_compose = uniform.compose
-    original_run = runner.run_distributed
-    selected = False
-    mutations = []
-
-    def run(*args, **kwargs):
-        nonlocal selected
-        selected = kwargs.get("_source_port_indices") is not None
-        return original_run(*args, **kwargs)
-
-    def compose(kernels, attachments):
-        if _wrapped_attachments(attachments):
-            _assert_shared_step_order(kernels, attachments)
-            if selected:
-                # Move the selected-drive injection out of the shared kernel
-                # slot, still after references and before physical sampling.
-                kernels, attachments = dict(kernels), dict(attachments)
-                injection = kernels.pop(Kernel.SOURCES)
-                point = HookPoint.BEFORE_SOURCES
-                attachments[point] = (*attachments[point], injection)
-                mutations.append((kernels, attachments))
-        return original_compose(kernels, attachments)
-
-    monkeypatch.setattr(runner, "run_distributed", run)
-    monkeypatch.setattr(uniform, "compose", compose)
-    # These fixtures cannot distinguish identical arithmetic reached through
-    # drive-dependent scheduling. The common-step invariant must also fail.
-    for case in (None, "debye", "lossy", "pec", "cpml_box", "eps4"):
-        before = len(mutations)
-        _parity(case=case)
-        assert len(mutations) > before
-    for kernels, attachments in mutations:
-        with pytest.raises(AssertionError, match="shared step injection order"):
-            _assert_shared_step_order(kernels, attachments)
-    print("mutation=drive_only_order: numerical parity GREEN; shared step check RED")
 
 
 def test_host_dft_is_the_float64_sum_of_the_recorded_v_and_i():

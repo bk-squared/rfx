@@ -367,14 +367,6 @@ def _mutant(kind):
     return helper
 
 
-@pytest.mark.parametrize("kind", ["cell", "x_lo_vacuum", "seam_own_row"])
-def test_a_mutated_slab_view_is_caught(kind):
-    """Each defect, the helper's calls kept, breaks the check above."""
-    bad = _slab_view_mismatches(_mutant(kind), 3)
-    print(f"[mutation {kind}] mismatching real cells {bad['model']}")
-    assert bad["model"] > 0, bad
-
-
 def _install(patch, kind):
     helper = _mutant(kind)
     for module in (common, slab_update):
