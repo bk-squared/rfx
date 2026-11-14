@@ -149,7 +149,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/stepping/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/stepping/tfsf_2d.py", "_update_e_tmz"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/sources/tfsf_2d.py", "apply_tfsf_2d_e"): _VACUUM,
-    ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
+    ("rfx/sources/tfsf_2d.py", "oblique_angle_fields"): _C0,
     ("rfx/stepping/tfsf_oblique.py", "apply_methodB_e"): _VACUUM,
     ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
         "port medium is a concrete resolved scalar; traced section permittivity is refused",

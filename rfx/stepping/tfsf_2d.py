@@ -171,10 +171,15 @@ def bloch_phase_tuple(cfg: TFSF2DConfig, dx: float) -> tuple:
     matching ``cfg.transverse_axis`` (``y``=axis 1 for TMz, ``z``=axis 2 for TEz).
     All other axes are 1.0.  Pass the result as ``update_e/h(..., bloch=...)``.
     """
-    ph = complex(jnp.exp(-1j * cfg.k_transverse * dx))
+    from rfx.core.jax_utils import is_tracer
+    ph = jnp.exp(-1j * cfg.k_transverse * dx)
+    if is_tracer(cfg.k_transverse):
+        one = jnp.ones_like(ph)
+    else:
+        ph, one = complex(ph), 1.0 + 0j
     if cfg.transverse_axis == "z":
-        return (1.0 + 0j, 1.0 + 0j, ph)
-    return (1.0 + 0j, ph, 1.0 + 0j)
+        return (one, one, ph)
+    return (one, ph, one)
 
 
 def _apply_cpml_h(cfg, st, dez_dx, hy, coeff_h):

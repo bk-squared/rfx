@@ -38,6 +38,7 @@ def _forward_from_materials(
     diagnostics=(),
     n_steps: int,
     conductors=None,
+    tfsf_angle_override=None,
     checkpoint: bool = True,
     gradient: str = "autodiff",
     checkpoint_segments: int | None = None,
@@ -205,6 +206,9 @@ def _forward_from_materials(
         tfsf_run = tfsf_from_declaration(
             self._tfsf, grid, self._freq_max, n_steps=n_steps,
         )
+        if tfsf_angle_override is not None:
+            from rfx.sources.tfsf_2d import with_angle
+            tfsf_run = (with_angle(tfsf_run[0], tfsf_angle_override), tfsf_run[1])
         from dataclasses import replace
         from rfx.api._ad_memory_model import face_record_pays
         if face_record_pays(tfsf_run[0], n_steps, checkpoint=checkpoint,
@@ -817,7 +821,7 @@ def _forward_from_materials(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
         freqs=freqs_out, current_moment_monitor=current_moments_fwd,
         realized_geometry=stepping_product._realization_record,
-    )), conductors.design_findings)
+    )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 
 
 # ---------------------------------------------------------------------------

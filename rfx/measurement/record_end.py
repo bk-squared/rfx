@@ -120,7 +120,7 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
 
 
 def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
-                  sources=(), mag_sources=(), waveguide_ports=(), tfsf=None,
+                  sources=(), mag_sources=(), waveguide_ports=(), tfsf=None, tfsf_angle_deg=None,
                   return_detail=False):
     """The step after which every applied drive has ended, plus transit.
 
@@ -168,7 +168,13 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
             drives.append((f"{kind}[{index}]", table, _node_reach(grid, src)))
     if tfsf is not None:
         from rfx.measurement.settling import tfsf_source_drive
-        drives.append(("TF/SF source", *tfsf_source_drive(tfsf, grid)))
+        if is_tracer(tfsf_angle_deg):
+            refuse("TF/SF source", "traced", TRACED)
+        else:
+            if tfsf_angle_deg is not None:
+                from rfx.sources.tfsf_2d import with_angle
+                tfsf = with_angle(tfsf, tfsf_angle_deg)
+            drives.append(("TF/SF source", *tfsf_source_drive(tfsf, grid)))
     configs = (list(waveguide_ports.values()) if hasattr(waveguide_ports, "values")
                else list(waveguide_ports or ()))
     for index, cfg in enumerate(configs):
@@ -188,7 +194,7 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
                        _plane_reach("xyz".index(getattr(cfg, "normal_axis", "x")),
                                     float(getattr(cfg, "source_x_m", 0.)))))
     if sim is not None:
-        _declared_drives(sim, n_steps, grid, bool(configs), drives, refuse)
+        _declared_drives(sim, n_steps, grid, bool(configs), drives, refuse, tfsf_angle_deg)
 
     rows, reasons = [], []
     points = None if records is None else _record_points(records, grid)
@@ -263,9 +269,10 @@ def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
     return None if end > max_steps else end
 
 
-def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse):
+def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse, tfsf_angle_deg):
     """The drives a run builds from ``sim``'s declarations, for ``injection_end``."""
     from rfx.sources.sources import GaussianPulse
+    from rfx.core.jax_utils import is_tracer
 
     if getattr(sim, "_waveguide_ports", ()) and not have_configs:
         refuse("waveguide port", "unavailable",
@@ -299,12 +306,17 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse):
         drives.append((name, table, _points_reach([np.asarray(center)])))
     tf = getattr(sim, "_tfsf", None)
     if tf is not None:
-        if grid is None:
+        if is_tracer(tfsf_angle_deg):
+            refuse("TF/SF source", "traced", TRACED)
+        elif grid is None:
             refuse("TF/SF source", "unavailable", "cannot judge: TF/SF needs the grid it is built on")
         else:
             from rfx.measurement.settling import tfsf_source_drive
             from rfx.sources.tfsf import tfsf_from_declaration
             cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps)
+            if tfsf_angle_deg is not None:
+                from rfx.sources.tfsf_2d import with_angle
+                cfg = with_angle(cfg, tfsf_angle_deg)
             drives.append(("TF/SF source", *tfsf_source_drive(cfg, grid)))
     for index, _ in enumerate(getattr(sim, "_coaxial_ports", ()) or ()):
         refuse(f"coaxial port[{index}]", "unavailable",
