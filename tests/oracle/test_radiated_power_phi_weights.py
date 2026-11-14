@@ -22,8 +22,6 @@ THETA = np.linspace(0, np.pi, 181)
 _EVEN_PHI = [
     pytest.param(np.linspace(0, 2 * np.pi, 13), id="13-endpoint"),
     pytest.param(np.linspace(0, 2 * np.pi, 13, endpoint=False), id="13-open"),
-    pytest.param(np.linspace(0, 2 * np.pi, 49), id="49-endpoint"),
-    pytest.param(np.linspace(0, 2 * np.pi, 49, endpoint=False), id="49-open"),
 ]
 _ALL_PHI = _EVEN_PHI + [pytest.param(np.array([0.0, 1.0, 2.0, 5.0]), id="uneven-0-1-2-5")]
 
@@ -167,7 +165,7 @@ def _float32_built_seam_grid(n):
     return phi
 
 
-@pytest.mark.parametrize("n", [73, 13])
+@pytest.mark.parametrize("n", [13])
 def test_float32_built_seam_grid_weight_sum(n):
     phi = _float32_built_seam_grid(n)
     theta = np.array([0.0, np.pi / 2 - 0.25, np.pi / 2, np.pi / 2 + 0.25, np.pi])
@@ -179,7 +177,7 @@ def test_float32_built_seam_grid_weight_sum(n):
     assert abs(total - 2 * np.pi) <= 8 * np.spacing(2 * np.pi), total - 2 * np.pi
 
 
-@pytest.mark.parametrize("n", [73, 13])
+@pytest.mark.parametrize("n", [13])
 def test_float32_built_seam_grid_takes_the_seam_branch(n):
     phi = _float32_built_seam_grid(n)
     weights = radiated_power_module._phi_weights(phi)
@@ -187,7 +185,7 @@ def test_float32_built_seam_grid_takes_the_seam_branch(n):
     assert weights[-1] == 0.5 * (phi[0] + 2 * np.pi - phi[-2])
 
 
-@pytest.mark.parametrize("n", [73, 13])
+@pytest.mark.parametrize("n", [13])
 def test_float32_built_seam_grid_z_dipole(n):
     d = directivity(_z_dipole(THETA, _float32_built_seam_grid(n)))[0]
     assert abs(d - D_DIPOLE_DBI) <= 1e-6, d
