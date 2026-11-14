@@ -127,6 +127,8 @@ def test_waveguide_kottke_pec_volume_warning(monkeypatch, smoothing):
 def test_kottke_pec_curved_volume_warning(entry, shape, kind):
     sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
                      boundary="pec", cpml_layers=0)
+    # A planar PEC volume declared first: the curved body still names the warning.
+    sim.add(Box((.006, .005, .005), (.007, .007, .007)), material="pec")
     sim.add(shape, material="pec")
     sim.add_source((.002, .002, .002), "ez", amplitude_kind="field")
     sim.add_probe((.002, .003, .002), "ez")
