@@ -983,7 +983,7 @@ def _sequential_fallback(
         # Preflight only the first sim (this sequential fallback re-runs a
         # structurally-identical setup); skip thereafter to avoid per-iteration
         # preflight noise.
-        result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0)
+        result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0, compute_s_params=False)
         all_ts.append(np.asarray(result.time_series))
         all_db.append(result.settling_db)
         all_witness.append(result.settling_witness)

@@ -1,0 +1,4 @@
+### Fixed — default lumped/wire S requests use the explicit admission checks (#PR)
+
+- Mixed port declarations now refuse before stepping instead of publishing contaminated default S. On a synthetic microstrip line, the old wire reflection differed by up to 0.89 in |S11| and showed a false match of 0.027 where the isolated-drive value was 0.26.
+- One-record and scan S checks account for microstrip, waveguide, Floquet, TFSF and coaxial drives. A drive outside the measured port family refuses even when it is the only drive. Use `compute_mixed_s_matrix()` for supported lumped/wire + microstrip S, or `run(compute_s_params=False)` for fields.

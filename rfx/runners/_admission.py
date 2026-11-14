@@ -1267,26 +1267,75 @@ def _warn_implicit_s(message):
     warnings.warn(message, ConfigurationWarning, stacklevel=stacklevel)
 
 
+def default_run_forms_s(sim, *, devices=None):
+    """Whether the default lumped/wire request forms S on this declaration."""
+    ports = [p for p in sim._ports if p.is_port]
+    if (not ports or sim._refinement is not None
+            or any(p.is_soft_source for p in sim._ports)):
+        return False
+    if devices is not None and len(devices) > 1:
+        if sim._uses_nonuniform_mesh and any(not p.excite for p in ports):
+            return False
+    elif len(ports) == 1 and ports[0].extent is not None and not ports[0].excite:
+        return False
+    if not sim._uses_nonuniform_mesh or any(p.extent is not None for p in ports):
+        return True
+    return not sim._periodic_axes and sum(p.excite for p in ports) == 1
+
+
+def s_drive_inventory(sim):
+    """Declared record injections as (kind, label); plain sources have their own rule."""
+    drives = [("wire" if p.extent is not None else "lumped",
+               f"port {index} at {p.position}")
+              for index, p in enumerate(sim._ports) if p.impedance > 0 and p.excite]
+    drives.extend(("microstrip", p.name) for p in sim._msl_ports if p.excite)
+    for kind, entries in (("waveguide", sim._waveguide_ports), ("Floquet", sim._floquet_ports)):
+        drives.extend((kind, p.name) for p in entries if _differs(p.amplitude, 0.0))
+    if sim._tfsf is not None:
+        drives.append(("TFSF", "source"))
+    drives.extend(("coaxial", f"port {index} at {p.position}")
+                  for index, p in enumerate(sim._coaxial_ports))
+    return drives
+
+
+def refuse_foreign_s_drives(sim):
+    """A non-impedance drive fires in every column of a lumped/wire scan."""
+    if not any(p.is_port for p in sim._ports):
+        return
+    foreign = [(kind, label) for kind, label in s_drive_inventory(sim)
+               if kind not in {"lumped", "wire"}]
+    if foreign:
+        detail = "; ".join(f"{kind} {label}" for kind, label in foreign)
+        remedy = " Use compute_mixed_s_matrix() for lumped/wire + microstrip S." if any(
+            kind == "microstrip" for kind, _ in foreign) else ""
+        raise RfxUnsupported(
+            f"Lumped/wire S scans require isolated port drives; foreign drives: {detail}."
+            + remedy + " Use run(compute_s_params=False) for fields only.")
+
+
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
-    # Waveguide S is always formed, including for an amplitude-zero entry.
+    # Keep the multi-waveguide refusal ahead of the drive inventory check.
     if len(sim._waveguide_ports) > 1:
         raise ValueError(
             "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
         )
-    excited = [(index, port) for index, port in enumerate(sim._ports)
-               if port.impedance > 0 and port.excite]
-    if len(excited) < 2:
+    excited = s_drive_inventory(sim)
+    family = {"waveguide"} if sim._waveguide_ports else {"lumped", "wire"}
+    foreign = any(kind not in family for kind, _ in excited)
+    if not foreign and len(excited) < 2:
         return True
-    ports = "; ".join(f"port {index} at {port.position}" for index, port in excited)
+    ports = "; ".join(f"{kind} {label}" for kind, label in excited)
     message = (
         f"S-parameters from one record require an isolated drive; excited ports: {ports}. "
         "set excite=False on every port but the driven one and run once per driven port, "
         "or use run(compute_s_params=True) on one device, which drives one port per run"
     )
-    if fields_only:
+    if any(kind == "microstrip" for kind, _ in excited):
+        message += "; use compute_mixed_s_matrix() for lumped/wire + microstrip S"
+    if fields_only or foreign:
         message += "; use run(compute_s_params=False) for fields only"
-    if implicit:
+    if implicit and not foreign and not sim._waveguide_ports:
         _warn_implicit_s(message + "; returning no S-parameters.")
         return False
     raise ValueError(message)
@@ -1299,15 +1348,16 @@ def graded_lumped_default_s(sim):
     source or 0-ohm port and no periodic axis; otherwise the run returns
     fields with S=None (two driven ports also warn, as forward() does; with no
     driven port there is no incident wave to form S from). A port
-    set with a wire port keeps the wire default. Never a refusal: the user did
-    not ask for S.
+    set with a wire port keeps the wire default. Foreign drives must still
+    satisfy the one-record admission rule.
     """
     ports = [p for p in sim._ports if p.is_port]
     if (not ports or any(p.extent is not None for p in ports)
             or any(p.is_soft_source for p in sim._ports) or sim._periodic_axes
             or not any(p.excite for p in ports)):
         return False
-    return require_isolated_s_drive(sim, implicit=True)
+    isolated = require_isolated_s_drive(sim, implicit=True)
+    return isolated and default_run_forms_s(sim)
 
 
 def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
@@ -1402,6 +1452,10 @@ def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
     if compute_s_params is not False:
         # Without the scan, S is read from the main run's own record.
         refuse_plain_sources_s_matrix(sim, main_record=not uses_scan)
+        if uses_scan:
+            refuse_foreign_s_drives(sim)
+        elif any(p.is_port for p in sim._ports):
+            require_isolated_s_drive(sim)
     if compute_s_params is False or not uses_scan:
         return
     try:
