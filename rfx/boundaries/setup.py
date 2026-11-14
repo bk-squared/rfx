@@ -1,7 +1,10 @@
 """Boundary setup shared by the unchanged uniform and graded operators."""
 
 
-def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
+def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors,
+                  aniso_eps=None, aniso_inv_eps=None, conformal_weights=None,
+                  aniso_inv_eps_smooth=False, subpixel_smoothing=False,
+                  debye=None, lorentz=None):
     use_tfsf = tfsf is not None
     # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
     # REAL grid cannot sustain (otherwise the wave under-tilts). Drive the shared solver
@@ -18,6 +21,34 @@ def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
         from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_early
         _oblique_bloch = _is_tfsf_2d_early(tfsf[0])
     if _oblique_bloch:
+        from rfx.errors import RfxUnsupported
+        clauses, routes = [], []
+        if aniso_eps is not None or aniso_inv_eps is not None:
+            if subpixel_smoothing:
+                clauses.append(f"subpixel smoothing (subpixel_smoothing={subpixel_smoothing!r})")
+                routes.append(", or subpixel_smoothing=False")
+            if aniso_eps is not None and conformal_weights is not None:
+                clauses.append("conformal PEC")
+                routes.append(", or conformal PEC off")
+            if aniso_inv_eps is not None and aniso_inv_eps_smooth:
+                clauses.append("a PEC occupancy override with pec_occupancy_model='kottke'")
+                routes.append(", or no pec_occupancy_override")
+            if not clauses:
+                clauses.append("an anisotropic permittivity tensor (aniso_eps or aniso_inv_eps)")
+                routes.append(", or no anisotropic permittivity tensor")
+        if debye is not None or lorentz is not None:
+            clauses.append("a dispersive material (Debye or Lorentz poles)")
+            routes.append(", or a material without poles")
+        if clauses:
+            what = " and ".join(clauses)
+            it = "it" if len(clauses) == 1 else "them"
+            route = "".join(routes)
+            raise RfxUnsupported(
+                f"An oblique Bloch plane wave (angle_deg={tfsf[0].angle_deg}, method='bloch') "
+                f"cannot be combined with {what}: the electric-field update for {it} "
+                "does not apply the Bloch phase, so the fields would be wrong. "
+                f"Use normal incidence{route}."
+            )
         # Frequency-domain monitors accumulate the complex envelope P, not the
         # physical spectrum — fail loud rather than return truncated garbage.
         _unsupported_ob = []

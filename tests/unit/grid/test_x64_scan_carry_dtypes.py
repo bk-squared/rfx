@@ -511,16 +511,18 @@ def test_x64_does_not_move_the_default_precision_dispersive_result():
     assert np.max(np.abs(ts_on - ts_off)) / scale < 1e-5
 
 
-def test_oblique_bloch_plus_dispersion_still_raises():
-    """The unsupported combination must NOT be closed by this dtype policy.
+def test_oblique_bloch_with_dispersion_is_refused():
+    """Refuse the unsupported material before constructing the scan carry.
 
-    The dispersive branches of ``update_e_dispersive`` ignore the Bloch phase
-    (#404) entirely, so oblique-Bloch + dispersion is wrong physics. That is
-    why the scan bodies PROMOTE to ``promote_types(carry, field)`` instead of
-    pinning to the carry's dtype: pinning would cast the complex field's
-    imaginary part away and let this scan close silently. Pinned as a
-    behaviour so a future "just make it run" change has to face it.
+    The dispersive electric-field update does not apply the Bloch phase.
+    Its fields would therefore be wrong for an oblique Bloch plane wave.
+    Admission must name the pole material and the supported alternatives.
+    The pole region stays away from the injection planes so that their
+    material checks admit it and the oblique material check is reached.
+    The expected message is independent of the ambient precision policy.
     """
+    from rfx.errors import RfxUnsupported
+
     grid = Grid(freq_max=5e9, domain=(0.06, 0.06, 0.006), dx=0.004,
                 cpml_layers=6)
     mats = init_materials(grid.shape)
@@ -530,14 +532,19 @@ def test_oblique_bloch_plus_dispersion_still_raises():
                          polarization="ez", angle_deg=30.0, ny=grid.ny)
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
-    # Off the injection planes, so the plane-operand rule (#1676) admits it
-    # and the scan carry is what refuses.
+    # Off the injection planes, so their material rule admits it
+    # and the oblique material check is what refuses.
     mask = jnp.zeros(grid.shape, dtype=bool).at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(True)
-    # Delta eps 1.0: 2.0 sat 0.46 % above the pole time-step bound on these 4 mm cells (#1934), which
-    # now refuses first; this test pins the Bloch/dispersion carry refusal, not the pole bound.
+    # Delta eps 1.0 stays within the pole time-step bound on these 4 mm cells,
+    # allowing this case to reach the oblique material refusal.
     lor = init_lorentz([lorentz_pole(1.0, 2 * np.pi * 5e9, 1e9)], mats,
                        grid.dt, mask=[mask], field_dtype=jnp.float32, high_wall=unpadded_high_walls(grid))
-    with pytest.raises(TypeError, match="carry"):
+    with pytest.raises(RfxUnsupported) as caught:
         run(grid, mats, 8, boundary="cpml", cpml_axes="x",
             periodic=(False, True, True), tfsf=(cfg, st0), probes=[probe],
             lorentz=lor)
+    assert str(caught.value) == (
+        "An oblique Bloch plane wave (angle_deg=30.0, method='bloch') cannot be combined with "
+        "a dispersive material (Debye or Lorentz poles): the electric-field update for it "
+        "does not apply the Bloch phase, so the fields would be wrong. "
+        "Use normal incidence, or a material without poles.")

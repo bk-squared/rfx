@@ -444,14 +444,18 @@ def test_small_angle_has_normal_incidence_admission(scene, graded, polarization,
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("smoothing", [True, "full_tensor"])
 @pytest.mark.parametrize("polarization", ["ez", "ey"])
-def test_oblique_invariant_slab_steps_once(entry, skip, smoothing, polarization, monkeypatch, release_boards):
-    # This test steps once; the other admission tests keep no_steps.
-    import jax
-    monkeypatch.setattr(jax.lax, "scan", release_boards)
+def test_oblique_invariant_slab_refuses_smoothing(entry, skip, smoothing, polarization):
+    # The scan spy remains installed: the unsupported update must never step.
+    from rfx.errors import RfxUnsupported
+    expected_input = f"subpixel smoothing (subpixel_smoothing={smoothing!r})"
     sim = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)
     sim.add_material("slab", eps_r=4.)
     sim.add(Box((.010, -1., -1.), (.014, 1., 1.)), material="slab")
     sim.add_tfsf_source(f0=10e9, bandwidth=.8, direction="+x", angle_deg=30.,
                         polarization=polarization, method="bloch")
-    result = getattr(sim, entry)(n_steps=1, skip_preflight=skip, subpixel_smoothing=smoothing)
-    assert result.time_series.shape[0] == 1
+    with pytest.raises(RfxUnsupported) as caught:
+        getattr(sim, entry)(n_steps=1, skip_preflight=skip, subpixel_smoothing=smoothing)
+    assert str(caught.value) == (
+        "An oblique Bloch plane wave (angle_deg=30.0, method='bloch') cannot be combined with "
+        f"{expected_input}: the electric-field update for it does not apply the Bloch phase, "
+        "so the fields would be wrong. Use normal incidence, or subpixel_smoothing=False.")
