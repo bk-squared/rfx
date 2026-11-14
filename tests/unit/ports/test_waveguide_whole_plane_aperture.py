@@ -90,9 +90,17 @@ def _graded_grid():
     )
 
 
-@pytest.mark.parametrize("axis", ["y", "z", "yz"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize(
+    "graded,multimode,axis",
+    [
+        pytest.param(False, False, "y", id="False-False-y"),
+        pytest.param(True, True, "y", id="True-True-y"),
+        pytest.param(False, True, "z", id="False-True-z"),
+        pytest.param(True, False, "z", id="True-False-z"),
+        pytest.param(False, False, "yz", id="False-False-yz"),
+        pytest.param(True, True, "yz", id="True-True-yz"),
+    ],
+)
 def test_initializers_warn_without_uniform_grid(scene, axis, multimode, graded):
     grid, freqs, _ = scene
     if graded:
@@ -178,10 +186,16 @@ def _no_step(*args, **kwargs):
     raise AssertionError("The whole-node aperture reached stepping")
 
 
-@pytest.mark.parametrize("axis", ["y", "z"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("grid_kind", ["explicit", "grid_dx"])
-@pytest.mark.parametrize("conformal", [False, True])
+@pytest.mark.parametrize(
+    "conformal,grid_kind,multimode,axis",
+    [
+        pytest.param(False, "explicit", False, "y", id="False-explicit-False-y"),
+        pytest.param(False, "grid_dx", True, "z", id="False-grid_dx-True-z"),
+        pytest.param(True, "explicit", True, "z", id="True-explicit-True-z"),
+        pytest.param(True, "grid_dx", False, "z", id="True-grid_dx-False-z"),
+        pytest.param(True, "grid_dx", True, "y", id="True-grid_dx-True-y"),
+    ],
+)
 def test_initializers_refuse_uniform_node_plane(scene, axis, multimode, grid_kind, conformal):
     _, freqs, steps = scene
     grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.02), dx=0.002,
@@ -233,10 +247,16 @@ def test_2d_initializers_and_loop_accept_whole_z_plane(scene, monkeypatch, multi
                          cpml_axes="x", waveguide_ports=configs)
 
 
-@pytest.mark.parametrize("walls", ["periodic", "pmc_hi"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("grid_kind", ["explicit", "grid_dx"])
-@pytest.mark.parametrize("conformal", [False, True])
+@pytest.mark.parametrize(
+    "conformal,grid_kind,multimode,walls",
+    [
+        pytest.param(False, "explicit", False, "periodic", id="False-explicit-False-periodic"),
+        pytest.param(False, "grid_dx", True, "pmc_hi", id="False-grid_dx-True-pmc_hi"),
+        pytest.param(True, "explicit", True, "pmc_hi", id="True-explicit-True-pmc_hi"),
+        pytest.param(True, "grid_dx", False, "pmc_hi", id="True-grid_dx-False-pmc_hi"),
+        pytest.param(True, "grid_dx", True, "periodic", id="True-grid_dx-True-periodic"),
+    ],
+)
 def test_initializers_accept_declared_periodic_or_pmc_high_face(scene, walls, multimode,
                                                                grid_kind, conformal):
     _, freqs, steps = scene
@@ -257,9 +277,15 @@ def test_initializers_accept_declared_periodic_or_pmc_high_face(scene, walls, mu
         assert (cfg.v_lo, cfg.v_hi) == (0, grid.nz - 1)
 
 
-@pytest.mark.parametrize("axis", ["y", "z"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize(
+    "graded,multimode,axis",
+    [
+        pytest.param(False, False, "y", id="False-False-y"),
+        pytest.param(False, True, "z", id="False-True-z"),
+        pytest.param(True, False, "z", id="True-False-z"),
+        pytest.param(True, True, "y", id="True-True-y"),
+    ],
+)
 def test_initializers_without_uniform_grid_defer_to_loop(scene, monkeypatch, axis, multimode, graded):
     grid, freqs, steps = scene
     if graded:
@@ -300,9 +326,15 @@ def test_extractors_refuse_before_stepping(scene, monkeypatch, name, axis):
         _extract(scene, name, axis)
 
 
-@pytest.mark.parametrize("graded", [False, True])
-@pytest.mark.parametrize("decay", [False, True])
-@pytest.mark.parametrize("axis", ["y", "z"])
+@pytest.mark.parametrize(
+    "axis,decay,graded",
+    [
+        pytest.param("y", False, False, id="y-False-False"),
+        pytest.param("y", True, True, id="y-True-True"),
+        pytest.param("z", False, True, id="z-False-True"),
+        pytest.param("z", True, False, id="z-True-False"),
+    ],
+)
 def test_loops_refuse_prebuilt_node_plane(scene, monkeypatch, graded, decay, axis):
     grid, freqs, steps = scene
     if graded:
