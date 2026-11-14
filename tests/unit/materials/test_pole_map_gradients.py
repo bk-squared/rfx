@@ -153,7 +153,7 @@ def test_p9_richardson(monkeypatch, graded):
                control=control.tolist(), relative=error.tolist(), rounding=rounding.tolist(),
                rounding_ad=rounding_ad.tolist(),
                probe_peak_step=peak))
-        assert 0 < peak < 2000
+        assert 0 < peak < P9_RECORD_STEPS
         assert np.all(rounding >= 1e-5), f'cannot judge P9 rounding: {rounding}'
         assert np.all(control <= 1e-4), f'cannot judge P9 FD control: {control}'
         assert np.all(error <= 1e-6), error
