@@ -157,7 +157,8 @@ still refuses closed-boundary `until_decay` (set `n_steps`). Use a fixed
 | `compute_s_params=True`, `s_param_freqs=` | S-parameters for lumped and wire ports (`add_port`) only. Other port families have their own calculator. |
 | `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
-| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. |
+| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order: an εr 38 cylinder's resonance reads about 1 % high at 0.5 mm. |
+| `subpixel_smoothing="full_tensor"` | The full averaged tensor, off-diagonal terms included: second order at a curved dielectric interface, on uniform and graded meshes, one device. It refuses some inputs that `True` runs (`boundary="upml"`, `compute_waveguide_s_matrix`, conformal PEC, a traced `eps_r`); see [Support Boundaries](/rfx/support/). |
 | `subpixel_smoothing="kottke_pec"` | Experimental. Also smooths metal faces, but it is not recommended for metal: on every measured case with a metal face off the grid it was farther from the reference than the staircase. A run that uses it with a PEC volume warns. For curved metal use `conformal_pec=True`. |
 | `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
 | `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
