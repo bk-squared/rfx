@@ -194,8 +194,8 @@ class RingdownSpec:
         Positions are physical (x, y, z); components are ex/ey/ez/hx/hy/hz.
         Port residues and S assembly retain their original channels. These
         extra channels have no W0-style accumulator witness. With probe_freqs=None,
-        port channels are always included, the original scope of #1428.
-        probe_freqs supersedes that restriction for models driven by soft sources.
+        port channels are always included. With probe_freqs set, a model driven
+        only by soft sources is identified and completed on these channels alone.
     probe_freqs : tuple or None
         Positive concrete frequency bins for completing the identification probes
         without ports. Spectra use each field kind's physical DFT clock. WE and
