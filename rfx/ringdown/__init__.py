@@ -747,6 +747,7 @@ def _lane_resolver(lane: str, grid):
 
 
 from rfx.ringdown._geometry import _user_geometry
+from rfx.ringdown._host_bins import host_bins
 
 
 def _node_position(grid, idx) -> tuple:
@@ -947,16 +948,20 @@ class _NotCompleted(Exception):
         self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
-def host_bins(bins, dtype):
-    """Keep pole identification and its host report on concrete frequencies."""
-    import jax
+def _require_source_off_rows(entries, rows, caller):
+    """Refuse the first drive whose off time cannot be judged on the host."""
+    from rfx._traced_refusal import TracedStructureRefusal
 
-    if isinstance(bins, jax.core.Tracer):
-        raise jax.errors.ConcretizationTypeError(
-            bins, "forward(ringdown=...) identifies poles on the host and needs "
-            "port_s11_freqs as concrete values; pass a numpy array built outside "
-            "the traced function")
-    return np.asarray(bins, dtype)
+    for pe, row in zip(entries, rows, strict=True):
+        if row is None:
+            kind = "source" if pe.is_soft_source else "wire port"
+            label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
+            raise TracedStructureRefusal(
+                f"{caller}(ringdown=...): the {label} cannot be judged for its off time inside the "
+                "identification window: its waveform samples or the time step are traced "
+                "(a waveform parameter, or a graded mesh without dt=, under jax.grad, "
+                "jax.jvp, jax.vmap or jax.jit). Declare that waveform with concrete values "
+                "(S does not depend on the drive's amplitude), or pin dt=.")
 
 
 class RingdownRun:
@@ -978,7 +983,7 @@ class RingdownRun:
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
-        self.bins = None if bins is None else host_bins(bins, np.float64)
+        self.bins = None if bins is None else host_bins(bins, np.float64, caller=self.caller, argument="s_param_freqs" if self.caller == "run" else "port_s11_freqs")
         from rfx.core.yee import CurlBoundary
         self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
                                           periodic=sim._periodic_flags())
@@ -1019,9 +1024,10 @@ class RingdownRun:
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in entries], self.n_steps, field_time_step(self.dt, self.sim._precision),
             tolerance=self.spec.source_off_tol, return_detail=True)
+        _require_source_off_rows(entries, samples, self.caller)
         rows = []
         ratio_long = 0.0
-        for pe, (w, peak, _) in zip(entries, samples):
+        for pe, (w, peak, _) in zip(entries, samples, strict=True):
             ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
             kind = "source" if pe.is_soft_source else "wire port"
             label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
@@ -1937,14 +1943,15 @@ class RingdownStop:
         from rfx.measurement.record_end import source_end_step
         from rfx.sources._sampling import field_time_step
 
+        entries = [pe for pe in self.sim._ports
+                   if (pe.is_soft_source or bool(pe.excite)) and pe.waveform is not None]
         _, samples = source_end_step(
-            [(pe.waveform, 0.) for pe in self.sim._ports
-             if (pe.is_soft_source or bool(pe.excite))
-             and pe.waveform is not None],
+            [(pe.waveform, 0.) for pe in entries],
             self.n_max, field_time_step(self.base.dt, self.sim._precision), tolerance=self.spec.source_off_tol,
             return_detail=True)
         # Scheduling retains n_max for a drive still on at the final sample;
         # the settling witness instead reports no source end in that case.
+        _require_source_off_rows(entries, samples, self.base.caller)
         n_off = max((off for _, _, off in samples), default=0)
         return _first_check_record(n_off, self.spec.window_start, self.chunk)
 

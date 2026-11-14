@@ -1627,7 +1627,7 @@ class _ExecuteMixin:
                 from rfx.ringdown import RingdownForward, host_bins
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32)).run(_nu_fwd_call)
+                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32, caller="forward", argument="port_s11_freqs")).run(_nu_fwd_call)
             result = _conductors.with_sheet_layout_reports(result, pinned_sheet_layout)
             if _nu_design_spec is not None:
                 result = result._replace(
