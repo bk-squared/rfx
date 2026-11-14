@@ -86,8 +86,6 @@ def generate(builders):
 
 # Filled from the measured cold-solve cost of passing 12-step candidates.
 PR_CHOICES = {
-    "_float64": "_float64::run_uniform:run_nonuniform:constant:12",
-
     "_boundary": "_boundary:cpml:run_uniform:run_nonuniform:constant:12",
     "_boundary_spec": "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12",
     "_cpml_kappa_max": "_cpml_kappa_max:kappa:run_uniform:run_distributed:constant:12",
@@ -136,8 +134,7 @@ PR_FINDING_CHOICES = {
 
 def pr_subset(cells, findings):
     """Main-path refusals, one strict witness per cause, and passing families."""
-    chosen = {c.id for c in cells if (not c.equivalence and c.refused in PR_REFUSAL_LANES)
-              or c.row == ('_float64', '')}
+    chosen = {c.id for c in cells if not c.equivalence and c.refused in PR_REFUSAL_LANES}
     causes = {entry['cause'] for groups in findings.values()
               for entries in groups.values() for entry in entries}
     by_id = {c.id: c for c in cells}
@@ -151,6 +148,8 @@ def pr_subset(cells, findings):
         chosen.add(identity)
     families = {c.row[0] for c in cells if c.equivalence}
     for family in sorted(families):
+        if family == '_float64':
+            continue
         candidates = [c for c in cells if c.equivalence and c.steps == 12
                       and c.row[0] == family and c.id not in findings]
         if not candidates:

@@ -79,6 +79,7 @@ def means_inside_while(hlo):
 
 
 @pytest.mark.parametrize('boundary', ['cpml', 'pec'])
+@pytest.mark.slow
 def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
     assert len(jax.devices('cpu')) >= 2, 'requires two CPU devices'
     original = jax.jit
@@ -112,6 +113,7 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
         assert_mean_placement(means, boundary, stage, driver='wrapped')
 
 
+@pytest.mark.slow
 def test_closed_box_tfsf_keeps_wrapped_cpml_means_outside_loop(monkeypatch, tmp_path):
     assert len(jax.devices('cpu')) >= 2, 'requires two CPU devices'
     original = jax.jit
