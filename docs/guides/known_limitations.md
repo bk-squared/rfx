@@ -862,7 +862,7 @@ mesh's cells the probe record equals the uniform mesh's within 2×10⁻⁶ of it
 request, solved as declared or refused: periodic faces run on the uniform mesh only; CPML or the wall pair that suits
 the polarization runs on the graded mesh, and on the uniform mesh only on an axis it does not wrap (Method B's y). One transverse operator for both meshes is planned after 2.0.
 
-An oblique Bloch plane wave (|`angle_deg`| > 0.01°, `method='bloch'`) is refused before stepping with subpixel smoothing (`True` or `'full_tensor'`), `'kottke_pec'` smoothing, conformal PEC, a PEC occupancy override with `pec_occupancy_model='kottke'`, or Debye/Lorentz pole materials: their electric-field updates omit the Bloch phase. This replaces a measured |T| of 0.832 against Airy 0.749 at 30° on a 24 mm εr 4 slab (+0.91 dB), and the Debye scan-carry error. Use normal incidence, or turn smoothing off (`subpixel_smoothing=False`), turn conformal PEC off, omit `pec_occupancy_override`, or use a material without poles, as applicable.
+An oblique Bloch plane wave (|`angle_deg`| > 0.01°, `method='bloch'`) is refused before stepping with off-diagonal node coupling (`'full_tensor'` smoothing or a directly supplied node tensor), `'kottke_pec'` smoothing with a PEC shape, mask or occupancy, conformal PEC, or a PEC occupancy override with `pec_occupancy_model='kottke'`. The off-diagonal node coupling does not apply the Bloch phase, and these PEC combinations remain unsupported. Use normal incidence, omit the node coupling, turn smoothing or conformal PEC off, or omit `pec_occupancy_override`, as applicable.
 
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 

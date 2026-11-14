@@ -471,11 +471,12 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
-@partial(jax.jit, static_argnames=("periodic", "boundary", "high_wall"))
+@partial(jax.jit, static_argnames=("periodic", "bloch", "boundary", "high_wall"))
 def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
                        inv_xx: jnp.ndarray, inv_yy: jnp.ndarray, inv_zz: jnp.ndarray,
                        dt: float, dx: float,
-                       periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+                       periodic: tuple = (False, False, False), bloch: tuple | None = None,
+                       *, boundary=None, high_wall: tuple[bool, bool, bool], bloch_operand=None) -> FDTDState:
     """Electric field update with per-component **inverse** permittivity.
 
     Stage 2 production form: takes the diagonal of the inverse-eps
@@ -545,7 +546,9 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
         _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_zz, sigma_ez, dt)
 
     # curl H (identical to update_e and update_e_aniso).
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
+    if bloch_operand is not None:
+        bloch = bloch_operand
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
@@ -560,7 +563,8 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                    dt: float, dx: float,
-                   periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+                   periodic: tuple = (False, False, False), bloch: tuple | None = None,
+                   *, boundary=None, high_wall: tuple[bool, bool, bool], bloch_operand=None) -> FDTDState:
     """Electric field update with per-component anisotropic permittivity.
 
     Same as :func:`update_e` but uses separate permittivity arrays for
@@ -608,7 +612,9 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
     # curl H (same as update_e)
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
+    if bloch_operand is not None:
+        bloch = bloch_operand
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
