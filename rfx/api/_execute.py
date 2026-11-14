@@ -1027,8 +1027,8 @@ class _ExecuteMixin:
         Parameters
         ----------
         subpixel_smoothing : bool or str
-            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
-            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            False: staircase (the default); True: diagonal only, first order on curved interfaces (an eps-38 cylinder about 1 % high at 0.5 mm).
+            "full_tensor": full anisotropic averaging, second order on uniform and graded one-device meshes; refusals (UPML, conformal PEC, traced eps_r, ...): support matrix.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC inverse tensor.
         gradient : {"autodiff", "adjoint"}
             Opt-in settled-spectrum reciprocity design eps adjoint.
@@ -1867,8 +1867,8 @@ class _ExecuteMixin:
         snapshot : SnapshotSpec or None
             Field snapshot schedule and selection; None disables snapshots.
         subpixel_smoothing : bool or str
-            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
-            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            False: staircase (the default); True: diagonal only, first order on curved interfaces (an eps-38 cylinder about 1 % high at 0.5 mm).
+            "full_tensor": full anisotropic averaging, second order on uniform and graded one-device meshes; refusals (UPML, conformal PEC, traced eps_r, ...): support matrix.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC occupancy rule.
         skip_preflight : bool
             Skip advisories only; realization refusals and runtime admission still apply.
