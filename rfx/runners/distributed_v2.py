@@ -229,7 +229,7 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         )
 
 
-def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=(), allow_msl_run=False):
+def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
     Periodic/Bloch boundaries, reference-plane or passive ports, Kerr materials,
@@ -292,13 +292,10 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         )
 
     msl = getattr(sim, "_msl_ports", None) or ()
-    if msl and (not allow_msl_run or any(p.mode == "eigenmode" for p in msl)):
+    if any(p.mode == "eigenmode" for p in msl):
         from rfx._diagnostic_transport import diagnostic_refusal
         reason = (
             "mode='eigenmode' needs a magnetic-source channel for its J+M launch; slabs have none"
-            if allow_msl_run else
-            "microstrip forward has no gradient parity bar" if forward else
-            "this caller does not drive or terminate microstrip ports; use compute_msl_s_matrix for microstrip S"
         )
         raise diagnostic_refusal(RfxUnsupported(
             f"add_msl_port() port(s) ({len(msl)}): not supported on the {lane} path; "
@@ -370,7 +367,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     refuse_unsupported_distributed_features(
         sim,
         lane="distributed (v2) runner",
-        allow_msl_run=lane == "run_distributed",
         bloch=kwargs.get("bloch"),
         diagnostics=diagnostics,
     )
@@ -543,9 +539,12 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                               amplitude_kind=pe.amplitude_kind)
     if sim._msl_ports:
         from rfx.model.msl_stamp import realize_msl_ports
+        from rfx.model.conductors import drawn_launch_eps
+        forward_msl = lane == "fwd_distributed"
         msl = realize_msl_ports(sim, grid, materials, conductors,
-            eps_source=materials.eps_r, stamp_drive_materials=None,
-            edge_release="run", eigenmode="run_distributed",
+            eps_source=(drawn_launch_eps(sim, grid, base_materials)
+                        if forward_msl else materials.eps_r), stamp_drive_materials=None,
+            edge_release="forward_uniform" if forward_msl else "run", eigenmode=lane,
             geometry_edges=msl_geometry_edges, sources=sources, n_steps=n_steps)
         materials, conductors = msl.materials, msl.conductors
         del msl

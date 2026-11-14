@@ -300,12 +300,6 @@ def test_c6_graded_distributed_port_occupancy(monkeypatch,kind):
     sim,grid,_,_=model('graded',kind)
     import rfx.runners.distributed_nu as kernel
     occupancy = jnp.ones(grid.shape)*.5
-    if kind == 'msl':
-        monkeypatch.setattr(kernel,'run_nonuniform_distributed_pec',lambda *a,**k:pytest.fail('stepped'))
-        with pytest.raises(NotImplementedError,match=r"add_msl_port\(\) port\(s\)"):
-            sim.forward(pec_occupancy_override=occupancy,n_steps=2,
-                        distributed=True,devices=jax.devices(),skip_preflight=True)
-        return
     with monkeypatch.context() as patch:
         one = capture(patch, sim, grid, 'graded', occupancy)
     from jax.sharding import Mesh

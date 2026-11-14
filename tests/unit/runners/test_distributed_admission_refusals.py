@@ -361,13 +361,13 @@ def test_subgrid_refinement_is_refused(entry):
 
 
 @pytest.mark.parametrize("lane", ("uniform", "graded"))
-@pytest.mark.parametrize("entry", ("run_eigenmode", "forward"))
+@pytest.mark.parametrize("entry", ("run_eigenmode", "forward_eigenmode"))
 def test_msl_named_refusals(lane, entry):
     from tests.unit.runners._msl_multidevice_scene import build_scene
 
     sim = build_scene("T1" + ("_graded" if lane == "graded" else ""),
-                      mode="eigenmode" if entry == "run_eigenmode" else "laplace").sim
-    reason = "magnetic-source channel" if entry == "run_eigenmode" else "gradient parity bar"
+                      mode="eigenmode").sim
+    reason = "magnetic-source channel"
     with pytest.raises(NotImplementedError, match=reason) as error:
         kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
         if entry == "run_eigenmode":
@@ -654,3 +654,75 @@ def test_subgrid_refuses_relative_strength_by_name(validation):
     sim.add(Box((.008, .003, .003), (.016, .009, .009)), material="relative")
     with pytest.raises(NotImplementedError, match="run_subgridded.*RelativeStrength"):
         sim.run(n_steps=1, skip_preflight=True)
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_msl_forward_is_carried(lane):
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A' + ('_graded' if lane == 'graded' else ''), excite_all=True).sim
+    sim.add_probe((.006, .004, .0004), 'ez')
+    expected = sim.forward(n_steps=2).time_series
+    actual = sim.forward(n_steps=2, distributed=True, devices=_devices()).time_series
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize('name', [
+    'eps_override', 'sigma_override', 'pec_mask_override', 'pec_occupancy_override',
+    'design_box', 'checkpoint_every', 'grad', 'jvp', 'vmap',
+])
+def test_msl_uniform_forward_design_refusals(name):
+    import jax.numpy as jnp
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A', excite_all=True).sim
+    grid = sim._build_realized_grid()
+    eps = jnp.ones(grid.shape, jnp.float32)
+    def solve(eps):
+        return jnp.sum(sim.forward(eps_override=eps, n_steps=2,
+                                  distributed=True, devices=_devices()).time_series)
+    with pytest.raises(NotImplementedError, match='eps_override|sigma_override|pec_mask_override|pec_occupancy_override|design_box|checkpoint_every'):
+        if name == 'grad':
+            jax.grad(solve)(eps)
+        elif name == 'jvp':
+            jax.jvp(solve, (eps,), (eps,))
+        elif name == 'vmap':
+            jax.vmap(solve)(eps[None])
+        else:
+            value = ((.004, .003, 0.), (.005, .004, .0006)) if name == 'design_box' else 2 if name == 'checkpoint_every' else eps
+            sim.forward(n_steps=2, distributed=True, devices=_devices(), **{name: value})
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_msl_forward_ringdown_refused(lane):
+    from rfx.ringdown import RingdownSpec
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A' + ('_graded' if lane == 'graded' else ''), excite_all=True).sim
+    with pytest.raises(NotImplementedError, match='ringdown=.*distributed=True'):
+        sim.forward(n_steps=2, distributed=True, devices=_devices(), ringdown=RingdownSpec())
+
+
+def test_msl_graded_design_box_refused():
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A_graded', excite_all=True).sim
+    with pytest.raises(NotImplementedError, match='design_box'):
+        sim.forward(n_steps=2, distributed=True, devices=_devices(),
+                    design_box=((.004, .003, 0.), (.005, .004, .0006)))
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+@pytest.mark.parametrize('name', ['checkpoint_every', 'checkpoint_segments'])
+def test_msl_calculator_devices_checkpoint_refused(lane, name):
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A' + ('_graded' if lane == 'graded' else ''), excite_all=True).sim
+    with pytest.raises(NotImplementedError, match=name + '.*devices.*forward checkpoints'):
+        sim.compute_msl_s_matrix(devices=_devices(), **{name: 2})
+
+
+def test_msl_graded_kottke_occupancy_refused():
+    import jax.numpy as jnp
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1_graded').sim
+    sim._pec_occupancy_model = 'kottke'
+    occupancy = jnp.full(sim._build_realized_grid().shape, .5)
+    with pytest.raises(NotImplementedError, match="kottke.*pec_occupancy_override"):
+        sim.forward(n_steps=2, distributed=True, devices=_devices(),
+                    pec_occupancy_override=occupancy)

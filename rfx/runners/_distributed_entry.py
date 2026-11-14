@@ -48,7 +48,6 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
     refuse_unsupported_distributed_features(
         self,
         lane=lane,
-        allow_msl_run=entry == "run",
         diagnostics=_diagnostics,
     )
     from rfx.runners._admission import admit_conformal_floor
@@ -179,7 +178,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         from rfx.runners.distributed_v2 import run_distributed
         _res = run_distributed(
             self,
-            lane=plan.lane,
+            lane="fwd_distributed" if _forward_port_s11 else plan.lane,
             n_steps=n_steps,
             devices=devices,
             diagnostics=_diagnostics,

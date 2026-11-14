@@ -17,10 +17,7 @@ from tests.contracts.run_forward_census import (
     l2_differences, normalize_inputs, observables, run_l2, port_s_pair, port_drive_witness_leaves,
 )
 
-KNOWN_ROWS = (
-    ('P-msl', 'multi-device-graded', 'admission', 'A7', '#2032: forward(distributed=True) refuses microstrip ports until a gradient parity bar admits it'),
-    ('P-msl', 'multi-device-uniform', 'admission', 'A7', '#2032: forward(distributed=True) refuses microstrip ports until a gradient parity bar admits it'),
-)
+KNOWN_ROWS = ()
 
 # Declarations with ports compare equal S requests in both directions (#1373):
 # (a) run's default against forward(port_s11_freqs=run's bins);
@@ -244,6 +241,8 @@ FIELD_ROWS = (
     ('P-lumped', 'uniform'),
     ('P-lumped2', 'graded'),
     ('P-lumped2', 'uniform'),
+    ('P-msl', 'multi-device-uniform'),
+    ('P-msl', 'multi-device-graded'),
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
@@ -365,8 +364,7 @@ BOTH_REFUSE_ROWS = tuple((declaration, path)
 CONSEQUENCE_PAIRS = (
 )
 ID_PATTERNS = {
-    'A7': {'run': ('admitted',), 'forward': ('raised', 'RfxUnsupported',
-            'microstrip forward has no gradient parity bar')},
+
     'D4': {'L1': ('/carry_init/flux_monitors/*', '/init/flux_monitors/*',
                   '/ctx/flux_meta/*', '/invariants/ctx/flux_meta/*',
                   '/ctx/use_flux_monitors', '/invariants/ctx/use_flux_monitors'),
@@ -567,6 +565,7 @@ def check_fields(declaration, path, direction=None):
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-conformal', 'P-conformal') or row in (
+    ('P-msl', 'multi-device-uniform'), ('P-msl', 'multi-device-graded'),
     ('R-rlc', 'multi-device-graded'), ('R-rlc', 'multi-device-uniform'),
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),

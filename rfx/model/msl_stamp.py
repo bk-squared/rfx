@@ -19,11 +19,11 @@ def realize_msl_ports(sim, grid, materials, conductors, *, eps_source,
 
     ``eps_source`` is the path's concrete fixture permittivity;
     ``stamp_drive_materials`` is the graded drive copy, or None;
-    ``edge_release`` selects the run conductor release; ``eigenmode`` names
+    ``edge_release`` selects run, uniform forward, or graded forward release; ``eigenmode`` names
     the caller for the magnetic-channel refusal. Drives retain declaration
     and stamp order and contain (cell, component, waveform, sigma, field).
     """
-    from rfx.model.conductors import clear_conductor_edges
+    from rfx.model.conductors import clear_conductor_edges, forward_port_stage
     from rfx.sources.msl_port import (
         _msl_yz_cells, compute_msl_mode_profile, make_msl_port_sources,
         msl_cell, msl_cross_section_span, msl_normal_component,
@@ -55,13 +55,19 @@ def realize_msl_ports(sim, grid, materials, conductors, *, eps_source,
         if stamp_drive_materials is not None:
             stamp_drive_materials = setup_msl_port(
                 grid, port, stamp_drive_materials, mode_profile=profile)
-        if edge_release != "run":
-            raise ValueError(f"Unsupported microstrip edge release: {edge_release!r}")
         cells = list(_msl_yz_cells(grid, port))
-        conductors = clear_conductor_edges(
-            conductors, cells, component=msl_normal_component(port),
-            entity_id=f"msl_port[{index}]", port_kind="microstrip",
-            released_edges=profile['cell_indices'] if profile is not None else cells)
+        released = profile['cell_indices'] if profile is not None else cells
+        if edge_release == "forward_uniform":
+            conductors, _, _ = forward_port_stage(
+                conductors, cells, msl_normal_component(port), f"msl_port[{index}]",
+                port_kind="microstrip", skip_empty=True, released_edges=released)
+        elif edge_release in ("run", "forward_graded"):
+            conductors = clear_conductor_edges(
+                conductors, cells, component=msl_normal_component(port),
+                entity_id=f"msl_port[{index}]", port_kind="microstrip",
+                released_edges=released)
+        else:
+            raise ValueError(f"Unsupported microstrip edge release: {edge_release!r}")
         if entry.excite and entry.waveform is not None:
             drives.extend((cell, "ez", entry.waveform, sigma, field)
                           for cell, (sigma, field) in port._drive_stamps.items())

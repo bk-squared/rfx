@@ -492,7 +492,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_ports", "lumped_port"): _OTHER_RUNNERS,
     ("_ports", "passive_port"): _OTHER_RUNNERS - {"run_distributed"},
     ("_ports", "wire_port"): _OTHER_RUNNERS,
-    ("_msl_ports", "msl_port"): _NO_SHEETS,
+    ("_msl_ports", "msl_port"): _NO_SHEETS | {"run_distributed"},
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"fwd_distributed"},
     # One configuration per port is all the single-run assembly takes; the
     # per-mode list is driven only by compute_waveguide_s_matrix().
@@ -528,12 +528,10 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_current_moments", "block_moments"): _NO_SHEETS | {"run_distributed"},
 }
 
-# forward(distributed=True) refuses these: no gradient parity bar exists for them.
-_MULTI_DEVICE_RUN_ONLY = frozenset({("_msl_ports", "msl_port")})
-
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
 # Define that runner's carried rows once; neither entry inherits uniform v2.
 _DISTRIBUTED_NU_ROWS = frozenset({
+    ("_msl_ports", "msl_port"),
     # Both graded entries carry folded R and stateful series RL elements.
     ('_lumped_rlc', 'R'),
     ('_lumped_rlc', 'series_RL'),
@@ -856,11 +854,6 @@ for _kind in ("plane_wave", "closed_box"):
 for _row, _lanes in _ADMITTED_ON.items():
     _ADMITTED_ON[_row] = (_lanes - {"fwd_distributed"}) | (
         {"fwd_distributed"} if "run_distributed" in _lanes else set())
-
-for _row in _MULTI_DEVICE_RUN_ONLY:
-    _ADMITTED_ON[_row] = (_ADMITTED_ON[_row] | {"run_distributed", "run_distributed_nu"}) - {
-        "fwd_distributed", "fwd_distributed_nu",
-    }
 
 ADMITS: dict[str, frozenset] = {
     lane: frozenset(row for row, lanes in _ADMITTED_ON.items() if lane in lanes)

@@ -145,8 +145,10 @@ def test_msl_s_matrix(scene, lane, n, length, monkeypatch):
 @pytest.mark.parametrize('name', ['eps_override', 'checkpoint_every', 'checkpoint_segments'])
 def test_msl_devices_refuses_forward_options(graded, name):
     scene = build_scene('T1A_graded' if graded else 'T1A', excite_all=True)
-    with pytest.raises(NotImplementedError, match=name + '.*devices.*(forward|gradient)'):
+    with pytest.raises(NotImplementedError, match=name + '.*devices.*(forward|gradient)') as error:
         scene.sim.compute_msl_s_matrix(devices=host_devices(2), **{name: 1})
+    if name == 'eps_override':
+        assert 'a gradient through compute_msl_s_matrix with devices has no parity bar' in str(error.value)
 
 
 @pytest.mark.slow

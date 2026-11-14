@@ -164,6 +164,10 @@ def compute_lumped_wire_s_matrix_via_scan(
                 "ports; their pre-injection drive reference voltages are not recorded. "
                 "Use one device (omit devices=...).")
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
+        if sim._msl_ports:
+            raise NotImplementedError(
+                "The distributed lumped/wire S-matrix scan does not measure microstrip ports; "
+                "use compute_msl_s_matrix for microstrip S.")
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")
         refuse_distributed_lumped_s_pmc(sim)
     elif not graded:
