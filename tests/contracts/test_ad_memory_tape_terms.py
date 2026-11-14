@@ -295,10 +295,10 @@ def test_ad_memory_tape_terms():
     print(f"AD_TAPE_RUNTIME {time.monotonic() - started:.6f}", file=sys.stderr, flush=True)
 
 
-@pytest.mark.parametrize("segments,record_chosen", ((16, True), (1, False)),
+@pytest.mark.parametrize("segments,record_chosen", ((160, True), (1, False)),
                          ids=("record-chosen", "line-carried"))
 def test_closed_box_record_memory_slope(segments, record_chosen):
-    """The resident record counts only when it replaces more saved line bytes."""
+    """160 constant 3,792 B lines repay the 262,400/524,800 B records."""
     from rfx.api._ad_memory_model import face_record_pays
     from rfx.sources.tfsf import tfsf_from_declaration
     sim, grid, _, _ = _scene()

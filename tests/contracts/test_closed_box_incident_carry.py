@@ -19,12 +19,10 @@ def test_closed_box_carry_shapes_do_not_depend_on_step_bound():
 def test_only_a_paying_forward_builds_a_face_record(monkeypatch):
     """A paying checkpointed forward builds one face record; until_decay keeps the line.
 
-    Segments save one line per boundary whatever ``checkpoint`` says (#1815),
-    so eight segments without checkpoint pay here too (8 x 1,392 B of lines
-    against a 5,696 B record). A record over until_decay's whole step bound
-    would cost (bound) x (line nodes), and the line grows with the bound too:
-    an early-stopping oblique box at the default bound took 50 times longer
-    (#1814).
+    Segments save one line per boundary whatever ``checkpoint`` says.
+    The line now has 136 padding nodes instead of the old 20 padding
+    nodes on both sides: 8 x 4,176 B repays the 5,696 B record. The line
+    length stays constant for until_decay, which carries it directly.
     """
     import rfx.stepping.incident_line as line
     from rfx import Simulation
