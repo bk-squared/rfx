@@ -341,13 +341,22 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
             _refuse_zero_cells(shape, name, "Material volume",
                                cell_sizes=diagnostic_sizes, centres=diagnostic_centres)
         elif empty is None:
+            # The host check never reads the shape: its fields may be tracers of
+            # the enclosing trace. The bounds a trace can form (Box, Sphere,
+            # Cylinder) go in as operands; other shapes report them unavailable.
+            corners = ()
+            if isinstance(shape, (Box, Sphere, Cylinder)):
+                lo, hi = shape.bounding_box()
+                corners = (*lo, *hi)
+
             def check(value, *axes):
                 if not np.any(value):
-                    _refuse_zero_cells(shape, name, "Material volume",
-                                       cell_sizes=axes[:3], centres=axes[3:])
+                    bounds = (axes[6:9], axes[9:12]) if corners else UNAVAILABLE
+                    _refuse_zero_cells(shape, name, "Material volume", cell_sizes=axes[:3],
+                                       centres=axes[3:6], bounds=bounds)
             from rfx._traced_check import traced_check
             traced_check("material volume", "nonempty cells", check,
-                         mask, *cell_sizes, *centres[:3])
+                         mask, *cell_sizes, *centres[:3], *corners)
     return mask
 
 
@@ -566,9 +575,21 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None,
     return not bool(np.any(np.asarray(mask, dtype=bool)))
 
 
-def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None):
+UNAVAILABLE = object()
+"""``bounds`` value for a material volume whose bounds the caller cannot form."""
+
+
+def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None, bounds=None):
+    """Refuse a declaration owning no cells.
+
+    ``bounds`` = (corner_lo, corner_hi) from the caller, or :data:`UNAVAILABLE`;
+    with None a material volume reads ``shape.bounding_box()``.
+    """
     if what == "Material volume":
-        bounds = shape.bounding_box() if hasattr(shape, 'bounding_box') else None
+        if bounds is UNAVAILABLE:
+            bounds = None
+        elif bounds is None:
+            bounds = shape.bounding_box() if hasattr(shape, 'bounding_box') else None
         thickness = (tuple(float(b - a) for a, b in zip(*bounds))
                      if bounds is not None else "unavailable")
         local = "unavailable"
