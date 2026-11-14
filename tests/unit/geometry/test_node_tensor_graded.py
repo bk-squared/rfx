@@ -332,10 +332,11 @@ def test_graded_tfsf_keeps_oblique_refusal(entry):
                 getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
             messages.append(str(info.value))
         else:
-            # The invariant slab reaches the uniform full-tensor step.
-            result = getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
-            assert result.time_series.shape[0] == 1
-            messages.append('admitted; completed n_steps=1')
+            # The uniform tensor update cannot apply the oblique Bloch phase.
+            from rfx.errors import RfxUnsupported
+            with pytest.raises(RfxUnsupported, match="subpixel_smoothing='full_tensor'.*does not apply the Bloch phase") as info:
+                getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
+            messages.append(str(info.value))
     print(f'A2 TF/SF {entry}: uniform={messages[0]}; graded={messages[1]}')
 
 
