@@ -4,7 +4,9 @@ import warnings
 from weakref import WeakSet
 
 from rfx._warning_origin import user_stacklevel
+from rfx.core.jax_utils import is_tracer
 from rfx.errors import ConfigurationWarning, RfxUnsupported
+from rfx.geometry.csg import Cylinder, Sphere
 from rfx.model.smoothing_admission import admit_full_tensor
 
 _warned_kottke_pec = WeakSet()
@@ -17,6 +19,7 @@ def warn_kottke_pec_volume(sim, subpixel_smoothing):
     from rfx.geometry.rasterize_grid import _box_zero_axes
     from rfx.model.materials import assembled_as_pec
 
+    message = None
     for entry in sim._geometry:
         if not assembled_as_pec(sim, entry):
             continue
@@ -26,14 +29,32 @@ def warn_kottke_pec_volume(sim, subpixel_smoothing):
             continue  # A zero-thickness Box declares a sheet, not a volume.
         if getattr(shape, "points", None) is not None and shape.radius == 0:
             continue  # A zero-radius PolylineWire declares a filament.
-        warnings.warn(
+        message = (
             "subpixel_smoothing='kottke_pec' with a PEC volume is "
             "experimental, not recommended for metal; see known limitations, "
-            '"A metal face resting on a dielectric between grid nodes"',
-            ConfigurationWarning, stacklevel=user_stacklevel(),
+            '"A metal face resting on a dielectric between grid nodes"'
         )
+        # The first closed curved PEC body takes precedence over other PEC volumes.
+        if isinstance(shape, Sphere) or (
+            isinstance(shape, Cylinder)
+            and (is_tracer(shape.height) or float(shape.height) > 0)
+            and (is_tracer(shape.radius) or float(shape.radius) > 0)
+        ):
+            kind = "Sphere" if isinstance(shape, Sphere) else "Cylinder"
+            message = (
+                f"subpixel_smoothing='kottke_pec' on the closed curved PEC {kind} "
+                f"'{entry.material_name}': on a PEC sphere at ka 6 with cells of λ/20 "
+                "the extinction missed Mie by 20–51 % (the staircase by 13–14 %), "
+                "and a late field of 3–5 % of the peak stayed after the pulse. "
+                "Use subpixel_smoothing=False (the staircase), or judge the result "
+                "over three refinements; see known limitations, "
+                '"Subpixel smoothing with "kottke_pec" leaves a late field around '
+                'a closed curved metal body".'
+            )
+            break
+    if message is not None:
+        warnings.warn(message, ConfigurationWarning, stacklevel=user_stacklevel())
         _warned_kottke_pec.add(sim)
-        return
 
 
 def refuse_forward_smoothing(sim, *, subpixel_smoothing,
