@@ -715,3 +715,14 @@ def test_msl_calculator_devices_checkpoint_refused(lane, name):
     sim = build_scene('T1A' + ('_graded' if lane == 'graded' else ''), excite_all=True).sim
     with pytest.raises(NotImplementedError, match=name + '.*devices.*forward checkpoints'):
         sim.compute_msl_s_matrix(devices=_devices(), **{name: 2})
+
+
+def test_msl_graded_kottke_occupancy_refused():
+    import jax.numpy as jnp
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1_graded').sim
+    sim._pec_occupancy_model = 'kottke'
+    occupancy = jnp.full(sim._build_realized_grid().shape, .5)
+    with pytest.raises(NotImplementedError, match="kottke.*pec_occupancy_override"):
+        sim.forward(n_steps=2, distributed=True, devices=_devices(),
+                    pec_occupancy_override=occupancy)
