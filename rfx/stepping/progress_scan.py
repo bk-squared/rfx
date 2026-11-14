@@ -13,7 +13,8 @@ def scan_with_progress(
     xs,
     *,
     n_steps: int,
-    report_every: int,
+    report_every: int | None,
+    inherit_cadence: bool = True,
     label: str = "",
     stream: object | None = None,
     trace_probes: tuple = (),
@@ -36,6 +37,8 @@ def scan_with_progress(
     With events and no user ``report_every``, chunks have at least two
     steps and a one-step tail joins the previous chunk. A one-step run
     stays one chunk. User-specified reporting keeps its exact chunks.
+    Lanes that ignore reporting pass ``inherit_cadence=False`` so an outer
+    event scope's cadence cannot replace the derived chunk.
 
     ``trace_probes`` are extra pytrees checked for tracers alongside
     ``carry_init`` and ``xs``. Pass the material / geometry arrays here: a
@@ -79,9 +82,9 @@ def scan_with_progress(
     import jax
 
     if stop_fn is None:
-        every = (None if report_every is None and current() is not None
+        every = (None if report_every is None and (not inherit_cadence or current() is not None)
                  else validate_report_every(report_every, n_steps=n_steps))
-        cadence = getattr(current(), "cadence", None)
+        cadence = getattr(current(), "cadence", None) if inherit_cadence else None
         # Without a user report_every nothing is printed, so the chunks only
         # carry events: never a one-step piece (an inherited cadence too).
         step = max(2, cadence or (int(n_steps) + 99) // 100) if every is None else every
@@ -143,7 +146,7 @@ def scan_with_progress(
         carry = jax.block_until_ready(carry)
         chunk_outputs.append(ys)
         done = hi
-        if reporter is not None and (
+        if reporter is not None and every is not None and (
                 stop_fn is None or done - reporter.last_reported >= every
                 or done >= n_steps):
             reporter.report(done)

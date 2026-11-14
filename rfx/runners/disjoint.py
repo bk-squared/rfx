@@ -117,6 +117,10 @@ def run_disjoint_stage2_path(
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(sim, conductors, n_steps=n_steps, path='run_subgridded')
     from rfx.stepping import prepared as prepared_step
+    from rfx.stepping.events import begin_step, end_step, next_solve, tick
+    next_solve()
+    begin_step(state, total=n_steps, ticks=True, probes=(config,))
+    chunk = max(2, (int(n_steps) + 99) // 100)
     for step in range(int(n_steps)):
         t = float(step * config.dt)
         if source_timing == "pre_step":
@@ -152,11 +156,14 @@ def run_disjoint_stage2_path(
                 for mapping, _probe in probe_entries
             ]
         )
+        if int(n_steps) - step - 1 != 1:
+            tick(step + 1, (state, samples[-1]), every=chunk)
     if samples:
         time_series = jnp.asarray(samples, dtype=state.ex_f.dtype)
     else:
         time_series = jnp.zeros((int(n_steps), 0), dtype=state.ex_f.dtype)
 
+    end_step((state, time_series), n_steps)
     return Result(
         realized_geometry=geometry_record,
         diagnostics=diagnostics,

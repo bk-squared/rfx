@@ -79,6 +79,7 @@ ALLOW_LIST = (
     ('rfx/ringdown/__init__.py', '_judge_record', 'recorded in note'),
     ('rfx/ringdown/__init__.py', '_error_witnesses', 'recorded in RingdownWitness.note'),
     ('rfx/stepping/events.py', 'scope', 're-raises after recording phase_end stop=error'),
+    ('rfx/stepping/events.py', 'resolve_deferred', 'recorded in path "unresolved"; the entry\'s own exception propagates unchanged'),
     ('rfx/stepping/rank.py', '_staged_by_enclosing_program', 'fails closed: a probe failure refuses the run'),
     ('rfx/surrogate.py', 'export_geometry_sdf', 're-raises with context'),
 )

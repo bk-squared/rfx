@@ -93,6 +93,8 @@ def run_graded_legacy_slab_loop(
     use_dispersion,
     use_lorentz,
 ):
+    from rfx.stepping.events import begin_step, end_step, next_solve
+    next_solve()
     check_map_count()
     def _update_h_shmap(st, mat, spacings, *, ranks):
         (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
@@ -807,6 +809,13 @@ def run_graded_legacy_slab_loop(
         return final_, full_ys
 
     from rfx.stepping.sharded import recorded_sharded_call
+    begin_step(carry_init, total=n_steps, ticks=False,
+               probes=(sharded_materials, sharded_pec_mask, edge_keep,
+                       debye_coeffs, lorentz_coeffs, cpml_params,
+                       warmup_xs, opt_xs, cell_sizes, sharded_grid.e_cell_sizes,
+                       inv_dx_sharded, inv_dy_rep, inv_dz_rep,
+                       inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
+                       drives, source_nodes, src_local_specs, prb_local_specs))
     final_carry, probe_ts = recorded_sharded_call(run_fn,
         carry_init,
         (sharded_materials, sharded_pec_mask, edge_keep,
@@ -815,6 +824,7 @@ def run_graded_legacy_slab_loop(
           inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *cell_sizes)),
         warmup_xs, opt_xs,
         ranks=mesh_ranks(mesh), e_cell_sizes=sharded_grid.e_cell_sizes)
+    end_step((final_carry, probe_ts), n_steps)
     final_state_sharded = final_carry["fdtd"]
     final_cpml_sharded = final_carry.get("cpml") if use_cpml else None
     final_debye_sharded = final_carry.get("debye") if use_debye else None

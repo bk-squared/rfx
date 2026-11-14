@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from rfx.stepping.events import begin_step, end_step, tick, next_solve, result_ready
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from rfx._host_limits import check_map_count
 
 if TYPE_CHECKING:
+    from typing import Protocol
+    from rfx.stepping.graded import GradedStepContext
     from numpy.typing import ArrayLike, DTypeLike
     from rfx.current_moments import CurrentMomentMonitor
     from rfx._internal._uniform_specs import DesignBoxSpec
@@ -18,6 +20,9 @@ if TYPE_CHECKING:
     from rfx.boundaries.pec import SheetSpec
     from rfx.boundaries.pec import WireSpec
     import numpy as np
+
+    class _StepWithContext(Protocol):
+        context: GradedStepContext
 
 from functools import partial
 
@@ -138,7 +143,8 @@ def run_nonuniform(
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
 
-    begin_step((carry_init, xs), total=n_steps, ticks=False, probes=(materials,))
+    begin_step((carry_init, xs), total=n_steps, ticks=False,
+               probes=(cast("_StepWithContext", setup.step_fn_inv).context, setup.invariants))
     # ---- n_warmup split --------------------------------------------------
     # When n_warmup > 0, run the first n_warmup steps with the carry
     # stop_gradient'd so AD builds no tape for that transient lead-in.
@@ -453,7 +459,7 @@ def run_nonuniform_until_decay(
 
     begin_step((carry, inv_args), total=max_steps, ticks=report_every is not None,
                label=report_label, cap=decay_by > 0 or stop_fn is not None,
-               probes=(materials,))
+               probes=(cast("_StepWithContext", setup.step_fn_inv).context, setup.invariants))
     while steps_done < max_steps:
         this_chunk = min(int(check_interval), max_steps - steps_done)
         if stop_fn is not None and max_steps - steps_done - this_chunk == 1:

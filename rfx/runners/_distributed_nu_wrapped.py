@@ -62,6 +62,7 @@ def run_prepared(setup, layout, mesh, invariants, carry, waves, advance, *,
                 slab_records.grid.dt, xs[0], ranks=ranks, previous=previous)
             return final, samples
 
+    setattr(advance, "context", setup.step_fn_inv.context)
     final, records = run_steps(carry, invariants, waves, mesh_ranks(mesh), advance,
         n_steps=n_steps, n_warmup=n_warmup, checkpoint_every=checkpoint_every,
         compile_loop=nu.jax.jit, scan_loop=nu.lax.scan)

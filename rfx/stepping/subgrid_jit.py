@@ -626,7 +626,19 @@ def _make_step_fn(ctx):
 
 
 def run_subgridded_scan(*, _step_ctx, carry_init, xs):
+    from rfx.stepping.events import begin_step, end_step, next_solve
+    from rfx.stepping.progress_scan import scan_with_progress
+    next_solve()
     check_map_count()
     step_fn = _make_step_fn(_step_ctx)
-    final_carry, probe_series = jax.lax.scan(step_fn, carry_init, xs)
+    n_steps = xs[0].shape[0]
+    ticks = begin_step((carry_init, xs), total=n_steps, ticks=True,
+                       probes=(_step_ctx,))
+    if ticks:
+        final_carry, probe_series = scan_with_progress(
+            step_fn, carry_init, xs, n_steps=n_steps, report_every=None,
+            inherit_cadence=False, trace_probes=(_step_ctx,))
+    else:
+        final_carry, probe_series = jax.lax.scan(step_fn, carry_init, xs)
+    end_step((final_carry, probe_series), n_steps)
     return final_carry, probe_series
