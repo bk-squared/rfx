@@ -179,15 +179,24 @@ def _run_optimizer(
     loss_history: list[float] = []
     latents: list | None = [] if keep_iterates else None
     solves = {"forward": 0, "reverse": 0, "forward_mode": 0}
-    for it in range(n_iters):
+    value_only = None
+    it = 0
+    while it < n_iters:
         req = opt.ask(state)
-        if not req.iterate or not req.need_grad:
+        if req.iterate != req.need_grad:
             raise NotImplementedError('The optimizer loop requires iterate=True and need_grad=True')
         latent = req.x
         # Count mathematical solves, including a non-finite evaluation, not
         # tracing/retries: scalar = 1 forward + 1 reverse; jacrev = 1 forward
         # + (m+1) reverse; jacfwd = x.size forward-mode, no extra forward.
-        if m == 0:
+        if not req.need_grad:
+            if value_only is None:
+                value_only = _jit_with_fallback(fun, jit, name)
+            values = value_only(req.x)
+            loss, cons_values = (values, None) if m == 0 else (values[0], values[1:])
+            grad = cons_grads = None
+            solves["forward"] += 1
+        elif m == 0:
             loss, grad = evaluate(req.x)
             cons_values = cons_grads = None
             solves["forward"] += 1
@@ -202,10 +211,13 @@ def _run_optimizer(
             else:
                 solves["forward_mode"] += req.x.size
 
-        finite = bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))
+        finite = bool(jnp.isfinite(loss))
+        if req.need_grad:
+            finite = finite and bool(jnp.all(jnp.isfinite(grad)))
         if m > 0:
-            finite = (finite and bool(jnp.all(jnp.isfinite(cons_values)))
-                      and bool(jnp.all(jnp.isfinite(cons_grads))))
+            finite = finite and bool(jnp.all(jnp.isfinite(cons_values)))
+            if req.need_grad:
+                finite = finite and bool(jnp.all(jnp.isfinite(cons_grads)))
         if not finite:
             warnings.warn(
                 f"{name}: non-finite loss/gradient (NaN or Inf) at iteration "
@@ -218,6 +230,11 @@ def _run_optimizer(
             )
             latent = last_good
             break
+
+        if not req.iterate:
+            state = opt.tell(state, req, loss, grad, cons_values, cons_grads)
+            latent = state.x
+            continue
 
         last_good = latent
         if it_count is not None:
@@ -232,6 +249,7 @@ def _run_optimizer(
 
         if verbose and (it % 10 == 0 or it == n_iters - 1):
             print(f"  iter {it:4d}  loss = {loss_val:.6e}")
+        it += 1
 
     return latent, loss_history, latents, solves
 
