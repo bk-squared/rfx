@@ -76,7 +76,8 @@ def test_microstrip_vmap(n):
     devices = host_devices(n)
     sim = scene_for('T1A', 'graded', 'laplace', n)
     base, masks = parameter_blocks(sim, 'T1A')
-    ps = jnp.array([[0., 0., 0., 0.], [0., 0., .5, .5]], jnp.float32)
+    # Match the lumped-port override row's supported batch/device layout.
+    ps = jnp.linspace(0., .5, n)[:, None] * jnp.array([0., 0., 1., 1.], jnp.float32)
     def solve(p, options):
         return sim.forward(eps_override=eps_of(base, masks, p), n_steps=1050, **options).time_series
     expected = np.stack([np.asarray(solve(p, {})) for p in ps])
