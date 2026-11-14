@@ -4,7 +4,7 @@
 def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors,
                   aniso_eps=None, aniso_inv_eps=None, conformal_weights=None,
                   aniso_inv_eps_smooth=False, subpixel_smoothing=False,
-                  node_smoothing=False, pec_present=False):
+                  node_smoothing=False, pec_present=False, use_upml=False):
     use_tfsf = tfsf is not None
     # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
     # REAL grid cannot sustain (otherwise the wave under-tilts). Drive the shared solver
@@ -23,12 +23,19 @@ def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors,
     if _oblique_bloch:
         from rfx.errors import RfxUnsupported
         clauses, routes = [], []
+        if use_upml:
+            clauses.append("the UPML absorber")
+            routes.append(", or the CPML absorber")
         if node_smoothing:
             clauses.append("off-diagonal node coupling (node_smoothing)")
             routes.append(", or no off-diagonal node coupling")
-        if subpixel_smoothing == "kottke_pec" and pec_present:
-            clauses.append("subpixel smoothing with a PEC shape")
-            routes.append(", or subpixel_smoothing=False")
+        if aniso_inv_eps is not None and not aniso_inv_eps_smooth and pec_present:
+            if subpixel_smoothing == "kottke_pec":
+                clauses.append("subpixel smoothing with a PEC shape")
+                routes.append(", or subpixel_smoothing=False")
+            else:
+                clauses.append("an inverse permittivity tensor (aniso_inv_eps) with a PEC mask or occupancy")
+                routes.append(", or no aniso_inv_eps")
         if aniso_eps is not None and conformal_weights is not None:
             clauses.append("conformal PEC")
             routes.append(", or conformal PEC off")

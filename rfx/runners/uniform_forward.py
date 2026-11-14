@@ -607,7 +607,8 @@ def _forward_from_materials(
     # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
     # this branch — the two would double-correct at sigmoid edges.
     pec_occupancy_for_run, aniso_inv_eps_run, occupancy_tensor = _occupancy.select_occupancy_operator(
-        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
+        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy,
+        debye=debye, lorentz=lorentz)
     from rfx.model.source_coefficients import resolve_run_sources
     sources = resolve_run_sources(sources, materials, self, grid,
         tensor=occupancy_tensor or aniso_eps is not None or aniso_inv_eps is not None or conformal_weights is not None)
