@@ -5,7 +5,7 @@ from tests._distributed_cpml_cross_trace import PR_PREFIXES
 from tests._distributed_dispersive_cpml import snapshot_parity
 from tests.unit.runners.test_distributed_edge_averaged_materials import _debye_box
 
-pytestmark = pytest.mark.distributed
+pytestmark = [pytest.mark.distributed, pytest.mark.slow]
 
 
 @pytest.mark.parametrize("kind", ["debye", "lorentz"])
