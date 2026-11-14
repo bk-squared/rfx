@@ -4,6 +4,7 @@ import json
 import os
 import threading
 from contextlib import contextmanager
+from itertools import product
 from pathlib import Path
 from time import perf_counter
 from unittest.mock import patch
@@ -78,7 +79,10 @@ def parameter_blocks(sim, name):
         mask = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
         xs = np.flatnonzero(mask.any(axis=(1, 2))).tolist()
         assert xs == expected[k], (name, k, xs, expected[k])
-        assert mask.any()
+        ys = range(25, 31) if name.startswith('T') else ([18] if k == 3 else range(28, 48))
+        # J0g's full cell lists, independently fixed by the physical boxes.
+        expected_cells = list(product(expected[k], ys, range(8, 12)))
+        np.testing.assert_array_equal(np.argwhere(mask), expected_cells)
         masks.append(mask.astype(np.float32))
     emit('blocks', scene=name, x_indices=expected,
          cells=[np.argwhere(mask).tolist() for mask in masks])

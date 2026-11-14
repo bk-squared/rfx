@@ -117,7 +117,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                 queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
                             sigma_port=sigma_port, unit_field=unit_field)
                 material_drive.append(None)
-        if (ports_present or sim._msl_ports) and not overridden:
+        if (ports_present or (sim._msl_ports and lane == "fwd_distributed_nu")) and not overridden:
             from rfx.model.materials import with_components
             final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
                 debye_spec=debye_spec, lorentz_spec=lorentz_spec)
