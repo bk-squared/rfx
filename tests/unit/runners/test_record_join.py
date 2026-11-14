@@ -180,3 +180,26 @@ def test_runner_flag_selects_host_join(monkeypatch):
     assert calls == [True]
     with pytest.raises(RuntimeError, match='device join reached'):
         records.assemble({'ntff': np.asarray(carry)}, multi_process=False)
+
+
+def test_time_plane_step_axis_chunking(monkeypatch):
+    layout = layout_for('time_planes')
+    observed = []
+    original = join.chunk_shape
+    def chunk(shape, dtype, record_size, x_axis):
+        value = original(shape, dtype, record_size, x_axis)
+        observed.append((shape, value, x_axis))
+        return value
+    monkeypatch.setattr(join, 'chunk_shape', chunk)
+    layout.assemble(layout.initial())
+    assert observed
+    for shape, tile, axis in observed:
+        assert shape[0] == layout.frames and tile[0] < shape[0]
+        assert axis == 1 and tile[1] == shape[1]
+
+
+def test_time_plane_stop_gradient():
+    layout = layout_for('time_planes')
+    carry = filled(layout)
+    gradient = jax.grad(lambda x: sum(jnp.sum(a) for a in layout.assemble(x)))(carry)
+    assert all(np.count_nonzero(a) == 0 for a in gradient)

@@ -16,7 +16,8 @@ from rfx.api._spec import ForwardResult
 def _require_wrapped_records(records, step_kind):
     if records.layouts and step_kind != "wrapped":
         labels = {"planes": "DFT planes", "flux": "flux monitors", "ntff": "NTFF",
-                  "moments": "current moments", "snapshots": "field snapshots"}
+                  "moments": "current moments", "snapshots": "field snapshots",
+                  "time_planes": "dft_time_records"}
         names = ", ".join(labels[kind] for kind in records.layouts)
         raise NotImplementedError(
             f"Graded multi-device {names} require the wrapped step; PMC is not supported")
@@ -67,7 +68,7 @@ def execute_from_materials(
     # stencil_order (both distributed and non-uniform are unsupported).
     self._check_stencil_order_supported(distributed=True)
     from rfx.runners._distributed_records import refuse_record_options
-    refuse_record_options(self, {})
+    refuse_record_options(self, {}, run=is_run)
     import warnings as _w
     from rfx.runners.distributed_nu import (
         build_sharded_nu_grid,

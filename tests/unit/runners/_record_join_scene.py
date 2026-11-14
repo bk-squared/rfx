@@ -7,7 +7,7 @@ from rfx import Simulation, SnapshotSpec
 from rfx.runners._distributed_records import SlabRecords
 from tests._multi_device_scene import host_devices
 
-KINDS = ('planes', 'flux', 'ntff', 'moments', 'snapshots')
+KINDS = ('planes', 'flux', 'ntff', 'moments', 'snapshots', 'time_planes')
 
 
 def layout_for(kind, n=2, *, size=1, nx=17, single_frequency=False):
@@ -20,9 +20,11 @@ def layout_for(kind, n=2, *, size=1, nx=17, single_frequency=False):
     grid = sim._build_grid()
     assert grid.shape[0] == nx
     freqs = np.linspace(3e9, 7e9, 1 if single_frequency else 40*size)
-    if kind == 'planes':
+    if kind in ('planes', 'time_planes'):
         sim.add_dft_plane_probe(axis='y', coordinate=4e-3, component='ez', freqs=freqs,
                                 region=(2, nx - 2, 1, 79), name='record')
+        if kind == 'time_planes':
+            sim._time_recorded_dft_planes = {'record'}
     elif kind == 'flux':
         sim.add_flux_monitor(axis='y', coordinate=4e-3, freqs=freqs, name='record')
     elif kind == 'ntff':
