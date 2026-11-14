@@ -82,6 +82,29 @@ def test_projected_bounds_convention_and_rounding():
     np.testing.assert_array_equal(broadcast.x, [0, 1])
     assert broadcast.x.dtype == jnp.float32
 
+    # The first lower bound and second upper bound round outward in float32.
+    bounds = ((0.7, 1.3), (-0.9, 0.1))
+    pairs = np.asarray(bounds, dtype=np.float64)
+    for method in ("adam", "projected_adam", "mma"):
+        options = {} if method == "mma" else dict(lr=1.0 if method == "adam" else 0.1)
+        for jit in (False, True):
+            for target in ((0.0, -2.0), (2.0, 1.0)):
+                seen = []
+
+                def fun(x):
+                    jax.debug.callback(lambda value: seen.append(np.asarray(value).copy()), x)
+                    return jnp.sum((x - jnp.asarray(target)) ** 2)
+
+                result = rfx.minimize(fun, [1.0, -0.4], bounds=bounds, method=method,
+                                      n_iters=40, jit=jit, **options)
+                jax.effects_barrier()
+                points = np.stack(seen).astype(np.float64)
+                assert points.shape == (40, 2)
+                assert np.all(points >= pairs[:, 0]), (method, jit, target, points.min(axis=0))
+                assert np.all(points <= pairs[:, 1]), (method, jit, target, points.max(axis=0))
+                history = np.asarray(result.x_history, dtype=np.float64)
+                assert np.all(history >= pairs[:, 0]) and np.all(history <= pairs[:, 1])
+
 
 def test_mma_worst_case_circumcentre():
     with jax.enable_x64():
@@ -267,3 +290,50 @@ def test_box_map_preserves_endpoint_gradient(monkeypatch):
         x = np.float32(-1) if p == 0 else np.float32(0.7)
         expected = np.full(2, width * np.float32(2) * x, dtype=np.float32)
         np.testing.assert_allclose(derivative, expected, rtol=1e-7, atol=0)
+
+
+@pytest.mark.parametrize("method", ["adam", "projected_adam", "mma"])
+@pytest.mark.parametrize("jit", [False, True])
+def test_host_reading_objective(method, jit):
+    def fun(x):
+        return jnp.sum(x**2) if x[0] > 0 else jnp.sum(x**2) + 1
+
+    options = dict(bounds=[(0, 1)] * 2) if method != "adam" else {}
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = rfx.minimize(fun, [0.5, 0.5], method=method, n_iters=3, jit=jit, **options)
+    assert [type(w.message) for w in caught] == ([rfx.ConfigurationWarning] if jit else [])
+    assert result.nfev == 3 and result.setup_forwards == 0
+    assert not result.stopped_nonfinite
+    assert result.history[-1] < result.history[0]
+    np.testing.assert_allclose(result.fun, fun(result.x), rtol=1e-6)
+
+
+@pytest.mark.parametrize("method", ["adam", "projected_adam", "mma"])
+@pytest.mark.parametrize("jit", [False, True])
+def test_evaluated_points_equal_history(method, jit):
+    seen = []
+    target = jnp.array([0.31, -1.77, 2.2])
+
+    def fun(x):
+        jax.debug.callback(lambda value: seen.append(np.asarray(value).copy()), x)
+        return jnp.sum((x - target) ** 2)
+
+    options = {} if method == "mma" else dict(lr=0.5 if method == "adam" else 0.1)
+    result = rfx.minimize(fun, [0.1, 0.2, 0.3],
+                          bounds=[(-0.3, 0.7), (-1.1, 0.9), (0.01, 2.0)],
+                          method=method, n_iters=40, jit=jit, **options)
+    jax.effects_barrier()
+    points = np.stack(seen)
+    history = np.asarray(result.x_history)
+    assert points.shape == history.shape == (40, 3)
+    assert points.dtype == history.dtype == np.float32
+    difference = np.abs(points.astype(np.float64) - history.astype(np.float64))
+    if jit:
+        assert np.all(difference <= np.spacing(np.abs(history))), difference
+    else:
+        np.testing.assert_array_equal(
+            points.view(np.uint32), history.view(np.uint32),
+            err_msg=f"max absolute difference: {difference.max():.17g}",
+        )
+    np.testing.assert_array_equal(np.asarray(result.x).view(np.uint32), history[-1].view(np.uint32))

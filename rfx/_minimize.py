@@ -115,7 +115,7 @@ def minimize(
     worst_case : bool
         MMA only: minimise the largest entry using epigraph rows fun(x)/s,
         with a0=1, a=1, c=1000, d=1 and s the initial maximum. One setup
-        forward computes s; eval_shape obtains the row count without a solve.
+        forward computes both s and the row count.
         For n parameters and m entries, use forward mode if n < m + 2,
         otherwise reverse mode. Scalar objectives use value-and-gradient.
     n_iters : int
@@ -135,8 +135,11 @@ def minimize(
     Returns
     -------
     MinimizeResult
-        x and fun describe the same evaluated point, one update before the
-        point optimize returns. history holds finite objectives (the unscaled
+        x is the evaluated iterate, one update before the point optimize
+        returns. Under jit=True, x and x_history are the evaluated iterates
+        mapped outside the compiled function, and can differ from the points
+        fun received by one unit in the last place; fun is the value at the
+        received point. history holds finite objectives (the unscaled
         maximum for worst_case); x_history has shape (k, n). nfev includes a
         non-finite evaluation and excludes setup_forwards, which is 1 for
         worst_case and 0 otherwise. solves counts only loop passes. jacobian
@@ -184,9 +187,6 @@ def minimize(
     if not bool(jnp.all(jnp.isfinite(start))):
         raise RfxRefusal("x0 must remain finite in the default float dtype")
 
-    def physical(point):
-        return point
-
     if box is not None:
         lo64, hi64 = box
         try:
@@ -198,24 +198,26 @@ def minimize(
             raise RfxRefusal("bounds must have finite width in the default float dtype")
         lower, upper = jnp.asarray(lower), jnp.asarray(upper)
 
-        def physical(point):
-            p = jax.nn.sigmoid(point) if method == "adam" else point
-            raw = lo + (hi - lo) * p
-            return raw + jax.lax.stop_gradient(jnp.clip(raw, lower, upper) - raw)
-
         p0 = (original - lo64) / (hi64 - lo64)
         if method == "adam":
             with np.errstate(divide="ignore"):
                 p0 = np.clip(np.log(p0 / (1 - p0)), -13.8, 13.8)
         start = jnp.asarray(p0, dtype=dtype)
 
-    shape = jax.eval_shape(fun, physical(start))
-    if not hasattr(shape, "shape") or (worst_case and (len(shape.shape) != 1 or shape.shape[0] == 0)) or (not worst_case and shape.shape != ()):
-        raise RfxRefusal("fun must return a nonempty vector with worst_case=True, or a scalar otherwise")
-    m = shape.shape[0] if worst_case else 0
+    def physical(point):
+        if box is None:
+            return point
+        p = jax.nn.sigmoid(point) if method == "adam" else point
+        raw = lo + (hi - lo) * p
+        return raw + jax.lax.stop_gradient(jnp.clip(raw, lower, upper) - raw)
+
+    m = 0
     scale = None
     if worst_case:
         values = np.asarray(fun(physical(start)))
+        if values.ndim != 1 or values.size == 0:
+            raise RfxRefusal("fun must return a nonempty vector with worst_case=True, or a scalar otherwise")
+        m = values.size
         if not np.all(np.isfinite(values)) or np.any(values < 0) or np.max(values) <= 0:
             raise RfxRefusal("worst_case fun entries at x0 must be finite and nonnegative with a positive maximum")
         scale = float(np.max(values))
@@ -224,6 +226,8 @@ def minimize(
         values = fun(physical(point))
         if worst_case:
             return jnp.concatenate((jnp.zeros(1, dtype=values.dtype), values / scale))
+        if jnp.shape(values) != ():
+            raise RfxRefusal("fun must return a nonempty vector with worst_case=True, or a scalar otherwise")
         return values
 
     rate = 0.01 if lr is None else lr
