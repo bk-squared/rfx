@@ -332,11 +332,13 @@ def compute_waveguide_s_matrix(
     from rfx.boundaries.pmc import refuse_waveguide_pmc
     refuse_waveguide_pmc(self)
     from rfx.runners._admission import admit
-    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
+    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec,
+                                              "subpixel_smoothing": subpixel_smoothing})
     if port_reference_sims is not None:
         for reference in port_reference_sims:
             refuse_waveguide_pmc(reference)
-            admit(reference, "waveguide_s_matrix")
+            admit(reference, "waveguide_s_matrix",
+                  run_args={"subpixel_smoothing": subpixel_smoothing})
 
     conformal_solve = None
     if conformal_pec:

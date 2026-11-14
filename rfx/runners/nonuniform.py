@@ -1146,7 +1146,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     admit(
         sim,
         lane,
-        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params},
+        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params,
+                  "subpixel_smoothing": subpixel_smoothing},
         diagnostics=diagnostics,
     )
 

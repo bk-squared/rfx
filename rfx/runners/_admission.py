@@ -1219,6 +1219,11 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
             raise RfxUnsupported("run_subgridded does not implement RelativeStrength Lorentz poles; use a uniform or graded run")
     admit_conformal_floor(sim, lane, (run_args or {}).get("conformal_pec"),
                           smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
+    from rfx.model.smoothing_admission import admit_full_tensor
+    admit_full_tensor(
+        sim, (run_args or {}).get("subpixel_smoothing", False),
+        distributed=lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"},
+    )
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
         refuse_distributed_sources(sim, lane)
     if lane == "s_matrix_scan":
@@ -1390,7 +1395,7 @@ def admit_forward_s_matrix(sim):
 
 
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
-                       distributed=False):
+                       distributed=False, subpixel_smoothing=False):
     """Check the requested scan extraction before run() starts its field solve."""
     uses_scan = (False if distributed and sim._uses_nonuniform_mesh else
                  any(p.is_port for p in sim._ports) if distributed else _s_matrix_ports(sim))
@@ -1400,7 +1405,8 @@ def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
     if compute_s_params is False or not uses_scan:
         return
     try:
-        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec,
+                                               "subpixel_smoothing": subpixel_smoothing})
     except NotImplementedError as error:
         rows = refused(sim, "s_matrix_scan", {"conformal_pec": conformal_pec})
         inputs = ", ".join(ROW_WORDS[row] for row in rows) or str(error)

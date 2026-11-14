@@ -177,7 +177,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     if not graded:
         sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
         from rfx.runners._admission import admit
-        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec,
+                                               "subpixel_smoothing": subpixel_smoothing})
     if not skip_preflight:
         from rfx._diagnostic_transport import report_diagnostics
         report_diagnostics(sim._auto_preflight(
