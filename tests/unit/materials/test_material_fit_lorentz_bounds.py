@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from rfx.errors import AccuracyWarning
 from rfx.material_fit import fit_lorentz
 from rfx.model.pole_stability import largest_growth
 
@@ -78,6 +79,17 @@ def test_top_of_band_resonance(resonance):
         np.mean(np.abs(measured) ** 2))
     assert result.fit_error == pytest.approx(expected_error, rel=1e-12, abs=1e-15)
     assert result.fit_error < 0.05
+
+
+@pytest.mark.parametrize("n_poles", [2, 3])
+def test_heavy_loss_floor(n_poles):
+    freqs = np.geomspace(1e9, 40e9, 100)
+    with pytest.warns(AccuracyWarning, match="at the floor"):
+        result = fit_lorentz(freqs, np.full(freqs.shape, 1.1 - 0.11j), n_poles)
+    assert result.eps_inf >= 1.0
+    budget = 3 * 299792458.0 ** 2 / 1e-3 ** 2
+    dt = 0.99 / np.sqrt(budget)
+    assert largest_growth(result.eps_inf, 0, result.poles, dt, 4 * dt ** 2 * budget) <= 1 + 1e-9
 
 
 @pytest.mark.parametrize("freqs", [[2e9], [2e9, 2e9], [0.1, 0.5, 1.0]])
