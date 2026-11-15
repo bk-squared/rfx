@@ -87,25 +87,27 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
     from rfx.sparams._tail_witness import combine_witness_details, port_record_witness
     from rfx.measurement.settling import settling_db_from_port_records
 
-    rows = list(prior_rows)
+    rows = [{**row, 'reads': ('S-parameters',)} for row in prior_rows]
     db = rows[0]['db'] if rows else None
     records = s_read_records(result)
     if records:
         db, detail = port_record_witness(
             records, dt, port_source_end, bins, freq_max=freq_max)
-        rows.append(detail)
+        rows.append({**detail, 'reads': ('S-parameters',)})
     if getattr(result, 'waveguide_ports', None):
         db, detail = settling_db_from_port_records(
             result.waveguide_ports.values(), freqs=bins,
             freq_max=freq_max, return_detail=True)
-        rows.append(detail)
+        rows.append({**detail, 'reads': ('S-parameters',)})
     probe_db, probe_detail = probe_record_settling_witness(
         getattr(result, 'time_series', None), probe_info, warn=warn,
         source_end_index=source_end, dt=dt, freqs=bins, freq_max=freq_max)
+    field_reads = field_outputs_read(result)
+    probe_detail = {**probe_detail, 'reads': field_reads}
     if probe_info:
         db = probe_db
         rows.append(probe_detail)
-    elif rows and _reads_unrecorded_fields(result):
+    elif field_reads:
         rows.append({**probe_detail, 'status': 'absent', 'db': None,
                      'worst_freq_hz': None,
                      'share_per_bin': np.zeros(bins.size),
@@ -133,10 +135,16 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
     return db, {**detail, **record_selection_detail(result)}
 
 
+def field_outputs_read(result):
+    """Field outputs judged by the probe record, in reporting order."""
+    return tuple(name for name, present in (
+        ("NTFF far fields", getattr(result, 'ntff_box', None) is not None),
+        ("field-DFT planes", bool(getattr(result, 'dft_planes', None))),
+        ("flux monitors", bool(getattr(result, 'flux_monitors', None))),
+        ("current-moment far fields", getattr(result, 'current_moment_monitor', None) is not None),
+    ) if present)
+
+
 def _reads_unrecorded_fields(result):
     """True when NTFF, DFT-plane, flux or current-moment outputs are read."""
-    if getattr(result, 'ntff_box', None) is not None:
-        return True
-    if getattr(result, 'current_moment_monitor', None) is not None:
-        return True
-    return any(getattr(result, f, None) for f in ('dft_planes', 'flux_monitors'))
+    return bool(field_outputs_read(result))
