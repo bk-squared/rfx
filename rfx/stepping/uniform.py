@@ -39,7 +39,9 @@ def apply_pec_faces(state, faces, *, normal_ghost_faces=(), **frame):
     ``frame`` (only from a high-padded step) bounds each padded axis's rows.
     """
     from rfx.boundaries import pec as pec_walls
-    return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces, **frame)
+    if frame:
+        return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces, **frame)
+    return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces)
 
 
 @dataclass
