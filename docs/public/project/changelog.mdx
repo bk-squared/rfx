@@ -205,7 +205,12 @@ or Floquet port where it forms lumped/wire S.
   four of the 20 shipped examples, all with a CPML, move. Three gradient
   examples move at rounding level (losses by 5e-7 to 3e-6 relative), and the
   far-field example's printed ring-down settling level moves from -66.8 to
-  -80.2 dB while its directivity stays 1.761 dBi.
+  -80.2 dB, a change of the pole fit behind that level and not of the field,
+  while its directivity stays 1.761 dBi: the probe's field moves by at most
+  1.1e-5 of its peak, the fit over the main window no longer returns a slow
+  non-oscillating pole (the tail's share of the 8 GHz transform falls from
+  4.6e-4 to 9.8e-5), and the fit over the check window returns it before
+  and after (5.1046e-4 against 5.1053e-4; #1687).
 - **Microstrip ports.** A `mode="uniform"` port on a graded grid gets the uniform
   feed (#2641): uniform and graded runs give equal S on identical cells.
   `compute_coax_msl_transition` refuses MSL modes other than `"laplace"` (#2646).

@@ -849,6 +849,28 @@ A weak record still ringing above −71 dB is scored like any other record. The 
 `result.settling_witness["skipped_records"]` with their `tail_ratio`.
 What to do: to judge a component that weak, put a probe of its own at a neighbouring cell, or run in float64.
 
+### The printed ring-down settling level can move by more than 10 dB when the fields change only at rounding level.
+
+Tracker: #1687
+
+`settling_db` is the share that the tail past the end of the record adds to the in-record transform, extrapolated from
+poles fitted to the record after the source ends. A second fit over a check window (the first 90 % of the main
+window, or in a long enough record a window that starts earlier) gives the identification-error indicator
+`settling_witness["error_per_bin"]`; the check window does not enter the printed level. A rounding-level change of
+the record (a code change, or another host's arithmetic) can change which poles the main-window fit returns, and the
+printed level follows. Measured on `examples/tutorials/antenna_farfield_pattern.py` (a point source in a
+60 mm vacuum cube with a CPML, 400 steps, one probe, read at 8 GHz) across one rfx change that moved the probe's field
+by at most 1.1e-5 of its peak (7.5e-3 of the decayed field's peak inside the main window): the fit over the 0.55 ns
+main window returned a slow non-oscillating pole (time constant 5.1 ns) before and not after, so the level moved from
+-66.8 to -80.2 dB (share 4.6e-4 to 9.8e-5), while the check-window fit returned it on both sides (5.1046e-4 against
+5.1053e-4) and the directivity stayed 1.761 dBi. After the change the error indicator read 4.15e-4, 4.2 times the share it qualifies,
+and the status stayed "pass"; the same version read -80.2 dB on one host and -79.7 dB on another. At 800 and 1600
+steps the two versions' shares agree within 15 % and 8 %. At the −40 dB rule (a share of 1e-2), if the main window
+crosses it and the check window does not, the status is "undetermined" with `settling_db` nan, not the opposite
+verdict.
+What to do: do not read a `settling_db` difference between versions or hosts as a change of the field; read
+`settling_witness["error_per_bin"]` beside it, or compare at a longer record.
+
 ### With an automatic mesh, `vmap_material_sweep`'s sequential fallback runs every swept value for the first value's step count.
 
 Tracker: #1293
