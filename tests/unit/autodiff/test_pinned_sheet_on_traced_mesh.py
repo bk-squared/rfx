@@ -329,16 +329,22 @@ def test_a_pinned_sheet_reaches_the_solve_on_the_nonuniform_lane():
     the probe sees.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
-    sim = _build_board(0.5 * DX, probe=(20 * DX, 8 * DX, K_MID * DX))
+    sim = _build_board(0.5 * DX, probe=(20 * DX, 8 * DX, K_MID * DX), pin_dt=False)
     grid = sim._build_nonuniform_grid()
     sheets, wires = [], []
     assemble_materials_nu(sim, grid, None, sheets, wires)
     _assert_patch_edges(sheets)
 
     with_patch = float(_loss(0.5 * DX, probe=(20 * DX, 8 * DX, K_MID * DX),
-                             n_steps=30))
+                             n_steps=30, pin_dt=False))
     bare = _build_board(0.5 * DX, probe=(20 * DX, 8 * DX, K_MID * DX),
-                        pinned=False)
+                        pinned=False, pin_dt=False)
+    # Both boards derive dt, so they must build the same cells and the same dt:
+    # otherwise a dt difference would pass as the patch reaching the solve.
+    bare_grid = bare._build_nonuniform_grid()
+    for axis in ("dx_arr", "dy_arr", "dz"):
+        np.testing.assert_array_equal(np.asarray(getattr(grid, axis)), np.asarray(getattr(bare_grid, axis)))
+    assert float(grid.dt) == float(bare_grid.dt), (grid.dt, bare_grid.dt)
     without = float(jnp.sum(bare.forward(n_steps=30, skip_preflight=True)
                             .time_series ** 2))
     assert abs(with_patch - without) / max(without, 1e-30) > 1e-3, (
