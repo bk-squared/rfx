@@ -98,7 +98,9 @@ def wr90(graded):
                               z=Boundary(lo="pec", hi="pec")),
         cpml_layers=6, snap="declared", **profile)
     add_sheet(sim, Box((0.02, 0.0, 0.006), (0.03, 0.024, 0.006)))
-    add_poles(sim, Box((0.036, 0.006, 0.0), (0.042, 0.018, 0.003)))
+    # The pole block lies outside both ports' source-to-reference spans
+    # (9-18 mm, 42-51 mm), so only admit() can stop this row.
+    add_poles(sim, Box((0.030, 0.006, 0.0), (0.036, 0.018, 0.003)))
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
         sim.add_waveguide_port(x, direction=d, mode=(1, 0), mode_type="TE",
@@ -212,9 +214,22 @@ EARLIER_ROWS = {
 }
 
 
+_REAL_SCAN = jax.lax.scan
+_ARMED = {"on": False}
+
+
+def _guarded_scan(*args, **kwargs):
+    # A module imported while the patch is on may bind this function as a
+    # default argument (slab_wrap's scan_loop=jax.lax.scan); disarmed, it is
+    # the real scan, so no later test inherits the failure.
+    if _ARMED["on"]:
+        pytest.fail("stepped an f0 sheet with a pole medium")
+    return _REAL_SCAN(*args, **kwargs)
+
+
 def _no_scan(monkeypatch):
-    monkeypatch.setattr(jax.lax, "scan",
-                        lambda *a, **k: pytest.fail("stepped an f0 sheet with a pole medium"))
+    monkeypatch.setattr(jax.lax, "scan", _guarded_scan)
+    monkeypatch.setitem(_ARMED, "on", True)
 
 
 @pytest.mark.parametrize("row", sorted(ADMIT_ROWS))
