@@ -61,7 +61,7 @@ def _build_vmap_scan_fn(
         no planes were registered).
     """
     from rfx.stepping.vector_pad import refuse_if_forced
-    refuse_if_forced("vmap tangent batch")
+    refuse_if_forced("vmap material sweep")
     check_map_count()
     dt = grid.dt
     dx = grid.dx
