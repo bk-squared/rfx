@@ -200,7 +200,12 @@ or Floquet port where it forms lumped/wire S.
   it, so resonances move: a 24 mm cube with `pec_axes=""` goes from 5.09 to
   8.48 GHz. A low-level `WaveguidePort` given the whole node plane drives and reads
   the row outside the high wall: in a two-mode test its second-mode S entries move
-  by 11 % of the largest flux-extracted entry. `Simulation` runs and ports do not move.
+  by 11 % of the largest flux-extracted entry; this port change does not reach
+  `Simulation` ports. A uniform-mesh `Simulation` without wall loss moves too:
+  four of the 20 shipped examples, all with a CPML, move. Three gradient
+  examples move at rounding level (losses by 5e-7 to 3e-6 relative), and the
+  far-field example's printed ring-down settling level moves from -66.8 to
+  -80.2 dB while its directivity stays 1.761 dBi.
 - **Microstrip ports.** A `mode="uniform"` port on a graded grid gets the uniform
   feed (#2641): uniform and graded runs give equal S on identical cells.
   `compute_coax_msl_transition` refuses MSL modes other than `"laplace"` (#2646).
