@@ -90,7 +90,8 @@ def test_single_port_fields(amplitude):
 def test_traced_zero_amplitude_counts_as_driven():
     def admitted(amplitude):
         sim = SimpleNamespace(_waveguide_ports=[SimpleNamespace(name='traced', amplitude=amplitude),
-                                               SimpleNamespace(name='passive', amplitude=0.)], _ports=[])
+                                               SimpleNamespace(name='passive', amplitude=0.)], _ports=[],
+                              _msl_ports=[], _floquet_ports=[], _tfsf=None, _coaxial_ports=[])
         assert require_isolated_s_drive(sim)
         sim._waveguide_ports[1].amplitude = 1.
         with pytest.raises(ValueError, match='driven ports: traced, passive'):
