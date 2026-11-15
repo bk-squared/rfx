@@ -5,4 +5,4 @@
 - Predicted growth per step on 1 mm cubic cells at 0.99 of the vacuum Courant limit falls from 9.82 / 54.93 to 1; `run()` refused the previous fits.
 - On a heavy-loss table (ε′ = 1.1, tan δ = 0.1, 1–40 GHz) the previous fit returned `eps_inf` 0.1, which `run()` accepted and which diverged at the default step; the fit now returns `eps_inf` 1, with worst tan δ errors of 13.6 / 14.6% over 2–20 GHz.
 - On one SciPy build, a last-bit input change moves fitted parameters by less than 0.001% on FR4 and about 0.01% on the heavy-loss table; previously Δε moved by 97% and the low resonance by 82% (0.10 → 0.55 GHz). This does not promise identical poles across SciPy builds.
-- Median fit time on one 8-CPU machine rises from 0.55 to 0.89 s on FR4 (×1.64) and from 0.028 to 0.27 s on the single-resonance test tables (×9.4); the factor depends on the machine.
+- Median fit time, measured on one 8-CPU cluster machine, rises from 0.55 to 0.89 s on FR4 (×1.64) and from 0.028 to 0.27 s on the single-resonance test tables (×9.4).
