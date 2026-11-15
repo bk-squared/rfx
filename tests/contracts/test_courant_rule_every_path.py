@@ -299,6 +299,31 @@ def test_mps_concrete_cells_still_refused(monkeypatch):
         invoke(scene(eps=.5), 'uniform', 'forward')
 
 
+def _no_cpu_device(monkeypatch):
+    import rfx.backend
+    import rfx._traced_check
+    def missing():
+        raise RuntimeError('no CPU backend')
+    monkeypatch.setattr(rfx.backend, 'host_cpu_device', missing)
+    monkeypatch.setattr(rfx._traced_check, 'host_cpu_device', missing)
+    monkeypatch.setattr(jax, 'default_backend', lambda: 'gpu')
+
+
+def test_no_cpu_device_traced_cells_stage_without_callback(monkeypatch):
+    _no_cpu_device(monkeypatch)
+    def loss(eps):
+        return jnp.sum(invoke(scene(eps=eps), 'uniform', 'forward').time_series)
+    compiled = jax.jit(loss)
+    assert 'callback' not in str(jax.make_jaxpr(compiled)(jnp.float32(2.)))
+    assert np.isfinite(np.asarray(compiled(jnp.float32(2.))))
+
+
+def test_no_cpu_device_concrete_cells_still_refused(monkeypatch):
+    _no_cpu_device(monkeypatch)
+    with pytest.raises(ValueError, match='cell Courant limit'):
+        invoke(scene(eps=.5), 'uniform', 'forward')
+
+
 def test_single_device_checkpoint_grad_control_and_refusal():
     def loss(eps):
         value = invoke(scene(eps=eps, impulse=True), 'uniform', 'forward', n=24).time_series

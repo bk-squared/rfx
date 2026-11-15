@@ -153,6 +153,18 @@ def _cells(grid, axis):
     return np.atleast_1d(np.asarray(_concrete(grid.cells(axis)), dtype=np.float64))
 
 
+def _host_checks_unavailable():
+    import rfx.backend  # the two refusals of rfx._traced_check.require_host_callbacks
+    backend = rfx.backend.backend_class()
+    if not backend.host_callbacks or backend.name == "cpu":
+        return not backend.host_callbacks
+    try:
+        rfx.backend.host_cpu_device()
+    except RuntimeError:
+        return True
+    return False
+
+
 def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=None,
                            design_box=None, stencil_order=2, in_program=True,
                            x_range=None, origin=None, conservative=None, subgridded=False):
@@ -166,7 +178,6 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
     """
     import jax
     from rfx._traced_check import traced_check
-    from rfx.backend import backend_class
 
     budget = courant_budget(grid) if budget is None else budget
     if budget is None:
@@ -247,8 +258,8 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
         return
     if not in_program and any(_is_abstract(v) for v in leaves):
         return  # Preserve multi-device jit(grad) until checks can run there.
-    if any(_is_abstract(v) for v in leaves) and not backend_class().host_callbacks:
-        return  # Preserve compiled runs on backends without host callbacks.
+    if any(_is_abstract(v) for v in leaves) and _host_checks_unavailable():
+        return  # Preserve compiled runs where no host callback can run.
     traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
 
 
