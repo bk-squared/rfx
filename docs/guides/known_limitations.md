@@ -672,25 +672,26 @@ Tracker: #1961
 
 The field update divides the curl on each electric-field edge by one permittivity: on a plain edge, the mean of the four
 cells around the edge; on a smoothed edge (`subpixel_smoothing=True` or `"full_tensor"`), the smoothed value; on an edge
-that conformal PEC cuts (`conformal_pec=True` or `Boundary(conformal=True)`), that value divided by the uncut fraction of
-the edge. The operators below act on the same edge every step but form their coefficient from another permittivity, so
-they drive, load or correct the field as if the edge held another material. Each number is the difference between the
-operator's coefficient and the coefficient the update's permittivity gives, divided by the latter, on one edge of one
-test scene (an εr 4 sphere or a PEC sphere, 1 mm cells, uniform mesh, one device; `run()` and `forward()` give the same
-value).
+that conformal PEC cuts (`conformal_pec=True` or `Boundary(conformal=True)`), the permittivity divided by the edge's
+conformal weight (its free length, limited by the cut faces around it). The operators below act on the same edge every
+step but form their own quantity from another permittivity, so they drive, load or correct the field as if the edge held
+another material. Each number is |a − b| / |b|, where a is the operator's quantity and b is the same quantity formed
+from the update's permittivity, on one edge of one test scene (an εr 4 sphere or a PEC sphere, 1 mm cells, uniform mesh,
+one device; `run()` and `forward()` give the same value).
 
 - Lumped, wire and MSL port drives and lumped RLC elements (`add_port`, `add_msl_port`, `add_lumped_rlc`) read the
-  permittivity from before smoothing and before the conformal cut. On a smoothed edge the drives differ by 0.12 to 0.26
-  and the RLC element by 0.75. With `"full_tensor"` the drives differ by 3.8×10⁻⁴ (MSL) to 0.18 and the RLC element by
-  0.64. On an edge that the conformal wall cuts to 0.37 % of its length, the drives differ by 2.3 to 85 and the RLC
-  element by 0.996.
+  permittivity from before smoothing and before the conformal cut. The quantity is the drive's update coefficient, and
+  for an RLC element its update denominator ε/Δt + σ/2 (the inverse of a coefficient). On a smoothed edge the drives
+  differ by 0.12 to 0.26 and the RLC denominator by 0.75. With `"full_tensor"` the drives differ by 3.8×10⁻⁴ (MSL) to
+  0.18 and the RLC denominator by 0.64. On a cut edge with conformal weight 0.0037, the lumped and wire drives differ by
+  85 and 50 and the RLC denominator by 0.996; the MSL drive differs by 2.3 on a cut edge of its own.
 - A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) and the Kerr term
   (`add_material(..., chi3=...)`) read the permittivity of one cell; no option is needed for this. On an edge with one
   εr 4 cell and three εr 1 cells around it, both read 4 where the update reads 1.75. The sheet's per-step loss exponent
   σ·Δt/(ε0·εr) is then 0.44 of the update's (difference 0.56), and the Kerr term reads 2.29 times the update's
-  permittivity (difference 1.29). In a Kerr medium on an edge that a conformal PEC wall cuts to 93 % of its length, the
-  Kerr term reads 4 where the update reads 4.30 (difference 0.069). A sheet with smoothing or conformal PEC, and the
-  Kerr term with smoothing, are refused.
+  permittivity (difference 1.29). In a Kerr medium on a cut edge with conformal weight 0.93, the Kerr term reads 4 where
+  the update reads 4.30 (difference 0.069). A sheet with smoothing or conformal PEC, and the Kerr term with smoothing,
+  are refused.
 - A rectangular-waveguide port on a conformal edge has the same fault; the entry above gives its measured effect.
 
 On a plain edge (no smoothing, no conformal cut) the port drives and RLC elements read the update's permittivity; the
