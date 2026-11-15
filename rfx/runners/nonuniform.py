@@ -606,6 +606,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                  or any(p.is_port and p.extent is not None for p in sim._ports)
                  or graded_lumped_default_s(sim)))
     if scan:
+        from rfx.runners._admission import refuse_foreign_s_drives
+        refuse_foreign_s_drives(sim)
         # The main record keeps its port records at the scan's bins; its S is not formed.
         from rfx.measurement.monitors import default_frequency_grid
         compute_s_params = True

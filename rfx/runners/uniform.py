@@ -785,7 +785,8 @@ def run_uniform(
     # S-parameters: use JIT-integrated DFT for wire ports (fast),
     # fall back to Python loop for lumped ports
     if compute_s_params is None:
-        compute_s_params = len(lumped_ports) > 0 or len(wire_ports) > 0
+        from rfx.runners._admission import default_run_forms_s
+        compute_s_params = default_run_forms_s(sim)
 
     # (2,4) stencil fence: the lumped/wire S-parameter extractors below run a
     # SEPARATE eager FDTD pass (extract_s_matrix_wire /
