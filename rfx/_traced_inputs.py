@@ -100,12 +100,14 @@ def _check_value_fields(value, owner, parameter, depth=4):
 def admit_traced_inputs(owner, arguments):
     """Refuse static arguments before host decisions, then return to the caller.
 
-    The private materials entry shares the public entry's input policy. Its
-    conformal threshold follows run's policy; it adds no public table cells.
+    The private materials entry inherits only S1 run-control rows from run and
+    forward, since other names can hold resolved specs.
     Ringdown post-init supplies its fields through the instance in locals().
     """
     if owner == "Simulation._forward_from_materials":
         rows = {**_BY_OWNER.get("Simulation.run", {}), **_BY_OWNER.get("Simulation.forward", {})}
+        rows = {parameter: row for parameter, row in rows.items()
+                if row[0] == "static" and row[1].startswith("S1:")}
     else:
         rows = _BY_OWNER.get(owner, {})
     if owner == "RingdownSpec" and "self" in arguments:

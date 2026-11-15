@@ -47,6 +47,22 @@ def test_t4_concrete_array_passes_static():
     admit_traced_inputs("Simulation.forward", {"n_steps": jnp.array(3.0)})
 
 
+def test_t4_private_entry_accepts_resolved_spec_but_refuses_traced_count():
+    @dataclass
+    class ResolvedSpec:
+        eps_r: object
+
+    def call(value, *, n_steps):
+        admit_traced_inputs("Simulation._forward_from_materials", {
+            "design_box": ResolvedSpec(value), "n_steps": n_steps,
+        })
+        return value * 2
+
+    jax.make_jaxpr(lambda t: call(t, n_steps=10))(1.0)
+    with pytest.raises(TracedStaticInput, match=r"Simulation._forward_from_materials\(n_steps="):
+        jax.make_jaxpr(lambda t: call(t, n_steps=t))(1.0)
+
+
 def test_walker_containers_pytrees_cycles_and_depth():
     @dataclass
     class Record:

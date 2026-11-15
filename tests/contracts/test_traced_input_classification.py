@@ -60,7 +60,7 @@ def _parameters(fn, drop_first=False):
 def _annotation(fn, parameter):
     original = inspect.unwrap(fn)
     try:
-        return typing.get_type_hints(original)[parameter.name]
+        return typing.get_type_hints(original).get(parameter.name, inspect.Parameter.empty)
     except (NameError, TypeError):
         # Result-only forward references must not hide parameter annotations.
         namespace = dict(original.__globals__, Simulation=Simulation)
@@ -358,7 +358,6 @@ def test_named_waveguide_plane_refusals_are_preserved(parameter, message):
 @pytest.mark.parametrize("parameter,message", [
     ("n_steps", "Simulation._forward_from_materials(n_steps="),
     ("checkpoint_segments", "Simulation._forward_from_materials(checkpoint_segments="),
-    ("design_box", "Simulation._forward_from_materials(design_box="),
     ("conformal_min_weight", "Simulation._forward_from_materials(conformal_min_weight="),
 ])
 @pytest.mark.parametrize("transform", ["make_jaxpr", "vmap", "grad", "jvp"])
