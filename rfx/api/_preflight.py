@@ -1057,7 +1057,7 @@ class _PreflightMixin:
         if self._ports or self._tfsf:
             raise ValueError(
                 "compute_waveguide_s_matrix() is not supported together with "
-                "lumped ports or TFSF"
+                "a lumped or wire port, or a soft source (add_source) or TFSF"
             )
         if self._periodic_axes:
             raise ValueError(

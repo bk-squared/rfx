@@ -39,7 +39,7 @@ def _validate_waveguide_ports(
 ):
     if self._ports or self._tfsf:
         raise ValueError(
-            "compute_waveguide_s_matrix() is not supported together with lumped ports or TFSF"
+            "compute_waveguide_s_matrix() is not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
         )
     if self._periodic_axes:
         raise ValueError(

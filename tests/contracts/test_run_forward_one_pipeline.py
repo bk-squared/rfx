@@ -321,6 +321,12 @@ ADMISSION_ROWS = (
 BOTH_REFUSE_ROWS = tuple((declaration, path)
                          for declaration in ('C-conformal', 'P-conformal')
                          for path in ('graded', 'multi-device-graded', 'multi-device-uniform')) + (
+    ('PW-port-first', 'uniform'),
+    ('PW-port-last', 'uniform'),
+    ('PW-slab-soft-first', 'uniform'),
+    ('PW-slab-soft-last', 'uniform'),
+    ('WG-soft-first', 'uniform'),
+    ('WG-soft-last', 'uniform'),
     ('P-waveguide2', 'uniform'),
     ('P-waveguide2', 'graded'),
     ('C-full-tensor', 'multi-device-uniform'),
@@ -622,6 +628,9 @@ def test_admission(declaration, path, direction):
 
 # These rows refuse at declaration, before either entry can be called.
 DECLARATION_REFUSAL_ROWS = {
+    ('PW-port-first', 'uniform'): 'A TF/SF plane wave is not supported together with a lumped or wire port',
+    ('PW-port-last', 'uniform'): 'A TF/SF plane wave is not supported together with a lumped or wire port',
+    ('WG-soft-first', 'uniform'): 'a lumped or wire port, or a soft source (add_source)',
     ('PW-closed', 'graded'): 'closed_box TFSF require a uniform',
     ('PW-closed', 'multi-device-graded'): 'closed_box TFSF require a uniform',
     ('P-floquet', 'graded'): 'Floquet ports do not support non-uniform z mesh',
@@ -841,3 +850,43 @@ def test_default_port_probes_equal_requests():
     for a, b in zip(forward_owners, run_owners, strict=True):
         assert [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in a.channels] == \
             [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in b.channels]
+
+
+@pytest.mark.parametrize('declaration', ['PW-closed-soft-first', 'PW-closed-soft-last'])
+def test_plane_wave_soft_source_equal_fields(declaration):
+    pair = equal_request_pair(declaration, 'uniform', 'b', n_steps=150)
+    assert all(record['outcome'] == 'admitted' for record in pair.values()), pair
+    a, b = [np.asarray(pair[entry]['result'].time_series) for entry in ('run', 'forward')]
+    assert a.shape == b.shape == (150, 1) and a.dtype == b.dtype
+    assert np.isfinite(a).all() and np.max(np.abs(a)) > 0
+    assert a.tobytes() == b.tobytes()
+
+
+@pytest.mark.parametrize('declaration', ['PW-port-first', 'PW-port-last'])
+def test_plane_wave_port_orders_share_refusal(declaration):
+    reference = run_l2(BUILDERS['PW-port-first'], 'run', 'uniform', n_steps=1)['construction']
+    actual = run_l2(BUILDERS[declaration], 'run', 'uniform', n_steps=1)['construction']
+    assert actual['type'] == reference['type'] == 'ValueError'
+    assert same_raising_line(reference, actual)
+    assert actual['message'] == reference['message']
+
+
+@pytest.mark.parametrize('declaration', ['WG-soft-first', 'WG-soft-last'])
+@pytest.mark.parametrize('entry', ['run', 'forward', 'compute_waveguide_s_matrix'])
+def test_waveguide_soft_source_refused_before_step(monkeypatch, declaration, entry):
+    import jax
+    from tests.contracts.run_forward_census import exception_record
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('mixed waveguide drives reached stepping')
+
+    monkeypatch.setattr(jax.lax, 'scan', forbidden)
+    monkeypatch.setattr(jax.lax, 'while_loop', forbidden)
+    with pytest.raises(ValueError) as caught:
+        sim = BUILDERS[declaration]('uniform')
+        options = {'compute_s_params': False} if entry == 'run' else {}
+        getattr(sim, entry)(n_steps=1, **options)
+    record = exception_record(caught.value)
+    assert raised_in_rfx(record)
+    assert record['type'] == ('RfxUnsupported' if declaration == 'WG-soft-last' and entry != 'compute_waveguide_s_matrix' else 'ValueError')
+    assert 'a lumped or wire port, or a soft source (add_source)' in record['message']

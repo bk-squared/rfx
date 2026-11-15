@@ -1109,11 +1109,23 @@ def refuse_undriven_drives(sim) -> None:
     check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
 
 
+def refuse_plane_wave_with_port(sim, *, adding=None) -> None:
+    """Admit soft sources beside a plane wave, but refuse cell-loading ports."""
+    if (sim._tfsf is not None or adding == "plane_wave") and (
+        adding == "port" or any(pe.is_port for pe in sim._ports)
+    ):
+        raise ValueError(
+            "A TF/SF plane wave is not supported together with a lumped or wire port "
+            "(add_port): the port loads its cells and records a port response; "
+            "soft sources (add_source) are admitted"
+        )
+
+
 def refuse_mixed_waveguide_sources(sim) -> None:
-    """A waveguide drive cannot share a run with lumped/wire ports or TFSF."""
+    """A waveguide drive cannot share a run with ports, soft sources or TFSF."""
     if sim._waveguide_ports and (sim._ports or sim._tfsf):
         raise RfxUnsupported(
-            "Waveguide ports are not supported together with lumped ports or TFSF"
+            "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
         )
 
 
