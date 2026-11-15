@@ -684,14 +684,14 @@ one device; `run()` and `forward()` give the same value).
   for an RLC element its update denominator ε/Δt + σ/2 (the inverse of a coefficient). On a smoothed edge the drives
   differ by 0.12 to 0.26 and the RLC denominator by 0.75. With `"full_tensor"` the drives differ by 3.8×10⁻⁴ (MSL) to
   0.18 and the RLC denominator by 0.64. On a cut edge with conformal weight 0.0037, the lumped and wire drives differ by
-  85 and 50 and the RLC denominator by 0.996; the MSL drive differs by 2.3 on a cut edge of its own.
+  85 and 50 and the RLC denominator by 0.996; the MSL drive differs by 2.3 on a cut edge of its own, with weight 0.17.
 - A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) and the Kerr term
   (`add_material(..., chi3=...)`) read the permittivity of one cell; no option is needed for this. On an edge with one
   εr 4 cell and three εr 1 cells around it, both read 4 where the update reads 1.75. The sheet's per-step loss exponent
   σ·Δt/(ε0·εr) is then 0.44 of the update's (difference 0.56), and the Kerr term reads 2.29 times the update's
-  permittivity (difference 1.29). In a Kerr medium on a cut edge with conformal weight 0.93, the Kerr term reads 4 where
-  the update reads 4.30 (difference 0.069). A sheet with smoothing or conformal PEC, and the Kerr term with smoothing,
-  are refused.
+  permittivity (difference 1.29). In a Kerr medium on an edge next to a conformal cut, whose conformal weight a cut face
+  beside it limits to 0.93, the Kerr term reads 4 where the update reads 4.30 (difference 0.069). A sheet with smoothing
+  or conformal PEC, and the Kerr term with smoothing, are refused.
 - A rectangular-waveguide port on a conformal edge has the same fault; the entry above gives its measured effect.
 
 On a plain edge (no smoothing, no conformal cut) the port drives and RLC elements read the update's permittivity; the
