@@ -1,4 +1,9 @@
-"""A transformed ForwardResult keeps only host data in pytree static state."""
+"""A transformed ForwardResult keeps only host data in pytree static state.
+
+Scene A is the issue's reproduction (scale 1, port at x node 4). Scene B pins
+the realized-width case found in review: scale 1.05 with the port at x node 8,
+next to the traced cells, so the report must read the realized mesh.
+"""
 from dataclasses import fields, is_dataclass
 import warnings
 
@@ -18,9 +23,28 @@ DZ = np.array([.8, .6, 1.4, 1.4, .8]) * MM
 DT = .9 / (299792458. * np.sqrt(3 / (.6 * MM)**2))
 FREQS = np.linspace(10e9, 16e9, 7)
 N_STEPS = 600  # Smallest admitted of {300, 600, 1200}; default RingdownSpec.
+PORT_X_A = 3.3 * MM  # x node 4: 1.0+0.8+0.6+0.9 mm
+PORT_X_B = 8.2 * MM  # x node 8: 1.0+0.8+0.6+0.9+1.2+1.4+1.2+1.1 mm, the window's upper edge
+SCALE_B = 1.05
 
 
-def _forward(scale=None, dx=DX):
+def _realized_dx(scale):
+    """The float32 widths ``_forward(scale)`` builds, in NumPy float32.
+
+    Equal to the traced ``.at[]`` arithmetic op for op (x64 off): ``DX[6] *
+    scale`` multiplies the NumPy float64 scalar, rounded to float32, by the
+    float32 scale in float32; ``float(DX[6] + DX[7]) - ...`` rounds the Python
+    float (weakly typed) to float32 and subtracts in float32. NumPy float32
+    scalar arithmetic rounds each operation the same way (IEEE round to nearest).
+    """
+    w = np.asarray(DX, np.float32).copy()
+    w6 = np.float32(DX[6]) * np.float32(scale)
+    w[6] = w6
+    w[7] = np.float32(float(DX[6] + DX[7])) - w6
+    return w
+
+
+def _forward(scale=None, dx=DX, port_x=PORT_X_A):
     nominal = None
     if scale is not None:
         dx = jnp.asarray(DX, dtype=jnp.float32)
@@ -34,7 +58,7 @@ def _forward(scale=None, dx=DX):
         sim.add_material('fill', eps_r=2.2,
                          sigma=2*np.pi*12.5e9*8.854187817e-12*2.2/300)
         sim.add(Box((0, 0, 0), (12*MM, 11*MM, 5*MM)), material='fill')
-        sim.add_port(position=(3.3*MM, 3.8*MM, .8*MM), component='ez',
+        sim.add_port(position=(port_x, 3.8*MM, .8*MM), component='ez',
                      impedance=50., extent=.6*MM,
                      waveform=GaussianPulse(f0=13e9, bandwidth=.8, cutoff=4.5))
         return sim.forward(n_steps=N_STEPS, port_s11_freqs=FREQS,
@@ -94,28 +118,46 @@ def _assert_static_state(result):
 
 @pytest.fixture(scope='module')
 def eager():
-    # The nominal widths as a concrete float32 profile, no nominal_profiles:
-    # the concrete run the transformed runs' host context stands for.
-    return _forward(dx=np.asarray(DX, np.float32))
+    # The realized widths at scale 1 as a concrete float32 profile, no
+    # nominal_profiles: the report reads the realized mesh (Addendum 3), and
+    # cell 7 at scale 1 may sit one float32 ulp from the declared width.
+    return _forward(dx=_realized_dx(1.0))
 
 
-@pytest.fixture(scope='module', params=[
-    'grad', 'jvp', pytest.param('jacfwd', marks=pytest.mark.slow)])
-def transformed(request):
+def _transform(kind, scale_value, port_x):
     def objective(scale):
-        result = _forward(scale)
+        result = _forward(scale, port_x=port_x)
         value = jnp.sum(jnp.abs(result.ringdown.s_params)**2)
         # Whole-ForwardResult jacfwd has a separate string-leaf limitation.
-        return value, result.ringdown if request.param == 'jacfwd' else result
+        return value, result.ringdown if kind == 'jacfwd' else result
 
-    scale = jnp.float32(1)
-    if request.param == 'grad':
+    scale = jnp.float32(scale_value)
+    if kind == 'grad':
         result = jax.grad(objective, has_aux=True)(scale)[1]
-    elif request.param == 'jvp':
+    elif kind == 'jvp':
         result = jax.jvp(objective, (scale,), (jnp.ones_like(scale),), has_aux=True)[2]
     else:
         result = jax.jacfwd(objective, has_aux=True)(scale)[1]
     return result
+
+
+@pytest.fixture(scope='module', params=[
+    'grad', pytest.param('jvp', marks=pytest.mark.slow),
+    pytest.param('jacfwd', marks=pytest.mark.slow)])
+def transformed(request):
+    return _transform(request.param, 1, PORT_X_A)
+
+
+@pytest.fixture(scope='module')
+def eager_b():
+    # The realized float32 widths at SCALE_B as a concrete profile, no
+    # nominal_profiles: the concrete run of scene B's design step.
+    return _forward(dx=_realized_dx(SCALE_B), port_x=PORT_X_B)
+
+
+@pytest.fixture(scope='module', params=['grad', 'jvp'])
+def transformed_b(request):
+    return _transform(request.param, SCALE_B, PORT_X_B)
 
 
 def test_no_tracer_in_forward_result_static_state(transformed):
@@ -148,6 +190,10 @@ def test_report_with_eager_context_is_identical(transformed, eager):
     The transformed run's own record (its children) read through an eager
     run's context gives the same report, bit for bit, as through its own.
     """
+    _assert_swapped_report_identical(transformed, eager)
+
+
+def _assert_swapped_report_identical(transformed, eager):
     rd = getattr(transformed, 'ringdown', transformed)
     children = rd.tree_flatten()[0]
     swapped = type(rd).tree_unflatten(eager.ringdown._ctx, children)
@@ -162,3 +208,30 @@ def test_report_with_eager_context_is_identical(transformed, eager):
             assert _same(g, w), (
                 f'{want.name}.{field}: own context={g!r}, eager context={w!r}')
     assert actual.summary() == expected.summary()
+
+
+def test_scene_b_no_tracer_in_static_state(transformed_b):
+    _assert_static_state(transformed_b)
+    rd = transformed_b.ringdown
+    realized = _realized_dx(SCALE_B)
+    # the result carries the realized x cells of this design step as a child
+    assert len(rd._cells) == 1
+    np.testing.assert_array_equal(np.asarray(rd._cells[0]),
+                                  np.concatenate((realized, realized[-1:])))
+    # the static template stays on the declared nominal widths
+    np.testing.assert_array_equal(rd._ctx.grid.dx_arr,
+                                  np.concatenate((DX, DX[-1:])).astype(np.float32))
+
+
+def test_scene_b_report_with_eager_context_is_identical(transformed_b, eager_b):
+    """At a design step whose widths at the port differ from the nominal ones,
+    the report read through the transformed run's own context equals the one
+    read through the context of a concrete run on the realized widths."""
+    _assert_swapped_report_identical(transformed_b, eager_b)
+
+
+def test_scene_b_w0_passes(transformed_b):
+    report = transformed_b.ringdown.report
+    assert report is not None
+    (w0,) = [w for w in report.witnesses if w.name == 'W0']
+    assert w0.ok, f'W0 failed on the realized mesh: value={w0.value!r}, bar={w0.bar!r}, note={w0.note!r}'

@@ -2360,6 +2360,8 @@ class RingdownForward(RingdownRun):
         bins = (self.bins if self.bins is not None
                 else np.asarray(result.freqs, dtype=np.float64))
         ctx = report_context(self, result, bins)
+        # the live cells of the traced axes: children, realized after the transform
+        cells = tuple(getattr(result.grid, store) for _axis, store in ctx.traced_axes)
         status_fail = jnp.asarray([rj.STATUS_PRECONDITION, rj.STATUS_PRECONDITION],
                                   dtype=jnp.int32)
         try:
@@ -2378,7 +2380,8 @@ class RingdownForward(RingdownRun):
                                          jnp.asarray(jnp.nan, dtype=_rdt_nan(result)),
                                          jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx,
                                          poles=pole_nan, poles_long=pole_nan,
-                                         pole_mask=empty_mask, pole_mask_long=empty_mask)
+                                         pole_mask=empty_mask, pole_mask_long=empty_mask,
+                                         cells=cells)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
         host_pms = pms
         if self.lane == "graded":
@@ -2481,7 +2484,8 @@ class RingdownForward(RingdownRun):
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,
                                      poles=poles[0], poles_long=poles[1],
-                                     pole_mask=masks[0], pole_mask_long=masks[1])
+                                     pole_mask=masks[0], pole_mask_long=masks[1],
+                                     cells=cells)
 
 
 # Lazy compatibility exports avoid a cycle with the moved implementation.

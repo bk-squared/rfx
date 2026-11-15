@@ -80,11 +80,12 @@ class RingdownForwardResult:
 
     __slots__ = ("s_params", "s_params_long", "freqs", "_channels", "_accs",
                  "_s_plain", "_status", "_consistency", "_pole_counts", "_pole_budgets",
-                 "_ctx", "_report", "_poles", "_poles_long", "_pole_mask", "_pole_mask_long")
+                 "_ctx", "_report", "_poles", "_poles_long", "_pole_mask", "_pole_mask_long",
+                 "_cells")
 
     def __init__(self, s_params, s_params_long, freqs, channels, accs, s_plain,
                  status, consistency, pole_counts, pole_budgets, ctx, *, poles=None, poles_long=None,
-                 pole_mask=None, pole_mask_long=None):
+                 pole_mask=None, pole_mask_long=None, cells=()):
         self.s_params = s_params
         self.s_params_long = s_params_long
         self.freqs = freqs
@@ -104,17 +105,20 @@ class RingdownForwardResult:
         self._poles_long = jnp.empty(0, cdt) if poles_long is None else poles_long
         self._pole_mask = jnp.empty(0, jnp.int32) if pole_mask is None else pole_mask
         self._pole_mask_long = jnp.empty(0, jnp.int32) if pole_mask_long is None else pole_mask_long
+        # realized cell arrays of the axes traced when the context was built
+        # (ctx.traced_axes order); children, so a transform returns them concrete
+        self._cells = tuple(cells)
 
     def tree_flatten(self):
         return ((self.s_params, self.s_params_long, self.freqs, self._channels,
                  self._accs, self._s_plain, self._status, self._consistency,
                  self._pole_counts, self._pole_budgets, self.poles, self.poles_long,
-                 self.pole_mask, self.pole_mask_long), self._ctx)
+                 self.pole_mask, self.pole_mask_long, self._cells), self._ctx)
 
     @classmethod
     def tree_unflatten(cls, ctx, children):
         return cls(*children[:10], ctx, poles=children[10], poles_long=children[11],
-                   pole_mask=children[12], pole_mask_long=children[13])
+                   pole_mask=children[12], pole_mask_long=children[13], cells=children[14])
 
     @property
     def poles(self):
@@ -167,7 +171,7 @@ class RingdownForwardResult:
         from rfx.core.jax_utils import is_tracer
         leaves = jax.tree_util.tree_leaves(
             (self.s_params, self.s_params_long, self._channels, self._accs,
-             self._s_plain))
+             self._s_plain, self._cells))
         if any(is_tracer(x) for x in leaves):
             return None
         if np.ndim(self._channels) != 2:
