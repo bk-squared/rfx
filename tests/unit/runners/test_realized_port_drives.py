@@ -171,9 +171,11 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     assert calls["rlc"] == 2
 
 
+import sys
+
 # #1961: references use stored operands, independently of every consumer helper.
-# The 2026-11-15 design amendment identifies tensor.eps for all three
-# public tensor branches; the inverse-tensor kernel is outside this table.
+# The public smooth, full-tensor and conformal paths all step with tensor.eps;
+# the inverse-tensor kernel is outside this table.
 def _o2_operands(materials, branch, axis):
     c = materials.components
     eps = c.eps_update if branch == "plain" else c.tensor.eps
@@ -667,7 +669,7 @@ def test_o2_operator_operand(_o2_observations, operator, branch, entry):
         assert "refused when only the update's operand is scaled" in changed['note']
         assert changed['refused'] in changed['note']
         assert 'waveguide sections require one homogeneous, isotropic, lossless' in changed['refused']
-        print(f'O2 step 2 {entry} {operator}-{branch}: {changed}')
+        print(f'O2 step 2 {entry} {operator}-{branch}: {changed}', file=sys.stderr)
         return
     assert changed['ref'] != row['ref']
     if (operator, branch) in NOTE:
@@ -675,7 +677,7 @@ def test_o2_operator_operand(_o2_observations, operator, branch, entry):
         np.testing.assert_allclose(changed['value'], row['value'], rtol=_O2_RTOL, atol=0.)
     else:
         np.testing.assert_allclose(changed['value'], changed['ref'], rtol=_O2_RTOL, atol=0.)
-    print(f'O2 step 2 assertions passed in call: {entry} {operator}-{branch}; {changed}')
+    print(f'O2 step 2 assertions passed in call: {entry} {operator}-{branch}; {changed}', file=sys.stderr)
 
 
 def _o2_assert_measurement(row):
@@ -730,7 +732,7 @@ def test_o2_intervention_reaches_kernel(monkeypatch, branch):
     cb_scaled = 1. / (1.7 * row['eps'] * EPS_0 / row['dt'] + row['sigma'] / 2.)
     cb_unscaled = 1. / (row['eps'] * EPS_0 / row['dt'] + row['sigma'] / 2.)
     print(f'O2 kernel {branch}: increment={seen["increment"]:.12g}, '
-          f'Cb scaled={cb_scaled:.12g}, Cb unscaled={cb_unscaled:.12g}')
+          f'Cb scaled={cb_scaled:.12g}, Cb unscaled={cb_unscaled:.12g}', file=sys.stderr)
     np.testing.assert_allclose(seen['increment'], cb_scaled, rtol=_O2_RTOL, atol=0.)
     assert not np.isclose(seen['increment'], cb_unscaled, rtol=_O2_RTOL, atol=0.)
     np.testing.assert_allclose(intervention['eps'], 1.7 * row['eps'], rtol=_O2_RTOL)
