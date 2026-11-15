@@ -291,3 +291,22 @@ def test_unknown_operands_have_no_pad_rule():
         vector_pad.pad_carry({'fdtd_shadow': None}, plan)
     with pytest.raises(ValueError, match='not per-cell'):
         vector_pad.pad_cells(jnp.zeros((4, 4, 6)), plan, 0.)
+
+
+@pytest.mark.parametrize('pad', ((1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 0, 2)))
+def test_one_axis_pad_is_bitwise(pad, monkeypatch):
+    """Each axis's pad alone, by one and two cells (the targets combine these)."""
+    real = vector_pad.plan_pad
+
+    def plan(shape, *, target, periodic_axes, two_d=False):
+        base = real(shape, target='off', periodic_axes=periodic_axes, two_d=two_d)
+        if target == 'off':
+            return base
+        return vector_pad.PadPlan(base.shape, tuple(n + p for n, p in zip(base.shape, pad)), pad, target)
+
+    monkeypatch.setattr(vector_pad, 'plan_pad', plan)
+    ref, _ = run_record(scene('vacuum'), 'off')
+    got, plans = run_record(scene('vacuum'), 'aligned')
+    assert_padded(plans, f'pad {pad}')
+    assert_bitwise(ref, got, f'run vacuum pad {pad}')
+    jax.clear_caches()
