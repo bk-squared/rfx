@@ -75,6 +75,11 @@ def run_subgridded(
     mats_c = with_components(mats_c, grid_c, periodic=periodic, high_wall=high_wall_c)
     mats_f = with_components(mats_f, None, periodic=(False,) * 3, high_wall=high_wall_f)
 
+    from rfx.model.pole_stability import CourantBudget, refuse_subluminal_cells
+    fine_budget = CourantBudget(tuple(np.full(n, dx_f) for n in mats_f.eps_r.shape))
+    refuse_subluminal_cells(mats_f, None, dt, budget=fine_budget, subgridded=True, origin=tuple(grid_c.node_of(a, i) for a, i in enumerate((subgrid_config.fi_lo, subgrid_config.fj_lo, subgrid_config.fk_lo))))
+    refuse_subluminal_cells(mats_c, grid_c, dt, conservative=float(fine_budget))
+
     # Override coarse grid dt to match the subgrid global timestep
     # (fine grid CFL is more restrictive than coarse grid CFL)
     grid_c.dt = dt

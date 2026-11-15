@@ -250,6 +250,10 @@ def _observe_peaks(monkeypatch):
                 if isinstance(state, FDTDState):
                     peak = jnp.maximum(jnp.maximum(jnp.max(jnp.abs(state.ex)), jnp.max(jnp.abs(state.ey))), jnp.max(jnp.abs(state.ez)))
                     jax.debug.callback(save, state.step, peak)
+            if isinstance(updated, dict) and 'c' in updated and 'f' in updated:
+                electric = (*updated['c'][:3], *updated['f'][:3])
+                peak = jnp.max(jnp.stack([jnp.max(jnp.abs(a)) for a in electric]))
+                jax.debug.callback(save, item[0] + 1, peak)
             return updated, result
         return scan(observe, init, *args, **kwargs)
     monkeypatch.setattr(jax.lax, 'scan', watched)
@@ -259,7 +263,7 @@ def _observe_peaks(monkeypatch):
 @pytest.mark.parametrize('case', ['uniform_0982', 'graded_pinned', 'graded_large', 'order4_0985', 'subgrid_coarse_1'])
 def test_admitted_run_bar(case, monkeypatch):
     path = 'graded' if case.startswith('graded') else 'order4' if case.startswith('order4') else 'uniform'
-    eps = .982 if case == 'uniform_0982' else .985 if case == 'order4_0985' else .5 if path == 'graded' else 1.
+    eps = .975 if case == 'uniform_0975_control' else .982 if case == 'uniform_0982' else .985 if case == 'order4_0985' else .5 if path == 'graded' else 1.
     pin = .6 * float(scene()._build_grid().dt) / .99 if case == 'graded_pinned' else None
     sim = scene(path, eps, impulse=True, dt=pin)
     if case == 'graded_large':
@@ -275,7 +279,13 @@ def test_admitted_run_bar(case, monkeypatch):
     peaks = _observe_peaks(monkeypatch)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
-        invoke(sim, path, n=400)
+        try:
+            invoke(sim, path, n=400)
+        except ValueError as error:
+            if case != 'uniform_0975_control':
+                raise
+            assert_cell_message(str(error), grid_of(sim, path), .975)
+            return
     jax.effects_barrier()
     assert len(peaks) >= 400, f'not every step observed: {len(peaks)}'
     values = np.array([peaks[i] for i in range(201, 401)])
@@ -286,7 +296,7 @@ def test_admitted_run_bar(case, monkeypatch):
     assert growth <= 1.001
 
 
-@pytest.mark.parametrize('location,eps', [('fine', .5), ('coarse', .980)])
+@pytest.mark.parametrize('location,eps', [('fine', .5), ('coarse', .5)])
 def test_subgrid_refusal(location, eps, monkeypatch):
     from rfx.model import source_coefficients
     sim = scene(eps=1.)
@@ -360,3 +370,35 @@ def test_vmap_scan_check_scope(compiled):
         jax.device_get(batch(jnp.array([2., .5])))
     assert_cell_message(str(error.value), grid, .5, lo=(0.,)*3, hi=(.009,)*3)
     print(f'VMAP_SCOPE {"staged batch returns no result" if compiled else "eager failing member refused on host"}')
+
+
+@pytest.mark.parametrize('wire', [False, True], ids=['lumped', 'wire'])
+def test_eager_probe_builder_refused(wire):
+    from rfx.core.yee import init_materials
+    from rfx.probes.probes import extract_s_matrix, extract_s_matrix_wire
+    from rfx.sources.sources import GaussianPulse, LumpedPort, WirePort
+    grid = scene()._build_grid()
+    materials = init_materials(grid.shape)._replace(eps_r=jnp.full(grid.shape, .5))
+    waveform = GaussianPulse(f0=5.5e9, bandwidth=.8)
+    port = (WirePort(start=(.004,)*3, end=(.004, .004, .005), component='ez',
+                     impedance=50., excitation=waveform) if wire else
+            LumpedPort(position=(.004,)*3, component='ez', impedance=50., excitation=waveform))
+    extract = extract_s_matrix_wire if wire else extract_s_matrix
+    with pytest.raises(ValueError, match='cell Courant limit') as error:
+        extract(grid, materials, [port], jnp.array([5e9]), 2, boundary='pec')
+    assert_cell_message(str(error.value), grid, .5, lo=(0.,)*3, hi=(.009,)*3)
+
+
+def test_public_sweep_traced_values_unreachable():
+    from rfx.vmap_sweep import vmap_material_sweep
+    sim = scene(eps=2.)
+    def sweep(values):
+        return vmap_material_sweep(sim, 'body.eps_r', values, n_steps=2).time_series
+    with pytest.raises(jax.errors.TracerArrayConversionError):
+        jax.jit(sweep)(jnp.array([2., .5]))
+
+
+def test_run_bar_detects_unstable_uniform_0975(monkeypatch):
+    # Normally refused. Removing the setup rule must expose measured growth,
+    # so this also checks the observer against a physically unstable control.
+    test_admitted_run_bar('uniform_0975_control', monkeypatch)
