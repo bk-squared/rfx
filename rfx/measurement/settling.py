@@ -240,12 +240,16 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
         outputs_read.add("S-parameters")
     if not outputs_read:
         return result
+    every_output = (("S-parameters",) if has_s else ()) + tuple(
+        name for name in field_outputs_read(SimpleNamespace(
+            ntff_box=True, dft_planes=True, flux_monitors=True, current_moment_monitor=True))
+        if name in outputs_read)
 
     operation = "forward() call" if context == "forward" else "run"
-    for row in witness.get("runs") or [witness]:
-        # Synthetic results may omit declared fields (Addendum 1). Keep the
-        # result-based witness intact and use those declarations for warning.
-        reads = row.get("reads", ()) or declared
+    for row in _warning_groups(result, witness, every_output):
+        # Synthetic results may omit declared fields (Addendum 1); a group
+        # that judges only its probe names the declared field outputs.
+        reads = tuple(row.get("reads", ())) or declared
         if not outputs_read.intersection(reads):
             continue
         status = row['status']
@@ -254,33 +258,35 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
         names = ", ".join(reads)
         sentence = f" Outputs read from this record: {names}."
         if "S-parameters" in reads and status in {'fail', 'undetermined'}:
-            worst = row['worst_freq_hz']
-            bin_label = (f"worst bin {worst:.9g} Hz" if np.isfinite(worst)
+            worst = row.get('worst_freq_hz')
+            bin_label = (f"worst bin {worst:.9g} Hz"
+                         if worst is not None and np.isfinite(worst)
                          else "worst bin undetermined")
-            shares = np.asarray(row["share_per_bin"])
+            shares = np.asarray(row.get("share_per_bin", ()))
             peak = float(np.max(shares)) if shares.size else float("nan")
-            warning_witness = {**row, "reason": row["reason"] if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in row["reason"] else f"share {peak:.9g}"}
+            reason = row.get("reason") or ""
+            warning_witness = {**row, "reason": reason if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in reason else f"share {peak:.9g}"}
             _warn_if_ringdown_truncated(
-                [row['db']], (), witnesses=[warning_witness],
+                [np.nan if row.get('db') is None else row['db']], (), witnesses=[warning_witness],
                 n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
                 drive_labels=(f"S-channel {bin_label}, share {peak:.9g}",),
                 consequence="S-parameter truncation is suspect",
                 outputs_sentence=sentence)
-        elif status in {'fail', 'undetermined'}:
+        elif status == 'fail':
             _warn_if_ringdown_truncated(
                 [row['db']], (), witnesses=[row],
                 n_steps=None if n_steps is None else int(n_steps),
                 num_periods=None if n_steps is not None else num_periods,
                 drive_labels=(
-                    f"worst probe record {row['worst_record']}"
-                    + (_LONE_PROBE_NOTE if row['worst_record']
+                    f"worst probe record {row.get('worst_record')}"
+                    + (_LONE_PROBE_NOTE if row.get('worst_record')
                        in row.get('lone_records', ()) else ""),),
                 consequence=(
                     f"every DFT-derived quantity of this {operation} — {names}, "
                     "Harminv modes — integrates a cut transient"),
                 quoted_thing="any of them", outputs_sentence=sentence,
             )
-        elif status == 'absent':
+        elif status in {'undetermined', 'absent'}:
             import warnings
             warnings.warn(
                 f"no ring-down settling witness on this {operation}: "
@@ -301,6 +307,34 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
                 stacklevel=user_stacklevel(),
             )
     return result
+
+
+def _warning_groups(result, witness, every_output):
+    """The record-end groups one warning each speaks for (DESIGN Addendum 2).
+
+    A witness from ``build_settling_witness`` carries ``groups`` (rows of one
+    ``reads`` tuple, combined). One group is the witness itself, so the
+    whole witness's later edits (decay stop line) stay in its text. A witness
+    handed in whole with tagged ``runs`` is grouped from them; with neither,
+    it is one group that reads every output (the conservative side).
+    """
+    from rfx.measurement import decay_stop_first
+    from rfx.sparams._record_selection import _combine_rows
+
+    groups = witness.get("groups")
+    if not groups:
+        runs = witness.get("runs") or ()
+        if runs and all("reads" in run for run in runs):
+            by_reads = {}
+            for run in runs:
+                by_reads.setdefault(tuple(run["reads"]), []).append(run)
+            groups = [{**_combine_rows(members, np.empty(0)), "reads": reads}
+                      for reads, members in by_reads.items()]
+        else:
+            return [{**witness, "reads": every_output}]
+    if len(groups) == 1:
+        return [{**witness, "reads": tuple(groups[0].get("reads", ()))}]
+    return [decay_stop_first(result, None, group)[1] for group in groups]
 
 
 def tfsf_source_drive(cfg, grid):
