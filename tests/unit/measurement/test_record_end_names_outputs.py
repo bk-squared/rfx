@@ -109,6 +109,21 @@ def test_rows_warn_for_their_own_outputs(s_status, field_status, spoken):
     _assert_names(_messages(caught), spoken)
 
 
+@pytest.mark.parametrize('status', ['fail', 'absent'])
+def test_s_without_an_s_row_still_warns(status):
+    """A lane that returns S but builds no S row (review P2, Addendum 4):
+    the untagged row speaks for S, as base did."""
+    sim = Simulation(freq_max=20e9, domain=(.012, .012, .008), dx=.001)
+    row = _row(status, ())
+    witness = {**row, 'runs': [row], 'groups': [row]}
+    sim._run_settling_witness = lambda result: (witness['db'], witness)
+    result = Result(state=None, time_series=None, s_params=np.ones((1, 1, 1)), freqs=SBINS)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        sim._attach_run_settling_witness(result, n_steps=800)
+    _assert_names(_messages(caught), [S])
+
+
 def test_field_row_names_have_the_design_order():
     from rfx.sparams._record_selection import build_settling_witness
     result = SimpleNamespace(ntff_box=object(), dft_planes={'e': object()},
