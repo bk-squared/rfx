@@ -658,13 +658,45 @@ Until a fix lands, read the |S11| of a well-matched microstrip structure as unce
 
 Tracker: #1373
 
-The field increment a source adds on its edge is the update's coefficient times the drive. A rectangular-waveguide port and a plane-wave source still compute that coefficient apart from the update.
+The field increment a source adds on its edge is the update's coefficient times the drive. A rectangular-waveguide port and a plane-wave source still compute that coefficient apart from the update; so do lumped, wire and MSL port drives on smoothed and conformal edges (next entry).
 
 - A waveguide port beside a conformal PEC wall (`Boundary(..., conformal=True)`): where the wall cuts a driven aperture edge (the wall-to-wall length rounds up to the next whole cell), the port drives that edge with its own coefficient, 1.5 times the field update's on that edge. On a 40 × 20 mm guide (TE10, 5 to 7 GHz) the launched wave, and with it every absolute field and probe amplitude, reads 2.5 % high with 3 mm cells, 1.0 % with 1.2 mm cells and 0.63 % with 0.75 mm cells; the excess is proportional to the cell size, 0.83 % per millimetre of cell. |S11| and |S21| moved by at most 3e-4 at 1.2 and 0.75 mm, because the port measures its incident wave at its own planes. With the walls on mesh nodes nothing changes.
 - A waveguide port with `subpixel_smoothing` is refused when smoothing changes the permittivity in the port section.
 - A plane-wave source (`add_tfsf_source`) refuses a smoothed or conformal edge on its injection planes, on every path (`tests/contracts/test_tfsf_vacuum_planes.py::test_treated_edges_on_injection_planes`).
 
 Not fixed in 2.2.0. Read absolute amplitudes from a port beside a conformal wall as high by these amounts, or put the walls on mesh nodes. Measured 2026-11-03 on the cut-cell conformal model; record kept with the project.
+
+### Port drives, lumped RLC elements, surface-impedance sheets and the Kerr term read a different permittivity on their edge than the field update.
+
+Tracker: #1961
+
+The field update divides the curl on each electric-field edge by one permittivity: on a plain edge, the mean of the four
+cells around the edge; on a smoothed edge (`subpixel_smoothing=True` or `"full_tensor"`), the smoothed value; on an edge
+that conformal PEC cuts (`conformal_pec=True` or `Boundary(conformal=True)`), the permittivity divided by the edge's
+conformal weight (its free length, limited by the cut faces around it). The operators below act on the same edge every
+step but form their own quantity from another permittivity, so they drive, load or correct the field as if the edge held
+another material. Each number is |a − b| / |b|, where a is the operator's quantity and b is the same quantity formed
+from the update's permittivity, on one edge of one test scene (an εr 4 sphere or a PEC sphere, 1 mm cells, uniform mesh,
+one device; `run()` and `forward()` give the same value).
+
+- Lumped, wire and MSL port drives and lumped RLC elements (`add_port`, `add_msl_port`, `add_lumped_rlc`) read the
+  permittivity from before smoothing and before the conformal cut. The quantity is the drive's update coefficient, and
+  for an RLC element its update denominator ε/Δt + σ/2 (the inverse of a coefficient). On a smoothed edge the drives
+  differ by 0.12 to 0.26 and the RLC denominator by 0.75. With `"full_tensor"` the drives differ by 3.8×10⁻⁴ (MSL) to
+  0.18 and the RLC denominator by 0.64. On a cut edge with conformal weight 0.0037, the lumped and wire drives differ by
+  85 and 50 and the RLC denominator by 0.996; the MSL drive differs by 2.3 on a cut edge of its own, with weight 0.17.
+- A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) and the Kerr term
+  (`add_material(..., chi3=...)`) read the permittivity of one cell; no option is needed for this. On an edge with one
+  εr 4 cell and three εr 1 cells around it, both read 4 where the update reads 1.75. The sheet's per-step loss exponent
+  σ·Δt/(ε0·εr) is then 0.44 of the update's (difference 0.56), and the Kerr term reads 2.29 times the update's
+  permittivity (difference 1.29). In a Kerr medium on an edge next to a conformal cut, whose conformal weight a cut face
+  beside it limits to 0.93, the Kerr term reads 4 where the update reads 4.30 (difference 0.069). A sheet with smoothing
+  or conformal PEC, and the Kerr term with smoothing, are refused.
+- A rectangular-waveguide port on a conformal edge has the same fault; the entry above gives its measured effect.
+
+On a plain edge (no smoothing, no conformal cut) the port drives and RLC elements read the update's permittivity; the
+sheet and the Kerr term do too where the four cells around the edge hold one material. The effect of these differences
+on S-parameters, fields and gradients is not measured. Measured 2026-11-15; record kept with the project.
 
 ### A waveguide port built without a uniform Grid is unchecked in a caller's own loop.
 
@@ -719,6 +751,16 @@ power reading near its plane (entry above) probably contributes, because the fee
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
+
+### A completed forward ring-down value can have a failed lazy report without warning.
+
+Tracker: #1961
+
+A `forward(ringdown=...)` completion whose error witness, passivity or traced
+witness fails returns finite `s_params` and warns nothing; read
+`result.ringdown.report.ok` (the report is `None` while traced) and
+`rfx.ringdown.gradient_witness` before trusting a completed value or its gradient.
+`run(ringdown=...)` warns on the same failures.
 
 ### A pair of modes that no window of the record separates is completed as one mode, and every early-window vs late-window comparison agrees.
 
@@ -797,6 +839,18 @@ run stops at step 25,500, against a fixed 506-step run. An empty 3-D open box st
 What to do: on an open plane-wave scene, run a fixed `n_steps` (drive end plus the transit of the domain), or set a
 lower `decay_max_steps`.
 
+### `compute_rcs` judges the incident pulse's transit to its NTFF box, not the scatterer's own ringing after it.
+
+Tracker: #2030
+
+`compute_rcs` checks that its record covers the plane-wave pulse, its launch and the trip of the scattered field to the
+farthest corner of its NTFF box. A shorter record returns `settling_witness["status"] == "undetermined"` with one
+`AccuracyWarning`. After that trip a resonant scatterer can still radiate, and `compute_rcs` does not judge that decay:
+`settling_witness["status"]` is `"absent"` and nothing warns. The witness's reason suggests an identification probe,
+but `compute_rcs` takes no probe, so that advice cannot be followed here.
+What to do: run `compute_rcs` with two record lengths, for example `n_steps` and twice `n_steps`, and use the RCS only
+where the two agree.
+
 ## Absorbing boundaries
 
 ### Magnetic faces require the single-device second-order Yee image.
@@ -861,6 +915,8 @@ mesh's cells the probe record equals the uniform mesh's within 2×10⁻⁶ of it
 (`tests/contracts/test_plane_wave_admission_both_meshes.py`). A declaration of the side faces gives one model per
 request, solved as declared or refused: periodic faces run on the uniform mesh only; CPML or the wall pair that suits
 the polarization runs on the graded mesh, and on the uniform mesh only on an axis it does not wrap (Method B's y). One transverse operator for both meshes is planned after 2.0.
+
+An oblique Bloch plane wave (|`angle_deg`| > 0.01°, `method='bloch'`) is refused before stepping with subpixel smoothing (`True` or `'full_tensor'`), `'kottke_pec'` smoothing, conformal PEC, a PEC occupancy override with `pec_occupancy_model='kottke'`, or Debye/Lorentz pole materials: their electric-field updates omit the Bloch phase. This replaces a measured |T| of 0.832 against Airy 0.749 at 30° on a 24 mm εr 4 slab (+0.91 dB), and the Debye scan-carry error. Use normal incidence, or turn smoothing off (`subpixel_smoothing=False`), turn conformal PEC off, omit `pec_occupancy_override`, or use a material without poles, as applicable.
 
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 

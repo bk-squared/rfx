@@ -425,11 +425,9 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always")
         if case == "lumped":
-            with pytest.raises(RfxUnsupported) as caught:
+            with pytest.raises(NotImplementedError) as caught:
                 sim.run(n_steps=1, skip_preflight=True)
-            assert str(caught.value) == (
-                "Waveguide ports are not supported together with lumped ports or TFSF"
-            )
+            assert "run(compute_s_params=True) has a single result schema" in str(caught.value)
             assert not [w for w in seen if "waveguide_sparams" in str(w.message)]
             return
         result = getattr(sim, entry)(
