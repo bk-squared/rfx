@@ -35,6 +35,8 @@ import warnings
 import numpy as np
 import pytest
 
+from tests._fd_minimum import assert_same_minimum_cells
+
 from validation.research.multiband_nu import fixtures as fx
 from validation.research.multiband_nu.harness import (
     build_pec_fixture, run_energy_audit, te10_blob_ex, random_blob_3d)
@@ -116,8 +118,23 @@ def test_fs2_single_transition_at_cap():
 def test_w5_multiband_ad_consistency():
     """F-S5: jax.grad of sum(ts^2) w.r.t. the multiband w5_profile vs
     central FD, dominant cells within the existing NU AD convention
-    (15 % rel, f32 — test_nonuniform_gradient.py convention)."""
-    from validation.research.multiband_nu.w5_ad_consistency import measure
+    (15 % rel, f32 — test_nonuniform_gradient.py convention).
+
+    The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
+    """
+    import jax.numpy as jnp
+    from validation.research.multiband_nu.w5_ad_consistency import FD_REL_H, measure
+    dz0 = fx.w5_profile()
+    points = []
+    for k in range(len(dz0)):
+        h = FD_REL_H * dz0[k]
+        dp, dm = dz0.copy(), dz0.copy()
+        dp[k] += h
+        dm[k] -= h
+        points.extend([(f"index {k} (+)", np.asarray(jnp.asarray(dp))),
+                       (f"index {k} (-)", np.asarray(jnp.asarray(dm)))])
+    assert_same_minimum_cells(np.asarray(jnp.asarray(dz0)), points)
     res = measure("regression")
     assert not res["fs5_fired"], res
 

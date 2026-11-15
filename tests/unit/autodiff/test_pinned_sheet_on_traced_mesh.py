@@ -33,12 +33,16 @@ from rfx.materials.thin_conductor import (
     PinnedSheet, pinned_sheet_realized, pinned_sheet_spec)
 from rfx.nonuniform import make_nonuniform_grid
 
+C0 = 299792458.0
 DX = 0.5e-3
 N_X, N_Y, N_Z = 24, 16, 20
 CPML = 4
 I_LO, I_HI = 8, 16          # the patch's two x node lines (interior indices)
 J_LO, J_HI = 5, 11          # the patch's two y node lines
 N_W = 4                     # cells stretched inside / shrunk outside the edge
+# Case C traces both x and y, so both axes use the declared cell floor.
+D_MIN = DX * (1 - 0.6 / N_W)
+DT_PIN = 0.9 / (C0 * np.sqrt(2 / D_MIN**2 + 1 / DX**2))
 K_GND, K_PATCH = 6, 12      # ground and patch node planes on z
 K_MID = 9                   # a node plane inside the substrate
 Z_GND, Z_PATCH = K_GND * DX, K_PATCH * DX
@@ -283,12 +287,13 @@ def test_from_node_ranges_refuses_a_plane_outside_the_grid():
 # --------------------------------------------------------------------------
 
 def _build_board(delta, *, probe, dx_profile=None, dy_profile=None,
-                 pinned=True):
+                 pinned=True, pin_dt=True):
+    dt_kw = dict(dt=float(DT_PIN), dt_min_cell=float(D_MIN)) if pin_dt else {}
     sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX),
                      dx=DX,
                      dx_profile=_prof_x(delta) if dx_profile is None else dx_profile(delta),
                      dy_profile=None if dy_profile is None else dy_profile(delta),
-                     cpml_layers=CPML, boundary="cpml")
+                     cpml_layers=CPML, boundary="cpml", **dt_kw)
     sim.add_material("sub", eps_r=3.38)
     sim.add(Box((2 * DX, 2 * DX, Z_GND), (22 * DX, 14 * DX, Z_PATCH)),
             material="sub")
@@ -335,6 +340,8 @@ def test_a_pinned_sheet_reaches_the_solve_on_the_nonuniform_lane():
                         pinned=False)
     without = float(jnp.sum(bare.forward(n_steps=30, skip_preflight=True)
                             .time_series ** 2))
+    print(f"patch energy: with={with_patch:.9e} without={without:.9e} "
+          f"relative_change={abs(with_patch - without) / max(without, 1e-30):.9e}")
     assert abs(with_patch - without) / max(without, 1e-30) > 1e-3, (
         f"the patch changes nothing at the probe ({with_patch:.6e} vs "
         f"{without:.6e}) — it is not reaching the solve")
@@ -354,9 +361,10 @@ def test_a_pinned_sheet_reaches_the_solve_on_the_uniform_lane():
     _assert_patch_edges(sheets)
 
 
-def _loss(delta, *, probe, dx_profile=None, dy_profile=None, n_steps=40):
+def _loss(delta, *, probe, dx_profile=None, dy_profile=None, n_steps=40,
+          pin_dt=True):
     sim = _build_board(delta, probe=probe, dx_profile=dx_profile,
-                       dy_profile=dy_profile)
+                       dy_profile=dy_profile, pin_dt=pin_dt)
     return jnp.sum(sim.forward(n_steps=n_steps, skip_preflight=True)
                    .time_series ** 2)
 
@@ -377,7 +385,7 @@ AD_CASES = {
 @pytest.mark.parametrize("case", sorted(AD_CASES))
 def test_patch_edge_gradient_matches_a_central_difference(case):
     """``jax.grad`` through ``delta -> dx_profile -> forward()`` against a
-    central difference through the SAME function.
+    central difference through the SAME function, with dt pinned on both routes.
 
     The two routes must be solving the same problem before the derivative
     can be compared, so the traced primal is checked against the concrete
@@ -407,11 +415,15 @@ def test_patch_edge_gradient_matches_a_central_difference(case):
     grad_fd = (float(_loss(d0 + h, **kw)) - float(_loss(d0 - h, **kw))) / (2 * h)
     rel = abs(grad_ad - grad_fd) / max(abs(grad_fd), 1e-30)
     assert np.isfinite(grad_ad) and grad_ad != 0.0
-    # float32 fields, centred difference at h = dx/64. The residual is the
-    # DIFFERENCE's own truncation, not the gradient: laddering h over dx/8,
-    # dx/16, dx/32, dx/64 it falls by ~3.9x per halving (second order) on
-    # every case -- A 4.9e-2/1.3e-2/3.2e-3/7.9e-4, B 1.8e-3/4.6e-4/1.1e-4/
-    # 3.6e-5, C 2.2e-1/6.4e-2/1.7e-2/4.2e-3, D 5.0e-2/1.3e-2/3.2e-3/8.0e-4.
+    # Float32 fields with pinned dt, centred differences at dx/8, dx/16,
+    # dx/32, dx/64: relative errors measured on each deformation are
+    # A 7.9960e-3 / 2.0170e-3 / 5.4590e-4 / 7.0143e-6,
+    # B 3.8693e-3 / 9.6618e-4 / 2.2386e-4 / 9.0866e-5,
+    # C 8.2931e-3 / 2.0895e-3 / 5.4981e-4 / 3.6687e-5,
+    # D 8.5021e-3 / 2.1354e-3 / 5.7214e-4 / 9.3833e-6.
+    # The coarser rungs fall at roughly second order; float32 round-off
+    # affects the finest rung. Every case decreases over the whole ladder.
+    print(f"{case}: AD={grad_ad:.9e} FD={grad_fd:.9e} relative={rel:.9e}")
     assert rel < 1.5e-2, (
         f"{case}: AD {grad_ad:+.6e} vs central FD {grad_fd:+.6e} — "
         f"relative {rel:.3e}")
