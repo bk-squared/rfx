@@ -1,4 +1,4 @@
-"""Generate fixture.json for the PEC-sphere exact-Mie monostatic RCS gate.
+"""Generate fixture.json for the PEC-sphere monostatic RCS comparison.
 
 Runs the committed-resolution rfx RCS pipeline (PEC sphere, ka~1,
 dx=lambda/40) once on CPU and records:
@@ -15,9 +15,11 @@ Usage (from the repo root, CPU is sufficient — wall ~25 s at CPML_LAYERS = 24)
 
     JAX_PLATFORMS=cpu python tests/fixtures/rcs_sphere_mie/generate_fixture.py
 
-The gate test ``tests/oracle/test_rcs_mie_fixture.py`` recomputes the rfx value
-live and asserts both |rfx - Mie| <= 1.0 dB and |rfx - fixture| small
-(anti-drift), so regenerate this file whenever the RCS/NTFF path changes.
+The lock ``tests/locks/test_rcs_sphere_backscatter_window.py`` recomputes
+six bins at ka = 0.75, 0.80, ..., 1.00 and pins the signed rfx - Mie
+difference in a window per bin. Its docstring describes the window's
+derivation. The stored rfx value is historical, not the lock's reference;
+the independent oracle witnesses stay in ``tests/oracle/test_rcs_mie_fixture.py``.
 """
 
 import json
@@ -69,8 +71,9 @@ DOMAIN_SIZE = 0.10       # m, cubic
 # R_asymptotic = 1e-8 lands within 0.002 dB of it at 24, so depth is the lever
 # here too and the target stays at the repo default (that repeat was made with
 # the first-order rule and was not redone). Converged monostatic -25.49 dBsm,
-# 0.102 dB from the exact Mie series (gate: 1.0 dB); -25.21 dBsm and 0.185 dB
-# before #1159.
+# 0.102 dB from the exact Mie series in that historical run; -25.21 dBsm
+# and 0.185 dB before #1159. The current comparison is the per-bin window in
+# tests/locks/test_rcs_sphere_backscatter_window.py.
 #
 # Cost: the grid grows 58^3 -> 90^3 (the absorber is added outside the domain,
 # the interior is unchanged).
@@ -138,7 +141,7 @@ def main():
     grid, ka, dx, phi_obs, result, wall = run_rfx()
     pi_a2 = np.pi * RADIUS ** 2
 
-    # Shipped monostatic extraction (the quantity gated by the fixture test)
+    # Shipped monostatic extraction (compared across six bins by the lock)
     mono_dbsm = float(result.monostatic_rcs[0])
     rfx_back_over = float(10.0 ** (mono_dbsm / 10.0) / pi_a2)
 
