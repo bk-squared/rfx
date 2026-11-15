@@ -330,7 +330,7 @@ def test_subgrid_refusal(location, eps, monkeypatch):
 def test_conformal_floor_refusal():
     from rfx.grid import Grid
     sim = scene(eps=.99, dt=.5 * Grid.courant_dt(H))
-    sim.add(Box((0.,)*3, (.0008, .008, .008)), material='pec')
+    sim.add(Box((0.,)*3, (.0018, .008, .008)), material='pec')
     with pytest.raises(ValueError, match='cell Courant limit') as error:
         invoke(sim, 'uniform', conformal_pec='cut_cell_floor')
     assert_cell_message(str(error.value), sim._build_grid(), .99, conservative=True)
