@@ -12,6 +12,8 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
                     cpml_params, cpml_axes, debye, lorentz, pec_edge_masks,
                     curl_boundary, wire=False):
     """Keep eager port source arithmetic and probe objects around a uniform step."""
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("eager port-probe loop")
     from rfx._internal._uniform_specs import _StepContext
     from rfx.stepping.uniform_setup import make_core_step
     from rfx.boundaries.cpml import apply_cpml_h, apply_cpml_e

@@ -25,6 +25,8 @@ def design_adjoint_scan(ctx, initial, xs):
     Point objectives select a pixel of a registered E-plane DFT. Direct
     records/final-field objectives are refused through symbolic cotangents.
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("adjoint scan")
     import numpy as np
     from rfx.stepping import recorded_scan
     from rfx.core.yee import curl_h, e_component_coeffs

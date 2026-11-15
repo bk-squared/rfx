@@ -60,6 +60,8 @@ def _build_vmap_scan_fn(
         accumulators in the SAME order as ``dft_probes`` (empty tuple if
         no planes were registered).
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("vmap tangent batch")
     check_map_count()
     dt = grid.dt
     dx = grid.dx
