@@ -73,7 +73,7 @@ def _preflight_impl(
     verdict_findings = []
     if _conductors is not None:
         # Hold the diagnostic copy weakly so it and its context are freed by reference
-        # counting when preflight returns, not at the next cyclic collection (#2769).
+        # counting when preflight returns, not at the next cyclic collection.
         ref = weakref.ref(self)
         self._finding_record_reader = lambda: _conductors._realization_record or finding_record(ref())
         tables = _conductors._realization_tables
