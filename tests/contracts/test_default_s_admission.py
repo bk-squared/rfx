@@ -69,19 +69,32 @@ def test_default_equals_explicit_before_step(before_step, graded, wire, distribu
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 @pytest.mark.parametrize("distributed", [False, True], ids=["single", "devices"])
-@pytest.mark.parametrize("kind", ["microstrip", "waveguide", "Floquet", "TFSF"])
-def test_forward_inventory_before_step(before_step, graded, distributed, kind):
+@pytest.mark.parametrize("kind", ["microstrip", "passive_microstrip", "waveguide", "Floquet", "TFSF"])
+def test_forward_family_check_before_step(before_step, graded, distributed, kind):
     sim = _scene(graded, kind)
-    with pytest.raises(ValueError, match="isolated drive") as caught:
+    with pytest.raises(NotImplementedError, match="cannot be combined with specialized or non-port excitation families") as caught:
         sim.forward(n_steps=1, skip_preflight=True, port_s11_freqs=np.array([2.5e9]),
                     distributed=distributed, devices=[jax.devices()[0]] * 2 if distributed else None)
     message = str(caught.value)
-    assert "wire port 0 at" in message
-    assert {"microstrip": "microstrip strip", "waveguide": "waveguide guide",
-            "Floquet": "Floquet plane", "TFSF": "TFSF source"}[kind] in message
-    assert "run(compute_s_params=False)" in message
-    if kind == "microstrip":
-        assert "compute_mixed_s_matrix()" in message
+    assert {"microstrip": "MSL ports use compute_msl_s_matrix()",
+            "passive_microstrip": "MSL ports use compute_msl_s_matrix()",
+            "waveguide": "waveguide ports use compute_waveguide_s_matrix()",
+            "Floquet": "Floquet ports are experimental and have no forward S11 path",
+            "TFSF": "TFSF is a plane-wave source, not a port"}[kind] in message
+    assert "isolated drive" not in message
+
+
+@pytest.mark.parametrize("waveguide", [True, False], ids=["waveguide", "impedance_only"])
+def test_forward_two_drives_order(before_step, waveguide):
+    sim = _scene(False, "waveguide")
+    sim.add_port((.006, .0015, .0001), "ez", impedance=50., excite=True,
+                 waveform=sim._ports[0].waveform)
+    if not waveguide:
+        sim._waveguide_ports.clear()
+    error = NotImplementedError if waveguide else ValueError
+    message = "waveguide ports use compute_waveguide_s_matrix" if waveguide else "isolated drive"
+    with pytest.raises(error, match=message):
+        sim.forward(n_steps=1, skip_preflight=True, port_s11_freqs=np.array([2.5e9]))
 
 
 @pytest.mark.parametrize("kind", ["microstrip", "waveguide", "Floquet", "TFSF", "coaxial"])

@@ -1443,7 +1443,9 @@ def admit_forward_s_matrix(sim):
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(sim)
     refuse_plain_sources_s_matrix(sim, main_record=True)
-    require_isolated_s_drive(sim)
+    # forward(port_s11_freqs=) forms S11 only for add_port ports; the following family check refuses every other declared family.
+    if not (sim._msl_ports or sim._waveguide_ports or sim._floquet_ports or sim._tfsf is not None or sim._coaxial_ports):
+        require_isolated_s_drive(sim)
 
 
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
