@@ -37,11 +37,18 @@ def test_permittivity_floor_can_be_left_and_enforced(monkeypatch):
         eps_inf, _ = fit_module._params_to_debye_poles(p, 1)
         return (eps_inf - target) ** 2, jnp.zeros_like(measured)
 
+    seen = []  # ln(eps_inf) of every parameter vector a step evaluates
+
     def replace_forward_loss(forward, *, has_aux):
         # Seam: replace only the loss supplied to jax.value_and_grad;
         # its differentiation, the parameter map and Adam remain real.
         assert has_aux
-        return real_value_and_grad(simulated_loss, has_aux=True)
+        value_and_grad = real_value_and_grad(simulated_loss, has_aux=True)
+
+        def recording(p):
+            seen.append(float(p[0]))
+            return value_and_grad(p)
+        return recording
 
     def unexpected_fdtd(*args, **kwargs):
         raise AssertionError("the floor test must not run FDTD")
@@ -59,10 +66,12 @@ def test_permittivity_floor_can_be_left_and_enforced(monkeypatch):
     assert calls == [1.0]
     assert up.eps_inf >= 1.5, f"up eps_inf={up.eps_inf}"
     target = 0.5
+    seen.clear()
     with pytest.warns(AccuracyWarning, match="eps_inf=1 is at the floor 1") as caught:
         down = fit(1.0)
         assert down.eps_inf == 1.0, f"down eps_inf={down.eps_inf}"
     assert len(caught) == 1
+    assert len(seen) == 40 and min(seen) >= 0.0, f"lowest ln(eps_inf)={min(seen)}"
     calls.clear()
     with pytest.raises(RfxRefusal, match="0.999.*fit_debye.*fit_lorentz"):
         fit(0.999)
