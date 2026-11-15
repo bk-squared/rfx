@@ -63,6 +63,17 @@ def _has_tracer(value, depth=4, value_rows=None):
     return any(is_tracer(item) for item in walk(value, depth, value_rows))
 
 
+def _static_parts(owner, parameter, value):
+    if (owner, parameter) == ("Simulation.forward", "design_box"):
+        corner_lo = getattr(value, "corner_lo", None)
+        corner_hi = getattr(value, "corner_hi", None)
+        if corner_lo is not None and corner_hi is not None:
+            return corner_lo, corner_hi
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            return value
+    return (value,)
+
+
 def _refuse(owner, parameter, evidence):
     rule = evidence.split(":", 1)[0]
     raise TracedStaticInput(
@@ -103,6 +114,7 @@ def admit_traced_inputs(owner, arguments):
     The private materials entry inherits only S1 run-control rows from run and
     forward, since other names can hold resolved specs.
     Ringdown post-init supplies its fields through the instance in locals().
+    Static S2 rows check only cell-selecting parts when resolved, otherwise the whole value.
     """
     if owner == "Simulation._forward_from_materials":
         rows = {**_BY_OWNER.get("Simulation.run", {}), **_BY_OWNER.get("Simulation.forward", {})}
@@ -116,7 +128,7 @@ def admit_traced_inputs(owner, arguments):
         if parameter in {"self", "cls"}:
             continue
         state, evidence = rows.get(parameter, rows.get("*", ("undecided", "")))
-        if state == "static" and _has_tracer(value):
+        if state == "static" and any(_has_tracer(part) for part in _static_parts(owner, parameter, value)):
             _refuse(owner, parameter, evidence)
         if rows:
             _check_value_fields(value, owner, parameter)

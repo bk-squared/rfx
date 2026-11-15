@@ -1,4 +1,4 @@
-"""Admission contracts; traces stop before FDTD, with no new entry frame."""
+"""Admission contracts, a design-box forward regression, and entry frames."""
 
 import inspect
 import json
@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from rfx import Simulation
+from rfx import DesignRegion, GaussianPulse, Simulation, TopologyDesignRegion
 from rfx._traced_inputs import TracedStaticInput, admit_traced_inputs, walk
 from rfx.ringdown import RingdownSpec
 
@@ -45,6 +45,55 @@ def test_t4_nonstatic_tracer_passes(owner, parameter, transform):
 
 def test_t4_concrete_array_passes_static():
     admit_traced_inputs("Simulation.forward", {"n_steps": jnp.array(3.0)})
+
+
+@pytest.mark.parametrize("transform", ["make_jaxpr", "grad"])
+@pytest.mark.parametrize("build_box,refuses", [
+    (lambda t: DesignRegion((.004, .004, .004), (.006, .006, .006), eps_range=(t, 12.)), False),
+    (lambda t: TopologyDesignRegion((.004, .004, .004), (.006, .006, .006), beta_projection=t), False),
+    (lambda t: DesignRegion((t, .004, .004), (.006, .006, .006)), True),
+    (lambda t: TopologyDesignRegion((t, .004, .004), (.006, .006, .006)), True),
+    (lambda t: ((.004, .004, .004), (.006, .006, t)), True),
+], ids=["eps-range", "beta-projection", "design-lo", "topology-lo", "tuple-hi"])
+def test_design_box_admission_checks_only_corners(transform, build_box, refuses):
+    def call(value):
+        admit_traced_inputs("Simulation.forward", {"design_box": build_box(value)})
+        return value * 2
+
+    if refuses:
+        with pytest.raises(TracedStaticInput, match=r"Simulation.forward\(design_box="):
+            transform_call(transform, call)
+    else:
+        result = transform_call(transform, call)
+        if transform == "grad":
+            assert float(result) == 2.0
+
+
+@pytest.mark.parametrize("transform", ["make_jaxpr", "grad"])
+def test_forward_design_box_ignores_traced_eps_range(transform):
+    sim = Simulation(freq_max=16e9, domain=(.010, .010, .010), dx=.001,
+                     boundary="pec")
+    sim.add_source((.002, .005, .005), "ez", amplitude_kind="field",
+                   waveform=GaussianPulse(f0=8e9, bandwidth=.8))
+    sim.add_probe((.008, .005, .005), "ez")
+    assert sim.freeze_mesh().shape == (11, 11, 11)
+    # Both corner indices are included: cells 4, 5 and 6 on each axis.
+    eps = jnp.full((3, 3, 3), 2., jnp.float32)
+
+    def call(value):
+        box = DesignRegion((.004, .004, .004), (.006, .006, .006), eps_range=(value, 12.))
+        result = sim.forward(design_box=box, design_eps_override=eps,
+                             n_steps=8, skip_preflight=True)
+        loss = jnp.sum(result.time_series ** 2)
+        return loss, loss
+
+    if transform == "make_jaxpr":
+        jax.make_jaxpr(call)(1.0)
+        value, _ = jax.jit(call)(1.0)
+    else:
+        gradient, value = jax.grad(call, has_aux=True)(1.0)
+        assert float(gradient) == 0.0
+    assert bool(jnp.isfinite(value))
 
 
 def test_t4_private_entry_accepts_resolved_spec_but_refuses_traced_count():
