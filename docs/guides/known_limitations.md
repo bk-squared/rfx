@@ -1114,6 +1114,10 @@ its simulation time predates the current decay check. It is re-measured after
 (decided 2026-10-04, recorded on
 [#1471](https://github.com/bk-squared/rfx/issues/1471)).
 
+### Traced material values on several devices bypass the cell time-step limit.
+
+A `jax.jit`-traced ε or μr on several devices is not judged against the cell time-step limit. Below ε·μr = 0.98, such a run goes non-finite with no named refusal ([#2755](https://github.com/bk-squared/rfx/issues/2755)).
+
 ---
 
 ## What this page is not
@@ -1124,5 +1128,3 @@ tracking, decisions pending, and research narrative are deliberately absent — 
 open work see the
 [issue tracker](https://github.com/bk-squared/rfx/issues), and for what is
 supported at all see the [support matrix](support_matrix.md).
-
-A `jax.jit`-traced ε or μr on several devices is not judged against the cell time-step limit. Below ε·μr = 0.98, such a run goes non-finite with no named refusal ([#2755](https://github.com/bk-squared/rfx/issues/2755)).
