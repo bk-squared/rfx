@@ -4,6 +4,8 @@ The literal exceptions are progress toward zero at 2.0, not tolerances.
 No solver helper supplies an expected value: the other fresh entry does.
 """
 import json
+import os
+import subprocess
 import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -61,6 +63,63 @@ def test_explicit_s_request_shared_refusal(monkeypatch, declaration, error_type)
     run_text = pair['run']['message'].removeprefix('run(compute_s_params=True)')
     forward_text = pair['forward']['message'].removeprefix('forward(port_s11_freqs=...)')
     assert run_text == forward_text
+
+
+def _s_request_device_pair(declaration):
+    import jax
+    from unittest.mock import patch
+    from tests.contracts.run_forward_census import S_REQUEST_BUILDERS
+
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2
+
+    def builder(path):
+        if declaration != 'msl':
+            return S_REQUEST_BUILDERS[declaration](path)
+        from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_msl
+        sim, y_c = _base_sim()
+        sim.add_port(position=(2e-3, y_c, 0.0), component='ez', impedance=50.0)
+        _add_msl(sim, y_c)
+        return sim
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('unsupported S request reached stepping')
+
+    with patch.object(jax.lax, 'scan', forbidden), patch.object(jax.lax, 'while_loop', forbidden):
+        return {
+            name: run_l2(builder, 'run', 'uniform', n_steps=1,
+                         entry_options={'compute_s_params': True, **options})
+            for name, options in (('single', {}), ('multi', {'devices': devices}))
+        }
+
+
+@pytest.mark.parametrize('declaration,error_type', [
+    ('soft', 'ValueError'), ('plane-soft', 'ValueError'),
+    ('msl', 'NotImplementedError'), ('floquet', 'NotImplementedError'),
+])
+def test_multi_device_s_request_shared_refusal(declaration, error_type, tmp_path):
+    """Explicit S admission agrees before either run reaches stepping."""
+    root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ, PYTHONPATH=str(root), JAX_PLATFORMS='cpu',
+               PYTHONDONTWRITEBYTECODE='1', JAX_ENABLE_X64='false',
+               XLA_FLAGS='--xla_force_host_platform_device_count=2')
+    output = tmp_path / 'refusals.json'
+    script = (
+        'import json, sys; from pathlib import Path; '
+        'from tests.contracts.test_run_forward_one_pipeline import _s_request_device_pair; '
+        'Path(sys.argv[2]).write_text(json.dumps(_s_request_device_pair(sys.argv[1])))'
+    )
+    child = subprocess.run([sys.executable, '-c', script, declaration, str(output)],
+                           cwd=root, env=env, capture_output=True, text=True, timeout=90)
+    assert child.returncode == 0, child.stdout + child.stderr
+    pair = json.loads(output.read_text())
+    print(json.dumps({'declaration': declaration, **pair}, sort_keys=True))
+    single, multi = pair['single'], pair['multi']
+    assert single['outcome'] == multi['outcome'] == 'raised', pair
+    assert single['type'] == multi['type'] == error_type, pair
+    assert raised_in_rfx(single) and raised_in_rfx(multi), pair
+    assert same_raising_line(single, multi), pair
+    assert single['message'] == multi['message'], pair
 
 
 ASSEMBLY_ROWS = (
