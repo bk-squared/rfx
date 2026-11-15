@@ -310,6 +310,8 @@ def _measure(make_scene, entry, branch, kind, *, lane='uniform', change=None, ex
         patch.setattr(upml_module, 'apply_upml_e', upml_e)
         with pytest.raises(_O2ReferenceCaptured):
             getattr(sim, entry)(**_entry_options(branch, entry, extra))
+    # A graded row is judged on the graded kernel, never on a uniform fallback.
+    assert ('kernel_eps' in seen) == (lane == 'graded'), (lane, sorted(seen))
     call = seen['call']
     axis, edge = call['axis'], call['edge']
     cb = _step_cb(seen, branch, axis, edge)
