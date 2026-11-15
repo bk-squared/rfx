@@ -20,8 +20,7 @@ FREQS = np.linspace(10e9, 16e9, 7)
 N_STEPS = 600  # Smallest admitted of {300, 600, 1200}; default RingdownSpec.
 
 
-def _forward(scale=None):
-    dx = DX
+def _forward(scale=None, dx=DX):
     nominal = None
     if scale is not None:
         dx = jnp.asarray(DX, dtype=jnp.float32)
@@ -95,10 +94,13 @@ def _assert_static_state(result):
 
 @pytest.fixture(scope='module')
 def eager():
-    return _forward()
+    # The nominal widths as a concrete float32 profile, no nominal_profiles:
+    # the concrete run the transformed runs' host context stands for.
+    return _forward(dx=np.asarray(DX, np.float32))
 
 
-@pytest.fixture(scope='module', params=['grad', 'jvp', 'jacfwd'])
+@pytest.fixture(scope='module', params=[
+    'grad', 'jvp', pytest.param('jacfwd', marks=pytest.mark.slow)])
 def transformed(request):
     def objective(scale):
         result = _forward(scale)
@@ -132,21 +134,31 @@ def test_no_tracer_in_forward_result_static_state(transformed):
     assert meta[9] == (float(padded[3]) + float(padded[4])) / 2
 
 
-def test_report_after_transform_equals_eager(transformed, eager):
+def _same(a, b):
+    """Exact equality; NaN equals NaN."""
+    if a == b:
+        return True
+    numbers = (float, np.floating)
+    return isinstance(a, numbers) and isinstance(b, numbers) and np.isnan(a) and np.isnan(b)
+
+
+def test_report_with_eager_context_is_identical(transformed, eager):
+    """The context a transformed run keeps acts exactly as a concrete run's.
+
+    The transformed run's own record (its children) read through an eager
+    run's context gives the same report, bit for bit, as through its own.
+    """
     rd = getattr(transformed, 'ringdown', transformed)
-    actual, expected = rd.report, eager.ringdown.report
+    children = rd.tree_flatten()[0]
+    swapped = type(rd).tree_unflatten(eager.ringdown._ctx, children)
+    actual, expected = rd.report, swapped.report
     assert actual is not None and expected is not None
     assert actual.completed == expected.completed
     assert actual.ok == expected.ok
     assert [w.name for w in actual.witnesses] == [w.name for w in expected.witnesses]
     for got, want in zip(actual.witnesses, expected.witnesses, strict=True):
-        assert (got.judged, got.ok) == (want.judged, want.ok), want.name
-        if np.isnan(want.value):
-            assert np.isnan(got.value), want.name
-        elif np.isinf(want.value):
-            assert got.value == want.value, want.name
-        else:
-            bound = 1e-4 * max(abs(want.value), want.bar)
-            assert abs(got.value - want.value) <= bound, (
-                f'{want.name}: traced={got.value}, eager={want.value}, '
-                f'bar={want.bar}, difference={abs(got.value - want.value)}, bound={bound}')
+        for field in ('value', 'bar', 'judged', 'ok', 'note'):
+            g, w = getattr(got, field), getattr(want, field)
+            assert _same(g, w), (
+                f'{want.name}.{field}: own context={g!r}, eager context={w!r}')
+    assert actual.summary() == expected.summary()
