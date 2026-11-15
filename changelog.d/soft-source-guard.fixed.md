@@ -1,8 +1,11 @@
-### Fixed — Admit soft sources beside closed-box plane waves (#PR)
+### Fixed — A closed-box plane wave beside a soft source: run() refused what forward() ran, and declaration order decided admission (#PR)
 
-Closed-box TF/SF plane waves now accept `add_source` in either declaration
-order. Fields from `run(compute_s_params=False)` and `forward()` agree.
-Lumped and wire ports still refuse the combination before changing the model,
-with one message explaining that ports load cells and record a port response.
-Waveguide refusals now explicitly name soft sources, which remain unsupported
-beside a waveguide drive.
+- `run()`, `forward()` and `add_tfsf_source` now admit `add_source` beside a closed-box
+  TF/SF plane wave in either declaration order; `run(compute_s_params=False)` and
+  `forward()` return the same fields bit for bit.
+- A lumped or wire port (`add_port`) beside a plane wave stays refused in either order,
+  with one message, before the model changes.
+- An explicit S request no impedance port can answer (`run(compute_s_params=True)`,
+  `forward(port_s11_freqs=...)`) is refused by one check on both entries, with the same
+  text apart from the entry name.
+- Waveguide refusals now name soft sources, which stay refused beside a waveguide port.
