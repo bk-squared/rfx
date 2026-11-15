@@ -855,9 +855,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
     """
     from rfx.stepping.uniform import make_uniform_step
     if invariants is None:
-        invariants = (core_step_invariants(ctx, lumped_rlc_admission=lumped_rlc_admission) if measurement is None else
+        admission_kwargs = ({} if lumped_rlc_admission is None else
+                            {"lumped_rlc_admission": lumped_rlc_admission})
+        invariants = (core_step_invariants(ctx, **admission_kwargs) if measurement is None else
                       core_step_invariants(ctx, measurement=measurement, dtype=dtype,
-                                           lumped_rlc_admission=lumped_rlc_admission))
+                                           **admission_kwargs))
     return make_uniform_step(invariants["ctx"], invariants,
                              design_hook=design_hook, hooks=hooks)
 
