@@ -141,7 +141,8 @@ def test_forward_override_refused(path, kind):
         # Design boxes cannot contain a source: move this source outside the box.
         sim._ports.clear()
         sim.add_source((.001, .001, .001), 'ez')
-        kw = dict(design_box=(LO, HI), design_eps_override=override[region])
+        # Design-box coordinates include both endpoint nodes.
+        kw = dict(design_box=(LO, tuple(v - H for v in HI)), design_eps_override=override[region])
     else:
         kw = {('eps_override' if kind == 'eps' else 'mu_r_override'): override}
         if kind == 'mu':
@@ -283,3 +284,62 @@ def test_admitted_run_bar(case, monkeypatch):
     growth = np.exp(np.polyfit(np.arange(205, 405, 10), np.log(blocks), 1)[0])
     print(f'RUN_BAR {case} growth={growth:.12g}')
     assert growth <= 1.001
+
+
+@pytest.mark.parametrize('location,eps', [('fine', .5), ('coarse', .980)])
+def test_subgrid_refusal(location, eps, monkeypatch):
+    from rfx.model import source_coefficients
+    sim = scene(eps=1.)
+    sim.add_material('body', eps_r=1.)
+    sim.add_material('low', eps_r=eps)
+    lo = (.002, .002, .004) if location == 'fine' else (.002, .002, .001)
+    hi = (.006, .006, .005) if location == 'fine' else (.006, .006, .002)
+    sim.add(Box(lo, hi), material='low')
+    sim.add_refinement((.003, .006), ratio=2, validation='off')
+    captured: list = []
+    original = source_coefficients.subgrid_source_tables
+    def capture(requests, grid, materials, *args, **kwargs):
+        captured.append((grid, materials))
+        return original(requests, grid, materials, *args, **kwargs)
+    monkeypatch.setattr(source_coefficients, 'subgrid_source_tables', capture)
+    with pytest.raises(ValueError, match='cell Courant limit') as error:
+        invoke(sim, 'uniform')
+    message = str(error.value)
+    fine_grid = captured[0][0]
+    stable = np.sqrt(float(np.float32(eps)) /
+                     (C**2 * sum(1 / np.min(fine_grid.cells(a))**2 for a in range(3))))
+    assert float(re.search(r'dt = ([^ ]+) s', message)[1]) == pytest.approx(fine_grid.dt)
+    assert float(re.search(r'largest stable step = ([^ ]+) s', message)[1]) == pytest.approx(stable, rel=2e-7)
+    for a, label in enumerate('xyz'):
+        match = re.search(rf'{label}=\[([^,]+), ([^\]]+)\] m', message)
+        np.testing.assert_allclose([float(match[1]), float(match[2])], [lo[a], hi[a]], atol=1e-10)
+    assert 'conservative on this path' in message
+    assert 'raise eps_r or mu_r to 1' in message
+
+
+def test_conformal_floor_refusal():
+    from rfx.grid import Grid
+    sim = scene(eps=.99, dt=.5 * Grid.courant_dt(H))
+    sim.add(Box((0.,)*3, (.0008, .008, .008)), material='pec')
+    with pytest.raises(ValueError, match='cell Courant limit') as error:
+        invoke(sim, 'uniform', conformal_pec='cut_cell_floor')
+    assert_cell_message(str(error.value), sim._build_grid(), .99, conservative=True)
+    with pytest.raises(NotImplementedError, match='forward.*refuses conformal_pec'):
+        invoke(sim, 'uniform', 'forward', conformal_pec='cut_cell_floor')
+
+
+@pytest.mark.parametrize('path', ['graded', 'distributed_uniform', 'distributed_graded'])
+def test_mu_override_unreachable(path):
+    sim = scene(path, eps=1.)
+    with pytest.raises(NotImplementedError, match='mu_r_override'):
+        invoke(sim, path, 'forward', mu_r_override=jnp.full(grid_of(sim, path).shape, .5))
+
+
+@pytest.mark.parametrize('path', ['order4', 'subgrid'])
+@pytest.mark.parametrize('pole', ['debye', 'lorentz'])
+def test_dispersion_unreachable(path, pole):
+    sim = scene('order4' if path == 'order4' else 'uniform', eps=2., pole=pole)
+    if path == 'subgrid':
+        sim.add_refinement((.003, .006), ratio=2, validation='off')
+    with pytest.raises((ValueError, NotImplementedError), match='[Dd]ispers|[Dd]ebye|[Ll]orentz'):
+        invoke(sim, 'uniform')
