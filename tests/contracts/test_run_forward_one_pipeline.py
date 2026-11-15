@@ -126,7 +126,7 @@ def test_multi_device_s_request_shared_refusal(declaration, compute_s_params, er
     assert child.returncode == 0, child.stdout + child.stderr
     pair = json.loads(output.read_text())
     print(json.dumps({'declaration': declaration, 'compute_s_params': compute_s_params,
-                      **pair}, sort_keys=True))
+                      **pair}, sort_keys=True), file=sys.stderr)
     single, multi = pair['single'], pair['multi']
     if not compute_s_params:
         assert single['outcome'] == multi['outcome'] == 'admitted', pair
