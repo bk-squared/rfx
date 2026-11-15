@@ -1320,6 +1320,8 @@ def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
         raise ValueError(
             "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
         )
+    if not sim._waveguide_ports and not any(p.is_port for p in sim._ports):
+        return True
     excited = s_drive_inventory(sim)
     family = {"waveguide"} if sim._waveguide_ports else {"lumped", "wire"}
     foreign = any(kind not in family for kind, _ in excited)
