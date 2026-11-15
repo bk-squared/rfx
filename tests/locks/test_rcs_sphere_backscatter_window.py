@@ -11,7 +11,7 @@ The bounds were set from the lambda/40, 60, 80 ladder's trend at lambda/40
 plus or minus w, where w = max(0.10 dB, 2 * max(trend misfit, distance from
 the trend, record and absorber sensitivity, quarter- and half-cell
 staircase-position sensitivity)). Restoring the #820 normalization shifts
-every bin by -1.12 to -1.15 dB and falls outside by at least 0.725 dB.
+these bins by -1.135 to -1.147 dB and falls outside by at least 0.725 dB.
 The band stops at ka = 1.00 because above it the meshes cross and the
 staircase-position sensitivity exceeds half the #820 shift.
 
