@@ -30,6 +30,39 @@ KNOWN_DIRECTIONS = {}
 EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
     'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
 
+S_REQUEST_REFUSAL_ROWS = (
+    ('soft', 'ValueError'),
+    ('plane-soft', 'ValueError'),
+    ('msl-only', 'ValueError'),
+    ('msl', 'NotImplementedError'),
+    ('floquet', 'NotImplementedError'),
+)
+
+
+@pytest.mark.parametrize('declaration,error_type', S_REQUEST_REFUSAL_ROWS)
+def test_explicit_s_request_shared_refusal(monkeypatch, declaration, error_type):
+    import jax
+    from tests.contracts.run_forward_census import S_REQUEST_BUILDERS
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('unsupported S request reached stepping')
+
+    monkeypatch.setattr(jax.lax, 'scan', forbidden)
+    monkeypatch.setattr(jax.lax, 'while_loop', forbidden)
+    builder = S_REQUEST_BUILDERS[declaration]
+    pair = {
+        'run': run_l2(builder, 'run', 'uniform', n_steps=1,
+                      entry_options={'compute_s_params': True}),
+        'forward': run_l2(builder, 'forward', 'uniform', n_steps=1,
+                          entry_options={'port_s11_freqs': np.array([10e9])}),
+    }
+    assert both_refused(declaration, 'uniform', pair), pair
+    assert pair['run']['type'] == error_type
+    run_text = pair['run']['message'].removeprefix('run(compute_s_params=True)')
+    forward_text = pair['forward']['message'].removeprefix('forward(port_s11_freqs=...)')
+    assert run_text == forward_text
+
+
 ASSEMBLY_ROWS = (
     ('C-conformal', 'uniform'),
     ('P-conformal', 'uniform'),

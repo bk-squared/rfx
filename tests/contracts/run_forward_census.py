@@ -970,3 +970,30 @@ def port_s_pair(declaration, path, *, n_steps=150):
         assert np.isnan(actual[:, column]).all()
     return {'run': {'outcome': 'admitted', 'result': run},
             'forward': {'outcome': 'admitted', 'result': forward}}
+
+
+def build_s_request_declaration(path, *, kind):
+    """Explicit S declarations, independently of fields-only companion scenes."""
+    if kind == 'soft':
+        return BUILDERS['S-field'](path)
+    if kind == 'plane-soft':
+        sim = base_scene(path, source=False)
+        sim.add_tfsf_source(closed_box=True)
+        sim.add_source(SOURCE, 'ez')
+        return sim
+    if kind in ('msl', 'msl-only'):
+        from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
+        sim, y_c = _base_sim()
+        if kind == 'msl':
+            _add_feed(sim, y_c)
+        _add_msl(sim, y_c)
+        return sim
+    assert kind == 'floquet'
+    sim = base_scene(path, source=False, boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'))
+    sim.add_floquet_port(.003, freqs=np.array([10e9]), f0=10e9)
+    sim.add_port(SOURCE, 'ez', impedance=50.)
+    return sim
+
+
+S_REQUEST_BUILDERS = {kind: partial(build_s_request_declaration, kind=kind)
+                      for kind in ('soft', 'plane-soft', 'msl-only', 'msl', 'floquet')}
