@@ -981,6 +981,11 @@ def build_s_request_declaration(path, *, kind):
         sim.add_tfsf_source(closed_box=True)
         sim.add_source(SOURCE, 'ez')
         return sim
+    if kind == 'soft-plane':
+        sim = base_scene(path, source=False)
+        sim.add_source(SOURCE, 'ez')
+        sim.add_tfsf_source(closed_box=True)
+        return sim
     if kind in ('msl', 'msl-only'):
         from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
         sim, y_c = _base_sim()
@@ -996,4 +1001,4 @@ def build_s_request_declaration(path, *, kind):
 
 
 S_REQUEST_BUILDERS = {kind: partial(build_s_request_declaration, kind=kind)
-                      for kind in ('soft', 'plane-soft', 'msl-only', 'msl', 'floquet')}
+                      for kind in ('soft', 'plane-soft', 'soft-plane', 'msl-only', 'msl', 'floquet')}

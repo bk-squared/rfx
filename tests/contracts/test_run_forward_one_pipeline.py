@@ -65,8 +65,9 @@ def test_explicit_s_request_shared_refusal(monkeypatch, declaration, error_type)
     assert run_text == forward_text
 
 
-def _s_request_device_pair(declaration):
+def _s_request_device_pair(declaration, compute_s_params):
     import jax
+    from contextlib import ExitStack
     from unittest.mock import patch
     from tests.contracts.run_forward_census import S_REQUEST_BUILDERS
 
@@ -85,36 +86,51 @@ def _s_request_device_pair(declaration):
     def forbidden(*args, **kwargs):
         raise AssertionError('unsupported S request reached stepping')
 
-    with patch.object(jax.lax, 'scan', forbidden), patch.object(jax.lax, 'while_loop', forbidden):
-        return {
-            name: run_l2(builder, 'run', 'uniform', n_steps=1,
-                         entry_options={'compute_s_params': True, **options})
+    with ExitStack() as stack:
+        if compute_s_params:
+            stack.enter_context(patch.object(jax.lax, 'scan', forbidden))
+            stack.enter_context(patch.object(jax.lax, 'while_loop', forbidden))
+        pair = {
+            name: run_l2(builder, 'run', 'uniform', n_steps=3,
+                         entry_options={'compute_s_params': compute_s_params, **options})
             for name, options in (('single', {}), ('multi', {'devices': devices}))
         }
+    for record in pair.values():
+        if record['outcome'] == 'admitted':
+            assert record.pop('result') is not None
+    return pair
 
 
-@pytest.mark.parametrize('declaration,error_type', [
-    ('soft', 'ValueError'), ('plane-soft', 'ValueError'),
-    ('msl', 'NotImplementedError'), ('floquet', 'NotImplementedError'),
+@pytest.mark.parametrize('declaration,compute_s_params,error_type', [
+    ('soft', True, 'ValueError'), ('plane-soft', True, 'ValueError'),
+    ('msl', True, 'NotImplementedError'), ('floquet', True, 'NotImplementedError'),
+    ('soft-plane', True, 'ValueError'),
+    ('plane-soft', False, None), ('soft-plane', False, None),
 ])
-def test_multi_device_s_request_shared_refusal(declaration, error_type, tmp_path):
-    """Explicit S admission agrees before either run reaches stepping."""
+def test_multi_device_s_request_shared_refusal(declaration, compute_s_params, error_type, tmp_path):
+    """Run admission agrees across device counts with and without an S request."""
     root = Path(__file__).resolve().parents[2]
     env = dict(os.environ, PYTHONPATH=str(root), JAX_PLATFORMS='cpu',
                PYTHONDONTWRITEBYTECODE='1', JAX_ENABLE_X64='false',
                XLA_FLAGS='--xla_force_host_platform_device_count=2')
-    output = tmp_path / 'refusals.json'
+    output = tmp_path / 'admission.json'
     script = (
         'import json, sys; from pathlib import Path; '
         'from tests.contracts.test_run_forward_one_pipeline import _s_request_device_pair; '
-        'Path(sys.argv[2]).write_text(json.dumps(_s_request_device_pair(sys.argv[1])))'
+        'Path(sys.argv[2]).write_text(json.dumps('
+        '_s_request_device_pair(sys.argv[1], json.loads(sys.argv[3]))))'
     )
-    child = subprocess.run([sys.executable, '-c', script, declaration, str(output)],
+    child = subprocess.run([sys.executable, '-c', script, declaration, str(output),
+                            json.dumps(compute_s_params)],
                            cwd=root, env=env, capture_output=True, text=True, timeout=90)
     assert child.returncode == 0, child.stdout + child.stderr
     pair = json.loads(output.read_text())
-    print(json.dumps({'declaration': declaration, **pair}, sort_keys=True))
+    print(json.dumps({'declaration': declaration, 'compute_s_params': compute_s_params,
+                      **pair}, sort_keys=True))
     single, multi = pair['single'], pair['multi']
+    if not compute_s_params:
+        assert single['outcome'] == multi['outcome'] == 'admitted', pair
+        return
     assert single['outcome'] == multi['outcome'] == 'raised', pair
     assert single['type'] == multi['type'] == error_type, pair
     assert raised_in_rfx(single) and raised_in_rfx(multi), pair
