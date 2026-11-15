@@ -1116,6 +1116,8 @@ its simulation time predates the current decay check. It is re-measured after
 
 ### Traced material values on several devices bypass the cell time-step limit.
 
+Tracker: #2755
+
 A `jax.jit`-traced ε or μr on several devices is not judged against the cell time-step limit. Below ε·μr = 0.98, such a run goes non-finite with no named refusal ([#2755](https://github.com/bk-squared/rfx/issues/2755)).
 
 ---

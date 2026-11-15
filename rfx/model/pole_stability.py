@@ -245,7 +245,7 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
             check(*jax.tree.unflatten(tree, member))
         return
     if not in_program and any(_is_abstract(v) for v in leaves):
-        return  # #2755: preserve multi-device jit(grad) until checks can run there.
+        return  # Preserve multi-device jit(grad) until checks can run there.
     traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
 
 

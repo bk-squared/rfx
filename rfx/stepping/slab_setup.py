@@ -11,6 +11,7 @@ import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.backend import host_cpu_device
+from rfx.errors import RfxRefusal
 from rfx.core.yee import FDTDState
 from rfx.model.materials import (ComponentCells, realize_components, kernel_materials)
 from rfx.stepping.slab import cut, zero_pole_state, place, material_kind
@@ -263,7 +264,7 @@ def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
                         value = np.asarray(shard.data)[start-left:stop-left]
                         break
                 else:
-                    raise ValueError('cell Courant limit: owned slab is not addressable')
+                    raise RfxRefusal('cell Courant limit: owned slab is not addressable')
             else:
                 value = value[start:stop]
             if value.ndim == 4:

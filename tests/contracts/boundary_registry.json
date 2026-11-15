@@ -554,6 +554,11 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/model/pole_stability.py",
+      "function": "refuse_subluminal_cells.check",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/model/realization_integrals.py",
       "function": "_drawn_union_volume",
       "kind": "roll/diff"
