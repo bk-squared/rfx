@@ -329,14 +329,16 @@ def _build_nu_scan(
     field_dtype = field_dtype if field_dtype is not None else jnp.float32
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
-    from rfx.geometry.node_tensor import SmoothedEps
-    from rfx.model.tensor_operands import TensorOperands
+    from rfx.model.tensor_operands import TensorOperands, step_tensor
     from rfx.geometry.rasterize_grid import unpadded_high_walls
-    tensor = TensorOperands.of(aniso_eps) if isinstance(aniso_eps, SmoothedEps) else None
+    # The graded runner attaches any operand (a SmoothedEps or a plain
+    # diagonal tuple) before building drives; a direct caller passes it as
+    # an argument. A tuple attaches with no node smoothing, so the step's
+    # arithmetic is the one it had when the tuple went to the step raw.
+    tensor = step_tensor(materials, TensorOperands.of(aniso_eps))
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
                                 high_wall=unpadded_high_walls(grid), tensor=tensor)
-    if tensor is not None:
-        aniso_eps = tensor.eps
+    aniso_eps = tensor.eps if tensor is not None else None
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",

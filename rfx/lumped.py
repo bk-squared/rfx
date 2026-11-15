@@ -77,6 +77,7 @@ from rfx.errors import RfxUnsupported
 from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
+import math
 
 import jax.numpy as jnp
 
@@ -269,8 +270,26 @@ def edge_update_denominator(materials, cell, component, dt,
     reproduces the concrete builder's Python-float arithmetic; without it the
     arithmetic stays in the arrays' dtype, so a traced material keeps its
     gradient.
+
+    With an attached tensor the edge's operand is the one the step reads
+    (:func:`rfx.model.materials.tensor_operand_at`): the diagonal, the
+    UPML form (float32 diagonal, cell-owned conductivity), or the Stage-2
+    inverse ``inv``, for which ``D0 = EPS_0/(dt*inv) + sigma/2`` is formed
+    in the inverse form, never from a re-inverted permittivity. A frozen
+    edge (``inv = 0``) has no finite ``D0``; an element there is refused
+    before the first step, and its host value is ``inf`` until then.
     """
-    from rfx.model.materials import e_update_material_at
+    from rfx.model.materials import e_update_material_at, tensor_operand_at
+    operand = tensor_operand_at(materials, cell, component)
+    if operand is not None and operand[0] == "inv":
+        axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+        inv = operand[1]
+        sigma = materials.components.sigma_update[axis][tuple(cell)]
+        if as_float and not (is_tracer(inv) or is_tracer(sigma)):
+            inv = float(inv)
+            return math.inf if inv == 0.0 else _denominator_inv_si(inv, float(sigma), dt)
+        return si_value_eps_r_grad(_denominator_inv_si, _denominator_inv_eps_r,
+                                   inv, sigma, dt)
     eps_r, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
     if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
         # Python floats: host arithmetic, nothing on a tape.
@@ -287,6 +306,14 @@ def _denominator_si(eps_r, sigma, dt):
 
 def _denominator_eps_r(eps_r, sigma, dt):
     return eps_r * (EPS_0 / dt) + sigma / 2.0
+
+
+def _denominator_inv_si(inv, sigma, dt):
+    return EPS_0 / (dt * inv) + sigma / 2.0
+
+
+def _denominator_inv_eps_r(inv, sigma, dt):
+    return (EPS_0 / dt) / inv + sigma / 2.0
 
 
 def _resolve_position_to_index(grid, position):

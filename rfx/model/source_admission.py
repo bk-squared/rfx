@@ -118,6 +118,47 @@ def _refuse_shorted_lumped_rlc(sim, conductors, *, release_ports):
                 "the conductor at the element, or move the element off it.")
 
 
+def refuse_frozen_drive_edges(tensor, drives):
+    """Refuse a drive on an E edge the Stage-2 inverse permittivity freezes.
+
+    ``drives`` holds ``(entity, position, component, edges)``: a lumped
+    port's edge, a wire port's live (stamped) cells, an MSL feed's stamped
+    edges, a current-kind soft source's edge. Dead wire extent cells carry
+    no source and are not listed. The step zeroes every edge with
+    ``inv < PEC_INV_THRESHOLD`` after the E update, and the drive's
+    coefficient there is the inverse form's 0, so the drive would inject
+    nothing. Only a concrete Stage-2 inverse is judged (``kottke_pec``, not
+    the occupancy lane's smooth inverse). A traced inverse cannot be judged
+    on the host: the check warns and the drive keeps the inverse-form
+    coefficient.
+    """
+    if tensor is None or tensor.inv_eps is None:
+        return
+    drives = tuple(drives)
+    if not drives:
+        return
+    if any(is_tracer(leaf) for leaf in jax.tree.leaves(tensor.inv_eps)):
+        warnings.warn(
+            "Frozen-edge drive admission check cannot run on a traced inverse "
+            "permittivity; a drive on an E edge the inverse freezes injects "
+            "nothing.", AccuracyWarning, stacklevel=user_stacklevel())
+        return
+    if tensor.inv_eps_smooth:
+        return
+    from rfx.boundaries.pec import PEC_INV_THRESHOLD
+    for entity, position, component, edges in drives:
+        component = str(component).lower()
+        inv = np.asarray(tensor.inv_eps["xyz".index(component[1])])
+        for edge in edges:
+            edge = tuple(int(v) for v in edge)
+            if inv[edge] < PEC_INV_THRESHOLD:
+                raise RfxRefusal(
+                    f"{entity} at {tuple(position)} ({component}), grid index {edge}: "
+                    "the smoothed inverse permittivity freezes this E edge "
+                    "(inv < 1e-9), so the drive would inject nothing. Move it off "
+                    "the metal, or cut a gap in the conductor.")
+
+
 def _dead_sources(sim, conductors):
     if not sim._ports:
         return
