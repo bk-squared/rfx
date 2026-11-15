@@ -40,7 +40,8 @@ CPML = 4
 I_LO, I_HI = 8, 16          # the patch's two x node lines (interior indices)
 J_LO, J_HI = 5, 11          # the patch's two y node lines
 N_W = 4                     # cells stretched inside / shrunk outside the edge
-# Case C traces both x and y, so both axes use the declared cell floor.
+# dt is pinned: a derived dt follows the smallest cell, which changes sides at
+# delta = 0. Case C traces both x and y, so both axes use the declared floor.
 D_MIN = DX * (1 - 0.6 / N_W)
 DT_PIN = 0.9 / (C0 * np.sqrt(2 / D_MIN**2 + 1 / DX**2))
 K_GND, K_PATCH = 6, 12      # ground and patch node planes on z
@@ -340,8 +341,6 @@ def test_a_pinned_sheet_reaches_the_solve_on_the_nonuniform_lane():
                         pinned=False)
     without = float(jnp.sum(bare.forward(n_steps=30, skip_preflight=True)
                             .time_series ** 2))
-    print(f"patch energy: with={with_patch:.9e} without={without:.9e} "
-          f"relative_change={abs(with_patch - without) / max(without, 1e-30):.9e}")
     assert abs(with_patch - without) / max(without, 1e-30) > 1e-3, (
         f"the patch changes nothing at the probe ({with_patch:.6e} vs "
         f"{without:.6e}) — it is not reaching the solve")
@@ -421,9 +420,8 @@ def test_patch_edge_gradient_matches_a_central_difference(case):
     # B 3.8693e-3 / 9.6618e-4 / 2.2386e-4 / 9.0866e-5,
     # C 8.2931e-3 / 2.0895e-3 / 5.4981e-4 / 3.6687e-5,
     # D 8.5021e-3 / 2.1354e-3 / 5.7214e-4 / 9.3833e-6.
-    # The coarser rungs fall at roughly second order; float32 round-off
-    # affects the finest rung. Every case decreases over the whole ladder.
-    print(f"{case}: AD={grad_ad:.9e} FD={grad_fd:.9e} relative={rel:.9e}")
+    # The coarser rungs fall at roughly second order; the finest falls
+    # further (cause not measured). Every case decreases over the ladder.
     assert rel < 1.5e-2, (
         f"{case}: AD {grad_ad:+.6e} vs central FD {grad_fd:+.6e} — "
         f"relative {rel:.3e}")
