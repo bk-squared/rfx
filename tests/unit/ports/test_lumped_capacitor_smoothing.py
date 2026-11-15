@@ -87,8 +87,10 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
     def capture(grid, materials, n_steps, **kwargs):
         cell = (nu_core.position_to_index(grid, LOAD) if lane.startswith("nu")
                 else grid.position_to_index(LOAD))
-        eps = kwargs.get("aniso_eps")
-        inverse = kwargs.get("aniso_inv_eps")
+        # The runners attach the step's operands to the realization.
+        tensor = getattr(materials.components, "tensor", None)
+        eps = tensor.eps if tensor is not None else None
+        inverse = tensor.inv_eps if tensor is not None else None
         if inverse is not None:
             values = [1.0 / float(e[cell]) for e in inverse]
         else:
@@ -96,7 +98,7 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
                 eps = component_e_materials(materials, high_wall=unpadded_high_walls(grid))[0]
             values = [float(e[cell]) for e in eps]
         observed["eps"] = np.asarray(values)
-        weights = kwargs.get("conformal_weights")
+        weights = tensor.conformal_weights if tensor is not None else None
         observed["weights"] = (None if weights is None
                                else np.asarray([float(w[cell]) for w in weights]))
         return original(grid, materials, n_steps, **kwargs)

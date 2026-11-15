@@ -202,7 +202,8 @@ def test_sigma_override_is_carried_with_smoothing(monkeypatch, graded):
 
     def capture(grid, materials, *args, **kwargs):
         np.testing.assert_array_equal(materials.sigma, np.full(grid.shape, .01, dtype=np.float32))
-        assert kwargs["aniso_eps"] is not None
+        # The runner attaches the smoothed operand to the realization.
+        assert materials.components.tensor.eps is not None
         observed.append(True)
         return original(grid, materials, *args, **kwargs)
 
