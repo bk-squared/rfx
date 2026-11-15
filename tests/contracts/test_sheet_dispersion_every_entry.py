@@ -28,7 +28,14 @@ from rfx.errors import RfxRefusal
 from rfx.materials.lorentz import LorentzPole
 
 
-SHEET = Box((4e-3, 4e-3, 12e-3), (16e-3, 16e-3, 12e-3))
+# In-plane faces 0.35 cell outside nodes 4 and 16 (dx = 1 mm in x and y on
+# both meshes): the footprint covers nodes 4..16 and an f0 sheet is solved
+# 0.35 cell beyond its last node at each free edge, so the solved size,
+# 12 + 2 * 0.35 = 12.7 mm, equals the drawn 16.35 - 3.65 = 12.7 mm and the
+# sheet-size preflight (1 %) passes. Same rule as _sheet_sim in
+# tests/unit/materials/test_sheet_impedance.py.
+SHEET = Box(((4 - .35) * 1e-3, (4 - .35) * 1e-3, 12e-3),
+            ((16 + .35) * 1e-3, (16 + .35) * 1e-3, 12e-3))
 # Below the sheet plane (z = 12 mm), off the source and probe columns.
 POLE_BOX = Box((2e-3, 2e-3, 2e-3), (6e-3, 6e-3, 6e-3))
 OMEGA_0 = 2 * np.pi * 8e9
@@ -142,8 +149,8 @@ ADMIT_ROWS = {
     "lumped-wire-scan-uniform": lambda: scan(cube(False, port=True)),
     "lumped-wire-scan-graded": lambda: scan(cube(True, port=True)),
     "lumped-wire-scan-devices": lambda: scan(cube(False, port=True), devices=devices2()),
-    "msl-uniform": lambda: msl(False).compute_msl_s_matrix(n_steps=4, skip_preflight=True),
-    "msl-graded": lambda: msl(True).compute_msl_s_matrix(n_steps=4, skip_preflight=True),
+    "msl-uniform": lambda: msl(False).compute_msl_s_matrix(n_steps=4),
+    "msl-graded": lambda: msl(True).compute_msl_s_matrix(n_steps=4),
     "waveguide-uniform": lambda: wr90(False).compute_waveguide_s_matrix(n_steps=4),
     "waveguide-graded": lambda: wr90(True).compute_waveguide_s_matrix(n_steps=4),
 }
@@ -227,7 +234,8 @@ def test_sheet_dispersion_refused_by_earlier_sheet_refusal(row, monkeypatch):
     _no_scan(monkeypatch)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises((RfxRefusal, NotImplementedError)):
+        with pytest.raises((RfxRefusal, NotImplementedError),
+                           match="surface.impedance|surface_impedance_f0"):
             EARLIER_ROWS[row]()
 
 
