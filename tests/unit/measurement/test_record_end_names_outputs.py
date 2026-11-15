@@ -109,19 +109,23 @@ def test_rows_warn_for_their_own_outputs(s_status, field_status, spoken):
     _assert_names(_messages(caught), spoken)
 
 
-@pytest.mark.parametrize('status', ['fail', 'absent'])
-def test_s_without_an_s_row_still_warns(status):
+@pytest.mark.parametrize('status,reads', [
+    ('fail', ()), ('absent', ()), ('fail', FIELDS)], ids=['fail', 'absent', 'fail_fields'])
+def test_s_without_an_s_row_still_warns(status, reads):
     """A lane that returns S but builds no S row (review P2, Addendum 4):
-    the untagged row speaks for S, as base did."""
+    the probe or field row speaks for S too, as base did."""
     sim = Simulation(freq_max=20e9, domain=(.012, .012, .008), dx=.001)
-    row = _row(status, ())
+    if reads:
+        sim._ntff, sim._dft_planes = object(), [object()]
+        sim._flux_monitors, sim._current_moments = [object()], object()
+    row = _row(status, reads)
     witness = {**row, 'runs': [row], 'groups': [row]}
     sim._run_settling_witness = lambda result: (witness['db'], witness)
     result = Result(state=None, time_series=None, s_params=np.ones((1, 1, 1)), freqs=SBINS)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         sim._attach_run_settling_witness(result, n_steps=800)
-    _assert_names(_messages(caught), [S])
+    _assert_names(_messages(caught), [S + reads])
 
 
 def test_field_row_names_have_the_design_order():
