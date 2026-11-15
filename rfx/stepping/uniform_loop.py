@@ -267,6 +267,7 @@ def run(
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     wire_refplane_sparams = wire_refplane_sparams or []
+    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -388,8 +389,9 @@ def run(
         snapshot_extractor=_take_snapshot if snap_in_body else None,
     )
     # An attached plan supplies the probe and port tables (direct callers keep theirs).
-    _core_step = (make_core_step(_step_ctx) if measurement is None else make_core_step(
-        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype))
+    _core_step = (make_core_step(_step_ctx, lumped_rlc_admission=lumped_rlc_admission) if measurement is None else make_core_step(
+        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype,
+        lumped_rlc_admission=lumped_rlc_admission))
 
     def step_fn(carry, xs):
         _step_idx, src_vals, mag_src_vals = xs
@@ -925,6 +927,7 @@ def run_until_decay(
     validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
+    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -1027,8 +1030,9 @@ def run_until_decay(
     # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
     _inv_args, _inv_rebuild = split_loop_invariants(
-        core_step_invariants(_step_ctx) if measurement is None else
-        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype),
+        core_step_invariants(_step_ctx, lumped_rlc_admission=lumped_rlc_admission) if measurement is None else
+        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype,
+                             lumped_rlc_admission=lumped_rlc_admission),
         tuple(grid.shape))
 
     @jax.jit
