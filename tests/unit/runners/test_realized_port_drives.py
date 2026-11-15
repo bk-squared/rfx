@@ -169,3 +169,476 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     assert calls["realize"] == 1
     assert calls["drive"] > 0
     assert calls["rlc"] == 2
+
+
+# #1961: references use stored operands, independently of every consumer helper.
+# The 2026-11-15 design amendment identifies tensor.eps for all three
+# public tensor branches; the inverse-tensor kernel is outside this table.
+def _o2_operands(materials, branch, axis):
+    c = materials.components
+    eps = c.eps_update if branch == "plain" else c.tensor.eps
+    return (np.asarray(eps[axis], dtype=np.float64),
+            np.asarray(c.sigma_update[axis], dtype=np.float64))
+
+
+def _o2_cb(materials, branch, axis, edge, dt):
+    eps, sigma = _o2_operands(materials, branch, axis)
+    e, s = eps[edge], sigma[edge]
+    return float(dt / (EPS_0 * e) / (1. + s * dt / (2. * EPS_0 * e)))
+
+
+class _O2ReferenceCaptured(Exception):
+    pass
+
+
+def _o2_reference_self_check(monkeypatch, branch):
+    """Pre-row audit: the declared branch must supply the design's operand."""
+    from rfx import Simulation, Sphere
+    from rfx.model import materials as model
+    from rfx.stepping import uniform_loop, yee as kernels
+    from rfx.core import node_tensor
+
+    records = []
+    for entry in ('run', 'forward'):
+        sim = Simulation(freq_max=20e9, domain=(.012,) * 3, dx=.001,
+                         boundary=_o2_boundary(branch), cpml_layers=2, snap='declared')
+        sim.add_material('dielectric', eps_r=4.)
+        sphere = Sphere((.00537, .00613, .00573), .0023)
+        sim.add(sphere, material='pec' if branch == 'conformal' else 'dielectric')
+        sim.add_source((.002, .002, .002), 'ez', waveform=jnp.ones_like,
+                       amplitude_kind='field')
+        options = dict(n_steps=1, skip_preflight=True)
+        if branch in ('smooth', 'full'):
+            options['subpixel_smoothing'] = True if branch == 'smooth' else 'full_tensor'
+        if branch == 'conformal':
+            options['conformal_pec'] = True
+        if entry == 'forward':
+            options.pop('conformal_pec', None)
+            options['checkpoint'] = False
+        raw = []
+        original_realize = model.with_components
+        original_update = uniform_loop._update_e_with_optional_dispersion
+        original_node = node_tensor.add_node_increment
+        off_diagonal = []
+
+        def realize(*args, **kwargs):
+            value = original_realize(*args, **kwargs)
+            raw.append(value)
+            return value
+
+        def node(updated, *args, **kwargs):
+            result = original_node(updated, *args, **kwargs)
+            off_diagonal.append(tuple(np.asarray(b) - np.asarray(a)
+                                      for a, b in zip(updated, result)))
+            return result
+
+        def update(state, materials, dt, dx, **kwargs):
+            tensor = materials.components.tensor
+            supplied_inv = kwargs.get('aniso_inv_eps')
+            assert supplied_inv is None
+            effective, sigma = _o2_operands(materials, branch, 2)
+            kernel = 'update_e' if branch == 'plain' else 'update_e_aniso'
+            cells = np.asarray(raw[-1].eps_r)
+            sigma = np.asarray(materials.components.sigma_update[2], dtype=np.float64)
+            eligible = np.zeros(effective.shape, dtype=bool)
+            eligible[3:-3, 3:-3, 3:-3] = True
+            eligible &= (effective != cells) & (sigma == 0) & np.isfinite(effective)
+            if branch == 'conformal':
+                weights = np.asarray(tensor.conformal_weights[2])
+                eligible &= (weights > 0) & (weights < 1)
+            assert eligible.any(), (branch, 'no discriminating edge')
+            score = np.where(eligible, np.abs(effective - cells), -1.)
+            edge = tuple(int(i) for i in np.unravel_index(np.argmax(score), score.shape))
+            zeros = jnp.zeros_like(state.ez)
+            curls = (zeros, zeros, zeros.at[edge].set(1.))
+            state = state._replace(ex=zeros, ey=zeros, ez=zeros)
+            with monkeypatch.context() as curl_patch:
+                curl_patch.setattr(kernels, 'curl_h', lambda *a, **k: curls)
+                result = original_update(state, materials, dt, dx, **kwargs)[0]
+            eps = effective[edge]
+            cb = _o2_cb(materials, branch, 2, edge, dt)
+            value = float(result.ez[edge])
+            off = []
+            for arrays in off_diagonal:
+                for component, array in zip(('ex', 'ey', 'ez'), arrays):
+                    off.extend([component, [int(i) for i in index], float(array[tuple(index)])]
+                               for index in np.argwhere(array != 0))
+            record = dict(branch=branch, entry=entry, edge=edge, kernel=kernel,
+                          eps=float(eps), cell=float(cells[edge]), increment=value,
+                          cb_from_actual_operand=cb, rel=abs(value-cb)/abs(cb),
+                          tensor_inv_present=tensor is not None and tensor.inv_eps is not None,
+                          tensor_eps_present=tensor is not None and tensor.eps is not None,
+                          off_diagonal_at_edge=(float(off_diagonal[0][2][edge]) if off_diagonal else 0.),
+                          coupled=off)
+            records.append(record)
+            np.testing.assert_allclose(value, cb, rtol=1e-6, atol=0.)
+            raise _O2ReferenceCaptured
+
+        with monkeypatch.context() as patch, jax.disable_jit():
+            patch.setattr(model, 'with_components', realize)
+            patch.setattr(uniform_loop, '_update_e_with_optional_dispersion', update)
+            patch.setattr(node_tensor, 'add_node_increment', node)
+            with pytest.raises(_O2ReferenceCaptured):
+                getattr(sim, entry)(**options)
+
+    assert len(records) == 2
+
+
+@pytest.mark.parametrize("branch", ("plain", "smooth", "full", "conformal"))
+def test_o2_reference(monkeypatch, branch):
+    _o2_reference_self_check(monkeypatch, branch)
+
+
+_O2_BRANCHES = ('plain', 'smooth', 'full', 'conformal')
+_O2_OPERATORS = ('lumped', 'wire', 'msl', 'rlc', 'waveguide', 'sheet', 'kerr')
+_O2_ROWS = tuple((x, b) for x in _O2_OPERATORS for b in _O2_BRANCHES) + (
+    ('waveguide_second_medium', 'plain'),)
+_O2_RTOL = 1e-6
+
+# Values agree only because section admission enforces a scalar medium.
+NOTE = {
+    ('waveguide', b): (
+        f'{b}: step 1 omits the unequal-cell precondition because the section must '
+        'be homogeneous. cfg.medium.eps_r stays fixed when only the update operand '
+        'is scaled 1.7x; coefficient stays 215.330292, reference becomes 126.664876.')
+    for b in ('plain', 'smooth', 'full')
+}
+_SHEET_REFUSAL = (
+    'surface-impedance (surface_impedance_f0) sheets are not supported with '
+    'subpixel_smoothing / conformal_pec: the sheet operator assumes the plain '
+    'isotropic E update at its edges (Stage-1/2 conformal and Kottke lanes do not '
+    'apply the sheet operator).')
+_KERR_REFUSAL = (
+    'subpixel_smoothing cannot combine with kerr_chi3: the Kerr E update does not '
+    'read the permittivity tensor.')
+REFUSED = {
+    **{('sheet', b): _SHEET_REFUSAL for b in ('smooth', 'full', 'conformal')},
+    **{('kerr', b): _KERR_REFUSAL for b in ('smooth', 'full')},
+    ('waveguide_second_medium', 'plain'): (
+        "Waveguide port 'waveguide_0': section cells ((5, 8), (0, 8), (0, 7)): "
+        'permittivity (materials.eps_r)=np.float32(4.0) at cell (5, 3, 2); '
+        'waveguide sections require one homogeneous, isotropic, lossless, '
+        'non-dispersive medium'),
+}
+# The corrected waveguide aperture includes v_hi-1: its weight is 0.6.
+# Every remaining combination either reaches an eligible edge or refuses by name.
+UNREACHABLE = {}
+
+# Measured |observed-reference|/|reference|, identical on run and forward.
+_O2_XFAIL_REL = {
+    ('lumped', 'smooth'): .192144888, ('lumped', 'full'): .174978157,
+    ('lumped', 'conformal'): 84.8711297,
+    ('wire', 'smooth'): .123831689, ('wire', 'full'): .112768240,
+    ('wire', 'conformal'): 50.4323076,
+    ('msl', 'smooth'): .258927820, ('msl', 'full'): .000376344724,
+    ('msl', 'conformal'): 2.26802405,
+    ('rlc', 'smooth'): .75, ('rlc', 'full'): .640101789,
+    ('rlc', 'conformal'): .996277330,
+    ('waveguide', 'conformal'): .666666605,
+    ('sheet', 'plain'): .562499985,
+    ('kerr', 'plain'): 1.285714286, ('kerr', 'conformal'): .0692840508,
+}
+
+
+def _o2_parameter(operator, branch):
+    marks = []
+    if (operator, branch) in _O2_XFAIL_REL:
+        reads = ('components.eps_update and components.sigma_update'
+                 if operator in ('lumped', 'wire', 'msl', 'rlc') else
+                 'cfg.medium.eps_r resolved from materials.eps_r' if operator == 'waveguide' else
+                 'materials.eps_r and materials.sigma' if operator == 'sheet' else
+                 'materials.eps_r')
+        update = ('components.eps_update' if branch == 'plain' else 'components.tensor.eps')
+        rel = _O2_XFAIL_REL[operator, branch]
+        marks.append(pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+            f'#1961: {operator} reads {reads}, the E update reads {update} and '
+            f'components.sigma_update on {branch} edges; rel={rel:.9g} at the test edge')))
+    return pytest.param(operator, branch, id=f'{operator}-{branch}', marks=marks)
+
+
+def _o2_boundary(branch):
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    return (BoundarySpec(x='cpml', y=Boundary('pec', 'pec', conformal=True), z='cpml')
+            if branch == 'conformal' else 'cpml')
+
+
+def _o2_options(branch):
+    if branch in ('smooth', 'full'):
+        return dict(subpixel_smoothing=True if branch == 'smooth' else 'full_tensor')
+    return dict(conformal_pec=branch == 'conformal')
+
+
+def _o2_scene(operator, branch, mixed_section=False):
+    from rfx import Box, Simulation, Sphere
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    if operator == 'waveguide':
+        sim = Simulation(freq_max=40e9, domain=(.018, .008, .0066), dx=.001,
+                         cpml_layers=2, snap='declared',
+                         boundary=BoundarySpec(x='cpml',
+                             y='pec',
+                             z=Boundary('pec', 'pec', conformal=branch == 'conformal')))
+        # The section must stay homogeneous. The distant shape activates
+        # smoothing without putting a second medium in the port section.
+        sim.add_material('remote', eps_r=4.)
+        sim.add(Sphere((.004 if mixed_section else .014, .004, .003), .0013), material='remote')
+        sim.add_waveguide_port(.004, direction='+x', mode=(1, 0), mode_type='TE',
+                               freqs=[30e9], f0=30e9, bandwidth=.5,
+                               probe_offset=2, ref_offset=1)
+        return sim
+    sim = Simulation(freq_max=8e9 if operator == 'msl' else 20e9, domain=(.012,) * 3, dx=.001,
+                     boundary=_o2_boundary(branch), cpml_layers=2, snap='declared')
+    sim.add_material('dielectric', eps_r=4., **({'chi3': 1e-3} if operator == 'kerr' else {}))
+    sphere = Sphere((.00537, .00613, .00573), .0023)
+    sim.add(sphere, material='pec' if branch == 'conformal' else 'dielectric')
+    if operator == 'kerr' and branch == 'conformal':
+        sim.add(Box((.002, .002, .002), (.010, .010, .010)), material='dielectric')
+    point = (.005, .006, .007) if branch == 'conformal' else (.004, .004, .004)
+    if operator in ('lumped', 'wire'):
+        sim.add_port(point, 'ez', waveform=jnp.ones_like,
+                     extent=.002 if operator == 'wire' else None)
+    elif operator == 'msl':
+        x, y, z = point
+        ground = z - .001
+        lo, hi, half_width = ((.002, .010, .001) if branch == 'conformal' else
+                              (.00165, .01035, .00135))
+        sim.add(Box((lo, lo, ground), (hi, hi, ground)), material='pec')
+        from rfx.preflight.line_port_coverage import port_node_coordinate
+        node = port_node_coordinate(sim, (x, y, ground))
+        sim.add(Box((node, y-half_width, z+.001), (hi, y+half_width, z+.001)), material='pec')
+        sim.add_msl_port(position=(x, y, ground), width=.002, height=.002,
+                         direction='+x', impedance=50., waveform=jnp.ones_like, eps_r_sub=4.)
+    else:
+        sim.add_source((.002, .002, .002), 'ez', waveform=jnp.ones_like, amplitude_kind='field')
+        if operator == 'rlc':
+            sim.add_lumped_rlc(point, 'ez', R=70., L=2e-9, C=.3e-12, topology='series')
+        elif operator == 'sheet':
+            sim.add_thin_conductor(Box((.004, .002, .002), (.004, .009, .009)),
+                                   sigma_bulk=100., thickness=1e-5, surface_impedance_f0=5e9)
+    return sim
+
+
+def _o2_changed(materials, branch, axis, edge):
+    c = materials.components
+    old = c.eps_update if branch == 'plain' else c.tensor.eps
+    moved = list(old)
+    moved[axis] = moved[axis].at[edge].multiply(1.7)
+    if branch == 'plain':
+        c = replace(c, eps_update=tuple(moved))
+    else:
+        c = replace(c, tensor=replace(c.tensor, eps=tuple(moved)))
+    return materials._replace(components=c)
+
+
+def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
+    """Public declarations and real consumer calls; stop before a second step.
+
+    setup() captures the public runner's exact kwargs. Replaying those kwargs
+    enters the shared uniform step, with the prepared product's final materials.
+    No reference is formed from a consumer's coefficient helper.
+    """
+    from rfx.model import materials as model
+    from rfx.sources import port_drive
+    from rfx.stepping import prepared, uniform_setup, uniform_loop, kerr, waveguide_source
+    from rfx.materials import thin_conductor
+    from tests.contracts.test_measurement_plan import setup
+    import rfx.simulation as simulation
+    import rfx.lumped as lumped
+
+    sim = _o2_scene(operator, branch, mixed_section=mixed_section)
+    calls, seen = [], {}
+    original_realize = model.with_components
+    original_advance = prepared.advance
+    original_drive = port_drive.port_drive_waveform
+    original_denominator = lumped.edge_update_denominator
+    original_invariants = uniform_setup.core_step_invariants
+    original_sheet = thin_conductor.sheet_update_coeffs
+    original_waveguide = waveguide_source.apply_waveguide_port_e
+    original_entry = getattr(sim, entry)
+
+    def public(**kwargs):
+        kwargs.update(_o2_options(branch))
+        if entry == 'forward':
+            kwargs.pop('conformal_pec', None)
+        if entry == 'run':
+            kwargs['compute_s_params'] = False
+            kwargs.pop('s_param_freqs', None)
+        return original_entry(**kwargs)
+
+    def realize(materials, *args, **kwargs):
+        fresh = materials.components is None
+        result = original_realize(materials, *args, **kwargs)
+        # Plain drives are formed at the first realization. Tensor-only
+        # follow observations move the stored operand after section admission.
+        if change is not None and branch == 'plain' and operator != 'waveguide' and fresh:
+            result = _o2_changed(result, branch, *change)
+        return result
+
+    def advance(product, *args, **kwargs):
+        seen['prepared_materials'] = product.materials
+        return original_advance(product, *args, **kwargs)
+
+    def drive(grid, cell, component, excitation, n_steps, materials, **kwargs):
+        value = original_drive(grid, cell, component, excitation, n_steps, materials, **kwargs)
+        np.testing.assert_array_equal(value, jnp.full(n_steps, value[0]))
+        calls.append(dict(axis=('ex', 'ey', 'ez').index(component), edge=tuple(cell),
+                          value=float(value[0]), multiplier=float(kwargs['sigma_port'] * kwargs['unit_field'])))
+        return value
+
+    def denominator(materials, cell, component, dt, *args, **kwargs):
+        value = original_denominator(materials, cell, component, dt, *args, **kwargs)
+        calls.append(dict(axis=('ex', 'ey', 'ez').index(component), edge=tuple(cell), value=float(value)))
+        return value
+
+    def sheet(sigma_sheet, materials, dt):
+        result = original_sheet(sigma_sheet, materials, dt)
+        seen['sheet_a'] = np.asarray(result[0] if isinstance(result, tuple) else result.a)
+        seen['sheet_sigma'] = np.asarray(sigma_sheet)
+        return result
+
+    def invariants(ctx, **kwargs):
+        if change is not None and operator == 'waveguide':
+            ctx = replace(ctx, materials=_o2_changed(ctx.materials, branch, *change))
+        seen.update(materials=ctx.materials, dt=ctx.dt, dx=ctx.dx, ctx=ctx)
+        result = original_invariants(ctx, **kwargs)
+        if operator not in ('kerr', 'waveguide'):
+            raise _O2ReferenceCaptured
+        return result
+
+    def nonlinear(state, e_prev, chi3, eps):
+        seen['kerr_eps'] = np.asarray(eps)
+        seen['chi3'] = np.asarray(chi3)
+        raise _O2ReferenceCaptured
+
+    def waveguide(state, cfg, step, dt, dx):
+        # Observe the actual additive correction from zero to avoid subtractive
+        # cancellation with the E curl. Use an existing nonzero incident sample.
+        index = int(np.argmax(np.abs(np.asarray(cfg.h_inc_table))))
+        assert cfg.h_inc_table.size > 1
+        zero = state._replace(ex=jnp.zeros_like(state.ex), ey=jnp.zeros_like(state.ey), ez=jnp.zeros_like(state.ez))
+        result = original_waveguide(zero, cfg, index, dt, dx)
+        seen.update(wg_cfg=cfg, wg_field=np.asarray(getattr(result, cfg.e_v_component)),
+                    wg_inc=float(cfg.src_amp * cfg.h_inc_table[index]))
+        raise _O2ReferenceCaptured
+
+    with pytest.MonkeyPatch.context() as patch, jax.disable_jit():
+        patch.setattr(sim, entry, public)
+        patch.setattr(model, 'with_components', realize)
+        patch.setattr(prepared, 'advance', advance)
+        patch.setattr(port_drive, 'port_drive_waveform', drive)
+        patch.setattr(lumped, 'edge_update_denominator', denominator)
+        patch.setattr(thin_conductor, 'sheet_update_coeffs', sheet)
+        patch.setattr(uniform_setup, 'core_step_invariants', invariants)
+        patch.setattr(uniform_loop, 'core_step_invariants', invariants)
+        patch.setattr(kerr, 'apply_kerr_ade', nonlinear)
+        patch.setattr(waveguide_source, 'apply_waveguide_port_e', waveguide)
+        captured = setup(sim, forward=entry == 'forward')
+        grid = captured.pop('grid')
+        with pytest.raises(_O2ReferenceCaptured):
+            simulation.run(grid, seen['prepared_materials'], 12, **captured)
+    materials, dt = seen['materials'], seen['dt']
+    cells = np.asarray(materials.eps_r)
+    if operator in ('sheet', 'kerr', 'waveguide'):
+        axis = 2
+        eps, sigma = _o2_operands(materials, branch, axis)
+        if operator == 'sheet':
+            eligible = np.asarray(seen['ctx'].sheet_impedance.mask_ez).copy()
+            end = seen['ctx'].sheet_impedance.end_ez
+            if end is not None:
+                eligible &= ~np.asarray(end)
+        elif operator == 'kerr':
+            eligible = seen['chi3'] != 0
+        else:
+            cfg = seen['wg_cfg']
+            assert cfg.e_v_component == 'ez' and cfg.direction == '+x'
+            eligible = np.zeros(eps.shape, bool)
+            eligible[cfg.x_index, cfg.u_lo:cfg.u_hi, cfg.v_lo:cfg.v_hi] = np.asarray(cfg.hy_profile) != 0
+        if operator != 'waveguide' or branch == 'conformal':
+            eligible &= eps != cells
+        if branch == 'conformal':
+            weights = np.asarray(materials.components.tensor.conformal_weights[axis])
+            eligible &= (weights > 0) & (weights < 1)
+        assert eligible.any(), (operator, branch, 'no discriminating operator edge')
+        edge = tuple(int(i) for i in np.argwhere(eligible)[0]) if change is None else change[1]
+        if operator == 'sheet':
+            value = -float(np.log(seen['sheet_a'][edge]))
+            total_sigma = seen['sheet_sigma'][edge] + sigma[edge]
+            ref = float(total_sigma * dt / (EPS_0 * eps[edge]))
+        elif operator == 'kerr':
+            value, ref = float(seen['kerr_eps'][edge]), float(eps[edge])
+        else:
+            u, v = edge[1]-cfg.u_lo, edge[2]-cfg.v_lo
+            value = float(seen['wg_field'][edge] / (-seen['wg_inc'] * float(cfg.hy_profile[u, v])))
+            ref = float(dt / (EPS_0 * eps[edge] * seen['dx']))
+    else:
+        eligible = []
+        for call in calls:
+            eps, sigma = _o2_operands(materials, branch, call['axis'])
+            edge = call['edge']
+            good = eps[edge] != cells[edge]
+            if branch == 'conformal':
+                w = float(materials.components.tensor.conformal_weights[call['axis']][edge])
+                good &= 0 < w < 1
+            if good:
+                eligible.append(call)
+        assert eligible, (operator, branch, 'no discriminating operator edge', calls)
+        call = eligible[0] if change is None else next(c for c in eligible if (c['axis'], c['edge']) == change)
+        axis, edge, value = call['axis'], call['edge'], call['value']
+        eps, sigma = _o2_operands(materials, branch, axis)
+        ref = (float(eps[edge] * EPS_0 / dt + sigma[edge] / 2.) if operator == 'rlc' else
+               _o2_cb(materials, branch, axis, edge, dt) * call['multiplier'])
+    return dict(operator=operator, branch=branch, entry=entry, axis=axis, edge=edge,
+                value=value, ref=ref, rel=abs(value-ref)/abs(ref), eps=float(eps[edge]),
+                cell=float(cells[edge]))
+
+
+@pytest.fixture(scope='module')
+def _o2_observations():
+    """Collect outside the marked assertions so admission/edge errors stay red."""
+    observations = {}
+    for operator, branch in _O2_ROWS:
+        for entry in ('run', 'forward'):
+            mixed = operator == 'waveguide_second_medium'
+            try:
+                row = _o2_measure('waveguide' if mixed else operator, branch, entry,
+                                  mixed_section=mixed)
+            except (ValueError, NotImplementedError) as exc:
+                observations[operator, branch, entry] = dict(refused=str(exc))
+                continue
+            if row['rel'] <= _O2_RTOL:
+                changed = _o2_measure(operator, branch, entry, (row['axis'], row['edge']))
+                # This is an intervention on the stored operand only, at this edge.
+                np.testing.assert_allclose(changed['eps'], 1.7 * row['eps'], rtol=_O2_RTOL)
+                assert changed['cell'] == row['cell']
+                assert changed['ref'] != row['ref']
+                row['follow'] = changed
+            observations[operator, branch, entry] = row
+    return observations
+
+
+@pytest.mark.parametrize('operator,branch', [_o2_parameter(*row) for row in _O2_ROWS])
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+def test_o2_operator_operand(_o2_observations, operator, branch, entry):
+    row = _o2_observations[operator, branch, entry]
+    if (operator, branch) in REFUSED:
+        assert row == dict(refused=REFUSED[operator, branch])
+        return
+    np.testing.assert_allclose(row['value'], row['ref'], rtol=_O2_RTOL, atol=0.,
+                               err_msg=str(row))
+    changed = row['follow']
+    if (operator, branch) in NOTE:
+        assert changed['rel'] > _O2_RTOL
+        np.testing.assert_allclose(changed['value'], row['value'], rtol=_O2_RTOL, atol=0.)
+    else:
+        np.testing.assert_allclose(changed['value'], changed['ref'], rtol=_O2_RTOL, atol=0.)
+
+
+def test_o2_classifications(_o2_observations):
+    for entry in ('run', 'forward'):
+        rows = {key[:2]: value for key, value in _o2_observations.items() if key[2] == entry}
+        assert set(rows) == set(_O2_ROWS)
+        assert {key for key, row in rows.items() if 'refused' in row} == set(REFUSED)
+        assert {key for key, row in rows.items() if 'unreachable' in row} == set(UNREACHABLE)
+        assert {key for key, row in rows.items()
+                if row.get('rel', float('inf')) <= _O2_RTOL
+                and row['follow']['rel'] > _O2_RTOL} == set(NOTE)
