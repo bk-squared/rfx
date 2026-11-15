@@ -826,6 +826,23 @@ def refuse_f0_sheets(thin_conductors, lane: str, *, context=None) -> None:
             f"surface_impedance_f0 (PEC or DC-fold sheets are fine here).")
 
 
+def refuse_sheet_dispersion(has_sheet, debye_spec, lorentz_spec) -> None:
+    """Raise when an f0 sheet and Debye/Lorentz media share one run.
+
+    The one fence for every runner, one-device and multi-device: the sheet
+    operator would silently override the ADE dispersion update at its
+    edges. Callers pass the realized sheet presence and the realized
+    dispersion specs, before any step is staged.
+    """
+    if has_sheet and (debye_spec is not None or lorentz_spec is not None):
+        raise RfxRefusal(
+            "surface-impedance (surface_impedance_f0) sheets combined "
+            "with dispersive (Debye/Lorentz) materials in one run are "
+            "not supported: the sheet operator would "
+            "silently override the ADE dispersion update at its edges. "
+            "Remove the dispersive material or the f0 sheet.")
+
+
 # Default sigma floor for "this assembled cell is a conductor".
 # Two decades BELOW ``_PEC_SIGMA_THRESHOLD`` on purpose: it is a test on
 # assembled sigma ARRAYS (where a DC-fold sheet's sigma_eff or a bulk

@@ -1167,6 +1167,15 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
      "dispersive (Debye/Lorentz)"):
         ("tests.unit.materials.test_sheet_impedance",
          "test_g9_dispersive_overlap_refuses_uniform_and_nu"),
+    # refuse_sheet_dispersion(...) on the multi-device runners.
+    ("rfx/runners/distributed_v2.py", "run_distributed",
+     "dispersive (Debye/Lorentz)"):
+        ("tests.contracts.test_multidevice_f0_sheets",
+         "test_sheet_dispersion_refused_multidevice"),
+    ("rfx/runners/_distributed_nu_execute.py", "execute_from_materials",
+     "dispersive (Debye/Lorentz)"):
+        ("tests.contracts.test_multidevice_f0_sheets",
+         "test_sheet_dispersion_refused_multidevice"),
     ("rfx/runners/nonuniform.py", "run_nonuniform_path",
      "anisotropic permittivity"):
         (__name__, "test_fence_nonuniform_run_anisotropic_eps"),

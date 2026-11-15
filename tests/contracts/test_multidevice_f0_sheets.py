@@ -71,6 +71,11 @@ def record(sim, count, *, forward=False):
     return np.stack(fields), probes
 
 
+def need_devices(count):
+    if len(jax.devices()) < count:
+        pytest.skip(f'requires {count} CPU devices')
+
+
 def peak_ulps(reference, actual, axes):
     peaks = np.max(np.abs(reference), axis=axes)
     differences = np.max(np.abs(actual.astype(np.float64) - reference.astype(np.float64)), axis=axes)
@@ -135,6 +140,7 @@ def test_v1_sheet_parity(graded, boundary, placement, count):
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 @pytest.mark.parametrize('boundary', ['pec', 'cpml'])
 def test_v3_sheet_removed_control(graded, boundary):
+    need_devices(2)
     sim = model(graded, boundary, 'span', 2, sheet=False)
     compare(record(sim, 1), record(sim, 2),
             ['graded' if graded else 'uniform', boundary, 'control', 2], source_cells(sim))
@@ -142,6 +148,7 @@ def test_v3_sheet_removed_control(graded, boundary):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_v4_forward_carries_sheet(graded):
+    need_devices(2)
     sim = model(graded, 'pec', 'span', 2)
     assert source_cells(sim), 'no source-driven cells found in the model'
     options = dict(n_steps=32, devices=jax.devices()[:2], skip_preflight=True)
@@ -167,6 +174,7 @@ def test_v4_forward_carries_sheet(graded):
 def test_v1_end_rows(graded, monkeypatch):
     from rfx.materials import thin_conductor
 
+    need_devices(2)
     sim = model(graded, 'cpml', 'end_rows', 2)
     contexts = []
     build = thin_conductor.build_sheet_impedance_ctx
@@ -196,6 +204,7 @@ def test_legacy_refuses_sheet_before_step(graded, entry, monkeypatch):
     from rfx.boundaries.spec import BoundarySpec
     from rfx.errors import RfxRefusal
 
+    need_devices(2)
     sim = model(graded, 'pec' if graded else 'cpml', 'span', 2, drive=False)
     if graded:
         sim._boundary_spec = BoundarySpec(x='pmc', y='pec', z='pec')
@@ -213,6 +222,33 @@ def test_legacy_refuses_sheet_before_step(graded, entry, monkeypatch):
         'distributed_v2.py', 'run_distributed')
     assert any((Path(str(frame.path)).name, frame.name) == expected_frame for frame in exc.traceback)
     print('F0_REFUSAL ' + json.dumps(dict(case=[lane, entry], message=str(exc.value))), flush=True)
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+def test_sheet_dispersion_refused_multidevice(graded, entry, monkeypatch):
+    """An f0 sheet with a Debye box is refused on two devices, as on one,
+    by the shared fence and before any step is traced."""
+    from rfx import DebyePole
+
+    need_devices(2)
+    sim = model(graded, 'pec', 'span', 2)
+    # The water box of test_g9_dispersive_overlap_refuses_uniform_and_nu,
+    # placed below the sheet plane (z = 4 mm) and away from the sources.
+    sim.add_material('water', eps_r=4.0,
+                     debye_poles=[DebyePole(delta_eps=2.0, tau=8.3e-12)])
+    sim.add(Box((.002, .002, .001), (.006, .006, .003)), material='water')
+    monkeypatch.setattr(jax.lax, 'scan', lambda *a, **k: pytest.fail('stepped a refused sheet'))
+    with pytest.raises(ValueError, match='dispersive') as exc:
+        options = dict(n_steps=4, devices=jax.devices()[:2], skip_preflight=True)
+        if entry == 'forward':
+            sim.forward(**options, distributed=True)
+        else:
+            sim.run(**options, compute_s_params=False)
+    frames = [(Path(str(frame.path)).name, frame.name) for frame in exc.traceback]
+    assert ('thin_conductor.py', 'refuse_sheet_dispersion') in frames, frames
+    runner = ('_distributed_nu_execute.py' if graded else 'distributed_v2.py')
+    assert any(name == runner for name, _ in frames), frames
 
 
 SPECTRUM_FREQS = np.linspace(0.5e9, 10e9, 20)

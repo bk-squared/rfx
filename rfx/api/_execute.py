@@ -1683,13 +1683,8 @@ class _ExecuteMixin:
                 "update with its split-field form, which the sheet operator "
                 "would silently override at its edges. Use boundary='cpml' "
                 "or 'pec'.")
-        if _fwd_sheet_ctx is not None and (
-                debye_spec is not None or lorentz_spec is not None):
-            raise ValueError(
-                "surface-impedance (surface_impedance_f0) sheets combined "
-                "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported: the sheet operator would "
-                "silently override the ADE dispersion update at its edges.")
+        from rfx.materials.thin_conductor import refuse_sheet_dispersion
+        refuse_sheet_dispersion(_fwd_sheet_ctx is not None, debye_spec, lorentz_spec)
 
         _design_spec = None
         _design_occ_spec = None

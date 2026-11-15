@@ -232,7 +232,7 @@ Left out of these tables, each for one reason:
 
 | Input | Row key | Uniform | Graded | Multi-device | Calculators | What to do instead |
 |---|---|---|---|---|---|---|
-| A sheet declared with `add_thin_conductor(..., surface_impedance_f0=...)` | `_thin_conductors/surface_impedance` | supported | supported | supported | refused (mixed_s_matrix, topology_optimize, material_fit) | Use `run()` / `forward()` on one or multiple devices with PEC or CPML; uniform TF/SF and graded PMC legacy steps and the calculators named refuse it. |
+| A sheet declared with `add_thin_conductor(..., surface_impedance_f0=...)` | `_thin_conductors/surface_impedance` | supported | supported | supported | refused (mixed_s_matrix, topology_optimize, material_fit) | Use `run()` / `forward()` on one or multiple devices with PEC or CPML; every TF/SF source or `exchange_interval` other than 1 on a uniform mesh, PMC faces on a graded mesh, Debye/Lorentz media (row `admission:sheet-dispersion`) and the calculators named refuse it. |
 
 #### Sources and ports
 
@@ -302,6 +302,7 @@ error message tells you to do; the last names the test that pins the refusal.
 
 | Input | Row key | Where | What to do instead | Pinned by |
 |---|---|---|---|---|
+| A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) together with a Debye or Lorentz medium: the sheet update would override the medium's pole update at the sheet's edges | `admission:sheet-dispersion` | `run()`, `forward()`, `run(devices=...)`, `forward(distributed=True)`, uniform and graded, before the first step | Remove the dispersive material or the f0 sheet. | `tests/unit/materials/test_sheet_impedance.py::test_g9_dispersive_overlap_refuses_uniform_and_nu`, `tests/contracts/test_multidevice_f0_sheets.py::test_sheet_dispersion_refused_multidevice` |
 | `exchange_interval` other than the integer 1 | `arg:exchange_interval` | `run(devices=...)`, `forward(distributed=True)` | Use `exchange_interval=1` (each skipped exchange updates seam cells from stale values and the field grows in a lossless box). | `tests/unit/runners/test_distributed.py::TestExchangeInterval::test_interval_refused` |
 | `jax.jit` (or `lax.scan` / `jax.checkpoint`) enclosing a multi-device run on GPUs, with CUDA command buffers on. CPU multi-device runs are not refused. | `admission:multi-device-outer-jit` | `run(devices=...)`, `forward(distributed=True)` and `jax.grad` of them | Call the run, and `jax.grad` of it, without `jax.jit` (the runner compiles its own time loop), or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=` set before importing jax. | `tests/contracts/test_multi_device_outer_jit_refusal.py::test_T1_outer_jit_refused` |
 | A Drude or Lorentz medium above its own time-step limit, including Debye poles in the same cells (#1934). | `admission:pole-time-step` | model assembly and prebuilt-coefficient run setup; traced inputs retain the local cell budget | The message gives the largest stable step. Graded mesh: pass `dt=` that step, or raise `eps_inf`. Uniform mesh: use finer cells, or declare a `dx_profile`/`dy_profile`/`dz_profile` so that `dt=` can be passed, or raise `eps_inf`. | `tests/unit/materials/test_pole_stability_admission.py::test_medium_above_the_limit_is_refused_with_the_stable_step` |
