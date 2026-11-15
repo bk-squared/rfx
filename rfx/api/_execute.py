@@ -1683,8 +1683,6 @@ class _ExecuteMixin:
                 "update with its split-field form, which the sheet operator "
                 "would silently override at its edges. Use boundary='cpml' "
                 "or 'pec'.")
-        from rfx.materials.thin_conductor import refuse_sheet_dispersion
-        refuse_sheet_dispersion(_fwd_sheet_ctx is not None, debye_spec, lorentz_spec)
 
         _design_spec = None
         _design_occ_spec = None

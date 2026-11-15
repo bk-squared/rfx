@@ -790,8 +790,6 @@ def run_nonuniform_distributed_pec(
         if source.component not in ("ex", "ey", "ez"):
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
-    from rfx.materials.thin_conductor import refuse_sheet_dispersion
-    refuse_sheet_dispersion(sheet_impedance is not None, debye, lorentz)
 
     if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None or msl_ports) == "wrapped":
         from rfx.runners._distributed_nu_wrapped import run_wrapped

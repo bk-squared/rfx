@@ -243,10 +243,6 @@ def execute_from_materials(
         pec_occupancy_override=pec_occupancy_override, debye_spec=debye_spec, lorentz_spec=lorentz_spec, n_steps=n_steps, lane=lane,
         gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh,
         compute_s_params=compute_s_params)
-    # The one-device runners' sheet-versus-dispersion fence, on the realized
-    # sheet operator and dispersion specs, before any slab is staged.
-    from rfx.materials.thin_conductor import refuse_sheet_dispersion
-    refuse_sheet_dispersion(sheet_impedance is not None, debye_spec, lorentz_spec)
     from rfx.stepping import prepared as prepared_step
     from rfx.materials.thin_conductor import sheet_update_coeffs
     sheet_coeffs = (None if sheet_impedance is None else

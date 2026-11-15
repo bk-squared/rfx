@@ -1220,6 +1220,12 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
+    # One declaration-level fence for every entry: an f0 sheet's operator
+    # would replace the pole (ADE) update at its edges.
+    if (any(_thin(c) == "surface_impedance" for c in sim._thin_conductors)
+            and any(m.debye_poles or m.lorentz_poles for m in _placed(sim))):
+        from rfx.materials.thin_conductor import refuse_sheet_dispersion
+        refuse_sheet_dispersion(True, True, True)
     rows = refused(sim, lane, run_args, grid)
     if rows:
         if diagnostics is not None:

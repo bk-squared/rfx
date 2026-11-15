@@ -156,8 +156,6 @@ def run_uniform(
                 ": the sheet operator assumes the plain isotropic "
                 "E update at its edges (Stage-1/2 conformal and Kottke "
                 "lanes do not apply the sheet operator).")
-        from rfx.materials.thin_conductor import refuse_sheet_dispersion
-        refuse_sheet_dispersion(True, debye_spec, lorentz_spec)
 
     from rfx.model.tensor_operands import refuse_tensor_conflicts
     refuse_tensor_conflicts(sim, grid, subpixel_smoothing=subpixel_smoothing,

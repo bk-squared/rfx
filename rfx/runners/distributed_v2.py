@@ -594,10 +594,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         pec_edges=conductors.pec_edges, sheet_operator=sheet_impedance)
     pec_edges = conductors.pec_edges
     sheet_impedance = conductors.sheet_operator
-    # The one-device runners' sheet-versus-dispersion fence, on the realized
-    # sheet operator and dispersion specs, before any slab is staged.
-    from rfx.materials.thin_conductor import refuse_sheet_dispersion
-    refuse_sheet_dispersion(sheet_impedance is not None, debye_spec, lorentz_spec)
     if sim._tfsf is not None and sim._tfsf.closed_box:
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         from rfx.sources.tfsf_discrete_plane_wave import box_bounds

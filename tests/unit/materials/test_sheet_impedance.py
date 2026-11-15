@@ -1023,16 +1023,15 @@ def test_fence_forward_upml():
 
 
 def test_fence_forward_dispersive_overlap():
-    """``run()``'s dispersive fence lives in ``run_uniform``; ``forward()``
-    carries its OWN copy in ``_execute.forward``, so the message match is
-    not enough to tell them apart — the frame is."""
+    """``run()`` and ``forward()`` share one dispersive fence, in
+    ``admit()``; the frame proves ``forward()`` reaches it."""
     def go():
         sim = _cube()
         sim.add_material("water", eps_r=4.0,
                          debye_poles=[DebyePole(delta_eps=2.0, tau=8.3e-12)])
         sim.add(Box((2e-3, 2e-3, 2e-3), (6e-3, 6e-3, 6e-3)), material="water")
         sim.forward(n_steps=4, skip_preflight=True)
-    _fence(go, where=("_execute.py", "forward"),
+    _fence(go, where=("_admission.py", "admit"),
            match=r"dispersive \(Debye/Lorentz\) materials")
 
 
@@ -1147,8 +1146,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/api/_execute.py", "forward",
      "boundary='upml' on the uniform forward()"):
         (__name__, "test_fence_forward_upml"),
-    ("rfx/api/_execute.py", "forward", "dispersive (Debye/Lorentz)"):
-        (__name__, "test_fence_forward_dispersive_overlap"),
     ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "waveguide S-matrix method"):
         (__name__, "test_fence_waveguide_s_matrix_subpixel"),
@@ -1160,22 +1157,10 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/uniform.py", "run_uniform",
      "subpixel_smoothing / conformal_pec"):
         (__name__, "test_fence_uniform_run_subpixel_or_conformal"),
-    ("rfx/runners/uniform.py", "run_uniform", "dispersive (Debye/Lorentz)"):
-        ("tests.unit.materials.test_sheet_impedance",
-         "test_g9_dispersive_overlap_refuses_uniform_and_nu"),
-    ("rfx/runners/nonuniform.py", "run_nonuniform_path",
-     "dispersive (Debye/Lorentz)"):
-        ("tests.unit.materials.test_sheet_impedance",
-         "test_g9_dispersive_overlap_refuses_uniform_and_nu"),
-    # refuse_sheet_dispersion(...) on the multi-device runners.
-    ("rfx/runners/distributed_v2.py", "run_distributed",
-     "dispersive (Debye/Lorentz)"):
-        ("tests.contracts.test_multidevice_f0_sheets",
-         "test_sheet_dispersion_refused_multidevice"),
-    ("rfx/runners/_distributed_nu_execute.py", "execute_from_materials",
-     "dispersive (Debye/Lorentz)"):
-        ("tests.contracts.test_multidevice_f0_sheets",
-         "test_sheet_dispersion_refused_multidevice"),
+    # refuse_sheet_dispersion(...): one call, in admit(), for every entry.
+    ("rfx/runners/_admission.py", "admit", "dispersive (Debye/Lorentz)"):
+        ("tests.contracts.test_sheet_dispersion_every_entry",
+         "test_sheet_dispersion_refused_at_every_entry"),
     ("rfx/runners/nonuniform.py", "run_nonuniform_path",
      "anisotropic permittivity"):
         (__name__, "test_fence_nonuniform_run_anisotropic_eps"),
