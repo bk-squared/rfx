@@ -1,0 +1,285 @@
+"""Final material values meet the actual kernel step on every stepping lane.
+
+Parameterized refusal pattern copied from test_admission_refusal_order.py;
+public two-device entries follow test_distributed_admission_refusals.py.
+Expected limits use grid-reported lengths and the stencil formula, never the
+admission implementation's helpers. Growth is an observation, not a predictor.
+"""
+from __future__ import annotations
+
+import re
+import warnings
+
+import jax
+import jax.numpy as jnp
+import numpy as np
+import pytest
+
+from rfx import Box, DebyePole, Simulation
+from rfx.core.yee import MaterialArrays
+from rfx.sources.sources import CustomWaveform
+
+C = 299792458.0
+H = .001
+LO, HI = (.002,) * 3, (.006,) * 3
+
+
+def scene(path='uniform', eps=.5, mu=1., pole=None, *, impulse=False, dt=None):
+    options = dict(dz_profile=np.full(8, H)) if path in ('graded', 'distributed_graded', 'legacy') else {}
+    if dt is not None:
+        options['dt'] = dt
+    if path == 'order4':
+        options['stencil_order'] = 4
+    sim = Simulation(freq_max=10e9, domain=(.008,) * 3, dx=H, boundary='pec', **options)
+    poles = {}
+    if pole == 'debye':
+        poles['debye_poles'] = [DebyePole(1., 1e-11)]
+    if pole == 'lorentz':
+        from rfx.materials.lorentz import LorentzPole
+        poles['lorentz_poles'] = [LorentzPole(2e10, 1e9, 1e20)]
+    sim.add_material('body', eps_r=eps, mu_r=mu, **poles)
+    sim.add(Box(LO, HI), material='body')
+    wave = CustomWaveform(lambda t: jnp.where(t == 0., 1., 0.)) if impulse else None
+    sim.add_source((.003, .004, .004), 'ez', **({'waveform': wave} if wave else {}), amplitude_kind='field')
+    sim.add_probe((.005, .004, .004), 'ez')
+    return sim
+
+
+def grid_of(sim, path):
+    return sim._build_nonuniform_grid() if path in ('graded', 'distributed_graded', 'legacy') else sim._build_grid()
+
+
+def invoke(sim, path, entry='run', *, n=2, **overrides):
+    options = dict(n_steps=n, skip_preflight=True)
+    if entry == 'run':
+        options['compute_s_params'] = False
+    else:
+        options.update(checkpoint=False, emit_time_series=True)
+    if path.startswith('distributed') or path == 'legacy':
+        devices = jax.devices('cpu')
+        if len(devices) < 2:
+            pytest.skip('requires two virtual CPU devices')
+        options['devices'] = devices[:2]
+        if entry == 'forward':
+            options['distributed'] = True
+    return getattr(sim, entry)(**options, **overrides)
+
+
+def assert_cell_message(message, grid, eps, mu=1., *, order=2, lo=LO, hi=HI,
+                        slab=False, conservative=False, step=None):
+    assert 'cell Courant limit' in message
+    step = float(grid.dt) * (.857 if order == 4 else 1.) if step is None else step
+    stable = np.sqrt(float(np.float32(eps)) * float(np.float32(mu)) /
+                     (C**2 * sum(1 / np.min(grid.cells(a))**2 for a in range(3)) *
+                      ((9/8 + 1/24)**2 if order == 4 else 1)))
+    assert float(re.search(r'dt = ([^ ]+) s', message)[1]) == pytest.approx(step, rel=1e-7)
+    assert float(re.search(r'largest stable step = ([^ ]+) s', message)[1]) == pytest.approx(stable, rel=2e-7)
+    count = 1
+    for axis, label in enumerate('xyz'):
+        widths = np.asarray(grid.cells(axis))
+        nodes = np.array([grid.node_of(axis, i) for i in range(len(widths))])
+        indices = np.flatnonzero((nodes >= lo[axis] - 1e-12) & (nodes < hi[axis] - 1e-12))
+        if slab and axis == 0:
+            indices = indices[indices < (grid.shape[0] + 1)//2]
+        count *= len(indices)
+        bounds = re.search(rf'{label}=\[([^,]+), ([^\]]+)\] m', message)
+        assert bounds is not None
+        np.testing.assert_allclose([float(bounds[1]), float(bounds[2])],
+                                   [nodes[indices[0]], nodes[indices[-1]] + widths[indices[-1]]],
+                                   rtol=1e-7, atol=1e-12)
+    assert f'{count} cells;' in message
+    assert 'or raise eps_r / eps_inf / mu_r to 1' in message
+    if conservative:
+        assert 'conservative on this path' in message
+        assert 'raise eps_r or mu_r to 1' in message
+    elif type(grid).__name__ == 'NonUniformGrid':
+        assert 'pass dt=' in message
+    else:
+        assert 'declare a dx_profile/dy_profile/dz_profile' in message
+
+
+@pytest.mark.parametrize('path', ['uniform', 'graded', 'distributed_uniform', 'distributed_graded', 'legacy'])
+@pytest.mark.parametrize('eps,mu,pole', [(.5, 1., None), (.5, 1., 'debye'), (.1, 1., 'lorentz'), (1., .5, None)],
+                         ids=['plain', 'debye', 'lorentz', 'mu'])
+def test_declared_cells_refused(path, eps, mu, pole, monkeypatch):
+    if path == 'legacy':
+        from rfx.stepping import slab_wrap
+        monkeypatch.setattr(slab_wrap, 'select_step', lambda **kw: 'legacy')
+    messages = []
+    for entry in ('run', 'forward'):
+        sim = scene(path, eps, mu, pole)
+        with pytest.raises(ValueError, match='cell Courant limit') as error:
+            invoke(sim, path, entry)
+        message = str(error.value)
+        assert_cell_message(message, grid_of(sim, path), eps, mu,
+                            slab=path.startswith('distributed') or path == 'legacy')
+        messages.append(message)
+    assert messages[0] == messages[1]
+
+
+@pytest.mark.parametrize('path,eps', [('uniform', .980), ('order4', .975)])
+def test_boundary_refused(path, eps):
+    messages = []
+    for entry in ('run', 'forward'):
+        sim = scene(path, eps)
+        with pytest.raises(ValueError, match='cell Courant limit') as error:
+            invoke(sim, path, entry)
+        assert_cell_message(str(error.value), grid_of(sim, path), eps, order=4 if path == 'order4' else 2)
+        messages.append(str(error.value))
+    assert messages[0] == messages[1]
+
+
+@pytest.mark.parametrize('path,kind', [('uniform', 'eps'), ('graded', 'eps'), ('uniform', 'mu'),
+                                      ('uniform', 'box'), ('graded', 'box')])
+def test_forward_override_refused(path, kind):
+    sim = scene(path, 2.)
+    grid = grid_of(sim, path)
+    override = jnp.full(grid.shape, 1.)
+    region = tuple(slice(grid.index_of(a, LO[a]), grid.index_of(a, HI[a])) for a in range(3))
+    override = override.at[region].set(.5)
+    if kind == 'box':
+        # Design boxes cannot contain a source: move this source outside the box.
+        sim._ports.clear()
+        sim.add_source((.001, .001, .001), 'ez')
+        kw = dict(design_box=(LO, HI), design_eps_override=override[region])
+    else:
+        kw = {('eps_override' if kind == 'eps' else 'mu_r_override'): override}
+        if kind == 'mu':
+            kw['eps_override'] = jnp.ones(grid.shape)
+    with pytest.raises(ValueError, match='cell Courant limit') as error:
+        invoke(sim, path, 'forward', **kw)
+    assert_cell_message(str(error.value), grid, .5)
+
+
+def test_raw_material_arrays_refused():
+    import rfx
+    grid = grid_of(scene(), 'uniform')
+    materials = MaterialArrays(jnp.full(grid.shape, .5), jnp.zeros(grid.shape), jnp.ones(grid.shape))
+    with pytest.raises(ValueError, match='cell Courant limit') as error:
+        rfx.run(grid, materials, n_steps=1, boundary='pec')
+    assert_cell_message(str(error.value), grid, .5, lo=(0.,)*3, hi=(.009,)*3)
+
+
+def test_vmap_fast_members_refused():
+    from rfx.vmap_sweep import vmap_material_sweep
+    sim = scene(eps=2.)
+    with pytest.raises(ValueError, match='cell Courant limit') as error:
+        vmap_material_sweep(sim, 'body.eps_r', [2., .5], n_steps=2)
+    assert_cell_message(str(error.value), sim._build_grid(), .5)
+
+
+@pytest.mark.parametrize('transform', ['grad', 'jvp', 'vmap', 'jit'])
+def test_single_device_traced_refusal(transform):
+    def loss(eps):
+        return jnp.sum(invoke(scene(eps=eps), 'uniform', 'forward').time_series)
+    with pytest.raises(Exception, match='cell Courant limit'):
+        if transform == 'grad':
+            jax.grad(loss)(jnp.float32(.5))
+        elif transform == 'jvp':
+            jax.jvp(loss, (jnp.float32(.5),), (jnp.float32(1.),))
+        elif transform == 'vmap':
+            jax.vmap(loss)(jnp.array([2., .5]))
+        else:
+            np.asarray(jax.jit(loss)(jnp.float32(.5)))
+
+
+@pytest.mark.parametrize('path', ['uniform', 'graded'])
+def test_cross_trace_control(path):
+    def run(eps):
+        return invoke(scene(path, eps, impulse=True), path, 'forward', n=24).time_series
+    concrete = np.asarray(run(jnp.float32(2.)))
+    compiled = np.asarray(jax.jit(run)(jnp.float32(2.)))
+    primal, _ = jax.jvp(run, (jnp.float32(2.),), (jnp.float32(1.),))
+    peak = np.max(np.abs(concrete), axis=1, keepdims=True)
+    for actual in (compiled, np.asarray(primal)):
+        assert np.all(np.abs(actual-concrete) <= 9 * np.spacing(peak))
+    def loss(eps):
+        value = run(eps)
+        return jnp.sum(value), value
+    _, value = jax.grad(loss, has_aux=True)(jnp.float32(2.))
+    assert np.max(np.abs(np.asarray(value)-concrete)) <= 1e-4 * np.max(np.abs(concrete))
+
+
+@pytest.mark.parametrize('path', ['distributed_uniform', 'distributed_graded'])
+def test_multidevice_jit_grad_control(path):
+    def loss(eps):
+        return jnp.sum(invoke(scene(path, eps), path, 'forward').time_series)
+    assert np.isfinite(np.asarray(jax.jit(jax.grad(loss))(jnp.float32(2.))))
+
+
+@pytest.mark.parametrize('path', ['distributed_uniform', 'distributed_graded'])
+@pytest.mark.xfail(strict=True, reason='#2755: a jit-traced permittivity on several devices is not judged')
+def test_multidevice_traced_gap(path):
+    def loss(eps):
+        return jnp.sum(invoke(scene(path, eps), path, 'forward').time_series)
+    with pytest.raises(Exception, match='cell Courant limit'):
+        np.asarray(jax.jit(loss)(jnp.float32(.5)))
+
+
+def test_drude_mu_changes_pole_limit():
+    from rfx.materials.lorentz import LorentzPole
+    sim = scene(eps=2., mu=.6)
+    grid = sim._build_grid()
+    step = float(grid.dt)
+    b = C**2 * sum(1 / np.min(grid.cells(a))**2 for a in range(3))
+    wp2 = 3 / step**2
+    assert (wp2 + 4*b) * step**2 <= 8
+    assert (wp2 + 4*b/.6) * step**2 > 8
+    # A fixed Drude pole from these numbers, not a fitted or predicted pole.
+    sim.add_material('body', eps_r=2., mu_r=.6, lorentz_poles=[LorentzPole(0., 0., wp2)])
+    with pytest.raises(ValueError, match='Lorentz/Drude poles') as error:
+        invoke(sim, 'uniform')
+    stable = np.sqrt(8 / (wp2 + 4*b/float(np.float32(.6))))
+    measured = float(re.search(r'largest stable step for this set is ([^ ]+)', str(error.value))[1])
+    assert measured == pytest.approx(stable, rel=2e-6)
+
+
+def _observe_peaks(monkeypatch):
+    """Observe full E after each real scan step without changing its arithmetic."""
+    from rfx.core.yee import FDTDState
+    peaks: dict[int, float] = {}
+    scan = jax.lax.scan
+    def save(step, peak):
+        peaks[int(step)] = max(peaks.get(int(step), 0.), float(peak))
+    def watched(body, init, *args, **kwargs):
+        def observe(carry, item):
+            updated, result = body(carry, item)
+            states = jax.tree.leaves(updated, is_leaf=lambda a: isinstance(a, FDTDState))
+            for state in states:
+                if isinstance(state, FDTDState):
+                    peak = jnp.maximum(jnp.maximum(jnp.max(jnp.abs(state.ex)), jnp.max(jnp.abs(state.ey))), jnp.max(jnp.abs(state.ez)))
+                    jax.debug.callback(save, state.step, peak)
+            return updated, result
+        return scan(observe, init, *args, **kwargs)
+    monkeypatch.setattr(jax.lax, 'scan', watched)
+    return peaks
+
+
+@pytest.mark.parametrize('case', ['uniform_0982', 'graded_pinned', 'graded_large', 'order4_0985', 'subgrid_coarse_1'])
+def test_admitted_run_bar(case, monkeypatch):
+    path = 'graded' if case.startswith('graded') else 'order4' if case.startswith('order4') else 'uniform'
+    eps = .982 if case == 'uniform_0982' else .985 if case == 'order4_0985' else .5 if path == 'graded' else 1.
+    pin = .6 * float(scene()._build_grid().dt) / .99 if case == 'graded_pinned' else None
+    sim = scene(path, eps, impulse=True, dt=pin)
+    if case == 'graded_large':
+        profile = np.array([.001, .0014] + [.002]*8 + [.0014, .001])
+        length = float(np.sum(profile))
+        sim = Simulation(freq_max=10e9, domain=(length,)*3, dx=H, boundary='pec',
+                         dx_profile=profile, dy_profile=profile, dz_profile=profile)
+        sim.add_material('body', eps_r=.5)
+        sim.add(Box((.0084,)*3, (.0124,)*3), material='body')
+        sim.add_source((.0104,)*3, 'ez', waveform=CustomWaveform(lambda t: jnp.where(t == 0., 1., 0.)), amplitude_kind='field')
+    if case == 'subgrid_coarse_1':
+        sim.add_refinement((.003, .006), ratio=2, validation='off')
+    peaks = _observe_peaks(monkeypatch)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', UserWarning)
+        invoke(sim, path, n=400)
+    jax.effects_barrier()
+    assert len(peaks) >= 400, f'not every step observed: {len(peaks)}'
+    values = np.array([peaks[i] for i in range(201, 401)])
+    assert np.isfinite(values).all() and np.min(values) > 0
+    blocks = values.reshape(20, 10).max(axis=1)
+    growth = np.exp(np.polyfit(np.arange(205, 405, 10), np.log(blocks), 1)[0])
+    print(f'RUN_BAR {case} growth={growth:.12g}')
+    assert growth <= 1.001

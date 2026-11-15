@@ -153,6 +153,102 @@ def _cells(grid, axis):
     return np.atleast_1d(np.asarray(_concrete(grid.cells(axis)), dtype=np.float64))
 
 
+def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=None,
+                           design_box=None, stencil_order=2, in_program=True,
+                           x_range=None, origin=None, conservative=None, subgridded=False):
+    """Judge final cell epsilon * mu against the step's local curl budget.
+
+    Widths include one neighbour on each side, wrapping periodic seams. Material
+    values belong to the cell itself, never to the conformally scaled H faces.
+    ``x_range`` selects owned global rows when materials contain just one slab.
+    ``conservative`` is either the fine-grid budget for coarse subgrid cells or
+    ``'conformal'`` for the cut-cell floor's unmeasured material margin.
+    """
+    import jax
+    from rfx._traced_check import traced_check
+
+    budget = courant_budget(grid) if budget is None else budget
+    if budget is None:
+        return
+    dt = grid.dt if dt is None else dt
+    periodic = (tuple(a in getattr(grid, 'periodic_axes', '') for a in 'xyz')
+                if periodic is None else periodic)
+    widths = budget.cells
+    pads = tuple(getattr(grid, f'pad_{a}_lo', 0) for a in 'xyz')
+    eps = materials.eps_r
+    mu = getattr(materials, 'mu_r', None)
+    box_eps = None if design_box is None else design_box.eps_r
+    factor = 1.
+    if stencil_order == 4:
+        from rfx.core.yee import _C4_NEAR, _C4_FAR
+        factor = (abs(_C4_NEAR) + abs(_C4_FAR)) ** 2
+
+    def check(eps, mu, box_eps, step, *widths):
+        eps = np.min(np.asarray(eps), axis=0) if isinstance(eps, (tuple, list)) else np.asarray(eps)
+        eps = np.array(eps, dtype=np.float64, copy=True)
+        if box_eps is not None:
+            b = design_box.bounds
+            eps[tuple(slice(b[2*a], b[2*a+1]) for a in range(3))] = box_eps
+        product = eps * (1. if mu is None else np.asarray(mu, dtype=np.float64))
+        widths = tuple(np.atleast_1d(np.asarray(w, dtype=np.float64)) for w in widths)
+        local = np.zeros(product.shape, dtype=np.float64)
+        positions: list[tuple[np.ndarray, np.ndarray]] = []
+        for axis, sizes in enumerate(widths):
+            size = product.shape[axis] if axis or x_range is None else x_range[1]
+            if sizes.size == size - 1:
+                sizes = np.append(sizes, sizes[-1])
+            previous, following = np.roll(sizes, 1), np.roll(sizes, -1)
+            if not periodic[axis]:
+                previous[0], following[-1] = sizes[0], sizes[-1]
+            near = np.minimum(sizes, np.minimum(previous, following))
+            nodes = np.concatenate(([0.], np.cumsum(sizes)))
+            nodes += origin[axis] if origin is not None else -nodes[pads[axis]]
+            rows = slice(*x_range) if axis == 0 and x_range is not None else slice(None)
+            position = np.arange(sizes.size)[rows]
+            positions.append((nodes[position], nodes[position + 1]))
+            shape = [1] * product.ndim
+            shape[axis] = near[rows].size
+            local += C0**2 / near[rows].reshape(shape)**2
+        local *= factor
+        if conservative is not None and conservative != 'conformal':
+            local = np.full(product.shape, float(conservative))
+        failed = ((product < 1.) & (float(step)**2 * local > product * (1. + ROOT_TOLERANCE)))
+        if conservative == 'conformal':
+            failed = product < 1.
+        count = int(np.count_nonzero(failed))
+        if not count:
+            return
+        low = float(np.min(product[failed]))
+        # The tightest cell owns the allowed step; a union's smallest epsilon
+        # and smallest width may belong to different cells.
+        stable = float(np.sqrt(np.min(product[failed] / local[failed])))
+        bounds: list[str] = []
+        for axis in range(product.ndim):
+            occupied = np.any(failed, axis=tuple(a for a in range(product.ndim) if a != axis))
+            lo, hi = positions[axis] if axis < len(positions) else (np.zeros(1), np.zeros(1))
+            bounds.append(f"{'xyz'[axis]}=[{np.min(lo[occupied]):.16g}, {np.max(hi[occupied]):.16g}] m")
+        remedy = (f"pass dt={stable:.16g}" if type(grid).__name__ == 'NonUniformGrid' else
+                  f"declare a dx_profile/dy_profile/dz_profile so that dt={stable:.16g} can be passed")
+        if conservative is not None or subgridded:
+            remedy = "conservative on this path; raise eps_r or mu_r to 1"
+        raise RfxRefusal(
+            f"cell Courant limit: {count} cells; bounds {', '.join(bounds)}; "
+            f"(eps_r*mu_r)_min = {low:.16g}; dt = {float(step):.16g} s; "
+            f"largest stable step = {stable:.16g} s; dt/stable = {float(step)/stable:.9g}. "
+            f"To run: {remedy}; or raise eps_r / eps_inf / mu_r to 1.")
+
+    operands = jax.tree.map(_concrete, (eps, mu, box_eps, dt, *widths))
+    leaves, tree = jax.tree.flatten(operands)
+    members = _eager_batch_members(leaves)
+    if members is not None:
+        for member in members:
+            check(*jax.tree.unflatten(tree, member))
+        return
+    if not in_program and any(_is_abstract(v) for v in leaves):
+        return  # #2755: preserve multi-device jit(grad) until checks can run there.
+    traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
+
+
 def largest_stable_step(eps_inf, sigma, poles, dt, budget, *, debye=()):
     """Bisect the stable step, or return None if the lower bracket is unstable."""
     def stable(step):
@@ -181,6 +277,7 @@ class PoleSetExtremes(NamedTuple):
     occupied: tuple
     debye: tuple = ()
     map_corners: tuple = ()
+    mu_low: object = 1.
 
 
 def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
@@ -210,7 +307,8 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     if view is not None:
         from types import SimpleNamespace
         input_shape = materials.eps_r.shape
-        materials = SimpleNamespace(**{name: view.own(getattr(materials, name))
+        mu = getattr(materials, 'mu_r', None)
+        materials = SimpleNamespace(mu_r=None if mu is None else view.own(mu), **{name: view.own(getattr(materials, name))
                                        for name in ("eps_r", "sigma")})
         masks = [None if m is None else view.own((jnp if abstract_masks else np).broadcast_to(m, input_shape)) for m in masks]
     shape = materials.eps_r.shape
@@ -228,7 +326,9 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     else:
         unique_codes, inverse, counts = np.unique(codes, return_inverse=True, return_counts=True)
     patterns = [[bool((int(code) >> bit) & 1) for bit in range(len(poles))] for code in unique_codes]
-    values = [materials.eps_r, materials.sigma] + jax.tree.leaves([v for p in poles for v in p])
+    mu = getattr(materials, 'mu_r', None)
+    mu = 1. if mu is None else mu
+    values = [materials.eps_r, materials.sigma, mu] + jax.tree.leaves([v for p in poles for v in p])
     traced = abstract_masks or any(is_tracer(v) for v in values)
     # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
@@ -262,6 +362,7 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
         chosen = tuple(chosen_list)
         debye = tuple(p for p, present in zip(dp, pattern[len(lp):]) if present)
         eps_low = xp.min(xp.where(selected, materials.eps_r, xp.inf))
+        mu_low = xp.min(xp.where(selected, mu, xp.inf))
         sigma_low = xs.min(xs.where(selected, materials.sigma, xs.inf))
         sigma_high = xs.max(xs.where(selected, materials.sigma, -xs.inf))
 
@@ -273,7 +374,7 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
                 global_x[view.x0:view.x1] = occupied[0]
             occupied = (global_x,) + occupied[1:]
         records.append(PoleSetExtremes(int(unique_codes[index]), chosen, eps_low,
-                                      sigma_low, sigma_high, count, occupied, debye, tuple(map_corners)))
+                                      sigma_low, sigma_high, count, occupied, debye, tuple(map_corners), mu_low))
     return tuple(records)
 
 
@@ -291,11 +392,12 @@ def combine_pole_extremes(records_from_all_slabs):
             previous = combined[record.code]
             # Counts and occupancy follow the extremes: a jax operator on concrete
             # records under an outer jit would stage them, and the judge would refuse.
-            values = (previous.eps_low, previous.sigma_low, previous.sigma_high,
+            values = (previous.mu_low, record.mu_low, previous.eps_low, previous.sigma_low, previous.sigma_high,
                       record.eps_low, record.sigma_low, record.sigma_high,
                       previous.count, record.count, *previous.occupied, *record.occupied)
             xp = jnp if any(is_tracer(v) for v in values) else np
             combined[record.code] = previous._replace(
+                mu_low=xp.minimum(previous.mu_low, record.mu_low),
                 eps_low=xp.minimum(previous.eps_low, record.eps_low),
                 sigma_low=xp.minimum(previous.sigma_low, record.sigma_low),
                 sigma_high=xp.maximum(previous.sigma_high, record.sigma_high),
@@ -371,17 +473,18 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
     for record in records:
         local = budget.local_axes(record.occupied) if hasattr(budget, "local_axes") else float(budget)
 
-        def check(eps, low, high, step, budget, count, corners, *parameters, n_lorentz=len(record.poles)):
+        def check(eps, low, high, step, budget, mu, count, corners, *parameters, n_lorentz=len(record.poles)):
             pole_values = np.asarray(parameters[:3 * n_lorentz], dtype=np.float64).reshape(-1, 3)
             debye = np.asarray(parameters[3 * n_lorentz:], dtype=np.float64).reshape(-1, 2)
             eps, low, high, step = map(float, (eps, low, high, step))
             count, budget = int(count), float(budget)
+            budget /= float(mu)
             if not count:
                 return
             if not (np.all(np.isfinite([eps, low, high, step])) and np.all(np.isfinite(pole_values)) and eps > 0):
                 return   # invalid cells are reported by the checks that own them
             if step * step * budget > eps * (1.0 + ROOT_TOLERANCE):
-                return   # the step is above the Courant limit of these cells without any pole: not the poles' doing
+                return   # refuse_subluminal_cells at step setup owns these cells, not the pole judge.
             growth = max(largest_growth(eps, s, pole_values, step, 4.0 * step * step * budget, debye=debye)
                          for s in (low, high))
             if growth <= 1.0 + ROOT_TOLERANCE:
@@ -408,7 +511,7 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
                 f"sigma_low={low:.6g}, sigma_high={high:.6g}: unstable at this model's time step "
                 f"dt = {step:.6g} s; growth per step = {growth:.9g}; {limit}. To run: {remedy}.")
 
-        args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.count, record.map_corners,
+        args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.mu_low, record.count, record.map_corners,
                 *(v for p in record.poles + record.debye for v in p))
         # Eager autodiff carries concrete primals: judge them on the host. A
         # callback would copy a value replicated over processes to one device.
@@ -498,7 +601,7 @@ def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False
 
 
 def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, False),
-                         in_program=True):
+                         in_program=True, mu_r=None):
     """Judge prebuilt component ADE terms, without assuming their source spec.
 
     Invert the coefficients actually used: gamma=1/cc, eps=(1+ca)gamma/2,
@@ -523,7 +626,7 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
         raise ValueError("LorentzPoleMap tuple damping/restoring coefficients require a judged realization; judge_prebuilt_poles cannot recover them")
     dc = None if debye is None else debye[0]
 
-    def check(step, widths, coeffs, debye_coeffs):
+    def check(step, widths, coeffs, debye_coeffs, mu):
         step = float(step)
         budget = CourantBudget(widths)
         groups = {}
@@ -601,11 +704,12 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
             occupied = tuple(np.any(selected, axis=tuple(a for a in range(3) if a != axis))
                              for axis in range(3))
             records.append(PoleSetExtremes(code, poles, eps, low, high,
-                                          np.count_nonzero(selected), occupied, dp))
+                                          np.count_nonzero(selected), occupied, dp,
+                                          mu_low=1. if mu is None else np.min(np.broadcast_to(mu, selected.shape)[selected])))
         judge_pole_sets(records, step, budget, grid_kind=type(grid).__name__, in_program=in_program)
 
     import jax
-    operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc)
+    operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc, mu_r)
     operands = jax.tree.map(_concrete, operands)
     if not in_program and any(_is_abstract(v) for v in jax.tree.leaves(operands)):
         _refuse_traced_out_of_program()

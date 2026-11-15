@@ -237,6 +237,45 @@ def _pole_first_map(mesh):
                                 in_specs=P('x'), out_specs=P('x'), check_vma=False))
 
 
+def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
+    """Judge only addressable owned cells, without halos or alignment padding."""
+    from rfx.model.pole_stability import _concrete, refuse_subluminal_cells
+    for rank, (lo, hi) in enumerate(layout.owned):
+        if lo == hi or mesh.devices.flat[rank].process_index != jax.process_index():
+            continue
+
+        def own(value):
+            if value is None or np.ndim(value) == 0:
+                return value
+            value = _concrete(value)
+            if value.ndim == 4:
+                start, stop = rank, rank + 1
+                offset = layout.ghost_width + 1
+            else:
+                start = rank * layout.nx_local
+                stop = start + layout.nx_local
+                offset = layout.ghost_width
+            if isinstance(value, jax.Array):
+                for shard in value.addressable_shards:
+                    s = shard.index[0]
+                    left, right = s.start or 0, s.stop or value.shape[0]
+                    if left <= start and stop <= right:
+                        value = np.asarray(shard.data)[start-left:stop-left]
+                        break
+                else:
+                    raise ValueError('cell Courant limit: owned slab is not addressable')
+            else:
+                value = value[start:stop]
+            if value.ndim == 4:
+                value = value[0]
+            return value[offset:offset + hi - lo]
+
+        cells = SimpleNamespace(eps_r=jax.tree.map(own, materials.eps_r),
+                                mu_r=jax.tree.map(own, materials.mu_r))
+        refuse_subluminal_cells(cells, grid, dt, x_range=(lo, hi),
+                                in_program=mesh.size < 2)
+
+
 def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=False,
                       debye=False, lorentz=False, _material_inputs=(), uniform=False):
     """Realize uniform materials per slab; retain graded host staging.
@@ -253,6 +292,7 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     """
     from rfx.model.occupancy import with_edge_keep
     from rfx.stepping.absorber import graded_cpml_operands
+    refuse_slab_cells(materials, grid, layout, mesh)
     device = None
     if not uniform:
         device, _ = _material_host_device(materials, occupancy, _material_inputs, mesh=mesh)
@@ -378,12 +418,12 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                 found = pole_set_extremes(cells, (poles, lm), view=owned_view, debye_spec=local_debye)
                 if not metadata:
                     metadata.extend(found)
-                return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied) for r in found)
+                return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied, r.mu_low) for r in found)
             # Concrete inputs give concrete records under an outer jit too, so the judge sees values.
             with jax.ensure_compile_time_eval() if device is not None else nullcontext():
                 values = jax.checkpoint(jax.vmap(extrema))(inputs)
                 values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
-            records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4])
+            records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4], mu_low=v[5])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
                         grid_kind=type(grid).__name__, in_program=mesh.devices.size < 2)
