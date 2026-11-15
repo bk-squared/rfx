@@ -49,11 +49,13 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
     original = simulation.run
 
     def capture(grid, materials, n_steps, **kwargs):
-        inverse = kwargs.get("aniso_inv_eps")
+        # The runner attaches the step's operands to the realization.
+        tensor = materials.components.tensor
+        inverse = tensor.inv_eps if tensor is not None else None
         seen["inverse"] = None if inverse is None else np.asarray(inverse)
         periodic = simulation.resolve_periodic(grid, kwargs.get("periodic"))
         plain, sigma = component_e_materials(materials, periodic, high_wall=unpadded_high_walls(grid))
-        eps = kwargs.get("aniso_eps") or plain
+        eps = (tensor.eps if tensor is not None else None) or plain
         state = init_state(grid.shape)._replace(ex=eps[0], ey=eps[1], ez=eps[2])
         faces = resolve_wall_faces(grid, periodic)[0]
         # Wall-fixed tangential edges have no material degree of freedom.
@@ -72,8 +74,8 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
                     realized=np.asarray((realized.ex, realized.ey, realized.ez)),
                     live=np.asarray((live.ex, live.ey, live.ez), dtype=bool),
                     sigma=np.asarray(sigma), cell=np.asarray(materials.eps_r),
-                    weights=(None if kwargs.get("conformal_weights") is None
-                             else np.asarray(kwargs["conformal_weights"])))
+                    weights=(None if tensor is None or tensor.conformal_weights is None
+                             else np.asarray(tensor.conformal_weights)))
         return original(grid, materials, n_steps, **kwargs)
 
     with patch.object(simulation, "run", capture):
