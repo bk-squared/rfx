@@ -845,11 +845,21 @@ def test_drive_energy_balance_in_a_closed_box():
     Marked slow_physics: six 400-step float64 runs, each recompiled and
     copying every field to the host after every step, a physics anchor of
     the weekly CPU lane; the coefficient rows above are the always-on gate.
+
+    x64 is switched process-wide for this test only (restored in ``finally``),
+    not by the scoped ``enable_x64()`` context, because ``jax.debug.callback``
+    runs the recording on another thread, where the scoped flag is off and the
+    float64 fields arrive float32.
     """
-    from tests._x64_compat import enable_x64
-    with enable_x64():
+    previous = bool(jax.config.read('jax_enable_x64'))
+    jax.clear_caches()
+    jax.config.update('jax_enable_x64', True)
+    try:
         results = {(kind, name): _b2_record(kind, name)
                    for kind in ('lumped', 'soft', 'rlc') for name in ('control', 'drive')}
+    finally:
+        jax.config.update('jax_enable_x64', previous)
+        jax.clear_caches()
     for name in ('control', 'drive'):
         for kind in ('lumped', 'soft'):
             row = results[kind, name]
