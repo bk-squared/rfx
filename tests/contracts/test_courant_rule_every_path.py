@@ -24,7 +24,7 @@ H = .001
 LO, HI = (.002,) * 3, (.006,) * 3
 
 
-def scene(path='uniform', eps=.5, mu=1., pole=None, *, impulse=False, dt=None):
+def scene(path='uniform', eps=.5, mu=1., pole=None, *, impulse=False, dt=None, lo=LO, hi=HI):
     options = dict(dz_profile=np.full(8, H)) if path in ('graded', 'distributed_graded', 'legacy') else {}
     if dt is not None:
         options['dt'] = dt
@@ -38,7 +38,7 @@ def scene(path='uniform', eps=.5, mu=1., pole=None, *, impulse=False, dt=None):
         from rfx.materials.lorentz import LorentzPole
         poles['lorentz_poles'] = [LorentzPole(2e10, 1e9, 1e20)]
     sim.add_material('body', eps_r=eps, mu_r=mu, **poles)
-    sim.add(Box(LO, HI), material='body')
+    sim.add(Box(lo, hi), material='body')
     wave = CustomWaveform(lambda t: jnp.where(t == 0., 1., 0.)) if impulse else None
     sim.add_source((.003, .004, .004), 'ez', **({'waveform': wave} if wave else {}), amplitude_kind='field')
     sim.add_probe((.005, .004, .004), 'ez')
@@ -66,11 +66,14 @@ def invoke(sim, path, entry='run', *, n=2, **overrides):
 
 
 def assert_cell_message(message, grid, eps, mu=1., *, order=2, lo=LO, hi=HI,
-                        slab=False, conservative=False, step=None):
+                        slab=False, conservative=False, step=None, owned_x=None,
+                        neighbour_minima=None):
     assert 'cell Courant limit' in message
     step = float(grid.dt) * (.857 if order == 4 else 1.) if step is None else step
+    minima = ([np.min(grid.cells(a)) for a in range(3)] if neighbour_minima is None
+              else neighbour_minima)
     stable = np.sqrt(float(np.float32(eps)) * float(np.float32(mu)) /
-                     (C**2 * sum(1 / np.min(grid.cells(a))**2 for a in range(3)) *
+                     (C**2 * sum(1 / width**2 for width in minima) *
                       ((9/8 + 1/24)**2 if order == 4 else 1)))
     assert float(re.search(r'dt = ([^ ]+) s', message)[1]) == pytest.approx(step, rel=1e-7)
     assert float(re.search(r'largest stable step = ([^ ]+) s', message)[1]) == pytest.approx(stable, rel=2e-7)
@@ -81,6 +84,8 @@ def assert_cell_message(message, grid, eps, mu=1., *, order=2, lo=LO, hi=HI,
         indices = np.flatnonzero((nodes >= lo[axis] - 1e-12) & (nodes < hi[axis] - 1e-12))
         if slab and axis == 0:
             indices = indices[indices < (grid.shape[0] + 1)//2]
+        if owned_x is not None and axis == 0:
+            indices = indices[(indices >= owned_x[0]) & (indices < owned_x[1])]
         count *= len(indices)
         bounds = re.search(rf'{label}=\[([^,]+), ([^\]]+)\] m', message)
         assert bounds is not None
@@ -114,6 +119,77 @@ def test_declared_cells_refused(path, eps, mu, pole, monkeypatch):
         assert_cell_message(message, grid_of(sim, path), eps, mu,
                             slab=path.startswith('distributed') or path == 'legacy')
         messages.append(message)
+    assert messages[0] == messages[1]
+
+
+@pytest.mark.parametrize('path', ['distributed_uniform', 'distributed_graded'])
+def test_rank1_only_cells_refused(path, monkeypatch):
+    from rfx.stepping import slab_setup
+    captured: list = []
+    original = slab_setup.refuse_slab_cells
+
+    def capture(materials, grid, layout, mesh, dt=None):
+        captured.append((grid, layout.owned))
+        return original(materials, grid, layout, mesh, dt)
+
+    monkeypatch.setattr(slab_setup, 'refuse_slab_cells', capture)
+    lo, hi = (.006, .002, .002), (.007, .006, .006)
+    messages = []
+    for entry in ('run', 'forward'):
+        captured.clear()
+        sim = scene(path, lo=lo, hi=hi)
+        with pytest.raises(ValueError, match='cell Courant limit') as error:
+            invoke(sim, path, entry)
+        grid, owned = captured[-1]
+        # Read actual ownership supplied by the realized distributed setup,
+        # then use global grid nodes/widths for all expected bounds and counts.
+        first, stop = owned[1]
+        assert lo[0] >= grid.node_of(0, first + 1) - 1e-12
+        assert hi[0] <= grid.node_of(0, stop) + 1e-12
+        assert_cell_message(str(error.value), grid, .5, lo=lo, hi=hi, owned_x=owned[1])
+        print(f'RANK1 {path} {entry} owned={owned[1]} box={lo[0]}:{hi[0]}')
+        messages.append(str(error.value))
+    assert messages[0] == messages[1]
+
+
+def graded_neighbour_scene(*, interior=False):
+    profile = np.array([.001, .0014] + [.002]*8 + [.0014, .001])
+    length = float(np.sum(profile))
+    sim = Simulation(freq_max=10e9, domain=(length,)*3, dx=H, boundary='pec',
+                     dx_profile=profile, dy_profile=profile, dz_profile=profile)
+    lo = (.0084,)*3 if interior else (.0024,)*3
+    hi = tuple(v + .002 for v in lo)
+    sim.add_material('body', eps_r=.4)
+    sim.add(Box(lo, hi), material='body')
+    sim.add_source(tuple(v + .001 for v in lo), 'ez',
+                   waveform=CustomWaveform(lambda t: jnp.where(t == 0., 1., 0.)),
+                   amplitude_kind='field')
+    sim.add_probe(tuple(v + .001 for v in lo), 'ez')
+    return sim, lo, hi
+
+
+def test_graded_neighbour_cells_refused():
+    # dt=.99*(1 mm)/(c*sqrt(3)); first 2 mm cell has a 1.4 mm
+    # predecessor on each axis. dt²B_near=.99²/1.4²=.5000510204081633;
+    # dt²B_own=.99²/2²=.245025. Epsilon .4 lies strictly between them.
+    neighbour_load, own_load = .5000510204081633, .245025
+    assert own_load < .4 < neighbour_load
+    messages = []
+    for entry in ('run', 'forward'):
+        sim, lo, hi = graded_neighbour_scene()
+        grid = grid_of(sim, 'graded')
+        minima = []
+        for axis in range(3):
+            widths = np.asarray(grid.cells(axis))
+            index = grid.index_of(axis, lo[axis])
+            np.testing.assert_allclose(widths[index-1:index+2], [.0014, .002, .002], rtol=1e-7)
+            minima.append(float(np.min(widths[index-1:index+2])))
+        assert float(grid.dt)**2 * C**2 * sum(1/w**2 for w in minima) == pytest.approx(neighbour_load, rel=2e-7)
+        assert float(grid.dt)**2 * C**2 * 3/.002**2 == pytest.approx(own_load, rel=2e-7)
+        with pytest.raises(ValueError, match='cell Courant limit') as error:
+            invoke(sim, 'graded', entry)
+        assert_cell_message(str(error.value), grid, .4, lo=lo, hi=hi, neighbour_minima=minima)
+        messages.append(str(error.value))
     assert messages[0] == messages[1]
 
 
@@ -260,12 +336,18 @@ def _observe_peaks(monkeypatch):
     return peaks
 
 
-@pytest.mark.parametrize('case', ['uniform_0982', 'graded_pinned', 'graded_large', 'order4_0985', 'subgrid_coarse_1'])
+@pytest.mark.parametrize('case', ['uniform_0982', 'graded_pinned', 'graded_large', 'graded_neighbour_interior', 'order4_0985', 'subgrid_coarse_1'])
 def test_admitted_run_bar(case, monkeypatch):
     path = 'graded' if case.startswith('graded') else 'order4' if case.startswith('order4') else 'uniform'
     eps = .982 if case == 'uniform_0982' else .985 if case == 'order4_0985' else .5 if path == 'graded' else 1.
     pin = .6 * float(scene()._build_grid().dt) / .99 if case == 'graded_pinned' else None
     sim = scene(path, eps, impulse=True, dt=pin)
+    if case == 'graded_neighbour_interior':
+        sim, lo, _ = graded_neighbour_scene(interior=True)
+        grid = grid_of(sim, path)
+        for axis in range(3):
+            index = grid.index_of(axis, lo[axis])
+            np.testing.assert_allclose(np.asarray(grid.cells(axis))[index-1:index+2], [.002]*3, rtol=1e-7)
     if case == 'graded_large':
         profile = np.array([.001, .0014] + [.002]*8 + [.0014, .001])
         length = float(np.sum(profile))
