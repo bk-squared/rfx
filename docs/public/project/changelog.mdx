@@ -16,13 +16,18 @@ the measurements behind each entry.
 2.2 moves results with subpixel smoothing where dielectric bodies touch, nest,
 repeat a permittivity or are thinner than a cell; with coaxial ports, whose waves
 now refer to the line the mesh builds; with float32 Drude and Lorentz media; with
-waveguide S records, conformal PEC in waveguide S, a one-cell PEC box on a node
-plane, and directivity and gain on a φ grid that repeats the 0/2π seam or is
-uneven. Re-run any comparison that uses one of them.
+waveguide S records, waveguide ports on square and 2:1 apertures, conformal PEC in
+waveguide S, a one-cell PEC box on a node plane, and directivity and gain on a φ
+grid that repeats the 0/2π seam or is uneven. Re-run any comparison that uses one
+of them.
 Several inputs that ran before are now refused: points inside the CPML pad, metal
 whose solved size misses its drawing by more than 1 % under strict snap, a second
 waveguide port in one record, a dielectric sphere or rod too small to hold a cell,
-and an oblique plane wave over a structure that varies along the tilt axis.
+an oblique plane wave over a structure that varies along the tilt axis, an
+oblique Bloch plane wave with subpixel smoothing, conformal PEC or pole media, a
+traced ring-down drive or pinned-sheet index, a lumped element on an edge a
+pinned-sheet layout switches, and `run()` with no S argument beside a microstrip
+or Floquet port where it forms lumped/wire S.
 
 ### Changed
 
@@ -137,6 +142,11 @@ and an oblique plane wave over a structure that varies along the tilt axis.
   - `"full_tensor"` no longer jumps at a Box edge on a grid node (#2497). With a
     Box in the scene, a traced shape coordinate or mesh profile is now refused by
     name under `"full_tensor"`.
+  - The lumped/wire S-matrix scan and `rfx.runners.run_uniform`, called directly
+    with `boundary="upml"` and `"full_tensor"`, applied only the tensor's diagonal
+    (#2751): S moved by up to 2.9e-3 on an εr 4 sphere. They now refuse it by name,
+    as `run()` and `forward()` do, and the direct scan refuses a traced `eps_r`
+    under `"full_tensor"`.
   - Beside a periodic seam, conformal PEC and dielectric smoothing read the
     nearest image (#2600).
   - `jax.grad`, `jax.jit` and `jax.vmap` over `eps_r` pass through smoothing
@@ -155,6 +165,12 @@ and an oblique plane wave over a structure that varies along the tilt axis.
   it stepped in float32. Use `boundary="cpml"`, normal incidence or
   `precision="float32"`.
 - **Waveguide ports.**
+  - On an aperture where the requested mode shares its discrete cutoff with
+    another (TE10 and TE01 on a square guide, TE01 and TE20 on a guide twice as
+    wide as high, in whole cells), the default port profile was a mix chosen by the
+    eigensolver, 0.707/0.707 on a square guide, and could differ between machines
+    (#2730). The port now launches and reads the requested mode itself; every other
+    aperture is unchanged bit for bit.
   - An N-step run's waveguide V/I record holds N samples (#2510). On a settled
     40-period WR-90 record S moved by at most 1.9e-5; a record that ends with
     field still in the guide moves more (1.6e-2 on a 4-period WR-90 record).
@@ -173,6 +189,9 @@ and an oblique plane wave over a structure that varies along the tilt axis.
     electric wall is refused against a uniform `Grid`, with the cell span to use
     (#2696); its second-mode S entries could be wrong by more than their size.
     Built from a scalar `dx` or a graded grid, it warns.
+  - `compute_waveguide_s_matrix` refuses a waveguide port declared with amplitude
+    0.0 (#2727); it could return an all-zero S column. Every port it drives needs a
+    nonzero amplitude.
 - **A one-cell-thick PEC box on a node plane is kept** (#2580). `run()` dropped
   it: behind such a short the Ez energy relative to the front was 1.0003; it is
   now 0.
@@ -191,6 +210,16 @@ and an oblique plane wave over a structure that varies along the tilt axis.
   the S solve, and a partial opt-in. `forward()` refuses `reference_plane_cells`,
   which it ignored (#2492). The radius advisory names the finest mesh of a refinement ladder
   (#2479, #2678), and a YAML config's wire port accepts `radius` (#2536).
+- **`run()` with no S argument refuses what `compute_s_params=True` refuses**
+  (#2764). Beside a microstrip or Floquet port it formed lumped/wire S from a
+  record that port also drove: a wire port beside an excited microstrip port on
+  one line read |S11| up to 0.89 off over 1.51–3.44 GHz, with a false match of
+  0.027 at 2.34 GHz where the port driven alone reads 0.26. Where it forms
+  lumped/wire S, such a model is now refused before stepping, whether or not the
+  other port drives, and so is a periodic axis. A waveguide port beside an
+  excited microstrip port is refused in `run()` and `forward()`, also when the
+  waveguide port is passive. Use `compute_mixed_s_matrix()` for lumped/wire with
+  microstrip S, or `run(compute_s_params=False)` for fields.
 - **Directivity and gain on a φ grid that repeats the 0/2π seam or is unevenly
   spaced** (#2639) read low, and `antenna_efficiency()` read high. They now use
   periodic weights that sum to 2π. A repeated seam on N samples read low by
@@ -211,6 +240,16 @@ and an oblique plane wave over a structure that varies along the tilt axis.
   padded period, 2.3–3.5 dB off in transmission on a 16 mm-period bar at 1 mm
   cells. For one scatterer use `add_tfsf_source(closed_box=True, theta_deg=...)`
   with CPML on all six faces; for an array, declare that axis periodic.
+  A plane wave at 0 < |angle_deg| ≤ 0.01°, which the source launches at normal
+  incidence, is now judged as at 0° (#2720): on the graded mesh a structure finite
+  along the tilt axis is refused, where it ran unchecked, and `compute_rcs` takes
+  its normal-incidence route.
+  An oblique Bloch plane wave is refused with subpixel smoothing, conformal PEC, a
+  Kottke PEC occupancy override, Debye or Lorentz poles, or an anisotropic tensor
+  given to the low-level `run` (#2736): their electric-field updates do not apply
+  the Bloch phase. On a 24 mm εr 4 slab at 30°, smoothing gave |T| 0.832 against
+  the Airy value 0.749 (+0.91 dB), and pole media stopped with a raw `TypeError`.
+  Use normal incidence, or turn that input off.
 - **`until_decay` in a closed box on the uniform mesh stops on the after-drive
   energy** (#2420), as on the graded mesh; a lossy cube stopped at step 400 with
   98.4 % of its after-drive energy left. A lossless closed box runs to
@@ -226,6 +265,11 @@ and an oblique plane wave over a structure that varies along the tilt axis.
   - Settling checks drop channels at a voltage null (#2507).
   - A float32 graded profile whose end cells equal the boundary width within
     float32 resolution is admitted (#2460).
+  - On the graded mesh, `forward(pinned_sheet_layout=...)` refuses every lumped
+    RLC element on an edge the layout switches, at every layout value (#2763). A
+    parallel R, C or R–C element there was shorted while the sheet was on, and the
+    run returned the board without the element and no warning. Move the element or
+    the layout switch off that edge.
 - **Speed and memory.**
   - A watertight imported mesh's occupancy is counted per grid line (#2612): a
     20,480-triangle sphere took 9 min and 34 GiB, now 0.06 s.
@@ -237,6 +281,17 @@ and an oblique plane wave over a structure that varies along the tilt axis.
   setup constants on each device (known limitations). A gradient over one packed
   parameter array on the graded multi-device path returns instead of raising
   `Received incompatible devices` (#2412).
+- **Ring-down completion and pinned sheets refuse traced inputs they mishandled**
+  (#1961). Under `jax.grad`, `jax.jit` or `jax.vmap`, `forward(ringdown=...)`,
+  `run(ringdown=...)` and `until_identified=True` skipped the source-off check
+  for a drive with a traced waveform, so a drive still at full strength inside
+  the identification window completed with finite S. Such a drive is refused:
+  declare the waveform with concrete values (S does not depend on the drive's
+  amplitude), or pin `dt=` on a traced mesh. A gradient through
+  `add_pinned_sheet`'s node indices was exactly zero; a traced index is refused,
+  and the sheet moves continuously when the cell widths around a fixed index are
+  traced. A `forward(ringdown=...)` completion whose checks fail still warns
+  nothing; read `report.ok` (known limitations).
 
 ## v2.1.0 — November 3, 2026
 
