@@ -89,6 +89,7 @@ def observed(result):
 
 def assert_bitwise(ref, got, label):
     assert ref.keys() == got.keys(), f'{label}: outputs {sorted(ref)} vs {sorted(got)}'
+    failures = []
     for key in ref:
         a, b = ref[key], got[key]
         assert a.shape == b.shape, f'{label} {key}: shape {a.shape} vs {b.shape}'
@@ -96,11 +97,13 @@ def assert_bitwise(ref, got, label):
             continue
         diff = np.abs(b.astype(np.complex128) - a.astype(np.complex128))
         peak = float(np.max(np.abs(a))) if a.size else 0.
-        rows = np.nonzero(diff.reshape(len(a), -1).max(axis=1) > 0)[0] if a.ndim else []
-        first = int(rows[0]) if len(rows) else None
-        pytest.fail(f'{label} {key}: not bitwise; max|diff|={np.nanmax(diff):.3e}, '
-                    f'peak={peak:.3e}, ratio={np.nanmax(diff) / max(peak, 1e-300):.3e}, '
-                    f'first differing leading index={first}')
+        where = np.unravel_index(int(np.argmax(diff != 0)), a.shape) if a.ndim else ()
+        failures.append(
+            f'{key}: max|diff|={np.nanmax(diff):.3e}, peak={peak:.3e}, '
+            f'ratio={np.nanmax(diff) / max(peak, 1e-300):.3e}; first at {tuple(map(int, where))}: '
+            f'{a[where]!r} vs {b[where]!r}')
+    if failures:
+        pytest.fail(f'{label}: not bitwise\n  ' + '\n  '.join(failures))
 
 
 def lumped(sim):
