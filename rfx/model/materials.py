@@ -982,8 +982,11 @@ def sat_face_mu(materials, sl):
 def subgrid_components(mats_c, mats_f, grid_c, config):
     """Coarse and fine materials with components; the fine grid flags only the global walls it reaches."""
     periodic = tuple(a in getattr(grid_c, "periodic_axes", "") for a in "xyz")
-    return (with_components(mats_c, grid_c, periodic=periodic, high_wall=unpadded_high_walls(grid_c)),
-            with_components(mats_f, None, periodic=(False,) * 3, high_wall=fine_high_walls(grid_c, config)))
+    from rfx.model.pole_stability import refuse_subgrid_cells
+    mats_c = with_components(mats_c, grid_c, periodic=periodic, high_wall=unpadded_high_walls(grid_c))
+    mats_f = with_components(mats_f, None, periodic=(False,) * 3, high_wall=fine_high_walls(grid_c, config))
+    refuse_subgrid_cells(mats_c, mats_f, grid_c, config, config.dt)
+    return mats_c, mats_f
 
 
 def validate_dispersion(realized, poles, dt):

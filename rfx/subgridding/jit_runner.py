@@ -350,14 +350,6 @@ def run_subgridded_jit(
     dx_f = config.dx_f
 
     mats_c, mats_f = subgrid_components(mats_c, mats_f, grid_c, config)
-    from rfx.model.pole_stability import CourantBudget, refuse_subluminal_cells
-    import numpy as np
-    fine_budget = CourantBudget(tuple(np.full(n, dx_f) for n in mats_f.eps_r.shape))
-    fine_origin = tuple(grid_c.node_of(a, i) for a, i in enumerate(
-        (config.fi_lo, config.fj_lo, config.fk_lo)))
-    refuse_subluminal_cells(mats_f, None, dt, budget=fine_budget, origin=fine_origin,
-                            subgridded=True)
-    refuse_subluminal_cells(mats_c, grid_c, dt, conservative=float(fine_budget))
 
     # Override coarse grid dt to match subgrid global timestep
     grid_c.dt = dt

@@ -249,6 +249,16 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
     traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
 
 
+def refuse_subgrid_cells(mats_c, mats_f, grid_c, config, dt):
+    """Judge fine cells locally and coarse cells against the fine-grid budget."""
+    fine_budget = CourantBudget(tuple(np.full(n, config.dx_f) for n in mats_f.eps_r.shape))
+    fine_origin = tuple(grid_c.node_of(a, i) for a, i in enumerate(
+        (config.fi_lo, config.fj_lo, config.fk_lo)))
+    refuse_subluminal_cells(mats_f, None, dt, budget=fine_budget, origin=fine_origin,
+                            subgridded=True)
+    refuse_subluminal_cells(mats_c, grid_c, dt, conservative=float(fine_budget))
+
+
 def largest_stable_step(eps_inf, sigma, poles, dt, budget, *, debye=()):
     """Bisect the stable step, or return None if the lower bracket is unstable."""
     def stable(step):
