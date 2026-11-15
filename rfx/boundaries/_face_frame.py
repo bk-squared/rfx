@@ -5,6 +5,7 @@ The x-slab frame bounds a distributed shard's physical rows; a
 high pad on any axis (``rfx.stepping.vector_pad``).
 """
 
+import jax
 import jax.numpy as jnp
 
 
@@ -16,6 +17,11 @@ class HighPadFrame(dict):
     """
 
     high_pad = True
+
+
+# Static through jit: its rows are Python ints that slice arrays, never leaves.
+jax.tree_util.register_pytree_node(
+    HighPadFrame, lambda f: ((), tuple(sorted(f.items()))), lambda rows, _: HighPadFrame(rows))
 
 
 def needs_face_frame(shape, faces, frame, owned):
