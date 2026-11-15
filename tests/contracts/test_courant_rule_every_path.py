@@ -145,7 +145,7 @@ def test_rank1_only_cells_refused(path, monkeypatch):
         # then use global grid nodes/widths for all expected bounds and counts.
         first, stop = owned[1]
         assert lo[0] >= grid.node_of(0, first + 1) - 1e-12
-        assert hi[0] <= grid.node_of(0, stop) + 1e-12
+        assert hi[0] <= grid.node_of(0, stop - 1) + grid.cells(0)[stop - 1] + 1e-12
         assert_cell_message(str(error.value), grid, .5, lo=lo, hi=hi, owned_x=owned[1])
         print(f'RANK1 {path} {entry} owned={owned[1]} box={lo[0]}:{hi[0]}')
         messages.append(str(error.value))
