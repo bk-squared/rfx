@@ -343,3 +343,20 @@ def test_dispersion_unreachable(path, pole):
         sim.add_refinement((.003, .006), ratio=2, validation='off')
     with pytest.raises((ValueError, NotImplementedError), match='[Dd]ispers|[Dd]ebye|[Ll]orentz'):
         invoke(sim, 'uniform')
+
+
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager-members', 'staged-batch'])
+def test_vmap_scan_check_scope(compiled):
+    from rfx.stepping.vmap_scan import _build_vmap_scan_fn
+    grid = scene()._build_grid()
+    one = _build_vmap_scan_fn(grid, 1)
+    def run(eps):
+        mats = MaterialArrays(jnp.full(grid.shape, eps), jnp.zeros(grid.shape), jnp.ones(grid.shape))
+        return one(mats, jnp.zeros((1, 0)))
+    batch = jax.vmap(run)
+    if compiled:
+        batch = jax.jit(batch)
+    with pytest.raises(Exception, match='cell Courant limit') as error:
+        jax.device_get(batch(jnp.array([2., .5])))
+    assert_cell_message(str(error.value), grid, .5, lo=(0.,)*3, hi=(.009,)*3)
+    print(f'VMAP_SCOPE {"staged batch returns no result" if compiled else "eager failing member refused on host"}')

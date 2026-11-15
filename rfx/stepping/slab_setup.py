@@ -255,7 +255,7 @@ def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
                 start = rank * layout.nx_local
                 stop = start + layout.nx_local
                 offset = layout.ghost_width
-            if isinstance(value, jax.Array):
+            if isinstance(value, jax.Array) and not isinstance(value, jax.core.Tracer):
                 for shard in value.addressable_shards:
                     s = shard.index[0]
                     left, right = s.start or 0, s.stop or value.shape[0]
