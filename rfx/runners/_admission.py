@@ -1114,7 +1114,7 @@ def refuse_plane_wave_with_port(sim, *, adding=None) -> None:
     if (sim._tfsf is not None or adding == "plane_wave") and (
         adding == "port" or any(pe.is_port for pe in sim._ports)
     ):
-        raise ValueError(
+        raise RfxRefusal(
             "A TF/SF plane wave is not supported together with a lumped or wire port "
             "(add_port): the port loads its cells and records a port response; "
             "soft sources (add_source) are admitted"

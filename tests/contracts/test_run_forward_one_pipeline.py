@@ -974,7 +974,7 @@ def test_plane_wave_soft_source_equal_fields(declaration):
 def test_plane_wave_port_orders_share_refusal(declaration):
     reference = run_l2(BUILDERS['PW-port-first'], 'run', 'uniform', n_steps=1)['construction']
     actual = run_l2(BUILDERS[declaration], 'run', 'uniform', n_steps=1)['construction']
-    assert actual['type'] == reference['type'] == 'ValueError'
+    assert actual['type'] == reference['type'] == 'RfxRefusal'
     assert same_raising_line(reference, actual)
     assert actual['message'] == reference['message']
 
