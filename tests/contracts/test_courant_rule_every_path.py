@@ -326,12 +326,24 @@ def test_subgrid_refusal(location, eps, monkeypatch):
 
 
 def test_conformal_floor_refusal():
-    from rfx.grid import Grid
-    sim = scene(eps=.99, dt=.5 * Grid.courant_dt(H))
-    sim.add(Box((0.,)*3, (.002, .008, .008)), material='pec')
+    # Copy test_cut_cell_floor.test_uniform_modes_use_realized_pin_and_raw_edges,
+    # its 3d / q=.5 row, preserving geometry, mesh, pin, source and four steps.
+    from rfx import Sphere
+    ordinary = .001 / (C * np.sqrt(3.)) * .99
+    sim = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec', mode='3d',
+                     dt=.5 * ordinary)
+    sim.add(Sphere((.0061, .0058, .0057), .0023), material='pec')
+    sim.add_source((.003, .004, .003), 'ez', amplitude_kind='field')
+    lo, hi = (.002,) * 3, (.003,) * 3
+    # Nearest box corner is >2 cells from the sphere; boundary gap is 2 cells.
+    assert np.linalg.norm(np.array((.0061, .0058, .0057)) - hi) - .0023 > 2 * H
+    sim.add_material('low', eps_r=.99)
+    sim.add(Box(lo, hi), material='low')
     with pytest.raises(ValueError, match='cell Courant limit') as error:
-        invoke(sim, 'uniform', conformal_pec='cut_cell_floor')
-    assert_cell_message(str(error.value), sim._build_grid(), .99, conservative=True)
+        sim.run(n_steps=4, conformal_pec='cut_cell_floor',
+                compute_s_params=False, skip_preflight=True)
+    assert_cell_message(str(error.value), sim._build_grid(), .99, lo=lo, hi=hi,
+                        conservative=True)
     with pytest.raises(NotImplementedError, match='forward.*refuses conformal_pec'):
         invoke(sim, 'uniform', 'forward', conformal_pec='cut_cell_floor')
 
