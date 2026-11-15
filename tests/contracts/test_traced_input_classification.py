@@ -66,7 +66,14 @@ def _annotation(fn, parameter):
     except (NameError, TypeError):
         # Result-only forward references must not hide parameter annotations.
         value = parameter.annotation
-    namespace = dict(sys.modules[fn.__module__].__dict__, Simulation=Simulation, __builtins__=vars(builtins))
+    module = sys.modules.get(fn.__module__)
+    if module is None:
+        class_name = fn.__qualname__.split(".")[0]
+        cls = VALUE_CLASSES.get(class_name)
+        if cls is None:
+            cls = getattr(rfx, class_name, None)
+        module = sys.modules.get(getattr(cls, "__module__", None))
+    namespace = dict(vars(module) if module is not None else {}, Simulation=Simulation, __builtins__=vars(builtins))
     while isinstance(value, (typing.ForwardRef, str)):
         if isinstance(value, str):
             value = typing.ForwardRef(value)
