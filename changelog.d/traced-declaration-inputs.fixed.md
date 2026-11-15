@@ -1,0 +1,6 @@
+### Fixed — Name traced positions and counts given to declaration methods (#PR)
+
+- A traced position, corner, plane region, size, frequency count or block size given to
+  `add_source`, `add_port`, `add_probe`, `add_flux_monitor`, `add_ntff_box` and seven other
+  declaration methods now raises an rfx refusal naming the method and the parameter,
+  instead of a raw JAX conversion error. Concrete calls are unchanged.
