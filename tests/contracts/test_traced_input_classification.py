@@ -1,6 +1,7 @@
 """Independent public-surface coverage, evidence and pre-body refusal cells."""
 
 import ast
+import builtins
 from collections import Counter
 from dataclasses import fields, is_dataclass
 import importlib
@@ -8,6 +9,7 @@ import inspect
 import json
 from pathlib import Path
 import re
+import sys
 import types
 import typing
 
@@ -60,14 +62,19 @@ def _parameters(fn, drop_first=False):
 def _annotation(fn, parameter):
     original = inspect.unwrap(fn)
     try:
-        return typing.get_type_hints(original).get(parameter.name, inspect.Parameter.empty)
+        value = typing.get_type_hints(original).get(parameter.name, inspect.Parameter.empty)
     except (NameError, TypeError):
         # Result-only forward references must not hide parameter annotations.
-        namespace = dict(original.__globals__, Simulation=Simulation)
         value = parameter.annotation
-        while isinstance(value, str):
-            value = eval(value, namespace)
-        return value
+    namespace = dict(sys.modules[fn.__module__].__dict__, Simulation=Simulation, __builtins__=vars(builtins))
+    while isinstance(value, (typing.ForwardRef, str)):
+        if isinstance(value, str):
+            value = typing.ForwardRef(value)
+        try:
+            value = eval(value.__forward_arg__, namespace)
+        except NameError:
+            return value
+    return value
 
 
 def _admits_number(annotation):
@@ -145,7 +152,7 @@ def test_t1_every_parameter_and_value_field_has_exactly_one_state():
     counts = Counter(rows.get((o, p), rows.get((o, "*")))[0].split(":", 1)[0] for o, p in covered)
     assert len(covered) == 633
     assert counts["static"] == 59
-    assert counts["undecided"] == 475
+    assert counts["undecided"] == 485
     assert state_counts() == {state: counts[state] for state in (
         "traceable", "value_only", "static", "undecided", "no_number", "forwards")}
 
@@ -176,7 +183,7 @@ def test_t2_evidence_exists():
             assert re.match(r"S[123]:", evidence), (owner, parameter)
             assert re.search(r"(?:MESH|SHAPE|MATERIAL|WAVE)-\d+", evidence), (owner, parameter)
         elif state == "undecided":
-            assert "2755" in evidence or evidence == "static in the follow-up PR (A3-7)", (owner, parameter)
+            assert evidence.startswith("step 2 decides") or evidence == "static in the follow-up PR (A3-7)", (owner, parameter)
         elif state in {"traceable", "value_only"}:
             pins = re.findall(r"(tests/[\w/]+\.py)::(test_\w+)", evidence)
             assert pins, (owner, parameter)
