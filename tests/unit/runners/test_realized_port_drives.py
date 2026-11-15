@@ -342,7 +342,7 @@ _O2_XFAIL_REL = {
 }
 
 
-# Edge and operand attribution from dump 457262ef53, measured on run and forward.
+# Each xfail row's judged edge and operands, measured on run and forward.
 # component, index, operator epsilon, update epsilon, sigma, applied w, length cut.
 _O2_XFAIL_AT_EDGE = {
     ('lumped', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 20.0, None, None),
