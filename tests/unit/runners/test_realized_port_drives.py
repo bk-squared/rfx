@@ -342,19 +342,53 @@ _O2_XFAIL_REL = {
 }
 
 
+# Edge and operand attribution from dump 457262ef53, measured on run and forward.
+# component, index, operator epsilon, update epsilon, sigma, applied w, length cut.
+_O2_XFAIL_AT_EDGE = {
+    ('lumped', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 20.0, None, None),
+    ('lumped', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 20.0, None, None),
+    ('lumped', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 20.0, 0.0037226700223982334, True),
+    ('wire', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 40.0, None, None),
+    ('wire', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 40.0, None, None),
+    ('wire', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 40.0, 0.0037226700223982334, True),
+    ('msl', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 10.649312019348145, None, None),
+    ('msl', 'full'): ('ez', (6, 6, 5), 1.0, 1.000807762145996, 10.649312019348145, None, None),
+    ('msl', 'conformal'): ('ez', (7, 4, 8), 1.0, 5.8684492111206055, 10.649312019348145, 0.17040276527404785, True),
+    ('rlc', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 0.0, None, None),
+    ('rlc', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 0.0, None, None),
+    ('rlc', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 0.0, 0.0037226700223982334, True),
+    ('waveguide', 'conformal'): ('ez', (6, 0, 6), 1.0, 1.6666666269302368, 0.0, 0.6000000238418579, True),
+    ('sheet', 'plain'): ('ez', (6, 6, 6), 4.0, 1.75, 0.0, None, None),
+    ('kerr', 'plain'): ('ez', (5, 7, 7), 4.0, 1.75, 0.0, None, None),
+    ('kerr', 'conformal'): ('ez', (5, 5, 7), 4.0, 4.29776668548584, 0.0, 0.9307159185409546, False),
+}
+
+
 def _o2_parameter(operator, branch):
     marks = []
     if (operator, branch) in _O2_XFAIL_REL:
-        reads = ('components.eps_update and components.sigma_update'
-                 if operator in ('lumped', 'wire', 'msl', 'rlc') else
-                 'cfg.medium.eps_r resolved from materials.eps_r' if operator == 'waveguide' else
-                 'materials.eps_r and materials.sigma' if operator == 'sheet' else
+        component, edge, operand, effective, sigma, weight, cut = _O2_XFAIL_AT_EDGE[operator, branch]
+        reads = ('components.eps_update' if operator in ('lumped', 'wire', 'msl', 'rlc') else
+                 'cfg.medium.eps_r (resolved from materials.eps_r)' if operator == 'waveguide' else
                  'materials.eps_r')
         update = ('components.eps_update' if branch == 'plain' else 'components.tensor.eps')
+        reads = f'{reads} = {operand:.12g}'
+        update = f'{update} = {effective:.12g}'
+        if operator in ('lumped', 'wire', 'msl', 'rlc', 'sheet'):
+            sigma_read = 'materials.sigma' if operator == 'sheet' else 'components.sigma_update'
+            reads += f' and {sigma_read} = {sigma:.12g}'
+            update += f' and components.sigma_update = {sigma:.12g}'
+        at = f'{component}({edge[0]},{edge[1]},{edge[2]})'
+        if weight is not None:
+            geometry = 'cut along its length' if cut else 'not cut along its length (SC clamp)'
+            at += f', w={weight:.12g}, {geometry}'
+        quantity = ('of the update denominator ε·ε0/dt + σ/2' if operator == 'rlc' else
+                    'of x2' if operator == 'sheet' else 'of the ε argument' if operator == 'kerr' else
+                    '|a−b|/|b| of the update coefficient Cb')
         rel = _O2_XFAIL_REL[operator, branch]
         marks.append(pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-            f'#1961: {operator} reads {reads}, the E update reads {update} and '
-            f'components.sigma_update on {branch} edges; rel={rel:.9g} at the test edge')))
+            f'#1961: {operator} reads {reads}, the E update reads {update} at {at}; '
+            f'relative difference {quantity} = {rel:.9g}')))
     return pytest.param(operator, branch, id=f'{operator}-{branch}', marks=marks)
 
 
