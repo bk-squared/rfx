@@ -104,7 +104,7 @@ def assert_bitwise(ref, got, label):
 
 
 def lumped(sim):
-    return any(p.impedance is not None for p in sim._ports)
+    return any(p.impedance for p in sim._ports)
 
 
 def run_record(sim, target, **extra):
