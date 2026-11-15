@@ -430,14 +430,58 @@ def _o2_changed(materials, branch, axis, edge):
     return materials._replace(components=c)
 
 
+def _o2_scale_on_realization(patch, branch, change, seen):
+    """Move the operand once, as it first becomes available to consumers.
+
+    Plain components form in the runner; tensor components attach through
+    uniform_setup._build_step_setup before admit_setup resolves the section.
+    Earlier drive calls have no tensor: moving eps_update there would change
+    their operand, rather than the tensor operand owned by the E update.
+    """
+    from rfx.model import materials as model
+
+    original = model.with_components
+
+    def realize(materials, grid, *args, **kwargs):
+        previous = materials.components
+        result = original(materials, grid, *args, **kwargs)
+        formed = (previous is None if branch == 'plain' else
+                  (previous is None or previous.tensor is None)
+                  and result.components.tensor is not None)
+        if change is not None and formed:
+            axis, edge = change
+            result = _o2_changed(result, branch, axis, edge)
+            eps, _ = _o2_operands(result, branch, axis)
+            seen['intervention'] = dict(
+                eps=float(eps[edge]), cell=float(result.eps_r[edge]))
+        return result
+
+    patch.setattr(model, 'with_components', realize)
+
+
 def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
+    """Record measurement errors per row; never let setup decide an xfail."""
+    seen = {}
+    try:
+        return _o2_measure_impl(operator, branch, entry, change, mixed_section, seen)
+    except (ValueError, NotImplementedError) as exc:
+        result = dict(seen.get('intervention', {}), refused=str(exc))
+        if change is not None and operator == 'waveguide':
+            result['note'] = (
+                f"{branch}: refused when only the update's operand is scaled: {exc}. "
+                'Agreement holds only because admission forbids the difference.')
+        return result
+    except (Exception, pytest.fail.Exception) as exc:
+        return dict(error=f'{type(exc).__name__}: {exc}')
+
+
+def _o2_measure_impl(operator, branch, entry, change, mixed_section, seen):
     """Public declarations and real consumer calls; stop before a second step.
 
     setup() captures the public runner's exact kwargs. Replaying those kwargs
     enters the shared uniform step, with the prepared product's final materials.
     No reference is formed from a consumer's coefficient helper.
     """
-    from rfx.model import materials as model
     from rfx.sources import port_drive
     from rfx.stepping import prepared, uniform_setup, uniform_loop, kerr, waveguide_source
     from rfx.materials import thin_conductor
@@ -446,8 +490,7 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
     import rfx.lumped as lumped
 
     sim = _o2_scene(operator, branch, mixed_section=mixed_section)
-    calls, seen = [], {}
-    original_realize = model.with_components
+    calls = []
     original_advance = prepared.advance
     original_drive = port_drive.port_drive_waveform
     original_denominator = lumped.edge_update_denominator
@@ -465,22 +508,13 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
             kwargs.pop('s_param_freqs', None)
         return original_entry(**kwargs)
 
-    def realize(materials, *args, **kwargs):
-        fresh = materials.components is None
-        result = original_realize(materials, *args, **kwargs)
-        # Plain drives are formed at the first realization. Tensor-only
-        # follow observations move the stored operand after section admission.
-        if change is not None and branch == 'plain' and operator != 'waveguide' and fresh:
-            result = _o2_changed(result, branch, *change)
-        return result
-
     def advance(product, *args, **kwargs):
         seen['prepared_materials'] = product.materials
         return original_advance(product, *args, **kwargs)
 
     def drive(grid, cell, component, excitation, n_steps, materials, **kwargs):
         value = original_drive(grid, cell, component, excitation, n_steps, materials, **kwargs)
-        np.testing.assert_array_equal(value, jnp.full(n_steps, value[0]))
+        seen.setdefault('checks', []).append(('constant drive', bool(np.all(np.asarray(value) == value[0]))))
         calls.append(dict(axis=('ex', 'ey', 'ez').index(component), edge=tuple(cell),
                           value=float(value[0]), multiplier=float(kwargs['sigma_port'] * kwargs['unit_field'])))
         return value
@@ -497,8 +531,6 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
         return result
 
     def invariants(ctx, **kwargs):
-        if change is not None and operator == 'waveguide':
-            ctx = replace(ctx, materials=_o2_changed(ctx.materials, branch, *change))
         seen.update(materials=ctx.materials, dt=ctx.dt, dx=ctx.dx, ctx=ctx)
         result = original_invariants(ctx, **kwargs)
         if operator not in ('kerr', 'waveguide'):
@@ -514,7 +546,7 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
         # Observe the actual additive correction from zero to avoid subtractive
         # cancellation with the E curl. Use an existing nonzero incident sample.
         index = int(np.argmax(np.abs(np.asarray(cfg.h_inc_table))))
-        assert cfg.h_inc_table.size > 1
+        seen.setdefault('checks', []).append(('incident samples', cfg.h_inc_table.size > 1))
         zero = state._replace(ex=jnp.zeros_like(state.ex), ey=jnp.zeros_like(state.ey), ez=jnp.zeros_like(state.ez))
         result = original_waveguide(zero, cfg, index, dt, dx)
         seen.update(wg_cfg=cfg, wg_field=np.asarray(getattr(result, cfg.e_v_component)),
@@ -523,7 +555,7 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
 
     with pytest.MonkeyPatch.context() as patch, jax.disable_jit():
         patch.setattr(sim, entry, public)
-        patch.setattr(model, 'with_components', realize)
+        _o2_scale_on_realization(patch, branch, change, seen)
         patch.setattr(prepared, 'advance', advance)
         patch.setattr(port_drive, 'port_drive_waveform', drive)
         patch.setattr(lumped, 'edge_update_denominator', denominator)
@@ -534,8 +566,12 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
         patch.setattr(waveguide_source, 'apply_waveguide_port_e', waveguide)
         captured = setup(sim, forward=entry == 'forward')
         grid = captured.pop('grid')
-        with pytest.raises(_O2ReferenceCaptured):
+        try:
             simulation.run(grid, seen['prepared_materials'], 12, **captured)
+        except _O2ReferenceCaptured:
+            pass
+        else:
+            raise RuntimeError('first step was not captured')
     materials, dt = seen['materials'], seen['dt']
     cells = np.asarray(materials.eps_r)
     if operator in ('sheet', 'kerr', 'waveguide'):
@@ -550,7 +586,8 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
             eligible = seen['chi3'] != 0
         else:
             cfg = seen['wg_cfg']
-            assert cfg.e_v_component == 'ez' and cfg.direction == '+x'
+            seen.setdefault('checks', []).append(('waveguide orientation',
+                cfg.e_v_component == 'ez' and cfg.direction == '+x'))
             eligible = np.zeros(eps.shape, bool)
             eligible[cfg.x_index, cfg.u_lo:cfg.u_hi, cfg.v_lo:cfg.v_hi] = np.asarray(cfg.hy_profile) != 0
         if operator != 'waveguide' or branch == 'conformal':
@@ -558,7 +595,8 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
         if branch == 'conformal':
             weights = np.asarray(materials.components.tensor.conformal_weights[axis])
             eligible &= (weights > 0) & (weights < 1)
-        assert eligible.any(), (operator, branch, 'no discriminating operator edge')
+        if not eligible.any():
+            raise RuntimeError(f'{operator}-{branch}: no discriminating operator edge')
         edge = tuple(int(i) for i in np.argwhere(eligible)[0]) if change is None else change[1]
         if operator == 'sheet':
             value = -float(np.log(seen['sheet_a'][edge]))
@@ -581,7 +619,8 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
                 good &= 0 < w < 1
             if good:
                 eligible.append(call)
-        assert eligible, (operator, branch, 'no discriminating operator edge', calls)
+        if not eligible:
+            raise RuntimeError(f'{operator}-{branch}: no discriminating operator edge: {calls}')
         call = eligible[0] if change is None else next(c for c in eligible if (c['axis'], c['edge']) == change)
         axis, edge, value = call['axis'], call['edge'], call['value']
         eps, sigma = _o2_operands(materials, branch, axis)
@@ -589,29 +628,21 @@ def _o2_measure(operator, branch, entry, change=None, mixed_section=False):
                _o2_cb(materials, branch, axis, edge, dt) * call['multiplier'])
     return dict(operator=operator, branch=branch, entry=entry, axis=axis, edge=edge,
                 value=value, ref=ref, rel=abs(value-ref)/abs(ref), eps=float(eps[edge]),
-                cell=float(cells[edge]))
+                cell=float(cells[edge]), sigma=float(sigma[edge]), dt=float(dt),
+                checks=seen.get('checks', []))
 
 
 @pytest.fixture(scope='module')
 def _o2_observations():
-    """Collect outside the marked assertions so admission/edge errors stay red."""
+    """Measure and record only; each row is judged in its test call."""
     observations = {}
     for operator, branch in _O2_ROWS:
         for entry in ('run', 'forward'):
             mixed = operator == 'waveguide_second_medium'
-            try:
-                row = _o2_measure('waveguide' if mixed else operator, branch, entry,
-                                  mixed_section=mixed)
-            except (ValueError, NotImplementedError) as exc:
-                observations[operator, branch, entry] = dict(refused=str(exc))
-                continue
-            if row['rel'] <= _O2_RTOL:
-                changed = _o2_measure(operator, branch, entry, (row['axis'], row['edge']))
-                # This is an intervention on the stored operand only, at this edge.
-                np.testing.assert_allclose(changed['eps'], 1.7 * row['eps'], rtol=_O2_RTOL)
-                assert changed['cell'] == row['cell']
-                assert changed['ref'] != row['ref']
-                row['follow'] = changed
+            row = _o2_measure('waveguide' if mixed else operator, branch, entry,
+                              mixed_section=mixed)
+            if row.get('rel', float('inf')) <= _O2_RTOL:
+                row['follow'] = _o2_measure(operator, branch, entry, (row['axis'], row['edge']))
             observations[operator, branch, entry] = row
     return observations
 
@@ -620,17 +651,39 @@ def _o2_observations():
 @pytest.mark.parametrize('entry', ('run', 'forward'))
 def test_o2_operator_operand(_o2_observations, operator, branch, entry):
     row = _o2_observations[operator, branch, entry]
+    _o2_assert_measurement(row)
     if (operator, branch) in REFUSED:
         assert row == dict(refused=REFUSED[operator, branch])
         return
     np.testing.assert_allclose(row['value'], row['ref'], rtol=_O2_RTOL, atol=0.,
                                err_msg=str(row))
     changed = row['follow']
+    _o2_assert_measurement(changed)
+    # First prove the intervention, including when admission refused the scene.
+    np.testing.assert_allclose(changed['eps'], 1.7 * row['eps'], rtol=_O2_RTOL)
+    assert changed['cell'] == row['cell']
+    if 'refused' in changed:
+        assert (operator, branch) in NOTE
+        assert "refused when only the update's operand is scaled" in changed['note']
+        assert changed['refused'] in changed['note']
+        assert 'waveguide sections require one homogeneous, isotropic, lossless' in changed['refused']
+        print(f'O2 step 2 {entry} {operator}-{branch}: {changed}')
+        return
+    assert changed['ref'] != row['ref']
     if (operator, branch) in NOTE:
         assert changed['rel'] > _O2_RTOL
         np.testing.assert_allclose(changed['value'], row['value'], rtol=_O2_RTOL, atol=0.)
     else:
         np.testing.assert_allclose(changed['value'], changed['ref'], rtol=_O2_RTOL, atol=0.)
+    print(f'O2 step 2 assertions passed in call: {entry} {operator}-{branch}; {changed}')
+
+
+def _o2_assert_measurement(row):
+    if 'error' in row:
+        pytest.fail(row['error'])
+    for label, holds in row.get('checks', []):
+        if not holds:
+            pytest.fail(f'measurement precondition: {label}')
 
 
 def test_o2_classifications(_o2_observations):
@@ -641,4 +694,43 @@ def test_o2_classifications(_o2_observations):
         assert {key for key, row in rows.items() if 'unreachable' in row} == set(UNREACHABLE)
         assert {key for key, row in rows.items()
                 if row.get('rel', float('inf')) <= _O2_RTOL
-                and row['follow']['rel'] > _O2_RTOL} == set(NOTE)
+                and ('refused' in row['follow'] or row['follow'].get('rel', 0.) > _O2_RTOL)} == set(NOTE)
+
+
+@pytest.mark.parametrize('branch', _O2_BRANCHES)
+def test_o2_intervention_reaches_kernel(monkeypatch, branch):
+    """Always exercise the intervention, even if every operator fails step 1."""
+    from rfx.stepping import uniform_loop, yee as kernels
+
+    row = _o2_measure('rlc', branch, 'run')
+    _o2_assert_measurement(row)
+    axis, edge = row['axis'], row['edge']
+    seen = {}
+    original_update = uniform_loop._update_e_with_optional_dispersion
+
+    def update(state, materials, dt, dx, **kwargs):
+        zeros = jnp.zeros_like(state.ez)
+        curls = tuple(zeros.at[edge].set(1.) if a == axis else zeros for a in range(3))
+        state = state._replace(ex=zeros, ey=zeros, ez=zeros)
+        with monkeypatch.context() as patch:
+            patch.setattr(kernels, 'curl_h', lambda *a, **k: curls)
+            result = original_update(state, materials, dt, dx, **kwargs)[0]
+        seen['increment'] = float(getattr(result, ('ex', 'ey', 'ez')[axis])[edge])
+        raise _O2ReferenceCaptured
+
+    sim = _o2_scene('rlc', branch)
+    with monkeypatch.context() as patch, jax.disable_jit():
+        _o2_scale_on_realization(patch, branch, (axis, edge), seen)
+        patch.setattr(uniform_loop, '_update_e_with_optional_dispersion', update)
+        with pytest.raises(_O2ReferenceCaptured):
+            sim.run(n_steps=1, skip_preflight=True, **_o2_options(branch))
+    intervention = seen['intervention']
+    # Expected Cb comes from the unscaled scene and the requested 1.7x change,
+    # independently of whether the realization hook actually moved anything.
+    cb_scaled = 1. / (1.7 * row['eps'] * EPS_0 / row['dt'] + row['sigma'] / 2.)
+    cb_unscaled = 1. / (row['eps'] * EPS_0 / row['dt'] + row['sigma'] / 2.)
+    print(f'O2 kernel {branch}: increment={seen["increment"]:.12g}, '
+          f'Cb scaled={cb_scaled:.12g}, Cb unscaled={cb_unscaled:.12g}')
+    np.testing.assert_allclose(seen['increment'], cb_scaled, rtol=_O2_RTOL, atol=0.)
+    assert not np.isclose(seen['increment'], cb_unscaled, rtol=_O2_RTOL, atol=0.)
+    np.testing.assert_allclose(intervention['eps'], 1.7 * row['eps'], rtol=_O2_RTOL)
