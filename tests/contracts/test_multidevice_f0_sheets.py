@@ -218,7 +218,7 @@ def test_legacy_refuses_sheet_before_step(graded, entry, monkeypatch):
             sim.forward(**options, distributed=True)
         else:
             sim.run(**options, compute_s_params=False)
-    expected_frame = ('distributed_nu.py', 'run_nonuniform_distributed_pec') if graded else (
+    expected_frame = ('slab_wrap.py', 'runner_step_kind') if graded else (
         'distributed_v2.py', 'run_distributed')
     assert any((Path(str(frame.path)).name, frame.name) == expected_frame for frame in exc.traceback)
     print('F0_REFUSAL ' + json.dumps(dict(case=[lane, entry], message=str(exc.value))), flush=True)

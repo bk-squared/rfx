@@ -33,6 +33,11 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                        lorentz=lorentz_spec is not None, pmc=bool(sim._boundary_spec.pmc_faces())) != 'wrapped':
             raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC port faces are not supported.')
     admit(sim, lane, diagnostics=diagnostics)
+    if pec_occupancy_override is not None:
+        # The design-region release below is published without the final sheet
+        # operator (one device passes it), so the released edges can differ.
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets(sim._thin_conductors, "graded multi-device design region (pec_occupancy_override)")
     from rfx.stepping.slab_lumped import fold
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.

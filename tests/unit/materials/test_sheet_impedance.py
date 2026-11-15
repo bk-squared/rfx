@@ -1118,8 +1118,11 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     # --- refuse_f0_sheets(...) call sites ---
     ("rfx/runners/distributed_v2.py", "run_distributed", "uniform multi-device TF/SF step"):
         ("tests.contracts.test_multidevice_f0_sheets", "test_legacy_refuses_sheet_before_step"),
-    ("rfx/runners/distributed_nu.py", "run_nonuniform_distributed_pec", "graded multi-device legacy step"):
+    ("rfx/stepping/slab_wrap.py", "runner_step_kind", "graded multi-device legacy step"):
         ("tests.contracts.test_multidevice_f0_sheets", "test_legacy_refuses_sheet_before_step"),
+    ("rfx/model/distributed_ports.py", "assemble",
+     "graded multi-device design region (pec_occupancy_override)"):
+        ("tests.contracts.test_design_region_admission", "test_path_two_device_graded_refuses"),
     ("rfx/runners/run.py", "run_after_admission", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",

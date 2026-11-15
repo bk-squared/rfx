@@ -791,7 +791,7 @@ def run_nonuniform_distributed_pec(
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
 
-    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None or msl_ports) == "wrapped":
+    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None or msl_ports, sheet=sheet_impedance) == "wrapped":
         from rfx.runners._distributed_nu_wrapped import run_wrapped
         return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
             n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,
@@ -800,9 +800,6 @@ def run_nonuniform_distributed_pec(
             material_drive=material_drive, debye=debye, lorentz=lorentz, cpml=use_cpml, cpml_state=cpml_state, port_plan=port_plan,
             prepare_only=prepare_only, slab_records=slab_records, rlc_metas=rlc_metas,
             sheet_impedance=sheet_impedance, sheet_coeffs=sheet_coeffs)
-
-    from rfx.materials.thin_conductor import refuse_f0_sheets
-    refuse_f0_sheets((), "graded multi-device legacy step", context=sheet_impedance)
 
     # Defer the `Mesh` import to runtime so module import remains
     # lightweight (matches distributed_v2.py's pattern).

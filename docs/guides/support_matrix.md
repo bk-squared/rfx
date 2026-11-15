@@ -232,7 +232,7 @@ Left out of these tables, each for one reason:
 
 | Input | Row key | Uniform | Graded | Multi-device | Calculators | What to do instead |
 |---|---|---|---|---|---|---|
-| A sheet declared with `add_thin_conductor(..., surface_impedance_f0=...)` | `_thin_conductors/surface_impedance` | supported | supported | supported | refused (mixed_s_matrix, topology_optimize, material_fit) | Use `run()` / `forward()` on one or multiple devices with PEC or CPML; every TF/SF source or `exchange_interval` other than 1 on a uniform mesh, PMC faces on a graded mesh, Debye/Lorentz media (row `admission:sheet-dispersion`) and the calculators named refuse it. |
+| A sheet declared with `add_thin_conductor(..., surface_impedance_f0=...)` | `_thin_conductors/surface_impedance` | supported | supported | supported | refused (mixed_s_matrix, topology_optimize, material_fit) | Use `run()` / `forward()` on one or multiple devices with PEC or CPML; every TF/SF source or `exchange_interval` other than 1 on a uniform mesh, PMC faces on a graded mesh, Debye/Lorentz media (row `admission:sheet-dispersion`) and the calculators named refuse it. A graded multi-device `forward(distributed=True, pec_occupancy_override=...)` (design region) refuses it before the first step: that route releases design metal at the sheet edges without the final sheet operator that one device uses. |
 
 #### Sources and ports
 

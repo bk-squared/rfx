@@ -265,10 +265,15 @@ def test_path_existing_refusals(kind, path):
 @pytest.mark.parametrize('kind', ['sheet'])
 @pytest.mark.parametrize('occupancy', [0., .5])
 def test_path_two_device_graded_refuses(kind, occupancy):
+    # The graded multi-device design route publishes its released edges without
+    # the final sheet operator, so it refuses an f0 sheet before any step.
+    from rfx.errors import RfxRefusal
     sim, grid = model('graded', kind)
-    with pytest.raises((ValueError, NotImplementedError), match='surface.impedance'):
+    with pytest.raises(RfxRefusal, match='surface_impedance_f0.*design region') as exc:
         sim.forward(n_steps=2, pec_occupancy_override=jnp.full(grid.shape, occupancy),
             distributed=True, devices=jax.devices()[:2], skip_preflight=True)
+    assert any(frame.name == 'assemble' and str(frame.path).endswith('distributed_ports.py')
+               for frame in exc.traceback)
 
 
 @pytest.mark.parametrize('padded', [False, True], ids=['grid', 'padded'])
