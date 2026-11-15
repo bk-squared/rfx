@@ -215,6 +215,9 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
     tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
+    # The warning groups stay off the returned witness (run and forward equal).
+    groups = witness.get("groups") if isinstance(witness, dict) else None
+    witness = {k: v for k, v in witness.items() if k != "groups"} if isinstance(witness, dict) else witness
     if not forward_result:
         result = result._replace(settling_db=settling_db,
                                  settling_witness=witness)
@@ -246,7 +249,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
         if name in outputs_read)
 
     operation = "forward() call" if context == "forward" else "run"
-    groups = _warning_groups(result, witness, every_output)
+    groups = _warning_groups(result, witness, every_output, groups)
     # S returned with no S row (a lane that builds no S record row): the
     # one probe or field group speaks for S too (Addendum 4).
     s_untagged = has_s and not any("S-parameters" in g.get("reads", ()) for g in groups)
@@ -315,7 +318,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     return result
 
 
-def _warning_groups(result, witness, every_output):
+def _warning_groups(result, witness, every_output, groups=None):
     """The record-end groups one warning each speaks for (DESIGN Addendum 2).
 
     A witness from ``build_settling_witness`` carries ``groups`` (rows of one
@@ -327,7 +330,6 @@ def _warning_groups(result, witness, every_output):
     from rfx.measurement import decay_stop_first
     from rfx.sparams._record_selection import _combine_rows
 
-    groups = witness.get("groups")
     if not groups:
         runs = witness.get("runs") or ()
         if runs and all("reads" in run for run in runs):

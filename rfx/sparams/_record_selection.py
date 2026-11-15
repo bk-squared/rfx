@@ -71,6 +71,7 @@ def forward_settling_witness(result):
                     if result.settling_probe_source_end_index is not None
                     else result.settling_source_end_index),
         port_source_end=result.settling_source_end_index, warn=False)
+    witness = {k: v for k, v in witness.items() if k != 'groups'}  # warning-only
     from rfx.measurement.coverage import AccumulatorCoverage, with_coverage
     return with_coverage(db, witness, result.settling_coverage or AccumulatorCoverage())
 
