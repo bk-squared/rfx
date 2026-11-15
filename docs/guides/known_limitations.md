@@ -807,6 +807,18 @@ run stops at step 25,500, against a fixed 506-step run. An empty 3-D open box st
 What to do: on an open plane-wave scene, run a fixed `n_steps` (drive end plus the transit of the domain), or set a
 lower `decay_max_steps`.
 
+### `compute_rcs` judges the incident pulse's transit to its NTFF box, not the scatterer's own ringing after it.
+
+Tracker: #2030
+
+`compute_rcs` checks that its record covers the plane-wave pulse, its launch and the trip of the scattered field to the
+farthest corner of its NTFF box. A shorter record returns `settling_witness["status"] == "undetermined"` with one
+`AccuracyWarning`. After that trip a resonant scatterer can still radiate, and `compute_rcs` does not judge that decay:
+`settling_witness["status"]` is `"absent"` and nothing warns. The witness's reason suggests an identification probe,
+but `compute_rcs` takes no probe, so that advice cannot be followed here.
+What to do: run `compute_rcs` with two record lengths, for example `n_steps` and twice `n_steps`, and use the RCS only
+where the two agree.
+
 ## Absorbing boundaries
 
 ### Magnetic faces require the single-device second-order Yee image.
