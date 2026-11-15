@@ -166,6 +166,7 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
     """
     import jax
     from rfx._traced_check import traced_check
+    from rfx.backend import backend_class
 
     budget = courant_budget(grid) if budget is None else budget
     if budget is None:
@@ -246,6 +247,8 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
         return
     if not in_program and any(_is_abstract(v) for v in leaves):
         return  # Preserve multi-device jit(grad) until checks can run there.
+    if any(_is_abstract(v) for v in leaves) and not backend_class().host_callbacks:
+        return  # Preserve compiled runs on backends without host callbacks.
     traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
 
 

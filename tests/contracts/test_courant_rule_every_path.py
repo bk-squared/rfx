@@ -284,6 +284,34 @@ def test_multidevice_jit_grad_control(path):
     assert np.isfinite(np.asarray(jax.jit(jax.grad(loss))(jnp.float32(2.))))
 
 
+def test_mps_traced_cells_stage_without_callback(monkeypatch):
+    monkeypatch.setattr(jax, 'default_backend', lambda: 'mps')
+    def loss(eps):
+        return jnp.sum(invoke(scene(eps=eps), 'uniform', 'forward').time_series)
+    compiled = jax.jit(loss)
+    assert 'callback' not in str(jax.make_jaxpr(compiled)(jnp.float32(2.)))
+    assert np.isfinite(np.asarray(compiled(jnp.float32(2.))))
+
+
+def test_mps_concrete_cells_still_refused(monkeypatch):
+    monkeypatch.setattr(jax, 'default_backend', lambda: 'mps')
+    with pytest.raises(ValueError, match='cell Courant limit'):
+        invoke(scene(eps=.5), 'uniform', 'forward')
+
+
+def test_single_device_checkpoint_grad_control_and_refusal():
+    def loss(eps):
+        value = invoke(scene(eps=eps, impulse=True), 'uniform', 'forward', n=24).time_series
+        return jnp.sum(value), value
+    concrete_grad, concrete = jax.grad(loss, has_aux=True)(jnp.float32(2.))
+    actual_grad, actual = jax.grad(jax.checkpoint(loss), has_aux=True)(jnp.float32(2.))
+    concrete_grad, actual_grad = np.asarray(concrete_grad), np.asarray(actual_grad)
+    assert np.max(np.abs(actual_grad-concrete_grad)) <= 1e-4 * np.max(np.abs(concrete_grad))
+    assert np.max(np.abs(np.asarray(actual)-np.asarray(concrete))) <= 1e-4 * np.max(np.abs(concrete))
+    with pytest.raises(Exception, match='cell Courant limit'):
+        np.asarray(jax.grad(jax.checkpoint(loss), has_aux=True)(jnp.float32(.5))[0])
+
+
 @pytest.mark.parametrize('path', ['distributed_uniform', 'distributed_graded'])
 @pytest.mark.xfail(strict=True, reason='#2755: a jit-traced permittivity on several devices is not judged')
 def test_multidevice_traced_gap(path):

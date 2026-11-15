@@ -257,6 +257,10 @@ def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
                 stop = start + layout.nx_local
                 offset = layout.ghost_width
             if isinstance(value, jax.Array) and not isinstance(value, jax.core.Tracer):
+                # Shard readback caches device wrappers on its source. Keep
+                # that cache on a temporary copy, not the caller's materials.
+                with jax.ensure_compile_time_eval():
+                    value = value.copy()
                 for shard in value.addressable_shards:
                     s = shard.index[0]
                     left, right = s.start or 0, s.stop or value.shape[0]
