@@ -13,6 +13,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import DesignRegion, GaussianPulse, Simulation, TopologyDesignRegion
+from rfx._traced_input_table import ROWS
 from rfx._traced_inputs import TracedStaticInput, admit_traced_inputs, walk
 from rfx.ringdown import RingdownSpec
 
@@ -173,6 +174,18 @@ def test_t9_only_baseline_callables_have_wrapped():
 # frame. Independent source/name matching still finds a body hidden by a closure
 # without __wrapped__, so adding such a wrapper cannot evade the attribution test.
 FRAME_CASES = (
+    ("add_source", "rfx/api/__init__.py", 0),
+    ("add_polarized_source", "rfx/api/__init__.py", 0),
+    ("add_coaxial_port", "rfx/api/__init__.py", 0),
+    ("add_port", "rfx/api/__init__.py", 0),
+    ("add_lumped_rlc", "rfx/api/__init__.py", 0),
+    ("add_floquet_port", "rfx/api/__init__.py", 0),
+    ("add_probe", "rfx/api/__init__.py", 0),
+    ("add_vector_probe", "rfx/api/__init__.py", 0),
+    ("add_dft_plane_probe", "rfx/api/__init__.py", 0),
+    ("add_flux_monitor", "rfx/api/__init__.py", 0),
+    ("add_ntff_box", "rfx/api/__init__.py", 0),
+    ("add_current_moment_monitor", "rfx/api/__init__.py", 0),
     ("run", "rfx/api/_execute.py", 0),
     ("forward", "rfx/api/_execute.py", 1),
     ("_forward_from_materials", "rfx/runners/uniform_forward.py", 1),
@@ -215,3 +228,47 @@ def test_t9_body_warning_keeps_caller(method, source, baseline_frames):
             sys.settrace(previous)
     warning, = caught
     assert warning.filename == __file__, (method, warning.filename, warning.lineno)
+
+
+def test_t9_every_static_owner_has_a_frame_case():
+    owners = {owner for owner, _, state, _ in ROWS if state == "static"}
+    expected = {"__post_init__" if owner == "RingdownSpec" else owner.removeprefix("Simulation.")
+                for owner in owners}
+    assert expected <= {method for method, _, _ in FRAME_CASES}
+
+
+@pytest.mark.parametrize("method,kwargs,exception,message", [
+    ("add_source", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
+     "component must be ex/ey/ez, got 'bad'"),
+    ("add_port", {"position": (.01, .005, .005), "component": "ez", "impedance": 0}, ValueError,
+     "Lumped ports are not supported together with the TFSF plane-wave source"),
+    ("add_lumped_rlc", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
+     "component must be ex/ey/ez, got 'bad'"),
+    ("add_floquet_port", {"position": .005, "axis": "bad"}, ValueError,
+     "axis must be 'x', 'y', or 'z', got 'bad'"),
+    ("add_probe", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
+     "component must be a field name, got 'bad'"),
+    ("add_flux_monitor", {"coordinate": .005, "axis": "bad"}, ValueError,
+     "axis must be 'x', 'y', or 'z', got 'bad'"),
+    ("add_current_moment_monitor", {"corner_lo": (.003, .003, .003),
+                                    "corner_hi": (.007, .007, .007),
+                                    "block_size": 0.0, "freqs": (1e9,)}, ValueError,
+     "add_current_moment_monitor(block_size=0.0): the block side must be positive."),
+])
+def test_declaration_opening_check_preserves_concrete_error(method, kwargs, exception, message):
+    if method == "add_port":
+        from tests.contracts.test_tfsf_boundary_admission import plane
+        sim = plane()
+    else:
+        sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
+    with pytest.raises(exception) as caught:
+        getattr(sim, method)(**kwargs)
+    assert type(caught.value) is exception
+    assert str(caught.value) == message
+
+
+def test_forward_invalid_binding_falls_through_to_type_error():
+    sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
+    with pytest.raises(TypeError) as caught:
+        sim.forward(1)
+    assert not isinstance(caught.value, TracedStaticInput)

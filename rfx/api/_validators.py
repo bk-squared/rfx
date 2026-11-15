@@ -9,6 +9,8 @@ from numbers import Integral
 
 import numpy as np
 
+from rfx._traced_inputs import admit_traced_inputs
+
 
 def _validate_constructor_choices(
     snap: str, interface_eps: str, pec_occupancy_model: str,
@@ -126,3 +128,68 @@ def _validate_residual_context(
     except TypeError as exc:
         raise TypeError("residual_context contains unsupported JSON value") from exc
     return merged
+
+
+def _check_add_source(arguments):
+    component = arguments["component"]
+    if component not in ("ex", "ey", "ez"):
+        raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+
+
+def _check_add_port(arguments):
+    self = arguments["self"]
+    if self._tfsf is not None:
+        raise ValueError(
+            "Lumped ports are not supported together with the TFSF plane-wave source"
+        )
+
+
+def _check_add_lumped_rlc(arguments):
+    component = arguments["component"]
+    if component not in ("ex", "ey", "ez"):
+        raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+
+
+def _check_add_floquet_port(arguments):
+    axis = arguments["axis"]
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+
+
+def _check_add_probe(arguments):
+    component = arguments["component"]
+    if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
+        raise ValueError(f"component must be a field name, got {component!r}")
+
+
+def _check_add_flux_monitor(arguments):
+    axis = arguments["axis"]
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+
+
+def _check_add_current_moment_monitor(arguments):
+    block_size = arguments["block_size"]
+    if not float(block_size) > 0.0:
+        raise ValueError(
+            f"add_current_moment_monitor(block_size={block_size}): the "
+            "block side must be positive.")
+
+
+_DECLARATION_CHECKS = {
+    "Simulation.add_source": _check_add_source,
+    "Simulation.add_port": _check_add_port,
+    "Simulation.add_lumped_rlc": _check_add_lumped_rlc,
+    "Simulation.add_floquet_port": _check_add_floquet_port,
+    "Simulation.add_probe": _check_add_probe,
+    "Simulation.add_flux_monitor": _check_add_flux_monitor,
+    "Simulation.add_current_moment_monitor": _check_add_current_moment_monitor,
+}
+
+
+def _admit_declaration(owner, arguments):
+    """Refuse traced static inputs, then preserve the opening choice check."""
+    admit_traced_inputs(owner, arguments)
+    check = _DECLARATION_CHECKS.get(owner)
+    if check is not None:
+        check(arguments)
