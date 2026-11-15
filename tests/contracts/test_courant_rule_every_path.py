@@ -263,7 +263,7 @@ def _observe_peaks(monkeypatch):
 @pytest.mark.parametrize('case', ['uniform_0982', 'graded_pinned', 'graded_large', 'order4_0985', 'subgrid_coarse_1'])
 def test_admitted_run_bar(case, monkeypatch):
     path = 'graded' if case.startswith('graded') else 'order4' if case.startswith('order4') else 'uniform'
-    eps = .975 if case == 'uniform_0975_control' else .982 if case == 'uniform_0982' else .985 if case == 'order4_0985' else .5 if path == 'graded' else 1.
+    eps = .982 if case == 'uniform_0982' else .985 if case == 'order4_0985' else .5 if path == 'graded' else 1.
     pin = .6 * float(scene()._build_grid().dt) / .99 if case == 'graded_pinned' else None
     sim = scene(path, eps, impulse=True, dt=pin)
     if case == 'graded_large':
@@ -279,13 +279,11 @@ def test_admitted_run_bar(case, monkeypatch):
     peaks = _observe_peaks(monkeypatch)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
-        try:
-            invoke(sim, path, n=400)
-        except ValueError as error:
-            if case != 'uniform_0975_control':
-                raise
-            assert_cell_message(str(error), grid_of(sim, path), .975)
-            return
+        invoke(sim, path, n=400)
+    _assert_run_bar(peaks, case)
+
+
+def _assert_run_bar(peaks, case):
     jax.effects_barrier()
     assert len(peaks) >= 400, f'not every step observed: {len(peaks)}'
     values = np.array([peaks[i] for i in range(201, 401)])
@@ -401,4 +399,17 @@ def test_public_sweep_traced_values_unreachable():
 def test_run_bar_detects_unstable_uniform_0975(monkeypatch):
     # Normally refused. Removing the setup rule must expose measured growth,
     # so this also checks the observer against a physically unstable control.
-    test_admitted_run_bar('uniform_0975_control', monkeypatch)
+    import rfx
+    from rfx.grid import Grid
+    from rfx._internal._uniform_specs import SourceSpec
+    # An even periodic lattice includes the bulk Nyquist mode exactly.
+    grid = Grid(freq_max=10e9, domain=(.008,)*3, dx=H, cpml_layers=0, periodic_axes='xyz')
+    materials = MaterialArrays(jnp.full(grid.shape, .975), jnp.zeros(grid.shape), jnp.ones(grid.shape))
+    source = SourceSpec(3, 4, 4, 'ez', jnp.zeros(400).at[0].set(1.))
+    peaks = _observe_peaks(monkeypatch)
+    try:
+        rfx.run(grid, materials, 400, sources=[source], periodic=(True,)*3)
+    except ValueError as error:
+        assert_cell_message(str(error), grid, .975, lo=(0.,)*3, hi=(.008,)*3)
+        return
+    _assert_run_bar(peaks, 'uniform_0975_control')
