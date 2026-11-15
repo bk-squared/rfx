@@ -122,8 +122,8 @@ def run_record(sim, target, **extra):
     return out, plans
 
 
-#: Cases measured not bitwise on the CPU (XLA 24.10 image): every first difference is
-#: one float32 ULP, and the seeded-pad cases (pad contents up to 1e30) stay bitwise.
+#: Cases measured not bitwise on the CPU (jax 24.10 image): each first difference is
+#: one to three float32 ULP, and the seeded-pad cases (pad contents up to 1e30) stay bitwise.
 NOT_BITWISE_REASON = 'vector pad: not bitwise on CPU, leader to judge'
 NOT_BITWISE_MARK = pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason=NOT_BITWISE_REASON)
 NOT_BITWISE = {
