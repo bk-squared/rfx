@@ -72,7 +72,10 @@ def _preflight_impl(
     issues = PreflightReport()
     verdict_findings = []
     if _conductors is not None:
-        self._finding_record_reader = lambda: _conductors._realization_record or finding_record(self)
+        # Hold the diagnostic copy weakly so it and its context are freed by reference
+        # counting when preflight returns, not at the next cyclic collection (#2769).
+        ref = weakref.ref(self)
+        self._finding_record_reader = lambda: _conductors._realization_record or finding_record(ref())
         tables = _conductors._realization_tables
         issues._realization_reader = lambda: tables[-1] if tables else None
         if tables:

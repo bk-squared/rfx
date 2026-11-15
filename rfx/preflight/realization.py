@@ -66,6 +66,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+import weakref
 
 import jax
 import jax.numpy as jnp
@@ -345,7 +346,8 @@ class _CampaignStaticsContext:
                     AttributeError, IndexError)
 
     def __init__(self, sim):
-        self.sim = sim
+        # Simulation caches this context (_pf_campaign_ctx); a strong sim would make a cycle (#2769).
+        self.sim = weakref.proxy(sim)
         self.error: str | None = None
         self.lane: str | None = None
         self.grid = None
