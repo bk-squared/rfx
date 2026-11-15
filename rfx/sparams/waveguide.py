@@ -5,6 +5,7 @@ variants. The caller retains its declared port and observer containers.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.sparams import _waveguide_stages
 
@@ -284,6 +285,7 @@ def compute_waveguide_s_matrix(
         Material rasterization is a cell-centre step test on realized nodes.
         ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
+    admit_traced_inputs("Simulation.compute_waveguide_s_matrix", locals())
     conformal_pec = _waveguide_stages._admit_waveguide_options(
         RfxUnsupported, conformal_pec, port_reference_sims, resolve_field_dtype, self, subpixel_smoothing,
     )

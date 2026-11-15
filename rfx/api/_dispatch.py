@@ -4,6 +4,9 @@ from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import functools
+import inspect
+
+from rfx._traced_inputs import admit_traced_inputs
 import jax.numpy as jnp
 
 from typing import NamedTuple
@@ -382,8 +385,17 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
     if entry is None:
         return functools.partial(_declaration_setup_at_trace_time, run=run)
 
+    entry_signature = inspect.signature(entry)
+
+    def bound_arguments(self, args, kwargs):
+        try:
+            return entry_signature.bind(self, *args, **kwargs).arguments
+        except TypeError:
+            return {}
+
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
+        admit_traced_inputs("Simulation." + entry.__name__, bound_arguments(self, args, kwargs))
         self._resolve_field_dtype()
         guard_shape_tangents(self)
         distributed = bool(kwargs.get("distributed", False))

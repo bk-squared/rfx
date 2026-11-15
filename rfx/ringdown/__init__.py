@@ -89,6 +89,7 @@ report in ``Result.ringdown.stop``.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported; from rfx._warning_origin import user_stacklevel  # noqa: E702
 
@@ -234,6 +235,7 @@ class RingdownSpec:
     identification_probes: tuple = ()
 
     def __post_init__(self):
+        admit_traced_inputs("RingdownSpec", locals())
         probes = []
         for position, component in self.identification_probes:
             position = tuple(float(v) for v in position)

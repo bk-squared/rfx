@@ -1972,8 +1972,8 @@ class _ExecuteMixin:
         -------
         Result
         """
-        from rfx.geometry.conformal import validate_conformal_min_weight
-        validate_conformal_min_weight(conformal_min_weight)
+        from rfx._traced_inputs import admit_traced_inputs
+        admit_traced_inputs("Simulation.run", locals())
         self._resolve_field_dtype()
         admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box, conformal_pec)
         from rfx.runners.run import run_after_admission
