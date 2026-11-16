@@ -28,7 +28,7 @@ def _graded(cells):
 def test_uniform_whole_cell_translation(clamp):
     grid = _uniform()
     seam, interior = [compute_conformal_fractions(
-        grid, [Sphere((cx, .006, .006), .0008)], clamp=clamp)
+        grid, [Sphere((cx, .006, .006), .0008)], clamp=clamp, field_dtype=np.float32)
         for cx in (.0105, .0105 - 3 * grid.dx)]
     # Keep the record's decimal dimensions. Device operands are float32;
     # the translated operands agree bitwise despite host-coordinate roundoff.
