@@ -1095,8 +1095,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
                            for d in range(3))
             nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+        from rfx.boundaries.tfsf import without_attached_tensor
         sim._validate_tfsf_vacuum_boundary(
-            materials, tfsf_pair[0], nonvacuum_masks=tuple(nonvacuum))
+            without_attached_tensor(materials), tfsf_pair[0], nonvacuum_masks=tuple(nonvacuum))
 
     # Share the box builder with the realized-geometry record, including
     # periodic extent endpoints and the face-centre sampling margin.

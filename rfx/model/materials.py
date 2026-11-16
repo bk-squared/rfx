@@ -734,7 +734,6 @@ def e_update_coefficient_at(materials, cell, component, dt,
     UPML form, or the inverse form through the wrapper ``update_e_aniso_inv``
     uses.
     """
-    from rfx.core.yee import e_update_coeffs
     c = getattr(materials, "components", None)
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     if isinstance(c, EdgePoles):
@@ -743,10 +742,7 @@ def e_update_coefficient_at(materials, cell, component, dt,
         if terms[0] is not None or terms[1] is not None:
             return _ade_cb(eps, sigma, dt, axis, *terms)
         # Plain graded drives use the shared current-source formula.
-        if host:
-            from rfx.model.source_coefficients import current_source_cb
-            return current_source_cb(eps, sigma, dt)
-        return e_update_coeffs(eps, sigma, dt)[1]
+        return _plain_drive_cb(eps, sigma, dt, host)
     operand = None if c is None else tensor_operand_at(materials, cell, component)
     if c is not None and c.source_upml:
         # Admission excludes pads. There sigma_perp=0; UPML still uses its
@@ -777,9 +773,16 @@ def e_update_coefficient_at(materials, cell, component, dt,
         if c.lorentz is not None:
             lt_terms = jax.tree.map(lambda value: value[pole_cell], c.lorentz.coefficients)
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
+    return _plain_drive_cb(eps, sigma, dt, host)
+
+
+def _plain_drive_cb(eps, sigma, dt, host):
+    """A plain edge's drive coefficient: the graded current-source formula
+    (eps_r units) when ``host``, else the uniform E update's own cb."""
     if host:
         from rfx.model.source_coefficients import current_source_cb
         return current_source_cb(eps, sigma, dt)
+    from rfx.core.yee import e_update_coeffs
     return e_update_coeffs(eps, sigma, dt)[1]
 
 
