@@ -1,12 +1,15 @@
 """Vector padding on the adjoint scan, the vmap material sweep and the memory planners.
 
 Each path pads by the stepping layer (``rfx.stepping.vector_pad``) and must
-return the unpadded run's bytes on the CPU, or, for a case listed as not
-bitwise, stay within the bars of ``tests/unit/runners/test_vector_pad.py``.
-The memory planners estimate from the extents the step allocates.
+return the unpadded run's bytes on the CPU, or, for a case listed in
+``NOT_BITWISE`` (measured not bitwise), stay within bar (ii) of
+``tests/unit/runners/test_vector_pad.py`` at N, 2N and 4N steps, each output
+judged on its own largest magnitude (a probe series per column). The memory
+planners estimate from the extents the step allocates.
 """
 
 import math
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -15,36 +18,106 @@ import pytest
 
 from rfx import Box, GaussianPulse, Simulation
 from rfx.stepping import vector_pad
-from tests.unit.runners.test_vector_pad import TARGETS, _walls, assert_bitwise, assert_padded
+from tests.unit.runners.test_vector_pad import (
+    RECORD_BAR, TARGETS, _ratio, _walls, assert_bars, assert_bitwise, assert_padded,
+)
 
 ADJOINT_STEPS = 160
+SWEEP_STEPS = 60
+#: Cases measured not bitwise on the CPU (jax 24.10 image); judged by bar (ii).
+NOT_BITWISE = set()
 
 
-def _adjoint_records(mode, gradient):
-    from tests.unit.autodiff.test_reciprocity_adjoint import fixture, objective
-    sim, eps = fixture('float32')
-    sigma = jnp.zeros_like(eps)
-    loss = objective(sim, steps=ADJOINT_STEPS, mode=gradient)
+def own_scale_ratios(ref, got):
+    """difference / bar (ii), each output on its own largest magnitude; a probe series per column."""
+    out = {}
+    for key, a in ref.items():
+        a = np.asarray(a, np.complex128)
+        d = np.abs(np.asarray(got[key], np.complex128) - a)
+        if key == 'time_series':
+            for column in range(a.shape[-1]):
+                out[f'time_series[{column}]'] = _ratio(d[..., column].max(),
+                                                       RECORD_BAR * np.abs(a[..., column]).max())
+        else:
+            out[key] = _ratio(d.max(), RECORD_BAR * np.abs(a).max())
+    return out
+
+
+def judge(case, label, records, n_steps):
+    """Bitwise at n_steps, or, for a case in NOT_BITWISE, bar (ii) at N, 2N, 4N.
+
+    A case not listed that is not bitwise prints its bars as evidence, then fails.
+    """
+    lengths = (n_steps, 2 * n_steps, 4 * n_steps)
+    if case in NOT_BITWISE:
+        assert_bars(label, {n: own_scale_ratios(*records(n)) for n in lengths})
+        return
+    ref, got = records(n_steps)
+    if not all(np.array_equal(ref[k], got[k]) for k in ref):
+        by_length = {n_steps: own_scale_ratios(ref, got)}
+        by_length.update({n: own_scale_ratios(*records(n)) for n in lengths[1:]})
+        try:
+            assert_bars(f'{label} (evidence: not bitwise, not listed)', by_length)
+        except AssertionError:
+            pass
+    assert_bitwise(ref, got, label)
+
+
+#: Shape (22, 21, 18) with 5 CPML cells: 'aligned' pads z, 'odd' pads x and z.
+DESIGN_DOMAIN = (22e-3, 20e-3, 14e-3)
+BOX_LO, BOX_HI = (10e-3, 8e-3, 6e-3), (14e-3, 12e-3, 10e-3)
+
+
+def _design_scene():
+    sim = Simulation(freq_max=16e9, domain=DESIGN_DOMAIN, dx=2e-3, boundary='cpml', cpml_layers=5)
+    sim.add_source((4e-3, 10e-3, 8e-3), 'ez', amplitude_kind='field',
+                   waveform=GaussianPulse(f0=8e9, bandwidth=.8, cutoff=6))
+    grid = sim._build_grid()
+    ix = grid.position_to_index((18e-3, 12e-3, 6e-3))
+    sim.add_dft_plane_probe(axis='x', coordinate=18e-3, component='ez',
+                            freqs=jnp.asarray([6.4e9, 8.4e9]), name='out',
+                            region=(ix[1], ix[1] + 2, ix[2], ix[2] + 3))
+    lo, hi = grid.position_to_index(BOX_LO), grid.position_to_index(BOX_HI)
+    shape = tuple(hi[d] - lo[d] + 1 for d in range(3))
+    eps = jnp.asarray(2.0 + 2.0 * np.random.default_rng(1).random(shape), jnp.float32)
+    return sim, eps
+
+
+def _design_records(mode, gradient, n_steps):
+    sim, eps = _design_scene()
+
+    def loss(e):
+        result = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=e, n_steps=n_steps,
+                             checkpoint_segments=8, gradient=gradient, skip_preflight=True)
+        spectrum = result.dft_planes['out'].accumulator / result.dt
+        weights = jnp.arange(spectrum.size).reshape(spectrum.shape) + 1
+        return jnp.sum(weights * jnp.abs(spectrum) ** 2)
+
     with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
-        value, (grad_eps, grad_sigma) = jax.value_and_grad(loss, argnums=(0, 1))(eps, sigma)
-    return {'value': np.asarray(value), 'grad_eps': np.asarray(grad_eps),
-            'grad_sigma': np.asarray(grad_sigma)}, plans
+        value, grad = jax.value_and_grad(loss)(eps)
+    return {'value': np.asarray(value), 'grad_eps': np.asarray(grad)}, plans
 
 
 @pytest.mark.parametrize('gradient', ('adjoint', 'autodiff'))
 @pytest.mark.parametrize('target', TARGETS)
-def test_design_box_objective_and_gradient_padded_bitwise(target, gradient):
-    """The reciprocity adjoint scan, and autodiff through the same design box."""
-    ref, ref_plans = _adjoint_records('off', gradient)
-    got, plans = _adjoint_records(target, gradient)
-    assert ref_plans and not any(p.active for p in ref_plans)
-    assert_padded(plans, f'design box {gradient}/{target}')
-    assert_bitwise(ref, got, f'design box {gradient}/{target}')
+def test_design_box_objective_and_gradient_padded(target, gradient):
+    """The adjoint scan, and autodiff through the same design box."""
+    label = f'design box {gradient}/{target}'
+
+    def records(n):
+        ref, ref_plans = _design_records('off', gradient, n)
+        got, plans = _design_records(target, gradient, n)
+        assert ref_plans and not any(p.active for p in ref_plans)
+        assert_padded(plans, f'{label} N={n}')
+        return ref, got
+
+    judge(('design', gradient, target), label, records, ADJOINT_STEPS)
     jax.clear_caches()
 
 
 def _sweep_scene(boundary):
-    sim = Simulation(freq_max=10e9, domain=(.0113, .0071, .0052), dx=.001,
+    # x is 0.0123 m: with 4 CPML cells the extents hold an even axis for 'odd'.
+    sim = Simulation(freq_max=10e9, domain=(.0123, .0071, .0052), dx=.001,
                      boundary=boundary if boundary == 'cpml' else _walls(),
                      cpml_layers=4 if boundary == 'cpml' else 0, snap='declared')
     sim.add_material('brick', eps_r=2.2)
@@ -59,18 +132,23 @@ def _sweep_scene(boundary):
 
 @pytest.mark.parametrize('boundary', ('pec', 'cpml'))
 @pytest.mark.parametrize('target', TARGETS)
-def test_vmap_material_sweep_padded_bitwise(target, boundary):
+def test_vmap_material_sweep_padded(target, boundary):
     from rfx.vmap_sweep import vmap_material_sweep
-    out = {}
-    for mode in ('off', target):
-        with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
-            result = vmap_material_sweep(_sweep_scene(boundary), 'brick.eps_r',
-                                         jnp.array([1.5, 2.2, 3.0]), n_steps=60)
-        out[mode] = ({'time_series': np.asarray(result.time_series),
-                      'plane': np.asarray(result.dft_planes['plane'])}, plans)
-    assert out['off'][1] and not any(p.active for p in out['off'][1])
-    assert_padded(out[target][1], f'vmap sweep {boundary}/{target}')
-    assert_bitwise(out['off'][0], out[target][0], f'vmap sweep {boundary}/{target}')
+    label = f'vmap sweep {boundary}/{target}'
+
+    def records(n):
+        out = {}
+        for mode in ('off', target):
+            with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
+                result = vmap_material_sweep(_sweep_scene(boundary), 'brick.eps_r',
+                                             jnp.array([1.5, 2.2, 3.0]), n_steps=n)
+            out[mode] = ({'time_series': np.asarray(result.time_series),
+                          'plane': np.asarray(result.dft_planes['plane'])}, plans)
+        assert out['off'][1] and not any(p.active for p in out['off'][1])
+        assert_padded(out[target][1], f'{label} N={n}')
+        return out['off'][0], out[target][0]
+
+    judge(('vmap', boundary, target), label, records, SWEEP_STEPS)
     jax.clear_caches()
 
 

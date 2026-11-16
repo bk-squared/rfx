@@ -402,3 +402,12 @@ def test_graded_one_step_from_one_state_and_realized_operands(name, target):
                      + '\n')
     assert_bars(f'graded one step {label}', by_length)
     jax.clear_caches()
+
+
+def test_distributed_graded_refuses_a_forced_pad():
+    """The multi-device graded runner is not padded: a forced pad is refused by name."""
+    with vector_pad.force_pad('aligned'), pytest.raises(NotImplementedError, match='vector padding') as info:
+        scene('vacuum').run(n_steps=8, skip_preflight=True, compute_s_params=False,
+                            devices=jax.devices('cpu')[:2])
+    assert 'distributed non-uniform' in str(info.value)
+    jax.clear_caches()
