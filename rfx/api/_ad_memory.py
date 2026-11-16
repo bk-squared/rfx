@@ -145,7 +145,7 @@ class _AdMemoryMixin:
         # (rfx.stepping.vector_pad: a forced target, or the gate table's row).
         from rfx.stepping.vector_pad import planned_extents
         allocated = planned_extents((nx, ny, nz), self._periodic_flags(),
-                                    two_d=bool(getattr(_grid, "is_2d", False)))
+                                    two_d=bool(getattr(_grid, "is_2d", False)), graded=is_nonuniform)
         cells = int(math.prod(allocated))
 
         # Forward working set: 6 field + ~6 material + ~4 CPML psi (~15%)

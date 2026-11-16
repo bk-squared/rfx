@@ -280,8 +280,6 @@ class _NUScanSetup(NamedTuple):
     use_waveguide_ports: bool
     use_current_moments: bool = False
     current_moments: object = None
-    # rfx.stepping.vector_pad's plan when the carry and step arrays are padded.
-    pad_plan: object = None
 
 
 def _build_nu_scan(
@@ -328,6 +326,8 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("graded")
     field_dtype = field_dtype if field_dtype is not None else jnp.float32
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
@@ -676,18 +676,6 @@ def _build_nu_scan(
         _accumulate_cm=_accumulate_cm if use_current_moments else None,
         emit_time_series=emit_time_series,
     )
-    # Vector padding: the operands above are built physical; the step reads them padded.
-    from rfx.stepping import vector_pad
-    pad_plan = vector_pad.uniform_plan(grid, tuple(a in grid.periodic_axes for a in "xyz"), path="graded",
-        unsupported=vector_pad.graded_unsupported(
-            use_tfsf=use_tfsf, use_waveguide_ports=use_waveguide_ports,
-            use_sheet_impedance=use_sheet_impedance, use_design_box=use_design_box, aniso_eps=aniso_eps,
-            use_debye=use_debye, use_lorentz=use_lorentz, field_dtype=state.ex.dtype))
-    pad_plan = pad_plan if pad_plan.active else None
-    if pad_plan is not None:
-        invariants = vector_pad.pad_graded_invariants(invariants, pad_plan, grid.dt)
-        ctx = vector_pad.pad_graded_context(ctx, pad_plan)
-        carry_init = vector_pad.pad_carry(carry_init, pad_plan)
     step: Any = make_graded_step(ctx)
     if plan_owners is not None:
         step.port_owners = plan_owners
@@ -715,5 +703,4 @@ def _build_nu_scan(
         use_waveguide_ports=use_waveguide_ports,
         use_current_moments=use_current_moments,
         current_moments=current_moments,
-        pad_plan=pad_plan,
     )

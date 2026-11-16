@@ -304,7 +304,7 @@ class SimConfig:
         """
         # The step's arrays: padded extents whenever the step will pad (rfx.stepping.vector_pad).
         from rfx.stepping.vector_pad import planned_extents
-        nx, ny, nz = planned_extents(self.grid_shape)
+        nx, ny, nz = planned_extents(self.grid_shape, graded=self.dz_profile is not None)
         return _auto_memory_mb(nx * ny * nz, self.cpml_layers)
 
     @property
@@ -561,7 +561,8 @@ def auto_configure(
                             sheet_planes=sheet_planes)
                         if needs_nonuniform_z else None)
             from rfx.stepping.vector_pad import planned_extents
-            _nx, _ny, _nz = planned_extents(_auto_grid_shape(_domain, dx, _cpml, _dz_prof))
+            _nx, _ny, _nz = planned_extents(_auto_grid_shape(_domain, dx, _cpml, _dz_prof),
+                                            graded=_dz_prof is not None)
             _cells = _nx * _ny * _nz
             _est_mb = _auto_memory_mb(_cells, _cpml)
             if _est_mb <= max_memory_mb:

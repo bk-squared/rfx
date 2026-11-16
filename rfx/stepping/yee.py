@@ -173,7 +173,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     else:
         curl_x, curl_y, curl_z = curl_h_nu(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
-            prev.hz.astype(_cdtype), *inv_d, boundary=boundary, frame=frame)
+            prev.hz.astype(_cdtype), *inv_d, boundary=boundary)
 
     def _comp(v, c):
         """``v`` for every component, or the c-th entry of a 3-sequence."""
@@ -319,7 +319,7 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
 
 def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                *, boundary=None, cell_sizes=None, high_wall: tuple[bool, bool, bool], frame=None) -> FDTDState:
+                *, boundary=None, cell_sizes=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
     """E update for non-uniform Yee grid.
 
     The E-curl differences two H cell-centres, whose separation is the
@@ -349,7 +349,7 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         **_nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes), high_wall=high_wall)
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
-    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary, frame=frame)
+    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
 
     ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
     ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)

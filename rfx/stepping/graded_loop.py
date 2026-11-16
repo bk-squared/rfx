@@ -247,9 +247,6 @@ def run_nonuniform(
     else:
         time_series = opt_ys
 
-    if setup.pad_plan is not None:
-        from rfx.stepping.vector_pad import unpad_carry
-        final = unpad_carry(final, setup.pad_plan)
     return _assemble_nu_result(setup, final, time_series)
 
 
@@ -407,12 +404,8 @@ def run_nonuniform_until_decay(
     # executable; the final partial chunk (if any) compiles once more. The
     # per-cell arrays are an argument, not constants compiled into it.
     from rfx.core.jax_utils import split_loop_invariants
-    # A padded carry is read on its physical cells between chunks (energy
-    # regions and flux boxes slice physical rows) and unpadded at the end.
-    from rfx.stepping.vector_pad import physical_reader, unpad_carry
-    physical = (lambda c: c) if setup.pad_plan is None else (lambda c: unpad_carry(c, setup.pad_plan))
     inv_args, inv_rebuild = split_loop_invariants(
-        setup.invariants, (grid.nx, grid.ny, grid.nz) if setup.pad_plan is None else setup.pad_plan.padded)
+        setup.invariants, (grid.nx, grid.ny, grid.nz))
     step_fn_inv = setup.step_fn_inv
 
     @jax.jit
@@ -477,8 +470,7 @@ def run_nonuniform_until_decay(
         # reduction / surface integral is the expensive part).
         if use_flux_stop:
             stopped = stop_rule.check(
-                steps_done, lambda: physical_reader(
-                    lambda st: radiated_power(st, _bl, grid.shape), setup.pad_plan)(carry["fdtd"]))
+                steps_done, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
         else:
             stopped = stop_rule.check(steps_done, lambda: energy(carry, steps_done))
         if stopped is not None:
@@ -489,13 +481,12 @@ def run_nonuniform_until_decay(
         if stop_fn is not None:
             from rfx.stepping.progress import concat_chunks
             if stop_fn(steps_done, lambda: _assemble_nu_result(
-                    setup, physical(carry), concat_chunks(ys_chunks), n_record=steps_done)):
+                    setup, carry, concat_chunks(ys_chunks), n_record=steps_done)):
                 if reporter is not None and reporter.last_reported != steps_done:
                     reporter.report(steps_done)
                 break
 
     # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
-    carry = physical(carry)
     # decay_by == 0.0 is the forced-N escape (fixed-step progress route): none.
     decay_stop = finish_decay(
         stop_rule, steps_done, fired=decayed_fired, reporter=reporter,

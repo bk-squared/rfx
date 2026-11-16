@@ -87,8 +87,6 @@ class GradedStepContext:
     cpml_spacings: tuple | None = None
     wall_loss_faces: frozenset = frozenset()
     slab_rlc: tuple | None = None
-    # The PadPlan whose padded arrays this step advances (rfx.stepping.vector_pad).
-    pad_plan: Any = None
 
 
 @dataclass
@@ -148,14 +146,6 @@ def make_graded_step(
         (m[3], m[13], 'wire', m[:3], i) for i, m in enumerate(ctx.wp_meta))
     acc_indices = ctx.port_acc_indices if ctx.port_record_specs is not None else tuple(range(len(ctx.wp_meta)))
     widths = tuple(3 if p[2] == 'wire' else 2 for p in port_specs)
-    # A high-padded step (rfx.stepping.vector_pad) passes each padded axis's
-    # physical rows to every site that reads an array end; its observers read
-    # the physical cells only.
-    from rfx.stepping.vector_pad import physical_state
-    pad_plan = ctx.pad_plan
-    pad_kw = {} if pad_plan is None else dict(frame=pad_plan.frame)
-    view = (lambda st: st) if pad_plan is None else (lambda st: physical_state(st, pad_plan))
-    wall_frame = ctx.x_face_frame if pad_plan is None else pad_plan.frame
     from rfx.measurement.port_sampler import (
         pre_injection_samples, ref_dft_update, wire_dft_update, stack_samples)
     port_tables = {}
@@ -175,7 +165,7 @@ def make_graded_step(
     def before_sources(frame: GradedFrame):
         # The reference reads the V row's own weight, so a traced width
         # (a dz_profile design variable) stays a tracer.
-        frame.port_refs = pre_injection_samples(view(frame.st), port_specs, None, table=graded_port_table(frame))
+        frame.port_refs = pre_injection_samples(frame.st, port_specs, None, table=graded_port_table(frame))
         frame.new_port_refs = [ref_dft_update(
             accs[4], frame.port_refs[acc_indices[p]], frame.step_idx, ctx.sp_freqs, ctx.dt)
             for p, accs in enumerate(frame.carry.get('wire_sparams', ()))]
@@ -205,7 +195,7 @@ def make_graded_step(
         # update below does not touch it). Slab-sized so the reverse-mode
         # tape carries the slab and not the domain.
         if ctx.use_current_moments:
-            frame.e_prev_slab = ctx._slab_e_snapshot(view(frame.st), ctx.current_moments)
+            frame.e_prev_slab = ctx._slab_e_snapshot(frame.st, ctx.current_moments)
 
     def h_update(frame: GradedFrame):
         # H update (non-uniform)
@@ -230,7 +220,7 @@ def make_graded_step(
         elif ctx.use_cpml:
             frame.st, frame.cpml_new = ctx.apply_cpml_h(frame.st, ctx.cpml_params, frame.carry["cpml"],
                                          ctx.cpml_grid, ctx.cpml_axes_eff,
-                                         materials=frame.materials, **pad_kw)
+                                         materials=frame.materials)
         else:
             frame.cpml_new = None
         if ctx.use_tfsf:
@@ -254,7 +244,6 @@ def make_graded_step(
                 debye=(frame.debye_coeffs, frame.carry["debye"]) if ctx.use_debye else None,
                 lorentz=(frame.lorentz_coeffs, frame.carry["lorentz"]) if ctx.use_lorentz else None,
                 boundary=ctx.curl_boundary,
-                **pad_kw,
             )
         elif frame.aniso_eps is not None:
             from rfx.stepping.yee import update_e_nu_aniso
@@ -266,7 +255,7 @@ def make_graded_step(
             )
         else:
             frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
-                             boundary=ctx.curl_boundary, high_wall=high_wall, **pad_kw)
+                             boundary=ctx.curl_boundary, high_wall=high_wall)
 
         # design box: redo the E update at the design cells from the
         # traced permittivity, on the graded-mesh curl. Same slot as the
@@ -311,7 +300,7 @@ def make_graded_step(
                                          ctx.cpml_grid, ctx.cpml_axes_eff,
                                          materials=frame.materials, e_loss=frame.invariants["e_loss"],
                                          inv_eps_r_update=frame._cpml_inv_eps_r,
-                                         boundary=ctx.curl_boundary, debye=frame.debye_coeffs, lorentz=frame.lorentz_coeffs, **pad_kw)
+                                         boundary=ctx.curl_boundary, debye=frame.debye_coeffs, lorentz=frame.lorentz_coeffs)
 
     def pec(frame: GradedFrame):
         """Enforce realized conductor edges and occupancy before sheets."""
@@ -342,7 +331,7 @@ def make_graded_step(
 
         # PEC, per face
         frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
-                                   frame=wall_frame, owned=frame.invariants.get("owns_x"),
+                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"),
                                    normal_ghost_faces=ctx.wall_loss_faces)
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
@@ -361,11 +350,10 @@ def make_graded_step(
 
     def after_sources(frame: GradedFrame):
         # Record the completed fields after the canonical source corrections.
-        st = view(frame.st)
         frame.new_waveguide_port_accs = None
         if ctx.use_waveguide_ports:
             from rfx.measurement.modal import write_waveguide_record
-            waveguide_values = project(st, frame.invariants['waveguide_table'])
+            waveguide_values = project(frame.st, frame.invariants['waveguide_table'])
             frame.new_waveguide_port_accs = []
             for port, (accs, cfg_meta, _m) in enumerate(zip(
                 frame.carry["waveguide_port_accs"], ctx.waveguide_meta,
@@ -419,7 +407,7 @@ def make_graded_step(
         if port_specs:
             frame.new_wire_sp = []
             frame.port_samples = []
-            port_values = project(st, graded_port_table(frame))
+            port_values = project(frame.st, graded_port_table(frame))
             frame.port_samples = stack_samples(port_values, port_specs, frame.port_refs)
             for p, accs in enumerate(frame.carry.get("wire_sparams", ())):
                 sample = frame.port_samples[acc_indices[p]]
@@ -433,22 +421,22 @@ def make_graded_step(
         frame.new_dft_planes = frame.new_flux_monitors = None
         if ctx.use_dft_planes:
             frame.new_dft_planes, frame.plane_samples = planes(
-                st, frame.carry["dft_planes"], ctx.dft_meta, ctx.dt, frame.step_idx)
+                frame.st, frame.carry["dft_planes"], ctx.dft_meta, ctx.dt, frame.step_idx)
         if ctx.use_flux_monitors:
-            frame.new_flux_monitors = flux(st, frame.carry["flux_monitors"], ctx.flux_meta, ctx.dt, frame.step_idx)
+            frame.new_flux_monitors = flux(frame.st, frame.carry["flux_monitors"], ctx.flux_meta, ctx.dt, frame.step_idx)
 
         # NTFF: accumulate tangential E/H DFT on 6 box faces
         frame.new_ntff = None
         if ctx.use_ntff:
             from rfx.farfield import accumulate_ntff
-            frame.new_ntff = accumulate_ntff(frame.carry["ntff"], st, ctx.ntff_box, ctx.dt, frame.step_idx)
+            frame.new_ntff = accumulate_ntff(frame.carry["ntff"], frame.st, ctx.ntff_box, ctx.dt, frame.step_idx)
 
         # Block current moments — same slot as the NTFF box: E at (n+1)*dt,
         # H at (n+1/2)*dt, with the feed current already injected.
         frame.new_cm = None
         if ctx.use_current_moments:
             frame.new_cm = ctx._accumulate_cm(
-                frame.carry["current_moments"], st, frame.e_prev_slab, ctx.current_moments,
+                frame.carry["current_moments"], frame.st, frame.e_prev_slab, ctx.current_moments,
                 ctx.dt, frame.step_idx)
 
         # TFSF 1D auxiliary E-field update (mirrors uniform scan body:
@@ -464,9 +452,9 @@ def make_graded_step(
             table = frame.invariants["probe_table"]
             nodes = _host_probe_nodes(table)
             if nodes is None:
-                frame.probe_out = project(st, table)
+                frame.probe_out = project(frame.st, table)
             else:
-                samples = [getattr(st, pc)[pi, pj, pk] for pc, pi, pj, pk in nodes]
+                samples = [getattr(frame.st, pc)[pi, pj, pk] for pc, pi, pj, pk in nodes]
                 frame.probe_out = jnp.stack(samples)
         else:
             frame.probe_out = jnp.zeros(0)
