@@ -76,6 +76,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
         drives = jax.tree.map(lambda a: a[0], inputs['drives'])
         ctx = replace(context, materials=inputs['materials'],
             pec_edge_masks=inputs['pec_edge_masks'],
+            sheet_impedance=inputs.get('sheet_impedance'),
             debye_coeffs=inputs.get('debye_coeffs'),
             lorentz_coeffs=inputs.get('lorentz_coeffs'),
             drives=StepDrives(drives, None))
@@ -136,7 +137,8 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
 
 def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                     *, n_steps, boundary, debye_spec, lorentz_spec, port_plan,
-                    record_vref=True, tfsf=None, exchange_interval=1, rlc_metas=()):
+                    record_vref=True, tfsf=None, exchange_interval=1, rlc_metas=(),
+                    sheet_impedance=None):
     """Form every spatial step operand from its owning slab's material rows."""
     from types import SimpleNamespace
     from jax.sharding import NamedSharding
@@ -149,6 +151,13 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx.stepping.slab_setup import realize_materials, stage_dispersion, input_materials
     from rfx.stepping.slab_wrap import cut, split
     from rfx.stepping.slab import place
+    from rfx.stepping.slab_sheets import cut_sheets
+    from rfx.materials.thin_conductor import sheet_update_coeffs
+
+    sheet_coeffs = (None if sheet_impedance is None else
+                    sheet_update_coeffs(sheet_impedance.sigma_sheet, materials, grid.dt))
+    sheet_impedance, sheet_coeffs = cut_sheets(
+        sheet_impedance, sheet_coeffs, layout, mesh, uniform=True)
 
     sharding = NamedSharding(mesh, P('x'))
     replicated = NamedSharding(mesh, P())
@@ -181,6 +190,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         use_waveguide_ports=False, use_pec_faces=bool(pec_faces),
         use_pmc_faces=bool(pmc_faces), use_aniso_inv=False, aniso_inv_eps_smooth=False,
         use_pec_edges=pec_edges is not None, use_pec_occupancy=False,
+        use_sheet_impedance=sheet_impedance is not None,
         use_conformal=False, use_wire_sparams=bool(wires), use_lumped_sparams=bool(lumped),
         use_lumped_rlc=bool(rlc_metas), use_kerr=False, use_snapshot=False, use_monitor=False,
         use_flux_window=False, cpml_grid=grid, cpml_axes='xyz',
@@ -223,7 +233,8 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                                grid.shape, dtype=jnp.float32)
     inputs = dict(materials=local_materials,
         pec_edge_masks=cut(pec_edges, layout, 'pec_edge', mesh=mesh),
-        cpml_inv_eps_r=inverse, e_loss=loss, sheet_coeffs=None, conformal_zero_masks=None,
+        cpml_inv_eps_r=inverse, e_loss=loss, sheet_coeffs=sheet_coeffs,
+        sheet_impedance=sheet_impedance, conformal_zero_masks=None,
         drives=drive_layout([(s.i, s.j, s.k, s.component) for s in sources], jnp.float32),
         probe_table=table)
     port_table = port_plan.table if port_plan.specs else None
@@ -265,7 +276,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
 
 def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
                 boundary, dispersion, port_plan, record_vref=True, tfsf=None,
-                exchange_interval=1, rlc_metas=()):
+                exchange_interval=1, rlc_metas=(), sheet_impedance=None):
     """Transfer dense setup operands to slabs before entering the time loop."""
     grid, materials, pec_edges = operands
     operands.clear()
@@ -274,7 +285,8 @@ def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_s
     prepared = prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         n_steps=n_steps, boundary=boundary, debye_spec=debye_spec,
         lorentz_spec=lorentz_spec, port_plan=port_plan, record_vref=record_vref,
-        tfsf=tfsf, exchange_interval=exchange_interval, rlc_metas=rlc_metas)
+        tfsf=tfsf, exchange_interval=exchange_interval, rlc_metas=rlc_metas,
+        sheet_impedance=sheet_impedance)
     del materials, pec_edges, debye_spec, lorentz_spec
     return run_prepared(prepared, records, mesh, n_steps=n_steps)
 

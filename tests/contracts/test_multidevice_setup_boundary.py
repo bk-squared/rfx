@@ -291,20 +291,29 @@ def child_call(function, *args):
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])
 @pytest.mark.parametrize('count', [2, 3])
-def test_f0_sheet_refusal(mesh, count):
+def test_f0_sheet_runs_under_jit(mesh, count):
+    """An f0 sheet runs on 2 and 3 devices; plain and jax.jit traces agree.
+
+    Cross-trace bar for a per-step quantity: at most 9 float32 ULP of the
+    series peak, per step, computed in NumPy.
+    """
     if len(jax.devices('cpu')) < count:
-        child_call('test_f0_sheet_refusal', mesh, count)
+        child_call('test_f0_sheet_runs_under_jit', mesh, count)
         return
     sim = scene('f0_sheet', mesh)
     def invoke():
         return call_sim(sim, 'forward', jax.devices('cpu')[:count]).time_series
-    errors = []
-    for call in (invoke, jax.jit(invoke)):
-        with pytest.raises(RfxRefusal) as failure:
-            call()
-        errors.append(str(failure.value))
-    assert errors[0] == errors[1]
-    record(dict(kind='f0_sheet', mesh=mesh, devices=count, message=errors[0], status='refused'))
+    plain = np.asarray(invoke(), dtype=np.float64)
+    traced = np.asarray(jax.jit(invoke)(), dtype=np.float64)
+    assert plain.shape == traced.shape and plain.size > 0
+    assert np.isfinite(plain).all() and np.isfinite(traced).all()
+    peak = np.float32(np.max(np.abs(plain)))
+    assert peak > 0
+    bound = 9 * float(np.spacing(peak))
+    worst = float(np.max(np.abs(plain - traced)))
+    record(dict(kind='f0_sheet', mesh=mesh, devices=count, status='ran',
+                peak=float(peak), max_abs_diff=worst, bound=bound))
+    assert worst <= bound, (worst, bound)
 
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])

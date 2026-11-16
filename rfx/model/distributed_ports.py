@@ -33,6 +33,11 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                        lorentz=lorentz_spec is not None, pmc=bool(sim._boundary_spec.pmc_faces())) != 'wrapped':
             raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC port faces are not supported.')
     admit(sim, lane, diagnostics=diagnostics)
+    if pec_occupancy_override is not None:
+        # The design-region release below is published without the final sheet
+        # operator (one device passes it), so the released edges can differ.
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets(sim._thin_conductors, "graded multi-device design region (pec_occupancy_override)")
     from rfx.stepping.slab_lumped import fold
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.
@@ -47,7 +52,8 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     if pec_mask_override is not None:
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
-        sheets, wires, periodic=(False,) * 3, root=conductors)
+        sheets, wires, periodic=(False,) * 3, root=conductors,
+        sheet_specs=conductors.sheet_impedance)
     from rfx.measurement.prepared import attach_measurement
     from rfx.measurement.port_s_contract import passive_record_diagnostic
     attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
@@ -130,8 +136,9 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     from rfx.stepping.prepared import stage
     conductors = stage(conductors, materials=materials)
     conductors, record = conductor_model.at_kernel(sim, conductors,
-        lane=lane, pec_edges=conductors.pec_edges)
-    return conductors._prepared_owner or conductors, materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
+        lane=lane, pec_edges=conductors.pec_edges,
+        sheet_operator=conductors.sheet_context(conductors.pec_edges))
+    return conductors._prepared_owner or conductors, materials, cells, conductors.pec_edges, conductors.sheet_operator, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
 
 
 def refuse_unsupported_distributed_features(sim, **kwargs):

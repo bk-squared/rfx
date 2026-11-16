@@ -7,25 +7,24 @@ import pytest
 from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec
 from tests._multi_device_scene import host_devices
-from tests.unit.materials.test_sheet_impedance import _cube
 
 
-@pytest.mark.parametrize(
-    "entry, expected",
-    [
-        ("forward", "on the distributed multi-device forward() lane"),
-        ("run", "on the distributed multi-device run() lane"),
-    ],
-)
-def test_uniform_sheet_refusal_names_entry(entry, expected):
+@pytest.mark.parametrize("entry", ["forward", "run"])
+def test_uniform_refusal_names_entry(entry):
+    # Wall loss is refused on several devices at dispatch, which names the
+    # call; an f0 sheet, the scene this test used before, now runs there.
     devices = host_devices(2)
-    sim = _cube()
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary="pec")
+    sim.add_source((10e-3, 10e-3, 5e-3), "ex")
+    sim.add_probe((10e-3, 10e-3, 14e-3), "ex")
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("z_lo", "z_hi"))
     kwargs = dict(n_steps=4, devices=devices, skip_preflight=True)
     if entry == "forward":
         kwargs["distributed"] = True
     with pytest.raises(ValueError) as exc:
         getattr(sim, entry)(**kwargs)
-    assert expected in str(exc.value)
+    assert f"add_wall_loss: {entry} distributed dispatch" in str(exc.value)
 
 
 def _graded_sim():
