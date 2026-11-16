@@ -58,7 +58,7 @@ exactly as wide after this leg as before it -- still 55.
 
 from __future__ import annotations
 
-from rfx.preflight._not_judged import current_names, not_judged
+from rfx.preflight._not_judged import not_judged
 
 from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready, replay_legacy_findings
 from rfx.preflight._subjects import finding_subjects
@@ -140,10 +140,10 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
     for i, tc in enumerate(getattr(self, "_thin_conductors", ())):
         if is_tracer(tc.thickness) or not float(tc.thickness) > 0.0:
             if is_tracer(tc.thickness):
-                not_judged(None, "_validate_cfg_thin_conductor_thickness", current_names())
+                not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         if is_tracer(tc.sigma_bulk) and tc.surface_impedance_f0 is None:
-            not_judged(None, "_validate_cfg_thin_conductor_thickness", current_names())
+            not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         if not (tc.is_pec or tc.surface_impedance_f0 is not None):
             continue
@@ -158,14 +158,14 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
         material = self._resolve_material(entry.material_name)
         if is_tracer(material.eps_r) or not float(material.eps_r) > 1.0:
             if is_tracer(material.eps_r):
-                not_judged(None, "_validate_cfg_thin_conductor_thickness", current_names())
+                not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         if not isinstance(entry.shape, Box):
             nonbox_dielectrics += 1
             continue
         lo, hi = sheet_bounds(entry.shape)
         if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
-            not_judged(None, "_validate_cfg_thin_conductor_thickness", current_names())
+            not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         bounds = _sorted_box_corners(entry.shape)
         dielectrics.append(bounds)
@@ -176,7 +176,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
         if lo is None or hi is None:
             continue
         if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
-            not_judged(None, "_validate_cfg_thin_conductor_thickness", current_names())
+            not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         axis = sheet_normal_axis(lo, hi)
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
@@ -263,7 +263,7 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
             wf = getattr(entry, "waveform", None)
             wf0 = getattr(wf, "f0", None)
             if is_tracer(wf0):
-                not_judged(None, "_validate_cfg_thin_conductor_surface_impedance", current_names())
+                not_judged(None, "_validate_cfg_thin_conductor_surface_impedance")
             if wf0 is not None and not is_tracer(wf0):
                 try:
                     src_f0s.append(float(wf0))
@@ -276,13 +276,13 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
         sb = tc.sigma_bulk
         t = tc.thickness
         if is_tracer(f0) or is_tracer(sb):
-            not_judged(None, "_validate_cfg_thin_conductor_surface_impedance", current_names())
+            not_judged(None, "_validate_cfg_thin_conductor_surface_impedance")
             continue
         f0 = float(f0)
         sb = float(sb)
         delta = math.sqrt(2.0 / (2.0 * math.pi * f0 * _MU0 * sb))
         if is_tracer(t):
-            not_judged(None, "_validate_cfg_thin_conductor_surface_impedance", current_names())
+            not_judged(None, "_validate_cfg_thin_conductor_surface_impedance")
         if not is_tracer(t) and 0.0 < float(t) < 3.0 * delta:
             _w.warn(
                 PreflightWarning(
@@ -1471,7 +1471,7 @@ def _sheet_solved_spans(ctx, boxes):
             spec = f0_specs[e.name]
             if is_tracer(spec.g_sheet) or not f0_uses_solved_span(spec):
                 if is_tracer(spec.g_sheet):
-                    not_judged(None, "_validate_cfg_campaign_statics", current_names())
+                    not_judged(None, "_validate_cfg_campaign_statics")
                 continue  # Traced verdict or no measured resistive free-edge model.
         for a in range(3):
             if a == int(e.sheet.normal_axis):

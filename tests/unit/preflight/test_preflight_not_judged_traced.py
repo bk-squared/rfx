@@ -19,10 +19,10 @@ import pytest
 from rfx import Box, Simulation
 from rfx.errors import RfxError
 from rfx.geometry.rasterize_grid import TracedShapeDimensionError
-from rfx.preflight import _registry
+from rfx.preflight import _not_judged, _registry
 from rfx.preflight._common import PreflightReport, PreflightWarning
 from rfx.preflight._not_judged import (
-    CONTAINER_METHODS, current_names, judge_or_report, not_judged,
+    CONSTRUCTOR_PARAMETERS, CONTAINER_METHODS, current_names, judge_or_report, not_judged,
     preflight_scope, traced_input_names,
 )
 from tests.unit.preflight._not_judged_scenes import SCENES, build_scene, issue_rows
@@ -67,7 +67,7 @@ def test_p2_rfx_error_precedes_jax_error(monkeypatch):
     assert isinstance(refusal, jax.errors.ConcretizationTypeError)
 
     def check(sim, ctx):
-        assert current_names() == ("add_material(eps_r)",)
+        assert _not_judged._has_tracer(_not_judged._scope.get().declarations._materials)
         raise refusal
 
     _extra(monkeypatch, "refusal", check)
@@ -90,7 +90,7 @@ def test_p3_key_error_propagates(monkeypatch):
     failure = KeyError("validator bug")
 
     def check(sim, ctx):
-        assert current_names() == ("add_material(eps_r)",)
+        assert _not_judged._has_tracer(_not_judged._scope.get().declarations._materials)
         raise failure
 
     _extra(monkeypatch, "bug", check)
@@ -110,7 +110,7 @@ def test_p3_key_error_propagates(monkeypatch):
 @pytest.mark.parametrize("scene", SCENES)
 def test_p4_concrete_issues_frozen_on_main(scene):
     path = Path(__file__).with_name("data") / "not_judged_p4_frozen.json"
-    # Intentionally fail if the leader has not yet supplied the main artifact.
+    # The frozen main artifact must exist for this comparison.
     frozen = json.loads(path.read_text())
     assert frozen["base_commit"] == "084b5032b7d014f12b65b4b947cf61a840970bf4"
     actual = json.loads(json.dumps(issue_rows(build_scene(scene).preflight())))
@@ -214,6 +214,10 @@ def test_scan_first_level_names_without_retaining_tracers():
             _geometry=[Record(None, {"nested": [Waveform(value)]})],
             _ntff=((0., 0., 0.), (1., 1., 1.), (value,)),
             _new_container=[Waveform(value)],
+            _realized_geometry_record={"cached": Waveform(value)},
+            _msl_default_memo={"cached": Waveform(value)},
+            _domain=(value, 1., 1.),
+            _dz_profile=value,
             _ports=[{"waveform": Waveform(value)}],
         )
         results.append(traced_input_names(sim, {"eps_override": value}))
@@ -221,7 +225,7 @@ def test_scan_first_level_names_without_retaining_tracers():
 
     jax.make_jaxpr(objective)(2.)
     assert results == [(
-        "_new_container(f0)", "add(shape)", "add_material(eps_r)",
+        "Simulation(domain)", "Simulation(dz_profile)", "add(shape)", "add_material(eps_r)",
         "add_ntff_box(freqs)", "add_port(waveform)", "forward(eps_override)",
     )]
     assert all(isinstance(name, str) for name in results[0])
@@ -242,9 +246,9 @@ def test_conversion_types_and_internal_fallback(error_name):
         def check():
             raise getattr(jax.errors, error_name)(value)
 
-        with preflight_scope(()):
-            judge_or_report("internal_check", check, report, ())
-            judge_or_report("later_check", lambda: later.append(True), report, ())
+        with preflight_scope(SimpleNamespace()):
+            judge_or_report("internal_check", check, report)
+            judge_or_report("later_check", lambda: later.append(True), report)
         reports.append(report)
         return value
 
@@ -263,7 +267,7 @@ def test_warning_collector_preserves_structured_code_only(monkeypatch):
     def check(sim, ctx):
         ctx.warn.warn(plain)
         ctx.warn.warn(PreflightWarning("structured warning", code="structured_code"))
-        not_judged(ctx.warn, "warning_check", ())
+        not_judged(ctx.warn, "warning_check")
 
     _extra(monkeypatch, "warning_channel", check)
     report = build_scene("vacuum_without_source").preflight(check_resolution=False)
@@ -280,18 +284,18 @@ def test_warning_collector_preserves_structured_code_only(monkeypatch):
 def test_not_judged_deduplicates_per_call_and_resets():
     for _ in range(2):
         report = PreflightReport()
-        with warnings.catch_warnings(record=True) as caught, preflight_scope(("add_material(eps_r)",)):
+        with warnings.catch_warnings(record=True) as caught, preflight_scope(SimpleNamespace()):
             warnings.simplefilter("always")
-            not_judged(report, "check", current_names())
-            not_judged(warnings, "check", current_names())
-            not_judged(report, "check", ("forward(eps_override)",))
+            not_judged(report, "check")
+            not_judged(warnings, "check")
+            not_judged(report, "other_check")
         assert len(report) == 2
         assert not caught
         assert current_names() == ()
 
 
 def test_report_scope_resets_on_exception():
-    with pytest.raises(KeyError), preflight_scope(("add_material(eps_r)",)):
+    with pytest.raises(KeyError), preflight_scope(SimpleNamespace()):
         raise KeyError("stop")
     assert current_names() == ()
 
@@ -305,7 +309,7 @@ def test_skipped_profile_reports_but_none_does_not():
     assert not concrete
 
     def objective(profile):
-        with warnings.catch_warnings(record=True) as caught, preflight_scope(()):
+        with warnings.catch_warnings(record=True) as caught, preflight_scope(SimpleNamespace()):
             warnings.simplefilter("always")
             assert profile_span_is_uniform(.001, profile, .001, .002)
             assert profile_span_is_uniform(.001, profile, .001, .002)
@@ -332,7 +336,7 @@ def test_retained_region_failure_has_a_finding(monkeypatch):
             np.asarray(value)
 
         monkeypatch.setattr(subjects._Region, "resolve", resolve_region)
-        with warnings.catch_warnings(record=True) as caught, preflight_scope(()):
+        with warnings.catch_warnings(record=True) as caught, preflight_scope(SimpleNamespace()):
             warnings.simplefilter("always")
             subjects.bind_retained_subjects(finding, SimpleNamespace())
         assert finding._subjects == ("geometry[0]",)
@@ -345,3 +349,241 @@ def test_retained_region_failure_has_a_finding(monkeypatch):
         return value
 
     jax.make_jaxpr(objective)(1.)
+
+
+def _count_scans(monkeypatch):
+    calls = []
+    original = _not_judged.traced_input_names
+
+    def scan(*args):
+        calls.append(None)
+        return original(*args)
+
+    monkeypatch.setattr(_not_judged, "traced_input_names", scan)
+    return calls
+
+
+def test_concrete_preflight_never_scans(monkeypatch):
+    from rfx import GaussianPulse
+
+    calls = _count_scans(monkeypatch)
+    sim = Simulation(freq_max=10e9, domain=(.12, .12, .04), dx=.002, boundary="pec")
+    for layer in range(2):
+        for iy in range(10):
+            for ix in range(10):
+                index = layer * 100 + iy * 10 + ix
+                name = f"dielectric-{index}"
+                sim.add_material(name, eps_r=2.0 + .001 * index)
+                lo = (.01 + .01 * ix, .01 + .01 * iy, .008 + .012 * layer)
+                sim.add(Box(lo, tuple(value + .006 for value in lo)), material=name)
+    for index in range(20):
+        sim.add_probe((.012 + .004 * index, .11, .015), "ez")
+    for index in range(4):
+        sim.add_port((.02 + .02 * index, .11, .02), "ez", impedance=50.0,
+                     extent=.006, radius=.0002, waveform=GaussianPulse(f0=5e9, bandwidth=.8))
+    for coordinate in (.006, .114):
+        sim.add_flux_monitor(axis="x", coordinate=coordinate, freqs=(4e9, 5e9, 6e9))
+    sim.add_ntff_box((.008, .008, .006), (.112, .112, .034), freqs=(4e9, 5e9, 6e9))
+    for _ in range(2):
+        report = sim.preflight()
+        assert not report.by_code("not_judged_traced")
+    assert calls == []
+
+
+def test_traced_preflight_scans_once(monkeypatch):
+    from tests.unit.runners.test_shape_gradient_refusal import shape_sim
+
+    calls = _count_scans(monkeypatch)
+    reports = []
+
+    def objective(radius):
+        reports.append(shape_sim(radius).preflight())
+        return radius
+
+    jax.make_jaxpr(objective)(.0023)
+    findings = reports[0].by_code("not_judged_traced")
+    assert len({str(issue).split(" reads ")[0] for issue in findings}) >= 2
+    assert calls == [None]
+
+
+@pytest.mark.parametrize("raises", [False, True])
+def test_scope_contexts_reset_on_exit(raises):
+    def exercise(value):
+        try:
+            with preflight_scope(SimpleNamespace(_materials={"d": {"eps_r": value}})):
+                with _not_judged.reporting_to(PreflightReport()):
+                    def check():
+                        not_judged(None, "scope_check")
+                        assert current_names() == ("add_material(eps_r)",)
+                        assert _not_judged._check.get() == "scope_check"
+                        assert _not_judged._report.get() is not None
+                        if raises:
+                            raise KeyError("stop")
+                    judge_or_report("scope_check", check, None)
+        except KeyError:
+            assert raises
+        for variable in (_not_judged._scope, _not_judged._check, _not_judged._report):
+            assert variable.get() is None
+        return value
+
+    jax.make_jaxpr(exercise)(2.)
+
+
+def _assert_constructor_table(table):
+    tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation.__init__)))
+    parameters = set(inspect.signature(Simulation.__init__).parameters) - {"self"}
+    sim = build_scene("vacuum_without_source")
+    required = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        inputs = {part.id for part in ast.walk(node.value)
+                  if isinstance(part, ast.Name)} & parameters
+        if not inputs:
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            for part in ast.walk(target):
+                if not (isinstance(part, ast.Attribute) and isinstance(part.value, ast.Name)
+                        and part.value.id == "self"):
+                    continue
+                value = getattr(sim, part.attr)
+                if part.attr not in CONTAINER_METHODS and (
+                    value is None or isinstance(value, (str, bool, int, float, complex, np.ndarray, np.generic, jax.Array))
+                ):
+                    required[part.attr] = inputs
+    assert required.keys() <= table.keys(), sorted(required.keys() - table.keys())
+    for attr, inputs in required.items():
+        assert table[attr] in inputs, (attr, inputs)
+
+
+@pytest.mark.source_scan
+def test_t_table_covers_init_parameters():
+    _assert_constructor_table(CONSTRUCTOR_PARAMETERS)
+
+
+@pytest.mark.source_scan
+@pytest.mark.parametrize("attribute", sorted(CONSTRUCTOR_PARAMETERS))
+def test_t_table_rejects_missing_parameter(attribute):
+    incomplete = dict(CONSTRUCTOR_PARAMETERS)
+    del incomplete[attribute]
+    with pytest.raises(AssertionError, match=attribute):
+        _assert_constructor_table(incomplete)
+
+
+def _graded_profile_scene(profile):
+    from rfx import GaussianPulse
+
+    sim = Simulation(freq_max=10e9, domain=(.012,) * 3, dx=.001, boundary="pec",
+                     dz_profile=profile, dt=.2*.001/299792458., dt_min_cell=.0005)
+    sim.add_source((.004, .006, .006), "ez", waveform=GaussianPulse(f0=5e9, bandwidth=.8),
+                   amplitude_kind="current")
+    return sim
+
+
+def test_traced_dz_profile_names_constructor_parameter():
+    reports = []
+
+    def objective(profile):
+        reports.append(_graded_profile_scene(profile).preflight())
+        return profile
+
+    jax.make_jaxpr(objective)(jnp.full(12, .001))
+    findings = reports[0].by_code("not_judged_traced")
+    assert findings
+    assert all("Simulation(dz_profile)" in str(issue) for issue in findings)
+
+
+def test_scope_snapshot_keeps_only_declared_references():
+    def objective(value):
+        materials = {"d": {"eps_r": value}}
+        sim = SimpleNamespace(_materials=materials, _dz_profile=value,
+                              _realized_geometry_record={"cache": value})
+        entry = {"eps_override": value}
+        with preflight_scope(sim, entry):
+            scope = _not_judged._scope.get()
+            assert scope.declarations._materials is materials
+            assert scope.declarations._dz_profile is value
+            assert not hasattr(scope.declarations, "_realized_geometry_record")
+            sim._materials = {}
+            sim._dz_profile = None
+            entry.clear()
+            not_judged(PreflightReport(), "snapshot")
+            assert current_names() == (
+                "Simulation(dz_profile)", "add_material(eps_r)", "forward(eps_override)",
+            )
+        return value
+
+    jax.make_jaxpr(objective)(2.)
+
+
+@pytest.mark.parametrize("skip_preflight", [True, False])
+def test_traced_sphere_reports_only_inside_preflight(monkeypatch, skip_preflight):
+    from tests.unit.runners.test_shape_gradient_refusal import objective
+
+    reports = []
+    original = Simulation._run_preflight_gate
+
+    def gate(self, report, **kwargs):
+        reports.append(report)
+        return original(self, report, **kwargs)
+
+    monkeypatch.setattr(Simulation, "_run_preflight_gate", gate)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        jax.make_jaxpr(lambda radius: objective(radius, skip_preflight=skip_preflight))(.0023)
+    assert not [w for w in caught if getattr(w.message, "code", None) == "not_judged_traced"]
+    if skip_preflight:
+        assert not reports
+    else:
+        assert len(reports) == 1
+        assert reports[0].by_code("not_judged_traced")
+
+
+def test_not_judged_outside_scope_ignores_report():
+    report = PreflightReport()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        not_judged(report, "outside")
+        not_judged(warnings, "outside")
+        not_judged(None, "outside")
+    assert len(report) == 0
+    assert not caught
+
+
+def test_profile_helper_uses_calling_check_name():
+    from rfx.preflight._common import profile_span_is_uniform
+
+    def objective(profile):
+        report = PreflightReport()
+        with preflight_scope(SimpleNamespace(_dz_profile=profile)), _not_judged.reporting_to(report):
+            def check():
+                profile_span_is_uniform(.001, profile, .001, .002)
+                _not_judged.traced_skip(profile, "_waveguide_setup_planes")
+                _not_judged.report_tracer_error(
+                    jax.errors.TracerArrayConversionError(profile), "_port_transverse_spans")
+                not_judged(report, "calling_check")
+            judge_or_report("calling_check", check, report)
+        assert len(report) == 1
+        assert str(report[0]) == (
+            "not judged: calling_check reads a traced input (Simulation(dz_profile))"
+        )
+        return profile
+
+    jax.make_jaxpr(objective)(jnp.full(12, .001))
+
+
+def test_strict_traced_profile_escalates_only_not_judged():
+    profile = np.full(12, .001)
+    assert len(_graded_profile_scene(profile).preflight(strict=True)) == 0
+
+    def objective(value):
+        with pytest.raises(ValueError, match=r"preflight \(strict\)") as caught:
+            _graded_profile_scene(value).preflight(strict=True)
+        diagnostics = caught.value.diagnostics
+        assert diagnostics
+        assert {item.code for item in diagnostics} == {"not_judged_traced"}
+        assert "Simulation(dz_profile)" in str(caught.value)
+        return value
+
+    jax.make_jaxpr(objective)(jnp.asarray(profile))

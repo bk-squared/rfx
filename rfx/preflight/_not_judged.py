@@ -1,12 +1,13 @@
 """Name traced declarations and report advisory checks that cannot judge them.
 
-Only strings and de-duplication keys live in the call scope; no tracer is retained.
+Declaration references live only in the call scope; names are resolved on demand.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
+from types import SimpleNamespace
 import warnings
 
 from jax import errors
@@ -17,8 +18,8 @@ from rfx.errors import RfxError
 
 # Phase-1 Table 2, including declaration containers created after __init__.
 CONTAINER_METHODS = {
-    "_domain": "__init__",
-    "_nominal_profiles": "__init__",
+    "_domain": "Simulation",
+    "_nominal_profiles": "Simulation",
     "_materials": "add_material",
     "_geometry": "add",
     "_ports": "add_port",
@@ -41,7 +42,27 @@ CONTAINER_METHODS = {
     "_tfsf": "add_tfsf_source",
     "_wall_losses": "add_wall_loss",
     "_dft_plane_regions": "add_dft_plane_probe",
-    "_boundary_scalar_spec": "__init__",  # boundary= scalar and its expanded face spec.
+    "_boundary_scalar_spec": "Simulation",  # boundary= scalar and its expanded face spec.
+}
+CONSTRUCTOR_PARAMETERS = {
+    "_freq_max": "freq_max",
+    "_boundary": "boundary",
+    "_boundary_explicit": "boundary",
+    "_cpml_layers": "cpml_layers",
+    "_cpml_kappa_max": "cpml_kappa_max",
+    "_dx": "dx",
+    "_mode": "mode",
+    "_dz_profile": "dz_profile",
+    "_dx_profile": "dx_profile",
+    "_dy_profile": "dy_profile",
+    "_dt_pin": "dt",
+    "_dt_min_cell": "dt_min_cell",
+    "_precision": "precision",
+    "_solver": "solver",
+    "_stencil_order": "stencil_order",
+    "_snap": "snap",
+    "_interface_eps": "interface_eps",
+    "_pec_occupancy_model": "pec_occupancy_model",
 }
 _POSITIONAL_FIELDS = {
     "_ntff": ("corner_lo", "corner_hi", "freqs"),
@@ -85,15 +106,14 @@ def _record_fields(record):
 def traced_input_names(sim, entry_inputs) -> tuple[str, ...]:
     """Walk declarations once, naming first-level record fields, sorted and unique."""
     names = set()
-    attributes = dict(vars(sim))
-    for attr, value in attributes.items():
-        if attr not in CONTAINER_METHODS and not isinstance(value, (list, dict, tuple)):
-            continue
-        method = CONTAINER_METHODS.get(attr, attr)
+    for attr, method in CONTAINER_METHODS.items():
+        value = getattr(sim, attr, None)
         if attr == "_domain":
             pairs = (("domain", value),)
         elif attr == "_nominal_profiles":
             pairs = (("nominal_profiles", value),)
+        elif attr == "_boundary_scalar_spec":
+            pairs = (("boundary", value),)
         elif attr in _POSITIONAL_FIELDS:
             pairs = zip(_POSITIONAL_FIELDS[attr], () if value is None else value)
         elif attr in ("_refinement", "_dft_plane_regions"):
@@ -106,21 +126,36 @@ def traced_input_names(sim, entry_inputs) -> tuple[str, ...]:
         for field, child in pairs:
             if _has_tracer(child):
                 names.add(f"{method}({field})")
+    for attr, parameter in CONSTRUCTOR_PARAMETERS.items():
+        if _has_tracer(getattr(sim, attr, None)):
+            names.add(f"Simulation({parameter})")
     for field, value in entry_inputs.items():
         if _has_tracer(value):
             names.add(f"forward({field})")
     return tuple(sorted(names))
 
 
-# Mutable set belongs to this invocation, including nested check calls.
+@dataclass
+class _Scope:
+    declarations: object
+    entry_inputs: dict
+    names: tuple[str, ...] | None = None
+    seen: set = field(default_factory=set)
+
+
+# Snapshot and mutable set belong to this invocation, including nested checks.
 _scope = ContextVar("preflight_not_judged_scope", default=None)
 _check = ContextVar("preflight_not_judged_check", default=None)
 _report = ContextVar("preflight_not_judged_report", default=None)
 
 
 @contextmanager
-def preflight_scope(names):
-    token = _scope.set((names, set()))
+def preflight_scope(sim, entry_inputs=None):
+    declarations = SimpleNamespace(**{
+        attr: getattr(sim, attr, None)
+        for attr in (*CONTAINER_METHODS, *CONSTRUCTOR_PARAMETERS)
+    })
+    token = _scope.set(_Scope(declarations, dict(entry_inputs or {})))
     report_token = _report.set(None)
     check_token = _check.set(None)
     try:
@@ -142,8 +177,9 @@ def reporting_to(report):
 
 
 def current_names():
+    """Read already resolved names without causing a declaration scan."""
     scope = _scope.get()
-    return () if scope is None else scope[0]
+    return () if scope is None or scope.names is None else scope.names
 
 
 def current_check(default):
@@ -155,17 +191,34 @@ def is_tracer_error(exc):
     return not isinstance(exc, RfxError) and isinstance(exc, TRACER_ERRORS)
 
 
-def not_judged(report, check_name, names):
+def traced_skip(value, check_name):
+    """Test one traced value and report the skipped check in the same call."""
+    traced = is_tracer(value)
+    if traced:
+        not_judged(None, current_check(check_name))
+    return traced
+
+
+def report_tracer_error(exc, check_name):
+    """Report only a tracer conversion failure from an existing handler."""
+    if is_tracer_error(exc):
+        not_judged(None, current_check(check_name))
+
+
+def not_judged(report, check_name):
     """Deliver one warning per (check, names) in this preflight invocation."""
+    scope = _scope.get()
+    if scope is None:
+        return
     from rfx.preflight._common import PreflightIssue, PreflightWarning
 
-    names = tuple(sorted(set(names)))
+    if scope.names is None:
+        scope.names = traced_input_names(scope.declarations, scope.entry_inputs)
+    names = scope.names
     key = (check_name, names)
-    scope = _scope.get()
-    if scope is not None:
-        if key in scope[1]:
-            return
-        scope[1].add(key)
+    if key in scope.seen:
+        return
+    scope.seen.add(key)
     message = (f"not judged: {check_name} reads a traced input ({', '.join(names)})"
                if names else f"not judged: {check_name} reads an input traced inside rfx")
     if report is None:
@@ -177,7 +230,7 @@ def not_judged(report, check_name, names):
         emit(PreflightWarning(message, severity="warning", code="not_judged_traced"))
 
 
-def judge_or_report(check_name, call, report, names):
+def judge_or_report(check_name, call, report):
     """Convert only JAX conversion failures; named rfx refusals take precedence."""
     token = _check.set(check_name)
     try:
@@ -186,7 +239,7 @@ def judge_or_report(check_name, call, report, names):
         except RfxError:
             raise
         except TRACER_ERRORS:
-            not_judged(report, check_name, names)
+            not_judged(report, check_name)
         return None
     finally:
         _check.reset(token)

@@ -55,8 +55,6 @@ acyclic.
 
 from __future__ import annotations
 
-from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
-
 import math
 from typing import Literal
 
@@ -68,7 +66,7 @@ from rfx.preflight._subjects import finding_subjects
 from rfx.preflight._msl_subjects import conductor_owners, _msl_realized_substrate
 from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
-    _fmt_len,
+    _fmt_len, report_tracer_error,
     _absorber_boundary_for_axis,
     _coord_in_absorber,
     _ABSORBER_PROXIMITY_CELLS,
@@ -753,8 +751,7 @@ def _check_msl_port_geometry(
             try:
                 _face = self._msl_declared_face_geometry(pe, _face_grid)
             except (ValueError, TypeError, NotImplementedError) as _traced_exc:
-                if is_tracer_error(_traced_exc):
-                    not_judged(None, "_check_msl_port_geometry", current_names())
+                report_tracer_error(_traced_exc, "_check_msl_port_geometry")
                 pass  # no invented fraction or uniform fallback on a known grid
         recommended = 2.0 * h_sub
 

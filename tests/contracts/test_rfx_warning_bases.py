@@ -32,7 +32,7 @@ PRINT_SITES = {
     ("stepping/progress.py", "report"): "explicit output API or user-flagged output",
     ("stepping/progress.py", "note"): "explicit output API or user-flagged output",
     ("topology.py", "topology_optimize"): "explicit output API or user-flagged output",
-    ("preflight/_impl.py", "_preflight_impl"): "preflight report rendering",
+    ("preflight/_impl.py", "_preflight_impl_body"): "preflight report rendering",
     ("api/_preflight.py", "preflight_sparameters"): "preflight report rendering",
     ("stepping/subgrid_loop.py", "run_subgridded_loop"): "subgridding progress line",
 }

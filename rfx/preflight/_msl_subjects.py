@@ -1,6 +1,6 @@
 """Owners of the material column and conductor faces inspected by an MSL check."""
 
-from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
+from rfx.preflight._not_judged import is_tracer_error, not_judged
 import numpy as np
 
 
@@ -142,7 +142,7 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
             face = self._msl_declared_face_geometry(pe, grid)
         except (ValueError, TypeError, NotImplementedError) as _traced_exc:
             if is_tracer_error(_traced_exc):
-                not_judged(None, "_check_msl_port_geometry", current_names())
+                not_judged(None, "_check_msl_port_geometry")
             face = {}
         return dict(n=int(n), h_real=h_real, frac=face.get("frac"),
                     declared_n_above=face.get("declared_n_above"),

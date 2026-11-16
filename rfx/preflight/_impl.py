@@ -16,7 +16,7 @@ from rfx.preflight._common import (
 )
 from rfx.model.conductors import prepare_solve
 from rfx.preflight._not_judged import (
-    current_names, judge_or_report, preflight_scope, reporting_to, traced_input_names,
+    judge_or_report, preflight_scope, reporting_to,
 )
 
 
@@ -119,21 +119,21 @@ def _preflight_impl_body(
                 source=cast(str | None, getattr(overlap_error, "source"))))
         try:
             from rfx.model.thin_conductors import warn_dc_films
-            judge_or_report("warn_dc_films", lambda: warn_dc_films(self, warnings), issues, current_names())
+            judge_or_report("warn_dc_films", lambda: warn_dc_films(self, warnings), issues)
             if check_resolution:
-                judge_or_report("_validate_mesh_quality", self._validate_mesh_quality, issues, current_names())
-            judge_or_report("_validate_simulation_config", self._validate_simulation_config, issues, current_names())
+                judge_or_report("_validate_mesh_quality", self._validate_mesh_quality, issues)
+            judge_or_report("_validate_simulation_config", self._validate_simulation_config, issues)
             from rfx.boundaries.tfsf import report
             judge_or_report(
                 "report", lambda: report(self, issues, root=_conductors,
-                    material_overrides=_tfsf_material_overrides), issues, current_names())
+                    material_overrides=_tfsf_material_overrides), issues)
             from rfx.model.pad_fill import report_pad_fill
-            judge_or_report("report_pad_fill", lambda: report_pad_fill(self, issues), issues, current_names())
+            judge_or_report("report_pad_fill", lambda: report_pad_fill(self, issues), issues)
             if check_ntff:
                 judge_or_report(
                     "_validate_ntff_inverse_design", lambda: self._validate_ntff_inverse_design(
                         include_pec_overlap_error=(check_ntff != "advisory")),
-                    issues, current_names())
+                    issues)
         except ValueError as e:
             # Collect (do NOT fail-on-first): the aggregated raise at the
             # end escalates every finding at once under strict.
@@ -314,8 +314,7 @@ def _preflight_impl(
     _traced_entry=None,
 ) -> "PreflightReport":
     """Scope traced-input names and reporting to this preflight call."""
-    names = traced_input_names(self, {} if _traced_entry is None else _traced_entry)
-    with preflight_scope(names):
+    with preflight_scope(self, {} if _traced_entry is None else _traced_entry):
         return _preflight_impl_body(
             self, strict=strict, check_ntff=check_ntff,
             check_resolution=check_resolution, check_ad_memory=check_ad_memory,

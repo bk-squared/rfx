@@ -53,8 +53,6 @@ the path, and a pure code-motion leg touches one fewer file.
 
 from __future__ import annotations
 
-from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
-
 from rfx.preflight._subjects import finding_subjects
 
 from rfx.errors import AccuracyWarning
@@ -72,7 +70,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _absorber_boundary_for_axis,
     _axis_pad_thickness_m,
-    local_cell,
+    local_cell, current_check, not_judged, report_tracer_error, traced_skip,
     PreflightWarning,
     PreflightErrorWarning,
     PreflightConfigError,
@@ -298,8 +296,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         plane_idx = int(
             grid.position_to_index(tuple(pos_vec))[normal_idx])
     except (ValueError, TypeError, IndexError, AttributeError) as _traced_exc:
-        if is_tracer_error(_traced_exc):
-            not_judged(None, "_port_transverse_spans", current_names())
+        report_tracer_error(_traced_exc, "_port_transverse_spans")
         plane_idx = None
 
     for axis_name in axes:
@@ -1326,8 +1323,7 @@ def _validate_cfg_waveguide_reference_plane(
                         lo_c = min(float(c1[ax_i]), float(c2[ax_i]))
                         hi_c = max(float(c1[ax_i]), float(c2[ax_i]))
                     except (NotImplementedError, TypeError) as _traced_exc:
-                        if is_tracer_error(_traced_exc):
-                            not_judged(None, "_validate_cfg_waveguide_reference_plane", current_names())
+                        report_tracer_error(_traced_exc, "_validate_cfg_waveguide_reference_plane")
                         continue
                     if lo_c <= effective <= hi_c:
                         try:
@@ -1391,13 +1387,12 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
            (getattr(self, "_dx_profile", None),
             getattr(self, "_dy_profile", None),
             getattr(self, "_dz_profile", None))):
-        not_judged(None, "_waveguide_setup_planes", current_names())
+        not_judged(None, current_check("_waveguide_setup_planes"))
         return None
     try:
         grid = (self._build_nonuniform_grid() if nonuniform
                 else self._build_grid())
-        if is_tracer(grid.dt):
-            not_judged(None, "_waveguide_setup_planes", current_names())
+        if traced_skip(grid.dt, "_waveguide_setup_planes"):
             return None
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
@@ -1602,8 +1597,7 @@ def _validate_cfg_record_vs_far_boundary(
             return
         grid, cfgs, n_steps, dt, freq_max = built
     else:
-        if is_tracer(grid.dt):
-            not_judged(None, "C(record_vs_far_boundary)", current_names())
+        if traced_skip(grid.dt, "_validate_cfg_record_vs_far_boundary"):
             return
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)

@@ -5,14 +5,14 @@ from rfx.geometry.rasterize_grid import assert_declared_span_is_filled
 
 def check_pad_fill(sim, grid, geometry_masks, *, record=None, conductors=None):
     """Use the same projected hi-face rule on uniform and graded grids."""
-    from rfx.preflight._not_judged import current_names, not_judged
+    from rfx.preflight._not_judged import not_judged
     if sim._boundary not in ("cpml", "upml") or sim._cpml_layers <= 0:
         return
     masks = dict(geometry_masks)
     for i, entry in enumerate(sim._geometry):
         mask = masks.get(id(entry))
         if is_tracer(mask):
-            not_judged(None, "report_pad_fill", current_names())
+            not_judged(None, "report_pad_fill")
         if mask is not None and not is_tracer(mask):
             before = len(record) if record is not None else 0
             assert_declared_span_is_filled(

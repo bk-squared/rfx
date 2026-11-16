@@ -48,7 +48,7 @@ acyclic. This module moves no module-level name, so
 
 from __future__ import annotations
 
-from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
+from rfx.preflight._not_judged import is_tracer_error, not_judged
 
 from rfx.preflight._subjects import finding_subjects
 
@@ -310,7 +310,7 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
             tau = float(wf.tau)
         except (AttributeError, TypeError, ValueError, ZeroDivisionError) as _traced_exc:
             if is_tracer_error(_traced_exc):
-                not_judged(None, "_validate_cfg_unresolved_pulse", current_names())
+                not_judged(None, "_validate_cfg_unresolved_pulse")
             continue
         if not math.isfinite(tau) or tau <= 0.0 or not tau < 3.0 * dt:
             continue
