@@ -288,7 +288,7 @@ def test_planted_truth_is_passive_and_the_planting_is_self_consistent():
     s, a, b, v_coax, v_msl = _w5_fixture()
     lam = _lambda_min_passivity(s)
     assert np.all(lam > 0.0), lam
-    # Reciprocal.
+    # Reciprocal, and the magnitudes the design predeclared.
     np.testing.assert_allclose(s[0, 1], s[1, 0], atol=0.0)
     np.testing.assert_allclose(np.abs(s[0, 0]), [0.50, 0.45, 0.40])
     np.testing.assert_allclose(np.abs(s[1, 0]), [0.60, 0.55, 0.50])

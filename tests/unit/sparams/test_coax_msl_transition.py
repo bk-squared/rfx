@@ -1585,13 +1585,13 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
 
 
 # ---------------------------------------------------------------------------
-# Step B -- attempt-2 WIDE fixture: a domain-clearance FALSIFIER
+# Issue #589 Step B -- attempt-2 WIDE fixture: a domain-clearance FALSIFIER
 # for the named candidate (c) "absorber-proximity artifact", NOT attempt 3.
 #
 # Reconciliation with rfx/api/_spec.py's CoaxMSLTransitionResult docstring
 # ("the next step is the settled VESSL run, not a third ladder/clearance
 # change") and with PREDECLARATION_ATTEMPT2["x_cpml_clearance"]: Step A of
-# the plan IS that settled run re-taken with a fuller record dump
+# the #589 plan IS that settled run re-taken with a fuller record dump
 # (scripts/diagnostics/coax_msl_transition_settled_run.py, same
 # _build_coax_msl_transition_sim_attempt2 fixture, same n_steps). Step B
 # below is a FALSIFIER VARIANT run alongside it, not a replacement fixture
@@ -1599,8 +1599,8 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
 # wide fixture only asks whether those numbers MOVE when the junction is
 # taken away from the CPML (col_power / |S22| shift > 0.10 at 6 or 8 GHz
 # => the committed numbers are absorber-proximity-limited; invariant within
-# 0.05 (|S00| 0.02) => candidate (c) is falsified). Thresholds
-# live in the design record; this file adds no gate on them.
+# 0.05 (|S00| 0.02) => candidate (c) is falsified). Predeclared thresholds
+# live in the #589 design record; this file adds no gate on them.
 #
 # Geometry deltas vs attempt 2 (everything else byte-identical, asserted by
 # test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2):
@@ -1895,7 +1895,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     b = nodew[sw]
     # Same knife-radius rule as the materials above: the pin Cylinder puts
     # PIN_R (= 2 dx) exactly on a node radius, so its shell cells are the
-    # r^2-comparison knife edge (measured: 37 pec cells, all at
+    # r^2-comparison knife edge (measured earlier: 37 pec cells, all at
     # r = PIN_R). Everything off the declared knife radii must stay
     # byte-identical — a diff elsewhere means the wide fixture is
     # geometrically different, which is what this test exists to catch.
@@ -2642,7 +2642,7 @@ def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
 # ground Box is replaced by N_GROUND_BOXES_3 = 20 half-cell PEC Boxes that
 # tile the ground plane EXCEPT the integer-lattice disk di^2+dj^2 <= 16
 # (CLEAR_R_CELLS = 4) around the pin axis -- the SAME 0.4 mm clearance
-# ("clearance disk (radius = pin + 2 cells)"). Every
+# attempt 2 predeclared ("clearance disk (radius = pin + 2 cells)"). Every
 # inner face is on a cell midpoint (_half_cell_box) and the two outer
 # x-slab faces are attempt 2's own 0.0 / LX_2; 1-cell-wide row boxes take
 # csg's thin branch (nearest node), so nothing is a knife edge. The PTFE

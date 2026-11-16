@@ -102,7 +102,7 @@ def test_power_wave_normalization_unequal_z0():
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
     S = np.asarray(S)
-    pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746
+    pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746 — the error
     assert abs(pseudo_ratio - 1.0) > 0.2
     # The invalid per-cell drive frame refuses the whole driven column.
     assert np.isnan(S[1, 0, :]).all()
