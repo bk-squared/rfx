@@ -304,7 +304,7 @@ OPTIONAL_DEPENDENCIES: dict[str, frozenset[str]] = {
 
 def load_module(relpath: str) -> ModuleType:
     # Check at the point of execution, even if a caller did not run the
-    # classification tests first. cv01-cv05 must never execute here (#967).
+    # classification tests first. cv01-cv05 must never execute here.
     if not has_main_guard(relpath) or has_top_level_solve_call(
             relpath, skip_main_guard=True):
         raise UnsafeExampleExecution(
@@ -444,7 +444,7 @@ CLASSIFICATION: dict[str, Entry] = {
         "pytest battery over the portgrid.m1b_retry prototype -- no rfx "
         "Simulation is constructed by this script"),
 
-    # SPEC-01 multiband-NU witness package (#780). These are a witness
+    # SPEC-01 multiband-NU witness package. These are a witness
     # LIBRARY plus per-witness measurement drivers, not demo examples; the
     # thirteen below never construct a `Simulation` (AST-verified). Ten of
     # them drive the non-uniform kernels through
@@ -888,7 +888,7 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/convergence_floor/verdict.py": Entry(
         "no_simulation", "reads committed JSON only; no Simulation"),
 
-    # SPEC-01 multiband-NU W4 fixtures (#780) -- the only two scripts in
+    # SPEC-01 multiband-NU W4 fixtures -- the only two scripts in
     # that package that construct a `Simulation` (P-C, the microstrip-class
     # multi-band resonator; preflight is deliberately ON there). Both
     # expose `build_sim(scale, dz_profile)` with no solve call, so the gate
@@ -977,7 +977,7 @@ def iter_audited_variants():
 
 # --------------------------------------------------------------------------
 # Digests -- keyed by entity IDENTITY (material + declared bounds) and axis
-# LETTER, never by list position (2026-08-27 review, required change #2):
+# LETTER, never by list position:
 # inserting one new entity anywhere in a script's geometry list must not
 # relabel every entity after it in the diff.
 # --------------------------------------------------------------------------
@@ -991,7 +991,7 @@ def _entity_key(item: dict, seen: dict[str, int]) -> str:
     lo, hi = item.get("declared_lo"), item.get("declared_hi")
     if lo is not None and hi is not None:
         # The prefix names the DECLARATION ROUTE, not the realization class:
-        # under the lattice ownership contract (#931) a sheet can be declared
+        # under the lattice ownership contract a sheet can be declared
         # either as a zero-thickness Box through ``add()`` (entity name
         # "geometry[i]") or through ``add_thin_conductor`` (entity name
         # "thin_conductor[i]"), and the two realize identically. Migrating a

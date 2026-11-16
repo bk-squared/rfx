@@ -181,7 +181,7 @@ REPRODUCE_GATE_RECORD = {
 }
 
 # STAGE_A_GATE -- copied, with its justification, from the port's own
-# REPRODUCE_GATE_RECORD["gate"] (validation/crossval/20_msl_phase_referee.py, removed in #1232):
+# REPRODUCE_GATE_RECORD["gate"]:
 #
 #   One-sided-low-biased band: measurements showed
 #   openEMS reading ~7% LOW vs the fringing-free analytic on a DIFFERENT (not
@@ -266,8 +266,7 @@ _TRUNCATION_STDOUT_PATTERNS = (
     "max. number of timesteps is smaller than three times the excitation",
 )
 
-# Benign, narrowly-scoped exception (GUARD CHANNEL-GAP FIX, run-1 forensics,
-# 2026-08-04): CSXCAD's "Unused primitive (type: Box) detected in property:
+# Benign, narrowly-scoped exception: CSXCAD's "Unused primitive (type: Box) detected in property:
 # ..." warning fires for port0_metal/port1_metal on EVERY real Stage B run,
 # for a structural reason, not a defect -- Stage B's M3 topology fix (module
 # docstring "Port topology") gives the thru line's own trace box (property
@@ -669,8 +668,7 @@ _PROGRESS_LINE_RE = re.compile(
 
 
 # The solver's setup banner. These patterns are matched against the REAL
-# container log (run 369367263401, persisted as
-# stage_b_coarse_real_openems_stdout.log), not written from openEMS's source:
+# container log (stage_b_coarse_real_openems_stdout.log), not written from openEMS's source:
 #
 #   Timestep (s)\t\t: 0.00
 #   FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz
@@ -1182,8 +1180,7 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
 
         # Inside the guarded block on purpose: a container that reports no
         # openEMS version refuses the record, but the arrays measured above
-        # still reach the evidence file instead of a bare traceback (review,
-        # 2026-09-22).
+        # still reach the evidence file instead of a bare traceback.
         openems_info = _openems_version(real_log)
 
         record.update(features_fn(freqs_ghz, s11, s21))
@@ -1247,7 +1244,7 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
 
     # WHICH step count. ``timesteps_executed`` is the largest number on a
     # PROGRESS line, and openEMS prints one only every few seconds -- on the real
-    # container log (run 369367263401) the last one says 2146 while the run was
+    # container log the last one says 2146 while the run was
     # capped at 3000. For a run stopped at its cap the record really is the cap
     # long, so the declared maximum is used and the field says so. A run that
     # ended on its own end criterion stopped where the last progress line is, so

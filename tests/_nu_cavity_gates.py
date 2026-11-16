@@ -85,7 +85,7 @@ PROFILES: dict[str, np.ndarray] = {
     "single_band": _profile([(1.0, 8)] + UP + [(0.5, 10)] + DOWN + [(1.0, 24)]),
     # (c) small-large-small-large: fine 6 | chain | coarse 10 | chain | fine 9 | chain | coarse 18
     "multi_band": _profile([(0.5, 6)] + DOWN + [(1.0, 10)] + UP + [(0.5, 9)] + DOWN + [(1.0, 18)]),
-    # (d) uniform-FINE at the graded arms' finest cell (cost control, #810)
+    # (d) uniform-FINE at the graded arms' finest cell (cost control)
     "uniform_fine": _profile([(0.5, 80)]),
 }
 

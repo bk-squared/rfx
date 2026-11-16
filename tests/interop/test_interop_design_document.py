@@ -471,9 +471,9 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
         f"only in rebuilt={sorted(set(vars(rebuilt)) - set(vars(original)))}"
     )
     mismatched = {}
-    # Issues #469/#681 — deliberate representational asymmetry: the
-    # document records each AUTO port's RESOLVED n_probe_offset (#469)
-    # and RESOLVED n_probe_spacing (#681) as explicit, frozen values
+    # deliberate representational asymmetry: the
+    # document records each AUTO port's RESOLVED n_probe_offset
+    # and RESOLVED n_probe_spacing as explicit, frozen values
     # (reproducibility-first; see _msl_ports_with_resolved_offsets), so
     # the rebuilt simulation does not reconstruct the auto bookkeeping
     # and its stored entries may differ from the original's STORED (but
@@ -481,10 +481,10 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
     # probe placement equals what the original would measure with — is
     # compared directly below and pinned positively by
     # test_auto_msl_offset_is_frozen_resolved_in_the_document /
-    # test_auto_msl_spacing_is_frozen_resolved_in_the_document. The #810
+    # test_auto_msl_spacing_is_frozen_resolved_in_the_document. The
     # registration lengths follow the same rule: the rebuilt port's are
     # re-derived by add_msl_port from the rebuilt geometry.
-    # _boundary_scalar_spec (#2214) is the constructor's record that the
+    # _boundary_scalar_spec is the constructor's record that the
     # spec came from the "cpml"/"upml" scalar. It is read only with a Floquet
     # port or open TF/SF, and those documents rebuild from the scalar
     # (design_constructor_boundary), so the rebuild records it again; other

@@ -165,7 +165,7 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
     rec = np.empty((n_steps, idx.size), dtype=np.complex64)
     # The record window starts 3 tau before the pulse peak, not at t = 0: one rectangular FFT of the whole
     # record reads the pulse's position in the window, by up to 50 % at the fast-rig 60 deg and grazing-rig
-    # 80 deg rows (#1831, #1845). With t0 = 3 tau the window starts at step 0, as before.
+    # 80 deg rows. With t0 = 3 tau the window starts at step 0, as before.
     n0 = int(round((float(cfg.src_t0) - 3.0 * float(cfg.src_tau)) / DT_2D))
     for n in range(n0 + n_steps):
         st = update_tfsf_2d(cfg, st, DX_M, DT_2D, float(n) * DT_2D)

@@ -110,7 +110,7 @@ for _dx, _n in zip(DX_LADDER_SWEEP, N_LADDER_SWEEP):
     assert abs(_dx * _n * 4 / 9 - B_M) < 1e-15, (_dx, _n)
     # b/dx integral at every rung, checked here rather than trusted downstream:
     # a non-integral b/dx puts the narrow wall between nodes and fires the
-    # declared-vs-rasterized z-width notice (#729 site 2).
+    # declared-vs-rasterized z-width notice.
     _b_cells = B_M / _dx
     assert abs(_b_cells - round(_b_cells)) < 1e-9, (_dx, _n, _b_cells)
 
@@ -629,8 +629,7 @@ def assert_design_override_keeps_the_short(sim: Simulation, dut: str) -> None:
 
 
 # --- FD probe admissibility (no solve) --------------------------------------
-# Measured 2026-09-07 on VESSL run 369367259196 (the post-#931 re-measure):
-# all six ``ad_vs_fd|pec_short|*|eps|*`` legs came back FAIL with
+# Measured: all six ``ad_vs_fd|pec_short|*|eps|*`` legs came back FAIL with
 # ``g_fd = nan``. The minus arm of the central difference, not the gradient,
 # is what produced the NaN, and the cause is in THIS file rather than in the
 # realization change: the pec_short θ window is vacuum, so θ0 − h = −0.05

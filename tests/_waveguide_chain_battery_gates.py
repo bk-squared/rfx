@@ -104,7 +104,7 @@ CLAIMS_RUNG = "fine"                                     # pre-declaration §2.6
 LEGS_RUNG_DEFAULT = "fine"                               # AD / FD / plane legs
 
 # Distance from each DEFAULT reference plane to the near DUT face (§2.3).
-# #931: the pec_short oracle is anchored to the DECLARED near face, and under
+# the pec_short oracle is anchored to the DECLARED near face, and under
 # the ownership contract that is also the REALIZED near wall — drawn = realized
 # (§1.2), no longer a coincidence of the old rule putting a body's only wall at
 # its lower node plane. This is the one compensation-free oracle in the
@@ -160,7 +160,7 @@ ZERO_DERIVATIVE_RATIO_MAX = 3.0
 # admissible only while the x64 AD and FD keep one sign AND both stay at or below 1e-5 in
 # magnitude — "sign flip, or either |g| above 1e-5: float64 tape and FD disagree on a NON-zero
 # derivative — defect on both precisions, root-cause, do not close". Outside it the leg is
-# fail, whatever EXPECTED_ULP_SKIP says (independent review of PR #908, finding 6).
+# fail, whatever EXPECTED_ULP_SKIP says.
 ZERO_DERIVATIVE_ABS_MAX = 1e-5
 LADDER_OBSERVABLES = (
     # name, dut, entry, kind

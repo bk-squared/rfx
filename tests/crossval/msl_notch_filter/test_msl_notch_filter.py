@@ -203,7 +203,7 @@ DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754
 #   80 periods  −105.8 dB (the witness's identification floor)  |S21| −53.91 dB
 # 20 periods understated the notch depth by 1.11 dB; 40 and 80 agree to
 # 0.0005 dB in |S21| over the band. The 20 periods of the retired script had
-# passed the old end-level witness (−65 dB at this rung on 2026-10-01), which
+# passed the old end-level witness (−65 dB at this rung), which
 # is not a record-length witness for a resonance.
 NUM_PERIODS = 40.0
 # Frequency points of rfx's sweep (DFT bins; they cost nothing in time steps).
@@ -844,7 +844,7 @@ ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
 # interference between the port reflections and the stub's depend on the arm
 # length: between 10 mm and 15.08 mm arms |S21| moved 0.584 dB at h/2 and
 # 0.476 dB at h/4 (0.024 dB under the bar), |S11| up to 4.9 and 4.7 dB near
-# its minima. On the uniform ladder (run 369367263176: strips 508 and
+# its minima. On the uniform ladder (strips 508 and
 # 571.5 µm, 57.8 and 51.6 Ω) |S21| moved 1.196 and 0.471 dB. |S11| in dB is
 # not judged: near its minima a small mismatch moves it by many dB.
 ARM_WITNESS_RUNGS = 2
@@ -1212,8 +1212,7 @@ def test_the_lattice_builds_the_declared_board():
     # The stub lifted three cells clear of the line AND shortened by the same
     # three cells: the open end does not move, so the length measured from the
     # line's far row is the shipped one and only the joint can tell the two
-    # boards apart (a review of this case found the length check alone let
-    # this board through).
+    # boards apart.
     with pytest.raises(AssertionError) as floating:
         assert_realized(_build_short_stub(dx, 3, lift_cells=3), dx)
     print(f"  stub lifted three cells, open end unmoved: {floating.value}")

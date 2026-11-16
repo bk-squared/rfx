@@ -208,8 +208,7 @@ FREQ_MAX_HZ = 4.0e9
 # the absorber moves the resonance (the table below), so a fixed cell count
 # would put an absorber change into the mesh trend.
 #
-# MEASURED on the retired 40 × 50 mm board at h/4 (CPU, 2026-09-24; the table
-# is in this file at 0a92af49): with a 16-cell absorber the resonance kept
+# MEASURED on the retired 40 × 50 mm board at h/4 (CPU): with a 16-cell absorber the resonance kept
 # falling as air was added, up to 9·h, and had not levelled there; with 24
 # cells it fell too, and at every air gap a deeper absorber lowered it.  The
 # ladder's box is ``AIR_H`` = 0 with a 6·h (19.05 mm) absorber: at h/12 it is
@@ -359,7 +358,7 @@ NUM_PERIODS = 60.0
 # Ez inside the substrate, halfway up, under the patch near its +x radiating
 # edge where the TM010 field is strong, and 24 mm from the probe so it never
 # shares a cell with the drive (a source-dominated record measures the pulse
-# turning off, not the ring-down, #1090).  A node on every rung: 15 mm and
+# turning off, not the ring-down).  A node on every rung: 15 mm and
 # 5 mm snap to the nearest node, and h/2 is a whole number of cells on each.
 WITNESS_PROBE_OFFSET_M = (15.0e-3, 5.0e-3, H_SUB / 2)
 
@@ -825,7 +824,7 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
             "probe's offset from the patch centre is then not the declared one.")
     # Sizes alone do not make one board: the ground and the laminate must also
     # sit under the patch.  One cell of laminate at a board edge moved R(f0) by
-    # 1.37 % at h/4 (VESSL 369367264633), so a shifted ground or substrate is a
+    # 1.37 % at h/4, so a shifted ground or substrate is a
     # different antenna even when every span above holds.
     gx, gy = g["ground"]["centre_m"]
     if abs(gx - cx) > 1e-9 or abs(gy - cy) > 1e-9:
