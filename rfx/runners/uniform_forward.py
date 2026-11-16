@@ -171,6 +171,7 @@ def _forward_from_materials(
         conformal=_conformal, conformal_min_weight=conformal_min_weight, pec_shapes=pec_shapes)
     if conformal_weights is not None:
         pec_mask = None
+    tensor_smoothing = subpixel_smoothing if aniso_eps is not None or aniso_inv_eps is not None else False
     if subpixel_smoothing:
         from rfx.geometry.smoothing import warn_unextendable_shapes
         warn_unextendable_shapes([u for u in unextendable if not u.conductor])
@@ -548,7 +549,8 @@ def _forward_from_materials(
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=periodic_bool,
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=self._resolve_field_dtype() or jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     _, debye, lorentz = self._init_dispersion(
@@ -669,7 +671,8 @@ def _forward_from_materials(
             self,
             lane,
             diagnostics=diagnostics,
-            run_args={"tfsf_materials": materials} if self._tfsf is not None else None,
+            run_args={"subpixel_smoothing": subpixel_smoothing,
+                      **({"tfsf_materials": materials} if self._tfsf is not None else {})},
         )
 
     from rfx.stepping import prepared as prepared_step
@@ -706,6 +709,7 @@ def _forward_from_materials(
         conformal_weights=conformal_weights,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps_run,
+        subpixel_smoothing=tensor_smoothing,
         # Only the occupancy operator is smooth; the Kottke tensor keeps
         # run()'s fenced PEC edges.
         aniso_inv_eps_smooth=(aniso_inv_eps is None and aniso_inv_eps_run is not None),

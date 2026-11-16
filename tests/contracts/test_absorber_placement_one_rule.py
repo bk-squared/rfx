@@ -39,6 +39,47 @@ def traced_scene(profile):
     return sim
 
 
+def test_interior_graded_point_admission_cost_is_per_pass(monkeypatch):
+    from rfx.model import graded_grid, point_placement
+
+    sims = [scene("graded") for _ in (10, 100)]
+    grids = [sim._build_nonuniform_grid() for sim in sims]
+    for sim, grid, count in zip(sims, grids, (10, 100)):
+        for axis in "xyz":
+            assert getattr(grid, f"pad_{axis}_lo") > 0
+            assert getattr(grid, f"pad_{axis}_hi") > 0
+        for i in range(count):
+            # Every coordinate is strictly between the interior faces.
+            sim.add_probe((.002 + .006 * i / count, .005, .005))
+
+    counts = dict(node_tie_tol=0, node_of=0, cells=0, host_nominal_grid=0)
+
+    def counting(name, original):
+        def wrapped(*args, **kwargs):
+            counts[name] += 1
+            return original(*args, **kwargs)
+        return wrapped
+
+    for owner, name in ((point_placement, "node_tie_tol"),
+                        (graded_grid.NonUniformGrid, "node_of"),
+                        (graded_grid.NonUniformGrid, "cells"),
+                        (graded_grid, "host_nominal_grid")):
+        monkeypatch.setattr(owner, name, counting(name, getattr(owner, name)))
+
+    per_pass = []
+    for sim, grid in zip(sims, grids):
+        counts.update(dict.fromkeys(counts, 0))
+        point_placement.admit_simulation_points(sim, grid)
+        assert counts["node_tie_tol"] == 0, counts
+        per_pass.append({name: counts[name] for name in
+                         ("node_of", "cells", "host_nominal_grid")})
+    assert per_pass[0] == per_pass[1], per_pass
+
+    counts.update(dict.fromkeys(counts, 0))
+    graded_grid.position_to_index(grids[0], (.005,) * 3, allow_in_absorber=None)
+    assert counts["node_tie_tol"] == 0, counts
+
+
 def test_traced_mesh_preflight_without_campaign_grid():
     reports = []
 

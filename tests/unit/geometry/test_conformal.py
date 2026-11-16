@@ -202,7 +202,7 @@ def test_conformal_pec_box_identical_to_staircase():
     ez_stair = np.array(state.ez)
 
     # Conformal run
-    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [box])
+    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [box], field_dtype=np.float32)
     materials = finish_conformal_mu(with_components(
         materials, grid, periodic=(False,) * 3), areas)
     eps_ex, eps_ey, eps_ez = conformal_eps_correction(materials.eps_r, w_ex, w_ey, w_ez)
@@ -253,7 +253,7 @@ def test_conformal_stability_10k_steps():
     grid = Grid(freq_max=3e9, domain=(0.06, 0.06, 0.06), dx=0.006, cpml_layers=0)
     sphere = Sphere((0.03, 0.03, 0.03), 0.015)
 
-    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [sphere])
+    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [sphere], field_dtype=np.float32)
     eps_ex, eps_ey, eps_ez = conformal_eps_correction(1.0, w_ex, w_ey, w_ez)
 
     state = init_state(grid.shape)
@@ -352,7 +352,7 @@ def test_conformal_gradient_flows():
         clamp_conformal_weights,
         conformal_eps_correction,
     )
-    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl])
+    (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl], field_dtype=np.float32)
 
     def objective(eps_r):
         eps_ex, eps_ey, eps_ez = conformal_eps_correction(eps_r, w_ex, w_ey, w_ez)

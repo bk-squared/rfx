@@ -15,7 +15,7 @@ from rfx.boundaries.depths import Kind
 from rfx.boundaries.model import realize
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
-# Classes W/R remain separate rows so a leader can explicitly defer either.
+# Classes W/R remain separate rows so either can be explicitly deferred.
 NAMED_EXCEPTIONS = {}
 CASES = ('absorbing', 'mixed', 'pmc', 'periodic', 'asymmetric',
          'plane', 'closed_box', 'W-guide')

@@ -136,6 +136,11 @@ def compute_lumped_wire_s_matrix_via_scan(
     refuse_wall_loss(sim, "lumped/wire S-matrix scan and eager port probes")
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim, main_record=_main_wire_record)
+    from rfx.runners._admission import refuse_foreign_s_drives, require_isolated_s_drive
+    if _main_wire_record:
+        require_isolated_s_drive(sim)
+    else:
+        refuse_foreign_s_drives(sim)
     conformal_pec = (bool(sim._boundary_spec.conformal_faces())
                      if conformal_pec is None else conformal_pec)
     if devices is not None and conformal_pec and sim._has_pec_to_conform():
@@ -177,7 +182,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     if not graded:
         sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
         from rfx.runners._admission import admit
-        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec,
+                                               "subpixel_smoothing": subpixel_smoothing})
     if not skip_preflight:
         from rfx._diagnostic_transport import report_diagnostics
         report_diagnostics(sim._auto_preflight(

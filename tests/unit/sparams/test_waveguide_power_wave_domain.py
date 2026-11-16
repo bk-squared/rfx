@@ -70,7 +70,7 @@ def test_matrix_assemblers(lane, manufactured):
     cfgs = manufactured
     if lane == "unequal":
         cfgs[1] = cfgs[1]._replace(medium=PortMedium(2., 1.))
-    grid = Record()
+    grid = Record(shape=(5, 4, 4))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         if lane in ("single", "unequal"):
@@ -176,7 +176,7 @@ def test_defined_objective_gradient(manufactured, monkeypatch):
         # overflows in float32 reverse AD unless inputs are guarded first.
         a = jnp.array([1e-25, 1e-25, 2., 2.]) * x
         monkeypatch.setattr(ws, "_s_matrix_port_waves", lambda cfg, **kw: (a, jnp.ones(4)))
-        s = ws.extract_waveguide_s_matrix(Record(), "device", cfgs, 4, cpml_axes="x")
+        s = ws.extract_waveguide_s_matrix(Record(shape=(5, 4, 4)), "device", cfgs, 4, cpml_axes="x")
         return jnp.real(s[:, :, -1]).sum()
 
     with warnings.catch_warnings():
@@ -240,7 +240,7 @@ def test_declared_run_forward_records(entry, monkeypatch):
     import rfx.sparams._waveguide_planes as planes
 
     cfg = record()
-    sim = Record(_flux_monitors=[], _waveguide_ports=[Record(name="launch")])
+    sim = Record(_flux_monitors=[], _waveguide_ports=[Record(name="launch", amplitude=1.0)])
     monkeypatch.setattr(ws, "_compute_beta", lambda *a, **kw: jnp.zeros(4))
     monkeypatch.setattr(ws, "_extract_port_waves_from_time_series", lambda *a: (jnp.full(4, 2.), jnp.ones(4)))
     monkeypatch.setattr(ws, "waveguide_plane_positions", lambda cfg: dict(source=0., reference=0., probe=.01))

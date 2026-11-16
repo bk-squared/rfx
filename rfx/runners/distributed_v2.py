@@ -563,8 +563,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # A dispersive edge's drive needs the ADE update's coefficient, as on one
     # device; the pole terms are read edge by edge from the specs.
     from rfx.model.source_coefficients import dispersive_drive_model
+    from rfx._internal._precision import resolve_field_dtype
     drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
-                                            in_program=mesh.devices.size < 2)
+        in_program=mesh.devices.size < 2,
+        field_dtype=resolve_field_dtype(sim._precision) or jnp.float32)
     sources = sources.resolve(drive_materials)
     del wire_edges, drive_materials
 

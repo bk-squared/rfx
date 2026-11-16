@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
+  RFX_RUNS_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   XLA_PYTHON_CLIENT_PREALLOCATE: "false"
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -23,6 +24,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
+  test "$RFX_RUNS_WORKSPACE" != "FILL_BEFORE_SUBMIT"
   echo "=== rfx WR-90 chain battery (the one pre-declared measurement) ==="
   date
   if [ "$RFX_EXPECT_SHA" = "FILL_AFTER_PUSH" ]; then
@@ -61,7 +63,7 @@ run: |-
   python -c "import jax, rfx, os; print('probe ok | jax', jax.__version__, '| backend', jax.default_backend(), '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'), 'from', os.path.dirname(rfx.__file__), '| x64', jax.config.x64_enabled)"
 
   SHORT=$(echo "$RFX_EXPECT_SHA" | cut -c1-8)
-  OUT="/root/workspace/claude-workspace/rfx/runs/waveguide_chain_battery/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  OUT="/root/workspace/$RFX_RUNS_WORKSPACE/rfx/runs/waveguide_chain_battery/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
   mkdir -p "$OUT"
   echo "artifacts: $OUT"
   RUN_ID="${VESSL_RUN_ID:-vessl}"

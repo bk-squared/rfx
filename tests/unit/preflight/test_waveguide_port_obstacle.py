@@ -1,6 +1,6 @@
 """#1913: a PEC short must be visible from the reflection measurement plane.
 
-Synthetic 42 x 21 mm guide; 3 mm cells; 40 periods (the leader's sweep),
+Synthetic 42 x 21 mm guide; 3 mm cells; 40 periods,
 only the two band endpoints, 5 and 6.5 GHz; normalize=True.
 The phase oracle is the closed form 180 - 2 beta d at the reported plane.
 """

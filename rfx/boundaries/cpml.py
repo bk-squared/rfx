@@ -732,12 +732,11 @@ def apply_cpml_e(
     # Falls back to free-space eps_0 when materials is None.
     if inv_eps_r_update is not None:
         # Follow the ambient MATERIAL dtype, exactly as the ``materials``
-        # branch below does (eps_r carries the run's
-        # material precision). ``compute_smoothed_eps`` returns float64 under
-        # JAX_ENABLE_X64 while ``materials.eps_r`` stays float32, and letting
-        # that through changed the psi-scatter precision — and with it the
-        # field bytes of runs whose pads hold nothing but vacuum, which this
-        # change must not touch.
+        # branch below does (eps_r carries the run's material precision).
+        # ``compute_smoothed_eps`` can return float64 under JAX_ENABLE_X64
+        # even for a float32 run. Retain the material dtype so smoothing
+        # does not change psi-scatter precision or the field bytes of runs
+        # whose pads hold nothing but vacuum.
         _mat_dtype = (materials.eps_r.dtype if materials is not None
                       and hasattr(materials.eps_r, "dtype") else None)
 
@@ -1072,7 +1071,7 @@ def apply_cpml_e(
 def apply_cpml_h(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None, *, periodic=None, faces=ALL_FACES,
-    frame=None, owned=None,
+    frame=None, owned=None, h_row_factors=(None, None, None),
 ) -> tuple:
     """Apply slab-local CPML correction to the selected H-field faces.
 
@@ -1112,9 +1111,17 @@ def apply_cpml_h(
 
     def _h_face(component, axis, lo):
         arr = ch[component]
-        if jnp.ndim(arr) == 0:
-            return arr
-        return arr[windows[f"{'xyz'[axis]}_{'lo' if lo else 'hi'}"]]
+        window = windows[f"{'xyz'[axis]}_{'lo' if lo else 'hi'}"]
+        if jnp.ndim(arr) != 0:
+            arr = arr[window]
+        # Slice in the field's index frame, including transverse high rows
+        # on low-face windows. Slab callers supply already placed factors.
+        for b, factor in enumerate(h_row_factors):
+            if b != component and factor is not None:
+                shape = [1, 1, 1]
+                shape[b] = -1
+                arr = arr * jnp.asarray(factor[window[b]], dtype=arr.dtype).reshape(shape)
+        return arr
 
     # H derivatives live at the half-cell coordinates, not E nodes.
     if isinstance(cpml_params, CPMLAxisParams) and cpml_params.magnetic is not None:
