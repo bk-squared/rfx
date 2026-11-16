@@ -25,11 +25,17 @@ jax.tree_util.register_pytree_node(
 
 
 def needs_face_frame(shape, faces, frame, owned):
-    """Whether any axis's physical rows differ from the array, or a face is not owned."""
+    """Whether any axis's physical rows differ from the array, or a face is not owned.
+
+    Only a :class:`HighPadFrame` may bound y or z; a slab frame bounds x alone.
+    """
     if frame is not None:
-        for axis, letter in enumerate("xyz"):
-            if tuple(frame.get(letter, (0, shape[axis]))) != (0, shape[axis]):
-                return True
+        bounded = [letter for axis, letter in enumerate("xyz")
+                   if tuple(frame.get(letter, (0, shape[axis]))) != (0, shape[axis])]
+        if not getattr(frame, "high_pad", False) and set(bounded) - {"x"}:
+            raise ValueError("Only x may have a non-default face frame")
+        if bounded:
+            return True
     return owned is not None and any(owned.get(face, True) is not True for face in faces)
 
 
