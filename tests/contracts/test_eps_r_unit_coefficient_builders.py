@@ -176,7 +176,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 52  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate); _line_damping (#2732).
+ALLOWLIST_CEILING = 52  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate); _line_damping.
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {

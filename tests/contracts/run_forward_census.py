@@ -140,7 +140,7 @@ def build_p_wire_driven(path):
 
 
 def build_p_wire_refplane(path):
-    # #2450: one opted-in port isolates the per-cell versus whole-port S frame.
+    # One opted-in port isolates the per-cell versus whole-port S frame.
     if path != 'uniform':
         raise NotImplementedError('P-wire-refplane is supported only on uniform')
     from rfx.sources.sources import GaussianPulse
@@ -196,13 +196,13 @@ def build_p_waveguide(path):
 
 def build_p_waveguide_2mode(path):
     # The P-waveguide port with a second mode; only compute_waveguide_s_matrix()
-    # drives the per-mode list, so run() and forward() refuse it (#2070).
+    # drives the per-mode list, so run() and forward() refuse it.
     return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
         .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2, n_modes=2)
 
 
 def build_p_waveguide2(path):
-    # #2449: two driven waveguide ports expose run/forward admission disagreement.
+    # Two driven waveguide ports expose run/forward admission disagreement.
     return build_p_waveguide(path).add_waveguide_port(
         .024, direction='-x', f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
 
