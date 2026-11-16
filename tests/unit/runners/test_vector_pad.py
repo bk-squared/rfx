@@ -418,6 +418,44 @@ def test_pad_contents_do_not_reach_physical_cells(name, target):
     jax.clear_caches()
 
 
+@pytest.mark.parametrize('target', TARGETS)
+@pytest.mark.parametrize('name', ('kerr', 'mixed'))
+def test_pad_cells_hold_exact_zero_after_the_run(name, target, monkeypatch):
+    """Every pad cell of the fields and pole states is exactly 0 at the end; every value is finite.
+
+    The pad's coefficients (Kerr chi3, the mixed poles' vacuum values) are then
+    never multiplied into a physical cell.
+    """
+    real, seen = vector_pad.unpad_carry, []
+
+    def unpad(carry, plan):
+        seen.append((jax.tree_util.tree_map(np.asarray, {k: carry[k] for k in ('fdtd', 'debye', 'lorentz')
+                                                         if k in carry}), plan))
+        return real(carry, plan)
+
+    monkeypatch.setattr(vector_pad, 'unpad_carry', unpad)
+    label = f'pad cells {name}/{target}'
+    _, plans = run_record(scene(name), target)
+    assert_padded(plans, label)
+    assert seen, f'{label}: the padded run never unpadded its carry'
+    for carry, plan in seen:
+        pad = np.ones(plan.padded, dtype=bool)
+        pad[plan.physical] = False
+        assert pad.any(), plan
+        checked = 0
+        for path, leaf in jax.tree_util.tree_leaves_with_path(carry):
+            if leaf.ndim < 3 or leaf.shape[-3:] != plan.padded:
+                continue
+            key = jax.tree_util.keystr(path)
+            assert np.isfinite(leaf).all(), f'{label} {key}: {np.count_nonzero(~np.isfinite(leaf))} values not finite'
+            values = leaf[..., pad]
+            assert not values.any(), (f'{label} {key}: {np.count_nonzero(values)} pad cells not 0, '
+                                      f'max |value| {np.abs(values).max():.3e}')
+            checked += 1
+        assert checked >= 6, f'{label}: {checked} per-cell arrays checked'
+    jax.clear_caches()
+
+
 def test_plan_targets():
     plan = vector_pad.plan_pad((20, 17, 15), target='aligned', periodic_axes=(False,) * 3)
     assert plan.padded == (20, 17, 16)

@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.stepping import vector_pad
 from tests.unit.runners.test_vector_pad import (
     RECORD_BAR, TARGETS, _ratio, _walls, assert_bars, assert_bitwise, assert_padded,
@@ -74,28 +75,38 @@ def judge(case, label, records, n_steps):
 #: Shape (22, 21, 18) with 5 CPML cells: 'aligned' pads z, 'odd' pads x and z.
 DESIGN_DOMAIN = (22e-3, 20e-3, 14e-3)
 BOX_LO, BOX_HI = (10e-3, 8e-3, 6e-3), (14e-3, 12e-3, 10e-3)
+#: The box against the PMC high z face, on the last physical z cell. z has no
+#: absorber and 10 cells: 'aligned' pads z to 12, 'odd' pads z to 11 (and x).
+#: At that row the box's E update reads the magnetic image of H.
+FACE_DOMAIN = (22e-3, 20e-3, 18e-3)
+FACE_LO, FACE_HI = (10e-3, 8e-3, 12e-3), (14e-3, 12e-3, 18e-3)
 
 
-def _design_scene():
-    sim = Simulation(freq_max=16e9, domain=DESIGN_DOMAIN, dx=2e-3, boundary='cpml', cpml_layers=5)
-    sim.add_source((4e-3, 10e-3, 8e-3), 'ez', amplitude_kind='field',
+def _design_scene(face=False):
+    domain, box = (FACE_DOMAIN, (FACE_LO, FACE_HI)) if face else (DESIGN_DOMAIN, (BOX_LO, BOX_HI))
+    boundary = BoundarySpec(x='cpml', y='cpml', z=Boundary('pec', 'pmc')) if face else 'cpml'
+    sim = Simulation(freq_max=16e9, domain=domain, dx=2e-3, boundary=boundary, cpml_layers=5)
+    sim.add_source((4e-3, 10e-3, 14e-3 if face else 8e-3), 'ez', amplitude_kind='field',
                    waveform=GaussianPulse(f0=8e9, bandwidth=.8, cutoff=6))
     grid = sim._build_grid()
-    ix = grid.position_to_index((18e-3, 12e-3, 6e-3))
-    sim.add_dft_plane_probe(axis='x', coordinate=18e-3, component='ez',
+    ix = grid.position_to_index((18e-3, 12e-3, 14e-3 if face else 6e-3))
+    sim.add_dft_plane_probe(axis='x', coordinate=18e-3, component='ey' if face else 'ez',
                             freqs=jnp.asarray([6.4e9, 8.4e9]), name='out',
                             region=(ix[1], ix[1] + 2, ix[2], ix[2] + 3))
-    lo, hi = grid.position_to_index(BOX_LO), grid.position_to_index(BOX_HI)
+    lo, hi = grid.position_to_index(box[0]), grid.position_to_index(box[1])
+    if face:
+        # Realized, not declared: the box ends on the last physical z cell.
+        assert hi[2] == grid.shape[2] - 1, (hi, tuple(grid.shape))
     shape = tuple(hi[d] - lo[d] + 1 for d in range(3))
     eps = jnp.asarray(2.0 + 2.0 * np.random.default_rng(1).random(shape), jnp.float32)
-    return sim, eps
+    return sim, eps, box
 
 
-def _design_records(mode, gradient, n_steps):
-    sim, eps = _design_scene()
+def _design_records(mode, gradient, n_steps, face=False):
+    sim, eps, box = _design_scene(face)
 
     def loss(e):
-        result = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=e, n_steps=n_steps,
+        result = sim.forward(design_box=box, design_eps_override=e, n_steps=n_steps,
                              checkpoint_segments=8, gradient=gradient, skip_preflight=True)
         spectrum = result.dft_planes['out'].accumulator / result.dt
         weights = jnp.arange(spectrum.size).reshape(spectrum.shape) + 1
@@ -120,6 +131,24 @@ def test_design_box_objective_and_gradient_padded(target, gradient):
         return ref, got
 
     judge(('design', gradient, target), label, records, ADJOINT_STEPS)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('gradient', ('adjoint', 'autodiff'))
+@pytest.mark.parametrize('target', TARGETS)
+def test_design_box_against_the_pmc_face_padded(target, gradient):
+    """The design box on the last physical cell of the padded z axis, against a PMC face."""
+    label = f'design box at the PMC face {gradient}/{target}'
+
+    def records(n):
+        ref, ref_plans = _design_records('off', gradient, n, face=True)
+        got, plans = _design_records(target, gradient, n, face=True)
+        assert ref_plans and not any(p.active for p in ref_plans)
+        assert_padded(plans, f'{label} N={n}')
+        assert all(p.pad[2] > 0 for p in plans if p.active), plans
+        return ref, got
+
+    judge(('design face', gradient, target), label, records, ADJOINT_STEPS)
     jax.clear_caches()
 
 
