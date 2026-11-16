@@ -33,9 +33,11 @@ def _graded(scale, *, pinned=True, ringdown=False, emit=True):
     dx = jnp.asarray(DX, dtype=jnp.float32)
     dx = dx.at[6].set(DX[6] * scale).at[7].set(float(DX[6] + DX[7]) - DX[6] * scale)
     options = dict(dt=float(DT), dt_min_cell=.6*MM) if pinned else {}
+    nominal = ({'x': NominalProfile(DX, traced_cells=(6, 8))}
+               if isinstance(dx, jax.core.Tracer) else None)
     sim = Simulation(freq_max=20e9, domain=(12*MM, 11*MM, 5*MM), dx=MM,
                      boundary='pec', dx_profile=dx, dy_profile=DY, dz_profile=DZ,
-                     nominal_profiles={'x': NominalProfile(DX, traced_cells=(6, 8))}, **options)
+                     nominal_profiles=nominal, **options)
     sim.add_material('fill', eps_r=2.2, sigma=2*np.pi*12.5e9*8.854187817e-12*2.2/300)
     sim.add(Box((0, 0, 0), (12*MM, 11*MM, 5*MM)), material='fill')
     sim.add_port(position=(PORT_X_A, 3.8*MM, .8*MM), component='ez',
@@ -63,7 +65,7 @@ def _make_forward(scene, *, emit=True):
 def _objective(forward, scene):
     def loss(scale):
         result = forward(scale)
-        value = (jnp.sum(next(iter(result.waveguide_ports.values()))['v_probe_t'] ** 2)
+        value = (jnp.sum(next(iter(result.waveguide_ports.values())).v_probe_t ** 2)
                  if scene == 'W' else jnp.sum(jnp.abs(result.s_params) ** 2))
         return value, result
     return loss
@@ -133,7 +135,7 @@ def _arrays(result):
                     yield name + jax.tree_util.keystr(path), leaf, name == 'time_series'
     for port, record in (result.waveguide_ports or {}).items():
         for name in ('v_probe_t', 'v_ref_t', 'i_probe_t', 'i_ref_t'):
-            yield f'waveguide_ports[{port}].{name}', record[name], True
+            yield f'waveguide_ports[{port}].{name}', getattr(record, name), True
 
 
 def _compare(actual, expected, label):
@@ -150,8 +152,9 @@ def _compare(actual, expected, label):
         bar = 9 * float(np.spacing(np.float32(peak))) if temporal else 1e-4 * peak
         ratio = difference / bar if bar else (0. if difference == 0 else float('inf'))
         ratios[name] = dict(difference=difference, peak=peak, bar=bar, ratio=ratio)
-        assert difference <= bar, (label, name, ratios[name])
     print('COMPARE', label, json.dumps(ratios, sort_keys=True))
+    for name, measurement in ratios.items():
+        assert measurement['difference'] <= measurement['bar'], (label, name, measurement)
 
 
 def _value_key(value):
@@ -192,6 +195,10 @@ def _roundtrip(result):
     restored = jax.tree_util.tree_unflatten(definition, leaves)
     assert type(restored) is type(result)
     assert restored.realized_geometry is result.realized_geometry
+    carried_leaves, carried_definition = jax.tree_util.tree_flatten(restored)
+    assert carried_definition == definition
+    assert all(left is right for left, right in zip(leaves, carried_leaves))
+    assert carried_definition.node_data()[1] is definition.node_data()[1]
     for original, rebuilt in zip(result, restored):
         before, before_def = jax.tree_util.tree_flatten(original)
         after, after_def = jax.tree_util.tree_flatten(rebuilt)
@@ -215,6 +222,11 @@ def test_eager_leaves(scene, eager):
 
 @pytest.mark.parametrize('kind', TRANSFORMS)
 def test_transform(scene, forward, eager, kind):
+    if scene == 'W' and kind == 'vmap':
+        with pytest.raises(ValueError, match='traced override over the segment cannot be judged before the run') as error:
+            _transform(forward, scene, kind)
+        print('REFUSAL', scene, kind, str(error.value))
+        return
     actual, tangent = _transform(forward, scene, kind)
     _leaves(actual, eager[0], abstract=kind == 'eval_shape')
     if kind == 'eval_shape':
@@ -253,6 +265,12 @@ def test_transform(scene, forward, eager, kind):
 def test_fresh_trace_static_values(scene, forward):
     reused = jax.jit(forward)
     reused(jnp.float32(VALUES[0]))
+    if scene == 'W':
+        for call in (reused, jax.jit(lambda value: forward(value))):
+            with pytest.raises(jax.errors.JaxRuntimeError, match='traced override over the segment cannot be judged before the run') as error:
+                jax.block_until_ready(call(jnp.float32(VALUES[1])))
+            print('REFUSAL', scene, 'fresh_trace', str(error.value))
+        return
     actual = reused(jnp.float32(VALUES[1]))
     fresh = jax.jit(lambda value: forward(value))(jnp.float32(VALUES[1]))
     assert _static_values(actual) == _static_values(fresh)
@@ -289,7 +307,7 @@ def test_equal_calls_and_scalar_jacobian():
 
 
 def test_changed_shapes_without_probe_series():
-    forward = _make_forward('U', emit=False)
+    forward = _make_forward('G', emit=False)
     batched = jax.vmap(forward)(jnp.asarray(VALUES, dtype=jnp.float32))
     assert batched.time_series is None
     with pytest.raises(ValueError, match='arrays are not the arrays it was built with'):
