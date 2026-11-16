@@ -86,30 +86,30 @@ def test_only_added_comment_lines_are_checked(tmp_path, git_env):
 
 
 @pytest.mark.parametrize("comment,rule,destination", [
-    ("# 2026-11-17", "date", "a dated record in rfx-archive, or git history"),
-    ("# 1999/12/31", "date", "a dated record in rfx-archive, or git history"),
-    ("# 2026.01.02", "date", "a dated record in rfx-archive, or git history"),
-    ("# 20261117", "date", "a dated record in rfx-archive, or git history"),
+    ("# 2026-11-17", "date", "a dated record, or git history"),
+    ("# 1999/12/31", "date", "a dated record, or git history"),
+    ("# 2026.01.02", "date", "a dated record, or git history"),
+    ("# 20261117", "date", "a dated record, or git history"),
     ("# see #123", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("# see https://github.com/example/repo/issues/45", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("# https://github.com/example/repo/pull/2809", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("# rfx#2809", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
-    ("# see bk-squared/rfx-adv#123", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
+    ("# see org/other-repo#123", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("# PR #12", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("# PR#7", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("# pr #3", "issue number", "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("# PREDECLARE", "predeclaration", "the predeclaration file"),
     ("# predeclaration", "predeclaration", "the predeclaration file"),
     ("# MoVeD FrOm mod.py", "move note", "git history (git log --follow)"),
-    ("# 1234567890", "run id", "the measurement record in rfx-archive"),
-    ("# remi-123456789012", "run id", "the measurement record in rfx-archive"),
-    ("# from run 1234567890.", "run id", "the measurement record in rfx-archive"),
-    ('# "규칙"', "quoted Korean", "a named test or assertion states the rule; the rationale goes to rfx-archive"),
-    ("# '규칙'", "quoted Korean", "a named test or assertion states the rule; the rationale goes to rfx-archive"),
-    ("# “규칙”", "quoted Korean", "a named test or assertion states the rule; the rationale goes to rfx-archive"),
-    ("# ‘규칙’", "quoted Korean", "a named test or assertion states the rule; the rationale goes to rfx-archive"),
-    ("# 「ᄀ」", "quoted Korean", "a named test or assertion states the rule; the rationale goes to rfx-archive"),
-    ("# 『ㄱ』", "quoted Korean", "a named test or assertion states the rule; the rationale goes to rfx-archive"),
+    ("# 1234567890", "run id", "the measurement record"),
+    ("# remi-123456789012", "run id", "the measurement record"),
+    ("# from run 1234567890.", "run id", "the measurement record"),
+    ('# "\uaddc\uce59"', "quoted Korean", "a named test or assertion states the rule; the rationale goes to the record"),
+    ("# '\uaddc\uce59'", "quoted Korean", "a named test or assertion states the rule; the rationale goes to the record"),
+    ("# “\uaddc\uce59”", "quoted Korean", "a named test or assertion states the rule; the rationale goes to the record"),
+    ("# ‘\uaddc\uce59’", "quoted Korean", "a named test or assertion states the rule; the rationale goes to the record"),
+    ("# 「\u1100」", "quoted Korean", "a named test or assertion states the rule; the rationale goes to the record"),
+    ("# 『\u3131』", "quoted Korean", "a named test or assertion states the rule; the rationale goes to the record"),
 ])
 def test_refused_comment_rules(tmp_path, git_env, comment, rule, destination):
     repo, base = make_repo(tmp_path, git_env)
@@ -127,9 +127,9 @@ def test_refused_comment_rules(tmp_path, git_env, comment, rule, destination):
     "# case #1", "# colour #1f77b4",
     "# step #12", "# &#123;", "# .s2fix-review/main", "# review the offset", "# ReViEWed",
     "# eps0 = 8.8541878128e-12 F/m", "# pi = 3.14159265358979", "# mu0 = 1.25663706212e-6",
-    "# 규칙", '# "offset" 규칙', "# 2026-13-17", "# 20260017",
+    "# \uaddc\uce59", '# "offset" \uaddc\uce59', "# 2026-13-17", "# 20260017",
     'value = "#123 review PREDECLARE moved from 2026-11-17 1234567890"',
-    '"""#123 review 규칙"""', 'value = f"#123 {1}"',
+    '"""#123 review \uaddc\uce59"""', 'value = f"#123 {1}"',
 ])
 def test_near_misses_and_strings_pass(tmp_path, git_env, addition):
     repo, base = make_repo(tmp_path, git_env)
@@ -323,7 +323,7 @@ def test_failed_merge_base_is_an_error(tmp_path, git_env, use_origin):
     assert "merge-base" in result.stderr
 
 
-@pytest.mark.parametrize("name", ["renamed.py", "space name.py", 'quote"name.py', "한글.py", "tab\tname.py"])
+@pytest.mark.parametrize("name", ["renamed.py", "space name.py", 'quote"name.py', "\ud55c\uae00.py", "tab\tname.py"])
 def test_rename_and_changed_inline_comment(tmp_path, git_env, name):
     repo, base = make_repo(tmp_path, git_env, "# see #77\n" + "".join(f"x{i} = {i}\n" for i in range(20)))
     git(repo, git_env, "mv", "mod.py", name)
