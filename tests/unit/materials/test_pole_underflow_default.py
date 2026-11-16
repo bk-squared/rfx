@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from rfx.errors import AccuracyWarning
+from rfx import _traced_check, backend
 from rfx.materials import lorentz
 from rfx.materials.pole_map import SampledPoleMap, map_terms
 
@@ -25,7 +26,7 @@ def objective(site, small):
     # makes the incoming cotangent depend on kappa in every vmap lane.
     scale = 1e-7 if small else 1.
 
-    def evaluate(kappa):
+    def evaluate(kappa, lane_scale=scale):
         if site == "scalar":
             c = lorentz.pole_update_coeffs(0., 2e9, kappa, 1e-12)[2]
         else:
@@ -37,7 +38,7 @@ def objective(site, small):
                                     periodic=(True,) * 3, high_wall=(False,) * 3,
                                     cell_sizes=sizes)
             c = terms[0]
-        return jnp.sum(c * c) * (scale / 1e-15)
+        return jnp.sum(c * c) * (lane_scale / 1e-15)
 
     return evaluate
 
@@ -66,6 +67,50 @@ def test_default_jaxpr(monkeypatch, site, setting, enabled):
         monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", setting)
     program = str(jax.make_jaxpr(jax.grad(objective(site, True)))(jnp.float32(3e20)))
     assert ("custom_linear_solve" in program) is enabled
+
+
+@pytest.mark.parametrize("site", ["scalar", "map", "graded_map"])
+@pytest.mark.parametrize("setting", [None, "0", "1", "other"])
+def test_no_callback_backend(monkeypatch, site, setting):
+    # Reuse test_each_owner_refuses_traced_operands' simulated MPS capability
+    # for both the default decision and traced-check admission.
+    no_callbacks = backend.backend_class("mps")
+    monkeypatch.setattr(backend, "backend_class", lambda: no_callbacks)
+    monkeypatch.setattr(_traced_check, "backend_class", lambda: no_callbacks)
+    if setting is not None:
+        monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", setting)
+    grad = jax.grad(objective(site, True))
+    value = jnp.float32(3e20)
+    if setting == "1":
+        message = (
+            "RFX_POLE_UNDERFLOW_CHECK: pole strength cotangent underflow: "
+            "this backend (mps) cannot run a host check inside compiled code"
+        )
+        with pytest.raises(NotImplementedError) as caught:
+            jax.make_jaxpr(grad)(value)
+        assert str(caught.value) == message
+        with pytest.raises(NotImplementedError) as caught:
+            grad(value)
+        assert str(caught.value) == message
+    else:
+        assert "custom_linear_solve" not in str(jax.make_jaxpr(grad)(value))
+        result, calls, notices = observe(monkeypatch, grad, value)
+        assert np.isfinite(result)
+        assert calls == []
+        assert notices == []
+
+
+@pytest.mark.parametrize("site, expected_count", [("scalar", 2), ("map", 16), ("graded_map", 16)])
+def test_vmapped_grad_mixed_lanes(monkeypatch, site, expected_count):
+    grad = jax.grad(objective(site, False))
+    fn = jax.jit(lambda scales: jax.vmap(grad, in_axes=(None, 0))(jnp.float32(3e20), scales))
+    scales = jnp.array([1e-7, 1., 1e-7, 1.], dtype=jnp.float32)
+    _, calls, notices = observe(monkeypatch, fn, scales)
+    diagnostic = f"host_counts={calls}, warning_counts={[w.count for w in notices]}"
+    assert len(calls) == 1, diagnostic
+    assert len(notices) == 1, diagnostic
+    assert calls == [expected_count], diagnostic
+    assert notices[0].count == expected_count, diagnostic
 
 
 @pytest.mark.parametrize("site, entries", [("scalar", 1), ("map", 8), ("graded_map", 8)])

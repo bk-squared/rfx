@@ -217,8 +217,11 @@ class LorentzState(NamedTuple):
 
 
 def _pole_underflow_check_enabled():
-    """Read the opt-out at trace time; cached compilations retain the setting."""
-    return os.environ.get("RFX_POLE_UNDERFLOW_CHECK") != "0"
+    """Default to host-callback capability at trace time; cache the setting."""
+    from rfx.backend import backend_class
+
+    setting = os.environ.get("RFX_POLE_UNDERFLOW_CHECK")
+    return setting == "1" or (setting != "0" and backend_class().host_callbacks)
 
 
 def _report_pole_underflow(count):
@@ -255,7 +258,8 @@ def pole_underflow_guard(out, factors, *, scalar=True):
     """Identity solve whose transpose warns below the normal SI cotangent range.
 
     Scalar factors are (denom, dt**2, EPS_0); map normalization supplies
-    (ks,) with scalar=False. On by default for float32 traced SI strengths;
+    (ks,) with scalar=False. On by default for float32 traced SI strengths
+    where the backend can make host callbacks;
     ``RFX_POLE_UNDERFLOW_CHECK=0`` turns it off. Set it before the first call;
     a cached compile keeps the old setting.
     """
