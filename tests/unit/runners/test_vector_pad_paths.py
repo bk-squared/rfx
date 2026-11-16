@@ -25,11 +25,17 @@ from tests.unit.runners.test_vector_pad import (
 ADJOINT_STEPS = 160
 SWEEP_STEPS = 60
 #: Cases measured not bitwise on the CPU (jax 24.10 image); judged by bar (ii).
-NOT_BITWISE = set()
+NOT_BITWISE = {
+    ('design', 'adjoint', 'aligned'), ('design', 'adjoint', 'odd'),
+    ('design', 'autodiff', 'aligned'), ('design', 'autodiff', 'odd'),
+    ('vmap', 'pec', 'odd'),
+}
 
 
-def own_scale_ratios(ref, got):
-    """difference / bar (ii), each output on its own largest magnitude; a probe series per column."""
+def own_scale_ratios(ref, got, peaks=None):
+    """difference / bar (ii): a probe series per column on its family's peak over the
+    unpadded record when ``peaks`` gives it ({'e', 'h', 'families'}), else on its own
+    largest magnitude; every other output on its own largest magnitude."""
     out = {}
     for key, a in ref.items():
         a = np.asarray(a, np.complex128)
@@ -37,7 +43,8 @@ def own_scale_ratios(ref, got):
         if key == 'time_series':
             for column in range(a.shape[-1]):
                 out[f'time_series[{column}]'] = _ratio(d[..., column].max(),
-                                                       RECORD_BAR * np.abs(a[..., column]).max())
+                                                       RECORD_BAR * (np.abs(a[..., column]).max() if peaks is None
+                                                                     else peaks[peaks['families'][column]]))
         else:
             out[key] = _ratio(d.max(), RECORD_BAR * np.abs(a).max())
     return out
@@ -52,9 +59,10 @@ def judge(case, label, records, n_steps):
     if case in NOT_BITWISE:
         assert_bars(label, {n: own_scale_ratios(*records(n)) for n in lengths})
         return
-    ref, got = records(n_steps)
+    first = records(n_steps)
+    ref, got = first[:2]
     if not all(np.array_equal(ref[k], got[k]) for k in ref):
-        by_length = {n_steps: own_scale_ratios(ref, got)}
+        by_length = {n_steps: own_scale_ratios(*first)}
         by_length.update({n: own_scale_ratios(*records(n)) for n in lengths[1:]})
         try:
             assert_bars(f'{label} (evidence: not bitwise, not listed)', by_length)
@@ -115,12 +123,15 @@ def test_design_box_objective_and_gradient_padded(target, gradient):
     jax.clear_caches()
 
 
-def _sweep_scene(boundary):
+SWEEP_EPS = (1.5, 2.2, 3.0)
+
+
+def _sweep_scene(boundary, eps_r=2.2):
     # x is 0.0123 m: with 4 CPML cells the extents hold an even axis for 'odd'.
     sim = Simulation(freq_max=10e9, domain=(.0123, .0071, .0052), dx=.001,
                      boundary=boundary if boundary == 'cpml' else _walls(),
                      cpml_layers=4 if boundary == 'cpml' else 0, snap='declared')
-    sim.add_material('brick', eps_r=2.2)
+    sim.add_material('brick', eps_r=eps_r)
     sim.add(Box((.004, .002, .001), (.008, .005, .004)), material='brick')
     sim.add_source((.003, .004, .003), 'ez', waveform=GaussianPulse(f0=6e9, bandwidth=.8))
     sim.add_probe((.009, .005, .002), 'ez')
@@ -141,12 +152,12 @@ def test_vmap_material_sweep_padded(target, boundary):
         for mode in ('off', target):
             with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
                 result = vmap_material_sweep(_sweep_scene(boundary), 'brick.eps_r',
-                                             jnp.array([1.5, 2.2, 3.0]), n_steps=n)
+                                             jnp.array(SWEEP_EPS), n_steps=n)
             out[mode] = ({'time_series': np.asarray(result.time_series),
                           'plane': np.asarray(result.dft_planes['plane'])}, plans)
         assert out['off'][1] and not any(p.active for p in out['off'][1])
         assert_padded(out[target][1], f'{label} N={n}')
-        return out['off'][0], out[target][0]
+        return out['off'][0], out[target][0], _sweep_family_peaks(boundary, n)
 
     judge(('vmap', boundary, target), label, records, SWEEP_STEPS)
     jax.clear_caches()
@@ -210,3 +221,31 @@ def test_auto_config_estimates_padded_extents():
         assert config.estimated_memory_mb == _auto_memory_mb(
             math.prod(_expected_padded(shape, 'aligned')), 4)
     assert config.estimated_memory_mb == _auto_memory_mb(math.prod(shape), 4)
+
+
+def _sweep_family_peaks(boundary, n_steps):
+    """Per family, the largest |field| over the unpadded run() of each swept member,
+    driven cells left out (the scale of the probe series under bar (ii))."""
+    from rfx import SnapshotSpec
+    from rfx.stepping import uniform_setup
+    from tests.unit.runners.test_vector_pad import FIELDS, _driven, family_peaks
+    real, got = uniform_setup.core_step_invariants, {}
+
+    def invariants(*args, **kwargs):
+        out = real(*args, **kwargs)
+        got['ctx'] = out['ctx']
+        return out
+
+    peaks = {'e': 0., 'h': 0.}
+    uniform_setup.core_step_invariants = invariants
+    try:
+        for eps_r in SWEEP_EPS:
+            with vector_pad.force_pad('off'):
+                result = _sweep_scene(boundary, eps_r).run(
+                    n_steps=n_steps, skip_preflight=True, compute_s_params=False,
+                    snapshot=SnapshotSpec(interval=1, components=FIELDS))
+            member = family_peaks({c: result.snapshots[c] for c in FIELDS}, _driven(got['ctx']))
+            peaks = {f: max(peaks[f], member[f]) for f in 'eh'}
+    finally:
+        uniform_setup.core_step_invariants = real
+    return dict(peaks, families=('e', 'h'))
