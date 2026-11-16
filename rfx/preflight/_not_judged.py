@@ -123,15 +123,15 @@ def traced_input_names(sim, entry_inputs) -> tuple[str, ...]:
             pairs = (pair for record in records for pair in _record_fields(record))
         else:
             pairs = _record_fields(value)
-        for field, child in pairs:
+        for field_name, child in pairs:
             if _has_tracer(child):
-                names.add(f"{method}({field})")
+                names.add(f"{method}({field_name})")
     for attr, parameter in CONSTRUCTOR_PARAMETERS.items():
         if _has_tracer(getattr(sim, attr, None)):
             names.add(f"Simulation({parameter})")
-    for field, value in entry_inputs.items():
+    for field_name, value in entry_inputs.items():
         if _has_tracer(value):
-            names.add(f"forward({field})")
+            names.add(f"forward({field_name})")
     return tuple(sorted(names))
 
 
