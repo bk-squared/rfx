@@ -54,7 +54,7 @@ def test_run_skip_preflight_suppresses_it():
         # A genuine numerical warning unrelated to preflight could still fire;
         # this config only trips the preflight surface, so silence == success.
         # 20 steps: the default pulse starts at zero, so the
-        # probe 8 cells away still reads exactly 0 after 10 steps.
+        # probe 8 cells away still reads exactly 0 after 10 steps (#336 warning).
         sim.run(n_steps=20, skip_preflight=True)
 
 
