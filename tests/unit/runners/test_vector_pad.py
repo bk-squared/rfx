@@ -151,6 +151,8 @@ NOT_BITWISE = {
     ('vmap', 'vacuum', 'odd'), ('one_axis', 'vacuum', (0, 1, 0)),
     # Kerr (stage 2): measured not bitwise on the CPU for either target in stage 1.
     ('run', 'kerr', 'aligned'), ('run', 'kerr', 'odd'),
+    # Mixed Debye + Lorentz (stage 2): measured not bitwise on the CPU for either target.
+    ('run', 'mixed', 'aligned'), ('run', 'mixed', 'odd'),
 }
 
 
