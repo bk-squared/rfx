@@ -322,6 +322,14 @@ def test_other_loop_branches_have_no_concrete_arrays(case):
     test_compiled_loop_has_no_concrete_arrays(program)
 
 
+
+@pytest.mark.parametrize("scene", ["case2", "dft_plane", "flux_monitor", "ntff_box",
+                                  "current_moment", "lumped_port", "wire_port", "graded_pmc"])
+def test_one_setup_loop_scenes(scene):
+    program = _loop_program.__wrapped__(SimpleNamespace(param=("cpml", None, 0)), scene=scene)
+    test_compiled_loop_has_no_concrete_arrays(program)
+
+
 def test_forward_does_not_gather_final_state(monkeypatch):
     _select_legacy_poles_cpml(monkeypatch)
 

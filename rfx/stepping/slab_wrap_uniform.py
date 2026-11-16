@@ -293,13 +293,16 @@ def run_prepared(prepared, records, mesh, *, n_steps):
     from rfx.stepping.slab_wrap import run_steps
     carry, invariants, waves, field_advance = prepared
     carry = dict(carry, records=records.initial())
+    invariants = dict(invariants, record_operands=records.operands())
 
     def advance(carry, xs, invariants, *, ranks):
         fields = {key: value for key, value in carry.items() if key != 'records'}
         previous = records.prepare(fields['fdtd'], ranks=ranks)
-        final, samples = field_advance(fields, xs, invariants, ranks=ranks)
+        field_inputs = {k: v for k, v in invariants.items() if k != "record_operands"}
+        final, samples = field_advance(fields, xs, field_inputs, ranks=ranks)
         final['records'] = records.update(carry['records'], final['fdtd'],
-            records.grid.dt, xs[0], ranks=ranks, previous=previous)
+            records.grid.dt, xs[0], ranks=ranks, previous=previous,
+            operands=invariants["record_operands"])
         return final, samples
 
     ranks = mesh_ranks(mesh)

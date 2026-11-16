@@ -92,10 +92,38 @@ def test_moment_previous_e_mutation(monkeypatch, tmp_path):
     from rfx.runners import _distributed_records as records
     original = records.MomentRecords.update
 
-    def wrong(self, buffer, state, dt, step, *, ranks, previous):
+    def wrong(self, buffer, state, dt, step, *, ranks, previous, operands):
         return original(self, buffer, state, dt, step, ranks=ranks,
-                        previous=self.prepare(state, ranks=ranks))
+                        previous=self.prepare(state, ranks=ranks), operands=operands)
     monkeypatch.setattr(records.MomentRecords, "update", wrong)
     with pytest.raises(AssertionError, match="accumulator") as failure:
         test_moments_and_forward(2, "run", tmp_path)
     print(f"mutation=post-step E used as previous E: RED {failure.value}")
+
+
+@pytest.mark.parametrize("n_devices", [2, 3])
+def test_uniform_forward_moment_step_has_no_slab_consts(n_devices, monkeypatch, tmp_path):
+    from rfx.stepping import sharded
+    sim, grid, _ = model("cpml", n_devices)
+    sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), (9e-3, 7e-3, 6e-3),
+                                   block_size=2e-3, freqs=[3e9, 7e9])
+    slab_cells = int(np.prod(grid.shape)) // n_devices
+    original = sharded.recorded_sharded_call
+    seen = []
+
+    def inspect(fn, *args, **kwargs):
+        body = getattr(fn, "__wrapped__", fn)
+        if body.__name__ == "run_fn":
+            consts = jax.make_jaxpr(body)(*args, **kwargs).consts
+            seen.append([dict(shape=a.shape, size=int(np.size(a)), dtype=str(a.dtype))
+                         for a in consts])
+        return original(fn, *args, **kwargs)
+
+    monkeypatch.setattr(sharded, "recorded_sharded_call", inspect)
+    result = sim.forward(distributed=True, devices=host_devices(n_devices),
+                         n_steps=8, skip_preflight=True)
+    jax.block_until_ready(result.current_moment_data)
+    report = dict(devices=n_devices, slab_cells=slab_cells, step_consts=seen)
+    (tmp_path / "uniform-moment-consts.json").write_text(json.dumps(report))
+    assert seen, "must inspect the compiled step"
+    assert not [a for consts in seen for a in consts if a["size"] >= slab_cells], report

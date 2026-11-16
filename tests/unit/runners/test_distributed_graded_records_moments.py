@@ -88,9 +88,9 @@ def test_moment_mutations(mutation, monkeypatch):
     from rfx.runners._distributed_records import MomentRecords
     if mutation == 'previous_e':
         original = MomentRecords.update
-        def wrong(self, buffer, state, dt, step, *, ranks, previous):
+        def wrong(self, buffer, state, dt, step, *, ranks, previous, operands):
             return original(self, buffer, state, dt, step, ranks=ranks,
-                            previous=self.prepare(state, ranks=ranks))
+                            previous=self.prepare(state, ranks=ranks), operands=operands)
         monkeypatch.setattr(MomentRecords, 'update', wrong)
     else:
         _wrong_parts(monkeypatch, mutation)
