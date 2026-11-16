@@ -194,23 +194,65 @@ def test_other_callers_host_mirrors(lane):
     _mirror([np.asarray(v) for v in values], grid, shape, lane, require_ties=lane != 'full_tensor')
 
 
+def _thin_grid(mesh):
+    h = 2. ** -11
+    profiles = (dict(dx_profile=np.full(8, h), dy_profile=np.full(8, h),
+                     dz_profile=np.array([1, 1, 1.5, .5, 1, 1.5, .5, 1]) * h)
+                if mesh == 'graded' else {})
+    return Simulation(domain=(8 * h,) * 3, dx=h, freq_max=12e9,
+                      boundary='pec', cpml_layers=0, **profiles).freeze_mesh()
+
+
+def _thin_shape(kind, z, thickness):
+    h = 2. ** -11
+    if kind == 'box':
+        return Box((-4 * h, -4 * h, z - thickness / 2),
+                   (12 * h, 12 * h, z + thickness / 2))
+    return Cylinder((4 * h, 4 * h, z), 3 * h, thickness, axis='z')
+
+
+@pytest.fixture(scope='module')
+def thin_builds():
+    grids = {mesh: _thin_grid(mesh) for mesh in ('uniform', 'graded')}
+
+    @jax.jit
+    def build(centers, thicknesses):
+        # One compilation shares the common coordinate and interval algebra
+        # across both builders and shapes. Both centres remain traced inputs.
+        results = []
+        for i, (mesh, grid) in enumerate(grids.items()):
+            builder = compute_smoothed_eps if mesh == 'uniform' else compute_smoothed_eps_nonuniform
+            for kind in ('box', 'disc'):
+                shape = _thin_shape(kind, centers[i], thicknesses[i])
+                results.append(jnp.stack(builder(grid, [(shape, 4.)])))
+        return jnp.stack(results)
+
+    results = {}
+    for component in (0, 2):
+        centers, thicknesses = [], []
+        for mesh, grid in grids.items():
+            k = 2 if mesh == 'graded' else 4
+            lines, widths = _lines(grid, component)
+            centers.append(lines[2][k])
+            thicknesses.append(.4 * widths[2][k])
+        results[component] = np.asarray(build(jnp.array(centers, dtype=jnp.float32),
+                                              jnp.array(thicknesses, dtype=jnp.float32)))
+    return grids, results
+
+
 @pytest.fixture(scope='module', params=[
     (mesh, kind, component) for mesh in ('uniform', 'graded')
     for kind in ('box', 'disc') for component in (0, 2)
 ], ids=lambda p: f'{p[0]}-{p[1]}-{("Ex", "Ey", "Ez")[p[2]]}')
-def thin_midplane(request):
+def thin_midplane(request, thin_builds):
     """Cases (iv)-(vi): each tested component has its own centred thin body.
 
     Binary-exact nodes place the body's mid-plane exactly on the sample.
     Ex uses a node-centred z support; Ez uses its primal z cell.
     """
     mesh, kind, component = request.param
-    h = 2. ** -11
-    profiles = (dict(dx_profile=np.full(8, h), dy_profile=np.full(8, h),
-                     dz_profile=np.array([1, 1, 1.5, .5, 1, 1.5, .5, 1]) * h)
-                if mesh == 'graded' else {})
-    grid = Simulation(domain=(8 * h,) * 3, dx=h, freq_max=12e9,
-                      boundary='pec', cpml_layers=0, **profiles).freeze_mesh()
+    grids, traced_builds = thin_builds
+    grid = grids[mesh]
     builder = compute_smoothed_eps_nonuniform if mesh == 'graded' else compute_smoothed_eps
     index = (4, 3, 2 if mesh == 'graded' else 4)
     lines, widths = _lines(grid, component)
@@ -219,13 +261,7 @@ def thin_midplane(request):
     length = widths[2][index[2]]
     thickness = .4 * length
 
-    def shape_at(z):
-        if kind == 'box':
-            return Box((-4 * h, -4 * h, z - thickness / 2),
-                       (12 * h, 12 * h, z + thickness / 2))
-        return Cylinder((4 * h, 4 * h, z), 3 * h, thickness, axis='z')
-
-    shape = shape_at(center)
+    shape = _thin_shape(kind, center, thickness)
     lo, hi = ((shape.corner_lo[2], shape.corner_hi[2]) if kind == 'box'
               else (shape.center[2] - shape.height / 2, shape.center[2] + shape.height / 2))
     assert (lo + hi) / 2 == center == float(np.float32(center))
@@ -236,8 +272,8 @@ def thin_midplane(request):
     expected = 1 / (p / 4 + 1 - p) if component == 2 else p * 4 + 1 - p
     with record_cell_table_capture(grid, [shape]) as captures:
         host = np.asarray(builder(grid, [(shape, 4.)]))
-    traced = np.asarray(jax.jit(lambda z: jnp.stack(builder(grid, [(shape_at(z), 4.)])))(
-        jnp.float32(center)))
+    slot = 2 * (mesh == 'graded') + (kind == 'disc')
+    traced = traced_builds[component][slot]
     return dict(mesh=mesh, kind=kind, component=component, grid=grid, shape=shape,
                 index=index, point=point, p=p, expected=expected, host=host,
                 traced=traced, captures=captures)
