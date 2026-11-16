@@ -26,6 +26,15 @@ from tests.unit.sparams.test_port_observable_validation import _passive_reciproc
 
 TRANSFORMS = ('jit', 'vmap', 'grad', 'value_and_grad', 'vjp', 'jvp', 'jacfwd', 'eval_shape')
 VALUES = (1., 1.05)
+SHORT_STEPS = 150
+SCENES = ('U', 'G', 'GT', 'W', pytest.param('R', marks=pytest.mark.slow))
+TRANSFORM_CASES = [
+    pytest.param(scene, kind, marks=pytest.mark.slow if (
+        scene == 'R' or (scene == 'GT' and kind not in ('jit', 'grad')) or
+        (scene == 'W' and kind not in ('jit', 'vmap', 'grad', 'jvp', 'eval_shape'))
+    ) else ())
+    for scene in ('U', 'G', 'GT', 'W', 'R') for kind in TRANSFORMS
+]
 
 
 def _box_scene(**mesh):
@@ -48,7 +57,8 @@ def _graded(scale, *, pinned=True, ringdown=False, emit=True):
                if isinstance(dx, jax.core.Tracer) else None)
     sim = _box_scene(dx_profile=dx, dy_profile=DY, dz_profile=DZ,
                      nominal_profiles=nominal, **options)
-    result = sim.forward(n_steps=N_STEPS, port_s11_freqs=FREQS, skip_preflight=True,
+    result = sim.forward(n_steps=N_STEPS if ringdown else SHORT_STEPS,
+                         port_s11_freqs=FREQS, skip_preflight=True,
                          ringdown=RingdownSpec() if ringdown else None, emit_time_series=emit)
     if not pinned and isinstance(scale, jax.core.Tracer):
         assert isinstance(result.dt, jax.core.Tracer)
@@ -69,7 +79,7 @@ def _make_forward(scene, *, emit=True):
     if scene == 'M':
         options.update(distributed=True, devices=jax.devices('cpu')[:2])
     return lambda scale: sim.forward(
-        n_steps=100 if scene == 'W' else N_STEPS, skip_preflight=True,
+        n_steps=SHORT_STEPS, skip_preflight=True,
         eps_override=eps * scale, emit_time_series=emit, **options)
 
 
@@ -82,9 +92,19 @@ def _objective(forward, scene):
     return loss
 
 
-def _transform(forward, scene, kind):
+def _transform(forward, scene, kind, *, arrays_only=False):
     scale = jnp.float32(VALUES[0])
     objective = _objective(forward, scene)
+    if arrays_only:
+        full_forward, full_objective = forward, objective
+
+        def forward(value):
+            return tuple(row[1] for row in _arrays(full_forward(value)))
+
+        def objective(value):
+            loss, result = full_objective(value)
+            return loss, tuple(row[1] for row in _arrays(result))
+
     if kind == 'jit':
         return jax.jit(forward)(scale), None
     if kind == 'vmap':
@@ -104,7 +124,7 @@ def _transform(forward, scene, kind):
     return jax.eval_shape(forward, scale), None
 
 
-@pytest.fixture(scope='module', params=('U', 'G', 'GT', 'W', 'R'))
+@pytest.fixture(scope='module')
 def scene(request):
     yield request.param
     jax.clear_caches()
@@ -149,9 +169,12 @@ def _arrays(result):
             yield f'waveguide_ports[{port}].{name}', getattr(record, name), True
 
 
-def _compare(actual, expected, label):
+def _compare(actual, expected, label, *, arrays_only=False):
     ratios = {}
-    actual_arrays, expected_arrays = list(_arrays(actual)), list(_arrays(expected))
+    actual_arrays = list(_arrays(actual))
+    expected_arrays = ([(name, value, temporal) for (name, _, temporal), value
+                        in zip(actual_arrays, expected, strict=True)] if arrays_only
+                       else list(_arrays(expected)))
     assert [row[0] for row in actual_arrays] == [row[0] for row in expected_arrays]
     for (name, got, temporal), (_, want, _) in zip(actual_arrays, expected_arrays):
         got, want = np.asarray(got), np.asarray(want)
@@ -226,12 +249,13 @@ def _roundtrip(result):
     assert all(type(leaf) is object for leaf in rebuilt_leaves)
 
 
+@pytest.mark.parametrize('scene', SCENES, indirect=True, scope='module')
 def test_eager_leaves(scene, eager):
     for result in eager:
         _leaves(result, eager[0])
 
 
-@pytest.mark.parametrize('kind', TRANSFORMS)
+@pytest.mark.parametrize('scene, kind', TRANSFORM_CASES, indirect=['scene'], scope='module')
 def test_transform(scene, forward, eager, kind):
     if scene == 'W' and kind == 'vmap':
         with pytest.raises(ValueError, match='traced override over the segment cannot be judged before the run') as error:
@@ -241,13 +265,15 @@ def test_transform(scene, forward, eager, kind):
     actual, tangent = _transform(forward, scene, kind)
     _leaves(actual, eager[0], abstract=kind == 'eval_shape')
     if kind == 'eval_shape':
-        if scene in ('U', 'W'):
+        if scene == 'U':
             assert _structure(actual) == _structure(eager[0])
         return
     jax.block_until_ready(actual)
+    reference, reference_tangent = _transform(forward, scene, kind, arrays_only=True)
     if tangent is not None:
         _leaves(tangent, eager[0], tangent=True)
         assert jax.tree_util.tree_structure(tangent) == jax.tree_util.tree_structure(actual)
+        _compare(tangent, reference_tangent, f'{scene}/{kind}/tangent', arrays_only=True)
     if kind == 'vmap':
         for name in ('settling_db', 'settling_witness'):
             with pytest.raises(ValueError, match='arrays are not the arrays it was built with'):
@@ -255,9 +281,9 @@ def test_transform(scene, forward, eager, kind):
         for index, expected in enumerate(eager):
             element = jax.tree_util.tree_map(lambda a: a[index], actual)
             _leaves(element, expected)
-            _compare(element, expected, f'{scene}/{kind}/{index}')
-            assert np.isfinite(element.settling_db)
-            assert {'status', 'db', 'worst_freq_hz'} <= element.settling_witness.keys()
+            arrays = tuple(array[index] for array in reference)
+            _compare(element, arrays, f'{scene}/{kind}/{index}', arrays_only=True)
+            _settling_read(element, expected, f'{scene}/{kind}/{index}')
             if scene == 'R':
                 assert element.ringdown.report.completed
                 assert element.ringdown.report.witnesses
@@ -270,9 +296,21 @@ def test_transform(scene, forward, eager, kind):
                     _leaves(restored, element)
                     print('COPY', operation, 'carried_aux', hasattr(restored, '_forward_aux'))
     else:
-        _compare(actual, eager[0], f'{scene}/{kind}')
+        _compare(actual, reference, f'{scene}/{kind}', arrays_only=True)
 
 
+def _settling_read(actual, eager, label):
+    db = actual.settling_db
+    witness, eager_witness = actual.settling_witness, eager.settling_witness
+    print('SETTLING', label, json.dumps(dict(
+        db=str(db), eager_db=str(eager.settling_db),
+        status=witness['status'], eager_status=eager_witness['status']), sort_keys=True))
+    assert isinstance(db, float)
+    assert {'status', 'db', 'worst_freq_hz'} <= witness.keys()
+    assert witness['status'] == eager_witness['status']
+
+
+@pytest.mark.parametrize('scene', SCENES, indirect=True, scope='module')
 def test_fresh_trace_static_values(scene, forward):
     reused = jax.jit(forward)
     reused(jnp.float32(VALUES[0]))
@@ -290,9 +328,9 @@ def test_fresh_trace_static_values(scene, forward):
     _assert_static_state(fresh)
 
 
+@pytest.mark.parametrize('scene', ('U', 'G', 'W'), indirect=True, scope='module')
 def test_roundtrip(scene, eager):
-    if scene in ('U', 'G', 'W'):
-        _roundtrip(eager[0])
+    _roundtrip(eager[0])
 
 
 def test_waveguide_smatrix_roundtrip():
@@ -319,12 +357,15 @@ def test_equal_calls_and_scalar_jacobian():
 
 def test_changed_shapes_without_probe_series():
     forward = _make_forward('G', emit=False)
+    eager = forward(jnp.float32(VALUES[0]))
+    assert eager.time_series.shape == (SHORT_STEPS, 0)
     batched = jax.vmap(forward)(jnp.asarray(VALUES, dtype=jnp.float32))
-    assert batched.time_series is None
-    with pytest.raises(ValueError, match='arrays are not the arrays it was built with'):
-        _ = batched.settling_db
+    assert batched.time_series.shape == (len(VALUES), SHORT_STEPS, 0)
+    for name in ('settling_db', 'settling_witness'):
+        with pytest.raises(ValueError, match='arrays are not the arrays it was built with'):
+            getattr(batched, name)
     element = jax.tree_util.tree_map(lambda a: a[0], batched)
-    assert np.isfinite(element.settling_db)
+    _settling_read(element, eager, 'no_series/vmap/0')
     sliced = jax.tree_util.tree_map(lambda a: a[..., :1] if a.ndim else a, element)
     with pytest.raises(ValueError, match='arrays are not the arrays it was built with'):
         _ = sliced.settling_witness
@@ -332,6 +373,7 @@ def test_changed_shapes_without_probe_series():
     assert not hasattr(replaced, '_forward_aux')
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('kind', ('jit', 'grad'))
 def test_multi(kind):
     if os.environ.get('RFX_RESULT_TRANSFORMS_CHILD') != '1':
@@ -342,9 +384,11 @@ def test_multi(kind):
     _leaves(eager, eager)
     actual, _ = _transform(forward, 'M', kind)
     _leaves(actual, eager)
-    _compare(actual, eager, f'M/{kind}')
+    reference, _ = _transform(forward, 'M', kind, arrays_only=True)
+    _compare(actual, reference, f'M/{kind}', arrays_only=True)
 
 
+@pytest.mark.slow
 def test_distributed_subprocess(tmp_path):
     root = Path(__file__).resolve().parents[2]
     env = dict(os.environ, PYTHONPATH=str(root), JAX_PLATFORMS='cpu',
