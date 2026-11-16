@@ -41,6 +41,7 @@ CONTAINER_METHODS = {
     "_tfsf": "add_tfsf_source",
     "_wall_losses": "add_wall_loss",
     "_dft_plane_regions": "add_dft_plane_probe",
+    "_boundary_scalar_spec": "__init__",  # boundary= scalar and its expanded face spec.
 }
 _POSITIONAL_FIELDS = {
     "_ntff": ("corner_lo", "corner_hi", "freqs"),
