@@ -85,7 +85,7 @@ Existing tests already provide parts of the desired physical coverage:
   matching from modal resonance. The dielectric cavity control in
   `tests/oracle/test_patch_cavity_eps_oracle.py:9-23` provides an analytic
   bulk-medium witness, but cannot replace an open-antenna/CPML check.
-* `tests/locks/test_refplane_port_waves.py:939-1045` contains transmission,
+* `tests/locks/test_refplane_port_waves.py:938-1044` contains transmission,
   reciprocity, line-constant, de-embedding and energy checks for another port
   route. These are useful patterns, not proof that the legacy MSL route here
   passes them. The prior evidence note records setup errors in those live
