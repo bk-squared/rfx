@@ -69,9 +69,6 @@ REMEASURE = (f"`PYTHONPATH=. python {DRIVER} --stage solve --dut <dut> --rung <4
 
 RUNG = 4
 DUTS = ("thru", "bead")
-# The records this guard reads, by the commit each was measured at: both at
-# one commit since the re-measure of 2026-09-30, after the coax lanes began to
-# absorb on all three axes (issue 1218).
 RECORD_COMMITS = {"thru": LOCK_PROVENANCE["commit"], "bead": LOCK_PROVENANCE["commit"]}
 
 
@@ -114,7 +111,7 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver, dut):
         entry["cross_check"],
         driver.cross_check_result_against_layout(live_geometry, result, "two_port"),
         "cross_check")
-    # The record's S is at the line's analytic TEM impedance (48.59 ohm); since #2014
+    # The record's S is at the line's analytic TEM impedance (48.59 ohm);
     # the result is referred to the declared impedance= (50 ohm), so read it back at
     # the line before comparing. At 50 ohm the 1.4 ohm reference step alone moves the
     # bead's |S11| zero 9.091 -> 8.987 GHz.

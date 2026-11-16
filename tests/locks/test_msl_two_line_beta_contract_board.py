@@ -83,7 +83,7 @@ def _feed_nodes(sim):
 def _probe0_s21(res):
     # beta from the S21 phase ratio of two lines is a line property and
     # assumes the line reference: S is brought back from the declared 50 ohm
-    # to line_impedances (#2014) before the phase is read.
+    # to line_impedances before the phase is read.
     beta = np.asarray(res.shift_beta, dtype=np.float64)
     offsets = np.asarray(res.reference_plane_offsets_m, dtype=np.float64)
     u = np.exp(1j * beta * offsets[:, None])

@@ -139,7 +139,7 @@ LOCK_PROVENANCE = {
         "tests/unit/runners/test_distributed_nu_pec_mask_lane_parity.py"
         # "fixture" is a list of EXISTING paths (test_lock_provenance_gate.py checks each).
         # tests/unit/subgrid/test_subgrid_source_injection_dtype.py, the source of case 13 below,
-        # was removed under #1127 (in git history at a6d6fce1); the case and its baseline stay.
+        # was removed; the case and its baseline stay.
     ),
     "generator": "tests/locks/test_runner_split_bit_identity.py (RFX_RUNNER_BASELINE_CAPTURE=1)",
     "commit": "9866bafd",
@@ -286,11 +286,6 @@ def _f_nonuniform_constant_profile():
     return _constant_profile_nu_sim().run(n_steps=100)
 
 
-# --- 5/6: removed with the pmap runner (#1296). They drove
-#     ``rfx.runners.distributed.run_distributed`` directly at 2 devices, on
-#     the geometry of builder 1 widened to 10.5 mm and on
-#     tests/unit/runners/test_distributed.py's TestDistributedCPML geometry
-#     at Lx = 0.13 m. Fixture ids distributed_v1_cpml_small / _wide.
 
 
 # --- 7/9: sim.run(devices=[...]) is what the public API dispatches to
@@ -513,7 +508,7 @@ def _f_distributed_nu_pec_mask_seam():
     }
 
 
-# --- 14/15: #1053 leg 0. The realized-PEC-body geometry ``distributed_v2``
+# --- 14/15: leg 0. The realized-PEC-body geometry ``distributed_v2``
 #     acquires in leg 2, captured BEFORE the kernel moves.
 #
 #     Kernel-level on purpose. The end-to-end route was unreachable at leg 0:
@@ -578,10 +573,8 @@ def _f_distributed_v2_pec_body_interior():
 
 
 # --- 13: tests/unit/subgrid/test_subgrid_source_injection_dtype.py:123
-#     (_coarse_shadow_source_subgrid_sim), removed under #1127; in git history
-#     at a6d6fce1. Chosen over the inventory's suggestion
-#     (test_subgrid_fine_shape_parity.py's builders, also removed under #1127;
-#     in git history at a6d6fce1) because those
+#     (_coarse_shadow_source_subgrid_sim), removed. Chosen over the inventory's suggestion
+#     (test_subgrid_fine_shape_parity.py's builders, also removed) because those
 #     build a validation REGION and never call the runner at all -- its
 #     centered slab is refused by the production z-slab validator. This one
 #     runs run_subgridded_path end to end, through both the coarse-shadow
@@ -848,7 +841,7 @@ def test_runner_is_bit_identical_to_the_pre_split_baseline(
 #
 # Extends the pattern of
 # tests/locks/test_cpml_axis_params_refactor_bit_identical.py:170-194 into a
-# registry, so each #1038 leg adds its extracted helpers here as rows rather
+# registry, so each leg adds its extracted helpers here as rows rather
 # than as new hand-written tests. The point is mechanical: after an
 # extraction, a sibling runner CANNOT drift, because both names resolve to
 # the one function object.
@@ -859,7 +852,7 @@ _SHARED_HELPER_BINDINGS = (
      "_exchange_component_shmap"),
     ("exchange_component_shmap", "rfx.runners.distributed_nu",
      "_exchange_component_nu_shmap"),
-    # #1038 leg 1 -- the x-slab sharding helpers. These were NESTED closures
+    # leg 1 -- the x-slab sharding helpers. These were NESTED closures
     # over ``shd`` at every site, so the shared form takes ``shd`` explicitly
     # and each site keeps a same-named forwarder; the module-level import is
     # what this guard pins.
@@ -867,7 +860,7 @@ _SHARED_HELPER_BINDINGS = (
     ("shard_stacked", "rfx.runners.distributed_v2", "shard_stacked"),
     ("shard_stacked_poles", "rfx.runners.distributed_nu",
      "shard_stacked_poles"),
-    # #1038 leg 1 -- the two shard_map helpers called from inside the jitted
+    # leg 1 -- the two shard_map helpers called from inside the jitted
     # step body. These are the leg's real jaxpr-shape change: four locals
     # (mesh, n_{src,prb}, *_local_specs, *_device_ids) became parameters, and
     # the *_specs/*_ids Python loops are unrolled at trace time, so the traced
@@ -881,21 +874,21 @@ _SHARED_HELPER_BINDINGS = (
      "sample_probes_shmap"),
     ("sample_probes_shmap", "rfx.runners.distributed_v2",
      "sample_probes_shmap"),
-    # #1038 leg 2 (a) -- the stacked-CPML-psi allocator. Two nested ``_zeros``
+    # leg 2 (a) -- the stacked-CPML-psi allocator. Two nested ``_zeros``
     # closures over (n_devices, n) that differed only in how they spelled the
     # two face-parallel extents (inventory §2.3(b)). Both callers are
     # setup-time, so this row guards a de-duplication with no jaxpr exposure.
-    # #1350/#1351: NU now imports the complete per-face sizing routine.
+    # NU now imports the complete per-face sizing routine.
     ("_distributed_boundary_layers", "rfx.runners.distributed_v2", "_distributed_boundary_layers"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_nu", "_distributed_boundary_layers"),
-    # #1038 leg 2 -- the x-slab primitives. Not a de-duplication: these were
+    # leg 2 -- the x-slab primitives. Not a de-duplication: these were
     # single definitions in distributed.py that had to move BELOW the shared
     # module so that shared bodies calling them (leg 2b's unstack_and_gather,
     # leg 2c's split_poles_x) can import them without a cycle. distributed.py
     # re-exports both at their old position, so these rows are what says the
     # re-export is the same object and not a resurrected copy.
     ("split_array_x", "rfx.runners.distributed", "split_array_x"),
-    # #1053 leg 1 -- v2's second importer of the same primitive. It shards the
+    # leg 1 -- v2's second importer of the same primitive. It shards the
     # realized-PEC cell mask with it, and the whole point of reusing this
     # function rather than distributed_nu's shard_pec_mask_x_slab is that the
     # two produce bit-identical slabs; this row is what says v2 is calling the
@@ -903,18 +896,18 @@ _SHARED_HELPER_BINDINGS = (
     ("split_array_x", "rfx.runners.distributed_v2", "split_array_x"),
     ("gather_array_x", "rfx.runners.distributed", "gather_array_x"),
     ("gather_array_x", "rfx.runners.distributed_v2", "gather_array_x"),
-    # #1038 leg 2 (b) -- the final-state gather. The two copies differed in the
+    # leg 2 (b) -- the final-state gather. The two copies differed in the
     # trim bound (``sharded_grid.nx`` in the NU runner, the enclosing ``nx`` in
     # v2) and in the assert message; the bound is now an explicit argument each
     # caller supplies, so neither call site's expression moved.
     ("unstack_and_gather", "rfx.runners.distributed_nu", "unstack_and_gather"),
     ("unstack_and_gather", "rfx.runners.distributed_v2", "unstack_and_gather"),
-    # #1038 leg 2 (c) -- the per-pole x-splitter. Three nested copies, all in
+    # leg 2 (c) -- the per-pole x-splitter. Three nested copies, all in
     # distributed.py, which leg 1 had to leave behind because their body calls
     # split_array_x and that name was then defined BELOW distributed.py's
     # import of this module. One importer only, so one row.
     ("split_poles_x", "rfx.runners.distributed", "split_poles_x"),
-    # #1038 leg 3 -- the domain-face PEC kernel (inventory §2.3(c)). Unlike the
+    # leg 3 -- the domain-face PEC kernel (inventory §2.3(c)). Unlike the
     # leg-1/leg-2 helpers these were already top-level functions taking every
     # value explicitly, so nothing became a parameter and the traced jaxpr is
     # structurally unchanged. The two copies differed in ONE token, each
@@ -925,7 +918,7 @@ _SHARED_HELPER_BINDINGS = (
      "_apply_pec_shmap"),
     ("apply_pec_face_shmap", "rfx.runners.distributed_nu",
      "_apply_pec_face_nu_shmap"),
-    # #1053 leg 2 -- the realized-PEC CELL-MASK kernel, as opposed to the
+    # leg 2 -- the realized-PEC CELL-MASK kernel, as opposed to the
     # domain-face one two rows up. Moved out of distributed_nu.py by value so
     # v2 could stop refusing declared PEC volumes; it was already
     # runner-agnostic, so nothing became a parameter. These two rows are what
@@ -938,7 +931,7 @@ _SHARED_HELPER_BINDINGS = (
      "_apply_pec_mask_nu_shmap"),
     ("apply_pec_mask_shmap", "rfx.runners.distributed_v2",
      "apply_pec_mask_shmap"),
-    # #1038 leg 4 (prerequisite) -- the two local NU Yee kernels. Not a
+    # leg 4 (prerequisite) -- the two local NU Yee kernels. Not a
     # de-duplication: single definitions in distributed_nu.py that had to move
     # BELOW the shared module so leg 4's shared NU shard wrappers can call
     # them without importing from distributed_nu (which would invert the DAG).
@@ -951,7 +944,7 @@ _SHARED_HELPER_BINDINGS = (
      "_update_h_local_nu"),
     ("_update_e_local_nu", "rfx.runners.distributed_nu",
      "_update_e_local_nu"),
-    # #1038 leg 4 -- the NU H shard wrapper (inventory §2.4). v2 carried a
+    # leg 4 -- the NU H shard wrapper (inventory §2.4). v2 carried a
     # renamed copy (`_h_nu`) of the NU runner's own `_h` inside its `if is_nu:`
     # branch; both were nested closures, so the eight locals they read (mesh,
     # dt and the six inv-spacing arrays) became explicit parameters and each
@@ -960,7 +953,7 @@ _SHARED_HELPER_BINDINGS = (
     # fixture 9 (distributed_v2_nu_branch) and fixtures 11-12 are what say the
     # arrays did not move with it.
     ("update_h_nu_shmap", "rfx.runners.distributed_nu", "update_h_nu_shmap"),
-    # #1038 leg 4 -- the NU E shard wrapper, the other half of inventory §2.4.
+    # leg 4 -- the NU E shard wrapper, the other half of inventory §2.4.
     # The two inner kernels (`_e` / `_e_nu`) differed in the def name and
     # NOTHING else: their statement bodies were byte-identical before the
     # merge. Five locals became parameters. Also traced inside the step body,
@@ -968,7 +961,7 @@ _SHARED_HELPER_BINDINGS = (
     # (state, db_st, lr_st) with the polarisation state passed straight
     # through -- the shared body returns the state only.
     ("update_e_nu_shmap", "rfx.runners.distributed_nu", "update_e_nu_shmap"),
-    # #1303 -- the slab view of the four-cell edge mean. Not a de-duplication:
+    # the slab view of the four-cell edge mean. Not a de-duplication:
     # one definition that both runners' CPML E corrections call (the E
     # updates reach it through the shared kernels above), so the psi
     # coefficient and the update take one rule. These rows are what says
@@ -977,7 +970,7 @@ _SHARED_HELPER_BINDINGS = (
      "slab_e_component_materials"),
     ("slab_e_component_materials", "rfx.runners.distributed_v2",
      "slab_e_component_materials"),
-    # #1303 -- the forward lane's four-cell means, built once before its
+    # the forward lane's four-cell means, built once before its
     # loop by the same helper (the uniform runner takes them in its loop body).
     ("slab_e_materials_shmap", "rfx.runners.distributed_nu",
      "slab_e_materials_shmap"),
@@ -1074,7 +1067,7 @@ def test_every_shared_helper_has_an_identity_guard():
 # back as an alias. That matters beyond tidiness --
 # tests/unit/materials/test_sheet_impedance.py keys its FENCE_REGISTRY on
 # (path, ENCLOSING FUNCTION, message) and its _fence() asserts the raising
-# TRACEBACK FRAME, so six #677 refusals (seven until #1296) must keep being
+# TRACEBACK FRAME, so six refusals must keep being
 # raised from inside run_distributed / run_uniform / run_nonuniform_path in
 # their current files.
 _RUNNER_ENTRY_POINTS = (
@@ -1088,7 +1081,7 @@ _RUNNER_ENTRY_POINTS = (
      "run_subgridded_path"),
     ("disjoint", "run_disjoint_stage2_path", "rfx.runners.disjoint",
      "run_disjoint_stage2_path"),
-    # KEPT THROUGH #1296, which removed the pmap runner: the module stays for
+    # The module stays for
     # one release, and its run_distributed is now the stub that raises with
     # the replacement named (test_the_package_no_longer_exports_run_distributed
     # calls it). It is still defined in rfx.runners.distributed, which is what
@@ -1103,8 +1096,7 @@ _RUNNER_ENTRY_POINTS = (
 
 #: rfx/runners/__init__.py's __all__.
 #:
-#: CHANGED BY #1038 leg 6 (was, at 9866bafd, this tuple plus a trailing
-#: "run_distributed"). Leg 6 retires the v1 pmap runner as a PUBLIC entry
+#: Leg 6 retires the v1 pmap runner as a PUBLIC entry
 #: point: the package-level ``run_distributed`` resolved to ``distributed.py``,
 #: which ``sim.run(devices=...)`` reaches only as v2's ``n_devices == 1`` fast
 #: path, while the runner it actually dispatches to
@@ -1125,7 +1117,7 @@ _RUNNERS_ALL = ("run_nonuniform_path", "run_subgridded_path", "run_uniform")
 #: routine for what happens when a test evicts rfx.runners from sys.modules
 #: and that chain is not what it was.
 #:
-#: CHANGED BY #1038 leg 6: ("rfx.runners.distributed", "run_distributed") was
+#: ("rfx.runners.distributed", "run_distributed") was
 #: the fourth row and is gone with the public export. That SHORTENS the eager
 #: chain twice over -- verified in a fresh interpreter, ``import rfx.runners``
 #: now loads neither ``rfx.runners.distributed`` nor, transitively,
@@ -1224,7 +1216,7 @@ def test_the_package_no_longer_exports_run_distributed():
     assert v1.run_distributed.__module__ == "rfx.runners.distributed"
     assert v2.run_distributed.__module__ == "rfx.runners.distributed_v2"
 
-    # #1296: the pmap runner is gone; its name raises and names the
+    # the pmap runner is gone; its name raises and names the
     # replacement, whatever it is called with.
     with pytest.raises(RuntimeError) as excinfo:
         v1.run_distributed(object(), n_steps=1)
