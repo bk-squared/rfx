@@ -203,8 +203,7 @@ def test_msl_ad_fd_converged_tight():
     derivation — the value is _REL_ERR_THRESHOLD, do not hardcode it here).
 
     #729 repairs the port/trace plane mismatch, drives the full fixed band,
-    and explicitly selects float64 fields for FD. Its predeclaration and
-    current qualification live in docs/research_notes/issue729/. Values in
+    and explicitly selects float64 fields for FD. Values in
     the historical discussion below do not measure this repaired fixture.
 
     G-AD-CHECKPOINT (un-skipped 2026-05-26): the num_periods=20 reverse-AD tape
@@ -226,8 +225,7 @@ def test_msl_ad_fd_converged_tight():
     comparator were debugged, and their numbers are SUPERSEDED — kept only
     so the record of why the objective changed is not lost.
 
-    Why the old objective had to go (full derivation: issue #530, PI decision
-    linked from #530's final comment): for a passive network S^dag S <= I,
+    Why the old objective had to go (full derivation: issue #530): for a passive network S^dag S <= I,
     so each column of S has norm <= 1 and sum_ij|S_ij|^2 <= 2 per frequency —
     16 over the old gate's 8 bins. Its measured loss was 16.00599: 99.96% a
     passivity-pinned STRUCTURAL CONSTANT, with the differentiated signal

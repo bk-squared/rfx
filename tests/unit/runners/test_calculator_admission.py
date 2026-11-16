@@ -6,6 +6,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec
+from rfx.errors import RfxUnsupported
 from rfx.runners import _admission as A
 from tests.unit.runners.test_silent_routes import _sim, _mixed
 from tests.unit.sparams.test_waveguide_solver_precision import _guide
@@ -275,8 +276,14 @@ def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator,
         return
     with pytest.raises(NotImplementedError) as caught:
         call()
-    assert "does not carry" in str(caught.value)
-    assert A.ROW_WORDS[row] in str(caught.value)
+    if calculator == "s_matrix_scan" and feature in ("coax", "scan_angle"):
+        assert type(caught.value) is RfxUnsupported
+        assert "Lumped/wire S scans require isolated port drives; foreign drives:" in str(caught.value)
+        assert ("coaxial port 0 at" if feature == "coax" else "Floquet floquet_0") in str(caught.value)
+        assert "run(compute_s_params=False)" in str(caught.value)
+    else:
+        assert "does not carry" in str(caught.value)
+        assert A.ROW_WORDS[row] in str(caught.value)
 
 
 EXTRA_SETTINGS = [

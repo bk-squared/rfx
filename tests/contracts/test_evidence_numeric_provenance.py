@@ -319,7 +319,7 @@ CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
 # falsifier argument is "no committed rung is near 1.0" -- exactly the shape that
 # is worthless if the numbers stop resolving. Opted in with its section 3.
 AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
-# 2026-09-24: the CPML Yee half-cell note cites receipts in rfx-archive.
+# The CPML Yee half-cell note cites archived receipts.
 CPML_STAGGER_NOTE = "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md"
 # 2026-09-14 (#813): the cv01 CPML flux self-check pre-declaration. Its result
 # section quotes the four-point cpml_layers sweep -- the numbers that decide a
@@ -497,7 +497,7 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # case and took the last 2; the one row left carries none, so the floor
     # has nothing to hold and is removed.
     # 2026-09-24: the CPML note's 12-reference floor left with its receipts
-    # under the PI archive rule; the note now cites rfx-archive in plain text.
+    # under the archive rule; the note now cites the receipts in plain text.
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -646,7 +646,7 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # the manifest listed no case by then and carried no citation, so dropping it
 # from DOCUMENTS moves nothing. Measured after the deletion: 277 references,
 # 264 value-checked, 25 artifacts; the floors stand.
-# 2026-09-24: after removing the CPML receipts to rfx-archive and the old
+# After removing the CPML receipts and the old
 # Sheen low-pass filter records, the merged-tree census measures 297 references,
 # 280 value-checked references and 30 distinct artifacts. Set all three floors
 # to that measured census.
@@ -719,6 +719,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/guide/benchmarks.mdx": GATED,
     "docs/public/project/changelog.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/project/deprecation-policy.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/project/structure.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/start/concepts.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/examples/first-patch.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/start/install.mdx": NO_ARTIFACT_REFERENCE,
@@ -891,8 +892,8 @@ CLASSIFICATION: dict[str, str] = {
     # out of a committed JSON, so there is no `path.json::key` for the gate to
     # resolve.
     "docs/design_notes/717_crossval_lane_decision.md": NO_ARTIFACT_REFERENCE,
-    # 2026-09-24: the measurement receipts moved to bk-squared/rfx-archive
-    # under the PI repository-contents rule. This note uses plain archive
+    # The measurement receipts are stored separately
+    # under the repository-contents rule. This note uses plain archive
     # citations; operator placement stays gated by
     # tests/unit/boundaries/test_cpml_yee_stagger.py.
     CPML_STAGGER_NOTE: NO_ARTIFACT_REFERENCE,
@@ -1068,12 +1069,11 @@ CLASSIFICATION: dict[str, str] = {
     # The coax open closed-can pre-declaration (issue 1218). No `::` span: its
     # numbers are read from open_absorber_diagnostic.json and the coax battery's
     # fixture.json, each named where it is quoted; the arms it declares are
-    # recorded in open_closed_can_arms.json. Both records moved to rfx-archive
-    # (rfx/records/20260924-coax-closed-can/) under the 2026-09-24 rule.
+    # recorded in open_closed_can_arms.json. Both records are stored separately.
     "docs/design_notes/20260924_coax_open_closed_can_predeclaration.md": NO_ARTIFACT_REFERENCE,
     # The showcase pre-declaration (issue 1332). No `::` span: it declares checks
     # and thresholds before the runs, and the numbers they produced live in
-    # rfx-archive (rfx/records/20260927-showcase-*/), named in the PR, not here.
+    # records named in the PR, not here.
     "docs/design_notes/20260927_showcase_predeclaration.md": NO_ARTIFACT_REFERENCE,
     # The lane-admission pre-declaration: a design and its judges, written
     # before the code. No `::` span; its counts are read from the table.
@@ -1210,7 +1210,7 @@ def collect(root: Path, documents=DOCUMENTS) -> list[Reference]:
 
 
 # --------------------------------------------------------------------------
-# Which lane checks what (PI, 2026-09-22 and 2026-09-24)
+# Which lane checks what
 #
 # The manifest is JSON the crossval runner reads, so its citations are checked
 # in the required lanes. The Markdown documents are documentation: whether

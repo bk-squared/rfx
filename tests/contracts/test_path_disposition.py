@@ -20,6 +20,7 @@ import warnings
 from pathlib import Path
 
 from rfx import Simulation
+from rfx import _declarations as declarations
 from rfx.runners import _admission as A
 from tests.contracts import path_disposition as T
 
@@ -189,12 +190,20 @@ def _fresh_attributes():
 
 
 def test_every_simulation_attribute_has_a_row():
-    new = sorted(_fresh_attributes() - set(T.TABLE))
+    declared = {name for name, _ in declarations.DECLARATIONS}
+    required = _fresh_attributes() | declared
+    assert set(T.PENDING_ROWS) <= declared, (
+        f"PENDING_ROWS names absent from DECLARATIONS: "
+        f"{sorted(set(T.PENDING_ROWS) - declared)}")
     # A removed attribute cannot be dropped; a stale row is harmless.
-    assert not new, (
-        f"Simulation gained {new}: add a row to tests/contracts/path_disposition.py "
-        "with a cell on every lane (carries, refuses, falls back, not reachable or "
-        "ignorable) and a ROW_CLASS entry")
+    assert required - set(T.TABLE) == set(T.PENDING_ROWS), (
+        f"Attributes without a TABLE row or PENDING_ROWS entry: "
+        f"{sorted(required - set(T.TABLE) - set(T.PENDING_ROWS))}. "
+        "For each, add a TABLE row in tests/contracts/path_disposition.py with "
+        "a cell on every lane, a ROW_CLASS entry and a detector in "
+        "rfx/runners/_admission.py; until that is done, add a PENDING_ROWS "
+        "entry with its reason. Remove PENDING_ROWS entries that now have "
+        f"a row: {sorted(set(T.PENDING_ROWS) & set(T.TABLE))}")
     assert set(T.ROW_CLASS) == set(T.TABLE), sorted(set(T.ROW_CLASS) ^ set(T.TABLE))
 
 

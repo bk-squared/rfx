@@ -15,8 +15,7 @@ Validates rfx's conductive-loss FDTD against exact analytics:
       dielectric-limited quality factor Q ~= 1/tan(delta).  Q is measured by
       Harminv ring-down and compared to 1/tan(delta) at the measured resonance.
 
-R5 (curves recorded before the gates were set):
-docs/research_notes/20260702_w32_lossy_material.md.  Measured margins are far
+R5 (curves recorded before the gates were set).  Measured margins are far
 inside the gates (alpha mean rel-err 0.5-0.9%; Q rel-err <0.2%); the gates are
 set at 5% (alpha, mirroring the dispersive-Fresnel oracle) and 5% (Q, generous
 vs the 0.12% measured — Harminv Q is noisier than a decay-rate fit).

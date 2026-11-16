@@ -49,7 +49,7 @@ class ConductorWidthAxis:
 
 
 def f0_uses_solved_span(spec):
-    """D:c1d171: compare the assembled model's Rs = 1/G with 0.01 eta0."""
+    """Compare the assembled model's Rs = 1/G with 0.01 eta0."""
     from rfx.core.yee import MU_0, EPS_0
     return abs(1.0 / float(spec.g_sheet)) <= 1e-2 * np.sqrt(MU_0 / EPS_0)
 
@@ -812,7 +812,7 @@ def preview_port_stages(sim, conductors):
             if label not in done:
                 port = msl_port_from_entry(entry)
                 support = list(_msl_yz_cells(grid, port))
-                if conductors.lane == 'nonuniform' or getattr(entry, "mode", "laplace") != "uniform":
+                if getattr(entry, "mode", "laplace") != "uniform":
                     from rfx.sources.msl_port import compute_msl_mode_profile, msl_cross_section_span, msl_cell
                     span = msl_cross_section_span(grid, port)
                     centre = msl_cell(entry.direction, span["i_feed"], span["w_centre"],
@@ -1136,14 +1136,20 @@ def refuse_layout_metal_consumers(layout, sim, grid):
             "uniform mesh (closed_box=True)")
     from rfx._internal._grid_metric import field_index
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
-    solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
-              for spec in sim._lumped_rlc if spec.topology == 'series' or spec.L > 0}
+    rlc_stages = {
+        (spec.component, tuple(field_index(grid, spec.position, spec.component))):
+        ("lumped RLC post-keep solve" if spec.topology == 'series' or spec.L > 0 else
+         f"lumped_rlc[{i}], which the switched sheet would short "
+         "(a layout keeps no element edge free),")
+        for i, spec in enumerate(sim._lumped_rlc)
+    }
     spans = [msl_cross_section_span(grid, msl_port_from_entry(port))
              for port in sim._msl_ports]
     for index, sheet, axis, indices in _layout_edges(layout, grid):
         for edge in zip(*(v.ravel().tolist() for v in indices)):
-            if (f"e{'xyz'[axis]}", edge) in solved:
-                _layout_stage_error(index, sheet, "lumped RLC post-keep solve", axis, edge)
+            stage = rlc_stages.get((f"e{'xyz'[axis]}", edge))
+            if stage is not None:
+                _layout_stage_error(index, sheet, stage, axis, edge)
             if getattr(sim, '_current_moments', None) is not None:
                 _layout_stage_error(index, sheet, "current-moment metal census", axis, edge)
             for span in spans:

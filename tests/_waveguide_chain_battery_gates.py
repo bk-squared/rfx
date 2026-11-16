@@ -143,7 +143,7 @@ AD_LEGS = {
 }
 # Historical schema 1--3 replay ONLY; no prospective expected-skip/null leg.
 EXPECTED_ULP_SKIP = {("pec_short", "eps", "s11_mag2")}
-# v1.8 closing declaration (PI, 2026-09-05; docs/design_notes/20260905_v18_close_predeclaration.md):
+# v1.8 closing declaration (docs/design_notes/20260905_v18_close_predeclaration.md):
 # contract criterion 1 (forward identity) and 3(a) (AD-vs-FD) are evaluated under x64 on the
 # lanes named here. The forward default stays float32. `normalize=False` is bit-identical at 0
 # in float32 and is not declared. Both readings are stored in the artifact; `primary_precision`
@@ -608,7 +608,7 @@ forward_identity_pass = forward_identity_historical_pass
 
 
 def forward_identity_cross_trace_pass(max_abs_diff: float, abs_untraced_at_worst: float) -> bool:
-    # Repository rule "Cross-trace agreement" (PI 2026-09-23/25): 1e-4 of
+    # Repository rule "Cross-trace agreement": 1e-4 of
     # the peak of the same compared array. A frozen record's |untraced| at
     # the worst scaled entry is a LOWER bound on that peak, so this gate is
     # at least as strict as the rule. A live comparison must use its true peak.

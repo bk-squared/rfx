@@ -12,7 +12,6 @@ Measurement: a +x TFSF plane wave in vacuum; the f0 DFT-phasor phase slope over 
 is -k_x (the discrete wavenumber). Measured (CPU): v_p/c err vs Yee 0.01%/0.04% @ N=15/30; the Yee
 deficit 0.50%/0.12% converges ~1/N². The N=15 case is DISCRIMINATING — a solver with no/wrong
 dispersion would read v_p/c ≈ 1.0, differing from Yee (0.995) by the 0.5% deficit.
-Harness: docs/research_notes/experiments/numerical_dispersion_oracle.py
 """
 import numpy as np
 import jax.numpy as jnp

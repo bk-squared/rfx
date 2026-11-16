@@ -11,7 +11,7 @@ def build(case, cells=45, *, layers=12, shift=False, one_port=False):
     dx = A/cells
     interface = round(.060/dx)*dx
     step_bins = np.arange(70,80,dtype=float)*1e8
-    # O1 includes O2's exact bins for the leader's filled-side comparator.
+    # O1 includes O2's exact bins for the filled-side comparator.
     freqs = (np.unique(np.r_[np.linspace(5e9,7.9e9,9),step_bins])
              if case in ('O1','W2','W2_empty','empty_filled_band') else step_bins)
     if case in ('empty_filled_band','W2_empty'):
@@ -99,7 +99,7 @@ def _resolved_ports(call):
 
 def record_steps(cells):
     """The predeclared record: the a/45 settled table's worst tail share at 16000 steps is 2.0e-3 (empty) and 1.8e-3
-    (step), record 20261025-nu-settled-wr90 LEADER-READING."""
+    (step)."""
     return round(16000*cells/45)
 
 

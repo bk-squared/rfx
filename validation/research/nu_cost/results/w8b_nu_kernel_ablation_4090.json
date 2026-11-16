@@ -8,7 +8,7 @@
    "--suite",
    "g1b",
    "--out",
-   "/root/workspace/claude-workspace/rfx/runs/nu-cost-ablation-g1b/20260910T034258Z-fe86c11b/w8_nu_kernel_ablation_g1b_results.json"
+   "<workspace>/rfx/runs/nu-cost-ablation-g1b/20260910T034258Z-fe86c11b/w8_nu_kernel_ablation_g1b_results.json"
   ],
   "jax_version": "0.4.33.dev20241023+e3c6d6430",
   "device": "cuda:0",

@@ -24,6 +24,9 @@ import numpy as np
 
 from rfx.core.jax_utils import is_tracer
 from rfx.measurement.phasors import exp_j
+from rfx.measurement.waveguide_power import (
+    power_wave_defined, power_wave_pair, finite_wave_ratio, mask_power_wave, warn_power_waves,
+)
 from rfx.measurement.waveguide_s import (
     assemble_normalized_waveguide_column,
     _waveguide_s21_phase_residual,
@@ -63,6 +66,12 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 from rfx.model.waveguide_mesh import flux_mesh_entry
+
+
+def _refused_waveguide_positions(cfgs):
+    """Entry refusals from modal cutoffs, never from numerical NaNs in S."""
+    defined = jnp.stack([power_wave_defined(cfg) for cfg in cfgs])
+    return ~(defined[:, None, :] & defined[None, :, :])
 
 
 @jax.custom_jvp
@@ -323,11 +332,13 @@ def compute_waveguide_s_matrix(
     from rfx.boundaries.pmc import refuse_waveguide_pmc
     refuse_waveguide_pmc(self)
     from rfx.runners._admission import admit
-    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
+    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec,
+                                              "subpixel_smoothing": subpixel_smoothing})
     if port_reference_sims is not None:
         for reference in port_reference_sims:
             refuse_waveguide_pmc(reference)
-            admit(reference, "waveguide_s_matrix")
+            admit(reference, "waveguide_s_matrix",
+                  run_args={"subpixel_smoothing": subpixel_smoothing})
 
     conformal_solve = None
     if conformal_pec:
@@ -413,20 +424,10 @@ def compute_waveguide_s_matrix(
             eps_override=eps_override,
             sigma_override=sigma_override,
             checkpoint_segments=checkpoint_segments,
-        )
-        completed = _finalize_sparam_result(
-            _res_nu,
-            extractor="compute_waveguide_s_matrix",
-            strict=strict_passivity,
-            check_reciprocity=True,
-            # normalize=False carries documented Yee-dispersion + band-edge
-            # |S11| overshoot (validated paths reach ~1.4-1.7), so use a
-            # loose bound there that still catches gross extractor bugs
-            # (|S11|>>1); reference subtraction / flux use the tighter bound.
-            passivity_tol=2.0 if normalize is False else 0.10,
+            strict_passivity=strict_passivity,
         )
         release_inspection(self)
-        return completed
+        return _res_nu
 
     _waveguide_stages._validate_waveguide_uniform(
         eps_override, is_tracer, normalize, port_reference_sims, self, sigma_override,
@@ -460,6 +461,8 @@ def compute_waveguide_s_matrix(
     from rfx.model.pole_stability import courant_budget
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
+        # Keep the existing ambient ADE state dtype for lower-precision runs.
+        field_dtype=resolve_field_dtype(self._precision) if self._precision == "float64" else None,
         periodic=self._periodic_flags(), grid=grid)
 
     has_multimode, raw_cfgs, reference_medium = _waveguide_stages._prepare_waveguide_configs(
@@ -539,7 +542,7 @@ def compute_waveguide_s_matrix(
     ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
-        conformal_pec=conformal_pec,
+        conformal_pec=conformal_pec, dtype=resolve_field_dtype(self._precision) or jnp.float32,
         reference_eps=float(reference_medium.eps_r))
 
     from rfx.model.realization_table import finish_table
@@ -576,6 +579,7 @@ def compute_waveguide_s_matrix(
         )
         completed = _finalize_sparam_result(
             _res_mm,
+            refused_positions=_refused_waveguide_positions(_flatten_cfgs(raw_cfgs)),
             extractor="compute_waveguide_s_matrix",
             strict=strict_passivity,
             check_reciprocity=True,
@@ -740,6 +744,7 @@ def compute_waveguide_s_matrix(
     )
     completed = _finalize_sparam_result(
         _res_sm,
+        refused_positions=_refused_waveguide_positions(cfgs),
         extractor="compute_waveguide_s_matrix",
         strict=strict_passivity,
         check_reciprocity=True,
@@ -802,6 +807,7 @@ def _compute_waveguide_s_matrix_nu(
     eps_override=None,
     sigma_override=None,
     checkpoint_segments: int | None = None,
+    strict_passivity: bool = False,
 ) -> WaveguideSMatrixResult:
     """Non-uniform-mesh two-run S-matrix extraction.
 
@@ -903,6 +909,7 @@ def _compute_waveguide_s_matrix_nu(
         self, e, grid, resolve_waveguide_port_freqs(self, e), n_steps) for e in entries]
     medium_cfgs = resolve_preflight_port_configs(
         self, grid, medium_cfgs, eps_override=eps_override, sigma_override=sigma_override)
+    warn_power_waves(medium_cfgs)
     reference = _empty_waveguide_reference(self, _reference_medium(medium_cfgs, normalize))
 
     # Frequency grid must match across ports.
@@ -1064,7 +1071,8 @@ def _compute_waveguide_s_matrix_nu(
                 # AD-safe angle (double-where): angle() has an
                 # undefined gradient at 0; angle(1)=0 matches
                 # np.angle(0)=0 so the primal is unchanged.
-                ratio = b_recv_dev / safe_a_inc
+                defined = power_wave_pair(dev_wg[recv_name], ref_wg[drive_name])
+                ratio = finite_wave_ratio(b_recv_dev, safe_a_inc, defined)
                 ratio_ok = jnp.abs(ratio) > 0.0
                 phase = jnp.angle(
                     jnp.where(ratio_ok, ratio, jnp.ones_like(ratio))
@@ -1078,7 +1086,9 @@ def _compute_waveguide_s_matrix_nu(
                 # d(sqrt)/dx = inf would leak 0*inf=nan through the
                 # backward pass; primal stays exactly sqrt(x) for
                 # x>0 and exactly 0 at x=0.
-                p_ratio = _flux_power_ratio(P_num, safe_P_inc)
+                p_ratio = _flux_power_ratio(
+                    jnp.where(defined, P_num, 0), jnp.where(defined, safe_P_inc, 1),
+                )
                 p_ok = p_ratio > 0.0
                 mag = jnp.where(
                     p_ok,
@@ -1087,7 +1097,7 @@ def _compute_waveguide_s_matrix_nu(
                     ),
                     0.0,
                 )
-                recv_col.append(mag * exp_j(phase, xp=jnp))
+                recv_col.append(mask_power_wave(mag * exp_j(phase, xp=jnp), defined))
             s_columns.append(recv_col)
             continue
 
@@ -1106,6 +1116,7 @@ def _compute_waveguide_s_matrix_nu(
         # small-signal guard; the diagonal keeps its existing floor.
         s_columns.append(assemble_normalized_waveguide_column(
             b_out_dev, b_out_ref, a_inc_ref, drive_idx,
+            port_cfgs=[dev_wg[e.name] for e in original_entries],
             diagonal_floor=1e-30, transmission_floor=1e-60, xp=jnp,
         ))
 
@@ -1128,7 +1139,7 @@ def _compute_waveguide_s_matrix_nu(
         _s_params_nu, port_freqs, _reference_planes_nu, final_cfgs or [],
         normalize=normalize,
     )
-    return WaveguideSMatrixResult(
+    result = WaveguideSMatrixResult(
         s_params=_s_params_nu,
         freqs=jnp.asarray(port_freqs),
         port_names=tuple(e.name for e in original_entries),
@@ -1137,6 +1148,20 @@ def _compute_waveguide_s_matrix_nu(
         settling_db=settling_db, settling_witness=tuple(settling_details),
         s21_phase_residual_deg_rms=_ph_rms_nu,
         s21_phase_residual_meta=_ph_meta_nu,
+    )
+    # Finalize here, where the extraction's resolved modal configs are still
+    # available, rather than using the outer preflight's best-effort configs.
+    return _finalize_sparam_result(
+        result,
+        refused_positions=_refused_waveguide_positions(final_cfgs),
+        extractor="compute_waveguide_s_matrix",
+        strict=strict_passivity,
+        check_reciprocity=True,
+        # normalize=False carries documented Yee-dispersion + band-edge
+        # |S11| overshoot (validated paths reach ~1.4-1.7), so use a
+        # loose bound there that still catches gross extractor bugs
+        # (|S11|>>1); reference subtraction / flux use the tighter bound.
+        passivity_tol=2.0 if normalize is False else 0.10,
     )
 
 

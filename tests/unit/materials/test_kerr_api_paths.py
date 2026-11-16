@@ -22,9 +22,7 @@ monotone in χ³ (0.25/0.46/0.88 @ χ³=0.5/1/2) and finite; and — the key rea
 the peak field amplitude is PRESERVED (0.93–1.14× across χ³, a lossless index change), which
 the pre-#437 dissipative operator would have driven well below 1. The exact quantitative SPM
 magnitude (matching k0·L·χ³⟨E²⟩/(2n0) to a few %) still needs a clean CW ⟨E²⟩ comparator; the
-operator's correctness against analytic ε_eff is pinned in 1D by
-docs/research_notes/experiments/kerr_reactive_1d_verify.py.
-Harness: docs/research_notes/experiments/kerr_spm_*.py, kerr_operator_decider.py.
+operator's correctness against analytic ε_eff is pinned in 1D.
 """
 import numpy as np
 import pytest

@@ -18,8 +18,7 @@ Guide construction (fixture engineering, not contract constants):
   Re(Zs_eff)/Rs0 = 0.9975). If the sheets simply truncated at a CPML pad
   (thin conductors are applied AFTER pad extension, issue #642) the wave
   would see a 5 mm -> 6 mm guide-height step reflecting |Gamma| = 1/11 =
-  0.0909; a 1-D transfer-matrix comparator (run at design time; table in
-  docs/research_notes/) showed that ripple biases the 100 mm log-linear
+  0.0909; a 1-D transfer-matrix comparator (run at design time) showed that ripple biases the 100 mm log-linear
   fit by up to 15.5% worst-case over phase — the naive fixture would fail
   its own gates for reasons that are FIT contamination, not sheet physics.
   The guide is therefore terminated by an in-guide graded absorber:
@@ -57,7 +56,6 @@ The one-cell absorber boxes now use canonical integer-node bounds. The old
 decimal additions left sigma=0 at x=144 mm and displaced eight ramp values.
 A controlled repair on current main restores the old profiles and the
 0.72494 endpoint pin without changing the sheet operator or either gate.
-Evidence: docs/research_notes/2026-09-13_issue947_oracle_repair.md.
 
 Current record (2026-09-25): alpha_fit at 10 GHz is 0.74950 Np/m,
 the closed-form distance is 0.28945, and the guide sqrt-sigma ratio is
@@ -230,8 +228,7 @@ O3 MODEL RE-PAIR (#700, measured 2026-08-24, this fixture, JAX CPU
 
 Full per-bin dump, alpha(f) trace, verbatim preflight output, the
 mesh-refinement sweep with its per-window decay-rate table, and the
-sigma_bulk = 1e6 deep-screened evidence case: docs/research_notes/
-2026-08-19_leontovich_sheet_envelope.md (local-only). #700 scout report
+sigma_bulk = 1e6 deep-screened evidence case were recorded. #700 scout report
 (exact-spectrum solve, energy closure, blind-predicted g/dx/b sweeps):
 issue #700 verdict comment, 2026-08-24.
 """

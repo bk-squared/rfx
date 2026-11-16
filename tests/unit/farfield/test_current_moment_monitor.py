@@ -2121,9 +2121,9 @@ def test_the_checked_msl_edges_hold_every_edge_the_lane_stamps(
     """What the running lane stamps, recorded, against what the check reads.
 
     The port's load conductivity and its drive are recorded as the runner
-    writes them. Every recorded edge must be in the checked set. On the
-    uniform lanes ``mode="uniform"`` drives the trace width only, a strict
-    subset; everywhere else the two sets are equal.
+    writes them. Every recorded edge must be in the checked set. On every
+    lane ``mode="uniform"`` drives the trace width only, a strict subset;
+    ``mode="laplace"`` stamps exactly the checked set.
     """
     import rfx.sources.msl_port as msl
     from rfx.current_moments import _msl_port_edges
@@ -2150,7 +2150,7 @@ def test_the_checked_msl_edges_hold_every_edge_the_lane_stamps(
     checked = {("e" + "xyz"[c], e) for e in checked}
     assert stamped and driven == stamped
     assert stamped <= checked
-    if lane == "uniform" and mode == "uniform":
+    if mode == "uniform":
         assert len(stamped) < len(checked)
     else:
         assert stamped == checked
@@ -2380,7 +2380,7 @@ def test_the_distributed_nu_forward_lane_carries_it():
     """Graded forward(distributed=True) carries the monitor since #1402 step 4g.
 
     CPML: the wrapped step differs from one device by compile-form rounding
-    (rfx-archive DESIGN.md 4g amendment 1), so the record-summed bar 1e-4.
+    so the record-summed bar 1e-4.
     """
     from tests._multi_device_scene import host_devices
     dz = np.full(10, DX)

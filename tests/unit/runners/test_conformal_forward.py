@@ -82,7 +82,7 @@ def test_s_scan_moves_s_from_staircase():
             s_scan_scene(), freqs, n_steps=512, skip_preflight=True, conformal_pec=conformal)
         np.testing.assert_array_equal(bins, freqs)
         spectra.append(np.asarray(s)[0, 0].copy())
-    # D_k(main)/10 from rfx-archive rfx/records/20261112-test-audit-220fixes/gaps/DESIGN.md.
+    # D_k(main)/10.
     # All seven measured D_k exceed 1e-3; no bin is excluded.
     floor = np.array([2.390819e-4, 4.062380e-4, 3.0621594e-3, 8.380125e-4,
                       8.620271e-4, 3.0284235e-3, 2.90690035e-2])
@@ -126,7 +126,8 @@ def test_material_gradient_and_fresh_model_fd(monkeypatch):
     assert relative <= 1e-2, f'AD={ad}, FD(h)={fd}, FD(h/2)={half}, relative={relative}'
 
 
-def test_operands_match_run_bytes(monkeypatch):
+@pytest.mark.parametrize('scene_name', ('dielectric-sphere', 'cylinder'))
+def test_operands_match_run_bytes(monkeypatch, scene_name):
     from rfx import simulation
     from rfx.model import conformal_rules
     original = simulation.run
@@ -146,8 +147,13 @@ def test_operands_match_run_bytes(monkeypatch):
 
     monkeypatch.setattr(conformal_rules, 'conformal_fractions_from_table', formed)
     monkeypatch.setattr(simulation, 'run', captured)
-    ran = scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
-    forward = scene().forward(n_steps=STEPS, skip_preflight=True)
+    if scene_name == 'dielectric-sphere':
+        build_scene = scene
+    else:
+        from tests.unit.runners.test_silent_drop_warnings import _conformal_cavity
+        build_scene = lambda: _conformal_cavity(True)
+    ran = build_scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
+    forward = build_scene().forward(n_steps=STEPS, skip_preflight=True)
     assert len(operands) == 2
     assert len(fractions) == 2
     left, right = (jax.tree.leaves((operands[i], fractions[i])) for i in range(2))

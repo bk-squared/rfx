@@ -8,8 +8,7 @@ built on that completed spectrum must be the derivative of the INFINITE-record
 spectrum: when a design parameter moves a resonance, the frequency-shift term
 ``r n dt s' lambda**n`` is what a cut record lacks and the completion supplies.
 
-The map, ``y (n, C) -> completed spectra (nf, C)``, is the research lane's E3'
-(rfx-archive ``20260924_acc_E3_reverse_mode_completion_results.md``):
+The map, ``y (n, C) -> completed spectra (nf, C)``, is the research lane's E3':
 
 * VALUE: the pencil poles ``s0`` from the host (``jax.pure_callback`` on
   ``stop_gradient`` data, identified by :func:`rfx.ringdown.identify`, the

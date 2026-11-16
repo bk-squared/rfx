@@ -1,4 +1,4 @@
-"""D:c1d171: only PEC-like f0 sheets claim the measured free-edge span."""
+"""Only PEC-like f0 sheets claim the measured free-edge span."""
 import numpy as np
 import pytest
 
@@ -54,7 +54,7 @@ def test_above_threshold_extent_warns_without_refusal(snap, graded, path):
     nodes = np.r_[0., np.cumsum(cells)]
     occupied = nodes[(nodes >= 3.15 * dx) & (nodes <= 8.85 * dx)]
     expected = occupied[-1] - occupied[0]
-    # The node span misses the drawing by >1%; D:8ea1e2 still forbids refusal.
+    # The node span misses the drawing by >1%; refusal is still forbidden.
     assert abs(expected / ((8.85 - 3.15) * dx) - 1) > .01
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')

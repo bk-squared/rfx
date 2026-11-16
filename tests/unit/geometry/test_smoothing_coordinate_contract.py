@@ -15,8 +15,7 @@ Three things are pinned here:
 (3) replaced the measured DRIFT PIN PR #1088 left here (max rel 1.131e-06 /
 6.467e-07 / 1.025e-06 for ex/ey/ez, 15 / 5 / 11 f32 ulps on the Box fixture,
 every interface voxel differing): with concrete shapes the smoothing chain now
-runs in host float64 and is cast to the active JAX dtype once (option (a),
-PI decision 2026-09-16), so the two flags agree exactly and the lock is
+runs in host float64 and is cast to the active JAX dtype once, so the two flags agree exactly and the lock is
 bitwise. A traced shape parameter still takes the ``jax.numpy`` path, which
 is exercised separately below.
 

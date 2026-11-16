@@ -56,7 +56,7 @@ def test_forward_record_user_jit_matches_eager(kind):
 
 
 def fallback_scene(kind):
-    """Uniform scenes from the leader's probe_fallback_user_jit.py."""
+    """Uniform scenes from probe_fallback_user_jit.py."""
     if kind == 'waveguide':
         sim = Simulation(12e9, (.06, .02, .01), dx=.002, cpml_layers=4,
                          boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'})

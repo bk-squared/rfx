@@ -69,9 +69,9 @@ A2  example  : openEMS python/Tutorials/Simple_Patch_Antenna.py
       f_res 2.4221 GHz (harminv on port V, Q 20.1), S11 dip 2.4300 GHz at
       -27.8 dB, broadside D 6.79 dBi, stopped on EndCriteria=1e-4 at step
       8671 with energy -41.09 dB.
-    log path: docs/research_notes/vessl_logs/
+    log path: <local log directory>/
               patch_tutorial_openems_GOOD_369367246713.log -- LOCAL-ONLY.
-      Verified 2026-09-01 from this worktree: ``ls docs/research_notes/
+      Verified 2026-09-01 from this worktree: ``ls <local notes directory>/
       vessl_logs/`` -> "No such file or directory". The number above is
       carried from the precedent script's own header, which marks the log
       "(local-only)". This referee's A2 record therefore states the log as
@@ -464,13 +464,13 @@ REPRODUCE_GATE_RECORD: dict = {
             "stop": "EndCriteria=1e-4 at step 8671, energy -41.09 dB",
             "vessl_run_id": "369367246713",
             "log_path": (
-                "docs/research_notes/vessl_logs/"
+                "<local log directory>/"
                 "patch_tutorial_openems_GOOD_369367246713.log"
             ),
             "log_present_in_tree": False,
             "log_caveat": (
                 "LOCAL-ONLY. Verified 2026-09-01 from this worktree: 'ls "
-                "docs/research_notes/vessl_logs/' -> 'No such file or "
+                "<local log directory>/' -> 'No such file or "
                 "directory'. The precedent script's header marks it "
                 "'(local-only)'; the predeclaration dropped that caveat and "
                 "it is restored here. This lane writes its own A2 log into "

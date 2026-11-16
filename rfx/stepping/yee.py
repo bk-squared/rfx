@@ -21,7 +21,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
              bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool],
-             magnetic_factors=(None, None, None)) -> FDTDState:
+             magnetic_factors=(None, None, None),
+             h_row_factors=(None, None, None)) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -67,6 +68,10 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic)
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
     ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
+
+    from rfx.boundaries.pmc import magnetic_update_coefficients
+    ch_x, ch_y, ch_z = magnetic_update_coefficients(
+        (ch_x, ch_y, ch_z), h_row_factors)
 
     # curl E components via forward staggered differences (order=2 byte-identical)
     # dEz/dy - dEy/dz

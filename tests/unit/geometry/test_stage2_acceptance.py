@@ -20,7 +20,7 @@ Locks three physics requirements before Stage 2 can be promoted to claims-bearin
 
 Step 5 gate still pending:
   - Patch antenna gate: the case that carried it, the former cv05 patch case,
-    was removed 2026-09-21; see rfx-known-issues.md.
+    was removed 2026-09-21.
   - Rotated PEC cavity: blocked on rfx lacking a rotation/affine geometry
     primitive (Box, Cylinder, Sphere are all axis-aligned).
 

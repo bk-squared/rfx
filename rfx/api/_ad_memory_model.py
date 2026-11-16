@@ -8,12 +8,11 @@ from rfx.model.design_box import design_box_bounds, design_box_window
 
 
 # Calibrated (GPU, jax 0.10.2): maximum G1 intercept/cell, rounded up to 8 B.
-# rfx-archive:rfx/records/20261016-ad-memory-tape-terms/
-# G1 acc-admem-g1-20261016t043022z-648d9; both maxima are the 21^3 rows.
+# Both G1 maxima are the 21^3 rows.
 AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
 
 # Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2.
-# rfx/records/20261027-compiled-gradient-estimate/: working arrays beyond one carry.
+# Working arrays beyond one carry.
 AD_MEMORY_WORKING_CARRIES = 6.5
 
 
@@ -170,20 +169,11 @@ def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
     Choose B * line_bytes > record_bytes. The resident record is not
     itself a saved carry.
 
-    Review measurements (theta=30 deg; decimal MB; cells, phi, steps,
-    H/E reads, record MB, one line MB, record/line):
-      43   0  1000    835/835       6.7   4.76    1.4
-      43   0  4000    835/835      26.7  18.73    1.4
-      43  45  1000   2240/2240     17.9   2.41    7.4
-      43  45  4000   2240/2240     71.7   9.46    7.6
-      83   0  1000   7315/7315     58.5   4.91   11.9
-      83   0  4000   7315/7315    234.1  18.87   12.4
-      83  45  1000  12909/12909   103.3   2.49   41.4
-      83  45  4000  12909/12909   413.1   9.55   43.3
-     163   0  1000  32376/32376   259.0   5.20   49.8
-     163   0  4000  32376/32376  1036.0  19.17   54.1
-     163  45  1000  34269/34269   274.2   2.66  102.9
-     163  45  4000  34269/34269  1096.6   9.72  112.8
+    The matched termination makes line_bytes independent of steps:
+      record steps    record bytes                 one line bytes
+      N               4 * N * (H_reads + E_reads)   24 * n_nodes
+      4N              16 * N * (H_reads + E_reads)  24 * n_nodes
+    Thus increasing the record no longer increases each saved line.
 
     A trace-time constant is invisible to memory_analysis: the selected
     record must be built with recorded_scan so the compiled program counts it.

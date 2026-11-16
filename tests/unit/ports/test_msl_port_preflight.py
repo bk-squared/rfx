@@ -6,8 +6,7 @@ substrate under-resolved). Each check:
   - fires a clear warning on bad geometry with a concrete fix message
   - stays silent on a properly-set-up MSL port
 
-See also docs/research_notes/20260504_msl_meshconv_fixed_ly.md and
-rfx/api.py:_check_msl_port_geometry.
+See also rfx/api.py:_check_msl_port_geometry.
 """
 
 from __future__ import annotations
@@ -316,7 +315,6 @@ def test_strict_mode_raises_on_bad_geometry():
 # Reflector clearance check (Y2 finding 2026-05-06): the 3-probe Z₀
 # extractor in compute_msl_s_matrix sits in a standing-wave region when
 # a strong reflector (open λ/4 stub etc.) is too close to the V₃ probe.
-# See docs/research_notes/20260506_y2_s11_notch_bias_root_cause.md.
 # ---------------------------------------------------------------------------
 def _build_sim_with_stub(*, dx: float, l_line_mm: float, l_stub_mm: float = 8.637,
                          freq_max: float = 9e9) -> Simulation:

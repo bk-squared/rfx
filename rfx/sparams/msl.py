@@ -182,8 +182,8 @@ def compute_msl_s_matrix(
     (chain-battery thru at 100 µm, 50 µm and z-graded; εr 10.2 / h 0.6 mm
     board), phase error at most 5.5e-3 rad; within 1.23 % on a 4-cell
     substrate (0.8 mm εr 2.2, dx 0.2 mm), phase error at most 1.9e-2 rad
-    over 2-18 GHz (1.33e-2 up to 15 GHz) (rfx-archive MSL-PLANE.md,
-    decision records 10-15). The phase-only shift is exact for a line whose
+    over 2-18 GHz (1.33e-2 up to 15 GHz).
+    The phase-only shift is exact for a line whose
     Zc equals the reference R (the closed-form Z0). Under ``eps_override``
     β and that Z0 come from the permittivity the override sets under the
     port line (traced, so the gradient carries the plane term), the shift

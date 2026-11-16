@@ -25,6 +25,7 @@ OUTSIDE_GENERAL = {
     'port_index_mirror_known_e_plane_offset': 'S-parameter mirror audit only',
     'port_junction_probe_clearance': 'S-parameter runtime junction audit only',
     'dc_film_traced_pair': 'runtime JAX callback, outside preflight capture',
+    'waveguide_aperture_size_unchecked': 'low-level initializer warning, outside preflight capture',
 }
 
 

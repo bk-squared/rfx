@@ -245,7 +245,7 @@ cv01, before (unchanged artifacts):
 (`pad_replication_shape.py`, section 2 above) before any solver ran, and the
 falsifier was pre-declared in section 8.4 before the implementation existed.
 
-**R3**: `memory=rfx-known-issues.md "Added 2026-09-15"` — the #831 root-cause
+**R3**: `memory="Added 2026-09-15"` — the #831 root-cause
 entry names the three sites and the missing step, and the #1043 stage-A entry
 says both cv01 numbers stay facet-dominated until stage B. Consistent with both;
 contradicts neither. `R2-attempts=1`. `falsifier=section 8.4 re-run on the

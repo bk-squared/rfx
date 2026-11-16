@@ -338,10 +338,10 @@ class _PreflightMixin:
             or s_param_freqs is not None
             or s_param_n_steps is not None
         )
-        from rfx.runners._admission import resolve_plain_source_s_request
+        from rfx.runners._admission import default_run_forms_s, resolve_plain_source_s_request
         compute_s_params = resolve_plain_source_s_request(
             self, compute_s_params, requested=requested, devices=devices)
-        if not requested:
+        if not (requested or (compute_s_params is None and default_run_forms_s(self, devices=devices))):
             return compute_s_params
 
         port_entries = self._port_sparameter_entries()
@@ -1545,7 +1545,7 @@ class _PreflightMixin:
     #         e5_y.json: every transition inside the same chain
     #         window as z);
     #   F-S1 and F-S4 on a 40 x 34 x 10 mm PEC cavity graded on x and y
-    #         (rfx-archive records/20261029-inplane-cap-1p4: conserved energy
+    #         (conserved energy
     #         within 5.1e-7 over 1e6 steps; TM110/TM210 at order 1.92, 1.01-
     #         1.19 x the 1.30 error, simulation = discrete model to 3e-7;
     #         pinned by tests/unit/nonuniform/test_inplane_grading_witness.py).

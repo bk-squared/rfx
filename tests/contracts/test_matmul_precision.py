@@ -5,8 +5,8 @@ or complex64 matrix product is TF32, which rounds the operands to a 10-bit
 mantissa. On one RTX 3090 that moved the completed S of the ring-down tests by
 up to 4e-4, against float32 bars of 1.5e-5 and 2e-5. With
 ``JAX_DEFAULT_MATMUL_PRECISION=highest`` or ``NVIDIA_TF32_OVERRIDE=0``, the same
-tests on the same card agreed to 1e-6 (VESSL 369367266046; rfx-archive
-``rfx/records/20260929-tf32-ab/``). A CPU computes the same result at either
+tests on the same card agreed to 1e-6 (VESSL 369367266046).
+A CPU computes the same result at either
 setting, so a numerical test on CPU CI cannot see this defect. The precision is
 written into the lowered program, though. These tests read it there, on CPU.
 

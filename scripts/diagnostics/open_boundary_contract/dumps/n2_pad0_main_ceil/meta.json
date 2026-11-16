@@ -2,7 +2,7 @@
  "label": "n2_pad0_main_ceil",
  "out_label": "n2_pad0_main_ceil",
  "tree": "src-main",
- "tree_root": "/root/workspace/bk-workspace/.801-measure/src-main",
+ "tree_root": "<workspace>/.801-measure/src-main",
  "arm": {
   "n": 2,
   "pad_h": 0,

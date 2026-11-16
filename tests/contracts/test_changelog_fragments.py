@@ -752,7 +752,7 @@ def test_the_workflow_names_the_job_and_passes_labels_as_json():
 
 
 # --------------------------------------------------------------------------
-# At most 12 lines (PI, 2026-09-24)
+# At most 12 lines
 # --------------------------------------------------------------------------
 
 
@@ -789,7 +789,7 @@ def test_an_added_fragment_of_13_lines_fails(git_repo: Path):
     assert len(failures) == 1
     assert "changelog.d/77.fixed.md is 13 lines" in failures[0]
     assert "at most 12, heading included" in failures[0]
-    assert "PR body" in failures[0] and "bk-squared/rfx-archive" in failures[0]
+    assert "PR body" in failures[0] and "the record repository" in failures[0]
 
 
 def test_editing_a_long_fragment_on_main_is_checked(git_repo: Path):

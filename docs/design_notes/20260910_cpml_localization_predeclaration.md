@@ -3,7 +3,7 @@
 **Status:** pre-declaration, before code changes or validation runs. Gates
 below are frozen by this commit. Results will be appended, never used to
 rewrite a gate.
-**Tree:** `/Users/byungkwankim/Documents/rfx-nu-cost`,
+**Tree:** `<workspace>/Documents/rfx-nu-cost`,
 `feat/nu-cost-reduction`, baseline `c30d30208ff3fc3b73cf7d24a2f0fcf6fd08025b`.
 Date: 2026-09-10 (KST).
 
@@ -277,8 +277,8 @@ To reproduce the rejected gate from the final restored tree:
 
 ```
 PYTHONDONTWRITEBYTECODE=1 RFX_G4_REJECTED_CANDIDATE=1 \
-PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-cost \
-/Users/byungkwankim/Documents/rfx/.venv/bin/python -m pytest \
+PYTHONPATH=<workspace>/Documents/rfx-nu-cost \
+<workspace>/Documents/rfx/.venv/bin/python -m pytest \
   tests/unit/boundaries/test_cpml_localization.py -x -q -s \
   -o addopts= -p no:cacheprovider
 ```
@@ -378,7 +378,7 @@ re-freeze all nine localization tests were RED (7 identity + 2 AD);
 the identity failures were the intended operator change, not a
 regression.
 
-Per PI decision the baseline is therefore **re-frozen against the
+The baseline is therefore **re-frozen against the
 corrected operator**, not relaxed. `validation/research/nu_cost/g4/cpml_baseline.py`
 was regenerated the same way the original was produced at `887f8ff7`:
 a straight verbatim byte-for-byte copy of `rfx/boundaries/cpml.py`, with

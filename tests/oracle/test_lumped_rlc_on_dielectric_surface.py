@@ -29,7 +29,7 @@ ADE is involved in).
 The continuous inversion has one discrete term of its own on the surface: a
 real interface conductance G (:func:`interface_conductance`), which reads
 as Re Z = G |Z|^2 on a reactive load (1.4 % of |Z| at 250 ohm, 8 GHz). Every
-row is judged with G removed (PI decision, #1245); in vacuum G = 0.
+row is judged with G removed (#1245); in vacuum G = 0.
 
 MEASURED over 1-8 GHz with the edge D0, raw -> with G removed: folded
 100 ohm within 0.33 % -> 0.23 %; series 100 ohm + 1 nH within 0.46 % ->
@@ -156,7 +156,7 @@ def _z_load_raw(ts, incident, eps2):
 
 
 def _z_load(ts, incident, eps2):
-    """Z_L with the interface conductance removed (PI decision, #1245): the
+    """Z_L with the interface conductance removed (#1245): the
     extraction every row is judged on. In vacuum G = 0 and this is the raw
     inversion."""
     f, z_raw = _z_load_raw(ts, incident, eps2)

@@ -173,8 +173,7 @@ def _weak_port_arms(arms):
     3.45 % through float32 rounding of which poles sit at the keep boundary
     (the completion itself is scale-invariant: powers of two are
     bit-identical). At 1200 steps the error is 0.18-0.20 % for six scales
-    and WE tracks it (ratio 0.94-1.0); record: rfx-archive
-    rfx/records/20261003-1458-ringdown-scale/. The short arms run at two
+    and WE tracks it (ratio 0.94-1.0). The short arms run at two
     source scales, one of them not a power of two, so a configuration that
     is again rounding-marginal shows here.
     """
@@ -225,7 +224,7 @@ def _weak_port_arms(arms):
                 # Both, not an implication: a regression that raises the
                 # witness and the error together must fail here.
                 assert w.ok and w.value <= .01 and error <= .01, (amplitude, w.value, error)
-                # The witness reads the actual error (PI 2026-09-25: 0.78-2.6x).
+                # The witness reads the actual error (0.78-2.6x).
                 assert .5 <= w.value / error <= 2., (amplitude, w.value, error)
             else:
                 assert not w.ok and error > .01, (amplitude, w.value, error)

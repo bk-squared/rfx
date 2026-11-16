@@ -182,8 +182,7 @@ conductor classes, material contrasts, grid refinement and long source-free
 evolution. A finite short trace or a zero probe inside metal is not sufficient.
 That work, and a rigorous stability bound, remain open.
 
-The prescribed historical `rfx-known-issues.md` is absent in this worktree;
-no other worktree was consulted. The local #931 design note is authoritative:
+No other worktree was consulted. The local #931 design note is authoritative:
 a sheet owns no cell, and every consumer must use the realized-edge owner.
 The guard preserves that requirement. R2 non-closing numerical-fix attempts: 0;
 this work measured the envelope and introduced a refusal, not a numerical fix.

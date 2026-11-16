@@ -3,14 +3,7 @@
 Date: 2026-09-06. Status: the methodology section is the durable part; the
 findings and decisions below are dated and specific to this arc.
 
-**Why this file and not `docs/agent-memory/development_methodology.md`.** That
-file is the home of this repository's method, and this section belongs in it.
-It is also gitignored in this public repo, so it exists only in the primary
-checkout: a rule written there has no history, no diff review and no backup,
-and a reader of the public repo cannot see it at all. The text is therefore
-written here, in a tracked file, and the agent-memory copy — when it is next
-edited from the primary checkout — should point at this note rather than
-restate it.
+This methodology is written here in a tracked file so readers can inspect its history and review its changes.
 
 ---
 
@@ -191,7 +184,7 @@ undertaken because a gap exists rather than because a user or a claim needs it.
 Scope limit: it does not forbid correctness work, and it does not forbid
 finishing something a live claim depends on. It forbids self-assigned breadth.
 
-Supersession: a request from the PI, or a defect that a claim already made
+Supersession: an explicit scope change, or a defect that a claim already made
 depends on. Under that bar the present arc qualifies — public pages carry
 numbers whose provenance was a UI fixture — and the work stayed inside that
 justification rather than expanding to the whole manifest.

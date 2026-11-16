@@ -40,7 +40,7 @@ from rfx.realized_geometry import realized_geometry as _realized_geometry_fn, Re
 from rfx.fidelity import fidelity_report as _fidelity_report
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
-from rfx.materials.lorentz import LorentzPole
+from rfx.materials.lorentz import LorentzPole, LorentzPoleMap
 from rfx.lumped import LumpedRLCSpec
 from rfx.materials.thin_conductor import (  # noqa: F401
     _PEC_SIGMA_THRESHOLD,
@@ -606,7 +606,7 @@ class Simulation(
         sigma: float = 0.0,
         mu_r: float = 1.0,
         debye_poles: list[DebyePole] | None = None,
-        lorentz_poles: list[LorentzPole] | None = None,
+        lorentz_poles: list[LorentzPole | LorentzPoleMap] | None = None,
         chi3: float = 0.0,
     ) -> "Simulation":
         """Register a named material.

@@ -1,9 +1,8 @@
 """sim.run(devices=...) gives the plain call's bits in every trace context.
 
 A source waveform that closes over a traced amplitude runs the multi-device lane
-under jax.jvp, jax.vjp, jax.value_and_grad, jax.vmap and stop_gradient. The PI's
-cross-trace rule (2026-09-15; scoped 2026-09-23 to the CI build, the required
-lane's JAX on Linux x86) says the same forward physics must give the same bits in
+under jax.jvp, jax.vjp, jax.value_and_grad, jax.vmap and stop_gradient. The
+cross-trace rule on the CI build (the required lane's JAX on Linux x86) says the same forward physics must give the same bits in
 each of them. The sources and probes sit in the two cells on either side of the
 slab cut, where the ghost exchange is the only way values cross.
 

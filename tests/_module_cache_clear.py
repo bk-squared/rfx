@@ -4,7 +4,7 @@ With ``RFX_CLEAR_JAX_CACHES_PER_MODULE`` set (validation.yml's weekly shards
 only), ``jax.clear_caches()`` and ``gc.collect()`` run after the last test of
 every module, once that module's fixtures are torn down.
 
-Why (#1932; record rfx-archive rfx/records/20261021-weekly-shard5-maps/):
+Why:
 weekly shard 5 aborted with ``LLVM ERROR: Unable to allocate section memory``
 at 258,831 of the runner's 262,144 memory mappings, with 3.4 GB still free.
 The distributed dispersive-CPML files add about 26,000 mappings each and none

@@ -51,26 +51,27 @@ def test_eigenmode_port_matches_analytical():
 
     ny, nz = grid.ny, grid.nz
 
+    # Aperture moved to the guide's cell span; the node row past the high wall is outside the guide.
     # Analytical port (standard)
     port_analytical = WaveguidePort(
-        x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+        x_index=nc + 5, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
         a=(ny - 1) * dx, b=(nz - 1) * dx,
         mode=(1, 0), mode_type="TE", direction="+x",
     )
     s21_analytical = _run_waveguide(port_analytical, dx, freqs, f0, n_steps, grid)
 
-    # Eigenmode port — use port aperture size (ny, nz) not (ny-1, nz-1)
+    # Eigenmode port uses the same cell aperture as the analytical port.
     a_wg = (ny - 1) * dx
     b_wg = (nz - 1) * dx
-    # Eigenmode solver grid must match port aperture: ny × nz cells
+    # Eigenmode solver grid must match the cell aperture.
     modes = solve_waveguide_modes(a_wg, b_wg, dx, np.array(freqs), n_modes=1)
     mode = modes[0]
 
-    # Resize eigenmode profiles to match port aperture (ny, nz)
+    # Resize eigenmode profiles to match the cell aperture.
     # The eigenmode solver produces (nu, nv) where nu=round(a/dx), nv=round(b/dx)
-    # The port aperture is (ny, nz) which may differ by 1 cell
+    # Grid node counts exceed the aperture cell counts by one.
     from scipy.ndimage import zoom
-    target_shape = (ny, nz)
+    target_shape = (ny - 1, nz - 1)
     def resize_profile(prof, target):
         if prof.shape == target:
             return prof
@@ -83,7 +84,7 @@ def test_eigenmode_port_matches_analytical():
     hz_resized = resize_profile(np.array(mode.hz_profile), target_shape)
 
     port_eigen = WaveguidePort(
-        x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+        x_index=nc + 5, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
         a=a_wg, b=b_wg,
         mode=mode.mode_indices, mode_type=mode.mode_type, direction="+x",
     )

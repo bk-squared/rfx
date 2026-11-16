@@ -469,7 +469,7 @@ def test_witness_flag_does_not_perturb_s_extractor_level():
 
     def _port(x_index, direction):
         return WaveguidePort(
-            x_index=x_index, y_slice=(0, grid.ny), z_slice=(0, grid.nz),
+            x_index=x_index, y_slice=(0, grid.ny - 1), z_slice=(0, grid.nz - 1),
             a=(grid.ny - 1) * dx, b=(grid.nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction=direction,
         )

@@ -7,7 +7,7 @@ wave along the realized rational direction m (``Simulation.tfsf_incidence()``):
 - E perpendicular to sin(k dx / 2), so its part along k-hat is the small lattice tilt between the two vectors;
 - the same amplitude as the normal-incidence box of the same declaration.
 Its continuum limit is the analytic plane wave: k / k0 - 1 is second order in dx. That limit was measured at
-1.0 and 0.5 mm in rfx-archive ``rfx/records/20261029-oblique-closedbox-uniform/``, which also gives the bars below.
+1.0 and 0.5 mm with the bars below.
 The scattered-field leak of the same engine is pinned by
 ``tests/unit/sources/test_tfsf_discrete_plane_wave.py::test_v1_v2_l1``.
 """

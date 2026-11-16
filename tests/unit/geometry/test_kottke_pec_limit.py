@@ -346,8 +346,7 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
     # superseded rule. The VESSL witness |s21| 0.27 -> 0.77 stands as
     # recorded. The y_hi cell above (only ~14% PEC,
     # < 0.5) stays subpixel (0.86). The 0.16 was stale — same root cause as the
-    # test_kottke_inv_eps_from_occupancy re-bless (PR #115); see docs
-    # rfx-known-issues "Kottke occupancy dilation". (Was sharding-masked on CI
+    # test_kottke_inv_eps_from_occupancy re-bless (PR #115). (Was sharding-masked on CI
     # until #115 fixed the sibling and this shard surfaced.)
     assert inv_zz_np[i_mid, 5, 10] == pytest.approx(0.0, abs=1e-2), (
         f"z_hi boundary cell (~84% PEC) expected ~0 (post-60939e0 Heaviside); "

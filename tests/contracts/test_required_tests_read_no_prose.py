@@ -1,7 +1,7 @@
 """A test that reads prose is a documentation check, and a required lane runs none.
 
-Required checks compare numbers with a tolerance, never text (PI, 2026-09-24),
-and a documentation mismatch never holds a merge (PI, 2026-09-22). Four of the
+Required checks compare numbers with a tolerance, never text,
+and a documentation mismatch never holds a merge. Four of the
 nine red ``main`` runs of 2026-09-22/24 were a notes table compared with a
 script's output whose last printed digit followed the OpenBLAS kernel (#1262).
 So a test that reads a note, a guide or a README is marked ``docs_consistency``;
@@ -338,12 +338,20 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
 #: Every required test allowed to read prose, and why. Adding one is a gate
 #: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
+    "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py::"
+    "test_named_exceptions_are_not_stale":
+        "checks that public-text scan exceptions still match tracked text; "
+        "scans, never judges the prose",
+    "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py::"
+    "test_public_text_has_no_pi_or_agent_traces":
+        "public text must not carry the maintainer's name, orders or agent traces; "
+        "scans tracked text, never judges the prose",
     "tests/contracts/test_known_limitations_tracker.py::test_every_limitation_has_a_valid_tracker":
         "Every known limitation must have an explicit tracker or accepted reason",
     "tests/contracts/test_known_limitations_citations.py::"
     "test_every_pinned_issue_keeps_its_entry":
         "a known-limitations entry must stay while its defect is open: the one "
-        "page a PR must keep right (PI, 2026-09-22)",
+        "page a PR must keep right",
     "tests/contracts/test_docs_frontmatter.py::test_page_frontmatter_parses":
         "Parses the YAML frontmatter the site build parses; a page that does not parse blocks the merge train "
         "(PR 1704). It checks syntax and the presence of a title, never the prose.",
