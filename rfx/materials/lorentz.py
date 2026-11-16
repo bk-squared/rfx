@@ -250,7 +250,7 @@ def _pole_underflow_report(count):
 
 @_pole_underflow_report.def_vmap
 def _pole_underflow_report_vmap(axis_size, in_batched, count):
-    total = jnp.sum(count, axis=0) if in_batched[0] else count * axis_size
+    total = count[0] * axis_size if in_batched[0] else count * axis_size
     return _pole_underflow_report(total), False
 
 
