@@ -1,0 +1,6 @@
+### Fixed — Subpixel smoothing at samples equidistant from two faces of a Box or Cylinder (#2799) (#PR)
+
+- A smoothed sample at equal distance from two faces of a `Cylinder` (side and cap) or a `Box` took the normal of whichever face floating-point rounding picked. A plain run and a run with the shape's coordinates under `jax.jit` could then build a different permittivity there (up to 0.99 in ε on a test scene with 3 mm cells), and a mirror-symmetric body could get a mirror-asymmetric model (0.17 in ε). Such a sample now takes the bisector of the tied faces' normals, the same on every path and every smoothing option (`True`, `"kottke_pec"`, `"full_tensor"`). The tie tolerance is 16 float32 rounding units of the domain size, capped at 1 % of the smallest cell.
+- A `Box` or `Cylinder` disc thinner than a cell and centred exactly on a sample plane keeps its slab normal and its thin-layer fill. Before, an exact zero coordinate gave no normal and ε 3.1 at fill 0.4, where the closed forms give 2.2 along the layer and 1.43 across it.
+- On a closed-box test scene, the plain run's resonances that see such samples move by 4·10⁻⁴ to 9·10⁻³ of their frequency. Plain and traced runs now agree within 3·10⁻⁸; before, they differed by up to 1.1·10⁻².
+- Samples away from ties are unchanged.
