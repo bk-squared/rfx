@@ -318,7 +318,7 @@ def _f_distributed_v2_nu_branch():
                                           devices=jax.devices()[:2])
 
 
-# --- 10: tests/unit/runners/test_distributed.py:464
+# --- 10: tests/unit/runners/test_distributed.py:462
 #     (test_distributed_cpml_pad_x_matches_single) geometry. Lx=0.125 realizes
 #     an ODD nx=59, so pad_x = 1 at 2 devices.
 #
