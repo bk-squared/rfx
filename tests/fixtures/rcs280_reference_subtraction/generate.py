@@ -25,8 +25,8 @@ _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[2]
 # Pin THIS repo tree ahead of any installed rfx. Running the script directly puts
 # only the script's own directory on sys.path, so an editable/site-packages rfx
-# from another checkout wins silently -- and it did: the regeneration
-# ran the sibling checkout's auxiliary absorber with THIS file's 24-cell
+# from another checkout wins silently -- and it did: a regeneration
+# ran the sibling checkout's earlier auxiliary absorber with THIS file's 24-cell
 # CPML, a rig that exists nowhere, and produced a corrected-pattern mean of
 # 0.41 dB instead of 0.70.
 sys.path.insert(0, str(_REPO))
@@ -55,7 +55,7 @@ DOMAIN = 0.10
 # rcs_sphere_mie monostatic, SAME GEOMETRY") only holds while the two rigs match,
 # and that one moved to a converged 24-cell absorber -- see
 # ../rcs_sphere_mie/generate_fixture.py for the depth derivation and why the old
-# 8-cell agreement with Mie was a cancellation against the auxiliary echo.
+# 8-cell agreement with Mie was a cancellation against the earlier auxiliary absorber's echo.
 CPML = 24
 N_PHI = 37
 N_STEPS = 700
@@ -115,7 +115,8 @@ def main():
             "identical on the validated monostatic path."),
         # cpml_layers is part of the RIG, not a detail: it moved 8 -> 24 here and
         # re-baselined every number below, so an artifact that does not declare it
-        # cannot be checked against the rig it was measured on (the sibling rcs_sphere_mie fixture has always recorded it).
+        # cannot be checked against the rig it was measured on (the sibling
+        # rcs_sphere_mie fixture has always recorded it).
         "geometry": {"shape": "pec_sphere", "radius_m": A, "f0_hz": F0, "ka": KA,
                      "dx_m": DX, "res_cells_per_lambda": RES,
                      "cells_per_radius": A / DX, "n_steps": N_STEPS,

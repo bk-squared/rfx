@@ -98,7 +98,9 @@ CUTOFF_ARG = math.sqrt(math.log(1000.0))     # cv26's bandwidth_for
 # its |B/A| is not a measurement. MEASURED when this lane was built, not chosen: at
 # the fast rig the residual ran 3.2e-07 (0 deg), 5.7e-04 (30 deg), 6.8e-04 (45 deg),
 # 2.0e-03 (60 deg) and 2.4e-01 (70 deg) -- two decades of clear air between the
-# angles the rig resolves and the one it does not.
+# angles the rig resolves and the one it does not. The gate still checks every angle
+# it measures against this limit; the per-angle readings themselves are no longer
+# pinned by a test.
 FIT_RESID_LIMIT = 1.0e-2
 
 # Both 2-D rigs here -- and GRAZE_RIG in the test file -- run at DX_M / F0_HZ

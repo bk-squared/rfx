@@ -255,7 +255,7 @@ def test_numpy_scalars_and_arrays_still_accepted():
 
 
 # --------------------------------------------------------------------------
-# what the codec must NOT start refusing.
+# What the codec must NOT start refusing.
 #
 # The inventory's suggestion for this module was to extend the refusal set
 # with the ownership contract's new errors — a sub-cell PEC Box, an empty

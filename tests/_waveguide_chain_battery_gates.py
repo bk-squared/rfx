@@ -104,7 +104,7 @@ CLAIMS_RUNG = "fine"                                     # pre-declaration §2.6
 LEGS_RUNG_DEFAULT = "fine"                               # AD / FD / plane legs
 
 # Distance from each DEFAULT reference plane to the near DUT face (§2.3).
-# the pec_short oracle is anchored to the DECLARED near face, and under
+# The pec_short oracle is anchored to the DECLARED near face, and under
 # the ownership contract that is also the REALIZED near wall — drawn = realized
 # (§1.2), no longer a coincidence of the old rule putting a body's only wall at
 # its lower node plane. This is the one compensation-free oracle in the

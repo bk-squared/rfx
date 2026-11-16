@@ -348,7 +348,10 @@ RESONANCE_BAND_HZ = (0.80 * F_TM010_TL_MODEL_HZ, 1.20 * F_TM010_TL_MODEL_HZ)
 MINUS10_DB = -10.0
 
 # --- the record length ----------------------------------------------------
-# ``num_periods`` is in periods of ``freq_max`` (0.25 ns here).
+# ``num_periods`` is in periods of ``freq_max`` (0.25 ns here).  MEASURED on
+# the retired 40 × 50 mm board at h/4 (CPU): 60 met the −40 dB rule with margin
+# and moved the resonance and its depth by nothing that matters against the
+# doubled record.
 # The ring-down is set by the patch's radiation Q, a physical time, so the same
 # record length in nanoseconds serves every rung, and every run checks its own
 # settling against ``SETTLING_DB`` before it is compared.

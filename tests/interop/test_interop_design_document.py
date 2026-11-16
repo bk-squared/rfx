@@ -461,7 +461,7 @@ def _canonical(value):
 
 def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None:
     """Diff two simulations attribute by attribute over the census inventory."""
-    # canonical current declarations do not replay a None warning.
+    # Canonical current declarations do not replay a None warning.
     # Grid construction can populate realization diagnostics on either side;
     # the document excludes them and preflight rebuilds them from declarations.
     diagnostic_attrs = {"_amplitude_kind_warned", "_realization_early_outcomes"}
@@ -471,7 +471,7 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
         f"only in rebuilt={sorted(set(vars(rebuilt)) - set(vars(original)))}"
     )
     mismatched = {}
-    # deliberate representational asymmetry: the
+    # Deliberate representational asymmetry: the
     # document records each AUTO port's RESOLVED n_probe_offset
     # and RESOLVED n_probe_spacing as explicit, frozen values
     # (reproducibility-first; see _msl_ports_with_resolved_offsets), so
