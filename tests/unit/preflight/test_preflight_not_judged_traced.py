@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Simulation
+from rfx import Box, Cylinder, Simulation
 from rfx.errors import RfxError
 from rfx.geometry.rasterize_grid import TracedShapeDimensionError
 from rfx.preflight import _not_judged, _registry
@@ -52,6 +52,35 @@ def test_p1_material(mesh, transform):
             and issue.severity == "warning"
             and str(issue) == "not judged: _validate_mesh_quality reads a traced input (add_material(eps_r))"
             for issue in report
+        )
+
+
+@pytest.mark.parametrize("transform", ["make_jaxpr", "grad"])
+def test_p1_cylinder_center_graded(transform):
+    reports = []
+
+    def objective(center):
+        sim = Simulation(domain=(.012, .012, .012), dx=.001,
+                         freq_max=10e9, boundary="pec",
+                         dz_profile=np.array([.0009] * 6 + [.0011] * 6))
+        sim.add_material("dielectric", eps_r=4.)
+        sim.add(Cylinder((.006, .006, center), radius=.0021, height=.0072),
+                material="dielectric")
+        # subpixel_smoothing=True is a forward option, not a preflight option.
+        # Stop at preflight: traced z bounds reach _local_cell on the graded axis.
+        reports.append(sim.preflight())
+        return center * center
+
+    getattr(jax, transform)(objective)(.006)
+    assert reports
+    for report in reports:
+        findings = [issue for issue in report
+                    if issue.code == "not_judged_traced"
+                    and "_validate_mesh_quality" in str(issue)]
+        assert len(findings) == 1
+        assert findings[0].severity == "warning"
+        assert str(findings[0]) == (
+            "not judged: _validate_mesh_quality reads a traced input (add(shape))"
         )
 
 
