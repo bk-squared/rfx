@@ -28,6 +28,7 @@ from rfx.errors import AccuracyWarning, ConfigurationWarning
 from rfx.stepping.step_count import steps_for_periods
 from rfx._internal._precision import resolve_field_dtype
 from rfx._traced_refusal import TracedStructureRefusal
+from rfx.optimizers import _Adam
 
 import math
 import warnings
@@ -212,10 +213,10 @@ def _adam_multistart(
         raise ValueError(f"optimize: step_clamp must be > 0, got {step_clamp}")
 
     grad_fn = _value_and_grad_with_fallback(cost_fn, jit, "optimize")
+    opt = _Adam(lr, beta1, beta2, eps_adam, step_clamp)
 
     def _run_one(init_lat):
-        m = jnp.zeros_like(init_lat)
-        v = jnp.zeros_like(init_lat)
+        state = opt.init(init_lat, bounds=None)
         latent = init_lat
         loss_history: list[float] = []
         # Only retain visited iterates when best-iterate is requested, so the
@@ -223,7 +224,9 @@ def _adam_multistart(
         latents: list = [] if best_iterate else None
         last_good = latent  # last design with a confirmed-finite forward+gradient
         for it in range(n_iters):
-            loss, grad = grad_fn(latent)
+            req = opt.ask(state)
+            latent = req.x
+            loss, grad = grad_fn(req.x)
 
             # NaN/Inf gradient guard (unchanged from the legacy loop): a
             # non-finite gradient silently poisons ``latent`` and every later
@@ -250,11 +253,8 @@ def _adam_multistart(
             if latents is not None:
                 latents.append(latent)
 
-            # Adam update
-            step, m, v = _adam_update(
-                m, v, grad, it, lr, beta1, beta2, eps_adam, step_clamp,
-            )
-            latent = latent - step
+            state = opt.tell(state, req, loss, grad, None, None)
+            latent = state.x
 
             if verbose and (it % 10 == 0 or it == n_iters - 1):
                 print(f"  iter {it:4d}  loss = {loss_val:.6e}")
