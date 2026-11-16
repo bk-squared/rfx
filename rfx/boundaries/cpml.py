@@ -732,12 +732,11 @@ def apply_cpml_e(
     # Falls back to free-space eps_0 when materials is None.
     if inv_eps_r_update is not None:
         # Follow the ambient MATERIAL dtype, exactly as the ``materials``
-        # branch below does (eps_r carries the run's
-        # material precision). ``compute_smoothed_eps`` returns float64 under
-        # JAX_ENABLE_X64 while ``materials.eps_r`` stays float32, and letting
-        # that through changed the psi-scatter precision — and with it the
-        # field bytes of runs whose pads hold nothing but vacuum, which this
-        # change must not touch.
+        # branch below does (eps_r carries the run's material precision).
+        # ``compute_smoothed_eps`` can return float64 under JAX_ENABLE_X64
+        # even for a float32 run. Retain the material dtype so smoothing
+        # does not change psi-scatter precision or the field bytes of runs
+        # whose pads hold nothing but vacuum.
         _mat_dtype = (materials.eps_r.dtype if materials is not None
                       and hasattr(materials.eps_r, "dtype") else None)
 
