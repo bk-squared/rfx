@@ -79,8 +79,6 @@ def scene(name):
 
 
 SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x')
-#: Scenes with pole media (Lorentz; Debye in the slab), judged by the running-sum bar.
-POLE_SCENES = frozenset({'lorentz', 'pec_pmc_slab'})
 
 
 def observed(result):
@@ -144,17 +142,19 @@ NOT_BITWISE = {
     ('vmap', 'vacuum', 'odd'), ('one_axis', 'vacuum', (0, 1, 0)),
 }
 
-# Stage-move bars for the cases above, declared before any value was read.
-#: Fields: max over physical cells of |padded - unpadded| at the last step, at most
-#: 9 float32 ULP of P, the largest |field| of that component over the unpadded record.
-FIELD_BAR = 9 * 2.0 ** -23
-#: Pole media, instead: |difference| at step n at most this times the running sum, to n,
-#: of the unpadded run's peak |field| of that component.
-POLE_BAR = 1.2e-7
-#: Summed or record quantities (probe series, DFT planes, flux, S11, value, jvp, grad):
-#: max |difference| at most this of the quantity's own max |value|.
+
+# Bars for the cases above: the committed equivalence law (one last bit times the
+# accumulated field, on one fixed scale over the record and the field family; never a
+# component's or a probe's own peak), as the design's section 10 states it.
+#: Per-step quantities (fields at a step, snapshots, probe series): at every recorded
+#: step n, |padded - unpadded| at most this times S(n), the running sum to n of the
+#: unpadded run's largest |field| over every physical cell and every component of the
+#: family (E: ex, ey, ez; H: hx, hy, hz) the quantity belongs to.
+STEP_BAR = 1.2e-7
+#: Record quantities (DFT planes, S11, flux, the objective value, jvp, grad): max
+#: |difference| at most this of the quantity's own largest magnitude.
 RECORD_BAR = 1e-4
-#: Each bar holds at N, 2N and 4N steps.
+#: Both hold at N, 2N and 4N steps.
 LENGTHS = (N_STEPS, 2 * N_STEPS, 4 * N_STEPS)
 
 
@@ -166,22 +166,23 @@ def _ratio(diff, bar):
     return float(np.max(ratio)) if ratio.size else 0.
 
 
-def _per_step_peak(record):
-    return np.abs(record).reshape(len(record), -1).max(axis=1).astype(np.float64)
+def family_sums(snapshots):
+    """S(n) per family from per-step snapshots of all six components of the unpadded run."""
+    def peak(c):
+        record = np.asarray(snapshots[c])
+        return np.abs(record).reshape(len(record), -1).max(axis=1).astype(np.float64)
+    return {f: np.cumsum(np.max([peak(f + a) for a in 'xyz'], axis=0)) for f in 'eh'}
 
 
-def bar_ratios(ref, got, *, pole):
-    """difference / bar for every output (> 1 fails). Snapshots carry the record for P.
+def probe_families(name):
+    """The family of each probe column, in the order the scene adds its probes."""
+    return tuple(p.component[0] for p in scene(name)._probes)
 
-    Also returns, for the fields only and not asserted, the same ratio with the scale
-    taken over the three components of the field (E or H) instead of the one component.
-    """
+
+def bar_ratios(ref, got, *, sums=None, probes=()):
+    """difference / bar for every output (> 1 fails)."""
     assert ref.keys() == got.keys(), f'outputs {sorted(ref)} vs {sorted(got)}'
-    ratios, info = {}, {}
-
-    def family(component):
-        return [ref[f"snapshots['{component[0]}{c}']"] for c in 'xyz']
-
+    ratios = {}
     for key, a in ref.items():
         b = got[key]
         assert a.shape == b.shape, f'{key}: shape {a.shape} vs {b.shape}'
@@ -189,39 +190,29 @@ def bar_ratios(ref, got, *, pole):
             continue
         diff = np.abs(b.astype(np.complex128) - a.astype(np.complex128))
         if key.startswith('snapshots'):
-            if pole:
-                step_diff = diff.reshape(len(a), -1).max(axis=1)
-                ratios[key] = _ratio(step_diff, POLE_BAR * np.cumsum(_per_step_peak(a)))
-                peaks = np.max([_per_step_peak(r) for r in family(key[len("snapshots['"):-2])], axis=0)
-                info[key] = _ratio(step_diff, POLE_BAR * np.cumsum(peaks))
+            s = sums[key[len("snapshots['")]]
+            assert len(a) == len(s), f'{key}: {len(a)} frames, {len(s)} steps of S'
+            ratios[key] = _ratio(diff.reshape(len(a), -1).max(axis=1), STEP_BAR * s)
         elif key.startswith('state.'):
-            component = key[len('state.'):]
-            record = ref[f"snapshots['{component}']"]
-            if pole:
-                bar = POLE_BAR * _per_step_peak(record).sum()
-                peaks = np.max([_per_step_peak(r) for r in family(component)], axis=0)
-                info[key] = _ratio(diff.max(), POLE_BAR * peaks.sum())
-            else:
-                bar = FIELD_BAR * np.abs(record).max()
-                info[key] = _ratio(diff.max(), FIELD_BAR * max(np.abs(r).max() for r in family(component)))
-            ratios[key] = _ratio(diff.max(), bar)
+            ratios[key] = _ratio(diff.max(), STEP_BAR * sums[key[len('state.')]][-1])
+        elif key == 'time_series':
+            assert a.shape[1] == len(probes), f'time_series columns {a.shape[1]}, probes {probes}'
+            for column, f in enumerate(probes):
+                assert len(a) == len(sums[f]), f'time_series: {len(a)} rows, {len(sums[f])} steps of S'
+                ratios[f'time_series[{column}] ({f})'] = _ratio(diff[:, column], STEP_BAR * sums[f])
         else:
             ratios[key] = _ratio(diff.max(), RECORD_BAR * np.abs(a).max())
-    return ratios, info
+    return ratios
 
 
 def assert_bars(label, by_length):
-    """Every ratio at every record length at most 1; the ratios go to stderr and the message."""
-    lines, worst = [], 0.
-    for n, (ratios, info) in by_length.items():
-        key = max(ratios, key=ratios.get)
-        worst = max(worst, ratios[key])
-        lines.append(f'N={n}: worst {key} {ratios[key]:.3e} | '
-                     + ', '.join(f'{k} {v:.2e}' for k, v in sorted(ratios.items())))
-        if info:
-            lines.append(f'N={n} not asserted, field-family scale: '
-                         + ', '.join(f'{k} {v:.2e}' for k, v in sorted(info.items())))
-    text = f'{label} (difference / bar)\n  ' + '\n  '.join(lines)
+    """Every ratio at every record length at most 1; per output, the ratios at N, 2N, 4N."""
+    lengths = list(by_length)
+    keys = sorted(set().union(*by_length.values()))
+    rows = [f'{k}: ' + ', '.join(f'{by_length[n].get(k, float("nan")):.3e}' for n in lengths)
+            for k in keys]
+    worst = max((max(r.values()) for r in by_length.values() if r), default=0.)
+    text = f'{label}: difference / bar at N = {lengths}\n  ' + '\n  '.join(rows)
     sys.stderr.write('BAR ' + text.replace('\n', '\nBAR ') + '\n')
     assert worst <= 1., text
 
@@ -234,8 +225,10 @@ def run_lengths(name, target, label):
         ref, _ = run_record(scene(name), 'off', n_steps=n, snapshot=snap)
         got, plans = run_record(scene(name), target, n_steps=n, snapshot=snap)
         assert_padded(plans, f'{label} N={n}')
-        by_length[n] = bar_ratios(ref, got, pole=name in POLE_SCENES)
+        sums = family_sums({c: ref[f"snapshots['{c}']"] for c in FIELDS})
+        by_length[n] = bar_ratios(ref, got, sums=sums, probes=probe_families(name))
     assert_bars(label, by_length)
+
 
 
 def assert_padded(plans, label):
@@ -303,6 +296,33 @@ def _forward_records(name, mode, n_steps):
                 jvp=np.asarray(dvalue), grad=np.asarray(grad)), plans
 
 
+def _forward_family_sums(name, n_steps):
+    """S(n) of an unpadded forward() of the same model, from per-step snapshots.
+
+    forward() returns no fields, so a separate unpadded forward() value call is
+    run with every field snapshotted each step (the time step reads
+    ``rfx.simulation.run`` at call time). Only the scale is taken from it.
+    """
+    import rfx.simulation as simulation
+    objective, eps = _forward_objective(name, n_steps)
+    real, captured = simulation.run, []
+
+    def run(*args, **kwargs):
+        kwargs['snapshot'] = SnapshotSpec(interval=1, components=FIELDS)
+        result = real(*args, **kwargs)
+        captured.append(result.snapshots)
+        return result
+
+    simulation.run = run
+    try:
+        with vector_pad.force_pad('off'):
+            objective(eps)
+    finally:
+        simulation.run = real
+    assert len(captured) == 1, f'{name}: {len(captured)} uniform runs in one forward()'
+    return family_sums(captured[0])
+
+
 @pytest.mark.parametrize('target', TARGETS)
 @pytest.mark.parametrize('name', ('cpml_port', 'lorentz'))
 def test_forward_value_jvp_grad_padded_bitwise_or_within_bars(name, target):
@@ -317,7 +337,8 @@ def test_forward_value_jvp_grad_padded_bitwise_or_within_bars(name, target):
         if lengths == (N_STEPS,):
             assert_bitwise(ref, got, label)
         else:
-            by_length[n] = bar_ratios(ref, got, pole=False)
+            by_length[n] = bar_ratios(ref, got, sums=_forward_family_sums(name, n),
+                                      probes=probe_families(name))
     if by_length:
         assert_bars(label, by_length)
     jax.clear_caches()
@@ -339,7 +360,7 @@ def test_vmap_over_forward_padded_bitwise_or_within_bars(target):
         if lengths == (N_STEPS,):
             assert_bitwise(outs['off'][0], outs[target][0], label)
         else:
-            by_length[n] = bar_ratios(outs['off'][0], outs[target][0], pole=False)
+            by_length[n] = bar_ratios(outs['off'][0], outs[target][0])
     if by_length:
         assert_bars(label, by_length)
     jax.clear_caches()
