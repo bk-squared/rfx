@@ -103,10 +103,10 @@ Rows that move because of this stage (all preflight-code rows):
 * `tests/unit/materials/test_sheet_impedance.py:1449` quotes the old
   `is inside PEC geometry` text in a comment — update the quote (`is frozen by
   realized PEC geometry`).
-* `tests/unit/sparams/test_coax_msl_transition.py:2773` names the
+* `tests/unit/sparams/test_coax_msl_transition.py:2799` names the
   `sheet-own-cell-live` kind in a message string; and its 11 cell-mask reds
   (F.md) need the junction check's new ring (§1) — re-pin from the re-run.
-* `tests/unit/sparams/test_mixed_port_sparam.py:1067-1158` (D5 end-gap): the
+* `tests/unit/sparams/test_mixed_port_sparam.py:1073-1164` (D5 end-gap): the
   predicate is now "end node on a realized wall plane"; on the D5 board
   (dx = 80 µm, h_sub = 254 µm) the trace plane moves (critic.json, k = 4 → 3),
   so re-measure which geometry fires; do not translate the old expectation.

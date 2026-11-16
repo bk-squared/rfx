@@ -439,7 +439,7 @@ tolerance moved. The verifier's sign-off comment is the artifact.
 ## WP8 — lumped/wire tail (GPU/VESSL likely for #819)
 
 **#819 — dx-refinement study.** Fixture: the 2-port wire THRU behind
-`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py:720`
+`tests/unit/sparams/test_lumped_twoport_vi_validation_battery.py:722`
 (`test_thru_passivity_singular_values`). Recorded state: sv_max 1.003227 at 3 GHz falling
 monotonically to 0.9874 at 7 GHz (`:727-731`), reproduced under f64 fields, 4× and 2× step
 counts and complex128 algebra, mechanism unidentified (gh #819
