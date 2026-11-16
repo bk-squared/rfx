@@ -255,7 +255,7 @@ witness `max_f |S11| > 0.20` on both DUTs (the form at `:266`). By the Airy orac
   bidirectional falsifier `:629-634`), the ULP taken in the loss's own dtype. A leg under the
   floor **skips with the span printed; it never passes**.
 - Gate: `rel = |g_AD − g_FD| / max(|g_FD|, 1e-12) ≤ 0.05`
-  (`tests/unit/autodiff/test_sparam_ad_end_to_end.py:296`, `tests/unit/autodiff/test_waveguide_flux_ad.py:84`).
+  (`tests/unit/autodiff/test_sparam_ad_end_to_end.py:298`, `tests/unit/autodiff/test_waveguide_flux_ad.py:84`).
 - Forward identity alongside (contract criterion 1): S under the θ = 0 traced override equals
   the untraced call to `rtol=1e-5, atol=1e-7` (`tests/unit/autodiff/test_waveguide_flux_ad.py:104`).
 - **Expected order**: rel ≈ 1e-3 (recorded 2.0e-4). **Corrected 2026-09-08**:
