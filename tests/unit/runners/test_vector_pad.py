@@ -4,11 +4,14 @@ The uniform single-device step may allocate its arrays with padded extents
 (``aligned``: z to a multiple of 4; ``odd``: one cell on each even axis). The
 physical cells, probes, ports, planes and snapshots must not see the pad: on
 the CPU each padded run returns the unpadded run's bytes, or, for the cases
-listed in ``NOT_BITWISE``, stays within the stage-move bars. Paths this stage
-does not pad refuse a forced pad; ``"auto"`` pads nothing until a measured
-gain is entered for the device.
+listed in ``NOT_BITWISE``, stays within the bars below. For every scene and
+both targets, one padded step from an unpadded state stays within nine last
+bits of the field, and every operand the padded step reads equals the unpadded
+operand on the physical cells. Paths this stage does not pad refuse a forced
+pad; ``"auto"`` pads nothing until a measured gain is entered for the device.
 """
 
+import dataclasses
 import sys
 
 import jax
@@ -143,19 +146,23 @@ NOT_BITWISE = {
 }
 
 
-# Bars for the cases above: the committed equivalence law (one last bit times the
-# accumulated field, on one fixed scale over the record and the field family; never a
-# component's or a probe's own peak), as the design's section 10 states it.
-#: Per-step quantities (fields at a step, snapshots, probe series): at every recorded
-#: step n, |padded - unpadded| at most this times S(n), the running sum to n of the
-#: unpadded run's largest |field| over every physical cell and every component of the
-#: family (E: ex, ey, ez; H: hx, hy, hz) the quantity belongs to.
-STEP_BAR = 1.2e-7
-#: Record quantities (DFT planes, S11, flux, the objective value, jvp, grad): max
-#: |difference| at most this of the quantity's own largest magnitude.
+# Bars, as the design's section 11 states them (desk ruling of 2026-11-16).
+#: One step from one state: padded and unpadded each take one step from the same
+#: unpadded state; per family (E: ex, ey, ez; H: hx, hy, hz) |difference| on the
+#: physical cells at most this times the family's peak |field| over the unpadded
+#: record, the cells a source or port drive writes left out of the peak. The probe
+#: output is judged on its own array's peak over the record.
+ONE_STEP_BAR = 9 * 2.0 ** -23
+#: What a result reads (probe series, end state, snapshots, S11, DFT planes, flux,
+#: the objective value, jvp, grad): |difference| at most this of one fixed scale,
+#: the family peak over the unpadded record (source-driven cells left out) for a
+#: field read, the quantity's own largest magnitude for a record quantity.
 RECORD_BAR = 1e-4
 #: Both hold at N, 2N and 4N steps.
 LENGTHS = (N_STEPS, 2 * N_STEPS, 4 * N_STEPS)
+#: Evidence only, not asserted: the accumulated law (one last bit times S(n), the
+#: running sum to n of the family's largest |field|), printed beside the bars.
+STEP_BAR = 1.2e-7
 
 
 def _ratio(diff, bar):
@@ -174,13 +181,20 @@ def family_sums(snapshots):
     return {f: np.cumsum(np.max([peak(f + a) for a in 'xyz'], axis=0)) for f in 'eh'}
 
 
+def family_peaks(snapshots, driven):
+    """Per family, the largest |field| over a per-step record, driven cells left out."""
+    def peak(c):
+        return float(np.max(np.where(driven[c], 0., np.abs(np.asarray(snapshots[c], np.float64)))))
+    return {f: max(peak(f + a) for a in 'xyz') for f in 'eh'}
+
+
 def probe_families(name):
     """The family of each probe column, in the order the scene adds its probes."""
     return tuple(p.component[0] for p in scene(name)._probes)
 
 
-def bar_ratios(ref, got, *, sums=None, probes=()):
-    """difference / bar for every output (> 1 fails)."""
+def bar_ratios(ref, got, *, peaks=None, probes=()):
+    """difference / bar (ii) for every output (> 1 fails)."""
     assert ref.keys() == got.keys(), f'outputs {sorted(ref)} vs {sorted(got)}'
     ratios = {}
     for key, a in ref.items():
@@ -190,19 +204,29 @@ def bar_ratios(ref, got, *, sums=None, probes=()):
             continue
         diff = np.abs(b.astype(np.complex128) - a.astype(np.complex128))
         if key.startswith('snapshots'):
-            s = sums[key[len("snapshots['")]]
-            assert len(a) == len(s), f'{key}: {len(a)} frames, {len(s)} steps of S'
-            ratios[key] = _ratio(diff.reshape(len(a), -1).max(axis=1), STEP_BAR * s)
+            ratios[key] = _ratio(diff.max(), RECORD_BAR * peaks[key[len("snapshots['")]])
         elif key.startswith('state.'):
-            ratios[key] = _ratio(diff.max(), STEP_BAR * sums[key[len('state.')]][-1])
+            ratios[key] = _ratio(diff.max(), RECORD_BAR * peaks[key[len('state.')]])
         elif key == 'time_series':
             assert a.shape[1] == len(probes), f'time_series columns {a.shape[1]}, probes {probes}'
             for column, f in enumerate(probes):
-                assert len(a) == len(sums[f]), f'time_series: {len(a)} rows, {len(sums[f])} steps of S'
-                ratios[f'time_series[{column}] ({f})'] = _ratio(diff[:, column], STEP_BAR * sums[f])
+                ratios[f'time_series[{column}] ({f})'] = _ratio(diff[:, column].max(), RECORD_BAR * peaks[f])
         else:
             ratios[key] = _ratio(diff.max(), RECORD_BAR * np.abs(a).max())
     return ratios
+
+
+def accumulated_law(ref, got):
+    """Evidence only: max over steps of the family difference / (STEP_BAR x S(n))."""
+    ref = {c: np.asarray(ref[f"snapshots['{c}']"], np.float64) for c in FIELDS}
+    got = {c: np.asarray(got[f"snapshots['{c}']"], np.float64) for c in FIELDS}
+    sums = family_sums(ref)
+    out = {}
+    for f in 'eh':
+        worst = np.max([np.abs(got[f + a] - ref[f + a]).reshape(len(sums[f]), -1).max(axis=1)
+                        for a in 'xyz'], axis=0)
+        out['r_' + f.upper()] = _ratio(worst, STEP_BAR * sums[f])
+    return out
 
 
 def assert_bars(label, by_length):
@@ -218,15 +242,19 @@ def assert_bars(label, by_length):
 
 
 def run_lengths(name, target, label):
-    """Bars at N, 2N, 4N for run() on ``name``, with every field snapshotted each step."""
-    by_length = {}
+    """Bars (ii) at N, 2N, 4N for run() on ``name``, with every field snapshotted each step."""
+    driven = driven_cells(name)
+    by_length, evidence = {}, {}
     for n in LENGTHS:
         snap = SnapshotSpec(interval=1, components=FIELDS)
         ref, _ = run_record(scene(name), 'off', n_steps=n, snapshot=snap)
         got, plans = run_record(scene(name), target, n_steps=n, snapshot=snap)
         assert_padded(plans, f'{label} N={n}')
-        sums = family_sums({c: ref[f"snapshots['{c}']"] for c in FIELDS})
-        by_length[n] = bar_ratios(ref, got, sums=sums, probes=probe_families(name))
+        peaks = family_peaks({c: ref[f"snapshots['{c}']"] for c in FIELDS}, driven)
+        by_length[n] = bar_ratios(ref, got, peaks=peaks, probes=probe_families(name))
+        evidence[n] = accumulated_law(ref, got)
+    sys.stderr.write(f'EVIDENCE {label}: accumulated law at N = {list(evidence)}: ' + '; '.join(
+        f'{k} ' + ', '.join(f'{evidence[n][k]:.3e}' for n in evidence) for k in ('r_E', 'r_H')) + '\n')
     assert_bars(label, by_length)
 
 
@@ -296,8 +324,8 @@ def _forward_records(name, mode, n_steps):
                 jvp=np.asarray(dvalue), grad=np.asarray(grad)), plans
 
 
-def _forward_family_sums(name, n_steps):
-    """S(n) of an unpadded forward() of the same model, from per-step snapshots.
+def _forward_family_peaks(name, n_steps):
+    """Family peaks of an unpadded forward() of the same model, from per-step snapshots.
 
     forward() returns no fields, so a separate unpadded forward() value call is
     run with every field snapshotted each step (the time step reads
@@ -320,7 +348,7 @@ def _forward_family_sums(name, n_steps):
     finally:
         simulation.run = real
     assert len(captured) == 1, f'{name}: {len(captured)} uniform runs in one forward()'
-    return family_sums(captured[0])
+    return family_peaks(captured[0], driven_cells(name))
 
 
 @pytest.mark.parametrize('target', TARGETS)
@@ -337,7 +365,7 @@ def test_forward_value_jvp_grad_padded_bitwise_or_within_bars(name, target):
         if lengths == (N_STEPS,):
             assert_bitwise(ref, got, label)
         else:
-            by_length[n] = bar_ratios(ref, got, sums=_forward_family_sums(name, n),
+            by_length[n] = bar_ratios(ref, got, peaks=_forward_family_peaks(name, n),
                                       probes=probe_families(name))
     if by_length:
         assert_bars(label, by_length)
@@ -468,9 +496,11 @@ def test_unknown_operands_have_no_pad_rule():
         vector_pad.pad_cells(jnp.zeros((4, 4, 6)), plan, 0.)
 
 
-@pytest.mark.parametrize('pad', ((1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 0, 2)))
-def test_one_axis_pad_is_bitwise_or_within_bars(pad, monkeypatch):
-    """Each axis's pad alone, by one and two cells (the targets combine these)."""
+ONE_AXIS_PADS = ((1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 0, 2))
+
+
+def one_axis_plan(pad):
+    """A ``plan_pad`` whose every forced plan pads exactly ``pad``."""
     real = vector_pad.plan_pad
 
     def plan(shape, *, target, periodic_axes, two_d=False):
@@ -479,7 +509,13 @@ def test_one_axis_pad_is_bitwise_or_within_bars(pad, monkeypatch):
             return base
         return vector_pad.PadPlan(base.shape, tuple(n + p for n, p in zip(base.shape, pad)), pad, target)
 
-    monkeypatch.setattr(vector_pad, 'plan_pad', plan)
+    return plan
+
+
+@pytest.mark.parametrize('pad', ONE_AXIS_PADS)
+def test_one_axis_pad_is_bitwise_or_within_bars(pad, monkeypatch):
+    """Each axis's pad alone, by one and two cells (the targets combine these)."""
+    monkeypatch.setattr(vector_pad, 'plan_pad', one_axis_plan(pad))
     if ('one_axis', 'vacuum', pad) in NOT_BITWISE:
         run_lengths('vacuum', 'aligned', f'run vacuum pad {pad}')
         jax.clear_caches()
@@ -488,4 +524,171 @@ def test_one_axis_pad_is_bitwise_or_within_bars(pad, monkeypatch):
     got, plans = run_record(scene('vacuum'), 'aligned')
     assert_padded(plans, f'pad {pad}')
     assert_bitwise(ref, got, f'run vacuum pad {pad}')
+    jax.clear_caches()
+
+
+class _Captured(BaseException):
+    """Stops a run at its scan once the time step is captured.
+
+    A BaseException, so no runner handler for ``Exception`` takes it.
+    """
+
+
+def captured_step(name, target, n_steps):
+    """The time step one run() of ``name`` builds, captured before its scan runs.
+
+    Returns ``({'invariants', 'body', 'init', 'xs'}, plans)``: what the step reads
+    besides its carry (after padding, before the scan), the scan body, its initial
+    carry and its inputs. The run stops at the scan.
+    """
+    from rfx.stepping import uniform_loop, uniform_setup
+    real_invariants, real_scan = uniform_setup.core_step_invariants, uniform_loop.recorded_scan
+    got = {}
+
+    def invariants(*args, **kwargs):
+        got['invariants'] = real_invariants(*args, **kwargs)
+        return got['invariants']
+
+    def scan(body, init, xs=None, **kwargs):
+        got.update(body=body, init=init, xs=xs)
+        raise _Captured
+
+    sim = scene(name)
+    kwargs = (dict(compute_s_params=True, s_param_freqs=FREQS) if lumped(sim) else
+              dict(compute_s_params=False))
+    uniform_setup.core_step_invariants, uniform_loop.recorded_scan = invariants, scan
+    try:
+        with vector_pad.force_pad(target), vector_pad.record_plans() as plans:
+            sim.run(n_steps=n_steps, skip_preflight=True, **kwargs)
+    except _Captured:
+        pass
+    finally:
+        uniform_setup.core_step_invariants, uniform_loop.recorded_scan = real_invariants, real_scan
+    assert set(got) == {'invariants', 'body', 'init', 'xs'}, f'{name}/{target}: captured {sorted(got)}'
+    return got, plans
+
+
+def _driven(ctx):
+    """{component: cells a source or port drive writes}, from the step's own drive tables."""
+    driven = {c: np.zeros(ctx.grid.shape, bool) for c in FIELDS}
+    for drives in ctx.drives or ():
+        for c, nodes in drives.nodes.items():
+            driven[c][tuple(np.asarray(i) for i in nodes)] = True
+    assert any(m.any() for m in driven.values()), 'no driven cell'
+    return driven
+
+
+def driven_cells(name):
+    step, _ = captured_step(name, 'off', 1)
+    return _driven(step['invariants']['ctx'])
+
+
+def _arrays(tree, prefix):
+    leaves, _ = jax.tree_util.tree_flatten_with_path(tree)
+    return {prefix + jax.tree_util.keystr(path): np.asarray(leaf) for path, leaf in leaves
+            if isinstance(leaf, (np.ndarray, jax.Array))}
+
+
+def step_operands(invariants):
+    """Every array the step reads besides its carry, by name (the context field by field)."""
+    out = {}
+    for key, value in invariants.items():
+        if key != 'ctx':
+            out.update(_arrays(value, key))
+            continue
+        for field in dataclasses.fields(value):
+            if field.name != 'pad_plan':
+                out.update(_arrays(getattr(value, field.name), 'ctx.' + field.name))
+    return out
+
+
+def assert_operands_cropped_bitwise(ref_invariants, got_invariants, label):
+    """(iii): each padded operand, cropped to the unpadded extent, has the unpadded bytes."""
+    ref, got = step_operands(ref_invariants), step_operands(got_invariants)
+    assert ref.keys() == got.keys(), f'{label}: operands {sorted(ref)} vs {sorted(got)}'
+    failures, padded = [], 0
+    for key, a in ref.items():
+        b = got[key]
+        if b.dtype != a.dtype or b.ndim != a.ndim or any(m < n for m, n in zip(b.shape, a.shape)):
+            failures.append(f'{key}: {a.dtype}{a.shape} vs padded {b.dtype}{b.shape}')
+            continue
+        padded += b.shape != a.shape
+        crop = np.ascontiguousarray(b[tuple(slice(0, n) for n in a.shape)])
+        if crop.tobytes() != np.ascontiguousarray(a).tobytes():
+            failures.append(f'{key}: {int(np.count_nonzero(crop != a))} of {a.size} values differ '
+                            f'on the physical cells')
+    assert not failures, f'{label}: realized operands not bitwise\n  ' + '\n  '.join(failures)
+    assert padded, f'{label}: no operand was padded'
+    return len(ref), padded
+
+
+PAIRED = ([(name, target, None) for name in SCENES for target in TARGETS]
+          + [('vacuum', 'aligned', pad) for pad in ONE_AXIS_PADS])
+
+
+@pytest.mark.parametrize('name, target, pad', PAIRED)
+def test_one_step_from_one_state_and_realized_operands(name, target, pad, monkeypatch):
+    """(i) one padded step from an unpadded state; (iii) the operands it reads, cropped.
+
+    The unpadded step advances the unpadded carry (fields, CPML psi, pole states,
+    records) to n = N, 2N, 4N. That carry, padded with the run's own plan, and the
+    carry itself each take one step with the same scan inputs of step n. The
+    expected side is the unpadded step.
+    """
+    if pad is not None:
+        monkeypatch.setattr(vector_pad, 'plan_pad', one_axis_plan(pad))
+    label = f'{name}/{target}' + (f' pad {pad}' if pad else '')
+    off, _ = captured_step(name, 'off', LENGTHS[-1] + 1)
+    on, plans = captured_step(name, target, LENGTHS[-1] + 1)
+    assert_padded(plans, label)
+    plan = plans[-1]
+    count, padded = assert_operands_cropped_bitwise(off['invariants'], on['invariants'], label)
+    assert_bitwise(_arrays(off['xs'], 'xs'), _arrays(on['xs'], 'xs'), f'{label} scan inputs')
+
+    driven = _driven(off['invariants']['ctx'])
+    keep = {c: jnp.asarray(~driven[c]) for c in FIELDS}
+    body = off['body']
+
+    def tracked(carry, x):
+        carry, out = body(carry, x)
+        fields = carry['fdtd']
+        peaks = jnp.stack([jnp.max(jnp.where(keep[c], jnp.abs(getattr(fields, c)), 0.))
+                           for c in FIELDS])
+        return carry, (out[0], peaks)
+
+    advance = jax.jit(lambda carry, xs: jax.lax.scan(tracked, carry, xs))
+    states, probes, peaks, start, carry = {}, [], [], 0, off['init']
+    for n in LENGTHS:
+        carry, (p, k) = advance(carry, jax.tree_util.tree_map(lambda a: a[start:n], off['xs']))
+        states[n], start = carry, n
+        probes.append(np.asarray(p))
+        peaks.append(np.asarray(k))
+    peaks = np.concatenate(peaks).max(axis=0)
+    scale = {'e': float(peaks[:3].max()), 'h': float(peaks[3:].max()),
+             'probes': float(np.abs(np.concatenate(probes)).max())}
+
+    step_off, step_on = jax.jit(off['body']), jax.jit(on['body'])
+    shapes = [np.shape(leaf) for leaf in jax.tree_util.tree_leaves(on['init'])]
+    by_length = {}
+    for n in LENGTHS:
+        x = jax.tree_util.tree_map(lambda a: a[n], off['xs'])
+        state = vector_pad.pad_carry(states[n], plan)
+        assert jax.tree_util.tree_structure(state) == jax.tree_util.tree_structure(on['init'])
+        assert [np.shape(leaf) for leaf in jax.tree_util.tree_leaves(state)] == shapes
+        ref, ref_out = step_off(states[n], x)
+        got, got_out = step_on(state, x)
+        ratios = {}
+        for f in 'eh':
+            worst = max(float(np.max(np.abs(
+                np.asarray(getattr(got['fdtd'], c))[plan.physical].astype(np.float64)
+                - np.asarray(getattr(ref['fdtd'], c), np.float64)))) for c in (f + 'x', f + 'y', f + 'z'))
+            ratios[f.upper()] = _ratio(worst, ONE_STEP_BAR * scale[f])
+        probe_diff = np.max(np.abs(np.asarray(got_out[0], np.float64) - np.asarray(ref_out[0], np.float64)))
+        ratios['probes'] = _ratio(probe_diff, ONE_STEP_BAR * scale['probes'])
+        by_length[n] = ratios
+    sys.stderr.write(
+        f'OPERANDS {label}: {count} operand arrays, {padded} padded, all bitwise when cropped; '
+        f'driven cells {sum(int(m.sum()) for m in driven.values())}; scale E {scale["e"]:.4e} '
+        f'H {scale["h"]:.4e} probes {scale["probes"]:.4e}\n')
+    assert_bars(f'one step {label}', by_length)
     jax.clear_caches()
