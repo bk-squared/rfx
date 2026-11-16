@@ -267,33 +267,33 @@ ABSORBER_SIGMA_MAX = 2.0           # S/m, quadratic profile
 SRC_X = 0.010
 N_STEPS = 4000
 
-# ---- measured envelope (historical #677 record in the module docstring) ----
+# ---- measured envelope ----
 # 2026-09-25 re-measure: #1178 continued these Box plates through the
 # source-side absorber (+6.74%, 0.69823 -> 0.74530 Np/m); #1012 placed
 # the absorber's magnetic profile at the Yee half cell (+0.56%, -> 0.74950).
 # #1231 does not change this fixture's Box plates. Its implementation is
-# checked separately by Box == non-Box tests. Record: VESSL 369367264763.
-# All pins below use that run's 1N record (4000 steps); witnesses at f0:
+# checked separately by Box == non-Box tests.
+# All pins below use the 1N record (4000 steps); witnesses at f0:
 # fit ln-RMS residual 0.00246, settling -69.0 dB, two-plane alpha 0.77540.
 MEASURED_ALPHA = 0.74950           # Np/m at f0, current Box-plate fixture
 MEASURED_ALPHA_TWO_PLANE = 0.77540  # Np/m, same run's endpoint-ratio record
-# Historical #947 absorber-only comparison: 0.87333 -> 0.72494797,
-# alpha_fit 0.71565 -> 0.69823741. The 2026-09-07 re-pin attributed the
+# Historical absorber-only comparison: 0.87333 -> 0.72494797,
+# alpha_fit 0.71565 -> 0.69823741. The re-pin attributed the
 # change to sheet rims without isolating the malformed absorber. Current
 # sheet ownership is retained; correcting nine ramp cells recovers the
 # historical profile. The diagnostic tolerance remains 5%.
 MEASURED_ENVELOPE = 0.28945        # |alpha_fit/alpha_analytic - 1| — the
 #   closed-form pairing's envelope, kept as the documented LIMIT-ANCHOR
-#   record (#700): the fixture's alpha_fit is 29% below Rs/(eta0*b)
+#   record: the fixture's alpha_fit is 29% below Rs/(eta0*b)
 #   because the closed form is not an eigenvalue of this 4-conductor
 #   fixture, not because the sheet under-dissipates.
 MEASURED_GUIDE_SQRT_RATIO = 0.5970  # alpha(4*sigma)/alpha(sigma), same run
 
-# ---- #700 re-pair: exact 4-conductor comparator (tests/_transverse_resonance_o3) ----
+# ---- exact 4-conductor comparator (tests/_transverse_resonance_o3) ----
 O3_FREQS = (8e9, 9e9, 10e9, 11e9, 12e9)
 G_STUB = Z_SHEET_LO                # PEC backing-stub depth = 0.5 mm (1 cell)
 RS0 = float(leontovich_rs(F0, SIGMA_BULK))
-# measured 2026-08-24 (this fixture, JAX CPU float32): per-bin
+# measured (this fixture, JAX CPU float32): per-bin
 # |alpha_meas/alpha_model - 1| worst case over both extract routes
 # (Ez midplane fit and Hy midplane fit) and all five bins:
 O3_MODEL_ENVELOPE = 0.05677        # worst bin (8 GHz, Ez route)
@@ -311,13 +311,13 @@ O3_FIELD_FIT_RMS_GATE = 0.01
 # predict 0.25. The [0.40, 0.60] window separates the two models and is
 # the HISTORICAL band — it is not widened here. The clean transmission
 # oracle passes it (0.5026). The guide fit (0.5970) also lies inside, 0.0030
-# from its upper edge, but its band check was retired on 2026-10-12: #700's
+# from its upper edge, but its band check was retired: the
 # two-mode transient explains that ratio qualitatively (not quantified for
 # it), so the band judges the fixture, not the sqrt law (tracker 1501).
 O4A_BAND = (0.40, 0.60)
 # The closed-form pairing (|alpha/alpha_analytic - 1| vs a 0.15 cap,
-# xfail(strict=True) since the 2026-08-19 R2-STOP) is RETIRED as the
-# enforced O3 gate by #700: the closed form is not an eigenvalue of this
+# xfail(strict=True)) is RETIRED as the
+# enforced O3 gate: the closed form is not an eigenvalue of this
 # fixture (see O3 MODEL RE-PAIR in the module docstring), so gating
 # against it measured the stub geometry, not the sheet. The closed form
 # stays in this file as the documented limit anchor
@@ -363,7 +363,7 @@ def _build_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True,
                        amplitude_kind="field")
     sim.add_dft_plane_probe(axis="z", coordinate=3.0e-3, component="ez",
                             freqs=jnp.asarray(freqs), name="midplane")
-    # #700 model comparator instrumentation: full Hy(x, z) at the y
+    # model comparator instrumentation: full Hy(x, z) at the y
     # midplane. A DFT accumulator is a passive observer — adding it does
     # not perturb the time stepping (scout-verified: the instrumented run
     # reproduces the current MEASURED_ALPHA = 0.74950 Np/m pin at f0).
@@ -405,7 +405,7 @@ def _run_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True, thickness=THICKNESS,
         out["alpha"].append(a)
         out["resid"].append(r)
         out["profile"].append(mag)
-    # #700: complex Hy(x, z) over the fit span for the model comparator.
+    # complex Hy(x, z) over the fit span for the model comparator.
     # Hy z-nodes sit at (k + 1/2)*DX on the Yee grid (12 nodes across the
     # 6 mm stack, z = 0 at the bottom PEC).
     hy = np.asarray(result.dft_planes["yhy"].accumulator)
@@ -654,7 +654,7 @@ def test_alpha_envelope_regression_lock():
     alpha = out["alpha"][_F0_IDX]
     a2 = _alpha_two_plane(out["xs"], out["profile"][_F0_IDX])
 
-    # R5 trace, added 2026-09-07 (#931). The two extractors disagreed about
+    # The two extractors disagreed about
     # whether this fixture moved — the span-average fit stayed inside its 5 %
     # pin while the endpoint ratio went 20 % — and neither the profile nor the
     # endpoints it reads were ever printed, so the disagreement could not be
@@ -679,12 +679,12 @@ def test_alpha_envelope_regression_lock():
     assert abs(alpha / MEASURED_ALPHA - 1.0) <= 0.05, (
         f"measured alpha moved: {alpha:.5f} vs recorded {MEASURED_ALPHA}")
     # Endpoint ratio is a distinct extractor of the same record. The
-    # #1231 pin uses the same continued-plate record; this is not a claim
+    # pin uses the same continued-plate record; this is not a claim
     # that a multimode guide has one exponential attenuation constant.
     assert abs(a2 / MEASURED_ALPHA_TWO_PLANE - 1.0) <= 0.05, a2
-    # forward-wave-purity witness (#1231 1N record: 0.00246 ln-RMS)
+    # forward-wave-purity witness (1N record: 0.00246 ln-RMS)
     assert out["resid"][_F0_IDX] < 0.02, out["resid"][_F0_IDX]
-    # ring-down settling witness (repo rule; #1231 1N record: -69.0 dB)
+    # ring-down settling witness (repo rule; 1N record: -69.0 dB)
     assert out["settle_db"] < -40.0, out["settle_db"]
 
 
@@ -882,7 +882,7 @@ def test_pec_control_o4c():
     assert abs(a_pec) <= 0.05 * ALPHA_ANALYTIC, a_pec
 
 # ---------------------------------------------------------------------------
-# #677: independent closed-form oracle for the sheet OPERATOR itself
+# independent closed-form oracle for the sheet OPERATOR itself
 # ---------------------------------------------------------------------------
 
 _TRANS_FREQS = (8e9, 9e9, 10e9, 11e9, 12e9)

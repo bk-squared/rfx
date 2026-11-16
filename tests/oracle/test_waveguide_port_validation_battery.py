@@ -53,7 +53,7 @@ PORT_LEFT_X = 0.01
 PORT_RIGHT_X = 0.09
 F_CUTOFF_HZ = 3.75e9
 TARGET_CPML_M = 0.030  # 30 mm physical CPML absorber target
-#: whole cells of the PEC short (#931: a Box is a volume; a sub-cell
+#: whole cells of the PEC short (a Box is a volume; a sub-cell
 #: extent is refused, and this module does not pin dx).
 SHORT_CELLS = 2
 
@@ -97,7 +97,7 @@ def _build_sim(
         dx = (0.75e-3 if obstacles else 299792458.0 / max(float(freqs[-1]), f0) / 20.0) if dx is None else dx
         n_y = int(np.ceil(DOMAIN[1] / dx))
         n_z = int(np.ceil(DOMAIN[2] / dx))
-        domain = (DOMAIN[0], n_y * dx, n_z * dx)  # solved length; #1887
+        domain = (DOMAIN[0], n_y * dx, n_z * dx)  # solved length
     sim_kwargs = dict(
         freq_max=max(float(freqs[-1]), f0),
         domain=domain,
@@ -118,7 +118,7 @@ def _build_sim(
 
     if pec_short_x is not None:
         # Full-cross-section PEC short, drawn as a VOLUME on the node line
-        # (lattice ownership contract #931 §1.2/§1.5).
+        # (lattice ownership contract §1.2/§1.5).
         #
         # It used to be a hard-coded 0.002 m against a cell this module
         # never pins: with dx=None the Simulation picks lambda_min/20 =
@@ -137,11 +137,10 @@ def _build_sim(
         # the grid, not to DOMAIN. With dx = None the mesh is 2.1414 mm and
         # ceil(20 / 2.1414) = 10 cells make the guide 21.41 mm tall; a plug
         # drawn to z = 20 mm rounds its top face to the nearest node
-        # (#931 §1.1) at 19.27 mm and leaves a 2.14 mm vacuum slot under
+        # at 19.27 mm and leaves a 2.14 mm vacuum slot under
         # the top wall — a parallel-plate line for Ez straight past the
         # "short". That slot, not the lane, was the 0.9670 this test read
-        # after the redraw (adjudicated 2026-09-07 on the WR-90
-        # waveguide-port case's identical set-up).
+        # after the redraw.
         # Finalize before placing a body from node coordinates: an ordinary
         # preview is invalidated by add(), and the new feature can refine it.
         grid = sim.freeze_mesh()
@@ -156,7 +155,7 @@ def _build_sim(
         )
         # What the fixture declares, for the build-time realization check.
         sim._pec_short_faces_m = (x_lo, x_hi)
-        # #1913: the right port stands 4 cells behind the short's far face,
+        # the right port stands 4 cells behind the short's far face,
         # so its 3-cell reflection plane is in front of the short; at
         # PORT_RIGHT_X it read the far side. |S11| is bit-identical.
         right_x = (k_lo + SHORT_CELLS + 4) * d
@@ -220,12 +219,12 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
 # power that fails to be absorbed and returns to the driven port. A good
 # matched load reflects ~0; a degraded absorber reflects more.
 #
-# ISSUE #395 — why NOT ``normalize=True`` here: with ``normalize=True`` on
+# why NOT ``normalize=True`` here: with ``normalize=True`` on
 # an empty guide the device run *is* the reference run, so
 # ``S11 = (b_dev - b_ref)/a_inc`` is identically ZERO by construction and
 # no PML/extractor regression that touches both runs equally can move it
-# (probe 2026-07-20: cpml_layers 10 and 4 BOTH give max|S11| = 0.000000).
-# The pre-#395 gate (``normalize=True``, threshold 0.02) was therefore
+# (probe: cpml_layers 10 and 4 BOTH give max|S11| = 0.000000).
+# The earlier gate (``normalize=True``, threshold 0.02) was therefore
 # VACUOUS — a determinism/plumbing tripwire mislabeled "the single
 # most-telling diagnostic for extractor + PML quality". Switching to the
 # single-run ``normalize=False`` reflection is a STRENGTHENING, not a
@@ -233,13 +232,12 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
 # moves with the boundary. This test carries that crippled-CPML falsifier
 # inline, mirroring the phase-gate's in-test perturbation witness.
 #
-# This is the direct waveguide-lane PML-reflection witness the family
-# previously lacked. The PEC-short |S11|=1 gate (Test 7) binds the
+# This is the direct waveguide-lane PML-reflection witness. The PEC-short |S11|=1 gate (Test 7) binds the
 # extractor on TOTAL reflection; this binds the ABSORBER on near-zero
 # reflection — complementary, and neither is an identity.
 #
 # With the magnetic CPML profile at the Yee half cell the 10-layer load reflects at most
-# 0.0135 over 4.5–8 GHz (0.156 on 2026-07-20; 0.119 with the integer-node profile
+# 0.0135 over 4.5–8 GHz (0.156 earlier; 0.119 with the integer-node profile
 # on today's tree) and 4 layers reflect 0.119, so the earlier 13–16 %
 # floor was the absorber, not the source plane. Gate 0.05; the 4-layer witness must
 # clear 0.08.
@@ -249,7 +247,7 @@ def test_matched_load_s11_empty_waveguide():
     # normalize=False: single-run wave decomposition (OpenEMS convention),
     # the correct tool for a reflection/absorber-quality gate. The two-run
     # normalize=True subtraction cancels ALL reflection (real included) on
-    # an empty guide, which is why the pre-#395 gate could not fail.
+    # an empty guide, which is why the earlier gate could not fail.
     sim = _build_sim(freqs, solved_domain=True, cpml_layers=10, waveform="modulated_gaussian")
     s, sim_freqs, port_idx = _s_matrix(sim, num_periods=40, normalize=False)
 
@@ -276,7 +274,7 @@ def test_matched_load_s11_empty_waveguide():
         "(<0.95) — degraded CPML absorber."
     )
 
-    # In-test discrimination falsifier (issue #395): the SAME geometry with
+    # In-test discrimination falsifier: the SAME geometry with
     # a crippled 4-layer CPML must FAIL the 0.05 gate, proving this gate
     # observes real absorber quality and is not vacuous. A regression that
     # re-vacuumed the gate (e.g. reverting to normalize=True) would let the
@@ -301,10 +299,10 @@ def test_matched_load_s11_empty_waveguide():
 # =============================================================================
 #
 # Energy cannot be created: for a lossless two-port the column power
-# ``sum_i |S_ij|^2`` must stay <= 1. ISSUE #395 — the pre-#395 version
+# ``sum_i |S_ij|^2`` must stay <= 1. The earlier version
 # measured this on an EMPTY guide with ``normalize=True``, where the
 # device run *is* the reference run, so S11=0 and S21=1 exactly and the
-# column power is 1.0000 by construction (probe 2026-07-20: identical at
+# column power is 1.0000 by construction (probe: identical at
 # cpml_layers 10 and 4). No energy-injection bug that affects both runs
 # equally could trip it.
 #
@@ -312,7 +310,7 @@ def test_matched_load_s11_empty_waveguide():
 # device != reference, and read the ENERGY (flux) extractor
 # (``normalize='flux'``) whose |S11| and |S21| are two INDEPENDENT power
 # measurements. Their sum is a genuine conservation check. Measured max
-# column power 1.0005 (2026-07-20); a non-passive (energy-injection)
+# column power 1.0005; a non-passive (energy-injection)
 # extractor bug pushes it above the gate.
 #
 # ``normalize=True`` is deliberately NOT used here: its diagonal |S11| on
@@ -335,7 +333,7 @@ def test_tight_passivity_reflecting_dut():
     print(f"[passivity] |S21| = {np.array2string(s21, precision=3)}")
     print(f"[passivity] max column |S|^2 = {max_power:.4f} (gate 1.02; measured 1.0005)")
 
-    # Non-vacuity witness (issue #395): the obstacle must actually reflect
+    # Non-vacuity witness: the obstacle must actually reflect
     # AND attenuate (device != reference), else this degenerates into the
     # old empty-guide identity. Measured max|S11|~0.73, min|S21|~0.69.
     assert s11.max() > 0.30, (
@@ -379,7 +377,7 @@ def test_reciprocity_symmetric_obstacle():
     print(f"\n[reciprocity-sym] mean |S21-S12|/max = {mean_err:.4f}")
     print("[reciprocity-sym] gate 0.05")
 
-    # Gate ratcheted 2026-04-22 from 0.05 to 0.01. Two-run normalization
+    # Two-run normalization
     # on a symmetric obstacle currently measures 0.0005 mean reciprocity
     # error — the full 0.05 headroom was from the pre-consistency era.
     assert mean_err < 0.01, (
@@ -455,7 +453,7 @@ def test_reciprocity_asymmetric_obstacle_known_gap():
     print(f"\n[reciprocity-asym-lock] mean |S21-S12|/max = {mean_err:.4f}")
     print("[reciprocity-asym-lock] gate 0.30 (known extractor gap ~0.22)")
 
-    # Gate ratcheted 2026-04-22 from 0.30 to 0.10. Post fixes the
+    # Post fixes the
     # asymmetric-obstacle case measures ~0.06 — the old 0.30 gate
     # tolerated the 0.22 regime that no longer reflects current extractor
     # state. 0.10 keeps headroom for frequency-dependent reciprocity
@@ -478,11 +476,8 @@ def test_reciprocity_asymmetric_obstacle_known_gap():
 # (a) monotone: |S21(2mm)-S21(1.5mm)| <= |S21(3mm)-S21(2mm)|
 # (b) absolute: fine-mesh change < 0.10
 #
-# 2026-04-29 unblocked. The 2026-04-22..04-29 saga that locked this test
-# as xfail (DROP weight, fractional aperture path-1, conformal PEC stage 1
-# attempts) was chasing a phantom: the "modal-template normalisation
-# mesh-dependence" hypothesis was wrong. The actual root cause was
-# `Box.mask_on_coords` closed-closed semantics (issue #75) — the εr=4
+# The actual root cause was
+# `Box.mask_on_coords` closed-closed semantics — the εr=4
 # obstacle was being painted with N+1 cells per axis at each dx, and the
 # uneven cell-count rounding across {3, 2, 1.5} mm produced the
 # 0.0370/0.0547 non-monotone |S21| jitter. Half-open Box semantics
@@ -539,7 +534,7 @@ def test_mesh_convergence_s21_scaled_cpml():
 # wave before it returns to the driven port — useful only for strong
 # resonators, not for a one-bounce short.
 #
-# Measured on 2026-04-22: mean |S11| ~ 0.93, per-freq range [0.78, 1.06].
+# Measured: mean |S11| ~ 0.93, per-freq range [0.78, 1.06].
 # The remaining ~7 % departure from unity is extractor/mode-projection
 # error. Tighten when P3 (discrete-eigenmode profile) lands.
 
@@ -560,12 +555,12 @@ def test_pec_short_s11_magnitude():
         pec_short_x=0.085,
         waveform="modulated_gaussian",
     )
-    # After the #931 redraw this test read min |S11| = 0.9670 and was left
-    # RED with the gate untouched (migration rule 3). Adjudicated 2026-09-07
+    # After the redraw this test read min |S11| = 0.9670 and was left
+    # RED with the gate untouched (migration rule 3). Adjudicated
     # on the WR-90 waveguide-port case's identical set-up (per-bin dumps
     # + port time records, both checkouts): NEITHER of the
     # two suspects — the thicker reflector, or the lane's switch from the
-    # sigma = 1e10 cell fill to the realized PEC edges (stage C, 0184d64c)
+    # sigma = 1e10 cell fill to the realized PEC edges (stage C)
     # — was it. The plug was drawn to DOMAIN[2] = 20 mm on a 2.1414 mm
     # auto mesh whose guide is 21.41 mm tall, so its top face rounded to
     # 19.27 mm and a one-cell vacuum slot ran along the top broad wall;
@@ -577,10 +572,10 @@ def test_pec_short_s11_magnitude():
     # front wall that is not the whole cross-section, which is what would
     # have caught this at build time.
     #
-    # MEASURED after that redraw (VESSL 369367259278, this module run whole,
+    # MEASURED after that redraw (this module run whole,
     # 9 passed): |S11| range [0.99822, 1.02670], mean 1.00376 — the gate is
-    # green at its untouched 0.99 and the pre-#931 baseline is back. The
-    # pre-declared thickness separation ran in the same job
+    # green at its untouched 0.99 and the earlier baseline is back. The
+    # thickness separation ran in the same job
     # (`scripts/vessl_931/pec_short_thickness_sweep.py`, SHORT_CELLS = 1, 2, 4) and
     # is now FLAT to five decimals: min|S11| 0.99822 at every thickness,
     # spread 0.00000, the six per-bin values identical arm to arm. That is
@@ -588,10 +583,10 @@ def test_pec_short_s11_magnitude():
     # reflector's leading face is dark, so |S11| cannot depend on how many
     # cells sit behind it — and it only became true once the leak along the
     # top broad wall was closed. Before the fix the same sweep read 0.95721
-    # / 0.96705 / 0.97607 (369367259233): the thicker the plug, the longer
+    # / 0.96705 / 0.97607: the thicker the plug, the longer
     # the slot, the less it leaked.
     #
-    # Build-time realization check (#931), no solve: it fails before the
+    # Build-time realization check, no solve: it fails before the
     # 40-period run if the geometry ever drifts off the node line again.
     #
     # The short is a VOLUME SHORT_CELLS cells thick, so it realizes a
@@ -615,8 +610,7 @@ def test_pec_short_s11_magnitude():
                     what="PEC short (full cross-section)")
     # Full-window DFT: the single PEC->CPML round trip fits inside
     # num_periods=40 and there is no resonator to build up late-time.
-    # Phase 2 cleanup (2026-04-25) removed the num_periods_dft early
-    # gate; the post-scan rect full-record DFT is finite-energy on the
+    # The post-scan rect full-record DFT is finite-energy on the
     # transient so no gating is needed.
     s, _, port_idx = _s_matrix(
         sim,
@@ -632,7 +626,7 @@ def test_pec_short_s11_magnitude():
     print(f"\n[pec-short] |S11| per freq: {np.array2string(s11, precision=4)}")
     print(f"[pec-short] range [{min_s11:.4f}, {max_s11:.4f}]  mean {mean_s11:.4f}; ideal 1.00")
 
-    # Meep-class strict closure. Pre-2026-04-27 baseline (PROD half-
+    # Meep-class strict closure. Earlier baseline (PROD half-
     # weight) was min=0.78, mean=0.93; the DROP-weight fix took it to
     # min ≥ 0.99 by removing the spurious-Ez ghost-cell contribution
     # that apply_pec_faces does not zero (Ez is "normal" at the z_hi
@@ -779,7 +773,7 @@ def test_source_directionality_early_time():
     print(f"[source-dir] full-window  bwd/fwd = {dir_full*100:.3f}% "
           f"(if != early-time, CPML round-trip is entering the gate)")
 
-    # Lock at 2.5% — ~2x the current-geometry baseline (~1.2% on 2026-04-22).
+    # Lock at 2.5% — ~2x the current-geometry baseline (~1.2%).
     # This gate catches a real physics regression while tolerating pulse-
     # shape and mode-mismatch jitter. Tighten after the P1 Lorentz overlap
     # landing once the projected baseline is re-measured.

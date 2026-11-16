@@ -97,9 +97,8 @@ def _finest_cell_runs(dz_profile, rel_tol=1e-9):
 
 
 #: TM111 error of the single-fine-band arm, in percent, measured on the repro grid
-#: (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py, #596). Both arms
-#: derive their gate from this ONE number by the shared envelope rule; it used to
-#: be written once per arm.
+#: (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py). Both arms
+#: derive their gate from this ONE number by the shared envelope rule.
 _MEASURED_ENVELOPE_PCT = 0.0252
 
 
@@ -243,7 +242,7 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
     # The ANALYTIC accuracy gate (the gap this test fills): the z-graded NU mesh
     # reproduces the z-DEPENDENT closed-form TM111 to within the measured tolerance.
     # DERIVED gate: measured envelope x the repo-wide envelope multiplier,
-    # quantized up by the shared helper (#528/#539), in percent units.
+    # quantized up by the shared helper, in percent units.
     # Envelope 0.0252 % at this test's configuration -> 0.04 %.
     #
     # It was 4 % until #562 removed the one-cell z-extent defect that dominated
@@ -261,15 +260,15 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
     #                                              re-parameterize to 2 mm
     #                                              without re-deriving the gate
     #
-    # Domain-SIZE sensitivity, measured by the #573 reviewer at fixed dx and
+    # Domain-SIZE sensitivity, measured at fixed dx and
     # fixed 4:1 grading while sweeping cavity size (z, percent error):
     #
     #     0.0373 / 0.0306 / 0.0252 / 0.0264 / 0.0213
     #
     # The residual tracks f0, so the gate binds the dispersion floor rather than
-    # a fixture artifact — but the worst case is inside the gate ON THE #573
-    # REVIEWER'S (unrecorded) size grid; the committed producer's documented
-    # grid (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py, #596)
+    # a fixture artifact — but the worst case is inside the gate ON THE
+    # (unrecorded) size grid; the committed producer's documented
+    # grid (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py)
     # measures its smallest-cavity point ABOVE this gate (0.0715% vs 0.04%) —
     # direct evidence that the "do NOT re-parameterize without re-deriving"
     # warning covers cavity SIZE as well as dx.
@@ -295,7 +294,7 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
     _FALSIFIER = 0.005
     # And the gate must reject the REAL historical regression, not only a
     # synthetic perturbation: the residual this configuration measured while the
-    # #562 extent defect was live was 2.66 %, which the new gate rejects
+    # extent defect was live was 2.66 %, which the new gate rejects
     # by 66x. The old gate accepted it.
     assert 0.0266 > GATE, (
         "the derived gate would NOT have caught the #562-era residual "
