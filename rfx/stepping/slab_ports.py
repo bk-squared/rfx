@@ -34,8 +34,7 @@ def global_plan(sim, grid, specs, lane, freqs, compute_s_params):
             from rfx.measurement.monitors import default_frequency_grid
             freqs = default_frequency_grid(sim._freq_max, 50, host=True)
     initial = {}
-    with jax.ensure_compile_time_eval():
-        bins, meta, use = graded_accumulators(specs, grid, freqs, initial)
+    bins, meta, use = graded_accumulators(specs, grid, freqs, initial)
     return PortPlan(graded_specs(specs), graded_acc_indices(specs), meta, bins, use, initial)
 
 
@@ -50,9 +49,8 @@ def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps):
         port_acc_indices=plan.acc_indices, wp_meta=plan.wp_meta,
         sp_freqs=None if plan.sp_freqs is None else place(plan.sp_freqs, NamedSharding(mesh, P())),
         use_wire_ports=plan.use_wire_ports)
-    with jax.ensure_compile_time_eval():
-        invariants['port_table'] = port_table(context.grid, plan.specs, nu=True,
-            boundary=context.curl_boundary, dtype=carry['fdtd'].ex.dtype)
+    invariants['port_table'] = port_table(context.grid, plan.specs, nu=True,
+        boundary=context.curl_boundary, dtype=carry['fdtd'].ex.dtype)
     initial = dict(plan.initial)
     initial['fdtd'] = carry['fdtd']
     init_graded_records(initial, n_steps, SimpleNamespace(step_fn_inv=make_graded_step(context)))

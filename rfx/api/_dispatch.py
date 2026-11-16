@@ -376,8 +376,8 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
     there, and the entry then runs its body outside the region instead of re-entering without end.
 
     The post-admission run entry uses ``devices=`` to select distributed
-    calls. Its host-controlled decay/progress and subgrid paths retain their
-    existing execution context; fixed one- and multi-device scans enter.
+    calls. One-device host-controlled decay/progress and subgrid paths retain
+    their execution context; every multi-device call enters the setup region.
     """
     if entry is None:
         return functools.partial(_declaration_setup_at_trace_time, run=run)
@@ -390,7 +390,7 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
         if run:
             devices = kwargs.get("devices")
             distributed = devices is not None and len(devices) > 1
-            if (kwargs.get("until_decay") is not None
+            if not distributed and (kwargs.get("until_decay") is not None
                     or kwargs.get("report_every") is not None
                     or kwargs.get("until_identified", False) is not False
                     or self._refinement is not None):

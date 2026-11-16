@@ -300,10 +300,9 @@ class SlabRecords:
             from rfx.farfield import make_ntff_box
             self.ntff_box = make_ntff_box(grid, *sim._ntff)
             self.layouts["ntff"] = SlabNTFF(self.ntff_box, grid.shape, nx_per, mesh, field_dtype)
-        with jax.ensure_compile_time_eval():
-            planes = build_planes(sim, grid, n_steps)
-            flux = build_flux_monitor_cfgs(sim, grid, n_steps)
-            monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
+        planes = build_planes(sim, grid, n_steps)
+        flux = build_flux_monitor_cfgs(sim, grid, n_steps)
+        monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
         for what, template in (("a DFT plane probe", planes), ("a flux monitor", flux),
                                ("a current-moment monitor", monitor)):
             if any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(template)):

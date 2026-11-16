@@ -297,9 +297,8 @@ def execute_from_materials(
         ))
 
     from rfx.runners._distributed_records import SlabRecords
-    with jax.ensure_compile_time_eval():
-        records = SlabRecords(self, grid, sharded_grid.nx_per_rank, mesh,
-                              sharded_materials.eps_r.dtype, n_steps, snapshot)
+    records = SlabRecords(self, grid, sharded_grid.nx_per_rank, mesh,
+                          sharded_materials.eps_r.dtype, n_steps, snapshot)
     _require_wrapped_records(records, sharded_grid.step_kind)
     from rfx.measurement.prepared import finish_measurement
     finish_measurement(stepping_product)
