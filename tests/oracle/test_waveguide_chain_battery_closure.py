@@ -176,7 +176,7 @@ CLOSURE_ABS_DIFF_GATE = 0.02
 SETTLING_DB_MAX = -40.0
 
 # Non-vacuity: an empty guide would make the closure identity trivially true
-# at both plane pairs. The slab
+# at both plane pairs (the contract's "never an empty guide"). The slab
 # reflects; the fixture's own gate is max|S11| > 0.20 on the reflecting DUTs.
 NON_VACUITY_MIN_S11 = 0.20
 

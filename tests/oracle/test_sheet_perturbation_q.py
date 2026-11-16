@@ -171,8 +171,8 @@ def _measured():
     dA = DX * DX
     P = 0.0
     for sp in specs:
-        # The sheet's realized plane is a property of the spec (
-        # §1.3), not something to re-derive from its mask. This used to
+        # The sheet's realized plane is a property of the spec,
+        # not something to re-derive from its mask. This used to
         # take the LOWEST populated z index of the mask, which is the same
         # answer only as long as a sheet occupies exactly one layer — a
         # second hand-rolled realization reader of the kind the
@@ -204,7 +204,7 @@ def test_g2_loss_is_real():
     assert out["fw_f0"] / out["fw_pec"] > 2.0, out
     # Regression pins on the measured envelope (loose: mode tracking).
     #
-    # 24.753 -> 25.399 GHz. The patch
+    # This pin went from 24.753 to 25.399 GHz. The patch
     # is declared as a zero-thickness sheet whose in-plane faces sit ON node
     # lines, and the contract samples a sheet footprint CLOSED, so the patch
     # realizes the length it draws instead of one cell less. The mode tracks

@@ -140,7 +140,8 @@ def _build_sim(
         # at 19.27 mm and leaves a 2.14 mm vacuum slot under
         # the top wall — a parallel-plate line for Ez straight past the
         # "short". That slot, not the lane, was the 0.9670 this test read
-        # after the redraw.
+        # after the redraw (adjudicated on the WR-90 waveguide-port case's
+        # identical set-up).
         # Finalize before placing a body from node coordinates: an ordinary
         # preview is invalidated by add(), and the new feature can refine it.
         grid = sim.freeze_mesh()
@@ -377,7 +378,7 @@ def test_reciprocity_symmetric_obstacle():
     print(f"\n[reciprocity-sym] mean |S21-S12|/max = {mean_err:.4f}")
     print("[reciprocity-sym] gate 0.05")
 
-    # Two-run normalization
+    # Gate ratcheted from 0.05 to 0.01. Two-run normalization
     # on a symmetric obstacle currently measures 0.0005 mean reciprocity
     # error — the full 0.05 headroom was from the pre-consistency era.
     assert mean_err < 0.01, (
@@ -534,7 +535,7 @@ def test_mesh_convergence_s21_scaled_cpml():
 # wave before it returns to the driven port — useful only for strong
 # resonators, not for a one-bounce short.
 #
-# Measured: mean |S11| ~ 0.93, per-freq range [0.78, 1.06].
+# Measured earlier: mean |S11| ~ 0.93, per-freq range [0.78, 1.06].
 # The remaining ~7 % departure from unity is extractor/mode-projection
 # error. Tighten when P3 (discrete-eigenmode profile) lands.
 

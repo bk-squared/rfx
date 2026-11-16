@@ -53,7 +53,7 @@ _DZ = jnp.array([1., 1., 3., 1., 1., 3., 1., 1.], dtype=jnp.float32) * 1.0e-3
 
 
 # ===========================================================================
-# CORE-C2 — non-uniform Yee H/E spacing metrics
+# CORE-C2 — non-uniform Yee H/E spacing metrics  (FIXED)
 # ===========================================================================
 #
 # First-principles Yee staggering (1-D, z-axis):
@@ -133,7 +133,7 @@ def test_corec2_e_update_uses_mean_spacing():
 
 
 # ===========================================================================
-# GEO-C1 — Kerr ADE exact implicit solve
+# GEO-C1 — Kerr ADE exact implicit solve  (FIXED, Stage 1)
 # ===========================================================================
 #
 # apply_kerr_ade previously implemented  E <- E*(1-factor)  (explicit
@@ -191,7 +191,7 @@ def test_geoc1_kerr_ade_selfconsistent_solve():
 
 
 # ===========================================================================
-# PROBE-C1 — FluxMonitor axis-aware area weighting
+# PROBE-C1 — FluxMonitor axis-aware area weighting  (FIXED)
 # ===========================================================================
 #
 # The pre-fix FluxMonitor stored a single scalar ``dx`` and flux_spectrum

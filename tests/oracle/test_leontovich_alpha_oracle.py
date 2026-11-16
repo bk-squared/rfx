@@ -654,7 +654,7 @@ def test_alpha_envelope_regression_lock():
     alpha = out["alpha"][_F0_IDX]
     a2 = _alpha_two_plane(out["xs"], out["profile"][_F0_IDX])
 
-    # The two extractors disagreed about
+    # R5 trace. The two extractors disagreed about
     # whether this fixture moved — the span-average fit stayed inside its 5 %
     # pin while the endpoint ratio went 20 % — and neither the profile nor the
     # endpoints it reads were ever printed, so the disagreement could not be
