@@ -116,7 +116,7 @@ def test_kottke_pec_short_time_stability_30_periods():
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
-        # conformal faces with kottke_pec are refused (#1935); the subject here is kottke_pec
+        # conformal faces with kottke_pec are refused; the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
@@ -133,7 +133,7 @@ def test_kottke_pec_short_time_stability_30_periods():
     # Sample the field magnitude at a few checkpoints to detect any
     # growing mode that would be absorbed once it propagates.
     period_steps = int(round((1.0 / 8e9) / sim._build_grid().dt))
-    checkpoint_periods = (5, 15, 30)  # 50 also passes — ghost-layer fix 2026-05-01
+    checkpoint_periods = (5, 15, 30)  # 50 also passes — ghost-layer fix
     max_magnitudes = []
     for n_periods in checkpoint_periods:
         n_steps = n_periods * period_steps
@@ -171,7 +171,7 @@ def test_kottke_pec_late_time_stability_50_periods():
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
-        # conformal faces with kottke_pec are refused (#1935); the subject here is kottke_pec
+        # conformal faces with kottke_pec are refused; the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
