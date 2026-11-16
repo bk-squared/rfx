@@ -271,7 +271,8 @@ class MomentRecords(Packed):
                 _, fields, _ = args
                 return self.previous.pack(slab_e_snapshot(fields, m))
             branches.append(branch)
-        return self.previous.mapped(self.previous.initial(), state, 0, branches, ranks=ranks)
+        start = jnp.zeros((self.mesh.size, self.previous.capacity), self.previous.dtype)
+        return self.previous.mapped(start, state, 0, branches, ranks=ranks)
 
     def operands(self):
         return moment_operands(self.parts, self.mesh)
