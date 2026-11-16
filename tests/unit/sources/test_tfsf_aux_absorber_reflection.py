@@ -20,7 +20,7 @@ the shared ``gate_from_envelope`` policy -- never a number chosen to pass.
 Two rows are bounds, not envelope locks: the 60-degree fast row and the
 80-degree domain row read the rig's own floor at f0 and move with record length,
 so they are held between 0.5x the smallest and 2x the largest reading over three
-record lengths (rfx-archive rfx/records/20261020-aux-f0-reading/), written here,
+record lengths, written here,
 not through gate_from_envelope.
 They are per angle because the reflection is per angle: the optimum reflection
 target inverts between normal and near-grazing incidence, so no single absorber
@@ -106,7 +106,7 @@ FAST_MEASURED = {
     # forward wave is weak, and moves with record length, so it is not pinned. The row catches the
     # absorber's target reflection rising to about 1e-6 (R_asymptotic 1e-6 reads 1.61e-04, 4.7x the bound)
     # and nothing finer; a finer test of the absorber needs another rig. Bound: 2x the largest of the three
-    # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
+    # lengths.
     60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06),
            "f0_floor": 0.5 * min(1.7095e-05, 1.0833e-05, 8.0564e-06)},
 }
@@ -252,7 +252,6 @@ DOMAIN_MEASURED = {
     # (2.70e-04) would fail only from 1e-24. The band maximum sits at band-edge bins where the forward
     # wave is weak and moves with record length; it is not pinned and carries the domain check against
     # LEAK_BAR. Bound: 2x the largest, floor 0.5x the smallest f0 reading of the three lengths. Records:
-    # rfx-archive rfx/records/20261020-aux-f0-reading/ and rfx/records/20261024-aux80-rsweep/.
     80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06),
            "f0_floor": 0.5 * min(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
     # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.

@@ -30,7 +30,7 @@ def _mean_sources():
                  electric_metrics.slab_e_component_materials, yee.component_h_materials,
                  yee._material_wall_view, yee._material_bwd_neighbour,
                  yee._edge_mean_component, yee._edge_mean_four]
-    return [(Path(inspect.getsourcefile(f)).name, first, first + len(lines), f.__name__)
+    return [(Path(inspect.getsourcefile(f)).resolve().relative_to(Path(__file__).resolve().parents[2]).as_posix(), first, first + len(lines), f.__name__)
             for f in functions for lines, first in [inspect.getsourcelines(f)]]
 
 
@@ -72,7 +72,7 @@ def means_inside_while(hlo):
             todo.extend(re.findall(r'\b(?:calls|to_apply|body|condition)=%?([\w.-]+)', line))
             source = re.search(r'source_file="([^"]+)" source_line=(\d+)', line)
             for filename, first, end, function in sources:
-                if (source and Path(source[1]).name == filename and first <= int(source[2]) < end
+                if (source and source[1].replace('\\', '/').endswith(filename) and first <= int(source[2]) < end
                         or re.search(r'op_name="[^"]*\b' + function + r'\b', line)):
                     violations.append((name, function, line.strip()))
     return violations

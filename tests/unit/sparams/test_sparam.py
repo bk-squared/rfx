@@ -114,7 +114,7 @@ def test_lumped_port_pec_cavity_s11():
     the box read Re Zin = +15.0 ohm on average below the mode (8.5 ... 26.6):
     a loss the lossless box does not have, which kept |S11| below 1 (max
     0.99961) and also damped the ringing. Split from the band around the
-    mode by PI decision 2026-09-24 (the other half is the wire-port
+    mode (the other half is the wire-port
     completion test below).
     """
     freqs, s11, f_tm110 = _pec_cavity_port_s11()

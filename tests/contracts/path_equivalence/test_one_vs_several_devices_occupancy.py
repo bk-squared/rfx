@@ -4,8 +4,8 @@ Without an occupancy input one, two and three devices give identical bits in
 every probe sample: that invariant is pinned bitwise. With an occupancy input
 the lanes differ by compile-context rounding around the occupancy stage (a
 multiply by exactly 1 already changes how each lane's E update rounds next to
-the source; rfx-archive records/20261011-p4-one-vs-many-devices, DECLARE.md
-M1-M4 and p4_family.json). That cell is judged on the cross-trace bars: 9
+the source).
+That cell is judged on the cross-trace bars: 9
 float32 ULP of the family peak per step, 1e-4 on what a result reads.
 Expected values come from the one-device run; no rfx comparison helper.
 """

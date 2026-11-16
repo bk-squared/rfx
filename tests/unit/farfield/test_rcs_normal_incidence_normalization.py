@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 import rfx.measurement.rcs as rcs_mod
 from rfx.core.yee import MaterialArrays
@@ -144,3 +145,33 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
             res_per_lambda, np.round(ratio_db, 4), np.round(20 * np.log10(expected), 4))
         # and it is not the waveform: 1.0-1.16 dB below it at this Courant number
         assert np.all(ratio_db < -0.9), ratio_db
+
+
+@pytest.mark.parametrize("polarization", ["ez", "ey"])
+def test_small_angle_matches_normal_incidence(polarization):
+    """A small declared angle uses the normal source while retaining its backscatter direction."""
+    grid = Grid(freq_max=F0 * 1.5, domain=(DOMAIN,) * 3, dx=DX, cpml_layers=CPML)
+    cx, cy, cz = (n // 2 for n in grid.shape)
+    materials = MaterialArrays(
+        eps_r=jnp.ones(grid.shape, jnp.float32).at[
+            cx-3:cx+4, cy-3:cy+4, cz-3:cz+4].set(4.0),
+        sigma=jnp.zeros(grid.shape, jnp.float32),
+        mu_r=jnp.ones(grid.shape, jnp.float32),
+    )
+    expected = rcs_mod.compute_rcs(
+        grid, materials, N_STEPS, f0=F0, bandwidth=BW, freqs=FREQS,
+        cpml_layers=CPML, polarization=polarization, theta_inc=0.0,
+    )
+    actual = rcs_mod.compute_rcs(
+        grid, materials, N_STEPS, f0=F0, bandwidth=BW, freqs=FREQS,
+        cpml_layers=CPML, polarization=polarization, theta_inc=0.005,
+    )
+    for name in ("rcs_linear", "rcs_dbsm"):
+        reference = np.asarray(getattr(expected, name))
+        observed = np.asarray(getattr(actual, name))
+        assert observed.shape == reference.shape
+        assert observed.dtype == reference.dtype
+        assert observed.tobytes() == reference.tobytes(), name
+    np.testing.assert_allclose(
+        actual.monostatic_rcs, expected.monostatic_rcs, rtol=1e-6, atol=0.0,
+    )

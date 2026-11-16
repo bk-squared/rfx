@@ -47,7 +47,7 @@ Design rules baked in (plan WP2, "Fixture predeclaration"):
   this guide's own (see ``numerical_te10_cutoff_hz`` and ``cpml_layers``).
 * Lanes: ``normalize=False`` and ``normalize="flux"`` only.
   ``normalize=True`` never enters a reflection gate
-  (``docs/agent-memory/rfx-known-issues.md``, "normalize=True S11 formula
+  ("normalize=True S11 formula
   wrong for strong reflectors").
 * Nothing from ``rfx/probes/refplane.py`` is imported here or by the
   battery: that module carries a numpy round-trip the waveguide chain must
@@ -647,7 +647,7 @@ def assert_design_override_keeps_the_short(sim: Simulation, dut: str) -> None:
 # folds the short into a sigma = 1e10 volume, and that lossy block sat one
 # cell from the window and damped the growing mode.
 #
-# PI amendment 2026-09-08: all eps stencils are second-order forward at
+# All eps stencils are second-order forward at
 # unchanged theta0 and h. Every arm now gets the full-array certificate below.
 # See waveguide_chain_battery_predeclaration.md, dated amendment.
 
@@ -663,7 +663,7 @@ def guide_interior_cells(sim: Simulation) -> tuple[int, int]:
 
 def fd_stencil(kind: str, *, theta0: float | None = None,
                h: float | None = None) -> dict:
-    """The PI-declared stencil; theta0 remains the shipped eps fixture."""
+    """The declared stencil; theta0 remains the shipped eps fixture."""
     if kind not in ("eps", "sigma"):
         raise ValueError(f"unknown theta kind: {kind}")
     theta0 = (THETA0_EPS if kind == "eps" else THETA0_SIGMA_S_PER_M) if theta0 is None else float(theta0)

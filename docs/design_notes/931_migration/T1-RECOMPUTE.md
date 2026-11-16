@@ -23,7 +23,7 @@ the end of this file so the ingest phase can recreate them.
 | 369367259195 | FINAL lane at 496b5bd1 | `vessl run create -f scripts/vessl_931_t1_unit_tests.yaml` | 191 s — **5 failed, 784 passed, 9 skipped**; all 5 are the junction fixture below |
 
 Outputs land in
-`/root/workspace/claude-workspace/rfx/runs/issue931-post-t1-*` and
+`<workspace>/rfx/runs/issue931-post-t1-*` and
 `.../issue931-post-t1-pecshort-*`, with a `.latest` pointer beside them.
 Two operational notes, both cost a re-submit. `vessl run create` must be
 issued from a directory that is NOT a git worktree
@@ -94,7 +94,7 @@ retargeted to this worktree.
     env.RFX_CHECKOUT: <workspace>/research/rfx-931-T1-autodiff-geometry-boundaries
     env.RFX_LABEL: t1
     pytest target: tests/unit/autodiff tests/unit/geometry tests/unit/boundaries
-    OUT: /root/workspace/claude-workspace/rfx/runs/issue931-post-t1-<ts>-<sha>
+    OUT: <workspace>/rfx/runs/issue931-post-t1-<ts>-<sha>
 
 `scripts/vessl_931_t1_pec_short_s11.yaml` uses the same header and runs, in
 place of pytest, a probe that for `conformal in (False, True)` and

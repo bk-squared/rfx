@@ -309,7 +309,7 @@ FLOAT32_UNSEEN_2613 = {
     'traced graded window storage': 'graded_admission.py:384: no traced window or waveguide mode',
     'traced smoothing': 'smoothing.py:1503,1603,1802: scene coordinates are concrete',
     'traced wire mask': 'wire_mask.py:49-51: no wire or traced coordinate in A2d scenes',
-    'lane amplitude scalar': 'lane and constant not named: uniform and graded float64 records differ by a pure amplitude scale of 4.553e-8 on a dyadic box (rfx-archive records/20261112-wall-loss-uniform-graded/stageA @b2380fbd5); a scalar folded as a literal or into a float64 table is invisible to array reads',
+    'lane amplitude scalar': 'lane and constant not named: uniform and graded float64 records differ by a pure amplitude scale of 4.553e-8 on a dyadic box; a scalar folded as a literal or into a float64 table is invisible to array reads',
 }
 
 PENDING_CEILING = 160

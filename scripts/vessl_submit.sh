@@ -6,19 +6,19 @@
 # write its own id and every artifact that tried carries a placeholder. The
 # submitter is the only party that knows the id, so the submitter records it.
 #
-#   scripts/vessl_submit.sh <yaml> <runs-dir-glob-prefix> [artifact-root]
+#   scripts/vessl_submit.sh <yaml> <runs-dir-glob-prefix> <artifact-root>
 # Concurrent submissions must use disjoint artifact prefix patterns. The
 # fixture campaign gives base, long, refinement and confirmation separate lanes.
 #
 # Example:
-#   scripts/vessl_submit.sh /tmp/repin.yaml issue931-chain-repin
+#   scripts/vessl_submit.sh /tmp/repin.yaml issue931-chain-repin /root/workspace/<workspace>/rfx/runs
 #
 # Writes <newest matching run dir>/run_id.txt once the job has created it, and
 # prints the id. Exits non-zero if the id cannot be parsed - a submission whose
 # id was not captured is not a provenance-complete run.
 set -eu
 YAML="$1"; PREFIX="$2"
-RUNS=${3:-/root/workspace/claude-workspace/rfx/runs}
+RUNS=${3:?the third argument, the artifact root (e.g. /root/workspace/<workspace>/rfx/runs), is required}
 
 # Record submission start BEFORE create: a fast job can make its output
 # directory before the CLI returns. Own and remove only this marker directory.
@@ -34,7 +34,7 @@ STAMP=$MARKER_DIR/marker
 cp "$YAML" "$MARKER_DIR/run.yaml"
 OUT=$(cd "$MARKER_DIR" && vessl run create -f run.yaml 2>&1)
 echo "$OUT"
-ID=$(echo "$OUT" | grep -o 'runs/byungkwan/[0-9]*' | tail -1 | grep -o '[0-9]*$')
+ID=$(echo "$OUT" | grep -o 'runs/[^/]*/[0-9]*' | tail -1 | grep -o '[0-9]*$')
 [ -n "$ID" ] || { echo "FATAL: could not parse a run id from the create output"; exit 3; }
 echo "run id: $ID"
 

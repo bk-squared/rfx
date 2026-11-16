@@ -5,7 +5,7 @@ boundaries, a mesh and observers. Several paths step it in time, and each one
 reads only part of the declaration. An input a path does not read is solved as
 if it had not been declared, and nothing in the result says so: a Kerr block
 comes back linear, a microstrip port launches nothing, a periodic wall is
-solved as a metal one. The PI's rule (2026-09-24) is that a physics input a
+solved as a metal one. A physics input a
 path does not implement is refused before the first step. This table records,
 for every attribute and every path, which of these holds:
 
@@ -982,7 +982,7 @@ def executable(attr: str) -> bool:
 
 # Calculator cells are independent of the production admission lists.
 # Each entry below records the assembly/scan inspected for that calculator.
-# Observers retain their existing behaviour (leader decision, RESUME1).
+# Observers retain their existing behaviour.
 CALCULATOR_CELLS = {
     ('_freq_max', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),

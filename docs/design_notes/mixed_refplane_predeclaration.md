@@ -721,7 +721,7 @@ example of the same evidence.
 | Work | Lane |
 |---|---|
 | T1–T4 (guards, normalization identity, monitor no-perturbation), builds, `num_periods ≤ 4` smokes | this shared CPU pod |
-| The 60-period two-drive refplane-instrumented rfx run | lead's lane (`remilab-c0`) or a background job here, orchestrator's choice |
+| The 60-period two-drive refplane-instrumented rfx run | `remilab-c0` or a background job here |
 | **openEMS referee (Stages A1, A2, B)** | **`remilab-c0` only** — openEMS is not installed on this pod |
 
 openEMS lane pattern (copy `scripts/vessl_coax_two_port_referee.yaml` /
@@ -880,5 +880,5 @@ on verified inputs.
    `dx = 80 µm`. Accept the cross-mesh comparison with the `dx = 80 µm` leg
    reported alongside, or also run rfx at 50 µm (a second 60-period run, a second
    fixture, and a new predeclaration)?
-4. **Run placement.** 60-period two-drive run on the lead's `remilab-c0` lane, or
+4. **Run placement.** 60-period two-drive run on `remilab-c0`, or
    background on this shared pod?

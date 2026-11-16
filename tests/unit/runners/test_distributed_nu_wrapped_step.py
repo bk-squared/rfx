@@ -411,7 +411,7 @@ def test_pole_selector(debye, lorentz):
         select_step(debye=debye, lorentz=lorentz, ports=True, pmc=True)
 
 
-# Scenes S1 and S2 of rfx-archive records/20261011-debye-one-vs-two (deb_scene.py, copied):
+# Scenes S1 and S2:
 # a Debye body in a PEC box on a 24-cell x axis, S2 alternating 0.9/1.1 mm inner cells.
 _S2_PROFILE = np.array([1.0e-3] + [0.9e-3, 1.1e-3] * 11 + [1.0e-3])
 
@@ -544,8 +544,7 @@ def pole_law(one, several):
     Pole media are not bit-stable across compiled forms on one device: the
     Debye box differs from itself under jit by 251 ULP of the peak, and the
     multi-device step's difference is formed inside the compiled step from
-    byte-equal operands (rfx-archive rfx/records/20261017-item5-dispersive,
-    RESULT.md). A per-step 9-ULP bar is the wrong unit for such a difference;
+    byte-equal operands. A per-step 9-ULP bar is the wrong unit for such a difference;
     at step n it is allowed 1.2e-7 x the running sum of the peak |field| up to n.
     Returns the largest difference/allowance ratio for E and for H.
     """
@@ -1039,7 +1038,7 @@ _ITEM6_LEGACY_MAX = {
     ('pec', 2, 'plain'): 1298821, ('pec', 2, 'grad'): 1298833,
     ('pec', 3, 'plain'): 935612, ('pec', 3, 'grad'): 935624,
     # CPML: the same scene without poles (case 'nopole'), legacy forced, 2a2344276,
-    # 2026-10-15 (rfx-archive records/20261013-w1-wrapped-vs-legacy/redo-2a2344276).
+    # 2026-10-15.
     ('cpml', 2, 'plain'): 1122543, ('cpml', 2, 'grad'): 1122555,
     ('cpml', 3, 'plain'): 830359, ('cpml', 3, 'grad'): 830367,
 }

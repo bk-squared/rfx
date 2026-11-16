@@ -173,11 +173,13 @@ array) is not set on the boundary itself but by the source that needs it:
   that axis you model an infinite array of your structure. CPML, PMC or PEC
   declared on such a face is refused there, naming the faces. The graded mesh solves the declared faces as declared. A structure that is not uniform along
   such an axis is refused; declare the axis `"periodic"` to solve an array on
-  purpose, or use `closed_box=True` for a finite scatterer. A mixed pair is
-  refused. This uniformity check applies at normal incidence. At an angle, the
-  axis the wave tilts along is not checked: the default `method="bloch"` solves
-  it as periodic (the preflight warning says the structure was not judged
-  along it), and `method="methodB"` absorbs on it.
+  purpose, or use `closed_box=True` for a finite scatterer. For oblique incidence,
+  the finite-scatterer declaration is
+  `add_tfsf_source(closed_box=True, theta_deg=…, phi_deg=…, polarization='s' or 'p')`
+  in 3-D with CPML on all six faces. A mixed pair is refused. This uniformity
+  check applies at normal incidence and on the uniform oblique Bloch path,
+  including the tilt axis. Open oblique `method="methodB"` keeps absorbing y
+  faces and periodic z faces. The graded mesh refuses oblique incidence.
 - **Plane wave in a closed box** (`closed_box=True`, a total-field box with
   the scattered field around it) needs `boundary="cpml"`, not a PEC cavity.
 

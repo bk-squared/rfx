@@ -376,7 +376,7 @@ construction (the discrete thin-wire L is dx-dependent), so a fine-dx
 study characterizes rasterization convergence of the post parameters
 but cannot replace the battery-dx identification.
 `validation/research/thru_feedpost_singlepost_vessl.yaml` is updated to
-the attempt-3 harness as a proposal for the orchestrator; nothing in
+the attempt-3 harness as a proposal; nothing in
 this lane runs vessl.
 
 ## 9. Apparatus verification (synthetics, run AFTER this commit and BEFORE any FDTD)
@@ -433,7 +433,7 @@ never the windows, and re-run all V-checks before any FDTD.
   raw alive floor (> 0.02) on the RAW diagonals only.
 - Any section-4 falsifier fires -> STOP before the band arm; record in
   an appended results section; xfail stays byte-untouched; the
-  corrected VESSL yaml is emitted for the orchestrator ONLY if a
+  corrected VESSL yaml is emitted ONLY if a
   coarser-cause remedy is named (e.g. rasterization-scale ambiguity ->
   fine-dx sweep).
 - F-D1 or any F-X* fires -> STOP; record honestly; xfail stays.

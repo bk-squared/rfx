@@ -156,7 +156,7 @@ AD_PRIOR_ATTEMPT = {
 # Recorded beside each measurement; never applied as a verdict here.
 BAR = {
     "magnitude_db": 2.0,
-    # PI ruling 2026-09-21. A deep null cannot be judged by a dB difference:
+    # A deep null cannot be judged by a dB difference:
     # the thru line's own reflection is bounded instead, and the notch's core
     # is excluded from the magnitude comparison and judged by its frequency.
     "thru_reflection_floor_db": -20.0,
@@ -1563,7 +1563,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         outside = ~core
         core_idx = [int(i) for i in np.flatnonzero(core)]
         lad["notch_core"] = {
-            "rule": (("PI 2026-09-21: bins where the FINEST rung's |S21| is at "
+            "rule": (("Bins where the FINEST rung's |S21| is at "
                       "or below the level below; inside it the verdict is the "
                       "notch frequency, not the depth")
                      if dut == "notch" else
@@ -1608,7 +1608,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             # a difference between rungs. A rung-to-rung dB difference on a
             # quantity that runs 30 dB down says nothing about the line.
             lad["s11_reflection_floor"] = {
-                "rule": ("PI 2026-09-21: no rung-to-rung dB comparison on the "
+                "rule": ("No rung-to-rung dB comparison on the "
                          "thru line's |S11|; it is bounded at every bin of "
                          "every rung"),
                 "bound_db": BAR["thru_reflection_floor_db"],
@@ -1626,7 +1626,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         if dut == "notch":
             # (c) the depth, recorded and compared with nothing.
             lad["notch_depth_db_per_rung"] = {
-                "rule": ("PI 2026-09-21: recorded, not compared -- inside the "
+                "rule": ("Recorded, not compared -- inside the "
                          "core the verdict is the frequency"),
                 "per_rung": [{"rung": k,
                               "depth_db": fix["solves"][k]["notch_depth_db"],

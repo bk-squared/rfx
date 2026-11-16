@@ -245,7 +245,7 @@ The x64 measured class is knowledge output, not a gate.
 
 Order: commit this note+harness → W1 1D arms → W1 3D CPU sanity → W2 → W3 →
 W4 → W5 → results commit(s) → VESSL yaml for W1-3D GPU (launch is the
-orchestrator's). Every CPU arm ≤ 20 min (measured 10⁶-step 1D arm ≈ 0.5 min).
+separate launch step). Every CPU arm ≤ 20 min (measured 10⁶-step 1D arm ≈ 0.5 min).
 Revert-proof check included: a deliberately corrupted transition coefficient
 (one dual spacing replaced by the primal width in the witness's weight set)
 must break the f64 conservation gate; recorded with the results.
@@ -894,7 +894,7 @@ The slow F-S4 arm runs the committed script in a scratch cwd, verified:
 `git status` shows no modification to any `results/*.json` after the
 slow-lane run.
 
-**GPU yaml emitted** (launch is the orchestrator's, per SPEC-00 §0.6):
+**GPU yaml emitted** (launch is a separate step, per SPEC-00 §0.6):
 `validation/research/multiband_nu/vessl_wp6_gpu_regression.yaml` —
 cluster `remilab-c0`, preset `gpu-rtx4090`, image
 `nvcr.io/nvidia/jax:24.10-py3`, mount

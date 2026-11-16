@@ -600,7 +600,7 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
-    from rfx.sources.tfsf import resolve_waveform
+    from rfx.sources.tfsf import is_oblique, resolve_waveform
     if closed_box:
         validate_declaration(self, theta_deg, phi_deg, direction_tol_deg,
                              max_component, polarization, direction, angle_deg, waveform, margin)
@@ -616,7 +616,7 @@ def add_tfsf_source(
             f"TFSF plane-wave source requires mode='3d', '2d_tmz', or '2d_tez', got {self._mode!r}"
         )
     transverse = "" if closed_box else (
-        "z" if method == "methodB" and abs(angle_deg) > .01 else "yz")
+        "z" if method == "methodB" and is_oblique(angle_deg) else "yz")
     if any(axis not in transverse for axis in self._periodic_axes):
         raise ValueError(
             "TFSF plane-wave source conflicts with periodic-axis overrides "
@@ -657,7 +657,7 @@ def add_tfsf_source(
     if method not in ("bloch", "methodB"):
         raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
     if method == "methodB":
-        if abs(angle_deg) <= 0.01:
+        if not is_oblique(angle_deg):
             raise ValueError(
                 "method='methodB' is the open-domain OBLIQUE path; use a "
                 "non-zero angle_deg (angle_deg=0 uses the normal 1D-aux path)"
@@ -668,7 +668,7 @@ def add_tfsf_source(
                 "(transverse=y) only; 'ey' is future work"
             )
 
-    if method == "bloch" and abs(angle_deg) > 0.01:  # the 2D-aux dispatch test in tfsf.py
+    if method == "bloch" and is_oblique(angle_deg):  # the 2D-aux dispatch test in tfsf.py
         cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
         if cutoff_db > -60.0:
             import warnings

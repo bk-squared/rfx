@@ -24,7 +24,9 @@ four incident cells (:func:`rfx.core.yee.component_e_materials`), and each
 pole's κ_p (∝ Δε_p) is κ_p times the fraction of those cells that carry the
 pole -- the same parallel-susceptibility rule as σ, see
 ``rfx.materials.debye``. ``ca``/``cb``/``cc``/``c`` are 3-tuples ``(x, y,
-z)``; ``damping`` and ``restoring`` depend on ω₀ and δ only and stay one array per pole.
+z)``; ``damping`` and ``restoring`` depend on ω₀ and δ only; for a
+``LorentzPoleMap`` whose δ varies they are component triples formed from
+each edge's strength-weighted δ.
 
 References:
     Taflove & Hagness, Ch. 9
@@ -32,7 +34,8 @@ References:
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
+from dataclasses import dataclass
 from weakref import ref
 import os
 import warnings
@@ -61,6 +64,58 @@ class LorentzPole(NamedTuple):
     omega_0: float
     delta: float
     kappa: float | RelativeStrength
+
+
+@dataclass(frozen=True, eq=False)
+class LorentzPoleMap:
+    """One oscillator with strength and damping sampled at physical cell centres.
+
+    Callables take broadcastable X, Y, Z arrays in metres. On occupied cells,
+    delta and kappa must be finite and non-negative. Under jax.grad a callable and
+    its derivative must also be finite at every cell centre outside the material;
+    clamp the argument of a function that is undefined there (a NaN there makes the
+    gradient NaN). Maps are keyed by identity.
+    """
+    omega_0: float
+    delta: float | Callable
+    kappa: float | Callable | RelativeStrength
+
+    def __post_init__(self):
+        if callable(self.omega_0) or jnp.ndim(self.omega_0) != 0:
+            raise ValueError("LorentzPoleMap omega_0 must be one scalar")
+        for name in ("delta", "kappa"):
+            value = getattr(self, name)
+            if name == "kappa" and isinstance(value, RelativeStrength):
+                value = value.value
+            if not callable(value) and jnp.ndim(value) != 0:
+                raise ValueError(f"LorentzPoleMap {name} must be a scalar or callable")
+
+
+def drude_pole_map(omega_p: float | Callable, gamma: float | Callable, *,
+                   density: float | Callable | None = None) -> LorentzPoleMap:
+    """Declare a plasma-frequency and collision-rate profile in physical metres."""
+    kappa: float | Callable | RelativeStrength
+    if density is not None:
+        if callable(omega_p) or isinstance(omega_p, jax.core.Tracer):
+            raise ValueError("drude_pole_map density requires a concrete reference omega_p")
+        kappa = RelativeStrength(float(omega_p ** 2), density)
+    else:
+        kappa = (lambda x, y, z: omega_p(x, y, z) ** 2) if callable(omega_p) else omega_p ** 2
+    delta = (lambda x, y, z: gamma(x, y, z) / 2.) if callable(gamma) else gamma / 2.
+    return LorentzPoleMap(0., delta, kappa)
+
+
+def lorentz_pole_map(delta_eps: float | Callable, omega_0: float,
+                     delta: float | Callable, *, relative: bool = False) -> LorentzPoleMap:
+    """Declare spatial oscillator strength and damping at one resonance."""
+    kappa: float | Callable | RelativeStrength
+    if relative and (isinstance(omega_0, jax.core.Tracer) or omega_0 <= 0):
+        raise ValueError("relative lorentz_pole_map requires concrete omega_0 > 0; use drude_pole_map for omega_0=0")
+    if relative:
+        kappa = RelativeStrength(float(omega_0 ** 2), delta_eps)
+    else:
+        kappa = (lambda x, y, z: delta_eps(x, y, z) * omega_0 ** 2) if callable(delta_eps) else delta_eps * omega_0 ** 2
+    return LorentzPoleMap(omega_0, delta, kappa)
 
 
 def drude_pole(omega_p: float, gamma: float, *, density: object = None) -> LorentzPole:
@@ -109,15 +164,15 @@ class LorentzCoeffs(NamedTuple):
     cc : (nx, ny, nz) each — P→E coupling: 1/γ
     c : (n_poles, nx, ny, nz) each — E^n coupling into the P recurrence (∝ κ)
 
-    One array for all components:
+    One array for all components, or component triples for a damping map:
 
     damping, restoring : (n_poles, nx, ny, nz) — increment coefficients (ω₀, δ only),
         the pole's values on every cell whose edges the pole reaches.
     """
     ca: tuple
     cb: tuple
-    damping: jnp.ndarray
-    restoring: jnp.ndarray
+    damping: jnp.ndarray | tuple
+    restoring: jnp.ndarray | tuple
     c: tuple
     cc: tuple
 
@@ -244,6 +299,8 @@ def pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype=None):
 
 def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
     """Material-independent Lorentz ADE terms from per-pole edge fractions."""
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(poles, "grid-less lorentz_pole_coeffs")
     damping_list, restoring_list = [], []
     c_lists = ([], [], [])
     for pole, fractions in zip(poles, fractions_by_pole):
@@ -385,7 +442,9 @@ def lorentz_p_component(coeffs: LorentzCoeffs, comp: int, e_old, p, v,
                         pdtype=None):
     """Advance P and its increment, grouping drive with damping before v."""
     c = per_component(coeffs.c, "c")[comp]
-    v_new = (v + (c * e_old[None] - coeffs.damping * v)) - coeffs.restoring * p
+    damping = per_component(coeffs.damping, "damping")[comp] if isinstance(coeffs.damping, tuple) else coeffs.damping
+    restoring = per_component(coeffs.restoring, "restoring")[comp] if isinstance(coeffs.restoring, tuple) else coeffs.restoring
+    v_new = (v + (c * e_old[None] - damping * v)) - restoring * p
     p_new = p + v_new
     if pdtype is not None:
         return p_new.astype(pdtype), v_new.astype(pdtype)

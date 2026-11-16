@@ -78,7 +78,7 @@ stage writes its own JSON; an assembler joins them into
 chosen per rung from the settling witness of a short pilot at 100 um and written into the record;
 a record above -40 dB is re-run longer, not interpreted.
 
-## Addendum 2026-09-21 (leader; written after the 100 and 50 um rungs, before the 25 um rung was read)
+## Addendum 2026-09-21 (written after the 100 and 50 um rungs, before the 25 um rung was read)
 
 Three things the note above left open were settled while the battery ran. None moves a verdict
 number.

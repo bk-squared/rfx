@@ -86,8 +86,7 @@ def test_v173a_baseline_bit_identity():
     or more) both trees approach 1.975-1.979 GHz. The current tree converges at first
     order to 1.9751 GHz: at this lock's 0.5 mm (3 cells across the laminate) it reads
     1.0 % below that limit, and 0.5 % below it at 0.25 mm. The lock's short record reads
-    the same frequency as the settled record to within 4.2 kHz at every rung. Records:
-    bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R2).
+    the same frequency as the settled record to within 4.2 kHz at every rung.
     """
     baseline = json.loads(BASELINE_PATH.read_text())
     actual, _trace = v173a.run_capture()

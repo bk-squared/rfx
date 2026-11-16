@@ -10,8 +10,7 @@ rfx, no solver):
   The ladder is monotone when every non-flat step has the same sign.  A ladder
   with a non-flat reversal, or whose last two rungs differ by ``LADDER_AGREEMENT``
   or more, is "not shown to converge" -- the case then states its numbers and
-  xfails; it is not a hard failure.  (PI 2026-09-22 for the last-two-rungs rule,
-  PI 2026-09-24 for the flat step and the monotone reading, rule R-a.)
+  xfails; it is not a hard failure (rule R-a).
 
 * :func:`aligned_magnitude` -- the magnitude comparison, made after the
   frequency has been judged.  rfx's frequency axis is SCALED by
@@ -20,18 +19,17 @@ rfx, no solver):
   translation is not), rfx's |S| in dB is interpolated onto the reference's
   bins, and ``MAG_BAR_DB`` applies over the bins where BOTH curves are at or
   above ``DEEP_NULL_DB``.  The unaligned maximum is returned beside it, to be
-  reported and not judged.  (PI 2026-09-24, rule R-b.)
+  reported and not judged.  (rule R-b.)
 
 * :func:`refined_remax` / :func:`input_resistance` -- a probe-fed
-  resonator's resonance and input resistance (PI 2026-09-24, decision (가) for
-  the RT5880 patch antenna; the resonance located at the Re(Zin) maximum by
-  the lane leader's decision of the same day): f0 = argmax Re(Zin) refined
+  resonator's resonance and input resistance (the RT5880 patch antenna;
+  the resonance located at the Re(Zin) maximum): f0 = argmax Re(Zin) refined
   to sub-bin, R = Re(Zin) there, each on its OWN curve with the same
   estimator; R is held to ``RESISTANCE_BAR`` relative to the reference's.
   Im(Zin) at f0 is returned beside it, reported, not judged.
 
 * :func:`level_crossing` -- a feature defined by where a curve crosses a level
-  (a -3 dB corner, a band edge), rule R-c (PI 2026-09-24).  Its frequency
+  (a -3 dB corner, a band edge), rule R-c.  Its frequency
   tolerance is what the 2 dB magnitude bar allows along the REFERENCE curve's
   own slope there: ``MAG_BAR_DB / |d(dB)/df|`` at the reference's crossing.
   Extrema (nulls, notches, resonances) keep the 1 % bar.
@@ -44,20 +42,19 @@ from __future__ import annotations
 
 import numpy as np
 
-# The v2 accuracy bar (rfx CLAUDE.md, PI 2026-09-20).
+# The v2 accuracy bar (rfx CLAUDE.md).
 FREQ_BAR = 0.01          # resonances, cutoffs, notches, band edges: within 1 %
 MAG_BAR_DB = 2.0         # power and magnitude: within 2 dB
-# Approved by the PI with the MSL notch filter's plan (2026-09-22).
 LADDER_AGREEMENT = 0.01  # mesh statement: the last two rungs differ by < 1 %
 DEEP_NULL_DB = -20.0     # a bin where either curve is below this is judged by
 #                          position only, never by magnitude
-# Approved by the PI on 2026-09-24 (rule R-a): a ladder step no larger than
+# Rule R-a: a ladder step no larger than
 # one tenth of the 1 % frequency bar counts as flat, not as a direction.
 FLAT_STEP = 0.001
-# Approved by the PI on 2026-09-24 (decision (가), the RT5880 patch antenna):
+# The RT5880 patch antenna:
 # the input resistance at the resonance, |Re Zin_rfx - Re Zin_ref| / Re Zin_ref.
 RESISTANCE_BAR = 0.02
-# Rule R-c (PI 2026-09-24): the reference curve's slope at a level crossing is
+# Rule R-c: the reference curve's slope at a level crossing is
 # a least-squares line through CROSSING_FIT_BINS bins, the bin nearest the
 # crossing and two on each side.  Five, because three is the fewest points a
 # line can be fitted to with any residual left to see, and two more give the
@@ -287,7 +284,7 @@ def remax_half_grid_witness(freqs_hz, zin, lo, hi) -> dict:
 
 
 def input_resistance(ref_f, ref_zin, our_f, our_zin, band, bar=None) -> dict:
-    """Decision (가), PI 2026-09-24: the resonance frequency f0 and the input
+    """The resonance frequency f0 and the input
     resistance R at it, each located on its OWN curve by the same estimator,
     :func:`refined_remax`, over the same window ``band`` = ``(lo, hi)`` Hz.
 
@@ -343,7 +340,7 @@ def _local_slope(f, db, f_cross, n_fit):
 
 def level_crossing(ref_f, ref_db, f_ref_cross, f_our_cross,
                    n_fit=None, mag_bar_db=None, our_f=None, our_db=None) -> dict:
-    """A level-crossing feature judged by rule R-c (PI 2026-09-24).
+    """A level-crossing feature judged by rule R-c.
 
     ``ref_f``/``ref_db`` are the REFERENCE curve (Hz, dB); ``f_ref_cross`` and
     ``f_our_cross`` where the reference and rfx each cross the feature's level,

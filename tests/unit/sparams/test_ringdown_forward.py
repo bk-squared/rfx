@@ -253,7 +253,7 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     accumulators differently with the probe series bit-identical: measured
     (JAX 0.10.2) 26 ULP / 1.9e-6 of the peak at 4,000 steps (uniform), and
     182 ULP / 1.1e-5 at 16,000 steps with the bins across the resonance --
-    over the earlier 1e-5 bar, inside W0's 1e-4 (PI decision 2026-09-25)."""
+    over the earlier 1e-5 bar, inside W0's 1e-4."""
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)

@@ -560,8 +560,7 @@ def test_g6a_distributed_nu_dft_plane_jacobian_matches_one_device():
     """Graded forward(distributed=True) carries DFT planes since #1402 step 4g,
     so the former fence #1 is gone: jacobian_fwd of a DFT-plane objective
     through the graded multi-device forward equals the one-device one within
-    the summed-quantity cross-trace bar (CPML: compile-form rounding,
-    rfx-archive DESIGN.md 4g amendment 1)."""
+    the summed-quantity cross-trace bar (CPML: compile-form rounding)."""
     from tests._multi_device_scene import host_devices
     nx, ny, nz = 16, 12, 12
     dx = 1e-3
@@ -625,8 +624,7 @@ def test_g6b_n_warmup_fence_raises():
     NotImplementedError regardless of AD mode. (Prior to the #626 fix this
     was a measured SILENT NO-OP, not a raise -- see
     tests/unit/autodiff/test_n_warmup.py::test_uniform_forward_rejects_n_warmup for the
-    forward()-level pin and docs/agent-memory/rfx-known-issues.md for the
-    measured bit-identical-gradient evidence that motivated the fence.)"""
+    forward()-level pin; measured bit-identical gradients motivated the fence.)"""
     sim = _build_sim()
     grid = sim._build_grid()
 

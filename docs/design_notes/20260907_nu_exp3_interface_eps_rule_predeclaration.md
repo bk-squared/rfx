@@ -309,7 +309,7 @@ and is NOT touched here.
 ### Resume correction declared before the production patch (2026-09-10)
 
 The previous STOP below is retained as historical evidence, but its absolute-green
-interpretation is superseded by the lead's clarification. E3-B is a DELTA gate:
+interpretation is superseded by the clarification. E3-B is a DELTA gate:
 **the after-patch failure SET must equal the before-patch failure SET, and every
 pinned value in the passing set must be unchanged.** No frozen window above
 Results is edited. The baseline carries these four pre-existing failures:
@@ -319,14 +319,14 @@ Results is edited. The baseline carries these four pre-existing failures:
 - `tests/oracle/test_leontovich_alpha_oracle.py::test_o3_model_fits_measured_field`
 - `tests/oracle/test_leontovich_alpha_oracle.py::test_alpha_oracle_o3`
 
-The lead verified the middle two on `origin/main d990e18c` by running exactly
+The middle two were verified on `origin/main d990e18c` by running exactly
 those two tests in the main checkout (selector command: `pytest
 tests/oracle/test_leontovich_alpha_oracle.py -k "test_alpha_envelope_regression_lock
 or test_o3_model_fits_measured_field"`): **"2 failed, 11 deselected"**.
 Both are `@pytest.mark.slow_physics`; the normal battery's
-`-m "not gpu and not slow and not slow_physics"` excludes them. The lead's
+`-m "not gpu and not slow and not slow_physics"` excludes them. The
 sibling-branch CPU battery under that marker set was 6140 passed / 0 failed.
-This is lead-provided evidence, not a new run in another checkout.
+This is reported evidence, not a new run in another checkout.
 AD3 attempt 1 was FIRED and its replay intentionally remains red, as recorded in
 `docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md`.
 The fourth failure is the baseline's O3 model-fit trust assertion; no independent
@@ -518,9 +518,9 @@ replay were not changed, and the ladder was never restarted. Once all six
 rows existed, all 27 E3 tests passed and the identical full battery was
 started again. Its completed comparison is appended below when available.
 
-### Separate main-branch finding for the lead to file
+### Separate main-branch finding to file
 
-Lead-verified on `origin/main d990e18c`: the two selected tests produced
+Verified on `origin/main d990e18c`: the two selected tests produced
 "2 failed, 11 deselected". The measured quantities in this worktree's
 unpatched baseline were:
 
@@ -535,7 +535,7 @@ Both tests are `slow_physics` only (not `slow`); the normal battery
 The E3 baseline marker set includes them. This report does not claim to
 have rerun main, and no other checkout was modified. The related baseline
 `test_alpha_oracle_o3` also fails its model-fit trust check at the same RMS.
-No upstream issue or message was posted; this is the finding for the lead.
+No upstream issue or message was posted; this is the finding.
 
 ### Completed E3-B delta comparison — HELD (2026-09-10)
 

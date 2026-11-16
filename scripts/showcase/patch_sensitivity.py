@@ -58,7 +58,7 @@ F_R_ESTIMATOR = "s11_minimum"  # "s11_minimum": the module's resonance(); "remax
 MARGIN_H = 2                   # design box margin, in substrate thicknesses
 SHORT_RECORD_STEPS = 600       # A1 check: a record far shorter than the ring-down
 WITNESS_PERIOD_FACTOR = 1.5    # the record-length witness: 1.5 x the module's NUM_PERIODS
-WITNESS_TOL = 0.05             # Amendment 1 (lane leader): judged, per block, |S_1.5 - S_1.0| / |S_1.5|
+WITNESS_TOL = 0.05             # Amendment 1: judged, per block, |S_1.5 - S_1.0| / |S_1.5|
 FLANK_DF_HZ = 1.0e6            # Amendment 1: d|S11|^2/df at f_t by central difference over f_t +- 1 MHz
 FD_STEPS = (0.2, 0.1, 0.05)    # Delta eps_r of a whole block
 FD_JUDGED_STEP = 0.1
@@ -706,7 +706,7 @@ def stage_finalize(out: Path, repo_dir: Path) -> None:
         if r["judged"]:
             claims.append(_record.claim(q, r["rel_change"], "1", "record_length_witness.json",
                                         threshold=WITNESS_TOL,
-                                        rule="Amendment 1 (lane leader): judged on the blocks "
+                                        rule="Amendment 1: judged on the blocks "
                                              "the FD check judges"))
         else:
             claims.append(_record.claim(q, r["rel_change"], "1", "record_length_witness.json",

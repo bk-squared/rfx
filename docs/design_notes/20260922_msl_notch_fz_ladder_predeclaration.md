@@ -6,7 +6,7 @@ follows `20260922_msl_notch_graded_mesh_predeclaration.md` (the record
 `validation/research/multiband_nu/results/msl_notch_graded.json`, whose arms
 are reused here and not re-run). Independent of the grid-core step 0
 (`20260922_nu_grid_core_predeclaration.md`); it runs in parallel.
-**Written by** the NU lane leader after the
+**Written** after the
 independent design review of 2026-09-22 asked for exactly this ladder.
 
 ## 0. The question, physically
@@ -132,8 +132,8 @@ stub length and width held exact.
 
 ## 7. Who does what
 
-Implementation: one Opus instance from this note. The leader reads the
-record and writes the conclusions. Review: a separate Opus instance, one
+Implementation: one Opus instance from this note. The conclusions are written
+after the record is read. Review: a separate Opus instance, one
 round; P1/P2 fixes back to the same reviewer. Documentation to #1171.
 
 ## A.2 C_off re-measured at the ladder's commit (declared after review, before running)
@@ -189,7 +189,7 @@ three cell profiles compared bit-for-bit.
    notches at once, with the rms it leaves. The §4 verdict is judged on the
    declared reading and on nothing else.
 
-No conclusion is drawn here. The leader writes those.
+No conclusion is drawn here.
 
 ## Results (facts)
 
@@ -694,7 +694,7 @@ the way W3 reads it: the order from all three rungs, the limit from the finest t
 | log | 0.9740 | 0.7095 | 0.9225 | 3.68229 | +0.2159 |
 | power | 0.8987 | 0.7095 | 0.6867 | 3.67076 | -0.0846 |
 
-### Conclusions (leader; rewritten 2026-09-23 after the verification review showed that the notch estimator bent the ladder; read against F.0–F.6 and the two records)
+### Conclusions (rewritten 2026-09-23 after the verification review showed that the notch estimator bent the ladder; read against F.0–F.6 and the two records)
 
 **On the solver this record names, the substrate-normal cell carries the notch's remaining
 discretization error. With the in-plane cell held at 24.29 µm, refining the substrate cell

@@ -115,8 +115,7 @@ from __future__ import annotations
 
 LOCK_PROVENANCE = {
     "fixture": "none",
-    "generator": ("configuration sweep, bk-squared/rfx-archive "
-                  "rfx/records/20260927-1292-locked-results/scripts/r3_legb_config.py (v2: "
+    "generator": ("configuration sweep (v2: "
                   "board checked before each solve); windows by the midpoint / half-range + "
                   "extractor-spread construction"),
     "commit": "673b7083",
@@ -202,9 +201,7 @@ N_PROBE_Y = 5                   # probes along y (the parity line for TM001)
 #
 # Witness: openEMS, on a whole-cell redraw of this board (patch 8.2635 x 9.8375 mm = the
 # solver patch here at h/4, the same h and eps_r) and its own five-rung ladder,
-# converges to 9.1185 GHz (fit 9.118496, band 9.1163-9.1199; bk-squared/rfx-archive
-# rfx/records/20260927-1292-openems-patch/, commit 512e71c). rfx on the same redraw
-# (rfx/records/20260927-1292-locked-results/, R3):
+# converges to 9.1185 GHz (fit 9.118496, band 9.1163-9.1199; commit 512e71c). rfx on the same redraw:
 #   N = h/dx        4        6        8        10       12       16
 #   current tree    8.970567 9.021659 9.046481 9.061211 9.070981 9.083055 GHz
 #     vs openEMS    -1.62    -1.06    -0.79    -0.63    -0.52    -0.39 %
@@ -292,8 +289,7 @@ LEG_A_HALF_PCT = 0.182          # = 0.168 configuration + 0.014 extractor
 # this window cannot see an interface-rule regression; its spread is dominated by the
 # feed stub's rasterization across meshes (h/3 -6.12, h/4 -7.64, h/5 -6.69 %).
 # Configuration samples measured before 2026-09-28 at h/3 (-6.7554, -6.7567 %) are void,
-# for the laminate defect described under Leg A. Records: bk-squared/rfx-archive
-# rfx/records/20260927-1292-locked-results/ (R3 Leg B).
+# for the laminate defect described under Leg A.
 #
 # History, the construction's first measurement (2026-08-30, before #931, #1178, #1213
 # and #1012; kept for its reasoning, its numbers superseded above):

@@ -8,7 +8,7 @@ length scale δ (the 45° signature α=β), unlike low loss where β ≫ α. Thi
 
 Method: TFSF plane wave into a thick conductor slab (σ/ωε0=20, δ≈10 cells); DFT the field at probes
 INSIDE the conductor; fit ln|E(z)| slope ⇒ δ_amp and ∠E(z) slope ⇒ δ_phase. Measured (CPU): δ_amp
-err 3.3%, δ_phase err 0.4%, δ_amp/δ_phase=1.04. Harness: docs/research_notes/experiments/skin_depth_oracle.py
+err 3.3%, δ_phase err 0.4%, δ_amp/δ_phase=1.04.
 """
 import numpy as np
 import pytest

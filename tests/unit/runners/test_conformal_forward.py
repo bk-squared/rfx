@@ -82,7 +82,7 @@ def test_s_scan_moves_s_from_staircase():
             s_scan_scene(), freqs, n_steps=512, skip_preflight=True, conformal_pec=conformal)
         np.testing.assert_array_equal(bins, freqs)
         spectra.append(np.asarray(s)[0, 0].copy())
-    # D_k(main)/10 from rfx-archive rfx/records/20261112-test-audit-220fixes/gaps/DESIGN.md.
+    # D_k(main)/10.
     # All seven measured D_k exceed 1e-3; no bin is excluded.
     floor = np.array([2.390819e-4, 4.062380e-4, 3.0621594e-3, 8.380125e-4,
                       8.620271e-4, 3.0284235e-3, 2.90690035e-2])

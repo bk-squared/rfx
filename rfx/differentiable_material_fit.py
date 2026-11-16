@@ -131,6 +131,8 @@ def _poles_to_params(
     Layout: [log(eps_inf), log(de_1), log(tau_1), ...,
              log(de_L1), log(omega0_L1), log(delta_L1), ...]
     """
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(lorentz_poles, "differentiable_material_fit")
     params = [jnp.log(jnp.array(max(eps_inf, 1e-12)))]
     for pole in debye_poles:
         params.append(jnp.log(jnp.array(max(pole.delta_eps, 1e-12))))

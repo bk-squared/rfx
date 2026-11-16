@@ -5,7 +5,7 @@
  "predeclaration_sha": "bcce73c9",
  "shift_pair_name": "sign_discriminating_pair",
  "supersedes": "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json",
- "supersedes_reason": "2026-09-08 PI amendment: second-order forward eps stencil at theta0=0; every arm certified over the full array; lossless PEC eps magnitude excluded",
+ "supersedes_reason": "second-order forward eps stencil at theta0=0; every arm certified over the full array; lossless PEC eps magnitude excluded",
  "readme": "tests/fixtures/waveguide_chain_battery/README.md",
  "generated_at": "2026-09-08T08:27:27.071237+00:00",
  "provenance": {
@@ -21321,7 +21321,7 @@
    "time": "exp(+j omega t); forward wave exp(-j beta x)",
    "dft": "rectangular full-record DFT with kernel exp(-j omega t) (rfx.sources.waveguide_port._rect_dft)",
    "yee_half_step": "beta for plane shifts and the PEC-short oracle from _compute_beta(dt, dx) (Yee-discrete dispersion); the Airy oracle uses the continuous vacuum beta",
-   "external_phase_data": "none enters; if it ever does it is conjugated first (rfx-known-issues.md, time-convention conjugation)"
+   "external_phase_data": "none enters; if it ever does it is conjugated first (time-convention conjugation)"
   }
  },
  "physics_gates": {

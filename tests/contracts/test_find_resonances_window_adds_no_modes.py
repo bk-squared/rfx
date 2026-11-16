@@ -5,7 +5,7 @@ the record does not contain: unfiltered subsampling of long windows folded
 out-of-band content in (an alias reported as a mode), and the FFT band-pass
 fallback made undamped modes at k/(N*dt) on short windows. This contract pins
 that the window steps (start, mean removal, truncation in time) add none. The
-estimator's own limits are outside it (rfx-archive ledger): its rank cut is
+estimator's own limits are outside it: its rank cut is
 relative, so a noise-only record still yields poles; it reports modes up to
 10 % beyond the band; its anti-aliasing filter is finite.
 """

@@ -17,8 +17,8 @@ plausible-looking numbers from the wrong lane.
 delegate with the same ``**kw``, or the dispatcher is a second, divergent
 implementation. Each leg builds two identical simulations, drives one through
 the dispatcher and one directly, and compares with ``np.array_equal`` -- bit
-identity, no tolerance, the same gate ``docs/agent-memory/
-development_methodology.md`` section 2.2 puts on code motion. The fixtures and
+identity, no tolerance, the same code-motion rule requiring bit-identical
+results before and after. The fixtures and
 truncated kwargs are copied verbatim from
 ``tests/locks/test_sparams_split_bit_identity.py``, which selected them as the
 smallest deterministic run that walks each whole path. Those records are

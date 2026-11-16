@@ -24,7 +24,7 @@ Submitted from a non-worktree directory: the `vessl` CLI walks the cwd's `.git`
 as a directory and a git worktree's `.git` is a file, so `vessl run create`
 raises `NotADirectoryError` if run from inside one.
 
-Outputs: `/root/workspace/claude-workspace/rfx/runs/issue931-post-<case>-<UTC>/`,
+Outputs: `<workspace>/rfx/runs/issue931-post-<case>-<UTC>/`,
 with a `…-<case>.latest` pointer beside it. Each job harvests every file newer
 than a start marker into `$OUT/produced/`.
 
@@ -79,7 +79,7 @@ the three lines that were wrong for a sheet-declared board.
 | cv15 production `rfx.json` | `369367259275` | re-solved, all six gates PASS, preflight text clean |
 | cv15 decomposition `rfx_decomposition_feed_pre931.json` | `369367259279` | re-run so both decomposition points sit on one code state |
 
-Outputs `/root/workspace/claude-workspace/rfx/runs/issue931-post-cv15-20260907T191128Z/`
+Outputs `<workspace>/rfx/runs/issue931-post-cv15-20260907T191128Z/`
 and `.../issue931-post-cv15-feeddecomp-20260907T192042Z/`. Full before/after,
 the driven-edge measurement and the re-read decomposition are in
 `validation/crossval/_15_patch_results/RECOMPUTE.md`, section "INGEST".
