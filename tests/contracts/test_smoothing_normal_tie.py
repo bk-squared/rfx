@@ -318,3 +318,128 @@ def test_thin_midplane_laminate_fill(thin_midplane):
     assert len(fills) == 1
     np.testing.assert_allclose(fills[0], s['p'], rtol=1e-6,
                                err_msg=f"{s['mesh']} {s['kind']} point={s['point']}")
+
+
+def _tensor_matrices(entries):
+    xx, yy, zz, xy, xz, yz = (np.asarray(a) for a in entries)
+    return np.stack([np.stack(row, axis=-1) for row in
+                     ((xx, xy, xz), (xy, yy, yz), (xz, yz, zz))], axis=-2)
+
+
+@pytest.fixture(scope='module', params=['uniform', 'graded'])
+def needle(request):
+    """(vii): a 0.4-cell square needle on the x/y node intersection."""
+    h = 2. ** -11
+    grid = _thin_grid(request.param)
+    box = Box((3.8 * h, 3.8 * h, -4 * h), (4.2 * h, 4.2 * h, 12 * h))
+    result = compute_node_tensor_eps(grid, [(box, 4.)])
+    inverse = _tensor_matrices(result.nodes.xi)
+    eps = np.linalg.inv(inverse.astype(np.float64))
+    return request.param, grid, result, eps
+
+
+def test_needle_axis_off_diagonals(needle):
+    mesh, grid, result, eps = needle
+    off = ~np.eye(3, dtype=bool)
+    axis_eps = eps[4, 4, :]
+    axis_triplets = np.asarray(result.nodes.triplets)[:, 4, 4, :]
+    nodes = _lines(grid, None)[0]
+    print(f'{mesh} needle: x=y={nodes[0][4]:.12g} m, '
+          f'z={nodes[2].tolist()}, eps_xy={axis_eps[:, 0, 1].tolist()}, '
+          f'eps diagonal at z-index 4={np.diag(axis_eps[4]).tolist()}, '
+          f'triplet off-diagonal max={np.max(abs(axis_triplets[..., off])):.12g}')
+    np.testing.assert_allclose(axis_eps[..., off], 0., rtol=0, atol=1e-7 * np.max(abs(eps)))
+    np.testing.assert_allclose(axis_triplets[..., off], 0., rtol=0,
+                               atol=1e-7 * np.max(abs(axis_triplets)))
+
+
+@pytest.mark.parametrize('axis', [0, 1], ids=['x', 'y'])
+def test_needle_coordinate_mirrors(needle, axis):
+    mesh, grid, result, eps = needle
+    centre = 4 * 2. ** -11
+    nodes = _lines(grid, None)[0][axis]
+    pairs = [(i, j) for i, a in enumerate(nodes) for j, b in enumerate(nodes)
+             if a <= centre and abs(a + b - 2 * centre) <= 1e-12]
+    assert len(pairs) > 1
+    reflection = np.ones(3)
+    reflection[axis] = -1
+    parity = reflection[:, None] * reflection[None, :]
+    # Tensor components containing the reflected axis once change sign;
+    # the diagonal entries and all other components remain equal.
+    for i, j in pairs:
+        np.testing.assert_allclose(np.take(eps, i, axis=axis),
+                                   np.take(eps, j, axis=axis) * parity,
+                                   rtol=0, atol=1e-7 * np.max(abs(eps)),
+                                   err_msg=f'{mesh} tensor mirror axis={axis} nodes={nodes[i], nodes[j]}')
+    # The final diagonal operands occupy component-specific Yee coordinates.
+    counts = []
+    for component, data in enumerate(result.diagonal):
+        data = np.asarray(data)
+        line = _lines(grid, component)[0][axis]
+        pairs = [(i, j) for i, a in enumerate(line) for j, b in enumerate(line)
+                 if a < centre and abs(a + b - 2 * centre) <= 1e-12]
+        assert pairs
+        counts.append(len(pairs))
+        for i, j in pairs:
+            np.testing.assert_allclose(np.take(data, i, axis=axis), np.take(data, j, axis=axis),
+                                       rtol=0, atol=1e-7 * np.max(abs(data)))
+    print(f'{mesh} needle mirror axis={axis}: Yee pair counts={counts}')
+
+
+@pytest.mark.parametrize('entry', ['simulation', 'grid'])
+def test_two_dimensional_box_away_from_ties(entry, monkeypatch):
+    """(viii): the main nearest-face result, independently computed off ties."""
+    from rfx.geometry import smoothing
+    from rfx.grid import Grid
+
+    h = 2. ** -11
+    domain = (8 * h, 8 * h)
+    box = Box((2.2 * h, 2.4 * h, -4 * h), (5.6 * h, 5.1 * h, 4 * h))
+    if entry == 'simulation':
+        # Simulation's realized-geometry report reads three domain entries;
+        # exercise the two-entry domain separately through the public Grid.
+        sim = Simulation(freq_max=12e9, domain=(*domain, h), dx=h, mode='2d_tmz',
+                         boundary='pec', cpml_layers=0)
+        sim.add_material('body', eps_r=4.)
+        sim.add(box, material='body')
+        captures = []
+        original = smoothing.compute_smoothed_eps
+
+        def capture(grid, *args, **kwargs):
+            result = original(grid, *args, **kwargs)
+            captures.append((grid, np.asarray(result)))
+            return result
+
+        monkeypatch.setattr(smoothing, 'compute_smoothed_eps', capture)
+        sim.forward(n_steps=1, subpixel_smoothing=True, skip_preflight=True)
+        assert captures
+    else:
+        grid = Grid(freq_max=12e9, domain=domain, dx=h, mode='2d_tmz', cpml_layers=0)
+        captures = [(grid, np.asarray(compute_smoothed_eps(grid, [(box, 4.)])))]
+    for grid, actual in captures:
+        assert len(grid.domain) == (3 if entry == 'simulation' else 2)
+        assert grid.shape[2] == 1
+        tau = min(16 * np.finfo(np.float32).eps * 2 * max(domain), .01 * h)
+        centre = (np.asarray(box.corner_lo) + np.asarray(box.corner_hi)) / 2
+        half = (np.asarray(box.corner_hi) - np.asarray(box.corner_lo)) / 2
+        counts, errors = [], []
+        for component in range(3):
+            points = np.meshgrid(*_lines(grid, component)[0], indexing='ij')
+            delta = np.stack([q - c for q, c in zip(points, centre)])
+            distance = abs(delta) - half[:, None, None, None]
+            top = np.max(distance, axis=0)
+            tied = distance >= top - tau
+            tie = (np.sum(tied, axis=0) > 1) | np.any(tied & (abs(delta) <= tau), axis=0)
+            sdf = np.sqrt(np.sum(np.maximum(distance, 0) ** 2, axis=0)) + np.minimum(top, 0)
+            p = np.clip(.5 - sdf / h, 0., 1.)
+            # Main's nearest-face rule has one unit-axis normal off ties.
+            normal_axis = np.argmax(distance, axis=0)
+            expected = np.where(normal_axis == component, 1 / (p / 4 + 1 - p), p * 4 + 1 - p)
+            mask = ~tie
+            assert np.count_nonzero(mask) > 0
+            np.testing.assert_allclose(actual[component][mask], expected[mask], rtol=1e-6, atol=0)
+            counts.append(int(np.count_nonzero(mask)))
+            errors.append(float(np.max(abs(actual[component][mask] - expected[mask]))))
+        print(f'2d {entry}: domain={grid.domain}, shape={grid.shape}, '
+              f'non-tie samples={counts}, main-rule differences={errors}, '
+              f'epsilon range={actual.min(), actual.max()}')
