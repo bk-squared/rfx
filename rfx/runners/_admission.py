@@ -1315,10 +1315,16 @@ def refuse_foreign_s_drives(sim):
 
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
-    # Keep the multi-waveguide refusal ahead of the drive inventory check.
-    if len(sim._waveguide_ports) > 1:
+    # Keep the driven-waveguide refusal ahead of the drive inventory check.
+    from rfx.measurement.waveguide_power import driven_waveguide_indices
+
+    driven = driven_waveguide_indices(sim._waveguide_ports)
+    if len(driven) > 1:
+        names = ", ".join(sim._waveguide_ports[i].name for i in driven)
         raise ValueError(
-            "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+            "One run() or forward() record supports at most one driven waveguide port; "
+            f"driven ports: {names}. Set amplitude 0.0 on all but one, or use "
+            "compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero."
         )
     if not sim._waveguide_ports and not any(p.is_port for p in sim._ports):
         return True
