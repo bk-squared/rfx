@@ -1,6 +1,8 @@
 """Adapt eager port-probe records and drives to the uniform step builder."""
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 import jax.numpy as jnp
 
 from rfx._internal._grid_metric import field_index
@@ -19,7 +21,7 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
     from rfx.sources.sources import _wire_port_live_cells
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
-    port = ports[driven]
+    port, = (p for idx, p in enumerate(ports) if calculator_drive(idx == driven))
     if wire:
         cells, live, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
         cells = [cell for cell, enabled in zip(cells, live) if enabled]
