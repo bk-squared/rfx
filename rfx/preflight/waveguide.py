@@ -70,7 +70,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _absorber_boundary_for_axis,
     _axis_pad_thickness_m,
-    local_cell, current_check, not_judged, report_tracer_error, traced_skip,
+    local_cell, report_tracer_error, traced_skip,
     PreflightWarning,
     PreflightErrorWarning,
     PreflightConfigError,
@@ -1383,11 +1383,8 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
         return None
     nonuniform = any(getattr(self, a, None) is not None
                      for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
-    if any(p is not None and is_tracer(p) for p in
-           (getattr(self, "_dx_profile", None),
-            getattr(self, "_dy_profile", None),
-            getattr(self, "_dz_profile", None))):
-        not_judged(None, current_check("_waveguide_setup_planes"))
+    if any(traced_skip(getattr(self, a, None), "_waveguide_setup_planes")
+           for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
         return None
     try:
         grid = (self._build_nonuniform_grid() if nonuniform

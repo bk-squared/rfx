@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, fields, is_dataclass
 from types import SimpleNamespace
+from typing import Any, Iterable
 import warnings
 
 from jax import errors
@@ -82,6 +83,7 @@ def _has_tracer(value, ancestors=frozenset()):
     if id(value) in ancestors:
         return False
     ancestors = ancestors | {id(value)}
+    children: Iterable[Any]
     if is_dataclass(value) and not isinstance(value, type):
         children = (getattr(value, f.name) for f in fields(value))
     elif isinstance(value, dict):
@@ -108,6 +110,7 @@ def traced_input_names(sim, entry_inputs) -> tuple[str, ...]:
     names = set()
     for attr, method in CONTAINER_METHODS.items():
         value = getattr(sim, attr, None)
+        pairs: Iterable[tuple[str, Any]]
         if attr == "_domain":
             pairs = (("domain", value),)
         elif attr == "_nominal_profiles":
@@ -144,7 +147,7 @@ class _Scope:
 
 
 # Snapshot and mutable set belong to this invocation, including nested checks.
-_scope = ContextVar("preflight_not_judged_scope", default=None)
+_scope: ContextVar[_Scope | None] = ContextVar("preflight_not_judged_scope", default=None)
 _check = ContextVar("preflight_not_judged_check", default=None)
 _report = ContextVar("preflight_not_judged_report", default=None)
 
