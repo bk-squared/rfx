@@ -101,6 +101,35 @@ def test_no_callback_backend(monkeypatch, setting):
         assert notices == []
 
 
+@pytest.mark.parametrize("setting", [None, "0", "1", "other"])
+def test_gpu_without_cpu_device(monkeypatch, setting):
+    gpu = backend.backend_class("gpu")
+    monkeypatch.setattr(backend, "backend_class", lambda: gpu)
+    monkeypatch.setattr(_traced_check, "backend_class", lambda: gpu)
+    cpu_error = RuntimeError("Unknown backend cpu")
+
+    def no_cpu_device():
+        raise cpu_error
+
+    monkeypatch.setattr(backend, "host_cpu_device", no_cpu_device)
+    monkeypatch.setattr(_traced_check, "host_cpu_device", no_cpu_device)
+    if setting is not None:
+        monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", setting)
+    grad = jax.grad(objective("scalar", True))
+    value = jnp.float32(3e20)
+    if setting == "1":
+        for run in (jax.make_jaxpr(grad), grad):
+            with pytest.raises(RuntimeError, match="JAX_PLATFORMS") as caught:
+                run(value)
+            assert caught.value.__cause__ is cpu_error
+    else:
+        assert "custom_linear_solve" not in str(jax.make_jaxpr(grad)(value))
+        result, calls, notices = observe(monkeypatch, grad, value)
+        assert np.isfinite(result)
+        assert calls == []
+        assert notices == []
+
+
 @pytest.mark.parametrize("site, expected_count", [("scalar", 2), ("map", 16), ("graded_map", 16)])
 def test_vmapped_grad_mixed_lanes(monkeypatch, site, expected_count):
     grad = jax.grad(objective(site, False))

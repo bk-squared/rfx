@@ -218,10 +218,10 @@ class LorentzState(NamedTuple):
 
 def _pole_underflow_check_enabled():
     """Default to host-callback capability at trace time; cache the setting."""
-    from rfx.backend import backend_class
+    from rfx._traced_check import host_callbacks_admitted
 
     setting = os.environ.get("RFX_POLE_UNDERFLOW_CHECK")
-    return setting == "1" or (setting != "0" and backend_class().host_callbacks)
+    return setting == "1" or (setting != "0" and host_callbacks_admitted())
 
 
 def _report_pole_underflow(count):
