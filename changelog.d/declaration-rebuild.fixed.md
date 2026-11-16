@@ -1,0 +1,10 @@
+### Fixed — Preserve declarations when rebuilding at another cell size (#PR)
+
+`quick_convergence` now carries every model declaration, including MSL and coax
+feeds, monitors, dt pins and numerics options that were previously dropped.
+Graded x/y meshes are preserved at factor one; other factors refuse declared or
+inferred profiles, nominal profiles, minimum-cell pins, node-pinned sheets,
+node-index DFT crops and frozen meshes. Use `convergence_study` with a factory
+that declares each mesh. Cell counts remain counts; dt pins scale with dx.
+Empty waveguide references preserve numerics and the device's built mesh,
+including automatic wall snapping, while clearing device geometry and observers.
