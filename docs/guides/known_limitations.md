@@ -22,6 +22,15 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### Face-normal ties on very fine meshes in large domains
+
+Tracker: #2799
+
+Cylinder and Box normals bisect tied faces within a tolerance capped at 1% of
+the smallest nominal cell. When this cap binds, float32 traced builds and
+plain builds are not guaranteed to agree at ties: coordinate rounding can
+exceed that band. The tolerance uses float32 epsilon on both paths.
+
 ### Traced full-tensor CPU builds on older jaxlib issue pieces serially
 
 Tracker: #2095
