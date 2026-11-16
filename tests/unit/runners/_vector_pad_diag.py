@@ -59,7 +59,9 @@ def _curve(ref, got, sums, family, mask=None):
         if mask is not None:
             diff = np.where(mask[None], diff, 0.)
         worst = np.maximum(worst, diff.reshape(len(diff), -1).max(axis=1))
-    return worst / (STEP_BAR * sums[family])
+    # 0 where nothing differs (S is 0 before the field reaches the family).
+    with np.errstate(divide='ignore', invalid='ignore'):
+        return np.where(worst == 0, 0., worst / (STEP_BAR * sums[family]))
 
 
 def _ulps(ref, got):
