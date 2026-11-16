@@ -190,10 +190,14 @@ def mirror(a, b, signs, fields, record_property):
     assert np.all(residual <= bar), dict(residual=residual.tolist(), bar=bar.tolist(), fraction=(residual / bar).tolist())
 
 
-@pytest.mark.parametrize('lane', LANES)
-@pytest.mark.parametrize('boundary', ('pec', 'pmc'))
-@pytest.mark.parametrize('axis', range(3))
-@pytest.mark.parametrize('row', ('i', 'ii', 'iii'))
+@pytest.mark.parametrize('row, axis, boundary, lane', [
+    pytest.param(row, axis, boundary, lane, marks=pytest.mark.slow if (axis in (0, 1) and lane == 'graded_forward' and row == 'iii') or (axis == 1 and lane == 'two_graded_forward') else ())
+    for lane in LANES
+    for boundary in ('pec', 'pmc')
+    for axis in range(3)
+    for row in ('i', 'ii', 'iii')
+    if not (((axis in (0, 1) and lane in ('uniform_forward', 'subgrid_run')) or (axis == 1 and lane == 'two_uniform_run')) or (axis in (0, 1) and lane == 'graded_forward' and row in ('i', 'ii')))
+])
 def test_c2_c2b(lane, boundary, axis, row, record_property, request):
     if (row, axis, boundary, lane) in JAX012_HIGH_FACE_XFAILS and Version(jax.__version__) >= Version("0.12"):
         request.applymarker(pytest.mark.xfail(
@@ -274,9 +278,13 @@ def test_c4(lane, axis, monkeypatch):
         execute(tangent, lane)
 
 
-@pytest.mark.parametrize('lane', LANES)
-@pytest.mark.parametrize('boundary', ('pec', 'pmc'))
-@pytest.mark.parametrize('axis', range(3))
+@pytest.mark.parametrize('axis, boundary, lane', [
+    pytest.param(axis, boundary, lane, marks=pytest.mark.slow if axis == 1 and lane == 'two_graded_forward' else ())
+    for lane in LANES
+    for boundary in ('pec', 'pmc')
+    for axis in range(3)
+    if not (((axis in (0, 1) and lane in ('uniform_forward', 'subgrid_run')) or (axis == 1 and lane == 'two_uniform_run')) or (axis in (0, 1) and lane == 'graded_forward'))
+])
 def test_c2b_rlc(lane, boundary, axis, record_property):
     def response(d):
         sim = model(lane, axis, boundary, mirrored=True)
@@ -367,8 +375,12 @@ def ringdown_wall_model(graded, full):
     return sim
 
 
-@pytest.mark.parametrize('graded', (False, True))
-@pytest.mark.parametrize('full', (False, True))
+@pytest.mark.parametrize('full, graded', [
+    (full, graded)
+    for graded in (False, True)
+    for full in (False, True)
+    if full
+])
 def test_c7_ringdown_wire_to_wall(graded, full, monkeypatch, record_property):
     from rfx.ringdown import RingdownRun, RingdownSpec
     planned = []

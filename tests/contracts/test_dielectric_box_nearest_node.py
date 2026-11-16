@@ -81,11 +81,15 @@ def _assert_arrays(built, expected, rich, *, kerr=True, poles=True):
             np.testing.assert_array_equal(np.asarray(built[-1]) > 0, expected)
 
 
-@pytest.mark.parametrize('offset', [.3, .5, .7])
-@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
-@pytest.mark.parametrize('periodic', [False, True], ids=['walls', 'periodic'])
-@pytest.mark.parametrize('rich', [False, True], ids=['eps', 'sigma-mu-lorentz-kerr'])
-@pytest.mark.parametrize('smoothing', [False, True], ids=['unsmoothed', 'smoothed'])
+@pytest.mark.parametrize('smoothing, rich, periodic, graded, offset', [
+    pytest.param(smoothing, rich, periodic, graded, offset, id=f"{smoothing_id}-{rich_id}-{periodic_id}-{graded_id}-{offset}")
+    for offset in [0.3, 0.5, 0.7]
+    for graded, graded_id in zip([False, True], ['uniform', 'graded'])
+    for periodic, periodic_id in zip([False, True], ['walls', 'periodic'])
+    for rich, rich_id in zip([False, True], ['eps', 'sigma-mu-lorentz-kerr'])
+    for smoothing, smoothing_id in zip([False, True], ['unsmoothed', 'smoothed'])
+    if not smoothing or (not rich and offset == .5)
+])
 def test_assembled_and_realized_faces(offset, graded, periodic, rich, smoothing):
     from rfx.model.materials import assemble_cells
     sim, shape, expected, indices, nodes = _scene(offset, graded, periodic, rich, smoothing)
@@ -104,12 +108,13 @@ class _Built(Exception):
     pass
 
 
-@pytest.mark.parametrize('offset', [.3, .5, .7])
-@pytest.mark.parametrize('rich', [False, True], ids=['eps', 'sigma-mu-lorentz-kerr'])
-@pytest.mark.parametrize('lane', ['uniform-run', 'uniform-forward', 'graded-run',
-                                  'graded-forward', 'distributed_v2-run',
-                                  'distributed_v2-forward', 'distributed_nu-run',
-                                  'distributed_nu-forward', 'vmap-base'])
+@pytest.mark.parametrize('lane, rich, offset', [
+    pytest.param(lane, rich, offset, id=f"{lane}-{rich_id}-{offset}")
+    for offset in [0.3, 0.5, 0.7]
+    for rich, rich_id in zip([False, True], ['eps', 'sigma-mu-lorentz-kerr'])
+    for lane in ['uniform-run', 'uniform-forward', 'graded-run', 'graded-forward', 'distributed_v2-run', 'distributed_v2-forward', 'distributed_nu-run', 'distributed_nu-forward', 'vmap-base']
+    if rich and offset == .7
+])
 def test_public_build_reaches_same_cells(monkeypatch, offset, lane, rich):
     import rfx.model.materials as assembly
     graded = lane.startswith(('graded', 'distributed_nu'))

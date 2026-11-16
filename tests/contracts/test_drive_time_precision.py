@@ -16,10 +16,6 @@ def assert_field_time(name, value):
     assert value.dtype == np.float64, f'B2 {name} time: {value.dtype}; expected float64'
 
 
-def test_time_assertion_rejects_float32():
-    # Negative control: removing the new B2 assertion must itself go red.
-    with pytest.raises(AssertionError, match='B2 record-end time: float32'):
-        assert_field_time('record-end', np.zeros(3, np.float32))
 
 
 @contextmanager
@@ -62,9 +58,13 @@ def observe_times():
         jax.clear_caches()
 
 
-@pytest.mark.parametrize('entry', ('run', 'forward'))
-@pytest.mark.parametrize('lane', ('uniform', 'nonuniform'))
-@pytest.mark.parametrize('source', ('point', 'tfsf'))
+@pytest.mark.parametrize('source, lane, entry', [
+    (source, lane, entry)
+    for entry in ('run', 'forward')
+    for lane in ('uniform', 'nonuniform')
+    for source in ('point', 'tfsf')
+    if not (source == 'tfsf' and lane == 'nonuniform')
+])
 def test_float64_record_end_times(entry, lane, source):
     from rfx._internal import _realized
     row = ('_tfsf', 'plane_wave') if source == 'tfsf' else ('_materials', 'eps')

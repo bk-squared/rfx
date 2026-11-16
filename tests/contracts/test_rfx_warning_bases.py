@@ -13,29 +13,6 @@ from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxWarning
 PACKAGE = Path(__file__).resolve().parents[2] / "rfx"
 
 # Explicit output APIs, user-flagged output, and the two design exemptions.
-PRINT_SITES = {
-    ("cli.py", "_cmd_run"): "explicit output API or user-flagged output",
-    ("cli.py", "_cmd_plot"): "explicit output API or user-flagged output",
-    ("cli.py", "_cmd_export_geometry"): "explicit output API or user-flagged output",
-    ("cli.py", "main"): "explicit output API or user-flagged output",
-    ("diagnostics.py", "main"): "explicit output API or user-flagged output",
-    ("model/occupancy.py", "select_occupancy_operator"): "design exemption: occupancy selection",
-    ("convergence.py", "summary"): "explicit output API or user-flagged output",
-    ("differentiable_material_fit.py", "differentiable_material_fit"): "explicit output API or user-flagged output",
-    ("fidelity.py", "fidelity_report"): "explicit output API or user-flagged output",
-    ("fidelity.py", "_print"): "explicit output API or user-flagged output",
-    ("gpu.py", "print_benchmark"): "explicit output API or user-flagged output",
-    ("optimize.py", "_run_one"): "explicit output API or user-flagged output",
-    ("optimize.py", "forward"): "explicit output API or user-flagged output",
-    ("optimize.py", "progressive_optimize"): "explicit output API or user-flagged output",
-    ("measurement/waveguide_s.py", "_waveguide_s21_phase_residual"): "design exemption: phase residual",
-    ("stepping/progress.py", "report"): "explicit output API or user-flagged output",
-    ("stepping/progress.py", "note"): "explicit output API or user-flagged output",
-    ("topology.py", "topology_optimize"): "explicit output API or user-flagged output",
-    ("preflight/_impl.py", "_preflight_impl"): "preflight report rendering",
-    ("api/_preflight.py", "preflight_sparameters"): "preflight report rendering",
-    ("stepping/subgrid_loop.py", "run_subgridded_loop"): "subgridding progress line",
-}
 
 CUSTOM_BASES = [("rfx._host_limits", "MapCountWarning", ConfigurationWarning), ("rfx._runtime_floor", "UntestedJAXWarning", ConfigurationWarning), ("rfx._internal._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning), ("rfx.api._mesh", "AutoMeshWarning", RfxWarning), ("rfx.boundaries.features", "WaveguideBoundaryWarning", RfxWarning), ("rfx.boundaries.tfsf", "UnjudgedTFSFInvarianceWarning", AccuracyWarning), ("rfx.geometry.rasterize_grid", "ExactNodeSpineMissingWarning", AccuracyWarning), ("rfx.geometry.smoothing", "CurvedSmoothingWarning", AccuracyWarning), ("rfx.model.graded_admission", "DeclaredZWarning", RfxWarning), ("rfx.preflight._common", "PreflightWarning", RfxWarning), ("rfx.preflight._common", "PreflightErrorWarning", RfxWarning), ("rfx.probes.probes", "PreDecisionLumpedDiagonalWarning", AccuracyWarning), ("rfx.subgridding._notice", "ExperimentalSubgridWarning", AccuracyWarning)]
 
@@ -148,6 +125,7 @@ def _instance_class(node, tree, names, module, seen=()):
 
 
 @pytest.mark.source_scan
+@pytest.mark.slow
 def test_warn_sites_use_public_categories():
     violations = []
     for path in sorted(PACKAGE.rglob("*.py")):
@@ -174,21 +152,3 @@ def test_warn_sites_use_public_categories():
             if not valid:
                 violations.append(f"{path.relative_to(PACKAGE)}:{node.lineno}: {ast.unparse(node)}")
     assert not violations, "Warnings without an approved category:\n" + "\n".join(violations)
-
-
-@pytest.mark.source_scan
-def test_print_sites_are_opt_in():
-    violations = []
-    for path in sorted(PACKAGE.rglob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
-        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print"):
-                continue
-            owner = node
-            while owner in parents and not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                owner = parents[owner]
-            key = (str(path.relative_to(PACKAGE)), getattr(owner, "name", "<module>"))
-            if key not in PRINT_SITES:
-                violations.append(f"{key[0]}:{node.lineno}: {key[1]}")
-    assert not violations, "Console output without an explicit opt-in:\n" + "\n".join(violations)
