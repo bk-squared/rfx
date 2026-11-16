@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from rfx.boundaries.spec import BoundarySpec
 from rfx.errors import RfxUnsupported
 from rfx.stepping import vector_pad
 from tests.unit.runners.test_vector_pad import PULSE, TARGETS, _walls
@@ -25,10 +26,11 @@ from tests.unit.runners.test_vector_pad import PULSE, TARGETS, _walls
 DZ = 1e-3 * np.array([1.1, .8, .6, .8, 1.])
 
 
-def _graded():
-    """A small graded PEC box; x and y lengths are not whole cells."""
+def _graded(open_domain=False):
+    """A small graded PEC box (or, open, CPML on every face); x and y lengths are not whole cells."""
+    boundary, layers = (BoundarySpec(**dict.fromkeys('xyz', 'cpml')), 4) if open_domain else (_walls(), 0)
     sim = Simulation(freq_max=10e9, domain=(.0113, .0071, float(DZ.sum())), dx=.001, dz_profile=DZ,
-                     boundary=_walls(), cpml_layers=0, snap='declared')
+                     boundary=boundary, cpml_layers=layers, snap='declared')
     sim.add_source((.003, .004, .0021), 'ez', amplitude_kind='current', waveform=PULSE)
     sim.add_probe((.009, .005, .0015), 'ez')
     return sim
@@ -39,21 +41,24 @@ def _forward(sim):
     return sim.forward(n_steps=8, eps_override=jnp.ones(shape, jnp.float32), skip_preflight=True)
 
 
+#: Each lane and whether its scene is open (the graded decay stop needs an absorber).
 LANES = {
-    'run': lambda sim: sim.run(n_steps=8, skip_preflight=True, compute_s_params=False),
-    'until_decay': lambda sim: sim.run(n_steps=8, until_decay=1e-3, decay_check_interval=4, decay_min_steps=4,
-                                       decay_max_steps=8, skip_preflight=True, compute_s_params=False),
-    'forward': _forward,
+    'run': (False, lambda sim: sim.run(n_steps=8, skip_preflight=True, compute_s_params=False)),
+    'until_decay': (True, lambda sim: sim.run(n_steps=8, until_decay=1e-3, decay_check_interval=4,
+                                              decay_min_steps=4, decay_max_steps=8, skip_preflight=True,
+                                              compute_s_params=False)),
+    'forward': (False, _forward),
 }
 
 
 @pytest.mark.parametrize('lane', sorted(LANES))
 @pytest.mark.parametrize('target', TARGETS)
 def test_graded_refuses_a_forced_pad(target, lane):
-    sim = _graded()
+    open_domain, call = LANES[lane]
+    sim = _graded(open_domain)
     with vector_pad.force_pad(target), vector_pad.record_plans() as plans, \
             pytest.raises(RfxUnsupported, match='vector padding: graded not padded yet'):
-        LANES[lane](sim)
+        call(sim)
     assert not any(p.active for p in plans), plans
     jax.clear_caches()
 
