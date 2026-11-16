@@ -1109,11 +1109,23 @@ def refuse_undriven_drives(sim) -> None:
     check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
 
 
+def refuse_plane_wave_with_port(sim, *, adding=None) -> None:
+    """Admit soft sources beside a plane wave, but refuse cell-loading ports."""
+    if (sim._tfsf is not None or adding == "plane_wave") and (
+        adding == "port" or any(pe.is_port for pe in sim._ports)
+    ):
+        raise RfxRefusal(
+            "A TF/SF plane wave is not supported together with a lumped or wire port "
+            "(add_port): the port loads its cells and records a port response; "
+            "soft sources (add_source) are admitted"
+        )
+
+
 def refuse_mixed_waveguide_sources(sim) -> None:
-    """A waveguide drive cannot share a run with lumped/wire ports or TFSF."""
+    """A waveguide drive cannot share a run with ports, soft sources or TFSF."""
     if sim._waveguide_ports and (sim._ports or sim._tfsf):
         raise RfxUnsupported(
-            "Waveguide ports are not supported together with lumped ports or TFSF"
+            "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
         )
 
 
@@ -1441,6 +1453,52 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     return compute_s_params
 
 
+_S_REQUEST_FAMILIES = (
+    ("_msl_ports", "add_msl_port(...): MSL ports use compute_msl_s_matrix(); "
+     "run(compute_s_params=True) does not include MSL ports in Result.s_params"),
+    ("_waveguide_ports", "add_waveguide_port(...) uses compute_waveguide_s_matrix() "
+     "for the full S-matrix; run() may return per-port result.waveguide_sparams "
+     "but not Result.s_params"),
+    ("_floquet_ports", "add_floquet_port(...): Floquet ports are experimental and "
+     "have no forward S11 path or claims-bearing run(compute_s_params=True) S-matrix path"),
+    ("_tfsf", "add_tfsf_source(...): TFSF is a plane-wave source, not a port"),
+    ("_coaxial_ports", "add_coaxial_port(...) is not wired into run(compute_s_params=True) "
+     "or forward(port_s11_freqs=...); use Simulation.compute_coaxial_line_reflection(...) "
+     "for a one-port reflection or Simulation.compute_coaxial_two_port(...) for a through "
+     "line (for a single add_coaxial_port(), compute_s_matrix(method=...) dispatches to "
+     "either), or add_port(extent=...) for the probe-feed S-parameter path"),
+)
+
+
+def _s_request_family_messages(sim):
+    return [message for attribute, message in _S_REQUEST_FAMILIES
+            if (getattr(sim, attribute) is not None if attribute == "_tfsf"
+                else bool(getattr(sim, attribute)))]
+
+
+def admit_s_request(sim, caller, *, details=()):
+    """Refuse missing impedance ports and incompatible S-result families."""
+    port_entries = sim._port_sparameter_entries()
+    messages = [*_s_request_family_messages(sim), *details]
+    if not port_entries:
+        if any(pe.is_soft_source for pe in sim._ports):
+            messages.append(
+                "add_source(...) / add_polarized_source(...) are source-only observables, "
+                "not impedance ports, and cannot populate Result.s_params")
+        detail = "; ".join(messages) if messages else "register at least one add_port(...) impedance port"
+        raise ValueError(
+            f"{caller} requires add_port(...) lumped or wire ports: run(compute_s_params=True) "
+            "computes Result.s_params only for these ports; forward(port_s11_freqs=...) "
+            f"computes S11 only for these ports on the uniform single-device path; {detail}.")
+    if messages:
+        raise NotImplementedError(
+            f"{caller} has a single result schema for add_port(...) lumped/wire ports and "
+            "cannot be combined with specialized or non-port excitation families. "
+            "Mixed or specialized port families must use their documented calculators: "
+            + "; ".join(messages) + ".")
+    return port_entries
+
+
 def admit_forward_s_matrix(sim):
     """Check explicit forward S requests before dispatch or stepping."""
     from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
@@ -1450,7 +1508,7 @@ def admit_forward_s_matrix(sim):
     admit_waveguide_entries(sim)
     refuse_plain_sources_s_matrix(sim, main_record=True)
     # forward(port_s11_freqs=) forms S11 only for add_port ports; the following family check refuses every other declared family.
-    if not (sim._msl_ports or sim._waveguide_ports or sim._floquet_ports or sim._tfsf is not None or sim._coaxial_ports):
+    if not _s_request_family_messages(sim):
         require_isolated_s_drive(sim)
 
 
