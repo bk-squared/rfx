@@ -78,7 +78,7 @@ def scene(name):
     return sim
 
 
-SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x', 'kerr')
+SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x')
 #: Scenes with pole media (Lorentz; Debye in the slab), judged by the running-sum bar.
 POLE_SCENES = frozenset({'lorentz', 'pec_pmc_slab'})
 
@@ -171,9 +171,17 @@ def _per_step_peak(record):
 
 
 def bar_ratios(ref, got, *, pole):
-    """difference / bar for every output (> 1 fails). Snapshots carry the record for P."""
+    """difference / bar for every output (> 1 fails). Snapshots carry the record for P.
+
+    Also returns, for the fields only and not asserted, the same ratio with the scale
+    taken over the three components of the field (E or H) instead of the one component.
+    """
     assert ref.keys() == got.keys(), f'outputs {sorted(ref)} vs {sorted(got)}'
-    ratios = {}
+    ratios, info = {}, {}
+
+    def family(component):
+        return [ref[f"snapshots['{component[0]}{c}']"] for c in 'xyz']
+
     for key, a in ref.items():
         b = got[key]
         assert a.shape == b.shape, f'{key}: shape {a.shape} vs {b.shape}'
@@ -184,24 +192,35 @@ def bar_ratios(ref, got, *, pole):
             if pole:
                 step_diff = diff.reshape(len(a), -1).max(axis=1)
                 ratios[key] = _ratio(step_diff, POLE_BAR * np.cumsum(_per_step_peak(a)))
+                peaks = np.max([_per_step_peak(r) for r in family(key[len("snapshots['"):-2])], axis=0)
+                info[key] = _ratio(step_diff, POLE_BAR * np.cumsum(peaks))
         elif key.startswith('state.'):
-            record = ref[f"snapshots['{key[len('state.'):]}']"]
-            bar = (POLE_BAR * _per_step_peak(record).sum() if pole
-                   else FIELD_BAR * np.abs(record).max())
+            component = key[len('state.'):]
+            record = ref[f"snapshots['{component}']"]
+            if pole:
+                bar = POLE_BAR * _per_step_peak(record).sum()
+                peaks = np.max([_per_step_peak(r) for r in family(component)], axis=0)
+                info[key] = _ratio(diff.max(), POLE_BAR * peaks.sum())
+            else:
+                bar = FIELD_BAR * np.abs(record).max()
+                info[key] = _ratio(diff.max(), FIELD_BAR * max(np.abs(r).max() for r in family(component)))
             ratios[key] = _ratio(diff.max(), bar)
         else:
             ratios[key] = _ratio(diff.max(), RECORD_BAR * np.abs(a).max())
-    return ratios
+    return ratios, info
 
 
 def assert_bars(label, by_length):
     """Every ratio at every record length at most 1; the ratios go to stderr and the message."""
     lines, worst = [], 0.
-    for n, ratios in by_length.items():
+    for n, (ratios, info) in by_length.items():
         key = max(ratios, key=ratios.get)
         worst = max(worst, ratios[key])
         lines.append(f'N={n}: worst {key} {ratios[key]:.3e} | '
                      + ', '.join(f'{k} {v:.2e}' for k, v in sorted(ratios.items())))
+        if info:
+            lines.append(f'N={n} not asserted, field-family scale: '
+                         + ', '.join(f'{k} {v:.2e}' for k, v in sorted(info.items())))
     text = f'{label} (difference / bar)\n  ' + '\n  '.join(lines)
     sys.stderr.write('BAR ' + text.replace('\n', '\nBAR ') + '\n')
     assert worst <= 1., text
@@ -327,14 +346,14 @@ def test_vmap_over_forward_padded_bitwise_or_within_bars(target):
 
 
 @pytest.mark.parametrize('target', TARGETS)
-@pytest.mark.parametrize('name', ('vacuum', 'cpml_port', 'kerr'))
+@pytest.mark.parametrize('name', ('vacuum', 'cpml_port'))
 def test_pad_contents_do_not_reach_physical_cells(name, target):
     """Fill every pad cell of the fields and psi with large random values."""
-    # Kerr squares the field in every cell: (1e30)^2 overflows float32 and the pad's
-    # 0 * inf would be NaN by arithmetic, not by a leak, so its seed stays at 1e10.
-    magnitude = 1e10 if name == 'kerr' else 1e30
+    # Kerr is refused under a forced pad. Were it padded, its seed would stay at 1e10:
+    # Kerr squares the field in every cell, (1e30)^2 overflows float32, and the pad's
+    # 0 * inf would be NaN by arithmetic, not by a leak.
     ref, _ = run_record(scene(name), target)
-    with vector_pad.seed_pad(12345, magnitude=magnitude):
+    with vector_pad.seed_pad(12345, magnitude=1e30):
         got, plans = run_record(scene(name), target)
     assert_padded(plans, f'seeded {name}/{target}')
     assert_bitwise(ref, got, f'seeded {name}/{target}')
@@ -401,6 +420,9 @@ REFUSALS = {
                                                 devices=jax.devices('cpu')[:2]),
                     'distributed'),
     'adjoint': (_adjoint, 'adjoint scan'),
+    # Padded, Kerr was not bitwise on the CPU for either target (stage 1b ruling: refuse).
+    'kerr': (lambda: scene('kerr').run(n_steps=8, skip_preflight=True, compute_s_params=False),
+             'Kerr nonlinearity'),
     'stencil_order_4': (lambda: _fourth_order().run(n_steps=8, skip_preflight=True, compute_s_params=False),
                         'stencil_order=4'),
 }

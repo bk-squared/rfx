@@ -176,6 +176,7 @@ def uniform_unsupported(ctx_kwargs, *, stencil_order, field_dtype):
         ("design box", ctx_kwargs["use_design_box"]),
         ("design occupancy", ctx_kwargs["use_design_occupancy"]),
         ("mixed Debye and Lorentz poles", ctx_kwargs["use_debye"] and ctx_kwargs["use_lorentz"]),
+        ("Kerr nonlinearity", ctx_kwargs["use_kerr"]),
         ("tensor permittivity (subpixel smoothing)", tensor is not None and (
             tensor.eps is not None or tensor.inv_eps is not None
             or tensor.node_smoothing is not None)),
