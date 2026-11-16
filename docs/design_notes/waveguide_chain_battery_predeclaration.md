@@ -161,7 +161,7 @@ with the same reader (`numerical_te10_cutoff_hz` in the builder):
 - λ_g(8.4 GHz) = 57.102 mm; 0.75 λ_g = 42.83 mm.
 - **CPML layers = 17 / 34 / 68** (0.75 λ_g/dx = 16.86 / 33.72 / 67.44), i.e. 43.18 mm at
   every rung — the constant-physical-thickness pattern of
-  `tests/oracle/test_waveguide_port_validation_battery.py:449-457` falls out of the rule without a
+  `tests/oracle/test_waveguide_port_validation_battery.py:448-456` falls out of the rule without a
   separate rounding step.
 
 ### 2.5 Band and drive
@@ -315,7 +315,7 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
 `fine_delta = |S(1.27) − S(0.635)|`, phases wrapped.
 
 - **Gate**: `fine_delta ≤ coarse_delta + floor`, floor **0.005** for magnitudes
-  (`tests/oracle/test_waveguide_port_validation_battery.py:474`; 12× the recorded 0.0004 PEC-short
+  (`tests/oracle/test_waveguide_port_validation_battery.py:473`; 12× the recorded 0.0004 PEC-short
   spread) and **1°** for phases. Stated limitation, from the contract: this is a
   non-increase test — a lane stuck at a wrong value passes it.
 - **Witness (i), report-first**: monotonicity of the three-point sequence and the
@@ -363,7 +363,7 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
 ## 6. Physics gates on the same fixture (fine rung; reported at all rungs)
 
 - Column power `max_f Σ_i |S_ij|² < 1.02` on both reflecting DUTs
-  (`tests/oracle/test_waveguide_port_validation_battery.py:307`).
+  (`tests/oracle/test_waveguide_port_validation_battery.py:306`).
 - Magnitude reciprocity `mean_f |S21| − |S12| / max < 0.01` (`:340`).
 - **Complex reciprocity** `max_f |S21 − S12| / max|S| ≤ 0.01`, pre-declared here for the
   first time; a first measurement above 0.01 is **reported**, not absorbed — the runtime
