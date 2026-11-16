@@ -17,6 +17,7 @@ def _warn_if_ringdown_truncated(
     consequence: str | None = None,
     quoted_thing: str = "any S value",
     witnesses: list | tuple | None = None,
+    outputs_sentence: str = "",
 ) -> None:
     """Warn for excessive pole tails or concrete undetermined witnesses."""
     from rfx.sparams._common import settling_verdict, _SETTLING_WITNESS_DB
@@ -68,6 +69,7 @@ def _warn_if_ringdown_truncated(
         "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
         f"record has no passing value witness.{consequence_text} {advice}"
-        f"{quoted_thing} (see the result's settling_db and settling_witness fields).", AccuracyWarning,
+        f"{quoted_thing} (see the result's settling_db and settling_witness fields)."
+        f"{outputs_sentence}", AccuracyWarning,
         stacklevel=user_stacklevel(),
     )

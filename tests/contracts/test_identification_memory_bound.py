@@ -366,7 +366,11 @@ def test_run_settling_warning_retains_memory_remedies(monkeypatch):
     messages = [str(w.message) for w in caught if 'ring-down settling witness NOT PASSED' in str(w.message)]
     assert len(messages) == 1
     message = messages[0]
-    assert result.settling_witness['reason'] in message
+    # The S warning quotes the reasons of the rows that read S (record-end
+    # names design, Addendum 5), not a probe row's that feeds no output.
+    for row in result.settling_witness['runs']:
+        if 'S-parameters' in row.get('reads', ()) and row['status'] != 'pass':
+            assert row['reason'] in message
     assert 'GiB at stage 1' in message and 'GiB bound' in message
     assert 'shorten the identification window, identify on fewer channels, or raise rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in message
     assert 'increase n_steps' not in message.lower()
