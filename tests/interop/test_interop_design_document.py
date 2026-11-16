@@ -48,6 +48,7 @@ from rfx.interop import (
 from rfx.interop._design import (
     EXCLUDED_SIMULATION_ATTRS,
     EXPORTED_SIMULATION_ATTRS,
+    EXPORTED_LAZY_SIMULATION_ATTRS,
     REFUSED_SIMULATION_ATTRS,
     TRACED_ONLY_SIMULATION_ATTRS,
     _PINNED_RECORDS,
@@ -556,7 +557,73 @@ def test_every_simulation_attribute_is_classified():
         "an attribute listed as excluded is set by the constructor: "
         f"{sorted(set(EXCLUDED_SIMULATION_ATTRS) & live)}"
     )
+    assert not set(EXPORTED_LAZY_SIMULATION_ATTRS) & live, (
+        "a lazy exported declaration is set by the constructor: "
+        f"{sorted(set(EXPORTED_LAZY_SIMULATION_ATTRS) & live)}"
+    )
     assert not set(EXPORTED_SIMULATION_ATTRS) & set(TRACED_ONLY_SIMULATION_ATTRS)
+
+
+def test_every_declaration_has_exactly_one_document_disposition():
+    from rfx import _declarations
+    from rfx.interop import _design
+
+    declarations = set(dict(_declarations.DECLARATIONS))
+    excluded = set(_design.EXCLUDED_SIMULATION_ATTRS)
+    inventories = (
+        _design.EXPORTED_SIMULATION_ATTRS,
+        _design.EXPORTED_LAZY_SIMULATION_ATTRS,
+        _design.TRACED_ONLY_SIMULATION_ATTRS,
+        _design.REFUSED_SIMULATION_ATTRS,
+    )
+    counts = {name: sum(name in inventory for inventory in inventories)
+              for name in declarations}
+    wrong = {name: count for name, count in counts.items() if count != 1}
+    assert not wrong, f"declarations need exactly one document disposition: {wrong}"
+    assert not declarations & excluded, f"silently excluded declarations: {declarations & excluded}"
+    assert excluded <= set(dict(_declarations.NOT_DECLARATIONS)), (
+        f"excluded state is not NOT_DECLARATIONS: {excluded - set(dict(_declarations.NOT_DECLARATIONS))}"
+    )
+
+
+def _dft_region_design():
+    sim = Simulation(freq_max=10e9, domain=(0.012,) * 3, dx=0.001, boundary="pec")
+    sim.add_dft_plane_probe(axis="z", coordinate=0.006, component="ez",
+                            n_freqs=2, name="cropped", region=(2, 8, 2, 8))
+    sim.add_dft_plane_probe(axis="z", coordinate=0.006, component="ez",
+                            n_freqs=2, name="full")
+    return sim
+
+
+def test_dft_plane_region_round_trip_preserves_built_window():
+    from rfx.measurement.setup import build_planes
+
+    original = _dft_region_design()
+    document = json.loads(design_to_json(original))
+    rebuilt = simulation_from_design(document)
+    assert getattr(rebuilt, "_dft_plane_regions", {}) == original._dft_plane_regions == {"cropped": (2, 8, 2, 8)}
+    assert "full" not in rebuilt._dft_plane_regions
+    assert document["observables"]["dft_planes"][0]["region"] == [2, 8, 2, 8]
+    assert document["observables"]["dft_planes"][1]["region"] is None
+    source_probes = build_planes(original, original._build_grid(), 1)
+    rebuilt_probes = build_planes(rebuilt, rebuilt._build_grid(), 1)
+    assert source_probes[0].region == rebuilt_probes[0].region == (2, 8, 2, 8)
+    assert source_probes[0].accumulator.shape == rebuilt_probes[0].accumulator.shape == (2, 6, 6)
+    assert source_probes[1].region is rebuilt_probes[1].region is None
+    assert source_probes[1].accumulator.shape == rebuilt_probes[1].accumulator.shape
+
+
+def test_legacy_dft_planes_without_region_load_as_full_planes():
+    from rfx.measurement.setup import build_planes
+
+    document = design_to_dict(_dft_region_design())
+    for entry in document["observables"]["dft_planes"]:
+        del entry["region"]
+    rebuilt = simulation_from_design(document)
+    assert getattr(rebuilt, "_dft_plane_regions", {}) == {}
+    assert all(probe.region is None for probe in build_planes(rebuilt, rebuilt._build_grid(), 1))
+    assert all(entry["region"] is None for entry in design_to_dict(rebuilt)["observables"]["dft_planes"])
+    assert all("region" not in entry for entry in document["observables"]["dft_planes"])
 
 
 def test_every_builder_method_is_covered_by_the_document():
@@ -1586,7 +1653,7 @@ _SCHEMA_ENTRY_REGISTRIES = [
     ("excitations.lumped_rlc", "_LUMPED_RLC_FIELDS"),
     ("excitations.tfsf", "_TFSF_FIELDS"),
     ("observables.probes", "_PROBE_FIELDS"),
-    ("observables.dft_planes", "_DFT_PLANE_FIELDS"),
+    ("observables.dft_planes", "_DFT_PLANE_DOCUMENT_FIELDS"),
     ("observables.flux_monitors", "_FLUX_MONITOR_FIELDS"),
     ("observables.ntff", "_NTFF_FIELDS"),
     ("observables.current_moments", "_CURRENT_MOMENT_FIELDS"),
@@ -1612,6 +1679,8 @@ def test_schema_entry_fields_match_the_emitter_registry(
     optional = {"radius"} if path == "excitations.lumped_ports" else set()
     if path in {"excitations.soft_sources", "excitations.lumped_ports", "observables.probes"}:
         optional.add("allow_in_absorber")
+    if path == "observables.dft_planes":
+        optional.add("region")
     assert set(node["required"]) == set(registry) - optional, (
         f"{path}: schema required={sorted(node['required'])} but the emitter "
         f"records {sorted(registry)}"

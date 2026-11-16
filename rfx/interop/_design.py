@@ -623,6 +623,22 @@ _DFT_PLANE_FIELDS: dict[str, _F] = {
     "n_freqs": _INT,
 }
 
+
+def _dft_plane_region(value: Any, *, what: str) -> tuple[int, ...]:
+    region = _integer_vector(value, 4, what=what)
+    if any(index < 0 for index in region):
+        raise _refuse(f"{what} must contain non-negative node indices, got {region!r}")
+    return region
+
+
+_DFT_PLANE_DOCUMENT_FIELDS: dict[str, _F] = {
+    **_DFT_PLANE_FIELDS,
+    "region": _opt(_F(
+        dump=lambda v, w: list(_dft_plane_region(v, what=w)),
+        load=lambda v, w: _dft_plane_region(v, what=w),
+    )),
+}
+
 _FLUX_MONITOR_FIELDS: dict[str, _F] = {
     "name": _STR,
     "axis": _STR,
@@ -898,6 +914,10 @@ TRACED_ONLY_SIMULATION_ATTRS: tuple[str, ...] = ("_nominal_profiles",)
 
 # Lazy declarations have an explicit disposition alongside constructor state.
 REFUSED_SIMULATION_ATTRS = {"_wall_losses": "refused"}
+
+# A builder creates this declaration on first use; each DFT plane entry's
+# region carries the user's crop rectangle from add_dft_plane_probe(region=).
+EXPORTED_LAZY_SIMULATION_ATTRS: tuple[str, ...] = ("_dft_plane_regions",)
 
 
 def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
@@ -1549,9 +1569,16 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             "probes": _dump_list(
                 sim._probes, _PROBE_FIELDS, _ProbeEntry, what="_probes"
             ),
-            "dft_planes": _dump_list(
-                sim._dft_planes, _DFT_PLANE_FIELDS, _DFTPlaneEntry, what="_dft_planes"
-            ),
+            "dft_planes": [
+                {
+                    **_dump_entry(entry, _DFT_PLANE_FIELDS, _DFTPlaneEntry,
+                                  what=f"_dft_planes[{index}]"),
+                    "region": _DFT_PLANE_DOCUMENT_FIELDS["region"].dump(
+                        getattr(sim, "_dft_plane_regions", {}).get(entry.name),
+                        f"_dft_planes[{index}].region"),
+                }
+                for index, entry in enumerate(sim._dft_planes)
+            ],
             "flux_monitors": _dump_list(
                 sim._flux_monitors,
                 _FLUX_MONITOR_FIELDS,
@@ -1951,7 +1978,8 @@ def simulation_from_design(document: Any) -> Any:
         _entry_list(observables, "dft_planes", what="observables")
     ):
         values = _load_entry(
-            payload, _DFT_PLANE_FIELDS, what=f"observables.dft_planes[{index}]"
+            payload, _DFT_PLANE_DOCUMENT_FIELDS, what=f"observables.dft_planes[{index}]",
+            defaults={"region": None},
         )
         sim.add_dft_plane_probe(**values)
 
@@ -2007,6 +2035,10 @@ def _assert_round_trip(sim: Any, document: dict) -> None:
                 {"allow_in_absorber": False, **entry}
                 for entry in document[section][family]
             ]
+    # Older v2 DFT planes omit the optional crop rectangle.
+    document["observables"]["dft_planes"] = [
+        {"region": None, **entry} for entry in document["observables"]["dft_planes"]
+    ]
     # Older documents use defaults for optional solver keys they do not carry.
     document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
     if document["solver"]["solver"] == "yee" and "adi_cfl_factor" in document["solver"]:
