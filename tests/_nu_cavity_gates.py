@@ -50,7 +50,7 @@ import numpy as np
 C0 = 299792458.0
 
 # ---------------------------------------------------------------------------
-# cv14's cavity, verbatim (that case was removed 2026-09-21)
+# cv14's cavity, verbatim
 # ---------------------------------------------------------------------------
 A_X, B_Y, D_Z = 0.050, 0.030, 0.040          # metres (x, y, z)
 CHANNELS = ("ex", "ey", "ez")
@@ -204,7 +204,7 @@ CLUSTER_REL = 0.005     # < (142.7 MHz / 7.0 GHz) / 4 = 0.51 %
 # ---------------------------------------------------------------------------
 # The exact Yee lattice on a tensor grid (rfx/stepping/yee.py update_h_nu /
 # update_e_nu; metrics from rfx/nonuniform.py _profile_to_inv_arrays and the
-# #562 bounding node _append_bounding_node)
+# bounding node _append_bounding_node)
 # ---------------------------------------------------------------------------
 
 
@@ -356,9 +356,7 @@ def anchor_residuals(graded_profile=None) -> dict:
     return out
 
 
-# The envelope rule has ONE definition (tests/_gate_policy.py, #528). This module
-# used to carry its own copy of the multiplier and the rounding, pinned equal by
-# a cv24 gate test that left with the case; it imports the shared one now.
+# The envelope rule has ONE definition (tests/_gate_policy.py).
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 

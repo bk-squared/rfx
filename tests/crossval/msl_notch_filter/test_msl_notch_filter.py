@@ -124,7 +124,7 @@ PORT_IMPEDANCE_OHM = 50.0
 FREQ_MAX_HZ = 7e9
 CPML_LAYERS = 8
 
-# dx = h_sub / n keeps the substrate top on a node plane (issue #723).
+# dx = h_sub / n keeps the substrate top on a node plane.
 LADDER_M = (
     SUBSTRATE_THICKNESS_M / 2,   # 127 µm
     SUBSTRATE_THICKNESS_M / 4,   # 63.5 µm
@@ -138,10 +138,7 @@ DX_COARSEST_M = LADDER_M[0]
 # three-probe extractor sits a quarter guided wavelength back at the lowest
 # frequency it serves, 4.79 mm on this substrate, and it must be clear of the
 # stub.  PORT_MARGIN_M is the port plane to the x face, set by the upstream
-# probe offset max(λ/4π, 5·h) = 1.8 mm.  Both from the preflight text of the
-# 2026-09-22 ladder on the old 5 mm board (VESSL run 369367263038; its log is
-# on the lab share under research/rfx/.omx/msl-notch-ladder/20260921T193512Z-
-# 2ce4c28d/ and its numbers in the ledger's 2026-09-22 entry).
+# probe offset max(λ/4π, 5·h) = 1.8 mm.
 ARM_LENGTH_M = 10e-3
 PORT_MARGIN_M = 2e-3
 # The same filter on longer arms; only the arm-length witness builds it.  The
@@ -194,7 +191,7 @@ DOMAIN_Y_M = (TRACE_WIDTH_M + 2.0 * LATERAL_CLEARANCE_M
               + STUB_LENGTH_M + 2.0 * LATERAL_CLEARANCE_M)               # 18.800 mm
 DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754 mm
 
-# Record length in periods of freq_max (#1912). The notch is a transmission
+# Record length in periods of freq_max. The notch is a transmission
 # zero: the far port's in-record signal there is about 53 dB below the drive,
 # so a small ring-down tail is a large fraction of it, and the record must ring
 # down at the notch bin first (measured: the worst bin is the notch bin, in the
@@ -207,8 +204,7 @@ DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754
 # 20 periods understated the notch depth by 1.11 dB; 40 and 80 agree to
 # 0.0005 dB in |S21| over the band. The 20 periods of the retired script had
 # passed the old end-level witness (−65 dB at this rung on 2026-10-01), which
-# is not a record-length witness for a resonance. Remi job
-# ci-1912-notch-witness-sxk77, 2026-10-20.
+# is not a record-length witness for a resonance.
 NUM_PERIODS = 40.0
 # Frequency points of rfx's sweep (DFT bins; they cost nothing in time steps).
 # 400 over 0.7–7 GHz is a 15.8 MHz bin, under half the 1 % frequency bar at
@@ -305,8 +301,6 @@ def build(dx: float, arm_length_m: float = ARM_LENGTH_M, *,
     """
     domain_x, _ = _x_geometry(arm_length_m)
     profiles = {} if uniform else _edge_aware(dx, arm_length_m, edge_offset)
-    # #1138: on the uniform mesh the trace and stub widths were solved -21.683 %
-    # at dx = 127 um; the edge-aware profiles solve them at the drawn width.
     sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_HZ,
         domain=(domain_x, DOMAIN_Y_M, float(np.sum(profiles["dz_profile"])) if "dz_profile" in profiles else DOMAIN_Z_M),
@@ -573,7 +567,7 @@ def _print_realized(g: dict, dx: float) -> None:
     print(f"    MSL ports {g['n_ports']}")
 
 
-# ------------------------------------------------- reference impedance (#2014)
+# ------------------------------------------------- reference impedance
 def _to_reference(S, z_from, z_to) -> np.ndarray:
     """Power-wave S (real references) from z_from to z_to through the impedance
     matrix, written out here on purpose: the product's
@@ -1192,8 +1186,6 @@ def test_the_lattice_builds_the_declared_board():
           f"{_x_geometry(WITNESS_ARM_LENGTH_M)[0]*1e3:.2f} mm:")
     _print_realized(g, dx)
 
-    # The ladder this case ran before 2026-10-26: the uniform mesh solves the
-    # 600 µm sheets 470 µm wide at h/2 and 552 µm at h/4 (580 µm at h/6).
     for dx_u in (SUBSTRATE_THICKNESS_M / 2, SUBSTRATE_THICKNESS_M / 4):
         with pytest.raises(AssertionError) as uniform:
             assert_realized(build(dx_u, uniform=True), dx_u)

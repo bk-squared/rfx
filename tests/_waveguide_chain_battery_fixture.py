@@ -642,10 +642,7 @@ def assert_design_override_keeps_the_short(sim: Simulation, dut: str) -> None:
 # θ = −0.05): the coarse rung stays bounded to 8545 steps (max|S| = 1.00254
 # for pec_short, 1.00196 for thru), the mid rung returns NaN for pec_short AND
 # for thru — a DUT with no conductor anywhere. So eps_r < 1 alone is
-# sufficient; the ownership contract did not cause it. What the contract
-# removed is the thing that used to hide it on this DUT: the lane no longer
-# folds the short into a sigma = 1e10 volume, and that lossy block sat one
-# cell from the window and damped the growing mode.
+# sufficient; the ownership contract did not cause it.
 #
 # All eps stencils are second-order forward at
 # unchanged theta0 and h. Every arm now gets the full-array certificate below.

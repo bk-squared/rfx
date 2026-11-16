@@ -28,8 +28,7 @@ _REPO = _HERE.parents[2]
 # from another checkout wins silently -- and it did: the 2026-09-13 regeneration
 # ran the sibling checkout's pre-#888 auxiliary absorber with THIS file's 24-cell
 # CPML, a rig that exists nowhere, and produced a corrected-pattern mean of
-# 0.41 dB instead of 0.70. The sibling generator (../rcs_sphere_mie/
-# generate_fixture.py) has carried this guard since #276; this one had not.
+# 0.41 dB instead of 0.70.
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "tests/fixtures/rcs_sphere_mie"))
 from mie_oracle import bistatic_over_pi_a2  # noqa: E402

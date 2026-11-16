@@ -99,7 +99,7 @@ def _waveguide_with_dispersive_slab() -> Simulation:
     """Two-port WR-90-like guide loaded with Debye and Lorentz materials."""
     sim = Simulation(
         freq_max=12e9,
-        domain=(0.10, 0.02286, 0.011),  # main's solved length; #1887
+        domain=(0.10, 0.02286, 0.011),  # main's solved length
         dx=1e-3,
         boundary="cpml",
         cpml_layers=4,
@@ -461,7 +461,7 @@ def _canonical(value):
 
 def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None:
     """Diff two simulations attribute by attribute over the census inventory."""
-    # #1373: canonical current declarations do not replay a None warning.
+    # canonical current declarations do not replay a None warning.
     # Grid construction can populate realization diagnostics on either side;
     # the document excludes them and preflight rebuilds them from declarations.
     diagnostic_attrs = {"_amplitude_kind_warned", "_realization_early_outcomes"}
@@ -488,8 +488,7 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
     # spec came from the "cpml"/"upml" scalar. It is read only with a Floquet
     # port or open TF/SF, and those documents rebuild from the scalar
     # (design_constructor_boundary), so the rebuild records it again; other
-    # documents rebuild from the spec and carry None. Before #2214 the same
-    # record rode inside _boundary and was lost the same way, unseen here.
+    # documents rebuild from the spec and carry None.
     skip_attrs = {"_msl_auto_offset_min", "_msl_auto_probe_spacing",
                   "_msl_auto_probe_lengths", "_msl_ports",
                   "_boundary_scalar_spec"} | diagnostic_attrs
@@ -2006,7 +2005,6 @@ def test_auto_offset_dump_keeps_stored_edge_when_propagation_axis_is_graded():
     (port_doc,) = document["excitations"]["msl_ports"]
     assert port_doc["n_probe_offset"] == 20
     assert port_doc["n_probe_offset"] == _driver_offset(sim)
-    # and the skip is no longer silent
     assert any("interval solve SKIPPED" in str(w.message)
                for w in caught), [str(w.message) for w in caught]
 
@@ -2025,7 +2023,7 @@ def test_auto_offset_dump_solves_on_a_z_graded_stackup():
 
 
 # ---------------------------------------------------------------------------
-# Conductor ownership across the IR boundary (#931)
+# Conductor ownership across the IR boundary
 # ---------------------------------------------------------------------------
 
 def test_a_pec_sheet_and_a_one_cell_volume_round_trip_as_different_objects():

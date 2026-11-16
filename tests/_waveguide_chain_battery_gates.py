@@ -134,7 +134,7 @@ OBJECTIVES = {
     "re_s11": ("complex", (0, 0)),
     "im_s11": ("complex", (0, 0)),
 }
-# Current relative-accuracy family, amended 2026-09-08. The lossless
+# Current relative-accuracy family. The lossless
 # PEC-short eps magnitude is excluded: its continuum derivative is zero.
 AD_LEGS = {
     ("slab", "eps"): ("s11_mag2", "s21_mag2", "re_s21", "im_s21"),

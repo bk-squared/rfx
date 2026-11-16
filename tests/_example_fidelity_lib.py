@@ -53,7 +53,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_snapshot.json"
 ADVISORY_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_advisories.json"
 
-# Dispositions a pinned advisory row may carry (#737 item 1).
+# Dispositions a pinned advisory row may carry.
 #   intended    -- the example deliberately shows or tolerates the
 #                  condition; the reason cites the example's own
 #                  docstring/comment, or the physics.
@@ -161,7 +161,7 @@ def discover_scripts() -> list[str]:
 
 # --------------------------------------------------------------------------
 # AST predicates -- these are what make each bucket machine-checkable rather
-# than a trusted prose reason (2026-08-27 review, required change #4).
+# than a trusted prose reason.
 # --------------------------------------------------------------------------
 
 def _parse(relpath: str) -> ast.Module:
@@ -609,12 +609,8 @@ CLASSIFICATION: dict[str, Entry] = {
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
     # ---- audited: builder is separable from solve ----
-    # #737 item 2 (2026-09-16): build-only entry points on the pattern the
-    # Sheen low-pass filter and cv15 set, for the scripts the reopen comment
-    # listed as unreachable. Each
-    # builder is the one the script's own main path calls, so what the gate
-    # pins is the model that runs, not a copy of it. cad_mesh_import_demo
-    # joined them with #1271, below.
+    # Each builder is the one the script's own main path calls, so what the
+    # gate pins is the model that runs, not a copy of it.
     "examples/quickstart/hello_world.py": Entry(
         "audited",
         "`build_simulation()` returns Simulation with no solve call (split "
@@ -831,7 +827,7 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/tmtt_paper/waveguide_dielectric_taper.py": Entry(
         "audited", "`build_sim()` returns Simulation with no solve call",
         (Builder("build_sim", None, (_v("default"),)),)),
-    # ---- issue #786 attribution lane (validation/research/convergence_floor)
+    # ---- attribution lane (validation/research/convergence_floor)
     "validation/research/convergence_floor/fixture.py": Entry(
         "audited",
         "`build_sim(scale, dz_profile, ...)` returns the W4R P-C "

@@ -315,7 +315,7 @@ def cpml_layers(dx: float) -> int:
 
 
 # --- the ladder -----------------------------------------------------------
-# dx = h_sub/n keeps both substrate faces on node planes (issue #723).
+# dx = h_sub/n keeps both substrate faces on node planes.
 #
 # THE RUNG CRITERION IS ONE BOARD.  Each edge is declared just outside a node
 # common to h/4, h/8 and h/12 and the probe on one (the constants above), and
@@ -349,10 +349,7 @@ RESONANCE_BAND_HZ = (0.80 * F_TM010_TL_MODEL_HZ, 1.20 * F_TM010_TL_MODEL_HZ)
 MINUS10_DB = -10.0
 
 # --- the record length ----------------------------------------------------
-# ``num_periods`` is in periods of ``freq_max`` (0.25 ns here).  MEASURED on
-# the retired 40 × 50 mm board at h/4 (CPU, 2026-09-24; the table is in this
-# file at 0a92af49): 60 met the −40 dB rule with margin and moved the
-# resonance and its depth by nothing that matters against the doubled record.
+# ``num_periods`` is in periods of ``freq_max`` (0.25 ns here).
 # The ring-down is set by the patch's radiation Q, a physical time, so the same
 # record length in nanoseconds serves every rung, and every run checks its own
 # settling against ``SETTLING_DB`` before it is compared.
@@ -393,7 +390,6 @@ OPENEMS_MESH_STATEMENT_STAGES = ("stage_b_coarse", "stage_b_mid")
 def _sim(dx: float, fr: Frame = FRAME) -> Simulation:
     """The box, the boundary and the lossy substrate material — shared by
     every builder."""
-    # #1138: coarse patch x/y solved +1.368%/+1.052%; this checks external S11.
     sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_HZ,
         domain=fr.domain,

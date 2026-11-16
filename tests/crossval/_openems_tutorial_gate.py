@@ -121,7 +121,7 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # Constants -- the tutorial's own, copied from validation/crossval/
-# 20_msl_phase_referee.py's Stage A block (script removed in #1232).
+# 20_msl_phase_referee.py's Stage A block.
 # ---------------------------------------------------------------------------
 _C0 = 2.998e8  # m/s -- matches the coax/notch precedent's own constant
 
@@ -159,9 +159,7 @@ REPRODUCE_GATE_RECORD = {
         "fetched_via": "gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py",
     },
     # The reproduction ran in the MSL thru-line phase case's script, whose port
-    # this module copies byte for byte. That case was removed on 2026-09-23;
-    # its run log moved beside the MSL notch filter's reference, and its
-    # result JSON is readable at rfx commit b25df603.
+    # this module copies byte for byte.
     "port_in_this_repository": (
         "tests/crossval/_openems_tutorial_gate.py (the run itself used "
         "validation/crossval/20_msl_phase_referee.py, removed 2026-09-23)"
@@ -251,8 +249,7 @@ def _import_openems():
 # ---------------------------------------------------------------------------
 _BAD_STDOUT_PATTERNS = ("Unused primitive", "not on the mesh", "unused excitation")
 
-# Truncation patterns (D3/TRUNCATION PATTERNS fix, run-1 forensics, review
-# 2026-08-04): openEMS's own excitation-pulse-clipping warnings. Checked ONLY
+# Truncation patterns: openEMS's own excitation-pulse-clipping warnings. Checked ONLY
 # via ``check_truncation=True`` (real-run scans), NEVER for smoke scans --
 # the smoke runs in THIS script are deliberately tiny (NrTS=200,
 # EndCriteria=0.0/"-infdB", see ``_build_stage_a_notch_tutorial``/
