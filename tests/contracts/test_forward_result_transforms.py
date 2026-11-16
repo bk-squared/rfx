@@ -27,11 +27,13 @@ from tests.unit.sparams.test_port_observable_validation import _passive_reciproc
 TRANSFORMS = ('jit', 'vmap', 'grad', 'value_and_grad', 'vjp', 'jvp', 'jacfwd', 'eval_shape')
 VALUES = (1., 1.05)
 SHORT_STEPS = 150
-SCENES = ('U', 'G', 'GT', 'W', pytest.param('R', marks=pytest.mark.slow))
+SCENES = tuple(pytest.param(name, marks=() if name in ('U', 'G', 'W') else pytest.mark.slow)
+               for name in ('U', 'G', 'GT', 'W', 'R'))
+EAGER_CACHE = {}
 TRANSFORM_CASES = [
     pytest.param(scene, kind, marks=pytest.mark.slow if (
-        scene == 'R' or (scene == 'GT' and kind not in ('jit', 'grad')) or
-        (scene == 'W' and kind not in ('jit', 'vmap', 'grad', 'jvp', 'eval_shape'))
+        (scene, kind) not in {('U', 'jit'), ('U', 'vmap'), ('U', 'grad'),
+                            ('U', 'jvp'), ('U', 'eval_shape'), ('G', 'jit'), ('W', 'jit')}
     ) else ())
     for scene in ('U', 'G', 'GT', 'W', 'R') for kind in TRANSFORMS
 ]
@@ -135,9 +137,16 @@ def forward(scene):
     return _make_forward(scene)
 
 
+def _eager(scene, value, forward):
+    key = (scene, value)
+    if key not in EAGER_CACHE:
+        EAGER_CACHE[key] = forward(jnp.float32(value))
+    return EAGER_CACHE[key]
+
+
 @pytest.fixture(scope='module')
-def eager(forward):
-    return tuple(forward(jnp.float32(value)) for value in VALUES)
+def eager(scene, forward):
+    return tuple(_eager(scene, value, forward) for value in VALUES)
 
 
 @pytest.fixture(autouse=True)
@@ -157,16 +166,28 @@ def _leaves(result, expected, *, tangent=False, abstract=False):
     _assert_static_state(result)
 
 
-def _arrays(result):
+def _arrays(result, *, children_only=True):
+    children = {id(leaf) for leaf in jax.tree_util.tree_leaves(result)}
     for name in ('time_series', 's_params', 'waveguide_sparams'):
         value = getattr(result, name, None)
         if value is not None:
             for path, leaf in jax.tree_util.tree_flatten_with_path(value)[0]:
-                if isinstance(leaf, (jax.Array, np.ndarray)):
+                if (isinstance(leaf, (jax.Array, np.ndarray)) and
+                        (not children_only or id(leaf) in children)):
                     yield name + jax.tree_util.keystr(path), leaf, name == 'time_series'
     for port, record in (result.waveguide_ports or {}).items():
         for name in ('v_probe_t', 'v_ref_t', 'i_probe_t', 'i_ref_t'):
-            yield f'waveguide_ports[{port}].{name}', getattr(record, name), True
+            value = getattr(record, name)
+            if not children_only or id(value) in children:
+                yield f'waveguide_ports[{port}].{name}', value, True
+
+
+def _static_compared(actual, primal):
+    children = {id(leaf) for leaf in jax.tree_util.tree_leaves(actual)}
+    primal_arrays = {name: value for name, value, _ in _arrays(primal, children_only=False)}
+    for name, value, _ in _arrays(actual, children_only=False):
+        if id(value) not in children:
+            assert _value_key(value) == _value_key(primal_arrays[name]), name
 
 
 def _compare(actual, expected, label, *, arrays_only=False):
@@ -273,6 +294,7 @@ def test_transform(scene, forward, eager, kind):
     if tangent is not None:
         _leaves(tangent, eager[0], tangent=True)
         assert jax.tree_util.tree_structure(tangent) == jax.tree_util.tree_structure(actual)
+        _static_compared(tangent, actual)
         _compare(tangent, reference_tangent, f'{scene}/{kind}/tangent', arrays_only=True)
     if kind == 'vmap':
         for name in ('settling_db', 'settling_witness'):
@@ -281,6 +303,7 @@ def test_transform(scene, forward, eager, kind):
         for index, expected in enumerate(eager):
             element = jax.tree_util.tree_map(lambda a: a[index], actual)
             _leaves(element, expected)
+            _static_compared(element, actual)
             arrays = tuple(array[index] for array in reference)
             _compare(element, arrays, f'{scene}/{kind}/{index}', arrays_only=True)
             _settling_read(element, expected, f'{scene}/{kind}/{index}')
@@ -310,7 +333,9 @@ def _settling_read(actual, eager, label):
     assert witness['status'] == eager_witness['status']
 
 
-@pytest.mark.parametrize('scene', SCENES, indirect=True, scope='module')
+@pytest.mark.parametrize('scene', [pytest.param(name, marks=() if name == 'U' else pytest.mark.slow)
+                                 for name in ('U', 'G', 'GT', 'W', 'R')],
+                         indirect=True, scope='module')
 def test_fresh_trace_static_values(scene, forward):
     reused = jax.jit(forward)
     reused(jnp.float32(VALUES[0]))
@@ -342,6 +367,7 @@ def test_waveguide_smatrix_roundtrip():
     assert jax.tree_util.tree_leaves(result) == []
 
 
+@pytest.mark.slow
 def test_equal_calls_and_scalar_jacobian():
     forward = _make_forward('U')
     left, right = forward(jnp.float32(1)), forward(jnp.float32(1))
@@ -353,8 +379,10 @@ def test_equal_calls_and_scalar_jacobian():
         jax.tree_util.tree_map(lambda a, b: a, left, right)
     jacobian = jax.jacfwd(forward)(jnp.float32(1))
     _leaves(jacobian, left)
+    _static_compared(jacobian, left)
 
 
+@pytest.mark.slow
 def test_changed_shapes_without_probe_series():
     forward = _make_forward('G', emit=False)
     eager = forward(jnp.float32(VALUES[0]))
@@ -380,7 +408,7 @@ def test_multi(kind):
         pytest.skip('covered by test_distributed_subprocess')
     assert len(jax.devices('cpu')) == 2
     forward = _make_forward('M')
-    eager = forward(jnp.float32(1))
+    eager = _eager('M', VALUES[0], forward)
     _leaves(eager, eager)
     actual, _ = _transform(forward, 'M', kind)
     _leaves(actual, eager)
