@@ -24,7 +24,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # Edit this set when an audited entry is added or removed; the Tracker gate
 # and weekly sweep enforce live tracking separately.
 # #1101 (the port_aperture_snap advisory naming the wrong source for the
-# cutoff) left: the message now READS the built
+# cutoff) left on 2026-09-19: the message now READS the built
 # ``cfg.f_cutoff`` and names the profile it came from, pinned by
 # tests/unit/ports/test_port_aperture_rasterization.py's two
 # mode_profile fixtures -- the page's own rule for when an entry goes.
@@ -46,12 +46,12 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # beta_railed. No open work stands behind it, so the entry carries no
 # arrow and 726 sits in RESOLVED_REFERENCES.
 # #1066 (the waveguide S-parameter lane not continuing a dielectric into
-# its absorber pad) left: both of that lane's smoothing
+# its absorber pad) left on 2026-09-20: both of that lane's smoothing
 # sites now call smoothed_shape_pairs, the one implementation the
 # runners use, and tests/unit/sparams/test_waveguide_lane_pad_continuation.py
 # pins the pad -- the page's own rule for when an entry goes.
 # #1070 (a dielectric spanning the declared domain solved with vacuum in one
-# absorber pad) left with its whole section, which it was the
+# absorber pad) left on 2026-09-20 with its whole section, which it was the
 # only entry in. The arithmetic that bought the unfilled cell is gone
 # (rfx.grid.cells_spanning) and the invariant behind it is asserted at
 # assembly (rfx.geometry.rasterize_grid.assert_declared_span_is_filled), so
@@ -77,7 +77,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # #820 left on 2026-09-23: tests/unit/farfield/test_rcs_translation_invariance.py
 # now pins the monostatic RCS spread under whole-cell target translations.
 # #1221 (magnetic faces on distributed and ADI lanes, and the Yee half-cell wall)
-# joined; OPEN checked with
+# joined on 2026-09-23; OPEN checked with
 # `gh issue view 1221 --repo bk-squared/rfx --json number,state,url,title,updatedAt`.
 # #1260 (a Debye/Lorentz material anywhere puts the whole grid on the
 # cell-owned E update, so every lumped element loads all three edges at its
@@ -92,7 +92,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # the page no longer names #1236 either.
 # #1373 (ADI refuses a material interface until 2.1) joined on 2026-10-03 with
 # the "Solver lanes" section; OPEN.
-# The ADI-interface entry left with its
+# 2026-10-11 (2.0 documentation pass): the ADI-interface entry left with its
 # section -- the former material-interface refusal was covered by tests
 # and recorded in the
 # support matrix's Refused inputs table -- and its #1373 arrow moved to the
@@ -100,7 +100,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # weekly-lane entry: a red scheduled lane is not a defect a user meets (lead
 # decision 2026-10-11); #1501 was still OPEN that day.
 # #1812 (an open oblique method-B plane wave launches a modulated Gaussian whatever
-# pulse is declared) joined; OPEN, checked with
+# pulse is declared) joined on 2026-10-17; OPEN, checked with
 # `gh issue view 1812 --repo bk-squared/rfx --json number,state`.
 # #1812 left with the declared-pulse fix and its always-on contract pins.
 # #2086 (PMC wall on two x86 CPU devices) left when the multi-device uniform

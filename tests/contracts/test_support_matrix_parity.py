@@ -141,7 +141,7 @@ MATRIX_MD_PATH = Path("docs/guides/support_matrix.md")
 # Section map: json `primitive` -> .md "## " section header
 # ---------------------------------------------------------------------------
 
-# Lanes this parity gate actively checks: MSL (ad_evidence), coax two-port, coax-MSL
+# Lanes this parity gate actively checks -- the ones drift actually hit: MSL (ad_evidence), coax two-port, coax-MSL
 # transition, wire/patch, and the waveguide near-cutoff group-delay figures
 # (NU broad-E4/E5 lives in the same "## Rectangular-waveguide port" section).
 # Issue #586 extended the map to the 3 remaining genuinely mappable lanes
@@ -184,7 +184,7 @@ UNMAPPED_LANES_TODO: dict[str, str] = {
 # token" floor in test_json_numeric_claims_appear_in_markdown. The floor is live on the other 6 mapped lanes. Add a
 # primitive here only with a comment naming why
 # its numeric_metrics is genuinely number-free (not merely emptied by a
-# careless edit).
+# careless edit, which is the silent-vacuous-pass class this floor closes).
 NUMBER_FREE_LANES: frozenset[str] = frozenset({
     # The JSON was trimmed to numbers with an in-repo
     # witness. The thresholds in Floquet's tests bound synthetic inputs, and

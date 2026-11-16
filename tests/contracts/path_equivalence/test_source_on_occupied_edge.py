@@ -98,6 +98,7 @@ def test_g1c_probe_peak_ratio(graded_records, w, record_property):
 
 
 # Main-era one-device peaks.
+# Measured after the default pulse onset fix; Mac CPU, float32.
 # Old values: uniform (0.033985, 0.0086755, 0.0070076, 0.0070738),
 # graded (0.035304, 0.0087263, 0.0070309, 0.0070737),
 # two-device (0.035304, 0.0043632, 0.0017577, 0.00044211).
