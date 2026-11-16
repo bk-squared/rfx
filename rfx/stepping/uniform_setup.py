@@ -271,6 +271,7 @@ def _build_step_setup(
     aniso_eps: "tuple | None",
     aniso_inv_eps: "tuple | None",
     aniso_inv_eps_smooth: bool,
+    subpixel_smoothing: object = False,
     pec_mask: object,
     pec_sheets: object,
     pec_wires: object,
@@ -423,7 +424,11 @@ def _build_step_setup(
 
     from rfx.boundaries.setup import oblique_bloch
     _oblique_bloch = oblique_bloch(tfsf, use_ntff=use_ntff,
-                                 use_dft_planes=use_dft_planes, use_flux_monitors=use_flux_monitors)
+                                 use_dft_planes=use_dft_planes, use_flux_monitors=use_flux_monitors,
+                                 aniso_eps=aniso_eps, aniso_inv_eps=aniso_inv_eps,
+                                 conformal_weights=conformal_weights,
+                                 aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+                                 subpixel_smoothing=subpixel_smoothing, debye=debye, lorentz=lorentz)
 
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Plain ints,
@@ -910,11 +915,12 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
             ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
     from rfx.stepping.absorber import cpml_context
     ctx, e_loss = cpml_context(ctx)
-    from rfx.boundaries.pmc import magnetic_update_factors
+    from rfx.boundaries.pmc import high_face_row_factors, magnetic_update_factors
     magnetic_factors = magnetic_update_factors(ctx.pmc_faces_frozen, ctx.grid.shape, ctx.periodic)
     invariants = {"magnetic_factors": magnetic_factors, "ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
                   "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
                   "conformal_zero_masks": conformal_zero_masks}
+    invariants["h_row_factors"] = high_face_row_factors(ctx.grid.shape, ctx.periodic)
     if measurement is not None:
         from rfx.measurement.projector import plan_tables
         from rfx.measurement.time_records import uniform_specs

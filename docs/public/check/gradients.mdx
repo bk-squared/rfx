@@ -264,11 +264,11 @@ Limits:
   are False, `check.value` is NaN and `check.note` starts `cannot judge:`.
 - **The two windows are matched by frequency only.** The match assumes isolated
   neighbours. `gradient_witness` is the check for a wrong match.
-- **Plain and `jax.jit` gradients can differ.** On the 1.0 mm box above the pole
+- **Plain and `jax.jit` gradients agree once the witnesses pass.** On the 1.0 mm box above the pole
   gradients agree to 1.1e-12 and the gradient of `sum |S|^2` to 2.7e-11. On a short lossy 600-step test box the gradient of `sum |S|^2`
-  differs by up to 1.7e-2, and the pole outputs inherit and enlarge that gap. The cause is
-  not determined
-  ([tracked here](https://github.com/bk-squared/rfx/issues/2485)).
+  differs by up to 1.7e-2, and the pole outputs differ more; that record is too short, and both
+  `report.ok` and the early-start `gradient_witness` reject it. From 1200 steps on that box, where both pass, the
+  two agree within 5.5e-6. Read a gradient through `forward(ringdown=...)` only when its witnesses pass.
 
 ## How the checks work
 
@@ -296,6 +296,7 @@ leaf's largest gradient, against 1 %. A NaN in either gradient fails it.
 | `forward(ringdown=...)` without `port_s11_freqs=`, on either mesh | refused | pass the frequencies |
 | a gradient with respect to a declared shape's size or position (a sphere radius, a box corner) | `NotImplementedError` naming the supported routes, on `run()` and `forward()` | differentiate through material overrides (`eps_override`) or a design region |
 | `forward(ringdown=...)` with more than one wire port on a uniform mesh | refused | use a graded mesh |
+| `forward(ringdown=...)` or `run(ringdown=...)` under `jax.grad`, `jax.jvp`, `jax.vmap` or `jax.jit` with a traced drive waveform, or on a traced graded mesh without `dt=` | refused: the drive's off time inside the fit window cannot be judged | declare the waveform with concrete values (S does not depend on the drive's amplitude), or pin `dt=` |
 | `gradient_witness(..., against="early_start")` without `ringdown=` | `TypeError` | pass the call's `out.ringdown` |
 | `gradient_witness(..., pole_target=..., against="longer_record")` without a result pair | needs `ringdown=(res, res_longer)` | pass each record's concrete, unbatched `out.ringdown`, in gradient order |
 | `out.ringdown.pole(f_target, window=...)` with a window other than `"main"` or `"long"` | `ValueError` | pass one of the two |

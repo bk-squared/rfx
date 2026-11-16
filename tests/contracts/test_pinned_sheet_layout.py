@@ -510,6 +510,44 @@ def test_other_metal_consumers_refused(stage):
     assert edge in str(error.value)
 
 
+@pytest.mark.parametrize('stage,layout_name', [
+    ('r_only', 'ones'),
+    ('parallel_rc', 'ones'),
+    ('parallel_rc', 'zeros'),
+    ('parallel_rc_ey', 'ones'),
+])
+def test_folded_rlc_on_layout_refused(stage, layout_name, monkeypatch):
+    from functools import wraps
+    from rfx.stepping import graded
+
+    make_step = graded.make_graded_step
+    steps = []
+
+    def step_hook(*args, **kwargs):
+        @wraps(make_step(*args, **kwargs))
+        def first_step(*args, **kwargs):
+            steps.append(True)
+            pytest.fail('first step reached')
+        return first_step
+
+    monkeypatch.setattr(graded, 'make_graded_step', step_hook)
+    sim = board()
+    component = 'ey' if stage == 'parallel_rc_ey' else 'ex'
+    x, y = (.005, .0045) if component == 'ey' else (.0045, .005)
+    sim.add_lumped_rlc((x, y, float(DZ[:4].sum())), component, R=50.,
+                       C=0. if stage == 'r_only' else 1e-13, topology='parallel')
+    edge = (7, 6, 6) if component == 'ey' else (6, 7, 6)
+    with pytest.raises(ValueError) as error:
+        sim.forward(n_steps=2, skip_preflight=True,
+                    pinned_sheet_layout=(edge_arrays(LAYOUTS[layout_name]),))
+    assert str(error.value) == (
+        "pinned_sheet_layout sheet 0 ('patch'): lumped_rlc[0], which the switched "
+        "sheet would short (a layout keeps no element edge free), conflicts with "
+        f"addressed edge {component}{edge} on the graded lane; "
+        "move the stage or the layout switch off that edge")
+    assert steps == []
+
+
 @pytest.mark.parametrize('kind', ['lumped', 'wire', 'waveguide', 'microstrip'])
 def test_all_release_record_kinds_refused(kind):
     from types import SimpleNamespace
@@ -545,8 +583,18 @@ def test_other_stages_layout_bytes(stage, value):
     def build(rectangles):
         sim = board(rectangles)
         if stage == 'parallel_rc':
-            sim.add_lumped_rlc((.0045, .005, float(DZ[:4].sum())), 'ex',
+            sim.add_lumped_rlc((.0045, .005, float(DZ[:5].sum())), 'ex',
                                R=50., C=1e-13, topology='parallel')
+            from rfx._internal._grid_metric import field_index
+            from rfx.model.occupancy import layout_edge_indices
+            grid = sim._build_nonuniform_grid()
+            spec = sim._lumped_rlc[0]
+            edge = tuple(field_index(grid, spec.position, spec.component))
+            # Assert against the full switch footprint, including the zero layout.
+            sheet = board()._pinned_sheets[0]
+            axis, indices = layout_edge_indices(grid, sheet, 0)
+            assert axis == 0
+            assert edge not in set(zip(*(v.ravel().tolist() for v in indices)))
         else:
             sim._ports.clear()
             sim.add_port((.002, .005, float(DZ[:2].sum())), 'ez',

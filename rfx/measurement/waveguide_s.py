@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -544,6 +546,7 @@ def extract_waveguide_s_matrix(
         :meth:`Simulation.compute_waveguide_s_matrix` for full semantics.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(grid, port_cfgs, pec_axes, periodic)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix requires at least two waveguide ports"
@@ -755,6 +758,7 @@ def extract_waveguide_s_matrix_flux(
     function for argument documentation.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(grid, port_cfgs, pec_axes, periodic)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix_flux requires at least two waveguide ports"
@@ -1098,6 +1102,7 @@ def extract_waveguide_s_params_normalized(
         Normalized S-matrix of shape (n_ports, n_ports, n_freqs), complex.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(grid, port_cfgs, pec_axes, periodic)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_params_normalized requires at least two waveguide ports"
@@ -1294,6 +1299,9 @@ def extract_multimode_s_matrix(
         Ordering of rows/columns in the S-matrix.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(
+        grid, [cfg for modes in port_mode_cfgs for cfg in modes], pec_axes, periodic,
+    )
     from rfx.stepping.uniform_loop import run as run_simulation
 
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
@@ -1475,6 +1483,9 @@ def extract_multimode_s_matrix_flux(
     mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(
+        grid, [cfg for modes in port_mode_cfgs for cfg in modes], pec_axes, periodic,
+    )
     from rfx.stepping.uniform_loop import run as run_simulation
 
     flat_cfgs: list[WaveguidePortConfig] = []

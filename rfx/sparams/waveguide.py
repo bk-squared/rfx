@@ -332,11 +332,13 @@ def compute_waveguide_s_matrix(
     from rfx.boundaries.pmc import refuse_waveguide_pmc
     refuse_waveguide_pmc(self)
     from rfx.runners._admission import admit
-    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
+    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec,
+                                              "subpixel_smoothing": subpixel_smoothing})
     if port_reference_sims is not None:
         for reference in port_reference_sims:
             refuse_waveguide_pmc(reference)
-            admit(reference, "waveguide_s_matrix")
+            admit(reference, "waveguide_s_matrix",
+                  run_args={"subpixel_smoothing": subpixel_smoothing})
 
     conformal_solve = None
     if conformal_pec:
@@ -459,6 +461,8 @@ def compute_waveguide_s_matrix(
     from rfx.model.pole_stability import courant_budget
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
+        # Keep the existing ambient ADE state dtype for lower-precision runs.
+        field_dtype=resolve_field_dtype(self._precision) if self._precision == "float64" else None,
         periodic=self._periodic_flags(), grid=grid)
 
     has_multimode, raw_cfgs, reference_medium = _waveguide_stages._prepare_waveguide_configs(
@@ -538,7 +542,7 @@ def compute_waveguide_s_matrix(
     ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
-        conformal_pec=conformal_pec,
+        conformal_pec=conformal_pec, dtype=resolve_field_dtype(self._precision) or jnp.float32,
         reference_eps=float(reference_medium.eps_r))
 
     from rfx.model.realization_table import finish_table

@@ -186,12 +186,14 @@ REVIEWED = {
         (1, "a synthetic citation fed to the contract's own keep rule; "
             "the contract compares it as text and reads no file"),
     "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py":
-        (12, "the ledger synthetic line and its exception path and literal add "
+        (16, "the ledger synthetic line and its exception path and literal add "
             "three segment literals to the prior seven; the C4 guard tokens in "
             "matching_classes add two more; "
             "the C4 pattern, Git prefilter, guard tokens and synthetic lines name "
             "segments as text to flag; the exception table names the segment for "
-            "contracts that name it as text; the contract reads no file there"),
+            "contracts that name it as text; the contract reads no file there; "
+            "the four named exceptions for rule lines (public_docs_architecture, "
+            "public_docs_maintenance, lint.yml, the AR example) add four segment literals"),
     "tests/contracts/test_guide_citations_resolve.py":
         (4, "sample TEXT fed to that file's own predicate -- the two dead "
             "links it was written to catch, the prose that replaced them, "
