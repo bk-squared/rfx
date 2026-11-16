@@ -11,6 +11,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+from tests._fd_minimum import assert_same_minimum_cells
+
 from validation.research.multiband_nu import w7_accuracy_ad as w7
 
 LIVE_AD_N_STEPS = 40
@@ -24,7 +26,11 @@ LIVE_AD_TOL = 0.15
 
 def test_live_ad1_fast_profile_gradient():
     """AD1 on the s = 2 MB vector, N_STEPS = 40: finite gradient; the two
-    largest non-tied cells agree with central FD to 15 % with sign."""
+    largest non-tied cells agree with central FD to 15 % with sign.
+
+    The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
+    """
     dz0 = w7.a1_mb(2.0)
     eps_col = np.asarray(w7.f32_values(w7.AD1_EPS_PATTERN))
     loss = jax.jit(w7.ad1_loss_factory(eps_col, LIVE_AD_N_STEPS))
@@ -41,6 +47,9 @@ def test_live_ad1_fast_profile_gradient():
         dp[k] += h
         dm = dz0.copy()
         dm[k] -= h
+        assert_same_minimum_cells(np.asarray(jnp.asarray(dz0)), [
+            (f"index {k} (+)", np.asarray(jnp.asarray(dp))),
+            (f"index {k} (-)", np.asarray(jnp.asarray(dm)))])
         g_fd = (float(loss(jnp.asarray(dp))) - float(loss(jnp.asarray(dm)))) / (2 * h)
         assert np.sign(g_fd) == np.sign(g_ad[k]), (k, g_ad[k], g_fd)
         rel = abs(g_ad[k] - g_fd) / abs(g_fd)
