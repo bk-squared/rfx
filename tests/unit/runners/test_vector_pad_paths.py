@@ -29,6 +29,7 @@ SWEEP_STEPS = 60
 NOT_BITWISE = {
     ('design', 'adjoint', 'aligned'), ('design', 'adjoint', 'odd'),
     ('design', 'autodiff', 'aligned'), ('design', 'autodiff', 'odd'),
+    ('design face', 'autodiff', 'aligned'), ('design face', 'autodiff', 'odd'),
     ('vmap', 'pec', 'odd'),
 }
 
@@ -134,10 +135,14 @@ def test_design_box_objective_and_gradient_padded(target, gradient):
     jax.clear_caches()
 
 
-@pytest.mark.parametrize('gradient', ('adjoint', 'autodiff'))
 @pytest.mark.parametrize('target', TARGETS)
-def test_design_box_against_the_pmc_face_padded(target, gradient):
-    """The design box on the last physical cell of the padded z axis, against a PMC face."""
+def test_design_box_against_the_pmc_face_padded(target):
+    """The design box on the last physical cell of the padded z axis, against a PMC face.
+
+    Autodiff only: gradient='adjoint' refuses PMC faces, and the curl frame is
+    read only at a PMC face's magnetic image.
+    """
+    gradient = 'autodiff'
     label = f'design box at the PMC face {gradient}/{target}'
 
     def records(n):
