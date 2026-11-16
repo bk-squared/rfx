@@ -925,6 +925,26 @@ from rfx.model.realization_transport import with_forward_geometry
 class ForwardResult(NamedTuple):
     """Minimal differentiable simulation result.
 
+    A whole result can be returned from ``jax.jit``, ``jax.vmap``, ``jax.jvp``
+    and ``jax.eval_shape``, or as auxiliary output with ``has_aux=True`` from
+    ``jax.vjp``, ``jax.grad``, ``jax.value_and_grad`` and ``jax.jacfwd``.
+    Host data (grid objects, names, Python numbers and NumPy arrays) stays as
+    computed during the trace. On a graded mesh with traced widths and no pinned
+    time step, ``dt`` and ``grid.dt`` are array children; float64 width copies
+    for traced axes are None, and host fields come from the declared widths.
+    ``freqs`` is batched by vmap when it is a JAX array, and stays unbatched
+    when the lane returns a NumPy array.
+
+    Read a vmapped result per element after
+    ``jax.tree_util.tree_map(lambda a: a[i], result)``. ``settling_db`` and
+    ``settling_witness`` refuse arrays whose shapes changed since construction,
+    including a sliced frequency band. ``_replace`` drops this shape history,
+    so replacing fields on a batched result disables that protection.
+    A JVP tangent or Jacobian keeps the result type, but its settling diagnostics
+    and ring-down report have no meaning: read these on the primal result.
+    Passing a new result into a jitted function recompiles because its realized
+    geometry record and uniform Grid compare by identity.
+
     ``realized_geometry`` carries host metadata from the prepared kernel assembly.
     ``settling_db`` and ``settling_witness`` score concrete user probes; read them on the returned
     concrete result, not as gradient objectives. Numeric
@@ -1032,8 +1052,8 @@ class ForwardResult(NamedTuple):
 
         None means absent, including during tracing. This is a diagnostic,
         not a differentiable objective. A returned JIT result can be scored
-        once its time series is concrete. Other result fields retain their
-        existing JIT restrictions (for example the host Grid object).
+        once its arrays are concrete and retain their original shapes; select
+        one element of a vmapped result as described on ``ForwardResult``.
         Use ``settling_verdict`` to judge the diagnostic.
         """
         from rfx.sparams._record_selection import forward_settling_witness
