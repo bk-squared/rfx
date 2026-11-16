@@ -58,6 +58,13 @@ def record_selection_detail(result):
 
 
 def forward_settling_witness(result):
+    from rfx.model.realization_transport import forward_arrays_match
+    if not forward_arrays_match(result):
+        raise ValueError(
+            "ForwardResult settling reads one primal result; its arrays are not the arrays "
+            "it was built with (a vmap output, a Jacobian, or a sliced or mapped result). "
+            "For a batch, take one element first: "
+            "jax.tree_util.tree_map(lambda a: a[i], result).")
     from rfx.sparams._tail_witness import result_read_bins
 
     bins = result_read_bins(result)
