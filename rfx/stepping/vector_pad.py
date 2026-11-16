@@ -168,7 +168,8 @@ def seed_pad(seed, magnitude=1e30):
 def refuse_if_forced(path):
     """A path this stage does not pad refuses a forced pad; it never ignores it."""
     if _REQUESTED.get() in ("aligned", "odd"):
-        raise NotImplementedError(f"vector padding: {path} not padded yet")
+        from rfx.errors import RfxUnsupported
+        raise RfxUnsupported(f"vector padding: {path} not padded yet")
 
 
 def uniform_unsupported(ctx_kwargs, *, stencil_order, field_dtype):
