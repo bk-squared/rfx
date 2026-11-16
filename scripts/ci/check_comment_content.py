@@ -16,16 +16,16 @@ RULES = (
     ("date", re.compile(
         r"\b(?:19|20)\d\d[-/.](?:0[1-9]|1[0-2])[-/.](?:0[1-9]|[12]\d|3[01])\b"
         r"|\b20\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\b"
-    ), "a dated record in rfx-archive, or git history"),
+    ), "a dated record, or git history"),
     ("issue number", re.compile(r"(?<!&)#\d{3,}\b|(?i:\bPR) ?#\d+|/issues/\d+|/pull/\d+"),
      "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("predeclaration", re.compile(r"predeclar", re.I), "the predeclaration file"),
     ("move note", re.compile(r"\bmoved from\b", re.I), "git history (git log --follow)"),
-    ("run id", re.compile(r"(?<!\d)(?<!\d\.)\d{10,}(?!\d)(?!\.\d)"), "the measurement record in rfx-archive"),
+    ("run id", re.compile(r"(?<!\d)(?<!\d\.)\d{10,}(?!\d)(?!\.\d)"), "the measurement record"),
     ("quoted Korean", re.compile(
         r"[\"'“”‘’「」『』][^\"'“”‘’「」『』]*[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]"
         r"[^\"'“”‘’「」『』]*[\"'“”‘’「」『』]"
-    ), "a named test or assertion states the rule; the rationale goes to rfx-archive"),
+    ), "a named test or assertion states the rule; the rationale goes to the record"),
 )
 GUIDANCE = "a comment says what the code does, not where it came from"
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
