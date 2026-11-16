@@ -63,7 +63,7 @@ _B_WG = 0.01016
 #   "raises"    — refuses loudly, naming the profile restriction
 #   "delegates" — has no mesh behaviour of its own; forwards to one of the
 #                 rows above, which then does its own thing. Only
-#                 compute_s_matrix, the #980 Phase 1 lane dispatcher, is in
+#                 compute_s_matrix, the Phase 1 lane dispatcher, is in
 #                 this class. It is NOT a third mesh behaviour and must not
 #                 become a place to park a method whose dz-only answer nobody
 #                 worked out: a row here is only honest if the method reads no
@@ -74,13 +74,13 @@ _B_WG = 0.01016
 #                 message).
 # ---------------------------------------------------------------------------
 DZ_ONLY_CONTRACT = {
-    "compute_waveguide_s_matrix": "nu-lane",   # THE #811 fix
+    "compute_waveguide_s_matrix": "nu-lane",
     "compute_msl_s_matrix": "nu-lane",         # dz-aware since the NU MSL lane
     "compute_mixed_s_matrix": "raises",
     "compute_coaxial_line_reflection": "raises",
     "compute_coaxial_two_port": "raises",
     "compute_coax_msl_transition": "raises",
-    "compute_s_matrix": "delegates",           # #980 Phase 1 lane dispatcher
+    "compute_s_matrix": "delegates",           # Phase 1 lane dispatcher
 }
 
 
@@ -232,7 +232,7 @@ def test_mixed_dz_only_raises():
     sim.add_material("sub", eps_r=4.3)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
-    # #931: the MSL trace is a FOIL, so it is a sheet on the substrate-top
+    # The MSL trace is a FOIL, so it is a sheet on the substrate-top
     # node plane — a zero-extent axis IS the sheet declaration (§1.5). Drawn
     # one cell thick it would be a VOLUME: walls at z = H_SUB and
     # z = H_SUB + dx with Ez shorted between, a 0.25 mm solid bar where the
@@ -325,7 +325,7 @@ def test_run_and_forward_dz_only_pick_nonuniform_lanes():
 
 _DISPATCH_FILES = (
     "rfx/api/_sparams.py",
-    # #980 Phase 2 moves the compute_* bodies -- including the #811 dx/dy/dz
+    # Phase 2 moves the compute_* bodies -- including the dx/dy/dz
     # profile predicates this scan exists for -- verbatim into per-family
     # modules under rfx/sparams/; the scan follows the code by globbing the
     # package so the class stays covered there instead of passing vacuously.
@@ -334,7 +334,7 @@ _DISPATCH_FILES = (
     "rfx/measurement/sparam_assembly.py",
     "rfx/measurement/sparam_advisories.py",
     "rfx/api/_preflight.py",
-    # #980 Phase 3 does the same to rfx/api/_preflight.py, a leg at a time,
+    # Phase 3 does the same to rfx/api/_preflight.py, a leg at a time,
     # into rfx/preflight/. Globbed NOW, while the package holds only leaf
     # helpers, so no later leg has to remember to widen this scan -- the
     # sparams rows above were added after the fact.

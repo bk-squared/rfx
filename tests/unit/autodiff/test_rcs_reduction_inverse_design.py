@@ -58,7 +58,7 @@ TH_B, PH_B = np.array([np.pi / 2]), np.array([np.pi])
 
 def _setup():
     grid = Grid(freq_max=15e9, domain=DOMAIN, dx=DX, cpml_layers=CPML)
-    # the incident the grid carries, as compute_rcs normalizes (#820)
+    # the incident the grid carries, as compute_rcs normalizes
     e_inc = measure_normal_incident_spectrum(*_tfsf(grid), N_STEPS, FREQS, grid.dt)
     sx, sy, sz = grid.shape
     blk = np.zeros(grid.shape, np.float32)
