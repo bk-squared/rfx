@@ -56,6 +56,11 @@ def scene(name):
         sim = Simulation(domain=(.0113, .0071, height), boundary=_walls(), cpml_layers=0, **common)
         sim.add_material('disp', eps_r=2., lorentz_poles=[lorentz_pole(2.0, 2 * np.pi * 6e9, 1e9)])
         sim.add(Box((.006, .002, .0008), (.010, .006, .0031)), material='disp')
+    elif name == 'mixed':
+        sim = Simulation(domain=(.0113, .0071, height), boundary=_walls(), cpml_layers=0, **common)
+        sim.add_material('mixed', eps_r=2., debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)],
+                         lorentz_poles=[lorentz_pole(2.0, 2 * np.pi * 6e9, 1e9)])
+        sim.add(Box((.006, .002, .0008), (.010, .006, .0031)), material='mixed')
     elif name == 'periodic_x':
         sim = Simulation(domain=(.010, .0071, height), boundary=_walls(x='periodic'), cpml_layers=0, **common)
         sim.add_material('slab', eps_r=3.)
@@ -69,10 +74,17 @@ def scene(name):
     return sim
 
 
-SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x')
+SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x', 'mixed')
 
-#: Cases measured not bitwise on the CPU; judged by the bars at N, 2N, 4N.
-NOT_BITWISE = set()
+#: Cases measured not bitwise on the CPU (jax 24.10 image); judged by the bars at N, 2N, 4N.
+#: The seeded-pad equality below holds bitwise on the same scenes.
+NOT_BITWISE = {
+    ('run', 'vacuum', 'aligned'), ('run', 'vacuum', 'odd'),
+    ('run', 'pec_pmc_slab', 'aligned'), ('run', 'pec_pmc_slab', 'odd'),
+    ('run', 'lorentz', 'aligned'), ('run', 'lorentz', 'odd'),
+    ('forward', 'cpml_port', 'aligned'), ('forward', 'cpml_port', 'odd'),
+    ('forward', 'lorentz', 'aligned'), ('forward', 'lorentz', 'odd'),
+}
 
 
 def run_kwargs(sim, n_steps, **extra):
@@ -171,7 +183,7 @@ def test_profile_is_graded():
 @pytest.mark.parametrize('name', SCENES)
 def test_graded_run_padded_is_bitwise_or_within_bars(name, target):
     label = f'graded run {name}/{target}'
-    if (name, target) not in NOT_BITWISE:
+    if ('run', name, target) not in NOT_BITWISE:
         ref, ref_plans = run_record(name, 'off')
         assert ref_plans and not any(p.active for p in ref_plans)
         got, plans = run_record(name, target)
@@ -200,7 +212,7 @@ def test_graded_until_decay_padded_is_bitwise(target):
     jax.clear_caches()
 
 
-def _forward_records(name, mode, n_steps=N_STEPS):
+def _forward_objective(name, n_steps):
     sim = scene(name)
     shape = sim._build_nonuniform_grid().shape
 
@@ -213,6 +225,11 @@ def _forward_records(name, mode, n_steps=N_STEPS):
         return value, result
 
     eps = jnp.ones(shape, jnp.float32).at[4:7, 2:5, 1:4].set(2.5)
+    return objective, eps
+
+
+def _forward_records(name, mode, n_steps=N_STEPS):
+    objective, eps = _forward_objective(name, n_steps)
     tangent = jnp.zeros_like(eps).at[5, 3, 2].set(1.)
     with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
         value, result = objective(eps)
@@ -228,13 +245,59 @@ def _forward_records(name, mode, n_steps=N_STEPS):
 
 @pytest.mark.parametrize('target', TARGETS)
 @pytest.mark.parametrize('name', ('cpml_port', 'lorentz'))
-def test_graded_forward_value_jvp_grad_vmap_padded_bitwise(name, target):
-    ref, ref_plans = _forward_records(name, 'off')
-    got, plans = _forward_records(name, target)
-    assert not any(p.active for p in ref_plans)
-    assert_padded(plans, f'graded forward {name}/{target}')
-    assert_bitwise(ref, got, f'graded forward {name}/{target}')
+def test_graded_forward_value_jvp_grad_vmap_padded_bitwise_or_within_bars(name, target):
+    label = f'graded forward {name}/{target}'
+    lengths = LENGTHS if ('forward', name, target) in NOT_BITWISE else (N_STEPS,)
+    by_length = {}
+    for n in lengths:
+        ref, ref_plans = _forward_records(name, 'off', n)
+        got, plans = _forward_records(name, target, n)
+        assert not any(p.active for p in ref_plans)
+        assert_padded(plans, f'{label} N={n}')
+        if lengths == (N_STEPS,):
+            assert_bitwise(ref, got, label)
+        else:
+            by_length[n] = bar_ratios(ref, got, peaks=_forward_family_peaks(name, n),
+                                      probes=probe_families(name))
+    if by_length:
+        assert_bars(label, by_length)
     jax.clear_caches()
+
+
+def _forward_family_peaks(name, n_steps):
+    """Family peaks (driven cells left out) of an unpadded forward() value call of the same model.
+
+    forward() returns no fields: its scan is run here with the per-step peaks
+    read beside it. Only the scale is taken from it.
+    """
+    from rfx.stepping import graded_loop
+    objective, eps = _forward_objective(name, n_steps)
+    step, _ = captured_step(name, 'off', 1)
+    driven = _driven(step['invariants'], step['init']['fdtd'].ex.shape)
+    real, captured = graded_loop.recorded_scan, []
+
+    def scan(body, init, xs=None, **kwargs):
+        keep = {c: jnp.asarray(~driven[c]) for c in FIELDS}
+
+        def tracked(carry, x):
+            carry, out = body(carry, x)
+            peaks = jnp.stack([jnp.max(jnp.where(keep[c], jnp.abs(getattr(carry['fdtd'], c)), 0.))
+                               for c in FIELDS])
+            return carry, (out, peaks)
+
+        final, (outs, peaks) = jax.lax.scan(tracked, init, xs)
+        captured.append(np.asarray(peaks))
+        return final, outs
+
+    graded_loop.recorded_scan = scan
+    try:
+        with vector_pad.force_pad('off'):
+            objective(eps)
+    finally:
+        graded_loop.recorded_scan = real
+    assert captured, f'{name}: no graded scan in forward()'
+    peaks = np.concatenate(captured)
+    return {'e': float(peaks[:, :3].max()), 'h': float(peaks[:, 3:].max())}
 
 
 @pytest.mark.parametrize('target', TARGETS)
@@ -306,6 +369,7 @@ def test_graded_one_step_from_one_state_and_realized_operands(name, target):
     step_off, step_on = jax.jit(off['body']), jax.jit(on['body'])
     shapes = [np.shape(leaf) for leaf in jax.tree_util.tree_leaves(on['init'])]
     by_length = {}
+    witness = {}
     for n in LENGTHS:
         x = jax.tree_util.tree_map(lambda a: a[n], off['xs'])
         state = vector_pad.pad_carry(record['states'][n], plan)
@@ -322,9 +386,19 @@ def test_graded_one_step_from_one_state_and_realized_operands(name, target):
         probe_diff = np.max(np.abs(np.asarray(got_out, np.float64) - np.asarray(ref_out, np.float64)))
         ratios['probes'] = _ratio(probe_diff, ONE_STEP_BAR * probe_scale)
         by_length[n] = ratios
+        # Evidence only: the unpadded step evaluated op by op against its jitted form.
+        with jax.disable_jit():
+            eager, _ = off['body'](record['states'][n], x)
+        witness[n] = {f.upper(): _ratio(max(float(np.max(np.abs(
+            np.asarray(getattr(eager['fdtd'], c), np.float64) - np.asarray(getattr(ref['fdtd'], c), np.float64))))
+            for c in (f + 'x', f + 'y', f + 'z')), ONE_STEP_BAR * scale[f]) for f in 'eh'}
     sys.stderr.write(
         f'OPERANDS {label}: {count} operand arrays, {padded} padded, all bitwise when cropped; '
         f'plan {plan.shape} -> {plan.padded}; scale E {scale["e"]:.4e} H {scale["h"]:.4e} '
         f'probes {probe_scale:.4e}\n')
+    sys.stderr.write(f'WITNESS {label}: unpadded eager vs jit, one step, difference / bar (i) at N = '
+                     f'{list(witness)}: ' + '; '.join(
+                         f'{k} ' + ', '.join(f'{witness[n][k]:.3e}' for n in witness) for k in ('E', 'H'))
+                     + '\n')
     assert_bars(f'graded one step {label}', by_length)
     jax.clear_caches()
