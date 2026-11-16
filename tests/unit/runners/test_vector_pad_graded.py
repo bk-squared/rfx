@@ -82,6 +82,7 @@ NOT_BITWISE = {
     ('run', 'vacuum', 'aligned'), ('run', 'vacuum', 'odd'),
     ('run', 'pec_pmc_slab', 'aligned'), ('run', 'pec_pmc_slab', 'odd'),
     ('run', 'lorentz', 'aligned'), ('run', 'lorentz', 'odd'),
+    ('run', 'mixed', 'aligned'), ('run', 'mixed', 'odd'),
     ('forward', 'cpml_port', 'aligned'), ('forward', 'cpml_port', 'odd'),
     ('forward', 'lorentz', 'aligned'), ('forward', 'lorentz', 'odd'),
 }
