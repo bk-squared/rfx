@@ -674,7 +674,7 @@ from rfx.interop._design_state import EXCLUDED_SIMULATION_ATTRS, EXPORTED_LAZY_S
 TRACED_ONLY_SIMULATION_ATTRS: tuple[str, ...] = ("_nominal_profiles",)
 
 # Lazy declarations have an explicit disposition alongside constructor state.
-REFUSED_SIMULATION_ATTRS = {"_wall_losses": "refused"}
+REFUSED_SIMULATION_ATTRS = {"_wall_losses": "refused", "_time_recorded_dft_planes": "refused"}
 
 
 def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
@@ -1164,6 +1164,8 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
     """
     if getattr(sim, "_wall_losses", ()):
         raise UnsupportedDesignFeature("add_wall_loss is not carried by the design document")
+    if getattr(sim, "_time_recorded_dft_planes", None):
+        raise UnsupportedDesignFeature("a time-recorded DFT plane selection is driver state the design document does not carry")
     soft_sources, lumped_ports = _dump_ports(sim)
 
     ntff = None

@@ -613,6 +613,13 @@ def test_dft_plane_region_round_trip_preserves_built_window():
     assert source_probes[1].accumulator.shape == rebuilt_probes[1].accumulator.shape
 
 
+def test_time_recorded_dft_plane_selection_is_refused():
+    sim = _dft_region_design()
+    sim._time_recorded_dft_planes = {"full"}
+    with pytest.raises(UnsupportedDesignFeature, match="time-recorded DFT plane"):
+        design_to_dict(sim)
+
+
 def test_legacy_dft_planes_without_region_load_as_full_planes():
     from rfx.measurement.setup import build_planes
 
