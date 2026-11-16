@@ -276,6 +276,52 @@ Under `jax.grad` the unoccupied cells still pass a zero cotangent through the ca
 A concrete run is not affected.
 Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
 
+### `fit_debye` with a free ε∞ can return ε∞ = 0.5 and poles far outside the data's band.
+
+Tracker: #2771
+
+With ε∞ free, `fit_debye` fits ε∞ with a lower bound of 0.5 and each relaxation time within wide bounds (1 fs to 1 ms).
+On a table whose ε′ and tan δ are constant over the band, as a datasheet gives them, many pole placements fit almost
+equally well, and nothing keeps the poles inside the data's span or ε∞ at 1 or above. Such a fit can end with ε∞ on its
+0.5 bound and poles near 1 THz and below 1 MHz, while its `fit_error` reads below 1 %. Inside the band the fitted
+permittivity is close to the data. The fault is ε∞ below 1: a material built from the fit grows without bound at rfx's
+default time step (next entry). Check that `fit.eps_inf` is at least 1 and that every pole's `1 / (2 * pi * tau)` lies
+in the data's band. For a datasheet value, a fit that places the relaxation frequencies log-spaced over the band and
+solves only ε∞ (at least 1) and each Δε (at least 0) by bounded linear least squares runs stably and stays within 0.12
+dB in |S11| of the free fit inside the band; `fit_debye` has no such mode, so this fit is written by hand.
+
+### A material with permittivity below 0.98 grows without bound at the default time step, and nothing refuses it.
+
+Tracker: #2772
+
+A Yee cell of relative permittivity ε (μr 1) is stable only for a time step up to √ε times the vacuum Courant limit,
+because its fastest waves travel at c/√ε, faster than light for ε below 1. In a Debye material the pole terms vanish at
+the grid's Nyquist frequency, so the cell sees ε∞ there. No check refuses a step above a cell's own limit: the default
+step is 0.99 of the vacuum limit, and the pole stability check skips a cell whose step is above that cell's limit
+without its poles. A material with `eps_r` below 0.98 (0.99²), or a Debye material with ε∞ below 0.98 (such as the fit
+in the entry above), therefore grows until the fields are non-finite at the default step when it fills cells that set
+the step (every cell on a uniform mesh); this was measured at 0.5 on the uniform and the graded mesh. Between 0.98 and 1
+the default step stays inside the cell's limit. Nothing refuses the run; it ends with an `AccuracyWarning` about
+non-finite values.
+
+Two material fits reach this entry, measured with a 12.3 × 11.5 × 10.8 mm box of the fitted material on 1 mm cells in
+an open domain (uniform mesh, and a graded mesh with five 0.8 mm cells in x), at the default step:
+- On a table with ε′ 4.4 and tan δ 0.02 constant over 1–40 GHz, `fit_debye` with a free ε∞ returns ε∞ 0.5 (previous
+  entry). `run()` admits the 2-pole fit on both meshes; the fields grow by a factor of 1.04 per step and become
+  non-finite at step 2025 (uniform) and 2008 (graded).
+- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returns ε∞ 0.1, its
+  lower bound, with 2 and with 3 resonances. `run()` admits both fits on both meshes; the fields grow by a factor of
+  100 to 140 per step and become non-finite at step 22.
+
+In both cases preflight reports only advisories, and the run ends with the `AccuracyWarning` about non-finite values.
+Before building a material from a fit, check `fit.eps_inf`: below 0.98, the material is outside the default step's
+stable range. The 2-pole `fit_debye` result above ran 17143 steps without growth at 0.61 of the vacuum Courant limit
+of the smallest cell, on a graded board with a pinned `dt=`. No step was measured for the `fit_lorentz` result.
+
+Keep `eps_r` and ε∞ at 1 or above. On a graded mesh, a pinned `dt=` below √ε times the vacuum Courant
+limit, with ε the smallest permittivity, is inside the stable range: at 0.6 of the limit a material with ε 0.5 ran
+without growth.
+
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
 Tracker: #2441
@@ -818,6 +864,28 @@ records on a field null were measured ending at 1.4×10⁻⁵ to 2.8×10⁻⁵ o
 A weak record still ringing above −71 dB is scored like any other record. The skipped records are listed in
 `result.settling_witness["skipped_records"]` with their `tail_ratio`.
 What to do: to judge a component that weak, put a probe of its own at a neighbouring cell, or run in float64.
+
+### The printed ring-down settling level can move by more than 10 dB when the fields change only at rounding level.
+
+Tracker: #1687
+
+`settling_db` is the share that the tail past the end of the record adds to the in-record transform, extrapolated from
+poles fitted to the record after the source ends. A second fit over a check window (the first 90 % of the main
+window, or in a long enough record a window that starts earlier) gives the identification-error indicator
+`settling_witness["error_per_bin"]`; the check window does not enter the printed level. A rounding-level change of
+the record (a code change, or another host's arithmetic) can change which poles the main-window fit returns, and the
+printed level follows. Measured on `examples/tutorials/antenna_farfield_pattern.py` (a point source in a
+60 mm vacuum cube with a CPML, 400 steps, one probe, read at 8 GHz) across one rfx change that moved the probe's field
+by at most 1.1e-5 of its peak (7.5e-3 of the decayed field's peak inside the main window): the fit over the 0.55 ns
+main window returned a slow non-oscillating pole (time constant 5.1 ns) before and not after, so the level moved from
+-66.8 to -80.2 dB (share 4.6e-4 to 9.8e-5), while the check-window fit returned it on both sides (5.1046e-4 against
+5.1053e-4) and the directivity stayed 1.761 dBi. After the change the error indicator read 4.15e-4, 4.2 times the share it qualifies,
+and the status stayed "pass"; the same version read -80.2 dB on one host and -79.7 dB on another. At 800 and 1600
+steps the two versions' shares agree within 15 % and 8 %. At the −40 dB rule (a share of 1e-2), if the main window
+crosses it and the check window does not, the status is "undetermined" with `settling_db` nan, not the opposite
+verdict.
+What to do: do not read a `settling_db` difference between versions or hosts as a change of the field; read
+`settling_witness["error_per_bin"]` beside it, or compare at a longer record.
 
 ### With an automatic mesh, `vmap_material_sweep`'s sequential fallback runs every swept value for the first value's step count.
 
