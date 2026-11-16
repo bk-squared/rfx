@@ -31,6 +31,11 @@ the smallest nominal cell. When this cap binds, float32 traced builds and
 plain builds are not guaranteed to agree at ties: coordinate rounding can
 exceed that band. The tolerance uses float32 epsilon on both paths.
 
+At the centre of a Box, one tied opposite-face pair retains its axis normal.
+Two or three tied opposite pairs give a zero normal so the tensor has no
+preferred off-diagonal sign. A body thinner than a cell in several directions
+is not a laminate; this symmetric local rule is not an exact volume average.
+
 ### Traced full-tensor CPU builds on older jaxlib issue pieces serially
 
 Tracker: #2095

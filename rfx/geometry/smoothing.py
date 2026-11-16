@@ -167,10 +167,13 @@ def _normal_box(x, y, z, shape, xp=jnp, *, tie=0.0):
     top = xp.maximum(xp.maximum(distances[0], distances[1]), distances[2])
     normals = tuple(xp.where((r >= top - tie) & (xp.abs(d) > tie), xp.sign(d), 0.0)
                     for r, d in zip(distances, delta))
-    # Opposite pairs alone cancel; retain their axes with a fixed positive sign.
+    # Only one opposite pair defines a mirror-symmetric fallback axis.
+    opposite = tuple((r >= top - tie) & (xp.abs(d) <= tie)
+                     for r, d in zip(distances, delta))
+    single = sum(pair.astype(int) for pair in opposite) == 1
     zero = sum(n * n for n in normals) == 0
-    normals = tuple(xp.where(zero & (r >= top - tie) & (xp.abs(d) <= tie), 1.0, n)
-                    for n, r, d in zip(normals, distances, delta))
+    normals = tuple(xp.where(zero & single & pair, 1.0, n)
+                    for n, pair in zip(normals, opposite))
     mag = xp.sqrt(sum(n * n for n in normals) + 1e-30)
     return tuple(n / mag for n in normals)
 
@@ -221,11 +224,11 @@ def _normal_tie(grid, *, max_image=1):
     h_min = xp.min(xp.stack([xp.min(w) for w in widths]))
     padded = []
     for axis, (name, cells) in enumerate(zip("xyz", widths)):
-        if domain is None:
+        if domain is None or axis >= len(domain):
             # Nonperiodic cells end with a duplicate width for the bounding
             # node. Sum only intervals between the first and last nodes;
             # periodic axes retain every cell in their complete period.
-            physical = cells if name in grid.periodic_axes else cells[:-1]
+            physical = cells if name in getattr(grid, "periodic_axes", "") else cells[:-1]
             padded.append(xp.sum(physical))
         else:
             padded.append(domain[axis]
