@@ -163,6 +163,10 @@ def _leaves(result, expected, *, tangent=False, abstract=False):
         assert (isinstance(leaf, jax.ShapeDtypeStruct) if abstract else
                 isinstance(leaf, jax.Array) or
                 (tangent and isinstance(leaf, np.ndarray) and leaf.dtype == jax.dtypes.float0)), type(leaf)
+    kind = jax.ShapeDtypeStruct if abstract else jax.Array
+    arrays = {id(leaf) for value in result for leaf in jax.tree_util.tree_leaves(value)
+              if isinstance(leaf, kind)}
+    assert arrays <= {id(leaf) for leaf in jax.tree_util.tree_leaves(result)}, 'an array is static'
     _assert_static_state(result)
 
 
