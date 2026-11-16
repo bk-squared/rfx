@@ -190,6 +190,7 @@ def _plot(scene, freqs, curves, ylabel, note):
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
+    OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"{scene}.png", dpi=130)
     plt.close(fig)
     note["figure"] = str(OUT / f"{scene}.png")
