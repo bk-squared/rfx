@@ -20,7 +20,7 @@ from tests.contracts.run_forward_census import (
 KNOWN_ROWS = (
 )
 
-# Declarations with ports compare equal S requests in both directions (#1373):
+# Declarations with ports compare equal S requests in both directions:
 # (a) run's default against forward(port_s11_freqs=run's bins);
 # (b) run(compute_s_params=False) against forward's default.
 PORTED = tuple(d for d in BUILDERS if d.startswith('P-') or d == 'C-full-tensor')
@@ -514,7 +514,7 @@ def test_assembly(declaration, path, direction):
                 freqs = arguments.get('s_param_freqs')
                 if isinstance(freqs, FrozenArray):
                     arguments['s_param_freqs'] = freeze(freqs.array().astype(np.float32))
-            # Stated fact (#1373 decision C): a graded run() that asks for S (direction
+            # Stated fact: a graded run() that asks for S (direction
             # a) on two ports takes it from its drive scan, so its main record's port
             # specs say record_s=False; forward's one record forms S and carries no
             # such key. One excited lumped port reads its main record, as on uniform.
@@ -716,8 +716,7 @@ def test_both_refuse(declaration, path, direction):
         print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
                               dispositions=pair)), file=sys.stderr)
     if declaration == 'P-waveguide-2mode':
-        # The per-mode list once reached the single-run assembly and raised
-        # AttributeError on both entries (#2070); pin the refusal's text too.
+        # Pin the refusal's text too.
         expected = ('waveguide ports (add_waveguide_port) are not supported on'
                     if path.startswith('multi-device') else 'compute_waveguide_s_matrix()')
         for record in pair.values():

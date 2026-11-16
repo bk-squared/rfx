@@ -165,7 +165,7 @@ _ALLOWED = {
     # --- prose only: each names the retired flag to say what it USED to do
     # and why the committed number moves. None imports or re-derives anything;
     # all read realized_pec_edge_masks / realized_wall_planes.
-    # 2026-09-24: the RT/Duroid 5880 patch case's script and its two old tests
+    # The RT/Duroid 5880 patch case's script and its two old tests
     # (the wall-plane test and the mode-identification test) left with the
     # case, rebuilt as tests/crossval/rt5880_patch/; their rows went with them.
 }

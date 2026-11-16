@@ -37,7 +37,7 @@ def _compile(n, *, box, checkpoint, k=None, graded=False, observations=False):
 
     with jax.default_device(jax.devices("cpu")[0]):
         params = jnp.array([4. if box else 1., .2 if box else 0.], jnp.float32)
-        # Exclude auxiliary observations from the memory oracle, matching #1786.
+        # Exclude auxiliary observations from the memory oracle.
         executable = jax.jit(jax.value_and_grad(lambda p: objective(p)[0])).lower(params).compile()
         memory = executable.memory_analysis()
     compiled = (memory.argument_size_in_bytes + memory.output_size_in_bytes

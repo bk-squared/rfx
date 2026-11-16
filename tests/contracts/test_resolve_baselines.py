@@ -447,7 +447,7 @@ def test_main_tree_regeneration_is_byte_exact(kind):
     # links. Counters only read its sources; all generation remains in memory.
     # A full local clone copies the whole object store: on the gate image that is
     # 430 MB, 8.5-21 s for clone and checkout on a 2-CPU cpu-16 job, and it passed
-    # 30 s on two gates; depth 1 copies 41 MB in about 7 s (2026-10-21).
+    # 30 s on two gates; depth 1 copies 41 MB in about 7 s.
     with tempfile.TemporaryDirectory(prefix="baseline-main-") as directory:
         clone = Path(directory) / "repo"
         git(REPO, "clone", "-q", "--depth", "1", "--no-checkout", REPO.as_uri(), str(clone),
