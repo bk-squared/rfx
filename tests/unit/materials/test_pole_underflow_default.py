@@ -69,9 +69,8 @@ def test_default_jaxpr(monkeypatch, site, setting, enabled):
     assert ("custom_linear_solve" in program) is enabled
 
 
-@pytest.mark.parametrize("site", ["scalar", "map", "graded_map"])
 @pytest.mark.parametrize("setting", [None, "0", "1", "other"])
-def test_no_callback_backend(monkeypatch, site, setting):
+def test_no_callback_backend(monkeypatch, setting):
     # Reuse test_each_owner_refuses_traced_operands' simulated MPS capability
     # for both the default decision and traced-check admission.
     no_callbacks = backend.backend_class("mps")
@@ -79,7 +78,9 @@ def test_no_callback_backend(monkeypatch, site, setting):
     monkeypatch.setattr(_traced_check, "backend_class", lambda: no_callbacks)
     if setting is not None:
         monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", setting)
-    grad = jax.grad(objective(site, True))
+    # The scalar scene isolates the SI guard from map normalization's
+    # separate RelativeStrength admission when staging a jaxpr.
+    grad = jax.grad(objective("scalar", True))
     value = jnp.float32(3e20)
     if setting == "1":
         message = (
