@@ -1,6 +1,7 @@
 """Always-on representation, held-memory and content-key pins (design B8)."""
 from dataclasses import replace
 import gc
+import sys
 import time
 import tracemalloc
 
@@ -16,7 +17,7 @@ FREQS = np.array([0.8e9, 1e9], np.float32)
 
 
 def a1_scene(moment):
-    # A1 from records/20261116-moment-owner-memory: L=32, d=8.
+    # A 33 x 33 x 20-cell moment slab in 8-cell blocks on a graded mesh.
     dz = np.full(44, DX)
     dz[34:36] = (.9*DX, 1.1*DX)
     sim = Simulation(freq_max=2e9, domain=(56*DX, 56*DX, 44*DX), dx=DX,
@@ -137,5 +138,5 @@ def test_a1_held_memory(capsys):
     with capsys.disabled():
         print(f' B8_A1 cells={cells} held_bytes={held-baseline} bytes_per_cell={per_cell:.3f}'
               f' traced_build_s={elapsed:.6f} baseline_s={baseline_time:.6f}'
-              f' build_s={build_time:.6f}', flush=True)
+              f' build_s={build_time:.6f}', file=sys.stderr, flush=True)
     assert per_cell <= 1500, f'A1 retained {per_cell:.3f} bytes per slab cell'
