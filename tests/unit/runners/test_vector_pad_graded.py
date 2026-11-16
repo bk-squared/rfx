@@ -76,7 +76,7 @@ def scene(name):
 
 SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x', 'mixed')
 
-#: Cases measured not bitwise on the CPU (jax 24.10 image); judged by the bars at N, 2N, 4N.
+#: Cases measured not bitwise on the CPU (cluster CPU image); judged by the bars at N, 2N, 4N.
 #: The seeded-pad equality below holds bitwise on the same scenes.
 NOT_BITWISE = {
     ('run', 'vacuum', 'aligned'), ('run', 'vacuum', 'odd'),

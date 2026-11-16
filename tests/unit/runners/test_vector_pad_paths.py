@@ -24,7 +24,7 @@ from tests.unit.runners.test_vector_pad import (
 
 ADJOINT_STEPS = 160
 SWEEP_STEPS = 60
-#: Cases measured not bitwise on the CPU (jax 24.10 image); judged by bar (ii).
+#: Cases measured not bitwise on the CPU (cluster CPU image); judged by bar (ii).
 NOT_BITWISE = {
     ('design', 'adjoint', 'aligned'), ('design', 'adjoint', 'odd'),
     ('design', 'autodiff', 'aligned'), ('design', 'autodiff', 'odd'),
