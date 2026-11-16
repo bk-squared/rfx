@@ -216,29 +216,50 @@ class LorentzState(NamedTuple):
     vz: jnp.ndarray
 
 
+def _pole_underflow_check_enabled():
+    """Read the opt-out at trace time; cached compilations retain the setting."""
+    return os.environ.get("RFX_POLE_UNDERFLOW_CHECK") != "0"
+
+
+def _report_pole_underflow(count):
+    count = int(count)
+    if count == 0:
+        return
+    warning: Any
+    warning = AccuracyWarning(
+        "The float32 reverse-mode gradient with respect to a traced pole strength "
+        "in SI units fell below the smallest normal float32 value (1.2e-38): "
+        "it is zero on a backend that flushes subnormal values and has lost precision "
+        "on one that keeps them; declare the strength as "
+        "RelativeStrength(reference, value) or divide the objective by a constant of its order.")
+    warning.count = count
+    warnings.warn(warning, stacklevel=2)
+
+
+@jax.custom_batching.custom_vmap
+def _pole_underflow_report(count):
+    """Send one count to the host, including zero after batching."""
+    from rfx._traced_check import traced_check
+    traced_check("RFX_POLE_UNDERFLOW_CHECK", "pole strength cotangent underflow",
+                 _report_pole_underflow, count)
+    return jnp.int32(0)
+
+
+@_pole_underflow_report.def_vmap
+def _pole_underflow_report_vmap(axis_size, in_batched, count):
+    total = jnp.sum(count, axis=0) if in_batched[0] else count * axis_size
+    return _pole_underflow_report(total), False
+
+
 def pole_underflow_guard(out, factors, *, scalar=True):
     """Identity solve whose transpose warns below the normal SI cotangent range.
 
     Scalar factors are (denom, dt**2, EPS_0); map normalization supplies
-    (ks,) with scalar=False. Call sites opt in at trace time with
-    ``RFX_POLE_UNDERFLOW_CHECK=1``: set it before the first call; a cached
-    compile keeps the old setting. Off by default, float32 traced SI only.
+    (ks,) with scalar=False. On by default for float32 traced SI strengths;
+    ``RFX_POLE_UNDERFLOW_CHECK=0`` turns it off. Set it before the first call;
+    a cached compile keeps the old setting.
     """
     args = tuple(jax.lax.stop_gradient(jnp.asarray(a)) for a in factors)
-
-    def report(count):
-        count = int(count)
-        if count == 0:
-            return
-        warning: Any
-        warning = AccuracyWarning(
-            "The float32 reverse-mode gradient with respect to a traced pole strength "
-            "in SI units fell below the smallest normal float32 value (1.2e-38): "
-            "it is zero on a backend that flushes subnormal values and has lost precision "
-            "on one that keeps them; declare the strength as "
-            "RelativeStrength(reference, value) or divide the objective by a constant of its order.")
-        warning.count = count
-        warnings.warn(warning, stacklevel=2)
 
     def check(vecmat, ct):
         replay = ct / args[0]
@@ -247,12 +268,8 @@ def pole_underflow_guard(out, factors, *, scalar=True):
             replay = args[2] * replay
         flagged = (ct != 0) & (jnp.abs(replay) < jnp.finfo(jnp.float32).tiny)
 
-        def warn(n):
-            from rfx._traced_check import traced_check
-            traced_check("RFX_POLE_UNDERFLOW_CHECK", "pole strength cotangent underflow", report, n)
-            return jnp.int32(0)
-
-        jax.lax.cond(jnp.any(flagged), warn, lambda n: jnp.int32(0), jnp.sum(flagged))
+        jax.lax.cond(jnp.any(flagged), _pole_underflow_report,
+                     lambda n: jnp.int32(0), jnp.sum(flagged))
         return ct
 
     return jax.lax.custom_linear_solve(lambda x: x, out, lambda matvec, b: b,
@@ -287,7 +304,7 @@ def pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype=None):
         strength = (s / denom) * kappa
     else:
         strength = EPS_0 * kappa * dt ** 2 / denom
-        if si_tracer and os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1":
+        if si_tracer and _pole_underflow_check_enabled():
             strength = pole_underflow_guard(strength, (denom, dt ** 2, EPS_0))
     terms = (2.0 * delta * dt / denom,
              omega_0 ** 2 * dt ** 2 / denom,
