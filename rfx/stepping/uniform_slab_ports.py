@@ -13,7 +13,7 @@ from rfx.measurement.projector import port_table, port_owners, project
 from rfx.measurement.time_records import from_owners
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.slab import place
-from rfx.stepping.slab_measurements import cut_probe_table, sum_partials, local_table
+from rfx.stepping.slab_measurements import cut_probe_table, sum_partials, local_table, table_metadata
 
 
 _STATE_SPEC = FDTDState(*(P('x'),) * 6, step=P())
@@ -56,6 +56,7 @@ class UniformSlabPorts(UniformPortPlan):
         super().__init__(grid, entries, specs, boundary, dtype, freqs)
         self.mesh, self.record_vref = mesh, record_vref
         self.payload = cut_probe_table(self.table, layout, mesh) if specs else ()
+        self.table = table_metadata(self.table)
         initial = {}
         if specs:
             initial['sparam_time_records'] = tuple(jnp.zeros(

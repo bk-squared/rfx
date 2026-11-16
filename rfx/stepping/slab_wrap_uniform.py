@@ -23,7 +23,8 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
     E exchange follows the PEC mask and sources: a neighbour's next H update
     reads the completed seam plane. H exchange precedes the local E update.
     """
-    from rfx.stepping.slab_measurements import local_table
+    from rfx.stepping.slab_measurements import local_table, table_metadata
+    table, port_table = table_metadata(table), table_metadata(port_table)
     context = replace(context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
