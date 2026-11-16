@@ -218,7 +218,7 @@ class LorentzState(NamedTuple):
 
 def _pole_underflow_check_enabled():
     """Read the opt-out at trace time; cached compilations retain the setting."""
-    return os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1"
+    return os.environ.get("RFX_POLE_UNDERFLOW_CHECK") != "0"
 
 
 def _report_pole_underflow(count):
