@@ -428,14 +428,6 @@ def test_auto_pads_nothing_until_measured():
     assert plans and all(p.pad == (0, 0, 0) and p.target == 'off' for p in plans)
 
 
-def _graded():
-    sim = Simulation(freq_max=10e9, domain=(.008, .0071, .0052), dx=.001, boundary=_walls(),
-                     cpml_layers=0, dx_profile=np.full(8, .001), snap='declared')
-    sim.add_source((.003, .004, .003), 'ez', amplitude_kind='current', waveform=PULSE)
-    sim.add_probe((.005, .004, .003), 'ez')
-    return sim
-
-
 def _subgridded():
     sim = Simulation(freq_max=10e9, domain=(.012, .012, .012), dx=.001, boundary=_walls(),
                      cpml_layers=0, snap='declared')
@@ -461,8 +453,6 @@ def _adjoint():
 
 
 REFUSALS = {
-    'graded': (lambda: _graded().run(n_steps=8, skip_preflight=True, compute_s_params=False),
-               'graded'),
     'subgridded': (lambda: _subgridded().run(n_steps=8, skip_preflight=True, compute_s_params=False),
                    'subgridded'),
     'distributed': (lambda: scene('vacuum').run(n_steps=8, skip_preflight=True, compute_s_params=False,

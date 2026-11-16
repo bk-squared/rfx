@@ -185,13 +185,34 @@ def uniform_unsupported(ctx_kwargs, *, stencil_order, field_dtype):
     return tuple(name for name, present in named if present)
 
 
-def uniform_plan(grid, periodic, *, unsupported=()) -> PadPlan:
-    """Resolve this uniform run's plan (recorded for tests); refuse what stage 1 cannot pad."""
+def graded_unsupported(*, use_tfsf, use_waveguide_ports, use_sheet_impedance, use_design_box,
+                       aniso_eps, use_debye, use_lorentz, field_dtype):
+    """Graded-step features whose operands are not padded."""
+    import jax.numpy as jnp
+    from rfx._internal import _realized
+    named = (
+        ("TFSF plane-wave source", use_tfsf),
+        ("waveguide ports", use_waveguide_ports),
+        ("surface-impedance sheets", use_sheet_impedance),
+        ("design box", use_design_box),
+        ("tensor permittivity (subpixel smoothing)", aniso_eps is not None),
+        ("mixed Debye and Lorentz poles", use_debye and use_lorentz),
+        ("complex fields", jnp.issubdtype(field_dtype, jnp.complexfloating)),
+        ("realized-model capture", _realized.ACTIVE is not None),
+    )
+    return tuple(name for name, present in named if present)
+
+
+def uniform_plan(grid, periodic, *, unsupported=(), path="uniform") -> PadPlan:
+    """Resolve this run's plan (recorded for tests); refuse what is not padded.
+
+    ``path`` names the lane in the refusal (``"uniform"``, ``"graded"``).
+    """
     target = resolve_target()
     if target != "off" and unsupported:
         if _REQUESTED.get() != "auto":
             raise NotImplementedError(
-                f"vector padding: uniform with {', '.join(unsupported)} not padded yet")
+                f"vector padding: {path} with {', '.join(unsupported)} not padded yet")
         target = "off"
     plan = plan_pad(tuple(grid.shape), target=target, periodic_axes=periodic,
                     two_d=bool(getattr(grid, "is_2d", False)))
@@ -226,13 +247,18 @@ def pad_cells(arr, plan, value):
 
 
 def pad_axis_vector(vec, axis, plan, value):
-    """Pad a 1-D per-axis factor (None stays None)."""
+    """Pad a 1-D per-axis factor (None stays None).
+
+    ``value="edge"`` repeats the last physical value.
+    """
     if vec is None:
         return None
     if np.shape(vec) != (plan.shape[axis],):
         raise ValueError(
             f"vector padding: {'xyz'[axis]} factor of shape {np.shape(vec)} "
             f"does not match the grid's {plan.shape[axis]} cells")
+    if isinstance(value, str):
+        return _module(vec).pad(vec, (0, plan.pad[axis]), mode=value)
     return _module(vec).pad(vec, (0, plan.pad[axis]), constant_values=value)
 
 
@@ -330,7 +356,7 @@ def unpad_pole_tree(tree, plan):
 _CARRY_PASS = frozenset({
     "ntff", "current_moments", "dft_planes", "flux_monitors", "waveguide_port_accs",
     "wire_sparam_accs", "lumped_sparam_accs", "wire_refplane_accs", "rlc_states",
-    "dft_time_records", "sparam_time_records"})
+    "dft_time_records", "sparam_time_records", "wire_sparams"})
 
 
 def pad_carry(carry, plan):
@@ -446,4 +472,75 @@ def pad_context(ctx, plan):
         lorentz_coeffs=None if ctx.lorentz_coeffs is None else pad_pole_tree(ctx.lorentz_coeffs, plan),
         pec_edge_masks=_cells(ctx.pec_edge_masks, plan, False),
         kerr_chi3=pad_cells(ctx.kerr_chi3, plan, 0.0),
+        pad_plan=plan)
+
+
+# ---- graded (non-uniform) step -------------------------------------------
+
+def _tree_cells(value, plan, fill):
+    """Every per-cell leaf of ``value`` (None, an array or a tuple) padded with ``fill``."""
+    import jax
+    return jax.tree_util.tree_map(lambda leaf: pad_cells(leaf, plan, fill), value)
+
+
+def _must_be_absent(value, name):
+    if value is not None:
+        raise NotImplementedError(f"vector padding: graded step with {name} not padded yet")
+    return value
+
+
+#: Graded invariants read on the physical view of the state (index tables), or
+#: not read by the step: ``dx_arr`` reaches only the component rule the step
+#: skips when the realized components are present; left physical, any read of
+#: it against padded arrays is a shape error at trace time.
+_GRADED_PASS = frozenset({"drives", "probe_table", "port_table", "waveguide_table", "dx_arr"})
+
+
+def pad_graded_invariants(invariants, plan):
+    """Every per-cell or per-axis operand the graded step reads, padded.
+
+    H metrics ``inv_d*_h`` get 0 (the zero ghost row reaches into the pad);
+    E metrics ``inv_d*`` repeat the last physical value. A key without a pad
+    rule is an error at trace time.
+    """
+    out = {}
+    for key, value in invariants.items():
+        if key == "inv_dx":
+            out[key] = pad_axis_vector(value, 0, plan, "edge")
+        elif key == "inv_dx_h":
+            out[key] = pad_axis_vector(value, 0, plan, 0.0)
+        elif key == "materials":
+            out[key] = pad_kernel_materials(value, plan)
+        elif key in ("pec_edge_masks", "pec_static_edge_masks"):
+            out[key] = _tree_cells(value, plan, False)
+        elif key == "pec_occupancy":
+            out[key] = _tree_cells(value, plan, 0.0)
+        elif key == "cpml_inv_eps_r":
+            out[key] = _tree_cells(value, plan, 1.0)
+        elif key == "e_loss":
+            out[key] = _pad_loss(value, plan)
+        elif key in ("debye_coeffs", "lorentz_coeffs"):
+            out[key] = None if value is None else pad_pole_tree(value, plan)
+        elif key in ("aniso_eps", "sheet_impedance", "sheet_coeffs", "design_box_coeffs"):
+            out[key] = _must_be_absent(value, key)
+        elif key in _GRADED_PASS:
+            out[key] = value
+        else:
+            raise ValueError(f"vector padding: graded step invariant {key!r} has no pad rule")
+    return out
+
+
+def pad_graded_context(ctx, plan):
+    """The graded step context with its y and z metrics padded and the plan attached."""
+    for name in ("use_tfsf", "use_waveguide_ports", "use_sheet_impedance", "use_design_box"):
+        if getattr(ctx, name):
+            raise NotImplementedError(f"vector padding: graded step with {name[4:]} not padded yet")
+    if ctx.x_face_frame is not None:
+        raise NotImplementedError("vector padding: a graded slab step is padded by its own runner")
+    return dataclasses.replace(
+        ctx,
+        inv_dy=pad_axis_vector(ctx.inv_dy, 1, plan, "edge"),
+        inv_dz=pad_axis_vector(ctx.inv_dz, 2, plan, "edge"),
+        inv_dy_h=pad_axis_vector(ctx.inv_dy_h, 1, plan, 0.0),
+        inv_dz_h=pad_axis_vector(ctx.inv_dz_h, 2, plan, 0.0),
         pad_plan=plan)
