@@ -36,6 +36,7 @@ def _guide(mesh, scene, amplitude):
 
 @pytest.mark.parametrize('mesh,scene,normalize', [
     ('uniform', 'S1', False), ('uniform', 'S2', True), ('graded', 'S2', True),
+    ('uniform', 'S2', 'flux'), ('graded', 'S2', 'flux'),
 ])
 def test_b1_b2_waveguide(mesh, scene, normalize):
     started = time.monotonic()
