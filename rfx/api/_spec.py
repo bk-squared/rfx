@@ -940,6 +940,8 @@ class ForwardResult(NamedTuple):
     ``settling_witness`` refuse arrays whose shapes changed since construction,
     including a sliced frequency band. ``_replace`` drops this shape history,
     so replacing fields on a batched result disables that protection.
+    In a JVP tangent or Jacobian, host data (names, NumPy arrays such as concrete
+    run frequencies, and Python numbers) is the primal's, not a derivative.
     A JVP tangent or Jacobian keeps the result type, but its settling diagnostics
     and ring-down report have no meaning: read these on the primal result.
     Passing a new result into a jitted function recompiles because its realized
