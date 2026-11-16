@@ -837,7 +837,7 @@ def _rungs() -> tuple[float, ...]:
 
 
 ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
-# The bar is the leader's (2026-09-22): a quarter of the 2 dB magnitude bar,
+# The bar is a quarter of the 2 dB magnitude bar,
 # so an arm-length dependence that passes it cannot by itself consume the
 # comparison's budget. The witness runs on the first two rungs of the ladder
 # and is JUDGED on the second (h/4); the coarsest rung is reported as the

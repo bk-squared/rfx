@@ -374,9 +374,11 @@ def _build_batched_materials(
         mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
         coords = coords_from_uniform_grid(grid)
         centres = centres_from_uniform_grid(grid)
+        from rfx.model.materials import assembled_as_pec
         for entry in sim._geometry:
             if entry.material_name == mat_name:
-                mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid, name=entry.material_name)
+                mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid, name=entry.material_name,
+                                                  size_rule=not assembled_as_pec(sim, entry))
 
         # For each batch: where mask, use param_values[b]; else keep base.
         # The two unswept fields still have to be broadcast to the batch

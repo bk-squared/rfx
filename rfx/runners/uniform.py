@@ -181,6 +181,7 @@ def run_uniform(
         sim, grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal=conformal_pec, conformal_min_weight=conformal_min_weight,
         pec_shapes=pec_shapes)
+    tensor_smoothing = subpixel_smoothing if aniso_eps is not None or aniso_inv_eps is not None else False
     if subpixel_smoothing:
         from rfx.geometry.smoothing import warn_unextendable_shapes
         # Assembly already emitted the conductor findings for this run.
@@ -572,7 +573,8 @@ def run_uniform(
     materials = with_components(materials, grid,
         high_wall=unpadded_high_walls(grid),
         periodic=_simulation.resolve_periodic(grid, periodic),
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
     from rfx.model.source_coefficients import resolve_run_sources
     sources = resolve_run_sources(sources, materials, sim, grid,
         tensor=aniso_eps is not None or conformal_weights is not None)
@@ -640,7 +642,8 @@ def run_uniform(
     admit(
         sim,
         "run_uniform",
-        run_args={"compute_s_params": compute_s_params, "conformal_pec": conformal_pec},
+        run_args={"compute_s_params": compute_s_params, "conformal_pec": conformal_pec,
+                  "subpixel_smoothing": subpixel_smoothing},
         diagnostics=diagnostics,
     )
     from rfx.runners._admission import admit_run_s_matrix
@@ -648,7 +651,7 @@ def run_uniform(
     if compute_s_params is not False:
         refuse_partial_wire_reference_planes(sim._port_sparameter_entries())
     admit_run_s_matrix(sim, compute_s_params=compute_s_params,
-                       conformal_pec=conformal_pec)
+                       conformal_pec=conformal_pec, subpixel_smoothing=subpixel_smoothing)
     # the early stop reads the record so far through the scan's
     # chunk hook, with the bins the single-wire fast path below reports.
     _stop_kwargs = {}
@@ -720,6 +723,7 @@ def run_uniform(
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
             aniso_inv_eps=aniso_inv_eps,
+            subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
@@ -759,6 +763,7 @@ def run_uniform(
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
             aniso_inv_eps=aniso_inv_eps,
+            subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
@@ -781,7 +786,8 @@ def run_uniform(
     # S-parameters: use JIT-integrated DFT for wire ports (fast),
     # fall back to Python loop for lumped ports
     if compute_s_params is None:
-        compute_s_params = len(lumped_ports) > 0 or len(wire_ports) > 0
+        from rfx.runners._admission import default_run_forms_s
+        compute_s_params = default_run_forms_s(sim)
 
     # (2,4) stencil fence: the lumped/wire S-parameter extractors below run a
     # SEPARATE eager FDTD pass (extract_s_matrix_wire /

@@ -64,7 +64,7 @@ the port.
 
 RE-MEASURED under the contract (VESSL run 369367259274, commit 770c4e6c,
 ``JAX_PLATFORMS=cpu``; producer ``docs/design_notes/931_migration/
-t3_remeasure.py``, output ``/root/workspace/claude-workspace/rfx/runs/
+t3_remeasure.py``, output ``<workspace>/rfx/runs/
 issue931-post-t3-measure-20260907T191140Z/t3_remeasure.json``), S11 at
 0.2 GHz, uniform lane and NU lane agreeing to ~1e-6 on every row:
 

@@ -982,7 +982,7 @@ def executable(attr: str) -> bool:
 
 # Calculator cells are independent of the production admission lists.
 # Each entry below records the assembly/scan inspected for that calculator.
-# Observers retain their existing behaviour (leader decision, RESUME1).
+# Observers retain their existing behaviour.
 CALCULATOR_CELLS = {
     ('_freq_max', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),

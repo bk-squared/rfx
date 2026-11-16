@@ -89,9 +89,13 @@ def _check_run_identification_memory(plan):
     bound = rd.IDENTIFY_MEMORY_BOUND_BYTES
     _validate_memory_bound(bound)
     bins = plan.bins
-    # Default and graded-lane result bins are the accumulator's float32 bins.
-    peak = (float(np.float32(plan.sim._freq_max)) if bins is None else
-            float(np.max(np.asarray(bins, dtype=np.float32 if plan.lane == "graded" else np.float64))))
+    if plan.probe_mode:
+        from rfx.ringdown._probe_channels import probe_reference
+        peak = probe_reference(plan)
+    else:
+        # Default and graded-lane result bins are the accumulator's float32 bins.
+        peak = (float(np.float32(plan.sim._freq_max)) if bins is None else
+                float(np.max(np.asarray(bins, dtype=np.float32 if plan.lane == "graded" else np.float64))))
     n_win = plan.n_steps - plan.n_start
     _, Nd = rd.decimation_plan(n_win, float(plan.dt), max(plan.freq_max, peak))
     C = 2 * len(plan.wire_entries) + len(plan.identification_keys)

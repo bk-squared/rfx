@@ -1,4 +1,4 @@
-"""run() and forward() are one pipeline: the leader's C1–C5 contract.
+"""run() and forward() are one pipeline: the C1–C5 contract.
 
 The literal exceptions are progress toward zero at 2.0, not tolerances.
 No solver helper supplies an expected value: the other fresh entry does.
