@@ -624,6 +624,8 @@ class Result(NamedTuple):
     # In-loop block current moments (rfx.current_moments): the accumulator
     # (n_freqs, n_blocks, 3, n_weights) and the slab/block map it belongs to.
     current_moment_data: object = None
+    #: Under a caller's ``jax.jit`` with x64 off, its ``centres`` come back
+    #: float32 and its ``block_key`` int32.
     current_moment_monitor: object = None
     #: Host-side geometry record for the configuration that produced this run.
     #: Filled by run_uniform, run_subgridded, run_distributed (uniform), and run_nonuniform; None on other lanes.
@@ -993,6 +995,8 @@ class ForwardResult(NamedTuple):
     #: (pinned-sheet index, user-facing report name): not run on that addressed sheet.
     sheet_reports_skipped: tuple | None = None
     current_moment_data: object = None
+    #: Under a caller's ``jax.jit`` with x64 off, its ``centres`` come back
+    #: float32 and its ``block_key`` int32.
     current_moment_monitor: object = None
     adjoint_settling: object = None
     settling_source_end_index: object = None
