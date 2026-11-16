@@ -9,7 +9,10 @@ name here.
 from __future__ import annotations
 from rfx._warning_origin import user_stacklevel
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from numpy.typing import DTypeLike
 
 from rfx.boundaries.depths import resolve_face_depths
 
@@ -804,7 +807,7 @@ def make_nonuniform_grid(
     dx: float,
     cpml_layers: int = 8,
     *,
-    dtype=jnp.float32,
+    dtype: DTypeLike = jnp.float32,
     dx_profile: np.ndarray | None = None,
     dy_profile: np.ndarray | None = None,
     pec_faces: set[str] | None = None,
