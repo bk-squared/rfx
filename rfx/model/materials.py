@@ -773,7 +773,9 @@ def e_update_coefficient_at(materials, cell, component, dt,
         if c.lorentz is not None:
             lt_terms = jax.tree.map(lambda value: value[pole_cell], c.lorentz.coefficients)
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
-    return _plain_drive_cb(eps, sigma, dt, host)
+    # A tensor edge takes the update's own form on every lane: the graded
+    # step forms that coefficient bit-equal to the uniform one.
+    return _plain_drive_cb(eps, sigma, dt, host and operand is None)
 
 
 def _plain_drive_cb(eps, sigma, dt, host):
