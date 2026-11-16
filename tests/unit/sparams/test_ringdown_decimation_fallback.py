@@ -97,7 +97,7 @@ def test_b4_identify_preflight_and_static_bound_share_plan(monkeypatch):
     plan = SimpleNamespace(
         bins=None, sim=SimpleNamespace(_freq_max=600e6), freq_max=600e6,
         dt=20e-12, n_steps=1400, n_start=0, wire_entries=tuple(range(36)),
-        identification_keys=(), lane="uniform",
+        identification_keys=(), lane="uniform", probe_mode=False,
     )
     _check_run_identification_memory(plan)
     assert checked == [(1400, (kept, 72))]
