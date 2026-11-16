@@ -62,7 +62,7 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
     dom_y = 6e-3
     port_margin = 4e-3     # 4 mm > cpml thickness (8 * 0.5mm)
 
-    # #1138: geometry[1] y solved -30 % off; this test checks direction does not change the s matrix.
+    # Geometry[1] y solved -30 % off; this test checks direction does not change the s matrix.
     sim = Simulation(snap="declared",
         freq_max=8e9,
         domain=(dom_x, dom_y, 0),
@@ -78,7 +78,7 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
     line_w = 0.5e-3
     line_y_lo = dom_y / 2 - line_w / 2
     line_y_hi = dom_y / 2 + line_w / 2
-    # 35 um foil: a SHEET (#931 §1.3), declared by a zero-thickness Box on
+    # 35 um foil: a SHEET, declared by a zero-thickness Box on
     # the laminate top. The z spine puts three dz_sub cells under
     # substrate_thickness, so that face is a node line of the graded mesh
     # and the sheet lands on it. One cell thick it would be a VOLUME:
@@ -138,8 +138,6 @@ def test_two_port_s_matrix_has_nonzero_s21():
     S = np.asarray(result.s_params)
     assert S.shape == (2, 2, len(freqs))
     S21 = S[1, 0, :]
-    # Before the fix this was identically zero; after the fix the
-    # magnitude must be clearly above the numerical floor.
     assert np.max(np.abs(S21)) > 1e-3, (
         f"S21 all zero (max={np.max(np.abs(S21)):.2e}) — off-diagonal "
         f"wave-decomposition fix did not take effect"
@@ -228,8 +226,8 @@ def test_two_port_s_envelope_on_matched_line():
     )
     S = np.asarray(result.s_params)
     S11 = S[0, 0, :]; S21 = S[1, 0, :]
-    # Port 2 is passive; graded run() drives each port in turn (#1915), so
-    # its column is measured too. Measured 2026-10-20: column power
+    # Port 2 is passive; graded run() drives each port in turn, so
+    # its column is measured too. Measured: column power
     # 0.99913-1.00009, |S12| 0.695-0.990 (|S21| 0.696-0.990),
     # max|S12 - S21| = 1.0e-3 of max|S|.
     assert np.all(np.isfinite(S)), "non-finite entry in the scanned S matrix"
