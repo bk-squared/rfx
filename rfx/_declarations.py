@@ -56,6 +56,7 @@ DECLARATIONS = (
     ("_ntff", "value"),
     ("_current_moments", "value"),
     ("_dft_plane_regions", "value"),
+    ("_time_recorded_dft_planes", "value"),
     ("_internal_probe_indices", "value"),
     ("_msl_auto_offset_min", "value"),
     ("_msl_auto_probe_spacing", "value"),
@@ -174,6 +175,7 @@ DEVICE_DECLARATIONS = frozenset(
     name for name, form in DECLARATIONS if form in {"entries", "mapping"}
 ) | {
     "_refinement", "_tfsf", "_ntff", "_current_moments", "_dft_plane_regions",
+    "_time_recorded_dft_planes",
     "_internal_probe_indices", "_msl_auto_offset_min", "_msl_auto_probe_spacing",
     "_msl_auto_probe_lengths",
 }

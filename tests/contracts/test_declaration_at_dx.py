@@ -137,6 +137,8 @@ def cases():
         "_dft_plane_regions": call(lambda s: s.add_dft_plane_probe(axis="z", coordinate=.006, n_freqs=5, region=(2, 8, 2, 8)),
                                    classification="REFUSED", public="add_dft_plane_probe(region=)"),
         "_internal_probe_indices": call(lambda s: setattr(s, "_internal_probe_indices", {0})),
+        "_time_recorded_dft_planes": call(lambda s: (s.add_dft_plane_probe(axis="z", coordinate=.006, n_freqs=5, name="timed"),
+                                                     setattr(s, "_time_recorded_dft_planes", {"timed"}))),
         "_msl_auto_offset_min": call(add_msl, msl_base),
         "_msl_auto_probe_spacing": call(add_msl, msl_base),
         "_msl_auto_probe_lengths": call(add_msl, msl_base),
@@ -278,7 +280,8 @@ RESET_NAMES = {
     "_geometry", "_thin_conductors", "_pinned_sheets", "_wall_losses", "_ports",
     "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports", "_lumped_rlc",
     "_probes", "_dft_planes", "_flux_monitors", "_materials", "_refinement", "_tfsf",
-    "_ntff", "_current_moments", "_dft_plane_regions", "_internal_probe_indices",
+    "_ntff", "_current_moments", "_dft_plane_regions", "_time_recorded_dft_planes",
+    "_internal_probe_indices",
     "_msl_auto_offset_min", "_msl_auto_probe_spacing", "_msl_auto_probe_lengths",
 }
 
