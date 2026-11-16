@@ -23,6 +23,8 @@ reference values. Fields are reset by the same deterministic seeded rule
 before each step; psi recurs for 50 steps. Milestones 1/10/50 are recorded,
 and all steps are checked. Identity psi rows start at +0 as required by R9.
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from types import SimpleNamespace
 
 import jax
@@ -136,7 +138,7 @@ def _scene(case, medium):
     poles = [DebyePole(delta_eps=1.3, tau=1e-11)]
     mats = with_components(raw, grid, periodic=(False,)*3,
              debye_spec=(poles, jnp.asarray(block)) if medium == 'debye' else None)
-    debye = init_debye(poles, mats, float(grid.dt), jnp.asarray(block))[0] if medium == 'debye' else None
+    debye = init_debye(poles, mats, float(grid.dt), jnp.asarray(block), high_wall=unpadded_high_walls(grid))[0] if medium == 'debye' else None
     loss = in_loop_loss(material_loss_operands(mats), grid.dt) if debye is None else None
     curl = dispersive_curl(debye, None, grid.dt)
     ek = dict(materials=mats, inv_eps_r_update=tuple(1/e for e in mats.components.eps_update),

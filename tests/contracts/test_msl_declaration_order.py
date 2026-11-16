@@ -7,7 +7,7 @@ from rfx import Box, Simulation
 
 
 def _repro(order, *, eps_r_sub=None):
-    sim = Simulation(freq_max=5e9, domain=(.014, .00297, .001754),
+    sim = Simulation(snap="declared", freq_max=5e9, domain=(.014, .00297, .001754),
                      dx=254e-6 / 3, boundary="cpml", cpml_layers=8)
 
     def structure():
@@ -89,7 +89,7 @@ def test_t1_full_declaration_sets_automatic_probe_planes():
 
 
 def _box_board(*, sideways=0.0, normal=0.0, second_trace=False):
-    sim = Simulation(freq_max=20e9, domain=(.003, .003, .001),
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(.003, .003, .001),
                      dx=50e-6, cpml_layers=0)
     sim.add_material("sub", eps_r=3.66)
     sim.add(Box((0, 0, .0002), (.003, .003, .0004)), material="sub")

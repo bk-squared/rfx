@@ -28,7 +28,7 @@ pins f_inf independently of a fitted model, and a consistency floor
 remains fully compatible with everything measured -- f(h) can turn over
 and still converge to some f_floor != f_physical. The authoritative
 ledger records a MEASURED non-vanishing floor for this fixture class
-(rfx-known-issues.md: DIELECTRIC-interface staircasing, ~49 %,
+(recorded entry: DIELECTRIC-interface staircasing, ~49 %,
 eps_r-coupled, 2nd -> 1st order for thin high-eps_r layers). What this
 precondition catches is a LADDER-READING error, not the presence or
 absence of a floor: it says an order fitted from those rungs against that

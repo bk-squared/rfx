@@ -2,19 +2,39 @@
 
 from __future__ import annotations
 
+from rfx.model.waveguide_aperture import validate_graded_waveguide_ports
+
+from typing import TYPE_CHECKING
+from rfx._host_limits import check_map_count
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, DTypeLike
+    from rfx.current_moments import CurrentMomentMonitor
+    from rfx._internal._uniform_specs import DesignBoxSpec
+    from rfx.farfield import NTFFBox
+    from rfx.farfield import NTFFData
+    from collections.abc import Sequence
+    from rfx.materials.thin_conductor import SheetImpedanceCtx, PinnedSheet
+    from rfx.boundaries.pec import SheetSpec
+    from rfx.boundaries.pec import WireSpec
+    import numpy as np
+
 from functools import partial
+
+from rfx.measurement.plane_records import init_plane_records
 
 import jax
 import jax.numpy as jnp
 
 from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import MaterialArrays
+from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop
 from rfx.measurement import (
     AUTO_END, finish_decay, init_graded_records, make_decay_stop, one_step_xs,
 )
 from rfx.measurement import assemble_graded_result as _assemble_nu_result
 from rfx.model.graded_grid import NonUniformGrid
-from rfx.stepping import segmented_scan
+from rfx.stepping.remat import segmented_scan
 from rfx.stepping.remat import active_levels, checkpoint_lengths
 from rfx.stepping.graded_setup import _build_nu_scan
 
@@ -25,16 +45,16 @@ def run_nonuniform(
     n_steps: int,
     *,
     cpml_axes: str | None = None,
-    pec_mask=None,
-    pec_sheets=(),
-    pec_wires=(),
-    pec_edge_masks=None,
-    pec_occupancy=None,
-    pinned_sheet_layout=None,
+    pec_mask: jax.Array | np.ndarray | None = None,
+    pec_sheets: Sequence[SheetSpec] = (),
+    pec_wires: Sequence[WireSpec] = (),
+    pec_edge_masks: Sequence[jax.Array | np.ndarray] | None = None,
+    pec_occupancy: jax.Array | None = None,
+    pinned_sheet_layout: tuple[tuple[int, PinnedSheet, tuple[jax.Array, jax.Array]], ...] | None = None,
     sources: list = None,
     probes: list = None,
     wire_ports: list = None,
-    s_param_freqs=None,
+    s_param_freqs: ArrayLike | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     pec_faces: set[str] | None = None,
@@ -42,9 +62,9 @@ def run_nonuniform(
     dft_planes: list | None = None,
     rlc_metas: tuple = (),
     rlc_states: tuple = (),
-    ntff_box=None,
-    ntff_data=None,
-    current_moments=None,
+    ntff_box: NTFFBox | None = None,
+    ntff_data: NTFFData | None = None,
+    current_moments: CurrentMomentMonitor | None = None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
     _feature_tfsf: bool = False,
@@ -54,9 +74,11 @@ def run_nonuniform(
     checkpoint_every: int | tuple[int, ...] | None = None,
     n_warmup: int = 0,
     aniso_eps: tuple | None = None,
-    sheet_impedance=None,
-    design_box=None,
-    record_dft: bool = False,
+    sheet_impedance: SheetImpedanceCtx | None = None,
+    design_box: DesignBoxSpec | None = None,
+    record_dft: bool | tuple[bool, ...] = False,
+    measurement: object | None = None,
+    field_dtype: DTypeLike | None = None,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -75,6 +97,7 @@ def run_nonuniform(
         identical to the uniform path (acc += field * exp(-j2pi f t) * dt);
         dt is scalar on both paths so no per-axis weighting is required.
     """
+    validate_graded_waveguide_ports(grid, waveguide_ports, pec_faces, pmc_faces)
     setup = _build_nu_scan(
         grid, materials, n_steps,
         cpml_axes=cpml_axes,
@@ -105,13 +128,11 @@ def run_nonuniform(
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
         design_box=design_box,
+        measurement=measurement, field_dtype=field_dtype,
     )
     step_fn = setup.step_fn
     carry_init = setup.carry_init
-    if record_dft and dft_planes:
-        carry_init["dft_time_records"] = tuple(
-            jnp.zeros((n_steps,) + p.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
-            for p in dft_planes)
+    init_plane_records(carry_init, dft_planes, record_dft, n_steps)
     init_graded_records(carry_init, n_steps, setup)
     src_waveforms = setup.src_waveforms
 
@@ -119,15 +140,15 @@ def run_nonuniform(
 
     # ---- n_warmup split --------------------------------------------------
     # When n_warmup > 0, run the first n_warmup steps with the carry
-    # stop_gradient'd so AD builds no tape for that transient lead-in
-    # (issue #40). Only the trailing n_optimize = n_steps - n_warmup
+    # stop_gradient'd so AD builds no tape for that transient lead-in.
+    # Only the trailing n_optimize = n_steps - n_warmup
     # steps participate in reverse-mode autodiff.
     #
     # The truncation error DEPENDS ON DISTANCE FROM THE SOURCE TO THE
     # DESIGN REGION -- it is not a blanket property of n_warmup itself
     # (corrects an earlier version of this comment that said the
     # design-relevant support "generally" extends into the warmup window;
-    # see the #626 addendum below for why that was an overgeneralization
+    # see the addendum below for why that was an overgeneralization
     # from a single, worst-case fixture). Mechanism: severing the carry
     # severs every gradient path from a design variable's influence during
     # steps < n_warmup back into the loss -- but only steps during which
@@ -151,8 +172,7 @@ def run_nonuniform(
     # loss window.
     #
     # Forward output is exactly n_warmup-invariant (bit-identical) in every
-    # placement measured. Two measured regimes (issue #626 part 2 /
-    # addendum, both vs an independent central-FD oracle):
+    # placement measured. Two measured regimes (both vs an independent central-FD oracle):
     #   - NEAR-SOURCE placement (design cell ~3 cells from the source, so
     #     K_safe ~ 0 -- the wavefront is already present at every step):
     #     error grows smoothly and monotonically from a ~1.5% noise floor
@@ -274,8 +294,10 @@ def run_nonuniform_until_decay(
     sheet_impedance=None,
     design_box=None,
     stop_fn=None,
-    record_dft: bool = False,
+    record_dft: bool | tuple[bool, ...] = False,
     advisory: dict | None = None,
+    measurement: object | None = None,
+    field_dtype: DTypeLike | None = None,
 ) -> dict:
     """Run non-uniform FDTD until the field energy left after the drive decays.
 
@@ -299,14 +321,14 @@ def run_nonuniform_until_decay(
     field is quasi-static (out of band), the record stays correct, and the stop
     record and the cap advisory say what ended the run.
 
-    On a closed domain (no absorbing pads) the interior energy does not decay
-    and this runs to ``max_steps``; ``run()`` refuses ``until_decay`` there.
+    On a lossless closed domain the energy does not decay, so this reaches
+    ``max_steps``; ``run()`` refuses ``until_decay`` there.
 
     Forward-only: a host loop, not reachable from ``forward()``/``optimize()``,
     no AD tape contract; ``checkpoint`` / ``checkpoint_every`` / ``n_warmup``
     are absent from the signature (the caller raises before dispatching here).
 
-    ``stop_fn`` (issue #1254, ``run(..., until_identified=True)``), when
+    ``stop_fn`` (``run(..., until_identified=True)``), when
     given, is called at every chunk boundary after the energy check as
     ``stop_fn(steps_done, peek)``; ``peek()`` returns
     :func:`_assemble_nu_result` of the record so far, and a true return ends
@@ -320,12 +342,18 @@ def run_nonuniform_until_decay(
         ``max(min_steps, n_end)`` on, on this dict only (not on ``Result``),
         for a caller verifying the fire condition (rule R5).
     """
+    check_map_count()
     if check_interval < 1:
         raise ValueError(
             f"check_interval must be >= 1, got {check_interval}")
     if max_steps < 1:
         raise ValueError(f"max_steps must be >= 1, got {max_steps}")
+    # A direct caller gets run()'s refusal too; the absorber is the setup's own.
+    from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
+    absorbing = grid.cpml_layers > 0 and padded_axes(grid, resolve_cpml_axes(grid, cpml_axes))
+    refuse_radiated_flux_stop(radiated_flux_box, decay_by, "cpml" if absorbing else "pec")
 
+    validate_graded_waveguide_ports(grid, waveguide_ports, pec_faces, pmc_faces)
     setup = _build_nu_scan(
         grid, materials, max_steps,
         cpml_axes=cpml_axes,
@@ -356,12 +384,10 @@ def run_nonuniform_until_decay(
         aniso_eps=aniso_eps,
         sheet_impedance=sheet_impedance,
         design_box=design_box,
+        measurement=measurement, field_dtype=field_dtype,
     )
     carry = setup.carry_init
-    if record_dft and dft_planes:
-        carry["dft_time_records"] = tuple(
-            jnp.zeros((max_steps,) + p.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
-            for p in dft_planes)
+    init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_graded_records(carry, max_steps, setup)
 
     # Source table: pad/truncate to max_steps so every chunk slice is
@@ -387,7 +413,7 @@ def run_nonuniform_until_decay(
         step = partial(step_fn_inv, invariants=inv_rebuild(inv_args))
         return jax.lax.scan(step, carry_in, xs)
 
-    # #388 opt-in RADIATED-FLUX stop (NU lane; mirrors the uniform run_until_decay path):
+    # opt-in RADIATED-FLUX stop (NU lane; mirrors the uniform run_until_decay path):
     # stop on the outgoing Poynting flux through a Huygens box instead of the interior energy,
     # so the non-radiating static soft-source charge (which FLOORS the energy criterion) and
     # near-Nyquist buzz do not stall the stop. Opt-in; default keeps the energy criterion.
@@ -396,21 +422,27 @@ def run_nonuniform_until_decay(
     if use_flux_stop:
         _bl = flux_box_bounds(grid, radiated_flux_box)
 
+    from rfx.sources._sampling import field_time_step
+    measurement_grid = grid._replace(dt=field_time_step(grid.dt, field_dtype))
     energy_stop, energy = make_decay_stop(
-        grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
+        measurement_grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
         consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
-        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf,
+        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
-    peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope (from first check)
-    flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
-    flux_hist: list = []   # recent |P| samples for the max-envelope
-    decayed_fired = False  # #388: did the energy criterion fire (vs cap-hit)?
+    stop_rule = energy_stop
+    if use_flux_stop:
+        stop_rule = make_field_decay_stop(
+            measurement_grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            max_steps=max_steps, consecutive=decay_energy_consecutive,
+            env_checks=flux_env_checks, n_end=n_end, sources=sources,
+            tfsf=tfsf, waveguide_ports=waveguide_ports)
+    decayed_fired = False  # did the energy criterion fire (vs cap-hit)?
     ys_chunks = []
     steps_done = 0
     reporter = None
     if report_every:
-        from rfx.progress import ProgressReporter
+        from rfx.stepping.progress import ProgressReporter
         # decay_by == 0.0 is the documented forced-N escape: max_steps is then
         # the exact run length, not a cap, and the line should not say "(cap)".
         reporter = ProgressReporter(max_steps, label=report_label,
@@ -420,7 +452,7 @@ def run_nonuniform_until_decay(
     while steps_done < max_steps:
         this_chunk = min(int(check_interval), max_steps - steps_done)
         if stop_fn is not None and max_steps - steps_done - this_chunk == 1:
-            this_chunk += 1   # #1254: no one-step last chunk (XLA inlines it)
+            this_chunk += 1   # no one-step last chunk (XLA inlines it)
         xs = (
             jnp.arange(steps_done, steps_done + this_chunk, dtype=jnp.int32),
             src_waveforms[steps_done:steps_done + this_chunk],
@@ -437,26 +469,17 @@ def run_nonuniform_until_decay(
         # Stop check at the chunk boundary (check-step-only — the whole-domain
         # reduction / surface integral is the expensive part).
         if use_flux_stop:
-            # RADIATED-FLUX stop: track the flux peak from the FIRST check (radiation peaks
-            # during the source drive), gate only the STOP on min_steps.
-            flux_hist.append(abs(radiated_power(carry["fdtd"], _bl, grid.shape)))
-            env = max(flux_hist[-flux_env_checks:])
-            if env > peak_flux:
-                peak_flux = env
-            if steps_done >= min_steps and peak_flux > 0.0 and env < decay_by * peak_flux:
-                flux_below += 1
-                if flux_below >= decay_energy_consecutive:
-                    decayed_fired = True
-                    break
-            else:
-                flux_below = 0
-        elif energy_stop.check(steps_done, lambda: energy(carry, steps_done)) is not None:
+            stopped = stop_rule.check(
+                steps_done, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
+        else:
+            stopped = stop_rule.check(steps_done, lambda: energy(carry, steps_done))
+        if stopped is not None:
             decayed_fired = True
             break
 
-        # #1254: the caller's stop check at the chunk boundary.
+        # the caller's stop check at the chunk boundary.
         if stop_fn is not None:
-            from rfx.progress import concat_chunks
+            from rfx.stepping.progress import concat_chunks
             if stop_fn(steps_done, lambda: _assemble_nu_result(
                     setup, carry, concat_chunks(ys_chunks), n_record=steps_done)):
                 if reporter is not None and reporter.last_reported != steps_done:
@@ -466,8 +489,7 @@ def run_nonuniform_until_decay(
     # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
     # decay_by == 0.0 is the forced-N escape (fixed-step progress route): none.
     decay_stop = finish_decay(
-        energy_stop, steps_done, fired=decayed_fired, reporter=reporter,
-        flux=(flux_hist, flux_env_checks, peak_flux) if use_flux_stop else None,
+        stop_rule, steps_done, fired=decayed_fired, reporter=reporter,
         state=carry["fdtd"], materials=materials, grid=grid, advisory=advisory,
         sources=sources)
 

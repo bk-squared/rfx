@@ -55,40 +55,50 @@ def uniform_cell(grid):
 
 
 def node_metrics(grid):
-    """Node-local (minus, plus) cell lengths and dual-volume fill length."""
+    """Node-local (minus, plus) cell lengths and per-axis dual extents."""
     from rfx.geometry.rasterize_grid import cell_sizes_from_nonuniform_grid
 
     sizes = cell_sizes_from_nonuniform_grid(grid)
     xp = np if smooth._host_path(*sizes) else jnp
-    lengths = []
-    for axis, size in enumerate(sizes):
-        plus = xp.asarray(size)
-        minus = (xp.roll(plus, 1) if 'xyz'[axis] in grid.periodic_axes else
-                 xp.concatenate((plus[:1], plus[:-1])))
-        shape = tuple(len(plus) if a == axis else 1 for a in range(3))
-        lengths.append((minus.reshape(shape), plus.reshape(shape)))
-    dual = [(minus + plus) / 2 for minus, plus in lengths]
-    return tuple(lengths), (dual[0] * dual[1] * dual[2]) ** (1.0 / 3.0)
+    lengths = smooth._cell_width_pairs(xp, sizes, grid.periodic_axes)
+    return lengths, tuple((minus + plus) / 2 for minus, plus in lengths)
 
 
-def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None):
-    from rfx._periodic import periodic_sdf
+def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
+           normal_source=False):
+    from rfx._internal._periodic import periodic_sdf
 
-    union = nearest = normal = None
-    for shape in shapes:
-        sdf, ns = periodic_sdf(
+    from rfx.model.realization_integrals import host_owner
+    union = nearest = normal = owner = None
+    for shape_index, shape in enumerate(shapes):
+        sdf, ns, image = periodic_sdf(
             grid, shape, coords, smooth._get_sdf_fn(shape), xp=xp,
-            normal_fn=smooth._get_normal_fn(shape))
+            normal_fn=smooth._get_normal_fn(shape), return_image=True)
         if union is None:
+            owner = host_owner(sdf) if distance else None
             union, nearest, normal = sdf, xp.abs(sdf), ns
+            best_s = sdf
+            source = xp.asarray(shape_index, dtype=xp.int32)
+            source_image = image
         else:
+            owner = host_owner(sdf, shape_index, owner, union) if distance else None
             closer = xp.abs(sdf) < nearest
+            best_s = xp.where(closer, sdf, best_s)
+            source = xp.where(closer, shape_index, source)
+            source_image = tuple(xp.where(closer, k, old)
+                                 for k, old in zip(image, source_image))
             normal = tuple(xp.where(closer, n, old) for n, old in zip(ns, normal))
             nearest = xp.minimum(nearest, xp.abs(sdf))
             union = xp.minimum(union, sdf)
-    h = uniform_cell(grid) if fill_length is None else fill_length
+    h = (uniform_cell(grid) if fill_length is None else
+         smooth._normal_cell_length(xp, fill_length, normal))
     result = (xp.clip(0.5 - union / h, 0.0, 1.0), normal)
-    return result + (union,) if distance else result
+    if distance:
+        from rfx.model.realization_integrals import capture
+        capture(grid, shapes, result[0], owner, 3)
+        distance_result = result + (union,)
+        return distance_result + (source, source_image, best_s) if normal_source else distance_result
+    return result + (source, source_image, best_s) if normal_source else result
 
 
 def _next(xp, a, axis, periodic):
@@ -97,14 +107,14 @@ def _next(xp, a, axis, periodic):
     return xp.take(a, xp.minimum(xp.arange(a.shape[axis]) + 1, a.shape[axis] - 1), axis)
 
 
-def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=None):
-    """Host-float64 concrete geometry, or the smoother's traced JAX path (#833).
+def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=None,
+                            nominal_h_max=None):
+    """Host-float64 concrete geometry, or the smoother's traced JAX path.
 
     Same-material groups use the existing union, nearest analytic normal and
-    SDF cell-length rule. Later groups compose against the prior bulk eps or
-    the reciprocal mean diagonal of a prior interface tensor (decision 3).
+    SDF cell-length rule. Outside media are sampled beyond the surface,
+    excluding only the normal-source (SDF shape, image), as for Yee operands.
     """
-    from collections import OrderedDict
     from rfx.geometry.rasterize_grid import (
         coords_from_uniform_grid, coords_from_nonuniform_grid, centres_from_nonuniform_grid,
     )
@@ -112,17 +122,19 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         SIGNS, build_triplets, coefficients, matrices, triplet_weights,
     )
     from rfx.model.graded_grid import NonUniformGrid
+    from rfx.geometry.box_content import apply_box_scope, box_scope
 
     graded = isinstance(grid, NonUniformGrid)
     coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
     lengths, fill_length = node_metrics(grid) if graded else (None, None)
-    cell_len = fill_length if graded else uniform_cell(grid)
-    masks = smooth._fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
-    host = smooth._host_path(*coords[:3], cell_len, background_eps,
+    cell_lengths = fill_length if graded else (uniform_cell(grid),)
+    masks = smooth._fallback_masks([s for s, _ in shapes], lambda s: smooth._material_fallback_mask(s, grid))
+    host = smooth._host_path(*coords[:3], *cell_lengths, background_eps,
                             *(e for _, e in shapes),
                             *(p for s, _ in shapes for p in smooth._shape_parameters(s)),
                             *masks.values())
     xp = np if host else jnp
+    scope = box_scope(grid, shapes, coords, lengths, background_eps, masks, host=host)
     field_dtype = jnp.float32 if field_dtype is None else field_dtype
     acc_dtype = np.float64 if host else field_dtype
     if graded:
@@ -133,13 +145,14 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
                       for axis, a in enumerate(centres[:3])]
         samples = {name: tuple(centres_1d[b] if b == a else nodes_1d[b] for b in range(3))
                    for a, name in enumerate(('ex', 'ey', 'ez'))}
-        mid_length = (lengths[0][1] * lengths[1][1] * lengths[2][1]) ** (1.0 / 3.0)
+        mid_length = smooth._yee_cell_extents(lengths)
         midpoint = smooth._kottke_smooth(
             xp, shapes, samples, mid_length,
             tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3)),
-            masks, grid=grid)
+            masks, grid=grid, nominal_h_max=nominal_h_max)
     else:
-        midpoint = smooth._smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks)
+        midpoint = smooth._smoothed_eps_uniform(
+            xp, grid, coords, shapes, background_eps, masks, nominal_h_max=nominal_h_max)
         samples = smooth._uniform_sample_coords(xp, coords, uniform_cell(grid))
         mid_length = None
     x, y, z = (xp.asarray(a, dtype=acc_dtype) for a in coords[:3])
@@ -150,10 +163,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     guard_count = xp.asarray(0, dtype=xp.int32)
     bulk = xp.ones(grid.shape, dtype=bool)
     mid_bulk = [bulk.copy() for _ in range(3)]
-    groups = OrderedDict()
-    for shape, eps in shapes:
-        groups.setdefault(eps, []).append(shape)
-    for eps, group in groups.items():
+    groups = smooth._medium_groups(shapes, grid, nominal_h_max=nominal_h_max)
+    for key, (eps, group) in groups.items():
         for shape in group:
             if smooth._has_sdf(shape):
                 continue
@@ -166,11 +177,21 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
         supported = [s for s in group if smooth._has_sdf(s)]
         if not supported:
             continue
-        f, ns, signed_distance = _union(
-            xp, grid, supported, nodes, distance=True, fill_length=fill_length)
+        f, ns, signed_distance, source, source_image, best_s = _union(
+            xp, grid, supported, nodes, distance=True, fill_length=fill_length,
+            normal_source=True)
         interface = (f > 0) & (f < 1)
-        outside = 1.0 / xp.where(bulk, xi[0], (xi[0] + xi[1] + xi[2]) / 3.0)
-        inv_perp = f / eps + (1.0 - f) / (outside + 1e-30)
+        length = (smooth._normal_cell_length(xp, fill_length, ns) if graded
+                  else uniform_cell(grid))
+        pieces = smooth._outside_pieces(
+            xp, groups, key, nodes, signed_distance, ns, length,
+            background_eps, masks, grid, normal_source=source,
+            normal_image=source_image, best_s=best_s, nominal_h_max=nominal_h_max)
+        content = smooth._segment_content(xp, pieces, pieces.face, length / 2)
+        outside = content.eps
+        inv_perp = xp.where(content.single,
+                            f / eps + (1.0 - f) / (outside + 1e-30),
+                            f / eps + (1.0 - f) * content.inv)
         inv_par = 1.0 / (f * eps + (1.0 - f) * outside + 1e-30)
         entries = [n * n * inv_perp + (1 - n * n) * inv_par for n in ns]
         entries += [ns[i] * ns[j] * (inv_perp - inv_par) for i, j in ((0, 1), (0, 2), (1, 2))]
@@ -179,13 +200,17 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
               for i, (value, old) in enumerate(zip(entries, xi))]
         current, guards, touched = build_triplets(
             xp, grid, supported, nodes, ns, eps, outside, matrices(xp, xi),
-            signed_distance=signed_distance, cell_lengths=lengths)
+            signed_distance=signed_distance, cell_lengths=lengths, outside_pieces=pieces)
         triplets = xp.where(touched[..., None, None], current, triplets)
+        if scope is not None:  # exact triplets (w = 1) replace the planar ones
+            touched = touched & ~scope.replaced
         guard_count = guard_count + xp.sum(guards & touched, dtype=xp.int32)
         bulk = xp.where(f > 0, ~interface, bulk)
         for axis, sample in enumerate(samples.values()):
-            fm, _ = _union(xp, grid, supported, sample, fill_length=mid_length)
+            fm, _ = _union(xp, grid, supported, sample,
+                           fill_length=mid_length[('ex', 'ey', 'ez')[axis]] if graded else None)
             mid_bulk[axis] = xp.where(fm > 0, fm >= 1, mid_bulk[axis])
+    triplets = apply_box_scope(triplets, scope)
     periodic = tuple(a in grid.periodic_axes or (a == 'z' and getattr(grid, 'is_2d', False))
                      for a in 'xyz')
     pad = np.zeros(grid.shape, dtype=bool)

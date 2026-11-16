@@ -32,7 +32,7 @@ prose only, apart from the diagnostic reference-point and case05 history print s
 which are also displayed prose. Carrier test expectations read committed JSON directly
 where practical, with no changes to numerical gate tolerances.
 
-The worktree has no repository `docs/agent-memory/`; no other worktree was read
+No other worktree was read
 or modified. The normative in-worktree design note §5 supplies the requested R3
 reference. Its conductor-history constraint is consistent with this audit:
 regenerated measurements must be read from their new artifacts, not translated

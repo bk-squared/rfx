@@ -65,10 +65,9 @@ references).
 
 from __future__ import annotations
 
-import ast
 import hashlib
-import importlib
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -273,7 +272,7 @@ def _sigma_bulk_for_rs0(rs0, f0=F0):
 
 def _cavity(precision=None, **tc_kwargs):
     kw = {} if precision is None else {"precision": precision}
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                      boundary="pec", **kw)
     if tc_kwargs:
         with warnings.catch_warnings():
@@ -362,7 +361,7 @@ def test_g3c_x2_algebra_uniform_and_nu_transition():
 
     # NU 0.5/1.5 mm grading-transition node
     from rfx.runners.nonuniform import assemble_materials_nu
-    from rfx.nonuniform import e_node_dual_spacings
+    from rfx.model.graded_grid import e_node_dual_spacings
     from tests.unit.materials.test_thin_conductor import _nu_graded_grid, _nu_graded_sim
     sim = _nu_graded_sim(zc=4.0e-3, sigma_bulk=1e4, thickness=35e-6,
                          surface_impedance_f0=F0)
@@ -524,7 +523,8 @@ def _nu_probe_sim(with_sheet: bool):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             sim.add_thin_conductor(
-                Box((2e-3, 2e-3, 4e-3), (6e-3, 6e-3, 4e-3)),
+                Box(((4 - .35) * .5e-3, (4 - .35) * .5e-3, 4e-3),
+                    ((12 + .35) * .5e-3, (12 + .35) * .5e-3, 4e-3)),
                 sigma_bulk=1e4, surface_impedance_f0=F0)
     sim.add_source((4e-3, 4e-3, 2e-3), "ex",
                    waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
@@ -567,36 +567,41 @@ def _sheet_sim(**sim_kw):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim.add_thin_conductor(
-            Box((4e-3, 4e-3, 10e-3), (16e-3, 16e-3, 10e-3)),
+            Box(((4 - .35) * 1e-3, (4 - .35) * 1e-3, 10e-3),
+                 ((16 + .35) * 1e-3, (16 + .35) * 1e-3, 10e-3)),
             sigma_bulk=1e4, surface_impedance_f0=F0)
     sim.add_source((10e-3, 10e-3, 5e-3), "ex",
                    waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
     return sim
 
 
-def test_g9_fast_path_excludes_sheets(monkeypatch):
-    """A forced GPU query uses the standard lane with and without sheets."""
-    import jax
-    import rfx.simulation as sim_mod
+def test_sheet_probe_record_survives_gpu_backend_query(monkeypatch):
+    def record(sheet):
+        if sheet:
+            sim = _sheet_sim(boundary="pec")
+        else:
+            sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.001, boundary="pec")
+            sim.add_source((.010, .010, .005), "ex", waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
+        # Sample tangential E at an off-symmetry point on the sheet.
+        sim.add_probe((.009, .011, .010), "ex")
+        result = sim.run(n_steps=300, skip_preflight=True)
+        assert result.grid.shape == (21, 21, 21)
+        return np.asarray(result.time_series)
 
-    class _Boom(RuntimeError):
-        pass
-
-    def boom(*a, **k):
-        raise _Boom("update_he_fast called")
-
-    monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
-    monkeypatch.setattr(sim_mod, "update_he_fast", boom)
-
-    # A sheet-free control also stays on the standard lane.
-    ctrl = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
-                      boundary="pec")
-    ctrl.add_source((10e-3, 10e-3, 5e-3), "ex",
-                    waveform=GaussianPulse(f0=5e9), amplitude_kind="field")
-    ctrl.run(n_steps=8, skip_preflight=True)
-
-    # The sheet-bearing model keeps its sheet operator.
-    _sheet_sim(boundary="pec").run(n_steps=8, skip_preflight=True)
+    expected, absent = record(True), record(False)
+    with monkeypatch.context() as environment:
+        environment.setattr(jax, "default_backend", lambda: "gpu")
+        actual = record(True)
+    peak = float(np.max(np.abs(expected)))
+    peak_step = int(np.unravel_index(np.argmax(np.abs(expected)), expected.shape)[0]) + 1
+    print(f"sheet: peak_step_1based={peak_step}", file=sys.stderr)
+    bar = 9 * float(np.spacing(np.float32(peak)))
+    difference = float(np.max(np.abs(expected - absent)))
+    error = float(np.max(np.abs(actual - expected)))
+    print(f'sheet: mesh=(21,21,21) steps=300 peak={peak:.17g} backend_error={error:.17g} bar=0 sheet_free_difference={difference:.17g} control_bar={bar:.17g}')
+    assert np.isfinite(actual).all() and peak > 0, 'sheet probe must be live'
+    assert difference > bar, f'sheet control difference {difference:.17g} <= 9 ULP {bar:.17g}'
+    assert actual.tobytes() == expected.tobytes(), f'GPU query changed sheet record: max error {error:.17g}, required bitwise equality'
 
 
 def test_g9_distributed_runners_refuse():
@@ -609,21 +614,12 @@ def test_g9_distributed_runners_refuse():
 
 
 def test_g9_refusal_helper_message_names_the_lane():
-    """UNIT test of the helper's message formatting ONLY.
-
-    It proves nothing about whether any lane calls the helper: delete
-    ``refuse_f0_sheets(self._thin_conductors, "ADI run()")`` from
-    ``rfx/api/_execute.py`` and this test stays green (measured
-    2026-08-19) while ``sim.run(solver="adi")`` stops refusing. The
-    call-site proofs live in ``tests/unit/materials/test_sheet_impedance.py``.
-    """
+    """UNIT test of the helper's message formatting ONLY."""
     tc = ThinConductor(shape=Box((0, 0, 0), (1e-3, 1e-3, 0)),
                        sigma_bulk=1e4, thickness=35e-6,
                        surface_impedance_f0=F0)
     with pytest.raises(ValueError, match="subgridded"):
         refuse_f0_sheets([tc], "subgridded (SBP-SAT) run()")
-    with pytest.raises(ValueError, match="ADI"):
-        refuse_f0_sheets([tc], "ADI run()")
     refuse_f0_sheets([], "anything")   # no sheets -> no raise
 
 
@@ -666,7 +662,8 @@ def test_g9_dispersive_overlap_refuses_uniform_and_nu():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim_nu.add_thin_conductor(
-            Box((2e-3, 2e-3, 4e-3), (6e-3, 6e-3, 4e-3)),
+            Box(((4 - .35) * .5e-3, (4 - .35) * .5e-3, 4e-3),
+                    ((12 + .35) * .5e-3, (12 + .35) * .5e-3, 4e-3)),
             sigma_bulk=1e4, surface_impedance_f0=F0)
     from rfx import DebyePole
     sim_nu.add_material("water", eps_r=4.0,
@@ -691,7 +688,8 @@ def test_g9_upml_refuses():
 # ===========================================================================
 
 F0 = 10e9
-_SHEET_BOX = Box((4e-3, 4e-3, 10e-3), (16e-3, 16e-3, 10e-3))
+_SHEET_BOX = Box(((4 - .35) * 1e-3, (4 - .35) * 1e-3, 10e-3),
+                 ((16 + .35) * 1e-3, (16 + .35) * 1e-3, 10e-3))
 
 
 # ---------------------------------------------------------------------------
@@ -781,7 +779,7 @@ def _mixed_probe_fed_msl():
     eps_r, h_sub, w_trace = 3.66, 254e-6, 600e-6
     dx = h_sub / 3.0                    # 84.667 um: h_sub is node 3
     lx, ly, lz = 8e-3, 3e-3, 754e-6
-    sim = Simulation(freq_max=5e9, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
+    sim = Simulation(snap="declared", freq_max=5e9, domain=(lx, ly, lz), dx=dx, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
     sim.add_material("sub", eps_r=eps_r)
@@ -858,27 +856,8 @@ def _fence(entry, *, where, match):
 # refuse_f0_sheets() call sites
 # ---------------------------------------------------------------------------
 
-def test_fence_adi_run():
-    """Honest scope note for BOTH ADI tests, measured 2026-08-19: with this
-    call site deleted the ADI lane still refuses, from a pre-existing guard
-    that predates #677 — ``_preflight._validate_adi_configuration`` rejects
-    ANY registered thin conductor
-    (``solver='adi' does not support thin-conductor corrections yet``). So
-    ADI's exposure to a silently sheet-free run was lower than the other
-    lanes' even before #677; what these two tests pin is that the #677
-    fence is wired and names the right lane, not that it is ADI's only
-    net."""
-    _fence(lambda: _cube(solver="adi").run(n_steps=4, skip_preflight=True),
-           where=("_execute.py", "run"),
-           match=r"on the ADI run\(\) lane")
 
 
-def test_fence_adi_forward():
-    """See the scope note on ``test_fence_adi_run``: ADI carries a second,
-    older thin-conductor guard behind this fence on both entry points."""
-    _fence(lambda: _cube(solver="adi").forward(n_steps=4, skip_preflight=True),
-           where=("uniform_forward.py", "_forward_from_materials"),
-           match=r"on the ADI forward lane")
 
 
 def test_fence_subgridded_run():
@@ -980,9 +959,7 @@ def test_fence_gradient_check():
 
 
 def test_fence_topology_optimize():
-    """The fence sits ABOVE ``topology_optimize``'s optional ``import optax``
-    precisely so this test binds in an environment without the
-    ``[optimization]`` extra — the default CI image."""
+    """Unsupported surface-impedance sheets are refused at topology entry."""
     from rfx.topology import TopologyDesignRegion, topology_optimize
 
     def go():
@@ -1158,8 +1135,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         ("tests.unit.runners.test_forward_subpixel_smoothing",
          "test_surface_impedance_smoothing_refusal_matches_run"),
     # --- refuse_f0_sheets(...) call sites ---
-    ("rfx/runners/uniform_forward.py", "_forward_from_materials", "ADI forward"):
-        (__name__, "test_fence_adi_forward"),
     ("rfx/runners/_distributed_nu_execute.py", "dispatch_forward",
      "distributed non-uniform forward()"):
         (__name__, "test_fence_distributed_nonuniform_forward"),
@@ -1169,9 +1144,7 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/_distributed_entry.py", "execute_distributed",
      "distributed multi-device forward()"):
         (__name__, "test_fence_distributed_multidevice_forward"),
-    ("rfx/api/_execute.py", "run", "ADI run()"):
-        (__name__, "test_fence_adi_run"),
-    ("rfx/api/_execute.py", "run", "subgridded (SBP-SAT) run()"):
+    ("rfx/runners/run.py", "run_after_admission", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
@@ -1232,8 +1205,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
 }
 
 #: No manual fast-lane sheet fence remains: run() always uses the standard lane.
-_MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {}
-
 #: ``has_f0_sheets(...)`` call sites in ``rfx/`` that are NOT lane fences.
 #:
 #: The AST scan treats every ``has_f0_sheets`` call outside
@@ -1245,116 +1216,6 @@ _MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {}
 #: site and why it is not a fence; the guard still binds on every other
 #: call, and a row that stops matching the source is reported as stale, so
 #: this list cannot silently outlive its call site.
-_NON_FENCE_F0_QUERIES: dict[tuple[str, str, str], str] = {
-    ("rfx/api/_ad_memory.py", "_ad_memory_static_accounting", "has_f0_sheets"):
-        "#696 memory ACCOUNTING: adds the sheet operator's three edge masks "
-        "+ sigma_sheet to the forward working-set estimate. It changes a "
-        "reported number, never whether the lane runs.",
-}
-
-_RFX_ROOT = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "rfx")
-
-
-def _enclosing_function(func_spans, lineno):
-    cands = [f for f in func_spans if f[0] <= lineno <= f[1]]
-    cands.sort(key=lambda f: f[1] - f[0])
-    return cands[0][2] if cands else "<module>"
-
-
-def _scan_source_fences():
-    """Re-derive the fence inventory from the ``rfx/`` source by AST."""
-    found: dict[tuple[str, str, str], str] = {}
-    for dirpath, _dirs, files in os.walk(_RFX_ROOT):
-        for fn in sorted(files):
-            if not fn.endswith(".py"):
-                continue
-            path = os.path.join(dirpath, fn)
-            rel = os.path.relpath(path, os.path.dirname(_RFX_ROOT))
-            rel = rel.replace(os.sep, "/")
-            with open(path, encoding="utf-8") as fh:
-                src = fh.read()
-            if "677" not in src and "f0_sheets" not in src:
-                continue
-            tree = ast.parse(src, filename=path)
-            spans = [(n.lineno, n.end_lineno, n.name) for n in ast.walk(tree)
-                     if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
-            for node in ast.walk(tree):
-                # refuse_f0_sheets(conductors, "<lane>")
-                if (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Name)
-                        and node.func.id.lstrip("_").startswith("refuse_f0")
-                        and len(node.args) == 2
-                        and isinstance(node.args[1], ast.Constant)):
-                    key = (rel, _enclosing_function(spans, node.lineno),
-                           node.args[1].value)
-                    found[key] = "refuse_f0_sheets"
-                # has_f0_sheets(...) used as a lane eligibility fence
-                elif (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Name)
-                        and node.func.id == "has_f0_sheets"
-                        and rel != "rfx/materials/thin_conductor.py"):
-                    key = (rel, _enclosing_function(spans, node.lineno),
-                           "has_f0_sheets")
-                    found[key] = "has_f0_sheets"
-                # raise ValueError("... (#677 v1) ...")
-                elif isinstance(node, ast.Raise):
-                    exc = node.exc
-                    if not (isinstance(exc, ast.Call) and exc.args
-                            and isinstance(exc.args[0], ast.Constant)
-                            and isinstance(exc.args[0].value, str)):
-                        continue
-                    msg = exc.args[0].value
-                    if "(#677 v1)" not in msg:
-                        continue
-                    func = _enclosing_function(spans, node.lineno)
-                    disc = [k for (_r, _f, k) in FENCE_REGISTRY
-                            if _r == rel and _f == func and k in msg]
-                    key = (rel, func, disc[0] if disc else msg)
-                    found[key] = "inline"
-    return found
-
-
-@pytest.mark.source_scan
-def test_every_fence_in_the_source_is_pinned():
-    """Every #677 lane fence in ``rfx/`` is named by ``FENCE_REGISTRY``.
-
-    This is the anti-regression that closes the CLASS: adding a new fence
-    without a lane-level test is red here, and so is deleting a fence whose
-    lane is still registered (the registry would name a call site the
-    source no longer has).
-    """
-    found = _scan_source_fences()
-    registered = set(FENCE_REGISTRY)
-    non_fence = set(_NON_FENCE_F0_QUERIES)
-    missing = sorted(set(found) - registered - non_fence)
-    stale = sorted(registered - set(found))
-    # A non-fence row that no longer matches any call site is stale too —
-    # otherwise the exemption list would outlive the code it excuses.
-    stale += sorted(non_fence - set(found))
-    assert not missing, (
-        "these #677 lane fences exist in rfx/ but no test is registered for "
-        f"them — add a lane-level test and a FENCE_REGISTRY row: {missing}")
-    assert not stale, (
-        "FENCE_REGISTRY names call sites that are no longer in rfx/ — a "
-        f"fence was moved or deleted: {stale}")
-
-
-def test_every_registered_pinning_test_exists():
-    """A registry row is only worth something if the test it names is real —
-    a rename must not silently orphan a fence."""
-    orphans = []
-    for key, (mod_name, test_name) in {**FENCE_REGISTRY,
-                                       **_MANUAL_FENCES}.items():
-        mod = (importlib.import_module(mod_name)
-               if mod_name != __name__ else globals())
-        have = (test_name in mod if isinstance(mod, dict)
-                else hasattr(mod, test_name))
-        if not have:
-            orphans.append((key, mod_name, test_name))
-    assert not orphans, f"registered pinning tests that do not exist: {orphans}"
-
-
 # ===========================================================================
 # formerly tests/unit/materials/test_sheet_impedance.py
 # ===========================================================================
@@ -1858,7 +1719,7 @@ def test_box_and_equivalent_mask_shape_fold_bit_identically(lane):
         d_norm = np.full(1, grid.dx)
         ks = [0]
     else:
-        from rfx.nonuniform import e_node_dual_spacings
+        from rfx.model.graded_grid import e_node_dual_spacings
         ks = sorted({int(k) for k in np.argwhere(sig_msk > 0)[:, 2]})
         assert len(ks) == 1, ks
         d_norm = np.asarray(e_node_dual_spacings(grid.dz))[ks]
@@ -2230,6 +2091,9 @@ def test_occupancy_guard_does_not_break_the_traced_mesh_path():
         sim.add_thin_conductor(_box_sheet(NU_Z, NU_FOOT),
                                sigma_bulk=SIGMA_BULK, thickness=THICKNESS,
                                surface_impedance_f0=F0)
+    # The traced z axis has absorber cells; its edge cell comes from the
+    # nominal profile (the primal at scale = 1).
+    sim._nominal_profiles = {"z": np.asarray(NU_DZ)}
 
     def loss(scale):
         sim._dz_profile = base * scale

@@ -7,19 +7,14 @@ Follows the same conventions as :mod:`rfx.visualize`.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+
 import numpy as np
 
-try:
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Circle
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for Smith chart plotting")
+from rfx._plotting import _pyplot
 
 
 def _draw_smith_grid(ax):
@@ -31,6 +26,8 @@ def _draw_smith_grid(ax):
     and radius ``1/|x|``.
     """
     # Outer boundary (|Gamma| = 1)
+    from matplotlib.patches import Circle
+
     boundary = Circle((0, 0), 1, fill=False, edgecolor="black",
                        linewidth=1.0, zorder=1)
     ax.add_patch(boundary)
@@ -85,6 +82,8 @@ def _draw_vswr_circle(ax, vswr, **kwargs):
     style = dict(fill=False, edgecolor="blue", linewidth=0.8,
                  linestyle="--", alpha=0.5, zorder=1)
     style.update(kwargs)
+    from matplotlib.patches import Circle
+
     circ = Circle((0, 0), gamma_mag, **style)
     ax.add_patch(circ)
 
@@ -94,11 +93,11 @@ def plot_smith(
     freqs: np.ndarray,
     *,
     z0: float = 50.0,
-    ax=None,
+    ax: Axes | None = None,
     show_vswr: bool = True,
     markers: list[float] | None = None,
     title: str | None = None,
-):
+) -> Axes:
     """Plot S11 data on a Smith chart.
 
     Parameters
@@ -123,7 +122,7 @@ def plot_smith(
     -------
     matplotlib Axes
     """
-    _require_mpl()
+    plt = _pyplot()
 
     s11 = np.asarray(s11)
     freqs = np.asarray(freqs)

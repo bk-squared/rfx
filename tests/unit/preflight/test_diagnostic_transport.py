@@ -1,12 +1,11 @@
 """Public execution boundaries retain host records under nesting and transforms."""
-from types import MethodType
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Diagnostic
+from rfx import Diagnostic, Simulation
 from tests._msl_diagnostic_cases import structure, U
 
 
@@ -36,23 +35,24 @@ def test_actual_forward_jit_grad_vmap(graded):
 
 
 
-def test_msl_calculator_unions_every_drive_without_duplicates():
+def test_msl_calculator_unions_every_drive_without_duplicates(monkeypatch):
     # Manufactured spectra isolate the public calculator's nested-run transport.
     # Real field evolution is covered by the forward and run tests above.
     from tests.unit.autodiff.test_msl_forward_identity import _build_planted_sim, FREQS
-    sim, _ = _build_planted_sim(1.)
-    backend = sim.run
+    sim, _ = _build_planted_sim(monkeypatch, 1.)
+    backend = Simulation.run
     seen = []
     def drive(self, **kwargs):
         d = Diagnostic('msl.drive_observation', 'advisory', str(len(seen)),
                        'drive observation', {'drive': len(seen)})
         seen.append(d)
         result = backend(
+            self,
             **kwargs,
         )
         result.diagnostics = (d, d)
         return result
-    sim.run = MethodType(drive, sim)
+    monkeypatch.setattr(Simulation, "run", drive)
     result = sim.compute_msl_s_matrix(
         freqs=FREQS,
         n_steps=1,
@@ -61,6 +61,7 @@ def test_msl_calculator_unions_every_drive_without_duplicates():
     )
     assert len(seen) == 2
     assert tuple(d for d in result.diagnostics if d.code == 'msl.drive_observation') == tuple(seen)
+    monkeypatch.undo()
     clean = structure().run(
         n_steps=2,
         compute_s_params=False,
@@ -101,17 +102,14 @@ def test_scoped_coax_gate_accepts_the_existing_plain_issue_list():
     assert caught.value.diagnostics == (d,)
 
 
-@pytest.mark.parametrize('lane', ['adi', 'subgridded', 'disjoint'])
+@pytest.mark.parametrize('lane', [ 'subgridded', 'disjoint'])
 def test_auxiliary_lanes_attach_their_refusal_and_family_records(lane):
     sim = structure()
-    if lane == 'adi':
-        sim._solver = 'adi'
-    else:
-        sim.add_refinement(
-            z_range=(U, 3 * U),
-            ratio=2,
-            topology="stage2_disjoint_3d" if lane == "disjoint" else "overlap_z_slab",
-        )
+    sim.add_refinement(
+        z_range=(U, 3 * U),
+        ratio=2,
+        topology="stage2_disjoint_3d" if lane == "disjoint" else "overlap_z_slab",
+    )
     with pytest.raises((ValueError, NotImplementedError)) as caught:
         sim.run(
             n_steps=2,
@@ -248,8 +246,8 @@ def test_physical_two_port_calculator_unions_both_run_reports(monkeypatch):
 
 
 @pytest.mark.parametrize('calculator,lane', [
-    ('msl', 'adi'), ('msl', 'subgridded'),
-    ('mixed', 'graded'), ('mixed', 'adi'), ('mixed', 'subgridded'),
+     ('msl', 'subgridded'),
+    ('mixed', 'graded'),  ('mixed', 'subgridded'),
 ])
 def test_calculator_unsupported_lanes_carry_their_refusal(calculator, lane):
     if calculator == 'mixed':
@@ -272,8 +270,6 @@ def test_calculator_unsupported_lanes_carry_their_refusal(calculator, lane):
     if lane == 'graded':
         count = round(sim._domain[2] / step)
         sim._dz_profile = np.full(count, sim._domain[2] / count)
-    elif lane == 'adi':
-        sim._solver = 'adi'
     else:
         sim.add_refinement(
             z_range=(step, 3 * step),
@@ -283,7 +279,7 @@ def test_calculator_unsupported_lanes_carry_their_refusal(calculator, lane):
         operation(
             **kwargs,
         )
-    expected = {'graded': 'uniform', 'adi': 'solver=', 'subgridded': 'SBP-SAT'}[lane]
+    expected = {'graded': 'uniform',  'subgridded': 'SBP-SAT'}[lane]
     assert expected in str(caught.value)
     assert any(d.severity == 'refusal' and d.message == str(caught.value)
                for d in caught.value.diagnostics)
@@ -308,7 +304,7 @@ def test_mixed_calculator_unions_own_report_and_each_drive(monkeypatch):
         )
         result['diagnostics'] = (own, record, record)
         return result
-    monkeypatch.setattr(sim, '_forward_from_materials', MethodType(drive, sim))
+    monkeypatch.setattr(Simulation, '_forward_from_materials', drive)
     result, details = sim.compute_mixed_s_matrix(
         freqs=FREQS,
         n_steps=1,
@@ -420,10 +416,10 @@ def test_research_subgrid_result_keeps_its_report(topology, monkeypatch):
 
 
 @pytest.mark.parametrize('frequencies, message', [
-    (['not a number'], '#1512: line-port read frequencies must be concrete'),
-    ([], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
-    ([-1.], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
-    ([float('nan')], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
+    (['not a number'], 'line-port read frequencies must be concrete'),
+    ([], 'line-port read frequencies must be finite, nonnegative and nonempty'),
+    ([-1.], 'line-port read frequencies must be finite, nonnegative and nonempty'),
+    ([float('nan')], 'line-port read frequencies must be finite, nonnegative and nonempty'),
 ])
 def test_line_stub_read_band_refusal_has_a_record(frequencies, message):
     from rfx.preflight.line_stub import read_band
@@ -441,14 +437,19 @@ def test_removed_native_fallback_refuses_before_scan(kind, entry, monkeypatch):
     from rfx import Simulation
     from rfx.runners.distributed_v2 import run_distributed
 
-    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
-                     dx=1e-3, boundary="cpml")
+    sim = Simulation(
+        freq_max=15e9,
+        domain=(24e-3, 12e-3, 12e-3),
+        dx=1e-3,
+        boundary=({"x": "cpml", "y": "pec", "z": "pec"}
+                  if kind == 'waveguide' else "cpml"),
+    )
     if kind == 'tfsf':
         sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
         expected = 'open-slab normal-incidence TFSF (periodic y/z is not on slabs)'
     else:
-        sim.add_waveguide_port(x_position=6e-3, y_range=(2e-3, 10e-3),
-                              z_range=(2e-3, 10e-3), mode=(1, 0), mode_type="TE",
+        sim.add_waveguide_port(x_position=6e-3, y_range=(0., 12e-3),
+                              z_range=(0., 12e-3), mode=(1, 0), mode_type="TE",
                               direction="+x", f0=7.5e9, bandwidth=0.5)
         expected = 'waveguide ports (add_waveguide_port) are not supported on'
     public_run = sim.run

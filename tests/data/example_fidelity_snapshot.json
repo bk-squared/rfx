@@ -1,5 +1,5 @@
 {
-  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). Nothing here time-steps: this pins build-time EMISSION only, so it is not evidence about any example's output numbers. The #729-site-1 defect (domain realized_extent_um/n_cells read NODE counts, one cell too long) was FIXED by PR #734 (a5a72280) and this snapshot was re-captured after that fix, so domain extents here are usable again (cv11 reads 23000/11000 um, matching #722). Re-captured 2026-09-02 after the report started reading the rasterizer's exact float64 node line (#833 item 2): realized_um / cell_um / face_residual_um on non-uniform lanes moved by the float32 cell-size widening (<= 0.011 um), 108 on-node residuals went to 0.0, 12 one-cell bodies stopped reading sub_cell, and 6 'inside-absorber' rows on domain-filling bodies (convergence_floor fixture; hi face read 27000.0002 um against a 27000.0 um domain) went away; no n_cells or preflight row moved.",
+  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). Nothing here time-steps: this pins build-time EMISSION only, so it is not evidence about any example's output numbers. The #729-site-1 defect (domain realized_extent_um/n_cells read NODE counts, one cell too long) was FIXED by PR #734 (a5a72280) and this snapshot was re-captured after that fix, so domain extents here are usable again (cv11 reads 23000/11000 um, matching #722). Re-captured 2026-09-02 after the report started reading the rasterizer's exact float64 node line (#833 item 2): realized_um / cell_um / face_residual_um on non-uniform lanes moved by the float32 cell-size widening (<= 0.011 um), 108 on-node residuals went to 0.0, 12 one-cell bodies stopped reading sub_cell, and 6 'inside-absorber' rows on domain-filling bodies (convergence_floor fixture; hi face read 27000.0002 um against a 27000.0 um domain) went away; no n_cells or preflight row moved. Re-captured 2026-11-13: the wire-port-without-radius advisory gains five numeric tokens; no other change.",
   "variants": {
     "examples/inverse_design/differentiable_s11_design.py::build_simulation::default": {
       "fidelity": {
@@ -331,8 +331,6 @@
             6.0,
             6.0,
             1.0,
-            1272.0,
-            1346.0,
             6.0,
             -38.0,
             2.0,
@@ -442,8 +440,6 @@
             6.0,
             6.0,
             1.0,
-            1272.0,
-            1346.0,
             6.0,
             -38.0,
             2.0,
@@ -517,274 +513,6 @@
               "realized_um": [
                 0.0,
                 20000.0
-              ]
-            }
-          },
-          "findings": [],
-          "material": null,
-          "n_cells": null
-        },
-        "out-of-scope": {
-          "axes": {},
-          "findings": [
-            {
-              "entities": [
-                {
-                  "class": "lumped/wire port",
-                  "count": 1
-                }
-              ],
-              "kind": "out-of-scope"
-            }
-          ],
-          "material": null,
-          "n_cells": null
-        }
-      },
-      "preflight": []
-    },
-    "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl2": {
-      "fidelity": {
-        "domain": {
-          "axes": {
-            "x": {
-              "declared_extent_um": 24000.0,
-              "declared_um": [
-                0.0,
-                24000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 24000.0,
-              "n_cells": 16,
-              "realized_extent_um": 24000.0,
-              "realized_um": [
-                0.0,
-                24000.0
-              ]
-            },
-            "y": {
-              "declared_extent_um": 12000.0,
-              "declared_um": [
-                0.0,
-                12000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 12000.0,
-              "n_cells": 8,
-              "realized_extent_um": 12000.0,
-              "realized_um": [
-                0.0,
-                12000.0
-              ]
-            },
-            "z": {
-              "declared_extent_um": 36000.0,
-              "declared_um": [
-                0.0,
-                36000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 36000.0,
-              "n_cells": 24,
-              "realized_extent_um": 36000.0,
-              "realized_um": [
-                0.0,
-                36000.0
-              ]
-            }
-          },
-          "findings": [],
-          "material": null,
-          "n_cells": null
-        },
-        "out-of-scope": {
-          "axes": {},
-          "findings": [
-            {
-              "entities": [
-                {
-                  "class": "lumped/wire port",
-                  "count": 1
-                }
-              ],
-              "kind": "out-of-scope"
-            }
-          ],
-          "material": null,
-          "n_cells": null
-        }
-      },
-      "preflight": []
-    },
-    "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl5": {
-      "fidelity": {
-        "domain": {
-          "axes": {
-            "x": {
-              "declared_extent_um": 24000.0,
-              "declared_um": [
-                0.0,
-                24000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 24000.0,
-              "n_cells": 16,
-              "realized_extent_um": 24000.0,
-              "realized_um": [
-                0.0,
-                24000.0
-              ]
-            },
-            "y": {
-              "declared_extent_um": 12000.0,
-              "declared_um": [
-                0.0,
-                12000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 12000.0,
-              "n_cells": 8,
-              "realized_extent_um": 12000.0,
-              "realized_um": [
-                0.0,
-                12000.0
-              ]
-            },
-            "z": {
-              "declared_extent_um": 36000.0,
-              "declared_um": [
-                0.0,
-                36000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 36000.0,
-              "n_cells": 24,
-              "realized_extent_um": 36000.0,
-              "realized_um": [
-                0.0,
-                36000.0
-              ]
-            }
-          },
-          "findings": [],
-          "material": null,
-          "n_cells": null
-        },
-        "out-of-scope": {
-          "axes": {},
-          "findings": [
-            {
-              "entities": [
-                {
-                  "class": "lumped/wire port",
-                  "count": 1
-                }
-              ],
-              "kind": "out-of-scope"
-            }
-          ],
-          "material": null,
-          "n_cells": null
-        }
-      },
-      "preflight": [
-        {
-          "code": "adi_3d_accuracy",
-          "loc": null,
-          "numbers": [
-            3.0,
-            5.0,
-            2.0,
-            15.0,
-            2.0,
-            2.0,
-            -1.4,
-            2.0,
-            -2.8,
-            3.0,
-            -6.7,
-            5.0,
-            2.0
-          ],
-          "severity": "warning",
-          "source": "_validate_cfg_adi_3d_accuracy"
-        }
-      ]
-    },
-    "examples/tutorials/adi_solver_demo.py::build_cavity::yee_cfl5": {
-      "fidelity": {
-        "domain": {
-          "axes": {
-            "x": {
-              "declared_extent_um": 24000.0,
-              "declared_um": [
-                0.0,
-                24000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 24000.0,
-              "n_cells": 16,
-              "realized_extent_um": 24000.0,
-              "realized_um": [
-                0.0,
-                24000.0
-              ]
-            },
-            "y": {
-              "declared_extent_um": 12000.0,
-              "declared_um": [
-                0.0,
-                12000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 12000.0,
-              "n_cells": 8,
-              "realized_extent_um": 12000.0,
-              "realized_um": [
-                0.0,
-                12000.0
-              ]
-            },
-            "z": {
-              "declared_extent_um": 36000.0,
-              "declared_um": [
-                0.0,
-                36000.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "mesh_extent_um": 36000.0,
-              "n_cells": 24,
-              "realized_extent_um": 36000.0,
-              "realized_um": [
-                0.0,
-                36000.0
               ]
             }
           },
@@ -903,8 +631,6 @@
             6.0,
             6.0,
             1.0,
-            1272.0,
-            1346.0,
             6.0,
             -38.0,
             2.0,
@@ -1036,8 +762,8 @@
               ],
               "realized_extent_um": 1000.0,
               "realized_um": [
-                1000.0,
-                2000.0
+                0.0,
+                1000.0
               ],
               "sub_cell": false
             }
@@ -1083,11 +809,38 @@
             0.002,
             0.005,
             0.001,
-            3.55,
-            71.0
+            3.55
           ],
           "severity": "warning",
           "source": "_validate_cfg_floating_single_cell_port"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            0.25,
+            6.0,
+            0.006,
+            6.0,
+            0.006,
+            0.0,
+            0.0,
+            6.0,
+            0.006,
+            6.0,
+            0.006,
+            0.0,
+            0.0,
+            1.0,
+            0.001,
+            1.0,
+            0.001,
+            -0.5,
+            -0.0005
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
         }
       ]
     },
@@ -1470,7 +1223,7 @@
                 0.0
               ],
               "mesh_extent_um": 30000.0,
-              "n_cells": 30,
+              "n_cells": 40,
               "realized_extent_um": 30000.0,
               "realized_um": [
                 0.0,
@@ -1521,31 +1274,25 @@
               "sub_cell": false
             },
             "z": {
-              "cell_um": 1000.0,
+              "cell_um": 750.0,
               "declared_extent_um": 1500.0,
               "declared_um": [
                 14250.0,
                 15750.0
               ],
               "face_residual_um": [
-                250.0,
-                250.0
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 2000.0,
+              "realized_extent_um": 1500.0,
               "realized_um": [
-                14000.0,
-                16000.0
+                14250.0,
+                15750.0
               ],
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "z",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": 0.0
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
@@ -1568,20 +1315,7 @@
           "n_cells": null
         }
       },
-      "preflight": [
-        {
-          "code": "mesh_import_underresolved",
-          "loc": null,
-          "numbers": [
-            1.5,
-            2.0,
-            2.0,
-            1.0
-          ],
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
-        }
-      ]
+      "preflight": []
     },
     "examples/tutorials/materials_and_dispersion.py::make_sim::default": {
       "fidelity": {
@@ -1672,8 +1406,6 @@
             3.0,
             4.0,
             1.0,
-            1272.0,
-            1346.0,
             4.0,
             -20.0,
             2.0,
@@ -1757,7 +1489,7 @@
         "geometry|fr4|12000.000,12000.000,16435.570um->72000.000,67000.000,17935.570um": {
           "axes": {
             "x": {
-              "cell_um": 956.666666667,
+              "cell_um": 957.580645161,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 12000.0,
@@ -1765,17 +1497,17 @@
               ],
               "face_residual_um": [
                 315.0,
-                585.0
+                315.0
               ],
-              "realized_extent_um": 60270.0,
+              "realized_extent_um": 59370.0,
               "realized_um": [
                 12315.0,
-                72585.0
+                71685.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 969.649122807,
+              "cell_um": 970.892857143,
               "declared_extent_um": 55000.0,
               "declared_um": [
                 12000.0,
@@ -1783,12 +1515,12 @@
               ],
               "face_residual_um": [
                 315.0,
-                585.0
+                315.0
               ],
-              "realized_extent_um": 55270.0,
+              "realized_extent_um": 54370.0,
               "realized_um": [
                 12315.0,
-                67585.0
+                66685.0
               ],
               "sub_cell": false
             },
@@ -1829,7 +1561,7 @@
             "name": "fr4",
             "sigma": 0.0
           },
-          "n_cells": 21546
+          "n_cells": 20832
         },
         "out-of-scope": {
           "axes": {},
@@ -1989,6 +1721,39 @@
           "source": "_validate_cfg_lossless_resonator_in_absorber"
         },
         {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            -0.657908034361,
+            -1.05,
+            -0.648887254,
+            -1.14545454545,
+            0.0,
+            0.0,
+            62.0,
+            0.05937,
+            62.6579080344,
+            0.06,
+            -7.24627626819e-15,
+            -6.93889390391e-18,
+            56.0,
+            0.05437,
+            56.648887254,
+            0.055,
+            2.85876813404e-14,
+            2.77555756156e-17,
+            6.0,
+            0.0015,
+            6.0,
+            0.0015,
+            5.55111512313e-14,
+            1.38777878078e-17
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
           "code": "thin_conductor_thickness_unmodelled",
           "loc": "thin_conductors[1]",
           "numbers": [
@@ -2000,8 +1765,7 @@
             50.0,
             3.4,
             20.0,
-            40.0,
-            1523.0
+            40.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_thin_conductor_thickness"
@@ -2074,7 +1838,7 @@
         "geometry|sub|85000.000,85000.000,35285.492um->145000.000,145000.000,36809.492um": {
           "axes": {
             "x": {
-              "cell_um": 1954.83870968,
+              "cell_um": 1953.33333333,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
@@ -2082,17 +1846,17 @@
               ],
               "face_residual_um": [
                 700.0,
-                1300.0
+                700.0
               ],
-              "realized_extent_um": 60600.0,
+              "realized_extent_um": 58600.0,
               "realized_um": [
                 85700.0,
-                146300.0
+                144300.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 1954.83870968,
+              "cell_um": 1953.33333333,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
@@ -2100,12 +1864,12 @@
               ],
               "face_residual_um": [
                 700.0,
-                1300.0
+                700.0
               ],
-              "realized_extent_um": 60600.0,
+              "realized_extent_um": 58600.0,
               "realized_um": [
                 85700.0,
-                146300.0
+                144300.0
               ],
               "sub_cell": false
             },
@@ -2146,7 +1910,7 @@
             "name": "sub",
             "sigma": 0.000460692754792
           },
-          "n_cells": 3844
+          "n_cells": 3600
         },
         "out-of-scope": {
           "axes": {},
@@ -2327,6 +2091,39 @@
           "source": "_validate_ntff_small_ground_plane"
         },
         {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            -0.716723549488,
+            -2.33333333333,
+            -0.716723549488,
+            -2.33333333333,
+            0.0,
+            0.0,
+            30.0,
+            0.0586,
+            30.7167235495,
+            0.06,
+            -4.26280171571e-14,
+            -8.32667268469e-17,
+            30.0,
+            0.0586,
+            30.7167235495,
+            0.06,
+            -1.42093390524e-14,
+            -2.77555756156e-17,
+            4.0,
+            0.001524,
+            4.0,
+            0.001524,
+            3.64246399155e-14,
+            1.38777878078e-17
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
           "code": "thin_conductor_thickness_unmodelled",
           "loc": "thin_conductors[1]",
           "numbers": [
@@ -2338,8 +2135,7 @@
             50.0,
             3.4,
             20.0,
-            40.0,
-            1523.0
+            40.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_thin_conductor_thickness"
@@ -2528,8 +2324,6 @@
             4.0,
             4.0,
             1.0,
-            1272.0,
-            1346.0,
             4.0,
             -20.0,
             2.0,
@@ -2643,8 +2437,6 @@
             4.0,
             4.0,
             1.0,
-            1272.0,
-            1346.0,
             4.0,
             -20.0,
             2.0,
@@ -2728,7 +2520,7 @@
         "geometry|substrate|12750.000,12750.000,1250.000um->31250.000,21250.000,2250.000um": {
           "axes": {
             "x": {
-              "cell_um": 247.666666667,
+              "cell_um": 247.635135135,
               "declared_extent_um": 18500.0,
               "declared_um": [
                 12750.0,
@@ -2736,17 +2528,17 @@
               ],
               "face_residual_um": [
                 87.5,
-                162.5
+                87.5
               ],
-              "realized_extent_um": 18575.0,
+              "realized_extent_um": 18325.0,
               "realized_um": [
                 12837.5,
-                31412.5
+                31162.5
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 231.452702703,
+              "cell_um": 231.979166667,
               "declared_extent_um": 8500.0,
               "declared_um": [
                 12750.0,
@@ -2754,12 +2546,12 @@
               ],
               "face_residual_um": [
                 74.375,
-                138.125
+                74.375
               ],
-              "realized_extent_um": 8563.75,
+              "realized_extent_um": 8351.25,
               "realized_um": [
                 12824.375,
-                21388.125
+                21175.625
               ],
               "sub_cell": false
             },
@@ -2784,10 +2576,6 @@
           },
           "findings": [
             {
-              "axis": "x",
-              "kind": "off-lattice-face"
-            },
-            {
               "axis": "y",
               "kind": "off-lattice-face"
             }
@@ -2800,7 +2588,7 @@
             "name": "substrate",
             "sigma": 0.01
           },
-          "n_cells": 11100
+          "n_cells": 10656
         },
         "out-of-scope": {
           "axes": {},
@@ -2961,8 +2749,7 @@
             0.0,
             0.6,
             2.40509,
-            16.0,
-            1512.0
+            16.0
           ],
           "severity": "warning",
           "source": "line_stub_findings"
@@ -2982,8 +2769,7 @@
             0.0,
             0.6,
             2.40509,
-            28.0,
-            1512.0
+            28.0
           ],
           "severity": "warning",
           "source": "line_stub_findings"
@@ -2992,9 +2778,7 @@
           "code": "msl_port_geometry",
           "loc": null,
           "numbers": [
-            469.0,
             2.0,
-            681.0,
             20.0,
             4.0,
             3.0,
@@ -3006,11 +2790,43 @@
             3.0,
             250.0,
             0.0,
-            5.0,
-            686.0
+            5.0
           ],
           "severity": "warning",
           "source": "_check_msl_port_geometry"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            -0.706684856753,
+            -0.945945945946,
+            -0.641221374046,
+            -1.75,
+            1.73472347598e-15,
+            4.33680868994e-14,
+            74.0,
+            0.018325,
+            74.7066848568,
+            0.0185,
+            4.20309535243e-14,
+            1.04083408559e-17,
+            36.0,
+            0.00835125,
+            36.641221374,
+            0.0085,
+            2.99117114852e-14,
+            6.93889390391e-18,
+            4.0,
+            0.001,
+            4.0,
+            0.001,
+            1.73472347598e-15,
+            4.33680868994e-19
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
         },
         {
           "code": "thin_absorber",
@@ -3029,8 +2845,6 @@
             3.0,
             4.0,
             1.0,
-            1272.0,
-            1346.0,
             4.0,
             -20.0,
             2.0,
@@ -3058,8 +2872,7 @@
             50.0,
             3.4,
             20.0,
-            40.0,
-            1523.0
+            40.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_thin_conductor_thickness"
@@ -3154,8 +2967,6 @@
             4.0,
             4.0,
             1.0,
-            1272.0,
-            1346.0,
             4.0,
             -20.0,
             2.0,
@@ -3249,18 +3060,18 @@
           "material": null,
           "n_cells": null
         },
-        "geometry|pec|34100.000,34100.000,34100.000um->65900.000,65900.000,65900.000um": {
+        "geometry|pec|34975.787,34975.787,34975.787um->64955.033,64955.033,64955.033um": {
           "axes": {
             "x": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -3271,14 +3082,14 @@
             },
             "y": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -3289,14 +3100,14 @@
             },
             "z": {
               "cell_um": 2498.27048333,
-              "declared_extent_um": 31800.0,
+              "declared_extent_um": 29979.2458,
               "declared_um": [
-                34100.0,
-                65900.0
+                34975.7867667,
+                64955.0325667
               ],
               "face_residual_um": [
-                875.786766667,
-                944.967433333
+                0.0,
+                0.0
               ],
               "realized_extent_um": 29979.2458,
               "realized_um": [
@@ -3306,27 +3117,11 @@
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            },
-            {
-              "axis": "y",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            },
-            {
-              "axis": "z",
-              "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 1067
+          "n_cells": 912
         }
       },
       "preflight": []
@@ -3505,8 +3300,6 @@
             4.0,
             4.0,
             1.0,
-            1272.0,
-            1346.0,
             4.0,
             -20.0,
             2.0,
@@ -3751,8 +3544,7 @@
             0.0,
             -1.0,
             1.0,
-            0.0,
-            61.0
+            0.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_geometry_in_cpml"
@@ -4163,8 +3955,19 @@
             0.0,
             1.0,
             920.0,
-            80.0,
-            61.0
+            80.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_geometry_in_cpml"
+        },
+        {
+          "code": "geometry_in_absorber",
+          "loc": "geometry[#0 lo 1m]",
+          "numbers": [
+            0.0,
+            -1.0,
+            1.0,
+            0.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_geometry_in_cpml"
@@ -5393,11 +5196,7 @@
             0.005,
             0.006,
             0.005,
-            0.001,
-            544.0,
-            314.0,
-            319.0,
-            556.0
+            0.001
           ],
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
@@ -5409,11 +5208,7 @@
             0.011,
             0.006,
             0.005,
-            0.001,
-            544.0,
-            314.0,
-            319.0,
-            556.0
+            0.001
           ],
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
@@ -5448,7 +5243,12 @@
             4.36,
             0.2,
             0.2,
-            200.0
+            200.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -5924,8 +5724,7 @@
             0.005,
             0.005,
             0.004,
-            1.0,
-            318.0
+            1.0
           ],
           "severity": "error",
           "source": "_validate_cfg_assembly"
@@ -5937,9 +5736,7 @@
             500.0,
             1.0,
             1.0,
-            931.0,
-            1.2,
-            1.5
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_mesh_quality"
@@ -5951,9 +5748,7 @@
             500.0,
             1.0,
             1.0,
-            931.0,
-            1.2,
-            1.5
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_mesh_quality"
@@ -5965,9 +5760,7 @@
             500.0,
             1.0,
             1.0,
-            931.0,
-            1.2,
-            1.5
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_mesh_quality"
@@ -5979,9 +5772,7 @@
             500.0,
             1.0,
             1.0,
-            931.0,
-            1.2,
-            1.5
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_mesh_quality"
@@ -5993,9 +5784,7 @@
             500.0,
             1.0,
             1.0,
-            931.0,
-            1.2,
-            1.5
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_mesh_quality"
@@ -6007,9 +5796,7 @@
             500.0,
             1.0,
             1.0,
-            931.0,
-            1.2,
-            1.5
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_mesh_quality"
@@ -6089,8 +5876,7 @@
           "loc": null,
           "numbers": [
             4.0,
-            931.0,
-            1.2,
+            20260906.0,
             2.0,
             4.5,
             5.0,
@@ -6139,11 +5925,7 @@
             0.005,
             0.005,
             0.0035,
-            0.0005,
-            544.0,
-            314.0,
-            319.0,
-            556.0
+            0.0005
           ],
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
@@ -6169,7 +5951,12 @@
             0.871,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -6344,10 +6131,7 @@
             17.0,
             175.0,
             1.03,
-            931.0,
-            1.1,
-            1.3,
-            703.0,
+            20260906.0,
             8.0,
             -10.0,
             50.0,
@@ -6364,7 +6148,7 @@
           "code": "pec_faces_finite_pec",
           "loc": null,
           "numbers": [
-            931.0
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
@@ -6398,11 +6182,7 @@
             0.008,
             0.01,
             0.0,
-            0.001,
-            544.0,
-            314.0,
-            319.0,
-            556.0
+            0.001
           ],
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
@@ -6414,11 +6194,7 @@
             0.024,
             0.01,
             0.0,
-            0.001,
-            544.0,
-            314.0,
-            319.0,
-            556.0
+            0.001
           ],
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
@@ -6453,7 +6229,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -6628,10 +6409,7 @@
             17.0,
             175.0,
             1.03,
-            931.0,
-            1.1,
-            1.3,
-            703.0,
+            20260906.0,
             8.0,
             -10.0,
             50.0,
@@ -6648,7 +6426,7 @@
           "code": "pec_faces_finite_pec",
           "loc": null,
           "numbers": [
-            931.0
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
@@ -6705,7 +6483,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -6979,6 +6762,39 @@
           "source": "_validate_cfg_multiband_grading"
         },
         {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            0.246913580247,
+            1.25,
+            3.46944695195e-15,
+            1.73472347598e-14,
+            0.0,
+            0.0,
+            20.0,
+            0.010125,
+            19.7530864198,
+            0.01,
+            0.123456790123,
+            6.25e-05,
+            20.0,
+            0.01,
+            20.0,
+            0.01,
+            3.46944695195e-15,
+            1.73472347598e-18,
+            3.0,
+            0.0015,
+            3.0,
+            0.0015,
+            0.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
           "code": "thin_absorber",
           "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
           "numbers": [
@@ -6989,8 +6805,6 @@
             6.0,
             6.0,
             1.0,
-            1272.0,
-            1346.0,
             6.0,
             -38.0,
             2.0,
@@ -7013,11 +6827,7 @@
             0.008,
             0.009,
             0.004,
-            0.0015,
-            544.0,
-            314.0,
-            319.0,
-            556.0
+            0.0015
           ],
           "severity": "warning",
           "source": "_validate_cfg_port_inside_pec"
@@ -7043,7 +6853,12 @@
             15.7,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -7341,8 +7156,7 @@
             0.7,
             2.86939,
             0.0,
-            2.032,
-            1512.0
+            2.032
           ],
           "severity": "warning",
           "source": "line_stub_findings"
@@ -7363,8 +7177,7 @@
             0.7,
             2.86939,
             1.0,
-            21.968,
-            1512.0
+            21.968
           ],
           "severity": "warning",
           "source": "line_stub_findings"
@@ -7385,7 +7198,7 @@
           "code": "pec_faces_finite_pec",
           "loc": null,
           "numbers": [
-            931.0
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
@@ -8388,12 +8201,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8406,12 +8219,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8424,33 +8237,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 26000.0,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                26000.0
+                24000.0
               ],
               "sub_cell": false
             }
           },
           "findings": [
-            {
-              "axis": "x,y,z",
-              "kind": "inside-absorber"
-            },
-            {
-              "axis": "x",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "y",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "z",
-              "kind": "off-lattice-face"
-            },
             {
               "axis": "x,y,z",
               "kind": "clipped-by-domain"
@@ -8464,7 +8261,7 @@
             "name": "dielectric",
             "sigma": 0.0
           },
-          "n_cells": 5733
+          "n_cells": 4800
         },
         "out-of-scope": {
           "axes": {},
@@ -8602,12 +8399,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8620,12 +8417,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 42000.0,
+              "realized_extent_um": 40000.0,
               "realized_um": [
                 0.0,
-                42000.0
+                40000.0
               ],
               "sub_cell": false
             },
@@ -8638,33 +8435,17 @@
               ],
               "face_residual_um": [
                 0.0,
-                2000.0
+                0.0
               ],
-              "realized_extent_um": 26000.0,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                26000.0
+                24000.0
               ],
               "sub_cell": false
             }
           },
           "findings": [
-            {
-              "axis": "x,y,z",
-              "kind": "inside-absorber"
-            },
-            {
-              "axis": "x",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "y",
-              "kind": "off-lattice-face"
-            },
-            {
-              "axis": "z",
-              "kind": "off-lattice-face"
-            },
             {
               "axis": "x,y,z",
               "kind": "clipped-by-domain"
@@ -8678,7 +8459,7 @@
             "name": "dielectric",
             "sigma": 0.0
           },
-          "n_cells": 5733
+          "n_cells": 4800
         },
         "out-of-scope": {
           "axes": {},
@@ -8992,10 +8773,7 @@
             17.0,
             175.0,
             1.03,
-            931.0,
-            1.1,
-            1.3,
-            703.0,
+            20260906.0,
             8.0,
             -10.0,
             50.0,
@@ -9012,7 +8790,7 @@
           "code": "pec_faces_finite_pec",
           "loc": null,
           "numbers": [
-            931.0
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
@@ -9069,7 +8847,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -9244,10 +9027,7 @@
             17.0,
             175.0,
             1.03,
-            931.0,
-            1.1,
-            1.3,
-            703.0,
+            20260906.0,
             8.0,
             -10.0,
             50.0,
@@ -9264,7 +9044,7 @@
           "code": "pec_faces_finite_pec",
           "loc": null,
           "numbers": [
-            931.0
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
@@ -9321,7 +9101,12 @@
             1.74,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -9496,10 +9281,7 @@
             21.0,
             175.0,
             0.83,
-            931.0,
-            1.1,
-            1.3,
-            703.0,
+            20260906.0,
             8.0,
             -10.0,
             50.0,
@@ -9516,7 +9298,7 @@
           "code": "pec_faces_finite_pec",
           "loc": null,
           "numbers": [
-            931.0
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
@@ -9583,7 +9365,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -10150,8 +9937,7 @@
             0.9,
             2.86939,
             0.0,
-            1.651,
-            1512.0
+            1.651
           ],
           "severity": "warning",
           "source": "line_stub_findings"
@@ -10172,8 +9958,7 @@
             0.9,
             2.86939,
             1.0,
-            31.623,
-            1512.0
+            31.623
           ],
           "severity": "warning",
           "source": "line_stub_findings"
@@ -10209,7 +9994,7 @@
             0.0,
             254.0,
             0.0,
-            802.0
+            32.0
           ],
           "severity": "warning",
           "source": "_check_msl_port_geometry"
@@ -10232,7 +10017,7 @@
             0.0,
             254.0,
             0.0,
-            802.0
+            32.0
           ],
           "severity": "warning",
           "source": "_check_msl_port_geometry"
@@ -10248,10 +10033,7 @@
             600.0,
             47.55,
             7.92,
-            931.0,
-            1.1,
-            1.3,
-            703.0,
+            20260906.0,
             8.0,
             -10.0,
             50.0,
@@ -10268,10 +10050,66 @@
           "code": "pec_faces_finite_pec",
           "loc": null,
           "numbers": [
-            931.0
+            20260906.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_pec_faces_with_finite_pec"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[0]",
+          "numbers": [
+            0.0,
+            0.25,
+            262.0,
+            0.033274,
+            261.417322835,
+            0.0332,
+            0.291338582677,
+            3.7e-05,
+            163.0,
+            0.020701,
+            162.960629921,
+            0.020696,
+            0.0196850393701,
+            2.5e-06,
+            2.0,
+            0.000254,
+            2.0,
+            0.000254,
+            0.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
+        },
+        {
+          "code": "realization",
+          "loc": "geometry[1]",
+          "numbers": [
+            1.0,
+            0.25,
+            261.0,
+            0.033147,
+            261.417322835,
+            0.0332,
+            -0.208661417323,
+            -2.65e-05,
+            4.7,
+            0.0005969,
+            4.72440944882,
+            0.0006,
+            -0.362204724409,
+            -4.6e-05,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "judge_realization"
         }
       ]
     },

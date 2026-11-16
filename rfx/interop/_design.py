@@ -87,7 +87,7 @@ rediscover it:
 - ``_WaveguidePortEntry.probe_offset`` / ``ref_offset`` and
   ``_PortEntry.reference_plane_cells`` are likewise cell counts;
 - ``_refinement`` is the rfx SBP-SAT subgrid prototype — experimental, and
-  falsified in 3D (PR #90);
+  falsified in 3D;
 - ``cpml_layers`` is a cell count against an absorber whose remaining knobs
   are hard-coded in ``rfx/boundaries/cpml.py``;
 - non-uniform mesh profiles have no counterpart in a solver with a scalar
@@ -482,7 +482,7 @@ def _ivec(n: int) -> _F:
 _GEOMETRY_FIELDS: dict[str, _F] = {
     "shape": _SHAPE,
     "material_name": _STR,
-    # #931 (IR v2): the #706 per-entry realization flag is gone. Realization is
+    # IR v2 realization is
     # decided by the contract from the shape alone (a zero-thickness PEC
     # Box is a sheet, everything else a volume), so nothing per entry is
     # left to record.
@@ -491,12 +491,13 @@ _GEOMETRY_FIELDS: dict[str, _F] = {
 # ``_PortEntry`` holds two physically different objects, discriminated only by
 # the ``impedance == 0`` sentinel that ``add_source`` stamps.  The document
 # splits them into ``soft_sources`` and ``lumped_ports``; a soft source records
-# only the three fields ``add_source`` can set.
+# only the fields ``add_source`` can set.
 _SOFT_SOURCE_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "position": _vec(3),
     "component": _STR,
     "waveform": _WAVEFORM,
-    # issue #571 option 4: recorded so a design document round-trips the
+    # recorded so a design document round-trips the
     # explicit amplitude semantics; None round-trips as the legacy per-path
     # meaning (and correctly re-emits the deprecation warning on load).
     "amplitude_kind": _opt(_STR),
@@ -550,6 +551,7 @@ def _ports_with_termination_indices(sim, ports):
 
 
 _LUMPED_PORT_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "terminates": _TERMINATES,
     "position": _vec(3),
     "component": _STR,
@@ -563,6 +565,7 @@ _LUMPED_PORT_FIELDS: dict[str, _F] = {
 }
 
 _PROBE_FIELDS: dict[str, _F] = {
+    "allow_in_absorber": _BOOL,
     "position": _vec(3),
     "component": _STR,
 }
@@ -572,7 +575,7 @@ _THIN_CONDUCTOR_FIELDS: dict[str, _F] = {
     "sigma_bulk": _NUM,
     "thickness": _NUM,
     "eps_r": _NUM,
-    # Issue #669: opt-in Leontovich surface-impedance loss. None = the legacy
+    # opt-in Leontovich surface-impedance loss. None = the legacy
     # DC/PEC behaviour; a number is the band-centre fit frequency f0 in Hz.
     # Design state (which loss model the sheet uses), not run control, so it
     # belongs in the document; None round-trips as JSON null.
@@ -811,13 +814,16 @@ def _dump_list(
 # one of the constructor-state tuples, so a new builder field cannot slip into rfx without
 # a decision being recorded here.
 
+_OPTIONAL_SOLVER_DEFAULTS = {"snap": "strict", "pec_occupancy_model": "edge_keep"}
+
 EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
-    "_adi_cfl_factor",
     "_boundary",
     "_boundary_spec",
     "_boundary_explicit",
-    # B1 descriptor derived from the exported boundary and feature entries.
-    "_boundary_model",
+    # B1 descriptor derived from the exported boundary and feature entries;
+    # the face spec the constructor's absorber scalar expanded to
+    # (rfx.boundaries.serialization.legacy_spec), set again by the rebuild's constructor.
+    "_boundary_model", "_boundary_scalar_spec",
     "_coaxial_ports",
     "_cpml_kappa_max",
     "_cpml_layers",
@@ -847,26 +853,26 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_probes",
     "_refinement",
     "_solver",
-    "_snap",
+    *(f"_{key}" for key in _OPTIONAL_SOLVER_DEFAULTS),
     "_stencil_order",
     "_dt_pin", "_dt_min_cell",
     "_tfsf",
     "_pinned_sheets",
     "_thin_conductors",
     "_waveguide_ports",
-    # Issue #469: auto-offset lower edges. Accounted for by the dump via
+    # auto-offset lower edges. Accounted for by the dump via
     # _msl_ports_with_resolved_offsets — the document records each auto
     # port's RESOLVED n_probe_offset (frozen concrete value), so a rebuilt
     # design reproduces the original's probe placement exactly; the
     # bookkeeping itself is therefore not a document section.
     "_msl_auto_offset_min",
-    # Issue #681: auto-spacing bookkeeping (port name -> registration HJ
+    # auto-spacing bookkeeping (port name -> registration HJ
     # eps_eff). Accounted for the same way as _msl_auto_offset_min: the
     # dump resolves through _resolve_msl_auto_offsets, which freezes the
     # widened concrete n_probe_spacing into the recorded entries, so a
     # rebuilt design reproduces the original probe placement exactly.
     "_msl_auto_probe_spacing",
-    # Issue #810: port name -> the two lengths the automatic probe defaults
+    # port name -> the two lengths the automatic probe defaults
     # are counted from, (lambda_eff/(4*pi), lambda_eff/8). Accounted for the
     # same way: the dump resolves through _resolve_msl_auto_offsets, which
     # counts them in the runway cell on a graded propagation axis and
@@ -875,7 +881,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     # them again for the rebuilt port, where preflight reads them only to say
     # what leaving an offset None would give.
     "_msl_auto_probe_lengths",
-    # Issue #470: indices of library-internal witness probes. Populated and
+    # indices of library-internal witness probes. Populated and
     # restored strictly inside compute_msl_s_matrix — ALWAYS empty at
     # construction and at dump time, so it contributes nothing to the
     # document by construction. Concrete constructor bookkeeping belongs in
@@ -884,26 +890,21 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_internal_probe_indices",
 )
 
-#: Attributes deliberately absent from the document.  These are derived,
-#: transient, or run-time state — see the module docstring, rule 4.
-#: None of these attributes is set by the constructor.
-EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
-    "_mesh_resolution",
-    "_boundary_default_warned",
-    # crop rectangles for the internal MSL DFT planes; exists only while
-    # compute_msl_s_matrix runs and is removed on exit (never a design input)
-    "_dft_plane_regions",
-)
+from rfx.interop._design_state import EXCLUDED_SIMULATION_ATTRS
+
 
 #: Constructor state accepted only with traced widths; export refuses that input.
 TRACED_ONLY_SIMULATION_ATTRS: tuple[str, ...] = ("_nominal_profiles",)
+
+# Lazy declarations have an explicit disposition alongside constructor state.
+REFUSED_SIMULATION_ATTRS = {"_wall_losses": "refused"}
 
 
 def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
     """MSL port entries with auto ``n_probe_offset`` resolved for export.
 
     Auto offsets are solved at ``compute_msl_s_matrix`` time against the
-    registered geometry (issue #469 interval solve). The design document
+    registered geometry. The design document
     must record the CONCRETE value that solve would use — recording the
     stored lower edge would make a rebuilt design place its probes
     differently from the original (silent structural divergence, the
@@ -918,19 +919,12 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
         return list(sim._msl_ports)
     from rfx.api._sparams import _resolve_msl_auto_offsets
 
-    # MUST mirror the driver: hand ``_resolve_msl_auto_offsets`` the SAME
-    # grid ``compute_msl_s_matrix`` would build, and let the one shared
-    # function take the whole decision. This used to be a SECOND predicate
-    # here ("any of the three profiles set -> keep the stored value"),
-    # written to mirror the driver's blanket NU bail-out; a dz-only
-    # version of it shipped a real divergence once (dx/dy-profile-only MSL
-    # sims dumped a solved offset the driver never used — PR #478 review
-    # MAJOR, regression-locked in
-    # test_auto_offset_dump_matches_driver_on_dx_profile_nu). Since #686
-    # the driver's bail-out is per-port and keys on that port's
-    # PROPAGATION axis, so a copy here could drift again in a new way —
-    # passing the driver's grid to the driver's own function removes the
-    # copy instead of updating it.
+    # Mirror the driver: hand ``_resolve_msl_auto_offsets`` the same grid
+    # ``compute_msl_s_matrix`` builds and let the shared function decide. Its
+    # bail-out is per port and depends on the propagation axis; a second
+    # predicate here could disagree on dx/dy-profile-only MSL simulations.
+    # ``test_auto_offset_dump_matches_driver_on_dx_profile_nu`` pins the shared
+    # decision.
     is_nonuniform = any(
         getattr(sim, name, None) is not None
         for name in ("_dz_profile", "_dx_profile", "_dy_profile")
@@ -982,7 +976,7 @@ class _BoundaryPlan(NamedTuple):
     legacy_views: dict | None
 
 
-def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
+def _plan_boundary(payload: dict, *, has_floquet: bool, open_tfsf: bool = False) -> _BoundaryPlan:
     """Choose the construction path that reproduces a recorded boundary state.
 
     ``Simulation`` accepts either a ``BoundarySpec`` (authoritative; the
@@ -1050,7 +1044,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
         and periodic_ok
     ):
         return _BoundaryPlan(
-            kwargs={"boundary": design_constructor_boundary(spec, scalar, pec_faces, has_floquet=has_floquet), "cpml_layers": cpml_layers, **common},
+            kwargs={"boundary": design_constructor_boundary(spec, scalar, pec_faces, keeps_shorthand=has_floquet or open_tfsf), "cpml_layers": cpml_layers, **common},
             legacy_views=None,
         )
 
@@ -1157,13 +1151,13 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
 
 
 # ---------------------------------------------------------------------------
-# Coaxial termination entries (removed, #1212)
+# Coaxial termination entries (removed)
 # ---------------------------------------------------------------------------
 #
 # ``add_coaxial_matched_load``, ``add_coaxial_open_termination`` and
 # ``add_coaxial_pec_end_cap`` registered cell-relative terminations that only
 # the single-plane coaxial S-matrix lane consumed; the builders and the lane
-# were removed together in #1212.
+# are unsupported.
 # The three ``rfx-design-ir/v2`` keys stay in ``excitations`` so a document
 # written before the removal still loads when it registered none: they are
 # exported as empty lists, an empty list imports as nothing, and an entry in
@@ -1183,7 +1177,7 @@ def _refuse_removed_coaxial_terminations(excitations: dict[str, Any]) -> None:
             raise _refuse(
                 f"excitations.{key} holds {len(entries)} entr"
                 f"{'y' if len(entries) == 1 else 'ies'} from Simulation."
-                f"{builder}(), which was removed in #1212 together with the "
+                f"{builder}(), which was removed together with the "
                 "single-plane coaxial S-matrix lane that was its only "
                 "consumer. For a coaxial one-port with a short, open or "
                 "matched load use compute_coaxial_line_reflection("
@@ -1260,7 +1254,7 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
     ):
         note(
             "solver",
-            "ADI, mixed precision and the (2,4) stencil are rfx-specific "
+            "Mixed precision and the (2,4) stencil are rfx-specific "
             "solver settings with no counterpart in openEMS or Meep",
         )
 
@@ -1301,8 +1295,8 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
     if document["refinement"] is not None:
         note(
             "refinement",
-            "SBP-SAT subgridding is an rfx research prototype, falsified in 3D "
-            "(PR #90) and outside the public support scope; it must not be "
+            "SBP-SAT subgridding is an rfx research prototype, falsified in 3D (docs/design_notes/geometry_setup_interop.md)"
+            " and outside the public support scope; it must not be "
             "exported to another solver, where its presence would read as a "
             "validated capability",
         )
@@ -1366,23 +1360,20 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
     Parameters
     ----------
     sim : Simulation
-        A simulation whose design has been established through the
-        constructor and the ``add_*`` builders.
+        A simulation configured through the constructor and ``add_*`` builders.
 
     Returns
     -------
     dict
-        A ``rfx-design-ir/v2`` document.  Every value is a JSON scalar, list
-        or mapping; ``json.dump(document, allow_nan=False)`` succeeds without
-        ``default=``.
+        A ``rfx-design-ir/v2`` document of JSON scalars, lists and mappings;
+        ``json.dump(document, allow_nan=False)`` needs no ``default=``.
 
     Raises
     ------
     UnsupportedDesignFeature
-        If any design state cannot be represented exactly — an unregistered
-        shape class (``MeshShape``, a user-defined ``Shape``), a
-        ``CustomWaveform``, a JAX-traced mesh profile, a non-finite number, or
-        a record class that has grown a field this module does not record.
+        If design state cannot be represented exactly: unregistered shapes,
+        custom waveforms, traced profiles, non-finite numbers, new record
+        fields or wall losses.
 
     Notes
     -----
@@ -1394,6 +1385,8 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
     function detect the situation, so the responsibility is the caller's.  See
     the module docstring.
     """
+    if getattr(sim, "_wall_losses", ()):
+        raise UnsupportedDesignFeature("add_wall_loss is not carried by the design document")
     soft_sources, lumped_ports = _dump_ports(sim)
 
     ntff = None
@@ -1480,10 +1473,9 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
         },
         "boundary": _dump_boundary(sim),
         "solver": {
-            "snap": check_text(sim._snap, what="_snap"),
+            **{key: check_text(getattr(sim, f"_{key}"), what=f"_{key}") for key in _OPTIONAL_SOLVER_DEFAULTS},
             "precision": check_text(sim._precision, what="_precision"),
             "solver": check_text(sim._solver, what="_solver"),
-            "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
             "stencil_order": _integer(sim._stencil_order, what="_stencil_order"),
             # A pinned time step (Simulation(dt=..., dt_min_cell=...)) is a design
             # input: a rebuilt design without it would derive its own dt and
@@ -1494,7 +1486,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 None if getattr(sim, "_dt_min_cell", None) is None
                 else check_number(sim._dt_min_cell, what="_dt_min_cell")
             ),
-            # #949: the node-eps rule at dielectric interfaces on the NU lane
+            # the node-eps rule at dielectric interfaces on the NU lane
             # ("sampled" | "dual_average"). A design input: a rebuilt design
             # that silently fell back to "sampled" would solve a different
             # material column.
@@ -1538,7 +1530,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 CoaxialPort,
                 what="_coaxial_ports",
             ),
-            # Removed builders (#1212); kept empty so v2 readers see the keys.
+            # Removed builders; kept empty so v2 readers see the keys.
             "coaxial_matched_loads": [],
             "coaxial_open_terminations": [],
             "coaxial_pec_end_caps": [],
@@ -1710,8 +1702,8 @@ def simulation_from_design(document: Any) -> Any:
         legacy = ""
         if schema == "rfx-design-ir/v1":
             legacy = (
-                "; v1 geometry entries carried the #706 per-entry 'two-plane' "
-                "realization flag, which the lattice ownership contract (#931) "
+                "; v1 geometry entries carried the per-entry 'two-plane' "
+                "realization flag, which the lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md "
                 "removed — a "
                 "one-cell PEC Box is a volume with both faces now, and a "
                 "zero-thickness Box is a sheet. Re-export the design from "
@@ -1739,8 +1731,8 @@ def simulation_from_design(document: Any) -> Any:
     solver = _section(document, "solver", what="design document")
     _require_exact_keys(
         solver,
-        {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps",
-         "dt_pin", "dt_min_cell"} | ({"snap"} & set(solver)),
+        {"precision", "solver", "stencil_order", "interface_eps",
+         "dt_pin", "dt_min_cell"} | ((_OPTIONAL_SOLVER_DEFAULTS.keys() | {"adi_cfl_factor"}) & set(solver)),
         what="solver",
     )
 
@@ -1762,7 +1754,7 @@ def simulation_from_design(document: Any) -> Any:
     floquet_payloads = _entry_list(excitations, "floquet_ports", what="excitations")
     plan = _plan_boundary(
         _section(document, "boundary", what="design document"),
-        has_floquet=bool(floquet_payloads),
+        has_floquet=bool(floquet_payloads), open_tfsf=excitations["tfsf"] is not None and not excitations["tfsf"].get("closed_box", False),
     )
 
     sim = Simulation(
@@ -1785,10 +1777,9 @@ def simulation_from_design(document: Any) -> Any:
             if mesh["dz_profile"] is None
             else _array_from_dict(mesh["dz_profile"], what="mesh.dz_profile")
         ),
-        snap=check_text(solver.get("snap", "strict"), what="solver.snap"),
+        **{key: check_text(solver.get(key, default), what=f"solver.{key}") for key, default in _OPTIONAL_SOLVER_DEFAULTS.items()},
         precision=check_text(solver["precision"], what="solver.precision"),
         solver=check_text(solver["solver"], what="solver.solver"),
-        adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
         stencil_order=_integer(solver["stencil_order"], what="solver.stencil_order"),
         interface_eps=check_text(solver["interface_eps"], what="solver.interface_eps"),
         dt=None if solver["dt_pin"] is None else check_number(solver["dt_pin"], what="solver.dt_pin"),
@@ -1875,11 +1866,13 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _SOFT_SOURCE_FIELDS,
             what=f"excitations.soft_sources[{index}]",
+            defaults={"allow_in_absorber": False},
         )
         # add_source validates/resolves None at the declaration storage site.
         sim.add_source(
             values["position"], values["component"], waveform=values["waveform"],
             amplitude_kind=values["amplitude_kind"],
+            allow_in_absorber=values["allow_in_absorber"],
         )
         payload["amplitude_kind"] = sim._ports[-1].amplitude_kind
 
@@ -1890,7 +1883,7 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _LUMPED_PORT_FIELDS,
             what=f"excitations.lumped_ports[{index}]",
-            defaults={"radius": None},
+            defaults={"radius": None, "allow_in_absorber": False},
         )
         values["terminates"] = _termination_inputs(sim, values["terminates"])
         sim.add_port(
@@ -1948,9 +1941,11 @@ def simulation_from_design(document: Any) -> Any:
         _entry_list(observables, "probes", what="observables")
     ):
         values = _load_entry(
-            payload, _PROBE_FIELDS, what=f"observables.probes[{index}]"
+            payload, _PROBE_FIELDS, what=f"observables.probes[{index}]",
+            defaults={"allow_in_absorber": False},
         )
-        sim.add_probe(values["position"], values["component"])
+        sim.add_probe(values["position"], values["component"],
+                      allow_in_absorber=values["allow_in_absorber"])
 
     for index, payload in enumerate(
         _entry_list(observables, "dft_planes", what="observables")
@@ -1995,62 +1990,28 @@ def simulation_from_design(document: Any) -> Any:
 # Round-trip self-check
 # ---------------------------------------------------------------------------
 
-def _equal(left: Any, right: Any) -> bool:
-    """Structural equality that treats list and tuple alike.
-
-    Numbers compare with ``==``, so an ``int`` in a hand-written document
-    matches the ``float`` the exporter emits for the same value.
-    """
-    if isinstance(left, dict) or isinstance(right, dict):
-        if not (isinstance(left, dict) and isinstance(right, dict)):
-            return False
-        if set(left) != set(right):
-            return False
-        return all(_equal(left[k], right[k]) for k in left)
-    if isinstance(left, (list, tuple)) or isinstance(right, (list, tuple)):
-        if not (
-            isinstance(left, (list, tuple)) and isinstance(right, (list, tuple))
-        ):
-            return False
-        if len(left) != len(right):
-            return False
-        return all(_equal(a, b) for a, b in zip(left, right))
-    if isinstance(left, bool) or isinstance(right, bool):
-        return left is right
-    return left == right
-
-
-def _first_difference(left: Any, right: Any, path: str = "") -> str | None:
-    """Path of the first structural difference, or None when equal."""
-    if isinstance(left, dict) and isinstance(right, dict):
-        for key in sorted(set(left) | set(right)):
-            here = f"{path}.{key}" if path else key
-            if key not in left:
-                return f"{here} (missing from the rebuilt design)"
-            if key not in right:
-                return f"{here} (missing from the document)"
-            found = _first_difference(left[key], right[key], here)
-            if found is not None:
-                return found
-        return None
-    if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
-        if len(left) != len(right):
-            return f"{path} (length {len(left)} rebuilt vs {len(right)} in document)"
-        for index, (a, b) in enumerate(zip(left, right)):
-            found = _first_difference(a, b, f"{path}[{index}]")
-            if found is not None:
-                return found
-        return None
-    if _equal(left, right):
-        return None
-    return f"{path} (rebuilt {left!r} vs document {right!r})"
+from rfx.interop._design_comparison import _equal, _first_difference
 
 
 def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
-    # Documents written before snap was exported use the strict default.
-    if "snap" not in document["solver"]:
-        document = {**document, "solver": {**document["solver"], "snap": "strict"}}
+    # Older v2 entries omit the absorber opt-in keyword.
+    document = {**document}
+    for section, families in (
+        ("excitations", ("soft_sources", "lumped_ports")),
+        ("observables", ("probes",)),
+    ):
+        document[section] = {**document[section]}
+        for family in families:
+            document[section][family] = [
+                {"allow_in_absorber": False, **entry}
+                for entry in document[section][family]
+            ]
+    # Older documents use defaults for optional solver keys they do not carry.
+    document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
+    if document["solver"]["solver"] == "yee" and "adi_cfl_factor" in document["solver"]:
+        document = {**document, "solver": {key: value for key, value in document["solver"].items()
+                                          if key != "adi_cfl_factor"}}
     if _equal(rebuilt, document):
         return
     where = _first_difference(rebuilt, document) or "<unknown>"

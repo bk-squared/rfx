@@ -19,7 +19,7 @@ uniform run or another reference.
 A 1.6 mm substrate at 0.5 mm cells gets only 3 cells, which is too coarse.
 Shrinking a uniform cell to 0.2 mm resolves it, but it refines all three axes:
 about 15× more cells. A graded z profile puts 0.27 mm cells in the substrate
-and 1.5 mm cells in the air, and leaves x and y alone.
+and cells up to 1.45 mm in the air, and leaves x and y alone.
 
 | Situation | Mesh |
 |---|---|
@@ -63,8 +63,8 @@ Rules of thumb:
 
 - **At least 4 cells** through a substrate; 6–8 when the field inside it
   matters.
-- **Neighbour ratio ≤ 1.4 in z** (the validated limit), and ≤ 1.3 in x and y.
-  Preflight warns above that.
+- **Neighbour ratio ≤ 1.4** on every axis (the validated limit). Preflight warns
+  above that.
 - **Interfaces on cell boundaries.** `make_band_profile` does this for you.
 - **Uniform cells next to the absorber.** Leave room for `cpml_layers`
   full-size cells between the last ramp and each absorbing face. Here the
@@ -125,7 +125,10 @@ value is kept as given and is not checked against the profile, so pass
 
 Keep the interfaces on node planes, as the `assert` above checks. A sheet
 conductor lands on the nearest node plane, so a substrate face between nodes
-leaves a gap between the copper and the dielectric. Preflight's
+leaves a gap between the copper and the dielectric. A dielectric `Box` face
+between nodes also goes to the nearest node plane, and a dielectric layer with no
+cell centre inside it is refused before the run: refine until one lies inside.
+Preflight's
 `graded_box_rasterization` warning fires when a thin `Box` gets far fewer
 cells than the fine spacing nearby implies; fix the profile rather than the
 warning.
@@ -190,26 +193,38 @@ features:
 ```python
 from rfx import auto_configure
 
+board = Box((0, 0, 0), (0.10, 0.08, 1.6e-3))
 cfg = auto_configure(
-    geometry=[(Box((0, 0, 0), (0.10, 0.08, 1.6e-3)), "fr4")],
+    geometry=[(board, "fr4")],
     freq_range=(1e9, 4e9),
     materials={"fr4": {"eps_r": 4.4, "sigma": 0.025}},
     accuracy="standard",
 )
 print(cfg.summary())
 auto_sim = Simulation(**cfg.to_sim_kwargs())
+auto_sim.add_material("fr4", eps_r=4.4, sigma=0.025)
+lo = tuple(v + d for v, d in zip(board.corner_lo, cfg.offset))
+hi = tuple(v + d for v, d in zip(board.corner_hi, cfg.offset))
+auto_sim.add(Box(lo, hi), material="fr4")
 ```
 
-`cfg.uses_nonuniform` tells you whether it chose a graded z mesh. Its profile
-can step by more than the 1.4 ratio (it does here, and the `Simulation`
-constructor warns), so treat it as a starting point. It plans from the
-dielectrics you pass. Add conductors to the simulation afterwards, as
-sheets or as volumes at least one cell thick.
+`cfg.uses_nonuniform` tells you whether it chose a graded z mesh. The profile
+spans `cfg.domain[2]`; `cfg.offset` places the board with free space below and
+above it. Translate every shape, source and probe by that offset. The profile
+can step by more than the 1.4 ratio, so treat it as a starting point. It plans
+from the dielectrics you pass. Add conductors afterwards as sheets or as
+volumes at least one cell thick.
 
 If you create a `Simulation` without `dx`, rfx picks a mesh from the
-registered geometry automatically; see
-[Materials and Geometry](/rfx/model/materials/#freeze-the-mesh-before-placing-geometry-from-it)
+registered geometry within the declared domain, keeping the drawn positions.
+See [Materials and Geometry](/rfx/model/materials/#freeze-the-mesh-before-placing-geometry-from-it)
 for placing geometry on an automatic mesh.
+
+For a concrete `dz_profile`, a positive declared z differing from the profile
+sum by more than 1% is refused under `snap="strict"`. Declare the sum as z,
+use z = 0 to infer it, or choose `snap="declared"` to keep the declaration with
+a warning. A traced profile is checked only when `nominal_profiles` supplies
+the concrete widths (relative tolerance 1e-9); otherwise its sum is unjudged.
 
 ## Time step and cost
 
@@ -263,11 +278,14 @@ use a fixed `n_steps` there.
 - **Accuracy is per observable.** A graded run that completes does not show
   that its S-parameters, flux or far field are right. Compare with a uniform
   run or an external reference.
-- **Grading ratios** above 1.4 in z, or 1.3 in x and y, are outside the
-  validated range. Preflight warns.
-- **TFSF along a graded axis:** preflight warns, because the scattered-field
-  region picks up a spurious field (about 0.7 of the total-field peak with no
-  scatterer). Normal incidence along ±x needs a uniform x axis.
+- **Grading ratios** above 1.4 on any axis are outside the validated range.
+  Preflight warns.
+- **TFSF along a graded x axis:** normal incidence runs. The incident line
+  uses the realized x cells, and with no scatterer the scattered-field region
+  reads within 1×10⁻⁵ of the total-field peak (measured 7×10⁻⁶), as on
+  uniform cells
+  (`tests/unit/preflight/test_graded_axis_findings.py`). A closed
+  box or an oblique wave on a graded x is refused.
 - **Microstrip probes on a graded feed:** the automatic probe offset and
   spacing are counted in cells under the port, and recounted at run time.
   Keep the feed region uniform if you want predictable probe positions.

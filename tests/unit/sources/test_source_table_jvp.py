@@ -13,6 +13,7 @@ def _record(steps):
     import jax.numpy as jnp
     import numpy as np
     from rfx import Simulation
+    import rfx.model
     from rfx.model import source_coefficients as tables
     from unittest.mock import patch
     def fwd(a, distributed, with_table=False):
@@ -29,7 +30,10 @@ def _record(steps):
             result = original(*args, **kwargs)
             built.append(result)
             return result
-        with patch.object(tables, 'source_table', capture):
+        # The graded lane reads the builder through the rfx.model package top.
+        assert rfx.model.source_table is tables.source_table
+        with patch.object(tables, 'source_table', capture), \
+                patch.object(rfx.model, 'source_table', capture):
             result = sim.forward(
                 n_steps=steps, eps_override=jnp.ones(grid.shape) * a,
                 distributed=distributed,

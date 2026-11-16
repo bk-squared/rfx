@@ -6,7 +6,6 @@ field evolution with manufactured DFTs; no FDTD accuracy claim is made.
 from __future__ import annotations
 
 from dataclasses import replace
-from types import MethodType
 
 import numpy as np
 import pytest
@@ -36,7 +35,7 @@ def _base(direction="+x", *, auto=False):
     sim.add(Box((0, 0, 0), (domain[0], domain[1], 2 * U)), material="substrate")
     sim.add(Box((0, 0, 0), (domain[0], domain[1], 0)), material="pec")
     lo, hi = [0.0, 0.0, 2 * U], [domain[0], domain[1], 2 * U]
-    lo[width], hi[width] = 4 * U, 8 * U
+    lo[width], hi[width] = (4 - .35) * U, (8 + .35) * U
     sim.add(Box(tuple(lo), tuple(hi)), material="pec")
     position = [6 * U, 6 * U, 0.0]
     # Deliberately off-node: the ladder starts from node 2 (or 38), not
@@ -288,7 +287,7 @@ def test_mixed_result_contains_only_msl_records_in_registration_order(monkeypatc
                      n_probe_offset=10, n_probe_spacing=2, n_probes=3)
     sim.add_port(position=(4 * U, 6 * U, U), component="ez", impedance=50.0, terminates=2)
     fake = _fake_forward_mixed_z_profile({k: 1.0 for k in range(grid.nz)}, 1)
-    monkeypatch.setattr(sim, "_forward_from_materials", MethodType(fake, sim))
+    monkeypatch.setattr(Simulation, "_forward_from_materials", fake)
     result = sim.compute_mixed_s_matrix(freqs=np.array([0.8e9, 1.2e9]), n_steps=1,
                                        num_periods=1, magnitude_channel="wave",
                                        enforce_passivity=False, skip_preflight=True)
@@ -366,7 +365,7 @@ def test_the_measured_evidence_carries_its_witness_and_every_number():
     assert "compliant" in effect[compliant - 40:compliant + 80], effect
     assert "51/51" in effect[:near] and "near-reflector arm" in effect[:near]
     # Neither raw value may be presented as physics: both are above unity.
-    for token in ("ABOVE unity", "0.31 %", "0.21 %", "#838",
+    for token in ("ABOVE unity", "0.31 %", "0.21 %", "coherent power excess",
                   "NOT a bound on S", "one fixture", "one bin",
                   "arm-to-arm difference",
                   "same source, load and DUT"):
@@ -469,7 +468,7 @@ def test_the_guard_only_tells_the_clearance_story_when_it_applies(monkeypatch):
     assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT not in text
     assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE not in text
     # The remaining causes are the ones that actually apply.
-    assert "issue #752" in text and "refine the mesh" in text.lower()
+    assert "rasterized board" in text and "refine the mesh" in text.lower()
 
 
 def test_the_guard_tells_it_when_the_clearance_is_insufficient(monkeypatch):

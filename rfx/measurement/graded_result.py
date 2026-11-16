@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_record=None) -> dict:
-    """Assemble the NU result dict (pure code motion from run_nonuniform, #383).
+    """Assemble the NU result dict (pure code motion from run_nonuniform).
     Shared by :func:`run_nonuniform` and
     :func:`run_nonuniform_until_decay` so the two paths return the exact
     same schema (state, time_series, dt, conditional dft_planes /
@@ -30,7 +30,7 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
     use_waveguide_ports = setup.use_waveguide_ports
 
     result = {
-        "dft_time_records": tuple(r[:n_record] for r in final.get("dft_time_records", ())),
+        "dft_time_records": tuple(r[:n_record] for r in final.get("dft_time_records", ()) if r is not None),
         "state": final["fdtd"],
         "time_series": time_series,
         "dt": dt,

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rfx-fdtd"
-version = "2.0.0rc1"
+version = "2.2.0"
 description = "JAX-native 3D FDTD electromagnetic simulator for RF engineering"
 readme = "README.md"
 license = {text = "MIT"}
@@ -24,8 +24,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "jax>=0.10.2",
-    "jaxlib>=0.10.2",
+    "jax>=0.10.2,<0.11.2",
+    "jaxlib>=0.10.2,<0.11.2",
     "numpy>=1.24",
     "scipy>=1.11",
     "matplotlib>=3.7",
@@ -40,7 +40,7 @@ rfx-diagnose = "rfx.diagnostics:main"
 
 [project.optional-dependencies]
 optimization = ["optax>=0.1.7"]
-visualization = ["matplotlib>=3.7", "pillow"]
+visualization = ["matplotlib>=3.7", "pillow", "plotly>=5", "pyvista>=0.40"]
 cad = ["trimesh>=4", "rtree>=1", "cascadio>=0.0.14"]  # MeshShape CAD import (#358): rtree=watertight-contains backend, cascadio=STEP/OpenCASCADE loader
 dashboard = ["streamlit>=1.30", "pandas"]
 # ruff pinned <0.16: 0.16.0 turned on UP035/UP037 (pyupgrade) by default and reddened a
@@ -52,7 +52,9 @@ dashboard = ["streamlit>=1.30", "pandas"]
 # exact contiguous-grouping behavior (PR regenerating .test_durations, #533/#545); an
 # unpinned minor bump changing either would silently invalidate the balance without a
 # code-visible signal.
-dev = ["pytest>=7.0", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "build>=1,<2"]
+# pytest below 9.2: 9.2 turns a crashed xdist worker into INTERNALERROR, which tests/contracts/test_gate_stage2_outcome.py
+# catches; lifted after 2.0 (#2143).
+dev = ["pytest>=7.0,<9.2", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "build>=1,<2"]
 all = ["rfx-fdtd[optimization,visualization,dashboard,cad,dev]"]
 
 [project.urls]
@@ -78,10 +80,11 @@ markers = [
     "multi_gpu: needs two or more GPUs in one node; self-skips otherwise; run by the weekly two-card VESSL job",
     "distributed: tests that require multi-device / distributed setup (deselect with '-m not distributed')",
     "slow_physics: physics regression gate; included by the weekly CPU suite (except gpu/highmem lanes), locally opt-in with '-m slow_physics'",
-    "docs_consistency: a note, guide or table checked against what the code, a record or a script prints; deselected by default and run only by the non-required docs-consistency workflow, because a documentation mismatch never holds a merge (PI, 2026-09-22)",
+    "docs_consistency: a note, guide or table checked against what the code, a record or a script prints; deselected by default and run only by the non-required docs-consistency workflow, because a documentation mismatch never holds a merge",
+    "tooling: tests of scripts/ci and scripts/dev tooling (process checks, not rfx); deselected from the required shards by ci and run by the path-filtered tooling job (ci 2026-10-30)",
     "reads_docs_for_gate(reason): a required test that reads a file under docs/ because the file is part of a gate (a pre-declaration's frozen sections, a known-limitations entry that must exist); tests/_prose_reads.py fails any other required test that reads prose, and fails this marker without a reason",
-    "crossval_ladder: a full mesh-ladder cross-validation case (hours on one GPU); ADDITIVE to gpu/slow, excluded from the weekly a6000 lane and the per-release GPU suite, run monthly on remi gpu-24gb by the merge train Mac runner (agent-rules _configs/scripts/merge_train_weekly_gpu.py, kind crossval-ladder) and required green before a release",
-    "highmem: memory-heavy weekly-lane tests (issue #545, 3-24 GB RSS high-water each); run serially on remi gpu-a6000 by the merge train Mac runner (agent-rules _configs/scripts/merge_train_weekly_gpu.py), weekly and per release tag, ADDITIVE to slow/slow_physics/gpu (never excludes from the default fast lane on its own — addopts above only filters not gpu/slow/slow_physics)",
+    "crossval_ladder: a full mesh-ladder cross-validation case (hours on one GPU); ADDITIVE to gpu/slow, excluded from the weekly a6000 lane and the per-release GPU suite, run monthly on remi gpu-24gb by the merge train's runner (kind crossval-ladder) and required green before a release",
+    "highmem: memory-heavy weekly-lane tests (issue #545, 3-24 GB RSS high-water each); run serially on remi gpu-a6000 by the merge train's runner, weekly and per release tag, ADDITIVE to slow/slow_physics/gpu (never excludes from the default fast lane on its own — addopts above only filters not gpu/slow/slow_physics)",
 ]
 
 [tool.mypy]

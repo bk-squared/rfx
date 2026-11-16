@@ -48,10 +48,31 @@ def _planes(sim):
 def _microstrip(sim):
     # Minimal physical prerequisites of an MSL declaration: both longitudinal
     # conductor surfaces exist at its declared ground and trace heights.
-    sim.add(Box(point(1, 1, 1), point(9, 6, 1)), material='pec')
-    sim.add(Box(point(1, 2, 2), point(9, 4, 2)), material='pec')
+    sim.add(Box(point(1 - .35, 1 - .35, 1), point(9 + .35, 6 + .35, 1)), material='pec')
+    y_hi = (3.9 + .35 * 1.1) if sim._dy_profile is not None and sim._dy_profile[3] != DX else (4 + .35)
+    sim.add(Box(point(1 - .35, 2 - .35, 2), point(9 + .35, y_hi, 2)), material='pec')
     sim.add_msl_port(position=point(3, 3, 1), width=2*DX, height=DX,
                      direction='+x', impedance=50., waveform=waveform)
+
+
+def _metal(sim, *, volume=False, thin=False, f0=False):
+    graded = sim._dy_profile is not None and sim._dy_profile[3] != DX
+    top = (5 + .9 - 2) if graded else 4
+    outside = 1.1 if graded else 1
+    shape = (Box(point(5, 2, 2), point(6, top, 3)) if volume else
+             Box(point(5, 2 - .35, 1 - .35),
+                 point(5, top + .35 * outside, top + .35 * outside)))
+    if thin:
+        sim.add_thin_conductor(shape, **(dict(sigma_bulk=1e4, thickness=DX/10,
+                                             surface_impedance_f0=5e9) if f0 else {}))
+    else:
+        sim.add(shape, material='pec')
+
+
+def _wire(sim):
+    graded = sim._dz_profile is not None and sim._dz_profile[3] != DX
+    top = 3.9 if graded else 4
+    sim.add(PolylineWire((point(5, 3, 1), point(5, 3, top)), radius=0), material='pec')
 
 
 # A row is deliberately explicit: extending admission cannot inherit a no-op.
@@ -66,8 +87,8 @@ BUILDERS = {
     # construction (the constructor refuses it on a concrete axis).
     ('_nominal_profiles', ''): ({}, lambda sim: setattr(sim, '_nominal_profiles', {'x': np.full(4, DX)})),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
-    ('_solver', ''): ({'solver': 'adi', 'boundary': 'pec'}, _nothing),
-    ('_adi_cfl_factor', ''): ({'adi_cfl_factor': 1.1}, _nothing),
+    ('_float64', ''): ({'precision': 'float64'}, _nothing),
+
     ('_stencil_order', ''): ({'stencil_order': 4}, _nothing),
     ('_mode', ''): ({'mode': '2d_tmz'}, _nothing),
     ('_materials', 'eps'): ({}, _nothing),
@@ -77,14 +98,14 @@ BUILDERS = {
     ('_materials', 'lorentz'): _material(eps_r=2.5, lorentz_poles=[lorentz_pole(0.5, 2*np.pi*5e9, 1e9)]),
     ('_materials', 'drude'): _material(eps_r=2.5, lorentz_poles=[drude_pole(2*np.pi*5e9, 1e9)]),
     ('_materials', 'kerr'): _material(eps_r=2.5, chi3=1e-3),
-    ('_geometry', 'pec_volume'): _add('add', Box(point(5.2, 2.1, 2.2), point(6.3, 4.2, 3.3)), material='pec'),
-    ('_geometry', 'pec_sheet'): _add('add', Box(point(5, 2, 1), point(5, 4, 4)), material='pec'),
-    ('_geometry', 'pec_wire'): _add('add', PolylineWire((point(5, 3, 1), point(5, 3, 4)), radius=0), material='pec'),
+    ('_geometry', 'pec_volume'): ({}, lambda sim: _metal(sim, volume=True)),
+    ('_geometry', 'pec_sheet'): ({}, _metal),
+    ('_geometry', 'pec_wire'): ({}, _wire),
     # The graded profile has nodes at 3 and 3.9 DX (not 4): DC film edges sit on
     # nodes every lane shares, so the realized footprint equals the drawn one.
     ('_thin_conductors', 'lossy_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 5, 5)), sigma_bulk=1e3, thickness=DX/10),
-    ('_thin_conductors', 'pec_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 4, 4))),
-    ('_thin_conductors', 'surface_impedance'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 4, 4)), sigma_bulk=1e3, thickness=DX/10, surface_impedance_f0=5e9),
+    ('_thin_conductors', 'pec_sheet'): ({}, lambda sim: _metal(sim, thin=True)),
+    ('_thin_conductors', 'surface_impedance'): ({}, lambda sim: _metal(sim, thin=True, f0=True)),
     ('_pinned_sheets', 'pec_sheet'): _add('add_pinned_sheet', plane_index=6, i_range=(3, 5), j_range=(3, 6), normal_axis=0),
     ('_ports', 'source'): ({}, _nothing),
     ('_ports', 'amplitude_kind'): ({}, _nothing),
@@ -93,12 +114,16 @@ BUILDERS = {
     ('_ports', 'wire_port'): _add('add_port', point(5, 3, 2), 'ez', impedance=50., extent=2*DX, waveform=waveform),
     ('_msl_ports', 'msl_port'): ({}, _microstrip),
     ('_waveguide_ports', 'waveguide_port'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=FREQS, f0=5e9, bandwidth=0.5, probe_offset=2, ref_offset=1),
+    # Two modes need bins above both cutoffs of this 8 x 7 cell aperture (TE10 19.2 GHz, TE01 21.9 GHz); the
+    # mode search ends at twice the highest bin. Same bins as test_multimode_waveguide_owners.
+    ('_waveguide_ports', 'n_modes'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=np.array([30e9, 50e9], dtype=np.float32), f0=40e9, bandwidth=0.5, probe_offset=2, ref_offset=1, n_modes=2),
     ('_coaxial_ports', 'coax_port'): _add('add_coaxial_port', point(5, 3, 0), face='bottom', pin_length=3*DX),
     ('_floquet_ports', 'floquet_port'): _add('add_floquet_port', 3*DX, axis='z', f0=5e9),
     ('_floquet_ports', 'scan_angle'): _add('add_floquet_port', 3*DX, axis='z', f0=5e9, scan_theta=30.),
     ('_lumped_rlc', 'R'): _add('add_lumped_rlc', point(5, 3, 3), 'ez', R=10.),
     ('_lumped_rlc', 'series_RL'): _add('add_lumped_rlc', point(5, 3, 3), 'ez', R=10., L=1e-9),
     ('_tfsf', 'plane_wave'): _add('add_tfsf_source', f0=5e9, bandwidth=0.5, margin=1),
+    ('_tfsf', 'closed_box'): _add('add_tfsf_source', f0=5e9, bandwidth=0.5, margin=1, closed_box=True),
     ('_refinement', 'slab'): _add('add_refinement', z_range=(0., 4*DX), ratio=2),
     ('_refinement', 'relaxed_validation'): _add('add_refinement', z_range=(0., 4*DX), ratio=2, validation='research'),
     ('_boundary', 'cpml'): ({}, _nothing),
@@ -127,14 +152,22 @@ BASE_ROWS = {('_freq_max', ''), ('_domain', ''), ('_dx', ''), ('_materials', 'ep
              ('_dx_profile', 'graded'), ('_dy_profile', 'graded'), ('_dz_profile', 'graded')}
 
 
-def build(row, lane, *, graded=False, dt=None):
+def build(row, lane, *, graded=False, dt=None, precision=None):
     ctor, add = BUILDERS[row]
     kwargs = dict(freq_max=15e9, domain=DOMAIN, dx=DX, boundary=boundary(), cpml_layers=2)
     kwargs.update(ctor)
+    if precision is not None:
+        kwargs["precision"] = precision
     if row[0] == '_waveguide_ports':
         # Modal aperture dimensions are declarations, not inferred rounded
         # box lengths. Put both transverse walls exactly on grid nodes.
         kwargs['domain'] = point(10.3, 8, 7)
+    if row == ('_tfsf', 'closed_box'):
+        kwargs['domain'] = point(14, 12, 12)
+    if row == ('_tfsf', 'plane_wave'):
+        # One request on both meshes: uniform refuses explicit non-periodic
+        # side faces (#1945), so the plane wave takes the shorthand.
+        kwargs['boundary'] = 'cpml'
     nu = lane in ('run_nonuniform', 'run_distributed_nu', 'fwd_nonuniform', 'fwd_distributed_nu') or graded
     # Off-node absorbers remain intentional; reflecting axes use whole cells.
     from rfx.boundaries.spec import normalize_boundary
@@ -163,14 +196,24 @@ def build(row, lane, *, graded=False, dt=None):
         kwargs['boundary'] = BoundarySpec(
             x=Boundary(lo='cpml', hi='cpml', lo_thickness=1, hi_thickness=2),
             y='pec', z='pec')
+    kwargs["domain"] = tuple(
+        float(np.sum(kwargs[f"d{axis}_profile"])) if f"d{axis}_profile" in kwargs else length
+        for axis, length in zip("xyz", kwargs["domain"]))
     sim = Simulation(**kwargs)
     sim.add_material('block', eps_r=2.5)
-    if row[0] == '_tfsf':
+    if row == ('_tfsf', 'closed_box'):
+        # Keep every scatterer face strictly inside the total-field box.
+        sim.add(Box(point(4, 4, 4), point(7, 7, 7)), material='block')
+    elif row == ('_tfsf', 'plane_wave'):
         # Addendum 5b: same x slab and eps, invariant through transverse pads.
         sim.add(Box(point(3.2, -100, -100), point(6.4, 100, 100)), material='block')
     elif row[0] == '_waveguide_ports':
         # Beyond the port's reference plane: its section must be vacuum (rfx#1994).
         sim.add(Box(point(6.2, 2.1, 1.3), point(8.2, 4.3, 3.2)), material='block')
+    elif row[0] == '_current_moments':
+        # The block's z faces must stay inside the monitor's interior (from node 2):
+        # a lower face drawn at 1.3 cells rounds to node 1 under the nearest-node rule.
+        sim.add(Box(point(3.2, 2.1, 1.7), point(6.4, 4.3, 3.2)), material='block')
     else:
         sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
     # add_source is a zero-impedance _PortEntry internally. Driven port,

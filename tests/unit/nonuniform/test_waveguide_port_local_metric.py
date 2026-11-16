@@ -14,7 +14,7 @@ Every NU port test in the suite puts its ports in boundary-sized cells, where
 the local cell IS the boundary cell, which is why none of them saw it.
 
 What each half is entitled to comes from the interface's metric table
-(``rfx/_grid_metric.py``), read at the plane the correction acts on:
+(``rfx/_internal/_grid_metric.py``), read at the plane the correction acts on:
 the H correction differences two E nodes across one cell and takes the PRIMAL
 width there; the E correction sits on a node and takes that node's DUAL
 spacing. On a uniform axis the two collapse to ``grid.dx`` and nothing moves.

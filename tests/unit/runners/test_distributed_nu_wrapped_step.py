@@ -1,4 +1,6 @@
 """W1 slices 1–3: model identity and cross-trace bars for the graded slab step."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -409,7 +411,7 @@ def test_pole_selector(debye, lorentz):
         select_step(debye=debye, lorentz=lorentz, ports=True, pmc=True)
 
 
-# Scenes S1 and S2 of rfx-archive records/20261011-debye-one-vs-two (deb_scene.py, copied):
+# Scenes S1 and S2:
 # a Debye body in a PEC box on a 24-cell x axis, S2 alternating 0.9/1.1 mm inner cells.
 _S2_PROFILE = np.array([1.0e-3] + [0.9e-3, 1.1e-3] * 11 + [1.0e-3])
 
@@ -542,8 +544,7 @@ def pole_law(one, several):
     Pole media are not bit-stable across compiled forms on one device: the
     Debye box differs from itself under jit by 251 ULP of the peak, and the
     multi-device step's difference is formed inside the compiled step from
-    byte-equal operands (rfx-archive rfx/records/20261017-item5-dispersive,
-    RESULT.md). A per-step 9-ULP bar is the wrong unit for such a difference;
+    byte-equal operands. A per-step 9-ULP bar is the wrong unit for such a difference;
     at step n it is allowed 1.2e-7 x the running sum of the peak |field| up to n.
     Returns the largest difference/allowance ratio for E and for H.
     """
@@ -841,7 +842,9 @@ def graded_cpml_box(nx=28):
                      cpml_layers=4, dx_profile=dx, dy_profile=dy)
     sim.add_material('diel', eps_r=3.3, sigma=0.05)
     sim.add(Box((xs[nx//3 - 2], 2e-3, 2e-3), (xs[nx//3 + 2], 9e-3, 7e-3)), material='diel')
-    sim.add(Box((xs[2*nx//3 - 1], 4e-3, 3e-3), (xs[2*nx//3 + 1], 7e-3, 6e-3)), material='pec')
+    pec_x = np.cumsum(np.r_[np.full(4, dx[0]), dx]) - 4 * dx[0]
+    pec_y = np.cumsum(np.r_[np.full(4, dy[0]), dy]) - 4 * dy[0]
+    sim.add(Box((float(pec_x[2*nx//3 + 2]), float(pec_y[7]), 3e-3), (float(pec_x[2*nx//3 + 4]), float(pec_y[10]), 6e-3)), material='pec')
     sim.add_source((xs[nx//3 + 1] + 1e-4, 5.5e-3, 4.5e-3), 'ez', amplitude_kind='current')
     for fx in (0.1, 0.34, 0.5, 0.66, 0.9, 0.99):
         sim.add_probe((lx * fx, 6e-3, 5e-3), 'ez')
@@ -901,8 +904,8 @@ def _item6_identity(case, devices, mode='plain', mutate=None):
     mask = s.pec_mask if case in ('pec', 'sheet_wire') else None
     edges = None if mask is None and not sheets else realized_pec_edge_masks(mask, sheets, wires)
     mats = with_components(cells.materials, grid, periodic=(False,) * 3, debye_spec=db, lorentz_spec=lr)
-    debye = None if db is None else init_debye(db[0], mats, grid.dt, mask=db[1])
-    lorentz = None if lr is None else init_lorentz(lr[0], mats, grid.dt, mask=lr[1])
+    debye = None if db is None else init_debye(db[0], mats, grid.dt, mask=db[1], high_wall=unpadded_high_walls(grid))
+    lorentz = None if lr is None else init_lorentz(lr[0], mats, grid.dt, mask=lr[1], high_wall=unpadded_high_walls(grid))
     sources = [SourceSpec(3, 2, 2, 'ez', jnp.arange(3, dtype=jnp.float32))]
     probes = [ProbeSpec(4, 2, 2, 'ez')]
     # This is the sole whole-grid build in this test. It does not use any
@@ -1035,7 +1038,7 @@ _ITEM6_LEGACY_MAX = {
     ('pec', 2, 'plain'): 1298821, ('pec', 2, 'grad'): 1298833,
     ('pec', 3, 'plain'): 935612, ('pec', 3, 'grad'): 935624,
     # CPML: the same scene without poles (case 'nopole'), legacy forced, 2a2344276,
-    # 2026-10-15 (rfx-archive records/20261013-w1-wrapped-vs-legacy/redo-2a2344276).
+    # 2026-10-15.
     ('cpml', 2, 'plain'): 1122543, ('cpml', 2, 'grad'): 1122555,
     ('cpml', 3, 'plain'): 830359, ('cpml', 3, 'grad'): 830367,
 }

@@ -61,7 +61,7 @@ def test_interval_endpoint_is_exclusive_on_each_axis(axis):
 def test_filament_ending_at_period_owns_last_edge_under_jit():
     import jax
     from rfx import PolylineWire
-    sim = model()
+    sim = model(snap="declared")
     sim.add(PolylineWire([(.009, .003, .002), (.010, .003, .002)], radius=0.),
             material='pec')
     sim.add_source((.007, .002, .002), 'ex', amplitude_kind='field')

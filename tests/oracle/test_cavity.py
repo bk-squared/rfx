@@ -13,12 +13,15 @@ estimator rather than rfft-argmax. See ``test_pec_cavity_resonance`` for why the
 old "0.5%" gate was FFT-bin-quantization luck, not a real bound (issue #396).
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse
 
@@ -91,9 +94,9 @@ def test_pec_cavity_resonance(cavity_params):
         t = n * dt
 
         # H update
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         # E update
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         # PEC boundaries (cavity walls)
         state = apply_pec(state)
 
@@ -178,8 +181,8 @@ def test_energy_conservation_pec():
     # Run source until pulse fully decays (t > 6*tau ≈ negligible)
     n_source = 100
     for n in range(n_source):
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         t = n * dt
         ez = state.ez.at[src_i, src_j, src_k].add(pulse(t))
@@ -187,8 +190,8 @@ def test_energy_conservation_pec():
 
     # Let transients settle (no source)
     for _ in range(50):
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
 
     # Measure energy after source fully off
@@ -203,8 +206,8 @@ def test_energy_conservation_pec():
 
     # Run 200 more steps without source
     for _ in range(200):
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
 
     energy_end = em_energy(state)

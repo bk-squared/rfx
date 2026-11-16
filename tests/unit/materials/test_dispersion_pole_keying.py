@@ -29,6 +29,8 @@ These tests lock every direction of that contract:
    perturb a field to keep the poles value-distinct.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import pytest
 
@@ -297,8 +299,13 @@ def test_value_perturbed_poles_stay_distinct():
     # 2026-10 each pole kept its whole box, so the overlap carried both poles
     # under the later material's permittivity; a block drawn into a
     # dispersive body kept the body's poles). mat_b is drawn second.
-    mask_a = np.array(Box(*_BOX_A).mask(grid))
-    mask_b = np.array(Box(*_BOX_B).mask(grid))
+    # Pole occupancy follows the half-open window on primal-cell centres.
+    centres = [(np.arange(n) - pad + 0.5) * grid.dx
+               for n, pad in zip(grid.shape, grid.axis_pads)]
+    def expected(bounds):
+        axes = [(c >= lo) & (c < hi) for c, lo, hi in zip(centres, *bounds)]
+        return axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+    mask_a, mask_b = expected(_BOX_A), expected(_BOX_B)
     assert (mask_a & mask_b).any()
     assert np.array_equal(np.array(masks[0]), mask_a & ~mask_b)
     assert np.array_equal(np.array(masks[1]), mask_b)
@@ -330,7 +337,7 @@ def test_traced_debye_pole_compiles():
         materials, debye_spec, _, *_ = sim._assemble_materials(grid)
         assert debye_spec is not None
         coeffs, _ = init_debye(debye_spec[0], materials, grid.dt,
-                               mask=debye_spec[1])
+                               mask=debye_spec[1], high_wall=unpadded_high_walls(grid))
         return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(3.0))
@@ -378,7 +385,7 @@ def test_traced_lorentz_pole_compiles():
         materials, _, lorentz_spec, *_ = sim._assemble_materials(grid)
         assert lorentz_spec is not None
         coeffs, _ = init_lorentz(lorentz_spec[0], materials, grid.dt,
-                                 mask=lorentz_spec[1])
+                                 mask=lorentz_spec[1], high_wall=unpadded_high_walls(grid))
         return sum(jnp.sum(c) for c in coeffs.c)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(np.log((2 * np.pi * 3e9) ** 2)))
@@ -411,7 +418,7 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
         materials, t_debye_spec, _, _, _, _ = rasterize_geometry(
             t_sim._geometry, t_sim._resolve_material, t_coords)
         coeffs, _ = init_debye(t_debye_spec[0], materials, t_grid.dt,
-                               mask=t_debye_spec[1])
+                               mask=t_debye_spec[1], high_wall=unpadded_high_walls(grid))
         return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(3.0))
@@ -479,7 +486,7 @@ def test_nonuniform_run_preserves_geometry_rasterize_function():
 
     assert callable(rfx.geometry.rasterize), "precondition: rasterize function present"
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
-    sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01),
+    sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, float(dz.sum())),
                      dx=0.5e-3, dz_profile=dz, cpml_layers=8)
     sim.add_source((0.01, 0.01, 0.001), "ez")
     sim.add_probe((0.01, 0.01, 0.001), "ez")

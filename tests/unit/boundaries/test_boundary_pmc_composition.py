@@ -24,14 +24,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 
 
 def test_oq7_tfsf_plus_pmc_rejected_or_documented():
-    """Build TFSF + BoundarySpec with PMC on one face. Either:
-      - add_tfsf_source raises (composition explicitly rejected), OR
-      - construction succeeds and we pin that behaviour in a
-        documentation assertion on sim._boundary_spec.
-
-    Outcome: record the CURRENT rfx verdict so downstream sessions do
-    not rediscover it.
-    """
+    """Explicit PMC/CPML side faces cannot be replaced by periodic faces."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.02, 0.02, 0.015), dx=0.5e-3,
@@ -39,23 +32,11 @@ def test_oq7_tfsf_plus_pmc_rejected_or_documented():
                               z=Boundary(lo="pmc", hi="cpml")),
         cpml_layers=6,
     )
-    try:
+    with pytest.raises(ValueError, match="y_lo='cpml'.*z_lo='pmc'.*z_hi='cpml'"):
         sim.add_tfsf_source(
             f0=5e9, bandwidth=0.5,
             polarization="ez", direction="+x",
         )
-    except ValueError as e:
-        # Outcome A: rfx rejects TFSF+PMC at API level. Pin the error
-        # message substring so the behaviour is stable.
-        assert "TFSF" in str(e) or "cpml" in str(e), (
-            f"TFSF+PMC rejection message should mention TFSF or cpml; "
-            f"got: {e}"
-        )
-        return
-    # Outcome B: add_tfsf_source accepted the config. Document this.
-    assert sim._tfsf is not None
-    assert "z_lo" in sim._boundary_spec.pmc_faces()
-    # The shared curl images H after TFSF/absorber/source changes.
 
 
 # ---------------------------------------------------------------------------

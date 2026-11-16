@@ -11,7 +11,6 @@ import pytest
 
 from rfx import Box, Simulation, GaussianPulse
 from rfx.model import conductors as products
-from rfx.nonuniform import position_to_index
 
 
 class Captured(Exception):
@@ -111,8 +110,6 @@ def independent_cells(component, edge, shape, periodic):
 @pytest.mark.parametrize('placement', ['interior', 'face', 'touch', 'away'])
 @pytest.mark.parametrize('p', [.5, 1.])
 def test_c1_c2_c4_kernel_occupancy(monkeypatch, lane, kind, placement, p):
-    if lane == 'topology':
-        pytest.importorskip('optax')
     sim, grid, edge, component = model(lane, kind)
     lo, hi = box(edge, component, kind, placement)
     occupancy = jnp.zeros(grid.shape).at[tuple(slice(a,b) for a,b in zip(lo,hi))].set(p)
@@ -145,7 +142,8 @@ def test_c1_c2_c4_kernel_occupancy(monkeypatch, lane, kind, placement, p):
     assert len(seen['warnings']) == (placement != 'away'), ('C4', seen['warnings'])
     if seen['warnings']:
         warning = seen['warnings'][0]
-        assert warning.category is UserWarning
+        from rfx.errors import ConfigurationWarning
+        assert warning.category is ConfigurationWarning
         message = str(warning.message)
         for entity, comp, driven in root.released_port_edges:
             assert entity in message and comp in message and str(driven) in message
@@ -279,7 +277,8 @@ def test_c5_result_gradient(lane,kind):
         grad=np.asarray(jax.grad(loss)(occupancy))
     released = [w for w in caught if 'Port occupancy release:' in str(w.message)]
     assert len(released) == 1, ('C4 forward warning count', len(released))
-    assert released[0].category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert released[0].category is ConfigurationWarning
     assert np.isfinite(grad).all()
     np.testing.assert_array_equal(grad[tuple(expected.T)],0.)
     region=np.asarray(occupancy)>0
@@ -323,7 +322,7 @@ def test_c6_graded_distributed_port_occupancy(monkeypatch,kind):
                     distributed=True,devices=jax.devices(),skip_preflight=True)
 
 
-@pytest.mark.parametrize('refusal',['distributed','adi','subgrid','run'])
+@pytest.mark.parametrize('refusal',['distributed','subgrid','run'])
 def test_c6_other_refusals(monkeypatch,refusal):
     sim,grid,_,_=model('uniform','ez')
     import rfx.simulation as kernel
@@ -335,10 +334,6 @@ def test_c6_other_refusals(monkeypatch,refusal):
     elif refusal=='distributed':
         with pytest.raises(NotImplementedError,match="takes none of forward\\(\\)'s override or design arguments"):
             sim.forward(distributed=True,**kwargs)
-    elif refusal=='adi':
-        sim._solver='adi'
-        with pytest.raises(ValueError,match="solver='adi' does not support pec_occupancy_override"):
-            sim.forward(**kwargs)
     else:
         sim.add_refinement(z_range=(.003,.007),ratio=2)
         with pytest.raises(NotImplementedError,match='refinement|subgrid'):
@@ -458,12 +453,14 @@ def test_preview_matches_modal_support(monkeypatch, lane, mode):
 # W6: replaces "a waveguide-port model publishes no released cells" (shape (0, 3)).
 WG_LAYERS = (12, 13, 14, 15, 16, 22, 23)
 WG_CELLS = np.array([(i, j, k) for i in WG_LAYERS
-                     for j in range(11) for k in range(5)], dtype=np.int32)
+                     for j in range(12) for k in range(6)], dtype=np.int32)
 WG_GRADED_CELLS = np.array([(i, j, k) for i in WG_LAYERS
                             for j in range(11) for k in range(5)], dtype=np.int32)
 # Addendum 5f: PEC removes the eight transverse pad cells. The independent
-# uniform rule applies: seven x layers times 11 y cells times 5 z cells;
+# graded rule applies: seven x layers times 11 y cells times 5 z cells;
 # incident-cell offsets below zero clip at the guide wall, giving 385 cells.
+# #1826 F1b: uniform now fills its 24 x 12 mm PEC cross-section. Its
+# 12 x 6 aperture releases 504 cells (measured before moving this literal).
 WG_PARTIAL_GRADED_CELLS = np.array([(i, j, k) for i in WG_LAYERS
                                     for j in range(9, 21) for k in range(9, 15)
                                     if (j, k) != (9, 9)], dtype=np.int32)
@@ -486,6 +483,15 @@ def waveguide_model(lane='uniform'):
                                y_range=(.004, .026) if partial else (0., 11 * .002),
                                z_range=(.004, .014) if partial else (0., 5 * .002), n_modes=1)
         sim.add_probe(position=(.03, .01143, .00508), component='ey')
+        if partial:
+            # Keep the partial aperture and its incident-cell table: draw its walls.
+            for lo, hi in (
+                ((0., .002, .002), (.05, .004, .016)),
+                ((0., .026, .002), (.05, .028, .016)),
+                ((0., .002, .002), (.05, .028, .004)),
+                ((0., .002, .014), (.05, .028, .016)),
+            ):
+                sim.add(Box(lo, hi), material='pec')
     grid = sim._build_nonuniform_grid() if lane.startswith('graded') else sim._build_grid()
     return sim, grid
 
@@ -498,11 +504,12 @@ def test_w1_literal_waveguide_cells(axis, direction):
     else:
         domain = {'x': (.05,.024,.012), 'y': (.024,.05,.012),  # main's solved length; #1887
                   'z': (.024,.012,.05)}[axis]  # main's solved length; #1887
-        ranges = {'x': dict(y_range=(0.,.02286), z_range=(0.,.01016)),
-                  'y': dict(x_range=(0.,.02286), z_range=(0.,.01016)),
-                  'z': dict(x_range=(0.,.02286), y_range=(0.,.01016))}[axis]
+        ranges = {'x': dict(y_range=(0.,.024), z_range=(0.,.012)),
+                  'y': dict(x_range=(0.,.024), z_range=(0.,.012)),
+                  'z': dict(x_range=(0.,.024), y_range=(0.,.012))}[axis]
         sim = Simulation(freq_max=12e9, domain=domain, dx=.002,
-                         boundary='cpml', cpml_layers=8)
+                         boundary={a: 'cpml' if a == axis else 'pec' for a in 'xyz'},
+                         cpml_layers=8)
         sim.add_waveguide_port(.01 if direction == '+' else .04,
                                direction=direction+axis, **ranges)
         grid = sim._build_grid()
@@ -512,7 +519,7 @@ def test_w1_literal_waveguide_cells(axis, direction):
     layers = WG_LAYERS if direction == '+' else (17, 18, 24, 25, 27, 28, 29)
     edge_planes = {13, 14, 16, 23} if direction == '+' else {18, 25, 28, 29}
     assert (cfg.x_index, cfg.ref_x, cfg.probe_x) == planes
-    assert (cfg.u_lo, cfg.u_hi, cfg.v_lo, cfg.v_hi) == (0, 11, 0, 5)
+    assert (cfg.u_lo, cfg.u_hi, cfg.v_lo, cfg.v_hi) == (0, 12, 0, 6)
     assert cfg.normal_axis == axis and cfg.direction == direction+axis
     root = products.realized_conductors(sim, grid)
     if axis == 'x' and direction == '+':
@@ -521,7 +528,7 @@ def test_w1_literal_waveguide_cells(axis, direction):
         coords = {'x': lambda p,u,v: (p,u,v), 'y': lambda p,u,v: (u,p,v),
                   'z': lambda p,u,v: (u,v,p)}[axis]
         expected = np.array(sorted(coords(p,u,v) for p in layers
-                                   for u in range(11) for v in range(5)), np.int32)
+                                   for u in range(12) for v in range(6)), np.int32)
     components = {'x': ('ey', 'ez'), 'y': ('ex', 'ez'), 'z': ('ex', 'ey')}[axis]
     assert (cfg.e_u_component, cfg.e_v_component) == components
     root = products.waveguide_port_stage(root, cfg, 'waveguide_port[0]')
@@ -538,7 +545,8 @@ def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
     sim, grid = waveguide_model(lane)
     expected = (WG_PARTIAL_GRADED_CELLS if lane == 'graded-partial' else
                 WG_GRADED_CELLS if lane == 'graded' else WG_CELLS)
-    us, vs = (range(10, 21), range(10, 15)) if lane == 'graded-partial' else (range(11), range(5))
+    us, vs = ((range(10, 21), range(10, 15)) if lane == 'graded-partial' else
+              (range(11), range(5)) if lane == 'graded' else (range(12), range(6)))
     occupancy = np.zeros(grid.shape, np.float32)
     if region == 'whole':
         occupancy[:] = p
@@ -563,7 +571,8 @@ def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
     assert actual[outside].tobytes() == occupancy[outside].tobytes()
     assert len(seen['warnings']) == 1
     message = str(seen['warnings'][0].message)
-    count = '497 cells' if lane == 'graded-partial' else '385 cells'
+    count = ('497 cells' if lane == 'graded-partial' else
+             '385 cells' if lane == 'graded' else '504 cells')
     for part in ('waveguide_port[0]', 'source 13 (also 14)', 'reference 16', 'measurement 23', count):
         assert part in message
     assert len(message) < 300
@@ -572,7 +581,7 @@ def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
 def test_w3_waveguide_source_record():
     sim, grid = waveguide_model()
     zero = jnp.zeros(grid.shape)
-    occupied = zero.at[12:14, :11, :5].set(1.)
+    occupied = zero.at[12:14, :12, :6].set(1.)
     baseline = sim.forward(pec_occupancy_override=zero, n_steps=40, checkpoint=False, skip_preflight=True)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
@@ -638,7 +647,7 @@ def test_w7_waveguide_mutations(monkeypatch, mutation):
     if mutation == 'removed':
         # Unreleased PEC occupancy now sits in the port's guide segment: the
         # setup refuses it (rfx#1994) before the source record can differ.
-        with pytest.raises(ValueError, match=r'rfx#1994'):
+        with pytest.raises(ValueError, match=r'one homogeneous'):
             test_w3_waveguide_source_record()
     else:
         test_w3_waveguide_source_record()

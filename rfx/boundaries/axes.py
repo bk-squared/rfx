@@ -1,6 +1,17 @@
 """Resolve runner absorber axes against the grid's allocation."""
 
 
+def absorbing_face_depths(grid) -> dict[str, int]:
+    """Realized pads: a face absorbs only when its declaration is CPML.
+
+    PEC, PMC, periodic and 2-D z faces have depth zero. A mixed axis keeps
+    its CPML face independently of the boundary on the opposite face.
+    """
+    from rfx.boundaries.depths import grid_face_depths
+
+    return {face.name: face.realized for face in grid_face_depths(grid)}
+
+
 def resolve_cpml_axes(grid, cpml_axes: str | None = None) -> str:
     """Default to the grid; explicit subsets preserve feature boundary overrides.
 
@@ -48,12 +59,3 @@ def padded_axes(grid, cpml_axes: str) -> str:
     """
     return "".join(a for a in "xyz" if a in cpml_axes
                    and getattr(grid, f"pad_{a}_lo") + getattr(grid, f"pad_{a}_hi") > 0)
-
-
-def hi_face_is_wall(grid, axis: str) -> bool:
-    """Whether a grid's high face on ``axis`` is an electric wall.
-
-    True when the axis does not absorb at all or the face is declared PEC.
-    """
-    pec_faces = getattr(grid, "pec_faces", set()) or set()
-    return axis not in getattr(grid, "cpml_axes", "") or f"{axis}_hi" in pec_faces

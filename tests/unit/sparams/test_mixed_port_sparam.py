@@ -14,7 +14,6 @@ Layer 1 (this file, fast suite):
     is the separate slow-lane battery.
 """
 
-from types import MethodType
 
 import jax.numpy as jnp
 import numpy as np
@@ -177,6 +176,7 @@ def test_wire_mode_uses_per_cell_impedance():
 
 def _base_sim(**kw):
     lx, ly, lz = 8e-3, 3e-3, 754e-6
+    kw.setdefault("snap", "declared")
     sim = Simulation(
         freq_max=5e9, domain=(lx, ly, lz), dx=_DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -207,7 +207,7 @@ def _bisecting_sim():
     this file is on-lattice.
     """
     lx, ly, lz = 8e-3, 3e-3, 754e-6
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=5e9, domain=(lx, ly, lz), dx=80e-6, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -471,10 +471,10 @@ def test_guard_requires_pec_ground_for_flux_channel():
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     # A physical MSL ground still exists when the domain's z_lo is CPML.
     # Only the flux extractor requires that domain face itself to be PEC.
-    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, 0.0)), material="pec")
+    sim.add(Box((0.0, 0.0, 0.0), (95 * _DX, 36 * _DX, 0.0)), material="pec")
     y_c = ly / 2.0
-    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
-                (lx, y_c + _W_TRACE / 2, _H_SUB + _DX)), material="pec")
+    sim.add(Box((0.0, 14 * _DX, 3 * _DX),
+                (95 * _DX, 21 * _DX, 4 * _DX)), material="pec")
     _add_feed(sim, y_c)
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
     with pytest.raises(NotImplementedError, match="PEC z_lo"):
@@ -552,7 +552,7 @@ def test_guard_rejects_cpml_adjacent_probe_ladder():
 # ---------------------------------------------------------------------------
 
 def _assert_drive_settling_witnesses(sim, result, periods, end_amplitudes):
-    from rfx.probes.settling import source_end_step
+    from rfx.measurement.record_end import source_end_step
 
     grid = sim._build_grid()
     n_steps = grid.num_timesteps(periods)
@@ -750,7 +750,7 @@ def _fake_forward_mixed_z_profile(nz_markers, n_lw):
     return fake_forward
 
 
-def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh():
+def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh(monkeypatch):
     """The mixed lane's MSL V must anchor on the REALIZED trace plane —
     read from the single owner — and on the bisecting mesh (dx = 80 um,
     h_sub/dx = 3.175) that plane is not where the declaration is.
@@ -778,8 +778,8 @@ def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh():
     _add_feed(sim, y_c)
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
     n_lw = len(sim._ports)
-    sim._forward_from_materials = MethodType(
-        _fake_forward_mixed_z_profile(marker, n_lw), sim)
+    monkeypatch.setattr(Simulation, "_forward_from_materials",
+                        _fake_forward_mixed_z_profile(marker, n_lw))
 
     result, diag = sim.compute_mixed_s_matrix(
         freqs=np.asarray([1.0e9]), magnitude_channel="wave",

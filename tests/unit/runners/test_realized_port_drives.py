@@ -1,4 +1,6 @@
 """Port Cb and RLC D0 consume the stored, stamped E-update operands."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import replace
 
 import jax
@@ -28,14 +30,14 @@ def test_drive_and_denominator_match_stored_update(component, periodic):
     parts = tuple(stamp if a == axis else None for a in range(3))
     raw = yee.MaterialArrays(eps + stamp, sigma + stamp, jnp.ones(shape),
                              eps_r_lumped=parts, sigma_lumped=parts)
-    mats = with_components(raw, None, periodic=periodic)
+    mats = with_components(raw, None, periodic=periodic, high_wall=(False, False, False))
     grid = SimpleNamespace(dt=1e-12)
     # Independent grid-wide E-update coefficients; never the cell helper.
-    cb = yee.e_component_coeffs(mats, grid.dt, periodic)[1][axis][cell]
+    cb = yee.e_component_coeffs(mats, grid.dt, periodic, high_wall=unpadded_high_walls(grid))[1][axis][cell]
     wave = port_drive_waveform(grid, cell, component, jnp.ones_like, 3, mats,
                                sigma_port=2., unit_field=4.)
     np.testing.assert_array_equal(wave, jnp.full(3, cb * 2. * 4.))
-    e, s = e_update_material_at(mats, cell, component)
+    e, s = e_update_material_at(mats, cell, component, high_wall=unpadded_high_walls(grid))
     assert float(e) != float(raw.eps_r[cell])
     expected = float(e) * EPS_0 / grid.dt + float(s) / 2.
     assert edge_update_denominator(mats, cell, component, grid.dt, as_float=True) == expected
@@ -43,7 +45,7 @@ def test_drive_and_denominator_match_stored_update(component, periodic):
     changed = list(mats.components.eps_update)
     changed[axis] = changed[axis].at[cell].multiply(1.7)
     changed = mats._replace(components=replace(mats.components, eps_update=tuple(changed)))
-    changed_cb = yee.e_component_coeffs(changed, grid.dt, periodic)[1][axis][cell]
+    changed_cb = yee.e_component_coeffs(changed, grid.dt, periodic, high_wall=unpadded_high_walls(grid))[1][axis][cell]
     changed_wave = port_drive_waveform(grid, cell, component, jnp.ones_like, 3, changed,
                                        sigma_port=2., unit_field=4.)
     np.testing.assert_array_equal(changed_wave, jnp.full(3, changed_cb * 2. * 4.))
@@ -73,10 +75,12 @@ def test_realized_edge_material_gradient_matches_legacy():
         eps = jnp.ones((4, 4, 4)).at[2:].set(4. * scale)
         mats = yee.MaterialArrays(eps, jnp.zeros_like(eps), jnp.ones_like(eps))
         if realized:
-            mats = with_components(mats, None, periodic=(False,) * 3)
-        wave = port_drive_waveform(SimpleNamespace(dt=1e-12), (2, 2, 2), "ez",
+            mats = with_components(mats, None, periodic=(False,) * 3, high_wall=(False, False, False))
+        grid = SimpleNamespace(dt=1e-12)
+        wave = port_drive_waveform(grid, (2, 2, 2), "ez",
                                   jnp.ones_like, 2, mats, sigma_port=2., unit_field=4.)
-        return jnp.sum(wave) + edge_update_denominator(mats, (2, 2, 2), "ez", 1e-12)
+        # This raw-array fixture has no wall face.
+        return jnp.sum(wave) + edge_update_denominator(mats, (2, 2, 2), "ez", 1e-12, grid=grid)
 
     a = jax.value_and_grad(lambda x: loss(x, False))(jnp.float32(1.))
     b = jax.value_and_grad(lambda x: loss(x, True))(jnp.float32(1.))
@@ -102,12 +106,14 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     sim.add_material("slab", eps_r=4.)
     sim.add(Box((.005, .002, .002), (.010, .009, .010)), material="slab")
     if kind == "msl":
-        sim.add(Box((.002, .002, .003), (.010, .009, .003)), material="pec")
+        sim.add(Box(((2 - .35) * .001, (2 - .35) * .001, .003),
+                    ((10 + .35) * .001, (9 + .35) * .001, .003)), material="pec")
         # #1512: the strip starts at the port's grid node. Drawn from 2 mm it left a 3 mm
         # open stub whose effective quarter wave (11.9 GHz) is within 1.5x of 0..8 GHz.
         from rfx.preflight.line_port_coverage import port_node_coordinate
         node = port_node_coordinate(sim, (.005, .005, .003))
-        sim.add(Box((node, .004, .005), (.010, .006, .005)), material="pec")
+        sim.add(Box((node, (4 - .35) * .001, .005),
+                    ((10 + .35) * .001, (6 + .35) * .001, .005)), material="pec")
         sim.add_msl_port(position=(.005, .005, .003), width=.002, height=.002,
                          direction="+x", impedance=50., waveform=jnp.ones_like, eps_r_sub=4.)
     else:
@@ -138,7 +144,7 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
         calls["drive"] += 1
         value = original_drive(grid, cell, component, excitation, n_steps, materials, **kwargs)
         axis = {"ex": 0, "ey": 1, "ez": 2}[component]
-        cb = yee.e_component_coeffs(materials, grid.dt)[1][axis][tuple(cell)]
+        cb = yee.e_component_coeffs(materials, grid.dt, high_wall=unpadded_high_walls(grid))[1][axis][tuple(cell)]
         np.testing.assert_array_equal(value, jnp.full(n_steps, cb * kwargs["sigma_port"] * kwargs["unit_field"]))
         return value
 

@@ -21,7 +21,7 @@ SPEC.loader.exec_module(gate)
 SIM = "rfx/simulation.py"
 API = "rfx/api/__init__.py"
 EXECUTE = "rfx/api/_execute.py"
-CLEAN = "_uniform_cell_volume"
+CLEAN = "make_probe"
 EXECUTE_CLEAN = "_ExecuteMixin._resolve_field_dtype"
 
 
@@ -194,40 +194,68 @@ def test_operator_only_known_miss(tmp_path, generated):
     assert observed == generated["files"][SIM]
 
 
+# Outside-ratchet fixtures are planted, not borrowed: the 2.0 layer moves empty
+# the real files outside the layer packages, so a test tied to one of them
+# breaks at the move that empties it.
+OUTSIDE_A = "rfx/_layer_check_outside_a.py"
+OUTSIDE_B = "rfx/_layer_check_outside_b.py"
+
+
+def outside_source(name):
+    return ("import jax\n\n\ndef fixture_label(x):\n    return str(x)\n\n\n"
+            f"def {name}(body, carry, xs):\n    return jax.lax.scan(body, carry, xs)\n")
+
+
+def copied_tree(root, path):
+    return ast.parse((root / path).read_text())
+
+
+@pytest.fixture
+def planted(tmp_path, generated):
+    """BASE with two outside files, one baselined time-step unit each."""
+    base = deepcopy(generated)
+    for path, name in ((OUTSIDE_A, "fixture_scan"), (OUTSIDE_B, "fixture_runner")):
+        assert not (REPO / path).exists()
+        write(tmp_path, path, outside_source(name))
+        base["outside"][path] = {"S": [name], "M": []}
+    assert gate.count(CopiedSources(tmp_path))["baseline"] == base
+    return base
+
+
 @pytest.mark.parametrize("remove_elsewhere", [False, True])
-def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, generated, remove_elsewhere):
-    path, name = "rfx/runners/_distributed_common.py", "layer_check_outside_step"
-    assert generated["outside"][path]["S"]
-    assert name not in {unit for unit, _, _ in gate.units(real_tree(path))}
-    write(tmp_path, path, (REPO / path).read_text()
+def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, planted, remove_elsewhere):
+    path, name = OUTSIDE_A, "layer_check_outside_step"
+    assert planted["outside"][path]["S"]
+    assert name not in {unit for unit, _, _ in gate.units(copied_tree(tmp_path, path))}
+    write(tmp_path, path, (tmp_path / path).read_text()
           + "\ndef layer_check_outside_step():\n    return jax.lax.scan(body, carry, xs)\n")
-    expected = deepcopy(generated)
+    expected = deepcopy(planted)
     expected["outside"][path]["S"] = sorted([*expected["outside"][path]["S"], name])
     if remove_elsewhere:
-        other, old = "rfx/subgridding/runner.py", "run_subgridded"
-        assert generated["outside"][other] == {"S": [old], "M": []}
-        tree = real_tree(other)
+        other, old = OUTSIDE_B, "fixture_runner"
+        assert planted["outside"][other] == {"S": [old], "M": []}
+        tree = copied_tree(tmp_path, other)
         tree.body.remove(target_unit(tree, old))
         write(tmp_path, other, ast.unparse(tree) + "\n")
         del expected["outside"][other]
     actual = gate.count(CopiedSources(tmp_path))["baseline"]
     assert actual == expected
     # Even updating the baseline to match the mutated code cannot admit the copy.
-    errors = gate.violations(actual, expected, generated)
+    errors = gate.violations(actual, expected, planted)
     assert errors == [f"{path} S: new violation against BASE {name}",
                       f"{path} S: baseline grew against BASE {name}"]
 
 
-def test_outside_rename_reports_new_and_stale_names(tmp_path, generated):
-    path, old, new = "rfx/subgridding/runner.py", "run_subgridded", "renamed_scan"
-    tree = real_tree(path)
+def test_outside_rename_reports_new_and_stale_names(tmp_path, planted):
+    path, old, new = OUTSIDE_B, "fixture_runner", "renamed_scan"
+    tree = copied_tree(tmp_path, path)
     target_unit(tree, old).name = new
     write(tmp_path, path, ast.unparse(tree) + "\n")
-    expected = deepcopy(generated)
+    expected = deepcopy(planted)
     expected["outside"][path] = {"S": [new], "M": []}
     actual = gate.count(CopiedSources(tmp_path))["baseline"]
     assert actual == expected
-    assert gate.violations(actual, generated, generated) == [
+    assert gate.violations(actual, planted, planted) == [
         f"{path} S: unlisted violation {new}",
         f"{path} S: stale baseline entry {old}",
         f"{path} S: new violation against BASE {new}",
@@ -237,20 +265,20 @@ def test_outside_rename_reports_new_and_stale_names(tmp_path, generated):
 @pytest.mark.parametrize("destination,green", [
     ("rfx/stepping/moved_scan.py", True), ("rfx/runners/moved_scan.py", False),
 ])
-def test_outside_move_requires_layer_destination(tmp_path, generated, destination, green):
-    path, name = "rfx/subgridding/runner.py", "run_subgridded"
-    tree = real_tree(path)
+def test_outside_move_requires_layer_destination(tmp_path, planted, destination, green):
+    path, name = OUTSIDE_B, "fixture_runner"
+    tree = copied_tree(tmp_path, path)
     node = target_unit(tree, name)
     tree.body.remove(node)
     write(tmp_path, path, ast.unparse(tree) + "\n")
     write(tmp_path, destination, ast.unparse(node) + "\n")
-    expected = deepcopy(generated)
+    expected = deepcopy(planted)
     del expected["outside"][path]
     if not green:
         expected["outside"][destination] = {"S": [name], "M": []}
     actual = gate.count(CopiedSources(tmp_path))["baseline"]
     assert actual == expected
-    errors = gate.violations(actual, expected, generated)
+    errors = gate.violations(actual, expected, planted)
     assert errors == ([] if green else [
         f"{destination} S: new violation against BASE {name}",
         f"{destination} S: baseline grew against BASE {name}",
@@ -297,9 +325,10 @@ def test_calibration_from_declaration_and_leader_correction(generated):
     assert "run_nonuniform" in {name for name, _, _ in gate.units(real_tree("rfx/stepping/graded_loop.py"))}
     assert "run_nonuniform" in gate.public_names(gate.Sources(REPO), "rfx.stepping")
     # Graded-grid construction (NonUniformGrid, its module-level tables) moved to
-    # rfx/model/ in #1643; nonuniform.py now only imports it, counted under I.
+    # rfx/model/ in #1643; nonuniform.py now imports it from the package top, not counted under I.
     assert "NonUniformGrid.node_of" not in all_units
-    assert "rfx.model.graded_grid:make_nonuniform_grid" in nonuniform["I"]
+    assert "rfx.model.graded_grid:make_nonuniform_grid" not in nonuniform["I"]
+    assert "make_nonuniform_grid" in gate.public_names(gate.Sources(REPO), "rfx.model")
     assert "rfx.model.materials:_design_box_edge_coeffs" not in generated["files"][SIM]["I"]
 
 
@@ -367,7 +396,6 @@ def git_snapshot(repo, *args):
 
 
 def test_initial_adoption_and_head_environment_use_git_sources(synthetic, monkeypatch, capsys):
-    # Throwaway repositories under tmp_path are explicitly allowed by the leader.
     git_snapshot(synthetic, "init", "-q")
     (synthetic / gate.BASELINE).unlink()
     git_snapshot(synthetic, "add", ".")
@@ -704,7 +732,7 @@ def test_outside_report_blocks_and_count_order(synthetic, capsys):
     gate.report(gate.count(gate.Sources(synthetic)))
     output = capsys.readouterr().out
     five, outside = output.split("\noutside the layer packages — may only fall, not a 2.0 condition "
-                                 "(PI to decide how far 2.0 reaches)\n")
+                                 "(how far 2.0 reaches is not decided)\n")
     assert five.startswith("2.0 condition — five files\n")
     outside, reverse = outside.split("\nreverse imports from layers to callers — may only fall\n")
     assert reverse == "reverse totals: R=0\n"
@@ -712,6 +740,38 @@ def test_outside_report_blocks_and_count_order(synthetic, capsys):
         "outside rfx/z.py: S=1 M=1", "outside rfx/a.py: S=0 M=1",
         "outside rfx/b.py: S=1 M=0", "outside totals: S=2 M=2",
     ]
+
+
+def test_report_outside_ag_counts_a_and_g_outside_layers(synthetic, capsys):
+    code = ("def assembly(x):\n    return x.at[0].set(1)\n"
+            "def grid(n):\n    return jnp.zeros(n + 1)\n"
+            "def allowed(x):\n    return jnp.asarray(x)\n")
+    write(synthetic, "rfx/outside_a.py", code)
+    write(synthetic, "rfx/model/inner.py", code)
+    write(synthetic, "rfx/simulation.py", "def assembly(x):\n    return x.at[0].set(1)\n")
+    result = gate.count(gate.Sources(synthetic))
+    assert result["outside_ag"] == {
+        "rfx/outside_a.py": {"A": ["assembly"], "G": ["grid"]},
+    }
+    assert "outside_ag" not in result["baseline"]
+    assert result["baseline"]["files"]["rfx/simulation.py"]["A"] == ["assembly"]
+    # Remove the gated five-file violation before checking the empty baseline.
+    write(synthetic, "rfx/simulation.py", "")
+    write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
+    assert gate.main(["--repo", str(synthetic)]) == 0
+    default = capsys.readouterr()
+    assert default.err == ""
+    assert "outside-ag" not in default.out
+    assert gate.main(["--repo", str(synthetic), "--report-outside-ag"]) == 0
+    reported = capsys.readouterr()
+    assert reported.err == ""
+    assert reported.out == default.out + (
+        "outside the layer packages: model-assembly writes (A) and grid arithmetic (G) "
+        "— report only, not gated\n"
+        "outside-ag rfx/outside_a.py: A=1 G=1\n"
+        "outside-ag package rfx/outside_a.py: A=1 G=1\n"
+        "outside-ag totals: A=1 G=1\n"
+    )
 
 
 def test_outside_head_and_base_use_named_git_snapshots(synthetic, monkeypatch, capsys):
@@ -1158,3 +1218,174 @@ def test_reverse_report_order_and_totals(synthetic, capsys):
         "reverse rfx/stepping/z.py: R=2", "reverse rfx/stepping/a.py: R=1",
         "reverse rfx/stepping/b.py: R=1", "reverse totals: R=4",
     ]
+
+
+# A layer import of a name a five file defines itself is layer code living in a five file; the unit rules read
+# syntax and miss a scalar formula, a metric choice or a record type.
+FIVE_DEFINITION = "{path} R: imports {entry}, which the five file defines; move the definition into its layer"
+
+
+def test_no_layer_imports_a_name_a_five_file_defines():
+    assert gate.five_file_definitions(gate.count(gate.Sources(REPO))["caller_definitions"]) == []
+
+
+@pytest.mark.parametrize("five,code,entry", [
+    ("rfx/nonuniform.py", "def helper():\n    pass\n", "rfx.nonuniform:helper"),
+    ("rfx/simulation.py", "class Spec:\n    pass\n", "rfx.simulation:Spec"),
+    ("rfx/api/__init__.py", "if True:\n    TABLE = {}\n", "rfx.api:TABLE"),
+], ids=["function", "class", "guarded-assignment"])
+def test_layer_import_of_a_five_file_definition_is_refused(tmp_path, five, code, entry):
+    path = "rfx/stepping/__init__.py"
+    module, _, name = entry.partition(":")
+    write(tmp_path, five, (REPO / five).read_text() + "\n" + code)
+    write(tmp_path, path, (REPO / path).read_text() + f"\ndef local():\n    from {module} import {name}\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
+
+
+def test_reexport_and_other_callers_are_not_refused(tmp_path):
+    path = "rfx/stepping/__init__.py"
+    write(tmp_path, path, (REPO / path).read_text() + "\ndef local():\n"
+          "    from rfx.nonuniform import NonUniformGrid\n    from rfx.ringdown import RingdownSpec\n")
+    result = gate.count(CopiedSources(tmp_path))
+    assert "rfx.nonuniform:NonUniformGrid" in result["baseline"]["reverse"][path]["R"]
+    assert result["caller_definitions"][path] == ["rfx.ringdown:RingdownSpec"]
+    assert gate.five_file_definitions(result["caller_definitions"]) == []
+
+
+def test_restored_drive_coefficient_in_nonuniform_is_refused(tmp_path):
+    """The defect put back, every helper intact: the drive Cb defined in nonuniform.py again and
+    model/materials.py reading it there."""
+    home = (REPO / "rfx/model/source_coefficients.py").read_text()
+    node = next(n for n in ast.parse(home).body
+                if isinstance(n, ast.FunctionDef) and n.name == "current_source_cb")
+    source = "\n".join(home.splitlines()[node.lineno - 1:node.end_lineno])
+    write(tmp_path, "rfx/nonuniform.py", (REPO / "rfx/nonuniform.py").read_text()
+          + "\nimport jax.numpy as jnp\nfrom rfx.core.yee import EPS_0\n\n\n" + source + "\n")
+    reader = (REPO / "rfx/model/materials.py").read_text()
+    route = "from rfx.model.source_coefficients import current_source_cb"
+    assert reader.count(route) == 1
+    write(tmp_path, "rfx/model/materials.py", reader.replace(route, "from rfx.nonuniform import current_source_cb"))
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    entry = "rfx.nonuniform:current_source_cb"
+    assert defined["rfx/model/materials.py"] == [entry]
+    assert gate.five_file_definitions(defined) == [
+        FIVE_DEFINITION.format(path="rfx/model/materials.py", entry=entry)]
+
+
+def test_check_refuses_a_five_file_definition_even_when_the_baseline_lists_it(synthetic, capsys):
+    path, entry = "rfx/stepping/a.py", "rfx.nonuniform:helper"
+    write(synthetic, "rfx/nonuniform.py", "def helper():\n    pass\n")
+    write(synthetic, path, "from rfx.nonuniform import helper\n")
+    listed = empty_baseline()
+    listed["reverse"][path] = {"R": [entry]}
+    write(synthetic, gate.BASELINE, json.dumps(listed))
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert capsys.readouterr().err == FIVE_DEFINITION.format(path=path, entry=entry) + "\n"
+    write(synthetic, "rfx/nonuniform.py", "from rfx.model import helper\n")  # a re-export: rule R only
+    assert gate.main(["--repo", str(synthetic)]) == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("route,alias", [
+    ("from rfx import simulation", "simulation"),
+    ("import rfx.simulation as kernel", "kernel"),
+    ("import rfx.simulation", "rfx.simulation"),
+], ids=["from-package", "import-as", "dotted"])
+def test_attribute_read_through_a_module_import_is_refused(tmp_path, route, alias):
+    """Rule R records a whole-module import without a name; the attributes read through it are resolved."""
+    path = "rfx/stepping/__init__.py"
+    write(tmp_path, "rfx/simulation.py", (REPO / "rfx/simulation.py").read_text() + "\ndef helper():\n    pass\n")
+    write(tmp_path, path, (REPO / path).read_text()
+          + f"\ndef local():\n    {route}\n    return {alias}.helper, {alias}.apply_pec_faces\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == ["rfx.simulation:helper"]
+
+
+def test_restored_definition_read_through_the_step_module_import_is_refused(tmp_path):
+    """The defect on the route rfx/stepping/uniform.py used: a read through ``from rfx import
+    simulation`` of a name simulation.py defines (make_probe) is refused."""
+    path = "rfx/stepping/uniform.py"
+    reader = (REPO / path).read_text()
+    route = "    return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces)\n"
+    assert reader.count(route) == 1
+    write(tmp_path, path, reader.replace(
+        route, "    from rfx import simulation\n    simulation.make_probe\n" + route))
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    entry = "rfx.simulation:make_probe"
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
+
+
+@pytest.mark.parametrize("read,entry", [
+    ("from rfx import make_probe\n    return make_probe", "rfx.simulation:make_probe"),
+    ("from rfx import Simulation\n    return Simulation", "rfx.api:Simulation"),
+    ("import rfx\n    return rfx.simulation.make_probe", "rfx.simulation:make_probe"),
+    ("from rfx.api import _ExecuteMixin\n    return _ExecuteMixin", "rfx.api._execute:_ExecuteMixin"),
+    ("from rfx.api import _execute\n    return _execute._ExecuteMixin", "rfx.api._execute:_ExecuteMixin"),
+], ids=["package-top", "package-top-class", "dotted-package", "five-to-five", "submodule"])
+def test_read_of_a_five_file_definition_through_a_reexport_is_refused(tmp_path, read, entry):
+    """Re-exports are followed to the module that defines the name: the rfx package top, one five
+    file re-exporting another, a module bound through a package."""
+    path = "rfx/stepping/uniform.py"
+    write(tmp_path, path, (REPO / path).read_text() + f"\n\ndef local():\n    {read}\n")
+    defined = gate.count(CopiedSources(tmp_path))["caller_definitions"]
+    assert defined[path] == [entry]
+    assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
+
+
+# Loading a layer module must not run a five file through a module outside the layers: a package top
+# re-exporting a five file, or a helper importing one. Rule R sees only the layer module's own imports (rfx#1818).
+LOAD_CHAIN = "{path} L: loading runs {five} ({chain})"
+
+
+def test_no_layer_module_load_runs_a_five_file():
+    assert gate.load_chains(gate.Sources(REPO)) == []
+
+
+@pytest.mark.parametrize("path,code,reader,five,chain", [
+    ("rfx/sources/__init__.py", "from rfx.sources.waveguide_port import WaveguidePort\n",
+     "rfx/stepping/tfsf.py", "rfx.sources.waveguide_port",
+     "rfx.stepping.tfsf -> rfx.sources -> rfx.sources.waveguide_port"),
+    ("rfx/rcs.py", "from rfx.simulation import run\n",
+     "rfx/measurement/rcs.py", "rfx.simulation", "rfx.measurement.rcs -> rfx.rcs -> rfx.simulation"),
+], ids=["eager-package-reexport", "helper-imports-simulation"])
+def test_restored_load_chain_is_refused(tmp_path, path, code, reader, five, chain):
+    """The two defects put back, every gate helper intact: rfx.sources importing waveguide_port
+    eagerly again, and rfx.rcs importing rfx.simulation."""
+    write(tmp_path, path, (REPO / path).read_text() + "\n" + code)
+    chains = gate.load_chains(CopiedSources(tmp_path))
+    assert LOAD_CHAIN.format(path=reader, five=five, chain=chain) in chains
+
+
+@pytest.mark.parametrize("code,red", [
+    ("from rfx.sources import WaveguidePort\n", True),
+    ("import rfx.rcs\n", False),
+    ("from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from rfx.sources import WaveguidePort\n", False),
+    ("def local():\n    from rfx.sources import WaveguidePort\n", False),
+], ids=["lazy-served-name", "clean-helper", "type-checking", "function-scope"])
+def test_load_chain_import_forms(tmp_path, code, red):
+    """A name a package serves from ``_LAZY_EXPORTS`` loads its target when imported at module level;
+    ``if TYPE_CHECKING`` and function bodies load nothing."""
+    path = "rfx/model/graded_grid.py"
+    write(tmp_path, path, (REPO / path).read_text() + "\n" + code)
+    chains = gate.load_chains(CopiedSources(tmp_path))
+    expected = LOAD_CHAIN.format(path=path, five="rfx.sources.waveguide_port",
+                                 chain="rfx.model.graded_grid -> rfx.sources.waveguide_port")
+    if red:
+        assert expected in chains
+    else:
+        assert chains == []
+
+
+def test_check_refuses_a_load_chain(synthetic, capsys):
+    write(synthetic, "rfx/simulation.py", "def run():\n    pass\n")
+    write(synthetic, "rfx/helper.py", "from rfx.simulation import run\n")
+    write(synthetic, "rfx/stepping/a.py", "import rfx.helper\n")
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert capsys.readouterr().err == LOAD_CHAIN.format(
+        path="rfx/stepping/a.py", five="rfx.simulation",
+        chain="rfx.stepping.a -> rfx.helper -> rfx.simulation") + "\n"
+    write(synthetic, "rfx/helper.py", "def local():\n    from rfx.simulation import run\n")
+    assert gate.main(["--repo", str(synthetic)]) == 0

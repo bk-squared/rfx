@@ -34,7 +34,7 @@ def test_per_frequency_amplitude_advisory_reports_worst_bin():
     assert len(amplitude) == 1
     assert "frequency index 1" in amplitude[0]
     assert "1.36" in amplitude[0]
-    assert "issue #337" in amplitude[0]
+    assert "passivity violated: extraction/normalization artifact" in amplitude[0]
 
 
 def test_pec_short_like_1_03_column_is_silent():
@@ -82,7 +82,7 @@ def test_run_uniform_epilogue_warns_for_patched_extractor(monkeypatch):
     )
 
     monkeypatch.setattr("rfx.runners.uniform.run_uniform", lambda *a, **k: fake_result)
-    monkeypatch.setattr("rfx.api._execute._warn_if_nonfinite_result", lambda *a, **k: None)
+    monkeypatch.setattr("rfx.runners.run._warn_if_nonfinite_result", lambda *a, **k: None)
 
     with pytest.warns(UserWarning, match=r"run\(\): .*non-passive"):
         result = sim.run(

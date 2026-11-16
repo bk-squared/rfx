@@ -6,7 +6,7 @@ of a standing limitation. The per-subject Tracker contract now lives in
 ``test_known_limitations_tracker.py``; ``scripts/ci/check_known_limitations.py``
 checks PR closures and the weekly governance sweep reads live states.
 
-Keep this inventory in sync when the leader removes or rewrites audited entries.
+Keep this inventory in sync when audited entries are removed or rewritten.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # mode_profile fixtures -- the page's own rule for when an entry goes.
 # The taper entry carries NO citation line on purpose. #1100 (the SMOKE half)
 # closed with the commensurate mesh, and #1122 (the paper lane's published
-# figures) closed on 2026-09-19 with a PI decision to disclose rather than
+# figures) closed with a decision to disclose rather than
 # re-mesh or issue an erratum. The limitation is still real and still belongs
 # on this page, but there is no open work behind it, and an arrow line would
 # present a settled decision as a task. Both numbers sit in
@@ -59,19 +59,18 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # than the documented one node short of it. Pinned by
 # tests/unit/grid/test_cell_count_ulp_snap.py and
 # tests/unit/geometry/test_declared_span_reaches_padded_face.py.
-# #830 (the fitted microstrip beta sitting ~0.9 % above the closed form) left on
-# 2026-09-21: the PI closed it as a stated accuracy in the support matrix. The
+# #830 left the cited set on 2026-09-21: the fitted microstrip beta sits ~0.9 %
+# above the closed form, closed as a stated accuracy in the support matrix. The
 # offset is still real and unattributed, so the prose stays without the arrow
 # and 830 sits in RESOLVED_REFERENCES.
-# #838 left on 2026-09-23: closed as not planned before 2.0 by PI decision.
+# #838 left the cited set on 2026-09-23: closed as not planned before 2.0.
 # The coax-to-microstrip power over-read remains a standing limitation, with
 # its closed issue named for provenance in RESOLVED_REFERENCES.
-# #1381 left on 2026-09-30: closed as a stated limit by PI decision (both the
+# #1381 left the cited set on 2026-09-30: closed as a stated limit (both the
 # completion of an unresolved pair and the early stop it can end). The two ring-down
 # entries stay as standing limitations, with 1381 in RESOLVED_REFERENCES.
-# #1230 replaces #801 on 2026-09-23 for the part PR #1178 does not fix: with a
-# traced mesh axis no conductor is continued into the absorber. #801 is closed;
-# the residual is tracked by #1230.
+# The traced-mesh conductor entry leaves with nominal-grid continuation,
+# pinned by test_traced_mesh_conductor_matches_concrete.py.
 # #1181 left on 2026-09-23: the truncated-record gradient limitation remains,
 # and the witness in PR #1186 is opt-in. Both closed numbers are provenance
 # in RESOLVED_REFERENCES, not arrows to open work.
@@ -92,10 +91,10 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # -- `gh issue view 1257 --json state` read CLOSED that day. With the entry gone
 # the page no longer names #1236 either.
 # #1373 (ADI refuses a material interface until 2.1) joined on 2026-10-03 with
-# the "Solver lanes" section; OPEN, checked by the session leader that day.
+# the "Solver lanes" section; OPEN.
 # 2026-10-11 (2.0 documentation pass): the ADI-interface entry left with its
-# section -- the refusal is pinned by
-# tests/unit/runners/test_adi_material_interface_refusal.py and is a row in the
+# section -- the former material-interface refusal was covered by tests
+# and recorded in the
 # support matrix's Refused inputs table -- and its #1373 arrow moved to the
 # occupancy entry, whose Tracker is the same open issue. #1501 left with the
 # weekly-lane entry: a red scheduled lane is not a defect a user meets (lead
@@ -104,7 +103,10 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # pulse is declared) joined on 2026-10-17; OPEN, checked with
 # `gh issue view 1812 --repo bk-squared/rfx --json number,state`.
 # #1812 left with the declared-pulse fix and its always-on contract pins.
-CITED_ISSUES = frozenset({737, 1230, 1373, 1512})
+# #2086 (PMC wall on two x86 CPU devices) left when the multi-device uniform
+# step became the one-device step per slab; test_pmc_ghost_coefficient.py pins
+# 1- and 2-device bit identity on x86 with no xfail.
+CITED_ISSUES = frozenset({737, 1373, 1512, 2150, 2473})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
@@ -142,12 +144,12 @@ def _page() -> str:
 
 
 # The pinned set is checked in two halves. An entry that disappears while its
-# issue is open hides a defect from users, and the PI's documentation rule
-# (2026-09-22) keeps that one blocking. A new citation not yet added to the set
+# issue is open hides a defect from users, and the documentation rule
+# keeps that one blocking. A new citation not yet added to the set
 # is bookkeeping, and runs with the other documentation checks.
 @pytest.mark.reads_docs_for_gate(reason=(
     "a known-limitations entry must stay while its defect is open: the one page "
-    "a PR must keep right (PI, 2026-09-22)"))
+    "a PR must keep right"))
 def test_every_pinned_issue_keeps_its_entry():
     cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
     missing = CITED_ISSUES - cited

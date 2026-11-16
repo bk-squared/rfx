@@ -1,6 +1,8 @@
 """Matrix pencil names and the deprecated 2.x aliases have identical results."""
 
 import inspect
+import re
+import types
 import warnings
 
 import numpy as np
@@ -9,7 +11,7 @@ import pytest
 import rfx
 from rfx.harminv import harminv_record_duration, matrix_pencil_record_duration
 
-_module = __import__("sys").modules["rfx.harminv"]  # ``rfx.harminv`` is the function
+_module = rfx.harminv
 
 
 _DT = 1e-11  # 10 ps; 5.12 ns of float64 samples.
@@ -32,10 +34,15 @@ def _legacy_call(old, new_name, *args, prefix="rfx.", **kwargs):
     assert len(caught) == 1
     assert caught[0].category is DeprecationWarning
     assert str(caught[0].message) == (
-        f"{prefix}{old.__name__} is deprecated; use {prefix}{new_name} "
+        f"rfx.harminv.{old.__name__} is deprecated; use {prefix}{new_name} "
         "(same arguments, same result). It implements the matrix pencil method, not Harminv."
     )
     assert caught[0].filename == __file__  # stacklevel=2 identifies the caller.
+    target = re.search(r"use (\S+)", str(caught[0].message))[1]
+    resolved = rfx
+    for part in target.split(".")[1:]:
+        resolved = getattr(resolved, part)
+    assert callable(resolved)
     return result
 
 
@@ -58,7 +65,7 @@ def test_matrix_pencil_legacy_modes_are_bitwise_identical(settings):
         warnings.simplefilter("error")
         new = rfx.matrix_pencil(signal, _DT, *_BAND, **settings)
     assert len(new) == 2
-    old = _legacy_call(rfx.harminv, "matrix_pencil", signal, _DT, *_BAND, **settings)
+    old = _legacy_call(rfx.harminv.harminv, "matrix_pencil", signal, _DT, *_BAND, **settings)
     _assert_identical_modes(old, new)
 
 
@@ -85,7 +92,7 @@ def test_matrix_pencil_from_probe_legacy_modes_are_bitwise_identical(settings):
         warnings.simplefilter("error")
         new = rfx.matrix_pencil_from_probe(*args, **settings)
         result.find_resonances(source_decay_time=0, bandpass=False)
-    old = _legacy_call(rfx.harminv_from_probe, "matrix_pencil_from_probe", *args, **settings)
+    old = _legacy_call(rfx.harminv.harminv_from_probe, "matrix_pencil_from_probe", *args, **settings)
     _assert_identical_modes(old, new)
 
 
@@ -115,9 +122,15 @@ def test_legacy_signature_equals_new_and_forwards_every_argument(monkeypatch, ol
 
 
 def test_matrix_pencil_mode_alias_and_public_exports():
-    assert rfx.HarminvMode is rfx.MatrixPencilMode
+    assert rfx.harminv.HarminvMode is rfx.MatrixPencilMode
     for name in ("matrix_pencil", "matrix_pencil_from_probe", "MatrixPencilMode"):
         assert name in rfx.__all__
     for name in ("harminv", "harminv_from_probe", "HarminvMode"):
         assert name not in rfx.__all__  # deprecated: an attribute, not on the star surface
-        assert hasattr(rfx, name)
+        assert hasattr(rfx.harminv, name)
+
+
+def test_harminv_is_module():
+    assert isinstance(rfx.harminv, types.ModuleType)
+    assert not hasattr(rfx, "harminv_from_probe")
+    assert not hasattr(rfx, "HarminvMode")

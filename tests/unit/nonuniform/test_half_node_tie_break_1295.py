@@ -227,6 +227,12 @@ def _kernel_timing_box(nonuniform, cells=(20, 19, 17), steps=400):
     sim.add(Box((0.25 * lx + off, 0.25 * ly + off, 0.20 * lz + off),
                 (0.75 * lx + off, 0.75 * ly + off, 0.50 * lz + off)),
             material="block")
+    # Material faces use the same nearest-node rule as the source location.
+    record = sim.realized_geometry().entities[0]
+    for a, realized_axis in enumerate(record.axes):
+        drawn = (sim._geometry[0].shape.corner_lo[a], sim._geometry[0].shape.corner_hi[a])
+        expected = tuple(int(np.floor(face / DX + .5)) for face in drawn)
+        assert realized_axis.node_range == expected
     src = (0.30 * lx, 0.50 * ly, 0.70 * lz)
     sim.add_source(position=src, component="ez", amplitude_kind="current")
     sim.add_probe(position=(0.60 * lx, 0.40 * ly, 0.30 * lz), component="ez")

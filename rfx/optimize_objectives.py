@@ -309,7 +309,7 @@ def maximize_directivity(
     ``U = |E_θ|² + |E_φ|²`` is the radiation intensity and ``P_rad`` is
     the total radiated power integrated over the FULL sphere (the same
     coverage as ``farfield.directivity()`` and ``antenna._total_radiated_power``,
-    retaining this objective's JAX trapezoid endpoint weights — so the
+    with the same φ weights as ``farfield.directivity()`` — so the
     optimized quantity is the true directivity, not an upper-hemisphere proxy
     that would inflate D for antennas with any back radiation). The ratio is
     scale-invariant, so the absolute magnitude of the NTFF spectral integral
@@ -370,7 +370,7 @@ def maximize_directivity(
     phi_full = np.linspace(0.0, 2.0 * np.pi, n_phi)
 
     def objective(result) -> jnp.ndarray:
-        from rfx.farfield import compute_far_field
+        from rfx.measurement.farfield import compute_far_field
         from rfx._radiated_power import integrate_radiated_power
 
         ntff_data = result.ntff_data
@@ -410,9 +410,8 @@ def maximize_directivity(
     return objective
 
 
-# Alias for discoverability — the issue #32 fix aligned the default with
-# the ratio-based formulation, so `maximize_directivity_ratio` is simply
-# the new default under an explicit name.
+# Alias for discoverability — `maximize_directivity_ratio` is simply
+# the ratio-based default under an explicit name.
 maximize_directivity_ratio = maximize_directivity
 
 
@@ -511,7 +510,7 @@ def minimize_s11_at_freq_wave_decomp(
     target_freq: float,
     port_idx: int = 0,
 ) -> Callable:
-    """Single-frequency |S11|² objective via V/I wave decomposition (issue #72).
+    """Single-frequency |S11|² objective via V/I wave decomposition.
 
     Reads ``result.s_params`` populated by
     ``Simulation.forward(port_s11_freqs=...)`` (which uses the
@@ -545,8 +544,8 @@ def minimize_s11_at_freq_wave_decomp(
             raise ValueError(
                 "minimize_s11_at_freq_wave_decomp requires forward(...) "
                 "to be called with port_s11_freqs=... so that "
-                "result.s_params / result.freqs are populated. See "
-                "issue #72."
+                "result.s_params / result.freqs are populated."
+                ""
             )
         if s_params.ndim != 3 or s_params.shape[0] != s_params.shape[1]:
             raise ValueError("expected (n_ports, n_ports, n_freqs) S-parameter shape")

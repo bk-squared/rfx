@@ -21,14 +21,14 @@ is the map of what exists.
 | `rfx/model/` | The realized model: the declaration and the grid turned into what the time step reads (conductors, thin films, materials, occupancy, overrides, source coefficients, admission of declarations) |
 | `rfx/stepping/` | The time step: the fixed order of operations (`sequence.py`) and the per-path step functions |
 | `rfx/measurement/` | The measurement: DFT primitives, port voltage and current records, monitors and the measurement plan, on the physical clock |
-| `rfx/boundaries/` | Boundaries (CPML, UPML, PEC, PMC, periodic seams, plane-wave injection rules) and `BoundarySpec`; Floquet and periodic helpers are in `rfx/floquet.py` and `rfx/_periodic.py` |
+| `rfx/boundaries/` | Boundaries (CPML, UPML, PEC, PMC, periodic seams, plane-wave injection rules) and `BoundarySpec`; Floquet and periodic helpers are in `rfx/floquet.py` and `rfx/_internal/_periodic.py` |
 | `rfx/runners/` | The run paths and their admission checks (`_admission.py`), including the multi-device runners |
 | `rfx/preflight/` | Preflight findings: what the grid built against what was declared, absorber and mesh checks |
 | `rfx/sources/` | Source and port implementations (waveguide, TFSF, MSL, coaxial, lumped, Floquet) and the port drive (`port_drive.py`) |
 | `rfx/probes/` | Probe and monitor code (point probes, DFT planes, flux monitors, the lumped/wire S driver `sparam_driver.py`, settling) |
 | `rfx/materials/` | Material models: Debye, Lorentz, nonlinear, the library, thin conductors |
 | `rfx/api/_sparams.py`, `rfx/sparams/` | S-parameter extraction. `rfx/api/_sparams.py` holds the `_SparamMixin` class `Simulation` inherits; the calculators live per family in `rfx/sparams/` (`coax.py` the four coaxial calculators, `waveguide.py` including its graded-mesh path, `mixed.py`, `msl.py`), shared helpers in `_common.py`, and the `compute_s_matrix` / `s_matrix_lane` entry point in `dispatch.py`. Grep both |
-| `rfx/farfield.py`, `rfx/ntff_surface.py`, `rfx/ntff_sweep.py` | Far-field transform and its sweeps |
+| `rfx/measurement/farfield.py`, `rfx/measurement/ntff_surface.py`, `rfx/ntff_sweep.py` | Far-field transform and its sweeps (`rfx/farfield.py` and `rfx/ntff_surface.py` re-export the names) |
 | `rfx/observables.py` | Differentiable accessor/objective factories on registered DFT-plane probes (`dft_field`, `field_energy`, `field_softmax`) plus `jacobian_fwd` |
 | `tests/` | Canonical usage examples for every API surface — start here |
 | `tests/crossval/` | Cross-solver comparisons against frozen reference records; check a case's docstring for what it judges before citing it as validation |
@@ -61,11 +61,11 @@ command is verified to return at least one hit on the current tree.
 | Probes / measurements | `grep "def add_probe\|def add_vector_probe\|def add_dft_plane_probe\|def add_flux_monitor\|def add_ntff_box" rfx/api/__init__.py` | `rfx/probes/` |
 | Materials / dispersion | `grep "def add_material" rfx/api/__init__.py` | `rfx/materials/` |
 | Boundaries | `grep -rl "cpml\|upml\|pec\|floquet" rfx/boundaries/` | `rfx/boundaries/` |
-| Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def subtract_flux_monitors\|def harminv" rfx/probes/probes.py rfx/harminv.py` | `rfx/probes/probes.py`, `rfx/harminv.py` |
+| Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def subtract_flux_monitors\|def harminv" rfx/measurement/probes.py rfx/harminv.py` | `rfx/measurement/probes.py`, `rfx/harminv.py` |
 | **Which S-parameter method do my ports need? Start here.** | `sim.s_matrix_lane()` — returns the method name, runs no FDTD; `sim.compute_s_matrix(**kw)` routes there and forwards `**kw` unchanged | `rfx/sparams/dispatch.py`, `docs/guides/support_matrix.md` (S-parameters section, "Which calculator"). It refuses rather than guesses on two rows: a single coaxial port (two calculators share that registration — pass `method=`), and lumped/wire only (use `run(compute_s_params=True)`) |
 | S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection\|def compute_coaxial_two_port\|def compute_coax_msl_transition" rfx/api/ rfx/sparams/` | `rfx/sparams/{coax,waveguide,mixed,msl}.py` (bodies), `rfx/api/_sparams.py` (class bindings), `rfx/sources/`, `rfx/probes/sparam_driver.py` |
-| S-parameter module-level helpers shared by those calculators (MSL modal voltage / wave solve, settling, passivity, reciprocity and geometry advisories, mixed and coaxial power-wave assemblers) | `grep -rn "^def " rfx/sparams/_common.py` | `rfx/sparams/` — re-exported from `rfx.api._sparams` for backward compatibility, so import either spelling |
-| S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/sources/waveguide_port.py rfx/probes/probes.py` | `rfx/sources/waveguide_port.py`, `rfx/probes/probes.py` |
+| S-parameter module-level helpers shared by those calculators (MSL modal voltage / wave solve, settling, passivity, reciprocity and geometry advisories, mixed and coaxial power-wave assemblers) | `grep -rn "^def " rfx/measurement/sparam_assembly.py rfx/measurement/sparam_advisories.py` | `rfx/measurement/` — re-exported from `rfx.api._sparams` for backward compatibility, so import either spelling |
+| S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/sources/waveguide_port.py rfx/measurement/probes.py` | `rfx/sources/waveguide_port.py`, `rfx/measurement/probes.py` |
 | DFT-plane observables / objectives (differentiable) | `grep "def dft_field\|def field_energy\|def field_softmax" rfx/observables.py` | `rfx/observables.py` |
 | Realized conductor edges (what the SOLVE zeroes, not what was declared) — the ONE source; never re-derive from `pec_mask` | `grep "def realized_pec_edge_masks\|def realized_wall_planes\|def edge_is_pec\|def clear_edges" rfx/boundaries/pec.py` | `rfx/boundaries/pec.py` — volume/sheet/wire classification lives in `grep "def classify_pec_entry\|def sheet_spec_from_shape" rfx/geometry/rasterize_grid.py` |
 | Rasterization viewers (what the SOLVE actually builds, not what was declared) | `grep "def plot_rasterized_slice\|def plot_stack_profile" rfx/visualize.py` | `rfx/visualize.py` — import as `rfx.visualize.plot_rasterized_slice` / `rfx.visualize.plot_stack_profile` (not exported at top-level `rfx`, deliberately, to keep `rfx.__all__` curated — see `docs/guides/api_symbol_inventory.json`) |
@@ -76,7 +76,7 @@ command is verified to return at least one hit on the current tree.
 For coaxial one-port workflows, use `Simulation.compute_coaxial_line_reflection(...)`
 inside its documented one-port transmission-line envelope. For coaxial 2-port
 workflows, `Simulation.compute_coaxial_two_port(...)` (issue #489 stage 2) is
-**VALIDATED WITH SCOPE** (PI decision 2026-08-06): an external openEMS referee
+**VALIDATED WITH SCOPE**: an external openEMS referee
 (crossval 21) brackets its own `|S21|` and, via the port's own measured `beta`,
 phase on the through-line class; a mesh-refinement convergence witness
 (`p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate close the remaining legs. It
@@ -89,8 +89,8 @@ settled run (VESSL `369367257614`, PR #837) the MSL side's power-wave normalizat
 over-reads power by about 3x, so the extracted matrix is NOT passive — max`|S|`
 `1.7046`, MSL-driven column power `2.9563` / `2.9172` / `2.8609` at 6/8/10 GHz — and the
 call refuses it by default (`strict_passivity=True`, raising `ValueError`);
-`strict_passivity=False` returns it with a `UserWarning` instead (issue #838). Per
-the PI decision of 2026-09-20 the cross-family transition lanes are not
+`strict_passivity=False` returns it with a `UserWarning` instead (issue #838).
+The cross-family transition lanes are not
 pursued further before 2.0, so that over-read will not be attributed or corrected; use the
 single-family extractors separately for anything citable. Any earlier reading of this lane,
 including the attempt-2 settled run, was taken through three instrument defects since

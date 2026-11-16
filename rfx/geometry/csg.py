@@ -14,7 +14,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
-from rfx._grid_metric import half_open_volume_mask
+from rfx._internal._grid_metric import half_open_volume_mask
 from rfx.grid import Grid
 
 
@@ -63,7 +63,7 @@ class Shape(Protocol):
 def _grid_coords(grid: Grid):
     """Extract the grid's own per-axis physical node coordinates.
 
-    HOST float64, exact and independent of ``jax_enable_x64`` (#802). This
+    HOST float64, exact and independent of ``jax_enable_x64``. This
     used to be ``(jnp.arange(n) - pad) * dx`` in JAX's default dtype, so
     under x64=0 every node was the double-rounded ``f32(f32(i)*f32(dx))``,
     ~1e-10 m off the exact value — enough to flip the documented half-open
@@ -81,7 +81,7 @@ def _grid_coords(grid: Grid):
 
 
 def _periodic_grid_mask(shape, grid):
-    from rfx._periodic import periodic_mask, periodic_shape
+    from rfx._internal._periodic import periodic_mask, periodic_shape
     shape = periodic_shape(grid, shape)
     return periodic_mask(grid, shape, _grid_coords(grid))
 
@@ -259,20 +259,20 @@ class Box:
             # thin objects on a non-uniform axis. Using the first-cell dc
             # (as the legacy implementation did) causes a 0.25 mm PEC
             # sheet inside a 1 mm-dz region to be snapped onto two or
-            # three cells (issue #48 / deep dive).
+            # three cells.
             #
-            # Issue #75: thin-sheet snaps to the single argmin-nearest
+            # thin-sheet snaps to the single argmin-nearest
             # cell; the volume path uses half-open ``coords < hi`` so a
             # ``hi`` landing on a cell centre does not admit an extra cell.
             #
-            # GEO Tier-2 + #802: TRACED coords (mesh-as-design-variable)
+            # TRACED coords (mesh-as-design-variable)
             # stay fully JAX-traceable as before — ``np.asarray`` on a
             # tracer raised TracerArrayConversionError. CONCRETE coords are
             # compared on the host in float64: ``jnp.asarray`` here silently
             # downcast float64 node positions to float32 under x64=0, which
             # flipped the half-open inclusion at node-aligned faces (the
-            # #802 defect) and split the thin-branch plane between lanes
-            # (#807). At an exact half-cell tie the thin branch resolves to
+            # defect) and split the thin-branch plane between lanes.
+            # At an exact half-cell tie the thin branch resolves to
             # the LOWER plane (argmin first occurrence) — deterministic and
             # flag-independent now, but still one f64 ulp of ``mid`` away
             # from the tie, so registered sheets should sit ON a node plane
@@ -289,13 +289,13 @@ class Box:
             else:
                 # Each node owns its forward primal cell; the final node
                 # repeats the boundary width. Shared faces must use the
-                # same band at a node regardless of either box's midpoint
-                # (#1138), or stacked boxes can leave a gap or overlap.
+                # same band at a node regardless of either box's midpoint,
+                # or stacked boxes can leave a gap or overlap.
                 spacings = xp.diff(coords)
                 node_widths = xp.concatenate((spacings, spacings[-1:]))
                 # Local cell WIDTH at the midpoint cell — the smaller of the two
                 # neighbouring centre-to-centre spacings, NOT the single forward
-                # spacing coords[k+1]-coords[k] the legacy code used (#374). At a
+                # spacing coords[k+1]-coords[k] the legacy code used. At a
                 # fine/coarse grading transition the forward spacing is the mean
                 # of the two adjacent widths and over-counts, mis-classifying a
                 # shape that spans >1 fine cell as thin (which then collapses it
@@ -318,12 +318,12 @@ class Box:
                     xp.minimum(s_left, s_right),
                     xp.maximum(s_left, s_right))
             # Thin sheet: the single cell whose centre is nearest ``mid``.
-            # (#371) On the collocated scheme, apply_pec_mask zeros tangential
+            # On the collocated scheme, apply_pec_mask zeros tangential
             # Ex/Ey at this cell's CENTRE, so nearest-centre = minimum realized-
             # plane placement error. A matching-thickness (sub-cell) box takes
             # this same thin branch and agrees; only a >=1-cell VOLUME box
             # (different object) selects a different layer on a graded axis.
-            from rfx._grid_metric import nearest_node_index
+            from rfx._internal._grid_metric import nearest_node_index
             nearest_idx = nearest_node_index(coords, mid, dc_local, xp=xp)
             if traced:
                 thin_mask = jnp.zeros(coords.shape, dtype=bool).at[
@@ -331,9 +331,9 @@ class Box:
             else:
                 thin_mask = np.zeros(coords.shape, dtype=bool)
                 thin_mask[nearest_idx] = True
-            # Volume: half-open [lo, hi), with the on-lattice band (#1138).
+            # Volume: half-open [lo, hi), with the on-lattice band.
             volume_mask = half_open_volume_mask(coords, lo, hi, node_widths)
-            # Thin-branch tie rule (#802 follow-up): a face-registered
+            # Thin-branch tie rule: a face-registered
             # one-cell box is an EXACT half-cell tie — mid sits midway
             # between two nodes — and argmin would resolve it by the last
             # f64 ulp of (lo+hi)*0.5: same declaration idiom, different
@@ -464,7 +464,7 @@ class Cylinder:
             return ((cx - h, cy - r, cz - r), (cx + h, cy + r, cz + r))
 
     def mask_on_coords(self, x, y, z):
-        # #802: concrete coordinates are compared on the host in float64 so
+        # concrete coordinates are compared on the host in float64 so
         # surface-touching cells do not depend on jax_enable_x64; traced
         # coordinates (mesh-as-design-variable) keep the jnp path.
         traced = any(is_tracer(c) for c in (x, y, z))
@@ -511,7 +511,7 @@ class Sphere:
         return ((cx - r, cy - r, cz - r), (cx + r, cy + r, cz + r))
 
     def mask_on_coords(self, x, y, z):
-        # #802: host float64 comparison for concrete coordinates (see
+        # host float64 comparison for concrete coordinates (see
         # Cylinder.mask_on_coords); traced coordinates keep the jnp path.
         if not any(is_tracer(c) for c in (x, y, z)):
             x = np.asarray(x, dtype=np.float64)
@@ -565,16 +565,36 @@ class PolylineWire:
         return _periodic_grid_mask(self, grid)
 
 
+def _material_masks(grid, shapes):
+    """Sample CSG leaves with the grid's material-cell ownership rule."""
+    from rfx.geometry.rasterize_grid import (
+        _material_cell_mask, cell_centres_from_nodes,
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+    )
+    nonuniform = hasattr(grid, "dx_arr")
+    coords = (coords_from_nonuniform_grid(grid) if nonuniform
+              else coords_from_uniform_grid(grid))
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if nonuniform
+             else cell_sizes_from_uniform_grid(grid))
+    centres = cell_centres_from_nodes(coords, sizes)
+    return tuple(_material_cell_mask(shape, coords, centres, grid=grid,
+                                     cell_sizes=sizes) for shape in shapes)
+
+
 def union(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
-    return a.mask(grid) | b.mask(grid)
+    ma, mb = _material_masks(grid, (a, b))
+    return ma | mb
 
 
 def difference(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
-    return a.mask(grid) & ~b.mask(grid)
+    ma, mb = _material_masks(grid, (a, b))
+    return ma & ~mb
 
 
 def intersection(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:
-    return a.mask(grid) & b.mask(grid)
+    ma, mb = _material_masks(grid, (a, b))
+    return ma & mb
 
 
 def rasterize(
@@ -584,14 +604,8 @@ def rasterize(
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Rasterize shapes onto grid, producing (eps_r, sigma) arrays.
 
-    Shapes are sampled on **node** coordinates. :class:`Box` uses a
-    half-open ``[lo, hi)`` volume rule, so a box drawn between two node
-    planes realizes one cell short of its drawn extent, asymmetrically at
-    the ``hi`` face. For a PEC obstacle that is an electrical dimension
-    error — a nominal opening ``d`` between two facing boxes rasterizes to
-    ``d + dx``. Read the :class:`Box` docstring before drawing an obstacle
-    to a nominal physical size, and assert the realized footprint (this
-    function's ``sigma`` output is what a raster assert inspects).
+    Material volumes are sampled at primal-cell centres. Box faces land on
+    the nearest node, with half-cell ties resolving to the lower node.
 
     Parameters
     ----------
@@ -625,8 +639,7 @@ def declared_bounds(shape):
     """The shape's DECLARED bounding box, or ``None`` where it has none.
 
     One retrieval for every caller that asks "how far was this drawn", so the
-    question is asked the same way and the same shapes are excluded from it
-    (review of PR #1136, B). Two callers today: the pad continuation in
+    question is asked the same way and the same shapes are excluded from it. Two callers today: the pad continuation in
     ``rfx.geometry.smoothing.smoothed_shape_pairs`` and the assembly check in
     ``rfx.geometry.rasterize_grid.assert_declared_span_is_filled``.
 

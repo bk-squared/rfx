@@ -1,4 +1,6 @@
 """Physical lengths for S-parameter geometry advisories."""
+
+from rfx.model.graded_admission import host_cells, traced_cell_mask
 import numpy as np
 
 
@@ -6,7 +8,14 @@ def node_distance(grid, axis, first, second):
     """Node separation; retain uniform multiplication's exact rounding."""
     if grid.is_constant(axis):
         return abs(second - first) * float(grid.boundary_cell(axis, "lo"))
-    return abs(float(grid.node_of(axis, second)) - float(grid.node_of(axis, first)))
+    if traced_cell_mask(grid, axis) is None:
+        return abs(float(grid.node_of(axis, second)) - float(grid.node_of(axis, first)))
+    # Traced deformation window: nodes from the host nominal widths, whose
+    # total admission holds fixed outside the window.
+    from rfx.geometry.rasterize_grid import _axis_node_positions
+    ax, _n, pad_lo, _pad_hi = grid._axis_layout(axis)
+    nodes = _axis_node_positions(host_cells(grid, ax), pad_lo)
+    return abs(float(nodes[second]) - float(nodes[first]))
 
 
 def absorber_depth(grid, axis, side, n_cells):
@@ -17,7 +26,7 @@ def absorber_depth(grid, axis, side, n_cells):
     """
     if grid.is_constant(axis):
         return n_cells * float(grid.boundary_cell(axis, side))
-    cells = np.asarray(grid.cells(axis), dtype=float)
+    cells = np.asarray(host_cells(grid, axis), dtype=float)
     pad = cells[:n_cells] if side == "lo" else cells[len(cells) - 1 - n_cells:-1]
     return float(pad.sum())
 
@@ -59,16 +68,12 @@ def _msl_axis_spacing(grid, axis: int):
     * traced (mesh-as-design-variable) profiles — ``(None, None, False)``:
       the answer is not available host-side.
 
-    Issue #686: the #469 probe-offset interval solve used to bail on ANY
-    non-uniform grid (``getattr(grid, "dz", None) is not None``). Its
-    stated reason — "cell-counted intervals are ill-defined under graded
-    dx" — is a statement about the PROPAGATION axis, and a ``dz_profile``
-    does not grade dx. For a microstrip the propagation axis is x or y,
-    so on a z-graded mesh (the boundary-fitted stackup case) the interval
-    is perfectly well defined and the solve simply never ran.
+    Cell-counted intervals depend on the PROPAGATION axis, and a
+    ``dz_profile`` does not grade dx. For a microstrip the propagation axis
+    is x or y, so on a z-graded mesh the interval is well defined.
     """
     from rfx.core.jax_utils import is_tracer
-    from rfx.nonuniform import NonUniformGrid, interior_cells
+    from rfx.model.graded_grid import NonUniformGrid, interior_cells
 
     if not isinstance(grid, NonUniformGrid):
         return float(grid.boundary_cell(axis, "lo")), False, True
@@ -77,7 +82,7 @@ def _msl_axis_spacing(grid, axis: int):
     pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]
     if is_tracer(arr):
         return None, None, False
-    cells = np.asarray(interior_cells(np.asarray(arr), pad_lo, pad_hi, periodic="xyz"[axis] in grid.periodic_axes),
+    cells = np.asarray(interior_cells(host_cells(grid, axis, store=True), pad_lo, pad_hi, periodic="xyz"[axis] in grid.periodic_axes),
                        dtype=np.float64)
     if cells.size == 0:
         return None, None, False
@@ -97,4 +102,4 @@ def _msl_axis_cell_f64(grid, axis: int) -> float:
     axis whose cell IS that scalar reproduces the stored count exactly.
     """
     pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
-    return float(np.asarray(grid.cells(axis), dtype=np.float64)[pad_lo])
+    return float(np.asarray(host_cells(grid, axis), dtype=np.float64)[pad_lo])

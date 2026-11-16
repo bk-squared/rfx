@@ -19,7 +19,7 @@ six sibling S-matrix dispatches all tested dz. This file locks the CLASS:
   dx_profile and dy_profile must test dz_profile too";
 - a slow_physics falsifier asserts two genuinely DIFFERENT graded z meshes
   change the answer (a uniform-valued profile tests plumbing, never NU
-  metrics — rfx-known-issues lesson).
+  metrics).
 
 No module-level jax x64 config here (process-global; contaminates the
 shard), and no FDTD outside the slow_physics tests.
@@ -237,8 +237,8 @@ def test_mixed_dz_only_raises():
     # one cell thick it would be a VOLUME: walls at z = H_SUB and
     # z = H_SUB + dx with Ez shorted between, a 0.25 mm solid bar where the
     # board carries copper foil.
-    sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
-                (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
+    sim.add(Box((0.0, y_c - (1 + .35) * _DX, _H_SUB),
+                (lx, y_c + (1 + .35) * _DX, _H_SUB)), material="pec")
     sim.add_msl_port(position=(5.5e-3, y_c, 0.0), width=_W_TRACE,
                      height=_H_SUB, direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5))
@@ -323,14 +323,6 @@ def test_run_and_forward_dz_only_pick_nonuniform_lanes():
     assert plan_fwd.lane == "fwd_nonuniform", plan_fwd
 
 
-# ---------------------------------------------------------------------------
-# Source-level class lock: a dispatch predicate that tests dx_profile AND
-# dy_profile must test dz_profile too. rfx/api/__init__.py is excluded on
-# purpose: its ADI guard tests dx/dy only because dz_profile is rejected
-# separately one line above (solver='adi' raises ValueError on nonuniform
-# dz_profile) — a deliberate per-axis check, not this defect class. ADI has
-# no z-graded lane; ZCZ names the Zheng-Chen-Zhang scheme, not a dz lane.
-# ---------------------------------------------------------------------------
 _DISPATCH_FILES = (
     "rfx/api/_sparams.py",
     # #980 Phase 2 moves the compute_* bodies -- including the #811 dx/dy/dz
@@ -338,6 +330,9 @@ _DISPATCH_FILES = (
     # modules under rfx/sparams/; the scan follows the code by globbing the
     # package so the class stays covered there instead of passing vacuously.
     *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/sparams").glob("*.py")),
+    # The calculators' shared helpers live in these two measurement modules.
+    "rfx/measurement/sparam_assembly.py",
+    "rfx/measurement/sparam_advisories.py",
     "rfx/api/_preflight.py",
     # #980 Phase 3 does the same to rfx/api/_preflight.py, a leg at a time,
     # into rfx/preflight/. Globbed NOW, while the package holds only leaf

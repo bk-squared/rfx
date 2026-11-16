@@ -28,7 +28,7 @@ def simulation(graded, freq, domain, **kwargs):
         periodic = "".join(a for a in "xyz" if getattr(boundary, a).lo == "periodic")
         d = kwargs.get("dx", 299792458.0 / freq / 20)
         kwargs.update(profiles(domain, d, periodic, automatic=kwargs.get("dx") is None))
-    return Simulation(freq, domain, **kwargs)
+    return Simulation(freq, (domain[0], domain[1], float(np.sum(kwargs["dz_profile"]))) if "dz_profile" in kwargs else domain, **kwargs)
 
 
 def grid(graded, freq, domain, *, dx=None, periodic_axes="", **kwargs):

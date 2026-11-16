@@ -498,7 +498,7 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
 
     #752: conductor intervals and dielectric sample slots are different.
     At dx=80um the foil/port snap to 240um (three intervals), whereas the
-    dielectric column occupies four slots/320um. At dx=100um the conductor
+    centre-sampled dielectric column occupies three slots/240um. At dx=100um the conductor
     gap is 300um over three intervals. Both must warn in every direction;
     the direction does not rotate the substrate normal away from z.
     """
@@ -518,7 +518,7 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
     assert "conductor-plane gap=240.0µm" in cells80[0]
     assert frac80, f"mixed-cell check silent for {direction}: {msgs80}"
     assert "sits 0.175 of a cell above its lower mesh node" in frac80[0], frac80[0]
-    assert "4 same-permittivity sample slot(s), extent 320.0µm" in frac80[0], frac80[0]
+    assert "3 same-permittivity sample slot(s), extent 240.0µm" in frac80[0], frac80[0]
 
     # dx = 100 um: the port spans three actual normal intervals too.
     sim100 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
@@ -559,14 +559,14 @@ def test_probe_span_absorber_check_fires_on_the_propagation_axis():
 
 def _thru(axis, n_freqs, num_periods):
     if axis == "x":
-        domain, sub = (L_PROP, L_LAT, LZ), (L_PROP, L_LAT, H_SUB)
+        domain, sub = (L_PROP, L_LAT, LZ), (166 * DX, 36 * DX, H_SUB)
         lat_c = L_LAT / 2.0
         tlo = (0.0, lat_c - W_TRACE / 2, H_SUB)
         thi = (L_PROP, lat_c + W_TRACE / 2, H_SUB)
         p0, p1, d0, d1 = ((PORT_MARGIN, lat_c, 0.0),
                           (PORT_MARGIN + L_LINE, lat_c, 0.0), "+x", "-x")
     else:
-        domain, sub = (L_LAT, L_PROP, LZ), (L_LAT, L_PROP, H_SUB)
+        domain, sub = (L_LAT, L_PROP, LZ), (36 * DX, 166 * DX, H_SUB)
         lat_c = L_LAT / 2.0
         tlo = (lat_c - W_TRACE / 2, 0.0, H_SUB)
         thi = (lat_c + W_TRACE / 2, L_PROP, H_SUB)
@@ -658,7 +658,12 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
             assert " x " not in m, f"advisory uses ' x ' as a multiplication sign: {m[:120]!r}"
             if mirrored:
                 m = _axis.sub(lambda k: "y" if k.group(1) == "x" else "x", m)
-            out.append(re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m))
+            m = re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m)
+            if m.startswith("[run] preflight found"):
+                # Axis swapping reverses emission order inside the joined warning.
+                header, *lines = m.split("\n  - ")
+                m = "\n  - ".join([header, *sorted(lines)])
+            out.append(m)
         return sorted(out)
 
     cx, cy = _canon(wx, mirrored=False), _canon(wy, mirrored=True)

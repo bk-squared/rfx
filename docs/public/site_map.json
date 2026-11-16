@@ -5,12 +5,9 @@
       "items": [
         "rfx",
         "rfx/showcase",
-        "rfx/showcase/sensitivity-map",
-        "rfx/showcase/gradient-cost",
-        "rfx/showcase/descent-to-optimum",
-        "rfx/showcase/forward-checks",
-        "rfx/showcase/grin-lens",
-        "rfx/showcase/waveguide-filter"
+        "rfx/showcase/patch-calibration",
+        "rfx/showcase/waveguide-filter",
+        "rfx/showcase/grin-lens"
       ]
     },
     {
@@ -50,8 +47,7 @@
       "items": [
         "rfx/run/run-and-forward",
         "rfx/run/memory-and-speed",
-        "rfx/run/multi-device",
-        "rfx/guide/adi-solver"
+        "rfx/run/multi-device"
       ]
     },
     {
@@ -81,6 +77,7 @@
         "rfx/design/design-regions",
         "rfx/design/optimization",
         "rfx/design/sweeps",
+        "rfx/design/pareto",
         "rfx/guide/gradient-behavior"
       ]
     },
@@ -105,19 +102,14 @@
       "label": "Examples and gallery",
       "items": [
         "rfx/examples",
+        "rfx/examples/teaching/boundary-reflection",
+        "rfx/examples/teaching/dielectric-interface",
+        "rfx/examples/teaching/cavity-standing-wave",
         "rfx/examples/first-patch",
         "rfx/examples/patch-antenna",
         "rfx/gallery",
         "rfx/gallery/visual-manual",
-        "rfx/gallery/boundary-reflection",
-        "rfx/gallery/dielectric-interface",
-        "rfx/gallery/cavity-standing-wave",
-        "rfx/gallery/waveguide-taper",
-        "rfx/gallery/microstrip-notch",
-        "rfx/gallery/beam-steering",
-        "rfx/gallery/multilayer_fresnel",
-        "rfx/gallery/waveguide_wr90",
-        "rfx/gallery/patch_antenna"
+        "rfx/gallery/waveguide_wr90"
       ]
     },
     {
@@ -138,8 +130,10 @@
       "label": "Project",
       "items": [
         "rfx/project/changelog",
+        "rfx/project/deprecation-policy",
         "rfx/project/contributing",
-        "rfx/project/citation"
+        "rfx/project/citation",
+        "rfx/project/structure"
       ]
     }
   ]

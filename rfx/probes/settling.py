@@ -1,7 +1,7 @@
 """Host diagnostics for already-recorded user probes, shared by run/forward."""
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 import jax
 import numpy as np
@@ -16,176 +16,9 @@ _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 SOURCE_DOMINATED_QUALIFIER = (
     "SOURCE-DOMINATED: every scored record sits on a registered "
     "source/port drive cell; not an independent ring-down witness. Add a "
-    "probe away from every drive cell, somewhere the field is live "
-    "(issue #1090)."
+    "probe away from every drive cell, somewhere the field is live"
+    "."
 )
-
-
-def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
-                    return_detail=False):
-    """Last active drive sample + 1 + free-space transit, or no source end.
-
-    ``drives`` contains ``(waveform_or_samples, distance_metres)`` pairs.
-    Callables are sampled exactly like the runners: float32(n) * dt.
-    Precomputed incident tables use the same threshold on their own peak.
-    Detail retains the sampled magnitudes for ringdown's window checks;
-    those checks intentionally retain their configurable tolerance and no
-    transit delay. An all-zero drive ends at step zero.
-    """
-    import jax.numpy as jnp
-    from rfx.grid import C0
-
-    if dt is None or is_tracer(dt) or not np.isfinite(dt) or dt <= 0:
-        return (None, []) if return_detail else None
-    times = None
-    rows = []
-    end = 0
-    available = True
-    for waveform, distance in drives:
-        if callable(waveform):
-            with jax.ensure_compile_time_eval():
-                if times is None:
-                    times = jnp.arange(n_steps, dtype=jnp.float32) * dt
-                samples = jax.vmap(waveform)(times)
-        else:
-            samples = waveform
-        if samples is None or is_tracer(samples):
-            available = False
-            continue
-        raw = np.asarray(samples)
-        w = (np.abs(raw.astype(np.complex128)) if np.iscomplexobj(raw)
-             else np.abs(np.asarray(raw, dtype=np.float64)))
-        # A recorded table may lack the scan's last step (the waveguide
-        # port does not write it); it then speaks for the steps it holds.
-        if w.ndim != 1 or not n_steps - 1 <= len(w) <= n_steps:
-            available = False
-            continue
-        if not np.isfinite(w).all():
-            available = False
-        peak = float(np.max(w)) if w.size else 0.0
-        on = np.flatnonzero(w > float(tolerance) * peak)
-        off = int(on[-1]) + 1 if on.size else 0
-        rows.append((w, peak, off))
-        if off >= len(w) and peak > 0:
-            available = False
-        if distance is None or not np.isfinite(distance) or distance < 0:
-            available = False
-        else:
-            end = max(end, off + int(np.ceil(float(distance) / (C0 * float(dt)))))
-    value = end if available else None
-    return (value, rows) if return_detail else value
-
-
-def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
-                               waveguide_configs=None):
-    """Source end for registered point drives and selected physical probes.
-
-    Unknown plane/volume drives must not silently disappear from coverage.
-    TF/SF uses its waveform and box diagonal in addition to point drives.
-    """
-    from rfx.measurement.modal import recorded
-    from rfx.sources.sources import GaussianPulse
-
-    if dt is None or is_tracer(dt):
-        return None
-    records = tuple(records)
-    positions = [getattr(p, "position", None) for p in records]
-    if not positions or any(p is None for p in positions):
-        return None
-    for record in records:
-        if getattr(record, "extent", None):
-            end = np.asarray(record.position, dtype=float).copy()
-            end[_COMPONENT_AXIS[record.component]] += record.extent
-            positions.append(end)
-    drives = []
-    if getattr(sim, "_waveguide_ports", ()):
-        if not waveguide_configs:
-            return None
-        for cfg in waveguide_configs.values():
-            if cfg.src_amp:
-                axis = "xyz".index(cfg.normal_axis)
-                distance = max(abs(float(p[axis]) - float(cfg.source_x_m))
-                               for p in positions)
-                drives.append((recorded(cfg, "v_inc_t"), distance))
-    for pe in (*getattr(sim, "_ports", ()), *getattr(sim, "_msl_ports", ())):
-        if getattr(pe, "impedance", None) != 0 and not getattr(pe, "excite", True):
-            continue
-        waveform = pe.waveform
-        if waveform is None:
-            waveform = GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)
-        if getattr(pe, "position", None) is None:
-            return None
-        starts = [np.asarray(pe.position, dtype=float)]
-        if getattr(pe, "extent", None):
-            end = starts[0].copy()
-            end[_COMPONENT_AXIS[pe.component]] += pe.extent
-            starts.append(end)
-        distance = max(float(np.linalg.norm(start - p))
-                       for start in starts for p in positions)
-        drives.append((waveform, distance))
-    for pe in getattr(sim, "_floquet_ports", ()):
-        waveform = GaussianPulse(
-            f0=pe.f0 if pe.f0 is not None else sim._freq_max / 2,
-            bandwidth=pe.bandwidth, amplitude=pe.amplitude)
-        center = np.asarray(sim._domain, dtype=float) / 2
-        center["xyz".index(pe.axis)] = pe.position
-        distance = max(float(np.linalg.norm(center - p)) for p in positions)
-        drives.append((waveform, distance))
-    tf = getattr(sim, "_tfsf", None)
-    if tf is not None:
-        if grid is None:
-            return None
-        from rfx.sources.tfsf import tfsf_from_declaration
-        cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps)
-        drives.append(tfsf_source_drive(cfg, grid))
-    return source_end_step(drives, n_steps, dt) if drives else None
-
-
-def tfsf_source_drive(cfg, grid):
-    """TF/SF source waveform and transit across its box diagonal."""
-    import jax.numpy as jnp
-
-    def waveform(t):
-        custom = getattr(cfg, "custom_waveform", None)
-        if custom is not None:
-            return cfg.src_amp * custom(t)
-        arg = (t - cfg.src_t0) / cfg.src_tau
-        env = jnp.exp(-(arg ** 2))
-        kind = getattr(cfg, "src_waveform", "analytic")
-        if kind == "modulated_gaussian":
-            return cfg.src_amp * env * jnp.cos(2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        if kind == "continuous_wave":
-            ramp = .5 * (1 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0., 1.)))
-            return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
-        if kind == "analytic":
-            return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        return cfg.src_amp * (-2 * arg) * env
-
-    lengths = []
-    for axis in "xyz":
-        lo = getattr(cfg, axis + "_lo", 0)
-        hi = getattr(cfg, axis + "_hi", grid.shape["xyz".index(axis)] - 1)
-        # A slab has no transverse box indices (both default to zero),
-        # but the illumination spans the transverse domain.
-        if axis != "x" and hi == lo and grid.shape["xyz".index(axis)] > 1:
-            lo, hi = 0, grid.shape["xyz".index(axis)] - 1
-        lengths.append(grid.node_of(axis, hi) - grid.node_of(axis, lo))
-    return waveform, float(np.linalg.norm(lengths))
-
-
-def sampled_source_end_step(sources, probes, grid, n_steps):
-    """Already sampled E/H drive tables and low-level probe indices."""
-    def position(entry):
-        return np.array([grid.node_of(axis, getattr(entry, idx))
-                         for axis, idx in zip("xyz", "ijk")])
-
-    if not sources or not probes:
-        return None
-    positions = [position(p) for p in probes]
-    return source_end_step(
-        [(src.waveform, max(float(np.linalg.norm(position(src) - p))
-                            for p in positions)) for src in sources],
-        n_steps, grid.dt)
 
 
 def _cell_of(grid, position, component=None):
@@ -204,7 +37,7 @@ def _cell_of(grid, position, component=None):
         position = tuple(float(c) for c in position)
         idx = (field_index(grid, position, component) if component is not None
                else _resolve_position_to_index(grid, position))
-    except Exception:
+    except ValueError:
         # A drive or probe declared outside the built grid cannot be
         # co-located with anything; position_to_index raises there.
         return None
@@ -226,7 +59,7 @@ def drive_cells(grid, *entry_groups):
     VOLUME rather than a point -- waveguide ports (``add_waveguide_port``)
     and TFSF. Those need a plane/box membership test rather than a cell
     test; a probe inside such a source region is still source-dominated in
-    the #1090 sense and is not flagged here (issue #1102).
+    the sense and is not flagged here.
     """
     cells: set[tuple[int, int, int]] = set()
     for entries in entry_groups:
@@ -254,7 +87,7 @@ def drive_cells(grid, *entry_groups):
 
 
 def source_dominated_columns(grid, entries, cells):
-    """Probe columns whose cell is a drive cell (issue #1090).
+    """Probe columns whose cell is a drive cell.
 
     Cell co-location alone, deliberately without a component match: the
     H components of a source cell are the direct curl of the E edge the
@@ -280,7 +113,7 @@ def probe_record_info(time_series, entries, internal_indices=(),
     the flag is 1 when that probe shares a Yee cell with a registered drive
     (see :func:`source_dominated_columns`), and ``(i, j, k)`` is the cell of
     the declared position (absent when unresolved), which tells co-located
-    records apart (#1909). All stay integers so the selection metadata can
+    records apart. All stay integers so the selection metadata can
     ride inside a JAX result tree.
     """
     shape = getattr(time_series, "shape", ())
@@ -311,7 +144,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     the differentiated solver. ``warn=False`` makes repeated property reads
     quiet; the execution entry point retains the canonical coverage warning.
 
-    Records flagged source-dominated (issue #1090 -- the probe shares a Yee
+    Records flagged source-dominated (the probe shares a Yee
     cell with a registered drive) do not carry the verdict while any
     independent scored record exists. When they are the only scored records,
     ``qualifier`` / ``source_dominated`` retain that spatial coverage caveat.
@@ -325,7 +158,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         # ``source_dominated``/``qualifier`` describe the record that
         # CARRIES the verdict; an absent witness has none, so they are
         # empty here rather than describing records nothing rests on.
-        # No NaN in an absent witness (#885): no number rests on it.
+        # No NaN in an absent witness: no number rests on it.
         return None, {**detail, "db": None, "worst_freq_hz": None,
                       "status": "absent", "route": None,
                       "worst_record": None, "per_record_db": {},
@@ -336,7 +169,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     advice = ("add a point probe (sim.add_probe(position, component)) away "
               "from every source/port drive cell — a record on the drive "
               "cell measures source turn-off, not ring-down, and is not an "
-              "independent witness (#1090) — and retain its time series, or "
+              "independent witness — and retain its time series, or "
               "use run(until_decay=...) to bound the ring-down through its "
               "stop criterion")
     if is_tracer(source_end_index) or is_tracer(time_series) or any(is_tracer(leaf) for leaf in jax.tree_util.tree_leaves(probe_info)):
@@ -356,10 +189,11 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
                       "witness probes are judged by their own driver: " + advice)
     named = []
     groups = {}
+    scale_groups = {}
     dominated_names = set()
     for item in info:
-        # Pre-#1090 metadata is a 2-tuple; a stored result predating the
-        # flag scores exactly as it did, with nothing marked dominated.
+        # Two-tuple metadata has no source-dominated flag; score it with nothing
+        # marked dominated.
         col, component = int(item[0]), int(item[1])
         flag = int(item[2]) if len(item) > 2 else 0
         if not 0 <= col < series.shape[1]:
@@ -367,6 +201,8 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         label = _COMPONENTS[component] if 0 <= component < len(_COMPONENTS) else "?"
         name = f"probe{col}({label})"
         named.append((name, series[:, col]))
+        if label != "?":
+            scale_groups[name] = label
         # A rounding record's level is eps times the fields that cancel at
         # its own point, so its reference is the same-kind records there.
         cell = tuple(int(v) for v in item[3:6]) if len(item) > 5 else None
@@ -378,7 +214,8 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     selected = independent or named
     worst, detail = settling_db_from_named_records(
         selected, return_detail=True, dt=dt, freqs=freqs, freq_max=freq_max,
-        source_end_index=source_end_index, rounding_groups=groups)
+        source_end_index=source_end_index, rounding_groups=groups,
+        scale_groups=scale_groups)
     per_record = detail["per_record_db"]
     finite = {name: value for name, value in per_record.items() if np.isfinite(value)}
     qualifier = "" if independent else SOURCE_DOMINATED_QUALIFIER

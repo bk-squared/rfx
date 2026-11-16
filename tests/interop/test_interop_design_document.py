@@ -48,6 +48,7 @@ from rfx.interop import (
 from rfx.interop._design import (
     EXCLUDED_SIMULATION_ATTRS,
     EXPORTED_SIMULATION_ATTRS,
+    REFUSED_SIMULATION_ATTRS,
     TRACED_ONLY_SIMULATION_ATTRS,
     _PINNED_RECORDS,
     _WAVEFORM_CODECS,
@@ -328,16 +329,6 @@ def _nonuniform_xy_design() -> Simulation:
     )
 
 
-def _adi_mixed_precision() -> Simulation:
-    return Simulation(
-        freq_max=10e9,
-        domain=(0.020, 0.020, 0.020),
-        dx=1e-3,
-        boundary="pec",
-        solver="adi",
-        adi_cfl_factor=2.0,
-        precision="mixed",
-    )
 
 
 def _fourth_order_2d() -> Simulation:
@@ -412,7 +403,7 @@ DESIGN_BUILDERS = {
     "legacy_all_periodic": _legacy_all_periodic,
     "auto_mesh": _auto_mesh_design,
     "nonuniform_xy": _nonuniform_xy_design,
-    "adi_mixed_precision": _adi_mixed_precision,
+
     "fourth_order_2d": _fourth_order_2d,
     "pec_sheet_and_volume": _pec_sheet_and_volume,
     "current_moment_monitor": _current_moment_monitor_design,
@@ -471,7 +462,9 @@ def _canonical(value):
 def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None:
     """Diff two simulations attribute by attribute over the census inventory."""
     # #1373: canonical current declarations do not replay a None warning.
-    diagnostic_attrs = {"_amplitude_kind_warned"}
+    # Grid construction can populate realization diagnostics on either side;
+    # the document excludes them and preflight rebuilds them from declarations.
+    diagnostic_attrs = {"_amplitude_kind_warned", "_realization_early_outcomes"}
     assert set(vars(original)) - diagnostic_attrs == set(vars(rebuilt)) - diagnostic_attrs, (
         "the rebuilt simulation carries a different attribute set: "
         f"only in original={sorted(set(vars(original)) - set(vars(rebuilt)))}, "
@@ -491,8 +484,15 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
     # test_auto_msl_spacing_is_frozen_resolved_in_the_document. The #810
     # registration lengths follow the same rule: the rebuilt port's are
     # re-derived by add_msl_port from the rebuilt geometry.
+    # _boundary_scalar_spec (#2214) is the constructor's record that the
+    # spec came from the "cpml"/"upml" scalar. It is read only with a Floquet
+    # port or open TF/SF, and those documents rebuild from the scalar
+    # (design_constructor_boundary), so the rebuild records it again; other
+    # documents rebuild from the spec and carry None. Before #2214 the same
+    # record rode inside _boundary and was lost the same way, unseen here.
     skip_attrs = {"_msl_auto_offset_min", "_msl_auto_probe_spacing",
-                  "_msl_auto_probe_lengths", "_msl_ports"} | diagnostic_attrs
+                  "_msl_auto_probe_lengths", "_msl_ports",
+                  "_boundary_scalar_spec"} | diagnostic_attrs
     for name in sorted(set(vars(original)) - skip_attrs):
         left = _canonical(getattr(original, name))
         right = _canonical(getattr(rebuilt, name))
@@ -514,6 +514,22 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
 # ---------------------------------------------------------------------------
 # Anti-drift ledgers
 # ---------------------------------------------------------------------------
+
+def test_pec_occupancy_model_round_trip_and_legacy_default():
+    sim = Simulation(freq_max=10e9, domain=(0.008,) * 3, dx=0.001,
+                     boundary="pec", pec_occupancy_model="kottke")
+    payload = design_to_json(sim)
+    document = json.loads(payload)
+    assert document["solver"]["pec_occupancy_model"] == "kottke"
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._pec_occupancy_model == "kottke"
+    assert_designs_equivalent(sim, rebuilt)
+
+    del document["solver"]["pec_occupancy_model"]
+    legacy = simulation_from_design(document)
+    assert legacy._pec_occupancy_model == "edge_keep"
+    assert design_to_dict(legacy)["solver"]["pec_occupancy_model"] == "edge_keep"
+
 
 def test_every_simulation_attribute_is_classified():
     """Every builder attribute is either exported or explicitly excluded.
@@ -544,14 +560,14 @@ def test_every_simulation_attribute_is_classified():
 
 
 def test_every_builder_method_is_covered_by_the_document():
-    """Each public ``add_*`` builder writes into a section the document records."""
+    """Each public builder is exported, desugared, or explicitly refused."""
     builders = {
         name
         for name in dir(Simulation)
         if name == "add" or name.startswith("add_")
     }
-    # Every builder either appends to one of the exported lists or is a
-    # documented desugaring of another builder.
+    refused = {"add_wall_loss": "_wall_losses"}
+    assert all(REFUSED_SIMULATION_ATTRS[attr] == "refused" for attr in refused.values())
     desugaring = {
         # expands to 1-2 add_source calls at registration time
         "add_polarized_source",
@@ -577,10 +593,10 @@ def test_every_builder_method_is_covered_by_the_document():
         "add_thin_conductor",
         "add_tfsf_source",
         "add_waveguide_port",
-    } | desugaring
+    } | desugaring | refused.keys()
     assert builders == expected, (
         "the Simulation builder surface has changed; confirm the new method's "
-        "state reaches the design document and update this list: "
+        "state is exported or refused and update this list: "
         f"new={sorted(builders - expected)}, gone={sorted(expected - builders)}"
     )
 
@@ -1436,7 +1452,7 @@ def test_removed_coaxial_termination_entry_is_refused_naming_1212(key):
     """A document carrying an entry for a builder removed in #1212 is refused."""
     document = design_to_dict(_coax_cavity())
     document["excitations"][key] = [dict(_REMOVED_COAXIAL_TERMINATIONS[key])]
-    with pytest.raises(UnsupportedDesignFeature, match=r"#1212") as exc:
+    with pytest.raises(UnsupportedDesignFeature, match=r"removed") as exc:
         simulation_from_design(document)
     assert f"excitations.{key}" in str(exc.value)
     assert "compute_coaxial_line_reflection" in str(exc.value)
@@ -1452,7 +1468,7 @@ def test_non_portable_annotation_flags_subgridding():
     notes = design_to_dict(_subgrid_research_design())["non_portable"]
     refinement = [note for note in notes if note["path"] == "refinement"]
     assert refinement, f"refinement not annotated: {notes}"
-    assert "#90" in refinement[0]["reason"]
+    assert "falsified in 3D" in refinement[0]["reason"]
 
 
 def test_non_portable_annotation_flags_graded_mesh_and_absorber():
@@ -1592,8 +1608,10 @@ def test_schema_entry_fields_match_the_emitter_registry(
     registry = getattr(_design, registry_name)
     node = _schema_at(published_schema, path)
 
-    # Radius is opt-in: old wire-port documents have no radius key.
+    # Older documents omit radius and the absorber opt-in keyword.
     optional = {"radius"} if path == "excitations.lumped_ports" else set()
+    if path in {"excitations.soft_sources", "excitations.lumped_ports", "observables.probes"}:
+        optional.add("allow_in_absorber")
     assert set(node["required"]) == set(registry) - optional, (
         f"{path}: schema required={sorted(node['required'])} but the emitter "
         f"records {sorted(registry)}"
@@ -1920,7 +1938,7 @@ def test_auto_msl_spacing_is_frozen_resolved_in_the_document():
 
 def _nu_offset_fixture(**profiles):
     DX = 2e-4
-    sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, 0.0038), dx=DX,
+    sim = Simulation(freq_max=20e9, domain=(0.020, 0.02632, float(np.sum(profiles["dz_profile"])) if "dz_profile" in profiles else 0.0038), dx=DX,
                      boundary="cpml", cpml_layers=8, **profiles)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.020, 0.02632, 0.000794)), material="sub")
@@ -1989,7 +2007,7 @@ def test_auto_offset_dump_keeps_stored_edge_when_propagation_axis_is_graded():
     assert port_doc["n_probe_offset"] == 20
     assert port_doc["n_probe_offset"] == _driver_offset(sim)
     # and the skip is no longer silent
-    assert any("interval solve (issue #469) SKIPPED" in str(w.message)
+    assert any("interval solve SKIPPED" in str(w.message)
                for w in caught), [str(w.message) for w in caught]
 
 
@@ -2068,7 +2086,7 @@ def test_a_v1_document_is_refused_by_name_not_silently_migrated():
         simulation_from_design(doc)
     msg = str(exc.value)
     assert "rfx-design-ir/v1" in msg and "rfx-design-ir/v2" in msg, msg
-    assert "two" in msg and "931" in msg, msg
+    assert "two" in msg and "one-cell PEC Box is a volume with both faces now" in msg, msg
 
 
 def test_a_stray_two_plane_key_is_refused_rather_than_ignored():
@@ -2146,3 +2164,38 @@ def test_design_export_uses_current_entry_positions_for_terminations():
     rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
     assert int(np.asarray(sheets[0].footprint).sum()) == 169
     assert int(np.asarray(sheets[1].footprint).sum()) == 27
+
+
+def test_older_v2_document_defaults_absorber_opt_in_to_false(published_schema):
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3, boundary="pec")
+    sim.add_probe((0.010, 0.010, 0.010), "ez", allow_in_absorber=True)
+    sim.add_source((0.005, 0.010, 0.010), "ez", allow_in_absorber=True)
+    sim.add_port((0.015, 0.010, 0.010), "ez", impedance=50.0, allow_in_absorber=True)
+    document = design_to_dict(sim)
+    del document["observables"]["probes"][0]["allow_in_absorber"]
+    del document["excitations"]["soft_sources"][0]["allow_in_absorber"]
+    del document["excitations"]["lumped_ports"][0]["allow_in_absorber"]
+
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._probes[0].allow_in_absorber is False
+    assert rebuilt._ports[0].allow_in_absorber is False
+    assert rebuilt._ports[1].allow_in_absorber is False
+
+    jsonschema = pytest.importorskip("jsonschema")
+    jsonschema.validate(instance=document, schema=published_schema)
+
+
+@pytest.mark.parametrize("kind", ["probe", "source", "lumped", "wire"])
+def test_absorber_opt_in_survives_design_round_trip(kind):
+    sim = Simulation(freq_max=25e9, domain=(.01,) * 3, dx=.001, cpml_layers=8)
+    position = (-.001, .005, .005)
+    if kind == "probe":
+        sim.add_probe(position, allow_in_absorber=True)
+    elif kind == "source":
+        sim.add_source(position, amplitude_kind="field", allow_in_absorber=True)
+    else:
+        sim.add_port(position, extent=.002 if kind == "wire" else None,
+                     allow_in_absorber=True)
+    rebuilt = simulation_from_design(design_to_dict(sim))
+    entry = (rebuilt._probes if kind == "probe" else rebuilt._ports)[0]
+    assert entry.allow_in_absorber is True

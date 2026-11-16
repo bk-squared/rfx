@@ -9,22 +9,10 @@ sidebar:
 
 <div data-rfx="cards">
   <section data-rfx="card">
-    <a href="/rfx/gallery/boundary-reflection/"><img src="/rfx/gallery/assets/current-visuals/boundary-reflection.png" loading="lazy" alt="Open versus reflecting boundaries for an electric pulse" /></a>
+    <a href="/rfx/examples/teaching/boundary-reflection/"><img src="/rfx/gallery/assets/current-visuals/boundary-reflection.png" loading="lazy" alt="Open versus reflecting boundaries for an electric pulse" /></a>
     <h3>Follow a field</h3>
     <p>Begin with a pulse, a boundary and a dielectric interface. Actual time-domain snapshots make a useful first experiment.</p>
-    <a href="/rfx/gallery/boundary-reflection/">Watch and run →</a>
-  </section>
-  <section data-rfx="card">
-    <a href="/rfx/gallery/waveguide-taper/"><img src="/rfx/gallery/assets/showcase-20260927/taper_traj.jpg" loading="lazy" alt="Guided-wave material design and reflection spectrum" /></a>
-    <h3>Connect structure to response</h3>
-    <p>Explore historical films of a guided-wave taper or microstrip filter, then use the related source examples.</p>
-    <a href="/rfx/gallery/waveguide-taper/">Explore RF components →</a>
-  </section>
-  <section data-rfx="card">
-    <a href="/rfx/gallery/beam-steering/"><img src="/rfx/gallery/assets/showcase-20260927/steer_traj.jpg" loading="lazy" alt="Material pattern and radiation direction during a historical optimization" /></a>
-    <h3>Shape the radiation</h3>
-    <p>See a dielectric cover change a beam's direction, and learn which variables its sensitivity plot describes.</p>
-    <a href="/rfx/gallery/beam-steering/">Explore a design history →</a>
+    <a href="/rfx/examples/teaching/boundary-reflection/">Watch and run →</a>
   </section>
 </div>
 
@@ -67,6 +55,15 @@ The [machine-readable index](https://github.com/bk-squared/rfx/blob/main/example
 | 12 | [`inverse_design/differentiable_s11_design.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/differentiable_s11_design.py) | `jax.grad` through `compute_waveguide_s_matrix`, checked against central finite differences | CPML; two WR-90 waveguide ports |
 | 13 | [`tutorials/artifact_report_demo.py`](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/artifact_report_demo.py) | exporting a shareable scene, mesh and preflight metadata, a report and a manifest | PEC box; lumped port and probe; no FDTD run |
 
+Six of these scripts are run end to end by a test that checks their output:
+`materials_and_dispersion`, `antenna_farfield_pattern`, `ports_and_sparams_101`,
+`run_control_and_fields`, `rcs_scattering` and `resonance_harminv`. Some of these
+tests bound physics, such as the dipole's directivity, a cavity mode's error and
+the backscatter ratio; others check the advisories and that values are finite.
+`hello_world` runs end to end with a check that its output is finite. Every
+other script is checked only for what it builds, not for what it prints, so a
+"checked against" in the table is what the script reports, not a test result.
+
 Read the preflight output of every script. Its warnings name the conditions
 that would make a result wrong: a lossless resonator, a layer that landed on
 the wrong cells, a run cut off before the field rang down.
@@ -75,7 +72,6 @@ the wrong cells, a run cut off before the field rang down.
 
 | Script | What it shows | Ports and boundaries |
 |---|---|---|
-| [`tutorials/adi_solver_demo.py`](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/adi_solver_demo.py) | the ADI solver's time-step vs accuracy trade, against an exact cavity; see [ADI Solver](/rfx/guide/adi-solver/) | closed PEC cavity; point source and probe |
 | [`tutorials/cad_mesh_import_demo.py`](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/cad_mesh_import_demo.py) | importing an STL part with `MeshShape` and a mm → m `scale`. Needs the `rfx-fdtd[cad]` extra and exits cleanly without it; exposes `build_simulation()` | CPML; point source |
 | [`inverse_design/multilayer_ar_coating.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/multilayer_ar_coating.py) | a three-layer anti-reflection coating optimized through `forward(eps_override=...)`, checked against the transfer-matrix optimum | CPML on x, periodic y and z; point source and two probes |
 | [`inverse_design/field_observable_shielding.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/field_observable_shielding.py) | pooling two DFT plane probes into one worst-case leakage objective with `field_softmax` | CPML; plane wave; two DFT planes |

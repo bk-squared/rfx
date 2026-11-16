@@ -9,7 +9,7 @@ contain each trap exactly once:
 * a patch with deliberately off-lattice x-faces ("off-lattice-face");
 * a dielectric later overwritten by another entity
   ("materialization-overridden");
-* an entity thinner than any cell ("absent" — the #369 silent-drop class).
+* unresolved dielectric films refused before any inflated realization is reported.
 
 Also locks the non-findings: exactly-on-lattice faces report 0.0 um
 residuals (the report must not cry wolf), and coordinates are DOMAIN
@@ -19,11 +19,12 @@ from __future__ import annotations
 
 from tests._wall_axis_declaration import assert_declared_wall_warning
 import numpy as np
+import pytest
 
 from rfx import Simulation, Box
 
 
-def _fixture():
+def _fixture(*, include_unresolved=False):
     sim = Simulation(freq_max=15e9, domain=(10e-3, 10e-3, 6e-3), dx=0.5e-3,
                      boundary="cpml", cpml_layers=4)
     sim.add_material("sub", eps_r=3.38, sigma=0.0)
@@ -34,14 +35,11 @@ def _fixture():
             material="pec")                                                  # [2] patch, off-lattice x
     sim.add(Box((1.0e-3, 1.0e-3, 2.5e-3), (3.0e-3, 3.0e-3, 3.0e-3)),
             material="override")                                             # [3] overwrites part of [1]
+    if not include_unresolved:
+        return sim
     sim.add_material("thinfilm", eps_r=8.0, sigma=0.0)
     sim.add(Box((4.0e-3, 4.0e-3, 5.10e-3), (6.0e-3, 6.0e-3, 5.15e-3)),
             material="thinfilm")   # [4] 50 um dielectric film mid-cell -> absent
-            # (a thin PEC box would be SNAPPED to a sheet by the thin-conductor
-            #  realization — correct behaviour, so the absent class needs a
-            #  dielectric, which has no snap path — and even that lands in
-            #  its containing cell, realized 10x thicker: entity [5] below is
-            #  the true absent case, declared outside the domain)
     sim.add(Box((4.0e-3, 4.0e-3, 9.0e-3), (6.0e-3, 6.0e-3, 9.2e-3)),
             material="thinfilm")   # [5] beyond even the CPML pad -> absent
     return sim
@@ -86,29 +84,18 @@ def test_finding_classes_are_detected():
     assert sub["assembled_matches_declared_frac"] < 0.999
     assert min(sub["assembled_eps_r"]) < 3.0   # the 2.2 override is visible
 
-    film = _geo(rep, 4)
-    # Rasterization convention: a sub-cell box lands in its containing cell,
-    # so a 50 um film is realized 500 um thick — caught as extent/face
-    # distortion (the tool's job), not as absence.
-    assert film["n_cells"] > 0
-    assert film["axes"][2]["realized_extent_um"] > 5 * film["axes"][2]["declared_extent_um"]
-    # A sub-cell film is reported against the CELL, not as a percentage of its
-    # own thickness (the 2026-08-28 convention fix).
-    assert "sub-cell-placement" in _kinds(film)
 
-    clamped = _geo(rep, 5)
-    # Measured rasterization behaviour: an out-of-range box CLAMPS to the
-    # boundary cells rather than vanishing — the report makes that visible as
-    # a face residual of millimetres (declared z 9.0 mm vs realized at the
-    # array edge). The "absent" branch stays in the tool defensively for
-    # shapes whose mask is genuinely empty.
-    assert clamped["n_cells"] > 0
-    # Classified as a domain clip (+ absorber overlap), NOT as a lattice
-    # misalignment: comparing a deliberately oversized body against its
-    # un-clipped declaration produced 99%-residual noise in the crossval
-    # sweep, so residuals are now measured against the clipped declaration.
-    assert "clipped-by-domain" in _kinds(clamped)
-    assert "inside-absorber" in _kinds(clamped)
+@pytest.mark.parametrize('entry', [4, 5], ids=['no-centre-film', 'outside-grid-film'])
+def test_unresolved_dielectric_refuses_instead_of_inflating(entry):
+    from rfx.errors import RfxRefusal
+    sim = _fixture(include_unresolved=True)
+    sim._geometry = sim._geometry[:4] + [sim._geometry[entry]]
+    with pytest.raises(RfxRefusal, match="Material volume 'thinfilm'.*ZERO cells") as caught:
+        sim.fidelity_report(print_report=False)
+    message = str(caught.value)
+    assert 'drawn thickness' in message and 'local cell' in message
+    assert 'Refine' in message and 'add_thin_conductor' in message
+    assert 'no sub-cell dielectric film model' in message
 
 
 def test_exact_faces_report_zero_residual_in_domain_coords():
@@ -447,7 +434,6 @@ def test_2d_not_solved_axis_note_reaches_the_printed_report(capsys):
 import contextlib
 import warnings
 
-import pytest
 
 from tests._x64_compat import enable_x64
 

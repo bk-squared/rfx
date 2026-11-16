@@ -3,9 +3,9 @@
 
 The repository is public and its history keeps whatever lands. Measurement
 records -- sweep and study JSON, harvested VESSL logs, the measurement of an
-option that was not adopted -- go to ``bk-squared/rfx-archive`` under
-``rfx/records/<YYYYMMDD>-<topic>/``, and the PR body names that path and the
-archive commit (PI, 2026-09-24). Over the 14 days to 2026-09-24, ``rfx/``
+option that was not adopted -- go to ``the record repository`` under
+``<record root>/<YYYYMMDD>-<topic>/``, and the PR body names that path and the
+archive commit. Over the 14 days to 2026-09-24, ``rfx/``
 changed by +39,849/-37,028 lines on main while JSON alone changed by 3.78
 million, and a reviewer cannot read a diff of that shape.
 
@@ -78,10 +78,10 @@ FILE_CAP = 1_000_000  # bytes
 FROZEN_FILE_CAP = 5_000_000  # bytes, a named file in a frozen-data home
 FROZEN_BUDGET = 5_000_000  # bytes per PR across the frozen-data homes
 EXCEPTION_LABEL = "data-budget-exception"
-ARCHIVE_REPO = "bk-squared/rfx-archive"
-ARCHIVE_PATH = "rfx/records/<YYYYMMDD>-<topic>/"
+ARCHIVE_REPO = "the record repository"
+ARCHIVE_PATH = "<record root>/<YYYYMMDD>-<topic>/"
 
-#: The formats the PI's rule names, plus the ones measured in the tree or in
+#: The formats the rule names, plus the ones measured in the tree or in
 #: the 222 PRs merged 2026-09-10..24 (``.gz`` VESSL log bundles, ``.xml``
 #: pytest reports, ``.started``/``.exit`` run markers, ``.msh`` meshes), plus
 #: other spellings of the same formats.

@@ -3,8 +3,8 @@
 This is the r02 runbook for shipping the precomputed rfx gallery to
 `https://remilab.ai/rfx/gallery/`. The rfx side (pages + precompute pipeline +
 asset bundles) lands in the rfx repo; everything in this directory is a draft
-the professor applies in the **gitops** repo
-(`/root/workspace/byungkwan-workspace/infra/remilab-sites-gitops`).
+applied in the **gitops** repo
+(`/root/workspace/<workspace>/infra/remilab-sites-gitops`).
 
 ## Two flags before you start
 
@@ -13,7 +13,7 @@ the professor applies in the **gitops** repo
 
    ```bash
    python scripts/export_public_docs_to_gitops.py \
-     --gitops-root /root/workspace/byungkwan-workspace/infra/remilab-sites-gitops
+     --gitops-root /root/workspace/<workspace>/infra/remilab-sites-gitops
    ```
 
 2. **Do NOT use `gallery:` (or `cssclasses:`) frontmatter keys.** They trigger
@@ -34,7 +34,7 @@ keep committed binaries small; do not commit multi-hundred-MB media.
 
 In the rfx repo (branch `feat/gallery-mvp`):
 
-- Gallery pages live at `docs/public/gallery/{index,multilayer_fresnel,waveguide_wr90,patch_antenna}.mdx`.
+- Gallery pages live at `docs/public/gallery/{index,waveguide_wr90}.mdx`.
 - They are NOT added to `docs/public/site_map.json` (its CI gate
   `scripts/check_public_docs_manifest.py` only allows `rfx/guide*` slugs). They
   follow the `examples/`/`validation/` precedent: files exist + linked from
@@ -80,7 +80,7 @@ In `remilab-sites-gitops`:
 
    ```bash
    python scripts/export_public_docs_to_gitops.py \
-     --gitops-root /root/workspace/byungkwan-workspace/infra/remilab-sites-gitops
+     --gitops-root /root/workspace/<workspace>/infra/remilab-sites-gitops
    ```
 
    This copies `docs/public/gallery/` into
@@ -111,9 +111,7 @@ docker compose --env-file deploy/obsidian-stack/.env \
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" https://remilab.ai/rfx/gallery/   # expect 200
-curl -s -o /dev/null -w "%{http_code}\n" \
-  https://remilab.ai/rfx/gallery/assets/multilayer_fresnel/sparams.png      # expect 200
-git -C /root/workspace/byungkwan-workspace/infra/remilab-sites-gitops rev-parse HEAD
+git -C /root/workspace/<workspace>/infra/remilab-sites-gitops rev-parse HEAD
 ```
 
 Record the deployed gitops SHA next to the healthcheck result.

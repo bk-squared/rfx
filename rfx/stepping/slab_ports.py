@@ -27,7 +27,7 @@ def global_plan(sim, grid, specs, lane, freqs, compute_s_params):
         return None
     if lane == 'run_distributed_nu':
         from rfx.measurement.port_s_contract import passive_record_diagnostic
-        # An all-passive set keeps its V/I spectra without S, as on one device (#1929).
+        # An all-passive set keeps its V/I spectra without S, as on one device.
         if compute_s_params is False and not passive_record_diagnostic(sim):
             freqs = None
         elif freqs is None:
@@ -48,7 +48,8 @@ def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps):
         return context
     context = replace(context, port_record_specs=plan.specs,
         port_acc_indices=plan.acc_indices, wp_meta=plan.wp_meta,
-        sp_freqs=plan.sp_freqs, use_wire_ports=plan.use_wire_ports)
+        sp_freqs=None if plan.sp_freqs is None else place(plan.sp_freqs, NamedSharding(mesh, P())),
+        use_wire_ports=plan.use_wire_ports)
     with jax.ensure_compile_time_eval():
         invariants['port_table'] = port_table(context.grid, plan.specs, nu=True,
             boundary=context.curl_boundary, dtype=carry['fdtd'].ex.dtype)
@@ -62,27 +63,5 @@ def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps):
     return context
 
 
-def sum_partials(final, mesh, ranks):
-    """One post-scan psum inside shard_map; its transpose broadcasts cotangents."""
-    from rfx.stepping.rank import rank_shard_map
-    partials = {key: final[key] for key in ('wire_sparams', 'sparam_time_records') if key in final}
-    if not partials:
-        return final
-    def local(values, *, rank):
-        totals = jax.tree.map(lambda a: jax.lax.psum(a[0], 'x'), values)
-        if 'sparam_time_records' in values:
-            records = []
-            for partial, total in zip(values['sparam_time_records'], totals['sparam_time_records']):
-                ref = partial[0, :, -1]
-                # Only the midpoint owner contributes a reference; other
-                # ranks contribute +0. Preserve its signed zero in the
-                # stop-gradient time record, which ordinary psum erases.
-                negative_zero = jax.lax.psum(((ref == 0) & jnp.signbit(ref)).astype(jnp.int32), 'x') > 0
-                ref_total = total[:, -1]
-                ref_total = jnp.where((ref_total == 0) & negative_zero,
-                                      jnp.asarray(-0., dtype=ref.dtype), ref_total)
-                records.append(jnp.concatenate((total[:, :-1], ref_total[:, None]), axis=-1))
-            totals['sparam_time_records'] = tuple(records)
-        return totals
-    totals = rank_shard_map(local, mesh=mesh, in_specs=P('x'), out_specs=P(), check_rep=False)(ranks, partials)
-    return dict(final, **totals)
+# Compatibility import for callers of the graded setup module.
+from rfx.stepping.slab_measurements import sum_partials

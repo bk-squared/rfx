@@ -51,13 +51,14 @@ What this tutorial teaches, in order:
 
 Error budget at this deliberately coarse resolution (dx = 2 mm):
 
-- The resonance agrees with openEMS within 1 %: +0.13 to +0.33 % over three
-  rfx meshes (dx = 2 / 1 / 0.5 mm: 2.4479 / 2.4516 / 2.4491 GHz) against the
+- The resonance agrees with openEMS within 1 %: +0.15 to +0.32 % over three
+  rfx meshes (dx = 2 / 1 / 0.5 mm: 2.4474 / 2.4513 / 2.4489 GHz) against the
   converged openEMS ladder (finest 2.4436 GHz, extrapolated about 2.4448 GHz);
-  this script at dx = 2 mm prints +0.18 %.  The narrow-band condition (a
-  frequency within 10 % of the resonance's 2.35 % bandwidth (1/Q, Q 42.6),
-  0.235 %) is NOT
-  judged: the scatter of rfx's own three meshes (0.15 %, not monotone) is as
+  this script at dx = 2 mm prints +0.15 %.  Measured 2026-11-03; record kept
+  with the project.  The narrow-band condition (a frequency within 10 % of
+  the resonance's 2.40 % bandwidth (1/Q, Q 41.5 to 41.7 on the three meshes),
+  0.240 %) is NOT
+  judged: the scatter of rfx's own three meshes (0.16 %, not monotone) is as
   large as that margin, so do not read it as passed.  The +1.1 % this
   docstring printed before came from a single openEMS run on one mesh,
   2.4221 GHz, which is 0.88 % below the converged openEMS value.  That run
@@ -77,9 +78,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   read 2.5072 GHz (cross mode 2.0345 GHz — VESSL 369367259175), +3.5 %.
   Before the ownership contract that board read +11.3 % (2.6953 GHz,
   cross mode 2.2157 GHz — VESSL 369367259020, which reproduces the numbers
-  this docstring used to carry).  The committed lock
-  ``tests/crossval/test_patch_canonical_farfield_e4.py`` solves its own copy
-  of the pre-#1375 board (#1382), so it does not gate this number: the
+  this docstring used to carry).  No committed test gates this number: the
   agreement above is a measurement, not a pass.  On the pre-#1375 board the ownership contract
   moved the resonance the way issue #740's A/B predicted: that study's arm with
   a wall on BOTH faces of the ground's cell — the closest thing then available
@@ -94,7 +93,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   opt-in interface treatment ``sim.run(..., subpixel_smoothing=True)``
   (closed-form cavity comparison in ``tests/oracle/test_patch_cavity_eps_oracle.py``).
   Measured on this fixture (dx = 2 / 1 / 0.5 mm, substrate 4 / 8 / 16 cells):
-  2.4479 / 2.4516 / 2.4491 GHz, so finer cells do not move the resonance
+  2.4474 / 2.4513 / 2.4489 GHz, so finer cells do not move the resonance
   steadily in either direction at this level.
 - Until the lattice ownership contract this model carried a third error that
   had nothing to do with either: the mesh reserved one fine cell for the
@@ -104,12 +103,15 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   the realized cavity is the declared one and the run asserts it at build
   time.
 - The far field agrees as well.  This configuration prints
-  D = 6.59 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
-  -0.24 dB (VESSL 369367270265; 6.60 dBi before #1546; openEMS's value is
-  taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.74 dBi at its
-  2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
-  the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
-  too is a measurement rather than a pass.  The pre-#1375 board printed
+  D = 6.69 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
+  -0.14 dB (measured 2026-11-15; it read 6.60 dBi before #2618, because the
+  49-sample phi grid below repeats the 0/2pi seam and the radiated-power sum
+  counted that direction twice; 6.59 dBi in VESSL 369367270265, before the
+  dielectric Box faces moved to nearest nodes; and 6.60 dBi before #1546;
+  openEMS's value is taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints
+  6.84 dBi at its 2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
+  tolerance the former far-field lock carried (it solved a different board and was removed),
+  so this too is a measurement rather than a pass.  The pre-#1375 board printed
   6.72 dBi, the pre-contract board 7.39 dBi (against the former openEMS
   6.79 dBi: -0.07 dB and +0.60 dB).  The openEMS reference above uses this
   script's air distances (84 mm above the patch); it runs to openEMS's energy
@@ -119,7 +121,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   peak sat on 2.8 GHz — the LAST monitored bin, with the spectrum still rising
   into it, so the selector was pinned at the edge of its own frequency list.
   On this board the spectrum peaks at the 2.4 GHz bin with 2.5 GHz at
-  -0.5 dB, 2.3 GHz at -8.7 dB and 2.8 GHz at -15.3 dB (369367270265): an
+  -0.6 dB, 2.3 GHz at -8.7 dB and 2.8 GHz at -15.4 dB (measured 2026-11-09): an
   interior maximum, which is what the mode-identification rule assumes it is
   looking at.
 
@@ -164,7 +166,7 @@ from rfx import (
     Simulation,
     compute_far_field_jax,
     directivity,
-    harminv,
+    matrix_pencil,
     realized_pec_edge_masks,
     realized_wall_planes,
     smooth_grading,
@@ -212,11 +214,11 @@ AIR_ABOVE = 84.0e-3
 # 2.2147 GHz and D = 6.71 dBi at the 40 mm cross mode, not at the design mode
 # this demo reports.)
 #
-# Why not run(until_decay=...): its total-interior-energy stop cannot fire on
-# this fixture — the soft current feed leaves a static charge field across
-# the patch-ground gap (~1% of peak interior energy) that neither radiates
-# nor is absorbed by CPML, so a decay-terminated run walks to its step cap.
-# See issue #388.
+# run(until_decay=1e-3) also stops on this fixture: the interior energy fell to
+# 1e-3 of its after-drive value at step 48 850, 1.9 times the 25 832 steps of
+# NUM_PERIODS, and the probe fell to 1e-3 of its peak (measured 2026-10-27).
+# The static charge field of issue #388 came from the old pulse's DC content;
+# the default GaussianPulse integrates to zero since 2.0.
 NUM_PERIODS = 125
 
 # Far-field bins: a ladder around the expected coarse-grid resonance plus one
@@ -254,7 +256,7 @@ def realized_in_plane(sim, planes, feed):
         solved_span[k] = tuple(v for a in sheet.axes[:2] for v in a.bounds_m)
     substrate = next(e for e in record.entities if e.kind == "material")
     substrate = tuple(v for a in substrate.axes[:2] for v in a.bounds_m)
-    port = record.ports[0]
+    port = record.sources[0]
     i_f, j_f, _k = port.edges[0]
     return nodes_span, solved_span, substrate, (record.nodes[0][i_f], record.nodes[1][j_f])
 
@@ -554,12 +556,12 @@ def main():
     # ---- Full mode list: the patch rings at more than one frequency ----
     modes = [
         m
-        for m in harminv(ts[int(len(ts) * 0.3) :], dt, 1.0e9, 3.5e9)
+        for m in matrix_pencil(ts[int(len(ts) * 0.3) :], dt, 1.0e9, 3.5e9)
         if m.Q > 2 and m.amplitude > 1e-8
     ]
     modes.sort(key=lambda m: m.freq)
     if not modes:
-        raise RuntimeError("harminv found no ring-down modes — inspect the probe trace")
+        raise RuntimeError("matrix_pencil found no ring-down modes — inspect the probe trace")
     print(f"\nharminv ring-down modes ({len(modes)}):")
     for m in modes:
         print(f"  f = {m.freq / 1e9:.4f} GHz | Q = {m.Q:6.1f} | amplitude = {m.amplitude:.3g}")

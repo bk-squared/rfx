@@ -369,6 +369,11 @@ CLASSIFICATION: dict[str, Entry] = {
             _v("cpml", variant="cpml"), _v("pec", variant="pec"),
             _v("cavity", variant="cavity"), _v("vacuum", variant="vacuum"),
             _v("dielectric", variant="dielectric"))),)),
+    "examples/inverse_design/pareto_front_sweep.py": Entry(
+        "no_simulation",
+        "Reuses quickstart.hello_world.build_simulation via _make_sim, adds a "
+        "dielectric insert, and delegates solves to parametric_sweep; the "
+        "end-to-end tutorial test checks the resulting artifact."),
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)
@@ -764,15 +769,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "drives it at the two progressive-refinement cell sizes",
         (Builder("sim_factory", None, (
             _v("dx=1.0mm", dx=1.0e-3), _v("dx=0.5mm", dx=0.5e-3))),)),
-    "examples/tutorials/adi_solver_demo.py": Entry(
-        "audited",
-        "`build_cavity(solver, adi_cfl_factor)` returns Simulation with no "
-        "solve call; main() drives it at the three solver/CFL settings "
-        "compared in the script",
-        (Builder("build_cavity", None, (
-            _v("yee_cfl5", solver="yee", adi_cfl_factor=5.0),
-            _v("adi_cfl2", solver="adi", adi_cfl_factor=2.0),
-            _v("adi_cfl5", solver="adi", adi_cfl_factor=5.0))),)),
     "examples/tutorials/antenna_farfield_pattern.py": Entry(
         "audited", "`build_simulation()` returns Simulation with no solve call",
         (Builder("build_simulation", None, (_v("default"),)),)),

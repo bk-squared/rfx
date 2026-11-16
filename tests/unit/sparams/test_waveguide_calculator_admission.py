@@ -8,9 +8,9 @@ from rfx import Box
 from tests.unit.sparams.test_waveguide_solver_precision import _guide
 
 
-@pytest.mark.parametrize("feature", ["solver", "kerr"])
+@pytest.mark.parametrize("feature", ["kerr"])
 def test_waveguide_calculator_refuses_before_grid_or_scan(monkeypatch, feature):
-    sim = _guide(solver="adi" if feature == "solver" else "yee")
+    sim = _guide()
     if feature == "kerr":
         sim.add_material("nonlinear", chi3=1e-20)
         sim.add(Box((0.02, 0.01, 0.005), (0.06, 0.03, 0.015)), material="nonlinear")
@@ -24,18 +24,25 @@ def test_waveguide_calculator_refuses_before_grid_or_scan(monkeypatch, feature):
         sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
     message = str(caught.value)
     assert "compute_waveguide_s_matrix() does not carry" in message
-    assert ("solver='adi'" if feature == "solver" else "Kerr") in message
+    assert "Kerr" in message
     assert "run() / forward()" in message
 
 
 @pytest.mark.parametrize("feature", ["source", "tfsf", "periodic", "graded_interface"])
 def test_existing_waveguide_value_errors_precede_admission(feature, monkeypatch):
-    from rfx import GaussianPulse
+    from rfx import GaussianPulse, Simulation
     sim = _guide(nonuniform=feature == "graded_interface")
     if feature == "source":
         sim.add_source((.04, .02, .01), "ez", waveform=GaussianPulse(f0=8e9))
     elif feature == "tfsf":
-        sim.add_tfsf_source(f0=8e9)
+        # The public setter refuses an open plane wave beside the guide's
+        # declared PEC side faces on the uniform mesh; exercise the
+        # calculator's existing check on a stored declaration.
+        with pytest.raises(ValueError, match="TF/SF on the uniform mesh"):
+            sim.add_tfsf_source(f0=8e9)
+        twin = Simulation(freq_max=12e9, domain=(0.09, 0.04, 0.02), dx=0.005,
+                          cpml_layers=4)
+        sim._tfsf = twin.add_tfsf_source(f0=8e9)._tfsf
     elif feature == "periodic":
         # The public setter already refuses this combination; exercise
         # the calculator's existing check on a stored declaration.

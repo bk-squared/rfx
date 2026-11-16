@@ -48,7 +48,8 @@ def test_w0_metrics_and_weights(periodic):
         inverse = getattr(grid, f'inv_d{name}')
         np.testing.assert_array_equal(inverse, (1 / dual).astype(np.float32))
     duals = [(m + p) / 2 for m, p in expected]
-    np.testing.assert_array_equal(fill, (duals[0] * duals[1] * duals[2]) ** (1 / 3))
+    for actual, reference in zip(fill, duals):
+        np.testing.assert_array_equal(actual, reference)
     weights = triplet_weights(np, lengths)
     maximum = 0.
     for a in range(3):
@@ -250,7 +251,7 @@ def test_w4_internal_pec_energy(monkeypatch, tmp_path):
     sim = Simulation(freq_max=20e9, domain=(.012,) * 3, dx=.001,
                      dz_profile=profile, boundary='pec', cpml_layers=0)
     sim.add_material('sphere', eps_r=12.)
-    sim.add(Box((0, 0, .002), (.012, .012, .004)), material='pec')
+    sim.add(Box((0, 0, 2 * .001), (12 * .001, 12 * .001, float(np.cumsum(profile)[3]))), material='pec')
     sim.add(Sphere((.0061, .0058, .0052), .0029), material='sphere')
     pulse = GaussianPulse(f0=10e9, bandwidth=.8)
     dt = sim._build_nonuniform_grid().dt
@@ -318,20 +319,24 @@ def test_design_box_full_tensor_shared_refusal():
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_graded_tfsf_keeps_oblique_refusal(entry):
-    from rfx import Cylinder
     messages = []
     for graded in (False, True):
         mesh = {'dz_profile': np.full(12, .001)} if graded else {}
         sim = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001,
                          cpml_layers=2, **mesh)
-        sim.add_material('rod', eps_r=4.)
-        sim.add(Cylinder((.0121, .0058, .006), .0029, .1, 'z'), material='rod')
+        sim.add_material('slab', eps_r=4.)
+        sim.add(Box((.010, -1., -1.), (.014, 1., 1.)), material='slab')
         sim.add_tfsf_source(f0=10e9, bandwidth=.8, direction='+x', polarization='ez', angle_deg=30.)
-        message = ("TFSF oblique incidence.*not yet supported on nonuniform" if graded else
-                   "full_tensor's diagonal is not invariant")
-        with pytest.raises(ValueError, match=message) as info:
-            getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
-        messages.append(str(info.value))
+        if graded:
+            with pytest.raises(ValueError, match="TFSF oblique incidence.*not yet supported on nonuniform") as info:
+                getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
+            messages.append(str(info.value))
+        else:
+            # The uniform tensor update cannot apply the oblique Bloch phase.
+            from rfx.errors import RfxUnsupported
+            with pytest.raises(RfxUnsupported, match="subpixel_smoothing='full_tensor'.*does not apply the Bloch phase") as info:
+                getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
+            messages.append(str(info.value))
     print(f'A2 TF/SF {entry}: uniform={messages[0]}; graded={messages[1]}')
 
 

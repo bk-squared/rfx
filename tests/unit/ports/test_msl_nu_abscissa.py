@@ -1,7 +1,6 @@
 """Contract tests: MSL probe-abscissa + V/I cell-profile are graded-mesh aware.
 
-Promotes the Gate-0 falsifier
-(docs/research_notes/experiments/msl_nu_gate0/gate0_abscissa.py).
+Promotes the Gate-0 falsifier.
 
 The fix makes ``msl_probe_x_coords{,_n}`` and the transverse V/I cell-profile
 helper read the ``NonUniformGrid`` per-cell arrays (``dx_arr``/``dy_arr``/

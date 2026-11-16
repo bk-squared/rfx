@@ -54,11 +54,11 @@ dz_profile are not supported"), and `compute_mixed_s_matrix`
 
 ## R1 memory citations
 
-1. `docs/agent-memory/rfx-known-issues.md:23` (primary checkout):
+1. Recorded defect:
    "🔴 #811 compute_waveguide_s_matrix ignores dz_profile — graded-z
    declared, uniform solved (silent wrong answer)". This work is the fix for
    that active ledger row — consistent.
-2. `docs/agent-memory/rfx-known-issues.md:1010`: "a uniform-valued
+2. "a uniform-valued
    `dz_profile` tests the NU plumbing, never the NU metrics". Consistent:
    every falsifier below that claims physics sensitivity uses genuinely
    different graded z meshes; the one uniform-valued profile (the dy shim in
@@ -72,7 +72,7 @@ dz_profile are not supported"), and `compute_mixed_s_matrix`
 4. `CLAUDE.md` (rfx) "No silent gate loosening": no committed gate or
    tolerance is touched by this work; F3 below is an order-of-magnitude
    plausibility window on a new measurement, not a gate move.
-5. `docs/agent-memory/index.md` / known-issues comparator rule: no external
+5. Comparator rule: no external
    solver is involved here; both sides of every comparison are rfx runs on
    one geometry, so the comparator is `np.array_equal` / `max|dS|` on
    identical-shape arrays.

@@ -11,7 +11,7 @@ Validates that:
 8. Differentiable mode (checkpoint) works through the API
 9. Validation catches bad inputs
 """
-from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.boundaries.spec import BoundarySpec
 
 import numpy as np
 import jax
@@ -295,7 +295,7 @@ def test_waveguide_port_rejects_unsupported_configuration():
     )
     sim_multi.add_waveguide_port(0.01, direction="+x")
     sim_multi.add_waveguide_port(0.09, direction="-x")
-    with pytest.raises(ValueError, match="Simulation.run\\(\\) supports only a single waveguide port"):
+    with pytest.raises(ValueError, match="One run\\(\\) or forward\\(\\) record supports a single waveguide port"):
         sim_multi.run(n_steps=40, compute_s_params=False)
 
 
@@ -440,7 +440,7 @@ def test_waveguide_four_port_parallel_guides_through_api():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.10, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -489,10 +489,14 @@ def test_waveguide_same_boundary_overlapping_apertures_reject():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.10, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
+    # Keep the overlapping aperture declaration invalid for its original
+    # reason, with conductors on each rim for the earlier admission check.
+    for y in (0.04, 0.05, 0.09):
+        sim.add(Box((0., y, 0.), (0.12, y, 0.02)), material="pec")
     common = dict(
         mode=(1, 0),
         mode_type="TE",
@@ -568,8 +572,7 @@ def test_waveguide_two_port_y_normal_s_matrix_through_api():
         "coupling magnitude (>0.15) + reciprocity (<0.2) with NO passivity check, "
         "so normalize='flux' would FALSE-GREEN it on a non-physical |S|>1 result "
         "— it must stay skipped until a real de-embed lands (probe-plane / "
-        "mode-filter / larger port-to-junction separation). See "
-        "docs/research_notes/2026-04-22_waveguide_port_validation_session.md. "
+        "mode-filter / larger port-to-junction separation). "
         "#931: the three walls are VOLUMES and stay drawn as they are, but "
         "each now realizes a wall on BOTH of its bounding node planes, so the "
         "junction apertures are one cell narrower than they were; whoever "
@@ -1049,9 +1052,6 @@ def test_validation_errors():
     with pytest.raises(ValueError, match="boundary"):
         Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="abc")
 
-    with pytest.raises(ValueError, match="boundary='upml'"):
-        Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="upml", solver="adi")
-
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03))
     with pytest.raises(ValueError, match="component"):
         sim.add_port((0.01, 0.01, 0.01), "bz")
@@ -1200,17 +1200,17 @@ def test_five_line_patch_workflow():
       4. sim.add_port(position=..., component="ez")
       5. result = sim.run(n_steps=...)
 
-    Uses a coarse grid (dx=5mm) and few steps for fast CI execution.
+    Centre sampling includes the 1.6 mm substrate at dx=3mm.
     """
     # #1138: geometry[0] y solved -18.97 % off its domain-clipped drawing; this test checks five line patch workflow.
     sim = rfx.Simulation(snap="declared",
         freq_max=4e9, domain=(0.08, 0.06, 0.02),
-        boundary="cpml", cpml_layers=8, dx=5e-3,
+        boundary="cpml", cpml_layers=8, dx=3e-3,
     )
     # The patch is a ZERO-thickness Box, which the lattice ownership contract
     # reads as a sheet declaration (§1.5) — that clause exists so this
     # documented five-line workflow stays five lines. On this deliberately
-    # coarse CI mesh (dx = 5 mm) the declared plane z = 0.8 mm is 0.16 of a
+    # coarse CI mesh (dx = 3 mm) the declared plane z = 0.8 mm is below half a
     # cell above the substrate floor, so the sheet realizes at z = 0; the
     # contract reports that offset rather than absorbing it.
     sim.add(
@@ -1243,7 +1243,7 @@ def test_five_line_patch_declares_a_sheet_not_a_volume():
 
     sim = rfx.Simulation(
         freq_max=4e9, domain=(0.08, 0.06, 0.02),
-        boundary="cpml", cpml_layers=8, dx=5e-3,
+        boundary="cpml", cpml_layers=8, dx=3e-3,
     )
     sim.add(Box((-19e-3, -14.5e-3, 0.8e-3), (19e-3, 14.5e-3, 0.8e-3)),
             material="pec")
@@ -1257,6 +1257,21 @@ def test_five_line_patch_declares_a_sheet_not_a_volume():
     k = node_index(rz.grid, 2, 0.8e-3)
     assert not bool(np.asarray(rz.edge_masks[2])[:, :, k].any()), (
         "the normal E through a sheet stays live (§1.3)")
+
+
+def test_five_line_patch_refuses_an_unresolved_substrate():
+    """A 5 mm cell has no centre inside the 1.6 mm dielectric layer."""
+    from rfx.errors import RfxRefusal
+    sim = rfx.Simulation(freq_max=4e9, domain=(0.08, 0.06, 0.02),
+                         boundary="cpml", cpml_layers=8, dx=5e-3, snap="declared")
+    sim.add(Box((-19e-3, -14.5e-3, 0.8e-3), (19e-3, 14.5e-3, 0.8e-3)), material="pec")
+    sim.add(Box((-30e-3, -25e-3, 0), (30e-3, 25e-3, 1.6e-3)), material="fr4")
+    sim.add_port(position=(5e-3, 0, 0.8e-3), component="ez")
+    with pytest.raises(RfxRefusal) as caught:
+        sim.run(n_steps=50)
+    message = str(caught.value)
+    for remedy in ("fr4", "ZERO cells", "Refine", "no sub-cell dielectric film model", "add_thin_conductor"):
+        assert remedy in message
 
 
 def test_four_port_septum_realizes_walls_on_both_drawn_faces():

@@ -2,7 +2,7 @@
 # The runtime guard must execute before the public JAX-dependent imports.
 # ruff: noqa: F401, E402
 
-__version__ = "2.0.0rc1"
+__version__ = "2.2.0"
 
 import sys as _sys
 
@@ -13,10 +13,10 @@ from rfx._runtime_floor import check as _check_runtime_floor
 
 _check_runtime_floor(_sys.version_info, _jax.__version__, _jaxlib.__version__)
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxError, RfxRefusal, RfxUnsupported, RfxWarning
 from rfx.diagnostic_records import Diagnostic
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
-from rfx.adi import ADIState2D, ADIState3D, thomas_solve, adi_step_2d, run_adi_2d, adi_step_3d, run_adi_3d
 from rfx.api import (
     Simulation, Result, ForwardResult, WaveguideSParamResult, WaveguideSMatrixResult,
     MSLProbeClearance, MSLSMatrixResult, MixedSMatrixResult, MATERIAL_LIBRARY,
@@ -87,29 +87,40 @@ from rfx.sources.waveguide_port import (
     extract_multimode_s_matrix,
 )
 from rfx.materials.debye import DebyePole
-from rfx.materials.lorentz import LorentzPole, drude_pole, lorentz_pole
+from rfx.materials.lorentz import LorentzPole, drude_pole, lorentz_pole, LorentzPoleMap, drude_pole_map, lorentz_pole_map
+from rfx.materials.relative_strength import RelativeStrength
 from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
 from rfx.boundaries.pec import (
     SheetSpec, WireSpec, edge_is_pec, realized_pec_edge_masks,
     realized_wall_planes,
 )
 from rfx.farfield import (
-    NTFFBox, NTFFData, FarFieldResult,
-    make_ntff_box, compute_far_field, compute_far_field_jax,
-    radiation_pattern, directivity,
-    axial_ratio, axial_ratio_dB, polarization_tilt, polarization_sense,
+    NTFFBox,
+    NTFFData,
+    FarFieldResult,
+    make_ntff_box,
+    radiation_pattern,
+    directivity,
+    axial_ratio,
+    axial_ratio_dB,
+    polarization_tilt,
+    polarization_sense,
+)
+from rfx.measurement.farfield import (
+    compute_far_field,
+    compute_far_field_jax,
 )
 # The block current-moment pattern: an explicit rfx import, outside the
 # curated star surface, like the NTFF surface interchange below.
 from rfx.current_moments import current_moment_far_field
-from rfx.rcs import compute_rcs, compute_rcs_jax, RCSResult, ScatteringResponse
+from rfx.measurement.rcs import compute_rcs
+from rfx.rcs import compute_rcs_jax, RCSResult, ScatteringResponse
 from rfx.antenna import (
     antenna_gain, antenna_gain_dB, antenna_efficiency,
     half_power_beamwidth, front_to_back_ratio,
     antenna_bandwidth, BandwidthResult,
     plot_antenna_summary,
 )
-from rfx.gpu import device_info, benchmark
 # Opt-in surface interchange: explicit rfx imports, outside the curated star
 # surface, like the snapshot persistence helpers below.
 from rfx.ntff_surface import NTFFSurface, export_ntff_surface
@@ -137,7 +148,7 @@ from rfx.io import (
 )
 from rfx.batch import (
     BATCH_MANIFEST_SCHEMA, BatchCaseResult, ParameterSweep,
-    case_id_from_params, run_batch, run_batch_with_manifest,
+    case_id_from_params, run_batch_with_manifest,
     summarize_batch_manifest,
 )
 from rfx.artifacts import (
@@ -163,11 +174,10 @@ from rfx.visualize import (
 from rfx.smith import plot_smith
 from rfx.visualize3d import (
     plot_geometry_3d, plot_field_3d, save_field_vtk, save_screenshot,
-    save_field_animation as _save_field_animation_legacy,
 )
 from rfx.animation import save_field_animation
 from rfx.simulation import SnapshotSpec
-# #1259: where and when each recorded field sample sits. On the package, not
+# where and when each recorded field sample sits. On the package, not
 # on the curated star surface (``__all__``), like save_snapshots.
 from rfx.snapshots import SnapshotAxes, snapshot_axes, field_sample_coords
 from rfx.checkpoint import (
@@ -185,25 +195,13 @@ from rfx.optimize_objectives import (
     steer_probe_array,
 )
 from rfx.observables import dft_field, field_energy, field_softmax, jacobian_fwd
-try:
-    from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
-except ImportError:
-    # scipy is optional; eigenmode solver is unavailable without it.
-    # Accessing WaveguideMode or solve_waveguide_modes will raise ImportError.
-    def _eigenmode_unavailable(*args, **kwargs):
-        raise ImportError(
-            "rfx.eigenmode requires scipy. Install it with: pip install scipy"
-        )
-    WaveguideMode = _eigenmode_unavailable  # type: ignore[assignment]
-    solve_waveguide_modes = _eigenmode_unavailable  # type: ignore[assignment]
+from rfx.eigenmode import WaveguideMode, solve_waveguide_modes
 from rfx.lumped import LumpedRLCSpec, RLCState, RLCCellMeta
 from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source, make_band_profile
 from rfx.auto_config import auto_configure, SimConfig, analyze_features, smooth_grading, apply_thirds_rule
 from rfx.mesh_planner import MeshPlan, plan_mesh, plan_simulation_mesh
-# The harminv names are deprecated 2.x aliases: still attributes, no longer on the star surface.
 from rfx.harminv import (
     matrix_pencil, matrix_pencil_from_probe, MatrixPencilMode,
-    harminv, harminv_from_probe, HarminvMode,
 )
 from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
@@ -222,14 +220,18 @@ from rfx.microstrip import (
 )
 from rfx.floquet import (
     FloquetPort,
-    floquet_phase_shift,
     floquet_wave_vector,
     FloquetDFTAccumulator,
     init_floquet_dft,
-    update_floquet_dft,
-    inject_floquet_source,
     extract_floquet_modes,
     compute_floquet_s_params,
+)
+from rfx.measurement.floquet import (
+    floquet_phase_shift,
+    update_floquet_dft,
+)
+from rfx.stepping.floquet import (
+    inject_floquet_source,
 )
 from rfx.material_fit import (
     load_material_csv, fit_debye, fit_lorentz,
@@ -239,8 +241,6 @@ from rfx.material_fit import (
 from rfx.differentiable_material_fit import (
     differentiable_material_fit, MaterialFitResult, sparam_loss,
 )
-from rfx.ris import RISUnitCell, RISSweepResult
-from rfx.amr import compute_error_indicator, suggest_refinement_regions, auto_refine
 from rfx.surrogate import export_training_data, export_geometry_sdf
 from rfx.convergence import (
     convergence_study, ConvergenceResult, richardson_extrapolation,
@@ -251,15 +251,13 @@ from rfx.convergence import (
 # Curated public surface (W5.5).
 #
 # ``__all__`` is the *front door*: ``from rfx import *`` and rendered API
-# references use it. It is intentionally a strict subset of the ~245 flat
-# symbols imported above — every back-compat import is KEPT (so existing
-# ``import rfx; rfx.<name>`` keeps working), but per-step kernel internals,
+# references use it. It contains 218 names, a strict subset of the flat
+# symbols imported above. Per-step kernel internals,
 # low-level bookkeeping/state classes, and dump/replay round-trip helpers are
 # omitted from the star-import surface.
 #
 # Excluded categories (still importable by explicit attribute access):
 #   - per-step Yee/port kernels: init_*/update_*/inject_*/apply_waveguide_port_*,
-#     adi_step_2d/3d, thomas_solve
 #   - low-level state/bookkeeping classes: ADIState2D/3D, RLCState, RLCCellMeta,
 #     Coaxial*PlaneVI, CoaxialPlaneSourceSpec, FloquetDFTAccumulator,
 #     PortVIDump/PortDumpMetadata/PortSMatrixObservable/PortReplayComparison,
@@ -273,6 +271,8 @@ from rfx.convergence import (
 #     replay_smatrix_from_port_vi_dump, save_optimization_trajectory,
 #     render_artifact_markdown, validate_artifact_report, build_*_report/artifact
 __all__ = [
+    "RfxError", "RfxRefusal", "RfxUnsupported",
+    "RfxWarning", "AccuracyWarning", "ConfigurationWarning",
     "Diagnostic",
     # grid / core simulation entry points
     "Grid", "NonUniformGrid", "make_nonuniform_grid",
@@ -306,16 +306,17 @@ __all__ = [
     # sources / waveforms / ports (builder classes; not per-step kernels)
     "GaussianPulse", "ModulatedGaussian", "CWSource", "CustomWaveform",
     "WaveguidePort", "WaveguidePortConfig", "CoaxialPort",
-    "FloquetPort", "RISUnitCell", "RISSweepResult",
+    "FloquetPort",
     # high-level S-parameter / port extractors (AD-contract-classified surface)
     "extract_waveguide_s_matrix", "extract_waveguide_sparams",
     "extract_waveguide_s11", "extract_waveguide_s21",
     "extract_s_matrix_wire", "compute_floquet_s_params",
     "compute_rcs", "compute_rcs_jax", "RCSResult", "ScatteringResponse",
     # materials / dispersion / fitting
-    "DebyePole", "LorentzPole", "drude_pole", "lorentz_pole",
+    "DebyePole", "LorentzPole", "RelativeStrength", "drude_pole", "lorentz_pole",
+    "LorentzPoleMap", "drude_pole_map", "lorentz_pole_map",
     "ThinConductor", "MATERIAL_LIBRARY",
-    # lattice ownership contract (#931): the one realization of conductor
+    # lattice ownership contract: the one realization of conductor
     # geometry as PEC E edges, and the two helpers every consumer reads.
     # ``SheetSpec`` / ``WireSpec`` stay OFF the star surface (declaration
     # records the rasterizer produces, not something a user constructs) —
@@ -343,7 +344,7 @@ __all__ = [
     # sweeps / batch
     "parametric_sweep", "SweepResult", "plot_sweep",
     "vmap_material_sweep", "VmapSweepResult",
-    "ParameterSweep", "BatchCaseResult", "run_batch", "run_batch_with_manifest",
+    "ParameterSweep", "BatchCaseResult", "run_batch_with_manifest",
     "summarize_batch_manifest",
     # probes / measurements / spectral
     "wire_port_voltage", "wire_port_current",
@@ -358,7 +359,6 @@ __all__ = [
     "MeshPlan", "plan_mesh", "plan_simulation_mesh",
     "convergence_study", "ConvergenceResult", "richardson_extrapolation",
     "quick_convergence",
-    "compute_error_indicator", "suggest_refinement_regions", "auto_refine",
     # de-embedding
     "deembed_port_extension", "deembed_thru",
     # validation entry points
@@ -379,9 +379,21 @@ __all__ = [
     "plot_s_params", "plot_radiation_pattern",
     "plot_time_series", "plot_rcs", "plot_smith",
     "plot_geometry_3d", "plot_field_3d", "save_field_vtk", "save_field_animation",
-    # gpu / surrogate
-    "device_info", "benchmark",
+    # surrogate
     "export_training_data", "export_geometry_sdf",
 ]
 
 from rfx.fidelity import fidelity_report  # noqa: E402,F401
+
+
+_REMOVED_ADI_NAMES = {
+    "ADIState2D", "ADIState3D", "thomas_solve", "adi_step_2d",
+    "run_adi_2d", "adi_step_3d", "run_adi_3d",
+}
+
+
+def __getattr__(name):
+    if name in _REMOVED_ADI_NAMES:
+        from rfx.model.solver_admission import ADI_REMOVED
+        raise AttributeError(f"{name}: {ADI_REMOVED}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

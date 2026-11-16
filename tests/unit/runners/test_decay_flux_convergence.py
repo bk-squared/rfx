@@ -46,9 +46,7 @@ Two witnesses live here:
    matching ``test_decay_convergence.py``.
 
 NOTE: this harness does NOT itself modify ``rfx/simulation.py``; the Criterion A
-change landed in the core separately. See
-``docs/research_notes/20260613_issue169_decay_criterion.md`` for the original
-spec and the R2 gate.
+change landed in the core separately.
 """
 
 import json

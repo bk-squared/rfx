@@ -1,14 +1,13 @@
 """Lane admission: a lane solves only the inputs it declares it carries.
 
 A ``Simulation`` is a declaration: materials, conductors, ports, sources,
-boundaries, a mesh and observers. Ten time-stepping lanes run it, and each
+boundaries, a mesh and observers. Time-stepping lanes run it, and each
 one solves only part of it. Until this module each lane listed the inputs it
-refused and solved every other one as if it had not been declared: ADI solved
-a μr = 4 block as vacuum, the graded ``run()`` solved a Kerr block as linear,
+refused and solved every other one as if it had not been declared: the
+graded ``run()`` solved a Kerr block as linear,
 a Floquet port on a graded mesh launched nothing. Here each lane lists what
 it carries, and :func:`admit` refuses every other declared input before the
-first time step (the PI's rule of 2026-09-24: a physics input a path does not
-implement is refused).
+first time step.
 
 ``DETECTORS`` says, for every input row of the path-disposition table
 (``tests/contracts/path_disposition.py``), whether a declaration switches that
@@ -21,7 +20,7 @@ and the open issues; ``tests/contracts/test_path_disposition.py`` fails when
 its cell kinds and ``ADMITS`` disagree.
 
 Each lane calls :func:`admit` at the last point before its kernel, after its
-own specific refusals (#1240, #1241, #1297 and the rest), so those keep their
+own specific refusals, so those keep their
 messages and admission answers only for what they do not name. The lane
 checked is the lane that runs; unsupported multi-device sources are refused
 before any step.
@@ -29,9 +28,13 @@ before any step.
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning, RfxRefusal, RfxUnsupported
+
 import functools
 import inspect
+import threading
 from dataclasses import fields, is_dataclass, replace
+from types import SimpleNamespace
 from typing import Callable
 
 import jax
@@ -42,9 +45,8 @@ from rfx.core.jax_utils import is_tracer
 Row = tuple[str, str]
 
 LANES = (
-    "run_uniform", "run_nonuniform", "run_subgridded", "run_adi",
+    "run_uniform", "run_nonuniform", "run_subgridded",
     "run_distributed", "run_distributed_nu", "fwd_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
-    "fwd_adi",
 )
 
 CALCULATORS = (
@@ -70,14 +72,12 @@ LANE_WORDS = {
     "run_uniform": "uniform run()",
     "run_nonuniform": "graded run()",
     "run_subgridded": "subgridded run()",
-    "run_adi": "ADI run()",
     "run_distributed": "multi-device run(devices=...)",
     "run_distributed_nu": "graded multi-device run(devices=...)",
     "fwd_uniform": "uniform forward()",
     "fwd_nonuniform": "graded forward()",
     "fwd_distributed": "forward(distributed=True)",
     "fwd_distributed_nu": "forward(distributed=True)",
-    "fwd_adi": "ADI forward()",
 }
 
 _PEC_SIGMA = 1e6   # Simulation._PEC_SIGMA_THRESHOLD
@@ -87,6 +87,27 @@ _PEC_SIGMA = 1e6   # Simulation._PEC_SIGMA_THRESHOLD
 # lumped element); the adjacent admission tests require a collected invariant
 # witness for every name. Curl/CPML-H already update the ghost like its owner.
 SLAB_OWNER_ONLY_H_WRITERS = ("closed_box_tfsf",)
+
+
+def slab_tfsf_refusal(entry) -> str | None:
+    """Return the slab refusal kind for a declaration or realized config."""
+    from rfx.sources.tfsf import is_oblique, is_tfsf_2d, is_tfsf_methodB
+    if getattr(entry, "face_record", None) is not None:
+        kind = "TFSF face_record replay"
+    elif is_tfsf_methodB(entry) or (is_oblique(getattr(entry, "angle_deg", 0.))
+                                    and getattr(entry, "method", None) == "methodB"):
+        kind = "TFSF Method B oblique (is_tfsf_methodB)"
+    elif is_tfsf_2d(entry) or is_oblique(getattr(entry, "angle_deg", 0.)):
+        kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
+    elif getattr(entry, "closed_box", False) and (
+        getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
+    ):
+        kind = "oblique closed-box TFSF (theta_deg or phi_deg != 0)"
+    elif not getattr(entry, "closed_box", False):
+        kind = "open-slab normal-incidence TFSF (periodic y/z is not on slabs)"
+    else:
+        return None
+    return kind
 
 
 # ----------------------------------------------------------------- helpers
@@ -203,7 +224,9 @@ def _thin(conductor) -> str:
 
 
 def _soft(port) -> bool:
-    return not is_tracer(port.impedance) and float(port.impedance) == 0.0
+    from rfx.api._port_kind import is_soft_source
+
+    return is_soft_source(port)
 
 
 def _ports(sim, *, extent: bool | None = None, excite: bool | None = None):
@@ -255,7 +278,7 @@ def _guarded_lid(sim, grid) -> bool:
 
 
 # Inputs that production subgrid validation refuses and 'research'/'off'
-# run with the input dropped (#1286).
+# run with the input dropped.
 _RELAXED_DROPS = (("_materials", "debye"), ("_materials", "lorentz"),
                   ("_materials", "drude"), ("_materials", "kerr"),
                   ("_lumped_rlc", "R"), ("_lumped_rlc", "series_RL"))
@@ -286,7 +309,6 @@ DETECTORS: dict[Row, Callable] = {
     ("_nominal_profiles", ""): _setting("_nominal_profiles", "nominal_profiles"),
     ("_precision", ""): _setting("_precision", "precision"),
     ("_solver", ""): _setting("_solver", "solver"),
-    ("_adi_cfl_factor", ""): _setting("_adi_cfl_factor", "adi_cfl_factor"),
     ("_stencil_order", ""): _setting("_stencil_order", "stencil_order"),
     ("_mode", ""): _setting("_mode", "mode"),
     # materials the geometry places
@@ -319,6 +341,8 @@ DETECTORS: dict[Row, Callable] = {
     ("_ports", "wire_port"): lambda sim: bool(_ports(sim, extent=True)),
     ("_msl_ports", "msl_port"): lambda sim: bool(sim._msl_ports),
     ("_waveguide_ports", "waveguide_port"): lambda sim: bool(sim._waveguide_ports),
+    ("_waveguide_ports", "n_modes"): lambda sim: any(
+        p.n_modes > 1 for p in sim._waveguide_ports),
     ("_coaxial_ports", "coax_port"): lambda sim: bool(sim._coaxial_ports),
     ("_floquet_ports", "floquet_port"): lambda sim: bool(sim._floquet_ports),
     ("_floquet_ports", "scan_angle"): lambda sim: any(
@@ -327,7 +351,8 @@ DETECTORS: dict[Row, Callable] = {
         not _series_with_inductor(e) for e in sim._lumped_rlc),
     ("_lumped_rlc", "series_RL"): lambda sim: any(
         _series_with_inductor(e) for e in sim._lumped_rlc),
-    ("_tfsf", "plane_wave"): lambda sim: sim._tfsf is not None,
+    ("_tfsf", "plane_wave"): lambda sim: sim._tfsf is not None and not sim._tfsf.closed_box,
+    ("_tfsf", "closed_box"): lambda sim: sim._tfsf is not None and sim._tfsf.closed_box,
     ("_refinement", "slab"): lambda sim: sim._refinement is not None,
     ("_refinement", "relaxed_validation"): _relaxed_validation,
     # boundaries
@@ -365,8 +390,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_dt_min_cell", ""): "dt_min_cell=",
     ("_nominal_profiles", ""): "nominal_profiles=",
     ("_precision", ""): "a precision other than 'float32'",
-    ("_solver", ""): "solver='adi'",
-    ("_adi_cfl_factor", ""): "adi_cfl_factor",
+    ("_solver", ""): "solver",
     ("_stencil_order", ""): "stencil_order=4",
     ("_mode", ""): "a 2-D mode (mode='2d_tmz' or '2d_tez')",
     ("_materials", "eps"): "a dielectric (eps_r != 1)",
@@ -390,12 +414,14 @@ ROW_WORDS: dict[Row, str] = {
     ("_ports", "wire_port"): "a wire port (add_port(extent=...))",
     ("_msl_ports", "msl_port"): "a microstrip port (add_msl_port)",
     ("_waveguide_ports", "waveguide_port"): "a waveguide port (add_waveguide_port)",
+    ("_waveguide_ports", "n_modes"): "a waveguide port with several modes (add_waveguide_port(n_modes>1))",
     ("_coaxial_ports", "coax_port"): "a coaxial port (add_coaxial_port)",
     ("_floquet_ports", "floquet_port"): "a Floquet port (add_floquet_port)",
     ("_floquet_ports", "scan_angle"): "a Floquet port scanned off normal (scan_theta != 0)",
     ("_lumped_rlc", "R"): "a lumped RLC element (add_lumped_rlc)",
     ("_lumped_rlc", "series_RL"): "a series lumped RLC element with an inductance",
     ("_tfsf", "plane_wave"): "a TFSF plane-wave source (add_tfsf_source)",
+    ("_tfsf", "closed_box"): "a TFSF plane-wave source (add_tfsf_source)",
     ("_refinement", "slab"): "a subgrid refinement (add_refinement)",
     ("_refinement", "relaxed_validation"): (
         "validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC element"),
@@ -429,15 +455,15 @@ ROW_WORDS: dict[Row, str] = {
 _DISTRIBUTED_NU = frozenset({"run_distributed_nu", "fwd_distributed_nu"})
 _ALL = frozenset(LANES)
 _OTHER_RUNNERS = _ALL - _DISTRIBUTED_NU
-_ADI = frozenset({"run_adi", "fwd_adi"})
 _GRADED = frozenset({"run_nonuniform", "fwd_nonuniform"}) | _DISTRIBUTED_NU
 _UNIFORM_YEE = frozenset({"run_uniform", "fwd_uniform"})
 _MESH_PINNED = _GRADED   # the lanes a dx/dy/dz profile reaches
-_NO_SHEETS = _OTHER_RUNNERS - {"run_subgridded", "run_adi", "run_distributed", "fwd_adi"}
+_NO_SHEETS = _OTHER_RUNNERS - {"run_subgridded", "run_distributed"}
 # PEC edges are carried by both graded entries and uniform distributed runs.
 _PEC_EDGES = _NO_SHEETS | {"run_distributed"} | _DISTRIBUTED_NU
 
 _ADMITTED_ON: dict[Row, frozenset] = {
+    ("_solver", ""): frozenset(),
     ("_freq_max", ""): _OTHER_RUNNERS,
     ("_domain", ""): _OTHER_RUNNERS,
     ("_dx", ""): _OTHER_RUNNERS,
@@ -445,49 +471,50 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dt_min_cell", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_nominal_profiles", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_precision", ""): _UNIFORM_YEE,
-    ("_solver", ""): _ADI,
-    ("_adi_cfl_factor", ""): _OTHER_RUNNERS,
     ("_stencil_order", ""): _UNIFORM_YEE,
-    ("_mode", ""): _UNIFORM_YEE | _ADI,
-    # ADI carries a homogeneous fill only: LANE_GATES decides (#1373).
-    ("_materials", "eps"): _OTHER_RUNNERS - _ADI,
-    ("_materials", "sigma"): _OTHER_RUNNERS - _ADI,
-    ("_materials", "mu"): _OTHER_RUNNERS - _ADI,
-    ("_materials", "debye"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
-    ("_materials", "lorentz"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
-    ("_materials", "drude"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_mode", ""): _UNIFORM_YEE,
+    ("_materials", "eps"): _OTHER_RUNNERS,
+    ("_materials", "sigma"): _OTHER_RUNNERS,
+    ("_materials", "mu"): _OTHER_RUNNERS,
+    ("_materials", "debye"): _OTHER_RUNNERS - {"run_subgridded"},
+    ("_materials", "lorentz"): _OTHER_RUNNERS - {"run_subgridded"},
+    ("_materials", "drude"): _OTHER_RUNNERS - {"run_subgridded"},
     ("_materials", "kerr"): _UNIFORM_YEE,
-    ("_geometry", "pec_volume"): _OTHER_RUNNERS - _ADI,
+    ("_geometry", "pec_volume"): _OTHER_RUNNERS,
     ("_geometry", "pec_sheet"): _PEC_EDGES,
     ("_geometry", "pec_wire"): _PEC_EDGES,
-    ("_thin_conductors", "lossy_sheet"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_thin_conductors", "lossy_sheet"): _OTHER_RUNNERS - {"run_subgridded"},
     ("_thin_conductors", "pec_sheet"): _PEC_EDGES,
     ("_thin_conductors", "surface_impedance"): _NO_SHEETS,
     ("_pinned_sheets", "pec_sheet"): _PEC_EDGES,
     ("_ports", "source"): _OTHER_RUNNERS,
-    ("_ports", "amplitude_kind"): _OTHER_RUNNERS - _ADI,
-    ("_ports", "lumped_port"): _OTHER_RUNNERS - _ADI,
-    ("_ports", "passive_port"): _OTHER_RUNNERS - _ADI - {"run_distributed"},
-    ("_ports", "wire_port"): _OTHER_RUNNERS - _ADI,
+    ("_ports", "amplitude_kind"): _OTHER_RUNNERS,
+    ("_ports", "lumped_port"): _OTHER_RUNNERS,
+    ("_ports", "passive_port"): _OTHER_RUNNERS - {"run_distributed"},
+    ("_ports", "wire_port"): _OTHER_RUNNERS,
     ("_msl_ports", "msl_port"): _NO_SHEETS,
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"fwd_distributed"},
+    # One configuration per port is all the single-run assembly takes; the
+    # per-mode list is driven only by compute_waveguide_s_matrix().
+    ("_waveguide_ports", "n_modes"): frozenset(),
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
-    ("_lumped_rlc", "R"): _NO_SHEETS,
-    ("_lumped_rlc", "series_RL"): _NO_SHEETS,
-    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform", "run_distributed", "fwd_distributed"}),
+    ("_lumped_rlc", "R"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
+    ("_lumped_rlc", "series_RL"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
+    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
+    ("_tfsf", "closed_box"): frozenset({"run_uniform", "fwd_uniform"}),
     ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
-    ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_boundary", "cpml"): _OTHER_RUNNERS - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
-    ("_pec_faces", "pec_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
-    ("_boundary_spec", "conformal_s_matrix"): frozenset(),
-    ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS - _ADI,
+    ("_pec_faces", "pec_face"): _OTHER_RUNNERS - {"run_subgridded"},
+    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - {"run_subgridded"},
+    ("_boundary_spec", "conformal"): _UNIFORM_YEE,
+    ("_boundary_spec", "conformal_s_matrix"): _UNIFORM_YEE,
+    ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS,
     ("_periodic_axes", "periodic"): _UNIFORM_YEE | {"run_nonuniform", "fwd_nonuniform"},
-    ("_cpml_layers", "layers"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_cpml_layers", "layers"): _OTHER_RUNNERS - {"run_subgridded"},
     ("_cpml_kappa_max", "kappa"): frozenset({"run_uniform", "run_distributed", "fwd_uniform"}),
     ("_interface_eps", "dual_average"): frozenset({"run_nonuniform", "fwd_nonuniform"}),
     ("_dx_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
@@ -497,19 +524,21 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dft_planes", "dft_plane"): _NO_SHEETS | {"run_distributed"},
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "run_distributed"}),
-    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
+    ("_ntff", "ntff_box"): _OTHER_RUNNERS - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
     ("_current_moments", "block_moments"): _NO_SHEETS | {"run_distributed"},
 }
 
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
 # Define that runner's carried rows once; neither entry inherits uniform v2.
 _DISTRIBUTED_NU_ROWS = frozenset({
+    # Both graded entries carry folded R and stateful series RL elements.
+    ('_lumped_rlc', 'R'),
+    ('_lumped_rlc', 'series_RL'),
     ('_dft_planes', 'dft_plane'),
     ('_flux_monitors', 'flux'),
     ('_ntff', 'ntff_box'),
     ('_current_moments', 'block_moments'),
     ('_boundary_spec', 'pmc_face'),
-    ('_adi_cfl_factor', ''),
     ('_boundary', 'cpml'),
     ('_boundary_spec', 'absorbing_lid'),
     ('_cpml_layers', 'layers'),
@@ -547,7 +576,7 @@ for _row in _DISTRIBUTED_NU_ROWS:
 
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.
-# waveguide_s_matrix drops NTFF with the #704 warning; material_fit drops it
+# waveguide_s_matrix drops NTFF with the warning; material_fit drops it
 # without a warning (pre-existing behaviour, reported for its owner).
 NTFF_UNFORMED_LANES = frozenset({"waveguide_s_matrix", "material_fit"})
 
@@ -555,19 +584,19 @@ NTFF_UNFORMED_LANES = frozenset({"waveguide_s_matrix", "material_fit"})
 # passes them to its device scans; its graded branch uses run_nonuniform_path.
 for _row in (
     ("_freq_max", ""), ("_domain", ""), ("_dx", ""),
-    ("_precision", ""), ("_mode", ""), ("_adi_cfl_factor", ""),
+    ("_precision", ""), ("_mode", ""),
     ("_materials", "eps"), ("_materials", "sigma"), ("_materials", "mu"),
     ("_materials", "debye"), ("_materials", "lorentz"), ("_materials", "drude"),
     ("_geometry", "pec_volume"), ("_geometry", "pec_sheet"), ("_geometry", "pec_wire"),
     ("_thin_conductors", "lossy_sheet"), ("_thin_conductors", "pec_sheet"),
     ("_thin_conductors", "surface_impedance"), ("_pinned_sheets", "pec_sheet"),
-    ("_waveguide_ports", "waveguide_port"),
+    ("_waveguide_ports", "waveguide_port"), ("_waveguide_ports", "n_modes"),
     ("_boundary", "cpml"), ("_pec_faces", "pec_face"),
     ("_boundary_spec", "conformal"),
     ("_boundary_spec", "absorbing_lid"),
     ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"),
     ("_dx_profile", "graded"), ("_dy_profile", "graded"), ("_dz_profile", "graded"),
-    # Preserve observer handling: the calculator warns for NTFF (#704).
+    # Preserve observer handling: the calculator warns for NTFF.
     ("_probes", "probe"), ("_dft_planes", "dft_plane"),
     ("_flux_monitors", "flux"), ("_ntff", "ntff_box"),
     ("_current_moments", "block_moments"),
@@ -579,7 +608,6 @@ for _row in (
 _CALCULATOR_ROWS = {
     's_matrix_scan': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_precision', ''),
@@ -609,10 +637,13 @@ _CALCULATOR_ROWS = {
         ('_lumped_rlc', 'R'),
         ('_lumped_rlc', 'series_RL'),
         ('_tfsf', 'plane_wave'),
+        ('_tfsf', 'closed_box'),
         ('_boundary', 'cpml'),
         ('_boundary', 'upml'),
         ('_pec_faces', 'pec_face'),
         ('_boundary_spec', 'pmc_face'),
+        ('_boundary_spec', 'conformal'),
+        ('_boundary_spec', 'conformal_s_matrix'),
         ('_boundary_spec', 'absorbing_lid'),
         ('_periodic_axes', 'periodic'),
         ('_cpml_layers', 'layers'),
@@ -625,7 +656,6 @@ _CALCULATOR_ROWS = {
     ),
     'mixed_s_matrix': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_precision', ''),
@@ -665,7 +695,6 @@ _CALCULATOR_ROWS = {
     ),
     'topology_optimize': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_solver', ''),
@@ -695,6 +724,7 @@ _CALCULATOR_ROWS = {
         ('_lumped_rlc', 'R'),
         ('_lumped_rlc', 'series_RL'),
         ('_tfsf', 'plane_wave'),
+        ('_tfsf', 'closed_box'),
         ('_boundary', 'cpml'),
         ('_boundary', 'upml'),
         ('_pec_faces', 'pec_face'),
@@ -711,7 +741,6 @@ _CALCULATOR_ROWS = {
     ),
     'coaxial_line_reflection': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_coaxial_ports', 'coax_port'),
@@ -722,7 +751,6 @@ _CALCULATOR_ROWS = {
     ),
     'coaxial_two_port': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_coaxial_ports', 'coax_port'),
@@ -733,7 +761,6 @@ _CALCULATOR_ROWS = {
     ),
     'coax_msl_transition': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_materials', 'eps'),
@@ -754,7 +781,6 @@ _CALCULATOR_ROWS = {
     ),
     'vmap_sweep_batched': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_mode', ''),
@@ -780,7 +806,6 @@ _CALCULATOR_ROWS = {
     ),
     'material_fit': (
         ('_freq_max', ''),
-        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_mode', ''),
@@ -816,6 +841,14 @@ for _calculator, _rows in _CALCULATOR_ROWS.items():
     for _row in _rows:
         _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {_calculator}
 
+# Canonical normal-incidence rows use the runner's own refusal classification.
+for _kind in ("plane_wave", "closed_box"):
+    _entry = SimpleNamespace(closed_box=_kind == "closed_box", angle_deg=0.,
+                             theta_deg=0., phi_deg=0., face_record=None)
+    if slab_tfsf_refusal(_entry) is None:
+        _row = ("_tfsf", _kind)
+        _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {"run_distributed"}
+
 # Both uniform distributed entries reach the same runner and admission.
 for _row, _lanes in _ADMITTED_ON.items():
     _ADMITTED_ON[_row] = (_lanes - {"fwd_distributed"}) | (
@@ -827,16 +860,55 @@ ADMITS: dict[str, frozenset] = {
 }
 
 
-# A row the call decides as well as the declaration. run() computes the
-# lumped/wire S-matrix, through a path with no conformal update (#1299), only
-# when compute_s_params is not False (rfx/runners/uniform.py); called with
-# compute_s_params=False it computes none, and the conformal walls it does
-# carry are all there is. Called with conformal_pec=False, the override
-# run() documents, the fields are staircase as well as the S-matrix, so
-# nothing declared is dropped. The gate reads the call's static arguments,
-# never a traced value, and a call that passes none is judged as the default
-# call. An explicit conformal_pec=True on a model with no PEC to conform is a
-# no-op on every lane (Simulation._has_pec_to_conform), so it asks for nothing.
+# The call decides whether a declared conformal model requests an S-matrix.
+# Explicit staircase overrides and models without PEC ask for no conformal
+# operands. The floor rule remains confined to its existing run lanes.
+FLOOR_VALUE = "cut_cell_floor"
+# Run-level operand declaration: uniform Yee device and waveguide reference scans.
+FLOOR_LANES = frozenset({"run_uniform", "waveguide_s_matrix"})
+
+
+def admit_conformal_floor(sim, lane, conformal=None, *, smoothing=False, grid=None):
+    """Keep a uniform pin and its operand declaration together on every entry."""
+    floor = conformal == FLOOR_VALUE
+    uniform_pin = not sim._uses_nonuniform_mesh and sim._dt_pin is not None
+    if floor and (lane not in FLOOR_LANES or sim._uses_nonuniform_mesh
+                  or sim._solver != "yee" or sim._refinement is not None
+                  or smoothing in ("kottke_pec", "full_tensor") or sim._stencil_order != 2):
+        raise RfxUnsupported(
+            f'conformal_pec="cut_cell_floor" is not implemented on {lane} '
+            f'with subpixel_smoothing={smoothing!r}; use uniform single-device Yee, stencil_order=2')
+    if uniform_pin and (not floor or lane not in FLOOR_LANES):
+        raise RfxUnsupported(
+            'a uniform dt= pin requires run(conformal_pec="cut_cell_floor"); '
+            f'{lane} does not carry this declaration')
+    if floor:
+        grid = sim._build_grid() if grid is None else grid
+        if sim._dt_pin is None:
+            from rfx.grid import Grid
+            ordinary = Grid.courant_dt(grid.dx, 2 if grid.is_2d else 3)
+            raise RfxUnsupported(
+                'conformal_pec="cut_cell_floor" requires an explicit uniform pin: '
+                f'dt=0.5 * Grid.courant_dt ({0.5 * ordinary!r} s) or '
+                f'dt=0.25 * Grid.courant_dt ({0.25 * ordinary!r} s)')
+
+
+def resolve_run_conformal(sim, conformal_pec, devices, smoothing):
+    # ---- Stage 1 conformal PEC auto-routing ----
+    # When the user passes ``conformal_pec=None`` (default), derive
+    # it from ``BoundarySpec.conformal_faces()``: any axis declared
+    # ``Boundary(conformal=True)`` flips conformal_pec on. Explicit
+    # True/False from the caller is preserved as a power-user
+    # override (e.g. for A/B regression diagnosis).
+    if conformal_pec is None:
+        conformal_pec = bool(sim._boundary_spec.conformal_faces())
+    lane = ("run_distributed" if devices is not None and len(devices) > 1 else
+            "run_subgridded" if sim._refinement is not None else
+            "run_nonuniform" if sim._uses_nonuniform_mesh else "run_uniform")
+    admit_conformal_floor(sim, lane, conformal_pec, smoothing=smoothing)
+    return conformal_pec
+
+
 def _conformal_requested(sim, run_args) -> bool:
     conformal = run_args.get("conformal_pec")
     if conformal is None:
@@ -859,26 +931,9 @@ CALL_GATES: dict[Row, Callable] = {
 # check. The subgridded lane's production validation accepts one absorbing z
 # face, a lid opposite the PEC z face its refined slab touches, with closed
 # PEC x/y faces; there the lane reads a CPML absorber, its thickness and
-# kappa_max (#1355 review, measured). Every validation mode gets exactly that
+# kappa_max. Every validation mode gets exactly that
 # envelope: 'research' and 'off' do not widen it. A UPML lid is not gated: the
 # lane runs CPML in its place, bit for bit (measured), so it stays refused.
-def _adi_homogeneous(sim, grid) -> bool:
-    """Whether the declared materials realize one eps_r and one sigma over the
-    whole grid, the only fill the ADI lane carries (#1373): its update reads
-    each cell's own value, so an interface sits half a cell from where the Yee
-    lanes put it. The realized arrays decide, assembled from the declaration."""
-    from rfx.adi import adi_material_interface_refusal
-    if sim._uses_nonuniform_mesh:
-        return False   # ADI refuses a graded mesh first; no uniform grid to read
-    grid = sim._build_grid() if grid is None else grid
-    # The gate reads eps_r/sigma cells only. Sheets and wires are refused on
-    # ADI by their own (ungated) rows; collecting and dropping them is the
-    # assembler's explicit "I read cells only" (_refuse_uncollected_pec).
-    # Without it every refusal of a sheet/wire model ran this gate (message()
-    # lists carriers through refused() on every lane) and ended in the
-    # assembler's internal ValueError instead of the refusal.
-    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
-    return adi_material_interface_refusal(materials.eps_r, materials.sigma) is None
 
 
 # tests/contracts/path_disposition.py lists the same gates as LANE_GATES.
@@ -892,23 +947,22 @@ def _waveguide_profiled(sim, grid) -> bool:
                for attr in ("_dx_profile", "_dy_profile", "_dz_profile"))
 
 
-_ADI_MATERIAL_ROWS = (("_materials", "eps"), ("_materials", "sigma"))
 
 
 def _subgrid_opted_in(sim) -> bool:
-    """Whether the refinement opts in to the subgridded lane (#1465, #1468:
+    """Whether the refinement opts in to the subgridded lane (
     validation='research' or 'off')."""
     ref = sim._refinement
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
 
 LANE_GATES: dict[str, dict[Row, Callable]] = {
+    **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
+       for lane in ("run_nonuniform", "fwd_nonuniform")},
     "run_subgridded": {
         **{row: _guarded_lid for row in _LID_ROWS},
         ("_refinement", "slab"): lambda sim, grid: (
             sim._refinement.get("validation", "production") in {"research", "off"}),
     },
-    "run_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
-    "fwd_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
         ("_dt_pin", ""), ("_dt_min_cell", ""), ("_nominal_profiles", ""))},
 }
@@ -930,6 +984,10 @@ def refused(sim, lane: str, run_args=None, grid=None) -> list[Row]:
     admits, gates, decided = ADMITS[lane], LANE_GATES.get(lane, {}), {}
     out = []
     for row in active(sim, run_args):
+        if (row == ("_dt_pin", "") and lane in FLOOR_LANES
+                and not sim._uses_nonuniform_mesh
+                and (run_args or {}).get("conformal_pec") == FLOOR_VALUE):
+            continue
         if row in admits:
             continue
         gate = gates.get(row)
@@ -961,13 +1019,15 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if lane in CALCULATORS:
         lines = ([] if lane == "material_fit" else
                  [f"  - {ROW_WORDS[row]}" for row in message_rows])
+        if lane == "mixed_s_matrix" and any(row[1] in {"conformal", "conformal_s_matrix"} for row in rows):
+            lines.append("compute_mixed_s_matrix() refuses conformal PEC: no comparator yet.")
         if ("_refinement", "slab") in rows and lane != "material_fit":
-            lines.append("  - add_refinement(): this calculator has no subgridded lane (#1240).")
+            lines.append("  - add_refinement(): this calculator has no subgridded lane.")
             if sim._uses_nonuniform_mesh:
                 lines.append("  - subgridding on a non-uniform mesh is not supported.")
         if lane == "material_fit":
-            # Preserve the input names and remedies of #1380 while the
-            # refusal itself is owned solely by the admission membership.
+            # Keep input names and remedies in the refusal; admission membership owns
+            # the decision.
             names = {
                 ("_ports", "wire_port"): "add_port(..., extent=...) (wire port)",
                 ("_ports", "source"): "add_source() (plain source)",
@@ -976,6 +1036,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 ("_lumped_rlc", "R"): "add_lumped_rlc()",
                 ("_lumped_rlc", "series_RL"): "add_lumped_rlc()",
                 ("_tfsf", "plane_wave"): "add_tfsf_source()",
+                ("_tfsf", "closed_box"): "add_tfsf_source()",
                 ("_waveguide_ports", "waveguide_port"): "add_waveguide_port()",
                 ("_coaxial_ports", "coax_port"): "add_coaxial_port()",
                 ("_floquet_ports", "floquet_port"): "add_floquet_port()",
@@ -987,34 +1048,22 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 ("_precision", ""): "Use precision='float32'.",
                 ("_stencil_order", ""): "Use stencil_order=2.",
                 ("_interface_eps", "dual_average"): "Use interface_eps='sampled'.",
-                ("_refinement", "slab"): "This calculator has no subgridded lane (#1240). Remove the refinement.",
+                ("_refinement", "slab"): "This calculator has no subgridded lane. Remove the refinement.",
             }
             lines.extend(f"  - {ROW_WORDS[row]}"
                          + (f" — {names[row]}" if row in names else "")
-                         + " (#1290). "
+                         + ". "
                          + remedies.get(row, "Remove this input from sim_factory.")
                          for row in message_rows)
-        if lane == "waveguide_s_matrix" and ("_solver", "") in rows:
-            lines.append("  - solver='adi' (#1300). Use solver='yee'.")
         if lane == "waveguide_s_matrix" and any(row[0] == "_lumped_rlc" for row in rows):
-            lines.append("  - lumped RLC elements are not implemented (#1263). Use run() / forward().")
+            lines.append("  - lumped RLC elements are not implemented. Use run() / forward().")
         return (f"{CALCULATOR_WORDS[lane]} does not carry these declared inputs "
                 "and refuses them before the first time step:\n"
                 + "\n".join(lines)
                 + "\nUse run() / forward() on a model those paths support.")
-    # On ADI a dielectric or conductor is carried as a homogeneous fill; what
-    # is refused is the interface, so the interface text stands for both rows.
     lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
-             for row in message_rows if not (lane in _ADI and row in _ADI_MATERIAL_ROWS)]
-    if lane in _ADI and any(row in rows for row in _ADI_MATERIAL_ROWS):
-        from rfx.adi import ADI_INTERFACE_MESSAGE
-        lines.append(f"  - {ADI_INTERFACE_MESSAGE}")
-    if lane in _ADI and ("_ports", "amplitude_kind") in rows:
-        lines.append(
-            "ADI implements only amplitude_kind='field'; 'current' is the default "
-            "when amplitude_kind is not given (2.0); declare amplitude_kind='field' "
-            "to run on ADI (the earlier ADI behaviour).")
-    # The subgridded lane is unstable and unverified (#1465): it is not
+             for row in message_rows]
+    # The subgridded lane is unstable and unverified: it is not
     # offered as a carrier unless the model already opts in to it.
     carriers = [LANE_WORDS[other] for other in LANES if other != lane
                 and (other != "run_subgridded" or _subgrid_opted_in(sim))
@@ -1027,6 +1076,9 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if ("_boundary_spec", "conformal_s_matrix") in rows:
         where += (" Use compute_s_params=False for conformal probe fields, or "
                   "conformal_pec=False for a staircase S-matrix.")
+    if ("_waveguide_ports", "n_modes") in rows:
+        where += (" run() and forward() drive and record one mode per waveguide port (n_modes=1); "
+                  "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port.")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
@@ -1044,7 +1096,7 @@ class _NoWarnings:
 
 
 def refuse_undriven_drives(sim) -> None:
-    """Issue 1668: refuse a drive whose pulse is not resolved by dt (its
+    """Refuse a drive whose pulse is not resolved by dt (its
     table, sampled at dt over the pulse, holds no value above 1e-6 of its
     amplitude), on entries that run no preflight. The same check preflight
     runs, ``_validate_cfg_unresolved_pulse``; raises ``PreflightConfigError``
@@ -1057,52 +1109,85 @@ def refuse_undriven_drives(sim) -> None:
     check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
 
 
+def refuse_mixed_waveguide_sources(sim) -> None:
+    """A waveguide drive cannot share a run with lumped/wire ports or TFSF."""
+    if sim._waveguide_ports and (sim._ports or sim._tfsf):
+        raise RfxUnsupported(
+            "Waveguide ports are not supported together with lumped ports or TFSF"
+        )
+
+
 def refuse_distributed_sources(sim, lane):
     """Name sources that cannot be stepped on the requested slab lane."""
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())],
+                f"distributed_v2 / distributed_nu ({lane})")
     if getattr(sim, "_waveguide_ports", ()):
-        raise NotImplementedError(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
+        raise RfxUnsupported(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
     entry = getattr(sim, "_tfsf", None)
     if entry is None:
         return
     if getattr(sim, "_uses_nonuniform_mesh", False) or lane.endswith("_nu"):
-        raise NotImplementedError(f"TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane ({lane}); use one device")
+        raise RfxUnsupported(f"TFSF plane-wave sources (add_tfsf_source) are not supported on the graded multi-device lane ({lane}); use one device")
     refuse_slab_tfsf(entry, lane)
 
 
 def refuse_slab_tfsf(entry, lane="uniform multi-device"):
     """Accept declarations or realized configs; face replays never enter a slab scan."""
-    from rfx.sources.tfsf import is_tfsf_2d, is_tfsf_methodB
-    if getattr(entry, "face_record", None) is not None:
-        kind = "TFSF face_record replay"
-    elif is_tfsf_methodB(entry) or (abs(getattr(entry, "angle_deg", 0.)) > .01
-                                    and getattr(entry, "method", None) == "methodB"):
-        kind = "TFSF Method B oblique (is_tfsf_methodB)"
-    elif is_tfsf_2d(entry) or abs(getattr(entry, "angle_deg", 0.)) > .01:
-        kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
-    elif getattr(entry, "closed_box", False) and (
-        getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
-    ):
-        kind = "oblique closed-box TFSF (theta_deg or phi_deg != 0)"
-    elif not getattr(entry, "closed_box", False):
-        kind = "open-slab normal-incidence TFSF (periodic y/z is not on slabs)"
-    else:
-        return
-    raise NotImplementedError(f"{kind} is not supported on {lane}; use one device")
+    kind = slab_tfsf_refusal(entry)
+    if kind is not None:
+        raise RfxUnsupported(f"{kind} is not supported on {lane}; use one device")
 
 
-#: Device counts a closed-box TF/SF has been validated on (rfx-lead L:5446b5): one seam is measured
-#: (PEC sphere backscatter vs Mie, far field vs one device, the right-Hx ghost invariant); two seams
-#: and a box face on a seam are not.
-SLAB_TFSF_MAX_DEVICES = 2
+#: Closed-box TF/SF validation covers three seams, a padded last slab, a box face
+#: on a seam, probe and far-field parity, and PEC sphere backscatter vs Mie.
+SLAB_TFSF_MAX_DEVICES = 4
 
 
 def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
     """Refuse a closed-box TF/SF on more devices than its multi-seam validation covers."""
     if entry is not None and getattr(entry, "closed_box", False) and n_devices > SLAB_TFSF_MAX_DEVICES:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             f"closed-box TFSF (add_tfsf_source(closed_box=True)) on {n_devices} devices is not supported on "
-            f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (one seam); 3 or more wait for "
-            f"the multi-seam validation (two seams, a box face on a seam). Use devices=jax.devices()[:2] or one device")
+            f"{lane}: it is validated on at most {SLAB_TFSF_MAX_DEVICES} devices (three seams); "
+            f"5 or more are refused. Use devices=jax.devices()[:{SLAB_TFSF_MAX_DEVICES}] or one device")
+
+
+_COAX_ADVICE = {
+    "run": ("for a single add_coaxial_port(), compute_s_matrix(method=...) "
+            "dispatches to either. Use add_port(..., extent=...) for "
+            "probe-feed S-parameters."),
+    "forward": ("both take eps_scale= for jax.grad. Use add_port(..., extent=...) "
+                "for differentiable probe-feed S11 objectives."),
+}
+
+
+def refuse_forward_reference_planes(sim) -> None:
+    """Reject the run-only plane declaration before forward lane dispatch."""
+    for index, port in enumerate(sim._ports):
+        if port.reference_plane_cells is not None:
+            raise RfxRefusal(
+                "forward() does not form reference-plane S-parameters: "
+                f"add_port(reference_plane_cells=...) is set on port {index}; "
+                "use run(compute_s_params=True) for reference-plane S, "
+                "or remove the option for forward()")
+
+
+def refuse_coaxial_port(sim, entry: str) -> None:
+    """The one coaxial-port refusal of ``run()`` and ``forward()``,
+    raised before mesh planning while no time-stepping lane admits the row;
+    ``entry`` selects the advice."""
+    if entry == "forward":
+        refuse_forward_reference_planes(sim)
+        admit_conformal_floor(sim, "fwd_uniform")
+    row = ("_coaxial_ports", "coax_port")
+    if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
+                                      for lane in LANES):
+        raise RfxUnsupported(
+            f"add_coaxial_port() is not wired into Simulation.{entry}(). A "
+            "coaxial port's S-parameters come from "
+            "compute_coaxial_line_reflection(...) (one-port reflection) "
+            "or compute_coaxial_two_port(...) (through line); " + _COAX_ADVICE[entry])
 
 
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
@@ -1111,8 +1196,38 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    if lane in {"run_subgridded", "material_fit"}:
+        from rfx.materials.pole_map import refuse_maps
+        refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())], lane)
+    if sim._precision == "float64":
+        # UPML replaces the whole-grid update with float32 arithmetic.
+        if sim._boundary == "upml":
+            raise RfxUnsupported(
+                "precision='float64' with UPML would compute a float32 UPML update. "
+                "Declare precision='float32' or use boundary='cpml' for float64.")
+        # Oblique Bloch steps complex64 fields; Method B remains real-valued.
+        from rfx.sources.tfsf import is_oblique
+        tfsf = sim._tfsf
+        if tfsf is not None and is_oblique(tfsf.angle_deg) and tfsf.method == "bloch":
+            raise RfxUnsupported(
+                "precision='float64' with oblique Bloch would compute complex64 fields. "
+                "Declare precision='float32' or use normal incidence for float64.")
+    if lane == "run_subgridded":
+        from rfx.materials.relative_strength import RelativeStrength
+        if any(isinstance(p.kappa, RelativeStrength)
+               for m in _placed(sim) for p in (m.lorentz_poles or ())):
+            raise RfxUnsupported("run_subgridded does not implement RelativeStrength Lorentz poles; use a uniform or graded run")
+    admit_conformal_floor(sim, lane, (run_args or {}).get("conformal_pec"),
+                          smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
+    from rfx.model.smoothing_admission import admit_full_tensor
+    admit_full_tensor(
+        sim, (run_args or {}).get("subpixel_smoothing", False),
+        distributed=lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"},
+    )
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
         refuse_distributed_sources(sim, lane)
+    if lane == "s_matrix_scan":
+        _refuse_traced_conformal_shapes(sim, (run_args or {}).get("conformal_pec"))
     refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
@@ -1120,7 +1235,7 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     if rows:
         if diagnostics is not None:
             from rfx._diagnostic_transport import diagnostic_refusal
-            raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
+            raise diagnostic_refusal(RfxUnsupported(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(sim)
@@ -1149,24 +1264,80 @@ def _warn_implicit_s(message):
             frame = frame.f_back
     finally:
         del frame
-    warnings.warn(message, UserWarning, stacklevel=stacklevel)
+    warnings.warn(message, ConfigurationWarning, stacklevel=stacklevel)
+
+
+def default_run_forms_s(sim, *, devices=None):
+    """Whether the default lumped/wire request forms S on this declaration."""
+    ports = [p for p in sim._ports if p.is_port]
+    if (not ports or sim._refinement is not None
+            or any(p.is_soft_source for p in sim._ports)):
+        return False
+    if devices is not None and len(devices) > 1:
+        if sim._uses_nonuniform_mesh and any(not p.excite for p in ports):
+            return False
+    elif len(ports) == 1 and ports[0].extent is not None and not ports[0].excite:
+        return False
+    if not sim._uses_nonuniform_mesh or any(p.extent is not None for p in ports):
+        return True
+    return not sim._periodic_axes and sum(p.excite for p in ports) == 1
+
+
+def s_drive_inventory(sim):
+    """Declared record injections as (kind, label); plain sources have their own rule."""
+    drives = [("wire" if p.extent is not None else "lumped",
+               f"port {index} at {p.position}")
+              for index, p in enumerate(sim._ports) if p.impedance > 0 and p.excite]
+    drives.extend(("microstrip", p.name) for p in sim._msl_ports if p.excite)
+    for kind, entries in (("waveguide", sim._waveguide_ports), ("Floquet", sim._floquet_ports)):
+        drives.extend((kind, p.name) for p in entries if _differs(p.amplitude, 0.0))
+    if sim._tfsf is not None:
+        drives.append(("TFSF", "source"))
+    drives.extend(("coaxial", f"port {index} at {p.position}")
+                  for index, p in enumerate(sim._coaxial_ports))
+    return drives
+
+
+def refuse_foreign_s_drives(sim):
+    """A non-impedance drive fires in every column of a lumped/wire scan."""
+    if not any(p.is_port for p in sim._ports):
+        return
+    foreign = [(kind, label) for kind, label in s_drive_inventory(sim)
+               if kind not in {"lumped", "wire"}]
+    if foreign:
+        detail = "; ".join(f"{kind} {label}" for kind, label in foreign)
+        remedy = " Use compute_mixed_s_matrix() for lumped/wire + microstrip S." if any(
+            kind == "microstrip" for kind, _ in foreign) else ""
+        raise RfxUnsupported(
+            f"Lumped/wire S scans require isolated port drives; foreign drives: {detail}."
+            + remedy + " Use run(compute_s_params=False) for fields only.")
 
 
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
-    excited = [(index, port) for index, port in enumerate(sim._ports)
-               if port.impedance > 0 and port.excite]
-    if len(excited) < 2:
+    # Keep the multi-waveguide refusal ahead of the drive inventory check.
+    if len(sim._waveguide_ports) > 1:
+        raise ValueError(
+            "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+        )
+    if not sim._waveguide_ports and not any(p.is_port for p in sim._ports):
         return True
-    ports = "; ".join(f"port {index} at {port.position}" for index, port in excited)
+    excited = s_drive_inventory(sim)
+    family = {"waveguide"} if sim._waveguide_ports else {"lumped", "wire"}
+    foreign = any(kind not in family for kind, _ in excited)
+    if not foreign and len(excited) < 2:
+        return True
+    ports = "; ".join(f"{kind} {label}" for kind, label in excited)
     message = (
         f"S-parameters from one record require an isolated drive; excited ports: {ports}. "
         "set excite=False on every port but the driven one and run once per driven port, "
         "or use run(compute_s_params=True) on one device, which drives one port per run"
     )
-    if fields_only:
+    if any(kind == "microstrip" for kind, _ in excited):
+        message += "; use compute_mixed_s_matrix() for lumped/wire + microstrip S"
+    if fields_only or foreign:
         message += "; use run(compute_s_params=False) for fields only"
-    if implicit:
+    if implicit and not sim._waveguide_ports:
         _warn_implicit_s(message + "; returning no S-parameters.")
         return False
     raise ValueError(message)
@@ -1179,15 +1350,16 @@ def graded_lumped_default_s(sim):
     source or 0-ohm port and no periodic axis; otherwise the run returns
     fields with S=None (two driven ports also warn, as forward() does; with no
     driven port there is no incident wave to form S from). A port
-    set with a wire port keeps the wire default. Never a refusal: the user did
-    not ask for S (rfx-lead D:6b5bd8, #1373).
+    set with a wire port keeps the wire default. Foreign drives must still
+    satisfy the one-record admission rule.
     """
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    ports = [p for p in sim._ports if p.is_port]
     if (not ports or any(p.extent is not None for p in ports)
-            or any(p.impedance == 0.0 for p in sim._ports) or sim._periodic_axes
+            or any(p.is_soft_source for p in sim._ports) or sim._periodic_axes
             or not any(p.excite for p in ports)):
         return False
-    return require_isolated_s_drive(sim, implicit=True)
+    isolated = require_isolated_s_drive(sim, implicit=True)
+    return isolated and default_run_forms_s(sim)
 
 
 def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
@@ -1201,13 +1373,13 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     require a driven impedance port, regardless of other excitations.
     Passive records remain available as termination diagnostics, without S.
     """
-    ports = [p for p in sim._ports if p.impedance != 0.0]
+    ports = [p for p in sim._ports if p.is_port]
     if main_record and ports:
         from rfx.measurement.port_s_contract import record_ports, require_driven_record_s
         if not require_driven_record_s(
                 (p.excite for p in record_ports(sim, default=implicit)), implicit=implicit):
             return False
-    if not ports or not any(p.impedance == 0.0 for p in sim._ports):
+    if not ports or not any(p.is_soft_source for p in sim._ports):
         return True
     reason = (
         "Lumped/wire S-matrix requests do not support plain sources / "
@@ -1218,7 +1390,7 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
             reason + "Remove the plain source, or pass compute_s_params=False "
             "to silence this warning; returning no S-parameters.")
         return False
-    raise NotImplementedError(
+    raise RfxUnsupported(
         reason + "Remove the plain source, or drop the S request to run with the "
         "source included: run(compute_s_params=False) returns the raw port waves, "
         "forward() without port_s11_freqs the fields and probe records.")
@@ -1227,15 +1399,15 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
 def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=None):
     """run()'s S request after the plain-source rule: an explicit request with a
     plain source or 0-ohm port is refused; the default request warns and
-    resolves to False (fields, S=None), as graded run() does (rfx-lead D:c70245)."""
+    resolves to False (fields, S=None), as graded run() does."""
     # Subgridded runs opt into S explicitly; uniform/graded runs resolve
     # None from lumped/wire ports, graded lumped ports only when one is driven.
     # Passive single-wire main records warn and keep raw spectra with S disabled.
     default_requested = (
         compute_s_params is None
         and sim._refinement is None
-        and sim._solver != "adi"
-        and any(pe.impedance != 0.0
+
+        and any(pe.is_port
                 and (not sim._uses_nonuniform_mesh or pe.extent is not None
                      or getattr(pe, "excite", True)) for pe in sim._ports)
     )
@@ -1245,10 +1417,10 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     # S read from the main run's own record: the single-wire fast path on
     # either mesh (no scan, _s_matrix_ports False).
     _main_record = (
-        _one_device and sim._refinement is None and sim._solver != "adi"
+        _one_device and sim._refinement is None
         and not _s_matrix_ports(sim))
     if (not _one_device and sim._uses_nonuniform_mesh
-            and any(p.impedance != 0.0 and not getattr(p, "excite", True) for p in sim._ports)):
+            and any(p.is_port and not getattr(p, "excite", True) for p in sim._ports)):
         reason = ("A passive port's S column needs a drive of its own: graded run() drives each "
                   "port in turn on one device; on several devices it reads S from one record. ")
         if compute_s_params is None and not requested:
@@ -1266,26 +1438,33 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
 def admit_forward_s_matrix(sim):
     """Check explicit forward S requests before dispatch or stepping."""
     from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
-    # MSL automatic probe counts from the full declaration (#1584).
+    # MSL automatic probe counts from the full declaration.
     admit_msl_auto_probes(sim)
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(sim)
     refuse_plain_sources_s_matrix(sim, main_record=True)
-    require_isolated_s_drive(sim)
+    # forward(port_s11_freqs=) forms S11 only for add_port ports; the following family check refuses every other declared family.
+    if not (sim._msl_ports or sim._waveguide_ports or sim._floquet_ports or sim._tfsf is not None or sim._coaxial_ports):
+        require_isolated_s_drive(sim)
 
 
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
-                       distributed=False):
+                       distributed=False, subpixel_smoothing=False):
     """Check the requested scan extraction before run() starts its field solve."""
     uses_scan = (False if distributed and sim._uses_nonuniform_mesh else
-                 any(p.impedance != 0.0 for p in sim._ports) if distributed else _s_matrix_ports(sim))
+                 any(p.is_port for p in sim._ports) if distributed else _s_matrix_ports(sim))
     if compute_s_params is not False:
         # Without the scan, S is read from the main run's own record.
         refuse_plain_sources_s_matrix(sim, main_record=not uses_scan)
+        if uses_scan:
+            refuse_foreign_s_drives(sim)
+        elif any(p.is_port for p in sim._ports):
+            require_isolated_s_drive(sim)
     if compute_s_params is False or not uses_scan:
         return
     try:
-        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec,
+                                               "subpixel_smoothing": subpixel_smoothing})
     except NotImplementedError as error:
         rows = refused(sim, "s_matrix_scan", {"conformal_pec": conformal_pec})
         inputs = ", ".join(ROW_WORDS[row] for row in rows) or str(error)
@@ -1295,20 +1474,26 @@ def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
             "the unsupported input.") from error
 
 
+def _eager_trace_state(get_opaque_trace_state):
+    """The trace state of a thread no transformation has entered (state is per thread)."""
+    state = []
+    thread = threading.Thread(target=lambda: state.append(get_opaque_trace_state()))
+    thread.start()
+    thread.join()
+    return state[0]
+
+
 def _under_external_jax_transform() -> bool:
-    """Read the public trace-state API across the supported JAX versions."""
+    """Compare the caller's trace state with an untransformed thread's (jax 0.10 and 0.11)."""
     try:
-        from jax.extend.core import get_opaque_trace_state, take_current_trace
+        from jax.extend.core import get_opaque_trace_state
     except ImportError:
-        try:  # JAX 0.6, including the Python 3.10 CI environment.
-            from jax.core import get_opaque_trace_state, take_current_trace
-        except ImportError:  # The declared JAX 0.4.20 floor.
+        try:  # JAX 0.6 export layout.
+            from jax.core import get_opaque_trace_state
+        except ImportError:  # The JAX 0.4.20 export layout.
             from jax.core import trace_state_clean
             return not trace_state_clean()
-    caller = get_opaque_trace_state()
-    with take_current_trace():
-        eager = get_opaque_trace_state()
-    return caller != eager
+    return get_opaque_trace_state() != _eager_trace_state(get_opaque_trace_state)
 
 
 def _refuse_transformed_extended_tfsf(entry, until_decay=None, decay_max_steps=None) -> None:
@@ -1336,7 +1521,39 @@ def _no_shape_tangent_jvp(primals, tangents):
         "(with subpixel_smoothing only in a closed PEC domain).")
 
 
-def guard_shape_tangents(sim):
+def refuse_conformal_occupancy_overrides(sim, pec_occupancy, design_occupancy):
+    """Forward cannot combine occupancy overrides with conformal shape operands."""
+    if not (_conformal_requested(sim, {}) and sim._has_pec_to_conform()):
+        return
+    for name, override in (("pec_occupancy_override", pec_occupancy),
+                           ("design_occupancy_override", design_occupancy)):
+        if override is not None:
+            raise RfxUnsupported(
+                f"forward({name}=...) is not supported together with conformal PEC; "
+                "turn Boundary(conformal=True) off, or add the cells as PEC shapes.")
+
+
+def merge_forward_pec_mask(sim, pec_mask, override):
+    """Refuse cell-mask overrides that conformal shape operands would discard."""
+    if override is None:
+        return pec_mask
+    if _conformal_requested(sim, {}) and sim._has_pec_to_conform():
+        raise NotImplementedError(
+            "pec_mask_override is not supported together with conformal PEC "
+            "(conformal_pec=True); use conformal_pec=False, or add the cells as PEC shapes.")
+    return override if pec_mask is None else (pec_mask | override)
+
+
+def _refuse_traced_conformal_shapes(sim, conformal=None):
+    if not (sim._boundary_spec.conformal_faces() if conformal is None else conformal):
+        return
+    from rfx.geometry.rasterize_grid import refuse_traced_conformal_shape
+    for entry in sim._geometry:
+        if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD:
+            refuse_traced_conformal_shape(entry.shape)
+
+
+def guard_shape_tangents(sim, conformal=None):
     """Attach the tangent refusal before any lane realizes declared shapes.
 
     Concrete leaves and entries retain their identity. Dataclass fields and
@@ -1358,6 +1575,7 @@ def guard_shape_tangents(sim):
             return guarded if any(a is not b for a, b in zip(value, guarded)) else value
         return value
 
+    _refuse_traced_conformal_shapes(sim, conformal)
     for index, entry in enumerate(sim._geometry):
         if is_dataclass(entry.shape):
             shape = guard(entry.shape)
@@ -1365,10 +1583,12 @@ def guard_shape_tangents(sim):
                 sim._geometry[index] = replace(entry, shape=shape)
 
 
-def admit_traced_run(sim, until_decay=None, decay_max_steps=None):
-    """Preserve the source fence, then guard shapes before run dispatch."""
+def admit_traced_run(sim, until_decay=None, decay_max_steps=None, radiated_flux_box=None, conformal=None):
+    """Refuse an unused flux stop and preserve source/shape fences before dispatch."""
+    from rfx.measurement.decay import refuse_radiated_flux_stop
+    refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
     _refuse_transformed_extended_tfsf(sim._tfsf, until_decay, decay_max_steps)
-    guard_shape_tangents(sim)
+    guard_shape_tangents(sim, conformal)
 
 
 def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,
@@ -1377,11 +1597,11 @@ def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,
     if not subpixel_smoothing:
         return
     if eps_override is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing builds the permittivity tensor from declared shapes; "
             "eps_override would not reach the solve. Omit smoothing or eps_override.")
     if pec_occupancy is not None or design_occupancy is not None:
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "subpixel_smoothing cannot combine with pec_occupancy / design_occupancy: "
             "they supply a second inverse-permittivity operator.")
 
@@ -1415,7 +1635,7 @@ def _refuse_conformal_boundary(self, path_name: str, *, entry: str,
 
 
 def _reject_upml_on_nonuniform(self, lane: str) -> None:
-    """Refuse ``boundary='upml'`` on a non-uniform lane (#680).
+    """Refuse ``boundary='upml'`` on a non-uniform lane.
 
         ``rfx/nonuniform.py`` has no UPML implementation at all: its
         absorber dispatch is ``use_cpml = grid.cpml_layers > 0``, which
@@ -1439,7 +1659,7 @@ def _reject_upml_on_nonuniform(self, lane: str) -> None:
         "non-uniform runner implements CPML only (rfx/nonuniform.py "
         "dispatches on cpml_layers > 0 and never reads the boundary "
         "type), so this configuration used to run CPML while "
-        "sim._boundary kept reporting 'upml' (issue #680). Pass "
+        "sim._boundary kept reporting 'upml'. Pass "
         "boundary='cpml' to run the absorber that is actually "
         "implemented here, or drop the mesh profile(s) to use the "
         "uniform lane, which does implement UPML."
@@ -1464,6 +1684,20 @@ def admit_sheet_layout_lane(sim, *, distributed):
     if distributed:
         from rfx.runners._distributed_entry import refuse_sheet_layout
         refuse_sheet_layout()
-    if not sim._uses_nonuniform_mesh or sim._solver == 'adi' or sim._refinement is not None:
+    if not sim._uses_nonuniform_mesh or sim._refinement is not None:
         from rfx.runners.uniform_forward import refuse_sheet_layout
         refuse_sheet_layout()
+
+
+def refuse_forward_floor():
+    """Name the run-only value before forward's generic unknown-keyword check."""
+    raise RfxUnsupported('forward() refuses conformal_pec="cut_cell_floor"; use uniform run()')
+
+
+def refuse_tfsf_decay_without_source_off(sim, until_decay):
+    """Require a known TFSF source-off time for decay stopping."""
+    if until_decay is not None and sim._tfsf is not None:
+        from rfx.sources.sources import CustomWaveform
+        if isinstance(sim._tfsf.waveform, CustomWaveform):
+            raise RfxUnsupported(
+                "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")

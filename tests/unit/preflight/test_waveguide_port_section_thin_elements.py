@@ -11,11 +11,11 @@ from rfx import Box, PolylineWire, Simulation
 ELEMENTS = (
     ("thin_conductor", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\)"),
     ("lumped_rlc", r"lumped RLC element \(lumped_rlc\.ez\)"),
+    ("lumped_resistor", r"lumped conductivity \(materials\.(components\.(cells_view\.)?)?sigma_lumped\.2\)"),
     ("sheet_impedance", r"surface-impedance sheet \(sheet_impedance\.mask_e[yz]\)"),
     ("film", r"film conductivity \(materials\.(components\.cells_view\.)?sigma_film\.[12]\)"),
     ("pec_sheet", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\)"),
     ("pec_wire", r"PEC edge \(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.2\)"),
-    ("lumped_port", r"lumped conductivity \(materials\.(components\.(cells_view\.)?)?sigma_lumped\.2\)"),
 )
 
 
@@ -46,16 +46,14 @@ def _guide(element, *, inside=True, graded=False, two_ports=False):
         sim.add(PolylineWire(((x, 0.009, 0.003), (x, 0.009, 0.009)), radius=0.), material="pec")
     elif element == "lumped_rlc":
         sim.add_lumped_rlc((x, 0.009, 0.006), "ez", R=10., L=1e-9)
+    elif element == "lumped_resistor":
+        sim.add_lumped_rlc((x, 0.009, 0.006), "ez", R=10.)
     elif element == "lumped_port":
         sim.add_port((x, 0.009, 0.006), "ez", excite=False)
     return sim
 
 
 def _execute(sim, entry="run"):
-    # run() already refuses every mixed lumped/modal model, wherever the
-    # lumped port is drawn. forward() reaches the shared section authority.
-    if entry == "run" and sim._ports:
-        entry = "forward"
     kwargs = {"n_steps": 2, "skip_preflight": True}
     if entry == "run":
         kwargs["compute_s_params"] = False
@@ -72,7 +70,7 @@ def test_inside_refused(element, label):
         with pytest.raises(ValueError, match=(
                 r"Waveguide port 'right': section cells .*: " + label
                 + r" at cell \(\d+, \d+, \d+\); the port has no model for a thin element "
-                r"in its section \(rfx#2047\); draw it beyond the reference plane\.")):
+                r"in its section; draw it beyond the reference plane\.")):
             _execute(sim)
 
 
@@ -84,6 +82,16 @@ def test_beyond_reference_admitted(element, label):
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("inside", [False, True], ids=["beyond", "inside"])
+def test_lumped_port_refused_regardless_of_section(graded, entry, inside):
+    sim = _guide("lumped_port", inside=inside, graded=graded)
+    with pytest.raises(ValueError, match=(
+            "^Waveguide ports are not supported together with lumped ports or TFSF$")):
+        _execute(sim, entry)
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 @pytest.mark.parametrize("entry", ["forward", "compute_waveguide_s_matrix"])
 def test_other_entries_refuse(graded, entry):
     with warnings.catch_warnings():
@@ -92,7 +100,7 @@ def test_other_entries_refuse(graded, entry):
         with pytest.raises(ValueError, match=(
                 r"Waveguide port 'right': section cells .*: PEC edge "
                 r"\(volume, sheet, wire or pinned sheet\) \(pec_edge_masks\.[12]\) "
-                r"at cell .*rfx#2047")):
+                r"at cell .*thin element")):
             _execute(sim, entry)
 
 
@@ -145,7 +153,7 @@ def test_b4_section_boundary_nodes(direction, scene):
                 sim.forward(n_steps=2, skip_preflight=True)
             assert re.search(re.escape(f"Waveguide port '{name}': section cells "), str(exc.value))
             assert re.search(re.escape(
-                "the port has no model for a thin element in its section (rfx#2047); "
+                "the port has no model for a thin element in its section; "
                 "draw it beyond the reference plane."), str(exc.value))
         else:
             sim.forward(n_steps=2, skip_preflight=True)
@@ -188,7 +196,7 @@ def test_interior_conductor_edges_admitted_on_the_reference_path(traced):
     """An edge closed by PEC on every neighbouring cell is the conductor, not a
     sheet (m5, m6). The reference-sim path carries realized PEC edges and no
     cell mask (rfx/sparams/waveguide.py port_reference_sims); the section check
-    reads the same edges plain or traced (rfx-core-desk L:0bbcf4) and admits a
+    reads the same edges plain or traced and admits a
     port section inside the block. A block face on the reference plane stays
     refused (B4 scene b). Direct entries refuse this scene earlier (#1994)."""
     import jax

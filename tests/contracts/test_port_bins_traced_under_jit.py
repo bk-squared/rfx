@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, Simulation
+from rfx import Box, GaussianPulse, Simulation, RfxUnsupported
 from rfx.boundaries.spec import BoundarySpec
 from rfx.ringdown import RingdownSpec
 
@@ -41,7 +41,9 @@ def _scene(kind, path):
             sim.add_material('sub', eps_r=2.2)
             sim.add(Box((0, 0, 0), (.024, .020, .001)), material='sub')
             sim.add(Box((0, 0, 0), (.024, .020, 0)), material='pec')
-            sim.add(Box((.004, .008, .001), (.024, .012, .001)), material='pec')
+            trace_z = .8 * .001 if graded else .001
+            sim.add(Box((.004, (8 - .35) * .001, trace_z),
+                        (.024, (12 + .35) * .001, trace_z)), material='pec')
             sim.add_msl_port((.004, .010, 0), width=.004, height=.001,
                              direction='+x', impedance=50, eps_r_sub=2.2,
                              n_probe_offset=5, n_probe_spacing=2, n_probes=3)
@@ -164,15 +166,15 @@ def test_port_bins(kind, path, ringdown):
     print(f'REACH {kind}-{path}, ringdown={ringdown}, staged={actual[2]}', file=sys.stderr)
 
     if ringdown and path.startswith('multi-'):
-        _same_refusal(eager, actual, NotImplementedError,
+        _same_refusal(eager, actual, RfxUnsupported,
                       'forward(ringdown=...) is not supported with distributed=True')
     elif ringdown and kind != 'wire':
-        _same_refusal(eager, actual, NotImplementedError,
+        _same_refusal(eager, actual, RfxUnsupported,
                       'forward(ringdown=...) completes wire-port S-parameters only;')
     elif ringdown:
         concrete = _evaluate(lambda: _call(sim, path, ringdown, REQUEST), compiled=True)
         if path == 'graded' and eager[1] is not None:
-            # The leader permits this reduced witness if this one small-scene
+            # This reduced witness applies if this one small-scene
             # attempt cannot turn its pulse off before the graded fit window.
             assert type(eager[1]) is ValueError
             assert 'is still on inside the identification window' in str(eager[1])
@@ -191,7 +193,7 @@ def test_port_bins(kind, path, ringdown):
             assert message in str(actual[1])
             print(f'ConcretizationTypeError: {message}', file=sys.stderr)
     elif kind == 'coax':
-        _same_refusal(eager, actual, NotImplementedError,
+        _same_refusal(eager, actual, RfxUnsupported,
                       'add_coaxial_port() is not wired into Simulation.forward().')
     elif kind in ('waveguide', 'msl'):
         _same_refusal(eager, actual, ValueError,

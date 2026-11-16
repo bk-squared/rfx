@@ -12,34 +12,21 @@ from tests.unit.preflight.test_pec_face_short_of_domain_wall import A_WG, B_WG, 
 def graded_scene(kind):
     sim = Simulation(freq_max=10e9, domain=(.02,) * 3, dx=.001,
                      dz_profile=[.0009, .0011] * 10, boundary="pec")
-    if kind == "rlc":
-        sim.add_source((.01, .01, .005), "ex", amplitude_kind="current")
-        sim.add_lumped_rlc((.008,) * 3, "ez", R=50.)
-    else:
-        sim.add_port((.01, .01, .005), "ez", impedance=50., extent=.003,
-                     reference_plane_cells=1, direction="+x")
+    sim.add_port((.01, .01, .005), "ez", impedance=50., extent=.003,
+                 reference_plane_cells=1, direction="+x")
     sim.add_probe((.01, .01, .014), "ez")
     return sim
 
 
 @pytest.mark.parametrize("entry,kind,lane,expected", [
-    ("run", "rlc", None,
-     "add_lumped_rlc() element(s) (1): not supported on the distributed multi-device run() "
-     "path; the lane never applies them and would solve the structure as if "
-     "the elements were absent, with no warning (#1239; "
-     "rfx.runners.distributed_v2.run_distributed / "
-     "rfx.runners.distributed.run_distributed have no lumped-element update). "
-     "Remove the elements, or omit devices=... (use a single-device run() instead)."),
     ("run", "wire", None,
      "Wire ports with reference_plane_cells are not supported with devices=...; "
      "the V_ref path needs pre-injection recordings. Use one device."),
-    ("forward", "rlc", "fwd_distributed_nu",
-     "Lumped RLC ports are not yet supported by forward(distributed=True) on a graded mesh; "
-     "remove the lumped_rlc spec or omit distributed=True and devices=."),
-    ("forward", "wire", "fwd_distributed_nu",
-     "Wire ports with reference_plane_cells are not supported by forward(distributed=True) "
-     "on a graded mesh; the V_ref path needs pre-injection recordings. "
-     "Use one device (omit distributed=True and devices=)."),
+    ("forward", "wire", None,
+     "forward() does not form reference-plane S-parameters: "
+     "add_port(reference_plane_cells=...) is set on port 0; "
+     "use run(compute_s_params=True) for reference-plane S, "
+     "or remove the option for forward()"),
 ])
 def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     from rfx.model import distributed_ports
@@ -53,7 +40,8 @@ def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     monkeypatch.setattr(distributed_ports, "assemble", recorded)
     sim = graded_scene(kind)
     options = dict(n_steps=4, skip_preflight=True, devices=host_devices(2))
-    with pytest.raises(NotImplementedError) as error:
+    exception = ValueError if entry == "forward" and kind == "wire" else NotImplementedError
+    with pytest.raises(exception) as error:
         if entry == "run":
             sim.run(compute_s_params=False, **options)
         else:
@@ -97,6 +85,6 @@ def test_wall_message_names_current_grid_rule():
     hit, = _sim(A_WG, B_WG).preflight().by_code(CODE)
     text = str(hit)
     assert "nearest whole number of cells" in text
-    assert "the WR-90 waveguide case" in text
+    assert "the WR-90 PEC-short waveguide case" in text
     assert "ceil(" not in text
     assert "cv11" not in text

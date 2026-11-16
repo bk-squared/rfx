@@ -1,6 +1,6 @@
 # Coax open termination in a closed can — cause, pre-declared (issue 1218)
 
-Written by the leader on 2026-09-24, committed before any run of this campaign.
+Written on 2026-09-24, committed before any run of this campaign.
 
 ## What a user receives
 
@@ -70,7 +70,7 @@ holds and P2 fails, the lateral walls matter but the DUT rim is not the only sou
 feed end next. If P2 holds and P1 fails, the rim matters but the lateral walls are not what
 holds the energy.
 
-The column-power question (T0 / T2). This is PI question 1 of 2026-09-24, not part of M. On the
+The column-power question (T0 / T2). This is not part of M. On the
 two-port lane, a lossless thru or bead reads |S11|² + |S21|² down to 0.979 / 0.969 at 9 annulus
 cells, falling with frequency, and doubling the record does not change it. If T2's minimum is at
 least 0.995 where T0's is about 0.98, the missing power is radiation from the unshielded line ends
@@ -82,7 +82,7 @@ the stored 16 mm records.
 
 ## After the run
 
-The leader reads the per-bin |Γ| traces of every arm and writes the conclusion. If M holds, the fix
+The conclusion is written after the per-bin |Γ| traces of every arm are read. If M holds, the fix
 removes the unshielded ends and/or closes the can with absorbers, chosen on the arms' numbers, in a
 separate PR with the coax battery's open re-measured. If M is falsified, stop and report (rule R2:
 one attempt per mechanism).

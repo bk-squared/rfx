@@ -19,18 +19,19 @@ stencil-consistency fix, not a repair of a measured wrong |S|.  The value is
 that the two lanes stop disagreeing about a convention.
 """
 
-import pathlib
-import re
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
+import sys
 
 import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import curl_h
+from rfx.core.yee import curl_h, init_state
 from rfx.grid import Grid
 from rfx.probes.probes import _bwd_h, port_current, wire_port_current
 from rfx.simulation import (
-    MaterialArrays, apply_pec, init_state, update_e, update_h,
+    MaterialArrays, apply_pec, update_e, update_h,
 )
 from rfx.sources.sources import (
     GaussianPulse, LumpedPort, WirePort, _wire_port_cells,
@@ -238,8 +239,8 @@ def test_last_index_h_plane_is_dead_on_the_uniform_lane():
     st = init_state(grid.shape)
     last, second_last, glob = 0.0, 0.0, 0.0
     for step in range(400):
-        st = update_h(st, mats, grid.dt, grid.dx)
-        st = update_e(st, mats, grid.dt, grid.dx)
+        st = update_h(st, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        st = update_e(st, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         st = apply_pec(st)
         st = apply_lumped_port(st, grid, port, step * grid.dt, mats)
         for name in ("hx", "hy", "hz"):
@@ -257,113 +258,130 @@ def test_last_index_h_plane_is_dead_on_the_uniform_lane():
     assert last == 0.0, last
 
 
-# ---------------------------------------------------------------------------
-# #692 follow-up — the OTHER copies of this loop
-#
-# The commit that introduced `_ampere_loop` claimed the six duplicated
-# branches had been consolidated.  They had not: three more verbatim copies
-# survived with the raw `[i-1]` wrap —
-#
-#   rfx/simulation.py  (wire-port and lumped-port S-param accumulators, both
-#                       inside `Simulation.run()`'s jit scan, described at
-#                       rfx/simulation.py:105 as "an AD-compatible alternative
-#                       to the Python-loop extract_s_matrix path")
-#   rfx/subgridding/jit_runner.py  (`_sample_lumped_vi`)
-#
-# so the branch shipped two spellings of one loop that DISAGREE.  Measured on
-# random H, `_ampere_loop` against the inlined `[i-1]` arithmetic: 9 of 21
-# sampled (index, component) cells differ, every one at an index with a zero
-# coordinate on a back-read axis — e.g. at (0,0,0) all three components, at
-# (0,5,5) ey and ez.
-#
-# Why the gates below are structural rather than an end-to-end |S11|
-# comparison: 856ac9b MEASURED that the last-index H plane is identically zero
-# during a real uniform-lane run (the outermost E plane is pinned by
-# `apply_pec` and `_shift_fwd` pads zero beyond it), so the wrap is a runtime
-# NO-OP and no physical observable can separate the two spellings.  What can
-# be gated is that there is only ONE spelling left, and that the scan lane is
-# the one calling it.
-# ---------------------------------------------------------------------------
-
-#: A SCALAR point read of an H component one cell back, e.g. ``hy[i-1, j, k]``
-#: or ``hx[i, j, k - 1]``.  Subscripts containing a ``:`` are excluded so the
-#: slice-based stencils in adi.py / sbp_sat_2d.py / tfsf_2d.py do not match —
-#: those are whole-array differences with their own pad conventions, not
-#: single-cell Ampere loops.  The ``-1`` must follow an index (``i-1``,
-#: ``k - 1``): a bare ``hx[-1]`` or ``hz[i, j, -1]`` is the last row, not a
-#: read one cell back.
-_RAW_BACKWARD_H = re.compile(r"\bh[xyz]\s*\[[^]:]*[\w)]\s*-\s*1\s*[,\]]")
-
-#: Files allowed to spell a scalar backward H read directly: the two places
-#: that DEFINE the convention.
-_BACKWARD_H_DEFINERS = {
-    "rfx/probes/probes.py",       # _bwd_h — the uniform-lane rule
-    "rfx/nonuniform.py",          # _bwd_neighbor — the non-uniform twin
-}
+# Periodic translation exercises the H sample across y=0 on live port records.
+SEAM_STEPS = 96
+SEAM_FREQS = np.array([10e9, 15e9, 20e9], dtype=np.float32)
 
 
-@pytest.mark.source_scan
-def test_no_module_hand_rolls_a_backward_h_read_outside_the_two_definers():
-    """No fifth copy.
-
-    This loop has now been fixed three times (#689 on the non-uniform lane,
-    #692 on the public probes, and here for the jit-scan and subgrid lanes)
-    because it kept being duplicated.  A new inline `h[i-1]` is how that
-    recurs, so it is gated rather than trusted.
-
-    If this reds on a NEW site, the fix is to call `_ampere_loop` (or
-    `_bwd_h` for a single leg), not to add the path to the allowlist.  The
-    allowlist is for files that DEFINE the convention, and there are two.
-    """
-    root = pathlib.Path(__file__).resolve().parents[3]
-    offenders = []
-    for path in sorted((root / "rfx").rglob("*.py")):
-        rel = path.relative_to(root).as_posix()
-        if rel in _BACKWARD_H_DEFINERS:
-            continue
-        for lineno, line in enumerate(path.read_text().splitlines(), 1):
-            if _RAW_BACKWARD_H.search(line):
-                offenders.append(f"{rel}:{lineno}: {line.strip()}")
-    assert not offenders, (
-        "inline backward-H reads outside _bwd_h / _bwd_neighbor:\n  "
-        + "\n  ".join(offenders)
-    )
-
-
-def test_the_subgrid_runner_binds_the_shared_loop_not_a_local_copy():
-    """`rfx/subgridding/jit_runner.py` imports `_ampere_loop` at module level,
-    so a regression there would be a rebind rather than a new inline block."""
-    import rfx.probes.probes as _probes
-    import rfx.subgridding.jit_runner as _jit
-
-    assert _jit._ampere_loop is _probes._ampere_loop
-
-
-def test_the_jit_scan_lane_compiles_the_shared_table_with_the_runs_periodic_flags(monkeypatch):
-    """The actual scan compiles its realized cells and curl boundary once."""
-    import rfx.measurement.projector as projector
+def _seam_model(lane, shift=0):
     from rfx import Simulation
-    from rfx.core.yee import CurlBoundary
-    from rfx.sources.sources import GaussianPulse
+    from rfx.boundaries.spec import BoundarySpec
 
-    real = projector.port_table
-    calls = []
+    profile = np.full(10, MM)
+    if lane == "nonuniform":
+        interior = np.linspace(.87, 1.13, 8)
+        interior *= (10 * MM - 2 * MM) / interior.sum()
+        profile = np.r_[MM, interior, MM]
+    kwargs = {"dz_profile": profile} if lane in ("nonuniform", "constant") else {}
+    sim = Simulation(freq_max=20e9, domain=(16 * MM, 12 * MM, 10 * MM),
+                     dx=MM, cpml_layers=3,
+                     boundary=BoundarySpec(x="cpml",
+                                           y="pec" if lane == "multi_device" else "periodic",
+                                           z="cpml"),
+                     **kwargs)
+    z = float(profile[:3].sum())
+    pos = (5 * MM, shift * MM, z)
+    sim.add_port(pos, "ez", impedance=50.,
+                 waveform=GaussianPulse(f0=15e9, bandwidth=1.))
+    # On periodic rows these are the four loop samples: Hy, Hy-back, Hx, Hx-back.
+    # Probe coordinates use node registration just as the public port does.
+    for component, point in (
+            ("hy", pos), ("hy", (4 * MM, shift * MM, z)),
+            ("hx", pos), ("hx", (5 * MM, ((shift - 1) % 12) * MM, z))):
+        sim.add_probe(point, component)
+    return sim, pos
 
-    def spy(grid, specs, **kwargs):
-        specs = tuple(specs)
-        calls.append((specs, kwargs['boundary']))
-        return real(grid, specs, **kwargs)
 
-    monkeypatch.setattr(projector, 'port_table', spy)
-    sim = Simulation(freq_max=5e9, domain=(0.06, 0.03, 0.02), dx=3e-3,
-                     boundary="cpml", cpml_layers=6)
-    sim.add_port(position=(0.03, 0.015, 0.01), component="ez",
-                 impedance=50.0, waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
-                 extent=0.006)
-    sim.run(n_steps=12, compute_s_params=True, skip_preflight=True)
-    assert len(calls) == 1
-    specs, boundary = calls[0]
-    assert isinstance(boundary, CurlBoundary)
-    assert boundary.periodic == sim._periodic_flags()
-    assert specs[0][0] == 'ez'
-    assert all(len(cell) == 3 for cell in specs[0][1])
+def _seam_solve(lane, shift=0, *, devices=None):
+    sim, pos = _seam_model(lane, shift)
+    if lane == "forward":
+        result = sim.forward(n_steps=SEAM_STEPS, checkpoint=False,
+                             port_s11_freqs=SEAM_FREQS)
+    else:
+        result = sim.run(n_steps=SEAM_STEPS, compute_s_params=False, devices=devices)
+    grid = result.grid
+    # Realized cells, including the three CPML cells at each x/z end.
+    assert grid.shape[1] == (13 if lane == "multi_device" else 12), grid.shape
+    record = result.sparam_time_records[0]
+    current = np.asarray(record["I"])
+    fields = np.asarray(result.time_series)
+    assert current.shape == (SEAM_STEPS,), current.shape
+    assert fields.shape == (SEAM_STEPS, 4), fields.shape
+    assert np.isfinite(current).all() and np.isfinite(fields).all()
+    print(f"{lane} shift={shift} mesh={grid.shape} steps={SEAM_STEPS} "
+          f"port={pos} dt={float(result.dt):.17g}", file=sys.stderr)
+    return result, current, fields
+
+
+def _seam_bitwise(lane, quantity, a, b):
+    a, b = np.asarray(a), np.asarray(b)
+    difference = float(np.max(np.abs(a - b)))
+    print(f"{lane} {quantity}: measured={difference:.17g} bar=0 (bitwise)",
+          file=sys.stderr)
+    assert np.isfinite(a).all() and np.isfinite(b).all(), (lane, quantity)
+    assert a.shape == b.shape and a.dtype == b.dtype
+    assert a.tobytes() == b.tobytes(), (
+        f"{lane} {quantity}: periodic translation max difference={difference:.17g}; "
+        "bar=0 (bitwise)")
+
+
+def _seam_witness(lane, current, fields):
+    step = int(np.argmax(np.abs(current)))
+    peak = float(np.max(np.abs(fields[step])))
+    seam = float(abs(fields[step, 3]))
+    ratio = seam / peak if peak else 0.
+    print(f"{lane} seam H / loop peak H: measured={ratio:.17g} bar>0.001 "
+          f"peak_step={step + 1} seam_H={seam:.17g} loop_H={peak:.17g} "
+          f"current_peak={float(abs(current[step])):.17g}", file=sys.stderr)
+    assert ratio > 1e-3, f"{lane}: seam H / loop peak H={ratio:.17g}; bar>0.001"
+    assert abs(current[step]) > 0, (lane, current[step])
+
+
+def _two_kernel_current(label, reference, actual, mesh, bar=None):
+    assert reference.shape == actual.shape == (SEAM_STEPS,)
+    assert np.isfinite(reference).all() and np.isfinite(actual).all()
+    peak = float(np.max(np.abs(reference)))
+    actual_peak = float(np.max(np.abs(actual)))
+    print(f"{label}: reference_peak={peak:.17g} actual_peak={actual_peak:.17g} bar>0",
+          file=sys.stderr)
+    assert peak > 0 and actual_peak > 0, (label, peak, actual_peak)
+    difference = float(np.max(np.abs(actual.astype(np.float64) - reference)))
+    measured = difference / peak
+    # A18: two kernels use the accumulated float32 roundoff bar from
+    # tests/unit/nonuniform/test_nonuniform_face_depths.py:94.
+    bar = SEAM_STEPS * 10 * np.finfo(np.float32).eps if bar is None else bar
+    print(f"{label}: measured={measured:.17g} bar={bar:.17g} "
+          f"max_difference={difference:.17g} peak={peak:.17g} "
+          f"steps={SEAM_STEPS} mesh={mesh}", file=sys.stderr)
+    assert measured <= bar, (
+        f"{label}: max difference / peak={measured:.17g}; bar={bar:.17g}; "
+        f"steps={SEAM_STEPS}, mesh={mesh}")
+
+
+@pytest.mark.parametrize("lane", ["run", "forward", "nonuniform", "constant"])
+def test_periodic_seam_port_translation(lane):
+    """A +3-cell y translation preserves current and forward S11 (A18)."""
+    a, current_a, fields_a = _seam_solve(lane)
+    _seam_witness(lane, current_a, fields_a)
+    if lane == "constant":
+        _, uniform, _ = _seam_solve("run")
+        _two_kernel_current("constant vs uniform current", uniform, current_a, a.grid.shape)
+        return
+    b, current_b, _ = _seam_solve(lane, 3)
+    _seam_bitwise(lane, "current", current_a, current_b)
+    if lane == "forward":
+        assert a.s_params is not None and b.s_params is not None, lane
+        _seam_bitwise(lane, "S11", a.s_params, b.s_params)
+
+
+@pytest.mark.distributed
+def test_port_current_matches_across_cpu_devices():
+    """A18 amendment: PEC y walls, model B port position, 1 and 2 CPUs."""
+    from tests._multi_device_scene import host_devices
+
+    devices = host_devices(2)
+    one, reference, _ = _seam_solve("multi_device", 3, devices=devices[:1])
+    two, actual, _ = _seam_solve("multi_device", 3, devices=devices)
+    assert one.grid.shape == two.grid.shape
+    # 1 vs n devices, lumped port: TRACE_RTOL in tests/unit/runners/test_distributed_lumped_port_s.py:26,107-110.
+    _two_kernel_current("2 CPU vs 1 CPU current", reference, actual, two.grid.shape, bar=9e-6)

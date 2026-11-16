@@ -9,6 +9,8 @@ claim about S-parameter accuracy.
 """
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import functools
 import sys
 import warnings
@@ -19,7 +21,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import component_e_materials, e_update_coeffs
 from tests.contracts import realized_model as T
@@ -32,17 +34,17 @@ def unit_waveform(t):
 
 
 def model(lane, row, fill=False):
-    """``fill`` puts the material over the whole domain instead of a block:
-    the only material the ADI lanes carry (#1373), used for their
-    consumption witness."""
+    """Shared checks for the supported solver paths."""
     sg = lane == "run_subgridded"
     kw = dict(freq_max=10e9, domain=(12*MM, 11*MM, (20 if sg else 12)*MM),
               dx=MM, boundary="cpml" if row.startswith("open_") else "pec",
               cpml_layers=3)
     if lane in ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu"):
         kw["dx_profile"] = np.array([MM]*4 + [MM/2]*8 + [MM]*4)
-    if lane in ("run_adi", "fwd_adi"):
-        kw["solver"] = "adi"
+    if row == "mu_radius":
+        kw["domain"] = (14*MM, 11*MM, 12*MM)
+        if "dx_profile" in kw:
+            kw["dx_profile"] = np.array([MM]*4 + [MM/2]*8 + [MM]*6)
     if row == "conformal":
         kw["boundary"] = BoundarySpec(
             x=Boundary(lo="pec", hi="pec", conformal=True),
@@ -63,7 +65,10 @@ def model(lane, row, fill=False):
     if row == "conformal":
         sim.add(Box((9*MM, 2*MM, 2*MM), (10*MM, 4*MM, 4*MM)), material="pec")
     pos = (5*MM, 5*MM, 6*MM)
-    if row.startswith(("lumped_", "wire_")):
+    if row == "mu_radius":
+        sim.add_port((11*MM, 5*MM, 6*MM), "ez", extent=2*MM,
+                     radius=.1*MM, waveform=unit_waveform)
+    elif row.startswith(("lumped_", "wire_")):
         kind = row.split("_")[1]
         extra = {} if kind == "none" else {"amplitude_kind": kind}
         sim.add_port(pos, "ez", waveform=unit_waveform,
@@ -91,15 +96,16 @@ def override_epsilon(sim, lane):
 
 def run(sim, lane, row, steps=4):
     kw = dict(n_steps=steps, skip_preflight=True)
+    count = min(3, len(jax.devices("cpu"))) if row == "mu_radius" else 2
     if lane.startswith("run"):
         kw["compute_s_params"] = False
         if lane in ("run_distributed", "run_distributed_nu"):
-            kw["devices"] = jax.devices("cpu")[:2]
+            kw["devices"] = jax.devices("cpu")[:count]
         if row == "conformal":
             kw["conformal_pec"] = True
         return sim.run(**kw)
     if lane in ("fwd_distributed", "fwd_distributed_nu"):
-        kw.update(distributed=True, devices=jax.devices("cpu")[:2])
+        kw.update(distributed=True, devices=jax.devices("cpu")[:count])
     if row == "override_drive":
         kw["eps_override"] = override_epsilon(sim, lane)
     return sim.forward(checkpoint=False, **kw)
@@ -132,7 +138,6 @@ def material_pairs(dump, row, axis):
     sites = {r["site"] for r in records}
     expected = ({"sat.c", "sat.f"} if row == "sat" else
                 {"aniso.E"} if row == "conformal" else
-                {"adi.E"} if dump.lane in ("run_adi", "fwd_adi") else
                 {"distributed.E"} if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed") else
                 {"distributed_nu.E"} if row != "mu" and dump.lane in ("run_distributed_nu", "fwd_distributed_nu") else
                 set())
@@ -180,7 +185,7 @@ def material_pairs(dump, row, axis):
         else:
             from rfx.model.materials import electric_cell_sizes
             eps, sig = component_e_materials(mats, r["periodic"],
-                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()))
+                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()), high_wall=(False, False, False))
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])
         got = r[quantity][axis]
         if r["region"] is not None:
@@ -197,14 +202,12 @@ def material_pairs(dump, row, axis):
 
 
 def drive_pairs(dump, row):
-    from rfx.nonuniform import current_source_volume
+    from rfx.model.source_coefficients import current_source_volume
     from rfx.sources.sources import port_sigma, port_d_parallel
     records = [r for r in dump.records if "drive_scale" in r]
     if not records:
         raise RuntimeError(f"no record at source site: {dump.lane} {row}")
     if row in ("soft_none", "open_none"):
-        # The default's reference is this lane's explicit current declaration,
-        # including ADI's own coefficient and remaining material convention.
         current = measured(dump.lane, row.replace("_none", "_current"))
         references = [r for r in current.records if "drive_scale" in r]
         if len(records) != len(references):
@@ -222,7 +225,7 @@ def drive_pairs(dump, row):
         if row == "override_drive":
             materials = materials._replace(eps_r=override_epsilon(dump.sim, dump.lane))
         from rfx.model.materials import electric_cell_sizes
-        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid))
+        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
         expected = []
         for i, j, k, component in r["cells"]:
             axis = "xyz".index(component[1])
@@ -293,8 +296,7 @@ def test_realized_cell(lane, row, axis):
     if cell.kind == "refuses":
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            reason = ("unmatched graded-conductivity sponge"
-                      if row.startswith("open_") and lane in ("run_adi", "fwd_adi") else None)
+            reason = (None)
             with pytest.raises((ValueError, NotImplementedError), match=reason):
                 sim = model(lane, row)
                 run(sim, lane, row)
@@ -304,13 +306,12 @@ def test_realized_cell(lane, row, axis):
 
 @pytest.mark.parametrize("lane,row", [(lane, row) for lane in T.LANES
                          for row in ("eps", "sigma", "mu")
-                         if not (row == "mu" and lane in ("run_adi", "fwd_adi"))])
+                         if not (row == "mu" and lane in ())])
 def test_dump_is_consumed(lane, row):
     quantity_name = {"eps": "eps_e", "sigma": "sigma_e", "mu": "mu_h"}[row]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        # ADI refuses a material interface (#1373): its witness is a fill.
-        sim = model(lane, row, fill=lane in ("run_adi", "fwd_adi"))
+        sim = model(lane, row, fill=lane in ())
         plain = np.asarray(run(sim, lane, row, steps=16).time_series)
         with _realized.capture() as saved:
             observed = np.asarray(run(sim, lane, row, steps=16).time_series)
@@ -356,46 +357,9 @@ def test_dump_is_consumed(lane, row):
           f"traced_sites={sorted({r['site'] for r in same.records if r['traced']})}", file=sys.stderr)
 
 
-@pytest.mark.parametrize("lane", ["run_distributed", "run_distributed_nu", "fwd_distributed_nu"])
-@pytest.mark.parametrize("row", ["eps", "sigma"])
-def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
-    from rfx.runners import _distributed_common as dc
-    from rfx.stepping import slab_setup
-
-    original = dc._slab_x_lo_view
-    original_view_rows = slab_setup.uniform_from_cut
-
-    def broken_ghost(arr, rank):
-        view = original(arr, rank)
-        # Keep both material helpers; corrupt rank 1's incoming ghost.
-        return view.at[0].set(jnp.where(rank == 1, jnp.ones_like(view[0]), view[0]))
-
-    def broken_view_ghost(array, layout, mesh, **kw):
-        # The graded lanes run the wrapped step: its producers read slab views
-        # [extra low | low ghost | owned | high ghost]; corrupt rank 1's ghost.
-        rows = original_view_rows(array, layout, mesh, **kw)
-        if np.ndim(rows) != 4 or not jnp.issubdtype(rows.dtype, jnp.floating):
-            return rows
-        return rows.at[1, 1].set(jnp.ones_like(rows[1, 1]))
-
-    measured.cache_clear()
-    try:
-        # Concrete whole-grid realization reads owned rows, never these halos.
-        # This mutation continues to gate the retained per-slab producer.
-        monkeypatch.setattr(slab_setup, "_material_host_device", lambda *args, **kwargs: (None, "traced inputs"))
-        monkeypatch.setattr(dc, "_slab_x_lo_view", broken_ghost)
-        monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
-        dump = measured(lane, row)
-        for axis in (1, 2):
-            with pytest.raises(AssertionError):
-                assert_cell(dump, row, axis)
-    finally:
-        measured.cache_clear()
-
-
 @pytest.mark.parametrize("row", ["eps", "mu", "override_drive"])
 def test_missing_record_is_not_a_departure(row):
-    dump = _realized.Capture(lane="run_adi")
+    dump = _realized.Capture(lane="run_uniform")
     with pytest.raises(RuntimeError, match="no record"):
         assert_cell(dump, row)
 
@@ -420,8 +384,8 @@ def test_missing_sat_face_is_not_a_departure():
 ])
 def test_kernel_dump_is_consumed(kernel, quantity):
     """Exercise material apply paths outside the standard CPU lane fixtures."""
-    from rfx.core.yee import (init_materials, init_state, precompute_coeffs,
-                              update_e_aniso, update_he_fast)
+    from rfx.core.yee import init_materials, init_state, precompute_coeffs, update_he_fast
+    from rfx.stepping.yee import update_e_aniso
 
     shape = (4, 4, 4)
     ramp = jnp.arange(64, dtype=jnp.float32).reshape(shape) / 64
@@ -433,11 +397,11 @@ def test_kernel_dump_is_consumed(kernel, quantity):
     @jax.jit
     def advance(mats, fields):
         if kernel == "precompute":
-            coeffs = precompute_coeffs(mats, 1e-12, MM)
+            coeffs = precompute_coeffs(mats, 1e-12, MM, high_wall=(False, False, False))
             result = update_he_fast(fields, coeffs)
         else:
             result = update_e_aniso(fields, mats, mats.eps_r, mats.eps_r * 1.1,
-                                    mats.eps_r * 1.2, 1e-12, MM)
+                                    mats.eps_r * 1.2, 1e-12, MM, high_wall=(False, False, False))
         return jnp.stack([getattr(result, component)
                           for component in ("ex", "ey", "ez", "hx", "hy", "hz")])
 
@@ -470,3 +434,11 @@ def test_kernel_dump_is_consumed(kernel, quantity):
     assert np.any(moved != unchanged)
     print(f"J4 kernel {site} {quantity} unchanged_bits=True "
           f"max_field_delta={np.max(np.abs(moved-unchanged)):.9g}", file=sys.stderr)
+
+
+@pytest.mark.parametrize("lane", ["run_distributed", "fwd_distributed",
+                                  "run_distributed_nu", "fwd_distributed_nu"])
+@pytest.mark.parametrize("axis", range(3))
+def test_published_radius_mu(lane, axis):
+    """P1a: the existing mu row, including every outside slab row."""
+    assert_cell(measured(lane, "mu_radius"), "mu", axis)

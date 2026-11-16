@@ -63,8 +63,51 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
         jax.block_until_ready(checked(left, left))
 
 
-@pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap"])
-def test_out_of_program_admission_keeps_concrete_primals(transform):
+def test_concrete_records_of_a_set_spanning_two_slabs_combine_concrete_under_jit():
+    # A Lorentz set on two slabs, closed over by an outer jax.jit: its concrete
+    # records must combine on the host, or the judge sees a traced count and
+    # refuses a run it can judge (3 devices refused where 2 ran).
+    from rfx.core.jax_utils import is_tracer
+    from rfx.model.pole_stability import PoleSetExtremes, combine_pole_extremes
+
+    def record(eps, sigma, count, rows):
+        return PoleSetExtremes(1, ((0., 0., 9.),), jnp.asarray(eps), jnp.asarray(sigma), jnp.asarray(sigma),
+                               jnp.asarray(count), (jnp.asarray(rows), jnp.asarray([True])))
+    slabs = [(record(2., .125, 3, [True, False]),), (record(1.5, .25, 4, [False, True]),)]
+    combined = []
+
+    def under_jit():
+        combined.extend(combine_pole_extremes(slabs))
+        return 0.
+    jax.make_jaxpr(under_jit)()
+    (out,) = combined
+    assert not any(is_tracer(v) for v in (out.eps_low, out.sigma_low, out.sigma_high, out.count, *out.occupied))
+    assert (float(out.eps_low), float(out.sigma_low), float(out.sigma_high), int(out.count)) == (1.5, .125, .25, 7)
+    assert np.array_equal(out.occupied[0], [True, True]) and np.array_equal(out.occupied[1], [True])
+
+
+@pytest.mark.parametrize("delta_eps, sigma, refused", [(2., 0., False), (-2., 0., True), (1., -1., True)])
+def test_out_of_program_debye_only_under_jit_is_skipped_only_when_passive(delta_eps, sigma, refused):
+    """#1934: a passive Debye-only set cannot fail the check, so a jit-traced one runs; an active one is refused."""
+    from rfx.materials.debye import DebyePole
+    dt = 1e-12
+    sigma_cells = np.full((2, 2, 2), sigma, np.float32)   # concrete: only eps is traced
+
+    def checked(eps):
+        materials = MaterialArrays(jnp.full((2, 2, 2), eps), sigma_cells, None)
+        refuse_unstable_cells(materials, None, dt, .5 * 4. / dt ** 2, grid_kind="Grid",
+                              debye_spec=([DebyePole(delta_eps, 100 * dt)], None), in_program=False)
+        return eps * 2.
+
+    if refused:
+        with pytest.raises(ValueError, match=r"traced by an outer jax\.jit"):
+            jax.jit(checked)(4.)
+    else:
+        assert float(jax.jit(checked)(4.)) == 8.
+
+
+@pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap", "grad_vmap"])
+def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(transform):
     def checked(eps):
         materials = MaterialArrays(jnp.full((2, 2, 2), eps), jnp.zeros((2, 2, 2)), None)
         # At dt=1, budget=0, the undamped Drude condition is kappa<=4*eps:
@@ -82,15 +125,24 @@ def test_out_of_program_admission_keeps_concrete_primals(transform):
             return jax.jit(checked)(eps)
         if transform == "vmap":
             return jax.vmap(checked)(jnp.full((2,), eps))
+        if transform == "grad_vmap":
+            # eager grad around an eager vmap: members are JVP-wrapped concrete values
+            return jax.grad(lambda e: jax.vmap(checked)(e).sum())(jnp.full((2,), eps))
         return checked(eps)
 
-    np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else
-                                  np.full((2,), 9.) if transform == "vmap" else 9.)
-    if transform in ("eager", "jvp", "grad"):
+    if transform != "jit":
+        np.testing.assert_array_equal(call(3.), 6. if transform == "grad" else
+                                      np.full((2,), 9.) if transform == "vmap" else
+                                      np.full((2,), 6.) if transform == "grad_vmap" else 9.)
+    if transform != "jit":
+        # An eager vmap carries concrete members; each is judged (#1934).
         with pytest.raises(ValueError, match="unstable at this model's time step"):
             call(1.)
     else:
-        np.testing.assert_array_equal(call(1.), np.full((2,), 1.) if transform == "vmap" else 1.)
+        # #1934: outside a program a jit-traced value cannot be judged; it is refused, stable or not.
+        for eps in (3., 1.):
+            with pytest.raises(ValueError, match=r"traced by an outer jax\.jit"):
+                call(eps)
 
 
 @pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])

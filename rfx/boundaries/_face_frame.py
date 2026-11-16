@@ -15,16 +15,16 @@ def needs_face_frame(shape, faces, frame, owned):
     return owned is not None and any(owned.get(face, True) is not True for face in faces)
 
 
-def apply_framed_faces(state, faces, frame, owned, *, magnetic=False):
-    """Select only the named face's row; image PMC has no low-face write."""
-    prefix = "h" if magnetic else "e"
+def apply_framed_faces(state, faces, frame, owned):
+    """Select only the named electric face's row."""
+    prefix = "e"
     fields = {prefix + c: getattr(state, prefix + c) for c in "xyz"}
     for axis, letter in enumerate("xyz"):
         lo, hi = (0, state.ex.shape[axis]) if frame is None else frame.get(
             letter, (0, state.ex.shape[axis]))
         for side, row in (("lo", lo), ("hi", hi - 1)):
             face = f"{letter}_{side}"
-            if face not in faces or (magnetic and side == "lo"):
+            if face not in faces:
                 continue
             owner = True if owned is None else owned.get(face, True)
             if owner is False:
@@ -33,7 +33,7 @@ def apply_framed_faces(state, faces, frame, owned, *, magnetic=False):
             edge[axis] = row
             edge = tuple(edge)
             for component in "xyz":
-                if component == letter and (magnetic or face != "z_hi"):
+                if component == letter and face != "z_hi":
                     continue
                 key = prefix + component
                 new = 0.0

@@ -1,5 +1,7 @@
 """Measure an absorber's plane-wave return and a record's depth sensitivity."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from functools import lru_cache
 
 import jax
@@ -8,7 +10,8 @@ import numpy as np
 
 from rfx.boundaries import cpml
 from rfx.boundaries.pec import apply_pec_faces
-from rfx.core.yee import init_materials, init_state, update_e, update_h
+from rfx.core.yee import init_materials, init_state
+from rfx.stepping.yee import update_e, update_h
 from rfx.grid import C0, Grid
 from rfx.model.materials import electric_cell_sizes
 
@@ -26,7 +29,7 @@ def _line(n_layers, kappa_max, interior, dx, transverse_phase=None,
     depths = None if face_layers is None else dict(zip((f"{axis}_lo", f"{axis}_hi"), face_layers))
     if nonuniform:
         from rfx.nonuniform import make_nonuniform_grid
-        from rfx.core.yee import update_e_nu, update_h_nu
+        from rfx.stepping.yee import update_e_nu, update_h_nu
         from rfx.boundaries.pmc import apply_pmc_faces
         grid = make_nonuniform_grid(
             domain[:2], np.full(cells[2], dx), dx,
@@ -52,17 +55,17 @@ def _line(n_layers, kappa_max, interior, dx, transverse_phase=None,
             state, auxiliary = carry
             if nonuniform:
                 state = update_h_nu(state, materials, dt, grid.inv_dx_h,
-                                    grid.inv_dy_h, grid.inv_dz_h)
+                                    grid.inv_dy_h, grid.inv_dz_h, high_wall=unpadded_high_walls(grid))
                 state = apply_pmc_faces(state, {f"{magnetic}_lo", f"{magnetic}_hi"})
             else:
-                state = update_h(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch)
+                state = update_h(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch, high_wall=unpadded_high_walls(grid))
             state, auxiliary = cpml.apply_cpml_h(state, params, auxiliary, grid, axes=axis)
             if nonuniform:
                 state = update_e_nu(state, materials, dt, grid.inv_dx,
-                                    grid.inv_dy, grid.inv_dz, cell_sizes=electric_cell_sizes(grid))
+                                    grid.inv_dy, grid.inv_dz, cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
                 state = apply_pec_faces(state, {f"{electric}_lo", f"{electric}_hi"})
             else:
-                state = update_e(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch)
+                state = update_e(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch, high_wall=unpadded_high_walls(grid))
             state, auxiliary = cpml.apply_cpml_e(state, params, auxiliary, grid, axes=axis)
             state = apply_pec_faces(state, {f"{axis}_lo", f"{axis}_hi"})
             sheet = [slice(None)] * 3
@@ -282,72 +285,6 @@ def tfsf_oblique_auxiliary_reflection(n_layers=30, *, polarization="ez", directi
     return 20 * np.log10(np.maximum(ratios, 1e-30)), float(max(residuals))
 
 
-def adi_cpml_reflection(n_layers, axis, freqs, *, factor=0.01, absorber=True):
-    """Return low/high-face TMz reflection in a 330 mm transverse PEC guide.
-
-    Excite its fundamental sine mode and probe at transverse node 8 of 25,
-    11 cells behind the low-face source or 13 ahead of the high-face source.
-    The reference moves both ends away; the window excludes the opposite
-    face's echo. The vector line injection precedes the production ADI and
-    CPML calls in the same order as ``run_adi_2d``.
-
-    This witness uses one percent of the explicit CFL timestep. It does
-    not establish stability of the optional CPML at larger ADI timesteps.
-    """
-    from rfx.adi import adi_step_2d, apply_adi_cpml_2d, init_adi_cpml_2d
-
-    if axis not in ("x", "y"):
-        raise ValueError("axis must be 'x' or 'y'")
-    dx, dy, ny = 1e-3, 0.33 / 24, 25
-    d1, d2 = (dx, dy) if axis == "x" else (dy, dx)
-    dt = float(factor * 0.99 / (C0 * np.sqrt(1 / dx**2 + 1 / dy**2)))
-    far, reference_distance = 180, 420
-    n_steps = int(0.8 * 2 * far * dx / C0 / dt)
-    t = np.arange(n_steps) * dt
-    waveform = jnp.asarray(-(t - 60e-12) / 12e-12 * np.exp(-((t - 60e-12) / 12e-12)**2), dtype=jnp.float32)
-    modal = jnp.sin(jnp.pi * jnp.arange(ny) / (ny - 1)).at[0].set(0).at[-1].set(0)
-
-    def trace(interior, source):
-        longitudinal_nodes = interior + 2 * n_layers + 1
-        shape = (longitudinal_nodes, ny) if axis == "x" else (ny, longitudinal_nodes)
-        zero = jnp.zeros(shape, dtype=jnp.float32)
-        eps = jnp.ones_like(zero)
-        params, memory = init_adi_cpml_2d(n_layers, dt, d1, d2, *shape)
-        transverse = "y" if axis == "x" else "x"
-        params = params._replace(**{
-            "b" + transverse: jnp.ones_like(getattr(params, "b" + transverse)),
-            "c" + transverse: jnp.zeros_like(getattr(params, "c" + transverse)),
-        })
-        if hasattr(params, "magnetic_xlo"):
-            names = ("magnetic_" + transverse + face for face in ("lo", "hi"))
-            params = params._replace(**{
-                name: getattr(params, name)._replace(
-                    b=jnp.ones_like(getattr(params, name).b),
-                    c=jnp.zeros_like(getattr(params, name).c)) for name in names
-            })
-        source += n_layers
-
-        def step(carry, value):
-            electric, hx, hy, memory = carry
-            if axis == "x":
-                electric = electric.at[source, :].add(value * modal)
-            else:
-                electric = electric.at[:, source].add(value * modal)
-            electric, hx, hy = adi_step_2d(electric, hx, hy, eps, zero, dt, d1, d2)
-            if absorber:
-                electric, hx, hy, memory = apply_adi_cpml_2d(
-                    electric, hx, hy, params, memory, eps, dt, d1, d2)
-            probes = (electric[source - 11, 8], electric[source + 13, 8]) if axis == "x" else (
-                electric[8, source - 11], electric[8, source + 13])
-            return (electric, hx, hy, memory), jnp.stack(probes)
-
-        return np.asarray(jax.lax.scan(step, (zero, zero, zero, memory), waveform)[1])
-
-    reference = trace(2 * reference_distance, reference_distance)
-    return np.stack([
-        _reflection_db(trace(30 + far, distance)[:, face], reference[:, face], dt, freqs)
-        for face, distance in enumerate((30, far))
-    ])
 
 
 def tfsf_methodb_auxiliary_reflection(theta_deg, face, freqs, *,

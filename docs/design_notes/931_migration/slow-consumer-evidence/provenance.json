@@ -25,6 +25,7 @@
     "scripts/diagnostics/slow_931_advisory_attribution.py": "8560dc111fe119aebd316dddb1df6e64ed62be05ba6754c6290331804db6d580"
   },
   "artifacts_sha256": {
+    "pin_note": "Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-12); the original bytes are in git at 647262587 under the same path.",
     "farfield-traces.npz": "03392af04dded41f883a112585202b09bf7f9fb0a00ac656bb065464a0a39181",
     "consumer-budgets.json": "e7cdfcc9bdf52c4732567ab8c682b63f03763ca31d6ce5be0f43b5591a90d7c2",
     "farfield-attribution.png": "ede35329e2af060f1b8e8a4c841b70b4fc5881d2bc40c23e6fd6b27e1dff5f89",
@@ -32,12 +33,12 @@
     "advisory_node_volume.json": "475536b5c5606ced975d991fd63ac30bb3ccae39b2d4fff418cf3041c4471fc3",
     "advisory_current.json": "b975191d78c1e145985ed2c22e30e7dba80bf881d2d70d9f317a88f8e14eac27",
     "advisory_current_records.npz": "7351473f191c7690b471bc80f6d2bcb18495dadaff9e39e39517ecc540947680",
-    "farfield-result-note.md": "1aae7e5825b22260951e252694c0761a79536959528e710ba53487228177ee78",
+    "farfield-result-note.md": "3461de08d119e5061bb7eb18edd819d65dc76bf7b65e8d982e678a5dc47c46be",
     "plane-falsifier.log": "e2704a1f9c3c2aaeeafbefd899db116ba2a66bc302db0854168047274f26c6c6",
     "lint-comparison.json": "7b5fed837f8cbf37d1f9ae873a91205759fb0f87946d2ec3f0b1ddb32b2c3957",
     "advisory_legacy_sigma.json": "f9520165f482c5fa59a4974a441cb1e3bcf2c71080fe3c2c5132d7c35f8f0a10",
     "attribution-audit.txt": "8125549e60ea05eb97ed77d2dc20d9dac09185306d30150102d20b544a299e4b",
-    "advisory-result-note.md": "28336a452e549a5ad2ef68dc57b292cff2fbbe437ab3bd11be7a424a61d5739c",
+    "advisory-result-note.md": "6a135576817db6aa75252f8feb78ff026bf7e090461c236b8e9e03079fe4716e",
     "advisory-attribution.png": "81815aa1d2e6f9ab1cd9e26889d1e8efea54b9bc210cccb42aa5eee6e695d87b",
     "advisory_legacy_sigma_records.npz": "eb69318a6893d1d0d73cd0158cb2c3000f9785ef9604c2375571b839e668e7d3",
     "advisory_current_fine.json": "a28d4af5282b0c72a749bac54c08fc48ac05ee72ae68e21b9f43dd315cb1f4ed",

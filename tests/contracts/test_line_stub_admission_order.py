@@ -35,30 +35,21 @@ def test_uninspectable_shape_defers_to_execution_checks(method, monkeypatch):
         getattr(sim, method)(skip_preflight=True)
 
 
-@pytest.mark.parametrize('method,match', [
-    ('run', 'not wired'), ('forward', 'not wired'),
-    ('_forward_from_materials', 'Conformal PEC'),
-    ('compute_msl_s_matrix', "solver='adi'"),
-    ('compute_mixed_s_matrix', 'at least one sparam-eligible'),
-    ('compute_coaxial_line_reflection', 'constructs the complete line'),
-    ('compute_coaxial_two_port', 'constructs the complete line'),
-    ('compute_coax_msl_transition', 'exactly one add_coaxial_port'),
-])
+@pytest.mark.parametrize('method,match', [('run', 'not wired'), ('forward', 'not wired'), ('_forward_from_materials', 'conformal_pec="cut_cell_floor" is not implemented on fwd_uniform'), ('compute_mixed_s_matrix', 'at least one sparam-eligible'), ('compute_coaxial_line_reflection', 'constructs the complete line'), ('compute_coaxial_two_port', 'constructs the complete line'), ('compute_coax_msl_transition', 'exactly one add_coaxial_port')])
 def test_declaration_refusal_precedes_stub_mesh_planning(method, match, monkeypatch):
     sim = Simulation(domain=(.02, .01, .01), dx=.001, freq_max=10e9,
                      boundary='cpml', cpml_layers=2)
-    sim.add(Box((.001, .003, .002), (.018, .005, .002)), material='pec')
+    sim.add(Box(((1 - .35) * .001, (3 - .35) * .001, .002),
+                ((18 + .35) * .001, (5 + .35) * .001, .002)), material='pec')
     sim.add_msl_port((.005, .004, .001), width=.002, height=.001, eps_r_sub=2.)
     kwargs = {}
     if method in ('run', 'forward') or method.startswith('compute_coaxial'):
         sim.add_coaxial_port((.005, .005, .004), face='bottom')
-    if method == 'compute_msl_s_matrix':
-        sim._solver = 'adi'
     if method == 'compute_coax_msl_transition':
         kwargs['junction_x'] = .01
     if method == '_forward_from_materials':
         kwargs.update(grid=None, materials=None, debye_spec=None, lorentz_spec=None,
-                      n_steps=1, conformal_pec=True)
+                      n_steps=1, conformal_pec="cut_cell_floor")
     def unexpected(*args, **kwargs):
         pytest.fail('declaration refusal must precede mesh planning')
     monkeypatch.setattr(sim, '_auto_configure_mesh', unexpected)

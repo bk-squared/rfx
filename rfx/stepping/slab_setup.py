@@ -13,15 +13,18 @@ from jax.sharding import NamedSharding, PartitionSpec as P
 from rfx.backend import host_cpu_device
 from rfx.core.yee import FDTDState
 from rfx.model.materials import (ComponentCells, realize_components, kernel_materials)
-from rfx.stepping.slab import cut, zero_pole_state, place
+from rfx.stepping.slab import cut, zero_pole_state, place, material_kind
 from rfx.stepping.slab_view import (UniformSlabView, uniform_slab_rows, uniform_apply,
                                    uniform_from_cut, stack_and_place, product_rows, slab_views, device_rows)
 
 
 def stage_x_widths(grid, rows, mesh):
-    widths = (np.asarray(grid.dx_f64, dtype=grid.dx_arr.dtype)
-              if isinstance(grid.dx_arr, jax.core.Tracer) and grid.dx_f64 is not None
-              else np.asarray(grid.dx_arr))
+    if hasattr(grid, 'dx_arr'):
+        widths = (np.asarray(grid.dx_f64, dtype=grid.dx_arr.dtype)
+                  if isinstance(grid.dx_arr, jax.core.Tracer) and grid.dx_f64 is not None
+                  else np.asarray(grid.dx_arr))
+    else:
+        widths = np.full(grid.shape[0], grid.dx, dtype=np.float32)
     if widths.shape[0] == grid.shape[0] - 1:
         widths = np.concatenate((widths, widths[-1:]))
     return stack_and_place(widths, rows, mesh)
@@ -44,7 +47,7 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
     """Read the local inputs, then run the model's eager source products."""
     from rfx.model.source_coefficients import drive_columns
     from rfx.stepping.rank import mesh_ranks
-    from rfx import _realized
+    from rfx._internal import _realized
     if not sources:
         return place(jnp.zeros((n_steps, 0), jnp.float32), NamedSharding(mesh, P(None, 'x')))
     cells = tuple((('ex', 'ey', 'ez').index(s.component),
@@ -69,6 +72,11 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
     # drive_columns uses the same indexing and products as its whole-grid call.
     scalar_cells = tuple((0, (n, 0, 0)) for n in range(len(sources)))
     samples = jnp.stack([jnp.asarray(s.waveform) for s in sources], axis=-1)
+    # Cross before owner masking so the transpose returns the caller's placement.
+    samples = place(samples, NamedSharding(mesh, P()))
+    volumes = jax.tree.map(lambda a: place(a, NamedSharding(mesh, P()))
+                           if isinstance(a, (jax.Array, jax.core.Tracer, np.ndarray)) else a,
+                           volumes)
     def local(e, s, k, c, rank, samples=samples, volumes=volumes):
         def arrays(a):
             return None if a is None else (a[:, None, None],)
@@ -121,7 +129,7 @@ def _gather_drive_map(mesh, owners):
 
 def eager_drive_scales(eps, sigma, mesh, drives, dt, ranks, reduce_devices):
     """Scalar reads stay mapped; source arithmetic is eager over device rows."""
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     means = _drive_means_map(mesh, drives)(ranks, eps, sigma)
     def local(eps, sigma, rank):
         values = []
@@ -230,12 +238,13 @@ def _pole_first_map(mesh):
 
 
 def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=False,
-                      debye=False, lorentz=False, _material_inputs=()):
-    """Realize concrete materials on the whole CPU grid, then cut host products.
+                      debye=False, lorentz=False, _material_inputs=(), uniform=False):
+    """Realize uniform materials per slab; retain graded host staging.
 
-    Traced or non-addressable inputs and multi-process meshes retain the
-    per-slab producer; a missing CPU backend also
-    retains it, with one RuntimeWarning per process. Whole-grid host arrays
+    Uniform callers always use the per-slab producer. Graded concrete inputs
+    may use whole CPU host products. Traced or non-addressable inputs and
+    multi-process meshes retain the per-slab producer; a missing CPU backend
+    also retains it, with one RuntimeWarning per process. Whole-grid host arrays
     live during formation. Fresh-process macOS measurements (ru_maxrss in
     bytes), with occupancy and CPML operands, including compilation and cut
     placement but no time steps: peak RSS increments were 2289.13 B/cell at
@@ -244,15 +253,20 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     """
     from rfx.model.occupancy import with_edge_keep
     from rfx.stepping.absorber import graded_cpml_operands
-    device, _ = _material_host_device(materials, occupancy, _material_inputs, mesh=mesh)
+    device = None
+    if not uniform:
+        device, _ = _material_host_device(materials, occupancy, _material_inputs, mesh=mesh)
     with jax.ensure_compile_time_eval() if device is not None else nullcontext():
         inputs = input_materials(materials, layout, mesh)
         occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
     model_grid = _host_arrays(grid) if device is not None else grid
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
 
     def local(cells, index, occupancy, widths):
         view = None if index is None else UniformSlabView(index, grid, {'x_widths': widths})
-        components = realize_components(cells, model_grid, periodic=(False,) * 3, view=view)
+        components = realize_components(cells, model_grid, periodic=(False,) * 3,
+                                        high_wall=high_wall, view=view)
         cells = cells._replace(components=components)
         cells = with_edge_keep(cells, occupancy, dtype=jnp.float32, view=view)
         inverse, loss = graded_cpml_operands(cells, None, use_cpml=cpml,
@@ -273,11 +287,11 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     def finish(path, a):
         if not hasattr(a, 'ndim') or a.ndim < (3 if device is not None else 4):
             return a
-        names = [str(getattr(p, 'name', getattr(p, 'key', ''))) for p in path]
-        name = next((p for p in reversed(names) if p), '')
-        kind = ('edge_keep' if 'edge_keep' in names else
-                'eps_r' if 'eps' in name else 'sigma' if 'sigma' in name
-                else 'mu_r' if 'mu' in name else 'lumped')
+        # Raw records, component increments and full update operands all
+        # share the same neutral-value declaration. Increments publish zero;
+        # the full epsilon and permeability operands publish one.
+        # Unknown leaves are refused by material_rule, never guessed by name.
+        kind = material_kind(path)
         return publish(a, kind)
     staged = jax.tree_util.tree_map_with_path(finish, staged)
     inverse = jax.tree.map(lambda a: publish(a, 'eps_r'), inverse)
@@ -287,8 +301,38 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     return staged, inverse, loss
 
 
-def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_spec=None):
-    """Judge owned cell reductions, then realize concrete ADE operands on CPU."""
+def _uniform_dispersion(inputs, dt, poles, masks, grid, layout, mesh, family):
+    """Build pole terms and finish E operands on each rank's own x window."""
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    from rfx.runners._distributed_common import stage_slab_pole_coeffs
+    from rfx.model.electric_metrics import slab_e_component_materials
+    from rfx.stepping.slab_update import slab_dispersion_coeffs
+    from rfx.stepping.rank import rank_shard_map, mesh_ranks
+
+    high_wall = unpadded_high_walls(grid)
+    masks = jax.tree.map(lambda a: cut(a, layout, 'pole_mask', mesh=mesh), masks)
+    coeffs, state = stage_slab_pole_coeffs(
+        poles, masks, dt, family, mesh, layout.nx_per_rank, layout.nx,
+        grid.shape, high_wall=high_wall)
+
+    def finish(coeffs, cells, *, rank):
+        # The common input window includes one extra low row for producers.
+        # The uniform pole helper uses the original one-ghost slab convention.
+        cells = jax.tree.map(lambda a: a[0, 1:] if jnp.ndim(a) else a, cells)
+        means = slab_e_component_materials(cells, layout.nx_per_rank,
+                                           layout.nx, rank, high_wall=high_wall)
+        return slab_dispersion_coeffs(coeffs, means, dt, layout.nx_per_rank,
+                                      layout.nx, rank=rank)
+
+    specs = jax.tree.map(lambda a: P() if jnp.ndim(a) == 0 else P('x'), inputs)
+    finish = jax.jit(rank_shard_map(finish, mesh=mesh,
+        in_specs=(P('x'), specs), out_specs=P('x'), check_rep=False))
+    return finish(mesh_ranks(mesh), coeffs, inputs), state
+
+
+def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_spec=None,
+                     uniform=False):
+    """Judge owned cell reductions, then realize concrete ADE operands per slab."""
     from rfx.model.pole_stability import (pole_set_extremes, combine_pole_extremes,
                                          judge_pole_sets, courant_budget)
     from rfx.materials.debye import debye_e_coeffs, DebyeState
@@ -299,6 +343,10 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
     # Families decide separately: traced Lorentz masks need not trace Debye products.
     device, _ = _material_host_device(materials, spec, debye_spec, mesh=mesh)
     poles, masks = spec
+    if device is None:
+        poles = jax.tree.map(lambda a: place(a, NamedSharding(mesh, P()))
+                            if isinstance(a, (jax.Array, jax.core.Tracer, np.ndarray)) else a,
+                            poles)
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
     with jax.ensure_compile_time_eval() if device is not None else nullcontext():
         inputs = input_materials(materials, layout, mesh)
@@ -316,8 +364,9 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                 halo_hi=layout.nx_local + 1 - 2 - (view.x1 - view.x0))
             def local_masks(spec_masks):
                 return [None if m is None else
-                    (jnp if isinstance(m, jax.core.Tracer) else np).asarray(m)[
-                        np.clip(rows.indices[view.rank], 0, layout.nx - 1)] for m in spec_masks]
+                    place((jnp if isinstance(m, jax.core.Tracer) else np).asarray(m)[
+                        np.clip(rows.indices[view.rank], 0, layout.nx - 1)],
+                        NamedSharding(mesh, P())) for m in spec_masks]
             local_debye = None
             if debye_spec is not None:
                 dp, dm = debye_spec
@@ -330,12 +379,16 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                 if not metadata:
                     metadata.extend(found)
                 return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied) for r in found)
-            values = jax.checkpoint(jax.vmap(extrema))(inputs)
-            values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
+            # Concrete inputs give concrete records under an outer jit too, so the judge sees values.
+            with jax.ensure_compile_time_eval() if device is not None else nullcontext():
+                values = jax.checkpoint(jax.vmap(extrema))(inputs)
+                values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
             records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
                         grid_kind=type(grid).__name__, in_program=mesh.devices.size < 2)
+    if uniform:
+        return _uniform_dispersion(inputs, dt, poles, masks, grid, layout, mesh, family)
     spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
     model_grid = _host_arrays(grid) if device is not None else grid
     def local(cells, index, masks, widths):
@@ -391,10 +444,11 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
 
 def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 pec_mask=None, occupancy=None, debye=None, lorentz=None,
-                cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None):
+                cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None,
+                rlc_metas=()):
     """Build the wrapped setup without a whole-domain _build_nu_scan."""
     from rfx.boundaries.setup import nonuniform_boundaries
-    from rfx.nonuniform import resolve_cpml_axes
+    from rfx.boundaries.axes import resolve_cpml_axes
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout
@@ -413,7 +467,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
             from rfx.materials.debye import debye_e_coeffs
             from rfx.materials.lorentz import lorentz_e_coeffs
             coeffs, state = bundle
-            fields = ('alpha', 'beta') if i == 0 else ('a', 'b', 'c')
+            fields = ('alpha', 'beta') if i == 0 else ('damping', 'restoring', 'c')
             terms = [getattr(coeffs, name) for name in fields]
             def local(eps, sigma, *terms):
                 return (debye_e_coeffs if i == 0 else lorentz_e_coeffs)((eps, sigma), grid.dt, *terms)
@@ -456,7 +510,10 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                        if occupancy is not None and occupancy.ndim == 4 else occupancy), pec_static_edge_masks=None, cpml_inv_eps_r=inverse, e_loss=loss,
         debye_coeffs=None if debye is None else debye[0], lorentz_coeffs=None if lorentz is None else lorentz[0],
         aniso_eps=None, sheet_impedance=None, sheet_coeffs=None, design_box_coeffs=None)
-    ctx = GradedStepContext(use_lumped_rlc=False, rlc_metas=(), use_current_moments=False,
+    from rfx.stepping.slab_lumped import initial
+    if rlc_metas:
+        carry['rlc_states'] = initial(rlc_metas, layout, mesh, zeros.dtype)
+    ctx = GradedStepContext(use_lumped_rlc=bool(rlc_metas), rlc_metas=rlc_metas, use_current_moments=False,
         _slab_e_snapshot=None, current_moments=None, dt=grid.dt, inv_dy_h=grid.inv_dy_h,
         inv_dz_h=grid.inv_dz_h, grid=grid, use_tfsf=False, tfsf_cfg=None, use_waveguide_ports=False,
         waveguide_meta=(), waveguide_port_metrics=(), use_cpml=use_cpml, apply_cpml_h=apply_cpml_h,
@@ -471,14 +528,13 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.slab_ports import setup_ports
     ctx = setup_ports(ctx, carry, inv, port_plan, layout, mesh, n_steps)
     if cpml:
-        # rfx #1402 item 5 (absorber)
         from rfx.stepping.slab_cpml import publish, import_state
         shell = SimpleNamespace(step_fn_inv=SimpleNamespace(context=ctx), invariants={}, carry_init={'cpml': psi})
         ctx, profiles, initial = publish(shell, layout, mesh)
         inv['cpml_x'] = profiles['cpml_x']
         # Native x faces retain the full one-device depth on every rank.
         # The y/z faces already contain the slab's x rows and ghosts.
-        carry['cpml'] = initial['cpml']
+        carry['cpml'] = initial['cpml']  # type: ignore[misc, valid-type]  # mypy treats the rebound imported function as a type application; publish returned a dict.
         if cpml_state is not None:
             carry['cpml'] = import_state(cpml_state, psi, layout, native=True)
     return SimpleNamespace(invariants=inv, carry_init=carry, src_waveforms=waves,

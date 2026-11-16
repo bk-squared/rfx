@@ -1,4 +1,4 @@
-"""The record check judges one budget, pole tail plus known drive, and says what to do (rfx-lead L:d09556).
+"""The record check judges one budget, pole tail plus known drive, and says what to do.
 
 until_decay stops on field energy, no earlier than the step where the known drive's share is 1e-2; it does not test
 the pole share (#2030 owns that in the loop). So a run it stops with s_poles = s_drive = 6e-3 must read fail in its
@@ -41,7 +41,7 @@ def test_pole_plus_drive_over_budget_reads_fail_and_names_the_remedy():
     text = str(caught[0].message)
     assert 'NOT PASSED' in text and 'known drive beyond the record' in text, text
     # What to do: a longer fixed record; until_decay does not judge the budget; until_identified once #2030 admits ports.
-    assert 'longer fixed record' in text and 'until_decay' in text and 'until_identified' in text and '#2030' in text, text
+    assert 'longer fixed record' in text and 'until_decay' in text and 'until_identified' in text and 'per-bin budget' in text, text
 
 
 def _step_port(n, **change):

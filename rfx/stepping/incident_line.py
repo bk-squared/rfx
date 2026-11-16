@@ -5,13 +5,13 @@ from jax import lax
 from rfx.core.yee import FDTDState
 
 
-def record_incident_line(cfg, n_steps, dt, indices, weights):
-    """Advance a zero float32 line H then E and sample its weighted E field."""
+def record_incident_line(cfg, state, n_steps, dt, indices, weights):
+    """Advance a zero template-typed line H then E and sample its weighted E field."""
     from rfx.sources.tfsf_discrete_plane_wave import (
         COMPONENTS, update_line_e, update_line_h,
     )
 
-    zero = FDTDState(*(jnp.zeros(cfg.n_nodes, jnp.float32) for _ in COMPONENTS),
+    zero = FDTDState(*(jnp.zeros_like(getattr(state, c)) for c in COMPONENTS),
                      jnp.asarray(0, jnp.int32))
 
     def step(st, n):

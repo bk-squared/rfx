@@ -7,15 +7,15 @@ Test 3: Backward compatibility — subpixel_smoothing=False gives identical resu
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import (
-    MaterialArrays, init_state, init_materials,
-    update_e, update_e_aniso, update_h,
-)
+from rfx.core.yee import MaterialArrays, init_state, init_materials
+from rfx.stepping.yee import update_e, update_e_aniso, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.geometry.csg import Sphere
 from rfx.geometry.smoothing import compute_smoothed_eps
@@ -98,16 +98,16 @@ def _run_sphere_cavity(
 
     for n in range(n_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx_val)
+        state = update_h(state, materials, dt, dx_val, high_wall=unpadded_high_walls(grid))
 
         if aniso_eps is not None:
             state = update_e_aniso(
                 state, materials,
                 aniso_eps[0], aniso_eps[1], aniso_eps[2],
                 dt, dx_val,
-            )
+             high_wall=unpadded_high_walls(grid))
         else:
-            state = update_e(state, materials, dt, dx_val)
+            state = update_e(state, materials, dt, dx_val, high_wall=unpadded_high_walls(grid))
 
         state = apply_pec(state)
 
@@ -341,8 +341,8 @@ class TestBackwardCompatibility:
 
         for n in range(n_steps):
             t = n * dt
-            state_std = update_h(state_std, materials, dt, dx)
-            state_std = update_e(state_std, materials, dt, dx)
+            state_std = update_h(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+            state_std = update_e(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
             state_std = apply_pec(state_std)
             ez = state_std.ez.at[src_i, src_j, src_k].add(pulse(t))
             state_std = state_std._replace(ez=ez)
@@ -353,10 +353,10 @@ class TestBackwardCompatibility:
 
         for n in range(n_steps):
             t = n * dt
-            state_dispatch = update_h(state_dispatch, materials, dt, dx)
+            state_dispatch = update_h(state_dispatch, materials, dt, dx, high_wall=unpadded_high_walls(grid))
             state_dispatch, _, _ = _update_e_with_optional_dispersion(
                 state_dispatch, materials, dt, dx, aniso_eps=None,
-            )
+             high_wall=unpadded_high_walls(grid))
             state_dispatch = apply_pec(state_dispatch)
             ez = state_dispatch.ez.at[src_i, src_j, src_k].add(pulse(t))
             state_dispatch = state_dispatch._replace(ez=ez)
@@ -412,8 +412,8 @@ class TestBackwardCompatibility:
         dt = 1e-12
         dx = 1e-3
 
-        s1 = update_e(state, materials, dt, dx)
-        s2 = update_e_aniso(state, materials, eps_r, eps_r, eps_r, dt, dx)
+        s1 = update_e(state, materials, dt, dx, high_wall=(False, False, False))
+        s2 = update_e_aniso(state, materials, eps_r, eps_r, eps_r, dt, dx, high_wall=(False, False, False))
 
         np.testing.assert_allclose(
             np.array(s1.ex), np.array(s2.ex), atol=0, rtol=0,

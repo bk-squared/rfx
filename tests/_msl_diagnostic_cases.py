@@ -61,7 +61,18 @@ def family_warnings(sim):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         sim._check_msl_port_geometry(U, low, high)
-    return [w.message for w in caught if getattr(w.message, 'code', '').startswith('msl_port')]
+    messages = []
+    for warning in caught:
+        if getattr(warning.message, 'code', '').startswith('msl_port'):
+            messages.append(warning.message)
+        else:
+            # Preserve other emissions for the caller's warning capture, including
+            # uncoded MSL bypasses and unrelated material advisories. Keep the
+            # filename so the emission contract can distinguish their families.
+            warnings.warn_explicit(
+                warning.message, warning.category, warning.filename, warning.lineno,
+            )
+    return messages
 
 
 def cases(graded=False):

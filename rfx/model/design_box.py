@@ -12,8 +12,8 @@ from rfx.core.yee import lumped_components
 def design_box_bounds(bounds, grid):
     """``(bounds, realized cell counts)`` of a design box on this grid.
 
-    One spelling for the permittivity box (#1179) and the occupancy box
-    (#1183): the REALIZED cell counts are what a design array must match,
+    One spelling for the permittivity box and the occupancy box: the REALIZED cell counts are what a design array must
+    match,
     and a box that is empty or leaves the grid is an error, not a clamp.
     """
     i0, i1, j0, j1, k0, k1 = (int(v) for v in bounds)
@@ -77,12 +77,12 @@ def held_edge_masks(held_edges, write_bounds):
 class DesignBoxCoeffs(NamedTuple):
     """Resolved ``(Ca, Cb)`` for a design box, built once outside the scan.
 
-    ``bounds`` is the WRITE window, not the declared box: since #1210 the
+    ``bounds`` is the WRITE window, not the declared box: the
     design material reaches one cell past the box on the plus side of each
     transverse axis (:func:`_design_box_edge_coeffs`). ``ca`` and ``cb`` are
     3-tuples of window-shaped arrays, one per E component in x, y, z order —
     per-component because of the edge average, and because a design
-    conductivity may itself be per-component (#1216).
+    conductivity may itself be per-component.
     """
     bounds: tuple
     ca: Any
@@ -109,7 +109,7 @@ def resolve_design_box(
     cell_metas,
     periodic=(False, False, False),
 ) -> "DesignBoxCoeffs":
-    """Check a design box against this run, then build its Ca/Cb (#1179).
+    """Check a design box against this run, then build its Ca/Cb.
 
     The box carries its own permittivity, so ``materials`` stays constant and
     the E update inside the box is redone from these coefficients. That is
@@ -146,10 +146,10 @@ def resolve_design_box(
     if stencil_order != 2:
         unsupported.append(f"stencil_order={stencil_order}")
     if bloch is not None:
-        unsupported.append("oblique-periodic Bloch path (#404)")
+        unsupported.append("oblique-periodic Bloch path")
     if unsupported:
         raise NotImplementedError(
-            "the design-box permittivity (#1179) rebuilds only the plain "
+            "the design-box permittivity rebuilds only the plain "
             "lossy Yee E update inside its box, so every path that computes "
             "E some other way is rejected rather than silently ignored. "
             "Unsupported feature(s) present: " + ", ".join(unsupported)
@@ -159,14 +159,14 @@ def resolve_design_box(
 
     bounds, box_shape = design_box_bounds(spec.bounds, grid)
     i0, i1, j0, j1, k0, k1 = bounds
-    # #1210: the design material reaches one cell past the box on the plus
+    # the design material reaches one cell past the box on the plus
     # side of every axis, and the redo WRITES there. Every fence below is
     # therefore held against the write window, not the declared box — a
     # source, a sheet edge or an absorber cell in that layer is the same
     # collision the declared box was already fenced against.
     _write_bounds, _, _, _ = design_box_window(bounds, tuple(grid.shape))
     w_i0, w_i1, w_j0, w_j1, w_k0, w_k1 = _write_bounds
-    # #1210: the window is built with the non-periodic convention -- it clips
+    # the window is built with the non-periodic convention -- it clips
     # at the grid face where the grid-wide update would WRAP. That is only a
     # difference for a box that touches a periodic face, and there it is a
     # silent one, so it is refused rather than approximated. The occupancy
@@ -179,10 +179,10 @@ def resolve_design_box(
         _n = grid.shape[_axis]
         if _lo == 0 or _hi == _n:
             raise NotImplementedError(
-                f"a design box (#1179) flush against a PERIODIC {_name} face "
+                f"a design box flush against a PERIODIC {_name} face "
                 f"is not supported: cells [{_lo}, {_hi}) on a {_n}-cell "
                 f"periodic axis. An E component takes the mean of its four "
-                f"incident cells (#1210), and across a periodic seam those "
+                f"incident cells, and across a periodic seam those "
                 f"neighbours wrap -- the box's one-cell window does not. Move "
                 f"the box off the {_name} faces, or use eps_override (the "
                 f"whole-grid traced permittivity), which wraps correctly.")
@@ -237,7 +237,7 @@ def resolve_design_box(
                     f"into the CPML absorber ({pad_lo} layer(s) at {name}_lo "
                     f"and {pad_hi} at {name}_hi, on a {n}-cell axis; the box's "
                     f"update window is [{lo}, {hi}), one cell wider on the "
-                    f"plus side since #1210). The "
+                    f"plus side under edge averaging). The "
                     f"absorber builds its own coefficient from the background "
                     f"permittivity, which the design box no longer carries. "
                     f"Move the box into cells [{pad_lo}, {n - pad_hi - 1}).")
@@ -302,7 +302,7 @@ def resolve_design_box(
 
     # A per-edge design conductivity laid over a lumped load (a port's
     # termination, an RLC element's R) that is not on a held edge. The tuple
-    # REPLACES the edge's conductivity at the box indices (#1216), load
+    # REPLACES the edge's conductivity at the box indices, load
     # included, so the load would silently vanish. A cell design value keeps
     # it -- the lay-in in ``_design_box_edge_coeffs`` puts the stamp back on
     # top of the cell's volume material -- so only this form is refused. A
@@ -343,7 +343,7 @@ def resolve_design_box(
                      sheet_impedance.mask_ez):
             if mask is not None and bool(jnp.any(jnp.asarray(mask)[w_sl])):
                 raise ValueError(
-                    f"a surface_impedance_f0 sheet (#677) has loaded edges "
+                    f"a surface_impedance_f0 sheet has loaded edges "
                     f"inside the design box {bounds}. The sheet operator "
                     f"REPLACES the E update at those edges with coefficients "
                     f"built from the background permittivity, so it would "
@@ -373,9 +373,9 @@ def resolve_design_box(
                     f"design conductivity sigma_{name} has shape "
                     f"{tuple(jnp.shape(s))} but the design box {bounds} "
                     f"realizes {box_shape} cells.")
-        # The tuple is already per E edge (#1216) and is taken as-is; the
+        # The tuple is already per E edge and is taken as-is; the
         # shared permittivity is still a cell quantity and is edge-averaged
-        # over the window (#1210). See _design_box_edge_coeffs.
+        # over the window. See _design_box_edge_coeffs.
         write_bounds, ca, cb = _design_box_edge_coeffs(
             bounds, eps_r, tuple(jnp.asarray(s) for s in sigma), materials,
             dt, tuple(grid.shape), held_edges=held, grid=grid)
@@ -385,7 +385,7 @@ def resolve_design_box(
         raise ValueError(
             f"design conductivity has shape {tuple(jnp.shape(sigma))} but "
             f"the design box {bounds} realizes {box_shape} cells.")
-    # #1210: per-component coefficients over the write window, the design
+    # per-component coefficients over the write window, the design
     # values laid into a copy of the background so the box-edge cells average
     # with the constant background exactly as the grid-wide update would.
     # ``sigma=None`` hands the window its own conductivity: the slice read

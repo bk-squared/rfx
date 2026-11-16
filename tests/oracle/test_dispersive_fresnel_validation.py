@@ -4,8 +4,7 @@ Validates FDTD normal-incidence broadband reflection ``R(f)`` of a **dispersive*
 dielectric slab against a rigorous analytic oracle, for a single-Debye-pole, a
 single-Lorentz-pole and a single-Drude-pole material (the Drude arm is the
 closed-form comparison that used to live only in a cross-validation case). This
-is the tracked dispersive R/T oracle called
-for by ``docs/agent-memory/task_recipes/rt_measurement.md`` (the old
+is the tracked dispersive R/T oracle (the old
 ``crossval/08_material_dispersion.py`` numbers became unreproducible once that
 script was removed).
 
@@ -32,8 +31,7 @@ branch the +j matrix expects. ε(ω) fed to the oracle is the IDENTICAL
 ``eval_debye`` / ``eval_lorentz`` used to build the FDTD material.
 
 Gate: ``mean |R_fdtd - R_analytic| < 5%`` over the pulse band (measured 3.46% /
-2.74% on CPU 2026-07-02; recorded in
-``docs/research_notes/20260702_w31_dispersive_fresnel.md``). Gated on the MEAN
+2.74% on CPU 2026-07-02). Gated on the MEAN
 per the roadmap spec, not the per-frequency max.
 """
 
@@ -141,11 +139,11 @@ def _build_sim(kind, with_slab):
         else:
             sim.add_material("slab", eps_r=LOR_EPS_INF,
                              lorentz_poles=[lorentz_pole(LOR_DELTA_EPS, LOR_W0, LOR_DELTA)])
-        # Cell-aligned thickness (inclusive Box bounds -> nudge upper corner
-        # by -dx/2). Oversize the transverse corners: TFSF forces y/z periodic,
+        # Cell-centre sampling realizes the drawn node-to-node thickness.
+        # Oversize the transverse corners: TFSF forces y/z periodic,
         # so the material must span the full transverse extent incl. CPML.
         x_lo = CENTER_X - D_SLAB / 2.0
-        x_hi = CENTER_X + D_SLAB / 2.0 - DX / 2.0
+        x_hi = CENTER_X + D_SLAB / 2.0
         sim.add(Box((x_lo, -1.0, -1.0), (x_hi, 1.0, 1.0)), material="slab")
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
                         waveform="modulated_gaussian")

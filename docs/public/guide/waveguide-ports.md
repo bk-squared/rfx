@@ -17,7 +17,8 @@ axis only, for an x-directed guide `boundary={"x": "cpml", "y": "pec", "z": "pec
 On a uniform mesh `boundary="cpml"` on all faces is refused before the first step. If you leave
 `boundary` out, a uniform mesh solves those faces as PEC and warns once; a graded
 mesh refuses until you declare them. Ports need `mode="3d"`, and cannot share a
-model with lumped ports or a TFSF source.
+model with lumped, wire or passive ports, a point source (`add_source`) or a TFSF
+source; `run()` and `forward()` refuse that model on both meshes.
 
 ## A two-port S-matrix
 
@@ -62,11 +63,14 @@ see the same grid.
 | `normalize` | Runs | What it corrects | Use it for |
 |---|---|---|---|
 | `False` (default) | one per port | nothing; magnitudes carry a few-percent Yee impedance error | \|S11\| of strong reflectors (shorts, high-Q loads) on a uniform mesh |
-| `True` | two per port | one-way grid dispersion in transmission | S21 of a straight guide. Not for S11. |
+| `True` | two per port | the empty guide's own reflection at the driven port (subtracted from the driven port's diagonal entry), and device reflection leaking into the incident wave (taken from the reference run) | modal S with the empty guide's port reflection removed, when no gradient is needed. Not for \|S11\| of strong reflectors (use `False`). |
 | `"flux"` | two per port | magnitude from Poynting flux, phase from the mode | general use; recommended on a graded mesh (`normalize=False` is refused there) |
 
-`normalize=True` divides by an empty-guide reference run. That fixes
-transmission but not reflection. `normalize=True` also cannot be
+`normalize=True` divides every entry by the incident wave of an empty-guide
+reference run at the driven port, so reflection and transmission share the
+declared planes. S21 keeps the one-way grid dispersion between the planes, as
+with `normalize=False`. For an insertion ratio, divide S21 by S21 of the same
+guide without the device, at the same planes. `normalize=True` cannot be
 differentiated; `False` and `"flux"` can.
 
 With `normalize=False`, a passive strong reflector can read slightly above
@@ -79,9 +83,13 @@ the extraction is wrong, not the physics.
 
 ## A single port with `run()`
 
-A plain `run()` with one waveguide port gives that port's calibrated S11 and
-S21 in `result.waveguide_sparams`. Use it as a quick diagnostic. It is not the
-driven-in-turn matrix.
+A plain `run()` with one waveguide port gives per-port values in
+`result.waveguide_sparams`. Use them as a quick diagnostic. They are not the
+driven-in-turn matrix. In `res.waveguide_sparams[name]`, `s11` is the
+reflection at the port's reference plane; `s21` is the port's own lead-in
+propagation factor, the forward wave at its probe plane over the forward wave
+at its reference plane. It is not transmission between ports, which comes from
+`compute_waveguide_s_matrix()`.
 
 ```python
 single = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
@@ -128,8 +136,12 @@ ydir.add_waveguide_port(0.01, direction="+y", name="bottom")
 ydir.add_waveguide_port(0.09, direction="-y", name="top")
 
 # Two parallel guides entering through the same x face.
+from rfx import Box
+
 pair = Simulation(freq_max=10e9, domain=(0.12, 0.10, 0.02),
-                  boundary="cpml", cpml_layers=10, dx=0.002)
+                  boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                  cpml_layers=10, dx=0.002)
+pair.add(Box((0.0, 0.04, 0.0), (0.12, 0.06, 0.02)), material="pec")
 pair.add_waveguide_port(0.01, y_range=(0.0, 0.04), direction="+x", name="lo")
 pair.add_waveguide_port(0.01, y_range=(0.06, 0.10), direction="+x", name="hi")
 ```
@@ -141,9 +153,11 @@ outside the differentiable path.
 
 The default references assume the guide walls are the domain boundary. A
 T-junction, branch or septum has interior PEC walls, and the empty reference
-then radiates into open space: every |S| inflates badly (max |S| near 10 on a
-compact T). For these, pass `normalize="flux"` with one reference simulation
+then radiates into open space: |S| inflates (max |S| = 1.5 on the T below, 1.12 with its references). For these, pass `normalize="flux"` with one reference simulation
 per port: the straight continuation of that port's guide, with no junction.
+Every port runs on each reference model. A port that the straight guide would
+bury in its wall needs a closed air pocket there, because a port inside a PEC
+block is refused.
 
 ```python
 from rfx import Box
@@ -156,7 +170,8 @@ port_kwargs = dict(mode=(1, 0), mode_type="TE", f0=6e9,
 def three_port(walls):
     """Same domain, mesh and ports each time; only the PEC walls change."""
     s = Simulation(freq_max=10e9, domain=(0.12, 0.12, 0.02),
-                   boundary="cpml", cpml_layers=10, dx=0.002)
+                   boundary={"x": "cpml", "y": "cpml", "z": "pec"},
+                   cpml_layers=10, dx=0.002)
     for lo, hi in walls:
         s.add(Box(lo, hi), material="pec")
     s.add_waveguide_port(0.01, y_range=(0.04, 0.08), direction="+x",
@@ -168,14 +183,21 @@ def three_port(walls):
     return s
 
 
-horizontal = [((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
-              ((0.0, 0.08, 0.0), (0.12, 0.12, 0.02))]
-vertical = [((0.0, 0.0, 0.0), (0.04, 0.12, 0.02)),
-            ((0.08, 0.0, 0.0), (0.12, 0.12, 0.02))]
+tee_walls = [((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
+             ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
+             ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02))]
 
-tee = three_port([((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
-                  ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
-                  ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02))])
+# The main guide runs straight; a 4 mm wall closes the top arm into a pocket.
+horizontal = tee_walls + [((0.04, 0.08, 0.0), (0.08, 0.084, 0.02))]
+# The top arm runs straight; 4 mm walls close the left and right arms into pockets.
+vertical = [((0.0, 0.0, 0.0), (0.04, 0.04, 0.02)),
+            ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
+            ((0.036, 0.04, 0.0), (0.04, 0.08, 0.02)),
+            ((0.08, 0.0, 0.0), (0.12, 0.04, 0.02)),
+            ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02)),
+            ((0.08, 0.04, 0.0), (0.084, 0.08, 0.02))]
+
+tee = three_port(tee_walls)
 
 junction = tee.compute_waveguide_s_matrix(
     num_periods=20, normalize="flux",
@@ -208,24 +230,43 @@ than running it into the absorber.
 ## Gradients and memory
 
 `compute_waveguide_s_matrix` accepts `eps_override=` / `sigma_override=` for
-differentiation with `normalize=False` or `"flux"`, single-mode only. For
+differentiation with `normalize=False` or `"flux"`, single-mode only. On a
+graded mesh, `normalize="flux"` also differentiates S with respect to the widths
+of a declared window of x cells, `nominal_profiles={"x": NominalProfile(cells,
+traced_cells=(i0, i1))}`: the window's cells grow and the air cells after it
+shrink by the same total, so both port planes stay fixed. Traced y or z widths,
+a window touching a port's planes or the absorber, a window whose total width
+changes, a time step that follows the traced widths (pin it with `dt=` and
+`dt_min_cell=`), and `run()` or `forward()` with a waveguide port on a traced mesh are
+refused. For
 long runs under `jax.grad`, `checkpoint_segments=K` trades compute for memory.
 On a uniform mesh `K` must divide the number of time steps exactly; on a
 graded mesh it is a target segment count.
 
 ## Limits
 
+- **Every aperture edge needs a conductor on both meshes.** A bare edge is
+  refused before a solve or a multi-device hand-off. Draw PEC walls at the
+  aperture edges, or make the domain cross-section equal to the aperture and
+  declare its transverse faces PEC. A PEC face farther from an edge does not
+  close that edge.
 - **Validated scope** is uniform, single-mode, straight rectangular guides and
   same-guide junctions under the far-port conditions above. Phase is
   validated on fewer configurations than magnitude.
 - **Ports with different cross-sections** are outside the validated scope.
-  S is a ratio of each port's own modal waves, so it equals a power-wave S only
-  when all ports share one cross-section and mode.
+  Between ports in one medium, S is a ratio of each port's own modal waves, so
+  it equals a power-wave S only when all ports share one cross-section and
+  mode. Between ports in different media (an empty port facing a filled one),
+  `normalize=False` returns power waves, `(b_i / a_j)·√(Z_j / Z_i)`;
+  `normalize=True` and `"flux"` refuse unequal media.
 - **Compact junctions** give non-physical matrices even with
   `port_reference_sims`. Keep the far-port conditions.
 - **Graded meshes** refuse `normalize=False`; use `"flux"` (or `True`). Graded-mesh waveguide results
   outside the published WR-90 comparisons are experimental.
 - **`port_reference_sims`** needs `normalize="flux"`, single-mode ports, a
-  uniform mesh and no material override.
+  uniform mesh and no material override. Each reference's port sections are
+  admitted as on a direct entry: a port inside a PEC block is refused (give it a
+  closed air pocket instead), and so is a dispersive material or a
+  surface-impedance sheet.
 - Full scope, with the comparisons behind it, is in the
   [S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters).

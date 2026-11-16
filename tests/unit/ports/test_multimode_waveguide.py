@@ -7,12 +7,15 @@ Covers:
 - Backward compatibility with single-mode usage
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.waveguide_port import (
@@ -278,12 +281,12 @@ class TestMultiModeSMatrix:
         ny, nz = grid.ny, grid.nz
 
         port_in = WaveguidePort(
-            x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+            x_index=nc + 5, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
             a=(ny - 1) * dx, b=(nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction="+x",
         )
         port_out = WaveguidePort(
-            x_index=grid.nx - nc - 6, y_slice=(0, ny), z_slice=(0, nz),
+            x_index=grid.nx - nc - 6, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
             a=(ny - 1) * dx, b=(nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction="-x",
         )
@@ -311,10 +314,10 @@ class TestMultiModeSMatrix:
 
         for step in range(n_steps):
             t = step * grid.dt
-            state = update_h(state, materials, grid.dt, dx)
+            state = update_h(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
             state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
             state = apply_pec(state)
-            state = update_e(state, materials, grid.dt, dx)
+            state = update_e(state, materials, grid.dt, dx, high_wall=unpadded_high_walls(grid))
             for cfg in all_cfgs:
                 state = inject_waveguide_port(state, cfg, t, grid.dt, dx)
             state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")

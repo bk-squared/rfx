@@ -101,9 +101,9 @@ def test_plane_wave_decay_step_edges(monkeypatch):
     captured = []
     original = uniform_loop.core_step_invariants
 
-    def capture(ctx):
+    def capture(ctx, **kwargs):
         captured.append(tuple(np.asarray(mask).copy() for mask in ctx.pec_edge_masks))
-        return original(ctx)
+        return original(ctx, **kwargs)
 
     monkeypatch.setattr(uniform_loop, "core_step_invariants", capture)
     _scene().run(n_steps=40, until_decay=1e-3, decay_monitor_component="ez",

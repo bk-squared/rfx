@@ -1,9 +1,9 @@
-"""Mesh position is data, never an XLA partition-id (#1441).
+"""Mesh position is data, never an XLA partition-id.
 
 Pass ``mesh_ranks(mesh)`` through the enclosing jit's arguments, then as the
 first argument of each rank_shard_map. Capturing it as a compiled constant
 instead lets SPMD partitioning reintroduce partition-id when slicing it.
-An enclosing jit is refused on GPUs (tracker 1598).
+An enclosing jit is refused on GPUs.
 """
 from functools import wraps
 import os
@@ -14,13 +14,14 @@ import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.backend import backend_class
+from rfx.core.jax_utils import _REGION, is_tracer
 
 
 OUTER_JIT_REFUSAL = (
     "rfx: a multi-device run on GPUs cannot be compiled inside an enclosing jax.jit "
     "(or lax.scan / jax.checkpoint): the compiler then encodes each device's position "
-    "as an operation CUDA rejects ('Failed to add memset node to a CUDA graph', "
-    "rfx tracker 1598). Either call run(devices=...) / forward(distributed=True) "
+    "as an operation CUDA rejects ('Failed to add memset node to a CUDA graph'). "
+    "Either call run(devices=...) / forward(distributed=True) "
     "and jax.grad of it WITHOUT jax.jit — the runner compiles its own time loop — "
     "or start the process with XLA_FLAGS=--xla_gpu_enable_command_buffer= "
     "(set before importing jax)."
@@ -44,9 +45,13 @@ def _is_gpu_mesh(mesh):
 
 def _staged_by_enclosing_program():
     """Probe staging even when the enclosing program has no traced inputs."""
+    if _REGION.get() is not None:
+        return True
     try:
-        return isinstance(jax.lax.add(np.float32(0), np.float32(0)), jax.core.Tracer)
-    except Exception:
+        return is_tracer(jax.lax.add(np.float32(0), np.float32(0)))
+    except TimeoutError:
+        raise
+    except Exception:  # noqa: BLE001 - fails closed: a probe failure refuses the run
         return True
 
 

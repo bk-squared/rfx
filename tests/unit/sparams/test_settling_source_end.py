@@ -8,7 +8,7 @@ import pytest
 
 from rfx.api._sparams import settling_verdict
 from rfx.grid import C0
-from rfx.probes.settling import source_end_step, simulation_source_end_step
+from rfx.measurement.record_end import injection_end, source_end_step
 from rfx.sources.waveguide_port import settling_db_from_named_records
 
 
@@ -64,7 +64,7 @@ def test_registered_drives_include_farthest_record_and_skip_passive_ports():
         SimpleNamespace(impedance=50., excite=False, waveform=lambda t: 1., position=(0.,0.,0.))],
         _msl_ports=[], _waveguide_ports=[], _tfsf=None)
     probes = [SimpleNamespace(position=(0.,0.,0.)), SimpleNamespace(position=(2.5*C0,0.,0.))]
-    assert simulation_source_end_step(sim, 20, 1., probes) == 5
+    assert injection_end(20, 1., records=probes, sim=sim) == 5
 
 
 def test_waveguide_uses_incident_record_and_farthest_plane():
@@ -73,8 +73,9 @@ def test_waveguide_uses_incident_record_and_farthest_plane():
     record = np.exp(-np.arange(100)/20.)
     incident = np.zeros(100)
     incident[:5] = 1.
+    # The incident E table the port applies (#2030), not the analytic v_inc_t.
     cfg = SimpleNamespace(
-        src_amp=1., v_inc_t=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
+        src_amp=1., e_inc_table=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
         reference_x_m=0., probe_x_m=2.5*C0,
         **{name: record for name in ('v_ref_t', 'i_ref_t', 'v_probe_t', 'i_probe_t')})
     actual = settling_db_from_port_records([cfg])
@@ -97,22 +98,31 @@ def test_forward_result_preserves_source_end_through_jit():
     assert result.settling_db == pytest.approx(expected)
 
 
-def test_tfsf_uses_its_waveform_and_box_diagonal():
+def test_tfsf_uses_its_waveform_and_launch_to_box_reach():
     from rfx.grid import Grid
-    from rfx.probes.settling import tfsf_source_drive
-    from rfx.sources.tfsf import init_tfsf
+    from rfx.measurement.settling import tfsf_source_drive
+    from rfx.sources.tfsf import init_tfsf, line_source_value
 
     grid = Grid(freq_max=10e9, domain=(.03, .03, .03), dx=.003, cpml_layers=4)
     cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=4,
                       ny=grid.ny, nz=grid.nz, closed_box=True, n_steps=300)
     waveform, distance = tfsf_source_drive(cfg, grid)
-    expected_distance = np.linalg.norm([
-        (getattr(cfg, a+'_hi')-getattr(cfg, a+'_lo'))*grid.dx for a in 'xyz'])
-    assert distance == pytest.approx(expected_distance)
+    expected_distance = (cfg.x_hi - cfg.source_p) * grid.dx
+    assert distance(None) == pytest.approx(expected_distance)
     time = jnp.arange(300, dtype=jnp.float32)*grid.dt
-    arg = (time-cfg.src_t0)/cfg.src_tau
-    expected = np.asarray(cfg.src_amp*(-2*arg)*jnp.exp(-arg**2))
-    np.testing.assert_array_equal(jax.vmap(waveform)(time), expected)
+    # #1839: the source-end model must exactly match the line's launched waveform.
+    actual = jax.vmap(waveform)(time)
+    launched = jax.vmap(lambda t: line_source_value(cfg, t, cfg.src_amp))(time)
+    np.testing.assert_array_equal(actual, launched)
+    # #1839: independently check the charge-free DG in NumPy float64.
+    t = np.asarray(time, dtype=np.float64)
+    c, u = cfg.src_t0 / cfg.src_tau, t / cfg.src_tau
+    arg = (t - cfg.src_t0) / cfg.src_tau
+    bare = -2.0 * arg * np.exp(-arg**2)
+    onset = np.exp(-c**2 - u**2) * (
+        2 * c + (4 * c**2 - 2) * u - 4 * c * u**2 - 4 * c**2 * u**3)
+    expected = cfg.src_amp * np.where(t >= 0, bare - onset, 0.0)
+    np.testing.assert_allclose(actual, expected, atol=1e-6 * np.max(np.abs(expected)), rtol=0)
 
 
 def test_traced_waveguide_metadata_reports_no_witness():
@@ -134,4 +144,4 @@ def test_recorded_wire_endpoint_contributes_to_transit():
                             position=(0., 0., 0.))
     sim = SimpleNamespace(_ports=[drive], _msl_ports=[], _waveguide_ports=[], _tfsf=None)
     record = SimpleNamespace(position=(0., 0., 0.), component='ez', extent=3*C0)
-    assert simulation_source_end_step(sim, 20, 1., [record]) == 5
+    assert injection_end(20, 1., records=[record], sim=sim) == 5

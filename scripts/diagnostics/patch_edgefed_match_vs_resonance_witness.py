@@ -30,7 +30,8 @@ import os
 import sys
 import warnings
 
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 import jax.numpy as jnp  # noqa: E402

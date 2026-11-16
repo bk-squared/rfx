@@ -1,4 +1,4 @@
-"""The Kottke occupancy lane (``RFX_PEC_OCC_KOTTKE=1``) reproduces a cavity's
+"""The Kottke occupancy lane (``pec_occupancy_model="kottke"``) reproduces a cavity's
 TM110 with a binary PEC slab in it (#1197).
 
 A PEC slab across the bottom of a PEC cube must leave TM110 where it is:
@@ -29,12 +29,11 @@ def _strongest(ts, dt):
 
 def test_binary_pec_slab_leaves_tm110_at_the_analytic_frequency(monkeypatch):
     import rfx.geometry.smoothing as _sm
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
     calls = []
     _real = _sm.kottke_inv_eps_from_occupancy
     monkeypatch.setattr(_sm, "kottke_inv_eps_from_occupancy",
                         lambda *a, **k: (calls.append(1), _real(*a, **k))[1])
-    sim = Simulation(freq_max=16e9, domain=(L, L, L), dx=DX, boundary="pec")
+    sim = Simulation(freq_max=16e9, domain=(L, L, L), dx=DX, boundary="pec", pec_occupancy_model="kottke")
     sim.add_source((5.5e-3, 7.5e-3, 15.5e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=8e9, bandwidth=0.9))
     sim.add_probe((17.5e-3, 15.5e-3, 19.5e-3), "ez")

@@ -29,6 +29,8 @@ Three calls, none of which runs a time step:
 | `sim.fidelity_report()` | A printed table: every shape's drawn extent next to the extent the grid built, per axis, in micrometres. |
 | `sim.realized_geometry()` | The same facts as a record you can read in code: solved sheet spans, wall planes, port edges, cell sizes, the snap mode. |
 
+After a solve, `result.realized_geometry.realization_table` holds one row per drawn object, built from the grid the time step used. Each entry of `row.axes` gives one axis: the drawn and solved span in metres, the difference in cells and in percent of the drawn extent, and how far the centre moved in cells. After a solve, `sim.realized_geometry()` and `sim.fidelity_report()` read the same table. If you change the model after the solve, they report the changed model.
+
 A 10 × 10.2 mm patch on a 0.5 mm uniform grid shows the most common finding:
 
 ```python
@@ -111,8 +113,8 @@ Two options change what the check does:
 - `preflight(strict=True)` collects every finding, warnings and notes
   included, and raises one `ValueError` that lists them all.
 
-`run(skip_preflight=True)` skips the automatic check. Use it only after you
-have read the report once for the same model.
+`run(skip_preflight=True)` skips advisories only; realization refusals still
+apply. Use `snap='declared'` to warn on geometry size misses.
 
 ## How rfx checks it
 
@@ -126,6 +128,7 @@ Preflight's findings that compare the drawing with the grid:
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
 | a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
 | a sheet off a dielectric face | The face is not on a node plane, so the sheet snaps up to half a cell away. | Put the face on a node plane. |
+| body flush on an absorber (`body_flush_on_absorber`, warning) | The body's thin face touches the absorber, which continues its material as a half-space. | Leave free space between the body and the face, or declare that half-space on purpose. PEC and vacuum bodies are excluded. |
 | geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. |
 
 Other findings are about the setup rather than the grid: cell size against

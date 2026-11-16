@@ -38,11 +38,13 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     kwargs = {}
     if mesh == "graded":
         # Exact declared length, genuinely graded, distinct transverse lengths.
-        n = round(domain[0] / 1e-3)
-        length = 12e-3 if wall == "periodic" else domain[0]
+        # A plane wave grades a transverse axis: along x it is refused (#2078).
+        axis = 1 if feature == "tfsf" else 0
+        n = round(domain[axis] / 1e-3)
+        length = 12e-3 if wall == "periodic" else domain[axis]
         interior = np.linspace(.87, 1.13, n - 2)
         interior *= (length - 2e-3) / interior.sum()
-        kwargs["dx_profile"] = np.r_[1e-3, interior, 1e-3]
+        kwargs[f"d{'xy'[axis]}_profile"] = np.r_[1e-3, interior, 1e-3]
     if solved_domain:
         domain = (13 * 1e-3, 10 * 1e-3, 8 * 1e-3)  # solved length; #1887
     sim = Simulation(freq_max=20e9, domain=domain, dx=1e-3, mode=mode,
@@ -71,7 +73,7 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     elif feature == "msl":
         sim.add_material("substrate", eps_r=3.66)
         sim.add(Box((0, 0, 0), (24.3e-3, 12.7e-3, 1e-3)), material="substrate")
-        sim.add(Box((1e-3, 5e-3, 1e-3), (23e-3, 7e-3, 2e-3)), material="pec")
+        sim.add(Box((1e-3, 5e-3, 1e-3), (float(np.cumsum(kwargs["dx_profile"])[-2]) if mesh == "graded" else 23e-3, 7e-3, 2e-3)), material="pec")
         sim.add_msl_port(position=(2e-3, 6e-3, 0), width=2e-3, height=1e-3,
                          direction="+x", impedance=50.0, waveform=pulse)
     elif feature == "waveguide":

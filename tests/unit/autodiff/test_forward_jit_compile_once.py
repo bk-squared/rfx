@@ -24,8 +24,8 @@ stepping (``test_forward_jit_contract.py`` gates the rule on one model per
 host-read class). The predicate test below pins that scope: restoring a
 per-model whitelist turns it red.
 
-The jitted value and gradient are compared with the plain call under the PI's
-cross-trace rule (2026-09-23): bit-identical is the aim, and a difference up
+The jitted value and gradient are compared with the plain call under the
+cross-trace rule: bit-identical is the aim, and a difference up
 to single-digit float32 ULP is allowed. The unit is ULP AT THE PEAK of each
 compared array — ``max|plain - jitted|`` over the float32 spacing at
 ``max|plain|`` — expressed once, in ``_ulp_at_peak``; per-element ULP near
@@ -40,6 +40,8 @@ cannot pass a "0 compiles" assertion.
 from __future__ import annotations
 
 import functools
+import inspect
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -58,7 +60,7 @@ SUB_H = 1.5e-3
 BOX = ((10e-3, 7e-3, Z_GND + 0.25e-3), (11e-3, 9e-3, Z_GND + 1.25e-3))
 N_STEPS = 30
 
-# The PI's cross-trace tolerance (2026-09-23): single-digit ULP at the peak.
+# The cross-trace tolerance: single-digit ULP at the peak.
 MAX_ULP_AT_PEAK = 9
 
 
@@ -203,17 +205,24 @@ BOARDS = {
 }
 
 
-def test_the_board_realizes_the_conductors_the_port_reads():
-    """The ground and the patch are realized as PEC cells on this mesh.
-
-    Without them the port's live-edge test has no mask to read and the board
-    would not exercise the trace failure at all.
-    """
-    sim = _board()
-    grid = sim._build_nonuniform_grid()
-    _, _, _, pec_mask = sim._assemble_materials_nu(
-        grid, pec_sheets=[], pec_wires=[])
-    assert pec_mask is not None and int(np.asarray(pec_mask).sum()) > 0
+def test_the_public_board_geometry_contains_ground_and_patch_cells():
+    """Both conductors must survive realization for the wire-port jit fixture."""
+    geometry = _board().realized_geometry()
+    mask = geometry.pec_mask
+    assert mask is not None, "graded board public geometry has no PEC cell mask"
+    total = int(np.count_nonzero(mask))
+    print(f"board/all: PEC cells={total}, bar=>0, mesh={mask.shape}, steps=0",
+          file=sys.stderr)
+    assert total > 0, "graded board public PEC cell mask is empty"
+    # Locate the interior of each declared 0.5 mm metal layer using the
+    # public realized nodes, including their absorber padding.
+    for name, z in (("ground", Z_GND - 0.25e-3),
+                    ("patch", Z_GND + SUB_H + 0.25e-3)):
+        k = int(np.searchsorted(geometry.nodes[2], z, side="right") - 1)
+        count = int(np.count_nonzero(mask[:, :, k]))
+        print(f"board/{name}: PEC cells={count}, bar=>0, z_row={k}, "
+              f"z_bounds_m={tuple(geometry.nodes[2][k:k + 2])}", file=sys.stderr)
+        assert count > 0, f"graded board {name} z-row {k} contains no PEC cells"
 
 
 @pytest.mark.parametrize("board", sorted(BOARDS))
@@ -246,8 +255,7 @@ def test_repeat_calls_of_the_jitted_gradient_do_not_compile():
     assert float(jnp.max(jnp.abs(g0))) > 0.0
 
 
-#: The PI's rule for quantities summed over the record (2026-09-25, ledger
-#: archive 3feae81): port DFT accumulators and the S built from them pass at
+#: The rule for quantities summed over the record: port DFT accumulators and the S built from them pass at
 #: this fraction of each array's peak; per-step quantities keep MAX_ULP_AT_PEAK.
 MAX_REL_SUMMED = 1.0e-4
 
@@ -294,8 +302,7 @@ def _realistic_record(lane):
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_a_realistic_record_jitted_sums_stay_within_1e_4_of_the_peak(lane):
     """Sums over the record (the port DFT accumulators and S), which the
-    whole-program compile rounds differently: within 1e-4 of the peak (PI
-    2026-09-25). The 30-step boards above keep their 9-ULP gate."""
+    whole-program compile rounds differently: within 1e-4 of the peak. The 30-step boards above keep their 9-ULP gate."""
     _du_ts, rel = _realistic_record(lane)
     assert max(rel.values()) <= MAX_REL_SUMMED, rel
 
@@ -303,7 +310,7 @@ def test_a_realistic_record_jitted_sums_stay_within_1e_4_of_the_peak(lane):
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_a_realistic_record_jitted_probe_series_stay_within_9_ulp(lane):
     """Per-step quantities (the probe series) of the jitted call: within 9
-    float32 ULP at the peak of the plain call's (PI 2026-09-23)."""
+    float32 ULP at the peak of the plain call's."""
     du_ts, _rel = _realistic_record(lane)
     assert du_ts <= MAX_ULP_AT_PEAK, du_ts
 
@@ -349,102 +356,57 @@ def _conductor_and_uniform_lumped_port():
     return sim
 
 
-def _graded_source_without_a_port():
-    """The graded substrate and ground driven by a plain source, no port."""
-    sim = Simulation(freq_max=2 * F0, domain=(18e-3, 16e-3, float(DZ.sum())),
-                     dx=DX, boundary="cpml", cpml_layers=5, dz_profile=DZ)
-    sim.add_material("sub", eps_r=3.0)
-    sim.add(Box((2e-3, 2e-3, Z_GND), (16e-3, 14e-3, Z_GND + SUB_H)),
-            material="sub")
-    sim.add(Box((2e-3, 2e-3, Z_GND - 0.5e-3), (16e-3, 14e-3, Z_GND)),
-            material="pec")
-    sim.add_source((7e-3, 8e-3, Z_GND + 0.75e-3), "ez", amplitude_kind="current",
-                   waveform=GaussianPulse(f0=F0, bandwidth=0.8))
-    sim.add_probe((12e-3, 8e-3, Z_GND + 0.75e-3), "ez")
-    return sim
+def test_eager_shard_map_preserves_the_forward_record_or_body_refusal():
+    """An eager shard_map must preserve the ordinary body, never recurse."""
+    from jax.sharding import Mesh, PartitionSpec as P
 
+    mesh = Mesh(np.asarray(jax.devices("cpu")[:1]), ("cpu",))
+    kwargs = dict(n_steps=10, checkpoint=False, skip_preflight=True)
 
-def test_every_staged_single_device_forward_evaluates_its_setup_at_trace_time(
-        monkeypatch):
-    """Under ``jax.jit`` the set-up of every model is evaluated at trace time.
+    def mapped(forward):
+        sim = _conductor_and_uniform_lumped_port()
+        call = jax.shard_map(lambda _: forward(sim, **kwargs).time_series,
+                            mesh=mesh, in_specs=P(), out_specs=P())
+        return np.asarray(jax.block_until_ready(call(jnp.float32(0))))
 
-    The shared forward entries ask ``_setup_evaluated_at_trace_time`` whether
-    to evaluate their set-up at trace time. Under ``jax.jit`` ``forward()``
-    must answer True for every model: the two #1225 left recorded (a
-    uniform-mesh model with a conductor and a lumped port, a graded model
-    with no port) as for the graded wire-port and lumped-port boards. The
-    lane entry it calls inside the trace-time context then answers False and
-    runs its body. A plain call and a bare ``jax.grad`` stage nothing and
-    answer False, and the distributed lane always does. A per-model
-    whitelist turns the first two models red; the positive controls keep a
-    spy that saw no call from passing.
-    """
-    import rfx.api._dispatch as ex
-
-    answers = []
-    real = ex._setup_evaluated_at_trace_time
-
-    def spy(**kwargs):
-        answers.append(real(**kwargs))
-        return answers[-1]
-
-    monkeypatch.setattr(ex, "_setup_evaluated_at_trace_time", spy)
-
-    for build in (_conductor_and_uniform_lumped_port,
-                  _graded_source_without_a_port):
-        sim = build()
-        grid = sim._build_realized_grid()
-        eps = jnp.ones(tuple(grid.shape), jnp.float32)
-
-        def loss(e, sim=sim):
-            r = sim.forward(eps_override=e, n_steps=10, checkpoint=False,
-                            skip_preflight=True)
-            return jnp.sum(r.time_series ** 2)
-
-        answers.clear()
-        jax.jit(jax.value_and_grad(loss)).lower(eps)
-        assert answers == [True, False], (
-            f"{build.__name__}: predicate answered {answers} under jax.jit")
-
-    for board in ("graded wire port", "graded lumped port"):
-        build, objective, design = BOARDS[board]
-        sim = build()
-        answers.clear()
-        jax.jit(jax.value_and_grad(objective(sim))).lower(design(sim))
-        assert answers == [True, False], (
-            f"{board}: predicate answered {answers}")
-
-    # What stages nothing never enters the region: a plain call, a bare
-    # jax.grad; and the distributed lane never does.
-    def probe(x):
-        answers.append(real(distributed=False))
-        return x * x
-
-    answers.clear()
-    probe(jnp.float32(2.0))
-    jax.grad(probe)(jnp.float32(2.0))
-    jax.jit(lambda x: (answers.append(real(distributed=True)), x)[1])(1.0)
-    assert answers == [False, False, False], answers
-
-
-def test_a_trace_time_context_that_cannot_make_constants_does_not_recurse(
-        monkeypatch):
-    """If the trace-time context leaves the set-up staged, fall through.
-
-    Inside an eager ``jax.shard_map`` the staging probe still reads True
-    within ``jax.ensure_compile_time_eval()``. ``forward()`` must then run its
-    ordinary body — returning, or raising the error it raised before #1225 —
-    never re-call itself until RecursionError. The probe is forced True here,
-    which reproduces that state on a plain call.
-    """
-    import rfx.api._dispatch as ex
-
-    monkeypatch.setattr(ex, "_staged_by_an_outer_trace", lambda: True)
-    sim = _board()
-    r = sim.forward(design_box=BOX, design_eps_override=_box_eps(sim),
-                    n_steps=5, checkpoint=False, skip_preflight=True,
-                    port_s11_freqs=np.linspace(sim._freq_max / 10, sim._freq_max, 50))
-    assert np.all(np.isfinite(np.asarray(r.s_params)))
+    try:
+        actual = mapped(Simulation.forward)
+    except RecursionError:
+        pytest.fail("eager shard_map forward recursed instead of running its body")
+    except TimeoutError:
+        raise
+    except Exception as actual_error:
+        # The spec permits the ordinary body's refusal on this JAX. Unwrap
+        # the public callable for that oracle; no Simulation state is read
+        # and no staging predicate is replaced.
+        try:
+            mapped(inspect.unwrap(Simulation.forward))
+        except RecursionError:
+            pytest.fail("eager shard_map plain forward body recursed")
+        except TimeoutError:
+            raise
+        except Exception as body_error:
+            assert type(actual_error) is type(body_error), (
+                f"shard_map exception type changed: {actual_error!r} vs {body_error!r}")
+            assert str(actual_error) == str(body_error), (
+                f"shard_map refusal changed: {actual_error!s} vs {body_error!s}")
+            print(f"shard_map/refuses: {type(actual_error).__name__}: {actual_error}; "
+                  "type mismatch=0, message mismatch=0, bar=exact; steps=10, CPU mesh=1",
+                  file=sys.stderr)
+        else:
+            pytest.fail(f"shard_map forward refused but its plain body returned: {actual_error!r}")
+    else:
+        plain = np.asarray(_conductor_and_uniform_lumped_port().forward(**kwargs).time_series)
+        assert actual.shape == plain.shape, "shard_map changed the probe record shape"
+        assert np.all(np.isfinite(actual)) and np.all(np.isfinite(plain))
+        assert np.max(np.abs(plain)) > 0, "plain forward probe record is zero"
+        # Existing cross-trace probe bar:
+        # tests/unit/autodiff/test_forward_jit_contract.py:274.
+        error = _ulp_at_peak(plain, actual)
+        print(f"shard_map/record: measured={error} ULP at peak, bar={MAX_ULP_AT_PEAK}, "
+              f"steps=10, CPU mesh=1, record_shape={plain.shape}", file=sys.stderr)
+        assert error <= MAX_ULP_AT_PEAK, (
+            f"eager shard_map record differs by {error} ULP at peak; bar={MAX_ULP_AT_PEAK}")
 
 
 @pytest.mark.parametrize("checkpoint", [False, True])

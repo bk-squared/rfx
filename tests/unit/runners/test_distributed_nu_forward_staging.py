@@ -4,6 +4,8 @@ Fresh subprocesses isolate live-array accounting and the virtual-device count.
 The reference below deliberately keeps main cca8ee5b's init-then-split order.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import inspect
 import json
 import os
@@ -31,6 +33,7 @@ from rfx.materials.lorentz import init_lorentz, lorentz_pole
 from rfx.nonuniform import make_current_source, position_to_index
 from rfx.runners import distributed_nu as nu
 from rfx.runners import _distributed_common as common
+from rfx.stepping import slab_update, slab_graded_legacy_loop
 from rfx.runners._distributed_common import _split_materials
 from rfx.runners._distributed_common import shard_stacked
 from rfx.simulation import ProbeSpec, SourceSpec
@@ -68,10 +71,17 @@ def _model(case="mixed", large=False):
     if case in ("mixed", "occupancy", "sigma", "lorentz"):
         poles["lorentz_poles"] = [lorentz_pole(1., 2 * np.pi * 3e9, 1e9)]
     sim.add_material("block", eps_r=4.4, sigma=.02, mu_r=1.5, **poles)
-    sim.add(Box((.3 * nx * 1e-3, .2 * ny * 1e-3, .2 * dz.sum()),
-                (.7 * nx * 1e-3, .8 * ny * 1e-3, .8 * dz.sum())), material="block")
-    sim.add(Box((.45 * nx * 1e-3, .4 * ny * 1e-3, .4 * dz.sum()),
-                (.55 * nx * 1e-3, .6 * ny * 1e-3, .6 * dz.sum())), material="pec")
+    pec_z = np.cumsum(np.r_[np.full(2, dz[0]), dz]) - 2 * dz[0]
+    block = (Box((12 * 1e-3, 5 * 1e-3, float(pec_z[7])),
+                 (28 * 1e-3, 19 * 1e-3, float(pec_z[21]))) if large else
+             Box((.3 * nx * 1e-3, .2 * ny * 1e-3, .2 * dz.sum()),
+                 (.7 * nx * 1e-3, .8 * ny * 1e-3, .8 * dz.sum())))
+    sim.add(block, material="block")
+    conductor = (Box((18 * 1e-3, 10 * 1e-3, float(pec_z[12])),
+                     (22 * 1e-3, 14 * 1e-3, float(pec_z[16]))) if large else
+                 Box((5 * 1e-3, 3 * 1e-3, float(pec_z[4])),
+                     (7 * 1e-3, 4 * 1e-3, float(pec_z[5]))))
+    sim.add(conductor, material="pec")
     # Off the PEC block, close enough for nonzero traces/gradients in 8 steps;
     # the source and probe straddle the two-device seam in this 17-cell grid.
     sim.add_source((.45 * nx * 1e-3, .7 * ny * 1e-3, .5 * dz.sum()),
@@ -103,8 +113,8 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
         mask = pec_mask_override if mask is None else mask | pec_mask_override
     realized = with_components(materials, grid, periodic=(False, False, False),
                                debye_spec=db_spec, lorentz_spec=lr_spec)
-    debye = None if db_spec is None else init_debye(db_spec[0], realized, grid.dt, mask=db_spec[1])
-    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], realized, grid.dt, mask=lr_spec[1])
+    debye = None if db_spec is None else init_debye(db_spec[0], realized, grid.dt, mask=db_spec[1], high_wall=unpadded_high_walls(grid))
+    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], realized, grid.dt, mask=lr_spec[1], high_wall=unpadded_high_walls(grid))
     sg = nu.build_sharded_nu_grid(grid, len(devices))
     mesh = Mesh(np.array(devices), ("x",))
     shd = NamedSharding(mesh, P("x"))
@@ -227,7 +237,7 @@ def _bit_case(case, checkpoint, warmup, transform):
                       MethodType(_legacy_forward, sim))
         # The oracle must consume its eagerly formed E coefficients; the
         # current runner otherwise rebuilds them from the shared means too.
-        patch.setattr(nu, "slab_dispersion_coeffs", lambda coeffs, *args, **kwargs: coeffs)
+        patch.setattr(slab_graded_legacy_loop, "slab_dispersion_coeffs", lambda coeffs, *args, **kwargs: coeffs)
         expected = evaluate()
     for i, (a, b) in enumerate(zip(actual, expected)):
         if case != "lossy":
@@ -253,7 +263,7 @@ def _completed_slabs(staged, materials, sg, dt, mesh):
     def complete(c, m):
         rank = jax.lax.axis_index("x")
         means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank,
-                                                  cell_sizes=slab_cell_sizes(sg, rank))
+                                                  cell_sizes=slab_cell_sizes(sg, rank), high_wall=(False, False, False))
         return common.slab_dispersion_coeffs(c, means, dt, sg.nx_per_rank, sg.nx, rank)
 
     return jax.jit(complete)(coeffs, materials), state
@@ -403,7 +413,7 @@ def _memory(mode, mutation="none", legacy=False):
         if mutation == "whole_init" and kind == "debye":
             # Reintroduce the old whole-domain initialization, process-locally.
             materials, db, _, _ = sim._assemble_materials_nu(grid)
-            retained.append(init_debye(db[0], materials, dt, mask=db[1]))
+            retained.append(init_debye(db[0], materials, dt, mask=db[1], high_wall=unpadded_high_walls(grid)))
         if mutation == "retain" and kind == "debye":
             retained.append(jnp.full(grid.shape, 2., dtype=jnp.float32))
         if mutation == "replicated" and kind == "debye":
@@ -492,8 +502,9 @@ def _zero_cc_pad(original):
 
 def _mutation_cc():
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(common, "_pad_slab_dispersion_coeffs",
-                      _zero_cc_pad(common._pad_slab_dispersion_coeffs))
+        mutant = _zero_cc_pad(slab_update._pad_slab_dispersion_coeffs)
+        for owner in (slab_update, common):
+            patch.setattr(owner, "_pad_slab_dispersion_coeffs", mutant)
         try:
             _per_shard()
         except AssertionError as error:

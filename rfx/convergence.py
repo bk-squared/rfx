@@ -17,23 +17,19 @@ Usage
 
 from __future__ import annotations
 
-from rfx._precision import resolve_field_dtype
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
+from rfx._internal._precision import resolve_field_dtype
 
 from dataclasses import dataclass
 from typing import Callable, Any
 
 import numpy as np
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for convergence visualization")
+from rfx._plotting import _pyplot
 
 
 # ---------------------------------------------------------------------------
@@ -41,8 +37,8 @@ def _require_mpl():
 # ---------------------------------------------------------------------------
 
 def richardson_extrapolation(
-    values,
-    dx_values,
+    values: ArrayLike,
+    dx_values: ArrayLike,
     expected_order: float = 2.0,
 ) -> tuple[float, float]:
     """Richardson extrapolation to estimate the grid-independent value.
@@ -198,7 +194,7 @@ class ConvergenceResult:
         -------
         matplotlib Figure
         """
-        _require_mpl()
+        plt = _pyplot()
         import matplotlib
         matplotlib.use("Agg")
 
@@ -273,7 +269,7 @@ class ConvergenceResult:
 
 def convergence_study(
     sim_factory: Callable,
-    dx_values,
+    dx_values: ArrayLike,
     metric_fn: Callable,
     *,
     n_steps: int | None = None,
@@ -453,7 +449,7 @@ def quick_convergence(
             freq_max=sim._freq_max,
             snap=sim._snap,
             domain=sim._domain,
-            # Issue #647 grep sweep: clone the normalized BoundarySpec, not
+            # grep sweep: clone the normalized BoundarySpec, not
             # the collapsed `_boundary` string. `_boundary` is
             # `spec.absorber_type or "pec"`, so every per-face detail — PEC /
             # PMC / periodic faces and per-face thickness — was dropped and
@@ -478,6 +474,7 @@ def quick_convergence(
         new_sim._ports = list(sim._ports)
         new_sim._probes = list(sim._probes)
         new_sim._thin_conductors = list(sim._thin_conductors)
+        new_sim._wall_losses = list(getattr(sim, "_wall_losses", ()))
         new_sim._ntff = sim._ntff
         new_sim._tfsf = sim._tfsf
         new_sim._dft_planes = list(sim._dft_planes)

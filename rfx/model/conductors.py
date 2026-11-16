@@ -4,16 +4,20 @@ The classifier and Yee edge rules remain in rasterize_grid and boundaries.pec.
 This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
-from rfx._grid_metric import field_index
+from rfx.errors import ConfigurationWarning, RfxRefusal
+
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field, replace
+
+from rfx._declarations import release_declaration_caches
 
 import numpy as np
 
-from rfx.preflight._common import PreflightReport
 from rfx.preflight.realization import _RealizedPEC
+from rfx.preflight._common import PreflightReport as PreflightReport
 from rfx.boundaries.pec import SheetSpec
-from rfx.model.design_admission import with_design_diagnostics
 
 
 
@@ -44,10 +48,63 @@ class ConductorWidthAxis:
     free_ends: object = None
 
 
+def f0_uses_solved_span(spec):
+    """Compare the assembled model's Rs = 1/G with 0.01 eta0."""
+    from rfx.core.yee import MU_0, EPS_0
+    return abs(1.0 / float(spec.g_sheet)) <= 1e-2 * np.sqrt(MU_0 / EPS_0)
+
+
+def f0_edge_note(spec):
+    if f0_uses_solved_span(spec):
+        return 'edge measured at σ 5.8e7 S/m; PEC-like regime up to 1e-2·η0 by rule, not measured between'
+    return 'edge not measured'
+
+
+def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
+    """Resistive f0 node span; no unmeasured physical edge offset.
+
+    Retain the operator's explicit end-row-weight perturbation for its width
+    control test. At the production weight 0.5 both ends stay on their nodes,
+    including graded cells and faces not coincident with a node row.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.materials.thin_conductor import END_ROW_WEIGHT
+    n = len(sizes)
+    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
+    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
+              else np.asarray(end_rows, dtype=bool))
+    i0, i1 = int(rows[0]), int(rows[-1])
+    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
+    if periodic:
+        occupied = np.zeros(n, dtype=bool)
+        occupied[rows % n] = True
+        if occupied.all():
+            return 0, n, float(nodes[0]), float(nodes[n])
+        # Where the one occupied run around the period begins: its rising edge,
+        # or node 0 when the run starts there without wrapping.
+        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
+        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
+            i0 = int(rising[0]) if rising.size else 0
+            i1 = i0 + int(occupied.sum()) - 1
+        free_lo = free_hi = True
+
+    def at(i):
+        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
+
+    lo, hi = at(i0), at(i1)
+    if free_lo and marked[i0 % n]:
+        lo -= (END_ROW_WEIGHT - 0.5) * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n])
+    if free_hi and marked[i1 % n]:
+        hi += (END_ROW_WEIGHT - 0.5) * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n])
+    return i0, i1, lo, hi
+
+
 def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
-                         f0_spec, bounds, sizes, nodes, interior):
-    """One record product: PEC solved spans, DC cells, or weighted f0 nodes."""
+                         f0_spec, bounds, sizes, nodes, interior, wire_edges=()):
+    """One record product: PEC-like solved spans, resistive f0 nodes or DC cells."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
+    if sheet is None and f0_spec is not None and f0_uses_solved_span(f0_spec):
+        sheet = f0_spec
     union, volume_edges = sheet_continuation_masks(interior, root.periodic, root.grid.shape)
     fed = (port_fed_nodes(sim, root)
            if sheet is not None and not hasattr(sheet, 'solved_spans') else None)
@@ -59,8 +116,13 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
         cell_range = None if kind in ('sheet', 'wire') or node_based else (i0, i1 + 1)
         lo = float(nodes[a][i0])
         hi = float(nodes[a][i1 if cell_range is None else i1 + 1])
+        if kind == 'wire' and np.any(wire_edges[a]):
+            # A component mask indexes edge starts. Include its end nodes,
+            # while retaining transverse nodes from the other components.
+            last_edge = int(np.where(wire_edges[a])[a].max())
+            hi = float(nodes[a][max(i1, last_edge + 1)])
         comparison = free_ends = None
-        if f0_spec is not None and a != int(f0_spec.normal_axis):
+        if sheet is None and f0_spec is not None and a != int(f0_spec.normal_axis):
             i0, i1, lo, hi = _f0_solved_bounds(
                 mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
                 int(getattr(root.grid, f"pad_{'xyz'[a]}_lo")),
@@ -72,6 +134,8 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
                         volume_edges=volume_edges, periodic=periodic, fed=fed, normal_axis=sheet.normal_axis))
             if span is not None:
                 lo, hi = span.lo, span.hi
+                if f0_spec is not None:
+                    i0, i1 = span.i0, span.i1
                 comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
                 free_ends = (span.free_lo, span.free_hi)
         result.append(ConductorWidthAxis(i0, i1, cell_range, lo, hi, comparison, free_ends))
@@ -141,6 +205,13 @@ class RealizedConductors(_RealizedPEC):
     stamped_entities: tuple = ()
     stamp_check_findings: tuple = ()
     design_findings: tuple = ()
+    realization_table: object = field(default=None, compare=False, repr=False)
+    _realization_tables: list = field(default_factory=list, compare=False, repr=False)
+    _prepared_owner: object = field(default=None, compare=False, repr=False)
+    _prepared_solve: object = field(default=None, compare=False, repr=False)
+    _realization_record: object = field(default=None, compare=False, repr=False)
+    refinements: tuple = ()
+    kernel_context: object = field(default=None, compare=False, repr=False)
 
     sheet_context = SheetConductors.sheet_context
     width_axes = conductor_width_axes
@@ -170,10 +241,10 @@ def coax_declared_conductors(sim, grid):
 
 
 def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root=None,
-                           skip_preflight=False):
+                           skip_preflight=False, sheet_findings=None):
     """Own the stamp and union AFTER the calculator's existing port operations.
 
-    No classification, sampling, material update or new acceptance gate occurs.
+    The completed stamp is judged before the calculator starts stepping.
     A concrete solve lends its last kernel product to realized_geometry(); a
     traced solve must not leave a tracer in the simulation's diagnostic cache.
     """
@@ -185,8 +256,7 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
     root = replace(root, materials=materials, pec_cells=cells, pec_edges=edges,
         stamped_entities=tuple(entities), provenance=root.provenance + (
             ConductorStage(tuple(e.entity_id for e in entities), 'coax stamp'),))
-    sim._coax_geometry = None
-    sim._realized_geometry_record = None
+    release_declaration_caches(sim)
     if not _traced_product(root):
         from rfx.model.coax import stamp_check_findings
         ctx = None
@@ -194,11 +264,33 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
             ctx = sim._campaign_ctx()
             if not skip_preflight:
                 root = replace(root, stamp_check_findings=stamp_check_findings(sim, root))
-        except Exception as exc:
+        except (TimeoutError,):
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded in stamp_check_findings
             root = replace(root, stamp_check_findings=root.stamp_check_findings + (
                 ('read-failed', (type(exc).__name__, str(exc))),))
         if ctx is not None:
             sim._coax_geometry = (ctx, root)
+    # A diagnostic stand-in can carry the recorded failure without a grid.
+    # There is no realization to summarize in that case.
+    if root.grid is None:
+        return root
+    from rfx.model.realization_table import bind_table, finish_table
+    from rfx.model.realization_verdict import admit_table
+    bind_table(sim, root, lane="coax")
+    from rfx.preflight._common import PreflightIssue
+    from rfx.preflight._realization_subjects import retained_subjects
+    # Without the stamp checks (skip_preflight) the table admission forms the
+    # sheet-size rows itself; skip_preflight never drops them.
+    previous = sheet_findings if sheet_findings is not None else None if skip_preflight else tuple(
+        PreflightIssue(message, code="sheet_effective_size",
+        **retained_subjects(message),
+        severity="warning" if sim._snap == "declared" else "error",
+        source="_validate_cfg_off_lattice_design_edges")
+        for name, messages in root.stamp_check_findings if name == "sheet-size"
+        for message in messages)
+    admit_table(sim, root, legacy_findings=previous)
+    finish_table(sim, root, lane="coax")
     return root
 
 
@@ -207,6 +299,8 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
                         geometry_masks=(), assembly_entries=(),
                         pad_fill_findings=(), periodic=None, mode="solve", n_devices=1):
     """Build from production collectors, assembling only when none were supplied."""
+    from rfx.model.point_placement import admit_simulation_points
+    admit_simulation_points(sim, grid)
     from rfx.boundaries.pec import realized_pec_edge_masks
     if mode not in ("solve", "audit"):
         raise ValueError(f"Unknown conductor assembly mode: {mode}")
@@ -313,7 +407,8 @@ def _port_release_description(conductors):
     return "; ".join(descriptions)
 
 
-def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, sim=None, sheet_operator=None):
+def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, sim=None, sheet_operator=None,
+                           occupancy_mesh=None):
     """Publish only for an occupancy input, then release and guard its box."""
     if occupancy is not None or design is not None:
         for i, config in enumerate(waveguide_configs):
@@ -323,16 +418,47 @@ def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, 
         if occupancy is not None or design is not None:
             conductors = publish_declarations(conductors, sim, design, sheet_operator, occupancy=occupancy)
         conductors = replace(conductors, design_findings=source_findings(sim, conductors, occupancy, design))
-    occupancy = release_port_occupancy(occupancy, conductors)
+    occupancy = release_port_occupancy(occupancy, conductors, mesh=occupancy_mesh)
     refuse_port_design_box(design, conductors)
     return conductors, occupancy
 
 
-def release_port_occupancy(occupancy, conductors):
+def _release_sharded_occupancy(occupancy, cells, mesh):
+    """Scatter only real-grid cells on their owners; communicate a warning bit.
+
+    Published incident cells are bounded by the conductors grid. Translating
+    those indices into each shard leaves alignment rows untouched, without
+    slicing an indivisible real-grid extent or gathering the global design.
+    """
+    import jax
+    import jax.numpy as jnp
+    from jax.sharding import PartitionSpec as P
+
+    def release(local):
+        x, y, z = (jnp.asarray(c) for c in cells.T)
+        x = x - jax.lax.axis_index('x') * local.shape[0]
+        owned = (x >= 0) & (x < local.shape[0])
+        indices = (jnp.where(owned, x, local.shape[0]), y, z)
+        occupied = jnp.any(local.at[indices].get(mode='fill', fill_value=0) != 0)
+        released = local.at[indices].set(0.0, mode='drop')
+        return released, jax.lax.pmax(occupied.astype(jnp.int32), 'x')
+
+    return jax.jit(jax.shard_map(release, mesh=mesh, in_specs=P('x'),
+        out_specs=(P('x'), P()), check_vma=False))(occupancy)
+
+
+def release_port_occupancy(occupancy, conductors, *, mesh=None):
     """Keep port edges free of design metal; warn once for this application."""
     if occupancy is None:
         return occupancy
-    if np.shape(occupancy) != conductors.grid.shape:
+    sharded = False
+    if mesh is not None:
+        from rfx.stepping.slab import Slab, is_sharded
+        layout = Slab(conductors.grid.shape[0], mesh.size, 0)
+        sharded = is_sharded(occupancy, layout, mesh)
+    expected = ((layout.nx_padded, *conductors.grid.shape[1:]) if sharded
+                else conductors.grid.shape)
+    if np.shape(occupancy) != expected:
         raise ValueError(f"Port occupancy shape {np.shape(occupancy)} differs from "
                          f"conductors grid shape {conductors.grid.shape}.")
     if not len(conductors.released_cells):
@@ -340,17 +466,23 @@ def release_port_occupancy(occupancy, conductors):
     import warnings
     from rfx.core.jax_utils import is_tracer
     indices = tuple(conductors.released_cells.T)
-    if is_tracer(occupancy) or np.any(np.asarray(occupancy)[indices] != 0):
+    if sharded:
+        released, occupied = _release_sharded_occupancy(occupancy, conductors.released_cells, mesh)
+    else:
+        occupied = True if is_tracer(occupancy) else np.any(np.asarray(occupancy)[indices] != 0)
+    if is_tracer(occupancy) or bool(occupied):
         ports = _port_release_description(conductors)
         warnings.warn("Port occupancy release: " + ports
                       + ". Each driven edge is kept free of design metal.",
-                      UserWarning, stacklevel=2)
+                      ConfigurationWarning, stacklevel=user_stacklevel())
+    if sharded:
+        return released
     import jax.numpy as jnp
     return jnp.asarray(occupancy).at[indices].set(0.0)
 
 
 def refuse_port_design_box(design, conductors):
-    """The occupancy box writes after release and must not overwrite it (#1183)."""
+    """The occupancy box writes after release and must not overwrite it."""
     if design is None or not len(conductors.released_cells):
         return
     from rfx.model.design_admission import cells_in_box
@@ -361,7 +493,7 @@ def refuse_port_design_box(design, conductors):
                         if any(c in hits for c in cells)})
         sample = sorted(hits)[:6]
         remainder = f" and {len(hits) - 6} more" if len(hits) > 6 else ""
-        raise ValueError(f"{', '.join(ports)}: the design occupancy box (cells {bounds}) "
+        raise RfxRefusal(f"{', '.join(ports)}: the design occupancy box (cells {bounds}) "
                          f"covers port-cleared cell(s) {sample}{remainder}. A port forces the "
                          "occupancy to zero around its driven edges before the run. "
                          "Move the box off the port, or use pec_occupancy_override.")
@@ -408,23 +540,25 @@ def _same_grid(a, b):
     return True
 
 
-def admit_adi_sources(sim, grid, pec_edges):
-    """Cover direct ADI material entries before their existing interior guard."""
-    from types import SimpleNamespace
-    from rfx.model.source_admission import refuse_dead_soft_sources
-    refuse_dead_soft_sources(sim, SimpleNamespace(
-        grid=grid, lane='uniform', pec_edges=pec_edges,
-        assembly_entries=(), sheets=()))
-    sim._validate_adi_interior_pec(pec_edges)
 
 
-def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1):
+def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1, realization_options=None, report_only=False,
+                     realization_not_evaluated=None):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
     from rfx.model.source_admission import refuse_dead_soft_sources
     with jax.ensure_compile_time_eval():
         root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve", n_devices=n_devices)
         refuse_dead_soft_sources(sim, root)
+    # The prepared owner survives transfer to slabs; the assembly view need not.
+    root = replace(root)
+    from rfx.model.realization_table import bind_table
+    bind_table(sim, root, lane=root.lane)
+    from rfx.model.realization_verdict import admit_table
+    object.__setattr__(root.realization_table, "report_only", report_only)
+    object.__setattr__(root.realization_table, "not_evaluated_reason", realization_not_evaluated)
+    if not report_only:
+        admit_table(sim, root, options=realization_options)
     if preflight is not None:
         sim._auto_preflight(conductors=root, **preflight)
     return root
@@ -437,35 +571,44 @@ class PreparedSolve:
     The empty handoff can stay in dispatch frames without pinning dense arrays
     while a distributed runner stages and drops its full-domain products.
     """
-    def __init__(self, sim):
+    def __init__(self, sim, realization_options=None, *, report_only=False):
         self.sim = sim
+        self.realization_options = realization_options
+        self.report_only = report_only
         self._product = None
         self._taken = False
         self.diagnostics = ()
+        self.measurement = None
 
-    def realized(self, *, n_devices=1):
+    def realized(self, *, n_devices=1, report_context=None):
         if self._taken:
             raise RuntimeError("Solve assembly was already consumed")
         if self._product is None:
+            if report_context is not None:
+                self._product = report_context.realized()
+                return self._product
             nonuniform = self.sim._uses_nonuniform_mesh
             grid = (self.sim._build_nonuniform_grid() if nonuniform
                     else self.sim._build_grid())
-            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform, n_devices=n_devices)
+            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform, n_devices=n_devices,
+                                             realization_options=self.realization_options, report_only=self.report_only)
         return self._product
 
     def take(self, *, n_devices=1):
         product = self.realized(n_devices=n_devices)
+        object.__setattr__(product, "_prepared_solve", self)
         self._product = None
         self._taken = True
         return product
 
 
-def prepare_solve(sim, *, distributed=False):
+def prepare_solve(sim, *, distributed=False, realization_options=None):
     """Keep solve ownership local to this execution, never in audit caches."""
+    from rfx.model.realization_reference import forget_kernel
+    forget_kernel(sim)
     if distributed:
-        sim._pf_campaign_ctx = None
-        sim._realized_geometry_record = None
-    return PreparedSolve(sim)
+        release_declaration_caches(sim)
+    return PreparedSolve(sim, realization_options)
 
 
 def assembled_materials(root, **collectors):
@@ -490,7 +633,8 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             and tuple(map(id, sheets)) == tuple(map(id, root.sheets))
             and tuple(map(id, wires)) == tuple(map(id, root.wires))
             and tuple(periodic) == root.periodic):
-        return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs))
+        return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs),
+                       _prepared_owner=root._prepared_owner or root)
     # Internal override/S-parameter entry points already have assembled products.
     import jax
     from rfx.model.source_admission import refuse_dead_soft_sources
@@ -502,31 +646,65 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             assembly_entries=() if root is None else root.assembly_entries)
         refuse_dead_soft_sources(sim, obj)
     return (replace(obj, assembly_from_sim=False) if root is None else
-            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim))
+            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim,
+                    _prepared_solve=root._prepared_solve,
+                    _realization_tables=root._realization_tables, realization_table=root.realization_table,
+                    _realization_record=root._realization_record, _prepared_owner=root._prepared_owner or root))
 
 
-def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
+def stepped_conductors(conductors, *, conformal_operands):
+    """Select hard edges for the actual operator, retaining sheets and releases."""
+    if conformal_operands is None:
+        return conductors
+    if not conductors.sheets and not conductors.wires:
+        return replace(conductors, pec_cells=None, pec_edges=None)
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    edges = realized_pec_edge_masks(None, sheets=conductors.sheets,
+        wires=conductors.wires, periodic=conductors.periodic)
+    if edges is not None and conductors.pec_edges is not None:
+        edges = tuple(edge & prior for edge, prior in zip(edges, conductors.pec_edges))
+    return replace(conductors, pec_cells=None, pec_edges=edges)
+
+
+def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True,
+              realization_options=None):
     """Record/replay the exact object passed to the stepping call."""
     if conductors.mode != "solve":
         raise ValueError("A runner cannot consume audit-mode conductors")
     if pec_edges is not conductors.pec_edges:
         raise ValueError("PEC edges changed outside a conductor stage")
+    owner = conductors._prepared_owner or conductors
     if sheet_operator is not conductors.sheet_operator:
         conductors = replace(conductors, sheet_operator=sheet_operator)
-    from rfx import _realized
+    from rfx._internal import _realized
     if _realized.ACTIVE is not None:
         edges = conductors.pec_edges
         if edges is not None:
             edges = _realized.ACTIVE.apply('conductors', 'pec_edges', edges)
             if edges is not conductors.pec_edges and conductors.sheet_operator is not None:
-                conductors = replace(conductors, sheet_operator=conductors.sheet_context(edges))
+                from rfx.model.wall_loss import build_wall_operator
+                conductors = replace(conductors, pec_edges=edges)
+                operator = build_wall_operator(sim, conductors, conductors.sheet_context(edges), lane=lane)
+                conductors = replace(conductors, sheet_operator=operator)
             conductors = replace(conductors, pec_edges=edges)
             _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
-    if _traced_product(conductors):
-        return conductors, None
-    from rfx.realized_geometry import record_from_conductors
-    record = (record_from_conductors(sim, conductors, lane=lane, compact=compact)
-              if lane.startswith('run_') else None)
+    from rfx.model.realization_table import finish_table
+    from dataclasses import fields
+    if owner is not conductors:
+        for item in fields(conductors):
+            if item.name != "_prepared_owner":
+                object.__setattr__(owner, item.name, getattr(conductors, item.name))
+        conductors = owner
+    record = finish_table(sim, conductors, lane=lane, realization_options=realization_options)
+    if record is not None and not _traced_product(conductors):
+        from rfx.model.realization_reference import remember_kernel
+        remember_kernel(sim, conductors, record)
+    if "distributed" in lane:
+        # Keep the full-domain conductor view stable while its prepared owner
+        # transfers operands to shards. This shares arrays, never reassembles.
+        return replace(conductors, _prepared_owner=conductors), record
+    from rfx.measurement.prepared import finish_measurement
+    finish_measurement(conductors)
     return conductors, record
 
 
@@ -634,7 +812,7 @@ def preview_port_stages(sim, conductors):
             if label not in done:
                 port = msl_port_from_entry(entry)
                 support = list(_msl_yz_cells(grid, port))
-                if conductors.lane == 'nonuniform' or getattr(entry, "mode", "laplace") != "uniform":
+                if getattr(entry, "mode", "laplace") != "uniform":
                     from rfx.sources.msl_port import compute_msl_mode_profile, msl_cross_section_span, msl_cell
                     span = msl_cross_section_span(grid, port)
                     centre = msl_cell(entry.direction, span["i_feed"], span["w_centre"],
@@ -702,61 +880,6 @@ def _traced_product(conductors):
     return any(is_tracer(leaf) for leaf in jax.tree.leaves(
         (conductors.materials, conductors.pec_edges, conductors.assembly)))
 
-def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
-                   conductors=None, prepare=False, distributed=False, tfsf_material_overrides=()):
-    """Emit a UserWarning if preflight finds issues (issue #66).
-
-    Called automatically at the start of ``forward()``, ``optimize()``,
-    and ``topology_optimize()`` so users discover physics violations
-    (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
-    spending minutes of GPU compute. Pass ``skip_preflight=True`` at
-    the call site to opt out (tests, already-validated configs).
-
-    ``check_ntff`` gates the NTFF check family. ``run()`` passes
-    ``check_ntff="advisory"`` (issue #303): the λ/4 near-field gap
-    and sub-wavelength ground-plane (issue #334) advisories are
-    physics-relevant to any far-field computation and
-    run() is the common NTFF entry point, so they are surfaced as
-    warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``
-    (the inverse-design entry points) hard-fail on the PEC-overlap
-    error. Previously run() skipped the family entirely and still
-    printed "All checks passed", which contradicted explicit
-    ``sim.preflight()`` output on the same configuration.
-
-    ``prepare=True`` also returns an execution-local solve handoff. With
-    skipped preflight it stays lazy until lane admission; otherwise checks
-    read its assembled product before the selected runner takes ownership.
-    """
-    assembly = prepare_solve(sim, distributed=distributed) if prepare else None
-    if skip:
-        return assembly if prepare else PreflightReport()
-    if assembly is not None:
-        conductors = assembly.realized()
-    # A validator bug must propagate, rather than become an advisory.
-    if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
-        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
-    else:
-        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                                     _conductors=conductors)
-    # gate -> this helper -> facade -> public entry -> user
-    sim._run_preflight_gate(issues, context=context, stacklevel=5)
-    if assembly is not None:
-        assembly.diagnostics = tuple(getattr(issues, "diagnostics", ()))
-    return assembly if prepare else issues
-
-
-def bind_solve_call(assembly, call):
-    """Consume a graded solve before ring-down adds internal probes."""
-    from functools import partial
-    root = assembly.take()
-    return partial(
-        call,
-        conductors=root,
-        diagnostics=assembly.diagnostics,
-    ), root.grid
-
-
 def uniform_solve_inputs(assembly):
     """Return the solve grid, material tuple and legacy sheet/wire collectors."""
     root = assembly.take()
@@ -764,16 +887,6 @@ def uniform_solve_inputs(assembly):
     materials = assembled_materials(root, pec_sheets=sheets, pec_wires=wires,
                                     sheet_specs=specs)
     return root, root.grid, materials, specs, sheets, wires
-
-
-def early_run_record(sim, root, lane):
-    """ADI/subgrid record timing remains at assembly, as before this move."""
-    if lane == "run_uniform":
-        return None
-    from rfx.realized_geometry import record_from_assembly
-    return record_from_assembly(sim, root.grid, root.materials, root.pec_cells,
-        root.sheets, root.wires, list(root.geometry_masks.items()),
-        list(root.assembly_entries), lane=lane, conductors=root)
 
 
 def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root,
@@ -810,16 +923,15 @@ def drawn_launch_eps(sim, grid, materials):
     return materials.eps_r
 
 
-def forward_kernel_inputs(sim, root, lane, edges, sheet_operator):
+def forward_kernel_inputs(sim, root, lane, edges, sheet_operator, *, realization_options=None):
     root, _ = at_kernel(sim, root, lane=lane, pec_edges=edges,
-                        sheet_operator=sheet_operator)
+                        sheet_operator=sheet_operator, realization_options=realization_options)
     return root, root.pec_edges, root.sheet_operator
 
 
 def distributed_solve_inputs(sim, grid, assembly, skip, gather, *, n_devices=1):
     """Consume the dispatch handoff without retaining it during slab staging."""
-    sim._pf_campaign_ctx = None
-    sim._realized_geometry_record = None
+    release_declaration_caches(sim)
     if assembly is None:
         root = solve_conductors(sim, grid, nonuniform=True, n_devices=n_devices)
         report = sim._auto_preflight(
@@ -862,7 +974,7 @@ def stage_distributed_edges(edges, grid, mesh, multiprocess, *, inputs=None):
         return None
     if multiprocess and any(isinstance(edge, jax.core.Tracer) for edge in edges):
         raise ValueError("a traced pec_mask_override is supported in one process only")
-    from rfx import _realized
+    from rfx._internal import _realized
     if inputs is not None and _realized.ACTIVE is None and grid.step_kind != 'legacy':
         from rfx.stepping.slab_setup import stage_pec
         cells, sheets, wires = inputs
@@ -896,53 +1008,6 @@ def forward_sheet_context(root, cells):
     return root.sheet_context(edges)
 
 
-def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
-    """In-plane node range and ends of an f0 sheet as the sheet operator solves them.
-
-    A tangential row at node ``i`` loads its dual cell, half of the cell on
-    each side, times the row's weight on the sheet conductance: 1, or
-    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn face. The solved
-    end is therefore ``weight * dual - inside half`` beyond the end node
-    (zero at weight 0.5 between equal cells). On a non-periodic axis an end
-    on the domain face has no outside cell and stays on its node. A periodic
-    axis has no wall: the occupied rows are read as one run around the
-    period (a strip ending on the seam ends at node N, one that starts there
-    starts at node 0), and a sheet spanning the whole period has no end.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.materials.thin_conductor import END_ROW_WEIGHT
-    n = len(sizes)
-    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
-    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
-              else np.asarray(end_rows, dtype=bool))
-    i0, i1 = int(rows[0]), int(rows[-1])
-    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
-    if periodic:
-        occupied = np.zeros(n, dtype=bool)
-        occupied[rows % n] = True
-        if occupied.all():
-            return 0, n, float(nodes[0]), float(nodes[n])
-        # Where the one occupied run around the period begins: its rising edge,
-        # or node 0 when the run starts there without wrapping.
-        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
-        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
-            i0 = int(rising[0]) if rising.size else 0
-            i1 = i0 + int(occupied.sum()) - 1
-        free_lo = free_hi = True
-
-    def at(i):
-        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
-
-    lo, hi = at(i0), at(i1)
-    if free_lo:
-        w = END_ROW_WEIGHT if marked[i0 % n] else 1.0
-        lo -= w * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n]) - 0.5 * float(sizes[i0 % n])
-    if free_hi:
-        w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
-        hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
-    return i0, i1, lo, hi
-
-
 _SHEET_LAYOUT_REPORTS = (
     "sheet span report", "sheet preflight advisories", "dead soft-source check",
     "line-stub admission", "sheet-in-dielectric warning",
@@ -969,7 +1034,7 @@ def prepare_sheet_layout(sim, layout, *, distributed):
     indices = {index for index, _, _ in addressed}
     fixed._pinned_sheets = [sheet for index, sheet in enumerate(sim._pinned_sheets)
                             if index not in indices]
-    fixed._pf_campaign_ctx = None
+    release_declaration_caches(fixed)
     return fixed, addressed
 
 
@@ -1006,7 +1071,7 @@ def refuse_layout_drives(edge_sets, sources, waveguide_ports):
         edges = {(axis, *cell) for cell in zip(*(v.ravel().tolist() for v in indices))}
         overlap = sorted(edges & driven)
         if overlap:
-            raise ValueError(f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+            raise RfxRefusal(f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
                              f"source or port drives addressed edge {overlap[0]}; "
                              "move the drive off the layout switch on the graded lane")
 
@@ -1061,24 +1126,30 @@ def refuse_layout_metal_consumers(layout, sim, grid):
     if not layout:
         return
     if getattr(sim, '_tfsf', None) is not None:
-        # The TF/SF invariance admission (#1816) judges the static metal only.
+        # The TF/SF invariance admission judges the static metal only.
         index, sheet, _ = layout[0]
-        raise ValueError(
+        raise RfxRefusal(
             f"pinned_sheet_layout sheet {index} ({sheet.name!r}): the TF/SF invariance "
             "admission reads the static metal, so it cannot judge a switched sheet, and an "
             "open plane wave on the graded mesh admits no finite scatterer, drawn or switched; "
             "excite the switched layout with a port, or draw each layout and run it on the "
             "uniform mesh (closed_box=True)")
-    from rfx._grid_metric import field_index
+    from rfx._internal._grid_metric import field_index
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
-    solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
-              for spec in sim._lumped_rlc if spec.topology == 'series' or spec.L > 0}
+    rlc_stages = {
+        (spec.component, tuple(field_index(grid, spec.position, spec.component))):
+        ("lumped RLC post-keep solve" if spec.topology == 'series' or spec.L > 0 else
+         f"lumped_rlc[{i}], which the switched sheet would short "
+         "(a layout keeps no element edge free),")
+        for i, spec in enumerate(sim._lumped_rlc)
+    }
     spans = [msl_cross_section_span(grid, msl_port_from_entry(port))
              for port in sim._msl_ports]
     for index, sheet, axis, indices in _layout_edges(layout, grid):
         for edge in zip(*(v.ravel().tolist() for v in indices)):
-            if (f"e{'xyz'[axis]}", edge) in solved:
-                _layout_stage_error(index, sheet, "lumped RLC post-keep solve", axis, edge)
+            stage = rlc_stages.get((f"e{'xyz'[axis]}", edge))
+            if stage is not None:
+                _layout_stage_error(index, sheet, stage, axis, edge)
             if getattr(sim, '_current_moments', None) is not None:
                 _layout_stage_error(index, sheet, "current-moment metal census", axis, edge)
             for span in spans:

@@ -3,6 +3,56 @@
 import jax.numpy as jnp
 
 
+def main_record_port_s(sim, result, *, compute_s_params, s_param_freqs, off_record):
+    """Use the uniform run entry's single-port main-record rule, or defer to a drive scan."""
+    import numpy as np
+    from rfx.sparams._record_selection import read_ids
+
+    # Match the source lists built by the uniform runner: zero-impedance
+    # declarations are soft sources, and extent distinguishes wire ports.
+    lumped_ports = [pe for pe in sim._ports if pe.is_port and pe.extent is None]
+    wire_ports = [pe for pe in sim._ports if pe.is_port and pe.extent is not None]
+    _single_lumped_main_record = (
+        compute_s_params
+        and len(sim._ports) == 1
+        and len(lumped_ports) == 1
+        and sim._ports[0].excite
+        and off_record is None
+        and bool(getattr(result, 'lumped_port_sparams', None))
+    )
+    _single_wire_fastpath = (
+        compute_s_params
+        and wire_ports
+        and not lumped_ports
+        and len(wire_ports) == 1
+        and bool(result.wire_port_sparams)
+    )
+    if _single_lumped_main_record or _single_wire_fastpath:
+        pairs = result.lumped_port_sparams if _single_lumped_main_record else result.wire_port_sparams
+        from rfx.core.jax_utils import is_tracer
+        if any(is_tracer(channel) for _, channels in pairs for channel in channels):
+            raise NotImplementedError(
+                "run() cannot assemble port S-parameters inside a user jax.jit; "
+                "use forward() with port_s11_freqs or call run() directly (plain call).")
+    if _single_lumped_main_record:
+        s_params = np.asarray(port_s_from_record(
+            [channels for _, channels in pairs], [meta for meta, _ in pairs],
+            wire_mode=False))
+        freqs = np.asarray(s_param_freqs if s_param_freqs is not None
+                           else pairs[0][0].freqs)
+    elif _single_wire_fastpath:
+        # The main record supplies the complete one-wire matrix. Multiple
+        # wire ports need the driver to measure the off-diagonal columns.
+        s_params = np.asarray(port_s_from_record(
+            [channels for _, channels in pairs], [meta for meta, _ in pairs],
+            wire_mode=True))
+        freqs = np.asarray(s_param_freqs if s_param_freqs is not None
+                           else pairs[0][0].freqs)
+    else:
+        return None
+    return s_params, freqs, read_ids(result.sparam_time_records)
+
+
 def port_s_from_record(channels, metas, *, wire_mode):
     """Return (receive, drive, frequency); unmeasured drive columns are NaN.
 
@@ -25,7 +75,7 @@ def port_s_from_record(channels, metas, *, wire_mode):
     genuinely_excited = [idx for idx, meta in enumerate(metas) if meta[7]]
     if len(genuinely_excited) > 1:
         raise NotImplementedError(
-            "Port S extraction requires at most one driven port per record (#1660).")
+            "Port S extraction requires at most one driven port per record.")
     if wire_mode and not graded and n_wp == 1 and genuinely_excited:
         # run()'s one-wire main-record path uses this unnormalized wave pair.
         return driven_port_reflection(

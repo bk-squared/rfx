@@ -35,7 +35,7 @@ def _solve_laplace_2d(
         from scipy.sparse import lil_matrix, csr_matrix
         from scipy.sparse.linalg import spsolve
         _have_sparse = True
-    except Exception:
+    except ImportError:
         _have_sparse = False
 
     n_y, n_z = eps_yz.shape

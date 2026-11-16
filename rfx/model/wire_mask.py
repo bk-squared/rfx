@@ -25,7 +25,7 @@ def polyline_tube_mask(points, radius, x, y, z):
         return jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
 
     if not any(is_tracer(c) for c in (x, y, z)):
-        # #802: concrete coordinates — host float64 per-segment loop
+        # concrete coordinates — host float64 per-segment loop
         # (same clip/dist2 algebra as the traced scan below), so
         # surface-touching cells do not depend on jax_enable_x64. The
         # loop keeps the scan's memory profile: one (Nx,Ny,Nz) array

@@ -18,8 +18,7 @@ Guide construction (fixture engineering, not contract constants):
   Re(Zs_eff)/Rs0 = 0.9975). If the sheets simply truncated at a CPML pad
   (thin conductors are applied AFTER pad extension, issue #642) the wave
   would see a 5 mm -> 6 mm guide-height step reflecting |Gamma| = 1/11 =
-  0.0909; a 1-D transfer-matrix comparator (run at design time; table in
-  docs/research_notes/) showed that ripple biases the 100 mm log-linear
+  0.0909; a 1-D transfer-matrix comparator (run at design time) showed that ripple biases the 100 mm log-linear
   fit by up to 15.5% worst-case over phase — the naive fixture would fail
   its own gates for reasons that are FIT contamination, not sheet physics.
   The guide is therefore terminated by an in-guide graded absorber:
@@ -57,7 +56,6 @@ The one-cell absorber boxes now use canonical integer-node bounds. The old
 decimal additions left sigma=0 at x=144 mm and displaced eight ramp values.
 A controlled repair on current main restores the old profiles and the
 0.72494 endpoint pin without changing the sheet operator or either gate.
-Evidence: docs/research_notes/2026-09-13_issue947_oracle_repair.md.
 
 Current record (2026-09-25): alpha_fit at 10 GHz is 0.74950 Np/m,
 the closed-form distance is 0.28945, and the guide sqrt-sigma ratio is
@@ -230,8 +228,7 @@ O3 MODEL RE-PAIR (#700, measured 2026-08-24, this fixture, JAX CPU
 
 Full per-bin dump, alpha(f) trace, verbatim preflight output, the
 mesh-refinement sweep with its per-window decay-rate table, and the
-sigma_bulk = 1e6 deep-screened evidence case: docs/research_notes/
-2026-08-19_leontovich_sheet_envelope.md (local-only). #700 scout report
+sigma_bulk = 1e6 deep-screened evidence case were recorded. #700 scout report
 (exact-spectrum solve, energy closure, blind-predicted g/dx/b sweeps):
 issue #700 verdict comment, 2026-08-24.
 """
@@ -452,16 +449,14 @@ def test_absorber_realizes_the_declared_ramp_without_gaps_or_overwrites():
     expected[start:start + ABSORBER_N,
              grid.pad_y_lo:grid.pad_y_lo + ny,
              grid.pad_z_lo:grid.pad_z_lo + nz] = values[:, None, None]
-    # The ramp ends on the unpadded high x (PEC), y (PMC) and z (PEC) walls.
-    # The high-wall node repair (#1966) gives each wall's node layer its inner
-    # neighbour, one axis after another, so the material keeps full weight on
-    # the wall edges (on the PMC face those edges carry field).
     i_x, i_y, i_z = start + ABSORBER_N, grid.pad_y_lo + ny, grid.pad_z_lo + nz
     assert sigma.shape == (i_x + 1, i_y + 1, i_z + 1), sigma.shape
-    expected[i_x] = expected[i_x - 1]
-    expected[:, i_y] = expected[:, i_y - 1]
-    expected[:, :, i_z] = expected[:, :, i_z - 1]
     np.testing.assert_array_equal(sigma, expected)
+    from rfx.core.yee import component_e_materials
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    _, sigma_edges = component_e_materials(materials, high_wall=unpadded_high_walls(grid))
+    for component in sigma_edges:
+        assert float(component[i_x, i_y, i_z]) == float(values[-1])
 
 
 def test_ez_prediction_recovers_tem_impedance_and_physical_phase_reference():
@@ -545,6 +540,11 @@ def test_the_guide_plates_realize_two_planes_spanning_the_cross_section():
         "the plates are f0 sheets and the graded absorber is dielectric; "
         "nothing here is a conductor VOLUME")
     assert len(specs) == 2, len(specs)
+
+    # PEC is one cell behind each plate: this guide has the case G defect.
+    findings = sim.preflight().by_code("f0_sheet_backed_gap")
+    assert len(findings) == 2
+    assert all("case G" in str(finding) for finding in findings)
 
     z_nodes = np.asarray(grid.z if hasattr(grid, "z") else None, dtype=float) \
         if getattr(grid, "z", None) is not None else None

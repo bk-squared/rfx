@@ -22,13 +22,15 @@ from __future__ import annotations
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
-import rfx.rcs as rcs_mod
+import rfx.measurement.rcs as rcs_mod
 from rfx.core.yee import MaterialArrays
-from rfx.farfield import compute_far_field as _real_compute_far_field
+from rfx.measurement.farfield import compute_far_field as _real_compute_far_field
 from rfx.grid import Grid, C0
 from rfx.simulation import ProbeSpec, run as _real_run
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 
 F0 = 6e9
 BW = 0.5
@@ -51,6 +53,16 @@ def _vacuum(grid):
 def _dft(x, dt):
     t = np.arange(len(x)) * dt
     return np.array([np.sum(x * np.exp(-2j * np.pi * f * t)) * dt for f in FREQS])
+
+
+def _charge_free_dg(t, tau, t0):
+    t = np.asarray(t, dtype=np.float64)
+    c, u = t0 / tau, t / tau
+    arg = (t - t0) / tau
+    bare = -2.0 * arg * np.exp(-arg**2)
+    onset = np.exp(-c**2 - u**2) * (
+        2 * c + (4 * c**2 - 2) * u - 4 * c * u**2 - 4 * c**2 * u**3)
+    return np.where(t >= 0, bare - onset, 0.0)
 
 
 def test_compute_rcs_divides_by_the_incident_at_the_domain_centre(monkeypatch):
@@ -119,14 +131,47 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
         launched = measure_normal_incident_spectrum(cfg, st, n_steps, FREQS, grid.dt)
 
         t = np.arange(n_steps) * dt
-        arg = (t - cfg.src_t0) / cfg.src_tau
-        waveform = cfg.src_amp * (-2.0 * arg) * np.exp(-arg ** 2)
+        # The TF/SF line launches GaussianPulse's charge-free DG (#1839).
+        waveform = cfg.src_amp * _charge_free_dg(t, cfg.src_tau, cfg.src_t0)
         s = C0 * dt / dx
         k_grid = 2.0 / dx * np.arcsin(np.sin(np.pi * FREQS * dt) / s)
         expected = 1.0 / (2.0 * s * np.cos(k_grid * dx / 2.0))
 
         ratio_db = 20.0 * np.log10(np.abs(launched) / np.abs(_dft(waveform, dt)))
+        for f, error_db in zip(FREQS, ratio_db - 20.0 * np.log10(expected)):
+            print(f"RCS {res_per_lambda} cells/lambda {f / 1e9:g} GHz: "
+                  f"closed-form error = {error_db:.12g} dB")
         assert np.all(np.abs(ratio_db - 20.0 * np.log10(expected)) <= TOL_DB), (
             res_per_lambda, np.round(ratio_db, 4), np.round(20 * np.log10(expected), 4))
         # and it is not the waveform: 1.0-1.16 dB below it at this Courant number
         assert np.all(ratio_db < -0.9), ratio_db
+
+
+@pytest.mark.parametrize("polarization", ["ez", "ey"])
+def test_small_angle_matches_normal_incidence(polarization):
+    """A small declared angle uses the normal source while retaining its backscatter direction."""
+    grid = Grid(freq_max=F0 * 1.5, domain=(DOMAIN,) * 3, dx=DX, cpml_layers=CPML)
+    cx, cy, cz = (n // 2 for n in grid.shape)
+    materials = MaterialArrays(
+        eps_r=jnp.ones(grid.shape, jnp.float32).at[
+            cx-3:cx+4, cy-3:cy+4, cz-3:cz+4].set(4.0),
+        sigma=jnp.zeros(grid.shape, jnp.float32),
+        mu_r=jnp.ones(grid.shape, jnp.float32),
+    )
+    expected = rcs_mod.compute_rcs(
+        grid, materials, N_STEPS, f0=F0, bandwidth=BW, freqs=FREQS,
+        cpml_layers=CPML, polarization=polarization, theta_inc=0.0,
+    )
+    actual = rcs_mod.compute_rcs(
+        grid, materials, N_STEPS, f0=F0, bandwidth=BW, freqs=FREQS,
+        cpml_layers=CPML, polarization=polarization, theta_inc=0.005,
+    )
+    for name in ("rcs_linear", "rcs_dbsm"):
+        reference = np.asarray(getattr(expected, name))
+        observed = np.asarray(getattr(actual, name))
+        assert observed.shape == reference.shape
+        assert observed.dtype == reference.dtype
+        assert observed.tobytes() == reference.tobytes(), name
+    np.testing.assert_allclose(
+        actual.monostatic_rcs, expected.monostatic_rcs, rtol=1e-6, atol=0.0,
+    )

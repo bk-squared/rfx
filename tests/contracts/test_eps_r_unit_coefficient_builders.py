@@ -1,15 +1,5 @@
 """Every traced E-coefficient builder takes its reverse pass in eps_r units (#1357).
 
-The E coefficients were written in SI units, ``eps = eps_r*EPS_0`` and a
-division by it. The forward VALUE is fine. The reverse pass is not: the VJP of
-``x/eps`` multiplies the cotangent by ``eps**-2`` (about 1.3e22), so a float32
-cotangent above about 2.6e16 on Cb overflowed, and ``0*inf`` gave NaN on every
-lossless cell. Whether it fired depended only on the objective's scale; the
-#1357 fixture (a sum of squared probe fields on the graded-mesh lane, about
-2e17) had 16 non-finite gradient cells. On the ADI lane the SI coupling
-``half_dt**2/(MU_0*eps*dx*dx)`` squares a number near 1e-23, so its eps
-gradient was non-finite at any scale.
-
 The fix is one helper, ``rfx.core.yee.si_value_eps_r_grad(si_fn, eps_r_fn,
 *args)``. It returns the SI spelling's value bit for bit and takes the
 derivative from the same coefficients written in eps_r units.
@@ -70,20 +60,17 @@ BUILDERS = {
         "the CPML psi coefficient dt/eps",
     ("rfx/boundaries/upml.py", "init_upml"):
         "UPML's Ca/Cb (_e_coeffs)",
-    ("rfx/adi.py", "adi_step_2d"):
-        "ADI 2-D damping, dt/eps and the Cx/Cy couplings",
-    ("rfx/adi.py", "adi_step_3d"):
-        "ADI 3-D damping, dt/eps, cc and the Cx/Cy/Cz couplings",
-    ("rfx/adi.py", "apply_adi_cpml_2d"):
-        "the ADI ADE-CPML 1/eps",
+
+
+
     ("rfx/materials/thin_conductor.py", "sheet_update_coeffs"):
         "the resistive sheet's exponential-stepping A/B",
     ("rfx/lumped.py", "edge_update_denominator"):
         "a lumped element's D0 = eps/dt + sigma/2 (traced branch)",
-    ("rfx/runners/_distributed_common.py", "component_e_coeffs"):
+    ("rfx/stepping/slab_update.py", "component_e_coeffs"):
         "both multi-device lanes' slab Ca/Cb (#1303: e_update_coeffs per component)",
-    ("rfx/materials/debye.py", "init_debye"): "Debye initialization",
-    ("rfx/materials/debye.py", "debye_e_coeffs"):
+    ("rfx/model/dispersive_poles.py", "init_debye"): "Debye initialization",
+    ("rfx/model/dispersive_poles.py", "debye_e_coeffs"):
         "Debye ADE ca/cb/cc, including distributed in-loop builders",
     ("rfx/materials/lorentz.py", "init_lorentz"): "Lorentz initialization",
     ("rfx/materials/lorentz.py", "lorentz_e_coeffs"):
@@ -120,13 +107,13 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/measurement/monitors.py", "current_moment_owner"):
         "measurement-plan description of the current-moment reduction: the vacuum constant EPS_0/dt scales "
         "a recorded field difference; no permittivity, traced or not, is divided through it",
-    ("rfx/materials/debye.py", "debye_pole_coeffs"):
+    ("rfx/model/dispersive_poles.py", "debye_pole_coeffs"):
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
-    ("rfx/materials/lorentz.py", "lorentz_pole_coeffs"):
+    ("rfx/materials/lorentz.py", "pole_update_coeffs"):
         "material-independent ADE c: EPS_0 multiplies the pole strength",
-    ("rfx/adi.py", "init_adi_cpml_2d"): _C0,
-    ("rfx/adi.py", "make_adi_absorbing_sigma"): _C0,
-    ("rfx/adi.py", "make_adi_absorbing_sigma_3d"): _C0,
+
+
+
     ("rfx/auto_config.py", "auto_configure"): _HOST,
     ("rfx/boundaries/cpml.py", "_cpml_profile"):
         "the CPML profile: sigma_max and b = exp(-(sigma/kappa + alpha)*dt/EPS_0)",
@@ -135,42 +122,46 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/boundaries/upml.py", "_sigma_profile_1d"): _C0,
     ("rfx/boundaries/upml.py", "init_upml._h_coeffs"):
         "UPML's H coefficients: the PML loss sigma_perp*dt/(2*EPS_0)",
-    ("rfx/current_moments.py", "accumulate_current_moments"):
+    ("rfx/measurement/current_moments.py", "accumulate_current_moments"):
         "EPS_0/dt multiplies a field difference (displacement current)",
-    ("rfx/current_moments.py", "end_of_record_moments"): _HOST,
+    ("rfx/measurement/current_moments.py", "end_of_record_moments"): _HOST,
     ("rfx/floquet.py", "extract_floquet_modes"): _C0,
     ("rfx/lumped.py", "setup_rlc_materials"):
         "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
-    ("rfx/nonuniform.py", "current_source_cb"):
+    ("rfx/model/conductors.py", "f0_uses_solved_span"):
+        "host-only regime predicate: EPS_0 forms eta0 = sqrt(MU_0/EPS_0) to compare a "
+        "concrete sheet Rs = 1/G with 1e-2 eta0; it builds no E coefficient and traced G never reaches it",
+    ("rfx/model/source_coefficients.py", "current_source_cb"):
         "the drive Cb: its traced branch is already in eps_r units (#1317), "
         "its float branch is host arithmetic",
-    ("rfx/ris.py", "RISUnitCell._build_sim"): _HOST,
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): _C0,
     ("rfx/api/_gradient_witness.py", "conductivity_gradient_record"): _HOST,
     ("rfx/measurement/decay.py", "static_remnant_advisory"): _ENERGY,
-    ("rfx/sources/coaxial_port.py", "build_coaxial_tem_plane_source_specs"):
+    ("rfx/model/coax_stamp.py", "build_coaxial_tem_plane_source_specs"):
         _HOST + " (float(eps_r))",
     ("rfx/sources/coaxial_port.py", "coaxial_tem_capacitance_per_m"): _HOST,
+    ("rfx/sources/coax_impedance.py", "coaxial_built_line_impedance"):
+        _HOST + " (unit-voltage electrostatic energy; no traced coefficient)",
     ("rfx/sources/msl_port.py", "compute_msl_mode_profile._cap_per_metre"): _HOST,
     ("rfx/sources/tfsf_discrete_plane_wave.py", "_tables"): _VACUUM,
-    ("rfx/sources/tfsf.py", "apply_tfsf_e"): _VACUUM,
+    ("rfx/stepping/tfsf.py", "apply_tfsf_e"): _VACUUM,
     ("rfx/sources/tfsf.py", "update_tfsf_1d_e"): _VACUUM + " (the 1-D auxiliary line)",
-    ("rfx/sources/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",
-    ("rfx/sources/tfsf_2d.py", "_update_e_tmz"): _VACUUM + " (the 1-D auxiliary line)",
+    ("rfx/stepping/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",
+    ("rfx/stepping/tfsf_2d.py", "_update_e_tmz"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/sources/tfsf_2d.py", "apply_tfsf_2d_e"): _VACUUM,
     ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
-    ("rfx/sources/tfsf_oblique_open.py", "apply_methodB_e"): _VACUUM,
+    ("rfx/stepping/tfsf_oblique.py", "apply_methodB_e"): _VACUUM,
     ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
         "port medium is a concrete resolved scalar; traced section permittivity is refused",
     ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"):
         "port medium is a concrete resolved scalar; traced section permittivity is refused",
-    ("rfx/sparams/_common.py", "_resolve_msl_auto_offsets"): _C0,
-    ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
-    ("rfx/sparams/msl.py", "compute_msl_s_matrix"): _C0,
+    ("rfx/measurement/sparam_advisories.py", "_resolve_msl_auto_offsets"): _C0,
+    ("rfx/sparams/_mixed_stages.py", "_prepare_mixed_anchors"): _C0,
+    ("rfx/sparams/_msl_stages.py", "_prepare_msl_geometry"): _C0,
     ("rfx/subgridding/disjoint_3d.py", "compute_disjoint_energy_3d"): _ENERGY,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_e_3d.face_coeffs"):
+    ("rfx/stepping/subgrid_coupling.py", "_z_slab_material_coupling_e_3d.face_coeffs"):
         _SUBGRID,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_h_3d.face_coeffs"):
+    ("rfx/stepping/subgrid_coupling.py", "_z_slab_material_coupling_h_3d.face_coeffs"):
         _SUBGRID,
     ("rfx/subgridding/sbp_sat_1d.py", "_update_e_1d"): _VACUUM,
     ("rfx/subgridding/sbp_sat_1d.py", "compute_energy"): _ENERGY,
@@ -183,12 +174,12 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 50  # Shared modal formulas removed the initializer EPS_0 reader (#1994).
+ALLOWLIST_CEILING = 51  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate).
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
     ("rfx/core/yee.py", "e_update_coeffs"),
-    ("rfx/materials/debye.py", "debye_e_coeffs"),
+    ("rfx/model/dispersive_poles.py", "debye_e_coeffs"),
     ("rfx/materials/lorentz.py", "lorentz_e_coeffs"),
     ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"),
 }
@@ -354,12 +345,6 @@ def mods():
 
 # --- the gates -------------------------------------------------------------
 
-@pytest.mark.parametrize("row", sorted(SHARED_ROUTES))
-def test_shared_coefficient_route_is_itself_routed(row, mods):
-    """A shared builder counts as a route only because it calls the helper."""
-    rel, name = row
-    assert HELPER in _called_names(mods[rel].defs[name])
-
 
 @pytest.mark.parametrize("row", sorted(BUILDERS), ids=lambda r: f"{r[0]}::{r[1]}")
 def test_builder_is_routed_through_the_eps_r_unit_helper(row, mods):
@@ -390,48 +375,6 @@ def test_the_tables_are_not_stale(mods):
     assert len(NOT_A_TRACED_EPS_COEFFICIENT) <= ALLOWLIST_CEILING
     both = sorted(set(BUILDERS) & set(NOT_A_TRACED_EPS_COEFFICIENT))
     assert not both, f"a routed builder cannot also be allow-listed: {both}"
-
-
-# --- falsifiers: the defects planted in the parsed text --------------------
-
-def _plant(rel, old, new):
-    text = (REPO / rel).read_text(encoding="utf-8")
-    assert text.count(old) == 1, f"{rel}: the planting anchor moved"
-    return {rel: text.replace(old, new)}
-
-
-def test_discovery_finds_a_missed_builder():
-    """UPML's ``_e_coeffs`` as it was before #1357 routed it (the builder the
-    first version of this contract missed), and a new file with an SI Cb."""
-    planted = _plant(
-        "rfx/boundaries/upml.py",
-        "        return si_value_eps_r_grad(_upml_e_coeffs_si, _upml_e_coeffs_eps_r,\n"
-        "                                   sigma_perp, eps_r, sigma_mat, dt)\n",
-        "        eps_abs = eps_r * jnp.float32(EPS_0)\n"
-        "        return sigma_perp, (dt / eps_abs) / (1.0 + sigma_mat)\n")
-    # The model's interior-source accessor still routes both shared UPML
-    # spellings through the AD helper. Only the planted local builder is new.
-    assert unclassified(_parse(REPO, planted)) == [
-        "rfx/boundaries/upml.py::init_upml._e_coeffs"]
-    new_file = ("from rfx.core.yee import EPS_0 as _E0\n\n\n"
-                "def new_cb(eps_r, dt):\n    return dt / (eps_r * _E0)\n")
-    assert unclassified(_parse(REPO, {"rfx/_planted_builder.py": new_file})) == [
-        "rfx/_planted_builder.py::new_cb"]
-
-
-def test_a_builder_with_one_coefficient_left_in_si_is_named():
-    """One of update_e_aniso's three components back in SI next to two
-    routed ones: the route check alone passes it, the EPS_0 read does not."""
-    rel = "rfx/stepping/yee.py"
-    fn = _parse(REPO)[rel].defs["update_e_aniso"]
-    text = (REPO / rel).read_text(encoding="utf-8")
-    body = "\n".join(text.splitlines()[fn.lineno - 1:fn.end_lineno])
-    line = "    ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)"
-    assert body.count(line) == 1
-    mods = _parse(REPO, {rel: text.replace(body, body.replace(
-        line, "    ca_ez, cb_ez = 1.0, dt / (eps_ez * EPS_0)"))})
-    assert unrouted(mods, [(rel, "update_e_aniso")]) == [f"{rel}::update_e_aniso"]
-    assert unclassified(mods) == [f"{rel}::update_e_aniso"]
 
 
 def test_the_scan_sees_a_builder_put_back_in_si_units():

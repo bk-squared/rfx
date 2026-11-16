@@ -8,7 +8,11 @@ import inspect
 import re
 import warnings
 
+import pytest
+
 from rfx import Simulation
+
+pytestmark = pytest.mark.docs_consistency
 
 
 

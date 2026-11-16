@@ -13,7 +13,7 @@
         "/opt/conda/bin/python",
         "scripts/harnesses/v173a_physics_equivalence.py",
         "--output",
-        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100/capture.json",
+        "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100/capture.json",
         "--run-name",
         "issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100-capture"
       ],
@@ -37,7 +37,7 @@
         "-rA",
         "--timeout=7200",
         "--timeout-method=thread",
-        "--junitxml=/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100/junit.xml",
+        "--junitxml=<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-v173a-20260909T014947Z-b36fc46cdf21-100/junit.xml",
         "tests/unit/misc/test_v173a_physics_equivalence_slow.py"
       ],
       "status": "complete",

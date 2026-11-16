@@ -127,8 +127,8 @@ def judge_metadata(plan, actual):
                 state = SimpleNamespace(step=jnp.int32(4))
                 # Distinct nonzero values reveal the actual write index, independent of the plan.
                 from unittest.mock import patch
-                with patch('rfx.sources.waveguide_port.modal_voltage', return_value=jnp.float32(2)), \
-                     patch('rfx.sources.waveguide_port.modal_current', return_value=jnp.float32(3)):
+                with patch('rfx.measurement.waveguide_modal.modal_voltage', return_value=jnp.float32(2)), \
+                     patch('rfx.measurement.waveguide_modal.modal_current', return_value=jnp.float32(3)):
                     recorded = update_waveguide_port_probe(cfg, state, 1., 1.)
                 indices = np.flatnonzero(recorded.v_probe_t)
                 assert len(indices) == 1

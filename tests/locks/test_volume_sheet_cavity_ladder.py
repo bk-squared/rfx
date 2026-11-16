@@ -73,10 +73,6 @@ LOCK_PROVENANCE = {
     "pinned_until": "2027-03-07",
 }
 
-import os
-
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
-
 import numpy as np
 import pytest
 

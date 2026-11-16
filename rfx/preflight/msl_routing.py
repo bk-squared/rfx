@@ -43,11 +43,6 @@ def _validate_msl_sparameter_request_for_preflight(self) -> None:
             "compute_msl_s_matrix() is not supported with SBP-SAT "
             "subgridding."
         )
-    if self._solver == "adi":
-        raise NotImplementedError(
-            "compute_msl_s_matrix() is not supported with solver='adi'; "
-            "use the uniform Yee solver."
-        )
 
 
 _validate_msl_sparameter_request_for_preflight.__qualname__ = (

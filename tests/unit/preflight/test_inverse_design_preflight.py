@@ -21,6 +21,27 @@ from rfx.geometry.csg import Box
 C = 2.998e8
 
 
+def test_ntff_public_preflight_traced_frequency_list_uses_declared_maximum():
+    import jax
+    import jax.numpy as jnp
+    from rfx.sources.sources import GaussianPulse
+
+    messages = []
+
+    def check(f):
+        sim = Simulation(freq_max=10e9, domain=(0.04,) * 3, dx=0.002, boundary="cpml")
+        sim.add_source((0.02,) * 3, "ez", waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+                       amplitude_kind="field")
+        sim.add_ntff_box((0.008,) * 3, (0.032,) * 3, freqs=[f, 0.5 * f])
+        report = sim.preflight(strict=False, check_ntff=True)
+        messages.extend(str(issue) for issue in report if "NTFF face x_lo" in str(issue))
+        return f
+
+    jax.make_jaxpr(check)(jnp.float32(5e9))
+    assert len(messages) == 1
+    assert "f_max=10.00GHz" in messages[0]
+
+
 def _sane_sim(freq_max=5e9, domain=(0.04, 0.04, 0.04)):
     sim = Simulation(freq_max=freq_max, domain=domain, boundary="cpml",
                      cpml_layers=8, dx=C / freq_max / 20.0)
@@ -56,7 +77,8 @@ def test_ntff_pec_overlap_rejects():
     """NTFF face crossing a PEC bbox must raise an error."""
     sim = _sane_sim()
     # PEC waveguide-like wall spanning z = 10..40 mm, large xy extent
-    sim.add(Box((0.005, 0.005, 0.010), (0.035, 0.035, 0.040)),
+    cell = C / 5e9 / 20.0
+    sim.add(Box((2 * cell, 2 * cell, 3 * cell), (12 * cell, 12 * cell, 14 * cell)),
                      material="pec")
     # NTFF z_lo=24mm sits strictly inside the PEC z-range (10..40mm)
     sim.add_ntff_box(
@@ -193,10 +215,13 @@ def test_waveguide_resolution_warns():
 # Issue #303: run() advisory tier + honest summary + probe exclusion
 # ---------------------------------------------------------------------------
 
-def _pec_overlap_sim():
+def _pec_overlap_sim(*, aligned=False):
     """The test_ntff_pec_overlap_rejects config, reused for tier tests."""
     sim = _sane_sim()
-    sim.add(Box((0.005, 0.005, 0.010), (0.035, 0.035, 0.040)),
+    cell = C / 5e9 / 20.0
+    lo, hi = (((2 * cell, 2 * cell, 3 * cell), (12 * cell, 12 * cell, 14 * cell))
+              if aligned else ((0.005, 0.005, 0.010), (0.035, 0.035, 0.040)))
+    sim.add(Box(lo, hi),
                      material="pec")
     sim.add_ntff_box(
         corner_lo=(0.010, 0.010, 0.024),
@@ -215,7 +240,7 @@ def test_advisory_tier_keeps_gap_warning_drops_pec_error():
     preflight) gate.
     """
     # PEC-overlap config: full tier errors, advisory tier must not.
-    issues_adv = _pec_overlap_sim().preflight(check_ntff="advisory")
+    issues_adv = _pec_overlap_sim(aligned=True).preflight(check_ntff="advisory")
     assert not any("PEC" in s and "NTFF face" in s for s in issues_adv), (
         "advisory tier must not run the PEC-overlap error check: "
         + "\n".join(issues_adv))
@@ -264,7 +289,7 @@ def test_run_auto_preflight_surfaces_ntff_advisories():
 
 def test_run_does_not_hard_fail_on_ntff_pec_overlap():
     """The PEC-overlap ERROR stays off run()'s tier (historical contract)."""
-    sim = _pec_overlap_sim()
+    sim = _pec_overlap_sim(aligned=True)
     # Must not raise PreflightConfigError/ValueError from preflight; other
     # advisories (if any) surface as UserWarning, which we tolerate here.
     with warnings.catch_warnings():

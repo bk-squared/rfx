@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from rfx._uniform_specs import (
+from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
+
+from typing import TYPE_CHECKING
+from rfx._host_limits import check_map_count
+
+if TYPE_CHECKING:
+    from numpy.typing import DTypeLike
+
+from rfx._internal._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
     ProbeSpec,
@@ -16,21 +24,25 @@ from rfx._uniform_specs import (
 from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import replace
 from typing import Callable, NamedTuple
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
+from rfx.measurement.plane_records import init_plane_records
+
 import jax
 import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout
+from rfx.measurement.decay import make_field_decay_stop, refuse_radiated_flux_stop, warn_unused_decay_monitor
 from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
 from rfx.model import with_edge_keep
 import numpy as np
-from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
+from rfx.boundaries.axes import drop_periodic_axes, padded_axes, resolve_cpml_axes
 from rfx.grid import Grid
 from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary
 from rfx.stepping.yee import update_e, update_e_aniso, update_e_aniso_inv
 from rfx.boundaries.pec import resolve_wall_faces, kottke_fenced_edge_masks, realized_pec_edge_masks
-from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, scan_with_progress, validate_report_every
+from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
+from rfx.stepping.progress_scan import scan_with_progress
 from rfx.snapshots import plan_snapshot_pieces, snapshot_axes, snapshot_extractor, validate_snapshot_spec
 from rfx.model import design_box_bounds, resolve_design_box
 
@@ -68,6 +80,7 @@ def run(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
+    subpixel_smoothing: object = False,
     pec_mask: object | None = None,
     pec_sheets: object = (),
     pec_wires: object = (),
@@ -79,7 +92,7 @@ def run(
     wire_refplane_sparams: list | None = None,
     lumped_rlc: list | None = None,
     kerr_chi3: jnp.ndarray | None = None,
-    field_dtype=None,
+    field_dtype: DTypeLike | None = None,
     return_state: bool = True,
     mag_sources: list | None = None,
     stencil_order: int = 2,
@@ -90,8 +103,9 @@ def run(
     design_occupancy: DesignOccupancySpec | None = None,
     stop_fn: Callable | None = None,
     stop_interval: int = 250,
-    record_dft: bool = False,
+    record_dft: bool | tuple[bool, ...] = False,
     port_record_specs: tuple | None = None,
+    measurement: object | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -109,6 +123,9 @@ def run(
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
         all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     periodic : (bool, bool, bool) or None
         Per-axis periodic boundary flags. If None, defaults to
         ``(False, False, False)`` in 3D and ``(False, False, True)``
@@ -200,7 +217,7 @@ def run(
         Bloch path, a box reaching into the CPML absorber, and a box holding
         a source, magnetic source, lumped/wire S-param port or RLC cell or a
         surface-impedance sheet edge. It does NOT carry the checks that need
-        the API object: the lane (non-uniform, distributed, ADI), the
+        the API object: the lane (non-uniform, distributed), the
         collision with ``eps_override`` / ``sigma_override`` /
         ``mu_r_override``, ``pec_occupancy_override``, a PASSIVE port (it
         leaves neither a source nor an accumulator here), and the promotion
@@ -246,6 +263,7 @@ def run(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     wire_refplane_sparams = wire_refplane_sparams or []
@@ -257,6 +275,7 @@ def run(
 
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
+        measurement=measurement,
         grid=grid,
         materials=materials,
         boundary=boundary,
@@ -276,6 +295,7 @@ def run(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        subpixel_smoothing=subpixel_smoothing,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -295,10 +315,7 @@ def run(
         design_occupancy=design_occupancy,
     )
     carry_init = _setup.carry_init
-    if record_dft and dft_planes:
-        carry_init["dft_time_records"] = tuple(
-            jnp.zeros((n_steps,) + plane.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
-            for plane in dft_planes)
+    init_plane_records(carry_init, dft_planes, record_dft, n_steps)
     init_uniform_records(carry_init, n_steps, wire_port_sparams, lumped_port_sparams, wire_refplane_sparams, field_dtype, port_record_specs)
     dt = _setup.dt
     periodic = _setup.periodic
@@ -315,13 +332,13 @@ def run(
     use_waveguide_ports = len(waveguide_ports) > 0
 
     # The GPU H+E fast lane measured slower for closed boxes; use the
-    # standard lane (rfx-archive rfx/records/20261026-fast-lane-sweep/).
+    # standard lane.
     _ctx = _setup.ctx_kwargs
     use_fast_he = False
     _fast_coeffs = None
 
     # ---- run()-specific: snapshot setup ----
-    # #1258: ``interval`` is honoured. interval == 1 keeps the pre-#1258 path
+    # ``interval`` is honoured. interval == 1 returns a frame every step
     # (the frame is an extra per-step output of the step body). interval > 1
     # records from the carry after each block of ``interval`` steps, so the
     # step body is the SAME one a run without a snapshot compiles and memory
@@ -370,7 +387,9 @@ def run(
         mon_idx=None,
         snapshot_extractor=_take_snapshot if snap_in_body else None,
     )
-    _core_step = make_core_step(_step_ctx)
+    # An attached plan supplies the probe and port tables (direct callers keep theirs).
+    _core_step = (make_core_step(_step_ctx) if measurement is None else make_core_step(
+        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype))
 
     def step_fn(carry, xs):
         _step_idx, src_vals, mag_src_vals = xs
@@ -385,7 +404,7 @@ def run(
     def _make_recorder(body):
         """``record(carry, xs_seg, lo)``: scan ``xs_seg`` (global steps
         ``lo, lo+1, ...``) with ``body`` and take a frame after every step
-        whose completed-step count is a multiple of ``snap_interval`` (#1258).
+        whose completed-step count is a multiple of ``snap_interval``.
 
         The steps run as the pieces :func:`rfx.snapshots.plan_snapshot_pieces`
         lays out, in step order:
@@ -477,13 +496,13 @@ def run(
         raise NotImplementedError(
             "run(stop_fn=...) ends the record at a step chosen during the run; "
             "a snapshot's frame axes and checkpoint_segments' segment lengths "
-            "are fixed from n_steps before it (issue #1254).")
+            "are fixed from n_steps before it.")
 
     if gradient == "adjoint":
         if snapshot is not None or stop_fn is not None or report_every is not None:
             raise NotImplementedError(
                 "gradient='adjoint' does not support snapshots, stopping or progress")
-        from rfx.adjoint import design_adjoint_scan
+        from rfx.stepping.adjoint_scan import design_adjoint_scan
         final_carry, outputs = design_adjoint_scan(_step_ctx, carry_init, xs)
     elif checkpoint_segments is None:
         # Legacy path: optional per-step rematerialisation only. The scan
@@ -491,11 +510,11 @@ def run(
         # linearly with n_steps.
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
         if stop_fn is not None:
-            # Issue #1254: the same scan in chunks, the carry threaded
+            # the same scan in chunks, the carry threaded
             # through, and the caller's stop check after each chunk.
             from types import SimpleNamespace
 
-            from rfx.progress import concat_chunks
+            from rfx.stepping.progress import concat_chunks
 
             def _after_chunk(done, carry, chunk_outputs):
                 def peek():
@@ -523,12 +542,10 @@ def run(
         elif report_every is None:
             final_carry, outputs = recorded_scan(body, carry_init, xs)
         else:
-            # Issue #667: same scan, driven from the host in chunks so a
+            # same scan, driven from the host in chunks so a
             # multi-hour solve emits progress. The carry threads through
             # untouched (DFT accumulators, port/flux/monitor state, NTFF
             # compensation), so this is a continuation and not a re-solve.
-            # The ``report_every is None`` branch above is byte-identical to
-            # the pre-#667 code by construction.
             final_carry, outputs = scan_with_progress(
                 body, carry_init, xs,
                 n_steps=n_steps,
@@ -542,7 +559,7 @@ def run(
                 trace_probes=(_step_ctx.materials,
                               pec_mask, pec_edge_masks, pec_occupancy,
                               kerr_chi3, debye, lorentz, tfsf),
-                # #1258: a chunk that does not start on a multiple of the
+                # a chunk that does not start on a multiple of the
                 # snapshot interval still records at the global multiples.
                 chunk_scan=_make_recorder(body) if snap_by_block else None,
             )
@@ -558,7 +575,7 @@ def run(
                 "monitored forward solve, or drop report_every for the "
                 "memory-limited gradient solve."
             )
-        # Segmented checkpointing (issue #73): split the n_steps scan into
+        # Segmented checkpointing: split the n_steps scan into
         # K segments of size s and rematerialise each segment as a unit.
         # Forward keeps only K segment-boundary carries (instead of all
         # n_steps), so peak memory drops from O(n_steps · |carry|) to
@@ -633,7 +650,7 @@ def run(
                 raise RuntimeError(
                     f"snapshot {comp!r} recorded {n_frames} frames, expected "
                     f"{len(snap_axes[comp].steps)} for n_steps={n_steps}, "
-                    f"interval={snap_interval} (#1258)")
+                    f"interval={snap_interval}")
     else:
         time_series = outputs[0]
         snapshots = None
@@ -702,7 +719,7 @@ def run(
         lumped_port_sparams=final_lumped_sparams,
         sparam_time_records=uniform_records(final_carry, _step_ctx, int(final_carry["fdtd"].step) if stop_fn is not None else None),
         dft_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
-                                for r in final_carry.get("dft_time_records", ())),
+                                for r in final_carry.get("dft_time_records", ()) if r is not None),
         snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,
@@ -749,6 +766,7 @@ def run_until_decay(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
+    subpixel_smoothing: object = False,
     pec_mask: object | None = None,
     pec_sheets: object = (),
     pec_wires: object = (),
@@ -759,7 +777,7 @@ def run_until_decay(
     lumped_port_sparams: list | None = None,
     lumped_rlc: list | None = None,
     kerr_chi3: jnp.ndarray | None = None,
-    field_dtype=None,
+    field_dtype: DTypeLike | None = None,
     return_state: bool = True,
     mag_sources: list | None = None,
     checkpoint_segments: int | None = None,
@@ -767,9 +785,10 @@ def run_until_decay(
     report_every: int | None = None,
     report_label: str = "",
     sheet_impedance: object | None = None,
-    record_dft: bool = False,
+    record_dft: bool | tuple[bool, ...] = False,
     port_record_specs: tuple | None = None,
     advisory: dict | None = None,
+    measurement: object | None = None,
 ) -> SimResult:
     """Run until the field energy left after the drive has decayed.
 
@@ -781,7 +800,7 @@ def run_until_decay(
     Parameters
     ----------
     decay_by : float
-        Absorbing boundaries: stop once the conserved interior energy is below
+        Stop once the conserved interior energy is below
         ``decay_by`` times its reference (``rfx.measurement.decay``).
     n_end : int or None
         Step at which every drive has ended (None: still on at ``max_steps``,
@@ -796,9 +815,9 @@ def run_until_decay(
     max_steps : int
         Hard upper limit on steps.
     decay_energy_consecutive : int
-        Absorbing boundaries: consecutive sub-threshold checks before the
+        Consecutive sub-threshold checks before the
         energy stop. Values below 2 are refused (a single check stops on a
-        transient dip). No effect on closed/PEC boundaries.
+        transient dip). Applies to closed and absorbing boundaries.
     radiated_flux_box : tuple or None
         Opt-in RADIATED-FLUX stop for absorbing boundaries: a Huygens box
         ``((x_lo, y_lo, z_lo), (x_hi, y_hi, z_hi))`` in physical coordinates
@@ -814,11 +833,17 @@ def run_until_decay(
         Number of recent checks whose ``|flux|`` max forms the envelope used by
         the radiated-flux stop, smoothing the 2f0 Poynting oscillation. Default 4.
     monitor_component : str
-        Field component to monitor ("ez", "hy", etc.). Used only by the
-        closed/PEC point-field fallback stop.
+        Legacy monitor component ("ez", "hy", etc.); does not select the
+        energy or radiated-flux stop. Non-default values warn of deprecation.
     monitor_position : tuple or None
-        Physical position (x, y, z) to monitor. If None, use center of
-        the domain.
+        Legacy monitor position (x, y, z); does not affect the stop.
+        Non-default values warn of deprecation.
+    pec_axes : axes string or None
+        Axes on which to enforce PEC after each update. If None, uses
+        all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     checkpoint_segments : int or None
         **Not supported** (a host-driven early stop); a non-None value
         raises ``NotImplementedError``.
@@ -858,15 +883,9 @@ def run_until_decay(
          (out of band), the record stays correct, and the stop record and the
          cap advisory say what ended the run.
 
-       * **Closed / PEC boundaries** — domain energy does not decay in a
-         lossless closed cavity, so the stop falls back to the historical
-         *instantaneous* squared field at the single ``monitor_component`` cell
-         (``val_sq < decay_by * peak_sq``). This fallback retains the original
-         limitation: it is a valid decay witness only for lossy / radiating
-         structures with a clean ring-down envelope, and is **not** suitable
-         for flux / S-parameter / transmission gating on guided / low-loss
-         closed geometries — for those use a fixed ``n_steps`` via
-         :func:`run`.
+       * **Closed / PEC boundaries** — the same after-drive energy rule reads
+         the whole grid, including any allocated pads. A lossless closed
+         cavity retains its energy and reaches ``max_steps``.
     report_every : int or None
         When set, emit one ``  [PROGRESS] ...`` line every *N*
         steps, at the first decay-chunk boundary at or past the interval,
@@ -883,6 +902,8 @@ def run_until_decay(
     -------
     SimResult
     """
+    check_map_count()
+    warn_unused_decay_monitor(monitor_component, monitor_position)
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if checkpoint_segments is not None:
         raise NotImplementedError(
@@ -901,6 +922,7 @@ def run_until_decay(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     lumped_rlc = lumped_rlc or []
@@ -908,6 +930,7 @@ def run_until_decay(
 
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
+        measurement=measurement,
         grid=grid,
         materials=materials,
         boundary=boundary,
@@ -927,6 +950,7 @@ def run_until_decay(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        subpixel_smoothing=subpixel_smoothing,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -943,10 +967,7 @@ def run_until_decay(
         sheet_impedance=sheet_impedance,
     )
     carry = _setup.carry_init
-    if record_dft and dft_planes:
-        carry["dft_time_records"] = tuple(
-            jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
-            for plane in dft_planes)
+    init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
@@ -1006,7 +1027,9 @@ def run_until_decay(
     # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
     _inv_args, _inv_rebuild = split_loop_invariants(
-        core_step_invariants(_step_ctx), tuple(grid.shape))
+        core_step_invariants(_step_ctx) if measurement is None else
+        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype),
+        tuple(grid.shape))
 
     @jax.jit
     def _single_step(carry_in, step_idx, src_vals, mag_src_vals, inv_args):
@@ -1016,7 +1039,7 @@ def run_until_decay(
             carry_in, step_idx, src_vals, mag_src_vals)
         return new_carry, probe_out, extras["monitor_val"]
 
-    # #1258: keep only frames at GLOBAL multiples of the interval, even
+    # keep only frames at GLOBAL multiples of the interval, even
     # when an interval does not divide the decay/progress chunk. The scan
     # carries a bounded frame buffer, not a full field history.
     if snapshot is not None:
@@ -1079,32 +1102,37 @@ def run_until_decay(
     _run_tail_chunk = _make_chunk_runner(keep_previous=True)
 
     # ---- host chunk loop with decay check ----
-    use_absorbing = boundary in ("cpml", "upml")
-
-    # #388 opt-in RADIATED-FLUX stop: stop when the outgoing Poynting flux through a Huygens
+    # opt-in RADIATED-FLUX stop: stop when the outgoing Poynting flux through a Huygens
     # box decays, instead of the interior energy. This is a *radiation-settling* criterion —
     # it ignores non-radiating trapped energy (the static soft-source charge that FLOORS the
     # energy criterion, and near-Nyquist grid buzz) because neither carries net radiated power.
     # It is the right stop for radiation / S-parameter measurements; it is opt-in (default
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
-    use_flux_stop = radiated_flux_box is not None and use_absorbing
+    # A direct caller gets run()'s refusal too: on a closed box the box was dropped.
+    refuse_radiated_flux_stop(radiated_flux_box, decay_by, boundary)
+    use_flux_stop = radiated_flux_box is not None
     from rfx.measurement import flux_box_bounds, radiated_power
     if use_flux_stop:
         _bl = flux_box_bounds(grid, radiated_flux_box)
 
-    peak_sq = 0.0          # closed/PEC point-field running peak
-    # The absorbing-boundary energy stop (rfx.measurement.decay), read at k * check_interval.
+    # The after-drive energy stop (rfx.measurement.decay), read at k * check_interval.
     energy_stop, energy = make_decay_stop(
         grid, _setup.ctx_kwargs["materials"], thr=decay_by, min_steps=min_steps,
         interval=check_interval, consecutive=decay_energy_consecutive, n_end=n_end,
-        criterion=use_absorbing and not use_flux_stop, max_steps=max_steps, sources=sources,
+        criterion=not use_flux_stop, max_steps=max_steps, sources=sources,
+        absorbing=bool(boundary in ("cpml", "upml") and grid.cpml_layers > 0
+                       and padded_axes(grid, drop_periodic_axes(cpml_axes, _setup.periodic))),
         mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
         periodic=_setup.periodic, side_step=(lambda c, xs, inv: jax.lax.scan(lambda cc, x: step_fn(
             cc, x, inv), c, xs)[0], lambda n: one_step_xs(n, src_waveforms, mag_src_waveforms), _inv_args))
-    peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope
-    flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
-    flux_hist: list[float] = []   # recent |P| samples for the max-envelope
-    decayed_fired = False  # #388: did the energy criterion fire (vs silently cap-hit)?
+    stop_rule = energy_stop
+    if use_flux_stop:
+        stop_rule = make_field_decay_stop(
+            grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            max_steps=max_steps, consecutive=decay_energy_consecutive,
+            env_checks=flux_env_checks, n_end=n_end, sources=sources,
+            mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports)
+    decayed_fired = False  # did the energy criterion fire (vs silently cap-hit)?
     probe_chunks = []
     actual_steps = 0
 
@@ -1170,45 +1198,14 @@ def run_until_decay(
             jax.block_until_ready(carry["fdtd"])
             _reporter.report(actual_steps)
 
-        if use_absorbing and use_flux_stop:
-            # #388 opt-in: RADIATED-FLUX stop. Compute the net outgoing Poynting flux at each
-            # check; smooth the 2f0 oscillation with a max-envelope over the last
-            # ``flux_env_checks`` checks; stop when the envelope decays below the threshold.
-            # The flux PEAK is during the source drive, so track it from the FIRST check (unlike
-            # the interior energy, whose peak is post-source); only the STOP check waits for
-            # min_steps.
-            if actual_steps % check_interval == 0:
-                flux_hist.append(abs(radiated_power(carry["fdtd"], _bl, grid.shape)))
-                env = max(flux_hist[-flux_env_checks:])
-                if env > peak_flux:
-                    peak_flux = env
-                if actual_steps >= min_steps and peak_flux > 0.0 and env < decay_by * peak_flux:
-                    flux_below += 1
-                    if flux_below >= decay_energy_consecutive:
-                        decayed_fired = True
-                        break
-                else:
-                    flux_below = 0
-        elif use_absorbing:
-            if energy_stop.check(actual_steps, lambda: energy(carry, actual_steps)) is not None:
-                decayed_fired = True
-                break
+        if use_flux_stop:
+            stopped = stop_rule.check(
+                actual_steps, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
         else:
-            # Closed/PEC fallback with the same point-field decision.
-            # Decay check
-            # One transfer per chunk; square in host float64 just as
-            # float(monitor_val) ** 2 did for EVERY step of the old loop.
-            # Reading only the final sample loses peaks between checks.
-            values_sq = np.asarray(monitor_vals, dtype=np.float64) ** 2
-            chunk_peak = np.max(values_sq, where=~np.isnan(values_sq), initial=0.0)
-            if chunk_peak > peak_sq:
-                peak_sq = float(chunk_peak)
-            val_sq = float(values_sq[-1])
-
-            if actual_steps >= min_steps and actual_steps % check_interval == 0 and peak_sq > 0.0:
-                if val_sq < decay_by * peak_sq:
-                    decayed_fired = True
-                    break
+            stopped = stop_rule.check(actual_steps, lambda: energy(carry, actual_steps))
+        if stopped is not None:
+            decayed_fired = True
+            break
 
     if _reporter is not None and _reporter.last_reported != actual_steps:
         # The decay stop lands on an arbitrary step, so without this line the
@@ -1219,9 +1216,8 @@ def run_until_decay(
 
     # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
     decay_stop = finish_decay(
-        energy_stop, actual_steps, fired=decayed_fired, reporter=_reporter,
-        flux=(flux_hist, flux_env_checks, peak_flux) if use_flux_stop else None,
-        point=None if use_absorbing else (val_sq, peak_sq), state=carry["fdtd"],
+        stop_rule, actual_steps, fired=decayed_fired, reporter=_reporter,
+        state=carry["fdtd"],
         materials=materials, grid=grid, advisory=advisory, sources=sources)
 
     # ---- assemble result ----
@@ -1288,7 +1284,7 @@ def run_until_decay(
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
         sparam_time_records=uniform_records(carry, _step_ctx, actual_steps),
-        dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
+        dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ()) if r is not None),
         snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,

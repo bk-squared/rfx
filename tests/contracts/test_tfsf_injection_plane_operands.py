@@ -20,6 +20,7 @@ from rfx import Box, PolylineWire, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.boundaries.tfsf import INJECTION_OPERANDS, injection_material_rule
 from rfx.core.yee import MaterialArrays
+from rfx.errors import RfxRefusal
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, drude_pole
 from rfx.sources.tfsf import tfsf_from_declaration
@@ -52,7 +53,9 @@ def scene(obj=None, *, graded=False, interior=False, kind='slab'):
     x = 11 if interior else 6
     ys, zs = (8, 16) if kind != 'slab' else (0, 12), (8, 16) if kind == 'box' else (0, 12)
     slab = Box(mm(x-1, ys[0], zs[0]), mm(x+1, ys[1], zs[1]))
-    sheet = Box(mm(x, ys[0], zs[0]), mm(x, ys[1], zs[1]))
+    sheet_ys = (ys[0] - .35, ys[1] + .35) if kind != "slab" else ys
+    sheet_zs = (zs[0] - .35, zs[1] + .35) if kind == "box" else zs
+    sheet = Box(mm(x, sheet_ys[0], sheet_zs[0]), mm(x, sheet_ys[1], sheet_zs[1]))
     medium = {
         'drude': dict(lorentz_poles=[drude_pole(2*np.pi*10e9, 1e10)]),
         'kerr': dict(chi3=1e3), 'eps': dict(eps_r=2.), 'sigma': dict(sigma=.1),
@@ -217,6 +220,18 @@ def test_closed_box_distributed_injection_plane(obj, closed_box_controls, monkey
         assert not started
 
 
+@pytest.mark.parametrize('entry', ['run', 'fwd'])
+@pytest.mark.parametrize('obj', ['series_RL', 'R_only'])
+def test_closed_box_rlc_refusal_matches_one_device(entry, obj):
+    # Pin the realized RLC operand on both entries; folded R keeps its refusal.
+    messages = []
+    for path in ('uniform', 'distributed'):
+        with pytest.raises(ValueError, match='non-vacuum material found at') as caught:
+            execute(scene(obj, kind='box'), f'{entry}_{path}')
+        messages.append(str(caught.value))
+    assert messages[0] == messages[1]
+
+
 @pytest.mark.parametrize('obj', INVENTORY)
 def test_off_plane_controls(obj):
     with warnings.catch_warnings():
@@ -233,14 +248,15 @@ def test_off_plane_controls(obj):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('kind,x,smoothing', [
     ('dielectric', 6.5, True),
+    ('dielectric', 6.6, True),
     ('dielectric', 7.2, 'full_tensor'),
     ('dielectric', 7.5, 'full_tensor'),
     ('series_RL', 6.5, False),
     ('series_RL', 18.5, False),
 ])
-def test_normal_component_half_cell_admitted(entry, kind, x, smoothing):
+def test_normal_component_half_cell_admission(entry, kind, x, smoothing):
     # Review scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
-    # positions give faces +0.5/+1.2/+1.5 cells from x_lo and Ex edges
+    # positions give faces +0.5/+0.6/+1.2/+1.5 cells from x_lo and Ex edges
     # at x_lo+1/2 and x_hi+1/2; no slicing/placement helper sets these values.
     sim = scene(interior=True)
     cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
@@ -251,6 +267,12 @@ def test_normal_component_half_cell_admitted(entry, kind, x, smoothing):
     else:
         sim.add_lumped_rlc(mm(x, 6, 6), 'ex', R=10., L=1e-9)
     kwargs = {'compute_s_params': False} if entry == 'run' else {'checkpoint': False}
+    if kind == 'dielectric' and x == 6.5:
+        # The exact tie realizes its lower face at node 6, on the TFSF plane.
+        with pytest.raises(ValueError, match=r'x_lo: permittivity \(materials.eps_r\)'):
+            getattr(sim, entry)(n_steps=2, skip_preflight=True,
+                                subpixel_smoothing=smoothing, **kwargs)
+        return
     result = getattr(sim, entry)(n_steps=2, skip_preflight=True,
                                 subpixel_smoothing=smoothing, **kwargs)
     assert np.isfinite(np.asarray(result.time_series)).all()
@@ -368,6 +390,32 @@ def test_material_leaf_classification_is_complete():
                     pytest.fail(f'unclassified spatial leaf: {path}')
     visit(MaterialArrays, 'materials')
     visit(KernelComponents, 'materials.components')
+
+
+@pytest.mark.parametrize('transform', ['grad', 'jit'])
+def test_oblique_forward_traced_eps_refuses(transform):
+    sim = Simulation(freq_max=10e9, domain=(0.016,) * 3, dx=0.002,
+                     boundary='cpml', cpml_layers=2)
+    sim.add_tfsf_source(f0=5e9, polarization='ez', direction='+x',
+                        margin=2, angle_deg=20, method='methodB')
+    sim.add_probe((0.0105, 0.0083, 0.0077), 'ez')
+    shape = sim._build_grid().shape
+
+    def objective(scale):
+        result = sim.forward(n_steps=4, checkpoint=False, skip_preflight=True,
+                             eps_override=jnp.ones(shape) * scale)
+        return jnp.sum(jnp.abs(result.time_series))
+
+    call = getattr(jax, transform)(objective)
+    # The same traced path admits vacuum: tracing itself is not refused.
+    assert np.isfinite(np.asarray(jax.block_until_ready(call(1.0)))).all()
+    # JIT wraps a callback's RfxRefusal in the backend runtime exception.
+    expected = RfxRefusal if transform == 'grad' else jax.errors.JaxRuntimeError
+    with pytest.raises(expected, match='requires vacuum') as caught:
+        jax.block_until_ready(call(1.5))
+    assert not isinstance(caught.value, jax.errors.TracerArrayConversionError)
+    print(json.dumps(dict(transform=transform, exception=type(caught.value).__name__,
+                          message=str(caught.value))), file=sys.stderr)
 
 
 @pytest.mark.parametrize('transform', ['jit', 'grad', 'vmap'])

@@ -5,6 +5,8 @@ Read all three permittivities at the capacitor node and the first E update
 from an identical initial H field, before subsequent field propagation.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from contextlib import ExitStack
 import os
 import sys
@@ -36,6 +38,8 @@ FLOOR = 32 * np.finfo(np.float32).eps
 
 def _model(lane, component=None, *, fractional=False, seeded=False):
     kwargs = {"dz_profile": np.full(11, DX)} if lane.startswith("nu") else {}
+    if lane in ("forward", "forward_occ", "materials_occ"):
+        kwargs["pec_occupancy_model"] = "kottke"
     if lane.endswith("dual"):
         kwargs["interface_eps"] = "dual_average"
     boundary = (BoundarySpec(x=Boundary(lo="pec", hi="pec", conformal=True),
@@ -89,7 +93,7 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
             values = [1.0 / float(e[cell]) for e in inverse]
         else:
             if eps is None:
-                eps = component_e_materials(materials)[0]
+                eps = component_e_materials(materials, high_wall=unpadded_high_walls(grid))[0]
             values = [float(e[cell]) for e in eps]
         observed["eps"] = np.asarray(values)
         weights = kwargs.get("conformal_weights")
@@ -104,7 +108,6 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
             stack.enter_context(patch.object(graded_setup, "init_state", _seed_h))
         n_steps = 1 if seeded else 240
         if lane in ("forward", "forward_occ", "materials_occ"):
-            stack.enter_context(patch.dict(os.environ, RFX_PEC_OCC_KOTTKE="1"))
             grid = sim._build_grid()
             occupancy = jnp.zeros(grid.shape, dtype=jnp.float32)
             if fractional:
@@ -255,7 +258,7 @@ def _waveguide_model(lane, *, capacitor=False):
 @pytest.mark.parametrize("lane", ["uniform", "smooth", "kottke", "conformal"])
 def test_waveguide_s_matrix_refuses_rlc(lane):
     sim = _waveguide_model(lane, capacitor=True)
-    with pytest.raises(NotImplementedError, match=r"lumped RLC.*#1263.*run\(\)"):
+    with pytest.raises(NotImplementedError, match=r"lumped RLC.*run\(\)"):
         sim.compute_waveguide_s_matrix(
             n_steps=120, subpixel_smoothing=("kottke_pec" if lane == "kottke"
                                            else lane == "smooth"))
@@ -265,7 +268,7 @@ def test_waveguide_reference_refuses_rlc():
     sim = _waveguide_model("uniform")
     references = [_waveguide_model("uniform", capacitor=True),
                   _waveguide_model("uniform")]
-    with pytest.raises(NotImplementedError, match=r"lumped RLC.*#1263.*run\(\)"):
+    with pytest.raises(NotImplementedError, match=r"lumped RLC.*run\(\)"):
         sim.compute_waveguide_s_matrix(
             n_steps=120, normalize="flux", port_reference_sims=references)
 

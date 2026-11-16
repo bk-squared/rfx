@@ -1,8 +1,8 @@
 {
   "schema": "rfx-example-index/1",
-  "about": "Machine-readable index of the official examples under examples/: for each, the public function that builds its Simulation without solving it, whether running it solves, and the files it leaves behind. Paths are relative to the repository root. tests/contracts/test_example_index.py holds this file to the scripts and to tests/_example_fidelity_lib.py::CLASSIFICATION.",
+  "about": "Machine-readable index of the official examples under examples/: for each, the public function that builds its Simulation without solving it, whether running it solves, and the files it leaves behind. Paths are relative to the repository root. No test checks this file against the scripts.",
   "fields": {
-    "lane": "CI lane that runs this file: 'pr' (every code-changing pull request), 'weekly' (the weekly validation lane), or 'manual' (not run by CI; lane_reason says why)",
+    "lane": "the CI lane this file is assigned to: 'pr' (every code-changing pull request), 'weekly' (the weekly validation lane), or 'manual' (not run by CI; lane_reason says why) An assignment, not a record of a run: no CI job reads this field.",
     "lane_reason": "required when lane is 'manual': why CI does not run it",
     "extra": "optional install extra the file needs (pip install rfx[<extra>]); a lane runner skips it where the extra is absent",
     "path": "the example file, relative to the repository root",
@@ -13,6 +13,27 @@
     "outputs": "files that remain after the example finishes (printed output is not listed): path pattern ({name} marks a part chosen at run time), format, the call that writes it, what it contains, and units"
   },
   "examples": [
+    {
+      "path": "examples/inverse_design/pareto_front_sweep.py",
+      "lane": "pr",
+      "kind": "script",
+      "builders": [],
+      "no_builder_reason": "_make_sim reuses the quickstart hello_world builder and adds a dielectric insert; no public builder is defined here.",
+      "runs_solve": true,
+      "solve_via": "parametric_sweep calls Simulation.run for each permittivity",
+      "outputs": [
+        {
+          "path": "examples/inverse_design/pareto_front.json",
+          "format": "json",
+          "written_by": "Path.write_text",
+          "contains": "Pareto front with objective directions, indices and parameter metadata",
+          "units": {
+            "peak_field": "V/m",
+            "eps_r": "dimensionless"
+          }
+        }
+      ]
+    },
     {
       "path": "examples/config/microstrip_thru.yaml",
       "lane": "pr",
@@ -101,16 +122,6 @@
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
-      ],
-      "runs_solve": true,
-      "outputs": []
-    },
-    {
-      "path": "examples/tutorials/adi_solver_demo.py",
-      "lane": "pr",
-      "kind": "script",
-      "builders": [
-        {"name": "build_cavity", "required_args": ["solver", "adi_cfl_factor"], "returns": "Simulation"}
       ],
       "runs_solve": true,
       "outputs": []

@@ -24,13 +24,13 @@ A repository surface should stay out of public user guides until it has a public
 |---|---|---|---|
 | SBP-SAT / subgridding | `rfx/subgridding/**`, `rfx/runners/subgridded.py`, `rfx/runners/disjoint.py`, `validation/research/subgrid/**`, `tests/test_subgrid*`, `scripts/subgrid_*` | outside public support scope | add a support-matrix entry, public workflow, and validation envelope before publication |
 | Repository-public agent guides | `docs/agent/**` | available to external LLM agents in a Git clone; outside public site scope | keep sanitized and self-contained; add site routes only through a separate publication plan |
-| Floquet/RIS workflows | `rfx/floquet.py`, `rfx/ris.py`, `Simulation.add_floquet_port(...)`, `compute_floquet_s_params`, `validation/tmtt_paper/**` | experimental boundary notes only; no promoted Floquet S-parameter workflow | add a promoted API contract and external periodic-cell validation envelope |
+| Floquet workflows | `rfx/floquet.py`, `Simulation.add_floquet_port(...)`, `compute_floquet_s_params`, `validation/tmtt_paper/**` | experimental boundary notes only; no promoted Floquet S-parameter workflow | add a promoted API contract and external periodic-cell validation envelope |
 | Conformal PEC | `rfx/geometry/conformal.py`, `conformal=True` / conformal boundary support | outside public support scope | demonstrate a stable accuracy envelope before publication |
 | ADI solver | `rfx/adi.py`, top-level ADI imports, `docs/public/guide/adi-solver.mdx` | public experimental guide; outside the validated default solver lane | retain the explicit-Yee recommendation until a maintained 3D accuracy envelope exists |
 | Distributed / multi-GPU execution | `devices=...` run paths, distributed/nonuniform code paths, `jax.pmap` usage | outside public support scope | add maintained examples and support-combination checks |
 | Removed coaxial S-matrix path | Former `Simulation.compute_coaxial_s_matrix(...)` and `CoaxialSMatrixResult` | removed | use `compute_coaxial_line_reflection(...)` or `compute_coaxial_two_port(...)` within its documented envelope |
 | Generalized planar ports | stripline/CPW/microstrip-to-coax planning diagnostics and support-matrix future-family entries | outside public support scope | implement public APIs and external validation per family |
-| AMR and surrogate export | `rfx/amr.py`, `rfx/surrogate.py` | outside public guide scope | add a supported user workflow and examples |
+| Surrogate export | `rfx/surrogate.py` | outside public guide scope | add a supported user workflow and examples |
 | Streamlit dashboard | `rfx/dashboard/**` | public experimental workflow | maintain the optional install/test path and keep solver/physics claims inside the normal support contracts |
 | Diagnostic/archive scripts and local validation artifacts | `scripts/diagnostics/**`, `scripts/archive/**`, local validation artifact paths | maintainer evidence only | summarize outcomes in support docs without exposing run-log detail |
 

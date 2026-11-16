@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+from rfx._host_limits import check_map_count
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
 from rfx.core.yee import MaterialArrays, init_state
 from rfx.measurement.accumulators import plane_metadata
 from rfx.probes.probes import DFTPlaneProbe
-from rfx.simulation import SourceSpec, ProbeSpec
+from rfx._internal._uniform_specs import SourceSpec, ProbeSpec
 
 
 def _build_vmap_scan_fn(
@@ -53,12 +54,13 @@ def _build_vmap_scan_fn(
         Their ``.accumulator`` seeds the scan-carry accumulator for that
         plane; ``.component``/``.axis``/``.index``/``.freqs`` drive the
         per-step kernel shared with ``Simulation.run()``. Scan slot n reads
-        E at (n+1)*dt and H half a step earlier (#404).
+        E at (n+1)*dt and H half a step earlier.
         The returned ``run_one`` always returns a 2-tuple
         ``(time_series, dft_accs)`` where ``dft_accs`` is a tuple of final
         accumulators in the SAME order as ``dft_probes`` (empty tuple if
         no planes were registered).
     """
+    check_map_count()
     dt = grid.dt
     dx = grid.dx
     sources = sources or []
@@ -66,7 +68,7 @@ def _build_vmap_scan_fn(
     probes = probes or []
     dft_probes = dft_probes or []
 
-    # #931 §1.7: realize (Mx, My, Mz) ONCE here, at build time, under the
+    # realize (Mx, My, Mz) ONCE here, at build time, under the
     # flags this scan body will use.  Sheets and wires own no cell, so
     # this is the only place the batched lane can see them.
     pec_sheets = tuple(pec_sheets or ())
@@ -115,7 +117,8 @@ def _build_vmap_scan_fn(
 
         j_src_waveforms = prepared_j_waveforms
 
-        from rfx.simulation import _StepContext, make_core_step
+        from rfx._internal._uniform_specs import _StepContext
+        from rfx.stepping.uniform_setup import make_core_step
         ctx = _StepContext(
             grid=grid, materials=materials, dt=dt, dx=dx, periodic=periodic,
             pec_axes=pec_axes, stencil_order=2, use_fast_he=False,

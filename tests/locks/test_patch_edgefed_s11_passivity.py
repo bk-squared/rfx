@@ -19,7 +19,7 @@ WRONG PHYSICS for a *directly edge-fed* patch and is NOT achievable by refining 
     most optimistic fit needs ~7e8 cells to reach the then-target band. Mesh
     refinement is a diminishing-returns R2 loop here, not a fix.
 
-THE PLANE THESE PINS ARE AT (rfx-archive MSL-PLANE.md, decision record 14)
+THE PLANE THESE PINS ARE AT
 ------------------------------------------------------------------------
 Every pin below (the Im(Zin)=0 crossing band, the in-band Re(Zin) floor, the
 |S11| readings) was measured on S at the port's probe-0 plane, 3.94 mm (20
@@ -446,7 +446,7 @@ def test_patch_edgefed_s11_passive_and_match():
         res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs), num_periods=280.0)
     _trunc = [
         str(w.message) for w in _settling
-        if "#332" in str(w.message) or "ring-down truncated" in str(w.message)
+        if "ring-down truncated" in str(w.message)
     ]
     print("[PATCH-EDGEFED/118-SETTLING] framework #332 ring-down energy witness: "
           f"{_trunc if _trunc else 'no truncation advisory — domain drained below -40 dB of peak'}")

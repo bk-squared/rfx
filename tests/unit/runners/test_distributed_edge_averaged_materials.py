@@ -47,7 +47,7 @@ c. Vacuum and homogeneous models (vacuum, and eps_r 4.4 / sigma 0.02 filling
    cell values, i.e. main's rule. main itself, run out of process on the same
    host, gave the same bytes (measured when this change was made).
 d. Debye/Lorentz CPML forward snapshots use law C and bar S for accumulated
-   pole rounding (rfx-archive records/20261017-item5-dispersive); the other
+   pole rounding; the other
    rows retain their existing gates.
    A Debye block: both lanes take per-component epsilon/sigma and pole-mask
    edge means. CPML reads the same component epsilon as the E update.
@@ -91,6 +91,7 @@ from rfx.core.yee import (  # noqa: E402
 )
 from rfx.runners import _distributed_common as common  # noqa: E402
 from rfx.runners import distributed_nu, distributed_v2  # noqa: E402
+from rfx.stepping import slab_update, slab_graded_legacy_loop  # noqa: E402
 from rfx.runners._distributed_common import (  # noqa: E402
     _split_materials, slab_e_component_materials,
 )
@@ -306,11 +307,12 @@ def _slab_view_mismatches(helper, n_dev, shape=(13, 5, 6)):
     """Cells where the slab view differs from the single-device rule, and
     non-model rows that no longer hold their own cell's value."""
     mats = _random_materials(shape)
-    want = component_e_materials(mats)
+    want = component_e_materials(mats, high_wall=(False, False, False))
     slabs, nx_per = _staged(mats, n_dev)
     bad = {"model": 0, "other": 0}
     for rank, slab in enumerate(slabs):
-        got = helper(slab, nx_per, shape[0], rank=rank)
+        # This raw-array fixture has no wall face.
+        got = helper(slab, nx_per, shape[0], rank=rank, high_wall=(False,) * 3)
         cell = cell_owned_component_materials(slab)
         local = np.arange(slab.eps_r.shape[0])
         rows = rank * nx_per - 1 + local
@@ -339,8 +341,8 @@ def test_the_slab_view_is_the_single_device_rule(n_dev):
 
 def _mutant(kind):
     """The helper with its defect restored and its calls kept."""
-    def helper(materials, nx_per, nx, rank=None):
-        real = slab_e_component_materials(materials, nx_per, nx, rank)
+    def helper(materials, nx_per, nx, rank=None, **kw):
+        real = slab_e_component_materials(materials, nx_per, nx, rank, **kw)
         if kind == "cell":
             del real
             return cell_owned_component_materials(materials)
@@ -354,7 +356,7 @@ def _mutant(kind):
                                   eps_r_lumped=map_lumped(materials.eps_r_lumped, own))
         else:
             raise ValueError(kind)
-        eps, sig = component_e_materials(view, (False, False, False))
+        eps, sig = component_e_materials(view, (False, False, False), **kw)
         cell_eps, cell_sig = cell_owned_component_materials(materials)
         r = lax.axis_index("x") if rank is None else rank
         local = jnp.arange(materials.eps_r.shape[0])
@@ -375,8 +377,38 @@ def test_a_mutated_slab_view_is_caught(kind):
 
 def _install(patch, kind):
     helper = _mutant(kind)
-    for module in (common, distributed_v2, distributed_nu):
+    for module in (common, slab_update):
         patch.setattr(module, "slab_e_component_materials", helper)
+    _install_wrapped(patch, helper)
+
+
+def _install_wrapped(patch, helper, *, psi_only=False):
+    """Feed the same mutated slab means to the wrapped step's operands."""
+    from rfx.model.materials import unpadded_high_walls
+    from rfx.stepping import slab_wrap_uniform
+    real = slab_wrap_uniform.prepare_uniform
+
+    def prepare(grid, materials, pec_edges, sources, probes, layout, mesh, **kwargs):
+        slabs, nx_per = _staged(materials, layout.n_devices)
+        means = [helper(slab, nx_per, layout.nx, rank=rank,
+                        high_wall=unpadded_high_walls(grid))
+                 for rank, slab in enumerate(slabs)]
+        carry, inputs, waves, advance = real(
+            grid, materials, pec_edges, sources, probes, layout, mesh, **kwargs)
+        components = inputs['materials'].components
+        eps, sigma = tuple(tuple(jax.device_put(
+            jnp.concatenate([row[q][c] for row in means]),
+            components.eps_update[c].sharding) for c in range(3)) for q in range(2))
+        inputs = dict(inputs)
+        if not psi_only:
+            inputs['materials'] = inputs['materials']._replace(
+                components=components._replace(eps_update=eps, sigma_update=sigma))
+        if inputs['cpml_inv_eps_r'] is not None:
+            inputs['cpml_inv_eps_r'] = tuple(1 / e for e in eps)
+            inputs['e_loss'] = (eps, sigma)
+        return carry, inputs, waves, advance
+
+    patch.setattr(slab_wrap_uniform, 'prepare_uniform', prepare)
 
 
 # --------------------------------------------------------------------------
@@ -486,9 +518,7 @@ def _matrix(n_dev, boundaries, cases, mutation=None):
 
 def _matrix_main(n_dev, boundaries, cases, mutation):
     if mutation != "none":
-        helper = _mutant(mutation)
-        for module in (common, distributed_v2, distributed_nu):
-            setattr(module, "slab_e_component_materials", helper)
+        _install(pytest.MonkeyPatch(), mutation)
     for boundary in boundaries:
         for case in cases:
             for lane in ("run", "fwd"):
@@ -539,7 +569,7 @@ def _fwd_never_reaches(patch, boundary, case, watched):
     assert setups and not calls, (boundary, case, len(setups), calls)
 
 
-_SLAB_HELPER = tuple((m, "slab_e_component_materials") for m in (common, distributed_v2, distributed_nu))
+_SLAB_HELPER = tuple((m, "slab_e_component_materials") for m in (common, slab_update))
 
 
 @pytest.mark.slow
@@ -578,29 +608,27 @@ def test_mutation_a_seam_row_reading_its_own_row_sends_the_cut_case_red(monkeypa
 @pytest.mark.slow
 def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_case_red(
         monkeypatch):
-    """The CPML E correction of both lanes takes the cell eps while the update
-    keeps the four-cell mean (#1043's mismatch, restored): the dielectric that
-    runs through the x-face absorber reads 1.5e-3 of the record peak."""
+    """The run lane hands CPML the means formed before the loop, so the mutation
+    also withholds them from the CPML call. The correction takes the cell eps
+    while the E update keeps the four-cell mean, restoring a 1.5e-3 mismatch."""
     _devices(2)
     # The low-level NU mutation below supplies this model's cell array.
     # Measure the vacuum reference before installing it, so the reference
     # cannot accidentally receive the dielectric model's permittivity.
     floors = {lane: _floor("cpml", lane, "vacuum", 2) for lane in ("run", "fwd")}
 
-    def cell(materials, nx_per, nx, rank=None):
-        slab_e_component_materials(materials, nx_per, nx, rank)   # the call is kept
+    def cell(materials, nx_per, nx, rank=None, **kw):
+        slab_e_component_materials(materials, nx_per, nx, rank, **kw)   # the call is kept
         return cell_owned_component_materials(materials)
 
-    # The uniform runner's CPML wrapper calls the name bound in its own module;
-    # its E update reads _distributed_common's, which keeps the real helper.
-    monkeypatch.setattr(distributed_v2, "slab_e_component_materials", cell)
+    _install_wrapped(monkeypatch, cell, psi_only=True)
     # The forward lane hands its CPML the means built before the loop; the
     # correction is given the cell array; all mean-builder calls stay in place.
     sim = _box("cpml", "fwd", "faces", 2)
     grid = sim._build_nonuniform_grid()
     slabs, _ = _staged(sim._assemble_materials_nu(grid)[0], 2)
     eps_cells = jnp.stack([m.eps_r for m in slabs])
-    real_cpml = distributed_nu.apply_cpml_e
+    real_cpml = slab_graded_legacy_loop.apply_cpml_e
 
     def cell_cpml(*args, **kwargs):
         # Keep every material helper call and replace only CPML's eps read.
@@ -609,13 +637,13 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
         kwargs["inv_eps_r_update"] = (1 / cells,) * 3
         return real_cpml(*args, **kwargs)
 
-    monkeypatch.setattr(distributed_nu, "apply_cpml_e", cell_cpml)
+    monkeypatch.setattr(slab_graded_legacy_loop, "apply_cpml_e", cell_cpml)
     got, _ = _parity("cpml", "run", "faces", 2)
     gate = _gate(floors["run"])
     print(f"[mutation psi cpml/faces/run] {['%.2e' % g for g in got]}")
     assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, ("run", got, gate)
     _fwd_never_reaches(monkeypatch, "cpml", "faces",
-                       ((distributed_nu, "apply_cpml_e"), (distributed_v2, "slab_e_component_materials")))
+                       ((slab_graded_legacy_loop, "apply_cpml_e"),))
 
 
 # --------------------------------------------------------------------------
@@ -627,6 +655,8 @@ def _filled(lane, eps_r, sigma):
               boundary="cpml", cpml_layers=4)
     if lane == "fwd":
         kw["dz_profile"] = np.array([1.0, 0.8, 0.8, 1.0, 1.2, 1.0, 1.0, 0.8, 1.0, 1.0]) * 1e-3
+    if "dz_profile" in kw:
+        kw["domain"] = (*kw["domain"][:2], float(np.sum(kw["dz_profile"])))
     sim = Simulation(**kw)
     if eps_r != 1.0 or sigma:
         sim.add_material("d", eps_r=eps_r, sigma=sigma)
@@ -659,13 +689,15 @@ def test_vacuum_and_homogeneous_models_keep_mains_bits(monkeypatch, lane, eps_r,
     byte for byte -- the fields too on the run lane."""
     new = _filled_record(lane, eps_r, sigma)
 
-    def main_rule(materials, nx_per, nx, rank=None, *, cell_sizes=None):
-        slab_e_component_materials(materials, nx_per, nx, rank, cell_sizes=cell_sizes)   # traced, unused
+    def main_rule(materials, nx_per, nx, rank=None, *, cell_sizes=None, **kw):
+        slab_e_component_materials(materials, nx_per, nx, rank, cell_sizes=cell_sizes, **kw)   # traced, unused
+        # This CPML scene has no unpadded high face for the cell-owned rule.
         return cell_owned_component_materials(materials)
 
     with monkeypatch.context() as patch:
-        for module in (common, distributed_v2, distributed_nu):
+        for module in (common, slab_update):
             patch.setattr(module, "slab_e_component_materials", main_rule)
+        _install_wrapped(patch, main_rule)
         old = _filled_record(lane, eps_r, sigma)
     for a, b in zip(new, old):
         assert np.any(b), "a zero record cannot witness the coefficients"
@@ -853,7 +885,7 @@ def test_the_permittivity_gradient_matches_one_device(boundary):
 
 
 # --------------------------------------------------------------------------
-# cross-trace on a dielectric model (PI 2026-09-23: <= 9 ULP of each peak)
+# cross-trace on a dielectric model (<= 9 ULP of each peak)
 # --------------------------------------------------------------------------
 
 def _peak_ulp(got, want):
@@ -904,8 +936,7 @@ def test_a_dielectric_model_gives_the_plain_bits_in_every_trace_context(lane):
     for name, context in contexts.items():
         worst[name] = max(_peak_ulp(o, p) for o, p in zip(context(), plain))
     print(f"[cross-trace/{lane}] ULP of each peak, JAX {jax.__version__}: {worst}")
-    # Binding on the pinned CI JAX (now 0.10.2); the PI's <= 9 ULP rule
-    # (2026-09-23) is unchanged. Historically on arm64 0.6.2 the run lane
+    # Binding on the pinned CI JAX (now 0.10.2); the <= 9 ULP rule is unchanged. Historically on arm64 0.6.2 the run lane
     # was bitwise, main too, and the forward lane read 4 ULP under
     # jvp/vjp/value_and_grad -- main the same 4, and main's VACUUM box 13.
     # Before the CI upgrade, measured on

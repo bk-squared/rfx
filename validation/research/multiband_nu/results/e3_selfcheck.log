@@ -1,4 +1,4 @@
-rfx.__file__ = /Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py
+rfx.__file__ = rfx/__init__.py
   selfcheck A1 uc s=0.5: dual -3.9970 (quoted -3.9969) production +3.9910 (quoted +3.9910) MHz table=(3.0, 4.3, 1.0) ok=True
   selfcheck A1 uc s=1: dual -16.0055 (quoted -16.0053) production +0.3411 (quoted +0.3411) MHz table=(3.0, 4.3, 1.0) ok=True
   selfcheck A1 uc s=2: dual -64.3029 (quoted -64.3028) production -29.4613 (quoted -29.4613) MHz table=(3.0, 4.3, 1.0) ok=True

@@ -1,4 +1,4 @@
-"""Settled-spectrum reciprocity adjoint of the uniform production scan (#1424).
+"""Settled-spectrum reciprocity adjoint of the uniform production scan.
 
 Discrete overlap
 ----------------
@@ -19,7 +19,8 @@ dJ/dCb_j = Re sum_bins A_j curlH_j / Cb_j.
 Both field factors include dt; the source DFT targets b, not b*dt.
 JAX differentiates the production edge averaging and Ca/Cb arithmetic
 outside the custom VJP. Public adjoint admission refuses every supplied
-`design_sigma_override` (#1424: on lossless design cells the conductivity gradient has no settled value in a finite record; static sensitivity remains although the field decays, and this adjoint returns settled-spectrum gradients only).
+`design_sigma_override` (on lossless design cells the conductivity gradient has no settled value in a finite record;
+static sensitivity remains although the field decays, and this adjoint returns settled-spectrum gradients only).
 Fixed material conductivity remains allowed; its dCa/deps reaches gCa.
 Finite record endpoint terms are omitted: the result is a settled-spectrum
 gradient. No time tape or transposed time sweep is part of F2.
@@ -49,7 +50,7 @@ DC/Nyquist/out-of-band bins.
 The remaining run lets the wavelet response decay. Storage is design
 edges × components × bins, plus monitor bins and ordinary field carries.
 
-Gates, measurements and the refusal table: issue #1424 and PR #1430.
+
 """
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
 
@@ -59,7 +60,7 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
     """Refuse inputs outside the first implementation before lane dispatch."""
     if design_sigma is not None:
         raise NotImplementedError(
-            "gradient='adjoint' refuses design_sigma_override (#1424): "
+            "gradient='adjoint' refuses design_sigma_override: "
             "on lossless design cells the gradient with respect to conductivity has no "
             "settled value in a finite record (a static sensitivity remains although "
             "the field decays), and this adjoint returns settled-spectrum gradients only")
@@ -71,7 +72,7 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
         reason = "graded meshes"
     elif ringdown is not None:
         reason = "ring-down"
-    elif (any(p.impedance != 0 or p.extent is not None for p in sim._ports)
+    elif (any(p.is_port or p.extent is not None for p in sim._ports)
           or any(getattr(sim, p) for p in
                  ("_waveguide_ports", "_msl_ports", "_coaxial_ports",
                   "_floquet_ports", "_lumped_rlc"))
@@ -95,27 +96,13 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
         raise NotImplementedError(f"gradient='adjoint' does not support {reason}")
 
 
-def _plane_slice(meta, shape):
-    _, axis, index, _, region = meta
-    transverse = [d for d in range(3) if d != axis]
-    if region is None:
-        region = (0, shape[transverse[0]], 0, shape[transverse[1]])
-    out = [slice(region[0], region[1]), slice(region[2], region[3])]
-    out.insert(axis, index)
-    return tuple(out)
-
-
 # Lazy compatibility exports avoid a cycle with the moved implementation.
 _LAZY_EXPORTS = {
+    "_plane_slice": "rfx.stepping.adjoint_scan",
     "design_adjoint_scan": "rfx.stepping.adjoint_scan",
 }
 
 
 def __getattr__(name):
-    from importlib import import_module
-
-    if name not in _LAZY_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
-    globals()[name] = value
-    return value
+    from rfx._moved_names import resolve_moved
+    return resolve_moved(__name__, _LAZY_EXPORTS, name)

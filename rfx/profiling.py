@@ -83,7 +83,9 @@ def profile_forward(sim, *, n_steps: int, warmup_trace: bool = True,
     try:
         g = sim._build_realized_grid()
         report["cells"] = int(g.nx * g.ny * g.nz)
-    except Exception:
+    except (TimeoutError,):
+        raise
+    except Exception:  # noqa: BLE001 - recorded in cells
         report["cells"] = None
     return report
 

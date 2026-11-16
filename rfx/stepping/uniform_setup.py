@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rfx._uniform_specs import (
+from rfx._internal._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
     ProbeSpec,
@@ -16,7 +16,7 @@ from rfx._uniform_specs import (
 from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import replace
 from typing import Callable, NamedTuple
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
 import jax
 import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout
@@ -30,7 +30,8 @@ from rfx.stepping.scan import recorded_scan
 from rfx.core.yee import FDTDState, MaterialArrays, init_state, curl_h, CurlBoundary, precompute_coeffs
 from rfx.stepping.yee import update_e, update_e_aniso, update_e_aniso_inv
 from rfx.boundaries.pec import resolve_wall_faces, kottke_fenced_edge_masks, realized_pec_edge_masks
-from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, scan_with_progress, validate_report_every
+from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
+from rfx.stepping.progress_scan import scan_with_progress
 from rfx.snapshots import plan_snapshot_pieces, snapshot_axes, snapshot_extractor, validate_snapshot_spec
 from rfx.model import design_box_bounds, resolve_design_box
 
@@ -46,6 +47,7 @@ def _update_e_with_optional_dispersion(
     dt: float,
     dx: float,
     *,
+    high_wall: tuple[bool, bool, bool],
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     periodic: tuple = (False, False, False),
@@ -54,6 +56,8 @@ def _update_e_with_optional_dispersion(
     stencil_order: int = 2,
     bloch: tuple | None = None,
     boundary=None,
+    frame=None,
+    owned=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -78,20 +82,22 @@ def _update_e_with_optional_dispersion(
         if aniso_inv_eps is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
-                                      dt, dx, periodic=periodic, boundary=boundary), None, None
+                                      dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                  dt, dx, periodic=periodic, boundary=boundary), None, None
+                                  dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch, boundary=boundary), None, None
+                        stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall,
+                        frame=frame, owned=owned), None, None
 
     if debye is not None and lorentz is None:
         from rfx.stepping.poles import update_e_debye
 
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
-            state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary)
+            state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary,
+            frame=frame, owned=owned)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
@@ -99,7 +105,8 @@ def _update_e_with_optional_dispersion(
 
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
-            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary)
+            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary,
+            frame=frame, owned=owned)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz update.
@@ -110,7 +117,7 @@ def _update_e_with_optional_dispersion(
     lorentz_coeffs, lorentz_state = lorentz
 
     # Narrow every output back to the dtype of the carry it came from
-    # (issue #656) — same policy as the single-model bodies in
+    # — same policy as the single-model bodies in
     # rfx/materials/{debye,lorentz}.py, which carry the full rationale.
     _fdtype = state.ex.dtype
     _dpdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
@@ -119,11 +126,11 @@ def _update_e_with_optional_dispersion(
     hx, hy, hz = state.hx, state.hy, state.hz
 
     curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
-    # Explicit Lorentz polarization update first (per component, #1260).
+    # Explicit Lorentz polarization update first (per component).
     from rfx.materials.debye import per_component
     from rfx.materials.lorentz import (
         lorentz_p_component, mixed_e_component_coeffs,
@@ -131,18 +138,19 @@ def _update_e_with_optional_dispersion(
     e_old = (ex_old, ey_old, ez_old)
     curls = (curl_x, curl_y, curl_z)
     p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
-    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
-                lorentz_state.pz_prev)
+    v_l = (lorentz_state.vx, lorentz_state.vy,
+                lorentz_state.vz)
     p_d = (debye_state.px, debye_state.py, debye_state.pz)
-    p_l_new = tuple(
-        lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c], p_l_prev[c],
+    pv_l_new = tuple(
+        lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c], v_l[c],
                             _lpdtype)
         for c in range(3))
+    p_l_new, v_l_new = zip(*pv_l_new)
     px_l_new, py_l_new, pz_l_new = p_l_new
 
     e_new, p_d_new = [], []
     for c in range(3):
-        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        dp_l = jnp.sum(v_l_new[c], axis=0)
         ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
             debye_coeffs, lorentz_coeffs, c, dt)
         e_c = (
@@ -169,9 +177,9 @@ def _update_e_with_optional_dispersion(
         px=px_l_new,
         py=py_l_new,
         pz=pz_l_new,
-        px_prev=lorentz_state.px,
-        py_prev=lorentz_state.py,
-        pz_prev=lorentz_state.pz,
+        vx=v_l_new[0],
+        vy=v_l_new[1],
+        vz=v_l_new[2],
     )
 
     return new_fdtd, new_debye, new_lorentz
@@ -195,7 +203,7 @@ class _SimSetup(NamedTuple):
     wire_sparam_meta: tuple
     lumped_sparam_meta: tuple
     rlc_meta: tuple
-    # issue #313 opt-in reference-plane accumulators (empty when unused)
+    # opt-in reference-plane accumulators (empty when unused)
     wire_refplane_meta: tuple
     # 8-field tuple: (axis, index, freqs, comp_names, lo1, hi1, lo2, hi2)
     flux_meta_8: tuple
@@ -217,7 +225,7 @@ def _resolve_design_occupancy(
     pec_occupancy,
     field_dtype,
 ) -> "_DesignOccupancyKeep":
-    """Check an occupancy design box against this run, then build ``1 - M`` (#1183).
+    """Check an occupancy design box against this run, then build ``1 - M``.
 
     Far fewer fences than :func:`resolve_design_box`, and the reason is
     physical: the occupancy scaling is a pure multiply applied AFTER the E
@@ -263,6 +271,7 @@ def _build_step_setup(
     aniso_eps: "tuple | None",
     aniso_inv_eps: "tuple | None",
     aniso_inv_eps_smooth: bool,
+    subpixel_smoothing: object = False,
     pec_mask: object,
     pec_sheets: object,
     pec_wires: object,
@@ -281,6 +290,7 @@ def _build_step_setup(
     design_box: "DesignBoxSpec | None" = None,
     design_occupancy: "DesignOccupancySpec | None" = None,
     current_moments: "object | None" = None,
+    measurement=None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -299,7 +309,9 @@ def _build_step_setup(
     # ---- boundary configuration ----
     from rfx.model.materials import with_components
     from rfx.model.tensor_operands import TensorOperands
-    materials = with_components(materials, grid, periodic=periodic, tensor=
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    materials = with_components(materials, grid, periodic=periodic,
+        high_wall=unpadded_high_walls(grid), tensor=
         TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
@@ -313,14 +325,12 @@ def _build_step_setup(
                      or stencil_order != 2 or design_box is not None
                      or design_occupancy is not None or kerr_chi3 is not None))
     cpml_axes = drop_periodic_axes(cpml_axes, periodic)  # no CPML/PEC on periodic axes
-    # ---- the walls, per face, from the grid's declaration (#1164) ----
-    # ``resolve_wall_faces`` is the one rule every entry point shares:
-    # periodic -> none; a magnetic face is never an electric wall; a
-    # declared PEC face is one; any other face is PEC-backed unless the
-    # legacy ``pec_axes`` string withholds that default for its axis.
-    # The scan applies these per face only; the axis-wide ``apply_pec``
-    # is gone from the step (an axis wall over a PMC face shorted a port
-    # on that plane through run(), and through forward() after #1194).
+    # Resolve walls per face from the grid declaration. ``resolve_wall_faces``
+    # is shared by every entry point: periodic faces have no wall, a magnetic
+    # face is never an electric wall, and a declared PEC face is electric.
+    # Other faces are PEC-backed unless ``pec_axes`` withholds that default.
+    # Apply walls per face: an axis-wide wall over a PMC face shorts a port
+    # on that plane through run() or forward().
     _pec_faces_frozen, _pmc_faces_frozen = resolve_wall_faces(
         grid, periodic, pec_axes)
     use_pec_faces = bool(_pec_faces_frozen)
@@ -337,12 +347,19 @@ def _build_step_setup(
     use_debye = debye is not None
     use_lorentz = lorentz is not None
     use_tfsf = tfsf is not None
+    runner_ntff, runner_moments = ntff, current_moments
+    if measurement is not None:
+        from rfx.measurement.accumulators import (
+            plan_monitor_objects, validate_monitor_presence, validate_monitor_carries,
+        )
+        ntff, current_moments = plan_monitor_objects(measurement, grid)
+        validate_monitor_presence((ntff, current_moments), (runner_ntff, runner_moments))
     use_ntff = ntff is not None
     use_current_moments = current_moments is not None
     use_dft_planes = len(dft_planes) > 0
     use_flux_monitors = len(flux_monitors) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
-    # ---- #931 §1.7: realize the PEC edge masks ONCE, here ----
+    # ---- realize the PEC edge masks ONCE, here ----
     # ``pec_edge_masks`` may arrive pre-realized (and port-cleared) from a
     # lane that had to read them before the run; otherwise realize from the
     # volume cell mask plus the declared sheets/wires with THIS run's
@@ -380,7 +397,7 @@ def _build_step_setup(
     # encodes both PEC behaviour and dielectric subpixel smoothing —
     # apply_conformal_pec is redundant and SKIPPED to avoid double-zeroing.
     use_aniso_inv = aniso_inv_eps is not None
-    # ---- #931 §1.8 fence: Kottke Stage-2 owns its own volume ----
+    # ---- fence: Kottke Stage-2 owns its own volume ----
     # ``subpixel_smoothing="kottke_pec"`` builds the tensor from the SAME
     # ``pec_shapes`` that produced ``pec_mask``, and a partially filled edge
     # gets a FRACTIONAL inverse permittivity.  Applying the §1.2 ownership
@@ -407,7 +424,11 @@ def _build_step_setup(
 
     from rfx.boundaries.setup import oblique_bloch
     _oblique_bloch = oblique_bloch(tfsf, use_ntff=use_ntff,
-                                 use_dft_planes=use_dft_planes, use_flux_monitors=use_flux_monitors)
+                                 use_dft_planes=use_dft_planes, use_flux_monitors=use_flux_monitors,
+                                 aniso_eps=aniso_eps, aniso_inv_eps=aniso_inv_eps,
+                                 conformal_weights=conformal_weights,
+                                 aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+                                 subpixel_smoothing=subpixel_smoothing, debye=debye, lorentz=lorentz)
 
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Plain ints,
@@ -425,7 +446,7 @@ def _build_step_setup(
                            ("waveguide_ports", waveguide_ports), ("wire_port_sparams", wire_port_sparams),
                            ("lumped_port_sparams", lumped_port_sparams), ("lumped_rlc", lumped_rlc)))
 
-    # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
+    # ---- (2,4) fourth-order-in-space stencil ----
     # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
     # untouched.  order=4 is reachable ONLY on the plain uniform-Cartesian
     # vacuum/dielectric path (pec/periodic boundary, default solver, no
@@ -494,8 +515,10 @@ def _build_step_setup(
         from rfx.boundaries.cpml import init_cpml
         from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h
         # psi carry dtype follows the field dtype so the scan carry stays
-        # dtype-consistent when fields are complex (#404 oblique path).
+        # dtype-consistent when fields are complex.
         cpml_params, cpml_state = init_cpml(grid, field_dtype=_field_dtype)
+        from rfx.stepping.graded_precision import field_operands
+        cpml_params = field_operands(cpml_params, _field_dtype)
         carry_init["cpml"] = cpml_state
     elif use_upml:
         from rfx.boundaries.upml import init_upml
@@ -512,22 +535,16 @@ def _build_step_setup(
         carry_init["lorentz"] = lorentz_state
 
     if use_tfsf:
-        from rfx.sources.tfsf import (
-            update_tfsf_1d_e,
-            update_tfsf_1d_h,
-            apply_tfsf_e,
-            apply_tfsf_h,
-            is_tfsf_2d, prepare_tfsf_for_scan,
-        )
+        from rfx.sources.tfsf import update_tfsf_1d_e, update_tfsf_1d_h, is_tfsf_2d, prepare_tfsf_for_scan
+        from rfx.stepping.tfsf import apply_tfsf_e, apply_tfsf_h
         tfsf_cfg, tfsf_state = prepare_tfsf_for_scan(tfsf, dx, dt)
         carry_init["tfsf"] = tfsf_state
         _tfsf_is_2d = is_tfsf_2d(tfsf_cfg)
         if _tfsf_is_2d:
-            from rfx.sources.tfsf_2d import (
-                update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
-            )
+            from rfx.sources.tfsf_2d import update_tfsf_2d_h, update_tfsf_2d_e
+            from rfx.stepping.tfsf_2d import bloch_phase_tuple
             # Per-axis Bloch phase on the 3D periodic roll (transverse axis),
-            # matching the 2D-aux grid's transform (#404).
+            # matching the 2D-aux grid's transform.
             _bloch = bloch_phase_tuple(tfsf_cfg, grid.dx)
 
     if use_ntff:
@@ -535,11 +552,11 @@ def _build_step_setup(
         from rfx.farfield import accumulate_ntff as _accumulate_ntff
         init_ntff_data_fn = _init_ntff_data
         accumulate_ntff_fn = _accumulate_ntff
-        # NTFF accumulator dtype follows the field dtype with a float32 floor
-        # (#646), mirroring the CPML psi carry above. accumulate_ntff pins its
+        # NTFF accumulator dtype follows the field dtype with a float32 floor,
+        # mirroring the CPML psi carry above. accumulate_ntff pins its
         # phase arithmetic to whatever is allocated here, so the scan carry
         # closes under jax_enable_x64 instead of raising a dtype mismatch.
-        carry_init["ntff"] = _init_ntff_data(ntff, field_dtype=_field_dtype)
+        carry_init["ntff"] = _init_ntff_data(runner_ntff, field_dtype=_field_dtype)
 
     accumulate_current_moments_fn = None
     if use_current_moments:
@@ -548,11 +565,14 @@ def _build_step_setup(
             init_current_moment_data as _init_cm,
         )
         accumulate_current_moments_fn = _accumulate_cm
-        # Same dtype policy as the NTFF carry (#646): the accumulator follows
+        # Same dtype policy as the NTFF carry: the accumulator follows
         # the field dtype with a complex64 floor so the scan carry closes
         # under jax_enable_x64.
         carry_init["current_moments"] = _init_cm(
-            current_moments, field_dtype=_field_dtype)
+            runner_moments, field_dtype=_field_dtype)
+
+    if measurement is not None:
+        validate_monitor_carries(ntff, current_moments, carry_init)
 
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
@@ -588,11 +608,11 @@ def _build_step_setup(
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # v_dft
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # i_dft
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),  # v_inc_dft
-                # v_port_dft (issue #764): whole-port gap voltage
+                # v_port_dft: whole-port gap voltage
                 # V_port = sum over LIVE cells of -E_c*dx.
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),
-                # v_ref_dft (issue #683 x #764): PRE-injection drive-sample
-                # reference for the #308-calibrated off-diagonal
+                # v_ref_dft: PRE-injection drive-sample
+                # reference for the calibrated off-diagonal
                 # decomposition (bit-identical to the historical v_dft).
                 jnp.zeros(len(wp.freqs), dtype=_sparam_acc_dtype),
             )
@@ -603,7 +623,7 @@ def _build_step_setup(
     wire_refplane_meta: tuple = ()
     if use_wire_refplanes:
         # Initialize V, I(-dx/2), I(+dx/2) DFT accumulators per reference
-        # plane (issue #313 opt-in; two planes per opted port).  Same
+        # plane (two planes per opted port).  Same
         # accumulator dtype and rect-DFT kernel as the port-cell channels.
         carry_init["wire_refplane_accs"] = tuple(
             (
@@ -617,12 +637,12 @@ def _build_step_setup(
 
     lumped_sparam_meta: tuple = ()
     if use_lumped_sparams:
-        # Initialize V, I DFT accumulators per lumped port (issue #72).
+        # Initialize V, I DFT accumulators per lumped port.
         # No V_inc accumulator needed: the wave decomposition
         # ``a = (-V + Z0·I)/(2√Z0)`` is exact regardless of source pulse shape.
         # The third channel is the PRE-injection drive sample (the
-        # historical #72 v_dft, bit-for-bit), kept because the #308
-        # off-diagonal incident wave is calibrated against it; the
+        # historical v_dft, bit-for-bit), kept because the off-diagonal incident wave is
+        # calibrated against it; the
         # physical V/I are accumulated post-injection.
         carry_init["lumped_sparam_accs"] = tuple(
             (
@@ -668,9 +688,14 @@ def _build_step_setup(
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     from rfx.measurement.accumulators import plane_metadata
     dft_meta = plane_metadata(dft_planes)
+    if measurement is not None:
+        from rfx.measurement.accumulators import plan_accumulator_meta
+        dft_meta, flux_meta_11 = plan_accumulator_meta(
+            measurement, _field_dtype, grid=grid, dft_planes=dft_planes, flux_monitors=flux_monitors)
+        flux_meta_8 = tuple(meta[:8] for meta in flux_meta_11)
     waveguide_meta = tuple(waveguide_ports)
 
-    # ---- #1179 design box: fence, then build its coefficients once ----
+    # ---- design box: fence, then build its coefficients once ----
     design_box_coeffs = None
     if design_box is not None:
         design_box_coeffs = resolve_design_box(
@@ -705,7 +730,7 @@ def _build_step_setup(
             ),
         )
 
-    # ---- #1183 design occupancy: fence, then build its 1 - M once ----
+    # ---- design occupancy: fence, then build its 1 - M once ----
     design_occupancy_keep = None
     if design_occupancy is not None:
         design_occupancy_keep = _resolve_design_occupancy(
@@ -768,7 +793,8 @@ def _build_step_setup(
         pec_static_edge_masks=pec_static_edge_masks,
         kerr_chi3=kerr_chi3,
         ntff=ntff,
-        pec_faces_frozen=_pec_faces_frozen,
+        pec_faces_frozen=_pec_faces_frozen - getattr(sheet_impedance, "wall_faces", frozenset()),
+        wall_loss_faces=getattr(sheet_impedance, "wall_faces", frozenset()),
         pmc_faces_frozen=_pmc_faces_frozen,
         curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
         prb_meta=tuple(prb_meta),
@@ -818,37 +844,46 @@ def _build_step_setup(
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,
-                   *, design_hook=None, hooks=None):
+                   *, design_hook=None, hooks=None, measurement=None, dtype=None):
     """Compose the uniform step; retain the runner and adjoint call signatures.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` yielding
     ``(new_carry, probe_out, extras)``. The design callback attaches immediately
     after the E update; optional hook attachments use the transient uniform frame.
+    An attached ``measurement`` plan supplies the probe and port tables.
     """
     from rfx.stepping.uniform import make_uniform_step
     if invariants is None:
-        invariants = core_step_invariants(ctx)
+        invariants = (core_step_invariants(ctx) if measurement is None else
+                      core_step_invariants(ctx, measurement=measurement, dtype=dtype))
     return make_uniform_step(invariants["ctx"], invariants,
                              design_hook=design_hook, hooks=hooks)
 
 
-def core_step_invariants(ctx: _StepContext) -> dict:
+def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> dict:
     """What :func:`make_core_step`'s kernel reads besides its arguments.
 
-    ``ctx`` itself plus the two arrays derived from it once, eagerly: the
-    CPML permittivity and the surface-impedance sheet coefficients. A jitted
+    ``ctx`` itself plus arrays derived from it once, before the loop: the
+    CPML permittivity, sheet coefficients and boolean conformal zero masks. A jitted
     caller passes the per-cell arrays in this dict as an argument
     (:func:`rfx.core.jax_utils.split_loop_invariants`) and hands the rebuilt
     dict to ``make_core_step(ctx, invariants=...)`` inside the trace, so they
     are not compiled into the program as grid-sized constants.
+    With an attached ``measurement`` plan, the probe and port tables are
+    compiled from its owners once here, in ``dtype``, before the loop.
     """
     from rfx.model.materials import with_components
     ctx = replace(ctx, materials=with_components(ctx.materials, ctx.grid, periodic=ctx.periodic))
     materials = ctx.materials
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
+    # Stage 1's zero set is loop-invariant, like the update coefficients.
+    # Keep it separate from pec_edge_masks: sheets use those for PEC ownership.
+    conformal_zero_masks = None
+    if ctx.use_conformal and not ctx.use_aniso_inv:
+        conformal_zero_masks = tuple(w == 0.0 for w in tensor.conformal_weights)
 
-    # #1043. ``apply_cpml_e`` builds its psi coefficient from a permittivity,
+    # ``apply_cpml_e`` builds its psi coefficient from a permittivity,
     # and it has to be the SAME one the Yee half of this timestep used, or the
     # two halves integrate different media and the combined update can
     # amplify (see that function's ``inv_eps_r_update`` docstring for the
@@ -858,7 +893,7 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     # so the CPML coefficient must also ignore them.
     #
     # Plain and dispersive updates share the realized E-edge permittivity.
-    # #1260 made the DISPERSIVE update per-component as well: its ε_∞ is the
+    # The dispersive update is per-component: its ε_∞ is the
     # same ``component_e_materials`` mean, also threaded for dispersive runs.
     _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
     if _aniso_is_live and aniso_inv_eps is not None:
@@ -868,7 +903,7 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     else:
         cpml_inv_eps_r = tuple(1.0 / e for e in materials.components.eps_update)
 
-    # #677 surface-impedance sheet: Holland exponential-stepping A/B built
+    # surface-impedance sheet: Holland exponential-stepping A/B built
     # once from the FINAL run materials (background eps_r/sigma at the sheet
     # cells + the ctx's sigma_sheet), applied per step at tangential edges.
     _sheet_coeffs = None
@@ -880,5 +915,22 @@ def core_step_invariants(ctx: _StepContext) -> dict:
             ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
     from rfx.stepping.absorber import cpml_context
     ctx, e_loss = cpml_context(ctx)
-    return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
-            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss}
+    from rfx.boundaries.pmc import high_face_row_factors, magnetic_update_factors
+    magnetic_factors = magnetic_update_factors(ctx.pmc_faces_frozen, ctx.grid.shape, ctx.periodic)
+    invariants = {"magnetic_factors": magnetic_factors, "ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
+                  "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss,
+                  "conformal_zero_masks": conformal_zero_masks}
+    invariants["h_row_factors"] = high_face_row_factors(ctx.grid.shape, ctx.periodic)
+    if measurement is not None:
+        from rfx.measurement.projector import plan_tables
+        from rfx.measurement.time_records import uniform_specs
+        specs = uniform_specs(ctx)
+        tables = plan_tables(measurement, n_probes=len(ctx.prb_meta), port_specs=specs, dtype=dtype)
+        invariants.update({key: tables[key] for key, used in
+                           (('probe_table', ctx.prb_meta), ('port_table', specs)) if used})
+    if ctx.use_waveguide_ports:
+        from rfx.measurement.waveguide_records import compile_waveguide_table
+        invariants['waveguide_table'] = compile_waveguide_table(
+            ctx.grid, ctx.waveguide_meta, measurement=measurement,
+            dtype=dtype or ctx.waveguide_meta[0].v_probe_t.dtype)
+    return invariants

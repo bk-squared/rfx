@@ -1,8 +1,8 @@
-"""One entry point that picks the right S-matrix method (issue #980 Phase 1).
+"""One entry point that picks the right S-matrix method.
 
 ``Simulation`` ships seven S-parameter calculators plus a run-lane, and each
-one is fenced to a single port family by its own precondition block. Issue #980
-section 1 records what that costs: an agent (or a new user) calls
+one is fenced to a single port family by its own precondition block.
+Calling the wrong entry point is easy: a user calls
 ``sim.run(compute_s_params=True)`` on a simulation whose ports are waveguide
 or coaxial -- where that lane computes nothing at all -- or guesses a method
 name such as ``compute_s_params()`` that does not exist.
@@ -27,8 +27,7 @@ argument was wrong -- and it is pinned by
 
 *No silent method guess.* Where the registration genuinely does not determine a
 method, this module raises and names the candidates rather than picking one.
-That is the whole point of the dispatcher: the failure mode #980 describes is
-a wrong method running quietly, not a missing convenience.
+That is the whole point of the dispatcher: a wrong method must not run quietly.
 
 The one ambiguous registration: a single coaxial port
 -----------------------------------------------------
@@ -58,12 +57,18 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
 from typing import TYPE_CHECKING
 import warnings
 
 if TYPE_CHECKING:  # pragma: no cover
+    from rfx.api._spec import CoaxMSLTransitionResult
+    from rfx.api._spec import CoaxialLineReflectionResult
+    from rfx.api._spec import CoaxialTwoPortResult
+    from rfx.api._spec import MSLSMatrixResult
+    from rfx.api._spec import MixedSMatrixResult
+    from rfx.api._spec import WaveguideSMatrixResult
     from rfx.api import Simulation  # noqa: F401
 
 
@@ -81,9 +86,8 @@ COAXIAL_ONE_PORT_LANES = (
     "compute_coaxial_two_port",
 )
 
-# Every method name ``s_matrix_lane()`` can return, for validating ``method=``.
-# The single-plane coaxial method was never selectable here, and it was removed
-# from rfx in #1212.
+# Every method name ``s_matrix_lane()`` can return, for validating
+# ``method=``.
 _SELECTABLE_LANES = (
     "compute_waveguide_s_matrix",
     "compute_msl_s_matrix",
@@ -105,8 +109,8 @@ def _port_census(self) -> dict:
     -- they would fire in every drive run. Counted separately so the error
     messages can say which of the two is present.
     """
-    lumped_wire = [pe for pe in self._ports if pe.impedance != 0.0]
-    bare_sources = [pe for pe in self._ports if pe.impedance == 0.0]
+    lumped_wire = [pe for pe in self._ports if pe.is_port]
+    bare_sources = [pe for pe in self._ports if pe.is_soft_source]
     return {
         "waveguide": len(self._waveguide_ports),
         "msl": len(self._msl_ports),
@@ -243,7 +247,7 @@ def _no_lane_message(c: dict) -> str:
             "coaxial method is built from EXACTLY ONE add_coaxial_port() "
             "(compute_coaxial_line_reflection, compute_coaxial_two_port and "
             "compute_coax_msl_transition each raise otherwise). No method "
-            "accepts several; compute_coaxial_s_matrix() did (removed, #1212)."
+            "accepts several; compute_coaxial_s_matrix() did (removed)."
         )
 
     singles = []
@@ -343,7 +347,7 @@ def s_matrix_lane(self, *, method: str | None = None, lane: str | None = None) -
         raise ValueError(
             f"method={method!r} is not a method compute_s_matrix() can select. "
             f"Valid: {', '.join(repr(n) for n in _SELECTABLE_LANES)}. "
-            "(compute_coaxial_s_matrix was removed in #1212.)"
+            "(compute_coaxial_s_matrix was removed.)"
         )
 
     if method in COAXIAL_ONE_PORT_LANES:
@@ -367,7 +371,7 @@ def s_matrix_lane(self, *, method: str | None = None, lane: str | None = None) -
     return resolved
 
 
-def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None, **kwargs):
+def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None, **kwargs: object) -> WaveguideSMatrixResult | MSLSMatrixResult | CoaxialLineReflectionResult | CoaxialTwoPortResult | CoaxMSLTransitionResult | MixedSMatrixResult:
     """Compute S-parameters on whichever method this simulation's ports select.
 
     A single entry point over the per-family calculators. It inspects the
@@ -495,7 +499,7 @@ def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None
 
 
 # ---------------------------------------------------------------------------
-# ``__qualname__``, matched to the #980 Phase 2 convention.
+# ``__qualname__`` convention.
 #
 # These two are NEW methods rather than moved ones, but they are bound into
 # ``_SparamMixin``'s class body the same way the moved calculators are, and

@@ -12,6 +12,7 @@ def _model(nonuniform=False):
     d = 1e-3
     kwargs = {"dz_profile": np.full(9, d)} if nonuniform else {}
     sim = Simulation(freq_max=10e9, domain=(12*d, 11*d, 9*d), dx=d,
+                     snap="declared",
                      boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
                                            y=Boundary(lo="cpml", hi="pec"), z="pec"),
                      cpml_layers=2, **kwargs)
@@ -128,7 +129,7 @@ def test_result_keeps_its_compact_run_record_without_stepping(monkeypatch):
     assert result.realized_geometry.entities[1].axes == record.entities[1].axes
     assert result.realized_geometry.entities[1].mask is None
     sim.add(Box((0.001, 0.001, 0.006), (0.002, 0.002, 0.007)), material="slab")
-    assert sim.realized_geometry() is not record
+    assert len(sim.realized_geometry().entities) == 5
     assert len(result.realized_geometry.entities) == 4
 
 
@@ -212,6 +213,7 @@ def _terminated_trace(nonuniform):
     d = 127e-6
     kw = {"dz_profile": np.full(10, d)} if nonuniform else {}
     sim = Simulation(freq_max=20e9, domain=(60.4*d, 30*d, 10*d), dx=d,
+                     snap="declared",
                      boundary="cpml", cpml_layers=8, **kw)
     sim.add_material("sub", eps_r=3.66)
     sim.add(Box((0, 0, 0), (60.4*d, 30*d, 2*d)), material="sub")
@@ -424,6 +426,7 @@ def test_lossy_run_record_retains_assembly_continuation(monkeypatch, nonuniform)
     import rfx.runners.nonuniform as nu
     kwargs = {"dz_profile": np.full(8, .001)} if nonuniform else {}
     sim = Simulation(freq_max=10e9, domain=(.0086, .0086, .008), dx=.001,
+                     snap="declared",
                      boundary="cpml", cpml_layers=4, **kwargs)
     sim.add_thin_conductor(Box((0., 0., .004), (.0086, .0086, .004)),
                            sigma_bulk=1e4, surface_impedance_f0=10e9)
@@ -445,11 +448,23 @@ def test_graded_waveguide_record_matches_runner_aperture(monkeypatch, normal, ra
     profile = np.concatenate((ramp, ramp[::-1]))
     domain = [.03, .02286, .02286]
     domain["xyz".index(graded_axis)] = float(profile.sum())
-    sim = Simulation(freq_max=20e9, domain=tuple(domain), dx=.001,
+    sim = Simulation(freq_max=20e9, domain=tuple(domain), dx=.001, snap="declared",
                      boundary=BoundarySpec(**{axis: "cpml" if axis == normal else "pec"
                                               for axis in "xyz"}),
                      cpml_layers=2, **{f"d{graded_axis}_profile": profile})
     value_range = (.002, .0072) if ranged else None
+    if ranged:
+        # Keep the off-node declaration: its nearest-node aperture needs
+        # conductors at those same realized planes, not at the domain faces.
+        # The sheets run past the declared domain: 22.86 mm realizes as 23
+        # cells, and a sheet ending at 22.86 mm leaves the last edge bare.
+        nodes = np.concatenate(([0.], np.cumsum(profile)))
+        for value in value_range:
+            plane = nodes[np.argmin(abs(nodes - value))]
+            lo, hi = [0., 0., 0.], [extent + .01 for extent in domain]
+            lo["xyz".index(graded_axis)] = plane
+            hi["xyz".index(graded_axis)] = plane
+            sim.add(Box(tuple(lo), tuple(hi)), material="pec")
     sim.add_waveguide_port(.01, direction=f"+{normal}", mode=(1, 0),
                            f0=15e9, freqs=np.array([15e9]),
                            **{f"{graded_axis}_range": value_range})

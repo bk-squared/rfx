@@ -29,10 +29,9 @@ independent source (not rfx's β) + the slope-tracking assertion (recovers the
 geometric plane separation) are what make this a real catch rather than a
 tautology.
 
-R5 evidence + tolerance derivation: docs/research_notes/20260616_t2.1_phase_witness_r5.md
-(masked healthy residual then ~3.8°, since #1887 0.18° with the predictor on the
+R5 evidence + tolerance derivation: masked healthy residual then ~3.8°, since #1887 0.18° with the predictor on the
 solved guide width; a mis-selected-component
-extractor bug gave 58–180° — a >10× gate window).
+extractor bug gave 58–180° — a >10× gate window.
 """
 
 from __future__ import annotations

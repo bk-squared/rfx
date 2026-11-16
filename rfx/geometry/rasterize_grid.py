@@ -6,6 +6,9 @@ via a coordinate-provider abstraction.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
+
+from rfx.errors import AccuracyWarning, RfxRefusal
 
 import warnings
 from typing import NamedTuple
@@ -16,8 +19,9 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx._traced_refusal import TracedStructureRefusal
-from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
+from rfx._internal._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
+from rfx.geometry.cell_table.nodes import _axis_node_positions, _uniform_axis_nodes
 from rfx.geometry.csg import Box, Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
@@ -35,20 +39,15 @@ class GridCoords(NamedTuple):
     that PEC/geometry act on. ``coords_from_fine_grid`` genuinely returns cell
     CENTRES for the subgrid fine region (subgrid-fenced, unchanged).
 
-    Reading the wrong one is not cosmetic. This type's docstring said
-    "cell-center" for every producer until #562, and a consumer
-    (``compute_smoothed_eps_nonuniform``) named its variables ``centers_*``
-    accordingly and derived the node as ``centre - d/2``; when the NU producer
-    became node-based, that derivation silently inverted and displaced every
-    smoothed voxel by half a cell. Consumers that need both should derive the
-    centre FROM the node (``centre = node + d/2``), and any new producer must
-    say which convention it returns.
+    Consumers must derive the centre FROM the node (``centre = node + d/2``). Subtracting ``d/2`` from node coordinates
+    silently displaces every smoothed voxel by half a cell. Any producer must state which coordinate convention it
+    returns.
 
-    **Dtype contract (#802/#807)**: concrete producers return HOST float64
+    **Dtype contract**: concrete producers return HOST float64
     numpy arrays — exact node positions, independent of ``jax_enable_x64``.
     Do not ``jnp.asarray`` them before a comparison; under x64=0 that
     silently downcasts to float32, which flips inclusion at node-aligned
-    faces (the #802 defect). Only the traced NU producer (mesh as design
+    faces (the defect). Only the traced NU producer (mesh as design
     variable) returns a float32 jnp array.
     """
     x: jnp.ndarray  # (nx,)
@@ -57,32 +56,17 @@ class GridCoords(NamedTuple):
     shape: tuple[int, int, int]
 
 
-class ExactNodeSpineMissingWarning(UserWarning):
+class ExactNodeSpineMissingWarning(AccuracyWarning):
     """A concrete NonUniformGrid axis has no float64 cell-size spine.
 
     ``coords_from_nonuniform_grid`` then widens the solver's float32 store
-    to build node positions — the pre-#802 values, ~1e-10 m off the exact
+    to build node positions — values ~1e-10 m off the exact
     node line, which flips half-open inclusion at node-aligned faces (a
     node-aligned Box on a graded 0.3048 mm profile realized 2000 cells from
-    the widened store against 1800 from the exact spine, measured
-    2026-09-02). ``make_nonuniform_grid`` always populates the spine on
+    the widened store against 1800 from the exact spine). ``make_nonuniform_grid`` always populates the spine on
     concrete profiles, so this fires only for grids assembled by hand or
     whose spine fields were replaced by non-float64 arrays.
     """
-
-
-def _uniform_axis_nodes(n: int, pad: int, dx: float) -> np.ndarray:
-    """Exact E-node positions for a uniform axis: host float64, flag-independent.
-
-    ``(i - pad) * dx`` per node in float64 — bit-identical to the x64=1
-    realization verified against the Box half-open convention (#802). This is
-    THE uniform node formula: ``csg._grid_coords``, ``coords_from_uniform_grid``
-    and the uniform-valued branch of ``_axis_node_positions`` all call it, so
-    the uniform and non-uniform lanes cannot rasterize a uniform-valued axis
-    differently (#807 class). Before this builder existed the repo carried
-    three hand-copies that each rounded differently in float32.
-    """
-    return (np.arange(n, dtype=np.float64) - pad) * float(dx)
 
 
 def coords_from_uniform_grid(grid) -> GridCoords:
@@ -92,7 +76,7 @@ def coords_from_uniform_grid(grid) -> GridCoords:
     despite the historical "cell-center" wording this docstring carried.
     Returns HOST float64 numpy arrays (see ``_uniform_axis_nodes``); do not
     ``jnp.asarray`` them before a comparison — under x64=0 that silently
-    downcasts to float32, which is the #802 defect.
+    downcasts to float32, which is the defect.
     """
     nx, ny, nz = grid.shape
     dx = grid.dx
@@ -103,34 +87,8 @@ def coords_from_uniform_grid(grid) -> GridCoords:
                       shape=(nx, ny, nz))
 
 
-def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
-    """E-node positions for a padded cell-size array.
-
-    The nodes this grid steps sit on cell EDGES, not centres: the
-    non-uniform E update divides by ``2/(d[i-1]+d[i])``, the dual spacing
-    of a node straddling cells ``i-1`` and ``i``. Node ``cpml`` (the first
-    interior one) is the origin, so the interior spans
-    ``[0, sum(interior d)]`` and the last interior node lands exactly on
-    the requested domain face — the same convention
-    ``coords_from_uniform_grid`` uses (``(arange - pad) * dx``).
-
-    Until #562 this returned cell CENTRES, half a cell off the nodes the
-    stencil differences and half a cell off the uniform builder, which put
-    every rasterized material half a cell away from the fields acting on
-    it and (with the missing bounding node) made a PEC-bounded guide one
-    cell narrower than requested.
-    """
-    d = np.asarray(d_arr, dtype=np.float64)
-    if d.size and bool(np.all(d == d[0])):
-        # Uniform-valued axis: closed form, bitwise-equal to the uniform
-        # builder by construction — the lane-equality guarantee (#807).
-        return _uniform_axis_nodes(d.size, cpml, float(d[0]))
-    edges = np.insert(np.cumsum(d), 0, 0.0)           # len = n+1
-    return edges[:-1] - edges[cpml]                   # n nodes, origin at cpml
-
-
 def coords_from_nonuniform_grid(grid) -> GridCoords:
-    """Extract E-NODE coordinates from a NonUniformGrid (#562).
+    """Extract E-NODE coordinates from a NonUniformGrid.
 
     All three axes use the per-cell spacing arrays (``dx_arr``,
     ``dy_arr``, ``dz``). The first interior cell on each axis is
@@ -160,16 +118,16 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
                                    jnp.cumsum(d_j)])
             nodes = cum[:-1] - cum[pad_lo]
             return nodes.astype(jnp.float32)
-        # Concrete path: HOST float64, no f32 cast (#802/#807 — the cast
-        # here re-quantized every node position and made the NU lane land
-        # one plane away from the uniform lane at node-aligned faces).
+        # Concrete path: HOST float64, no f32 cast (a cast re-quantizes node positions and
+        # can place the NU lane one plane away from the uniform lane at node-aligned
+        # faces).
         # Read the grid's exact float64 profile: ``dx_arr``/``dy_arr``/``dz``
         # are float32 stores, and a cumsum of f32-widened cell sizes drifts
         # off the exact node positions by the same 1e-10 m class this
         # function exists to eliminate. A grid without the spine (built by
         # hand, or a spine field replaced by a non-float64 array) gets the
         # widened store AND a warning: silently falling back reproduced the
-        # #802 realization with no trace of why.
+        # realization with no trace of why.
         if d_exact is None or np.asarray(d_exact).dtype != np.float64:
             spine_missing.append(axis_name)
             d_np = np.asarray(d_arr)
@@ -188,10 +146,10 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             f"{', '.join(spine_missing)} (dx_arr_f64 / dy_arr_f64 / dz_f64 "
             "is None or not float64): node positions were widened from the "
             "float32 store and can sit ~1e-10 m off the exact node line, "
-            "which flips half-open inclusion at node-aligned faces (#802 "
-            "class). Build the grid with make_nonuniform_grid, or set the "
+            "which flips half-open inclusion at node-aligned faces"
+            ". Build the grid with make_nonuniform_grid, or set the "
             "spine fields from the float64 profile.",
-            ExactNodeSpineMissingWarning, stacklevel=2)
+            ExactNodeSpineMissingWarning, stacklevel=user_stacklevel())
 
     return GridCoords(x=x, y=y, z=z, shape=(nx, ny, nz))
 
@@ -200,7 +158,7 @@ def coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off) -> GridCo
     """Extract cell-center coordinates for a subgridded fine region.
 
     Uses cell centers (offset by dx_f/2), not cell edges. Host float64 like
-    every other concrete producer (#802 policy) — the fine region is
+    every other concrete producer — the fine region is
     cv12/13-fenced experimental, but its coordinates follow the same
     exactness rule so a face landing on a sample point is not decided by
     float32 rounding.
@@ -212,13 +170,13 @@ def coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off) -> GridCo
 
 
 # ---------------------------------------------------------------------------
-# Lattice ownership contract (#931): cell centres, PEC classification, sheets
+# Lattice ownership contract: cell centres, PEC classification, sheets
 #
 # Normative text: docs/design_notes/20260906_plan_realign_lattice_ownership.md
 # §1.1 (centre sampling for PEC volumes), §1.3 (sheet footprint / plane),
 # §1.4 (wires), §1.5 (what ``sim.add(Box, material=pec)`` refuses).
-# Dielectric sampling is untouched: it stays the node, half-open sampler the
-# shapes implement in ``csg.py``.
+# Material Box volumes share the PEC centre window; shape node APIs remain
+# available for sheet, port and preflight node queries.
 # ---------------------------------------------------------------------------
 
 def _uniform_axis_centres(n: int, pad: int, dx: float) -> np.ndarray:
@@ -251,6 +209,34 @@ def cell_sizes_from_uniform_grid(grid):
     return tuple(np.full((n,), dx, dtype=np.float64) for n in grid.shape)
 
 
+def footprint_sample_coords(grid, axes, carrier):
+    """Sample a footprint at its carrier: nodes or forward cell centres.
+
+    Unrequested axes retain their node samples. A ``GridCoords`` record is
+    also accepted for node-carried sheets, preserving the caller's exact
+    arrays (including coordinate-only and fine-grid callers).
+    Non-periodic terminal nodes repeat the last width; periodic grids carry
+    the seam cell's own width through ``grid.cells``.
+    """
+    if carrier not in ('node', 'cell'):
+        raise ValueError(f'unknown footprint carrier {carrier!r}')
+    coords = (grid if isinstance(grid, GridCoords) else
+              coords_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr') else
+              coords_from_uniform_grid(grid))
+    samples = list(coords[:3])
+    if carrier == 'node':
+        return tuple(samples)
+    for a in axes:
+        nodes = samples[a]
+        widths = grid.cells(a)
+        xp = jnp if is_tracer(nodes) or is_tracer(widths) else np
+        widths = xp.asarray(widths)
+        if 'xyz'[a] not in getattr(grid, 'periodic_axes', '') and len(nodes) > 1:
+            widths = xp.concatenate((widths[:len(nodes) - 1], widths[len(nodes) - 2:len(nodes) - 1]))
+        samples[a] = nodes + widths / 2
+    return tuple(samples)
+
+
 def cell_sizes_from_nonuniform_grid(grid):
     """Per-cell sizes of a NonUniformGrid: the float64 spine when present
     (``dx_arr_f64`` / ``dy_arr_f64`` / ``dz_f64``), else the store."""
@@ -273,8 +259,7 @@ def cell_centres_from_nodes(coords: GridCoords, cell_sizes=None) -> GridCoords:
     ``cell_sizes`` is the per-cell size triple (from the grid's spine);
     when None it is derived from the node line.  A uniform-valued axis
     takes the closed form :func:`_uniform_axis_centres` so the uniform and
-    non-uniform lanes cannot centre-sample a uniform axis differently
-    (#807 class).  Traced input keeps traced arithmetic.
+    non-uniform lanes cannot centre-sample a uniform axis differently.  Traced input keeps traced arithmetic.
     """
     axes = []
     for nodes, d in zip((coords.x, coords.y, coords.z),
@@ -292,7 +277,7 @@ def cell_centres_from_nodes(coords: GridCoords, cell_sizes=None) -> GridCoords:
             # uniform-valued axis: IF the nodes are (i - pad) * dx exactly
             # (every in-repo producer goes through ``_uniform_axis_nodes``),
             # ``pad`` is recoverable from the first node and the closed form
-            # keeps the uniform and non-uniform lanes bit-identical (#807).
+            # keeps the uniform and non-uniform lanes bit-identical.
             # A caller-supplied node line with a fractional origin is NOT
             # that axis, and the closed form would silently move its
             # centres by the fractional offset — take the exact fallback.
@@ -320,24 +305,107 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
     return cell_centres_from_nodes(coords, cell_sizes_from_nonuniform_grid(grid))
 
 
-def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=None):
-    """Sample curved material volumes where their cell values live (#1138).
+def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
+                        grid=None, cell_sizes=None, domain_faces=None, name=None,
+                        refuse_empty=True, size_rule=True):
+    """Sample a material volume and refuse a declaration owning no cells.
 
-    A node-symmetric Sphere/Cylinder stored as cell epsilon or sigma shifts
-    the material by half a cell. Use the supplied physical centres (already
-    centred on the fine subgrid), without changing Shape.mask's node API or
-    the separate PEC volume/sheet/wire classifier. Other shapes retain their
-    existing rules. Custom shapes need mask_on_coords on a periodic grid;
-    non-periodic uniform shapes may implement only mask(grid).
+    With ``refuse_empty`` and ``size_rule`` a Sphere or Cylinder too small to
+    hold a primal-cell centre at every position is refused first, by its size
+    (:mod:`rfx.geometry.curved_body_size`); the empty-mask test stays behind it.
     """
-    from rfx._periodic import periodic_mask, periodic_shape
+    if cell_sizes is None:
+        cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
+                      else cell_sizes_from_uniform_grid(grid) if grid is not None
+                      else tuple(axis_cell_sizes(n) for n in coords[:3]))
+    if isinstance(shape, Box):
+        shape = _span_collapsed_axes(shape, centres, cell_sizes)
+    mask = _sample_material_cells(shape, coords, centres, grid=grid,
+                                 cell_sizes=cell_sizes, domain_faces=domain_faces)
+    if refuse_empty:
+        from rfx.geometry.curved import CurvedPatch
+        from rfx.geometry.curved_body_size import refuse_small_body
+        if size_rule:
+            refuse_small_body(shape, centres, cell_sizes, name)
+        empty = (True if isinstance(shape, CurvedPatch) else
+                 _volume_is_empty(shape, centres, mask, cell_sizes,
+                                  grid=grid, domain_faces=domain_faces))
+        if empty:
+            diagnostic_sizes, diagnostic_centres = cell_sizes, centres
+            if grid is not None and any(is_tracer(v) for v in (*cell_sizes, *centres[:3])):
+                nonuniform = hasattr(grid, 'dx_arr')
+                diagnostic_sizes = (cell_sizes_from_nonuniform_grid(grid) if nonuniform
+                                    else cell_sizes_from_uniform_grid(grid))
+                diagnostic_centres = (centres_from_nonuniform_grid(grid) if nonuniform
+                                      else centres_from_uniform_grid(grid))
+            _refuse_zero_cells(shape, name, "Material volume",
+                               cell_sizes=diagnostic_sizes, centres=diagnostic_centres)
+        elif empty is None:
+            def check(value, *axes):
+                if not np.any(value):
+                    _refuse_zero_cells(shape, name, "Material volume",
+                                       cell_sizes=axes[:3], centres=axes[3:])
+            from rfx._traced_check import traced_check
+            traced_check("material volume", "nonempty cells", check,
+                         mask, *cell_sizes, *centres[:3])
+    return mask
+
+
+def _span_collapsed_axes(box, centres, cell_sizes):
+    """A 2D grid's collapsed axis holds one cell and the fields do not vary along it:
+    a material Box spans that cell whatever its drawn extent there."""
+    lo, hi = list(box.corner_lo), list(box.corner_hi)
+    for a in range(3):
+        c = centres[a]
+        if len(c) == 1 and not is_tracer(c) and not is_tracer(cell_sizes[a]):
+            half = float(np.asarray(cell_sizes[a])[0]) / 2
+            lo[a] = min(float(lo[a]), float(np.asarray(c)[0]) - half)
+            hi[a] = max(float(hi[a]), float(np.asarray(c)[0]) + half)
+    return box if (lo, hi) == (list(box.corner_lo), list(box.corner_hi)) else Box(tuple(lo), tuple(hi))
+
+
+def _sample_material_cells(shape, coords: GridCoords, centres: GridCoords, *,
+                        grid=None, cell_sizes=None, domain_faces=None):
+    """Sample material volumes on the primal-cell centres of their grid.
+
+    Box leaves use the PEC volume window and its primal-width tie band.
+    Node masks remain available for sheets, ports and geometry queries.
+    Custom non-periodic uniform shapes may implement only mask(grid).
+    """
+    from rfx._internal._periodic import periodic_mask, periodic_shape
+    from rfx.geometry.curved import CurvedPatch
+    from rfx.geometry.via import Via
+
+    if isinstance(shape, CurvedPatch):
+        # Every staircase Box has zero thickness, hence no volume cells.
+        # This also avoids choosing a segment count from traced mesh widths.
+        return jnp.zeros(centres.shape, dtype=bool)
+    if cell_sizes is None and isinstance(shape, (Box, Via)):
+        cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
+                      else cell_sizes_from_uniform_grid(grid) if grid is not None
+                      else tuple(axis_cell_sizes(n) for n in coords[:3]))
+    from rfx.model.realization_integrals import quantities
+    sampling = quantities(grid, create=True) if grid is not None else {}
+    rules = sampling.setdefault("material_sampling", {})
+    declared_id = id(shape)
     if isinstance(shape, Box):
         _box_zero_axes(shape.corner_lo, shape.corner_hi)
+        rules[declared_id] = "cell-centre material mask"
+        return pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
+    if isinstance(shape, Via):
+        result = jnp.zeros(centres.shape, dtype=bool)
+        for box in shape._mask_components(cell_sizes[0][0]):
+            result = result | _sample_material_cells(
+                box, coords, centres, grid=grid, cell_sizes=cell_sizes, domain_faces=domain_faces)
+        return result
     shape = periodic_shape(grid, shape)
     if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
+        rules[declared_id] = "cell-centre material mask"
         return periodic_mask(grid, shape, centres[:3])
     if getattr(grid, 'periodic_axes', ''):
+        rules[declared_id] = "periodic node material mask"
         return periodic_mask(grid, shape, coords[:3])
+    rules[declared_id] = "shape material mask"
     if grid is not None:
         return shape.mask(grid)
     return shape.mask_on_coords(coords.x, coords.y, coords.z)
@@ -361,7 +429,7 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
     "Nearest" means within half a local cell.  A declaration further out
     than that is not on this node line at all — ``argmin`` would clamp it
     onto the end plane and the caller would get a conductor it never drew
-    (the #369 silently-relocated-metal class).  That raises.
+    (the silently-relocated-metal class).  That raises.
     """
     x = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(x - pos)
@@ -376,12 +444,26 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
             "onto an end plane. Move the declaration inside the domain or "
             "enlarge the domain.")
     # An exact half-cell tie resolves LOWER. The one tie rule, shared with
-    # every point lookup (#1295, #1342).
-    from rfx._grid_metric import nearest_node_index
+    # every point lookup.
+    from rfx._internal._grid_metric import nearest_node_index
     return nearest_node_index(x, pos, d_local)
 
 
-def _box_axis_volume(centres, lo: float, hi: float, cell_widths):
+def volume_domain_faces(grid):
+    """Declared and realized high faces, excluding absorbing padding."""
+    domain = getattr(grid, 'domain', None)
+    if domain is None:
+        return None
+    coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
+              else coords_from_uniform_grid(grid))
+    return tuple(None if grid.shape[t] - getattr(grid, f'pad_{a}_lo') - getattr(grid, f'pad_{a}_hi')
+                 <= (1 if a in grid.periodic_axes else 2) else
+                 (domain[t], domain[t] if a in grid.periodic_axes else
+                  coords[t][grid.shape[t] - getattr(grid, f'pad_{a}_hi') - 1])
+                 for t, a in enumerate('xyz'))
+
+
+def _box_axis_volume(centres, lo: float, hi: float, cell_widths, domain_face=None):
     """§1.1 half-open CELL CENTRE window with the on-lattice band.
 
     ``cell_widths[i]`` is the primal width of the cell at ``centres[i]``,
@@ -392,6 +474,12 @@ def _box_axis_volume(centres, lo: float, hi: float, cell_widths):
         c = jnp.asarray(centres)
     else:
         c = np.asarray(centres, dtype=np.float64)
+    if domain_face is not None:
+        declared, realized = domain_face
+        xp = jnp if is_tracer(c) or is_tracer(cell_widths) or is_tracer(realized) else np
+        hi = xp.where((declared > 0) & (realized > declared) & (hi > lo) &
+                      (abs(hi - declared) <= node_tie_tol(declared, cell_widths, c.dtype)),
+                      realized, hi)
     return half_open_volume_mask(c, lo, hi, cell_widths)
 
 
@@ -410,7 +498,7 @@ def _is_traced_coords(coords) -> bool:
     return any(is_tracer(c) for c in (coords.x, coords.y, coords.z))
 
 
-def pec_volume_cell_mask(shape, centres: GridCoords, cell_sizes, *, grid=None):
+def pec_volume_cell_mask(shape, centres: GridCoords, cell_sizes, *, grid=None, domain_faces=None):
     """CELL occupancy of a PEC VOLUME (§1.1): centre-sampled.
 
     Box: the shared half-open window and on-lattice band per axis, using
@@ -419,39 +507,41 @@ def pec_volume_cell_mask(shape, centres: GridCoords, cell_sizes, *, grid=None):
     Sphere / Cylinder / any other shape: the centre
     lies inside the shape (``mask_on_coords`` on the centre coordinates).
     """
+    if domain_faces is None:
+        domain_faces = volume_domain_faces(grid)
+    faces = domain_faces if domain_faces is not None else (None,) * 3
     if getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import periodic_mask
+        from rfx._internal._periodic import periodic_mask
         if getattr(shape, 'corner_lo', None) is None or getattr(shape, 'corner_hi', None) is None:
             return periodic_mask(grid, shape, centres[:3])
         def sample(x, y, z):
             return pec_volume_cell_mask(
-                shape, GridCoords(x, y, z, (len(x), len(y), len(z))), cell_sizes)
+                shape, GridCoords(x, y, z, (len(x), len(y), len(z))), cell_sizes, domain_faces=domain_faces)
         box_lo, box_hi = shape.corner_lo, shape.corner_hi
         return jnp.asarray(periodic_mask(
             grid, shape, centres[:3], sample=sample,
             axis_samplers=tuple(
                 (lambda line, t=t: _box_axis_volume(
-                    line, float(box_lo[t]), float(box_hi[t]), cell_sizes[t]))
+                    line, float(box_lo[t]), float(box_hi[t]), cell_sizes[t], faces[t]))
                 for t in range(3))))
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     if lo is not None and hi is not None:
-        mx = _box_axis_volume(centres.x, float(lo[0]), float(hi[0]), cell_sizes[0])
-        my = _box_axis_volume(centres.y, float(lo[1]), float(hi[1]), cell_sizes[1])
-        mz = _box_axis_volume(centres.z, float(lo[2]), float(hi[2]), cell_sizes[2])
+        mx = _box_axis_volume(centres.x, float(lo[0]), float(hi[0]), cell_sizes[0], faces[0])
+        my = _box_axis_volume(centres.y, float(lo[1]), float(hi[1]), cell_sizes[1], faces[1])
+        mz = _box_axis_volume(centres.z, float(lo[2]), float(hi[2]), cell_sizes[2], faces[2])
         return jnp.asarray(mx[:, None, None] & my[None, :, None] & mz[None, None, :])
     return jnp.asarray(shape.mask_on_coords(centres.x, centres.y, centres.z))
 
 
-def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None) -> bool | None:
+def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None, domain_faces=None) -> bool | None:
     """Zero-cell test that never converts a jnp mask to bool (§1.5 refusal).
 
     Inside an outer ``jax.jit`` the grid coordinates are still concrete host
     arrays, but every jnp array built from them is a tracer, so a Python
-    bool of ``jnp.any(mask)`` raises ``TracerBoolConversionError`` — the #642-class
-    defect ``rfx/api/_compile.py`` documents and the first cut
-    of this refusal re-introduced one frame down (found by the #931 phase-2
-    T1 test ``test_real_interior_pec_under_outer_jit_matches_eager``).
+    bool of ``jnp.any(mask)`` raises ``TracerBoolConversionError`` — the same class
+    defect ``rfx/api/_compile.py`` documents and
+    ``test_real_interior_pec_under_outer_jit_matches_eager`` covers.
 
     Decision order: a Box is decided on the HOST from its corners and the
     centre lines (exact, cheap); any other shape is decided from its mask
@@ -461,11 +551,14 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None)
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     axes = (centres.x, centres.y, centres.z)
+    faces = domain_faces if domain_faces is not None else volume_domain_faces(grid)
+    faces = faces if faces is not None else (None,) * 3
     if (lo is not None and hi is not None and not getattr(grid, 'periodic_axes', '')
-            and not any(is_tracer(c) for c in axes)):
+            and not any(is_tracer(c) for c in (*axes, *cell_sizes))
+            and not any(is_tracer(v) for face in faces if face is not None for v in face)):
         for i in range(3):
             if not np.any(_box_axis_volume(
-                    axes[i], float(lo[i]), float(hi[i]), cell_sizes[i])):
+                    axes[i], float(lo[i]), float(hi[i]), cell_sizes[i], faces[i])):
                 return True
         return False
     if is_tracer(mask):
@@ -473,11 +566,26 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None)
     return not bool(np.any(np.asarray(mask, dtype=bool)))
 
 
-def _refuse_zero_cells(shape, name, what: str):
-    raise ValueError(
+def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None):
+    if what == "Material volume":
+        bounds = shape.bounding_box() if hasattr(shape, 'bounding_box') else None
+        thickness = (tuple(float(b - a) for a, b in zip(*bounds))
+                     if bounds is not None else "unavailable")
+        local = "unavailable"
+        if (bounds is not None and cell_sizes is not None and centres is not None
+                and not any(is_tracer(v) for v in (*cell_sizes, *centres[:3]))):
+            local = tuple(float(np.asarray(d)[np.argmin(abs(np.asarray(c) - (a + b) / 2))])
+                          for a, b, c, d in zip(*bounds, centres[:3], cell_sizes))
+        raise RfxRefusal(
+            f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells: "
+            f"drawn thickness (x, y, z) = {thickness} m; local cell widths at the layer midpoint "
+            f"(x, y, z) = {local} m. Refine so a primal-cell centre lies inside "
+            "the layer. There is no sub-cell dielectric film model; a conducting "
+            "sheet uses add_thin_conductor (the sheet API).")
+    raise RfxRefusal(
         f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells "
         "on this grid: no primal-cell centre lies inside it, so it would "
-        "silently vanish (the #369 vaporized-metal class, now an error). A "
+        "silently vanish (the vaporized-metal class, now an error). A "
         "legacy radius=0 filament is a PolylineWire. A positive PEC wire "
         "radius must be resolved as a volume, a >= 0.5*d; a volume needs "
         "a radius of at least ~0.87 of the "
@@ -528,11 +636,12 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     if normal_axis is None:
         normal_axis = min(range(3), key=lambda i: extents[i])
     a = int(normal_axis)
-    node_axes = (coords.x, coords.y, coords.z)
+    node_axes = footprint_sample_coords(
+        coords, tuple(t for t in range(3) if t != a), carrier="node")
     if cell_sizes is None:
         cell_sizes = tuple(axis_cell_sizes(n) for n in node_axes)
     mid = 0.5 * (lo[a] + hi[a])
-    from rfx._periodic import periodic_mask, plane_coordinate
+    from rfx._internal._periodic import periodic_mask, plane_coordinate
     requested_mid = mid
     mid = plane_coordinate(grid, a, mid)
     d_local = _local_cell(node_axes[a], cell_sizes[a], mid)
@@ -586,15 +695,15 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
         raise ValueError(
             f"sheet {name!r}: the footprint rasterizes to ZERO nodes on this "
             f"grid{(' (' + lane + ' lane)') if lane else ''} at plane "
-            f"{'xyz'[a]}={plane}; it would silently vanish (#369 class). "
+            f"{'xyz'[a]}={plane}; it would silently vanish. "
             "Widen the footprint to reach a node line or refine the mesh.")
     end_rows = sheet_end_rows(shape, coords, a, grid=grid)
     unwrapped = None
     if shape_3 != tuple(coords.shape):
         from rfx.boundaries.pec import _fold_sheet_nodes
-        unwrapped = jnp.asarray(fp)
+        unwrapped = fp
         fp = _fold_sheet_nodes(fp, coords.shape, xp=np)
-    return SheetSpec(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
+    return SheetSpec(normal_axis=a, plane=plane, footprint=fp,
                      name=name, unwrapped_footprint=unwrapped, end_rows=end_rows,
                      drawn=_sheet_drawn_bounds(lo, hi, a, cell_sizes, grid=grid))
 
@@ -653,7 +762,7 @@ def sheet_end_rows(shape, coords: GridCoords, normal_axis: int, *, grid=None):
 
 def refuse_vaporized_sheets(sheets, *, lane: str = "",
                             periodic=(False, False, False)):
-    """Refuse a sheet PLANE that realizes no PEC edge (#931 §1.5, #369 class).
+    """Refuse a sheet PLANE that realizes no PEC edge.
 
     §1.3 unions every footprint on one ``(normal_axis, plane)`` BEFORE the
     edge rule, so the unit that must carry current is the plane, not the
@@ -682,17 +791,22 @@ def refuse_vaporized_sheets(sheets, *, lane: str = "",
     for (axis, plane), group in by_plane.items():
         if any(is_tracer(sp.footprint) for sp in group):
             continue
-        if any(bool(np.asarray(m).any())
-               for m in _rpem(None, sheets=tuple(group), periodic=periodic)):
+        # Host footprints stay concrete under a user jit; the edge builder's
+        # JAX operations must stay concrete too before this host-only check.
+        with jax.ensure_compile_time_eval():
+            masks = _rpem(None, sheets=tuple(group), periodic=periodic)
+        if any(is_tracer(m) for m in masks):
+            continue
+        if any(bool(np.asarray(m).any()) for m in masks):
             continue
         names = ", ".join(repr(getattr(sp, "name", None)) for sp in group)
-        raise ValueError(
+        raise RfxRefusal(
             f"PEC sheet plane {'xyz'[axis]}={plane} realizes ZERO PEC edges on "
             f"this grid{(' (' + lane + ' lane)') if lane else ''}: its whole "
             f"footprint ({len(group)} declaration(s): {names}) reaches node "
             "line(s) but never two ADJACENT ones, so the metal carries no "
-            "current and would silently vanish (#369 class; the volume side "
-            "refuses the same drawing, #931 §1.5). Widen the footprint to span "
+            "current and would silently vanish (the volume side "
+            "refuses the same drawing). Widen the footprint to span "
             "at least one cell in an in-plane direction, or refine the mesh.")
 
 
@@ -743,7 +857,7 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int, cell_siz
         c = jnp.asarray(nodes)
         if t == a:
             mid = 0.5 * (lo[a] + hi[a])
-            from rfx._grid_metric import nearest_node_index
+            from rfx._internal._grid_metric import nearest_node_index
             k = jnp.clip(jnp.searchsorted(c, mid, side="right") - 1,
                          0, max(c.size - 2, 0))
             d_local = c[k + 1] - c[k] if c.size > 1 else 1.0
@@ -779,6 +893,16 @@ class TracedShapeDimensionError(TracedStructureRefusal, jax.errors.Concretizatio
 
     def __init__(self, message):
         TracedStructureRefusal.__init__(self, message)
+
+
+def refuse_traced_conformal_shape(shape):
+    """Keep traced PEC geometry out of host conformal table formation."""
+    from rfx.geometry.smoothing import _shape_parameters
+    declared = getattr(shape, "declared", shape)
+    if any(is_tracer(value) for value in _shape_parameters(declared)):
+        raise TracedShapeDimensionError(
+            f"conformal PEC {type(declared).__name__} has traced shape parameters; "
+            "use concrete geometry outside jit/vmap.")
 
 
 def _box_zero_axes(lo, hi):
@@ -817,7 +941,7 @@ def _refuse_subcell(subcell, shape, name):
         f"{'xyz'[i]} ({ext:.6g} m against a local cell of {d:.6g} m)"
         for i, ext, d in subcell)
     kind = type(shape).__name__
-    raise ValueError(
+    raise RfxRefusal(
         f"PEC {kind} {name!r} is thinner than one cell along {where}: "
         f"a {kind} passed to sim.add() is a VOLUME; declare a sheet (a "
         "zero-thickness Box or add_thin_conductor) or resolve the "
@@ -847,9 +971,9 @@ def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
     """Node of each PolylineWire vertex, and the smallest cell at them.
 
     Each coordinate uses the shared lower-node tie band. The preflight
-    co-location check reads this same function (#1342).
+    co-location check reads this same function.
     """
-    from rfx._grid_metric import nearest_node_index
+    from rfx._internal._grid_metric import nearest_node_index
     nodes = []
     d_min = None
     for p in points:
@@ -857,7 +981,7 @@ def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
         for t in range(3):
             x = np.asarray(node_axes[t], dtype=np.float64)
             if 'xyz'[t] in getattr(grid, 'periodic_axes', ''):
-                from rfx._periodic import interval_coordinates
+                from rfx._internal._periodic import interval_coordinates
                 interval_coordinates(grid, t, p[t], p[t])
                 x = np.append(x, float(grid.domain[t]))
             k = nearest_node_index(x, p[t], _local_cell(x, cell_sizes[t], p[t]))
@@ -892,7 +1016,7 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes, *, grid=None):
 def _refuse_subcell_wire_radius(radius, d_min):
     """Use the same positive-subcell refusal on static and traced meshes."""
     if 0 < radius < 0.5 * d_min:
-        raise ValueError(
+        raise RfxRefusal(
             "PEC PolylineWire filament radius is not supported for "
             "0 < a < 0.5*d_min; resolve the wire as a volume, a >= 0.5*d "
             "(refine the mesh to resolve the declared radius).")
@@ -906,7 +1030,7 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
     ``wire_vertex_nodes`` does. Mesh-design profiles have no nominal host
     copy in ``make_nonuniform_grid``; never substitute a boundary spacing.
     """
-    from rfx._grid_metric import nearest_node_index
+    from rfx._internal._grid_metric import nearest_node_index
     widths = []
     for t, (axis, sizes) in enumerate(zip(node_axes, cell_sizes)):
         if is_tracer(sizes):
@@ -930,7 +1054,8 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
 
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
-                       cell_sizes=None, *, name=None, grid=None):
+                       cell_sizes=None, *, name=None, grid=None, domain_faces=None,
+                       sub_region=False):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
 
     Returns ``(cell_mask, sheet, wire)`` with exactly one of the three set:
@@ -949,7 +1074,7 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     centre-sampled volume path even when the coordinates are traced.
     """
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
-    from rfx._periodic import periodic_shape
+    from rfx._internal._periodic import periodic_shape
     pts = getattr(shape, "points", None)
     radius = getattr(shape, "radius", None)
     if isinstance(shape, Sphere) and is_tracer(radius):
@@ -984,8 +1109,9 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             subcell = _subcell_axes(lo, hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)
-        mask = pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid)
-        if not traced and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid):
+        mask = pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
+        if (not traced and (not sub_region or _inside_cells(shape, centres, cell_sizes))
+                and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid, domain_faces=domain_faces)):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
     if pts is not None and radius is not None and traced and radius > 0:
@@ -1024,8 +1150,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         # a Cylinder via pad, a thin Sphere, an imported outline.  The
         # refusal was Box-only, so a 0.3-cell Cylinder pad was realized as
         # a one-cell slab with two faces (or refused as zero cells) purely
-        # according to where it fell between two centres: the #369/#702
-        # raster-dependent thickness the contract exists to make an error.
+        # according to where it fell between two centres: the raster-dependent thickness
+        # the contract exists to make an error.
         # PolylineWire is excluded on purpose: §1.4 gives it its own
         # filament/volume rule on the radius, decided above.
         from rfx.materials.thin_conductor import sheet_bounds
@@ -1034,10 +1160,21 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             subcell = _subcell_axes(bb_lo, bb_hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)
-    mask = pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid)
-    if not traced and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid):
+    mask = pec_volume_cell_mask(shape, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
+    if not traced and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid, domain_faces=domain_faces):
         _refuse_zero_cells(shape, name, "PEC volume")
     return mask, None, None
+
+
+def _inside_cells(shape, centres, cell_sizes) -> bool:
+    """Whether a shape is drawn wholly inside the cells sampled here. A refinement region
+    holds only part of a body that crosses its boundary (or none of one outside it); the
+    coarse grid holds that body and refuses it there if it owns no cell at all."""
+    box = getattr(shape, "bounding_box", lambda: None)()
+    if box is None or _is_traced_coords(centres):
+        return True
+    return all(float(lo) >= float(c[0] - w[0] / 2) and float(hi) <= float(c[-1] + w[-1] / 2)
+               for lo, hi, c, w in zip(box[0], box[1], centres[:3], cell_sizes))
 
 
 def rasterize_geometry(
@@ -1051,12 +1188,14 @@ def rasterize_geometry(
     grid=None,
     centres: GridCoords | None = None,
     cell_sizes=None,
+    domain_faces=None,
     sheets: list | None = None,
     wires: list | None = None,
     periodic=(False, False, False),
     pole_geometry_entries=None,
     geometry_masks: list | None = None,
     assembly_entries: list | None = None,
+    sub_region: bool = False,
 ):
     """Rasterize geometry entries onto material arrays.
 
@@ -1075,8 +1214,7 @@ def rasterize_geometry(
     coords : GridCoords
         Sample coordinates from any grid type — E-NODES for the uniform and
         non-uniform builders, cell centres for the subgrid fine region (see
-        ``GridCoords``).  Dielectrics are sampled here (node, half-open —
-        untouched by #931).
+        ``GridCoords``). Material volumes use the supplied cell centres.
     pec_sigma_threshold : float
         Conductivity above which a material is treated as PEC.
     thin_conductors : list or None
@@ -1086,7 +1224,7 @@ def rasterize_geometry(
     grid : Grid or NonUniformGrid or None
         Original grid object, needed by thin_conductor_applier.
     centres : GridCoords or None
-        Primal-cell CENTRES for PEC volume sampling (§1.1).  ``None``
+        Primal-cell CENTRES for material and PEC volume sampling.  ``None``
         derives them from ``coords`` as ``node + d/2``; the subgrid fine
         lane, whose ``coords`` already are centres, passes them explicitly.
     cell_sizes : (dx, dy, dz) per-cell arrays or None
@@ -1111,6 +1249,8 @@ def rasterize_geometry(
     from rfx.materials.debye import DebyePole
     from rfx.materials.lorentz import LorentzPole
 
+    if domain_faces is None:
+        domain_faces = volume_domain_faces(grid)
     shape = coords.shape
     eps_r = jnp.ones(shape, dtype=jnp.float32)
     sigma = jnp.zeros(shape, dtype=jnp.float32)
@@ -1125,20 +1265,24 @@ def rasterize_geometry(
     if centres is None:
         centres = cell_centres_from_nodes(coords, cell_sizes)
 
-    # Keyed per _pole_key (#274): pole value when hashable, id(pole) for
+    # Keyed per _pole_key: pole value when hashable, id(pole) for
     # traced poles. Values are (pole, mask) pairs.
     debye_masks_by_pole: dict[DebyePole | int, tuple[DebyePole, jnp.ndarray]] = {}
     lorentz_masks_by_pole: dict[LorentzPole | int, tuple[LorentzPole, jnp.ndarray]] = {}
 
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
+        refuse = mat.sigma < pec_sigma_threshold and (not sub_region or _inside_cells(entry.shape, centres, cell_sizes))
         mask = _material_cell_mask(entry.shape, coords, centres,
-                                   grid=grid if getattr(grid, 'periodic_axes', '') else None)
+                                   grid=grid if getattr(grid, 'periodic_axes', '') else None,
+                                   cell_sizes=cell_sizes, domain_faces=domain_faces,
+                                   name=entry.material_name, refuse_empty=refuse)
 
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
                 entry.shape, coords, centres, cell_sizes,
-                name=entry.material_name, grid=grid)
+                name=entry.material_name, grid=grid, domain_faces=domain_faces,
+                sub_region=sub_region)
             if assembly_entries is not None:
                 declared_entry = entry if pole_geometry_entries is None else pole_geometry_entries[entry_index]
                 assembly_entries.append((id(declared_entry), cells, sheet, wire, entry.shape))
@@ -1187,9 +1331,11 @@ def rasterize_geometry(
         if pole_geometry_entries is not None and (mat.debye_poles or mat.lorentz_poles):
             declared = pole_geometry_entries[entry_index].shape
             pole_mask = _material_cell_mask(declared, coords, centres,
-                                            grid=grid if getattr(grid, 'periodic_axes', '') else None)
+                                            grid=grid if getattr(grid, 'periodic_axes', '') else None,
+                                            cell_sizes=cell_sizes, domain_faces=domain_faces,
+                                            name=entry.material_name, refuse_empty=refuse)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
-                pole_mask = pec_volume_cell_mask(declared, centres, cell_sizes, grid=grid)
+                pole_mask = pec_volume_cell_mask(declared, centres, cell_sizes, grid=grid, domain_faces=domain_faces)
 
         if mat.debye_poles:
             for pole in mat.debye_poles:
@@ -1228,11 +1374,11 @@ def periodic_flags_from_axes(periodic_axes) -> tuple[bool, bool, bool]:
     return tuple(ax in s for ax in "xyz")
 
 
-class PadFillShortfall(ValueError):
+class PadFillShortfall(RfxRefusal):
     """A declared structure is not rasterized to a face whose pad is filled
-    from it (issue #1070).
+    from it.
 
-    ``ValueError`` and not ``RuntimeError`` (review of PR #1136, A): the
+    ``ValueError`` and not ``RuntimeError``: the
     degrade guards that let an advisory path survive a bad build already catch
     ``(ValueError, TypeError, NotImplementedError, KeyError, AttributeError,
     IndexError)`` -- see ``rfx/preflight/realization.py`` -- and a new
@@ -1242,7 +1388,7 @@ class PadFillShortfall(ValueError):
 
 
 #: The half-open ``[lo, hi)`` Box rule costs the hi face exactly one node, and
-#: ``extend_cpml_pad_materials``'s #627a fallback is built to look exactly that
+#: ``extend_cpml_pad_materials``'s hi-face fallback is built to look exactly that
 #: one column inward. Two is the number that silently breaks it.
 _DOCUMENTED_HI_FACE_SHORTFALL = 1
 
@@ -1251,9 +1397,9 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
                                    shortfall_limit=_DOCUMENTED_HI_FACE_SHORTFALL,
                                    record=None):
     """Raise when a structure declared out to a padded face is not rasterized
-    to within one node of it (issue #1070).
+    to within one node of it.
 
-    The #627a fallback in ``extend_cpml_pad_materials`` sources a hi pad from
+    The fallback in ``extend_cpml_pad_materials`` sources a hi pad from
     one column inside the interior edge when that edge is vacuum, and its
     docstring states the bound: the rasterizer's hi-face shortfall for a single
     box is "deterministically one node ... never more". That is true of the
@@ -1268,7 +1414,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     between a declared structure and a HI face's pad is caught here, whatever
     produced it.
 
-    **What is checked, exactly** (review of PR #1136, D): hi faces only, and
+    **What is checked, exactly**: hi faces only, and
     the PROJECTED presence profile along the axis -- ``mask.any`` over the
     other two -- so a per-column shortfall inside a shape that reaches the
     face somewhere is not detected. A cylinder touching the face at its apex
@@ -1294,7 +1440,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     of it is right.
 
     **A deliberately different predicate lives in
-    ``rfx.geometry.smoothing.smoothed_shape_pairs``** (review of PR #1136, B).
+    ``rfx.geometry.smoothing.smoothed_shape_pairs``**.
     That one decides whether to CONTINUE a shape into a pad, and it asks about
     the REALIZED interior-edge node on both faces with a sub-cell tolerance.
     This one decides whether a shortfall is a DEFECT, and asks about the
@@ -1315,7 +1461,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     class in the package has ``bounding_box`` today -- Box, Cylinder, Sphere,
     PolylineWire, Via, MeshShape, CurvedPatch -- and ``union``/``difference``
     in ``rfx.geometry.csg`` are FUNCTIONS over masks, not entry classes, so
-    nothing currently reaches the skip (review of PR #1136, E). It is kept as
+    nothing currently reaches the skip. It is kept as
     the contract for a future shape that cannot state one, because a reach
     test needs a declared extent and there is no honest default for a shape
     without one.
@@ -1331,7 +1477,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
     shortfall is appended as a dict and the caller decides what to do with it.
     ``fidelity_report`` passes one, because an audit whose job is to show the
     difference between the declared and the realized model must show this
-    difference too rather than refuse to run (review of PR #1136, A).
+    difference too rather than refuse to run.
     """
     import numpy as _np
 
@@ -1394,10 +1540,10 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
             f"rasterized mask stops {empty_tail} interior nodes short of it, "
             f"and that face carries a {hi_pad}-cell absorber pad which is "
             f"filled by replicating from the interior edge. One node short is "
-            f"the documented half-open [lo, hi) Box shortfall and is repaired "
-            f"(#627a); {empty_tail} is not, so the pad would be filled with "
+            f"the documented half-open [lo, hi) Box shortfall and is repaired"
+            f"; {empty_tail} is not, so the pad would be filled with "
             f"vacuum and the structure would end in a facet inside its own "
-            f"absorber (#1070, #831).\n"
+            f"absorber.\n"
             f"  declared {axis_name} extent: {declared * 1e6:.4f} um "
             f"= {declared_cells!r} cells on this axis\n"
             f"  interior nodes on {axis_name}: {n_int}; "
@@ -1418,21 +1564,16 @@ def extend_cpml_pad_materials(
     ply: int, phy: int,
     plz: int, phz: int,
     dispersion_pole_mask: jnp.ndarray | None = None,
-    high_wall=(False, False, False),
 ):
     """Extend eps_r/sigma/mu_r into the CPML padding so guided modes see an
     impedance-matched absorber, equivalent to UPML. Each CPML face copies
     the interior-edge slice outward, as if the geometry continued beyond
     the domain.
 
-    Single shared implementation for the uniform (``rfx/api/_compile.py``)
-    and non-uniform (``rfx/runners/nonuniform.py``) assemblers — issue #627
-    found the two hand-duplicated copies (#582 mirrored one onto the other)
-    both carrying the same gap, so the fix lives once, here, and both call
-    sites use it instead of keeping duplicated pad-extension code that can
-    drift.
+    Single shared implementation for the uniform (``rfx/api/_compile.py``) and non-uniform
+    (``rfx/runners/nonuniform.py``) assemblers, so their pad-extension rules cannot drift independently.
 
-    **Hi-face fallback (#627a).** ``rfx.geometry.csg.Box``'s volume-branch
+    **Hi-face fallback.** ``rfx.geometry.csg.Box``'s volume-branch
     rasterization is deliberately half-open, ``[lo, hi)``, over node
     coordinates (see that class's docstring — the convention is load-
     bearing across the package, e.g. every WR-90 aperture/iris
@@ -1443,7 +1584,7 @@ def extend_cpml_pad_materials(
     pad — literally the outermost interior column — therefore reads
     vacuum for such a structure even though its real material sits one
     column further in, and copying that vacuum outward gives the pad a
-    Fresnel step instead of a match (measured on the #582 fixture: x-lo
+    Fresnel step instead of a match (measured on the fixture: x-lo
     pad eps_r 4.0, x-hi pad eps_r 1.0, for a slab spanning the full x
     extent).
 
@@ -1456,7 +1597,7 @@ def extend_cpml_pad_materials(
     inward — the rasterizer's hi-face shortfall for a single box is one
     node (Box docstring: "the shortfall is entirely at the hi face"), and
     that "never more" is CHECKED at assembly rather than assumed, by
-    :func:`assert_declared_span_is_filled` (#1070; it was an assumption
+    :func:`assert_declared_span_is_filled` (it was an assumption
     about the rasterizer, and grid sizing broke it from outside) — so a
     genuine multi-cell vacuum buffer
     between a structure and the CPML pad (the overwhelmingly common case:
@@ -1466,23 +1607,15 @@ def extend_cpml_pad_materials(
     considered and rejected: it would bridge that common air gap and smear
     an unrelated interior structure's material into the pad.
 
-    **What now guarantees that bound (#1070).** It was an assumption about
-    the rasterizer, and grid sizing broke it from outside: ``ceil`` of a
-    ratio one ULP above an integer allocated a cell no declared Box
-    reaches, so the shortfall became TWO nodes, this fallback found vacuum
-    in both columns it inspects, and the pad was filled with vacuum. The
-    arithmetic is fixed at the source (``rfx.grid.cells_spanning``) and the
-    bound itself is now asserted rather than assumed:
+    **What guarantees that bound.** The bound is asserted:
     :func:`assert_declared_span_is_filled` runs at assembly and raises when
     a structure declared out to a padded face is rasterized more than one
     node short of it, whatever produced the gap. The "never more" above is
     therefore a checked precondition of this fallback, not a belief about
     its caller.
 
-    **The dropped node itself is repaired too (#655).** #627a fixed where
-    the pad SOURCES its material but still wrote it only to the pad, so the
-    dropped node stayed vacuum and became a one-cell film sandwiched
-    between the structure and its own matched absorber:
+    **Repair the dropped node as well as the pad.** Writing only to the pad leaves the dropped node as vacuum, a
+    one-cell film between the structure and its matched absorber:
     ``[material][vacuum][pad = material]``. Measured on a 1-D plane-wave
     fixture (eps_r=4 filling the domain, reflection isolated by field-level
     DFT subtraction against the same fixture with the box drawn half a cell
@@ -1510,14 +1643,11 @@ def extend_cpml_pad_materials(
     and reach the same state through the float32 knife edge instead, which
     an array-pattern repair covers and a rasterizer edit would not.
 
-    **Dispersion-pole extension was tried and reverted (#627b).** An
-    earlier revision of this function extended Debye/Lorentz pole masks
-    into the pad the same way, via an ``extra_masks`` parameter, so a
-    dispersive edge-touching material would be impedance-matched across
-    the band, not just at DC. Review found this turns a stable simulation
+    **Do not extend dispersion-pole masks into CPML pads.** Extending Debye/Lorentz masks to match an edge-touching
+    material across the band turns a stable simulation
     into a divergent one for an edge-touching structure carrying a
     high-Q Lorentz pole (Q~60): the same 20,000-step fixture that decays
-    on both the shipped (statics-only) code and on the pre-#582 tree
+    with statics-only extension and without extension
     (last/mid energy ratio 0.12–0.16) grows without bound once the pole
     mask is also extended (last/mid ratio 649, no NaN and no exception —
     values stay finite and simply grow, so nothing downstream flags it).
@@ -1525,39 +1655,27 @@ def extend_cpml_pad_materials(
     extension, reproduces the divergence; the static extension alone,
     with the same high-Q pole left un-extended in the interior, decays
     cleanly. Do not re-add pole-mask extension here without a stability
-    argument for the resonant-pole-in-a-CPML-pad regime — see the
-    follow-up issue (filed separately from #627, tracking this factorial)
-    and the physics-level regression lock in
+    argument for the resonant-pole-in-a-CPML-pad regime — see the physics-level regression lock in
     ``tests/unit/boundaries/test_cpml_pad_material_extension.py``, which reds if pole
     extension is naively reintroduced.
 
-    **Pole-carrying columns get NO hi-face fallback promotion (#808).**
-    With the pole half reverted (#627b), the hi-face fallback promoted a
-    dispersive structure's STATICS anyway: the pad — and, after #655, the
-    dropped boundary node itself — carried the material's eps_inf without
-    its poles, a material that exists in no declared model. Issue #808
-    measured the consequence on a committed observable: a face-touching
+    **Pole-carrying columns get NO hi-face fallback promotion.**
+    Promoting a dispersive structure's statics alone at the hi face gives the pad and the dropped boundary node eps_inf
+    without its poles, a material absent from the declared model. Measured on a committed observable: a face-touching
     Debye slab's differentiable recovery moved from its pinned
     delta_eps 3.330 (11% err) to 3.969 (32%, past the 20% gate), and a
     controlled pad-rule swap (geometry, observation and optimizer held
     fixed) toggled the result between the two states digit-for-digit.
     So when ``dispersion_pole_mask`` marks the fallback's SOURCE (inner)
-    column as pole-carrying, the promotion and the #655 boundary write
+    column as pole-carrying, the promotion and the boundary write
     are suppressed for that transverse cell: the hi pad takes the naive
     outer-column copy (background) and the dropped node stays as
-    rasterized — the pre-#638 hi-face state every committed dispersive
-    gate was pinned against. Lo faces are deliberately NOT gated: the
-    lo pad replicates a boundary column the material genuinely occupies,
-    that behaviour predates #638, and the #808 discriminator's identity
-    arm measured that removing it too moves the same recovery's tau to
+    rasterized. Lo faces are deliberately NOT gated: the
+    lo pad replicates a boundary column the material genuinely occupies.
+    The discriminator's identity arm measured that removing it too moves
+    the same recovery's tau to
     64% error — "less pad material" is not automatically better; the
-    committed envelopes pin the lo-statics state. Callers that pass no
-    mask keep the pre-#808 behaviour bit-for-bit.
-
-    **Unpadded high walls (#1966).** The same repair runs on the
-    non-periodic high faces selected by ``high_wall``, which have no pad.
-    The same one-column bound and #808 pole gate apply;
-    no low-wall value or dispersion pole is extended by that selection.
+    committed envelopes pin the lo-statics state. Callers that pass no mask allow hi-face fallback promotion.
 
     Parameters
     ----------
@@ -1565,7 +1683,7 @@ def extend_cpml_pad_materials(
         OR of every Debye/Lorentz per-pole mask on the same padded grid
         as the material arrays, or None when the simulation declares no
         dispersive material (or a caller deliberately wants the ungated
-        rule, e.g. the #636 factorial harness). The mask is replicated
+        rule, e.g. the factorial harness). The mask is replicated
         through the same lo/hi passes as the statics (as ``poleish``
         below), so a LO-pad copy of a pole-carrying column also refuses a
         later axis's hi-face promotion — without that, the y/z corner
@@ -1590,9 +1708,9 @@ def extend_cpml_pad_materials(
             poleish = poleish.at[lo_dst].set(poleish[lo_src])
         return arrays, poleish
 
-    def _extend_hi(arrays, poleish, n, pad_lo, pad_hi, wall,
+    def _extend_hi(arrays, poleish, n, pad_lo, pad_hi,
                    outer_sl, inner_sl, dst_sl):
-        if pad_hi <= 0 and not wall:
+        if pad_hi <= 0:
             return arrays, poleish
         e, s, m = arrays[0], arrays[1], arrays[2]
         outer_vac = _vacuum(e[outer_sl], s[outer_sl], m[outer_sl])
@@ -1601,12 +1719,12 @@ def extend_cpml_pad_materials(
             inner_vac = _vacuum(e[inner_sl], s[inner_sl], m[inner_sl])
             use_inner = outer_vac & (~inner_vac)
             if poleish is not None:
-                # #808: never promote a pole-carrying column's statics —
+                # never promote a pole-carrying column's statics —
                 # the promoted material would carry eps_inf without its
-                # poles (a material no declared model has), and #627b's
-                # revert forbids extending the pole itself. Gating
-                # ``use_inner`` kills both the pad promotion and the #655
-                # boundary write below (``src`` stays the outer column,
+                # poles (a material no declared model has), and extending the pole
+                # itself causes divergence. Gating
+                # ``use_inner`` kills both the pad promotion and the boundary
+                # write below (``src`` stays the outer column,
                 # so the write is value-for-value). ``poleish`` rather
                 # than the raw mask, so a lo-pad replica of a pole column
                 # is refused the same way (see the parameter docs).
@@ -1616,7 +1734,7 @@ def extend_cpml_pad_materials(
             src = a[outer_sl]
             if use_inner is not None:
                 src = jnp.where(use_inner, a[inner_sl], src)
-                # #655: the pad is not the only place that lost the node.
+                # the pad is not the only place that lost the node.
                 # Where the fallback fired, the LAST INTERIOR column is the
                 # dropped node itself, so writing ``src`` only to the pad
                 # leaves it vacuum and sandwiches a one-cell gap between the
@@ -1652,7 +1770,7 @@ def extend_cpml_pad_materials(
         arrays, poleish, plx, np.s_[plx:plx + 1, :, :], np.s_[:plx, :, :])
     nx = arrays[0].shape[0]
     arrays, poleish = _extend_hi(
-        arrays, poleish, nx, plx, phx, high_wall[0],
+        arrays, poleish, nx, plx, phx,
         np.s_[nx - phx - 1:nx - phx, :, :],
         np.s_[nx - phx - 2:nx - phx - 1, :, :],
         np.s_[nx - phx:nx, :, :],
@@ -1663,7 +1781,7 @@ def extend_cpml_pad_materials(
         arrays, poleish, ply, np.s_[:, ply:ply + 1, :], np.s_[:, :ply, :])
     ny = arrays[0].shape[1]
     arrays, poleish = _extend_hi(
-        arrays, poleish, ny, ply, phy, high_wall[1],
+        arrays, poleish, ny, ply, phy,
         np.s_[:, ny - phy - 1:ny - phy, :],
         np.s_[:, ny - phy - 2:ny - phy - 1, :],
         np.s_[:, ny - phy:ny, :],
@@ -1674,7 +1792,7 @@ def extend_cpml_pad_materials(
         arrays, poleish, plz, np.s_[:, :, plz:plz + 1], np.s_[:, :, :plz])
     nz = arrays[0].shape[2]
     arrays, poleish = _extend_hi(
-        arrays, poleish, nz, plz, phz, high_wall[2],
+        arrays, poleish, nz, plz, phz,
         np.s_[:, :, nz - phz - 1:nz - phz],
         np.s_[:, :, nz - phz - 2:nz - phz - 1],
         np.s_[:, :, nz - phz:nz],
@@ -1685,7 +1803,7 @@ def extend_cpml_pad_materials(
 
 
 def unpadded_high_walls(grid):
-    """Global non-periodic high faces without an absorber allocation (#1966)."""
+    """Global non-periodic high faces without an absorber allocation."""
     if grid is None:
         return (False, False, False)
     return tuple(a not in getattr(grid, "periodic_axes", "")
@@ -1693,22 +1811,15 @@ def unpadded_high_walls(grid):
                  for a in "xyz")
 
 
-def repair_fine_high_wall_materials(materials, coords, coarse_grid, high_wall,
-                                    dispersion_specs=()):
-    """Repair a fine terminal sample only beyond a reached global wall.
-
-    Interior coarse/fine interfaces retain their actual samples (record 3).
-    The coarse grid's node spine defines the realized wall coordinates.
-    """
-    coarse = coords_from_uniform_grid(coarse_grid)
-    walls = tuple(reached and float(samples[-1]) > float(nodes[-1])
-                  for reached, samples, nodes in zip(high_wall, coords[:3], coarse[:3]))
-    pole_mask = None
-    for spec in dispersion_specs:
-        if spec is not None:
-            for mask in spec[1]:
-                pole_mask = mask if pole_mask is None else pole_mask | mask
-    eps, sig, mu = extend_cpml_pad_materials(
-        materials.eps_r, materials.sigma, materials.mu_r, 0, 0, 0, 0, 0, 0,
-        dispersion_pole_mask=pole_mask, high_wall=walls)
-    return materials._replace(eps_r=eps, sigma=sig, mu_r=mu)
+def fine_high_walls(grid, config):
+    """Global walls reached by the fine cell centres of a subgrid."""
+    coarse = coords_from_uniform_grid(grid)
+    starts = (config.fi_lo, config.fj_lo, config.fk_lo)
+    ends = (config.fi_hi, config.fj_hi, config.fk_hi)
+    counts = (config.nx_f, config.ny_f, config.nz_f)
+    # The fine region starts on the coarse node at its first index.
+    offsets = tuple(float(nodes[start]) for nodes, start in zip(coarse[:3], starts))
+    fine = coords_from_fine_grid(*counts, float(config.dx_f), *offsets)
+    return tuple(wall and end == grid.shape[a]
+                 and float(fine[a][-1]) > float(coarse[a][-1])
+                 for a, (wall, end) in enumerate(zip(unpadded_high_walls(grid), ends)))

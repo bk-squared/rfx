@@ -22,9 +22,6 @@ def _scope_override_writes(tree):
     while True:
         old = set(tainted)
         for node in assignments:
-            # The assembled container is a stage output, not an alias for
-            # an override. Following it would count unrelated ADI broadcast
-            # and later readers as fresh override writers.
             value = node.value
             call = value.func if isinstance(value, ast.Call) else None
             name = call.attr if isinstance(call, ast.Attribute) else getattr(call, "id", "")

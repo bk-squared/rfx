@@ -1,5 +1,6 @@
 """Slab operands and ordered write-back for the single-device CPML update."""
 
+from functools import partial
 from typing import NamedTuple
 
 import jax
@@ -118,26 +119,31 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
 
 
 def face_windows(shape, depths, frame, periodic, grid):
-    """Field/psi windows: framed faces use their realized physical depth.
+    """Field/psi windows: only faces declared CPML are windowed.
 
-    Psi retains the single-device axis depth. Its identity padding is outside
-    the framed face's window and must not be read or written.
+    A face whose realized pad is zero (PEC, PMC, periodic, 2-D z) gets depth 0
+    on every frame. Full frames keep the axis depth on CPML faces; framed faces
+    use their realized depth. Psi retains the single-device axis depth; rows
+    outside a face's window must not be read or written.
     """
     frame = tuple((frame or {}).get(axis, (0, size)) for axis, size in zip("xyz", shape))
     windows, psi_windows, face_depths = {}, {}, {}
-    from rfx.boundaries.depths import grid_face_depths
-    realized = ({f.name: f.realized for f in grid_face_depths(grid)}
-                if any(bounds != (0, size) for bounds, size in zip(frame, shape)) else {})
+    from rfx.boundaries.axes import absorbing_face_depths
+    realized = absorbing_face_depths(grid)
     for axis, (size, depth, (lo, hi)) in enumerate(zip(shape, depths, frame)):
         full = (lo, hi) == (0, size)
         if periodic[axis] and not full:
             raise ValueError(f"periodic {'xyz'[axis]} axis requires a full CPML frame")
         for side in ("lo", "hi"):
             face = f"{'xyz'[axis]}_{side}"
-            d = depth if full else realized[face]
+            d = min(depth, realized[face])
+            if full and d:
+                # A CPML face keeps its axis-depth window (identity rows beyond
+                # its own layers); only a face not declared CPML drops out.
+                d = depth
             sl = [slice(None)] * 3
             psi_sl = [slice(None)] * 3
-            if full:
+            if full and d == depth:
                 sl[axis] = slice(None, depth) if side == "lo" else slice(-depth, None)
             else:
                 sl[axis] = slice(lo, lo + d) if side == "lo" else slice(hi - d, hi)
@@ -150,6 +156,8 @@ def face_windows(shape, depths, frame, periodic, grid):
 
 def store_psi(old, new, window, owner):
     """Select only the active psi rows, leaving identity padding untouched."""
+    # Round once at storage, including the partial windows used by slabs.
+    new = new.astype(old.dtype)
     full = all(sl == slice(None) for sl in window)
     if owner is not None:
         new = jnp.where(owner, new, old if full else old[window])
@@ -162,6 +170,37 @@ def store_psi(old, new, window, owner):
 def writeback_form():
     """Choose the write-back with a Python value when the caller is traced."""
     return backend_class().cpml_writeback
+
+
+@partial(jax.custom_jvp, nondiff_argnums=(0,))
+def _apply_ordered_slab(windows, field, values, owners):
+    # Plain reverse AD of the in-place write-back uses domain-sized updates.
+    # Keep the forward in-place write; the custom tangent transposes to slabs.
+    for window, value, owner in zip(windows, values, owners):
+        sl = tuple(slice(start, stop) for start, stop in window)
+        starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
+        # Match .at[sl].add: promote the operands for the addition, then
+        # cast its result back to the destination's work dtype per update.
+        updated = (field[sl] + value).astype(field.dtype)
+        if owner is not None:
+            updated = jnp.where(owner, updated, field[sl])
+        field = jax.lax.dynamic_update_slice(field, updated, starts)
+    return field
+
+
+@_apply_ordered_slab.defjvp
+def _apply_ordered_slab_jvp(windows, primals, tangents):
+    field, values, owners = primals
+    d_field, d_values, _ = tangents
+    out = _apply_ordered_slab(windows, field, values, owners)
+    d_out = d_field
+    for window, d_value, owner in zip(windows, d_values, owners):
+        sl = tuple(slice(start, stop) for start, stop in window)
+        d_term = d_value.astype(field.dtype)
+        if owner is not None:
+            d_term = jnp.where(owner, d_term, 0)
+        d_out = d_out.at[sl].add(d_term)
+    return out, d_out
 
 
 def apply_ordered(field, terms):
@@ -187,14 +226,10 @@ def apply_ordered(field, terms):
                 mask = mask & owner
             field = jnp.where(mask, (field + correction).astype(field.dtype), field)
         return field
-    for term in terms:
-        sl, value = term[:2]
-        owner = term[2] if len(term) == 3 else None
-        starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
-        # Match .at[sl].add: promote the operands for the addition, then
-        # cast its result back to the destination's work dtype per update.
-        updated = (field[sl] + value).astype(field.dtype)
-        if owner is not None:
-            updated = jnp.where(owner, updated, field[sl])
-        field = jax.lax.dynamic_update_slice(field, updated, starts)
-    return field
+    terms = tuple(terms)
+    windows = tuple(tuple(window.indices(size)[:2]
+                          for window, size in zip(term[0], field.shape))
+                    for term in terms)
+    values = tuple(term[1] for term in terms)
+    owners = tuple(term[2] if len(term) == 3 else None for term in terms)
+    return _apply_ordered_slab(windows, field, values, owners)

@@ -68,3 +68,165 @@ def flux_metadata(monitors, *, window):
     return tuple((m.axis, m.index, m.freqs, tuple(field_channel(c) for c in _FLUX_COMPONENTS[m.axis]),
                   flux_regions(m), m.normal_h_zero, m.normal_h_weights, m.normal_periodic)
                  + ((m.total_steps, m.window, m.window_alpha) if window else ()) for m in monitors)
+
+
+def validate_flux_prefix(sim, grid, plan, monitors):
+    """Declared monitors precede the graded runner's waveguide witnesses."""
+    import jax
+    import numpy as np
+    from rfx.model.graded_grid import NonUniformGrid
+    count = len(sim._flux_monitors)
+    owners = [o for o in plan.owners if o.kind == 'flux']
+    if len(owners) != count or len(monitors) < count:
+        raise ValueError(f'flux_plane:{min(len(owners), count)}: runner count mismatch')
+    if not isinstance(grid, NonUniformGrid) or not count:
+        return
+    from rfx.runners.nonuniform import build_flux_monitor_cfgs_nu
+    with jax.ensure_compile_time_eval():
+        expected = build_flux_monitor_cfgs_nu(sim, grid, plan.time_base.record_length)
+    from .flux_weights import flux_regions
+    for i, (actual, ref) in enumerate(zip(monitors, expected)):
+        keys = ('axis', 'index', 'normal_h_zero', 'normal_h_weights', 'normal_periodic', 'total_steps')
+        if (any(getattr(actual, k) != getattr(ref, k) for k in keys)
+                or flux_regions(actual) != flux_regions(ref)):
+            raise ValueError(f'flux_plane:{i}: runner prefix mismatch')
+        for key in ('freqs', 'window', 'window_alpha'):
+            a, b = getattr(actual, key), getattr(ref, key)
+            if not any(isinstance(v, jax.core.Tracer) for v in jax.tree.leaves((a, b))):
+                if not np.array_equal(a, b):
+                    raise ValueError(f'flux_plane:{i}: runner prefix mismatch')
+
+
+def plan_accumulator_meta(plan, dtype, *, grid, dft_planes, flux_monitors, allow_flux_tail=False):
+    """Compile boxes once, checking nodes and the runner-owned carry shapes."""
+    from .plan import _plane_nodes
+    from rfx.probes.probes import _FLUX_COMPONENTS
+
+    def owners(kind, prefix, count, tail=False):
+        selected = sorted((o for o in plan.owners if o.kind == kind),
+                          key=lambda o: int(o.id.rsplit(':', 1)[1]))
+        if len(selected) > count or (not tail and len(selected) != count):
+            raise ValueError(f'{prefix}:{min(len(selected), count)}: runner count mismatch')
+        for i, owner in enumerate(selected):
+            if owner.id != f'{prefix}:{i}':
+                raise ValueError(f'{owner.id}: owner order mismatch')
+        return selected
+
+    def check(owner, channel, acc):
+        if channel.box is None:
+            raise ValueError(f'{owner.id}: missing box')
+        axis, index, region = channel.box
+        axes = [a for a in range(3) if a != axis]
+        lo, hi, low, high = region or (0, grid.shape[axes[0]], 0, grid.shape[axes[1]])
+        if acc.shape != (len(owner.frequencies), hi-lo, high-low):
+            raise ValueError(f'{owner.id}: carry shape mismatch')
+        planes: tuple = ((index, 1.),)
+        if owner.kind == 'flux' and channel.kind == 'H':
+            zero, weights, periodic = owner.normal_h
+            planes = (((index, 0.),) if zero else
+                      ((normal_h_neighbor(index, grid.shape[axis], periodic), weights[0]),
+                       (index, weights[1])))
+        expanded = tuple((n.component, n.i, n.j, n.k, weight)
+                         for plane, weight in planes
+                         for n in _plane_nodes(grid, axis, plane, channel.name, region))
+        actual = tuple((n.component, n.i, n.j, n.k, n.weight) for n in channel.nodes)
+        if expanded != actual:
+            raise ValueError(f'{owner.id}: box and nodes disagree')
+        return axis, index, region
+
+    planes, fluxes = [], []
+    for owner, probe in zip(owners('dft_plane', 'dft_plane', len(dft_planes)), dft_planes):
+        if len(owner.channels) != 1:
+            raise ValueError(f'{owner.id}: expected one channel')
+        channel = owner.channels[0]
+        axis, index, region = check(owner, channel, probe.accumulator)
+        planes.append((field_channel(channel.name), axis, index, owner.frequencies, region))
+    selected = owners('flux', 'flux_plane', len(flux_monitors), allow_flux_tail)
+    for owner, monitor in zip(selected, flux_monitors):
+        if len(owner.channels) != 4 or owner.normal_h is None:
+            raise ValueError(f'{owner.id}: expected four channels and normal H metadata')
+        boxes = [check(owner, c, a) for c, a in zip(owner.channels, monitor[:4])]
+        axis, index, _ = boxes[0]
+        if (any(box[:2] != (axis, index) for box in boxes)
+                or tuple(c.name for c in owner.channels) != _FLUX_COMPONENTS[axis]):
+            raise ValueError(f'{owner.id}: inconsistent flux channels')
+        fluxes.append((axis, index, owner.frequencies,
+                       tuple(field_channel(c.name) for c in owner.channels),
+                       tuple(box[2] for box in boxes), *owner.normal_h,
+                       plan.time_base.record_length, owner.dft_window, owner.dft_window_alpha))
+    return tuple(planes), tuple(fluxes) + flux_metadata(flux_monitors[len(selected):], window=True)
+
+
+def plan_monitor_objects(plan, grid):
+    """Compile retained monitors after checking their expanded stencils."""
+    import jax.numpy as jnp
+    import numpy as np
+    from .monitors import ntff_owner, current_moment_owner
+    from .plan import _traced
+
+    def bits(a, b):
+        if a is None or b is None:
+            return a is b
+        a, b = np.asarray(a), np.asarray(b)
+        return a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
+
+    def channels_equal(actual, expected):
+        if len(actual) != len(expected):
+            return False
+        for a, b in zip(actual, expected):
+            keys = ('name', 'kind', 'sample_stage', 'slot_offset', 'e_time_offset', 'h_time_offset', 'box')
+            if any(getattr(a, k) != getattr(b, k) for k in keys) or len(a.nodes) != len(b.nodes):
+                return False
+            for n, m in zip(a.nodes, b.nodes):
+                if (n.component, n.i, n.j, n.k) != (m.component, m.i, m.j, m.k):
+                    return False
+                if not bits(n.area, m.area):
+                    return False
+                if not _traced((n.weight, m.weight)) and not bits(n.weight, m.weight):
+                    return False
+        return True
+
+    objects: list = []
+    for kind, name, expand in (('ntff', 'ntff_box:0', ntff_owner),
+                               ('current_moment', 'current_moment:0', current_moment_owner)):
+        owners = [o for o in plan.owners if o.kind == kind]
+        if len(owners) > 1 or (owners and owners[0].id != name):
+            raise ValueError(f'{name}: owner count or identity mismatch')
+        if not owners or owners[0].availability.startswith('unavailable:'):
+            objects.append(None)
+            continue
+        owner = owners[0]
+        source = owner.source
+        if source is None:
+            raise ValueError(f'{name}: missing source')
+        if not channels_equal(owner.channels, expand(grid, source).channels):
+            raise ValueError(f'{name}: source and channels disagree')
+        if _traced(owner.frequencies):
+            if kind == 'current_moment':
+                source = source._replace(freqs=jnp.asarray(owner.frequencies, dtype=source.freqs.dtype))
+        elif not _traced(source.freqs) and not bits(owner.frequencies, source.freqs):
+            raise ValueError(f'{name}: source and frequencies disagree')
+        objects.append(source)
+    return tuple(objects)
+
+
+def validate_monitor_presence(compiled, runner):
+    for name, actual, expected in zip(('ntff_box:0', 'current_moment:0'), compiled, runner):
+        if (actual is None) != (expected is None):
+            raise ValueError(f'{name}: runner presence mismatch')
+
+
+def validate_monitor_carries(box, monitor, carry):
+    """Check the runner's buffers against the objects the step will read."""
+    if box is not None:
+        nf = len(box.freqs)
+        ni, nj, nk = box.i_hi-box.i_lo, box.j_hi-box.j_lo, box.k_hi-box.k_lo
+        shapes = ((nf, nj, nk, 4),)*2 + ((nf, ni, nk, 4),)*2 + ((nf, ni, nj, 4),)*2
+        data = carry.get('ntff')
+        if data is None or tuple(a.shape for a in data) != shapes*2:
+            raise ValueError('ntff_box:0: carry shape mismatch')
+    if monitor is not None:
+        shape = (len(monitor.freqs), monitor.n_blocks, 3, monitor.n_weights)
+        data = carry.get('current_moments')
+        if data is None or tuple(a.shape for a in data) != (shape, shape):
+            raise ValueError('current_moment:0: carry shape mismatch')

@@ -1,9 +1,11 @@
 """#1632 Addendum 1: realized precision, observable cross update and pad refusal."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Cylinder, GaussianPulse, Simulation, Sphere
+from rfx import Box, Cylinder, GaussianPulse, Simulation, Sphere
 
 
 def test_mixed_tensor_uses_diagonal_permittivity_dtype(monkeypatch):
@@ -33,7 +35,8 @@ def test_mixed_tensor_uses_diagonal_permittivity_dtype(monkeypatch):
 
 
 def test_one_e_update_observes_cross_coupling():
-    from rfx.core.yee import init_materials, init_state, update_e_aniso
+    from rfx.core.yee import init_materials, init_state
+    from rfx.stepping.yee import update_e_aniso
     from rfx.geometry.node_tensor import compute_node_tensor_eps
     from rfx.geometry.smoothing import compute_smoothed_eps
     from rfx.grid import Grid
@@ -49,7 +52,7 @@ def test_one_e_update_observes_cross_coupling():
         eps = build(grid, [(sphere, 4.)])
         materials = with_components(init_materials(grid.shape), grid, periodic=(True,) * 3,
                                     tensor=TensorOperands.of(eps))
-        outputs.append(update_e_aniso(state, materials, *eps, grid.dt, grid.dx, periodic=(True,) * 3))
+        outputs.append(update_e_aniso(state, materials, *eps, grid.dt, grid.dx, periodic=(True,) * 3, high_wall=unpadded_high_walls(grid)))
     diagonal, full = outputs
     for component in ('ey', 'ez'):
         np.testing.assert_array_equal(getattr(diagonal, component), 0.)
@@ -64,7 +67,15 @@ def test_oblique_full_tensor_pad_refusal_is_specific(entry):
     sim.add_material('rod', eps_r=4.)
     sim.add(Cylinder((.0121, .0058, .006), .0029, .1, 'z'), material='rod')
     sim.add_tfsf_source(f0=10e9, bandwidth=.8, direction='+x', polarization='ez', angle_deg=30.)
-    # The same realized material is invariant for diagonal smoothing.
-    getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=True)
-    with pytest.raises(ValueError, match="full_tensor's diagonal is not invariant along a padded periodic axis"):
-        getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
+    # The finite-y rod is refused before either smoothing path steps.
+    for smoothing in (True, 'full_tensor'):
+        with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi: .*periodic.*closed_box=True, theta_deg"):
+            getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=smoothing)
+    # Invariance admits the slab's faces, but its tensor update omits the Bloch phase.
+    slab = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)
+    slab.add_material('slab', eps_r=4.)
+    slab.add(Box((.010, -1., -1.), (.014, 1., 1.)), material='slab')
+    slab.add_tfsf_source(f0=10e9, bandwidth=.8, direction='+x', polarization='ez', angle_deg=30.)
+    from rfx.errors import RfxUnsupported
+    with pytest.raises(RfxUnsupported, match="subpixel_smoothing='full_tensor'.*does not apply the Bloch phase"):
+        getattr(slab, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')

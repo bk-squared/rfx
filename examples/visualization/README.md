@@ -40,6 +40,6 @@ match it. Otherwise that field is `null`; the script never silently labels a
 changed solver as the original one. The recorded generator SHA-256 identifies
 the rendering and model recipe. The original gallery runs used JAX 0.6.2 on CPU.
 
-Published walkthroughs: [boundary reflection](https://remilab.ai/rfx/gallery/boundary-reflection/),
-[cavity standing wave](https://remilab.ai/rfx/gallery/cavity-standing-wave/), and
-[dielectric interface](https://remilab.ai/rfx/gallery/dielectric-interface/).
+Published walkthroughs: [boundary reflection](https://remilab.ai/rfx/examples/teaching/boundary-reflection/),
+[cavity standing wave](https://remilab.ai/rfx/examples/teaching/cavity-standing-wave/), and
+[dielectric interface](https://remilab.ai/rfx/examples/teaching/dielectric-interface/).

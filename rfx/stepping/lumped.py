@@ -10,7 +10,7 @@ def update_rlc_elements(state, rlc_states, metas, e_prevs):
 
     Only solved elements (series, or parallel with an inductor) write their
     edge; folded elements write nothing. Admission already refuses two solved
-    elements on one edge (#1245), so the written edges are disjoint and one
+    elements on one edge, so the written edges are disjoint and one
     scatter equals the old element-by-element writes.
     """
     updated_states = []
@@ -25,7 +25,7 @@ def update_rlc_elements(state, rlc_states, metas, e_prevs):
             if cell in indices:
                 raise NotImplementedError(
                     f"two solved RLC elements share the {meta.component} edge "
-                    f"of cell {cell}; refuse_stacked_solved_elements (#1245) "
+                    f"of cell {cell}; refuse_stacked_solved_elements "
                     "must run before the step is built.")
             indices.append(cell)
             values.append(value.astype(field.dtype))

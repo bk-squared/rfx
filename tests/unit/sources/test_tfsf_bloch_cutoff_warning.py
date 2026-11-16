@@ -40,7 +40,8 @@ def test_bloch_cutoff_warning(angle, bandwidth, waveform, method, f0):
     should_warn = method == "bloch" and abs(angle) > 0.01 and ratio > 1e-3
     assert len(caught) == int(should_warn)
     if should_warn:
-        assert caught[0].category is UserWarning
+        from rfx.errors import AccuracyWarning
+        assert caught[0].category is AccuracyWarning
         message = str(caught[0].message)
         assert f"angle={angle:g} deg" in message
         assert f"bandwidth={bandwidth:g}" in message

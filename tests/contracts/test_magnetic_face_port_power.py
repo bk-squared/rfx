@@ -39,7 +39,7 @@ def _mixed_scene(wire):
                          x='cpml', y=Boundary('pmc', 'cpml'), z=Boundary('pec', 'cpml')))
     sim.add_material('substrate', eps_r=3.)
     sim.add(Box((0., 0., 0.), (.024, .016, .002)), material='substrate')
-    sim.add(Box((0., .007, .002), (.014, .009, .002)), material='pec')
+    sim.add(Box((0., (7 - .35) * .001, .002), (.014, (9 + .35) * .001, .002)), material='pec')
     sim.add_port((.008, .00049, 0.), 'ez', extent=.002 if wire else None)
     sim.add_msl_port(position=(.014, .008, 0.), width=.002, height=.002,
                      direction='-x', impedance=50., n_probe_offset=3, n_probe_spacing=2)
@@ -55,14 +55,14 @@ def test_mixed_flux_refuses_before_monitor_or_step(monkeypatch, wire):
     sim = _mixed_scene(wire)
     steps = []
 
-    def step(*args, **kwargs):
+    def step(self, *args, **kwargs):
         steps.append(True)
         raise _StepReached
 
     def monitor(*args, **kwargs):
         pytest.fail('registered a flux monitor before refusing magnetic-face port')
 
-    monkeypatch.setattr(sim, '_forward_from_materials', step)
+    monkeypatch.setattr(type(sim), '_forward_from_materials', step)
     monkeypatch.setattr(sim, 'add_flux_monitor', monitor)
     from types import SimpleNamespace
     from rfx.diagnostic_records import Diagnostic
@@ -83,11 +83,11 @@ def test_mixed_wave_admits_magnetic_face_port(monkeypatch, wire):
     sim = _mixed_scene(wire)
     steps = []
 
-    def step(*args, **kwargs):
+    def step(self, *args, **kwargs):
         steps.append(True)
         raise _StepReached
 
-    monkeypatch.setattr(sim, '_forward_from_materials', step)
+    monkeypatch.setattr(type(sim), '_forward_from_materials', step)
     with pytest.raises(_StepReached):
         sim.compute_mixed_s_matrix(freqs=np.array([8e9, 10e9]), n_steps=4,
                                    skip_preflight=True, magnitude_channel='wave')

@@ -22,9 +22,11 @@ from rfx.core.yee import EPS_0, MU_0
 from rfx.floquet import (
     compute_floquet_s_params,
     extract_floquet_modes,
-    floquet_phase_shift,
     floquet_wave_vector,
     init_floquet_dft,
+)
+from rfx.measurement.floquet import (
+    floquet_phase_shift,
 )
 from rfx.grid import C0
 

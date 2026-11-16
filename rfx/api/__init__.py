@@ -18,6 +18,7 @@ Usage
 
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning
 import inspect
 import math
 import json
@@ -33,13 +34,13 @@ import numpy as np
 from rfx.grid import Grid, C0  # noqa: F401
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
-from rfx.sources.sources import GaussianPulse
+from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 from rfx.sources import tfsf_discrete_plane_wave as _discrete_plane_wave
-from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
+from rfx.realized_geometry import realized_geometry as _realized_geometry_fn, RealizedGeometry
 from rfx.fidelity import fidelity_report as _fidelity_report
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
-from rfx.materials.lorentz import LorentzPole
+from rfx.materials.lorentz import LorentzPole, LorentzPoleMap
 from rfx.lumped import LumpedRLCSpec
 from rfx.materials.thin_conductor import (  # noqa: F401
     _PEC_SIGMA_THRESHOLD,
@@ -59,7 +60,7 @@ from rfx.sources.waveguide_port import (
 )
 from rfx.boundaries.spec import BoundarySpec
 from rfx.boundaries import refresh_boundary_model, require_floquet_lateral_faces
-from rfx.boundaries.model import DEFAULT_BOUNDARY
+from rfx.boundaries.model import DEFAULT_BOUNDARY, BoundaryModel
 
 # ---------------------------------------------------------------------------
 # Leaf data structures — moved to rfx/api/_spec.py (Part B Stage 0).
@@ -101,14 +102,7 @@ from rfx.mesh_planner import MeshPlan, mesh_intelligence_report, plan_simulation
 from rfx.auto_config import simulation_auto  # noqa: E402
 
 
-def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
-    """Amplitude at |f0 sin(theta)| relative to f0 for the Bloch drive."""
-    # init_tfsf dispatches BOTH Gaussian waveform names to init_tfsf_2d,
-    # whose drive is exp(-i*2*pi*f0*t) * exp(-(t/tau)**2),
-    # tau = 1/(pi*f0*bandwidth). Thus |S(fc)/S(f0)| = exp(-offset**2).
-    # Work directly in dB to avoid underflow for narrow pulses.
-    offset = (1.0 - abs(math.sin(math.radians(angle_deg)))) / bandwidth
-    return -(20.0 / math.log(10.0)) * offset * offset
+from rfx.sources.tfsf_discrete_plane_wave import _bloch_cutoff_level_db  # noqa: E402,F401
 
 
 from rfx.api._validators import (  # noqa: E402
@@ -116,6 +110,7 @@ from rfx.api._validators import (  # noqa: E402
     _require_positive_finite_scalar,
     _positive_divisors,
     _preflight_json_safe,
+    _validate_constructor_choices,
     _validate_residual_context,
 )
 
@@ -151,6 +146,7 @@ from rfx.api._compile import _CompileMixin  # noqa: E402
 # ---------------------------------------------------------------------------
 
 from rfx.api._execute import _ExecuteMixin  # noqa: E402
+from rfx.api._wall_loss import _WallLossMixin
 from rfx.api._mesh import _MeshMixin  # noqa: E402
 from rfx.api._artifacts import _ArtifactsMixin  # noqa: E402
 from rfx.api._ad_memory import (  # noqa: E402
@@ -183,6 +179,7 @@ _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 # ---------------------------------------------------------------------------
 
 class Simulation(
+    _WallLossMixin,
     _MeshMixin,
     _PreflightMixin,
     _SparamMixin,
@@ -209,16 +206,16 @@ class Simulation(
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
     snap : {"strict", "declared"}
-        Strict (default) refuses PEC sheets solved more than 1% off their
-        drawn in-plane size. "declared" accepts the difference as a warning
-        and records the choice in realized geometry; no solved numbers change.
+        Strict refuses PEC sheet sizes or a concrete dz_profile sum more than 1%
+        off the declaration; "declared" warns and keeps it. Traced dz_profile is
+        judged only with nominal_profiles (1e-9); without it the sum is unjudged.
     dt : float or None
-        Concrete time step (s) for the NON-UNIFORM lane, used instead of
-        the Courant step derived from the smallest cell. ``None`` (the
-        default) keeps the derived step and is byte-identical to before;
-        passing it without any of ``dz_profile`` / ``dx_profile`` /
-        ``dy_profile`` is refused, because the uniform lane derives its own
-        step in ``Grid.courant_dt``.
+        Concrete time step (s); None keeps the derived Courant step.
+        On uniform meshes only run(conformal_pec="cut_cell_floor") admits a pin:
+        dt=q * Grid.courant_dt(realized_dx, ndim), q=0.5 or 0.25 (relative 1e-9).
+        ndim is 2 for 2-D Yee and 3 otherwise. The pin is checked after mesh realization.
+        Other uniform entries refuse a pin. On graded meshes it replaces the
+        Courant step derived from the smallest cell, with the existing stability checks.
 
         Why it exists: the derived step is a function of ``min(cell)``, so a
         mesh that is a design variable moves ``dt`` as it deforms and every
@@ -253,17 +250,11 @@ class Simulation(
         precomputed CPML profile arrays stay float32 either way (fixed
         setup-time constants measurably bias the primal but do not
         create a per-timestep rounding-lattice noise floor).
-        ``"mixed"``/``"float64"`` are UNIFORM-SINGLE-DEVICE-LANE ONLY
-        today: ``field_dtype`` is threaded only by
-        ``rfx/runners/uniform.py`` — the non-uniform-mesh, distributed
-        (``devices=``/``distributed=True``), and subgridded
-        (``refinement``) runners do not thread it, so a non-float32
-        precision there would silently run float32 fields. ``run()`` /
-        ``forward()`` raise ``NotImplementedError`` rather than do that
-        silently; ``preflight()`` also warns in advance for the
-        non-uniform-mesh case (the distributed case is a call-time
-        ``run()``/``forward()`` kwarg, invisible to preflight, so its
-        `NotImplementedError` at dispatch is the only enforcement point).
+        ``"float64"`` supports uniform and graded single-device Yee runs,
+        including forward(), waveguide S-matrix and wire/lumped S calculators.
+        ``"mixed"`` supports only the uniform single-device lane. Distributed
+        and subgridded lanes refuse both values with ``NotImplementedError``.
+        Preflight warns for ``"mixed"`` on a graded mesh.
 
         ACCURACY CAVEAT for ``"mixed"`` with a CPML boundary:
         float16 field storage is fine for transient and field-shape work
@@ -281,31 +272,13 @@ class Simulation(
         quantity of interest is a reflection coefficient, an S-parameter,
         or anything else living near the absorber floor — use
         ``"float32"`` (the default) for those.
-    solver : str
-        ``"yee"`` (default) for the standard explicit scheme or
-        ``"adi"`` for the experimental ADI-FDTD path. The homogeneous,
-        lossless split with compatible domain boundaries removes the
-        explicit CFL stability restriction. Interior PEC (sheets, wires,
-        volumes) is refused at every factor on both lanes: its projection
-        does not inherit that guarantee. Cavity accuracy without interior
-        PEC is tested in 2D TMz (``mode="2d_tmz"``, 2% resonance gate at
-        5x CFL, ``test_adi_cavity_resonance``) and 3D
-        (full Zheng–Chen–Zhang two-sub-step scheme: 2% PEC-cavity eigenfrequency gate at 2x
-        CFL, ~15 cells/wavelength). 3D dispersion error grows ~dt^2, so
-        preflight emits an ``adi_3d_accuracy`` envelope advisory when
-        ``adi_cfl_factor > 2`` on a 3D grid — large factors trade
-        wavelength-scale accuracy for stiff-mesh throughput.
-    adi_cfl_factor : float
-        Timestep multiplier relative to the grid's Yee CFL timestep when
-        ``solver="adi"``. Default 2.0; for quantitative wavelength-scale
-        3D results prefer <= 2.0 (see ``solver``).
     stencil_order : int
         Spatial finite-difference order for the explicit Yee update: ``2``
         (default, the standard (2,2) scheme — BYTE-IDENTICAL to prior
         releases) or ``4`` (the (2,4) fourth-order-in-space stencil). Order
         4 is supported ONLY on the plain uniform Cartesian vacuum/dielectric
         path: boundary ``pec``/``periodic`` (NOT cpml/upml), default ``yee``
-        solver (NOT adi), uniform mesh (no dz/dx/dy profile), no dispersive
+        solver, uniform mesh (no dz/dx/dy profile), no dispersive
         materials, no anisotropic/subpixel eps, no conformal PEC, no Kerr,
         not distributed. Any unsupported combination with
         ``stencil_order=4`` raises ``NotImplementedError``. Order 4 derates
@@ -330,10 +303,11 @@ class Simulation(
         nominal_profiles: dict | None = None,
         precision: str = "float32",
         solver: str = "yee",
-        adi_cfl_factor: float = 2.0,
+        adi_cfl_factor: float | None = None,
         stencil_order: int = 2,
         interface_eps: str = "sampled",
         snap: str = "strict",
+        pec_occupancy_model: str = "edge_keep",
         **_removed_kwargs,
     ):
         if "pec_faces" in _removed_kwargs:
@@ -345,16 +319,10 @@ class Simulation(
             raise TypeError(
                 f"Simulation() got unexpected keyword arguments: {sorted(_removed_kwargs)}"
             )
-        from rfx.boundaries.spec import normalize_boundary
-        from rfx.runners.nonuniform import INTERFACE_EPS_RULES
+        from rfx.boundaries import normalize_boundary
 
-        if snap not in ("strict", "declared"):
-            raise ValueError(f"snap must be 'strict' or 'declared', got {snap!r}")
-        self._snap = snap
-
-        if interface_eps not in INTERFACE_EPS_RULES:
-            raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")
-        self._interface_eps = interface_eps
+        self._snap, self._interface_eps, self._pec_occupancy_model = _validate_constructor_choices(
+            snap, interface_eps, pec_occupancy_model)
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;
@@ -380,17 +348,15 @@ class Simulation(
             raise ValueError(
                 f"precision must be 'float32', 'mixed', or 'float64', got {precision!r}"
             )
-        if solver not in ("yee", "adi"):
-            raise ValueError(f"solver must be 'yee' or 'adi', got {solver!r}")
-        if adi_cfl_factor <= 0:
-            raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
+        from rfx.model import admit_solver
+        admit_solver(solver, adi_cfl_factor)
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
         from rfx.model import admit_graded_profiles
         # Caps come from _PreflightMixin (single source of truth; preflight's
         # _validate_cfg_multiband_grading reads the same two attributes).
         domain, self._nominal_profiles = admit_graded_profiles(
-            domain, dx_profile, dy_profile, dz_profile, dt=dt,
+            domain, dx_profile, dy_profile, dz_profile, dt=dt, snap=snap,
             dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles,
             multiband_ratio_cap=self._MULTIBAND_RATIO_CAP,
             inplane_ratio_cap=self._INPLANE_RATIO_CAP)
@@ -427,24 +393,12 @@ class Simulation(
         self._dt_min_cell = dt_min_cell
         self._precision = precision
         self._solver = solver
-        self._adi_cfl_factor = adi_cfl_factor
-        # (2,4) fourth-order-in-space stencil (PR-1b). 2 = default,
+        # (2,4) fourth-order-in-space stencil. 2 = default,
         # byte-identical. 4 is reachable ONLY on the plain uniform Cartesian
         # vacuum/dielectric path; the comprehensive API fence
         # (_check_stencil_order_supported) rejects every unsupported runner.
         self._stencil_order = stencil_order
 
-        if self._solver == "adi":
-            if self._mode not in ("2d_tmz", "3d"):
-                raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
-            if self._boundary == "upml":
-                raise ValueError("solver='adi' does not support boundary='upml'")
-            from rfx._adi_notice import require_closed_boundary
-            require_closed_boundary(self)
-            if self._dz_profile is not None:
-                raise ValueError("solver='adi' does not support nonuniform dz_profile")
-            if self._dx_profile is not None or self._dy_profile is not None:
-                raise ValueError("solver='adi' does not support nonuniform dx/dy profile")
 
         # Registered items
         self._materials: dict[str, MaterialSpec] = {}
@@ -472,16 +426,16 @@ class Simulation(
         self._flux_monitors: list[_FluxMonitorEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._msl_ports: list[_MSLPortEntry] = []
-        # Issue #469/#470 runtime bookkeeping. Deliberately NOT entry
+        # runtime bookkeeping. Deliberately NOT entry
         # fields: _MSLPortEntry's and _ProbeEntry's field sets are pinned
         # by the interop design-IR contract (rfx/interop/_design.py
         # _PINNED_RECORDS), and neither of these is design state.
         #   _msl_auto_offset_min: port name -> the upstream-only lower
-        #     edge stored when n_probe_offset was auto-resolved; the #469
-        #     interval solve in compute_msl_s_matrix starts from it.
+        #     edge stored when n_probe_offset was auto-resolved; the interval solve in compute_msl_s_matrix starts from
+        #     it.
         #   _msl_auto_probe_spacing: port name -> the registration-time
         #     Hammerstad-Jensen eps_eff estimate, stored when
-        #     n_probe_spacing was auto. The #681 span solve in
+        #     n_probe_spacing was auto. The span solve in
         #     _resolve_msl_auto_offsets widens the auto spacing toward
         #     span = (N-1)*lambda_g(f_max)/4 where the geometry allows;
         #     the entry keeps the conservative registration default so
@@ -492,11 +446,11 @@ class Simulation(
         #     (lambda_eff/(4*pi), lambda_eff/8) at f_max, stored for every
         #     port. On a graded propagation axis _resolve_msl_auto_offsets
         #     counts them in the runway cell at the port, and preflight asks
-        #     from them what an automatic offset would be (#810).
+        #     from them what an automatic offset would be.
         #   _internal_probe_indices: indices into self._probes of
         #     library-registered diagnostic probes (MSL settling
         #     witnesses); probe-placement preflight advisories and the
-        #     #332 tail advisory skip them (issue #470 self-noise).
+        #     tail advisory skip them.
         self._msl_auto_offset_min: dict[str, int] = {}
         self._msl_auto_probe_spacing: dict[str, float] = {}
         self._msl_auto_probe_lengths: dict[str, tuple[float, float]] = {}
@@ -508,12 +462,12 @@ class Simulation(
 
         # Canonical BoundarySpec, with scalar boundary compatibility.
         if _explicit_spec:
-            self._boundary_spec = spec
+            self._boundary_spec, self._boundary_scalar_spec = spec, None
             self._periodic_axes = spec.periodic_axes()
         else:
             self._boundary_spec = self._build_spec_from_legacy()
 
-        from rfx.boundaries.model import Features, resolve_kinds
+        from rfx.boundaries import Features, resolve_kinds
         self._boundary_model = resolve_kinds(
             self._boundary_spec, mode=mode,
             features=Features(layers=cpml_layers,
@@ -523,49 +477,11 @@ class Simulation(
                               domain=domain),
         )
 
-        # solver='adi' has no per-face absorber. Its absorbing layer is a
-        # graded sigma stamped on ALL SIX faces at the scalar cpml_layers
-        # (rfx/adi.py make_adi_absorbing_sigma{,_3d}, reached from
-        # rfx/api/_execute.py under `self._boundary == "cpml"`), and
-        # `self._boundary` is 'cpml' as soon as ANY face absorbs. So a
-        # per-face spec with PEC faces, or with a per-face thickness
-        # override, would silently get an absorber where the caller asked
-        # for a reflector — the SILENT_WRONG class preflight exists to
-        # remove (issue #647 grep sweep). Reject it instead of absorbing
-        # into a wall.
-        if self._solver == "adi" and self._cpml_layers > 0:
-            _adi_faces = {
-                f"{ax}_{side}":
-                    getattr(getattr(self._boundary_spec, ax), side)
-                for ax in "xyz" for side in ("lo", "hi")
-            }
-            from rfx.boundaries.depths import adi_uniform_faces
-            if not adi_uniform_faces(self._boundary_spec, cpml_layers):
-                _layout = ", ".join(
-                    f"{face}={tok!r}"
-                    for face, tok in sorted(_adi_faces.items())
-                )
-                raise ValueError(
-                    "solver='adi' supports only a uniform absorber: its "
-                    "absorbing layer is stamped on all six faces at the "
-                    "scalar cpml_layers, so a per-face boundary layout "
-                    f"({_layout}) would silently absorb on the faces you "
-                    "declared as reflectors. Use solver='yee' for per-face "
-                    "boundaries, or make every face 'cpml' with no per-face "
-                    "thickness override."
-                )
-
-        # T7 Phase 2 PR2: per-face CPML thickness now runs end-to-end
+        # Per-face CPML thickness runs end-to-end
         # via the padded-profile engine in rfx/boundaries/cpml.py.
-        # The Phase 1 guard _check_thickness_uniformity_phase1 has
-        # been removed; Boundary.lo_thickness / .hi_thickness are
+        # Boundary.lo_thickness / .hi_thickness are
         # consumed by _build_grid → Grid.face_layers → init_cpml.
 
-        # T7-E Phase 2 PR3: PMC runtime lands in rfx/boundaries/pmc.py
-        # and is hooked into the uniform scan body after each H update
-        # (rfx/simulation.py). The Phase 1 construction guard has been
-        # removed; PMC faces flow through Grid.pmc_faces and are applied
-        # in-trace.
 
     # ---- refinement (subgridding) ----
 
@@ -632,12 +548,10 @@ class Simulation(
         # Overlapping causes late-time energy growth (SAT coupling feeds
         # energy into the PML boundary faster than it can absorb).
         #
-        # Coordinate frame (issue #466): the grid builder places the absorber
+        # Coordinate frame: the grid builder places the absorber
         # OUTSIDE the user domain — ``domain`` is entirely physical, the CPML
         # cells are extra padding beyond it, and ``(idx - axis_pads)*dx``
-        # recovers user coordinates (rfx/grid.py). The pre-#466 check used the
-        # opposite frame (absorber inside the first/last N domain cells) and
-        # so fired on geometry that was clear of the absorber. In the
+        # recovers user coordinates (rfx/grid.py).  In the
         # builder's frame a z_range meets the absorber only when it reaches
         # the physical-domain edge of an ABSORBING face: z_lo <= 0 (touching
         # or entering the z_lo padding) or z_hi >= domain_z. Touching counts —
@@ -645,11 +559,10 @@ class Simulation(
         # and the authoritative static validator flags the same geometry as
         # ``subgrid_overlaps_absorber`` (see
         # test_production_boundary_terminated_rejects_refined_face_touching_cpml,
-        # which pins this warning for the touching case). What the frame fix
-        # REMOVES is the interior false positive: a z_range strictly inside
+        # which pins this warning for the touching case). An interior range does not overlap: a z_range strictly inside
         # (0, domain_z) is clear of the absorber no matter how close to the
         # edge, because the absorber cells are padding outside. The subgrid
-        # lane stays EXPERIMENTAL (PR #90).
+        # lane stays EXPERIMENTAL.
         if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
             import warnings
             z_lo_kind = self._boundary_spec.z.lo if self._boundary_spec else self._boundary
@@ -667,7 +580,7 @@ class Simulation(
                     f"(0.0, {domain_z*1e3:.1f})mm on an absorbing z face (the "
                     f"absorber lies OUTSIDE the domain — rfx/grid.py convention). "
                     f"This causes late-time energy growth. Keep z_range strictly "
-                    f"inside the physical domain or use PEC z faces.",
+                    f"inside the physical domain or use PEC z faces.", AccuracyWarning,
                     stacklevel=2,
                 )
 
@@ -693,7 +606,7 @@ class Simulation(
         sigma: float = 0.0,
         mu_r: float = 1.0,
         debye_poles: list[DebyePole] | None = None,
-        lorentz_poles: list[LorentzPole] | None = None,
+        lorentz_poles: list[LorentzPole | LorentzPoleMap] | None = None,
         chi3: float = 0.0,
     ) -> "Simulation":
         """Register a named material.
@@ -760,7 +673,7 @@ class Simulation(
             shape=shape, material_name=material))
         return self
 
-    def realized_geometry(self):
+    def realized_geometry(self) -> RealizedGeometry:
         """Return the immutable host record of this configuration's built geometry.
 
         Build only: entities, solved sheet spans, signed face residuals in
@@ -770,7 +683,7 @@ class Simulation(
         """
         return _realized_geometry_fn(self)
 
-    def fidelity_report(self, print_report: bool = True):
+    def fidelity_report(self, print_report: bool = True) -> list[dict[str, object]]:
         """Input-fidelity audit: declared vs solved, per entity, in input
         units — run BEFORE any solve. See :func:`rfx.fidelity.fidelity_report`
         (design rule: never predicts result-side impact; rasterization,
@@ -784,8 +697,8 @@ class Simulation(
         position: tuple[float, float, float],
         component: str = "ez",
         *,
-        waveform=None,
-        amplitude_kind: str | None = None,
+        waveform: Callable[[float], float] | Callable[[jax.Array], jax.Array] | None = None,
+        amplitude_kind: str | None = None, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a soft point source (no impedance loading).
 
@@ -809,8 +722,7 @@ class Simulation(
 
             - ``'current'``: the amplitude is a current moment I(t) in A·m,
               realized as ``E += Cb * I / dV`` on every path and boundary
-              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``; ADI refuses
-              ``'current'`` and requires explicit ``'field'``,
+              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``;
               ``dV`` = local cell volume). Resolution-independent injected
               power; Meep's convention; the declaration default.
             - ``'field'``: the amplitude is a raw E-field increment per
@@ -857,7 +769,7 @@ class Simulation(
             position=position, component=component,
             impedance=0.0,  # 0 = no port impedance (soft source)
             waveform=waveform, extent=None,
-            amplitude_kind=resolved_kind,
+            amplitude_kind=resolved_kind, allow_in_absorber=allow_in_absorber,
         ))
         return self
 
@@ -866,7 +778,7 @@ class Simulation(
         position: tuple[float, float, float],
         *,
         polarization: str | tuple = "ez",
-        waveform=None,
+        waveform: GaussianPulse | ModulatedGaussian | None = None,
         amplitude_kind: str | None = None,
     ) -> "Simulation":
         """Add a polarized point source.
@@ -919,12 +831,10 @@ class Simulation(
         # Complex weights use two separately constructed waveforms. Their
         # quadrature is not part of the verified public polarization scope.
         if _np.isreal(jx) and _np.isreal(jy):
-            # Real Jones — simple amplitude scaling. Thread the source
-            # waveform's cutoff through the reconstruction (post-#392
-            # review): dropping it silently reverted the #388/#392
-            # deposited-DC remedy (cutoff=4.5) to the default 3.0 on
-            # this path. getattr default 3.0 = GaussianPulse's default,
-            # so cutoff-less waveforms are unchanged.
+            # Real Jones — simple amplitude scaling. Preserve the source waveform's
+            # cutoff through reconstruction: dropping it resets the deposited-DC remedy
+            # (cutoff=4.5) to the default 3.0. The getattr default is GaussianPulse's
+            # 3.0, so cutoff-less waveforms retain their default.
             if abs(float(jx.real)) > 1e-10:
                 from rfx.sources.sources import GaussianPulse as GP
                 wx = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
@@ -979,8 +889,8 @@ class Simulation(
         pin_radius: float = 0.635e-3,
         outer_radius: float = 2.055e-3,
         impedance: float = 50.0,
-        waveform=None,
-        terminates=None,
+        waveform: Callable[[float], float] | Callable[[jax.Array], jax.Array] | None = None,
+        terminates: object = None,
     ) -> "Simulation":
         """Add an SMA-style coaxial probe port.
 
@@ -1070,7 +980,7 @@ class Simulation(
             and on a graded one the E-node DUAL spacing ``(d[k-1]+d[k])/2``. Both the uniform and
             the non-uniform (``dz_profile``)
             ``run()``/S-parameter lanes apply the operator; lanes that do
-            not (distributed, subgridded, ADI, UPML, dispersive-overlap,
+            not (distributed, subgridded, UPML, dispersive-overlap,
             multimode-waveguide, MSL-junction/mixed, optimize/topology
             drivers) refuse f0 sheets loudly rather than silently dropping
             them; ``compute_msl_s_matrix`` applies the sheet through its
@@ -1180,61 +1090,6 @@ class Simulation(
         self._thin_conductors.append(tc)
         return self
 
-    def add_pinned_sheet(
-        self,
-        *,
-        plane_index: int,
-        i_range: tuple[int, int],
-        j_range: tuple[int, int],
-        normal_axis: int = 2,
-        sigma_bulk: float = 5.8e7,
-        thickness: float = 35e-6,
-        eps_r: float = 1.0,
-        surface_impedance_f0: float | None = None,
-        name: str | None = None,
-    ) -> "Simulation":
-        """Declare a thin PEC conductor by NODE INDICES instead of metres.
-
-        ``add_thin_conductor`` draws metal in metres, and the grid then
-        decides which node lines that reaches. This draws it on the node
-        lines directly: the conductor occupies node ``plane_index`` along
-        ``normal_axis`` and the inclusive node ranges ``i_range`` /
-        ``j_range`` on the other two axes, in increasing axis order — for
-        the default ``normal_axis=2`` that is ``i_range`` on x and
-        ``j_range`` on y.
-
-        Indices are INTERIOR (unpadded) node indices: interior node ``i``
-        sits at ``i * dx`` from the domain origin on a uniform mesh, and is
-        the ``i``-th interior node on a graded one. Absorber padding is
-        added when the sheet is realized.
-
-        Why it exists: the conductor's PHYSICAL size is then whatever the
-        cells between those nodes add up to, so stretching the cells makes
-        the metal longer without moving it off the lattice and without any
-        sub-cell metal. That is what lets ``jax.grad`` reach a patch edge
-        through ``dx_profile`` / ``dy_profile`` / ``dz_profile`` — a metric
-        sheet on a mesh that is a JAX tracer is still refused, because its
-        corners cannot be read off a traced node line.
-
-        The declaration is mesh-independent by construction, so the same
-        call gives the same footprint on the uniform and non-uniform lanes,
-        traced or not. A range spanning a single node line is refused: one
-        node line carries no E edge, so the metal would carry no current.
-
-        Only the lossless PEC sheet is supported (``sigma_bulk >= 1e6``,
-        ``surface_impedance_f0`` unset); ``thickness`` is accepted for
-        signature compatibility with :meth:`add_thin_conductor` and is not read.
-        ``eps_r`` must stay at 1; the sheet uses its cells' permittivity.
-        Declare surrounding dielectric with ``add(..., material=...)``.
-        """
-        from rfx.materials.thin_conductor import PinnedSheet
-        self._pinned_sheets.append(PinnedSheet(
-            normal_axis=normal_axis, plane_index=plane_index,
-            i_range=tuple(i_range), j_range=tuple(j_range),
-            sigma_bulk=sigma_bulk, thickness=thickness, eps_r=eps_r,
-            surface_impedance_f0=surface_impedance_f0, name=name))
-        return self
-
     # ---- ports ----
 
     def add_port(
@@ -1249,7 +1104,7 @@ class Simulation(
         excite: bool = True,
         direction: str | None = None,
         reference_plane_cells: int | None = None,
-        terminates=None,
+        terminates: object = None, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a lumped port (single-cell) or wire port (multi-cell).
 
@@ -1289,15 +1144,15 @@ class Simulation(
             decomposition. When None, the runner auto-detects from the
             port's position (closest boundary face).
         reference_plane_cells : int or None
-            Opt-in reference-plane port waves for the wire-port S-matrix
-            OFF-diagonal extraction. When set to an integer
+            Opt-in reference-plane port waves for the wire-port S-matrix.
+            Fewer than two opted wire ports are refused. When set to an integer
             N >= 1, ``run(compute_s_params=True)`` registers TWO line
             V/I reference planes for this port at N and 2N cells
             outboard (into the DUT along the line axis, i.e. opposite
             ``direction``): gap-voltage line integrals at integer Yee
             planes plus dual adjacent Ampere loops around the PEC signal
-            trace, accumulated in the production scan. Off-diagonal
-            ``S[i, j]`` entries whose ports BOTH opt in are then computed
+            trace, accumulated in the production scan. With >= 2 opted ports,
+            the whole opted block is computed as ``S = B A^-1`` over drive passes
             from the plane waves — forward/backward split with the
             MEASURED two-plane line impedance
             ``Zc^2 = (V1^2 - V2^2)/(I1^2 - I2^2)`` (never the nominal
@@ -1309,9 +1164,9 @@ class Simulation(
             all bins; the plane path removes the drive-side |S21|
             deflation kappa(f) = 1.49-1.86.
             ``None`` (default) keeps the shipped port-cell behaviour,
-            byte-identical. The DIAGONAL ``S_jj`` always stays on the
-            byte-frozen legacy path either way, so ``forward()`` /
-            1-port S11 results are unaffected. Requires a wire port
+            byte-identical. Opted ``S_jj`` uses the same Re Zc plane waves as S21,
+            unlike the default; ``forward()`` refuses the option, use
+            ``run(compute_s_params=True)``. Requires a wire port
             (``extent=``) with an explicit ``direction`` transverse to
             the port component, a PEC signal trace uniform across both
             planes, and the uniform-mesh ``run()`` lane: the
@@ -1325,7 +1180,7 @@ class Simulation(
             cells from every port so the two-plane Zc/beta measurement
             sits outside the port near-fields — the Phase-0
             pre-registration rule. Measured on the canonical 16 mm thru
-            (dx = 0.5 mm, gap-trimmed V, 2026-07-10 battery): N=3 planes
+            (dx = 0.5 mm, gap-trimmed V): N=3 planes
             read beta/(w/c) = 1.16-1.20 and Zc = 52-53 ohm with Im/Re up
             to 8.2% (near-field contaminated; |S21| closed-box-referee
             residual -3.1% at 7 GHz, row energy |S11|^2+|S21|^2 up to
@@ -1344,8 +1199,8 @@ class Simulation(
         validate_radius(radius)
         if radius is not None and extent is None:
             raise ValueError("radius requires a wire port: provide extent=...")
-        if impedance <= 0:
-            raise ValueError(f"impedance must be positive, got {impedance}")
+        if not (impedance > 0 and math.isfinite(impedance)):
+            raise ValueError(f"impedance must be positive and finite, got {impedance}")
         if direction is not None and direction not in ("+x", "-x", "+y", "-y"):
             raise ValueError(
                 f"direction must be one of '+x','-x','+y','-y' (or None), got {direction!r}"
@@ -1356,7 +1211,7 @@ class Simulation(
                     "reference_plane_cells is only supported on wire ports "
                     "(extent=...): the plane V/I method needs a gap-voltage "
                     "line integral and a PEC signal trace. Single-cell "
-                    "lumped ports have no Phase-0 evidence (issue #313)."
+                    "lumped ports have no closed-box flux-referee validation of reference-plane V/I waves; that validation used a wire-port matched thru line, with reference-plane |S21| within ~2.5% of the box referee at all nine frequency bins."
                 )
             if int(reference_plane_cells) != reference_plane_cells \
                     or int(reference_plane_cells) < 1:
@@ -1386,7 +1241,7 @@ class Simulation(
             import warnings as _w
             _w.warn(
                 "waveform is ignored when excite=False (passive matched load). "
-                "Remove the waveform argument to suppress this warning.",
+                "Remove the waveform argument to suppress this warning.", ConfigurationWarning,
                 stacklevel=2,
             )
 
@@ -1400,7 +1255,7 @@ class Simulation(
             extent=extent, excite=excite, direction=direction,
             radius=radius,
             reference_plane_cells=reference_plane_cells,
-            terminates=terminated,
+            terminates=terminated, allow_in_absorber=allow_in_absorber,
         ))
         return self
 
@@ -1420,7 +1275,7 @@ class Simulation(
         name: str | None = None,
         mode: str = "laplace",
         eps_r_sub: float | None = None,
-        terminates=None,
+        terminates: object = None,
     ) -> "Simulation":
         """Add a microstrip-line (MSL) port spanning the full trace cross-section.
 
@@ -1541,14 +1396,14 @@ class Simulation(
         """
         from rfx.sources.msl_port import msl_axis_roles as _msl_axis_roles
         # Raises with the substrate-normal explanation for "+z"/"-z" and a
-        # plain domain error otherwise (issue #661).
+        # plain domain error otherwise.
         _msl_axis_roles(direction)
         if width <= 0:
             raise ValueError(f"width must be positive, got {width}")
         if height <= 0:
             raise ValueError(f"height must be positive, got {height}")
-        if impedance <= 0:
-            raise ValueError(f"impedance must be positive, got {impedance}")
+        if not (impedance > 0 and math.isfinite(impedance)):
+            raise ValueError(f"impedance must be positive and finite, got {impedance}")
         if mode not in ("eigenmode", "laplace", "uniform"):
             raise ValueError(f"mode must be 'eigenmode', 'laplace', or 'uniform', got {mode!r}")
         if mode == "eigenmode" and direction not in ("+x", "-x"):
@@ -1557,8 +1412,7 @@ class Simulation(
                 "not supported: the Schelkunoff J+M launch hard-codes the "
                 "x-axis TFSF correction pair and rides on the FDFD eigenmode "
                 "solver, which is a documented dead-end kept under a strict "
-                "xfail. Use mode='laplace' (the default) for a y-directed "
-                "port (issue #661)."
+                "xfail. Use mode='laplace' (the default) for a y-directed " "port."
             )
         from rfx.preflight._msl_probe_rules import msl_auto_probe_declaration
         (_, _near_field_m, span_total, _eps_eff_hj,
@@ -1583,7 +1437,7 @@ class Simulation(
         if n_probes < 3:
             raise ValueError(
                 f"n_probes must be >= 3 for the N-probe least-squares "
-                f"wave-decomposition extractor (issue #80 Fix C), got "
+                f"wave-decomposition extractor, got "
                 f"{n_probes}"
             )
 
@@ -1596,12 +1450,12 @@ class Simulation(
         if _offset_is_auto:
             # Runtime bookkeeping only (NOT an entry field — _MSLPortEntry's
             # field set is pinned by the interop design-IR contract): the
-            # #469 interval solve in compute_msl_s_matrix re-derives the
+            # interval solve in compute_msl_s_matrix re-derives the
             # effective offset from THIS stored lower edge every call, so
             # repeated calls do not drift.
             self._msl_auto_offset_min[name] = int(n_probe_offset)
         if _spacing_is_auto:
-            # Same bookkeeping pattern for the auto spacing (issue #681):
+            # Same bookkeeping pattern for the auto spacing:
             # store the registration-time HJ eps_eff so the driver-time
             # span solve can size λ_g(f_max)/4 per probe step from the
             # SAME permittivity estimate every call (idempotent, and the
@@ -1610,7 +1464,7 @@ class Simulation(
         # The two lengths the automatic defaults were counted from, for every
         # port: the resolver recounts an automatic offset or spacing in the
         # runway cell on a graded axis, and preflight asks what leaving an
-        # explicit offset None would give on this port's runway (#810).
+        # explicit offset None would give on this port's runway.
         self._msl_auto_probe_lengths[name] = (
             float(_near_field_m), float(span_total))
 
@@ -1690,7 +1544,7 @@ class Simulation(
                 warnings.warn(
                     f"Series topology with single component ({active}) uses material "
                     f"folding, not the series ADE. Add a second component or use "
-                    f"topology='parallel' to suppress this warning.",
+                    f"topology='parallel' to suppress this warning.", ConfigurationWarning,
                     stacklevel=2,
                 )
 
@@ -1935,7 +1789,7 @@ class Simulation(
         ))
         return self
 
-    from rfx.boundaries.serialization import legacy_spec as _build_spec_from_legacy
+    from rfx.boundaries import legacy_spec as _build_spec_from_legacy
 
     def __getattr__(self, name):
         if name == "set_periodic_axes":
@@ -1945,7 +1799,7 @@ class Simulation(
             )
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
-    def boundary_model(self, *, rcs: bool = False):
+    def boundary_model(self, *, rcs: bool = False) -> BoundaryModel:
         """Return the B1 face declaration with the current feature requirements.
 
         No runner consumes this descriptor in B1. ``rcs=True`` collects the
@@ -2015,7 +1869,7 @@ class Simulation(
             raise ValueError(f"n_modes must be >= 1, got {n_modes}")
         # Only the specular (0,0) TE mode is implemented in extract_floquet_modes; n_modes>1 and
         # TM were silently accepted and returned wrong results (higher-order lobes dropped; TM read
-        # the TE field pair + impedance). Fail loud until implemented (RF-audit 2026-07-23).
+        # the TE field pair + impedance). Fail loud until implemented.
         if n_modes > 1:
             raise NotImplementedError(
                 f"add_floquet_port(n_modes={n_modes}): only the specular (0,0) Floquet mode is "
@@ -2070,25 +1924,25 @@ class Simulation(
     def add_probe(
         self,
         position: tuple[float, float, float],
-        component: str = "ez",
+        component: str = "ez", *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a point field probe."""
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             raise ValueError(f"component must be a field name, got {component!r}")
-        self._probes.append(_ProbeEntry(position=position, component=component))
+        self._probes.append(_ProbeEntry(position=position, component=component, allow_in_absorber=allow_in_absorber))
         return self
 
     def add_vector_probe(
         self,
-        position: tuple[float, float, float],
+        position: tuple[float, float, float], *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a vector probe that records ALL 6 field components.
 
-        Records Ex, Ey, Ez, Hx, Hy, Hz at the same position.
+        Records Ex, Ey, Ez, Hx, Hy, Hz; allow_in_absorber opts into pad positions.
         Results accessible via result.time_series columns [0..5].
         """
         for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            self._probes.append(_ProbeEntry(position=position, component=comp))
+            self._probes.append(_ProbeEntry(position=position, component=comp, allow_in_absorber=allow_in_absorber))
         return self
 
     def _validate_declared_plane_coordinate(self, axis: str, coordinate: float) -> None:
@@ -2131,7 +1985,7 @@ class Simulation(
         name : str or None
             Optional result key.
         """
-        from rfx.measurement.setup import register_plane
+        from rfx.measurement import register_plane
         return register_plane(self, axis, coordinate, component, freqs, n_freqs, name, region)
 
     def add_flux_monitor(
@@ -2210,7 +2064,7 @@ class Simulation(
         self,
         corner_lo: tuple[float, float, float],
         corner_hi: tuple[float, float, float],
-        freqs=None,
+        freqs: Sequence[float] | np.ndarray | jax.Array | None = None,
         n_freqs: int = 50,
     ) -> "Simulation":
         """Add a near-to-far-field transform box for radiation patterns.
@@ -2235,9 +2089,9 @@ class Simulation(
         corner_lo: tuple[float, float, float],
         corner_hi: tuple[float, float, float],
         block_size: float,
-        freqs,
+        freqs: Sequence[float] | np.ndarray | jax.Array,
         order: int = 2,
-        margin_cells=0,
+        margin_cells: int | Sequence[int] = 0,
         off_cells: int = 0,
     ) -> "Simulation":
         """Accumulate the structure's own current as block moments, in-loop.
@@ -2315,7 +2169,7 @@ class Simulation(
 
     # ---- build helpers ----
 
-    def freeze_mesh(self):
+    def freeze_mesh(self) -> Grid | NonUniformGrid:
         """Finalize mesh spacing/profiles and extent, returning the selected grid.
 
         Call after adding mesh-driving materials/geometry and before placing

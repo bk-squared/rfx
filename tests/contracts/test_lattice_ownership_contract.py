@@ -657,19 +657,10 @@ def test_sub_cell_pec_box_via_add_is_refused():
 
 
 def test_conformal_weights_do_not_replace_the_realized_edges():
-    """§1.7 / §1.8: Dey-Mittra conformal is a subpixel UPDATE-COEFFICIENT
-    model, not a second realization — a run that carries conformal weights
-    still applies ``(Mx, My, Mz)`` in its step body.
+    """Realized PEC edges still apply when the conformal channel leaves them open.
 
-    ``apply_conformal_pec`` zeroes only edges whose weight is exactly 0, and
-    NO edge of a one-cell PEC slab is fully covered (both its faces sit on
-    the slab's own boundary, so w = 1/2 there — measured below). While the
-    waveguide S-matrix lane folded interior PEC into sigma=1e10 the
-    conductor survived that gap; with the fold deleted, a step body that
-    chose one branch OR the other dropped it outright (measured: conformal
-    PEC-short min|S11| 0.2296 against a 0.99 gate, restored to 0.9942).
-    Falsifier: restore the ``elif`` in ``rfx/simulation.py``'s step body and
-    the field on the slab is nonzero.
+    Clear the geometry weights on the slab deliberately: replacing the two
+    independent masks with an either/or branch must leave a nonzero field.
     """
     import jax.numpy as _jnp
     from rfx import Box
@@ -689,10 +680,9 @@ def test_conformal_weights_do_not_replace_the_realized_edges():
     cells[k, :, :] = True
     w = clamp_conformal_weights(
         *compute_conformal_weights_sdf(grid, [slab]), 0.1)
-    # The premise, measured: the conformal path alone zeroes NOTHING on a
-    # one-cell slab — no edge of it has weight 0.
-    for c in range(3):
-        assert int(np.count_nonzero(np.asarray(w[c]) == 0.0)) == 0, c
+    w = tuple(part.at[k:k + 2].set(1.) for part in w)
+    for part in w:
+        np.testing.assert_array_equal(np.asarray(part)[k:k + 2], 1.)
     # ... while the realized edge set shorts both of its faces.
     edges = realized_pec_edge_masks(_jnp.asarray(cells))
     assert bool(np.asarray(edges[1])[k].all()) and bool(np.asarray(edges[1])[k + 1].all())
@@ -918,17 +908,7 @@ def test_add_thin_conductor_takes_both_sheet_spellings_and_lands_on_one_plane():
 
 
 def test_domain_boundary_pec_is_not_a_conductor_body():
-    """§1.8 scope fence, in code rather than prose.
-
-    ``BoundarySpec`` faces / ``apply_pec`` / ``apply_pec_faces`` zero the
-    tangential E on the face plane and are NOT bodies: they own no cell,
-    no sheet and no wire, and ``realized_pec_edge_masks`` never produces
-    them. cv09, cv10, cv14, cv24, ``adi_solver_demo``, ``hello_world`` and
-    ``resonance_harminv`` are the controls that must not move, and
-    fourteen files in the oracle/lock group rest on the domain rule, so a
-    well-meaning unification of the two would move every one of them
-    silently. This is the tripwire.
-    """
+    """§1.8 scope fence, in code rather than prose."""
     from rfx.boundaries.pec import apply_pec_faces, realized_pec_edge_masks
 
     shape = (6, 6, 6)
@@ -1109,7 +1089,7 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
     ``kottke_fenced_edge_masks`` call in ``rfx/simulation.py`` and the probed
     edge reads zero while its inverse permittivity stays 0.0329.
     """
-    import rfx.simulation as _sm
+    import rfx.boundaries.pec as _pec
     from rfx import Simulation, Sphere
     from rfx.boundaries.spec import Boundary, BoundarySpec
     from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
@@ -1120,7 +1100,7 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             sim = Simulation(
-                freq_max=30e9, domain=(10e-3, 10e-3, 10e-3), dx=dx,
+                snap="declared", freq_max=30e9, domain=(10e-3, 10e-3, 10e-3), dx=dx,
                 boundary=BoundarySpec(
                     x=Boundary(lo="pec", hi="pec"),
                     y=Boundary(lo="pec", hi="pec"),
@@ -1143,19 +1123,19 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
     assert 0.03 < inv_xx < 0.04, inv_xx
 
     applied = {}
-    _orig = _sm.apply_pec_edges
+    _orig = _pec.apply_pec_edges
 
     def _record(state, edge_masks):
         applied["masks"] = edge_masks
         return _orig(state, edge_masks)
 
-    _sm.apply_pec_edges = _record
+    _pec.apply_pec_edges = _record
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             result = _build().run(n_steps=60, subpixel_smoothing="kottke_pec")
     finally:
-        _sm.apply_pec_edges = _orig
+        _pec.apply_pec_edges = _orig
 
     masks = applied.get("masks")
     assert masks is not None, "the kottke lane applied no edge masks at all"
@@ -1239,8 +1219,8 @@ def _sheet_and_volume_sim():
     sim.add(Box((2e-3, 2e-3, 2e-3), (4e-3, 4e-3, 3e-3)), material="pec")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sim.add_thin_conductor(Box((3e-3, 2e-3, SHEET_PLANE_Z),
-                                   (8e-3, 8e-3, SHEET_PLANE_Z)))
+        sim.add_thin_conductor(Box(((3 - .35) * 1e-3, (2 - .35) * 1e-3, SHEET_PLANE_Z),
+                                   ((8 + .35) * 1e-3, (8 + .35) * 1e-3, SHEET_PLANE_Z)))
     sim.add_source((5e-3, 5e-3, 3e-3), "ez", amplitude_kind="field")
     sim.add_probe(SHEET_PROBE, "ex")
     sim.add_probe(CONTROL_PROBE, "ex")

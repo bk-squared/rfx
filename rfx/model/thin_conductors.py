@@ -1,5 +1,9 @@
 """One PEC/DC/f0 fold on the realized grid, in declaration order."""
-from dataclasses import dataclass
+
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
+from rfx._warning_origin import user_stacklevel
+from dataclasses import dataclass, replace
+from rfx.model.realization_verdict import legacy_mismatch
 import warnings
 
 import jax
@@ -10,14 +14,14 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, _grid_coords
 from rfx.geometry.rasterize_grid import (
     GridCoords, cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
-    sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
+    footprint_sample_coords, sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
 )
 from rfx.materials.thin_conductor import (
     _PEC_SIGMA_THRESHOLD, ThinConductor,
     SheetImpedanceSpec, check_sheet_occupancy, leontovich_rs, sheet_bounds,
     sheet_normal_axis,
 )
-from rfx.nonuniform import e_node_dual_spacings
+from rfx.model.graded_grid import e_node_dual_spacings
 
 
 def admit_thin_conductor(
@@ -43,12 +47,10 @@ def admit_thin_conductor(
                 f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
                 f"> 0 when surface_impedance_f0 is set — Rs0 = "
                 f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
-        # #674: any shape that can rasterize itself is allowed — the
+        # any shape that can rasterize itself is allowed — the
         # fold is per occupied cell and shape-agnostic. Two structural
-        # requirements survive, and both fail loud on BOTH lanes rather
-        # than repeat the former NU warn-and-skip (the #369
-        # silently-vaporized-metal class: a sheet that vanishes on one
-        # lane is a wrong answer, not a degraded one).
+        # requirements survive, and both fail loud on BOTH lanes because skipping a sheet
+        # on one lane silently changes the model.
         if not callable(getattr(shape, "mask_on_coords", None)):
             raise ValueError(
                 f"add_thin_conductor: surface_impedance_f0 requires a "
@@ -88,9 +90,9 @@ def admit_thin_conductor(
             f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
             f"eps_r. Every metal is above this threshold — a lower "
             f"sigma_bulk would be a different material, not thinner "
-            f"copper (issue #504). For conductor loss pass "
-            f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
-            f"issue #669).",
+            f"copper. For conductor loss pass "
+            f"surface_impedance_f0=<band centre Hz> (Leontovich sheet"
+            f").", ConfigurationWarning,
             stacklevel=3,
         )
     if surface_impedance_f0 is not None:
@@ -108,13 +110,13 @@ def admit_thin_conductor(
             f"within the run, frozen at f0, with relative band error "
             f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
             f"inductance) is NOT modeled, so resonances read slightly "
-            f"high.",
+            f"high.", AccuracyWarning,
             stacklevel=3,
         )
     return tc
 
 
-class DCFilmAdmissionError(ValueError):
+class DCFilmAdmissionError(RfxRefusal):
     """A geometry-only DC film refusal, also carried by preflight."""
     code = 'dc_film_area'
     source = 'admit_dc_film'
@@ -130,6 +132,83 @@ class DCFilmGeometry:
     normal: int
     realized_area: float | None
     declared_area: float | None
+
+
+@dataclass(frozen=True)
+class FilmFootprint:
+    """One declaration's cell coverage and drawn join authority."""
+    mask: object
+    normal: int
+    plane: object
+    drawn: object
+    order: int
+
+    @property
+    def footprint(self):
+        return self.mask
+
+
+def separate_film_footprints(films, grid):
+    """Leave an empty cell at each unauthorized face between DC films.
+
+    Each transverse column is independent. Compare the two incident rows'
+    drawn coverage fractions; a floating-point tie belongs to the earlier
+    declaration. The shared sheet predicate owns tolerance and image joins.
+    """
+    from rfx.boundaries.pec import _sheet_pair_touches
+    from rfx.model.film_geometry import refuse_traced_film_pairs
+    if len(films) < 2:
+        return films
+    if any(is_tracer(v) for v in jax.tree_util.tree_leaves(
+            (_grid_coords(grid), [(f.mask, f.plane, f.drawn) for f in films]))):
+        refuse_traced_film_pairs(films, grid)
+        return films
+    masks = [np.array(f.mask, dtype=bool) for f in films]
+    periodic = tuple(a in getattr(grid, 'periodic_axes', '') for a in 'xyz')
+    nodes = _grid_coords(grid)
+
+    def coverage(film, axis, row):
+        lo, hi, _, length = film.drawn[axis]
+        x = float(nodes[axis][row])
+        width = float(grid.cells(axis)[row])
+        return max(max(0., min(x + width, hi + shift) - max(x, lo + shift)) / width
+                   for shift in ((0., length, -length) if periodic[axis] else (0.,)))
+
+    for i, left in enumerate(films):
+        for j in range(i + 1, len(films)):
+            right = films[j]
+            if left.normal != right.normal or left.plane != right.plane:
+                continue
+            # Compare footprints on their solved node plane even when their
+            # original normal cell layers differ.
+            a, b = masks[i].any(axis=left.normal), masks[j].any(axis=left.normal)
+            for axis in range(3):
+                if axis == left.normal or _sheet_pair_touches(left, right, axis, periodic):
+                    continue
+                t = axis - (axis > left.normal)
+                aa, bb = np.moveaxis(a, t, 0), np.moveaxis(b, t, 0)
+                n = len(aa)
+                # Include common cells as well as both face orientations.
+                # Removing cells cannot create another conflicting face.
+                for row in range(n):
+                    for other in (row - 1, row, row + 1):
+                        if not periodic[axis] and not 0 <= other < n:
+                            continue
+                        other %= n
+                        conflict = aa[row] & bb[other]
+                        if not conflict.any():
+                            continue
+                        ca, cb = coverage(left, axis, row), coverage(right, axis, other)
+                        earlier_loses = (ca < cb and not np.isclose(ca, cb, rtol=0, atol=1e-12))
+                        if np.isclose(ca, cb, rtol=0, atol=1e-12):
+                            earlier_loses = left.order > right.order
+                        if earlier_loses:
+                            aa[row, conflict] = False
+                        else:
+                            bb[other, conflict] = False
+            masks[i] &= np.expand_dims(a, left.normal)
+            masks[j] &= np.expand_dims(b, left.normal)
+    return [replace(f, mask=jnp.asarray(m)) for f, m in zip(films, masks)]
 
 
 def dc_footprint_areas(shape, grid, mask, normal):
@@ -170,8 +249,8 @@ def dc_footprint_areas(shape, grid, mask, normal):
     return realized, declared
 
 
-def admit_dc_film(shape, grid, *, snap='strict', emit=True):
-    """DC area admission using each family's unchanged occupancy sampler.
+def admit_dc_film(shape, grid, *, snap='strict', emit=True, judge_area=True):
+    """DC area admission using cell-centred in-plane occupancy samples.
 
     The Box DC sampler owns layer selection. Only its normal-axis occupancy
     is borrowed; the shape still owns its in-plane cross-section and area.
@@ -180,7 +259,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     on periodic axes). A Box on traced coordinates keeps its existing fold
     without a new refusal; preflight judges the concrete realized grid.
     """
-    from rfx._periodic import periodic_mask, plane_coordinate
+    from rfx._internal._periodic import periodic_mask, plane_coordinate
     from rfx.geometry.rasterize_grid import _local_cell
     from rfx.preflight._common import PreflightWarning
     name = type(shape).__name__
@@ -193,7 +272,8 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
                     (lo, hi, _grid_coords(grid), mask))):
                 return DCFilmGeometry(mask, normal, None, None)
             realized, declared = dc_footprint_areas(shape, grid, mask, normal)
-        _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
+        if judge_area:
+            _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
         return DCFilmGeometry(mask, normal, realized, declared)
     if lo is None or hi is None:
         raise DCFilmAdmissionError(
@@ -212,6 +292,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
             f'{extents.tolist()}; draw a single planar film or use add() for a volume.',
             code='dc_film_layers')
     coords = list(_grid_coords(grid))
+    tangents = tuple(a for a in range(3) if a != normal)
     mid = .5 * (lo[normal] + hi[normal])
     traced = any(is_tracer(c) for c in coords)
     if traced:
@@ -225,13 +306,13 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
                 f'{name} DC film: area/layer check not evaluated on traced coordinates; '
                 'snap="declared" runs without checking area or the one-layer rule; '
                 'check the same geometry on a concrete mesh.', code='dc_film_unchecked',
-                source='admit_dc_film'), stacklevel=2)
+                source='admit_dc_film'), stacklevel=user_stacklevel())
         # Keep the coordinate-dependent Box selection and cross-section traced.
         plane_lo, plane_hi = list(lo), list(hi)
         plane_lo[normal] = plane_hi[normal] = mid
-        layer = Box(tuple(plane_lo), tuple(plane_hi)).mask_on_coords(*coords).any(
+        sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
+        layer = Box(tuple(plane_lo), tuple(plane_hi)).mask_on_coords(*sample).any(
             axis=tuple(a for a in range(3) if a != normal))
-        sample = list(coords)
         sample[normal] = jnp.asarray([mid])
         footprint = shape.mask_on_coords(*sample)
         view = [1, 1, 1]
@@ -240,7 +321,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     with jax.ensure_compile_time_eval():
         local = _local_cell(coords[normal], np.asarray(grid.cells(normal)),
                             plane_coordinate(grid, normal, mid))
-        from rfx._grid_metric import node_tie_tol
+        from rfx._internal._grid_metric import node_tie_tol
         if extents[normal] > (local + node_tie_tol(lo[normal], local)
                               + node_tie_tol(hi[normal], local)):
             raise DCFilmAdmissionError(
@@ -250,7 +331,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
         plane_lo[normal] = plane_hi[normal] = mid
         control = dc_cell_mask(Box(tuple(plane_lo), tuple(plane_hi)), grid)
         layer = np.asarray(control).any(axis=tuple(a for a in range(3) if a != normal))
-        sample = list(coords)
+        sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
         sample[normal] = np.asarray([mid])
         footprint = np.asarray(periodic_mask(
             grid, shape, sample, axes=tuple(a for a in range(3) if a != normal)))
@@ -263,7 +344,8 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
                 f'{name} DC film: {layers} occupied layers (empty or nonplanar); '
                 'a film requires exactly one nonempty layer.', code='dc_film_layers')
         realized, declared = dc_footprint_areas(shape, grid, mask, normal)
-    _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
+    if judge_area:
+        _check_dc_area(shape, grid, normal, realized, declared, snap=snap, emit=emit)
     return DCFilmGeometry(jnp.asarray(mask), normal, realized, declared)
 
 
@@ -277,7 +359,7 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
     exponent = 'sqrt(A_r/A_d)' if k == 2 else f'(A_r/A_d)^(1/{k})'
     error = (None if declared is None or declared <= 0 or k == 0 else
              np.sqrt(realized / declared) - 1 if k == 2 else (realized / declared)**(1 / k) - 1)
-    if error is None or abs(error) > _SHEET_EFFECTIVE_SIZE_TOL:
+    if legacy_mismatch(error, _SHEET_EFFECTIVE_SIZE_TOL):
         clipped = any(
             'xyz'[a] not in getattr(grid, 'periodic_axes', '')
             and (lo[a] < float(coords[a][0]) or hi[a] > float(coords[a][-1]))
@@ -299,14 +381,18 @@ def _check_dc_area(shape, grid, normal, realized, declared, *, snap, emit):
         if snap != 'declared':
             raise DCFilmAdmissionError(message)
         if emit:
+            from rfx.model.realization_verdict import legacy_outcome, remember_legacy
+            remember_legacy(grid, ("film", id(shape)), legacy_outcome(
+                f"legacy:film:{id(shape)}", error, _SHEET_EFFECTIVE_SIZE_TOL,
+                message, "dc_film_area", "admit_dc_film"))
             warnings.warn(PreflightWarning(message, code='dc_film_area', severity='warning',
-                                          source='admit_dc_film'), stacklevel=2)
+                                          source='admit_dc_film'), stacklevel=user_stacklevel())
 
 
 def dc_film_plane(shape, grid):
     """The declared midpoint's nearest E node, with the shared lower tie rule."""
-    from rfx._grid_metric import nearest_node_index
-    from rfx._periodic import plane_coordinate
+    from rfx._internal._grid_metric import nearest_node_index
+    from rfx._internal._periodic import plane_coordinate
     from rfx.geometry.rasterize_grid import _local_cell
     lo, hi = sheet_bounds(shape)
     normal = sheet_normal_axis(lo, hi)
@@ -367,16 +453,9 @@ def _fold_dc_plane(grid, conductor, materials, mask, normal):
     """In-plane cell coverage, carried only by tangential edges on one node."""
     from rfx.core.yee import lumped_components
     from rfx.model.materials import edge_coverage_weights
-    from rfx.geometry.rasterize_grid import extend_cpml_pad_materials, unpadded_high_walls
     normal, plane = dc_film_plane(conductor.shape, grid)
     footprint = mask.any(axis=normal)
     field = jnp.broadcast_to(jnp.expand_dims(footprint, normal), materials.sigma.shape)
-    # #1966: repair the assembled coverage before its edge mean, using
-    # the same #655 vacuum/one-column rule as the volume statics.
-    vacuum = jnp.ones_like(materials.sigma)
-    _, field, _ = extend_cpml_pad_materials(
-        vacuum, field.astype(materials.sigma.dtype), vacuum, 0, 0, 0, 0, 0, 0,
-        high_wall=unpadded_high_walls(grid))
     periodic = tuple(a in getattr(grid, 'periodic_axes', '') for a in 'xyz')
     weights = edge_coverage_weights(grid, field.astype(materials.sigma.dtype), periodic)
     dual = (e_node_dual_spacings((grid.dx_arr, grid.dy_arr, grid.dz)[normal])[plane]
@@ -401,13 +480,18 @@ def _fold_dc_plane(grid, conductor, materials, mask, normal):
 
 def dc_film_refusals(sim, grid):
     """Audit the same admission without dropping a refused declaration's identity."""
+    from rfx.model.film_geometry import diagnostic_film_footprints, check_film_area
+    conductors, films = diagnostic_film_footprints(sim, grid)
     refused = {}
-    for i, tc in enumerate(sim._thin_conductors):
+    for i, tc in enumerate(conductors):
         if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
         try:
             admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
-            admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False)
+            if i in films:
+                check_film_area(tc.shape, grid, films[i], snap=sim._snap, emit=False)
+            else:
+                admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False)
         except DCFilmAdmissionError as exc:
             refused[i] = str(exc)
     return refused
@@ -420,7 +504,13 @@ def warn_dc_films(sim, warn):
                for tc in sim._thin_conductors):
         return
     grid = sim._build_realized_grid()
-    for i, tc in enumerate(sim._thin_conductors):
+    from rfx.model.realization_verdict import legacy_table_ready
+    prepared = legacy_table_ready(sim._campaign_ctx())
+    from rfx.model.film_geometry import diagnostic_film_footprints, check_film_area
+    from rfx.preflight._subjects import finding_subjects
+    from rfx.preflight._realization_subjects import retained_subjects
+    conductors, films = diagnostic_film_footprints(sim, grid)
+    for i, tc in enumerate(conductors):
         if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
         try:
@@ -429,9 +519,20 @@ def warn_dc_films(sim, warn):
             with warnings.catch_warnings(record=True) as findings:
                 warnings.simplefilter('always')
                 admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
-                admit_dc_film(tc.shape, grid, snap=sim._snap)
+                if prepared:
+                    table = sim._campaign_ctx()._realized.realization_table
+                    for finding in table.findings:
+                        if finding.code == "dc_film_area" and finding.loc == f"thin_conductors[{i}]":
+                            warnings.warn(PreflightWarning(str(finding), code=finding.code,
+                                **retained_subjects(finding),
+                                severity=finding.severity, source=finding.source, loc=finding.loc))
+                elif i in films:
+                    check_film_area(tc.shape, grid, films[i], snap=sim._snap)
+                else:
+                    admit_dc_film(tc.shape, grid, snap=sim._snap)
         except DCFilmAdmissionError as exc:
             warn.warn(PreflightWarning(str(exc), code=exc.code, severity='error',
+                                       **finding_subjects(sim, objects=(("_thin_conductors", i), "domain") if exc.code == "dc_film_pmc" else (("_thin_conductors", i),)),
                                        source=exc.source, loc=f'thin_conductors[{i}]'))
         else:
             normal, plane = dc_film_plane(tc.shape, grid)
@@ -442,37 +543,44 @@ def warn_dc_films(sim, warn):
             if face in sim._boundary_spec.pec_faces():
                 warn.warn(PreflightWarning(
                     f"lossy thin conductor {i} on PEC domain face {face} has no effect",
-                    code='dc_film_pec_face', severity='info', source='admit_dc_film',
+                    code='dc_film_pec_face', severity='info',
+                    **finding_subjects(sim, objects=(("_thin_conductors", i), "domain")),  source='admit_dc_film',
                     loc=f'thin_conductors[{i}]'))
             for finding in findings:
-                message = finding.message
+                # The captured admission helpers emit PreflightWarning instances.
+                from typing import cast
+                message = cast(PreflightWarning, finding.message)
+                annotations = (retained_subjects(message) if message.scope == "object" else
+                               finding_subjects(sim, objects=(("_thin_conductors", i),)))
                 warn.warn(PreflightWarning(str(message), code=message.code,
+                    **annotations,
                     severity=message.severity, source=message.source,
                     loc=f'thin_conductors[{i}]'))
 
 
 def dc_cell_mask(shape, grid):
-    """Sample DC occupancy, retaining periodic plane identification."""
+    """Sample in-plane cell centres, retaining normal plane identification."""
+    lo, hi = sheet_bounds(shape)
+    normal = None if lo is None or hi is None else sheet_normal_axis(lo, hi)
+    tangents = tuple(a for a in range(3) if a != normal)
+    sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
     if getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import periodic_mask, plane_coordinate
-        lo, hi = sheet_bounds(shape)
-        normal = None if lo is None or hi is None else sheet_normal_axis(lo, hi)
+        from rfx._internal._periodic import periodic_mask, plane_coordinate
         if normal is not None and hi[normal] - lo[normal] <= float(grid.cells(normal)[0]):
             mid = .5 * (lo[normal] + hi[normal])
-            sample = list(_grid_coords(grid))
             shift = mid - plane_coordinate(grid, normal, mid)
             if shift:
                 sample[normal] = sample[normal] + shift
             return periodic_mask(grid, shape, sample,
                                  axes=tuple(a for a in range(3) if a != normal))
-    if hasattr(grid, 'dx_arr'):
-        return shape.mask_on_coords(*_grid_coords(grid))
-    return shape.mask(grid)
+        return periodic_mask(grid, shape, sample)
+    return shape.mask_on_coords(*sample)
 
 
 def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                         sheet_specs=None, sheets=None, geometry_masks=None,
-                        geometry_key=None, snap='strict'):
+                        geometry_key=None, snap='strict', film_geometry=None,
+                        name='thin_conductor'):
     """Emit PEC/f0 products or place a DC film on tangential edges of one node."""
     nonuniform = hasattr(grid, 'dx_arr')
     lane = 'non-uniform' if nonuniform else 'uniform'
@@ -506,13 +614,27 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 if sheets is None:
                     raise ValueError(
                         "PEC thin conductor (add_thin_conductor with sigma_bulk >= "
-                        "1e6 and no surface_impedance_f0) is a SHEET (#931) and this "
+                        "1e6 and no surface_impedance_f0) is a SHEET and this "
                         "lane collects no sheets (apply_thin_conductor(sheets=None)); "
                         "refusing to drop it silently.")
                 sheets.append(spec)
                 return materials, pec_mask
-            mask, plane = spec.footprint, spec.plane
-            unwrapped, end_rows = spec.unwrapped_footprint, spec.end_rows
+            mask, plane = np.asarray(spec.footprint), spec.plane
+            from rfx.boundaries.pec import resolve_wall_faces
+            periodic = tuple(a in getattr(grid, 'periodic_axes', '') or
+                             (a == 'z' and getattr(grid, 'is_2d', False)) for a in 'xyz')
+            pec_faces, _ = resolve_wall_faces(grid, periodic)
+            face = (f"{'xyz'[normal]}_lo" if plane == 0 else
+                    f"{'xyz'[normal]}_hi" if plane == grid.shape[normal] - 1 else None)
+            if face in pec_faces:
+                raise RfxRefusal(
+                    f"{name} ({face}): an f0 surface-impedance sheet on a PEC domain face (or an absorber face's outer node plane) "
+                    "carries no current (the face's PEC owns its edges), so its loss would "
+                    "be dropped; for loss on that wall use add_wall_loss(faces=...) "
+                    "or add_wall_loss(shape=...).")
+            unwrapped = (None if spec.unwrapped_footprint is None
+                         else np.asarray(spec.unwrapped_footprint))
+            end_rows = spec.end_rows
             drawn = spec.drawn
         check_sheet_occupancy(mask, normal, lane=lane)
     else:
@@ -521,7 +643,21 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 f"a lossy thin-conductor film on a traced graded mesh with periodic axes {grid.periodic_axes!r} "
                 "is not implemented (its footprint would get no seam image); use a concrete mesh profile")
         admit_dc_plane(conductor, grid)
-        film = admit_dc_film(conductor.shape, grid, snap=snap)
+        film = film_geometry
+        if film is None:
+            film = admit_dc_film(conductor.shape, grid, snap=snap)
+        else:
+            from rfx.model.film_geometry import check_film_area
+            check_film_area(conductor.shape, grid, film, snap=snap)
+        if geometry_key is not None:
+            from rfx.model.realization_verdict import early_outcomes
+            from copy import copy
+            outcomes = early_outcomes(grid)
+            outcome = outcomes.pop(("film", id(conductor.shape)), None)
+            if outcome is not None:
+                row, finding = (copy(value) for value in outcome)
+                row.label = f"legacy:film-entry:{geometry_key}"
+                outcomes[("film-entry", geometry_key)] = row, finding
         mask, normal = film.mask, film.normal
         materials, mask = _fold_dc_plane(grid, conductor, materials, mask, normal)
         if geometry_masks is not None:
@@ -585,6 +721,10 @@ def refuse_design_films(sim, grid, bounds):
     from rfx.core.yee import init_materials, lumped_components
     from rfx.geometry.smoothing import continued_conductor_shape
     from rfx.model.design_box import design_box_window
+    from rfx.model.film_geometry import prepare_film_footprints
+    conductors = [replace(tc, shape=continued_conductor_shape(
+        sim, grid, tc.shape, entry=tc)) for tc in sim._thin_conductors]
+    films = prepare_film_footprints(conductors, grid)
     write, _, _, _ = design_box_window(bounds, grid.shape)
     sl = tuple(slice(write[a], write[a + 1]) for a in (0, 2, 4))
     f0_hits = set()
@@ -597,20 +737,20 @@ def refuse_design_films(sim, grid, bounds):
                 entity_id=f'thin_conductor[{index}]', kind='f0_sheet').released_cells
             if cells_in_box(released, bounds, grid.shape):
                 f0_hits.add(index)
-    for index, tc in enumerate(sim._thin_conductors):
+    for index, tc in enumerate(conductors):
         if index in f0_hits:
-            raise ValueError(
+            raise RfxRefusal(
                 f'thin_conductor[{index}] (surface_impedance_f0 sheet): the design box (cells {bounds}) '
                 'contains cells incident to its tangential edges. Move the box or the sheet.')
         if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
         # Geometry decides admission even when conductance is differentiated.
-        geometric = replace(tc, sigma_bulk=1.0, thickness=1.0,
-            shape=continued_conductor_shape(sim, grid, tc.shape, entry=tc))
-        mats, _ = fold_thin_conductor(grid, geometric, init_materials(grid.shape), snap=sim._snap)
+        geometric = replace(tc, sigma_bulk=1.0, thickness=1.0)
+        mats, _ = fold_thin_conductor(grid, geometric, init_materials(grid.shape),
+                                    snap=sim._snap, film_geometry=films.get(index))
         if any(part is not None and bool(jnp.any(part[sl] != 0))
                for part in lumped_components(mats.sigma_film)):
-            raise ValueError(
+            raise RfxRefusal(
                 f"the design box (cells {bounds}) contains edges of thin conductor {index}; "
                 "a design region over a declared film is not supported. Move the box or the film.")
 

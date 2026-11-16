@@ -50,7 +50,7 @@ import numpy as np
 import pytest
 
 from rfx import GaussianPulse
-from rfx import _ringdown_jax as rj
+from rfx.ringdown import _jax as rj
 from rfx import ringdown as rd
 from rfx.ringdown import RingdownSpec, gradient_witness
 from rfx.sources.sources import CWSource
@@ -253,7 +253,7 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     accumulators differently with the probe series bit-identical: measured
     (JAX 0.10.2) 26 ULP / 1.9e-6 of the peak at 4,000 steps (uniform), and
     182 ULP / 1.1e-5 at 16,000 steps with the bins across the resonance --
-    over the earlier 1e-5 bar, inside W0's 1e-4 (PI decision 2026-09-25)."""
+    over the earlier 1e-5 bar, inside W0's 1e-4."""
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
@@ -388,6 +388,9 @@ def test_a_rebuild_that_is_not_the_port_s_v_and_i_is_nan(defect, lane, cells, ji
     assert c > rd.CONSISTENCY_BAR, c
     assert np.isnan(v) and np.isnan(g), (v, g)
     assert np.all(np.asarray(rd_out._status) == rj.STATUS_INCONSISTENT)
+    assert np.isnan(rd_out.poles).all()
+    assert np.isnan(rd_out.poles_long).all()
+    assert np.isnan(rd_out.pole(12.4e9)).all()
 
 
 def test_a_common_one_step_delay_is_refused_by_w0_too(monkeypatch):
@@ -488,14 +491,15 @@ def test_an_x64_run_weights_the_port_dft_in_complex128():
 def _stub_identification(monkeypatch):
     """Poles and tail stubbed out: the check reads only the tail-free S."""
     def poles(identify_window, window, k_max, dt, freqs):
-        rdt, cdt = rj.working_dtypes()
-        return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, rdt),
+        _, cdt = rj.working_dtypes()
+        return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, jnp.int32),
                 jnp.int32(rj.STATUS_OK),
                 jnp.full((np.size(freqs), 4), np.log(rj.INERT_LAMBDA), cdt), jnp.int32(0))
 
     monkeypatch.setattr(rj, "host_poles", poles)
     monkeypatch.setattr(rj, "completion",
-                        lambda y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **k: plain)
+                        lambda y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **k:
+                        (plain, {"s": s0}) if k.get("return_aux") else plain)
 
 
 @pytest.mark.parametrize("jit", [False, True])
@@ -720,6 +724,45 @@ def test_a_run_that_stepped_at_another_dt_is_not_completed(monkeypatch):
 
 def _loss(S):
     return jnp.sum(jnp.abs(S) ** 2)
+
+
+@pytest.mark.slow
+def test_plain_and_jitted_gradients_agree_on_a_witness_passing_record():
+    """On a record both witnesses pass, jax.grad and jax.jit(jax.grad) agree (#2485).
+    Witnesses come first: at 800 steps report.ok holds while the gradient witness fails.
+    """
+    n = 1000
+    sim = _box("uniform")
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+
+    def forward(p):
+        return sim.forward(n_steps=n, skip_preflight=True, port_s11_freqs=FREQS,
+                           eps_override=eps * p, ringdown=RingdownSpec()).ringdown
+
+    def obj(p):
+        return _loss(forward(p).s_params)
+
+    def both(p):
+        out = forward(p)
+        return (_loss(out.s_params), _loss(out.s_params_long)), out
+
+    (_l, _l_long), pullback, rd_out = jax.vjp(both, 1.0, has_aux=True)
+    report = rd_out.report
+    assert report.ok is True, (
+        f"ringdown report: failure={report.failure}; "
+        + "; ".join(f"{w.name}: value={w.value}, rule={w.rule}, note={w.note}"
+                    for w in report.witnesses if w.judged and not w.ok))
+
+    (g,) = pullback((1.0, 0.0))
+    (g_long,) = pullback((0.0, 1.0))
+    w = gradient_witness(g, g_long, ringdown=rd_out)
+    assert w.judged and w.value <= 1e-2, (
+        f"{w.name}: judged={w.judged}, value={w.value}, note={w.note}")
+
+    g_plain = float(jax.grad(obj)(1.0))
+    g_jit = float(jax.jit(jax.grad(obj))(1.0))
+    assert abs(g_plain - g_jit) <= 1e-4 * max(abs(g_plain), abs(g_jit)), (
+        f"g_plain={g_plain}, g_jit={g_jit}, gap={abs(g_plain - g_jit)}")
 
 
 @functools.lru_cache(maxsize=None)

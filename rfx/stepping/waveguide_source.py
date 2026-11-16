@@ -83,7 +83,7 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
                          0, table_size - 1)
     src_val = cfg.src_amp * table[safe_step]
     from rfx.core.yee import MaterialArrays, component_h_materials
-    mu_abs = component_h_materials(MaterialArrays(None, None, cfg.medium.mu_r))[0] * MU_0
+    mu_abs = component_h_materials(MaterialArrays(None, None, cfg.medium.mu_r), high_wall=(False, False, False))[0] * MU_0
     coeff = dt / (mu_abs * dx)
 
     # For a "+axis" port the source's backward emission travels in "−axis";

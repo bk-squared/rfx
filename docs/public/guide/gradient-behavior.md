@@ -64,8 +64,8 @@ fd_check(objective, eps0, cell, h=1e-1)
 
 rfx runs in float32 by default, which resolves a loss to about `1e-7` of its
 value. Choose `h` so that the loss change, about `2 h |dL/dp|`, is well above
-that. Here the loss is large and `h = 1e-2` leaves an error of a few percent,
-while `h = 1e-1` agrees to about 0.2 %. For permittivity-like variables, start
+that. Here the loss is large and `h = 1e-2` left an error of 0.7 % on one CPU and
+2.4 % on another, while `h = 1e-1` agrees to about 0.4 %. For permittivity-like variables, start
 between `1e-2` and `1e-1`. If the check still fails, look at the loss scale, the
 run length and the monitor placement before touching optimizer settings.
 
@@ -142,12 +142,13 @@ How long the run must be, in decay times of the slowest mode, is on
 | Float32 finite differences | FD disagrees with AD by a few percent | use a larger `h` (see above) |
 
 **Precision.** The default is `precision="float32"` (complex64 DFT buffers).
-A uniform mesh on one device also accepts `precision="float64"` once JAX x64
-is enabled (enabling x64 alone does not switch the fields to float64), and
+One device, on a uniform or graded mesh, also accepts `precision="float64"` once
+JAX x64 is enabled (enabling x64 alone does not switch the fields to float64).
+A uniform mesh on one device also accepts
 `precision="mixed"` (float16 field storage, float32 accumulators). Mixed
 precision with CPML has a higher absorber residual, so do not use it for
-low-reflection or S-parameter observables near that floor. A graded mesh,
-several devices and subgridding refuse both non-default modes.
+low-reflection or S-parameter observables near that floor. Several devices
+and subgridding refuse both non-default modes; a graded mesh refuses mixed.
 
 ## What is not a design variable
 

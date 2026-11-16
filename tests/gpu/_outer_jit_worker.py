@@ -48,7 +48,7 @@ def main():
         try:
             jax.jit(call)(arg)
         except NotImplementedError as exc:
-            assert "1598" in str(exc) and "xla_gpu_enable_command_buffer" in str(exc)
+            assert str(exc) == rank.OUTER_JIT_REFUSAL
             print(f"REFUSED: {exc}", flush=True)
             return
         except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as exc:

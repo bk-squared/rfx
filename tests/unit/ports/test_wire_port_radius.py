@@ -6,6 +6,8 @@ own negative control, so deleting the assertion path does not turn this test
 silently green. No stored solver response is used as the physics oracle.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import rfx.stepping.uniform_loop as uniform_loop
 import jax
 import jax.numpy as jnp
@@ -15,10 +17,8 @@ from scipy.special import hankel2
 
 from rfx import Box, DebyePole, GaussianPulse, LorentzPole, Simulation
 from rfx.boundaries.spec import BoundarySpec
-from rfx.core.yee import (
-    component_h_materials, init_materials, init_state, precompute_coeffs,
-    update_e, update_h, update_h_fast, update_h_nu, update_he_fast,
-)
+from rfx.core.yee import component_h_materials, init_materials, init_state, precompute_coeffs, update_he_fast
+from rfx.stepping.yee import update_e, update_h, update_h_fast, update_h_nu
 from rfx.sources.sources import WirePort, setup_wire_port
 from rfx.sources.wire_radius import MAX_RADIUS_RATIO
 from tests._x64_compat import enable_x64
@@ -124,7 +124,7 @@ def test_radius_none_full_field_history_is_bit_identical(lane, monkeypatch):
 
     if lane == "uniform":
         original = uniform_loop.make_core_step
-        monkeypatch.setattr(uniform_loop, "make_core_step", lambda ctx: wrap(original(ctx)))
+        monkeypatch.setattr(uniform_loop, "make_core_step", lambda ctx, **kwargs: wrap(original(ctx, **kwargs)))
     else:
         original = nu._build_nu_scan
 
@@ -194,25 +194,25 @@ def test_shared_h_owner_all_axes_and_x64(axis):
         mats = setup_wire_port(grid, WirePort(tuple(start), tuple(end),
                                ("ex", "ey", "ez")[axis], radius=.0001),
                                background)
-        mu = component_h_materials(mats)
+        mu = component_h_materials(mats, high_wall=unpadded_high_walls(grid))
         assert all(m.dtype == jnp.float64 for m in mu)
         assert np.array_equal(mu[axis], mats.mu_r)
         assert sum(np.count_nonzero(np.asarray(v-mats.mu_r)) for v in mu) == 8
         state = init_state(grid.shape, field_dtype=jnp.float64)
         impulse = jnp.zeros(grid.shape, dtype=jnp.float64).at[4, 4, 4].set(1)
         state = state._replace(**{("ex", "ey", "ez")[axis]: impulse})
-        uniform = update_h(state, mats, grid.dt, grid.dx)
+        uniform = update_h(state, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         inv = jnp.ones(grid.shape[0], dtype=jnp.float64)/grid.dx
-        nu = update_h_nu(state, mats, grid.dt, inv, inv, inv)
+        nu = update_h_nu(state, mats, grid.dt, inv, inv, inv, high_wall=unpadded_high_walls(grid))
         for a, b in zip(uniform[3:6], nu[3:6]):
             assert a.dtype == jnp.float64
             np.testing.assert_allclose(a, b, rtol=1e-14, atol=1e-20)
-        coeffs = precompute_coeffs(mats, grid.dt, grid.dx)
+        coeffs = precompute_coeffs(mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         assert all(c.dtype == jnp.float64 for c in coeffs.ch)
         fast = update_h_fast(state, coeffs.ch)
         for a, b in zip(uniform[3:6], fast[3:6]):
             np.testing.assert_allclose(a, b, rtol=1e-14, atol=1e-20)
-        full = update_e(uniform, mats, grid.dt, grid.dx)
+        full = update_e(uniform, mats, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         baked = update_he_fast(state, coeffs)
         for a, b in zip(full[:6], baked[:6]):
             np.testing.assert_allclose(a, b, rtol=3e-7, atol=1e-12)
@@ -232,11 +232,11 @@ def test_radius_refuses_dispersive_board_before_step(lane, kind, monkeypatch):
         sim.run(n_steps=1, skip_preflight=True)
 
 
-@pytest.mark.parametrize("entry", ["adi_run", "adi_forward", "subgridded",
-                                   "distributed_v2", "distributed_nu", "upml"])
+@pytest.mark.parametrize("entry", [  "subgridded",
+                                   "upml"])
 def test_unsupported_radius_path_refuses_before_first_step(entry, monkeypatch):
     from rfx.runners.distributed_v2 import run_distributed
-    options = dict(solver="adi") if entry.startswith("adi") else {}
+    options = {}
     if entry == "distributed_nu":
         options["dx_profile"] = np.full(12, .0005)
     sim = Simulation(freq_max=30e9, domain=(.006,)*3, dx=.0005,
@@ -252,19 +252,19 @@ def test_unsupported_radius_path_refuses_before_first_step(entry, monkeypatch):
         elif entry == "distributed_nu":
             sim.forward(n_steps=1, distributed=True, devices=jax.devices("cpu")[:2],
                         skip_preflight=True)
-        elif entry == "adi_forward":
-            sim.forward(n_steps=1, skip_preflight=True)
         else:
             sim.run(n_steps=1, skip_preflight=True)
 
 
-def test_low_level_distributed_nu_refuses_stamped_radius(monkeypatch):
-    from rfx.runners.distributed_nu import run_nonuniform_distributed_pec
+def test_legacy_distributed_h_shard_refuses_stamped_radius(monkeypatch):
+    from rfx.stepping.slab_update import update_h_nu_shmap
     mats = init_materials((3,)*3)
     mats = mats._replace(mu_r_wire=(jnp.zeros_like(mats.mu_r), None, None))
     monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped before refusal"))
-    with pytest.raises(NotImplementedError, match="radius.*distributed_nu"):
-        run_nonuniform_distributed_pec(None, mats, None, 1, n_devices=2)
+    with pytest.raises(NotImplementedError, match="radius.*distributed H shard"):
+        update_h_nu_shmap(None, mats, None, 1., *([None]*6),
+                          ranks=jnp.zeros(2, jnp.int32), nx_per=2, nx=3,
+                          high_wall=(True, True, True))
 
 
 def test_radius_material_records_survive_checkpoint(tmp_path):
@@ -276,8 +276,8 @@ def test_radius_material_records_survive_checkpoint(tmp_path):
     mats = setup_wire_port(grid, port, init_materials(grid.shape))
     save_materials(tmp_path/"radius.h5", mats)
     loaded = load_materials(tmp_path/"radius.h5")
-    before = (*component_h_materials(mats), *component_e_materials(mats)[0])
-    after = (*component_h_materials(loaded), *component_e_materials(loaded)[0])
+    before = (*component_h_materials(mats, high_wall=unpadded_high_walls(grid)), *component_e_materials(mats, high_wall=unpadded_high_walls(grid))[0])
+    after = (*component_h_materials(loaded, high_wall=unpadded_high_walls(grid)), *component_e_materials(loaded, high_wall=unpadded_high_walls(grid))[0])
     for a, b in zip(before, after):
         assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
 
@@ -325,7 +325,9 @@ def test_radius_refuses_axial_grading_before_step(monkeypatch):
 def test_radius_refuses_stamping_in_axial_cpml():
     from rfx.grid import Grid
     grid = Grid(freq_max=30e9, domain=(.006,)*3, dx=.0005, cpml_layers=4)
-    port = WirePort((.003, .003, -.0005), (.003, .003, .001), "ez", radius=RADIUS)
+    # Admit the endpoint so the radius stamping guard is exercised.
+    port = WirePort((.003, .003, -.0005), (.003, .003, .001), "ez", radius=RADIUS,
+                    allow_in_absorber=True)
     with pytest.raises(ValueError, match="outside axial CPML"):
         setup_wire_port(grid, port, init_materials(grid.shape))
 

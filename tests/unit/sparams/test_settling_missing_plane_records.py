@@ -22,12 +22,12 @@ def test_dedicated_witness_probes_survive_missing_plane_records(monkeypatch, fam
         from tests.unit.sparams.test_msl_internal_probe_advisories import _thru, FREQS
 
         sim = _thru()
-        original_run = sim.run
+        original_run = type(sim).run
 
-        def run(**kwargs):
-            return original_run(**kwargs)._replace(dft_time_records=None)
+        def run(self, **kwargs):
+            return original_run(self, **kwargs)._replace(dft_time_records=None)
 
-        monkeypatch.setattr(sim, 'run', run)
+        monkeypatch.setattr(type(sim), 'run', run)
         result = sim.compute_msl_s_matrix(freqs=FREQS, num_periods=2.)
     else:
         from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
@@ -35,13 +35,13 @@ def test_dedicated_witness_probes_survive_missing_plane_records(monkeypatch, fam
         sim, y_c = _base_sim()
         _add_feed(sim, y_c, x=2e-3)
         _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
-        original_forward = sim._forward_from_materials
+        original_forward = type(sim)._forward_from_materials
 
-        def forward(*args, **kwargs):
-            raw = original_forward(*args, **kwargs)
+        def forward(self, *args, **kwargs):
+            raw = original_forward(self, *args, **kwargs)
             return {**raw, 'dft_time_records': None, 'sparam_time_records': None}
 
-        monkeypatch.setattr(sim, '_forward_from_materials', forward)
+        monkeypatch.setattr(type(sim), '_forward_from_materials', forward)
         result = sim.compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 4e9, 5), num_periods=4., skip_preflight=True)
     assert len(captured) == len(result.settling_witness) == 2

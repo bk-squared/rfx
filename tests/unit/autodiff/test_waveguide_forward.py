@@ -11,7 +11,6 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 from rfx import Simulation
 
@@ -21,14 +20,14 @@ def _wr90_sim() -> Simulation:
         freq_max=12e9,
         domain=(0.05, 0.024, 0.012),  # main's solved length; #1887
         dx=2e-3,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=8,
     )
     sim.add_waveguide_port(
         direction="+x",
         x_position=0.01,
-        y_range=(0.0, 0.02286),
-        z_range=(0.0, 0.01016),
+        y_range=(0.0, 0.024),
+        z_range=(0.0, 0.012),
         n_modes=1,
     )
     sim.add_probe(position=(0.03, 0.01143, 0.00508), component="ey")

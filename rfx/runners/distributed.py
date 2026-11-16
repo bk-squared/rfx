@@ -1,4 +1,4 @@
-"""Retired: the ``jax.pmap`` multi-device runner (#1296).
+"""Retired: the ``jax.pmap`` multi-device runner.
 
 ``run_distributed`` here was the first distributed FDTD runner. It was not the
 production lane: ``Simulation.run(devices=[...])`` dispatches to
@@ -6,7 +6,7 @@ production lane: ``Simulation.run(devices=[...])`` dispatches to
 devices, on uniform and non-uniform grids, and a one-device run takes the
 ordinary single-device lane. The pmap runner survived only because v2 imported
 helpers from this module and handed a direct one-device call to it. It dropped
-the declared-PEC cell mask and so refused any PEC volume (#1055), and it
+the declared-PEC cell mask and so refused any PEC volume, and it
 refused an ``nx`` not divisible by the device count, which v2 pads.
 
 Its helpers now live in ``rfx/runners/_distributed_common.py``, where v2 and
@@ -38,10 +38,10 @@ from rfx.runners._distributed_common import (  # noqa: F401 -- re-exported
 
 
 def run_distributed(*args, **kwargs):
-    """Removed (#1296). Raises ``RuntimeError`` naming the replacement."""
+    """Removed. Raises ``RuntimeError`` naming the replacement."""
     raise RuntimeError(
         "rfx.runners.distributed.run_distributed, the jax.pmap multi-device "
-        "runner, was removed in #1296. Use Simulation.run(n_steps=..., "
+        "runner, was removed. Use Simulation.run(n_steps=..., "
         "devices=[...]), which runs the shard_map runner for two or more "
         "devices and the single-device lane for one; or, to call a runner "
         "directly, rfx.runners.distributed_v2.run_distributed(sim, n_steps=..., "

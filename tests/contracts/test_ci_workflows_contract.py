@@ -8,7 +8,7 @@ workflows call the scripts, that the scripts exist and are executable, and that
 
 The other half is the path-aware lane. `pr-tests.yml` must keep reporting the
 contexts the `main` ruleset requires (`guards-and-preflight`, `fast-suite (1)`
-through `(12)`) on every event, while running only contracts in the shards when
+through `(20)`) on every event, while running only contracts in the shards when
 the diff is not code. That is a shape a later edit can break silently -- a
 renamed job leaves a required context permanently unreported and no pull request
 can merge again -- so the shape is pinned here rather than discovered on a
@@ -46,6 +46,23 @@ sys.modules[_SPEC.name] = changed_paths
 _SPEC.loader.exec_module(changed_paths)
 
 HEAVY_JOBS = ("guards-and-preflight", "fast-suite")
+
+# mypy is non-required; required contexts are configured in GitHub's main ruleset.
+
+
+def test_non_required_mypy_uses_the_lint_lane_setup_and_one_script_call() -> None:
+    workflow = load(WORKFLOW_DIR / "mypy.yml")
+    lint = load(LINT)
+    for key in (True, "on", "concurrency", "permissions"):
+        assert workflow.get(key) == lint.get(key)
+    assert list(workflow["jobs"]) == ["mypy"]
+    steps = workflow["jobs"]["mypy"]["steps"]
+    assert steps[:2] == lint["jobs"]["ruff"]["steps"][:2]
+    assert run_blocks(workflow) == [
+        'pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2" "mypy==1.20.2"',
+        "python scripts/ci/check_mypy_count.py",
+    ]
+    assert "check_mypy_count.py" not in LOCAL_SH.read_text()
 
 
 def workflow_files() -> list[Path]:
@@ -155,9 +172,9 @@ def test_the_required_job_names_still_exist() -> None:
         assert name in jobs, f"pr-tests.yml no longer defines a `{name}` job"
 
 
-def test_the_fast_suite_still_reports_twelve_groups_under_the_protected_names() -> None:
+def test_the_fast_suite_still_reports_twenty_groups_under_the_protected_names() -> None:
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
-    assert fast["strategy"]["matrix"]["group"] == list(range(1, 13))
+    assert fast["strategy"]["matrix"]["group"] == list(range(1, 21))
     assert fast["name"] == "fast-suite (${{ matrix.group }})"
 
 
@@ -172,9 +189,30 @@ def test_fast_suite_and_duration_regeneration_use_the_same_groups() -> None:
         assert "--group ${{ matrix.group }}" in "\n".join(blocks)
 
 
+def test_duration_regeneration_splits_with_the_prices_the_fast_suite_splits_with() -> None:
+    """Equal group counts are not enough: each regen job must hold its fast-suite shard's tests.
+
+    A test can reuse programs an earlier test of the same job compiled into the JAX disk cache, so
+    its price can depend on its neighbours. fast-suite splits with `.test_durations`; a regen job
+    split by other prices (an empty file splits by test count) measures other neighbours, and on
+    2026-10-28 priced heavy distributed tests at about half their fast-suite time.
+    """
+    fast = "\n".join(run_blocks(_physics_suite_step(load(PR_TESTS)["jobs"]["fast-suite"])))
+    assert "--durations-path" not in fast, "fast-suite no longer splits with .test_durations"
+    regen = load(WORKFLOW_DIR / "regen-durations.yml")["jobs"]["fast"]
+    (block,) = [b.replace("${{ matrix.group }}", "N") for b in run_blocks(regen) if "--store-durations" in b]
+    words = shlex.split(block)
+    path = words[words.index("--durations-path") + 1]
+    seed = re.search(rf"(?:^|\s)cp\s+\.test_durations\s+{re.escape(path)}\s", block)
+    assert seed and seed.start() < block.index("pytest "), (
+        f"regen fast does not copy .test_durations to {path} before pytest: it splits with other prices"
+    )
+    assert "--clean-durations" in words, "regen fast would upload the seeded prices as measurements"
+
+
 def test_the_fast_suite_uses_only_python_311_on_both_events() -> None:
     matrix = load(PR_TESTS)["jobs"]["fast-suite"]["strategy"]["matrix"]
-    assert matrix == {"python-version": ["3.11"], "group": list(range(1, 13))}
+    assert matrix == {"python-version": ["3.11"], "group": list(range(1, 21))}
 
 
 @pytest.mark.parametrize("path", workflow_files(), ids=lambda p: p.name)
@@ -203,10 +241,11 @@ JAX_PINS = {"jax": "==0.10.2", "jaxlib": "==0.10.2"}
         ("pr-tests.yml", "guards-and-preflight", "3.11", "dev", JAX_PINS),
         ("validation.yml", "slow-tests", "3.11", "dev", JAX_PINS),
         ("validation.yml", "three-device", "3.11", "dev", JAX_PINS),
+        ("validation.yml", "docs-blocks", "3.11", "dev,cad,visualization", JAX_PINS),
         ("regen-durations.yml", "fast", "3.11", "dev,cad", JAX_PINS),
         ("regen-durations.yml", "slow", "3.11", "dev", JAX_PINS),
     ],
-    ids=["required-fast", "guards", "weekly-slow", "weekly-three-device", "durations-fast", "durations-slow"],
+    ids=["required-fast", "guards", "weekly-slow", "weekly-three-device", "weekly-docs-blocks", "durations-fast", "durations-slow"],
 )
 def test_cpu_suite_python_and_jax_pins(
     workflow: str, job_name: str, python_version: str, extras: str, expected_pins: dict,
@@ -232,6 +271,73 @@ def test_cpu_suite_python_and_jax_pins(
     assert all(requirement.marker is None for requirement in requirements), installs[0]
     assert len(requirements) == len(expected_pins), installs[0]
     assert {r.name: str(r.specifier) for r in requirements} == expected_pins, installs[0]
+
+
+def test_weekly_docs_blocks_are_strict_and_reported() -> None:
+    jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
+    assert "docs-blocks" in jobs
+    assert "docs-blocks" in jobs["notify"]["needs"]
+    runs = [shlex.split(run, comments=True) for run in run_blocks(jobs["docs-blocks"])]
+    runner = [args for args in runs
+              if args[:2] == ["python", "scripts/docs/check_public_docs_blocks.py"]]
+    assert len(runner) == 1, runs
+    assert "--strict" in runner[0]
+
+
+def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
+    """jax 0.11 broke estimate_ad_memory on Python 3.12 while every other lane ran 3.11/jax 0.10.2.
+
+    The weekly job installs the newest release of both wheels, with no upper bound, on 3.12, records what it got, runs the
+    gradient and contract tests over all of its shards, and the lane's verdict waits for it.
+    """
+    jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
+    assert "if" not in jobs["latest-jax"]
+    steps = jobs["latest-jax"]["steps"]
+    versions = [step.get("with", {}).get("python-version") for step in steps
+                if str(step.get("uses", "")).startswith("actions/setup-python@")]
+    assert versions == ["3.12"]
+    installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
+    assert len(installs) == 2, installs
+    assert shlex.split(installs[0], comments=True) == ["pip", "install", "-e", ".[dev]"], installs[0]
+    # The pair goes in over pyproject's cap with its own dependencies, then pip check.
+    over, *check = installs[1].strip().splitlines()
+    over = shlex.split(over)
+    assert over[:3] == ["pip", "install", "-U"] and "--no-deps" not in over, installs[1]
+    pins = {r.name: str(r.specifier) for r in map(Requirement, over[3:])}
+    assert pins == {"jax": ">=0.11", "jaxlib": ">=0.11"}, installs[1]
+    # pip check runs; only rfx's own jax/jaxlib bound is exempt from failing the job.
+    assert check[0].startswith("pip check > pip-check.txt"), installs[1]
+    fail = re.search(r"if grep -vE '([^']+)' pip-check.txt; then [^;]*; exit 1; fi", installs[1])
+    assert fail, installs[1]
+    allowed = re.compile(fail.group(1))
+    # pip check names the distribution as pyproject declares it, not the import name.
+    dist = re.search(r'^name = "([^"]+)"$', (REPO / "pyproject.toml").read_text(), re.M).group(1)
+    assert allowed.match(f"{dist} 1.9.0 has requirement jax<0.11.2,>=0.10.2, but you have jax 0.11.3.")
+    assert allowed.match("No broken requirements found.")
+    for broken in ("jax 0.11.3 has requirement ml_dtypes>=0.6, but you have ml_dtypes 0.5.0.",
+                   f"{dist} 1.9.0 has requirement numpy<3, but you have numpy 3.0.0.",
+                   f"{dist} 1.9.0 requires h5py, which is not installed."):
+        assert not allowed.match(broken), broken
+    records = [s for s in steps if s.get("name", "").startswith("Record the resolved")]
+    assert len(records) == 1 and "if" not in records[0]
+    for package in ("jax", "jaxlib", "numpy"):
+        assert f"{package}.__version__" in records[0]["run"]
+    # Each shard records its CPU model and AVX-512 support (#2166: outcomes changed between runners).
+    cpu = [s for s in steps if s.get("name", "") == "Record the runner CPU"]
+    assert len(cpu) == 1 and "if" not in cpu[0], cpu
+    assert "model name" in cpu[0]["run"] and "avx512f" in cpu[0]["run"], cpu[0]["run"]
+    # Every process runs XLA capped at AVX2, set before pytest (#2166: outcomes changed with the runner's CPU).
+    cap = [i for i, s in enumerate(steps) if s.get("name", "").startswith("Cap XLA's CPU instruction set at AVX2")]
+    assert len(cap) == 1 and "if" not in steps[cap[0]], cap
+    cap_run = steps[cap[0]]["run"]
+    assert "sitecustomize.py" in cap_run and '_cap = "--xla_cpu_max_isa=AVX2"' in cap_run, cap_run
+    assert cap[0] < next(i for i, s in enumerate(steps) if "pytest " in str(s.get("run", "")))
+    tests = [str(step["run"]) for step in steps if "pytest " in str(step.get("run", ""))]
+    assert len(tests) == 1, tests
+    assert tests[0].split()[1:3] == ["tests/unit/autodiff", "tests/contracts"], tests[0]
+    assert re.findall(r"--splits\s+(\d+)", tests[0]) == [str(len(jobs["latest-jax"]["strategy"]["matrix"]["group"]))]
+    assert "--group ${{ matrix.group }}" in tests[0]
+    assert "latest-jax" in jobs["notify"]["needs"]
 
 
 def test_fast_suite_records_the_resolved_versions() -> None:
@@ -314,7 +420,7 @@ def _is_runner_setup(job: str, step: dict) -> bool:
 #: Gates about the DIFF rather than the code, which must run on both branches
 #: because a "not code" diff is exactly what they judge: a PR adding records
 #: under docs/ or scripts/ never reaches the code branch. Only in the job named
-#: here -- in `fast-suite` the same step would run six times.
+#: here -- in `fast-suite` the same step would run twenty times.
 BOTH_BRANCH_GATES = {"guards-and-preflight": (
     "scripts/ci/check_data_budget.py", "scripts/ci/check_file_size_ratchet.py",
     "scripts/ci/check_layer_structure.py",
@@ -435,7 +541,7 @@ def test_a_skipped_job_says_why_in_its_log(job: str) -> None:
 #: it: otherwise marking one test `slow` quietly removes it from a gate that is
 #: still reported green, and nobody finds out. The explicit `-m` puts back the
 #: CPU-safety half and the documentation half -- a documentation mismatch never
-#: holds a merge (PI, 2026-09-22), so `docs_consistency` tests run only in the
+#: holds a merge, so `docs_consistency` tests run only in the
 #: non-required docs-consistency workflow -- and `--strict-markers` makes a
 #: marker typo an error instead of a no-op.
 GATE_PYTEST_FLAGS = ('-o addopts=""', '-m "not gpu and not docs_consistency"',
@@ -534,9 +640,9 @@ def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
     assert "pytest tests/contracts " in suite
     assert "--collect-only" not in suite
     assert "--ignore" not in suite
-    assert re.findall(r"--splits\s+(\d+)", suite) == ["12"]
+    assert re.findall(r"--splits\s+(\d+)", suite) == ["20"]
     assert "--group ${{ matrix.group }}" in suite
-    assert fast["strategy"]["matrix"]["group"] == list(range(1, 13))
+    assert fast["strategy"]["matrix"]["group"] == list(range(1, 21))
 
     floors = [
         step for step in jobs["guards-and-preflight"]["steps"]
@@ -554,7 +660,7 @@ def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
 
 
 def test_the_contract_tests_run_when_the_diff_is_code() -> None:
-    """On the code branch the twelve shards collect the whole tree, contracts included."""
+    """On the code branch the twenty shards collect the whole tree, contracts included."""
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
     suite = _physics_suite_step(fast)["run"]
     assert "--splits" in suite, "the fast-suite job no longer runs a sharded pytest"
@@ -562,7 +668,7 @@ def test_the_contract_tests_run_when_the_diff_is_code() -> None:
     # the uploaded test list and the real run cannot drift apart, and neither can drop the split.
     lines = [line.strip() for line in suite.splitlines() if line.strip()]
     sets = [line for line in lines if line.startswith("set -- ")]
-    assert len(sets) == 1 and "--splits 12 --group ${{ matrix.group }}" in sets[0], sets
+    assert len(sets) == 1 and "--splits 20 --group ${{ matrix.group }}" in sets[0], sets
     calls = [line for line in lines if re.match(r"(?:python -m )?pytest\s", line)]
     assert len(calls) == 2, calls
     assert re.fullmatch(r'pytest --collect-only -q "\$@" > "\$RUNNER_TEMP/[\w.-]+"(?: \|\| .*)?', calls[0]), calls
@@ -623,7 +729,7 @@ def test_the_data_budget_runs_once_on_both_branches() -> None:
     A PR that adds records under docs/ or scripts/ is a not-code diff, so a
     step gated on the code branch would never see the case it exists for. It
     lives in an existing required job because a new check context binds only
-    once the PI adds it to the ruleset.
+    once it is added to the ruleset.
     """
     steps = _data_budget_steps("guards-and-preflight")
     assert len(steps) == 1, [s.get("name") for s in steps]
@@ -690,10 +796,10 @@ def test_guards_and_preflight_can_diff_and_read_labels() -> None:
     assert (job.get("permissions") or {}).get("contents") == "read", job.get("permissions")
 
 
-def test_pushes_to_main_still_trigger_the_lane() -> None:
+def test_only_pull_requests_and_merge_groups_trigger_the_lane() -> None:
     triggers = load(PR_TESTS).get("on", load(PR_TESTS).get(True))
-    assert triggers["push"]["branches"] == ["main"]
-    assert "pull_request" in triggers
+    assert set(triggers) == {"pull_request", "merge_group"}
+    assert triggers["merge_group"] == {"types": ["checks_requested"]}
 
 
 # --------------------------------------------------------------------------
@@ -931,7 +1037,7 @@ def _classify(env: dict[str, str], tmp_path: Path) -> tuple[str, str]:
 
 
 def test_a_push_to_main_is_never_skipped(tmp_path: Path) -> None:
-    """main is what releases, the GPU lane and the weekly suite are cut from."""
+    """Legacy push inputs still fail open; pr-tests no longer subscribes to push."""
     written, log = _classify({"EVENT_NAME": "push"}, tmp_path)
     assert written == "code_changed=true", log
 
@@ -1159,8 +1265,14 @@ def test_required_and_companion_workflows_run_on_merge_group(filename, contexts)
     jobs = workflow["jobs"]
     assert contexts <= {job.get("name", key) for key, job in jobs.items()}
     assert all("if" not in job for job in jobs.values())
+    group = "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    if filename in {"pr-body.yml", "changelog-fragment.yml"}:
+        actions = "github.event.action == 'labeled' || github.event.action == 'unlabeled'"
+        if filename == "pr-body.yml":
+            actions += " || github.event.action == 'edited'"
+        group += "${{ (" + actions + ") && format('-{0}', github.run_id) || '' }}"
     assert workflow["concurrency"] == {
-        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "group": group,
         "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
     }
 
@@ -1187,7 +1299,7 @@ def test_merge_group_runs_everything_even_for_empty_or_unknown_diff(tmp_path, ba
 
 @pytest.mark.parametrize("workflow,jobs", [
     (PR_TESTS, ("guards-and-preflight", "fast-suite")),
-    (WORKFLOW_DIR / "validation.yml", ("slow-tests", "three-device")),
+    (WORKFLOW_DIR / "validation.yml", ("slow-tests", "three-device", "latest-jax")),
     (WORKFLOW_DIR / "regen-durations.yml", ("fast", "slow")),
 ])
 def test_test_jobs_raise_the_mapping_limit_before_pytest(workflow, jobs) -> None:

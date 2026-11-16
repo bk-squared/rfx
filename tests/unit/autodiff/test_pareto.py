@@ -138,6 +138,7 @@ def test_weighted_scalarization_is_lower_better_and_can_normalize():
 
     assert raw_scores.tolist() == pytest.approx([-0.8, -1.4, -1.88])
     assert int(np.argmin(raw_scores)) == 2
+    assert normalized_scores.tolist() == pytest.approx([2.0, 0.5, 0.2])
     assert int(np.argmin(normalized_scores)) == 2
 
 def test_scalarization_and_epsilon_edge_cases():

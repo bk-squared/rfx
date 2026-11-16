@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx import _grid_metric
+from rfx._internal import _grid_metric
 from rfx.model import conductors as conductor_model
 from rfx.model import source_coefficients as sc
 from rfx.model.graded_ports import assemble_graded_ports
@@ -13,20 +13,19 @@ from rfx.sources.port_drive import PortSourceQueue
 
 def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
              eps_override, sigma_override, pec_mask_override, pec_occupancy_override, debye_spec,
-             lorentz_spec, n_steps, lane, gather, diagnostics, s_param_freqs, mesh):
+             lorentz_spec, n_steps, lane, gather, diagnostics, s_param_freqs, mesh,
+             compute_s_params=False):
     """Apply overrides, stamp loads, release edges, then resolve ordered drives."""
     from rfx.api._source_semantics import needs_scale
-    from rfx.nonuniform import make_current_source, current_source_samples, current_source_volume
+    from rfx.model.source_coefficients import make_current_source, current_source_samples, current_source_volume
     from rfx.runners.nonuniform import _port_drive_source
     from rfx.runners._admission import admit
-    from rfx.simulation import SourceSpec
+    from rfx._internal._uniform_specs import SourceSpec
     from rfx.stepping.slab_wrap import select_step
 
     ports_present = any(p.impedance > 0 for p in sim._ports)
     call = "run(devices=...)" if lane == "run_distributed_nu" else "forward(distributed=True)"
     off = "omit devices=" if lane == "run_distributed_nu" else "omit distributed=True and devices="
-    if sim._lumped_rlc:
-        raise NotImplementedError(f'Lumped RLC ports are not yet supported by {call} on a graded mesh; remove the lumped_rlc spec or {off}.')
     if ports_present:
         if any(p.extent is not None and p.reference_plane_cells is not None for p in sim._ports):
             raise NotImplementedError(f'Wire ports with reference_plane_cells are not supported by {call} on a graded mesh; the V_ref path needs pre-injection recordings. Use one device ({off}).')
@@ -34,20 +33,29 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                        lorentz=lorentz_spec is not None, pmc=bool(sim._boundary_spec.pmc_faces())) != 'wrapped':
             raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC port faces are not supported.')
     admit(sim, lane, diagnostics=diagnostics)
+    from rfx.stepping.slab_lumped import fold
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.
     in_program = mesh.devices.size < 2
-    drive_model = sc.dispersive_drive_model(materials, debye_spec, lorentz_spec, grid,
+    drive_model = sc.dispersive_drive_model(fold(sim, grid, materials), debye_spec, lorentz_spec, grid,
                                           in_program=in_program)
     if overridden:
         materials = apply_material_overrides(materials, eps_override=eps_override,
             sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec), in_program=in_program)
+    materials = fold(sim, grid, materials)
     if pec_mask_override is not None:
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
         sheets, wires, periodic=(False,) * 3, root=conductors)
-    # The distributed lane is outside declaration_setup (_dispatch.py), so an
-    # outer jit would trace the port's host cell sizes; traced inputs stay recorded.
+    from rfx.measurement.prepared import attach_measurement
+    from rfx.measurement.port_s_contract import passive_record_diagnostic
+    attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
+                       frequencies=s_param_freqs if lane == 'fwd_distributed_nu' or compute_s_params is not False or passive_record_diagnostic(sim) else None,
+                       overrides={'eps_r': eps_override, 'sigma': sigma_override,
+                                  'pec_mask': pec_mask_override,
+                                  'pec_occupancy': pec_occupancy_override})
+    # run(report_every=...) bypasses declaration_setup even though slabs ignore
+    # the progress option. Keep its host cell sizes concrete under an outer jit.
     with jax.ensure_compile_time_eval():
         ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
             pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
@@ -72,12 +80,11 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
                     if any(m is None or np.any(np.asarray(m)[window]) for m in masks):
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
-    # Drive samples and scales are host constants, as declaration_setup makes
-    # them on one device: a user jit must not stage them (rfx #1840).
+    # The same region-bypassing run route needs concrete drive samples and scales.
     with jax.ensure_compile_time_eval():
         queue, material_drive = PortSourceQueue(), []
         for index, pe in enumerate(sim._ports):
-            if pe.impedance == 0:
+            if pe.is_soft_source:
                 cell = _grid_metric.field_index(grid, pe.position, pe.component)
                 if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
                     volume, _ = current_source_volume(grid, cell, pe.component)
@@ -107,12 +114,13 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
             final_drive_model = materials
         sources = [SourceSpec(int(i), int(j), int(k), component, jnp.asarray(waveform))
                    for i, j, k, component, waveform in queue.resolve(final_drive_model)]
-    if ports_present:
-        conductors, pec_occupancy_override = conductor_model.prepare_port_occupancy(
-            conductors, (), pec_occupancy_override, None, sim=sim)
+    conductors, pec_occupancy_override = conductor_model.prepare_port_occupancy(
+        conductors, (), pec_occupancy_override, None, sim=sim, occupancy_mesh=mesh)
+    from rfx.stepping.prepared import stage
+    conductors = stage(conductors, materials=materials)
     conductors, record = conductor_model.at_kernel(sim, conductors,
         lane=lane, pec_edges=conductors.pec_edges)
-    return materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
+    return conductors._prepared_owner or conductors, materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
 
 
 def refuse_unsupported_distributed_features(sim, **kwargs):

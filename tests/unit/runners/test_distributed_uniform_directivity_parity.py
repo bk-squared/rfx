@@ -3,7 +3,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.farfield import compute_far_field, directivity, radiation_pattern
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import directivity, radiation_pattern
 from tests._multi_device_scene import host_devices
 from tests._one_device_parity import STEPS, perturb_cell, record, scene, assert_multi_device
 

@@ -38,7 +38,7 @@ GRADED_SHEET_CELLS = [(5, 7, 3), (5, 7, 4),
 
 def model(lane='uniform', kind='r', component='ez'):
     kw = {'dy_profile': np.array([.001] + [.0009, .0011]*7 + [.001])} if lane == 'graded' else {}
-    sim = Simulation(freq_max=10e9, domain=(.016, .016, .012), dx=.001, boundary='pec', **kw)
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(.016, .016, .012), dx=.001, boundary='pec', **kw)
     if kind in ('r', 'rc', 'parallel'):
         sim.add_lumped_rlc((.008, .008, .004), component, R=50.,
             C=1e-13 if kind != 'r' else 0., topology='parallel' if kind == 'parallel' else 'series')
@@ -246,7 +246,7 @@ def test_path_graded_box_refuses(kind):
 
 
 @pytest.mark.parametrize('kind', ['r', 'sheet', 'none'])
-@pytest.mark.parametrize('path', ['distributed', 'adi', 'subgrid', 'run'])
+@pytest.mark.parametrize('path', ['distributed',  'subgrid', 'run'])
 def test_path_existing_refusals(kind, path):
     sim, grid = model(kind=kind)
     options = dict(n_steps=2, pec_occupancy_override=jnp.zeros(grid.shape), skip_preflight=True)
@@ -256,22 +256,89 @@ def test_path_existing_refusals(kind, path):
     elif path == 'distributed':
         with pytest.raises(NotImplementedError, match='pec_occupancy_override'):
             sim.forward(distributed=True, **options)
-    elif path == 'adi':
-        sim._solver = 'adi'
-        with pytest.raises((ValueError, NotImplementedError), match='adi|ADI'):
-            sim.forward(**options)
     else:
         sim.add_refinement(z_range=(.003,.007), ratio=2)
         with pytest.raises(NotImplementedError, match='refinement|subgrid'):
             sim.forward(**options)
 
 
-@pytest.mark.parametrize('kind', ['r', 'sheet'])
-def test_path_two_device_graded_refuses(kind):
+@pytest.mark.parametrize('kind', ['sheet'])
+@pytest.mark.parametrize('occupancy', [0., .5])
+def test_path_two_device_graded_refuses(kind, occupancy):
     sim, grid = model('graded', kind)
-    with pytest.raises((ValueError, NotImplementedError), match='[Rr][Ll][Cc]|surface.impedance'):
-        sim.forward(n_steps=2, pec_occupancy_override=jnp.zeros(grid.shape),
+    with pytest.raises((ValueError, NotImplementedError), match='surface.impedance'):
+        sim.forward(n_steps=2, pec_occupancy_override=jnp.full(grid.shape, occupancy),
             distributed=True, devices=jax.devices()[:2], skip_preflight=True)
+
+
+@pytest.mark.parametrize('padded', [False, True], ids=['grid', 'padded'])
+def test_path_two_device_graded_rlc_occupancy(padded):
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2, 'set XLA_FLAGS before starting Python'
+    records, messages = [], []
+    for distributed in (False, True):
+        sim, grid = model('graded', 'r')
+        occupancy = jnp.full(grid.shape, .5)
+        if distributed and padded:
+            occupancy = sim.shard_distributed_override(occupancy, devices, pad_value=.5)
+            assert occupancy.shape[0] > grid.shape[0]
+        with warnings.catch_warnings(record=True) as emitted:
+            warnings.simplefilter('always')
+            result = sim.forward(n_steps=400, checkpoint=False, skip_preflight=True,
+                pec_occupancy_override=occupancy,
+                **({'distributed': True, 'devices': devices} if distributed else {}))
+            records.append(np.asarray(result.time_series))
+        messages.append([str(w.message) for w in emitted if 'Port occupancy release:' in str(w.message)])
+    one, two = records
+    assert one.shape == two.shape == (400, 1)
+    assert np.isfinite(one).all() and np.isfinite(two).all()
+    peak = np.max(np.abs(one), axis=0).astype(np.float32)
+    assert np.all(peak > 0)
+    ulp = np.spacing(peak).astype(np.float64)
+    error = np.max(np.abs(two.astype(np.float64) - one.astype(np.float64)), axis=0)
+    assert np.all(error <= 9 * ulp), ('B1', error / ulp)
+    assert len(messages[0]) == 1 and 'lumped_rlc[0]' in messages[0][0]
+    assert messages[0] == messages[1]
+
+
+def test_path_two_device_graded_port_padded_occupancy(monkeypatch):
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2, 'set XLA_FLAGS before starting Python'
+    records, messages = [], []
+    released = []
+    original = products.release_port_occupancy
+
+    def release(occupancy, conductors, **kwargs):
+        result = original(occupancy, conductors, **kwargs)
+        nx = conductors.grid.shape[0]
+        if occupancy.shape[0] > nx:
+            assert result.sharding == occupancy.sharding
+            assert np.asarray(result)[nx:].tobytes() == np.asarray(occupancy)[nx:].tobytes()
+            assert np.asarray(result)[:nx].tobytes() == released[0].tobytes()
+        else:
+            released.append(np.asarray(result))
+        return result
+
+    monkeypatch.setattr(products, 'release_port_occupancy', release)
+    for padded in (False, True):
+        sim, grid = model('graded', 'none')
+        sim.add_port((.010, .008, .004), 'ez', impedance=50.)
+        occupancy = jnp.full(grid.shape, .5)
+        if padded:
+            occupancy = sim.shard_distributed_override(occupancy, devices, pad_value=.5)
+            assert occupancy.shape[0] > grid.shape[0]
+        with warnings.catch_warnings(record=True) as emitted:
+            warnings.simplefilter('always')
+            result = sim.forward(n_steps=400, checkpoint=False, skip_preflight=True,
+                pec_occupancy_override=occupancy, distributed=True, devices=devices)
+            records.append(np.asarray(result.time_series))
+        messages.append([str(w.message) for w in emitted if 'Port occupancy release:' in str(w.message)])
+    local, sharded = records
+    assert local.shape == sharded.shape == (400, 1)
+    assert np.isfinite(local).all() and np.isfinite(sharded).all() and np.any(local)
+    assert local.dtype == sharded.dtype and local.tobytes() == sharded.tobytes()
+    assert len(messages[0]) == 1 and 'port[1]' in messages[0][0]
+    assert messages[0] == messages[1]
 
 
 def test_path_two_device_graded_source_not_reached():
@@ -291,12 +358,7 @@ def test_path_topology(monkeypatch, kind):
             topology_optimize(sim, region, lambda r: jnp.sum(r.time_series**2),
                 n_iterations=1, skip_preflight=True, verbose=False)
         return
-    # Stop at the first real forward result: optimizer setup is immaterial to
-    # this admission contract and the optimization extra need not be installed.
-    import sys
-    from types import SimpleNamespace
-    monkeypatch.setitem(sys.modules, 'optax', SimpleNamespace(
-        adam=lambda rate: SimpleNamespace(init=lambda values: ())))
+    # Stop at the first real forward result: optimizer setup is immaterial.
     original_forward = sim._forward_from_materials
     def forward(*a, **kw):
         return original_forward(*a, **{**kw, 'n_steps': 2})

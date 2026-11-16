@@ -20,9 +20,11 @@ eager loops are untouched (their removal is Stage 3).
 
 from __future__ import annotations
 
-from rfx._precision import resolve_field_dtype
+from rfx.errors import RfxUnsupported
 
-from rfx._grid_metric import field_index
+from rfx._internal._precision import resolve_field_dtype
+
+from rfx._internal._grid_metric import field_index
 import numpy as np
 
 import jax.numpy as jnp
@@ -43,16 +45,16 @@ def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
     """
     option = "distributed=True" if entry == "forward" else "devices=..."
     faces = sorted(sim._boundary_spec.pmc_faces())
-    if faces and any(pe.impedance != 0 and pe.extent is not None for pe in sim._ports):
-        raise NotImplementedError(
+    if faces and any(pe.is_port and pe.extent is not None for pe in sim._ports):
+        raise RfxUnsupported(
             f"Wire ports with magnetic (PMC) face(s) {', '.join(faces)} "
             f"are not supported with {option}; the multi-device main run "
             "zeroes tangential E on a declared PMC face, so nearby wire loads "
-            "and drives would be wrong even with compute_s_params=False "
-            f"(rfx #1221, B3b). Use one device (omit {option})."
+            "and drives would be wrong even with compute_s_params=False"
+            f". Use one device (omit {option})."
         )
-    if faces and any(pe.impedance != 0 for pe in sim._ports):
-        raise NotImplementedError(
+    if faces and any(pe.is_port for pe in sim._ports):
+        raise RfxUnsupported(
             f"Lumped-port S-parameters with magnetic (PMC) face(s) {', '.join(faces)} "
             f"are not supported with {option}; use one device (omit {option})."
         )
@@ -60,7 +62,7 @@ def refuse_distributed_lumped_s_pmc(sim, *, entry="run"):
 
 def compute_lumped_wire_s_matrix_via_scan(
     sim, freqs, *, n_steps=None, return_vi_dump=False,
-    return_refplane_diagnostics=False, conformal_pec=None, devices=None,
+    return_refplane_diagnostics=False, conformal_pec=None, conformal_min_weight=0.1, devices=None,
     _main_wire_record=False,
     return_settling=False,
     _forward_port_s11=False,
@@ -81,7 +83,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     freqs : array-like
         Frequencies (Hz) at which to extract the S-matrix.
     skip_preflight : bool
-        Skip shared preflight checks when True. Default False.
+        Skip advisories only when True; realization refusals still apply. Default False.
     n_steps : int or None
         Number of FDTD steps per drive.  Defaults to
         ``grid.num_timesteps(num_periods=30)`` (matching the eager
@@ -98,8 +100,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         together with reference-plane ports (raises NotImplementedError —
         the dump schema has no plane-phasor fields).
     return_refplane_diagnostics : bool
-        When True and any port opted into ``reference_plane_cells``
-        (issue #313), return ``(S, freqs, diagnostics)`` where
+        When True and any port opted into ``reference_plane_cells``, return ``(S, freqs, diagnostics)`` where
         ``diagnostics`` carries the per-port measured Zc(f) and beta(f)
         (R5 inspection surface).  ``(S, freqs, None)`` when no port
         opted in.
@@ -110,9 +111,8 @@ def compute_lumped_wire_s_matrix_via_scan(
         because pre-injection drive reference voltages are not recorded.
     conformal_pec : bool or None
         As in ``run()``: ``None`` reads ``Boundary(conformal=True)``. The
-        production scan has no conformal update, so a conformal request on a
-        model with PEC to conform is refused before the first step; ``False``
-        asks for staircase PEC (#1299).
+        production scan forms the same default conformal operands as run().
+        An explicit ``False`` asks for staircase PEC.
 
     Returns
     -------
@@ -130,10 +130,23 @@ def compute_lumped_wire_s_matrix_via_scan(
     its column is formed as forward() forms it; mixed sets are supported, and S
     lists wire ports before lumped ones, the graded record's (and forward()'s) order.
     """
-    # A plain source fires in every port drive, so it is refused here (#1420).
+    # A plain source fires in every port drive, so it is refused here.
     resolve_field_dtype(sim._precision)
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "lumped/wire S-matrix scan and eager port probes")
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim, main_record=_main_wire_record)
+    from rfx.runners._admission import refuse_foreign_s_drives, require_isolated_s_drive
+    if _main_wire_record:
+        require_isolated_s_drive(sim)
+    else:
+        refuse_foreign_s_drives(sim)
+    conformal_pec = (bool(sim._boundary_spec.conformal_faces())
+                     if conformal_pec is None else conformal_pec)
+    if devices is not None and conformal_pec and sim._has_pec_to_conform():
+        raise RfxUnsupported(
+            "compute_lumped_wire_s_matrix_via_scan(devices=...) refuses conformal PEC; "
+            "use a single device (omit devices=) or set conformal_pec=False.")
     if subpixel_smoothing and devices is not None:
         raise NotImplementedError(
             "subpixel_smoothing is not applied by the multi-device S drives; "
@@ -158,6 +171,9 @@ def compute_lumped_wire_s_matrix_via_scan(
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")
         refuse_distributed_lumped_s_pmc(sim)
+    elif not graded:
+        from rfx.api._refplane_checks import refuse_partial_wire_reference_planes
+        refuse_partial_wire_reference_planes(sim._port_sparameter_entries())
     freqs = np.asarray(freqs, dtype=np.float64)
     n_freqs = len(freqs)
 
@@ -166,11 +182,14 @@ def compute_lumped_wire_s_matrix_via_scan(
     if not graded:
         sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
         from rfx.runners._admission import admit
-        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec,
+                                               "subpixel_smoothing": subpixel_smoothing})
     if not skip_preflight:
         from rfx._diagnostic_transport import report_diagnostics
         report_diagnostics(sim._auto_preflight(
-            context="compute_lumped_wire_s_matrix_via_scan", check_ntff="advisory"))
+            context="compute_lumped_wire_s_matrix_via_scan", check_ntff="advisory",
+            prepare=True, distributed=devices is not None, conformal=bool(conformal_pec),
+            realization_options=(subpixel_smoothing, bool(conformal_pec))))
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     if devices is None and not graded:
         _sheet_specs: list = []
@@ -178,14 +197,14 @@ def compute_lumped_wire_s_matrix_via_scan(
         _pec_wires: list = []
         from rfx.model.conductors import realized_conductors, assembled_materials
         conductors = realized_conductors(sim, grid)
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = assembled_materials(
+        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, _ = assembled_materials(
             conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
             pec_wires=_pec_wires)
         _pec_sheets = tuple(_pec_sheets)
         _pec_wires = tuple(_pec_wires)
-        # #931 §1.7: the realized PEC edges of this model — volumes, sheets and
-        # wires — read once here, under the RUN's #689 flags (preflight refuses
-        # lumped/wire S-params under periodic axes (#206), so this is normally
+        # the realized PEC edges of this model — volumes, sheets and
+        # wires — read once here, under the RUN's periodic-axis flags (preflight refuses
+        # lumped/wire S-params under periodic axes, so this is normally
         # the non-periodic convention — but the flags are read, not assumed).
         _pec_edge_masks = conductors.pec_edges
         _sheet_ctx = conductors.sheet_context(_pec_edge_masks)
@@ -195,7 +214,7 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     # Ordered sparam-eligible lumped/wire ports (impedance != 0), in
     # registration order — the same order the multi-drive index counts.
-    eligible_ids = [i for i, pe in enumerate(sim._ports) if pe.impedance != 0.0]
+    eligible_ids = [i for i, pe in enumerate(sim._ports) if pe.is_port]
     eligible = [sim._ports[i] for i in eligible_ids]
     if not eligible:
         raise ValueError(
@@ -224,9 +243,9 @@ def compute_lumped_wire_s_matrix_via_scan(
     z0 = np.asarray([pe.impedance for pe in eligible], dtype=np.float64)
 
     # Per-port wire LIVE cell counts (only needed for the wire decomposer).
-    # Issue #318: the wave-decomposition normalization is Z0c = Z0/n_live so
+    # the wave-decomposition normalization is Z0c = Z0/n_live so
     # it matches the live-cell sigma fold's per-cell resistor law
-    # R_cell = Z0/n_live (the #308 receive-channel selection relies on that
+    # R_cell = Z0/n_live (the receive-channel selection relies on that
     # identity). The realized edge masks here are the assembled-geometry
     # state BEFORE
     # any port-cell clearing — exactly the "live" definition. With no dead
@@ -246,33 +265,29 @@ def compute_lumped_wire_s_matrix_via_scan(
                 end=tuple(end),
                 component=pe.component,
                 impedance=pe.impedance,
-                excitation=pe.waveform,
+                excitation=pe.waveform, allow_in_absorber=pe.allow_in_absorber,
             )
             port_cell_counts[idx] = _wire_port_live_cells(
                 grid, wp, _pec_edge_masks)[2]
 
-    distributed_cells = None
     if devices is not None and wire_mode:
-        distributed_cells = _distributed_port_cells(grid, eligible, _pec_edge_masks)
         del _pec_edge_masks
 
     # FDTD-sign V/I phasors per (drive j, receive i).
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
-    # Whole-port gap-voltage phasors (issue #764, wire mode): V_port =
+    # Whole-port gap-voltage phasors: V_port =
     # sum over LIVE wire cells of -E_c*dx per (drive j, receive i).
     # The whole-port decomposer consumes both diagonal and off-diagonal V.
     vp_all = (np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
               if wire_mode else None)
-    # PRE-injection drive-sample reference phasors (wire: issue #683 x
-    # #764; lumped: the known-load decision run,
-    # scripts/diagnostics/lumped_port_known_load_line.py):
-    # bit-identical to the historical pre-flip v_all; only the drive
-    # diagonal vref_all[j, j] is consumed (off-diagonal incident wave +
-    # the legacy diagonal on pre-decision data).
+    # Pre-injection drive-sample reference phasors. The lumped convention is
+    # measured in scripts/diagnostics/lumped_port_known_load_line.py. Only the
+    # drive diagonal vref_all[j, j] is consumed for the legacy per-cell incident
+    # wave and diagonal.
     vref_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
 
-    # Opt-in reference-plane accumulators (issue #313): raw plane phasors
+    # Opt-in reference-plane accumulators: raw plane phasors
     # per (drive j, port p, plane slot).  Allocated lazily on the first
     # drive pass that returns plane data.
     plane_v = plane_im = plane_ip = None
@@ -294,17 +309,17 @@ def compute_lumped_wire_s_matrix_via_scan(
             drive._ports = [replace(pe, excite=(pe is eligible[j]), waveform=(
                 pe.waveform if pe.waveform is not None or pe is not eligible[j]
                 else GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)))
-                if pe.impedance != 0 else pe for pe in sim._ports]
+                if pe.is_port else pe for pe in sim._ports]
             record = run_nonuniform_path(drive, n_steps=n_steps, compute_s_params=True,
                                          s_param_freqs=freqs, conformal_pec=conformal_pec,
-                                         subpixel_smoothing=subpixel_smoothing, _drive_scan=True)
+                                         subpixel_smoothing=subpixel_smoothing, _drive_scan=True,
+                                         waveguide_reference_only=True)
             columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
             raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt}
         elif devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
                                                   n_steps, devices,
-                                                  None if _main_wire_record else j,
-                                                  distributed_cells)
+                                                  None if _main_wire_record else j)
         else:
             raw = sim._forward_from_materials(
                 grid,
@@ -313,7 +328,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                 lorentz_spec,
                 n_steps=n_steps,
                 checkpoint=False,
-                pec_mask=pec_mask,
+                pec_mask=pec_mask, pec_shapes=pec_shapes,
+                conformal_min_weight=conformal_min_weight,
                 pec_sheets=_pec_sheets,
                 pec_wires=_pec_wires,
                 port_s11_freqs=freqs,
@@ -324,13 +340,13 @@ def compute_lumped_wire_s_matrix_via_scan(
             )
 
         if return_settling:
-            from rfx.probes.settling import simulation_source_end_step
+            from rfx.measurement.record_end import injection_end
             from rfx.sparams._tail_witness import port_record_witness
             from copy import copy
             from dataclasses import replace
             driven_sim = copy(sim)
             driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
-                                 if pe.impedance != 0 else pe for pe in sim._ports]
+                                 if pe.is_port else pe for pe in sim._ports]
             receivers_by_id = {f"port:{i}:mode:0": pe for i, pe in zip(eligible_ids, eligible)}
             plane_counts = {}
             for rp, _ in raw.get("wire_refplane") or ():
@@ -351,7 +367,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 plane_counts[port_id] = plane + 1
                 receivers_by_id[f"{port_id}/plane{plane}"] = replace(pe, position=tuple(position))
             receivers = [receivers_by_id[record.id] for record in raw.get("sparam_time_records", ())]
-            end = simulation_source_end_step(driven_sim, n_steps, grid.dt, receivers, grid=grid)
+            end = injection_end(n_steps, grid.dt, records=receivers, grid=grid, sim=driven_sim)
             settling_runs.append(port_record_witness(
                 raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
                 end, freqs, freq_max=sim._freq_max))
@@ -376,7 +392,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             # (v_dft, i_dft, v_inc_dft, v_port_dft, v_ref_dft) — take the
             # first two either way, the pre-injection drive reference from
             # its own slot in each family, plus the whole-port gap voltage
-            # in wire mode (issue #764).
+            # in wire mode.
             v_dft, i_dft = vi[0], vi[1]
             v_all[j, i, :] = np.asarray(v_dft, dtype=np.complex128)
             i_all[j, i, :] = np.asarray(i_dft, dtype=np.complex128)
@@ -411,7 +427,7 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     def _forward_columns(S):
         # forward()'s port S is run()'s matrix with each undeclared drive's
-        # column NaN (#1373 decision C), as one-device forward() returns it.
+        # column NaN, as one-device forward() returns it.
         if not _forward_port_s11:
             return S
         driven = np.asarray([bool(pe.excite) for pe in eligible])
@@ -420,8 +436,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     if graded:
         S = np.stack([column for _, column in sorted(columns, key=lambda c: c[0])], axis=1)
     if wire_mode and plane_v is not None:
-        # issue #313 reference-plane path: byte-frozen legacy diagonals +
-        # plane-wave off-diagonals where both ports opted in.  The V/I
+        # Reference-plane path: S = B A^-1 over the whole opted block;
+        # entries outside that block retain the legacy path. The V/I
         # replay dump schema has no plane-phasor fields — fail loudly
         # rather than return a dump whose replay cannot reproduce S.
         if return_vi_dump:
@@ -429,7 +445,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 "return_vi_dump=True is not supported together with "
                 "add_port(reference_plane_cells=...): the midpoint V/I "
                 "replay bundle cannot reproduce the plane-wave "
-                "off-diagonals (issue #313)."
+                "off-diagonals."
             )
         from rfx.probes.refplane import (
             decompose_wire_s_matrix_with_reference_planes,
@@ -459,10 +475,9 @@ def compute_lumped_wire_s_matrix_via_scan(
     if graded:
         pass
     elif wire_mode:
-        # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
-        # gap-voltage channel feeds BOTH (frame-consistent whole-port
-        # wave pair; the per-cell #308 frame is refuted physics kept only
-        # on the legacy v_port=None path).
+        # The whole-port gap-voltage channel feeds diagonal and off-diagonal entries
+        # with a consistent wave pair. The per-cell frame is retained only on the
+        # legacy v_port=None path.
         if _main_wire_record:
             # Match run_uniform's one-wire fast path, including a vanishing wave.
             from rfx.probes.probes import driven_port_reflection
@@ -522,35 +537,6 @@ def compute_lumped_wire_s_matrix_via_scan(
     return _forward_columns(S), freqs
 
 
-def _lumped_recording_probes(grid, ports, live_cells=None):
-    """Live E line plus four midpoint H cells; every sample keeps its owner.
-
-    A nonperiodic outside neighbour is recorded at a valid placeholder cell
-    and zeroed on the host. Length-one axes wrap, exactly as _bwd_h does.
-    """
-    from rfx.probes.probes import _ampere_loop_components
-    from rfx.simulation import ProbeSpec
-
-    probes, zero_columns = [], []
-    for p, pe in enumerate(ports):
-        cells = (live_cells[p] if live_cells is not None else
-                 (tuple(int(i) for i in field_index(grid, pe.position, pe.component)),))
-        idx = cells[len(cells) // 2]
-        probes.extend(ProbeSpec(*cell, pe.component) for cell in cells)
-        a, axis_a, b, axis_b = _ampere_loop_components(pe.component)
-        for component, axis in ((a, axis_a), (b, axis_b)):
-            probes.append(ProbeSpec(*idx, component))
-            back = list(idx)
-            if grid.shape[axis] == 1:
-                back[axis] = 0
-            elif idx[axis] == 0:
-                zero_columns.append(len(probes))
-            else:
-                back[axis] -= 1
-            probes.append(ProbeSpec(*back, component))
-    return tuple(probes), zero_columns
-
-
 def _lumped_recording_dfts(samples, freqs, dt, dx):
     """Host DFT of post-injection V and Yee-staggered I using scan helpers."""
     from rfx.measurement.dft import transform
@@ -564,62 +550,11 @@ def _lumped_recording_dfts(samples, freqs, dt, dx):
             np.asarray(transform(i, f, dt, 'H')).T)
 
 
-def _distributed_port_cells(grid, ports, pec_edge_masks=None):
-    """Static live cells; release whole-domain geometry before staging scans."""
-    live_cells = []
-    for pe in ports:
-        if pe.extent is None:
-            cells = (tuple(int(i) for i in field_index(grid, pe.position, pe.component)),)
-        else:
-            from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
-            all_cells, flags, _ = _wire_port_live_cells(
-                grid, wire_port_from_entry(pe), pec_edge_masks)
-            cells = tuple(c for c, live in zip(all_cells, flags) if live)
-        live_cells.append(cells)
-    return live_cells
-
-
-def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, drive,
-                                    live_cells=None):
+def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, drive):
+    """S-driver adapter over the same in-loop main-record sampler as run()."""
     from rfx.runners.distributed_v2 import run_distributed
-
-    if live_cells is None:
-        live_cells = _distributed_port_cells(grid, ports)
-    probes, zeros = _lumped_recording_probes(grid, ports, live_cells)
     result = run_distributed(sim, n_steps=n_steps, devices=devices,
                              _source_port_indices=None if drive is None else (drive,),
-                             _record_probes=probes)
-    samples = np.array(result.time_series)
-    samples[:, zeros] = 0
-    # The cell width along each port's own E component, asked per cell.
-    axis_of = {"ex": 0, "ey": 1, "ez": 2}
-    dx_ports = np.array([
-        float(grid.cells(axis_of[pe.component])[
-            int((grid.position_to_index(pe.position) if pe.extent is not None else
-                 field_index(grid, pe.position, pe.component))[axis_of[pe.component]])])
-        for pe in ports])
-    if any(pe.extent is not None for pe in ports):
-        raw = {"lumped": [], "wire": []}
-        offset = 0
-        for pe, cells, dx in zip(ports, live_cells, dx_ports):
-            n = len(cells)
-            line = samples[:, offset:offset+n]
-            h = samples[:, offset+n:offset+n+4]
-            # Reuse the five-sample DFT (and its shared phase helpers) for
-            # midpoint V/I and the whole live E line. Each cell kept its owner.
-            mid = np.column_stack((line[:, n // 2], h))
-            v, i = _lumped_recording_dfts(mid, freqs, grid.dt, dx)
-            if pe.extent is None:
-                raw["lumped"].append((None, (v[0], i[0], np.zeros_like(v[0]))))
-            else:
-                whole = np.column_stack((np.sum(line, axis=1), h))
-                vp, _ = _lumped_recording_dfts(whole, freqs, grid.dt, dx)
-                raw["wire"].append((None, (v[0], i[0], np.zeros_like(v[0]),
-                                          vp[0], np.zeros_like(v[0]))))
-            offset += n + 4
-        return raw
-    v, i = _lumped_recording_dfts(samples, freqs, grid.dt, dx_ports)
-    # The current decomposer uses ONLY presence of v_ref to select the
-    # post-injection convention. These zeros are NOT measured pre-injection V.
-    return {"lumped": [(None, (vp, ip, np.zeros_like(vp)))
-                       for vp, ip in zip(v, i)]}
+                             s_param_freqs=freqs, compute_s_params=True)
+    return {"lumped": result.lumped_port_sparams, "wire": result.wire_port_sparams,
+            "sparam_time_records": result.sparam_time_records, "dt": result.dt}

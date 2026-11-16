@@ -342,8 +342,8 @@ def _kappa_closed_form():
     _, m_raised, dt2 = _built_up_to_the_scan(_board(*RAISED))
     assert dt == dt2
     return np.array([
-        float(cell_component_e_coeffs(m_drawn, c, "ez", dt)[1])
-        / float(cell_component_e_coeffs(m_raised, c, "ez", dt)[1])
+        float(cell_component_e_coeffs(m_drawn, c, "ez", dt, high_wall=(False, False, False))[1])
+        / float(cell_component_e_coeffs(m_raised, c, "ez", dt, high_wall=(False, False, False))[1])
         for c in _WIRE_EDGES])
 
 
@@ -354,7 +354,7 @@ def _dlnkappa_closed_form():
     _, m, dt = _built_up_to_the_scan(_board(EPS_LO, EPS_LO))
     out = []
     for c in _WIRE_EDGES:
-        eps_r, sigma = cell_component_e_materials(m, c, "ez")
+        eps_r, sigma = cell_component_e_materials(m, c, "ez", high_wall=(False, False, False))
         eps = float(eps_r) * EPS_0
         out.append(eps / (eps + float(sigma) * dt / 2.0))
     return np.array(out)
@@ -549,8 +549,8 @@ def _worst_cb_mismatch(case, *, mutated=False):
                np.float32(EPS_LO) for c, _, _ in handed)
     worst = 0.0
     for cell, comp, drive in handed:
-        cb_drive = float(cell_component_e_coeffs(drive, cell, comp, dt)[1])
-        cb_step = float(cell_component_e_coeffs(stepper, cell, comp, dt)[1])
+        cb_drive = float(cell_component_e_coeffs(drive, cell, comp, dt, high_wall=(False, False, False))[1])
+        cb_step = float(cell_component_e_coeffs(stepper, cell, comp, dt, high_wall=(False, False, False))[1])
         worst = max(worst, abs(cb_drive / cb_step - 1.0))
     return worst, len(handed)
 

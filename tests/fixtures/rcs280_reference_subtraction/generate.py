@@ -44,7 +44,7 @@ if _rfx_root != _REPO:
 from rfx.grid import Grid, C0  # noqa: E402
 from rfx.geometry.csg import Sphere, rasterize  # noqa: E402
 from rfx.core.yee import MaterialArrays  # noqa: E402
-from rfx.rcs import compute_rcs  # noqa: E402
+from rfx.measurement.rcs import compute_rcs
 
 F0 = 3e9
 LAM = C0 / F0

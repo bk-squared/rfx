@@ -1,15 +1,37 @@
-"""Conductor footprint for the API reference-plane trace scan."""
+"""Admission and geometry checks for wire reference planes."""
+import jax
 import jax.numpy as jnp
+
+from rfx.errors import RfxRefusal
+
+
+def refuse_partial_wire_reference_planes(ports):
+    """Require a shared plane-wave opt-in on at least two wire ports in S order."""
+    opted, not_opted = [], []
+    for index, port in enumerate(ports):
+        if port.extent is not None:
+            target = opted if port.reference_plane_cells is not None else not_opted
+            target.append(str(index))
+    if opted and not_opted:
+        raise RfxRefusal(
+            "reference_plane_cells must be set on every wire port of the "
+            f"S-parameter solve: set on port(s) {', '.join(opted)}, "
+            f"not on port(s) {', '.join(not_opted)}; "
+            "set it on all of them or on none")
+    if opted and len(opted) + len(not_opted) < 2:
+        raise RfxRefusal(
+            "reference_plane_cells needs two or more wire ports in the S solve: "
+            f"set on port {', '.join(opted)}, the only wire port; remove it, "
+            "or add a second wire port with it")
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
-    """Full conductor footprint for the reference-plane trace scan (#695).
+    """Full conductor footprint for the reference-plane trace scan.
 
-    ``pec_mask | (sheet footprints)`` — #931 §1.9: the footprint is the
+    ``pec_mask | (sheet footprints)`` — the footprint is the
     cells of the PEC VOLUMES union the footprints of the SHEETS.  Neither
-    an f0 sheet (#677) nor a PEC sheet (#931) contributes to ``pec_mask``
-    or to ``materials.sigma``, so the bare ``pec_mask`` this used to pass
-    made a sheet-traced transmission line look like an empty
+    an f0 sheet nor a PEC sheet contributes to ``pec_mask``
+    or to ``materials.sigma``, so a bare ``pec_mask`` makes a sheet-traced transmission line look like an empty
     cross-section.  ``sheet_ctx.sigma_sheet`` is ``> 0`` exactly on the f0
     sheet cells; PEC sheets arrive as ``SheetSpec``s.
 
@@ -28,12 +50,15 @@ def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
         if sig is not None:
             if is_tracer(sig):
                 return pec_mask
-            masks.append(jnp.asarray(sig) > 0.0)
+            with jax.ensure_compile_time_eval():
+                masks.append(jnp.asarray(sig) > 0.0)
     for sp in (pec_sheets or ()):
-        masks.append(jnp.asarray(sp.footprint))
+        masks.append(sp.footprint)
     if not masks:
         return pec_mask
-    return conductor_footprint(pec_mask=pec_mask, sheet_masks=masks)
+    with jax.ensure_compile_time_eval():
+        footprint = conductor_footprint(pec_mask=pec_mask, sheet_masks=masks)
+    return pec_mask if is_tracer(footprint) else footprint
 
 
 
@@ -52,8 +77,8 @@ def _refplane_reject_msl_ladder_in_plane_zone(
     port-position check above).
 
     The ladder walked here is the one the S-matrix drivers actually probe:
-    ``_resolve_msl_auto_offsets`` re-derives auto probe offsets (#469) and
-    auto spacings (#681) from the registered geometry, and the resolved
+    ``_resolve_msl_auto_offsets`` re-derives auto probe offsets and
+    auto spacings from the registered geometry, and the resolved
     ladder can be LONGER than the registration ladder (a widened spacing)
     or SHORTER (a short feed floors the spacing at two cells). Walking
     ``sim._msl_ports`` as registered would miss a crossing the run makes,

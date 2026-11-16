@@ -123,7 +123,7 @@ from rfx import Box, Simulation                                    # noqa: E402
 from rfx.boundaries.pec import realized_wall_planes                # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec             # noqa: E402
 from rfx.mesh_edges import EDGE_OFFSET                             # noqa: E402
-from rfx.nonuniform import node_positions_from_profile             # noqa: E402
+from rfx.model.graded_grid import node_positions_from_profile       # noqa: E402
 from rfx.sources.msl_port import (                                 # noqa: E402
     compute_msl_mode_profile, msl_cell, msl_cross_section_span,
     msl_port_from_entry, msl_probe_x_coords_n,
@@ -2534,7 +2534,7 @@ def markdown_tables(arms: dict) -> str:
           f"ran before the instrument read `device_kind`, and their blocks are "
           f"left as they were measured rather than back-filled.")
         w("")
-    w("Conclusions: leader fills.")
+    w("Conclusions: written after the record is read.")
     w("")
     return "\n".join(out)
 
@@ -3440,7 +3440,7 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None,
         w("")
     out.extend(f6_markdown(estimator_comparison(
         arms, load_first_ladder() if first_ladder is None else first_ladder)))
-    w("Conclusions: leader fills.")
+    w("Conclusions: written after the record is read.")
     w("")
     return "\n".join(out)
 
@@ -3830,7 +3830,7 @@ def after_1213_markdown_tables(arms: dict) -> str:
     w("")
 
     if "W9" not in v:
-        w("Conclusions: leader fills.")
+        w("Conclusions: written after the record is read.")
         w("")
         return "\n".join(out)
 
@@ -3987,7 +3987,7 @@ def after_1213_markdown_tables(arms: dict) -> str:
     w(f"The finest rung, {r['finest_arm']}, from the reference: "
       f"{fin[p]:+.4f} % (|S21|^2), {fin['log']:+.4f} % (log).")
     w("")
-    w("Conclusions: leader fills.")
+    w("Conclusions: written after the record is read.")
     w("")
     return "\n".join(out)
 

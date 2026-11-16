@@ -1,6 +1,7 @@
 """Record time-stepping scans across the declaration setup boundary."""
 import jax
 
+from rfx._host_limits import check_map_count
 from rfx.core.jax_utils import _REGION, compile_time_switch, is_tracer
 
 
@@ -71,10 +72,10 @@ def _scan_with_opaque_operands(f, init, xs, length, kwargs, anchor):
 def recorded_scan(f, init, xs=None, length=None, **kwargs):
     """``jax.lax.scan`` for a time-stepping loop: recorded, never run while tracing.
 
-    Every time-stepping scan entry (uniform, graded, ADI) calls this instead
+    Every time-stepping scan entry (uniform, graded) calls this instead
     of ``jax.lax.scan``. Inside :func:`declaration_setup` a scan whose
     operands are all constants would otherwise be evaluated at trace time:
-    JAX 0.6.2 raises ``Evaluation rule for 'empty' not implemented`` (#1354),
+    JAX 0.6.2 raises ``Evaluation rule for 'empty' not implemented``,
     and 0.10.2 runs the solve uncompiled while it traces the caller's
     program. Its body would also be traced under eager constant folding.
 
@@ -86,6 +87,7 @@ def recorded_scan(f, init, xs=None, length=None, **kwargs):
     of the outer trace, which records it. A scan inside the body is a plain
     scan. Outside the region this is ``jax.lax.scan``.
     """
+    check_map_count()
     region = _REGION.get()
     switch = compile_time_switch()
     if region is None:

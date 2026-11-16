@@ -165,7 +165,7 @@ def test_fed_patch_ground_fills_all_lateral_absorbers(kind):
 @pytest.mark.parametrize("named", (False, True))
 def test_wire_fed_line_declares_whether_the_strip_ends(named):
     from rfx import Box, Simulation
-    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+    sim = Simulation(snap="declared", domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2)
     sim.add(Box((0., 0., 1.), (8., 8., 1.)), material="pec")
     strip = Box((0., 3., 4.), (8., 5., 4.))

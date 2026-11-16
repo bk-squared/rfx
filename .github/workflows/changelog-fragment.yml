@@ -18,12 +18,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
-# Superseded runs on the same PR/branch are cancelled: a force-push or a
-# stacked-leg rebase used to leave the previous run queued, and on a busy day
-# (2026-09-15: six branches × 21 jobs against the plan's concurrent-job limit)
-# that held every PR for an hour. Pushes to main are never cancelled.
+# Batch PRs are opened then labelled; a cancelled run in a newer check suite
+# blocks the required check, so label/body events get their own group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ (github.event.action == 'labeled' || github.event.action == 'unlabeled') && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

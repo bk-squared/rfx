@@ -18,9 +18,12 @@ import pytest
 
 from rfx import Simulation, Box, Sphere, PolylineWire, DebyePole, LorentzPole, drude_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.stepping import slab_wrap as _slab_wrap  # Bind scan defaults before capture guards.
 
 # Every patched module/attribute is named here once. The contract passes this
 # table to capture, so a pipeline restructure changes its integration seams here.
+# run_after_admission moves only dispatch: these downstream lookup sites stay
+# in the same modules, so its extraction needs no SEAMS target substitution.
 SEAMS = {
     'scan': ('jax.lax', 'scan'),
     'uniform': ('rfx.simulation', 'run'),
@@ -31,7 +34,7 @@ SEAMS = {
     'graded_step': ('rfx.stepping.graded_loop', '_build_nu_scan'),
     'distributed': ('rfx.runners._distributed_nu_execute', 'execute_from_materials'),
     'distributed_step': ('rfx.runners.distributed_nu', 'run_nonuniform_distributed_pec'),
-    'distributed_uniform_jit': ('jax', 'jit'),
+    'distributed_uniform_step': ('rfx.stepping.slab_wrap_uniform', 'run_prepared'),
 }
 
 PATHS = ('uniform', 'graded', 'multi-device-graded', 'multi-device-uniform')
@@ -42,7 +45,7 @@ BOX_LO = (.0143, .0072, .0033)
 BOX_HI = (.0197, .0138, .0086)
 
 # Contract addendum 11: common arrays always compare; these sets govern
-# one-sided arrays only. Unknown one-sided roots require leader review.
+# one-sided arrays only. Unknown one-sided roots require review.
 MEASUREMENT_ROOTS = {
     'time_series', 'dft_planes', 'dft_time_records', 'flux_monitors',
     'ntff_data', 'ntff_box', 's_params', 'freqs', 'freqs_hz',
@@ -132,6 +135,37 @@ def build_p_wire(path):
     return base_scene(path).add_port((.008, .012, .003), 'ez', impedance=50., extent=.003)
 
 
+def build_p_wire_driven(path):
+    return base_scene(path, source=False).add_port(SOURCE, 'ez', impedance=50., extent=.003)
+
+
+def build_p_wire_refplane(path):
+    # #2450: one opted-in port isolates the per-cell versus whole-port S frame.
+    if path != 'uniform':
+        raise NotImplementedError('P-wire-refplane is supported only on uniform')
+    from rfx.sources.sources import GaussianPulse
+    from tests.locks.test_refplane_port_waves import _DX, _DOMAIN, _H, _W, _X1, _X2, _Y_MID
+
+    snap = "declared"
+    sim = Simulation(snap=snap,
+        freq_max=10e9, domain=_DOMAIN, dx=_DX,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=8,
+    )
+    sim.add_thin_conductor(
+        Box((_X1 - _DX, _Y_MID - _W / 2, _H),
+            (_X2 + _DX, _Y_MID + _W / 2, _H)),
+        sigma_bulk=5.8e7,
+    )
+    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="-x", reference_plane_cells=3)
+    sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
+                 extent=_H, waveform=pulse, direction="+x", excite=False)
+    return sim
+
+
 def build_p_coax(path):
     # Arguments from tests/contracts/test_line_stub_refusal_1512.py:184.
     return base_scene(path).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
@@ -146,7 +180,8 @@ def build_p_msl(path):
     sim.add_material('sub', eps_r=2.2)
     sim.add(Box((0., 0., 0.), (.040, .020, .003)), material='sub')
     sim.add(Box((0., 0., 0.), (.040, .020, 0.)), material='pec')
-    sim.add(Box((.006, .010, .003), (.040, .014, .003)), material='pec')
+    trace_z = sum(v * .001 for v in PROFILE[:3]) if path in ('graded', 'multi-device-graded') else 3 * .001
+    sim.add(Box((.006, (10 - .35) * .001, trace_z), (.040, (14 + .35) * .001, trace_z)), material='pec')
     sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
                      direction='+x', impedance=50., eps_r_sub=2.2,
                      n_probe_offset=3, n_probe_spacing=2, n_probes=3)
@@ -157,6 +192,19 @@ def build_p_waveguide(path):
     # Replaces boundary with y/z PEC; full aperture (default ranges).
     return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
         .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
+
+
+def build_p_waveguide_2mode(path):
+    # The P-waveguide port with a second mode; only compute_waveguide_s_matrix()
+    # drives the per-mode list, so run() and forward() refuse it (#2070).
+    return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
+        .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2, n_modes=2)
+
+
+def build_p_waveguide2(path):
+    # #2449: two driven waveguide ports expose run/forward admission disagreement.
+    return build_p_waveguide(path).add_waveguide_port(
+        .024, direction='-x', f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
 
 
 def build_p_floquet(path):
@@ -200,11 +248,16 @@ def build_m_drude(path):
 
 
 def build_c_pecbox(path):
-    return base_scene(path).add(Box(BOX_LO, BOX_HI), material='pec')
+    lo_z, hi_z = ((sum(v * .001 for v in PROFILE[:3]), sum(v * .001 for v in (PROFILE[0],) * 4 + PROFILE[:10]) - 4 * PROFILE[0] * .001)
+                  if 'graded' in path else (3 * .001, 9 * .001))
+    return base_scene(path).add(Box((14 * .001, 7 * .001, lo_z),
+                                     (20 * .001, 14 * .001, hi_z)), material='pec')
 
 
 def build_c_sheet(path):
-    return base_scene(path).add_thin_conductor(Box((.014, .006, .004), (.020, .014, .004)))
+    return base_scene(path).add_thin_conductor(
+        Box(((14 - .35) * .001, (6 - .35) * .001, .004),
+            ((20 + .35) * .001, (14 + .35) * .001, .004)))
 
 
 def build_c_film(path):
@@ -224,6 +277,20 @@ def build_c_pinned(path):
 def build_c_smooth(path):
     # Subpixel smoothing is an entry keyword (A6), not a constructor option.
     return dielectric(path)
+
+
+def build_c_conformal(path):
+    sim = base_scene(path, boundary=BoundarySpec(
+        x='cpml', y=Boundary('pec', 'pec', conformal=True), z='cpml'))
+    sim.add(Sphere((.0153, .0102, .0061), .0023), material='pec')
+    return sim.add(Box((.0223, .0072, .0033), (.0267, .0138, .0086)), material='pec')
+
+
+def build_p_conformal(path):
+    sim = base_scene(path, source=False, boundary=BoundarySpec(
+        x='cpml', y=Boundary('pec', 'pec', conformal=True), z='cpml'))
+    sim.add(Sphere((.0153, .0102, .0061), .0023), material='pec')
+    return sim.add_port(SOURCE, 'ez', impedance=50.)
 
 
 def build_c_full_tensor(path):
@@ -268,14 +335,19 @@ BUILDERS = {
     'PW-A': build_pw_a, 'PW-B': build_pw_b, 'PW-oblique': build_pw_oblique,
     'PW-closed': build_pw_closed, 'P-lumped': build_p_lumped,
     'P-lumped2': build_p_lumped2, 'P-wire': build_p_wire,
+    'P-wire-driven': build_p_wire_driven,
+    'P-wire-refplane': build_p_wire_refplane,
     'P-coax': build_p_coax, 'P-msl': build_p_msl,
-    'P-waveguide': build_p_waveguide, 'P-floquet': build_p_floquet,
+    'P-waveguide': build_p_waveguide, 'P-waveguide-2mode': build_p_waveguide_2mode,
+    'P-waveguide2': build_p_waveguide2,
+    'P-floquet': build_p_floquet,
     'M-diel': build_m_diel, 'M-lossy': build_m_lossy, 'M-mu': build_m_mu,
     'M-debye': build_m_debye, 'M-lorentz': build_m_lorentz,
     'M-drude': build_m_drude, 'C-pecbox': build_c_pecbox,
     'C-sheet': build_c_sheet, 'C-film': build_c_film, 'C-wire': build_c_wire,
     'C-pinned': build_c_pinned, 'C-smooth': build_c_smooth,
     'C-full-tensor': build_c_full_tensor,
+    'C-conformal': build_c_conformal, 'P-conformal': build_p_conformal,
     'R-rlc': build_r_rlc, 'O-dft': build_o_dft, 'O-flux': build_o_flux,
     'O-ntff': build_o_ntff, 'O-vector': build_o_vector, 'O-cm': build_o_cm,
 }
@@ -547,16 +619,9 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
                     raise Captured
                 install(stack, 'graded_step', build)
             elif capture_path == 'multi-device-uniform':
-                # The native slab lane passes its assembled carry, scan inputs
-                # and per-cell invariants into this JIT entry. Capture concrete
-                # arrays before tracing, just as distributed_step does for NU.
-                jit = original('distributed_uniform_jit')
-                def native_jit(fun, *args, **kwargs):
-                    if (getattr(fun, '__module__', None) == 'rfx.runners.distributed_v2'
-                            and fun.__name__ in ('_run_cpml', '_run_pec')):
-                        return stop_at(fun, 'arguments')
-                    return jit(fun, *args, **kwargs)
-                install(stack, 'distributed_uniform_jit', native_jit)
+                install(stack, 'distributed_uniform_step',
+                        stop_at(original('distributed_uniform_step'), 'arguments'))
+
             else:
                 install(stack, 'distributed_step', stop_at(original('distributed_step'), 'arguments'))
             invoke(sim, entry, path, n_steps, entry_options)
@@ -721,8 +786,10 @@ def normalize_inputs(value, path, location=()):
     if isinstance(value, dict):
         return {key: normalize_inputs(item, path, location + (key,))
                 for key, item in value.items()
-                # grid_key caches ids of grid arrays, not physical inputs.
-                if key != 'grid_key' and not (
+                # grid_key caches ids of grid arrays, not physical inputs. The
+                # attached plan names its entry and availability per entry; its
+                # run/forward equality is test_measurement_plan_attachment's.
+                if key != 'grid_key' and location + (key,) != ('arguments', 'measurement') and not (
                     path == 'multi-device-graded' and location == ('arguments',)
                     and key in DRIVER_OPTIONS)}
     if isinstance(value, (tuple, list)):

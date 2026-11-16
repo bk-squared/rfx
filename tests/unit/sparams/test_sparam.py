@@ -12,6 +12,8 @@ terminated in its own impedance in an open (CPML) domain is not exercised in
 this file, so that absorption physics is not asserted.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import functools
 
 import numpy as np
@@ -21,7 +23,8 @@ import pytest
 from rfx import Simulation
 from rfx.grid import Grid
 from rfx.ringdown import RingdownSpec
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, apply_lumped_port
 from rfx.probes.probes import (
@@ -64,8 +67,8 @@ def _pec_cavity_port_s11():
 
     for n in range(num_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         # Both slots, the way the JIT scan uses them: the PRE-injection drive
         # sample into v_ref, the physical V/I AFTER injection
@@ -111,7 +114,7 @@ def test_lumped_port_pec_cavity_s11():
     the box read Re Zin = +15.0 ohm on average below the mode (8.5 ... 26.6):
     a loss the lossless box does not have, which kept |S11| below 1 (max
     0.99961) and also damped the ringing. Split from the band around the
-    mode by PI decision 2026-09-24 (the other half is the wire-port
+    mode (the other half is the wire-port
     completion test below).
     """
     freqs, s11, f_tm110 = _pec_cavity_port_s11()
@@ -213,8 +216,8 @@ def test_lumped_port_injects_energy():
     # Run 100 steps with port excitation
     for n in range(100):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_lumped_port(state, grid, port, t, materials)
 

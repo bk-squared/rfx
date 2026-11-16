@@ -180,11 +180,13 @@ def test_thin_conductor_nonuniform_reflects_like_a_declared_sheet():
             sim.add(Box((px_lo, py_lo, 15 * dx), (px_hi, py_hi, 16 * dx)),
                     material="pec")
         elif kind == "sheet_via_add":
-            sim.add(Box((px_lo, py_lo, z_sheet), (px_hi, py_hi, z_sheet)),
+            sim.add(Box((L / 2 - 6.35 * dx, L / 2 - 4.35 * dx, z_sheet),
+                        (L / 2 + 6.35 * dx, L / 2 + 4.35 * dx, z_sheet)),
                     material="pec")
         elif kind == "thin":
             sim.add_thin_conductor(
-                Box((px_lo, py_lo, z_sheet), (px_hi, py_hi, z_sheet)),
+                Box((L / 2 - 6.35 * dx, L / 2 - 4.35 * dx, z_sheet),
+                    (L / 2 + 6.35 * dx, L / 2 + 4.35 * dx, z_sheet)),
                 sigma_bulk=5.8e7, thickness=35e-6)
         sim.add_source(position=(px_lo + 3 * dx, L / 2, 10 * dx),
                        component="ez",
@@ -734,7 +736,7 @@ def test_leontovich_algebraic_realization_o2():
     """
     from rfx.core.yee import init_materials
     from rfx.materials.thin_conductor import leontovich_rs
-    from rfx.nonuniform import e_node_dual_spacings
+    from rfx.model.graded_grid import e_node_dual_spacings
     from rfx.runners.nonuniform import assemble_materials_nu
 
     f0, sigma_bulk = 10e9, 1e4

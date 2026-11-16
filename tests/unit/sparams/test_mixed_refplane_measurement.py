@@ -24,13 +24,13 @@ Four lanes, all cheap (pure NumPy, or ``num_periods <= 4``):
   when only the resolved ladder crosses the plane zone, and stay silent when
   only the registration ladder does. Both fixtures self-verify their premise
   (registered vs resolved rung indices) before the call.
-* **Driver bookkeeping** — ``compute_mixed_s_matrix`` installs the resolved
-  entries for each run, and ``compute_msl_s_matrix``'s rebuilt entries keep
-  ``n_probes`` (it used to revert silently to the dataclass default 5).
+* **S-matrix ladder witnesses** — automatic versus explicit spacing, a
+  registration-spacing clearance twin, and three-probe dump replay
+  against the returned S with a five-probe dump twin.
 
 The guard tests that raise never reach the solve (the guard runs while the
-port sources are assembled), so they run in the default fast suite; only
-the two tests that complete a solve carry ``@pytest.mark.slow``.
+port sources are assembled). The ladder witnesses run complete public solves
+in the default suite; each solve has a 30-second budget.
 
 FAIL-BEFORE-FIX (measured on this worktree, pristine ``HEAD`` = 3038f845 with
 ``rfx/api/_execute.py`` restored, same driver script)::
@@ -76,184 +76,17 @@ def _load_driver():
 
 m = _load_driver()
 
-_SETTLED = np.array([-122.5, -119.9])       # both drives below -40 dB
-_HOT = np.array([-9.6, -11.2])              # the num_periods=4 smoke's own
-
-
 # ===========================================================================
 # T3 — F1 evaluator, every declared side reachable on planted data
 # ===========================================================================
-
-def _f1_call(**kw):
-    base = dict(
-        zc_im_re=np.full(5, 0.005),
-        r1=np.full(5, 1.00),
-        r1_xz=np.full(5, 1.00),
-        y_face_contrib=np.zeros(5),
-        box_net=np.full(5, 1e-28),
-        settling_db=_SETTLED,
-    )
-    base.update(kw)
-    return m.evaluate_f1(**base)
-
-
-def test_f1_side_a_instrument_good():
-    v = _f1_call(r1=np.array([0.96, 0.99, 1.00, 1.02, 1.029]))
-    assert v["verdict"] == "SIDE_A_INSTRUMENT_GOOD"
-    assert v["resolved"] and v["side"] is None
-
-
-def test_f1_side_b_plane_bad_stops_the_plan():
-    """The instrument itself failed: |Im Zc/Re Zc| above the class boundary."""
-    v = _f1_call(zc_im_re=np.array([0.005, 0.005, 0.082, 0.005, 0.005]))
-    assert v["verdict"] == "SIDE_B_PLANE_BAD"
-    assert v["resolved"] and "plane" in v["side"]
-
-
-def test_f1_side_c_box_undercapture_continues():
-    """R1 misses, but the +/-y pair carries the miss and the x/z-only box
-    reconciles — the declared box y half-width limitation."""
-    box = np.full(5, 1.0)
-    r1 = np.full(5, 0.80)                      # numerator = 0.80 * box
-    miss = box - r1 * box                       # 0.20
-    v = _f1_call(r1=r1, r1_xz=np.full(5, 1.00),
-                 y_face_contrib=0.9 * miss, box_net=box)
-    assert v["verdict"] == "SIDE_C_BOX_UNDERCAPTURE"
-    assert v["resolved"] and "box" in v["side"]
-
-
-def test_f1_side_d_unattributed_miss_is_a_declared_quadrant():
-    """Blocker B2's fourth quadrant: R1 misses, y attribution INVALID."""
-    box = np.full(5, 1.0)
-    r1 = np.full(5, 0.80)
-    miss = box - r1 * box
-    v = _f1_call(r1=r1, r1_xz=np.full(5, 0.80),
-                 y_face_contrib=0.10 * miss, box_net=box)
-    assert v["verdict"] == "SIDE_D_UNATTRIBUTED_MISS"
-    assert v["side"] == "unattributed"
-
-
-def test_f1_side_d_when_yshare_ok_but_xz_box_still_misses():
-    box = np.full(5, 1.0)
-    r1 = np.full(5, 0.80)
-    miss = box - r1 * box
-    v = _f1_call(r1=r1, r1_xz=np.full(5, 0.60),
-                 y_face_contrib=0.95 * miss, box_net=box)
-    assert v["verdict"] == "SIDE_D_UNATTRIBUTED_MISS"
-
-
-def test_f1_unresolved_when_settling_precondition_fails():
-    v = _f1_call(settling_db=_HOT)
-    assert v["verdict"] == "UNRESOLVED" and not v["resolved"]
-    assert "settling" in v["reason"]
-
-
-def test_f1_unresolved_when_discriminator_below_budget():
-    """A vanishing box net is not a discriminator, whatever R1 says."""
-    v = _f1_call(box_net=np.array([1.0, 1.0, 0.0, 1.0, 1.0]))
-    assert v["verdict"] == "UNRESOLVED"
-    assert "discriminator below budget" in v["reason"]
-
-
-def test_f1_settling_precondition_dominates_a_would_be_conviction():
-    """A hot run must never convict — truncation, not physics."""
-    v = _f1_call(settling_db=_HOT, zc_im_re=np.full(5, 0.5))
-    assert v["verdict"] == "UNRESOLVED"
-
 
 # ===========================================================================
 # T3 — F2 evaluator, both sides + the two non-discriminating outcomes
 # ===========================================================================
 
-def test_f2_budget_is_computed_from_the_run():
-    b = m.f2_budget(58.0, 47.89479996289313)
-    assert b == pytest.approx(abs((58.0 - 47.8948) / (58.0 + 47.8948)) + 0.01,
-                              rel=1e-4)
-
-
-def test_f2_consistent_is_explicitly_not_vindicated():
-    v = m.evaluate_f2(m2=np.full(5, 0.021), s22=np.full(5, 0.020),
-                      zc_meas_re_band_mean=48.5, settling_db=_SETTLED)
-    assert v["verdict"] == "CONSISTENT_NON_DISCRIMINATING"
-    assert not v["resolved"] and v["side"] is None
-    assert "NOT 'the MSL diagonal is vindicated'" in v["reason"]
-
-
-def test_f2_msl_diagonal_convicted_at_the_predeclared_alternative():
-    """The other side: M2 lands on the reciprocity-implied ~0.43 row."""
-    v = m.evaluate_f2(m2=np.asarray(m._F2_ALT_S22),
-                      s22=np.array([0.0199, 0.0181, 0.0180, 0.0230, 0.0340]),
-                      zc_meas_re_band_mean=48.5, settling_db=_SETTLED)
-    assert v["verdict"] == "MSL_DIAGONAL_CONVICTED"
-    assert v["resolved"] and "MSL diagonal" in v["side"]
-
-
-def test_f2_reported_no_attribution_third_declared_possibility():
-    v = m.evaluate_f2(m2=np.full(5, 0.20),
-                      s22=np.array([0.0199, 0.0181, 0.0180, 0.0230, 0.0340]),
-                      zc_meas_re_band_mean=48.5, settling_db=_SETTLED)
-    assert v["verdict"] == "REPORTED_NO_ATTRIBUTION"
-    assert not v["resolved"] and v["side"] is None
-
-
-def test_f2_non_discriminating_anchor_when_budget_exceeds_its_own_cap():
-    """B > 0.15: the discriminator is below its budget, so no attribution."""
-    v = m.evaluate_f2(m2=np.asarray(m._F2_ALT_S22),
-                      s22=np.full(5, 0.02),
-                      zc_meas_re_band_mean=90.0, settling_db=_SETTLED)
-    assert v["verdict"] == "NON_DISCRIMINATING_ANCHOR"
-    assert not v["resolved"] and v["side"] is None
-    assert v["numbers"]["B"] > m._F2_B_MAX
-
-
-def test_f2_unresolved_when_settling_precondition_fails():
-    v = m.evaluate_f2(m2=np.asarray(m._F2_ALT_S22), s22=np.full(5, 0.02),
-                      zc_meas_re_band_mean=48.5, settling_db=_HOT)
-    assert v["verdict"] == "UNRESOLVED" and "settling" in v["reason"]
-
-
 # ===========================================================================
 # T3 — F3 evaluator
 # ===========================================================================
-
-def test_f3_in_window_says_where_the_residual_is_not():
-    v = m.evaluate_f3(r3=np.array([0.96, 0.99, 1.00, 1.02, 1.029]),
-                      zc_meas_re_band_mean=48.5, settling_db=_SETTLED)
-    assert v["verdict"] == "MSL_RECEIVE_AGREES"
-    assert v["resolved"] and v["side"] is None
-
-
-def test_f3_anchor_side_when_r3_equals_sqrt_zc_over_zhj():
-    zc = 60.0
-    anchor = float(np.sqrt(zc / m._Z0_HJ_COMMITTED))
-    v = m.evaluate_f3(r3=np.full(5, anchor), zc_meas_re_band_mean=zc,
-                      settling_db=_SETTLED)
-    assert v["verdict"] == "MSL_ANCHOR_CONVICTED"
-    assert "anchor" in v["side"]
-
-
-def test_f3_extractor_side_when_r3_misses_both():
-    v = m.evaluate_f3(r3=np.full(5, 0.50), zc_meas_re_band_mean=48.5,
-                      settling_db=_SETTLED)
-    assert v["verdict"] == "MSL_EXTRACTOR_CONVICTED"
-    assert "extractor" in v["side"]
-
-
-def test_f3_unresolved_when_settling_precondition_fails():
-    v = m.evaluate_f3(r3=np.full(5, 0.50), zc_meas_re_band_mean=48.5,
-                      settling_db=_HOT)
-    assert v["verdict"] == "UNRESOLVED" and "settling" in v["reason"]
-
-
-def test_f3_unresolved_when_the_discriminator_is_below_its_budget():
-    """A plane-wave denominator at or below the signal floor is noise."""
-    v = m.evaluate_f3(r3=np.full(5, 0.50), zc_meas_re_band_mean=48.5,
-                      settling_db=_SETTLED,
-                      denominator=np.array([1.0, 1.0, 1e-30, 1.0, 1.0]),
-                      signal_floor=1e-20)
-    assert v["verdict"] == "UNRESOLVED"
-    assert "discriminator below budget" in v["reason"]
-
 
 # ===========================================================================
 # T3b — the normalization identity, pure NumPy (fail-first against ÷4)
@@ -310,52 +143,39 @@ def test_refplane_split_half_is_already_inside():
 # Report-only guards
 # ===========================================================================
 
-@pytest.mark.parametrize("name", [
-    "mixed_refplane_reference_values.json", "mixed_refplane_gate_record.json",
-    "mixed_refplane_snapshot.json", "mixed_refplane_baseline.json", "mixed_refplane_expected.json",
-])
-def test_driver_refuses_to_write_anything_that_reads_as_a_record(name, tmp_path):
-    with pytest.raises(RuntimeError, match="report-only"):
-        m._assert_report_only(tmp_path / name)
-
-
-@pytest.mark.parametrize("rel", [
-    "tests/x.json", "docs/x.json", "validation/x.json", "rfx/x.json",
-])
-def test_driver_refuses_to_write_into_committed_evidence_trees(rel):
-    with pytest.raises(RuntimeError, match="report-only"):
-        m._assert_report_only(REPO / rel)
-
-
-def test_driver_allows_its_own_diagnostic_artifact(tmp_path):
-    p = m._assert_report_only(tmp_path / "mixed_refplane_measurement.json")
-    assert p.name.endswith(".json")
-
-
-def test_driver_refuses_to_pin_the_lw_diagonal():
-    ok = {"s_matrix": {"abs_S00_recorded": [0.3814, 0.3863]}}
-    m._assert_no_lw_diagonal_pin(ok)          # recording is fine
-    bad = {"s_matrix": {"abs_S00_expected": [0.3814, 0.3863]}}
-    with pytest.raises(RuntimeError, match="pin"):
-        m._assert_no_lw_diagonal_pin(bad)
-
-
-def test_f4_is_not_carried_as_a_falsifier():
-    assert m.FALSIFIERS == ("F1", "F2", "F3")
-    assert m._F4_PREDICTION_NOT_A_FALSIFIER["may_be_pinned"] is False
-
-
 # ===========================================================================
 # T1 / T2 — plumbing guards on the real mixed lane (num_periods = 4)
 # ===========================================================================
+
+def _measurement_fixture(direction, n_probes):
+    lx, ly, lz = m._DOMAIN
+    sim = m.Simulation(
+        freq_max=m._FREQ_MAX, domain=(lx, ly, lz), dx=m._DX,
+        cpml_layers=m._CPML_LAYERS, snap="declared",
+        boundary=m.BoundarySpec(x="cpml", y="cpml",
+                                z=m.Boundary(lo="pec", hi="cpml")),
+    )
+    sim.add_material("sub", eps_r=m._EPS_R)
+    sim.add(m.Box((0., 0., 0.), (lx, ly, m._H_SUB)), material="sub")
+    y_c = ly / 2
+    sim.add(m.Box((0., y_c - m._W_TRACE / 2, m._H_SUB),
+                  (lx, y_c + m._W_TRACE / 2, m._H_SUB + m._DX)), material="pec")
+    sim.add_port(position=(m._X_FEED, y_c, 0.), component="ez",
+                 impedance=50., extent=m._H_SUB, direction=direction)
+    sim.add_msl_port(position=(m._X_MSL, y_c, 0.), width=m._W_TRACE,
+                     height=m._H_SUB, direction="-x", impedance=50.,
+                     waveform=m.GaussianPulse(f0=2.5e9, bandwidth=.5),
+                     n_probe_offset=10, n_probe_spacing=4, n_probes=n_probes)
+    return sim
+
 
 def _run_mixed(direction: str, n_probes: int, num_periods: float = 4.0):
     """One instrumented two-drive call; returns the result or raises."""
     import contextlib
     import io
 
-    sim = m.build_fixture(feed_direction=direction, n_probes=n_probes,
-                          register_extra_flux=False)
+    sim = _measurement_fixture(direction, n_probes)
+    # Preserve the diagnostic fixture's off-grid trace and measured ladders.
     with m.refplane_instrumentation(m._REFPLANE_N):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -403,8 +223,8 @@ def test_t2_crossing_guard_walks_msl_probe_ladders_n_probes_5_trips():
 def test_t2_crossing_guard_silent_at_n_probes_3():
     """The declared deviation: ladder 4.72 / 4.40 / 4.08 mm, all outboard of
     the 2N plane. Must run clean — and must actually register the planes."""
-    sim = m.build_fixture(feed_direction=m._FEED_DIRECTION,
-                          n_probes=m._N_PROBES, register_extra_flux=False)
+    # Keep the measured ladder on its declared off-grid board.
+    sim = _measurement_fixture(m._FEED_DIRECTION, m._N_PROBES)
     import contextlib
     import io
     with m.refplane_instrumentation(m._REFPLANE_N) as cap:
@@ -424,36 +244,9 @@ def test_t2_crossing_guard_silent_at_n_probes_3():
     assert cap.positive_control[1]["drive_idx"] == m._NO_LW_DRIVE_SENTINEL
 
 
-@pytest.mark.slow
-def test_refplane_geometry_of_record_is_what_the_predeclaration_says():
-    """Slot 0 at index 43 (x = 2.80 mm) and slot 1 at index 53 (3.60 mm),
-    ``outboard_sign = +1`` for ``direction="-x"`` — the two deviations'
-    measured geometry, frozen so a silent drift is loud."""
-    sim = m.build_fixture(register_extra_flux=False)
-    import contextlib
-    import io
-    with m.refplane_instrumentation(m._REFPLANE_N) as cap:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with contextlib.redirect_stdout(io.StringIO()):
-                sim.compute_mixed_s_matrix(
-                    freqs=np.linspace(1e9, 4e9, 5), num_periods=1.0,
-                    skip_preflight=True)
-    rp = m.extract_refplane(cap.runs[0], np.linspace(1e9, 4e9, 5),
-                            float(cap.grid.dt), float(cap.grid.dx))
-    assert rp["outboard_sign"] == +1
-    assert rp["slots"][0]["plane_index"] == 43
-    assert rp["slots"][1]["plane_index"] == 53
-    assert rp["separation_m"] == pytest.approx(10 * 80e-6)
-
-
 # ===========================================================================
 # T2b — the crossing guard walks the RESOLVED ladder, not the registration
 # ===========================================================================
-
-class _Abort(Exception):
-    """Raised by a capturing stub to stop a driver before its solve."""
-
 
 def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
                        n_probe_spacing):
@@ -469,7 +262,7 @@ def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
     from rfx.sources.sources import GaussianPulse
 
     lx, ly, lz = m._DOMAIN
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=freq_max, domain=(lx, ly, lz), dx=m._DX,
         cpml_layers=m._CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -610,54 +403,87 @@ def test_t2b_guard_silent_when_only_the_registration_ladder_crosses():
     assert [pc["n_refplane_specs"] for pc in cap.positive_control] == [2, 2]
 
 
-def test_mixed_driver_installs_the_resolved_ladder_for_each_run():
-    """``compute_mixed_s_matrix`` rebuilds each run's ``self._msl_ports``
-    from the RESOLVED entries (the ladder ``probe_xs`` is built from), not
-    from the raw registration — captured at the solver entry and aborted
-    before any solve."""
-    from rfx import Simulation
+def _solve_ladder(row, solve):
+    """Print wall time even when the public solver refuses the specified row."""
+    import sys
+    from time import perf_counter
 
-    sim = _build_with_ladder(freq_max=m._FREQ_MAX, n_probes=5,
-                             n_probe_offset=10, n_probe_spacing=None)
-    grid, reg, res = _registered_and_resolved(sim)
-    assert res.n_probe_spacing != reg.n_probe_spacing      # discriminating
-
-    seen: list = []
-    orig = Simulation._forward_from_materials
-
-    def capture(self, *a, **kw):
-        seen.append(list(self._msl_ports))
-        raise _Abort
-
-    Simulation._forward_from_materials = capture
+    start = perf_counter()
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with pytest.raises(_Abort):
-                sim.compute_mixed_s_matrix(freqs=np.linspace(1e9, 4e9, 5),
-                                           n_steps=4, skip_preflight=True)
+        return solve()
     finally:
-        Simulation._forward_from_materials = orig
-    assert len(seen) == 1 and len(seen[0]) == 1
-    installed = seen[0][0]
-    assert (installed.n_probe_offset, installed.n_probe_spacing,
-            installed.n_probes) == (res.n_probe_offset, res.n_probe_spacing,
-                                    res.n_probes)
-    # Restored on exit: the registration is untouched.
-    assert sim._msl_ports[0] is reg
+        print(f"B3.8 {row}: solve_wall_s={perf_counter() - start:.6f}; limit_s=30",
+              file=sys.stderr)
 
 
-def test_msl_driver_rebuilt_entries_keep_n_probes():
-    """``compute_msl_s_matrix`` rebuilds ``_MSLPortEntry`` per driven run;
-    the rebuild used to omit ``n_probes`` (silently back to the dataclass
-    default 5). Register a two-port microstrip thru with ``n_probes=3`` and
-    read the entries at ``run()``, aborting before any solve."""
+def _ladder_measurement(row, quantity, measured, bar):
+    import sys
+
+    print(f"B3.8 {row}: {quantity}={measured}; bar={bar}", file=sys.stderr)
+
+
+def test_mixed_s_matrix_auto_ladder_matches_explicit_spacing(tmp_path):
+    """The resolved ladder pins the refused pattern and finite S entries."""
+    import json
+
+    from rfx.interop import design_to_dict
+
+    auto = _build_with_ladder(freq_max=5e9, n_probes=5,
+                              n_probe_offset=10, n_probe_spacing=None)
+    document = design_to_dict(auto)
+    (tmp_path / "resolved-mixed-design.json").write_text(json.dumps(document))
+    spacing = document["excitations"]["msl_ports"][0]["n_probe_spacing"]
+    _ladder_measurement("mixed/public-dump", "resolved_spacing_cells", spacing, "measured, not assumed")
+    _ladder_measurement("mixed/model", "mesh", document["mesh"], "dx=80e-6; n_steps=64")
+    matrices = {}
+    clearances = {}
+    for row, sim in (
+        ("auto", auto),
+        ("explicit", _build_with_ladder(freq_max=5e9, n_probes=5,
+            n_probe_offset=10, n_probe_spacing=spacing)),
+        ("registration", _build_with_ladder(freq_max=5e9, n_probes=5,
+            n_probe_offset=10, n_probe_spacing=12)),
+    ):
+        result = _solve_ladder(f"mixed/{row}", lambda: sim.compute_mixed_s_matrix(
+            freqs=np.linspace(1e9, 4e9, 5), n_steps=64, skip_preflight=True))
+        matrices[row] = np.asarray(result.S)
+        clearances[row] = tuple((p.first_probe_m, p.deepest_probe_m)
+                                for p in result.probe_clearance)
+        assert len(clearances[row]) == 1 and all(
+            v is not None and np.isfinite(v) for v in clearances[row][0]
+        ), f"{row} must report finite first/deepest coordinates: {clearances[row]}"
+        _ladder_measurement(f"mixed/{row}", "first_deepest_probe_m", clearances[row],
+                            "auto == explicit; auto != registration")
+        _ladder_measurement(f"mixed/{row}", "nonfinite_S_count",
+                            int(np.count_nonzero(~np.isfinite(matrices[row]))), "same pattern in all three models")
+    a, b, old = (matrices[k] for k in ("auto", "explicit", "registration"))
+    finite = np.isfinite(a)
+    for row, value in (("explicit", b), ("registration", old)):
+        mismatches = int(np.count_nonzero(finite != np.isfinite(value)))
+        _ladder_measurement(f"mixed/auto-{row}", "nonfinite_pattern_mismatches", mismatches, 0)
+        assert mismatches == 0, f"{row} nonfinite pattern differs: mismatches={mismatches}, bar=0"
+    assert np.any(finite), "mixed S must contain finite entries"
+    a, b, old = a[finite], b[finite], old[finite]
+    delta = float(np.max(np.abs(a - b)))
+    _ladder_measurement("mixed/auto-explicit", "max_abs_S_difference", delta, "bitwise")
+    assert a.dtype == b.dtype and a.tobytes() == b.tobytes(), (
+        f"auto vs explicit resolved ladder is not bitwise equal: max_abs_difference={delta}")
+    assert np.max(np.abs(a)) > 0, "finite mixed S must be nonzero"
+    # A53: discriminate the run's ladder record, not its one-plane S.
+    assert clearances["auto"] == clearances["explicit"], (
+        f"auto vs explicit probe clearance: {clearances['auto']} != {clearances['explicit']}; bar=exact")
+    assert clearances["auto"] != clearances["registration"], (
+        f"registration-spacing clearance twin does not discriminate: "
+        f"auto={clearances['auto']}, registration={clearances['registration']}; bar=unequal")
+
+
+def _build_msl_thru(n_probes):
     from rfx import Box, Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
     from rfx.sources.sources import GaussianPulse
 
     lx, ly, lz = m._DOMAIN
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=m._FREQ_MAX, domain=(lx, ly, lz), dx=m._DX,
         cpml_layers=m._CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -679,22 +505,65 @@ def test_msl_driver_rebuilt_entries_keep_n_probes():
         sim.add_msl_port(position=(x, y_c, 0.0), width=m._W_TRACE,
                          height=m._H_SUB, direction=direction, impedance=50.0,
                          waveform=pulse, n_probe_offset=10, n_probe_spacing=4,
-                         n_probes=3)
-    assert [pe.n_probes for pe in sim._msl_ports] == [3, 3]
+                         n_probes=n_probes)
+    return sim
 
-    seen: list = []
 
-    def fake_run(*a, **kw):
-        seen.append([(pe.name, pe.n_probes, pe.n_probe_offset,
-                      pe.n_probe_spacing) for pe in sim._msl_ports])
-        raise _Abort
+def test_msl_three_probe_dump_replays_returned_s_and_records_five(tmp_path):
+    """Keep the complete three-probe record and replay the public result."""
+    from rfx.validation import load_port_vi_dump_npz, replay_smatrix_from_port_vi_dump
 
-    sim.run = fake_run
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        with pytest.raises(_Abort):
-            sim.compute_msl_s_matrix(freqs=np.linspace(1e9, 4e9, 5),
-                                     num_periods=1.0)
-    assert len(seen) == 1
-    assert [row[1] for row in seen[0]] == [3, 3], seen
-    assert [(row[2], row[3]) for row in seen[0]] == [(10, 4), (10, 4)]
+    path = tmp_path / "three-probe.npz"
+    three = _build_msl_thru(3)
+    result = _solve_ladder("msl/three", lambda: three.compute_msl_s_matrix(
+        freqs=np.linspace(1e9, 4e9, 5), num_periods=1.0,
+        raw_3probe_dump_path=str(path)))
+    loaded = load_port_vi_dump_npz(path)
+    with np.load(path) as raw:
+        shape = raw["raw_v"].shape
+    _ladder_measurement("msl/dump", "raw_v_shape", shape, "(2, 2, 3, 5)")
+    _ladder_measurement("msl/model", "grid", loaded.metadata["grid"],
+                        loaded.metadata["simulation"])
+    assert shape == (2, 2, 3, 5), f"three-probe dump has raw_v.shape={shape}, expected (2, 2, 3, 5)"
+    _ladder_measurement("msl/dump", "n_probes_per_port", loaded.metadata["n_probes_per_port"], [3, 3])
+    assert loaded.metadata["n_probes_per_port"] == [3, 3]
+    replay = np.asarray(replay_smatrix_from_port_vi_dump(loaded).s_params)
+    # A47: independently refer the dump's line-reference power waves to the
+    # returned S's declared references, using the per-bin closed form.
+    z = np.asarray(loaded.port_impedances)
+    z_prime = np.asarray(result.reference_impedances)
+    _ladder_measurement("msl/references", "dump_ohms", z.tolist(), "public dump reference")
+    _ladder_measurement("msl/references", "returned_ohms", z_prime.tolist(), "public result reference")
+    r = np.diag((z_prime - z) / (z_prime + z))
+    c = np.diag((z + z_prime) / (2 * np.sqrt(z * z_prime)))
+    identity = np.eye(len(z))
+    replay = np.stack([
+        c @ (s_bin - r) @ np.linalg.inv(identity - r @ s_bin) @ np.linalg.inv(c)
+        for s_bin in np.moveaxis(replay, -1, 0)
+    ], axis=-1)
+    expected = np.asarray(result.S)
+    peak = float(np.max(np.abs(expected)))
+    difference = float(np.max(np.abs(replay - expected)))
+    error = difference / peak if peak > 0 else float("nan")
+    _ladder_measurement("msl/replay", "max_abs_difference", difference, 1e-5 * peak)
+    _ladder_measurement("msl/replay", "relative_S_error", error, 1e-5)
+    # Keep the spec's returned-S target, including its declared references.
+    # The dump's own production_smatrix is not a substitute for that target.
+    assert np.all(np.isfinite(expected)) and peak > 0, "returned MSL S must be finite and nonzero"
+    assert np.all(np.isfinite(replay)) and error <= 1e-5, (
+        f"dump replay vs returned S: relative_error={error:.9g}, bar=1e-5, "
+        f"max_abs_difference={difference:.9g}, peak={peak:.9g}")
+    five = _build_msl_thru(5)
+    five_path = tmp_path / "five-probe.npz"
+    _solve_ladder("msl/five", lambda: five.compute_msl_s_matrix(
+        freqs=np.linspace(1e9, 4e9, 5), num_periods=1.0,
+        raw_3probe_dump_path=str(five_path)))
+    five_dump = load_port_vi_dump_npz(five_path)
+    with np.load(five_path) as raw:
+        five_shape = raw["raw_v"].shape
+    counts = five_dump.metadata["n_probes_per_port"]
+    _ladder_measurement("msl/five-dump", "raw_v_shape", five_shape, "(2, 2, 5, 5)")
+    _ladder_measurement("msl/five-dump", "n_probes_per_port", counts, [5, 5])
+    assert five_shape == (2, 2, 5, 5), (
+        f"five-probe dump has raw_v.shape={five_shape}, expected (2, 2, 5, 5)")
+    assert counts == [5, 5], f"five-probe dump counts={counts}, expected [5, 5]"

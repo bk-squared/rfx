@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import rfx.rcs as rcs_module
+import rfx.measurement.rcs as rcs_module
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Sphere, rasterize
 from rfx.grid import C0, Grid

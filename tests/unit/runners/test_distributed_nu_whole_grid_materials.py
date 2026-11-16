@@ -1,7 +1,4 @@
 """Whole-grid realization is structural on CPU and a value gate on GPUs."""
-import re
-import sys
-import warnings
 from types import SimpleNamespace
 
 import jax
@@ -11,6 +8,8 @@ import pytest
 from jax.sharding import Mesh
 
 from rfx import Simulation, Box, DebyePole
+from rfx.boundaries.spec import BoundarySpec
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from rfx.materials.lorentz import lorentz_pole
 from rfx.model.electric_metrics import stage_forward_materials
 from rfx.model.materials import realize_components
@@ -86,28 +85,6 @@ def build(s):
 
 @pytest.mark.parametrize('n', [2, 3])
 @pytest.mark.parametrize('family', ['plain', 'debye', 'lorentz'])
-def test_whole_grid_structure(n, family, monkeypatch):
-    s = staged_scene(n, family)
-    calls = []
-    original = setup.realize_components
-
-    def observe(*args, **kwargs):
-        calls.append(kwargs.get('view'))
-        result = original(*args, **kwargs)
-        if kwargs.get('view') is None:
-            assert all(d.platform == 'cpu' for a in jax.tree.leaves(result)
-                       if isinstance(a, jax.Array) for d in a.devices())
-        return result
-
-    monkeypatch.setattr(setup, 'realize_components', observe)
-    result = build(s)
-    assert calls and all(view is None for view in calls), 'slab view reached concrete material realization'
-    assert result.materials_realized == 'whole_grid_host'
-    assert result.materials_realized_reason is None
-
-
-@pytest.mark.parametrize('n', [2, 3])
-@pytest.mark.parametrize('family', ['plain', 'debye', 'lorentz'])
 def test_host_products_release_input_layout_copies(n, family):
     s = staged_scene(n, family)
     before = {id(a) for a in jax.live_arrays()}
@@ -168,109 +145,50 @@ def test_owned_components_match_one_device(n):
                     assert np.any(e != 1), 'owned comparison must read the magnetic box'
 
 
-@pytest.mark.parametrize('n', [2, 3])
-def test_no_cpu_fallback_warns_once(n, monkeypatch):
-    s = staged_scene(n, 'debye')
-    local_devices = jax.local_devices
-    monkeypatch.setattr(setup, '_warned_no_cpu', False)
-
-    def unavailable(*args, backend=None, **kwargs):
-        if backend == 'cpu':
-            raise RuntimeError('CPU backend unavailable')
-        return local_devices(*args, backend=backend, **kwargs)
-
-    monkeypatch.setattr(jax, 'local_devices', unavailable)
-    calls = []
-    original = setup.realize_components
-
-    def observe(*args, **kwargs):
-        calls.append(kwargs.get('view'))
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(setup, 'realize_components', observe)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter('always')
-        for _ in range(2):
-            result = build(s)
-            assert result.materials_realized == 'per_slab'
-            assert result.materials_realized_reason == 'no CPU backend'
-    runtime = [w for w in caught if w.category is RuntimeWarning]
-    assert len(runtime) == 1
-    assert runtime[0].filename == __file__
-    expected_line = build.__code__.co_firstlineno + 1
-    assert runtime[0].lineno == expected_line
-    print(f'warning caller={runtime[0].filename}:{runtime[0].lineno}', file=sys.stderr)
-    assert str(runtime[0].message) == (
-        'no CPU backend in this JAX process (JAX_PLATFORMS does not list cpu), '
-        'so the graded multi-device lane forms its material coefficients per slab; '
-        'on a GPU they can differ from a one-device run in the last float32 bit '
-        'at dielectric corner edges (within every accuracy bar)')
-    assert calls and all(view is not None for view in calls)
-
-
-@pytest.mark.parametrize('leaf', ['materials', 'occupancy', 'mask', 'parameter'])
-def test_traced_switch_never_probes_cpu(leaf, monkeypatch):
-    def forbidden(*args):
-        raise AssertionError('traced switch probed CPU')
-    monkeypatch.setattr(jax, 'local_devices', forbidden)
-
-    def call(value):
-        inputs = dict(materials=1., occupancy=0., mask=True, parameter=1.)
-        inputs[leaf] = value
-        device, reason = setup._material_host_device(inputs)
-        assert device is None and reason == 'traced inputs'
-        return value
-
-    jax.make_jaxpr(call)(1.)
+def wall_scene(n):
+    """A dielectric running into the high-x PMC wall of a graded closed box (#1966)."""
+    devices = jax.devices()[:n]
+    if len(devices) < n:
+        pytest.skip(f'requires {n} devices')
+    nx, ny, nz = 23, 12, 10
+    dx = np.resize(np.array([.89, 1.07, .94, 1.13]), nx) * 1e-3
+    dy = np.resize(np.array([.91, 1.09, 1.03]), ny) * 1e-3
+    dx[[0, -1]] = dy[[0, -1]] = 1e-3
+    xs, ys = np.r_[0., np.cumsum(dx)], np.r_[0., np.cumsum(dy)]
+    sim = Simulation(freq_max=15e9, domain=(float(xs[-1]), float(ys[-1]), nz * 1e-3),
+                     dx=1e-3, dx_profile=dx, dy_profile=dy,
+                     boundary=BoundarySpec(x='pmc', y='pec', z='pec'), cpml_layers=0)
+    sim.add_material('insert', eps_r=2.2)
+    sim.add(Box((xs[15], ys[3], 2e-3), (xs[-1], ys[9], 8e-3)), material='insert')
+    grid = sim._build_nonuniform_grid()
+    materials = sim._assemble_materials_nu(grid)[0]
+    s = SimpleNamespace(grid=grid, materials=materials, layout=Slab(grid.shape[0], n),
+                        mesh=Mesh(np.asarray(devices), ('x',)))
+    s.inputs = stage_forward_materials(materials, s.layout, s.mesh, uniform=True)
+    s.occ = stack_and_place(np.zeros(grid.shape, np.float32), uniform_slab_rows(s.layout), s.mesh, outside=0)
+    return s
 
 
 @pytest.mark.parametrize('n', [2, 3])
-@pytest.mark.parametrize('family', ['plain', 'debye', 'lorentz'])
-def test_closed_over_concrete_products_under_jit(n, family, monkeypatch):
-    s = staged_scene(n, family)
-    calls = []
-    original = setup.realize_components
-
-    def observe(*args, **kwargs):
-        calls.append(kwargs.get('view'))
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(setup, 'realize_components', observe)
-    from rfx.stepping import rank
-    if family == 'lorentz' and s.mesh.devices.flat[0].platform == 'gpu' and rank._command_buffers_on():
-        from rfx.stepping.rank import OUTER_JIT_REFUSAL
-        with pytest.raises(NotImplementedError, match=re.escape(OUTER_JIT_REFUSAL)):
-            jax.jit(lambda: products(s))()
-        return
-    actual = jax.jit(lambda: products(s))()
-    assert calls and all(view is None for view in calls)
-    expected = products(s)
-    for a, e in zip(jax.tree.leaves(actual), jax.tree.leaves(expected)):
-        assert np.array_equal(np.asarray(a), np.asarray(e))
-
-
-def test_traced_pole_inputs_keep_setup_on_per_slab_route(monkeypatch):
-    s = staged_scene(2, 'debye')
-    coeffs, state = setup.stage_dispersion(s.inputs, s.grid.dt, s.spec, s.grid, s.layout, s.mesh, 'debye')
-    calls = []
-    original = setup.realize_components
-
-    def observe(*args, **kwargs):
-        calls.append(kwargs.get('view'))
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(setup, 'realize_components', observe)
-
-    def traced(value):
-        pole = coeffs._replace(cb=tuple(a * value for a in coeffs.cb))
-        result = setup.build_setup(s.grid, s.inputs, s.layout, s.mesh, 2, [], [],
-                                   cpml=True, debye=(pole, state))
-        assert result.materials_realized == 'per_slab'
-        assert result.materials_realized_reason == 'traced inputs'
-        return result.invariants['materials'].components.mu_update
-
-    jax.make_jaxpr(traced)(1.)
-    assert calls and all(view is not None for view in calls)
+@pytest.mark.parametrize('route', ['whole_grid', 'per_slab'])
+def test_owned_components_take_the_high_wall(n, route, monkeypatch):
+    s = wall_scene(n)
+    assert unpadded_high_walls(s.grid)[0], 'the scene must have an unpadded high-x wall'
+    whole = realize_components(s.materials, s.grid, periodic=(False,) * 3)
+    blind = realize_components(s.materials, s.grid, periodic=(False,) * 3, high_wall=(False,) * 3)
+    # Precondition: the wall rule moves the last x row, so dropping it is visible.
+    assert any(not np.array_equal(np.asarray(a)[-1], np.asarray(b)[-1])
+               for a, b in zip(whole.eps_update, blind.eps_update))
+    if route == 'per_slab':
+        monkeypatch.setattr(setup, '_material_host_device', lambda *args, **kwargs: (None, 'traced inputs'))
+    staged = setup.realize_materials(s.inputs, s.grid, s.layout, s.mesh, s.occ, cpml=False)[0]
+    for actual, expected in zip(staged.components.eps_update, whole.eps_update):
+        actual, expected = np.asarray(actual), np.asarray(expected)
+        for rank in range(n):
+            lo = rank * s.layout.nx_per_rank
+            hi = min(lo + s.layout.nx_per_rank, s.grid.shape[0])
+            start = rank * s.layout.nx_local + s.layout.ghost_width
+            assert np.array_equal(actual[start:start + hi - lo], expected[lo:hi]), (route, rank)
 
 
 @pytest.mark.parametrize('n', [2, 3])

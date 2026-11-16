@@ -1,5 +1,9 @@
 """Source admission against geometry conductors and declared PEC walls."""
-from rfx._grid_metric import field_index
+
+from rfx.preflight._subjects import SubjectMessage
+from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx._warning_origin import user_stacklevel
+from rfx._internal._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
 
@@ -34,7 +38,7 @@ def refuse_dead_soft_sources(sim, conductors):
     kernels' existing wire live-cell handling are not changed by this check.
     """
     for message in _dead_sources(sim, conductors):
-        raise ValueError(message)
+        raise RfxRefusal(message)
 
 
 def _dead_sources(sim, conductors):
@@ -55,8 +59,8 @@ def _dead_sources(sim, conductors):
             warnings.warn(
                 "Soft-source PEC admission check cannot run on a traced mesh "
                 "or traced conductor edges/source positions; no concrete "
-                "realized edge classification is available.", UserWarning,
-                stacklevel=3)
+                "realized edge classification is available.", AccuracyWarning,
+                stacklevel=user_stacklevel())
         return
     from rfx.model.conductors import lumped_port_stage
     from rfx.sources.sources import _wire_port_cells, wire_port_from_entry
@@ -100,11 +104,11 @@ def _dead_sources(sim, conductors):
                 if coordinate < 0 or coordinate > length:
                     outside.append(f"Declared {axis} coordinate {coordinate} is outside "
                                    f"domain [0, {length}]. ")
-            yield (message + f"Declared PEC wall face(s): {', '.join(wall_faces)}. "
+            yield SubjectMessage(message + f"Declared PEC wall face(s): {', '.join(wall_faces)}. "
                    f"Realized driven indices: {cells}. "
                    "This declaration raises because its tangential E edges in a PEC wall are shorted. "
                    + ''.join(outside)
-                   + "Move it at least one cell inside the domain, off the wall.")
+                   + "Move it at least one cell inside the domain, off the wall.", (source, "domain"))
         else:
             if source.extent is not None:
                 # Keep the geometry-only wire guard and its live-cell message.
@@ -138,10 +142,13 @@ def _owners(sim, conductors, component, cell):
     for label, cells, sheet, wire in products:
         if cells is None and sheet is None and wire is None:
             continue
-        own = realized_pec_edge_masks(cells,
-            sheets=() if sheet is None else (sheet,),
-            wires=() if wire is None else (wire,), periodic=conductors.periodic)
-        if any(bool(own[c][tuple(v + d for v, d in zip(cell, (di, dj, dk)))])
+        with jax.ensure_compile_time_eval():
+            own = realized_pec_edge_masks(cells,
+                sheets=() if sheet is None else (sheet,),
+                wires=() if wire is None else (wire,), periodic=conductors.periodic)
+        if any(is_tracer(mask) for mask in own):
+            continue
+        if any(bool(np.asarray(own[c])[tuple(v + d for v, d in zip(cell, (di, dj, dk)))])
                for c, di, dj, dk in offsets):
             owners.append(label)
     return owners or ['unattributed realized PEC edge']

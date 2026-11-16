@@ -21,7 +21,7 @@ N_STEPS = 96
 
 def _sim(
     conformal=False, *, ports=None, solver="yee", tfsf=False, absorber=None, kappa=1,
-    periodic_tfsf=False,
+    periodic_tfsf=False, domain=None,
 ):
     walls = BoundarySpec(
         x=Boundary(lo="pec", hi="pec", conformal=conformal), y="pec", z="pec"
@@ -34,7 +34,7 @@ def _sim(
         walls = BoundarySpec(x="cpml", y="periodic", z="periodic")
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.0123, 0.015, 0.022) if periodic_tfsf else (0.0123, 0.0131, 0.0127),
+        domain=domain or ((0.0123, 0.015, 0.022) if periodic_tfsf else (0.0123, 0.0131, 0.0127)),
         dx=0.001,
         boundary=absorber or walls,
         solver=solver,
@@ -43,8 +43,7 @@ def _sim(
      snap="declared")
     assert_declared_wall_warning(sim)
     z_shift = 0.004 if periodic_tfsf else 0.0
-    if solver != "adi":
-        sim.add(Sphere(center=(0.0061, 0.0062, 0.0064 + z_shift), radius=0.0012), material="pec")
+    sim.add(Sphere(center=(0.0061, 0.0062, 0.0064 + z_shift), radius=0.0012), material="pec")
     sim.add_material("design", eps_r=2.0)
     if not tfsf:
         sim.add(Box((0.002, 0.002, 0.002), (0.003, 0.004, 0.004)), material="design")
@@ -85,11 +84,11 @@ def _direct(sim, **kwargs):
     )
 
 
-def _mixed(on):
+def _mixed(on, *, domain=None):
     dx = 0.0005
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.0123, 0.0061, 0.0047),
+        domain=domain or (0.0123, 0.0061, 0.0047),
         dx=dx,
         cpml_layers=4,
         boundary=BoundarySpec(
@@ -136,7 +135,7 @@ def no_steps(monkeypatch):
     assert len(calls) == 0
 
 
-@pytest.mark.parametrize("route", ["topology", "mixed", "vmap"])
+@pytest.mark.parametrize("route", ["topology", "vmap", "mixed"])
 def test_calculator_refuses_conformal_before_steps(route, no_steps):
     sim = _mixed(True) if route == "mixed" else _sim(True)
     with pytest.raises(NotImplementedError):
@@ -163,14 +162,6 @@ def test_calculator_refuses_conformal_before_steps(route, no_steps):
             vmap_material_sweep(sim, "design.eps_r", [2.0, 3.0], n_steps=N_STEPS)
 
 
-def test_adi_forward_refuses_mu_override_before_steps(no_steps):
-    sim = _sim(solver="adi")
-    with pytest.raises(NotImplementedError):
-        sim.forward(
-            n_steps=N_STEPS,
-            skip_preflight=True,
-            mu_r_override=jnp.full(sim._build_grid().shape, 4.0),
-        )
 
 
 @pytest.mark.parametrize("route", ["run", "forward", "direct", "low_level"])
@@ -191,19 +182,21 @@ def test_upml_refuses_kappa_before_steps(route, no_steps):
 @pytest.mark.parametrize("ports", ["lumped", "wire"])
 @pytest.mark.parametrize("declaration,argument", [(False, True), (True, None)])
 @pytest.mark.parametrize("compute", [None, True])
-def test_run_refuses_conformal_s_matrix_before_steps(
-    ports, declaration, argument, compute, no_steps
+def test_run_carries_conformal_s_matrix(
+    ports, declaration, argument, compute
 ):
     sim = _sim(declaration, ports=ports)
-    with pytest.raises(NotImplementedError):
-        sim.run(
-            n_steps=N_STEPS,
-            skip_preflight=True,
-            conformal_pec=argument,
-            compute_s_params=compute,
-            s_param_n_steps=N_STEPS,
-            s_param_freqs=jnp.array([4e9, 5e9, 6e9]),
-        )
+    ran = sim.run(
+        n_steps=N_STEPS, skip_preflight=True, conformal_pec=argument,
+        compute_s_params=compute, s_param_n_steps=N_STEPS,
+        s_param_freqs=jnp.array([4e9, 5e9, 6e9]))
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    scanned, _ = compute_lumped_wire_s_matrix_via_scan(
+        _sim(declaration, ports=ports), jnp.array([4e9, 5e9, 6e9]),
+        n_steps=N_STEPS, conformal_pec=argument, skip_preflight=True)
+    np.testing.assert_array_equal(ran.s_params, scanned)
+    assert np.asarray(ran.s_params).tobytes() == np.asarray(scanned).tobytes()
+    assert np.all(np.isfinite(scanned))
 
 
 def _identical(a, b):
@@ -299,7 +292,7 @@ def test_waveguide_distributed_refuses_staircase(two_devices):
 
 
 @pytest.mark.parametrize(
-    "lane", ["run_nonuniform", "run_adi", "run_subgridded", "run_distributed"]
+    "lane", ["run_nonuniform",  "run_subgridded", "run_distributed"]
 )
 def test_explicit_staircase_is_allowed_on_every_run_lane(lane, two_devices):
     # Reuse the established 12 mm box (20 mm tall with subgridding).
@@ -328,30 +321,26 @@ def _no_pec(kind):
     nothing."""
     kw = dict(freq_max=10e9, domain=(0.0123, 0.0131, 0.0127), dx=0.001,
               cpml_layers=4, boundary="cpml")
-    if kind == "adi":
-        kw["solver"] = "adi"
-        kw["boundary"] = "pec"
+    pass
     if kind == "graded":
         kw["dz_profile"] = np.array([0.001] * 6 + [0.0007] * 4 + [0.001] * 4)
         kw["domain"] = (0.0123, 0.0131, float(np.sum(kw["dz_profile"])))
     sim = Simulation(**kw, snap="declared")
     assert_declared_wall_warning(sim)
     sim.add_material("d", eps_r=2.0)
-    # ADI refuses a material interface (#1373): its dielectric fills the box.
-    lo, hi = (((0.0, 0.0, 0.0), kw["domain"]) if kind == "adi"
-              else ((0.002, 0.002, 0.002), (0.004, 0.004, 0.004)))
+    lo, hi = (((0.002, 0.002, 0.002), (0.004, 0.004, 0.004)))
     sim.add(Box(lo, hi), material="d")
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     if kind == "uniform":
         sim.add_port((0.006, 0.006, 0.006), "ez", impedance=50.0, waveform=pulse)
     else:
         sim.add_source((0.006, 0.006, 0.006), "ez", waveform=pulse,
-                       amplitude_kind="field" if kind == "adi" else None)
+                       amplitude_kind=None)
     sim.add_probe((0.008, 0.006, 0.006), "ez")
     return sim
 
 
-@pytest.mark.parametrize("kind", ["uniform", "graded", "adi"])
+@pytest.mark.parametrize("kind", ["uniform", "graded"])
 def test_conformal_request_without_pec_runs_as_staircase(kind):
     sim = _no_pec(kind)
     assert not sim._has_pec_to_conform()
@@ -367,13 +356,12 @@ def test_conformal_request_without_pec_runs_as_staircase(kind):
 
 
 # Every in-package caller of Simulation._forward_from_materials, the uniform
-# forward scan with no Dey-Mittra update (#1299). A new caller fails
-# test_forward_scan_callers_are_listed until it is added here, and so is
-# checked for the refusal below.
+# forward scan. A new caller fails test_forward_scan_callers_are_listed
+# until it is added here and checked for its admission below.
 _SCAN_CALLERS = {
     "rfx/api/_execute.py:_ExecuteMixin.forward": "forward",
     "rfx/probes/sparam_driver.py:compute_lumped_wire_s_matrix_via_scan": "driver",
-    "rfx/sparams/mixed.py:compute_mixed_s_matrix": "mixed",
+    "rfx/sparams/_mixed_stages.py:_run_mixed_drive": "mixed",
     "rfx/topology.py:topology_optimize": "topology",
 }
 
@@ -411,7 +399,7 @@ def _scan_call(route, sim, **kw):
     if route == "driver":
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 
-        return compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=N_STEPS, **kw)
+        return compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=N_STEPS, skip_preflight=True, **kw)
     if route == "mixed":
         return sim.compute_mixed_s_matrix(
             n_steps=N_STEPS, skip_preflight=True, magnitude_channel="wave")
@@ -423,20 +411,9 @@ def _scan_call(route, sim, **kw):
             sim, region, lambda r: jnp.sum(r.time_series**2),
             n_iterations=1, verbose=False, skip_preflight=True)
     grid = sim._build_grid()
-    mats, debye, lorentz, pec, _, _, _ = sim._assemble_materials(grid)
+    mats, debye, lorentz, pec, shapes, _, _ = sim._assemble_materials(grid)
     return sim._forward_from_materials(
-        grid, mats, debye, lorentz, n_steps=N_STEPS, pec_mask=pec, **kw)
-
-
-@pytest.mark.parametrize("route", sorted(_SCAN_CALLERS.values()) + ["direct"])
-def test_forward_scan_refuses_conformal_before_steps(route, no_steps):
-    if route == "mixed":
-        sim = _mixed(True)
-    else:
-        sim = _sim(True, ports="lumped" if route == "driver" else None)
-    assert sim._has_pec_to_conform()
-    with pytest.raises(NotImplementedError, match="conformal"):
-        _scan_call(route, sim)
+        grid, mats, debye, lorentz, n_steps=N_STEPS, pec_mask=pec, pec_shapes=shapes, **kw)
 
 
 def test_forward_scan_explicit_staircase_passes():

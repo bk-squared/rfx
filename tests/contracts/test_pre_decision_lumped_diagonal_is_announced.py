@@ -7,28 +7,19 @@ experimental subgridded runner, whose sampling slot depends on the runtime
 derivable there. It still returns a lumped S-matrix built the old way — on a
 known load, the reciprocal of the physical reflection.
 
-That is an acceptable state for a diagnostic. Returning it SILENTLY is not,
-and a warning nothing pins is one edit away from being silent: this scan is
-here because a `warnings.warn` has no test unless someone writes one, and the
-subgrid lane is expensive enough that nothing drives it end to end.
-
-The scan is static on purpose — it costs milliseconds and it fails for the one
-reason that matters, the guard disappearing from the block that returns the
-number.
+The public run must emit its dedicated warning when it returns that
+diagnostic S-matrix.
 """
 
 from __future__ import annotations
 
-import ast
+import sys
 import warnings
-from pathlib import Path
 
 import pytest
 
 from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
-
-_SUBGRIDDED = (Path(__file__).resolve().parents[2]
-               / "rfx" / "runners" / "subgridded.py")
+from tests.unit.sparams.test_plain_source_refusal import _subgrid_model
 
 
 def test_the_warning_is_its_own_category_under_user_warning():
@@ -41,29 +32,18 @@ def test_the_warning_is_its_own_category_under_user_warning():
 
 
 def test_the_subgridded_lumped_s_matrix_block_still_carries_the_warning():
-    """The block that assembles the diagnostic S-matrix warns before it.
+    """A returned diagnostic S-matrix is accompanied by its typed warning."""
+    sim = _subgrid_model(source=False)
+    with pytest.warns(PreDecisionLumpedDiagonalWarning) as captured:
+        result = sim.run(n_steps=8, compute_s_params=True, skip_preflight=True)
 
-    Pinned against the source rather than a solve: driving this lane end to
-    end needs a full subgrid run, which is why it had no coverage to begin
-    with.
-    """
-    source = _SUBGRIDDED.read_text()
-    assert "lumped_sparam_v_dft_f" in source, (
-        "the subgridded runner no longer assembles a lumped S-matrix — if "
-        "that lane is gone, delete this test with it")
-
-    tree = ast.parse(source)
-    warns_here = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "warn"
-        and any(isinstance(a, ast.Name)
-                and a.id == "PreDecisionLumpedDiagonalWarning"
-                for a in node.args)
-    ]
-    assert warns_here, (
-        "rfx/runners/subgridded.py returns a lumped S-matrix on the "
-        "pre-decision convention without raising "
-        "PreDecisionLumpedDiagonalWarning. The number is knowingly not the "
-        "physical reflection; the lane has to say so.")
+    warning_count = sum(
+        issubclass(warning.category, PreDecisionLumpedDiagonalWarning)
+        for warning in captured
+    )
+    print(
+        f"subgridded lumped S: dedicated_warning_count={warning_count} bar>=1; "
+        f"s_params_present={int(result.s_params is not None)} bar=1",
+        file=sys.stderr,
+    )
+    assert result.s_params is not None, "subgridded run returned no diagnostic S-matrix"

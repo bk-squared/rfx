@@ -1,4 +1,4 @@
-"""The traced ring-down completion (``rfx._ringdown_jax``) against an analytic oracle (issue #1254).
+"""The traced ring-down completion (``rfx.ringdown._jax``) against an analytic oracle (issue #1254).
 
 Physics. A record made of damped oscillations whose frequencies, dampings and
 amplitudes depend on a parameter ``p`` has a known infinite-record DFT and a
@@ -32,8 +32,7 @@ bit and a failed or over-budget identification comes back as a status with an
 empty mask; without x64 the map runs in complex64 and stays finite.
 
 Moved from the research lane's E3' map
-(``validation/research/fdtd_acc/e3_completion_jax.py`` and its tests, rfx-archive
-``20260924_acc_E3_reverse_mode_completion_results.md``), with the lane's own
+(``validation/research/fdtd_acc/e3_completion_jax.py`` and its tests), with the lane's own
 identification replaced by ``rfx.ringdown.identify``.
 """
 
@@ -42,7 +41,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rfx import _ringdown_jax as rj
+import rfx.measurement.ringdown_tail as ringdown_tail
+from rfx.ringdown import _jax as rj
 from rfx import ringdown as rd
 from tests._x64_compat import enable_x64
 
@@ -149,7 +149,7 @@ def test_i_value_is_run_s_completion_and_the_host_poles():
     import jax.numpy as jnp
     y, _v = _series(N_WINDOWED)
     model = rd.identify(y, DT, N_START, N_WINDOWED, freq_max=F_REF, guard=GUARD)
-    C_np = rd.plain_dft(y, DT, FREQS) + rd.tail_dft(model, N_WINDOWED - 1, FREQS)
+    C_np = ringdown_tail.plain_dft(y, DT, FREQS) + ringdown_tail.tail_dft(model, N_WINDOWED - 1, FREQS)
     with enable_x64():
         C, aux = jax.jit(lambda a: _completion(a, return_aux=True))(jnp.asarray(y))
     C = np.asarray(C)
@@ -167,7 +167,7 @@ def test_ii_jvp_is_the_infinite_record_derivative():
     the exact tangent is the infinite-record derivative to 1e-6 of its peak."""
     y, v = _series(N_WINDOWED)
     y_inf, dy_inf = _infinite()
-    assert _rel(rd.plain_dft(v, DT, FREQS), dy_inf) > 0.5
+    assert _rel(ringdown_tail.plain_dft(v, DT, FREQS), dy_inf) > 0.5
     with enable_x64():
         C, dC = _jvp(y, v)
     print(f"\n[analytic oracle] value {_rel(C, y_inf):.2e}, JVP {_rel(dC, dy_inf):.2e} "

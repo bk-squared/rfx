@@ -10,8 +10,10 @@ refusal happens to share.
 
 from __future__ import annotations
 
+from rfx.errors import RfxUnsupported
 
-class TracedStructureRefusal(NotImplementedError):
+
+class TracedStructureRefusal(RfxUnsupported):
     """A traced structure input refused by name.
 
     The fallback retries once eagerly; a refusal that also fires on the eager

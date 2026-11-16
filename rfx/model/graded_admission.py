@@ -8,6 +8,9 @@ keeps what it returns; the messages are the ones the constructor raised.
 """
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, RfxWarning
+from rfx.model.realization_verdict import legacy_mismatch
+import warnings
 from collections.abc import Mapping
 from typing import NamedTuple
 
@@ -46,17 +49,52 @@ class NominalProfile(NamedTuple):
     traced_cells: tuple | None = None
 
 
+class DeclaredZWarning(RfxWarning):
+    """The caller explicitly keeps a declared z different from the solved length."""
+
+
+#: A concrete z profile may miss a positive declared z by this fraction.
+DECLARED_Z_RTOL = 0.01
+
+
+def judge_declared_z(declared_z, dz_total, snap="strict", *, stacklevel=2):
+    """Refuse (``snap="strict"``) or warn (``"declared"``) when a concrete z
+    profile's sum, the length the grid solves, misses the declared z by more
+    than :data:`DECLARED_Z_RTOL`. Every reader of the declared extent
+    (periodic z, flux regions, thin conductors, RCS) would read a length the
+    grid does not solve. ``stacklevel`` names the caller's line."""
+    rel = abs(dz_total - declared_z) / declared_z
+    if not legacy_mismatch(rel, DECLARED_Z_RTOL):
+        return
+    message = (
+        f"Declared domain z = {declared_z:.12g} m differs from "
+        f"dz_profile sum (solved length) = {dz_total:.12g} m "
+        f"(rel = {rel:.12g}, greater than {DECLARED_Z_RTOL}). "
+        "Declare z equal to the profile sum, give 0 for z to "
+        'take it from the profile, or use snap="declared".')
+    if snap == "declared":
+        warnings.warn(message, DeclaredZWarning, stacklevel=stacklevel)
+        from rfx.model.realization_verdict import legacy_outcome
+        return legacy_outcome("legacy:declared_z", rel, DECLARED_Z_RTOL,
+                              message, "declared_z", "judge_declared_z")
+    else:
+        raise ValueError(message)
+
+
 def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
-                          dt=None, dt_min_cell=None, nominal_profiles=None,
+                          dt=None, dt_min_cell=None, nominal_profiles=None, snap="strict",
                           multiband_ratio_cap=None, inplane_ratio_cap=None):
     """Return ``(domain, nominal_cells)`` for the declared graded mesh.
 
-    ``domain`` is the declared extent with every CONCRETE profile's sum put in
-    its axis; a traced profile needs the caller's concrete extent. The dt pin
-    is refused without a profile and ``dt_min_cell`` without a pin.
+    Concrete x/y profiles set their extents. A concrete z profile checks a
+    positive declared z, or supplies it when absent; a traced profile needs
+    the caller's concrete extent. The dt pin
+    is checked by the grid builder; ``dt_min_cell`` needs a pin.
     Nominal widths are float64 arrays; windowed axes retain their
     :class:`NominalProfile` declaration so admission is idempotent.
     """
+    declared_domain = getattr(domain, "declared", domain)
+    early_outcome = None
     # Synthesize domain extents from axis profiles before validation.
     # dx_profile / dy_profile set x / y; dz_profile sets z.
     # Tracer-valued profiles require the caller to supply a concrete
@@ -98,17 +136,11 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
             dz_total = float(np.sum(dz_profile))
             if len(domain) < 3 or domain[2] <= 0:
                 domain = (domain[0], domain[1], dz_total)
+            else:
+                early_outcome = judge_declared_z(domain[2], dz_total, snap, stacklevel=4)
     elif any(d <= 0 for d in domain):
         raise ValueError(f"domain dimensions must be positive, got {domain}")
 
-    # Pinned time step (non-uniform lane only); see the ``dt`` parameter.
-    if dt is not None and dz_profile is None and dx_profile is None \
-            and dy_profile is None:
-        raise ValueError(
-            "dt= pins the non-uniform lane's time step and needs at least "
-            "one of dz_profile / dx_profile / dy_profile; the uniform "
-            "lane derives its step in Grid.courant_dt."
-        )
     if dt is None and dt_min_cell is not None:
         raise ValueError("dt_min_cell= has no effect without dt=")
 
@@ -119,7 +151,12 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     if multiband_ratio_cap is not None and inplane_ratio_cap is not None:
         warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
                             multiband_ratio_cap, inplane_ratio_cap)
-    return domain, nominal
+    from rfx.model.realization_reference import retain_declared_domain
+    result = retain_declared_domain(domain, list(declared_domain) if early_outcome else declared_domain)
+    if early_outcome is not None:
+        from rfx.model.realization_verdict import remember_legacy
+        remember_legacy(result, "z", early_outcome)
+    return result, nominal
 
 
 def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
@@ -132,11 +169,11 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     """
     # P2: Warn on abrupt grading in a user-supplied profile. This ran
     # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
-    # accepted in silence (#743) — the axes differ in which physics
+    # accepted in silence — the axes differ in which physics
     # they carry, not in whether an abrupt ratio reflects.
     # Tracer profiles skip the warning — adjacent ratios can't be
     # computed host-side during tracing.
-    # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6, #780).
+    # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6).
     # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
     # default with no measurement behind it, so ratios in (1.3, 1.4]
     # warned without evidence that they cost anything. The multi-band
@@ -150,11 +187,10 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     # at the float-accumulation class, and 2nd-order supraconvergence
     # preserved on a fixture whose graded axis carries ~90 % of the
     # error budget.
-    # dx/dy STAY AT 1.3: every witness in that battery grades z and
-    # holds the transverse mesh uniform (the harness takes a scalar
-    # transverse cell), so there is no in-plane provenance for moving
-    # an in-plane lock — SPEC-00 0.2-4. The 2026-08-29 adversarial
-    # review found this axis overclaim in the docs; it lived here too.
+    # The dx/dy cap of 1.4 is supported by in-plane witnesses at 1.40:
+    # transition reflection on x and y (e5_x/e5_y), and on a cavity graded
+    # in plane, second-order resonances and 1e6-step energy
+    # (see the caps in api/_preflight.py).
     # Beyond the cap this warning still fires, and preflight adds the
     # richer advisory nu_grading_ratio_beyond_validated_cap with the
     # accuracy class on both sides.
@@ -162,13 +198,9 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
             ("dz_profile", dz_profile, multiband_ratio_cap,
              "the validated multi-band grading cap"),
             ("dx_profile", dx_profile, inplane_ratio_cap,
-             "the in-plane grading threshold — the validated "
-             f"{multiband_ratio_cap:g} multi-band cap is a "
-             "z-axis envelope and no witness grades an in-plane axis"),
+             "the validated in-plane grading cap"),
             ("dy_profile", dy_profile, inplane_ratio_cap,
-             "the in-plane grading threshold — the validated "
-             f"{multiband_ratio_cap:g} multi-band cap is a "
-             "z-axis envelope and no witness grades an in-plane axis")):
+             "the validated in-plane grading cap")):
         if (_profile is not None and not is_tracer(_profile)
                 and len(_profile) > 1):
             import warnings as _w
@@ -182,7 +214,7 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
                     "docs/guides/support_matrix.md, "
                     "'Multi-band graded mesh'). This may cause "
                     "numerical reflections. Use "
-                    f"rfx.smooth_grading({_axis_name}) to fix.",
+                    f"rfx.smooth_grading({_axis_name}) to fix.", AccuracyWarning,
                     stacklevel=4,
                 )
 
@@ -329,3 +361,38 @@ def traced_cell_mask(grid, axis, padded: bool = True):
     if not padded:
         return interior
     return np.pad(interior, (pad_lo, pad_hi + duplicate), mode="edge")
+
+
+def host_cells(grid, axis, *, store=False):
+    """Host widths in the precision previously read by a metric consumer.
+
+    By default this is the concrete float64 spine (``grid.cells``);
+    ``store=True`` preserves the solver's float32 widths (``dx_arr``,
+    ``dy_arr``, ``dz``). A traced axis with a declared deformation window
+    returns its padded nominal widths in that same precision; consumers
+    refuse reads within the window, and waveguide admission checks its
+    total so downstream physical coordinates remain fixed. A traced axis
+    without a window returns the traced widths unchanged, as before.
+    """
+    index = "xyz".index(axis) if isinstance(axis, str) else int(axis)
+    stored = (getattr(grid, "dx_arr", None), getattr(grid, "dy_arr", None),
+              getattr(grid, "dz", None))[index]
+    if hasattr(grid, "is_traced") and grid.is_traced(axis):
+        widths = nominal_cells(grid, axis, padded=True)
+        if widths is None or traced_cell_mask(grid, axis) is None:
+            return stored if store else grid.cells(axis)
+        return np.asarray(widths, dtype=np.float32 if store else np.float64)
+    if store and stored is not None and not np.isscalar(stored):
+        return np.asarray(stored)
+    return np.asarray(grid.cells(axis), dtype=np.float64)
+
+
+def refuse_window_cells(grid, axis, selection, feature):
+    """Refuse a host metric that needs a cell in a declared deformation window."""
+    if not hasattr(grid, "is_traced") or not grid.is_traced(axis):
+        return
+    mask = traced_cell_mask(grid, axis)
+    if mask is None or np.any(mask[selection]):
+        raise TracedStructureRefusal(
+            f"{feature}: nominal_profiles= on axis {axis!r} must keep every "
+            "cell read by this host metric outside traced_cells.")

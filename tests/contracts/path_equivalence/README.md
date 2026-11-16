@@ -27,6 +27,16 @@ walls are explicit PEC; transverse modal dimensions are exactly `8 * dx` and
 off-grid. This avoids comparing different declared modal apertures on the same
 rounded grid.
 
+The pairs are `run_uniform`/`run_nonuniform`, `run_uniform`/`run_distributed`,
+`fwd_uniform`/`fwd_nonuniform`, `run_nonuniform`/`run_distributed_nu`,
+`fwd_uniform`/`fwd_distributed` and `fwd_nonuniform`/`fwd_distributed_nu`.
+A forward pair compares objective and gradient only when both lanes take the
+design argument the cell differentiates. Uniform multi-device forward takes no
+override, and graded multi-device forward takes no `design_box` (which the
+current-moment monitor needs). Those cells compare the records of a plain
+`forward()` on both lanes. A record a lane refuses on read is a failure of that
+record only. The other records of the cell are still compared.
+
 Uniform/NU use identical node coordinates and constant profiles; graded pairs
 share profiles with two interior widths `0.9 * dx`, `1.1 * dx`. Uniform keeps
 its computed dt and NU pins that exact value. Every cell checks exact dt first.
@@ -106,5 +116,5 @@ a fingerprint preserve which failures each cell accepts. `cells` maps records
 to cause IDs, with a witness-variant reference only when it differs from the
 default. The loader expands this into the existing strict-finding checks.
 Measurement records, per-cell timings and DFT step dumps are in untracked
-`.s0-work/`, for the leader to move to rfx-archive. See FINDINGS.md and MUTATIONS.md
-for short review summaries. Conclusions: in the S0 PR body (leader)
+`.s0-work/`. See FINDINGS.md and MUTATIONS.md
+for short review summaries. Conclusions: in the S0 PR body

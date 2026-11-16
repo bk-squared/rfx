@@ -316,7 +316,7 @@ def test_vertical_sheet_refusal_names_z_profile_remedy():
 
 
 @pytest.mark.parametrize("snap,skip", [("strict", False), ("declared", False),
-                                       ("strict", True)])
+                                       ("strict", True), ("declared", True)])
 def test_coax_msl_sheet_verdict_before_runner(monkeypatch, snap, skip):
     from tests._coax_msl_instrument_fixture import (
         build_instrument_junction, instrument_kwargs,
@@ -336,14 +336,11 @@ def test_coax_msl_sheet_verdict_before_runner(monkeypatch, snap, skip):
 
     monkeypatch.setattr("rfx.simulation.run", runner)
     monkeypatch.setattr(sim, "preflight", forbidden)
-    if skip:
-        monkeypatch.setattr("rfx.preflight.pec_geometry._warn_sheet_effective_size",
-                            forbidden)
     kwargs = instrument_kwargs(n_steps=1)
     kwargs["skip_preflight"] = skip
     with warnings.catch_warnings(record=True) as emitted:
         warnings.simplefilter("always")
-        if snap == "strict" and not skip:
+        if snap == "strict":
             with pytest.raises(ValueError, match="conductor sheet dimension") as exc:
                 sim.compute_coax_msl_transition(**kwargs)
             assert str(expected) in str(exc.value)
@@ -353,7 +350,7 @@ def test_coax_msl_sheet_verdict_before_runner(monkeypatch, snap, skip):
                 sim.compute_coax_msl_transition(**kwargs)
             assert calls == [True]
     sheet_notes = [w for w in emitted if "conductor sheet dimension" in str(w.message)]
-    assert len(sheet_notes) == (snap == "declared" and not skip)
+    assert len(sheet_notes) == (snap == "declared")
     if sheet_notes:
         assert str(expected) in str(sheet_notes[0].message)
 
@@ -408,8 +405,9 @@ def test_coax_msl_preserves_nonpreflight_warning(monkeypatch):
     assert (ordinary.filename, ordinary.lineno) == ("ordinary_origin.py", 42)
 
 
-def test_run_preflight_warning_points_at_the_callers_line():
-    """The shared preflight gate must attribute run()'s advisory to the user's line, not to rfx."""
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_run_preflight_warning_points_at_the_callers_line(entry):
+    """The shared preflight gate must attribute the entry's advisory to the user's line, not to rfx."""
     import warnings
     sim = Simulation(domain=(0.02, 0.02, 0.02), dx=0.001, freq_max=10e9,
                      boundary="pec", snap="declared")
@@ -417,7 +415,7 @@ def test_run_preflight_warning_points_at_the_callers_line():
     sim.add_thin_conductor(Box((0.004, 0.004, 0.006), (0.014, 0.014, 0.006)))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim.run(n_steps=1)
+        getattr(sim, entry)(n_steps=1)
     hits = [w for w in caught if "preflight found" in str(w.message)]
     assert hits and all(w.filename == __file__ for w in hits), [
         (w.filename, w.lineno) for w in hits]

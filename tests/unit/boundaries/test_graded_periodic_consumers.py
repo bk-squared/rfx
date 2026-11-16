@@ -7,6 +7,7 @@ import jax.numpy as jnp
 from rfx import Box, Simulation
 from rfx.boundaries.spec import BoundarySpec
 from rfx.geometry.smoothing import compute_smoothed_eps, compute_smoothed_eps_nonuniform
+from rfx.model.graded_admission import DeclaredZWarning
 
 
 def _sim(graded):
@@ -73,7 +74,11 @@ def test_wire_extent_at_period_end():
 def test_periodic_profile_must_span_declared_period(entry):
     kw = dict(freq_max=30e9, domain=(.012, .007, .012), dx=.001, cpml_layers=0,
               boundary=BoundarySpec(x="pec", y="pec", z="periodic"))
-    sim = Simulation(**kw, dz_profile=np.full(10, .001))
+    with pytest.raises(ValueError, match=r"Declared domain z = 0.012 m differs"):
+        Simulation(**kw, dz_profile=np.full(10, .001))
+    # Kept with snap="declared", the period check still refuses at the run (#1941).
+    with pytest.warns(DeclaredZWarning):
+        sim = Simulation(**kw, dz_profile=np.full(10, .001), snap="declared")
     with pytest.raises(ValueError, match=r"declared period 0.012 m.*realized period 0.01 m"):
         getattr(sim, entry)(n_steps=1, skip_preflight=True)
     grid = Simulation(**kw, dz_profile=np.full(12, .001))._build_nonuniform_grid()

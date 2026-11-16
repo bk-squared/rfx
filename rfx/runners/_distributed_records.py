@@ -1,8 +1,10 @@
 """Owned records at the uniform and graded distributed sampling slots.
 
-Ranks are data, and assembly replicates before indexing by rank (#1441).
+Ranks are data, and assembly replicates before indexing by rank.
 Only placement is performed for cell records; moment pairs are summed once.
 """
+
+from rfx.errors import RfxUnsupported
 from functools import partial
 
 import jax
@@ -15,16 +17,17 @@ from rfx.runners._rank import rank_shard_map
 from rfx.runners._distributed_ntff import SlabNTFF
 from rfx.stepping.slab import place
 from rfx.measurement import accumulators
+from rfx.measurement.plane_records import time_recorded_dft_selection
 
 
 def refuse_record_options(sim, options):
     names = [name for name in ("record_dft", "dft_time_records", "dft_planes",
                                "flux_monitors", "current_moments")
              if options.get(name) is not None and options.get(name) is not False]
-    if sim._dft_planes and getattr(sim, "_internal_probe_indices", ()):
-        names.append("dft_time_records (record_dft from _internal_probe_indices)")
+    if any(time_recorded_dft_selection(sim)):
+        names.append("dft_time_records (record_dft from _time_recorded_dft_planes)")
     if names:
-        raise NotImplementedError(f"{', '.join(names)} is not supported on the distributed record path")
+        raise RfxUnsupported(f"{', '.join(names)} is not supported on the distributed record path")
 
 
 def _field_specs(state):

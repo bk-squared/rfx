@@ -33,7 +33,8 @@ def _build(kind):
             sim.add(Box((10e-3, 2e-3, 2e-3), (14e-3, 10e-3, 10e-3)),
                     material="pec")
         elif kind == "sheet":
-            sim.add(Box((10e-3, 2e-3, 6e-3), (14e-3, 10e-3, 6e-3)),
+            sim.add(Box(((10 - .35) * DX, (2 - .35) * DX, 6e-3),
+                        ((14 + .35) * DX, (10 + .35) * DX, 6e-3)),
                     material="pec")
         elif kind == "wire":
             sim.add(PolylineWire(((10e-3, 6e-3, 6e-3), (14e-3, 6e-3, 6e-3)),

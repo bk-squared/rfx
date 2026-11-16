@@ -81,8 +81,10 @@ import math
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.sources.tfsf import init_tfsf, update_tfsf_1d
-from rfx.sources.tfsf_2d import init_tfsf_2d, update_tfsf_2d
+from rfx.sources.tfsf import init_tfsf
+from rfx.stepping.tfsf import update_tfsf_1d
+from rfx.sources.tfsf_2d import init_tfsf_2d
+from rfx.stepping.tfsf_2d import update_tfsf_2d
 
 C0 = 299_792_458.0
 ETA_0 = math.sqrt(4e-7 * math.pi / 8.8541878128e-12)

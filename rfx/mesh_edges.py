@@ -39,6 +39,7 @@ where the lines go; the cells between them come from
 """
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import heapq
 import warnings
 from typing import NamedTuple, Sequence
@@ -575,7 +576,7 @@ def edge_aware_profiles(
                     "coincides with a sheet edge. No mesh line is put ON a "
                     f"sheet edge, so the nearest node is {edge_offset:.2f} of "
                     "the edge cell inside the metal. Move the plane off the "
-                    "edge if it has to sit on a node.", stacklevel=2)
+                    "edge if it has to sit on a node.", ConfigurationWarning, stacklevel=2)
         # A solid's face on a sheet edge (a slab cut flush with its foil)
         # yields to the edge rule, as the docstring says; only a DECLARED
         # plane warns, because the caller asked for a node there.
@@ -726,15 +727,18 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
             joined |= np.take(fed, i_end, axis=axis)
         return bool(end.any()) and bool(joined[end].all())
 
-    free_lo = bool(i0 > 0 and float(declared_lo) > tol
+    free_lo = bool((periodic or i0 > 0) and (periodic or float(declared_lo) > tol)
                    and not _joined(i0, i0 - 1))
-    free_hi = bool(i1 + 1 < nodes.size
-                   and float(declared_hi) < float(domain_hi) - tol
+    free_hi = bool((periodic or i1 + 1 < nodes.size)
+                   and (periodic or float(declared_hi) < float(domain_hi) - tol)
                    and not _joined(i1, i1 + 1))
     lo = float(nodes[i0])
     hi = float(nodes[i1])
     if free_lo:
-        lo -= edge_offset * float(nodes[i0] - nodes[i0 - 1])
+        previous = nodes[i0 - 1] if i0 > 0 else nodes[fp.shape[axis] - 1] - float(domain_hi)
+        lo -= edge_offset * float(nodes[i0] - previous)
     if free_hi:
-        hi += edge_offset * float(nodes[i1 + 1] - nodes[i1])
+        following = (nodes[i1 + 1] if i1 + 1 < nodes.size
+                     else nodes[(i1 + 1) % fp.shape[axis]] + float(domain_hi))
+        hi += edge_offset * float(following - nodes[i1])
     return SolvedSheetSpan(i0, i1, lo, hi, free_lo, free_hi)

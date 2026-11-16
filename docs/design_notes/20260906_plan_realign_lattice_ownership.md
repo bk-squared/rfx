@@ -1,6 +1,6 @@
 # Lattice ownership contract for conductors — design + migration plan (2026-09-06)
 
-Status: **DECIDED by the PI 2026-09-06** (issue #931). This note is normative for the
+Status: **DECIDED** (issue #931). This note is normative for the
 implementation branch `feat/931-lattice-ownership`. It amends the 2026-09-05 post-v1.8
 plan's item 1 from "visualize the rasterization" to "define and enforce the ownership
 contract"; the visualization work then reads the contract instead of re-deriving.
@@ -233,7 +233,7 @@ carrying `two_plane` is rejected with a message, not ignored).
   NOT read the pre-#931 rule's 0.00926519 and must not: that rule zeroed its own wrong
   subset of fractional edges. The fence applies only to the Stage-2 tensor built from
   the run's own `pec_shapes`; the occupancy-derived tensor (`aniso_inv_eps_smooth`, the
-  `RFX_PEC_OCC_KOTTKE` lane) keeps the realized edges, because there the static
+  `pec_occupancy_model="kottke"` lane) keeps the realized edges, because there the static
   declaration and the traced override are two different geometries and the intersection
   would silently delete declared metal. Pinned by
   `test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it` and
@@ -371,7 +371,7 @@ Physics falsifiers, pre-declared before any recompute:
   correlated +0.265 with CST, one-plane +0.829. Under the contract the foils are sheets, so
   the board must stay at the one-plane figure; a drop below 0.8 blocks the default.
 
-R3 for every commit on the branch: `R3: memory=rfx-known-issues.md("top face plane is never
+R3 for every commit on the branch: `R3: memory=("top face plane is never
 zeroed" 2026-08-28; two_plane A/B verdict) | R2-attempts=0 (redesign, not a repeat) |
 falsifier=<the §5 item exercised>`.
 

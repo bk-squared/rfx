@@ -168,10 +168,29 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     # max ||S21|-1| 0.001657972 -> 0.001657927, max column power 1.001542963 -> 1.00154294; flux max column power
     # 1.000004464 -> 1.000004471; settling -64.24 / -71.96 -> -65.28 / -72.85 dB (left / right). Regenerated with this
     # test's own _make_wr90_sim (the diagnostics script's domain no longer matches it).
+    # Re-pinned for #2308: transmission now divides by the driven port's incident wave.
+    # Regenerated with this test's own _make_wr90_sim, num_periods=4 and scoped float64:
+    # normalize=True max|d| against the old golden is 1.0305989378262996.
+    # Independent witness: the empty guide's device run is its reference run, so
+    # max|True_offdiag - committed False_offdiag| = 3.878959614448864e-18 and
+    # max|True_diag| = 0.0. Transmission is the guide's own, no longer 1 by identity.
+    # The normalize=False and flux golden files and their SHAs are unchanged.
+    # Re-pinned because an N-step record now holds the state after step N in its last slot; before, that slot was
+    # unwritten. Regenerated with this test's own _make_wr90_sim, num_periods=4 and scoped float64. This snapshot
+    # ends while the pulse is in the guide, so it moves: max|d| against the old golden is 0.015991765393344213 (False),
+    # 0.0023836337343883132 (True), 0.01967477748770409 (flux). W1 passed at 0.0 in all three modes: reducing only
+    # n_steps_recorded before the DFT to the N-1 sample set reproduces the old golden. W2 remains FAILED: the
+    # num_periods=40 run moves by 1.8779146734548964e-5 (False), 1.877914673441108e-5 (True), 1.4005795176964832e-5
+    # (flux), against a guessed 1e-5 bar not derived from the residual. The root-cause identity control adds the
+    # independent NumPy float64 term 2*dt*x_N*exp(-j*w*t_N) to each 699-sample V/I spectrum, with t_N=N*dt for V
+    # and (N-1/2)*dt for I, then uses the same wave split and normalization with unchanged flux accumulators.
+    # max|S(700)-S_id| is 2.2887833992611187e-16 (False), 1.1102230246251565e-16 (True), 1.1102230246251565e-16
+    # (flux), all below 1e-12: W1 plus this identity attributes the move to the added sample. The earlier "one step
+    # late" fix is not undone: under the physical stamps, slot N-1 is the state after step N.
     _EXPECTED_SHA = {
-        "false": "fefa2c5ba64bccdf71d7a9ec41733bce8c930235b5bb23799790cd6c89ffbb20",
-        "true":  "82ec3bb49a51332d25dae8c772130b3c9253e6949c8010bbad112175606bca2e",
-        "flux":  "39bc5cd5190a5f65780bfaee73a28cde34ae109daa9ecdcfa4a6040b1766270b",
+        "false": "733efc8db8bee6fb39d795e12cafe9b3815ba7b3ccb668938053de4a4455f067",
+        "true":  "bcd91d6d198ba9df7943eaeeb77911ca6d5255099e909c19a382d0182b8b11d5",
+        "flux":  "99e0d3a1eab60c50776711e5b35e6af99f45bae52f7c65482b7bb15fa833e978",
     }
     assert sha == _EXPECTED_SHA[mode_name], (
         f"Golden fixture sha256 mismatch for normalize={normalize}: "

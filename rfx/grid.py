@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx.errors import ConfigurationWarning
 import numpy as np
 import warnings
 from fractions import Fraction
@@ -9,7 +10,7 @@ from math import lcm
 
 from rfx.boundaries.depths import resolve_face_depths
 
-from rfx._grid_metric import (
+from rfx._internal._grid_metric import (
     node_tie_tol,
     nearest_uniform_index,
     axis_name as _axis_name,
@@ -20,7 +21,7 @@ from rfx._grid_metric import (
 # Speed of light in vacuum (m/s)
 C0 = 299_792_458.0
 
-#: Arithmetic-dust budget in machine epsilons of ``length/dx`` (#1070).
+#: Arithmetic-dust budget in machine epsilons of ``length/dx``.
 #: ``cells_spanning`` keeps this as a floor under the shared NODE_TIE_REL
 #: band: at very large ratios the ULP budget exceeds 1e-9 of one cell.
 CELL_COUNT_ULP_BUDGET = 8
@@ -75,19 +76,23 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                              for n in range(max(1, int(np.ceil(length / dx))),
                                             int(np.floor(length / minimum)) + 1)}, reverse=True)
         fitting = next((candidate for candidate in candidates if fits(candidate)), None)
+        # The wall-axes clause is written only when a wall axis exists.
+        wall_names = ''.join(walls)
         if fitting is not None and fitting >= PERIODIC_AUTO_MIN_FRACTION * dx:
+            walls_fit = f" and wall axes {wall_names!r} are within 1 %" if walls else ""
             warnings.warn(
                 f"Automatic dx={dx:.12g} m snapped to dx={fitting:.12g} m: "
-                f"periodic axes {axes!r} divide exactly and wall axes {''.join(walls)!r} "
-                f"are within 1 % (minimum {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx).",
-                UserWarning, stacklevel=3)
+                f"periodic axes {axes!r} divide exactly{walls_fit} "
+                f"(minimum {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx).",
+                ConfigurationWarning, stacklevel=3)
             return fitting
         advice = (f"largest fitting dx={fitting:.12g} m ({fitting * 1e3:.12g} mm); "
                   "set dx explicitly to use it" if fitting is not None
                   else "no fitting spacing found")
+        walls_fit = f" and wall axes {wall_names!r} within 1 %" if walls else ""
         raise ValueError(
-            f"Automatic dx={dx:.12g} m cannot fit periodic axes {axes!r} and wall axes "
-            f"{''.join(walls)!r} within 1 % at >= {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx; "
+            f"Automatic dx={dx:.12g} m cannot fit periodic axes {axes!r}{walls_fit} "
+            f"at >= {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx; "
             f"{advice}. Suggestion search limit: requested dx/{PERIODIC_COMMON_SEARCH_REFINEMENT}.")
     if all(_divides_period(length, dx) for length in lengths):
         return dx
@@ -106,17 +111,16 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
 
 def cells_spanning(length: float, dx: float, *,
                    ulp_budget: int = CELL_COUNT_ULP_BUDGET) -> int:
-    """Cells needed to span *length* at cell size *dx* (issue #1070).
+    """Cells needed to span *length* at cell size *dx*.
 
     ``ceil(length / dx)``, except that a ratio sitting within
     ``max(node_tie_tol(r, 1), ulp_budget * eps * max(1, abs(r)))`` of an integer
     is taken to BE that integer. The shared on-lattice band keeps sizing
-    and Box faces on the same node (#1138); the existing ULP rule remains
+    and Box faces on the same node; the existing ULP rule remains
     a floor for very large cell counts. Plain ``ceil`` buys an extra cell for float
     dust, and nothing downstream fills it: it lies outside every declared
     Box, so it rasterizes as vacuum, and at a face that abuts an absorber
-    the pad extension then replicates that vacuum outward (#1070, the
-    staircase-lane twin of #831).
+    the pad extension then replicates that vacuum outward (an end facet like the smoothed-lane pad discontinuity).
 
     This is a LENGTH question only. A step count is not one -- see
     ``Grid.num_timesteps``, which still takes a plain ``ceil`` because
@@ -131,7 +135,7 @@ def cells_spanning(length: float, dx: float, *,
         cells = int(nearest)
     else:
         cells = int(np.ceil(ratio))
-    # A POSITIVE length always needs a cell (review of PR #1136, G). Zero is
+    # A POSITIVE length always needs a cell. Zero is
     # the one integer the dust band can reach from above while the length is
     # still real: for 0 < r <= NODE_TIE_REL the nearest integer is 0, and snapping
     # there would return fewer cells than the declared length needs, where
@@ -302,7 +306,7 @@ class Grid:
         # +1 fence-post correction: N cells need N+1 nodes so that
         # PEC walls at index 0 and index N span exactly N*dx.
         #
-        # ``cells_spanning`` rather than a bare ``ceil`` (#1070): a declared
+        # ``cells_spanning`` rather than a bare ``ceil``: a declared
         # length is an arithmetic expression, and one ULP of float dust in
         # ``domain/dx`` used to buy a whole cell that no declared Box reaches.
         self.nx = (realized_cells(domain[0], self.dx, kinds["x"]) + ("x" not in self.periodic_axes)
@@ -342,7 +346,8 @@ class Grid:
         from rfx.stepping.step_count import steps_for_periods
         return steps_for_periods(self.dt, self.freq_max, num_periods)
 
-    def position_to_index(self, pos: tuple[float, float, float]) -> tuple[int, int, int]:
+    def position_to_index(self, pos: tuple[float, float, float], *,
+                          allow_in_absorber=None) -> tuple[int, int, int]:
         """Convert physical position to grid index (accounting for the
         leading per-face CPML offset ``pad_{axis}_lo``).
 
@@ -353,6 +358,9 @@ class Grid:
             returned an out-of-range index silently, which then indexed
             the wrong cell (or wrapped negatively) downstream.
         """
+        if allow_in_absorber is not None:
+            from rfx.model.point_placement import admit_point
+            admit_point(self, pos, allow_in_absorber=allow_in_absorber)
         # Preserve this API's input-dtype division, including half-node ties.
         i = self._rounded_index(0, pos[0] / self.dx)
         j = self._rounded_index(1, pos[1] / self.dx)
@@ -382,7 +390,7 @@ class Grid:
         A constant coordinate denotes a plane and uses the point lookup.
         Non-periodic axes retain position_to_index's input-dtype division.
         """
-        from rfx._periodic import interval_coordinates
+        from rfx._internal._periodic import interval_coordinates
         corners = [list(start), list(end)]
         spanning = [start[a] != end[a] for a in range(3)]
         for a in range(3):
@@ -408,7 +416,7 @@ class Grid:
     #
     # THE CONVENTION -- index origin, the primal/dual rule, the end entries
     # of the two inverse-metric arrays, and which consumer is entitled to
-    # which metric -- is written once, in ``rfx/_grid_metric.py``. Read that
+    # which metric -- is written once, in ``rfx/_internal/_grid_metric.py``. Read that
     # module before adding a formula at a call site; decision 3 is that a
     # consumer needing a third quantity adds a named accessor here instead.
     #
@@ -429,7 +437,7 @@ class Grid:
         """PRIMAL cell widths along ``axis``, float64, full padded length.
 
         Constant by construction: ``np.full(n, dx)``. The last entry is the
-        fence-post node-provider (see ``rfx/_grid_metric.py``), so the sum
+        fence-post node-provider (see ``rfx/_internal/_grid_metric.py``), so the sum
         overshoots the realized extent by one cell -- use ``node_of``.
         """
         n, _ = self._axis_extent(axis)

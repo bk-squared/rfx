@@ -9,11 +9,14 @@ Test 2: test_overlap_passivity
     |S11|² + |S21|² < 1.10 in the well-resolved mid-band.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import C0
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.sources.waveguide_port import (
@@ -80,8 +83,8 @@ def _run_waveguide_sim_overlap(
 
     port = WaveguidePort(
         x_index=port_x,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=a_actual,
         b=b_actual,
         mode=(1, 0),
@@ -103,9 +106,9 @@ def _run_waveguide_sim_overlap(
     for step in range(n_steps):
         t = step * dt
 
-        state = update_h(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        state = update_e(state, materials, dt, dx)
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         state = apply_pec(state, axes="yz")
 

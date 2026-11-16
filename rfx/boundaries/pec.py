@@ -2,12 +2,20 @@
 
 Domain-face PEC (:func:`apply_pec`, :func:`apply_pec_faces`) keeps its own
 convention (E_tan = 0 on the face plane at index 0 / N) — it is not a body.
-Conductor bodies follow the lattice ownership contract (#931):
+Conductor bodies follow the lattice ownership contract:
 :func:`realized_pec_edge_masks` is the one source of PEC E edges for
 volumes, sheets and wires.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from collections.abc import Sequence
+    from rfx.stepping.slab_view import SlabView, UniformSlabView
+    import jax
 
 from dataclasses import dataclass, replace
 
@@ -60,14 +68,14 @@ _FACES = ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
 
 def resolve_wall_faces(grid, periodic, pec_axes=None):
     """The electric and magnetic wall faces of a run, from the grid's own
-    boundary declaration (#1164, #1193, #1194).
+    boundary declaration.
 
     One rule for every entry point, decided per FACE, not per axis:
 
     * a face on a periodic axis is no wall;
     * a face in ``grid.pmc_faces`` is a magnetic wall and never an
       electric one -- zeroing E_tan on its node plane turns an open-ended
-      line into a short (a port on that plane read ``|S11| = 1``, #1164);
+      line into a short (a port on that plane read ``|S11| = 1``);
     * a face in ``grid.pec_faces`` is an electric wall;
     * any other face (an absorber face, or a raw ``Grid`` with no
       declaration) is PEC-backed -- E_tan = 0 on the outermost node plane,
@@ -113,7 +121,7 @@ def wall_edge_masks(shape, faces):
     return masks
 
 
-def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object:
+def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_ghost_faces=()) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
 
     Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
@@ -132,9 +140,10 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
     """
     from ._face_frame import apply_framed_faces, needs_face_frame
 
+    normal_ghost_faces = normal_ghost_faces or ()
     if needs_face_frame(state.ex.shape, faces, frame, owned):
         return apply_framed_faces(state, faces, frame, owned)
-    if not faces:
+    if not faces and not normal_ghost_faces:
         return state
     ex, ey, ez = state.ex, state.ey, state.ez
 
@@ -160,11 +169,18 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
         # physical domain. Zero it to prevent ghost-layer accumulation.
         ez = ez.at[:, :, -1].set(0.0)
 
+    if "x_hi" in normal_ghost_faces:
+        ex = ex.at[-1, :, :].set(0.0)
+    if "y_hi" in normal_ghost_faces:
+        ey = ey.at[:, -1, :].set(0.0)
+    if "z_hi" in normal_ghost_faces:
+        ez = ez.at[:, :, -1].set(0.0)
+
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
 # ---------------------------------------------------------------------------
-# Lattice ownership contract for conductors (#931)
+# Lattice ownership contract for conductors
 #
 # One sentence, three regions: an E component is PEC iff its own location is
 # inside the closed conductor region — a VOLUME (a set of primal cells), a
@@ -184,15 +200,14 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
 
 
 def _shift(arr, ax, periodic, direction, *, xp=jnp):
-    """THE single spelling of the #689 boundary convention.
+    """THE single spelling of the boundary convention.
 
     ``direction=+1`` returns ``arr[i-1]`` (backward neighbour), ``-1``
     returns ``arr[i+1]`` (forward neighbour).  Wrap (``jnp.roll``) on a
     periodic axis and on a length-1 axis (the 2-D lane's self-adjacency);
     explicit zero pad (``_shift_bwd`` / ``_shift_fwd``) otherwise — the
     same out-of-domain convention the solver's curl uses.  A hand-copied
-    second neighbour rule is this repo's recurring defect (#689/#690
-    class); volume, sheet and wire realization all come through here.
+    second neighbour rule is this repo's recurring defect; volume, sheet and wire realization all come through here.
     """
     if xp is np:
         shifted = np.roll(arr, direction, axis=ax)
@@ -206,14 +221,90 @@ def _shift(arr, ax, periodic, direction, *, xp=jnp):
     return _shift_bwd(arr, ax) if direction > 0 else _shift_fwd(arr, ax)
 
 
+@dataclass(frozen=True, eq=False)
+class SheetFootprint:
+    """Host plane storage with an uncached, compatible 3-D inspection view."""
+
+    shape: tuple[int, int, int]
+    normal_axis: int
+    plane: int
+    mask: np.ndarray
+
+    def __post_init__(self):
+        shape = tuple(int(n) for n in self.shape)
+        a, plane = int(self.normal_axis), int(self.plane)
+        if len(shape) != 3 or a not in (0, 1, 2) or not 0 <= plane < shape[a]:
+            raise ValueError("invalid SheetFootprint shape, normal_axis or plane")
+        mask = np.array(self.mask, dtype=bool, copy=True)
+        if mask.shape != tuple(n for t, n in enumerate(shape) if t != a):
+            raise ValueError("SheetFootprint mask must have the two in-plane dimensions")
+        mask.flags.writeable = False
+        object.__setattr__(self, 'shape', shape)
+        object.__setattr__(self, 'normal_axis', a)
+        object.__setattr__(self, 'plane', plane)
+        object.__setattr__(self, 'mask', mask)
+
+    ndim = 3
+    dtype = np.dtype(bool)
+
+    @property
+    def plane_view(self):
+        return np.expand_dims(self.mask, self.normal_axis)
+
+    @property
+    def plane_index(self):
+        return tuple(slice(self.plane, self.plane + 1) if a == self.normal_axis
+                     else slice(None) for a in range(3))
+
+    def __array__(self, dtype=None, copy=None):
+        result = np.zeros(self.shape, dtype=bool if dtype is None else dtype)
+        result[self.plane_index] = self.plane_view
+        return result
+
+    def __getitem__(self, index):
+        return np.asarray(self)[index]
+
+    def __jax_array__(self):
+        # Explicit external array operations can request the inspection view.
+        # Return host data; neither the view nor a device copy is retained.
+        return np.asarray(self)
+
+    def sum(self, *args, **kwargs):
+        return np.asarray(self).sum(*args, **kwargs)
+
+    def slab(self, lo, end):
+        """Slice x without allocating the global inspection view."""
+        shape = (end - lo,) + self.shape[1:]
+        if self.normal_axis == 0:
+            return SheetFootprint(shape, 0, self.plane - lo, self.mask)
+        return SheetFootprint(shape, self.normal_axis, self.plane, self.mask[lo:end])
+
+    @classmethod
+    def normalize(cls, footprint, normal_axis, plane):
+        if isinstance(footprint, cls) and (footprint.normal_axis, footprint.plane) == (normal_axis, plane):
+            return footprint
+        fp = np.asarray(footprint, dtype=bool)
+        if fp.ndim != 3:
+            raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
+        if not 0 <= plane < fp.shape[normal_axis]:
+            raise ValueError(f"SheetSpec.plane={plane} is outside the array along axis "
+                             f"{'xyz'[normal_axis]} (length {fp.shape[normal_axis]})")
+        other = tuple(b for b in range(3) if b != normal_axis)
+        layers = np.flatnonzero(np.any(fp, axis=other))
+        if layers.size and (layers.size != 1 or int(layers[0]) != plane):
+            raise ValueError(f"SheetSpec footprint must occupy exactly its own plane "
+                             f"{plane} along {'xyz'[normal_axis]}; found layers {layers.tolist()}")
+        return cls(fp.shape, normal_axis, plane, np.take(fp, plane, axis=normal_axis))
+
+
 @dataclass(frozen=True)
 class SheetSpec:
     """One PEC sheet: a node footprint on ONE plane, zero thickness (§1.3).
 
-    ``footprint`` is a boolean ``(nx, ny, nz)`` NODE mask that is True only
-    on layer ``plane`` along ``normal_axis`` (the full-shape layout keeps it
+    ``footprint`` is a host :class:`SheetFootprint` whose boolean 3-D NODE
+    view is True only on layer ``plane`` along ``normal_axis`` (the view keeps it
     interchangeable with ``SheetImpedanceSpec.mask``, so a lossy f0 sheet
-    and a PEC sheet are one footprint with a different operator — the #677
+    and a PEC sheet are one footprint with a different operator — the
     G4 identity by construction).  ``plane`` is a static Python int: a
     sheet's plane is never a traced quantity (the ``argmin`` cliff).  A
     sheet owns NO cell — it adds nothing to the cell mask and writes no
@@ -256,7 +347,7 @@ class SheetSpec:
 
         Refuses a range that spans fewer than two node lines on either
         in-plane axis: one node line carries no E edge between two adjacent
-        nodes, so the metal would carry no current and vanish silently (the #369
+        nodes, so the metal would carry no current and vanish silently (the
         class, the same rule :func:`refuse_vaporized_sheets` applies to
         metric sheets).
         """
@@ -297,7 +388,7 @@ class SheetSpec:
                     f"sheet {name!r}: the node range on {'xyz'[t]} is "
                     f"({lo}, {hi}) — a single node line, which has no E edge "
                     "between two adjacent nodes, so the metal would carry no "
-                    "current and vanish silently (#369 class). A sheet needs "
+                    "current and vanish silently. A sheet needs "
                     "at least two adjacent node lines on BOTH in-plane axes; "
                     "widen the range or refine the mesh.")
             if lo < 0 or hi >= shape3[t]:
@@ -309,7 +400,7 @@ class SheetSpec:
             m[lo:hi + 1] = True
             axes.append(m)
         fp = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
-        return cls(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
+        return cls(normal_axis=a, plane=plane, footprint=fp,
                    name=name)
 
     def __post_init__(self):
@@ -318,22 +409,18 @@ class SheetSpec:
             raise ValueError(f"SheetSpec.normal_axis must be 0/1/2, got {self.normal_axis!r}")
         object.__setattr__(self, "normal_axis", a)
         object.__setattr__(self, "plane", int(self.plane))
-        fp = self.footprint
-        if getattr(fp, "ndim", None) != 3:
-            raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
-        if not (0 <= self.plane < fp.shape[a]):
-            raise ValueError(
-                f"SheetSpec.plane={self.plane} is outside the array along axis "
-                f"{'xyz'[a]} (length {fp.shape[a]})")
-        if not _is_tracer(fp):
-            fp_np = np.asarray(fp, dtype=bool)
-            other = tuple(b for b in range(3) if b != a)
-            layers = np.flatnonzero(np.any(fp_np, axis=other))
-            if layers.size and (layers.size != 1 or int(layers[0]) != self.plane):
-                raise ValueError(
-                    f"SheetSpec footprint must occupy exactly its own plane "
-                    f"{self.plane} along {'xyz'[a]}; found layers {layers.tolist()}")
-            object.__setattr__(self, "footprint", jnp.asarray(fp_np))
+        for field in ('footprint', 'unwrapped_footprint'):
+            fp = getattr(self, field)
+            if fp is None and field == 'unwrapped_footprint':
+                continue
+            if _is_tracer(fp):
+                # The f0 operator on a moving mesh uses a traced 3-D mask.
+                if fp.ndim != 3:
+                    raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
+                if not 0 <= self.plane < fp.shape[a]:
+                    raise ValueError(f"SheetSpec.plane={self.plane} is outside the array along axis {'xyz'[a]}")
+                continue
+            object.__setattr__(self, field, SheetFootprint.normalize(fp, a, self.plane))
 
 
 @dataclass(frozen=True)
@@ -456,6 +543,11 @@ def _volume_occupancy_masks(occ, periodic):
 
 def _fold_sheet_nodes(mask, shape, *, edge_axis=None, xp=jnp):
     """Identify virtual endpoint nodes after enumerating physical edges."""
+    if isinstance(mask, SheetFootprint):
+        plane_shape = tuple(1 if a == mask.normal_axis else n for a, n in enumerate(shape))
+        folded = _fold_sheet_nodes(mask.plane_view, plane_shape, edge_axis=edge_axis, xp=np)
+        return SheetFootprint(tuple(shape), mask.normal_axis, mask.plane,
+                              np.squeeze(folded, axis=mask.normal_axis))
     for axis, n in enumerate(shape):
         if mask.shape[axis] == n:
             continue
@@ -494,12 +586,11 @@ def _sheet_entry(sp, footprint):
     from rfx.core.jax_utils import is_tracer
     ranges = None
     if not is_tracer(footprint):
-        footprint = np.asarray(footprint)
-        view = footprint
-        if isinstance(sp.plane, (int, np.integer)):
+        view = footprint.plane_view if isinstance(footprint, SheetFootprint) else np.asarray(footprint)
+        if not isinstance(footprint, SheetFootprint) and isinstance(sp.plane, (int, np.integer)):
             plane = [slice(None)] * 3
             plane[sp.normal_axis] = slice(sp.plane, sp.plane + 1)
-            view = footprint[tuple(plane)]
+            view = view[tuple(plane)]
         ranges = []
         for t in range(3):
             indices = np.flatnonzero(view.any(axis=tuple(a for a in range(3) if a != t)))
@@ -540,7 +631,8 @@ def _sheet_plane_edges(entries, normal, axis, periodic, *, unwrapped=False):
         if concrete:
             index[normal] = slice(plane, plane + 1)
         index = tuple(index)
-        view = footprint[index]
+        view = (footprint.plane_view if concrete and isinstance(footprint, SheetFootprint)
+                else footprint[index])
         shifted = None if axis == normal else _shift(view, axis, neighbour_periodic, -1, xp=xp)
         own = view if axis == normal else view & shifted
         if concrete:
@@ -575,6 +667,11 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
         full = sp.footprint
         if tuple(full.shape) != tuple(shape):
             raise ValueError(f"SheetSpec footprint shape {full.shape} does not match grid shape {shape}")
+        if isinstance(full, SheetFootprint) and (sp.unwrapped_footprint is None
+                                                or isinstance(sp.unwrapped_footprint, SheetFootprint)):
+            full = _unwrapped_sheet_plane(sp, shape, periodic)
+            per_axis.setdefault(a, []).append(_sheet_entry(sp, full))
+            continue
         # Explicit legacy node masks already identify the periodic endpoints.
         # Also use this as the clip mask for diagnostic copies of a sheet.
         for t in range(3):
@@ -608,12 +705,33 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
     return edge
 
 
+def _unwrapped_sheet_plane(sp, shape, periodic):
+    """Extend and clip only the host plane before physical edge enumeration."""
+    a = sp.normal_axis
+    full = sp.footprint.plane_view
+    raw = None if sp.unwrapped_footprint is None else sp.unwrapped_footprint.plane_view
+    extended_shape = list(shape)
+    for t in range(3):
+        if periodic[t] and t != a:
+            first = [slice(None)] * 3
+            first[t] = slice(0, 1)
+            full = np.concatenate((full, full[tuple(first)]), axis=t)
+            extended_shape[t] += 1
+            if raw is not None and raw.shape[t] == shape[t]:
+                raw = np.concatenate((raw, raw[tuple(first)]), axis=t)
+    if raw is not None:
+        if raw.shape != full.shape:
+            raise ValueError("SheetSpec unwrapped footprint does not match the periodic grid")
+        full = raw & full
+    return SheetFootprint(tuple(extended_shape), a, sp.plane, np.squeeze(full, axis=a))
+
+
 def _sheet_edge_masks(sheets, shape, periodic):
     """§1.3: E_t (t != normal) on the sheet plane, both end nodes in F.
 
     Each sheet owns its internal edges. Cross-sheet edges require touching
     drawn extents along that edge's axis; index declarations retain the
-    legacy union. Full footprints isolate different normal planes (#690).
+    legacy union. Full footprints isolate different normal planes.
 
     On a length-1 normal axis (the 2-D lane) the region has no thickness
     direction, so the "normal" component is not a through-sheet edge: it
@@ -662,16 +780,19 @@ def _slab_sheets(sheets, view, end):
                 continue
             plane -= view.lo
         cut.append(replace(
-            sheet, plane=plane, footprint=sheet.footprint[view.lo:end],
+            sheet, plane=plane, footprint=(sheet.footprint.slab(view.lo, end)
+                if isinstance(sheet.footprint, SheetFootprint) else sheet.footprint[view.lo:end]),
             unwrapped_footprint=(None if sheet.unwrapped_footprint is None
-                                 else sheet.unwrapped_footprint[view.lo:end]),
+                else sheet.unwrapped_footprint.slab(view.lo, end)
+                if isinstance(sheet.unwrapped_footprint, SheetFootprint)
+                else sheet.unwrapped_footprint[view.lo:end]),
             end_rows=(None if sheet.end_rows[0] is None
                       else sheet.end_rows[0][view.lo:end],) + sheet.end_rows[1:]))
     return cut
 
 
-def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
-                            periodic=(False, False, False), *, view=None):
+def realized_pec_edge_masks(cell_mask: jax.Array | np.ndarray | None, sheets: Iterable[SheetSpec] | None = (), wires: Iterable[WireSpec] | None = (),
+                            periodic: Sequence[bool] = (False, False, False), *, view: SlabView | UniformSlabView | None = None) -> tuple[jax.Array, ...]:
     """The one function that turns conductor geometry into PEC E edges.
 
     Parameters
@@ -739,8 +860,8 @@ def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
     return tuple(out)
 
 
-def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
-                         periodic=(False, False, False)):
+def realized_wall_planes(edge_masks: Sequence[jax.Array | np.ndarray], axis: int, *, ij: Sequence[int] | None = None, region: Sequence[slice] | None = None,
+                         periodic: Sequence[bool] = (False, False, False)) -> list[int]:
     """Sorted node-plane indices along ``axis`` where a tangential wall exists.
 
     A plane ``k`` counts when some E component tangential to ``axis`` (the
@@ -787,7 +908,7 @@ def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
         in_plane = tangential
         for t in tangential:
             m = np.asarray(edge_masks[t], dtype=bool)
-            idx = [None, None, None]
+            idx: list[int | slice | None] = [None, None, None]
             idx[in_plane[0]] = i
             idx[in_plane[1]] = j
             idx[axis] = slice(None)
@@ -799,7 +920,7 @@ def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
             elif m.shape[t] == 1:
                 pass  # length-1 axis: the node's own index IS the wrap neighbour
             elif periodic[t]:
-                back[t] = m.shape[t] - 1   # #689 wrap: node 0's backward edge
+                back[t] = m.shape[t] - 1   # wrap: node 0's backward edge
                 col = col | m[tuple(back)]
             hit = col if hit is None else (hit | col)
     else:
@@ -817,7 +938,7 @@ def realized_wall_planes(edge_masks, axis, *, ij=None, region=None,
 _COMPONENT_INDEX = {"ex": 0, "ey": 1, "ez": 2, "x": 0, "y": 1, "z": 2, 0: 0, 1: 1, 2: 2}
 
 
-def edge_is_pec(edge_masks, component, i, j, k) -> bool:
+def edge_is_pec(edge_masks: Sequence[jax.Array | np.ndarray], component: str | int, i: int, j: int, k: int) -> bool:
     """True iff the E edge ``component`` at index ``(i, j, k)`` is PEC.
 
     ``component`` is ``"ex"``/``"ey"``/``"ez"``, ``"x"``/``"y"``/``"z"`` or
@@ -942,10 +1063,35 @@ def apply_pec_mask(state, pec_mask, periodic=(False, False, False),
     Convenience wrapper: :func:`realized_pec_edge_masks` then
     :func:`apply_pec_edges`.  Step functions precompute the edge masks once
     at setup and call :func:`apply_pec_edges` directly; this wrapper is for
-    tests and one-shot callers.  ``periodic`` is the run's flags (#689).
+    tests and one-shot callers.  ``periodic`` is the run's flags.
     """
     return apply_pec_edges(
         state, realized_pec_edge_masks(pec_mask, sheets=sheets, periodic=periodic))
+
+
+def undriven_h_masks(frozen, periodic, stencil_order):
+    """H components whose every forward-curl E driver is frozen.
+
+    Non-periodic forward neighbours outside the grid are the zero field
+    supplied by ``_diff_fwd_o``, hence frozen. A Bloch phase preserves zero.
+    """
+    if stencil_order != 2:
+        raise NotImplementedError(
+            f"undriven_h_masks does not support stencil_order={stencil_order}; "
+            "only stencil_order=2 curl drivers are modelled")
+
+    def forward(mask, axis):
+        neighbour = jnp.roll(mask, -1, axis=axis)
+        if not periodic[axis]:
+            edge = [slice(None)] * mask.ndim
+            edge[axis] = -1
+            neighbour = neighbour.at[tuple(edge)].set(True)
+        return neighbour
+
+    fx, fy, fz = frozen
+    return (fz & forward(fz, 1) & fy & forward(fy, 2),
+            fx & forward(fx, 2) & fz & forward(fz, 0),
+            fx & forward(fx, 1) & fy & forward(fy, 0))
 
 
 def apply_pec_h_mask(state, pec_mask=None, *,
@@ -1028,7 +1174,7 @@ def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
 
     ``pec_occupancy`` is a float CELL field in ``[0, 1]``.  Each E component
     is scaled by ``1 - M`` with ``M`` the noisy-OR of its four incident
-    cells, ``M = 1 - Π(1 - o_c)``, under the same #689 shifts as the hard
+    cells, ``M = 1 - Π(1 - o_c)``, under the same shifts as the hard
     rule — so at binary occupancy this is bit-identical to
     :func:`apply_pec_mask` (pinned on a battery that includes bodies on
     faces 0 and n-1 of a non-periodic axis and the periodic seam).  Sheets
@@ -1055,7 +1201,7 @@ def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
 def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
                            pec_occupancy=None,
                            periodic=(False, False, False)):
-    """``(write slice, keep factors)`` for a traced occupancy in one box (#1183).
+    """``(write slice, keep factors)`` for a traced occupancy in one box.
 
     Built ONCE, outside the time loop: the occupancy is a design variable,
     not a field, so ``1 - M`` does not change from step to step. The step
@@ -1091,7 +1237,7 @@ def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
     """
     if any(periodic):
         raise NotImplementedError(
-            "a design occupancy box (#1183) does not support periodic axes: "
+            "a design occupancy box does not support periodic axes: "
             f"periodic={tuple(bool(p) for p in periodic)}. The incident rule "
             "wraps across the seam there, so the box's one-cell window is no "
             "longer the whole set of cells its occupancy can move. Use "
@@ -1126,7 +1272,7 @@ def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
 
 
 def apply_pec_occupancy_box(state, prev, write, keep):
-    """Redo the occupancy scaling on one window with a traced ``1 - M`` (#1183).
+    """Redo the occupancy scaling on one window with a traced ``1 - M``.
 
     ``prev`` is the state BEFORE the grid-wide :func:`apply_pec_occupancy` of
     this timestep (or the state itself when the run has no static occupancy).

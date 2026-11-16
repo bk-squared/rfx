@@ -48,8 +48,8 @@ def test_screenshot_uses_nonuniform_physical_coordinates(monkeypatch, tmp_path, 
     sim = _graded_sim("z")
     grid = sim._build_nonuniform_grid()
     state = SimpleNamespace(ez=np.ones(grid.shape))
-    monkeypatch.setattr(visual, "HAS_MPL3D", three_dimensional)
-    monkeypatch.setattr(visual, "_has_mpl", lambda: True)
+    original = visual._mpl3d
+    monkeypatch.setattr(visual, "_mpl3d", original if three_dimensional else lambda: None)
     if three_dimensional:
         from mpl_toolkits.mplot3d.axes3d import Axes3D
         original = Axes3D.plot_surface
@@ -102,6 +102,6 @@ def test_farfield_selects_realized_grid_with_only_transverse_profile(monkeypatch
         assert grid.shape["xyz".index(graded_axis)] == 5
         raise GridCaptured
 
-    monkeypatch.setattr("rfx.farfield.compute_far_field", capture)
+    monkeypatch.setattr("rfx.measurement.farfield.compute_far_field", capture)
     with pytest.raises(GridCaptured):
         visualize_farfield_3d(result, sim)

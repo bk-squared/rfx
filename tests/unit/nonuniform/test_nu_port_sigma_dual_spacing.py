@@ -410,7 +410,7 @@ def test_preflight_flags_a_lumped_port_on_a_graded_node():
     fired = _preflight_text(_sim("ez", extent=None))
     assert "an E node whose" in fired, fired
     assert "lumped port at" in fired, fired
-    assert "issue #688" in fired, fired
+    assert "onto a locally uniform node" in fired, fired
     assert "sits at x = " in fired, fired
     assert "sits at y = " in fired, fired
     assert "sits at z = " not in fired, fired

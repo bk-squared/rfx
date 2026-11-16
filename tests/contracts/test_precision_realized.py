@@ -29,12 +29,10 @@ HONOURS += ('optimize', 'progressive_optimize', 'compute_msl_s_matrix',
             'run_tfsf', 'forward_tfsf', 'run_window', 'forward_window', 'vmap_sweep_fallback')
 # These refusals predate #1567; preserve the original exception and message.
 MAIN_REFUSALS = {
-    'differentiable_material_fit': (NotImplementedError, "precision='float64'.*#1290"),
+    'differentiable_material_fit': (NotImplementedError, "precision='float64'.*Use precision='float32'"),
     **{name: (ValueError, "requires precision='float32'") for name in (
         'compute_coaxial_line_reflection', 'compute_coaxial_two_port', 'compute_coax_msl_transition')},
-    **{name: (NotImplementedError, "precision|float32") for name in (
-        'vmap_material_sweep', 'run_adi', 'forward_adi', 'run_nonuniform',
-        'forward_nonuniform', 'forward_distributed', 'run_distributed', 'driver_distributed')},
+    **{name: (NotImplementedError, "precision|float32") for name in ('vmap_material_sweep', 'forward_distributed', 'run_distributed', 'driver_distributed')},
     'run_subgridded': (NotImplementedError, 'subgrid|SBP|precision'),
 }
 REFUSES = tuple(MAIN_REFUSALS)
@@ -81,7 +79,7 @@ def model(precision, entry):
         from dataclasses import replace
         sim._waveguide_ports = [replace(p, freqs=jnp.asarray([8e9, 9e9+100], dtype=precision))
                                 for p in sim._waveguide_ports]
-        if entry == 'run_waveguide':
+        if entry in ('run_waveguide', 'forward_waveguide'):
             sim._waveguide_ports.pop()
         return sim
     if entry == 'driver_refplane':
@@ -102,10 +100,6 @@ def model(precision, entry):
                      excite=i == 0 or not entry.startswith('forward'),
                      **({'extent': .003} if 'wire' in entry else {}))
     sim.add_probe((.009, .006, .006), 'ez')
-    if entry.endswith('_adi'):
-        sim._ports.clear()
-        sim.add_source((.006,.006,.006), 'ez', amplitude_kind='field')
-        sim._solver = 'adi'
     if entry.endswith('_nonuniform') or entry == 'forward_distributed':
         sim._dz_profile = np.full(4,.003)
     if entry in ('run_nonuniform','forward_nonuniform','forward_distributed'):
@@ -164,9 +158,11 @@ def invoke(sim, entry):
                 include_environment=False,
                 run_kwargs={'n_steps':128,'s_param_freqs':FREQS,'skip_preflight':True})[0].result
     if entry == 'batch':
-        from rfx.batch import run_batch, ParameterSweep
-        return run_batch(lambda **kw: sim, ParameterSweep(unused=[1.]),
-                         run_kwargs={'n_steps':128,'s_param_freqs':FREQS,'skip_preflight':True})[0][1]
+        from rfx.batch import ParameterSweep
+        factory = lambda **kw: sim
+        run_kwargs = {'n_steps':128,'s_param_freqs':FREQS,'skip_preflight':True}
+        return [(p, factory(**p).run(**run_kwargs))
+                for p in ParameterSweep(unused=[1.]).combinations()][0][1]
     if entry in ('compute_waveguide_s_matrix', 'compute_s_matrix'):
         return getattr(sim, entry)(n_steps=32, normalize=False)
     if entry == 'compute_coax_msl_transition':
@@ -203,10 +199,10 @@ def invoke(sim, entry):
     if entry == 'forward_distributed':
         kw['distributed'] = True
     if entry.startswith('forward'):
-        return sim.forward(port_s11_freqs=None if entry in ('forward_nonuniform','forward_distributed','forward_waveguide','forward_tfsf','forward_msl','forward_adi') else FREQS, **kw)
-    if entry in ('run_tfsf', 'run_msl', 'run_adi'):
+        return sim.forward(port_s11_freqs=None if entry in ('forward_nonuniform', 'forward_distributed', 'forward_waveguide', 'forward_tfsf', 'forward_msl') else FREQS, **kw)
+    if entry in ('run_tfsf', 'run_msl'):
         kw['compute_s_params'] = False
-    return sim.run(s_param_freqs=None if entry in ('run_nonuniform','run_waveguide','run_tfsf','run_msl','run_adi') else FREQS, **kw)
+    return sim.run(s_param_freqs=None if entry in ('run_nonuniform','run_waveguide','run_tfsf','run_msl') else FREQS, **kw)
 
 
 def _forbid(*args, **kwargs):
@@ -221,7 +217,7 @@ def test_off_refuses_before_allocation(monkeypatch, entry):
         for name in ('zeros','ones','empty','array','asarray','arange','full'):
             monkeypatch.setattr(jnp, name, _forbid)
         monkeypatch.setattr(sim, '_build_grid', _forbid)
-        from rfx._precision import FLOAT64_MODE_ERROR
+        from rfx._internal._precision import FLOAT64_MODE_ERROR
         with pytest.raises(ValueError, match='Build and run the Simulation') as caught:
             if entry == 'adjoint':
                 sim.forward(gradient='adjoint')
@@ -240,7 +236,7 @@ def test_mps_backend_refuses_float64_before_allocation(monkeypatch, entry):
         for name in ('zeros','ones','empty','array','asarray','arange','full'):
             monkeypatch.setattr(jnp, name, _forbid)
         monkeypatch.setattr(sim, '_build_grid', _forbid)
-        from rfx._precision import FLOAT64_MPS_ERROR
+        from rfx._internal._precision import FLOAT64_MPS_ERROR
         with pytest.raises(ValueError, match='mps') as caught:
             if entry == 'adjoint':
                 sim.forward(gradient='adjoint')
@@ -264,7 +260,7 @@ def test_mps_backend_refuses_float32_under_x64(monkeypatch):
         for name in ('zeros','ones','empty','array','asarray','arange','full'):
             monkeypatch.setattr(jnp, name, _forbid)
         monkeypatch.setattr(sim, '_build_grid', _forbid)
-        from rfx._precision import FLOAT64_MPS_ERROR
+        from rfx._internal._precision import FLOAT64_MPS_ERROR
         with pytest.raises(ValueError) as caught:
             invoke(sim, 'run_lumped')
         assert str(caught.value) == FLOAT64_MPS_ERROR
@@ -325,11 +321,12 @@ def numeric_arrays(result):
         yield result[0]
 
 
-@pytest.mark.parametrize('entry', HONOURS)
+@pytest.mark.parametrize('entry', HONOURS + ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'))
 @pytest.mark.parametrize('precision', ['float32','float64'])
 def test_realized_field_storage(monkeypatch, entry, precision):
-    if entry == 'topology_optimize':
-        pytest.importorskip('optax')  # optional dependency of topology_optimize's optimizer
+    if entry in ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'):
+        from tests.contracts.graded_precision import check_graded_storage
+        return check_graded_storage(monkeypatch, entry, precision)
     import rfx.simulation as core
     fields, accumulators, records = [], [], []
     initialize, make_step = uniform_setup.init_state, uniform_loop.make_core_step
@@ -361,7 +358,7 @@ def test_realized_field_storage(monkeypatch, entry, precision):
 
     monkeypatch.setattr(uniform_setup, 'init_state', observe_fields)
     monkeypatch.setattr(uniform_loop, 'make_core_step', observe_step)
-    monkeypatch.setattr(core, 'make_core_step', observe_step)
+    monkeypatch.setattr(uniform_setup, 'make_core_step', observe_step)
     try:
         with jax.enable_x64() if precision == 'float64' else jax.enable_x64(False):
             with warnings.catch_warnings():
@@ -376,7 +373,7 @@ def test_realized_field_storage(monkeypatch, entry, precision):
                     result = invoke(model(precision, entry), entry)
             output = list(numeric_arrays(result))
             if entry in ('run_ntff', 'forward_ntff'):
-                from rfx.farfield import compute_far_field, compute_far_field_jax
+                from rfx.measurement.farfield import compute_far_field, compute_far_field_jax
                 ff = compute_far_field_jax(result.ntff_data, result.ntff_box,
                                            result.grid, [1.1], [.7])
                 assert ff.E_theta.dtype == ff.E_phi.dtype == expected_complex
@@ -441,7 +438,7 @@ def test_preflight_precision_is_error():
         report = sim.preflight(strict=False)
         findings = report.by_code('precision_float64_without_x64')
         assert len(findings) == 1 and findings[0].severity == 'error'
-        from rfx._precision import FLOAT64_MODE_ERROR
+        from rfx._internal._precision import FLOAT64_MODE_ERROR
         assert str(findings[0]) == FLOAT64_MODE_ERROR
         with pytest.raises(ValueError, match='jax.enable_x64'):
             sim.preflight(strict=True)
@@ -465,8 +462,8 @@ def test_lumped_two_port_really_uses_float64():
 def test_full_tensor_realized_float64(monkeypatch):
     """T6: inspect the host-built tensor handed to the actual timestep.
 
-    Public eps_r tracing is blocked by material grouping in _kottke_smooth;
-    traced radius admission is PR B scope. Keep this realized-storage judge.
+    A traced eps_r takes the traced smoother path, not this host-built one
+    (#2436); traced radius admission is PR B scope. Keep this realized-storage judge.
     """
     import rfx.simulation as core
     from tests.unit.runners.test_forward_subpixel_smoothing import sphere_sim

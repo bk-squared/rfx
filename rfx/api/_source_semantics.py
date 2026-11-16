@@ -1,12 +1,11 @@
-"""Single home for soft-source amplitude semantics (issue #571, option 4).
+"""Single home for soft-source amplitude semantics.
 
 Two named, boundary- and mesh-INDEPENDENT amplitude kinds:
 
 ``'current'``
     The waveform is a current moment I(t) in A·m; realized as
     ``E += Cb * I / dV`` on every path and boundary
-    (Yee: ``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``; ADI refuses
-    ``'current'`` and requires explicit ``'field'``;
+    (Yee: ``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``;
     ``dV`` = local cell volume). This is the non-uniform path's native convention
     (Meep-style, resolution-independent injected power) and the declaration default.
 
@@ -45,7 +44,7 @@ callers; it is not used to construct product field tables.
 principle 3) — i.e. ``dV = dx**3`` on a cubic 2D grid, not the
 per-unit-length ``dx**2``.
 
-Non-uniform meshes (issue #672): ``dV`` is the E node's CONTROL VOLUME,
+Non-uniform meshes: ``dV`` is the E node's CONTROL VOLUME,
 not the product of three per-cell widths. An ``E_a`` component is an edge
 along its own axis and sits on a node on the other two, so
 
@@ -162,7 +161,7 @@ def guard_float16_source_increment(waveform, field_dtype, amplitude_kind=None):
 
     # Refuse only an increment that overflows float16 on its own, in one
     # step: an explicit 'current' source with a one-step increment of ~4e4
-    # ran finite before this guard existed and must still run (#1442).
+    # ran finite before this guard existed and must still run.
     limit = float(np.finfo(np.float16).max)
 
     def check(samples):

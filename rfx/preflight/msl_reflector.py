@@ -1,6 +1,6 @@
 """The microstrip downstream-reflector scan, out of ``rfx.preflight.msl``.
 
-Moved verbatim (2026-10-06) to bring ``rfx/preflight/msl.py`` back under its
+Moved verbatim to bring ``rfx/preflight/msl.py`` back under its
 line count in ``scripts/ci/file_size_baseline.json``. ``rfx.preflight.msl``
 re-exports the name, so every existing import and the facade
 ``rfx.api._preflight`` keep resolving it there; ``msl_probe_clearance_for_port``
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from rfx.preflight._subjects import SubjectMessage
 from rfx.preflight.msl_codes import msl_text
 
 
@@ -42,26 +43,25 @@ def msl_nearest_downstream_reflector(
     unevaluated)`` when nothing qualifies. ``unevaluated`` is the list of
     conductors this scan could NOT place (one string each); it is what
     lets the caller distinguish "nothing is nearby" from "I could not
-    look" (issue #685).
+    look".
 
     By default a probe inside a candidate has zero distance, preserving
     the auto-placement contract. ``signed_front_distance=True`` instead
     returns its signed distance to the candidate's entering boundary;
     this is needed when reporting how far an observation has passed it.
 
-    What counts as a conductor (issue #685). This used to be
-    ``isinstance(shape, Box) and str(material_name).lower() == "pec"``,
-    which was blind to two whole classes:
+    What counts as a conductor includes:
 
     * **PEC-PROMOTED materials** — a conductor registered with
       ``sigma >= 1e6`` under any other name. That is the common case for
-      imported CAD, where every conductor may be called ``"metal"``. Pass
-      ``resolve_material`` (normally ``sim._resolve_material``) and the
-      test becomes the same ``sigma >= pec_sigma_threshold`` rule the
-      assembler itself uses to build ``pec_mask``. Without it the legacy
-      name test is kept so old callers do not change behaviour.
-    * **non-``Box`` shapes** — ``Sheet``, ``MeshShape`` (#358), CSG
-      results. Any shape with a ``bounding_box()`` is now placed by that
+      imported CAD, where every conductor may be called ``"metal"``. The
+      test is the assembler's own predicate,
+      :func:`rfx.model.materials.assembled_as_pec`, with
+      ``resolve_material`` (normally ``sim._resolve_material``) and
+      ``pec_sigma_threshold``. Without a resolver the name is resolved
+      against the material library, as the assembler would resolve it.
+    * **non-``Box`` shapes** — ``Sheet``, ``MeshShape``, CSG
+      results. Any shape with a ``bounding_box()`` is placed by that
       box; a bounding box OVERSTATES a non-convex outline, which is the
       conservative direction for a clearance advisory (it can only bring
       the reported reflector nearer, never push it away). A shape with no
@@ -71,7 +71,7 @@ def msl_nearest_downstream_reflector(
     ``thin_conductors`` (normally ``sim._thin_conductors``) are scanned
     too: a thin PEC sheet, a DC-fold lossy sheet and a
     ``surface_impedance_f0`` sheet are all metal to a wave on the line,
-    and since #677 the f0 one is in neither ``pec_mask`` nor
+    and the f0 one is in neither ``pec_mask`` nor
     ``materials.sigma``, so nothing else would ever see it.
 
     Observed consequence of the old scan: on a board whose reflectors were
@@ -86,7 +86,7 @@ def msl_nearest_downstream_reflector(
     edges on its width axis. Legacy callers that supply only ``dx`` retain
     their cubic tolerance.
 
-    Axis generality (issue #661): the parameter names are the ``"+x"``-frame
+    Axis generality: the parameter names are the ``"+x"``-frame
     names. ``x_probe`` / ``x_feed`` are coordinates on the PROPAGATION axis,
     ``y_feed`` is the trace centreline on the WIDTH axis and ``domain_y``
     that axis's domain extent — the two axes are resolved from ``direction``
@@ -94,8 +94,7 @@ def msl_nearest_downstream_reflector(
     compares box y-extents along the feed axis and box x-extents across the
     trace width. Callers pass coordinates already projected onto those roles.
 
-    Exclusions (both are #469-arc corrections to the pre-existing
-    heuristic):
+    Exclusions:
 
     * **the line being measured** — any trace-width box
       (|y-extent − w_trace| ≤ dx, y-range containing the feed centreline)
@@ -132,31 +131,42 @@ def msl_nearest_downstream_reflector(
     nearest_label = None
     unevaluated: list[str] = []
 
+    from types import SimpleNamespace as _NS
+    from rfx.core.jax_utils import is_tracer as _is_tracer
+    from rfx.model.materials import assembled_as_pec
+
+    def _library_material(name):
+        from rfx.materials.library import MATERIAL_LIBRARY
+        return _NS(sigma=MATERIAL_LIBRARY[name].get("sigma", 0.0))
+
+    # The assembler's own PEC predicate; a caller without a resolver
+    # is resolved against the material library, as the assembler would.
+    _resolver = _NS(
+        _resolve_material=(resolve_material if resolve_material is not None
+                           else _library_material),
+        _PEC_SIGMA_THRESHOLD=pec_sigma_threshold)
+
     def _is_conductor(material_name) -> bool:
-        if resolve_material is None:
-            # Legacy name test, kept for callers that cannot resolve.
-            return str(material_name).lower() == "pec"
-        try:
-            mat = resolve_material(material_name)
-        except Exception:
-            unevaluated.append(
-                f"geometry entry with material {material_name!r}: the "
-                f"material could not be resolved, so its conductivity is "
-                f"unknown")
-            return False
-        sigma = getattr(mat, "sigma", None)
-        if sigma is None:
-            return str(material_name).lower() == "pec"
-        try:
-            return float(sigma) >= float(pec_sigma_threshold)
-        except (TypeError, ValueError):
-            # A traced sigma (material-as-design-variable) cannot be
-            # compared host-side.
-            unevaluated.append(
-                f"geometry entry with material {material_name!r}: sigma is "
-                f"not a concrete number (traced design variable), so PEC "
-                f"promotion cannot be decided host-side")
-            return False
+        if resolve_material is not None:
+            try:
+                mat = resolve_material(material_name)
+            except (TimeoutError,):
+                raise
+            except Exception:  # noqa: BLE001 - recorded in unevaluated
+                unevaluated.append(
+                    SubjectMessage(f"geometry entry with material {material_name!r}: the "
+                    f"material could not be resolved, so its conductivity is "
+                    f"unknown", (owner,)))
+                return False
+            if _is_tracer(getattr(mat, "sigma", None)):
+                # A traced sigma (material-as-design-variable) cannot be
+                # compared host-side.
+                unevaluated.append(
+                    SubjectMessage(f"geometry entry with material {material_name!r}: sigma is "
+                    f"not a concrete number (traced design variable), so PEC "
+                    f"promotion cannot be decided host-side", (owner,)))
+                return False
+        return assembled_as_pec(_resolver, _NS(material_name=material_name))
 
     def _bounds(shape, what: str):
         lo = getattr(shape, "corner_lo", None)
@@ -166,35 +176,38 @@ def msl_nearest_downstream_reflector(
         bbox = getattr(shape, "bounding_box", None)
         if bbox is None:
             unevaluated.append(
-                f"{what} ({type(shape).__name__}): no corner_lo/corner_hi "
-                f"and no bounding_box(), so it cannot be placed on the line")
+                SubjectMessage(f"{what} ({type(shape).__name__}): no corner_lo/corner_hi "
+                f"and no bounding_box(), so it cannot be placed on the line", (owner,)))
             return None, None
         try:
             lo, hi = bbox()
-        except Exception as exc:
+        except (TimeoutError,):
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded in unevaluated
             unevaluated.append(
-                f"{what} ({type(shape).__name__}): bounding_box() raised "
-                f"{type(exc).__name__}, so it cannot be placed on the line")
+                SubjectMessage(f"{what} ({type(shape).__name__}): bounding_box() raised "
+                f"{type(exc).__name__}, so it cannot be placed on the line", (owner,)))
             return None, None
         return lo, hi
 
     # (shape, label_prefix, is_bbox_derived) for every registered conductor.
     candidates: list = []
     for _gi, ge in enumerate(geometry):
+        owner = ge
         shape = getattr(ge, "shape", None)
         mat = getattr(ge, "material_name", "")
         if shape is None or not _is_conductor(mat):
             continue
         candidates.append((shape, f"conductor '{mat}'",
-                           not isinstance(shape, _Box)))
+                           not isinstance(shape, _Box), ge))
     for _ti, tc in enumerate(thin_conductors or ()):
         tshape = getattr(tc, "shape", None)
         if tshape is None:
             continue
         candidates.append((tshape, f"thin_conductor[{_ti}]",
-                           not isinstance(tshape, _Box)))
+                           not isinstance(tshape, _Box), tc))
 
-    for shape, _what, _from_bbox in candidates:
+    for shape, _what, _from_bbox, owner in candidates:
         lo, hi = _bounds(shape, _what)
         if lo is None or hi is None:
             continue
@@ -207,10 +220,10 @@ def msl_nearest_downstream_reflector(
             valid_bounds = False
         if not valid_bounds:
             unevaluated.append(
-                f"{_what} ({type(shape).__name__}): bounds are not finite, "
-                "ordered three-dimensional coordinates")
+                SubjectMessage(f"{_what} ({type(shape).__name__}): bounds are not finite, "
+                "ordered three-dimensional coordinates", (owner,)))
             continue
-        # "x" = propagation axis, "y" = trace-width axis (issue #661).
+        # "x" = propagation axis, "y" = trace-width axis.
         box_x_lo, box_x_hi = float(lo[_ip]), float(hi[_ip])
         box_y_lo, box_y_hi = float(lo[_iw]), float(hi[_iw])
         box_y_extent = box_y_hi - box_y_lo
@@ -251,7 +264,7 @@ def msl_nearest_downstream_reflector(
         if d < nearest_d:
             nearest_d = d
             _how = " (bounding box)" if _from_bbox else ""
-            nearest_label = msl_text(
+            nearest_label = SubjectMessage(msl_text(
                 "reflector_bounds",
                 owner=_what,
                 kind=_how,
@@ -261,6 +274,6 @@ def msl_nearest_downstream_reflector(
                 reflector_hi_m=box_x_hi,
                 reflector_width_lo_m=box_y_lo,
                 reflector_width_hi_m=box_y_hi,
-            )
+            ), (owner,))
 
     return nearest_d, nearest_label, unevaluated

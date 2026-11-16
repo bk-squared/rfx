@@ -1,4 +1,4 @@
-"""Per-axis, per-face boundary specification (T7, 2026-04).
+"""Per-axis, per-face boundary specification.
 
 The ``BoundarySpec`` / ``Boundary`` types replace the asymmetric
 ``boundary=<scalar> + pec_faces + set_periodic_axes()`` triad with a
@@ -68,6 +68,9 @@ class Boundary:
     conformal: bool = False
 
     def __post_init__(self):
+        if isinstance(self.conformal, str):
+            raise ValueError(f'Boundary(conformal={self.conformal!r}) is unsupported; '
+                             'declare conformal_pec="cut_cell_floor" at run level')
         object.__setattr__(self, "lo", _normalise_token(self.lo))
         object.__setattr__(self, "hi", _normalise_token(self.hi))
         if (self.lo == "periodic") != (self.hi == "periodic"):

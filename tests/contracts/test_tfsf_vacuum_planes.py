@@ -5,6 +5,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.geometry.csg import Cylinder, Sphere
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 VACUUM_MESSAGE = (
@@ -116,5 +118,122 @@ def test_traced_x_cell_sizes_refused():
     with pytest.raises(ValueError) as caught:
         jax.grad(energy)(jnp.full(30, .001))
     assert str(caught.value) == (
-        "a plane wave on a graded mesh needs a fixed, uniform x axis; "
-        "the x cell sizes are traced")
+        "TF/SF requires host x cell widths; a traced propagation "
+        "profile (mesh as design variable) is not supported")
+
+
+@pytest.mark.parametrize("mesh,source,treatment,entry,placement", [
+    pytest.param(mesh, source, treatment, entry, "crossing",
+                 id=f"{mesh}-{source}-{treatment}-{entry}-crossing")
+    for mesh, source, treatments in (
+        ("uniform", "slab", ("subpixel", "kottke_pec", "conformal_pec", "full_tensor")),
+        ("uniform", "methodB", ("subpixel", "kottke_pec", "conformal_pec",
+                                "boundary_conformal", "full_tensor")),
+        ("graded", "slab", ("subpixel", "full_tensor")),
+        ("uniform", "closed_box", ("subpixel", "kottke_pec", "conformal_pec", "full_tensor")),
+    )
+    for treatment in treatments
+    for entry in (("run",) if source == "closed_box" or treatment in ("conformal_pec", "boundary_conformal")
+                  else ("run", "forward"))
+] + [
+    pytest.param("uniform", "closed_box", treatment, "run", "inside",
+                 id=f"uniform-closed_box-{treatment}-run-inside")
+    for treatment in ("subpixel", "kottke_pec", "conformal_pec",
+                      "boundary_conformal", "full_tensor")
+])
+def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, placement):
+    pec_crossing = source != "closed_box" and treatment in ("kottke_pec", "conformal_pec")
+    subpixel_crossing = (placement == "crossing" and mesh == "graded"
+                         and treatment == "subpixel")
+    if placement == "crossing" and not pec_crossing:
+        sim, kwargs = _treated_edge_scene(mesh, source, treatment, entry, placement, False)
+        if subpixel_crossing:
+            # The subpixel average at node 8 spans the dual cell [7.5, 8.5].
+            # An x-normal Box face in that window snaps to node 8, so the plain check already refuses it.
+            with pytest.raises(ValueError, match=r"requires vacuum.*x_lo"):
+                getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+        else:
+            # The identical staircase scene must reach stepping with treatment off.
+            result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+            assert np.isfinite(np.asarray(result.time_series)).all()
+
+    sim, kwargs = _treated_edge_scene(mesh, source, treatment, entry, placement, True)
+    if placement == "inside":
+        result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+        assert np.isfinite(np.asarray(result.time_series)).all()
+    else:
+        # Literal treated labels; closed-box realization converts treatment
+        # arrays to non-vacuum masks before checking the plane.
+        label = {
+            "subpixel": "anisotropic permittivity" if mesh == "graded" else "tensor permittivity",
+            "full_tensor": "node tensor",
+            "kottke_pec": r"[^()]+",
+            "conformal_pec": r"[^()]+",
+            "boundary_conformal": "component permeability",
+        }[treatment]
+        if source == "closed_box":
+            label = "caller-supplied non-vacuum mask"
+        elif subpixel_crossing:
+            label = rf"(?:{label}|permittivity)"
+        plane = r"x=(?:7|8)" if source == "closed_box" else r"x_lo(?:-1)?"
+        if mesh == "uniform" and source in ("slab", "methodB") and treatment == "subpixel":
+            plane = "x_lo"
+        with pytest.raises(ValueError, match=rf"requires vacuum.*{plane}: {label} \(") as caught:
+            getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
+        print(f"treated refusal: {caught.value}")
+
+
+def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
+    inside = placement == "inside"
+    wall = treatment == "boundary_conformal" and not inside
+    sphere = (mesh == "uniform" and source == "slab"
+              and treatment == "subpixel" and not inside)
+    cylinder = (mesh == "uniform" and source == "methodB"
+                and treatment == "subpixel" and not inside)
+    options = {"dz_profile": [.00018] * 12 + [.00022] * 12} if mesh == "graded" else {}
+    boundary = (BoundarySpec(x="cpml", y=Boundary("pec", "pec", conformal=treated),
+                             z="periodic") if wall else "cpml")
+    if sphere:
+        boundary = BoundarySpec(x="cpml", y="periodic", z="periodic")
+    sim = Simulation(freq_max=100e9, domain=(.0048, .00487 if wall else .0048, .0048),
+                     dx=.0002, cpml_layers=4, boundary=boundary, snap="declared", **options)
+    source_options = ({"method": "methodB", "angle_deg": 20.} if source == "methodB"
+                      else {"closed_box": True} if source == "closed_box" else {})
+    sim.add_tfsf_source(f0=50e9, bandwidth=.5, margin=4, polarization="ez",
+                        direction="+x", **source_options)
+    if not wall:
+        # Four pad cells and margin four put x_lo at x=0.8 mm (node 8).
+        dielectric = treatment in ("subpixel", "full_tensor")
+        # Open-slab/Method-B PEC has no treated-only crossing: its half-cell skin also puts staircase Ex on the plane.
+        x_face = .00087 if dielectric else .00091 if source == "closed_box" else .00067
+        if dielectric and (treatment == "full_tensor" or source == "closed_box"):
+            # Face at node 8.65 is realized at node 9 under the nearest-node rule.
+            # The plain plane is vacuum; the treatment reaches x_lo.
+            x_face = .00093
+        if inside:
+            lo, hi = (.00227,) * 3, (.00267,) * 3
+        else:
+            lo, hi = (x_face, -.002, -.002), (.00147, .007, .007)
+            if not dielectric and source != "closed_box":
+                lo, hi = (.00067, -.002, -.002), (.00107, .007, .007)
+            if source == "methodB":
+                lo, hi = (x_face, .00227, -.002), (hi[0], .00267, .007)
+            elif source == "closed_box":
+                lo, hi = (x_face, .00227, .00227), (.00147, .00267, .00267)
+        if dielectric:
+            sim.add_material("dielectric", eps_r=4.)
+        # The curved surface comes within half a cell of x_lo while no column-8 cell centre lies inside it.
+        shape = Sphere((.00108, .0024, .00245), .0002) if sphere else Box(lo, hi)
+        if cylinder:
+            shape = Cylinder((.00108, .0024, .0024), .0002, .02, axis="z")
+        sim.add(shape, material="dielectric" if dielectric else "pec")
+    kwargs = {"compute_s_params": False} if entry == "run" else {"checkpoint": False}
+    if not treated:
+        return sim, kwargs
+    if treatment in ("subpixel", "kottke_pec", "full_tensor"):
+        kwargs["subpixel_smoothing"] = True if treatment == "subpixel" else treatment
+    elif treatment == "conformal_pec" or inside:
+        # A domain wall cannot move inside TF; its control is an interior
+        # conformal PEC box. Closed box also admits the full-tensor control.
+        kwargs["conformal_pec"] = True
+    return sim, kwargs

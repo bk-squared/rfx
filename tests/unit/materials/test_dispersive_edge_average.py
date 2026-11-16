@@ -100,7 +100,7 @@ def _edge_means(mats, mask, c, node):
 def test_debye_edge_carries_the_four_cell_mean_of_every_parameter(c):
     mats, mask = _background(), _pole_mask()
     coeffs, _ = init_debye([DebyePole(delta_eps=DE, tau=TAU)], mats, DT,
-                           mask=mask)
+                           mask=mask, high_wall=(False, False, False))
     b_full = EPS_0 * DE * DT / (2 * TAU + DT)
     cb = np.asarray(coeffs.cb[c])
     ca = np.asarray(coeffs.ca[c])
@@ -121,7 +121,7 @@ def test_debye_edge_carries_the_four_cell_mean_of_every_parameter(c):
 def test_lorentz_edge_carries_the_four_cell_mean_of_every_parameter(c):
     mats, mask = _background(), _pole_mask()
     coeffs, _ = init_lorentz([lorentz_pole(DE, W0, DELTA)], mats, DT,
-                             mask=mask)
+                             mask=mask, high_wall=(False, False, False))
     c_full = EPS_0 * DE * W0 ** 2 * DT ** 2 / (1 + DELTA * DT)
     cb = np.asarray(coeffs.cb[c])
     cvals = np.asarray(coeffs.c[c])[0]
@@ -132,8 +132,8 @@ def test_lorentz_edge_carries_the_four_cell_mean_of_every_parameter(c):
                                               rel=2e-6), node
         # the recurrence coefficients follow the pole on every edge it reaches
         if frac > 0:
-            assert float(coeffs.a[0][node]) == pytest.approx(
-                (2.0 - W0 ** 2 * DT ** 2) / (1 + DELTA * DT), rel=1e-6)
+            assert float(coeffs.damping[0][node]) == pytest.approx(
+                2.0 * DELTA * DT / (1 + DELTA * DT), rel=1e-6)
 
 
 def _half_filled(shape=(10, 10, 10), k_if=5, eps_fill=4.0):
@@ -156,11 +156,11 @@ def test_a_negligible_pole_block_leaves_the_interface_on_the_plain_coefficient(k
     mask[8, 8, 8] = True
     if kind == "debye":
         coeffs, _ = init_debye([DebyePole(delta_eps=1e-6, tau=1e-11)], mats,
-                               DT, mask=jnp.asarray(mask))
+                               DT, mask=jnp.asarray(mask), high_wall=(False, False, False))
     else:
         coeffs, _ = init_lorentz([lorentz_pole(1e-6, W0, DELTA)], mats, DT,
-                                 mask=jnp.asarray(mask))
-    _, cb_plain = e_component_coeffs(mats, DT)
+                                 mask=jnp.asarray(mask), high_wall=(False, False, False))
+    _, cb_plain = e_component_coeffs(mats, DT, high_wall=(False, False, False))
     node = (4, 4, k_if)
     for c in range(3):
         got = float(coeffs.cb[c][node])
@@ -191,9 +191,9 @@ def test_a_lumped_stamp_loads_only_its_own_edge_on_the_dispersive_lane(
             warnings.simplefilter("error")
             if kind == "debye":
                 return init_debye([DebyePole(delta_eps=DE, tau=TAU)], m, DT,
-                                  mask=jnp.asarray(mask))[0]
+                                  mask=jnp.asarray(mask), high_wall=(False, False, False))[0]
             return init_lorentz([lorentz_pole(DE, W0, DELTA)], m, DT,
-                                mask=jnp.asarray(mask))[0]
+                                mask=jnp.asarray(mask), high_wall=(False, False, False))[0]
 
     ref, got = build(base), build(stamped)
     for c in range(3):
@@ -236,7 +236,7 @@ def test_homogeneous_regions_keep_the_one_per_cell_bits():
     mats = MaterialArrays(jnp.asarray(eps), jnp.asarray(sig),
                           jnp.ones(shape, jnp.float32))
     coeffs, _ = init_debye([DebyePole(delta_eps=DE, tau=TAU)], mats, DT,
-                           mask=jnp.asarray(mask))
+                           mask=jnp.asarray(mask), high_wall=(False, False, False))
     ca0, cb0, cc0 = (np.asarray(v) for v in
                      _legacy_debye(mats.eps_r, mats.sigma, jnp.asarray(mask), DT))
     # x in 1..4: inside the pole block; x in 7..11: outside; x = 5, 6 are the
@@ -260,8 +260,8 @@ def test_the_distributed_mixed_update_is_the_single_device_one():
     rng = np.random.default_rng(12601)
     mats = _background()
     mask = jnp.asarray(np.ones(SHAPE, bool))
-    dco, dst = init_debye([DebyePole(delta_eps=DE, tau=TAU)], mats, DT, mask=mask)
-    lco, lst = init_lorentz([lorentz_pole(DE, W0, DELTA)], mats, DT, mask=mask)
+    dco, dst = init_debye([DebyePole(delta_eps=DE, tau=TAU)], mats, DT, mask=mask, high_wall=(False, False, False))
+    lco, lst = init_lorentz([lorentz_pole(DE, W0, DELTA)], mats, DT, mask=mask, high_wall=(False, False, False))
 
     def rnd(*s):
         return jnp.asarray(rng.standard_normal(s).astype(np.float32))
@@ -269,15 +269,15 @@ def test_the_distributed_mixed_update_is_the_single_device_one():
     st = FDTDState(*(rnd(*SHAPE) for _ in range(6)), step=jnp.array(0, jnp.int32))
     dst = dst._replace(px=rnd(1, *SHAPE), py=rnd(1, *SHAPE), pz=rnd(1, *SHAPE))
     lst = lst._replace(px=rnd(1, *SHAPE) * 1e-3, py=rnd(1, *SHAPE) * 1e-3,
-                       pz=rnd(1, *SHAPE) * 1e-3, px_prev=rnd(1, *SHAPE) * 1e-3,
-                       py_prev=rnd(1, *SHAPE) * 1e-3,
-                       pz_prev=rnd(1, *SHAPE) * 1e-3)
+                       pz=rnd(1, *SHAPE) * 1e-3, vx=rnd(1, *SHAPE) * 1e-3,
+                       vy=rnd(1, *SHAPE) * 1e-3,
+                       vz=rnd(1, *SHAPE) * 1e-3)
     dx = 1e-3
     a, _, _ = _update_e_local_with_dispersion(st, mats, DT, dx,
-                                              debye=(dco, dst), lorentz=(lco, lst))
+                                              debye=(dco, dst), lorentz=(lco, lst), high_wall=(False, False, False))
     b, _, _ = _update_e_with_optional_dispersion(st, mats, DT, dx,
                                                  debye=(dco, dst),
-                                                 lorentz=(lco, lst))
+                                                 lorentz=(lco, lst), high_wall=(False, False, False))
     for comp in ("ex", "ey", "ez"):
         x, y = np.asarray(getattr(a, comp)), np.asarray(getattr(b, comp))
         # away from the low faces, where the slab body's curl pads the same
@@ -394,7 +394,8 @@ def test_a_dispersive_block_across_a_periodic_seam_is_translation_invariant(kind
         for first, count, mat in ((4, 5, "m"), (12, 2, "d")):
             for t in range(count):
                 i = (first + shift + t) % n
-                sim.add(Box(((i - 0.45) * dx, -1, -1), ((i + 0.45) * dx, 1, 1)),
+                # Each drawn node-to-node Box owns one primal-cell centre.
+                sim.add(Box((i * dx, -1, -1), ((i + 1) * dx, 1, 1)),
                         material=mat)
         sim.add_source((((1 + shift) % n) * dx, 1.5e-3, 2.5e-3), "ez",
                        amplitude_kind="field",

@@ -43,8 +43,7 @@
           0.16,
           2.83269,
           0.0,
-          11.0,
-          1512.0
+          11.0
         ],
         "severity": "warning",
         "source": "line_stub_findings"
@@ -65,26 +64,10 @@
           0.16,
           2.1,
           0.0,
-          2.5,
-          1512.0
+          2.5
         ],
         "severity": "warning",
         "source": "line_stub_findings"
-      },
-      {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          33.0,
-          2.1,
-          52.0,
-          931.0,
-          702.0,
-          17.0,
-          127.0
-        ],
-        "severity": "warning",
-        "source": null
       },
       {
         "code": "lossless_q",
@@ -126,10 +109,7 @@
           600.0,
           35.0,
           5.83,
-          931.0,
-          1.1,
-          1.3,
-          703.0,
+          20260906.0,
           8.0,
           -10.0,
           50.0,
@@ -141,21 +121,6 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
-      },
-      {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          33.0,
-          2.1,
-          52.0,
-          931.0,
-          702.0,
-          17.0,
-          127.0
-        ],
-        "severity": "warning",
-        "source": null
       },
       {
         "code": "msl_port_conductor_planes",
@@ -190,21 +155,6 @@
         "source": "_check_msl_port_geometry"
       },
       {
-        "code": "uncoded",
-        "loc": null,
-        "numbers": [
-          33.0,
-          2.1,
-          52.0,
-          931.0,
-          702.0,
-          17.0,
-          127.0
-        ],
-        "severity": "warning",
-        "source": null
-      },
-      {
         "code": "coaxial_port_junction_short",
         "loc": "coaxial_port[0] face=bottom",
         "numbers": [
@@ -220,7 +170,6 @@
           200.0,
           2.0,
           282.8,
-          589.0,
           0.0,
           -0.9928,
           6.0
@@ -239,10 +188,38 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_port_conductor_continues"
+      },
+      {
+        "code": "realization",
+        "loc": "geometry[2]",
+        "numbers": [
+          2.0,
+          0.25,
+          125.0,
+          0.0125,
+          125.0,
+          0.0125,
+          0.0,
+          0.0,
+          34.0,
+          0.0034,
+          34.0,
+          0.0034,
+          2.16840434497e-15,
+          2.16840434497e-19,
+          3.0,
+          0.0003,
+          3.0,
+          0.0003,
+          -0.5,
+          -5e-05
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
       }
     ],
     "n_errors": 1,
-    "n_issues": 14,
+    "n_issues": 12,
     "ok": false
   }
 }

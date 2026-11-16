@@ -165,7 +165,7 @@ def test_assembly_finding_defers_only_to_located_refusal(monkeypatch, exc_type, 
 
     sim = Simulation(10e9, (.01,) * 3, dx=.001, boundary='pec')
     exc = exc_type('ez')
-    other_code = 'adi_interior_pec_unsupported' if other == 'quoting_error' else 'pec_realization_refused'
+    other_code = 'example_unsupported' if other == 'quoting_error' else 'pec_realization_refused'
 
     def fail(*args, **kwargs):
         raise exc
@@ -269,7 +269,9 @@ def _solve_only_model(case, graded, monkeypatch):
     if case == 'pad_shortfall':
         from tests.unit.geometry.test_pad_fill_paths import _graded_rig, _rig, _size_by_plain_ceil
         _size_by_plain_ceil(monkeypatch)
-        return _graded_rig(monkeypatch) if graded else _rig(10)
+        # A Box now reaches the extra domain-face cell. The flat cylinder
+        # keeps the uniform pad-shortfall refusal active on the same grid.
+        return _graded_rig(monkeypatch) if graded else _rig(10, cylinder=True)
     if case in ('periodic_interval', 'outside_point'):
         from tests.unit.boundaries.test_periodic_extents import model
         sim = model()
@@ -330,30 +332,6 @@ def test_solve_only_refusal_is_reported(case, graded, monkeypatch, capsys):
     assert len(calls) == 1
 
 
-def test_adi_quoting_an_assembly_refusal_keeps_both_errors(capsys):
-    # Reviewer scen3.py: ADI + unstable Lorentz + interior PEC volume.
-    from rfx import GaussianPulse
-    from rfx.materials.lorentz import lorentz_pole
-    sim = Simulation(10e9, (.024,) * 3, dx=.001, boundary='pec', solver='adi')
-    sim.add_material('res', eps_r=2., lorentz_poles=[lorentz_pole(1., 5e12, 1e9)])
-    sim.add(Box((.008,) * 3, (.014,) * 3), material='res')
-    sim.add(Box((.016, .016, .004), (.020, .020, .010)), material='pec')
-    sim.add_source((.005, .006, .006), 'ez', waveform=GaussianPulse(f0=5e9, bandwidth=.8))
-    sim.add_probe((.017, .016, .015), 'ez')
-    with pytest.raises(ValueError) as refused:
-        sim.run(n_steps=1, compute_s_params=False)
-    capsys.readouterr()
-    report = sim.preflight()
-    assert len(report.by_code('assembly_refusal')) == 1
-    assert len(report.by_code('adi_interior_pec_unsupported')) == 1
-    assert str(refused.value) in str(report.by_code('assembly_refusal')[0])
-    assert str(refused.value) in str(report.by_code('adi_interior_pec_unsupported')[0])
-    assert len(report.errors) == 2
-    assert not report.ok
-    assert 'All checks passed' not in capsys.readouterr().out
-    with pytest.raises(ValueError) as strict:
-        sim.preflight(strict=True)
-    assert str(refused.value) in str(strict.value)
 
 
 def test_same_text_at_a_different_raise_site_is_not_a_duplicate(monkeypatch):

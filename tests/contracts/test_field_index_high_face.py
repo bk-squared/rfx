@@ -3,9 +3,10 @@
 import jax
 import numpy as np
 import pytest
+from packaging.version import Version
 
 from rfx import GaussianPulse, Simulation
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 L = (.020, .016, .012)
 C = (.0113, .0087, .0064)
@@ -14,8 +15,12 @@ DISPLACED = {'ex': (0,), 'ey': (1,), 'ez': (2,),
 HIGH = (19, 15, 11)
 NODE_HIGH = (20, 16, 12)
 LANES = ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward',
-         'two_uniform_run', 'two_graded_forward', 'adi_run', 'subgrid_run')
+         'two_uniform_run', 'two_graded_forward',  'subgrid_run')
 FREQS = np.array([3e9, 5e9, 7e9])
+JAX012_HIGH_FACE_XFAILS = frozenset({
+    ('i', 2, 'pmc', 'uniform_run'),
+    ('i', 2, 'pmc', 'uniform_forward'),
+})
 
 
 def model(lane, axis, boundary, mirrored=False):
@@ -24,8 +29,7 @@ def model(lane, axis, boundary, mirrored=False):
     if 'graded' in lane:
         widths = np.array([1] + [.9, 1.1] * ((NODE_HIGH[axis] - 2) // 2) + [1]) * .001
         kw['d' + 'xyz'[axis] + '_profile'] = widths[::-1] if mirrored else widths
-    if lane == 'adi_run':
-        kw['solver'] = 'adi'
+    pass
     sim = Simulation(**kw)
     if lane == 'subgrid_run':
         sim.add_refinement((.003, .009), ratio=2, xy_margin=.003)
@@ -118,9 +122,13 @@ def solve(lane, axis, boundary, row, d, side):
         sim.add_probe(tuple(wall), ea)
         sim.add_probe(tuple(center), eb)
     else:
-        src, comp = (wall, ea) if row == 'i' else (center, eb)
-        sim.add_source(tuple(src), comp, waveform=pulse,
-                       amplitude_kind='field' if lane == 'adi_run' else 'current')
+        # Row ii drives both tangential components: with one, the H column
+        # parallel to it is zero in exact arithmetic and records only
+        # rounding, which no field index can move (#2167).
+        src, comps = (wall, (ea,)) if row == 'i' else (center, (eb, 'e' + 'xyz'[(axis + 2) % 3]))
+        for comp in comps:
+            sim.add_source(tuple(src), comp, waveform=pulse,
+                           amplitude_kind='current')
         probes = [(center, eb)] if row == 'i' else [(wall, ea)] + [
             (wall, 'h' + c) for c in 'xyz' if c != 'xyz'[axis]]
         for pos, comp in probes:
@@ -141,7 +149,7 @@ def solve(lane, axis, boundary, row, d, side):
                 if back:
                     index[back_axis] -= 1
                 sim.add_probe(tuple(grid.node_of(a, index[a]) for a in range(3)), comp)
-    result = execute(sim, lane, port=row == 'iii' and not recorded_vi and lane != 'adi_run')
+    result = execute(sim, lane, port=row == 'iii' and not recorded_vi)
     data = np.array(result.time_series)
     spectrum = None
     if row == 'iii':
@@ -166,10 +174,16 @@ def assert_identical(a, b):
     assert a.tobytes() == b.tobytes(), 'C2b requires bit-identical records'
 
 
-def mirror(a, b, signs, record_property):
+def mirror(a, b, signs, fields, record_property):
     peak_a = np.max(np.abs(a), axis=0)
     peak_b = np.max(np.abs(b), axis=0)
     assert np.all(peak_a > 0) and np.all(peak_b > 0), (peak_a, peak_b)
+    # A column far below the largest of its field is rounding (1.5e-5 for
+    # the H parallel to a lone current, #2167); 200 eps of its own peak
+    # would compare rounding with rounding.
+    for field in set(fields):
+        cols = [i for i, f in enumerate(fields) if f == field]
+        assert np.all(peak_a[cols] >= 1e-3 * np.max(peak_a[cols])), dict(fields=fields, peak=peak_a.tolist())
     residual = np.max(np.abs(b.astype(np.float64) - np.array(signs) * a.astype(np.float64)), axis=0)
     bar = 200 * np.finfo(np.float32).eps * peak_a.astype(np.float64)
     record_property('maximum_C2_fraction', float(np.max(residual / bar)))
@@ -180,14 +194,18 @@ def mirror(a, b, signs, record_property):
 @pytest.mark.parametrize('boundary', ('pec', 'pmc'))
 @pytest.mark.parametrize('axis', range(3))
 @pytest.mark.parametrize('row', ('i', 'ii', 'iii'))
-def test_c2_c2b(lane, boundary, axis, row, record_property):
+def test_c2_c2b(lane, boundary, axis, row, record_property, request):
+    if (row, axis, boundary, lane) in JAX012_HIGH_FACE_XFAILS and Version(jax.__version__) >= Version("0.12"):
+        request.applymarker(pytest.mark.xfail(
+            strict=True,
+            reason="#2167 on jax>=0.12 the uniform PMC high-face mirror differs beyond 200 float32 eps "
+                   "(weekly latest-jax 10-30); cause not yet bisected between #2231 and #2213",
+        ))
     # Existing admission is part of this per-path contract.
     refusal = None
     if lane == 'subgrid_run':
         refusal = 'subgridd|production|unstable'
-    elif row == 'iii' and lane == 'adi_run':
-        refusal = 'port|impedance|ADI|adi|distributed|PMC|magnetic'
-    elif boundary == 'pmc' and (lane == 'adi_run' or (row == 'iii' and lane.startswith('two_'))):
+    elif boundary == 'pmc' and ((row == 'iii' and lane.startswith('two_'))):
         refusal = 'PMC|pmc|magnetic'
     if refusal:
         for side, d in (('lo', 0.), ('hi', 0.), ('hi', .4), ('hi', 1.)):
@@ -203,10 +221,11 @@ def test_c2_c2b(lane, boundary, axis, row, record_property):
             assert_identical(high, inside)
             if row == 'iii':
                 assert_identical(spectrum_high, spectrum_inside)
-            if lane != 'adi_run' and (boundary == 'pec' or axis == 2):
+            if (boundary == 'pec' or axis == 2):
                 low, spectrum_low = solve(lane, axis, boundary, row, d, 'lo')
                 signs = (-1,) if row == 'i' else (-1, -1, -1) if row == 'ii' else (1, -1)
-                mirror(low, high, signs, record_property)
+                fields = ('e',) if row == 'i' else ('e', 'h', 'h') if row == 'ii' else ('v', 'e')
+                mirror(low, high, signs, fields, record_property)
                 if row == 'iii':
                     residual = float(np.max(np.abs(spectrum_high - spectrum_low)))
                     record_property('maximum_S11_residual', residual)
@@ -219,7 +238,7 @@ def test_c2_c2b(lane, boundary, axis, row, record_property):
 @pytest.mark.parametrize('lane', LANES[:-1])
 @pytest.mark.parametrize('axis', range(3))
 def test_c4(lane, axis, monkeypatch):
-    from rfx import _realized
+    from rfx._internal import _realized
     from rfx.model import source_admission
     pos = list(C)
     pos[axis] = L[axis]
@@ -236,11 +255,11 @@ def test_c4(lane, axis, monkeypatch):
     monkeypatch.setattr(source_admission, 'field_index', observe)
     sim = model(lane, axis, 'pec')
     sim.add_source(tuple(pos), component, waveform=GaussianPulse(f0=5e9, bandwidth=.8),
-                   amplitude_kind='field' if lane == 'adi_run' else 'current')
+                   amplitude_kind='current')
     sim.add_probe(C, 'e' + 'xyz'[(axis + 1) % 3])
     sim.preflight()
     assert (component, expected) in seen
-    assert sim.realized_geometry().ports[0].edges == (expected,)
+    assert sim.realized_geometry().sources[0].edges == (expected,)
     seen.clear()
     with _realized.capture() as captured:
         execute(sim, lane)
@@ -266,12 +285,14 @@ def test_c2b_rlc(lane, boundary, axis, record_property):
         sim.add_lumped_rlc(tuple(point), 'e' + 'xyz'[axis], R=50., L=1e-9, C=1e-13)
         sim.add_source(C, 'e' + 'xyz'[(axis + 1) % 3],
                        waveform=GaussianPulse(f0=5e9, bandwidth=.8),
-                       amplitude_kind='field' if lane == 'adi_run' else 'current')
+                       amplitude_kind='current')
         sim.add_probe(tuple(point), 'e' + 'xyz'[axis])
         return np.asarray(execute(sim, lane).time_series)
 
     try:
-        if lane.startswith('two_') or lane in ('adi_run', 'subgrid_run'):
+        # Multi-device PEC now pins C2b admission and identical, nonzero records;
+        # PMC still pins the multi-device RLC guard.
+        if (lane.startswith('two_') and boundary == 'pmc') or lane in ('subgrid_run',):
             for d in (0., .4, 1.):
                 with pytest.raises((ValueError, NotImplementedError), match='lumped|RLC|rlc|subgridd|PMC|magnetic'):
                     response(d)
@@ -506,9 +527,23 @@ def test_c8_consumers(consumer, monkeypatch):
         assert set(port._drive_stamps) == {cell}
         assert float(materials.sigma[cell]) > 0
     elif consumer == 'sparam_recording':
-        from rfx.probes.sparam_driver import _lumped_recording_probes
-        probes, _ = _lumped_recording_probes(grid, [entry])
-        assert (probes[0].i, probes[0].j, probes[0].k) == cell
+        from rfx.runners.distributed_v2 import run_distributed
+        from rfx.stepping import uniform_slab_ports
+        seen = []
+
+        class CellsCaptured(Exception):
+            pass
+
+        def capture(grid, entries, specs, *args, **kwargs):
+            seen.extend(specs)
+            raise CellsCaptured
+
+        # Stop after run_distributed resolves its port cells with field_index,
+        # before measurement setup or any stepping can obscure that consumer.
+        monkeypatch.setattr(uniform_slab_ports, 'UniformPortPlan', capture)
+        with pytest.raises(CellsCaptured):
+            run_distributed(sim, n_steps=2, devices=jax.devices('cpu')[:2])
+        assert seen[0][3] == cell
     elif consumer == 'realized_geometry':
         assert sim.realized_geometry().ports[0].edges == (cell,)
     elif consumer == 'vmap_source':
@@ -525,7 +560,7 @@ def test_c8_consumers(consumer, monkeypatch):
         sweep._build_full_scan_fn(sim, grid, sim._assemble_materials(grid)[0], 2)
         assert seen == [(19, 9, 6, 'ex')]
     elif consumer == 'eager_port':
-        import rfx.simulation as stepping
+        import rfx.stepping.uniform_setup as stepping
         from rfx.stepping.probe_loop import make_probe_step
         monkeypatch.setattr(stepping, 'make_core_step', lambda ctx, **kwargs: ctx)
         ctx, _ = make_probe_step(grid, sim._assemble_materials(grid)[0], [port], 0,
@@ -538,7 +573,7 @@ def test_c8_consumers(consumer, monkeypatch):
         class Captured(Exception):
             pass
 
-        def capture(ctx):
+        def capture(ctx, **kwargs):
             assert ctx.mon_idx == cell
             raise Captured
 

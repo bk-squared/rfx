@@ -1,10 +1,13 @@
 """Boundary setup shared by the unchanged uniform and graded operators."""
 
 
-def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
+def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors,
+                  aniso_eps=None, aniso_inv_eps=None, conformal_weights=None,
+                  aniso_inv_eps_smooth=False, subpixel_smoothing=False,
+                  debye=None, lorentz=None):
     use_tfsf = tfsf is not None
     # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
-    # REAL grid cannot sustain (the pre-#404 under-tilt). Drive the shared solver
+    # REAL grid cannot sustain (otherwise the wave under-tilts). Drive the shared solver
     # on a complex Bloch-envelope path instead: fields carry the envelope P and a
     # per-axis phase rides the periodic roll; the physical field is
     # Re(P·exp(-j k_t·y)). Gated strictly on the 2D-aux discriminator, so normal
@@ -18,6 +21,34 @@ def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
         from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_early
         _oblique_bloch = _is_tfsf_2d_early(tfsf[0])
     if _oblique_bloch:
+        from rfx.errors import RfxUnsupported
+        clauses, routes = [], []
+        if aniso_eps is not None or aniso_inv_eps is not None:
+            if subpixel_smoothing:
+                clauses.append(f"subpixel smoothing (subpixel_smoothing={subpixel_smoothing!r})")
+                routes.append(", or subpixel_smoothing=False")
+            if aniso_eps is not None and conformal_weights is not None:
+                clauses.append("conformal PEC")
+                routes.append(", or conformal PEC off")
+            if aniso_inv_eps is not None and aniso_inv_eps_smooth:
+                clauses.append("a PEC occupancy override with pec_occupancy_model='kottke'")
+                routes.append(", or no pec_occupancy_override")
+            if not clauses:
+                clauses.append("an anisotropic permittivity tensor (aniso_eps or aniso_inv_eps)")
+                routes.append(", or no anisotropic permittivity tensor")
+        if debye is not None or lorentz is not None:
+            clauses.append("a dispersive material (Debye or Lorentz poles)")
+            routes.append(", or a material without poles")
+        if clauses:
+            what = " and ".join(clauses)
+            it = "it" if len(clauses) == 1 else "them"
+            route = "".join(routes)
+            raise RfxUnsupported(
+                f"An oblique Bloch plane wave (angle_deg={tfsf[0].angle_deg}, method='bloch') "
+                f"cannot be combined with {what}: the electric-field update for {it} "
+                "does not apply the Bloch phase, so the fields would be wrong. "
+                f"Use normal incidence{route}."
+            )
         # Frequency-domain monitors accumulate the complex envelope P, not the
         # physical spectrum — fail loud rather than return truncated garbage.
         _unsupported_ob = []
@@ -29,7 +60,7 @@ def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
             _unsupported_ob.append("flux monitor")
         if _unsupported_ob:
             raise NotImplementedError(
-                "Oblique (angle_deg != 0) TFSF uses the #404 complex Bloch path; "
+                "Oblique (angle_deg != 0) TFSF uses the complex Bloch path; "
                 "frequency-domain monitors are not yet transform-aware on it. "
                 "Unsupported: " + ", ".join(_unsupported_ob) + ". Use field "
                 "snapshots / final state (returned as physical fields), or "
@@ -39,7 +70,7 @@ def oblique_bloch(tfsf, *, use_ntff, use_dft_planes, use_flux_monitors):
     return _oblique_bloch
 
 
-def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
+def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces, *, field_dtype=None):
     from types import SimpleNamespace
     from rfx.boundaries.axes import padded_axes
     # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
@@ -59,17 +90,18 @@ def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
         # threaded through from the caller.
         cpml_params, cpml_state_init = init_cpml(
             grid, pec_faces=pec_faces, pmc_faces=pmc_faces,
+            **({} if field_dtype is None else {"field_dtype": field_dtype}),
         )
         cpml_grid = grid
         cpml_axes_eff = padded_axes(grid, cpml_axes)
 
-    # PMC enforcement (2026-04). The NU scan body previously never
-    # zeroed H_tan on PMC faces, so a half-symmetric configuration
-    # that relied on the mirror plane was running with an effectively
-    # free boundary. Frozen set gives JIT cache a stable hash; empty
-    # set short-circuits the apply to a no-op.
+    # PMC faces select odd tangential-H images in the NU curl.
+    # The zero-padded high inverse H spacing holds the high ghost at its
+    # initial zero (one step for every device count). Frozen face sets
+    # give the JIT cache a stable hash; an empty magnetic set leaves the
+    # ordinary backward-curl operand in place.
     # The electric walls, per face, by the one rule the uniform scan uses
-    # (#1164): the NU grid carries no face attributes, so the declared sets
+    #: the NU grid carries no face attributes, so the declared sets
     # threaded in from the caller stand in for them. With no magnetic face
     # this is the six faces ``apply_pec`` zeroed before, plane for plane.
     from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls

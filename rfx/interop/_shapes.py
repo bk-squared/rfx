@@ -244,8 +244,7 @@ def _instance_state_names(shape: Any) -> tuple[str, ...]:
 
     Handles ``__slots__`` / NamedTuple classes, which have no ``__dict__``;
     unreachable today because :func:`shape_kind_of` refuses unregistered classes
-    first, but ``rfx/geometry/thin_wire.py`` already defines a NamedTuple shape,
-    so this is a live trap for whoever registers one.
+    first. No NamedTuple shape exists today.
     """
     if dataclasses.is_dataclass(shape):
         names: tuple[str, ...] = tuple(f.name for f in dataclasses.fields(shape))

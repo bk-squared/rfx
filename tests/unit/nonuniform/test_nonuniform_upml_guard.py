@@ -28,7 +28,7 @@ def _graded(n, d0, ratio):
 
 
 def _sim(boundary, **profiles):
-    sim = Simulation(freq_max=10e9, domain=(4e-3, 4e-3, 3e-3), dx=0.5e-3,
+    sim = Simulation(freq_max=10e9, domain=(4e-3, 4e-3, float(np.sum(profiles["dz_profile"])) if "dz_profile" in profiles else 3e-3), dx=0.5e-3,
                      boundary=boundary, cpml_layers=6, **profiles)
     sim.add_source(position=(2e-3, 2e-3, 1.5e-3), component="ez",
                    waveform=GaussianPulse(f0=10e9, bandwidth=0.8),
@@ -63,7 +63,7 @@ def test_message_names_the_issue_and_the_remedy():
     with pytest.raises(ValueError) as exc:
         sim.run(n_steps=4, skip_preflight=True)
     msg = str(exc.value)
-    assert "#680" in msg
+    assert "non-uniform runner implements CPML only" in msg
     assert "boundary='cpml'" in msg
     assert "non-uniform" in msg
 
@@ -185,8 +185,8 @@ def test_advisory_carries_its_basis_not_only_its_verdict():
     # falsifier
     assert "stale if" in msg
     assert "apply_upml_* call site appears outside rfx/simulation.py" in msg
-    # and the issue it came from
-    assert "#680" in msg
+    # why the requested absorber is refused
+    assert "non-uniform runner has no UPML code at all" in msg
 
 
 def test_skip_preflight_does_not_bypass_the_lane_guard():

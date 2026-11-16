@@ -111,7 +111,7 @@ def _forward_lossy(sigma_scale):
 
 def _u_target_and_p_rad(result):
     """Value-only (no AD) U(target) and full-sphere P_rad — for the ground-truth FD."""
-    from rfx.farfield import compute_far_field
+    from rfx.measurement.farfield import compute_far_field
     th = np.array([np.pi / 2])
     ph = np.array([0.0])
     th_h = np.linspace(0.0, np.pi, 37)          # full sphere (matches the objective)
@@ -159,7 +159,7 @@ def test_directivity_default_is_logratio_and_prad_full_sphere():
     """A+B: the default objective is now the sign-correct log-ratio (A), and its
     P_rad spans the FULL sphere (B) — not the upper hemisphere, which would be
     ~2x smaller (+3 dB inflation) for a free-space radiator."""
-    from rfx.farfield import compute_far_field
+    from rfx.measurement.farfield import compute_far_field
     r = _forward_lossy(_S0)
 
     # (A) default == log_ratio=True (value), and differs from the legacy mode.

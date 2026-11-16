@@ -142,8 +142,8 @@ def _run_capturing_update_eps(sim, n_steps, monkeypatch, **run_kw):
     captured = {}
     real = _smoothing.compute_smoothed_eps
 
-    def _spy(grid, shapes, background_eps=1.0):
-        out = real(grid, shapes, background_eps=background_eps)
+    def _spy(grid, shapes, background_eps=1.0, **kw):
+        out = real(grid, shapes, background_eps=background_eps, **kw)
         captured["aniso_eps"] = out
         captured["shapes"] = shapes
         return out

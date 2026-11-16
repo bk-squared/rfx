@@ -1,4 +1,4 @@
-"""Regenerate B1's two-step field record; Conclusion: leader fills.
+"""Regenerate B1's two-step field record.
 
 Run with OMP/BLAS threads pinned to one and two emulated CPU devices, e.g.
 XLA_FLAGS='--xla_cpu_multi_thread_eigen=false --xla_force_host_platform_device_count=2'
@@ -26,25 +26,7 @@ from tests.contracts.boundary_fields import measure, measured_fields
 ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "scripts/diagnostics/boundary_model/B1"
 # Stable leading phrases, without counts, face lists, or explanatory advice.
-REFUSAL_PREFIXES = (
-    'solver="adi" refuses absorbing boundaries',
-    "PMC magnetic face(s)",
-    "subgrid validation: supported=False",
-    "[run] preflight found",
-    "boundary='upml' does not support",
-    "solver='adi' does not support",
-    "solver='adi' supports only a uniform absorber",
-    "vmap_sweep: a magnetic (pmc) boundary face is not supported",
-    "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes",
-    "run(compute_s_params=True) has a single result schema",
-    "periodic axes",
-    "Lumped ports are not supported together with the TFSF",
-    "Floquet ports do not support non-uniform z mesh",
-    # Lane admission (rfx/runners/_admission.py): a declared input the lane
-    # does not carry, named with the lane.
-    "The ADI run() lane would solve this Simulation as if",
-    "The graded run() lane would solve this Simulation as if",
-)
+REFUSAL_PREFIXES = ("PMC magnetic face(s)", "subgrid validation: supported=False", "[run] preflight found", "boundary='upml' does not support", "vmap_sweep: a magnetic (pmc) boundary face is not supported", "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes", "run(compute_s_params=True) has a single result schema", "periodic axes", "Lumped ports are not supported together with the TFSF", "Floquet ports do not support non-uniform z mesh", "The graded run() lane would solve this Simulation as if")
 
 
 def refusal_prefix(message):
@@ -114,7 +96,7 @@ def b0_changes(cells, b0):
 
 
 def render_matrix(baseline, old_markdown):
-    # The leader's final paragraph is opaque text, independent of JSON's field.
+    # The final paragraph is opaque text, independent of JSON's field.
     # Preserve it byte-for-byte, along with the rest of the unregenerated tail.
     intro, rest = old_markdown.split("| Declaration |", 1)
     _, tail = rest.split("## Stopped comparisons", 1)
@@ -141,8 +123,37 @@ def write_baseline(baseline, old_markdown, target):
     (target / "MATRIX.md").write_text(markdown)
 
 
+# #2043: graded PMC high face, impose -> hold.
+# Route (b) gives the graded PMC high-face ghost row zero inverse H spacing,
+# so the row HOLDS its entry value instead of being forced to zero each step.
+# The plane is unchanged. The uniform lane still imposes zero each step, except
+# with UPML (next entry).
+# The realized-boundary contract retains its interior seed and zeros the high
+# ghost subsystem at entry; its exact zero-plane checks and tolerances stay unchanged.
+# Any future initial-state or resume entry must impose zero on the whole ghost subsystem of a held PMC face (tangential H ghost row, exterior normal E row, transverse CPML H psi on that row) or refuse a nonzero one
+GRADED_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchanged",
+    cases=("pmc-pec", "pmc-cpml"), entry="nonuniform", face="x_hi",
+    precondition="Zero tangential H ghost row, exterior normal E row, and transverse CPML H psi on that row at entry; no in-scan writer may seed them.")
+
+
+# #2043: uniform UPML PMC high face, impose -> hold.
+# The PMC factor is folded into db_h only (rfx/boundaries/upml.py, init_upml), so
+# the ghost row updates as da*H_old and HOLDS its entry value. From the only entry
+# (init_state zeros; UPML is one-device only) the fields are bit-identical to main.
+# The same entry precondition as the graded hold applies.
+UNIFORM_UPML_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchanged",
+    pinned_by=("tests/contracts/test_pmc_hold_entry.py::test_upml_builder_scan_entry",
+               "tests/unit/runners/test_pmc_ghost_coefficient.py::test_pmc_high_ghost_with_transverse_upml"),
+    entry="run, forward (one device)", face="x_hi, y_hi, z_hi",
+    precondition="Zero tangential H ghost row and exterior normal E row at entry; no in-scan writer may seed them.")
+
+
 def validate_class_changes(previous, cells):
-    """Permit the TFSF backing, B2 periods and B3b magnetic image migrations."""
+    """Permit declared migrations, including #2043's graded high hold-class seed.
+
+    #2043 changes the entry seed, not any recorded plane: no value allowance
+    is needed here. The existing comparison still rejects every moved plane.
+    """
     old_lookup = {(r["case"], r["entry"]): r for r in previous["cells"]}
     for row in cells:
         cell = row["case"], row["entry"]
@@ -150,7 +161,8 @@ def validate_class_changes(previous, cells):
         if cell[0] == "waveguide-pmc" and cell[1] in (
                 "run", "forward", "nonuniform", "sweep", "gpu-query", "distributed", "subgridded"):
             assert row["status"] == "REFUSED"
-            assert row["exception"] == "NotImplementedError"
+            # RfxRefusal subclasses ValueError and RfxUnsupported subclasses NotImplementedError.
+            assert row["exception"] in ("NotImplementedError", "RfxUnsupported")
             assert row["message_prefix"] == "PMC magnetic face(s)"
             continue
         magnetic = cell[0] in ("pmc-pec", "pmc-cpml", "waveguide-pmc")

@@ -5,6 +5,8 @@ convergence, and causality without comparing against any external solver.
 They depend only on Maxwell's equations and energy-conservation principles.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -41,8 +43,18 @@ def _build_waveguide_sim(
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
 
     dx = (0.75e-3 if obstacle_specs else 299792458.0 / max(float(freqs[-1]), f0) / 20.0) if dx is None else dx
-    # These cross-section counts cover only the two dx values used here.
-    n_y, n_z = (54, 27) if dx == 0.75e-3 else (22, 11)
+    # These cross-section counts cover only the two dx values used here:
+    # 0.75 mm (with an obstacle) and C0 / 8 GHz / 20 (empty guide, band to
+    # 8 GHz). Any other dx would get a wrong cross-section, so it is refused.
+    if dx == 0.75e-3:
+        n_y, n_z = (54, 27)
+    elif dx == 299792458.0 / 8.0e9 / 20.0:
+        n_y, n_z = (22, 11)
+    else:
+        raise ValueError(
+            f"_build_waveguide_sim has cross-section counts only for dx = 0.75 mm "
+            f"and dx = C0 / 8 GHz / 20 = {299792458.0 / 8.0e9 / 20.0 * 1e3:.6g} mm; "
+            f"got dx = {dx * 1e3:.6g} mm")
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),
         domain=(WAVEGUIDE_DOMAIN[0], n_y * dx, n_z * dx),  # solved length; #1887
@@ -155,8 +167,8 @@ def test_unitarity_lossless_waveguide():
     # Lower bound loosened 2026-04-22 from 0.8 to 0.6. Post-CPML retune +
     # diagonal-subtraction, the two-run normalized extractor measures
     # ~0.73 on this εr=4 full-cross-section slab. Analytic Airy gives 1.00,
-    # so ~27% power is un-accounted — a real extractor accuracy gap logged
-    # in docs/agent-memory/rfx-known-issues.md (slab unitarity residual).
+    # so ~27% power is un-accounted — a real extractor accuracy gap
+    # (slab unitarity residual).
     # This gate exists to catch GROSS conservation failure (|S|>>1 from
     # CPML accumulation, or energy collapse < 0.5 from extractor bug);
     # fine accuracy is owned by test_waveguide_port_validation_battery.
@@ -225,7 +237,8 @@ def test_causality_no_signal_before_source():
     This validates basic FDTD causality without TFSF boundary artifacts.
     """
     from rfx.grid import Grid, C0
-    from rfx.core.yee import init_state, init_materials, update_e, update_h
+    from rfx.core.yee import init_state, init_materials
+    from rfx.stepping.yee import update_e, update_h
     from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 
     # Long domain with CPML on x, periodic y/z
@@ -277,11 +290,11 @@ def test_causality_no_signal_before_source():
         t = step * dt
 
         # H update
-        state = update_h(state, materials, dt, dx_val, periodic)
+        state = update_h(state, materials, dt, dx_val, periodic, high_wall=unpadded_high_walls(grid))
         state, cp_state = apply_cpml_h(state, cp_cfg, cp_state, grid, axes="x")
 
         # E update
-        state = update_e(state, materials, dt, dx_val, periodic)
+        state = update_e(state, materials, dt, dx_val, periodic, high_wall=unpadded_high_walls(grid))
         state, cp_state = apply_cpml_e(state, cp_cfg, cp_state, grid, axes="x")
 
         # Additive (soft) source injection after E update

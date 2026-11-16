@@ -8,9 +8,7 @@
           1000.0,
           1.0,
           1.0,
-          931.0,
-          1.2,
-          1.5
+          20260906.0
         ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
@@ -40,8 +38,7 @@
         "loc": null,
         "numbers": [
           2.0,
-          931.0,
-          1.2,
+          20260906.0,
           0.0,
           2.0,
           3.0,
@@ -78,7 +75,12 @@
           8.71,
           0.2,
           0.2,
-          200.0
+          200.0,
+          0.2,
+          0.027,
+          11.0,
+          21.0,
+          0.5
         ],
         "severity": "warning",
         "source": "preflight_wire_port_radius"

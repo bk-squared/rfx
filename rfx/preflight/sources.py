@@ -1,13 +1,11 @@
-"""Source-configuration preflight, moved verbatim out of ``rfx.api._preflight``.
+"""Source-configuration preflight.
 
-Issue #980 Phase 3, leg 6. The sources family asks whether what is meant to
+The sources family asks whether what is meant to
 excite the domain actually can: whether the TFSF boundary planes are still
-vacuum (#471 F5), whether a source or port sitting ON a PEC or PMC face
+vacuum, whether a source or port sitting ON a PEC or PMC face
 drives a component that reflector zeroes every step, whether anything is
 configured to excite the domain at all, and whether a pulse waveform is
-resolved by the time step (#386). Everything here was relocated byte for byte
-out of ``rfx/api/_preflight.py`` -- same text, same order, same indentation,
-same docstrings, nothing renamed, reordered, tidied or rewritten.
+resolved by the time step.
 
 THE ONE ``@staticmethod`` OF THIS SPLIT LIVES HERE, and its handling is the
 part of this module worth reading before editing it. ``@staticmethod`` cannot
@@ -50,6 +48,8 @@ acyclic. This module moves no module-level name, so
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import finding_subjects
+
 import math
 
 import numpy as np
@@ -80,10 +80,11 @@ def _validate_cfg_source_on_reflector_plane(
         for msg in wall_source_findings(self, ctx.grid,
                                        nonuniform=ctx.lane == 'nonuniform'):
             _w.warn(PreflightErrorWarning(
-                msg, code="source_decoupled",
+                msg, **finding_subjects(self, objects=msg.objects),
+                     code="source_decoupled",
                 source="_validate_cfg_source_on_reflector_plane"), stacklevel=3)
     # The reflector faces come from the CANONICAL BoundarySpec, not from
-    # ``self._pec_faces``. Issue #1075: ``self._pec_faces`` is populated only
+    # ``self._pec_faces``. ``self._pec_faces`` is populated only
     # by an explicit ``pec_faces=`` kwarg or by a per-face ``BoundarySpec``;
     # the legacy scalar ``boundary="pec"`` -- the whole-boundary reflector,
     # realized as ``apply_pec(axes=pec_axes)`` -- leaves it EMPTY, so this
@@ -138,25 +139,16 @@ def _validate_cfg_source_on_reflector_plane(
                 if face_kind == "PMC":
                     if comp_field == "e" and is_tangential:
                         # The image couples the face node to the reflected interior.
-                        if self._solver == "adi":
-                            msg = (
-                                f"Source/port at {pos} m (component={pe.component}) "
-                                f"sits on the magnetic-wall plane {face}. "
-                                f"solver='adi' does not realise a magnetic wall: "
-                                f"it solves this face as an electric wall wherever "
-                                f"the source sits. Use solver='yee' for a magnetic wall."
-                            )
-                        else:
-                            msg = (
-                                f"Source/port at {pos} m (component={pe.component}) "
-                                f"sits on the magnetic-wall plane {face}. The "
-                                f"Yee magnetic image keeps tangential E "
-                                f"on the declared face coupled to the interior. "
-                                f"Face sources and lumped/wire ports describe the full symmetric "
-                                f"object, including its reflected half. Distributed lumped/wire "
-                                f"measurements remain unsupported. Waveguide ports "
-                                f"refuse them because their aperture mode solver is PEC-only."
-                            )
+                        msg = (
+                            f"Source/port at {pos} m (component={pe.component}) "
+                            f"sits on the magnetic-wall plane {face}. The "
+                            f"Yee magnetic image keeps tangential E "
+                            f"on the declared face coupled to the interior. "
+                            f"Face sources and lumped/wire ports describe the full symmetric "
+                            f"object, including its reflected half. Distributed lumped/wire "
+                            f"measurements remain unsupported. Waveguide ports "
+                            f"refuse them because their aperture mode solver is PEC-only."
+                        )
                     elif comp_field == "e" and not is_tangential:
                         msg = (
                             f"Source/port at {pos} m (component={pe.component}) "
@@ -168,12 +160,14 @@ def _validate_cfg_source_on_reflector_plane(
                             f"({_fmt_len(_face_cell)}) off the plane."
                         )
                     elif comp_field == "h" and is_tangential:
+                        mechanism = ("zero inverse spacing" if ctx.lane == "nonuniform"
+                                     else "zero update factor")
                         msg = (
                             f"Source/port at {pos} (component={pe.component}) "
                             f"sits on the PMC {face} plane and drives a "
-                            f"tangential H. apply_pmc_faces zeros this "
-                            f"component at the plane every step, so the "
-                            f"source has no effect."
+                            f"tangential H. The magnetic image imposes zero "
+                            f"tangential H at the plane; a {mechanism} "
+                            f"keeps the high ghost row at zero."
                         )
                     else:
                         msg = None      # normal H on PMC plane is legit
@@ -195,6 +189,7 @@ def _validate_cfg_source_on_reflector_plane(
                     _w.warn(
                         PreflightWarning(
                             msg,
+                            **finding_subjects(self, objects=(pe, "domain")),
                             code="source_decoupled",
                             source="_validate_cfg_source_on_reflector_plane",
                         ),
@@ -223,7 +218,7 @@ def _validate_cfg_no_sources(self, _w) -> None:
 
 
 def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
-    """Warn when a pulse waveform is unresolved by the time step (#386).
+    """Warn when a pulse waveform is unresolved by the time step.
 
     ``tau < 3*dt`` means the sampled excitation is a sub-dt spike: the
     pulse's spectrum extends far past the grid Nyquist limit and the
@@ -237,10 +232,9 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     ``dt`` is that of the realized grid an existing campaign context holds
     (uniform or graded; preflight builds it before this check), else the
     uniform-lane Courant estimate from the preflight ``dx``; the check never
-    builds either. ADI's
-    ``adi_cfl_factor`` is not in it, so on ADI the actual dt is larger.
+    builds either.
 
-    Issue 1668: every excited drive is judged -- sources and lumped, wire
+    Every excited drive is judged -- sources and lumped, wire
     and MSL ports by their waveform, coaxial ports by their excitation,
     and TF/SF sources, waveguide and Floquet ports by the waveform class of
     their waveform name at their own f0 and bandwidth. A pulse with
@@ -249,7 +243,9 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     ``undriven_pulse``); one that still has samples gets the warning.
     """
     dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
-    # Issue 1668: judge against the realized dt of a grid that already
+    if not self._uses_nonuniform_mesh and self._dt_pin is not None:
+        dt = float(self._dt_pin)
+    # Judge against the realized dt of a grid that already
     # exists -- the one the campaign context holds when preflight built it.
     # Never create a context, grid or assembly state here (admit() calls
     # this outside preflight, and a failed assembly must not be retried);
@@ -260,12 +256,23 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
         dt = float(grid.dt)
     from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
-    def _class_pulse(entry, waveform):
+    def _class_pulse(entry, waveform, *, waveguide=False):
         # A string-named incident (TF/SF, waveguide port) is judged by the
         # waveform class of the same name at the entry's f0 and bandwidth,
-        # not by its inline copy (issue 1668).
+        # not by its inline copy.
         f0 = getattr(entry, "f0", None)
         f0 = float(self._freq_max) / 2.0 if f0 is None else float(f0)
+        if waveguide:
+            from rfx.preflight.waveguide import _waveguide_source_freqs
+
+            try:
+                freqs = _waveguide_source_freqs(self, entry)
+            except (TypeError, ValueError):
+                # Unresolvable bins keep the previous pulse check; the
+                # cutoff check and builders still own their bin refusals.
+                pass
+            else:
+                f0 = float(self._resolve_waveguide_f0(entry, freqs))
         bw, amp = float(entry.bandwidth), float(entry.amplitude)
         if not (f0 > 0.0 and bw > 0.0):
             return None
@@ -285,7 +292,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
         drives.append(("coaxial port", entry, getattr(entry, "excitation", None)))
     for entry in getattr(self, "_waveguide_ports", ()):
         drives.append(("waveguide port", entry,
-                       _class_pulse(entry, getattr(entry, "waveform", None))))
+                       _class_pulse(entry, getattr(entry, "waveform", None),
+                                    waveguide=True)))
     for entry in getattr(self, "_floquet_ports", ()):
         drives.append(("Floquet port", entry,
                        _class_pulse(entry, "differentiated_gaussian")))
@@ -316,7 +324,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
             import jax
             import jax.numpy as jnp
             n_pulse = int(math.ceil((float(t0) + 3.0 * tau) / dt)) + 1
-            times = jnp.arange(n_pulse, dtype=jnp.float32) * dt
+            from rfx.sources._sampling import field_time_step
+            times = jnp.arange(n_pulse, dtype=jnp.float32) * field_time_step(dt, self._precision)
             table = np.abs(np.asarray(jax.vmap(wf)(times), dtype=np.float64))
             if not np.any(table > 1e-6 * abs(float(amp))):
                 raise PreflightConfigError(
@@ -327,7 +336,8 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
                     "1e-6 of its amplitude. GaussianPulse / ModulatedGaussian "
                     "bandwidth, and the bandwidth of a TF/SF source, "
                     "waveguide or Floquet port, is FRACTIONAL (e.g. 0.8), "
-                    "not in Hz (issue 1668).",
+                    "not in Hz.",
+                    **finding_subjects(self, objects=(entry,)),
                     code="undriven_pulse", loc=loc,
                     source="_validate_cfg_unresolved_pulse")
         _w.warn(
@@ -337,8 +347,9 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
                 "unresolved by the time step — an absolute-Hz "
                 "bandwidth was likely passed where a FRACTIONAL "
                 "one is expected; the discrete DC residue leaves "
-                "a static charge field CPML cannot absorb "
-                "(issue #386)",
+                "a static charge field CPML cannot absorb"
+                "",
+                **finding_subjects(self, objects=(entry,)),
                 code="unresolved_pulse",
                 loc=loc,
                 source="_validate_cfg_unresolved_pulse",

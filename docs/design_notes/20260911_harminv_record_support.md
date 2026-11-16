@@ -1,6 +1,6 @@
 # Harminv: preserve poles through finite-record decimation (#872)
 
-Status: implemented following PI approval on 2026-09-11. The scope is reliable
+Status: implemented. The scope is reliable
 mode identification and frequency/decay assessment for the existing crossvals,
 not calibrated modal energy, radiation power or S-parameters. Joint amplitude
 fitting repairs the existing noisy dominant-mode regression exposed by the
@@ -133,8 +133,7 @@ automatic estimator fails the two healthy-record stationarity checks.
 
 The three adjudication reports this note quotes are committed under
 `tests/fixtures/harminv_record_support/`, so a reader who clones the repo can
-open them. The rest of that run's preprocessing-only reports stay local and are
-mirrored at `docs/research-archive/rfx/research_notes/` in the workspace repo;
+open them. The rest of that run's preprocessing-only reports stay local;
 final reports are `*-joint.json`, with `*-joint-adjudication.json` produced by
 `scripts/diagnostics/harminv_cavity_adjudication.py`. Replay reuses baseline
 results only after matching source hashes and the full input metadata.
@@ -196,14 +195,14 @@ Reproduction helpers:
 
 All three VESSL runs (two bootstrap failures before any solve and the final
 successful test) were deleted only after their full provider logs were
-backed up and hashed under `docs/research_notes/vessl_logs/`, which is
-local-only in this public repo and mirrored at
-`docs/research-archive/rfx/research_notes/vessl_logs/` in the workspace repo.
+backed up and hashed outside this public repository.
+
+
 No running external experiment was terminated.
 
 ## CI follow-up: short-record capacity correction
 
-The PI approved the general capacity-preserving stop condition on 2026-09-11.
+
 CI had exposed a stage1 NU cavity failure: 1,846 raw input samples became 18
 after two FIR stages, leaving only five pencil columns. The preceding stage
 had ten singular values above the same relative rank cutoff. The old

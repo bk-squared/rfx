@@ -10,9 +10,18 @@ import pytest
 from rfx.api import Simulation
 from rfx.core.yee import EPS_0, MU_0, init_state
 from rfx.sources.sources import CustomWaveform, GaussianPulse
+from rfx.stepping.tfsf import (
+    apply_tfsf_e,
+    apply_tfsf_h,
+    update_tfsf_1d,
+)
 from rfx.sources.tfsf import (
-    apply_tfsf_e, apply_tfsf_h, init_tfsf, tfsf_injection_planes,
-    update_tfsf_1d, update_tfsf_1d_e, measure_normal_incident_spectrum,
+    init_tfsf,
+    tfsf_injection_planes,
+    update_tfsf_1d_e,
+)
+from rfx.measurement.incident import (
+    measure_normal_incident_spectrum,
 )
 
 
@@ -143,9 +152,6 @@ def test_closed_vacuum_replays_real_waveform_inside_and_cancels_all_faces(polari
     assert np.max(np.abs(spectrum - expected)) <= 1e-4 * np.max(np.abs(expected))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "issue 1668: the built-in TF/SF incident is an inline copy of the old "
-    "formula until absorber routes it to GaussianPulse"))
 @pytest.mark.parametrize("polarization,direction", [("ez", "+x"), ("ey", "-x")])
 def test_custom_gaussian_preserves_legacy_slab(polarization, direction):
     pulse = GaussianPulse(f0=15e9, bandwidth=0.8)
@@ -290,7 +296,7 @@ def test_nonvolume_operator_footprint_cannot_cross_source(entry, operator, on_fa
     sim = _sim()
     x = 0.003 if on_face else 0.009
     if operator == "surface_sheet":
-        sim.add_thin_conductor(Box((x, 0.006, 0.005), (x, 0.010, 0.009)),
+        sim.add_thin_conductor(Box((x, (6 - .35) * .001, (5 - .35) * .001), (x, (10 + .35) * .001, (9 + .35) * .001)),
                                surface_impedance_f0=15e9)
     else:
         sim.add_lumped_rlc((x, 0.008, 0.007), component="ez", L=1e-9,
@@ -349,7 +355,8 @@ def test_port_material_fold_is_checked_after_setup(entry, on_face):
     # Each sheet is clear of the source shell; only the load cells between
     # them cross it. Those conductivities are added during port setup.
     for height in (z, z + 0.004):
-        sim.add(Box((0.007 if height == z else 0.009, 0.007, height), (0.011, 0.009, height)), material="pec")
+        sim.add(Box(((7 - .35) * .001 if height == z else .009, (7 - .35) * .001, height),
+                    ((11 + .35) * .001, (9 + .35) * .001, height)), material="pec")
     sim.add_msl_port((0.009, 0.008, z), width=0.002, height=0.004,
                      excite=False, mode="uniform", name="passive")
     if on_face:
@@ -459,10 +466,9 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
         old_core.get_opaque_trace_state = get_state
         old_core.take_current_trace = take_trace
     else:
-        def clean():
-            caller = get_state()
-            with take_trace():
-                return caller == get_state()
+        def clean():  # an untransformed thread's state (take_trace asserts on jax 0.11)
+            from rfx.runners._admission import _eager_trace_state
+            return get_state() == _eager_trace_state(get_state)
         old_core.trace_state_clean = clean
     monkeypatch.setitem(sys.modules, "jax.extend.core", old_extension)
     monkeypatch.setitem(sys.modules, "jax.core", old_core)
@@ -489,8 +495,10 @@ def test_closed_box_pec_sheet_declaration_and_execution(entry, crossing):
 
     sim = Simulation(freq_max=15e9, domain=(0.036, 0.024, 0.024), dx=1e-3,
                      boundary="cpml", cpml_layers=8)
-    sheet = (Box((0.002, 0.010, 0.012), (0.006, 0.014, 0.012)) if crossing else
-             Box((0.018, 0.008, 0.008), (0.018, 0.016, 0.016)))
+    sheet = (Box(((2 - .35) * .001, (10 - .35) * .001, .012),
+                 ((6 + .35) * .001, (14 + .35) * .001, .012)) if crossing else
+             Box((.018, (8 - .35) * .001, (8 - .35) * .001),
+                 (.018, (16 + .35) * .001, (16 + .35) * .001)))
     sim.add(sheet, material="pec")
     sim.add_tfsf_source(f0=8e9, margin=4, direction="+x", polarization="ez",
                         closed_box=True)

@@ -34,7 +34,6 @@ The box's far x face sits 2 cells outside the TFSF plane on purpose: the face-ce
 from the plane one cell nearer, and at 1 cell that plane carries total-field H (band backscatter 1.4e-1).
 
 Builds on tests/unit/autodiff/test_rcs_jax_differentiable.py (equivalence to Mie-validated numpy + FD gradient).
-Harness: docs/research_notes/experiments/i404_oblique_20260720/rcs_reduction_diag.py
 """
 import numpy as np
 import jax
@@ -44,7 +43,8 @@ import pytest
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.farfield import NTFFBox
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 from rfx.simulation import run
 from rfx.rcs import compute_rcs_jax
 

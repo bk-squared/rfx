@@ -1,4 +1,6 @@
 """Eager arithmetic identity and compiled pulse agreement with frozen CPML."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import importlib.util
 import os
 from pathlib import Path
@@ -11,7 +13,8 @@ import pytest
 from rfx.boundaries import cpml
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.pmc import apply_pmc_faces
-from rfx.core.yee import init_state, init_materials, update_h, update_e, update_h_nu, update_e_nu
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_h, update_e, update_h_nu, update_e_nu
 from rfx.grid import Grid
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.model.materials import electric_cell_sizes
@@ -108,16 +111,16 @@ def runner(name, implementation, dz=None, eps=None, steps=200, history=False,
     def step(carry, i):
         st, ps = carry
         if nu:
-            st = update_h_nu(st, materials, grid.dt, grid.inv_dx_h, grid.inv_dy_h, grid.inv_dz_h)
+            st = update_h_nu(st, materials, grid.dt, grid.inv_dx_h, grid.inv_dy_h, grid.inv_dz_h, high_wall=unpadded_high_walls(grid))
         else:
-            st = update_h(st, materials, grid.dt, grid.dx, periodic=periodic)
+            st = update_h(st, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         st, ps = implementation.apply_cpml_h(st, params, ps, grid, axes, materials)
         st = apply_pmc_faces(st, pmc)
         if nu:
             st = update_e_nu(st, materials, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
-                             cell_sizes=electric_cell_sizes(grid))
+                             cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
         else:
-            st = update_e(st, materials, grid.dt, grid.dx, periodic=periodic)
+            st = update_e(st, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         st, ps = implementation.apply_cpml_e(st, params, ps, grid, axes, materials)
         st = apply_pec(st, axes=axes)
         if zero_mean:
@@ -175,7 +178,7 @@ def _assert_identity(reference, candidate, *, peaks=None):
 
 
 # Static scene, base vs base: H 2,160 / 5,070 record-peak ULP at 200 / 400 steps.
-# E 4.5 / 4 ULP; rfx-archive record 20261007-acc-952 (scan vs jitted steps).
+# E 4.5 / 4 ULP (scan vs jitted steps).
 @pytest.mark.parametrize('name', FIXTURES)
 def test_cpml_localization_identity_eager(name):
     with jax.disable_jit():
@@ -279,5 +282,5 @@ def test_cpml_localization_ad(variable):
     assert np.max(np.abs(a)) > 0 and np.max(np.abs(b)) > 0
     error = np.max(np.abs(a-b)) / max(np.max(np.abs(a)), 1e-30)
     # Frozen program vs itself under another trace: up to 5.5e-6.
-    # Per-leaf gradient peak; rfx-archive record 20261007-acc-952.
+    # Per-leaf gradient peak.
     assert error <= 1e-4

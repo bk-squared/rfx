@@ -58,7 +58,7 @@ def test_segment_extents(graded, placement):
     sim = guide(graded, **({"reference_plane": .07} if placement == "declared" else {}))
     lo, hi = {"h": (.018, .0199), "declared": (.06, .062), "pec": (.022, .024)}[placement]
     fill(sim, lo, hi, "pec" if placement == "pec" else "fill")
-    with pytest.raises(ValueError, match=r"launch.*(eps|PEC).*cell.*rfx#1994"):
+    with pytest.raises(ValueError, match=r"launch.*(eps|PEC).*cell.*one homogeneous"):
         execute(sim)
 
 
@@ -144,13 +144,16 @@ def test_axes_and_h_index(graded, axis, direction):
     execute(sim)
 
 
-@pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("profile", ["analytic", "discrete"])
-def test_profiles_and_multimode(graded, profile):
-    sim = guide(graded, n_modes=2, mode_profile=profile)
+def test_profiles_and_multimode(profile):
+    # Several modes reach the fill check only on the uniform waveguide S calculator:
+    # run()/forward() and the graded calculator refuse the mode count first (#2070).
+    sim = guide(n_modes=2, mode_profile=profile)
     fill(sim, 0, L)
-    with pytest.raises(ValueError, match="launch.*eps"):
-        execute(sim, "forward")
+    sim.add_waveguide_port(.10, direction="-x", f0=9e9, freqs=np.array([8e9, 10e9]),
+                           n_modes=2, mode_profile=profile)
+    with pytest.raises(ValueError, match="launch.*eps.*multimode filled ports are unsupported"):
+        execute(sim, "compute_waveguide_s_matrix")
 
 
 def test_traced_override_retains_callback():
@@ -257,7 +260,7 @@ def test_other_operands(graded, kind):
         with pytest.raises(NotImplementedError, match="Kerr|chi3"):
             execute(sim)
     else:
-        with pytest.raises(ValueError, match="launch.*rfx#1994"):
+        with pytest.raises(ValueError, match="launch.*one homogeneous"):
             execute(sim)
 
 
@@ -539,7 +542,8 @@ def test_power_wave_entries_below_either_cutoff_are_nan():
     s = np.asarray(execute(sim, "compute_waveguide_s_matrix", normalize=False).s_params)
     assert np.all(np.isnan(s[1, 0, 0])) and np.all(np.isnan(s[0, 1, 0])), "transmission below the vacuum cutoff"
     assert np.all(np.isfinite(s[:, :, 1])), "both ports propagate at 8 GHz"
-    assert np.isfinite(s[0, 0, 0]) and np.isfinite(s[1, 1, 0]), "reflections are not renormalized"
+    assert np.isnan(s[0, 0, 0]), "the vacuum port has no power wave at 5 GHz, including reflection"
+    assert np.isfinite(s[1, 1, 0]), "the filled port's reflection remains defined at 5 GHz"
 
 
 def test_traced_override_at_probe_plane_refused():

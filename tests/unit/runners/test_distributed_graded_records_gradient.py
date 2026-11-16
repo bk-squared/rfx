@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from rfx.farfield import compute_far_field_jax
+from rfx.measurement.farfield import compute_far_field_jax
 from rfx.probes.probes import flux_spectrum
 from tests._multi_device_scene import host_devices
 from tests.unit.runners._graded_records_scene import radiating_model, measure, record, mutation_result

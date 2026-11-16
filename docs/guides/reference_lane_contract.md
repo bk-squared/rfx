@@ -71,8 +71,8 @@ The detailed port-family contract is versioned in
 `docs/guides/support_matrix.md` (S-parameters section). The reference-lane rule is:
 
 - `run(compute_s_params=True)` means `add_port(...)` lumped/wire ports only.
-- `forward(port_s11_freqs=...)` means lumped/wire S11 vectors on the uniform
-  single-device differentiable path only.
+- `forward(port_s11_freqs=...)` means lumped/wire S11 vectors on the uniform or
+  graded differentiable path, on one device or several.
 - `compute_msl_s_matrix()` owns specialized microstrip-line ports.
 - `compute_waveguide_s_matrix()` owns rectangular waveguide full S-matrices.
 - Coaxial line reflection is promoted only through
@@ -94,9 +94,9 @@ The current reference lane should remain tied to concrete reproducible evidence,
 
 The former `validation/crossval/manifest.json` and script runner were removed.
 Full comparison ladders use the `crossval_ladder` marker and the
-merge train Mac runner in agent-rules `_configs/scripts/merge_train_weekly_gpu.py`
-(kind `crossval-ladder`, monthly on remi `gpu-24gb`; results to `rfx-lead`,
-records in `bk-workspace/.localci/weekly-gpu/`).
+merge train's runner
+(kind `crossval-ladder`, monthly on remi `gpu-24gb`; results to the maintainers,
+records in the lab's CI record folder).
 
 ## Shadow-lane relationship
 The nonuniform graded-z lane is preserved, but it is not claims-bearing until its own contract and benchmark ladder exist.

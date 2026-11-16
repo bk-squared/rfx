@@ -63,7 +63,7 @@ def forward_settling_witness(result):
     bins = result_read_bins(result)
     freq_max = (result.settling_freq_max or getattr(result.grid, 'freq_max', None)
                 or (max(bins) if len(bins) else None))
-    return build_settling_witness(
+    db, witness = build_settling_witness(
         result, bins=bins, dt=result.dt, freq_max=freq_max,
         probe_info=result.settling_probe_info,
         # Transit is to the records judged: probes for the probe row, ports for the port row.
@@ -71,6 +71,8 @@ def forward_settling_witness(result):
                     if result.settling_probe_source_end_index is not None
                     else result.settling_source_end_index),
         port_source_end=result.settling_source_end_index, warn=False)
+    from rfx.measurement.coverage import AccumulatorCoverage, with_coverage
+    return with_coverage(db, witness, result.settling_coverage or AccumulatorCoverage())
 
 
 def build_settling_witness(result, *, bins, dt, freq_max, probe_info,

@@ -4,7 +4,8 @@ import pytest
 import jax.numpy as jnp
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.farfield import compute_far_field, directivity, radiation_pattern
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import directivity, radiation_pattern
 from tests._multi_device_scene import host_devices
 from tests.unit.runners._graded_records_scene import pair, measure, record, mutation_result, with_bars
 
@@ -58,7 +59,7 @@ def test_ntff(boundary, n_devices, entry, monkeypatch):
             # dB(i) is a power ratio: convert back with 10**(dB/10).
             expected, actual = (10 ** (a / 10) for a in (expected, actual))
         values[function.__name__] = measure(actual, expected)
-    # CPML wrapped step: compile-form rounding, operands byte-equal (rfx-archive DESIGN.md 4g amendment 1).
+    # CPML wrapped step: compile-form rounding, operands byte-equal.
     with_bars(values, 'relative_peak' if boundary == 'cpml' else 'array_equal')
     record('ntff', dict(boundary=boundary, devices=n_devices, entry=entry, shape=grid.shape,
         domain=DOMAIN, source=SOURCE, probe=PROBE, box=BOX,

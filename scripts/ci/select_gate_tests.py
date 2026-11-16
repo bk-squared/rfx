@@ -30,6 +30,11 @@ CENTRAL_PATHS = (
     "rfx/model/",
 )
 CENTRAL_TEST_DIRS = ("tests/unit/runners/", "tests/unit/autodiff/")
+MODEL_PATHS = (
+    "rfx/geometry/", "rfx/model/", "rfx/materials/", "rfx/boundaries/",
+    "rfx/mesh_edges.py", "rfx/grid.py", "rfx/_internal/_grid_metric.py",
+    "rfx/realized_geometry.py", "rfx/realized_placement.py", "rfx/_internal/_realized.py",
+)
 CONTRACT_DIR = "tests/contracts/"
 PACKAGE_TEST_ROOT = "tests/unit/"
 # Locks and closed-form oracles pin numbers a user receives; any rfx/ change runs them.
@@ -39,6 +44,13 @@ ALWAYS_ON_TEST_DIRS = ("tests/oracle/", "tests/locks/")
 def is_test_file(path: str) -> bool:
     name = PurePosixPath(path)
     return path.startswith("tests/") and name.name.startswith("test_") and name.suffix == ".py"
+
+
+def whole_file_seconds(durations: Mapping[str, float]) -> dict[str, float]:
+    totals: dict[str, float] = defaultdict(float)
+    for nodeid, seconds in durations.items():
+        totals[nodeid.split("::", 1)[0]] += seconds
+    return totals
 
 
 def module_name(path: str) -> str | None:
@@ -74,6 +86,56 @@ def directly_imports(source: str, modules: set[str], filename: str = "<test>") -
     return False
 
 
+def string_literals(source: str, filename: str, *, exclude_docstrings: bool = False) -> set[str]:
+    tree = ast.parse(source, filename=filename)
+    docstrings = set()
+    if exclude_docstrings:
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                if (node.body and isinstance(node.body[0], ast.Expr)
+                        and isinstance(node.body[0].value, ast.Constant)
+                        and isinstance(node.body[0].value.value, str)):
+                    docstrings.add(node.body[0].value)
+    # ast.walk also visits the Constant parts of JoinedStr (f-strings).
+    return {node.value for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            and node not in docstrings}
+
+
+def model_building_tests(test_sources: Mapping[str, str]) -> set[str]:
+    modules = {name: path for path in test_sources
+               if (name := test_module_name(path)) is not None}
+    importers = defaultdict(set)
+    building = set()
+    for name, path in modules.items():
+        try:
+            tree = ast.parse(test_sources[path], filename=path)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if ((isinstance(node, ast.Name) and node.id == "Simulation")
+                    or (isinstance(node, ast.Attribute) and node.attr == "Simulation")
+                    # An aliased import (`Simulation as _Sim`) leaves no Name node.
+                    or (isinstance(node, ast.ImportFrom)
+                        and any(alias.name == "Simulation" for alias in node.names))):
+                building.add(name)
+            imported = set()
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module)
+                imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+            for dependency in imported & modules.keys():
+                importers[dependency].add(name)
+    pending = list(building)
+    while pending:
+        for name in importers[pending.pop()] - building:
+            building.add(name)
+            pending.append(name)
+    return {modules[name] for name in building if is_test_file(modules[name])
+            and not modules[name].startswith(CONTRACT_DIR)}
+
+
 @dataclass(frozen=True)
 class Selection:
     files: tuple[str, ...]
@@ -90,6 +152,11 @@ class Selection:
     always_on_seconds: float
     test_module_files: int
     test_module_seconds: float
+    model_changed: bool
+    model_building_files: int
+    model_building_seconds: float
+    message_literal_files: int
+    message_literal_seconds: float
     source_scan_count: int
     source_scan_files: int
     source_scan_seconds: float
@@ -97,6 +164,8 @@ class Selection:
     source_scan_run_seconds: float
     source_scan_deselected_count: int
     source_scan_deselected_seconds: float
+    gate_collection_available: bool
+    central_gate: bool
 
     def summary(self) -> str:
         lines = [
@@ -108,6 +177,10 @@ class Selection:
             f"recorded {self.always_on_seconds:.6f} s",
             f"test-module importers added: {self.test_module_files} files, "
             f"recorded {self.test_module_seconds:.6f} s",
+            *([f"model-building tests added: {self.model_building_files} files, "
+               f"recorded {self.model_building_seconds:.6f} s"] if self.model_changed else []),
+            f"message-literal tests added: {self.message_literal_files} files, "
+            f"recorded {self.message_literal_seconds:.6f} s",
             f"source-scan tests added: {self.source_scan_count} tests in "
             f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
             f"source-scan tests that run: {self.source_scan_run_count} tests, "
@@ -115,11 +188,15 @@ class Selection:
             "source-scan tests deselected by stage-2 markers: "
             f"{self.source_scan_deselected_count} tests, "
             f"recorded {self.source_scan_deselected_seconds:.6f} s",
-            f"not run (돌리지 않은 시험): {self.not_run_count} recorded tests, "
+            f"not run: {self.not_run_count} recorded tests, "
             f"{self.not_run_seconds:.6f} s",
             "Counts use .test_durations nodeids; contracts run in stage 1 are excluded. "
-            "Markers are read from AST; no pytest collection or test imports are performed.",
+            "Source-scan markers are read from AST; the selector does not collect or import tests.",
+            ("file prices: stage-2 tests only" if self.gate_collection_available else
+             "file prices: whole file (gate collection unavailable)"),
             f"excluded by >{MAX_FILE_SECONDS} s rule: {len(self.excluded)} files",
+            ("central gate: no file-time limit" if self.central_gate else
+             "locks and oracle: no file-time limit"),
         ]
         if self.central_skipped_count is not None:
             lines.append(
@@ -135,7 +212,8 @@ class Selection:
 
 def select_tests(
     changed_paths: Iterable[str], test_sources: Mapping[str, str], durations: Mapping[str, float],
-    *, central_paths: bool = False,
+    *, central_paths: bool = False, module_sources: Mapping[str, str] | None = None,
+    gate_nodeids: frozenset[str] | None = None,
 ) -> Selection:
     """Pure selection over repo-relative paths, source text, and recorded nodeids.
 
@@ -148,6 +226,15 @@ def select_tests(
     modules = {name for path in changed if (name := module_name(path)) is not None}
     test_modules = {name for path in changed if (name := test_module_name(path)) is not None}
     test_importers = set()
+    module_literals = set()
+    for path, source in (module_sources or {}).items():
+        if path not in changed or module_name(path) is None:
+            continue
+        try:
+            module_literals.update(string_literals(source, path, exclude_docstrings=True))
+        except SyntaxError:
+            continue
+    message_tests = set()
     candidates = set(edited)
     invalid = set()
     for path in tests:
@@ -157,6 +244,13 @@ def select_tests(
             imports_changed = directly_imports(test_sources[path], modules, path)
             if test_modules and directly_imports(test_sources[path], test_modules, path):
                 test_importers.add(path)
+            if module_literals and any(
+                literal in message
+                for value in string_literals(test_sources[path], path)
+                if len(literal := value.strip()) >= 16 and " " in literal
+                for message in module_literals
+            ):
+                message_tests.add(path)
         except SyntaxError:
             # Let pytest report the broken file, even without an import match.
             invalid.add(path)
@@ -185,18 +279,36 @@ def select_tests(
     candidates.update(always_on_added)
     test_module_added = test_importers - candidates
     candidates.update(test_module_added)
+    model_changed = source_changed and any(
+        path.startswith(prefix) if prefix.endswith("/") else path == prefix
+        for path in changed for prefix in MODEL_PATHS
+    )
+    model_added = model_building_tests(test_sources) - candidates if model_changed else set()
+    candidates.update(model_added)
+    message_added = message_tests - candidates
+    candidates.update(message_added)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
-    totals: dict[str, float] = defaultdict(float)
-    for nodeid, seconds in durations.items():
-        totals[nodeid.split("::", 1)[0]] += seconds
+    totals = whole_file_seconds(durations)
+    prices = totals.copy()
+    if gate_nodeids is not None:
+        collected_totals = whole_file_seconds({
+            nodeid: seconds for nodeid, seconds in durations.items() if nodeid in gate_nodeids
+        })
+        for path, seconds in totals.items():
+            if seconds > MAX_FILE_SECONDS or path in collected_totals:
+                prices[path] = collected_totals.get(path, 0)
+    central_gate = central_changed and central_paths
     excluded = {
-        path: totals[path] for path in sorted(candidates)
-        if totals[path] > MAX_FILE_SECONDS and path not in edited and path not in invalid
+        path: prices[path] for path in sorted(candidates)
+        if prices[path] > MAX_FILE_SECONDS and path not in edited and path not in invalid
+        and not central_gate and not path.startswith(ALWAYS_ON_TEST_DIRS)
     }
     selected = candidates - excluded.keys()
     package_added &= selected
     always_on_added &= selected
     test_module_added &= selected
+    model_added &= selected
+    message_added &= selected
     source_scan_nodes = set()
     source_scan_files = set()
     source_scan_count = 0
@@ -220,7 +332,7 @@ def select_tests(
         if marked or scan.module_marked:
             source_scan_files.add(path)
             source_scan_count += len(marked)
-    partly_added = {path: seconds for path, seconds in excluded.items()
+    partly_added = {path: totals[path] for path in excluded
                     if path in source_scan_files and path not in source_scan_nodes}
     excluded = {path: seconds for path, seconds in excluded.items()
                 if path not in source_scan_files}
@@ -238,18 +350,21 @@ def select_tests(
     ]
     return Selection(
         tuple(sorted(selected | source_scan_nodes)), excluded, partly_added,
-        sum(totals[path] for path in sorted(selected)) + source_scan_seconds,
+        sum(prices[path] for path in sorted(selected)) + source_scan_seconds,
         len(not_run), sum(not_run),
         len(central_tests) if central_changed and not central_paths else None,
-        sum(totals[path] for path in sorted(central_tests)),
-        len(package_added), sum(totals[path] for path in sorted(package_added)),
-        len(always_on_added), sum(totals[path] for path in sorted(always_on_added)),
-        len(test_module_added), sum(totals[path] for path in sorted(test_module_added)),
+        sum(prices[path] for path in sorted(central_tests)),
+        len(package_added), sum(prices[path] for path in sorted(package_added)),
+        len(always_on_added), sum(prices[path] for path in sorted(always_on_added)),
+        len(test_module_added), sum(prices[path] for path in sorted(test_module_added)),
+        model_changed, len(model_added), sum(prices[path] for path in sorted(model_added)),
+        len(message_added), sum(prices[path] for path in sorted(message_added)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
         len(marked_run), sum(seconds for nodeid, seconds in durations.items()
                              if nodeid.split("[", 1)[0] in marked_run),
         len(marked_deselected), sum(seconds for nodeid, seconds in durations.items()
                                     if nodeid.split("[", 1)[0] in marked_deselected),
+        gate_nodeids is not None, central_gate,
     )
 
 
@@ -267,26 +382,66 @@ def changed_paths(base: str, head: str | None, root: Path) -> list[str]:
 
 def read_test_sources(root: Path) -> dict[str, str]:
     sources = {}
-    for path in sorted((root / "tests").rglob("test_*.py")):
+    for path in sorted((root / "tests").rglob("*.py")):
+        if path.name == "conftest.py":
+            continue
         with tokenize.open(path) as handle:
             sources[path.relative_to(root).as_posix()] = handle.read()
     return sources
 
 
+def read_module_sources(paths: Iterable[str], root: Path, head: str | None) -> dict[str, str]:
+    paths = [path for path in paths if module_name(path) is not None]
+    sources = {}
+    if head and paths:
+        # Read the requested head, including files absent from the working tree.
+        existing = subprocess.check_output(
+            ["git", "ls-tree", "-r", "--name-only", "-z", head, "--", *paths],
+            cwd=root, text=True,
+        ).split("\0")
+        for path in existing:
+            if path:
+                sources[path] = subprocess.check_output(
+                    ["git", "show", f"{head}:{path}"], cwd=root, text=True,
+                )
+    elif not head:
+        for path in paths:
+            if (root / path).is_file():
+                with tokenize.open(root / path) as handle:
+                    sources[path] = handle.read()
+    return sources
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base", required=True)
+    parser.add_argument("--base")
     parser.add_argument("--head", help="omit to include the working tree")
     parser.add_argument("--durations", type=Path, default=Path(".test_durations"))
     parser.add_argument("--summary", type=Path)
+    parser.add_argument("--over-limit-files", action="store_true",
+                        help="list whole-file duration totals above the file-time limit and exit")
+    parser.add_argument("--gate-nodeids", type=Path,
+                        help="stage-2 collect-only nodeids, one per line")
     parser.add_argument("--central-paths", action="store_true",
                         help="include runners/autodiff for central path changes")
     args = parser.parse_args()
+    if not args.over_limit_files and args.base is None:
+        parser.error("--base is required unless --over-limit-files is used")
+    durations = json.loads(args.durations.read_text(encoding="utf-8"))
+    if args.over_limit_files:
+        for path, seconds in sorted(whole_file_seconds(durations).items()):
+            if is_test_file(path) and seconds > MAX_FILE_SECONDS:
+                print(path)
+        return 0
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
+    paths = changed_paths(args.base, args.head, root)
     result = select_tests(
-        changed_paths(args.base, args.head, root), read_test_sources(root),
-        json.loads(args.durations.read_text(encoding="utf-8")),
+        paths, read_test_sources(root),
+        durations,
         central_paths=args.central_paths,
+        module_sources=read_module_sources(paths, root, args.head),
+        gate_nodeids=(frozenset(args.gate_nodeids.read_text(encoding="utf-8").splitlines())
+                      if args.gate_nodeids is not None else None),
     )
     if args.summary:
         args.summary.write_text(result.summary(), encoding="utf-8")

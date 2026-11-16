@@ -1,12 +1,12 @@
-"""Waveguide incident-table waveform admission (#1942)."""
+"""Waveguide incident-table waveform admission."""
 
 DG_REFUSAL = (
     "waveform='differentiated_gaussian' is refused on waveguide ports: its "
     "band-limited incident table is built with a zero-phase filter whose "
     "precursor wraps circularly to the end of the record, so the port "
     "re-injects at the record end (an empty matched WR-90 guide read S21 off "
-    "by up to 11 dB). Use waveform='modulated_gaussian' (the default). "
-    "Tracked in #1942."
+    "by up to 11 dB). Use waveform='modulated_gaussian' (the default)."
+    ""
 )
 
 

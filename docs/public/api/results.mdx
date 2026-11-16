@@ -146,6 +146,47 @@ f_max, ...)` or `matrix_pencil_from_probe(...)`.
 `ntff_box`, `grid`, `dt` and `settling_probe_info`. Everything in it can carry
 a gradient.
 
+### `ForwardResult.ringdown`
+
+With `forward(..., ringdown=RingdownSpec())`, `out.ringdown` is a
+`rfx.ringdown.RingdownForwardResult`, a JAX pytree. Beside `s_params`,
+`s_params_long`, `freqs` and `report`, it holds the poles of the fit, traced with
+the same derivative as the completion. The main window is
+`[window_start T, T]`. The long window starts twice as early.
+
+| Member | Contents |
+|---|---|
+| `poles`, `poles_long` | read-only complex arrays of the main and long window, in 1/s, in the basis `exp(s t)`: `s = -alpha + i omega`. Padding entries follow the fitted ones. A failed window makes them NaN, as it does S. |
+| `pole_mask`, `pole_mask_long` | int32 arrays of the same shape: 0 padding, 1 completed, 2 unresolved. |
+| `pole(f_target, window="main")` | `(f, inv_q)`, frequency in Hz and 1/Q, traced, of the one pole with mask 1, positive frequency and decay within 1/(main window length) of `f_target`. `window="long"` reads the long window with the same radius. Without a unique pole both values and their gradients are NaN. |
+
+Under `jax.vmap` the four arrays gain a leading batch axis, and `pole()` raises
+`ValueError`; take one element first. A mask 2 pole is never selected.
+
+Two functions in `rfx.ringdown` go with them:
+
+| Function | Returns |
+|---|---|
+| `select_pole(poles, mask, f_target, window_s)` | the same `(f, inv_q)` from arrays you pass, with radius `1/window_s`; use the main window's length for either window. The choice of pole is not differentiated; the chosen pole keeps its derivative. |
+| `pole_selection_reason(poles, mask, f_target, window_s, status=None)` | on the host, `None` when a unique pole is selected, otherwise a string such as `"none within delta"`, or `"failed window: ..."` when `status` names a failed window |
+
+`gradient_witness(grad, grad_other, *, against="early_start", ringdown=None,
+bar=1e-2, bin_axis=None, pole_target=None)` takes the gradients of a selected
+pole through `pole_target=f_target`. With `against="early_start"`, a concrete
+`ringdown` must select a unique pole in both windows. With `against="longer_record"`,
+pass `ringdown=(res, res_longer)`: concrete, unbatched results in gradient order.
+Each record's main window must select uniquely; selected frequencies must be no
+further apart than the finer of the two selection radii. The note reports both
+selected frequencies and 1/Q values, record lengths, and the second/first record
+ratio. Otherwise the check has `value` NaN, `judged` and `ok` False, with a note
+naming the failing records or saying `cannot judge (selection differs: ...)`.
+A pair without `pole_target` checks completion status and reports the lengths
+and ratio. Without a pair, `pole_target` raises `ValueError`; omitting both keeps
+the gradient-only comparison. Return each result as aux from
+`jax.value_and_grad(..., has_aux=True)` to use one forward per record.
+Example and validated range:
+[Frequency and Q of one resonance, per cell](/rfx/check/gradients/#frequency-and-q-of-one-resonance-per-cell).
+
 ## S-parameter results
 
 All full matrices are indexed `S[receiver_port, driven_port, freq_index]`.
@@ -153,10 +194,10 @@ All full matrices are indexed `S[receiver_port, driven_port, freq_index]`.
 | Calculator | Result | Main fields |
 |---|---|---|
 | `run(compute_s_params=True)` | `Result` | `s_params`, `freqs` |
-| `compute_msl_s_matrix()` | `MSLSMatrixResult` | `S`, `freqs`, `Z0`, `beta`, `port_names`, `reliable`, `settling_db`, `reference_impedances`, `sigma_max_excess`, `S_raw`, `passivity_correction` |
+| `compute_msl_s_matrix()` | `MSLSMatrixResult` | `S`, `freqs`, `Z0`, `beta`, `port_names`, `reliable`, `settling_db`, `reference_impedances`, `line_impedances`, `sigma_max_excess`, `S_raw`, `passivity_correction` |
 | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult` | `s_params`, `freqs`, `port_names`, `port_directions`, `reference_planes`, `settling_db`, `s21_phase_residual_deg_rms` |
-| `compute_coaxial_line_reflection()` | `CoaxialLineReflectionResult` | `s11`, `freqs`, `status`, `annulus_cells`, `gamma`, `recurrence_residual`, `fit_residual`, `z0_numerical_ohm`, `termination` |
-| `compute_coaxial_two_port()` | `CoaxialTwoPortResult` | `s_params`, `freqs`, `port_names`, `reference_planes`, `status`, `settling_db`, `cond_a`, `gamma`, `recurrence_residual`, `fit_residual` |
+| `compute_coaxial_line_reflection()` | `CoaxialLineReflectionResult` | `s11`, `freqs`, `status`, `annulus_cells`, `gamma`, `recurrence_residual`, `fit_residual`, `z0_numerical_ohm`, `termination`, `settling_db`, `settling_witness` |
+| `compute_coaxial_two_port()` | `CoaxialTwoPortResult` | `s_params`, `freqs`, `port_names`, `reference_planes`, `status`, `settling_db`, `cond_a`, `gamma`, `recurrence_residual`, `fit_residual`, `reference_impedances`, `line_impedances` |
 
 **Microstrip.** `S` is the raw extraction, the same function a gradient
 differentiates. A raw S can exceed passivity. `sigma_max_excess[k]` gives how
@@ -167,27 +208,38 @@ set instead; the unprojected matrix stays in `S_raw` and the correction in
 `passivity_correction`. Don't quote projected values where the correction is
 large. `reliable[p, k]` marks low-signal bins: where any entry is `False`,
 drop the whole slice `S[:, :, k]`, because S is solved jointly across drives.
-`reference_impedances` are the power-wave references; `Z0` is the fitted line
-impedance, reported separately.
+`reference_impedances` are the power-wave references, each port's declared
+`impedance=`; `line_impedances` are the analytic line impedances the waves are
+formed at; `Z0` is the fitted line impedance, reported separately. The coaxial
+two-port result carries the same two fields.
 
-**Waveguide.** S is a ratio of modal voltage waves, each referenced to its own
-port's discrete modal impedance. It equals a power-wave S only when all ports
-share one cross-section. `s21_phase_residual_deg_rms` is the RMS difference
+**Waveguide.** Each port splits its waves with its own medium's discrete modal
+impedance. Between ports in one medium, S is the ratio of modal voltage waves,
+which equals a power-wave S when the ports also share one cross-section.
+Between ports in different media (an empty port facing a filled one),
+`normalize=False` returns the power-wave ratio `(b_i / a_j)·√(Z_j / Z_i)`;
+`normalize=True` and `"flux"` refuse unequal media. `s21_phase_residual_deg_rms` is the RMS difference
 between the S21 phase and `−βL` for a single-mode two-port. On an empty or
 matched guide it measures the port's discretization error. With a device
 between the planes, it includes the device's own phase.
 
-**Coax.** Check `status == "passed"` before using `s11`. This result does not
-go through the shared passivity check.
+**Coax.** Check `status == "passed"` before using `s11`. Its only passivity
+check is the warning when `|s11|` exceeds 1.01; it does not go through the
+shared column-power check.
 
 ## Checking a result
 
 Some checks run automatically and warn without changing the arrays:
 
-- `run()` and the uniform `forward()` check `time_series` and lumped/wire
-  `s_params` for NaN/Inf and for any `|S| > 1.1`. They do not test the total
-  power in a column.
-- The microstrip and waveguide calculators check column power and each entry.
+- Every `s_params` from `run()`/`forward()` and every S from the `compute_*`
+  calculators warns when its largest singular value exceeds 1.01 at any bin (a
+  lower bound where only some columns are measured). `waveguide_sparams` is
+  checked on each port's `s11` only (its `s21` is not a scattering entry), and
+  `compute_floquet_s_params` is not checked.
+- `run()` on one device (uniform or graded) and the uniform `forward()` also check `time_series` and lumped/wire
+  `s_params` for NaN/Inf and for any `|S| > 1.1`.
+- The microstrip and waveguide calculators also check column power and each
+  entry.
 - Every calculator warns when its record has not rung down to −40 dB.
 
 Nothing checks DFT planes, flux, NTFF data or the state. Use

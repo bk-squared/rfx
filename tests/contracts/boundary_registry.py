@@ -20,8 +20,7 @@ import json
 from pathlib import Path
 
 
-WALL_PREFIXES = ("apply_pec", "apply_pmc", "apply_cpml", "apply_upml", "apply_adi_cpml",
-                 "init_cpml", "init_upml")
+WALL_PREFIXES = ("apply_pec", "apply_pmc", "apply_cpml", "apply_upml", "init_cpml", "init_upml")
 WALL_HELPERS = {"_apply_fine_pec_axes", "precompute_coeffs"}
 NEIGHBOURS = {"h_neighbor", "slab_neighbor", "_shift_fwd", "_shift_bwd", "_diff_fwd", "_diff_bwd", "_diff_fwd_o", "_diff_bwd_o",
               "_bwd_h", "_bwd_neighbor", "_material_bwd_neighbour"}
@@ -285,6 +284,8 @@ def compare_registry(expected, actual, counted_functions=()):
 
 
 def main(argv=None):
+    from tests.contracts.test_boundary_registry_current import EXCEPTIONS, registry_problems
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--update", action="store_true", help="rewrite boundary_registry.json from the current tree")
     args = parser.parse_args(argv)
@@ -293,11 +294,14 @@ def main(argv=None):
     counted = registry["counted_functions"]
     actual = scan_tree(ROOT)
     if args.update:
+        excepted = {(file, function) for file, function, ledger, reason in EXCEPTIONS}
+        actual = [row for row in actual if (row["file"], row["function"]) not in excepted]
         registry["sites"] = registry_rows(actual, counted)
         path.write_text(json.dumps(registry, indent=2) + "\n")
         print(f"Registered {len(actual)} sites in {len(registry['sites'])} keys: {path.relative_to(ROOT)}")
     else:
-        compare_registry(registry["sites"], actual, counted)
+        problems = registry_problems(registry, actual, EXCEPTIONS)
+        assert problems == [], "\n".join(problems)
         print(f"All {len(actual)} sites registered.")
 
 

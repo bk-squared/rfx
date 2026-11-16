@@ -57,7 +57,7 @@ def test_flux_stops_while_energy_floors():
     # Pin WHY the energy run reached its cap: the run's own #388 advisory must say the energy
     # left inside is electrostatic. A cap-hit for any other reason (trapped resonance, a failing
     # absorber) would keep `nE >= 5900` green while no longer testing this scene.
-    assert [w for w in caught if "issue #388" in str(w.message) and "H-share" in str(w.message)], (
+    assert [w for w in caught if "relative DC" in str(w.message) and "H-share" in str(w.message)], (
         "the energy run capped, but not with the static-remnant advisory")
     rF = _stop_step(FLUX_BOX)
     nE = np.asarray(rE.time_series).shape[0]

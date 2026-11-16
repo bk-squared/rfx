@@ -360,6 +360,7 @@ def test_ntff_absorber_overlap_fires_when_corner_crosses_domain_edge():
 #: None)`` at its line 686, assigned at 690), so repeated checks in one
 #: preflight share one realization instead of rebuilding it per check.
 _PREFLIGHT_WRITES_WITH_A_READER = {
+    "_realization_early_outcomes": "rfx/model/realization_verdict.py: early_outcomes, consumed by admit_table",
     "_pf_campaign_ctx": "rfx/preflight/realization.py (keyed memo, same file)",
 }
 
@@ -563,7 +564,7 @@ def test_waveguide_reference_plane_device_overlap_fires_on_straddling_slab():
     assert "bounds 15.2–25.4 mm on x" in msg, msg
     assert found[0].severity == "warning", found[0].severity
     assert found[0].source == "_validate_cfg_waveguide_reference_plane"
-    with pytest.raises(ValueError, match="left.*eps.*rfx#1994"):
+    with pytest.raises(ValueError, match="left.*eps.*one homogeneous"):
         _waveguide_refplane_in_slab_sim().compute_waveguide_s_matrix(
             n_steps=2, skip_preflight=True)
 
@@ -627,8 +628,7 @@ def test_waveguide_reference_plane_device_overlap_skips_a_shape_with_no_bbox():
 # instance of the #500 interior-frame bug. The reference position is the
 # exterior-frame domain edge (_absorber_boundary_for_axis) PLUS an
 # EXPLICIT, separately-calibrated buffer (cpml_thick_{lo,hi} = n_cpml*dx)
-# — docs/agent-memory/rfx-known-issues.md "Status 2026-05-04 (CALIBRATED,
-# OpenEMS-class)": with LY = W + 6*dx at dx=80um/cpml_layers=8 "the trace
+# (CALIBRATED, OpenEMS-class): with LY = W + 6*dx at dx=80um/cpml_layers=8 "the trace
 # ended up INSIDE the CPML overlap region (negative clearance)" and Z0
 # drifted UP with refinement instead of converging to Hammerstad's
 # 47.89 Ohm; the fix requires LY >= W + 2*(2*h_sub + 8*dx). An earlier
@@ -662,7 +662,7 @@ def _msl_x_clearance_sim(dx: float, port_x: float, cpml_layers: int = 8) -> Simu
 
 
 def _msl_y_clearance_sim(dx: float, ly: float, cpml_layers: int = 8) -> Simulation:
-    """Mirrors docs/agent-memory/rfx-known-issues.md's 2026-05-04 mesh-conv
+    """Mirrors the 2026-05-04 mesh-conv
     fixture (LY parametrized, port_x fixed comfortably clear of x-CPML)."""
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,
@@ -924,7 +924,7 @@ def test_issue660_single_shape_overshoot_still_warns():
     assert "geometry entries cross" not in msg, (
         f"no plural aggregate clause for a single entry; got: {msg}"
     )
-    assert "issue #61" in msg, f"the physics explanation must survive; got: {msg}"
+    assert "geometry inside the absorber is physically meaningless" in msg, f"the physics explanation must survive; got: {msg}"
 
 
 def test_issue660_geometry_fully_inside_the_domain_stays_silent():
@@ -986,7 +986,7 @@ def test_high_q_lorentz_touching_face_warns():
     assert issue.severity == "warning"
     assert "Q=60" in str(issue)
     assert "x-lo" in issue.loc and "y-lo" in issue.loc
-    assert "#636" in str(issue)
+    assert "surface-polariton modes" in str(issue)
 
 
 def test_drude_touching_face_warns():
@@ -1019,7 +1019,7 @@ def test_low_q_lorentz_touching_face_warns():
     found = _findings(sim)
     assert len(found) == 1, found
     assert "Q=2" in str(found[0])
-    assert "#808" in str(found[0])
+    assert "eps_inf-without-pole surround" in str(found[0])
 
 
 def test_out_of_band_high_q_lorentz_touching_face_warns():
@@ -1053,7 +1053,7 @@ def test_debye_touching_face_warns():
     issue = found[0]
     assert issue.severity == "warning"
     assert "Debye" in str(issue)
-    assert "#808" in str(issue)
+    assert "eps_inf-without-pole surround" in str(issue)
     # exact-touch branch (this box ends AT x-hi): the background-pad
     # wording is the truthful one and must stay
     assert "the pad stays background" in str(issue)
@@ -1342,7 +1342,7 @@ def test_conductor_flush_with_a_thin_absorber_is_reported():
     assert "6 absorbing layer(s)" in msg, msg
     assert "not a stability bound" in msg, msg
     assert "mechanism is not established" in msg, msg
-    assert "#801" in msg, msg
+    assert "Both at once is a measured growth class" in msg, msg
 
 
 def test_the_same_conductor_with_a_default_absorber_is_silent():
@@ -1439,3 +1439,28 @@ def test_the_conjunction_is_load_bearing(monkeypatch):
     assert _thin_abs_findings(_conductor_at_face_sim(layers=8)) == []
     assert _thin_abs_findings(_conductor_at_face_sim(layers=6,
                                                      inset_cells=2)) == []
+
+
+# --------------------------------------------------------------------- #
+# Every absorbing kind (#1961): the check keyed on boundary == "cpml" and
+# said nothing for the same box drawn into a UPML pad.
+# --------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("boundary,label", [("cpml", "CPML"), ("upml", "UPML")])
+def test_geometry_in_the_pad_is_reported_for_every_absorbing_kind(boundary, label):
+    sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
+                     cpml_layers=8, boundary=boundary)
+    sim.add_material("ro4003c", eps_r=3.55)
+    sim.add(_x_overshoot_box(0.0013), material="ro4003c")
+    issues = _absorber_issues(sim)
+    assert len(issues) == 1
+    assert f"extends into {label} region along x-axis" in str(issues[0])
+    assert "1.3mm past the x-hi absorber boundary" in str(issues[0])
+
+
+def test_a_pec_face_has_no_pad_to_report():
+    sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
+                     boundary=BoundarySpec(x=Boundary(lo="upml", hi="pec"), y="upml", z="upml"))
+    sim.add_material("ro4003c", eps_r=3.55)
+    sim.add(_x_overshoot_box(0.0013), material="ro4003c")
+    assert _absorber_issues(sim) == []

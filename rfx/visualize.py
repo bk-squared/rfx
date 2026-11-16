@@ -7,25 +7,26 @@ customization or saving.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.core.yee import FDTDState
+    from rfx.farfield import FarFieldResult
+    from rfx.grid import Grid
+    from rfx.nonuniform import NonUniformGrid
+    from rfx.rcs import RCSResult
+
+from rfx.errors import ConfigurationWarning
 import warnings
 
 import numpy as np
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for visualization")
+from rfx._plotting import _pyplot
 
 
 def plot_field_slice(
-    state,
-    grid,
+    state: FDTDState,
+    grid: Grid | NonUniformGrid,
     *,
     component: str = "ez",
     axis: str = "z",
@@ -51,7 +52,7 @@ def plot_field_slice(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     field = np.asarray(getattr(state, component))
 
     axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
@@ -116,12 +117,12 @@ def plot_geometry_2d_slice(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
 
     from rfx.nonuniform import NonUniformGrid
     grid = sim._build_realized_grid()
     nonuniform = isinstance(grid, NonUniformGrid)
-    # #931 §1.9: a PEC sheet and a sub-cell wire own no cell and write no
+    # a PEC sheet and a sub-cell wire own no cell and write no
     # eps, so an eps-only cross-section shows a fully copper-clad board as
     # bare laminate. Collect them, draw the realized conductor footprint on
     # top, and let it choose the slice (see the index rule below). The
@@ -151,7 +152,7 @@ def plot_geometry_2d_slice(
         # padding plane that is pure vacuum.
         #
         # Metal counts as structure, and it is looked at FIRST. A board whose
-        # traces are #931 sheets writes no eps at all, so the permittivity
+        # traces are PEC sheets writes no eps at all, so the permittivity
         # spread is the same on every y plane of a uniform laminate and the
         # argmax lands on the first one — a plane the patch does not reach.
         # Where there is a conductor, the plane carrying the most of it is
@@ -253,7 +254,7 @@ def _warn_if_refined(sim):
     appeared in this file before now -- the claim was false. This is the
     actual implementation.
 
-    ``sim.add_refinement(...)`` (SBP-SAT subgridding, issue #90,
+    ``sim.add_refinement(...)`` (SBP-SAT subgridding,
     EXPERIMENTAL) locally refines the z-mesh over a sub-range at solve
     time via a SEPARATE runner (``rfx/subgridding/``); ``_build_grid()``
     / ``_build_nonuniform_grid()`` -- what this module's viewers draw --
@@ -268,7 +269,7 @@ def _warn_if_refined(sim):
             f"add_refinement(z_range=({z_lo * 1e3:.4f}, {z_hi * 1e3:.4f}) mm, "
             f"ratio={ratio}) is set, but this viewer draws the COARSE base "
             "grid only -- the fine subgrid region (a separate runner, "
-            "rfx/subgridding/) is not reflected in this picture at all.",
+            "rfx/subgridding/) is not reflected in this picture at all.", ConfigurationWarning,
             stacklevel=3)
 
 
@@ -372,7 +373,7 @@ def _absorber_rects(grid, keep, xe, ye):
 
 def _realized_edge_wall_mask(sim, grid, coords):
     """Boolean array, ``grid.shape``: cells that carry a realized PEC E
-    edge but are NOT conductor cells (#931).
+    edge but are NOT conductor cells.
 
     Under the lattice ownership contract a PEC volume shorts every E edge
     incident to an occupied cell, so its FAR faces (the ``hi`` node plane
@@ -432,13 +433,13 @@ def plot_rasterized_slice(
       drawn from :meth:`Simulation.conductor_mask`, which covers all three
       places a conductor can live (``pec_mask``, ``sigma`` above the
       conductor threshold, and the node-thin surface-impedance sheet
-      operator of #677, which touches neither of the first two);
+      operator, which touches neither of the first two);
     * on a graded mesh the cells are not the same size, so the plot uses
       ``pcolormesh`` on true cell edges rather than ``imshow`` with one
       ``extent``;
     * the grid is the one this simulation would RUN on — the non-uniform
       grid whenever any of ``dx_profile`` / ``dy_profile`` / ``dz_profile``
-      is set. EXCEPT for ``add_refinement()`` (SBP-SAT subgridding, #90,
+      is set. EXCEPT for ``add_refinement()`` (SBP-SAT subgridding,
       EXPERIMENTAL): its fine z-region runs on a separate runner this
       viewer's grid-builders know nothing about, so the picture is always
       the COARSE grid there; a warning fires rather than the claim above
@@ -449,7 +450,7 @@ def plot_rasterized_slice(
     extends into it, so without a marker that overhang reads as "the
     rasterizer grew my substrate."
 
-    A PEC volume's FAR faces (#931): the solve shorts every E edge
+    A PEC volume's FAR faces: the solve shorts every E edge
     incident to an occupied cell, so the ``hi`` node plane on each axis is
     an electric wall that lives outside the body's own cells.
     :meth:`Simulation.conductor_mask` is a CELL footprint and cannot show
@@ -500,7 +501,7 @@ def plot_rasterized_slice(
     --------
     >>> fig = plot_rasterized_slice(sim, axis=2, position=1.6e-3)  # doctest: +SKIP
     """
-    _require_mpl()
+    plt = _pyplot()
     if axis not in (0, 1, 2):
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
     if index is not None and position is not None:
@@ -514,7 +515,7 @@ def plot_rasterized_slice(
     # Permittivity only — this viewer already reads its conductors from
     # sim.conductor_mask() above and its realized walls from
     # _realized_edge_wall_mask() below, both of which collect sheets and
-    # wires. The #931 collectors here are passed and dropped so that
+    # wires. The collectors here are passed and dropped so that
     # "cells only" is a decision at the call site (rfx/api/_compile.py
     # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
@@ -535,7 +536,7 @@ def plot_rasterized_slice(
             index = int(np.argmax(per_plane)) if per_plane.max() else n_along // 2
         else:
             pos = float(position)
-            from rfx._periodic import plane_coordinate
+            from rfx._internal._periodic import plane_coordinate
             pos = plane_coordinate(grid, axis, pos)
             lo_c, hi_c = float(coords[axis].min()), float(coords[axis].max())
             if 'xyz'[axis] not in getattr(grid, 'periodic_axes', '') and not (lo_c - 1e-9 <= pos <= hi_c + 1e-9):
@@ -544,7 +545,7 @@ def plot_rasterized_slice(
                     f"[{lo_c:g}, {hi_c:g}] m. Clamping it would have drawn a "
                     "plausible empty CPML plane, which is how a metre/mm slip "
                     "reads as a clean result.")
-            from rfx._grid_metric import nearest_node_index
+            from rfx._internal._grid_metric import nearest_node_index
             from rfx.geometry.rasterize_grid import _local_cell
             k = nearest_node_index(coords[axis], pos,
                                    _local_cell(coords[axis], grid.cells(axis), pos))
@@ -632,7 +633,7 @@ def plot_rasterized_slice(
     ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
                   cmap=_conductor_cmap(), vmin=0.0, vmax=1.0, alpha=0.55)
 
-    # #931 realized PEC edge outside every conductor cell (a volume's far
+    # realized PEC edge outside every conductor cell (a volume's far
     # face): NOT a conductor cell (conductor_mask() cannot show it, see
     # the docstring), but its footprint is computable from the same
     # production function the solve uses (realized_pec_edge_masks) and
@@ -643,7 +644,7 @@ def plot_rasterized_slice(
         ax.pcolormesh(xe, ye, np.where(wall2, 1.0, np.nan).T, shading="flat",
                       cmap=_wall_cmap(), vmin=0.0, vmax=1.0,
                       alpha=0.65, zorder=4.5)
-        wall_note = ("realized PEC wall (#931) on THIS plane -- a body's "
+        wall_note = ("realized PEC wall on THIS plane -- a body's "
                     "far face: an electric wall, not a conductor cell")
 
     absorber_rects = _absorber_rects(grid, keep, xe, ye)
@@ -704,7 +705,7 @@ def plot_rasterized_slice(
                                  label="conductor cell"))
         if wall_note:
             handles.append(Patch(facecolor="#5533cc", alpha=0.65,
-                                 label="realized PEC wall (#931)"))
+                                 label="realized PEC wall"))
         if drawn:
             handles.append(Patch(fill=False, edgecolor="#d55e00", lw=1.4,
                                  ls="--", label="declared outline (analytic box)"))
@@ -784,7 +785,7 @@ def plot_stack_profile(
     does, so pad material at either end of the column is not read as
     declared substrate.
 
-    A PEC volume's far face (#931) is an electric wall on a node plane
+    A PEC volume's far face is an electric wall on a node plane
     outside the body's own cells; :meth:`Simulation.conductor_mask` cannot
     show it, so it is drawn as its own marker where it falls in this
     column (see :func:`plot_rasterized_slice`).
@@ -805,7 +806,7 @@ def plot_stack_profile(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     if axis not in (0, 1, 2):
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
     _warn_if_refined(sim)
@@ -817,7 +818,7 @@ def plot_stack_profile(
     # Permittivity only — this viewer already reads its conductors from
     # sim.conductor_mask() above and its realized walls from
     # _realized_edge_wall_mask() below, both of which collect sheets and
-    # wires. The #931 collectors here are passed and dropped so that
+    # wires. The collectors here are passed and dropped so that
     # "cells only" is a decision at the call site (rfx/api/_compile.py
     # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
@@ -857,8 +858,8 @@ def plot_stack_profile(
             auto_note = (" (no conductor in this model; column chosen by "
                          "\u03b5 structure)")
     else:
-        from rfx._periodic import plane_coordinate
-        from rfx._grid_metric import nearest_node_index
+        from rfx._internal._periodic import plane_coordinate
+        from rfx._internal._grid_metric import nearest_node_index
         from rfx.geometry.rasterize_grid import _local_cell
         picked = []
         for a, value in zip(keep, at):
@@ -910,7 +911,7 @@ def plot_stack_profile(
                                        hatch="////",
                                        edgecolor="#701e00", lw=0.5))
         if wall_col is not None and wall_col[k]:
-            # #931 realized PEC wall (a body's far face): its own marker,
+            # realized PEC wall (a body's far face): its own marker,
             # distinct from the conductor hatch -- see plot_rasterized_slice.
             ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
                                        facecolor="#5533cc", alpha=0.5,
@@ -966,7 +967,7 @@ def plot_stack_profile(
                                  hatch="////", label="conductor cell"))
         if wall_present:
             handles.append(Patch(facecolor="#5533cc", alpha=0.5,
-                                 label="realized PEC wall (#931)"))
+                                 label="realized PEC wall"))
         if absorber_spans:
             handles.append(Patch(fill=False, hatch="////", edgecolor="0.35",
                                  label="CPML absorber"))
@@ -1032,7 +1033,7 @@ def plot_s_params(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     n_ports = s_params.shape[0]
     freqs_ghz = np.asarray(freqs) / 1e9
 
@@ -1057,7 +1058,7 @@ def plot_s_params(
 
 
 def plot_radiation_pattern(
-    ff,
+    ff: FarFieldResult,
     *,
     freq_idx: int = 0,
     phi_idx: int = 0,
@@ -1078,7 +1079,7 @@ def plot_radiation_pattern(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     theta = ff.theta
     power = np.abs(ff.E_theta[freq_idx, :, phi_idx]) ** 2 + \
             np.abs(ff.E_phi[freq_idx, :, phi_idx]) ** 2
@@ -1124,7 +1125,7 @@ def plot_time_series(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
     ts = np.asarray(time_series)
     n_steps, n_probes = ts.shape
     t_ns = np.arange(n_steps) * dt * 1e9
@@ -1144,7 +1145,7 @@ def plot_time_series(
 
 
 def plot_rcs(
-    rcs_result,
+    rcs_result: RCSResult,
     *,
     freq_idx: int = 0,
     phi_idx: int = 0,
@@ -1170,7 +1171,7 @@ def plot_rcs(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
 
     theta = rcs_result.theta
     rcs_db = rcs_result.rcs_dbsm[freq_idx, :, phi_idx]
@@ -1201,7 +1202,7 @@ def plot_rcs(
 
 
 # ===========================================================================
-# 3D interactive visualisation (plotly). Issue #38.
+# 3D interactive visualisation (plotly).
 # ===========================================================================
 
 def _plotly():
@@ -1211,7 +1212,7 @@ def _plotly():
     except ImportError as e:  # pragma: no cover
         raise ImportError(
             "rfx.visualize 3D functions require plotly. "
-            "Install with `pip install plotly kaleido`."
+            "Install with `pip install \"rfx-fdtd[visualization]\"`."
         ) from e
 
 
@@ -1281,9 +1282,11 @@ def visualize_structure(sim, *, include_cpml: bool = True,
     fig = go.Figure()
 
     for entry in sim._geometry:
+        if not hasattr(entry.shape, "bounding_box"):
+            continue
         try:
             c1, c2 = entry.shape.bounding_box()
-        except Exception:
+        except NotImplementedError:
             continue
         w, d, h = [c2[i] - c1[i] for i in range(3)]
         color, opacity = _material_style(entry.material_name)
@@ -1352,7 +1355,7 @@ def visualize_farfield_3d(result, sim=None, *, f_idx: int = 0,
             "visualize_farfield_3d requires ntff_data/ntff_box on the "
             "result — add sim.add_ntff_box(...) and re-run."
         )
-    from rfx.farfield import compute_far_field
+    from rfx.measurement.farfield import compute_far_field
 
     if theta_grid is None:
         theta_grid = np.linspace(0.01, np.pi / 2, 60)

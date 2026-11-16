@@ -27,6 +27,7 @@ SOURCE = (0.060, 0.060, 0.056)
 
 def _preflight_with_ntff(corner_lo, corner_hi):
     sim = Simulation(
+        snap="declared",
         freq_max=FREQ,
         domain=DOMAIN,
         dx=2e-3,

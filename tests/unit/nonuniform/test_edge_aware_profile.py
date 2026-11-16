@@ -271,7 +271,7 @@ def test_a_declared_face_on_a_sheet_edge_warns():
 
 def _sheet_size_rows(shapes):
     from rfx.api import Simulation
-    sim = Simulation(freq_max=5e9, domain=_DOM, dx=1e-3, boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=_DOM, dx=1e-3, boundary="pec", snap="declared")
     for s in shapes:
         sim.add(s, material="pec")
     sim.add_source((5e-3, 5e-3, 5e-3), component="ez", amplitude_kind="field")

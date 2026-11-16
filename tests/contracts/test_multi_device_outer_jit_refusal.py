@@ -44,7 +44,7 @@ def pretend_gpu(monkeypatch):
 def assert_refused(call):
     with pytest.raises(NotImplementedError) as exc:
         call()
-    assert "1598" in str(exc.value)
+    assert "a multi-device run on GPUs cannot be compiled inside an enclosing jax.jit" in str(exc.value)
     assert "xla_gpu_enable_command_buffer" in str(exc.value)
     assert str(exc.value) == rank.OUTER_JIT_REFUSAL
 
@@ -157,6 +157,14 @@ def test_T6_probe_uncertainty_refuses(monkeypatch):
         raise RuntimeError("probe unavailable")
     monkeypatch.setattr(rank, "jax", SimpleNamespace(lax=SimpleNamespace(add=broken)))
     assert rank._staged_by_enclosing_program() is True
+
+
+def test_T6_probe_lets_a_timeout_through(monkeypatch):
+    def timed_out(*args):
+        raise TimeoutError("run budget")
+    monkeypatch.setattr(rank, "jax", SimpleNamespace(lax=SimpleNamespace(add=timed_out)))
+    with pytest.raises(TimeoutError):
+        rank._staged_by_enclosing_program()
 
 
 def test_T6_single_device_never_refused(devices, pretend_gpu):

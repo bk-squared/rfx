@@ -316,7 +316,7 @@ def showcase_index(catalog: dict, pages: list[dict], base_url: str) -> list[str]
     page, its catalog entry and the result.json of each record it draws on."""
     if catalog.get("schema") != "rfx-showcase-catalog/1":
         raise ValueError(f"unsupported showcase catalog schema: {catalog.get('schema')!r}")
-    markdown = {page["route"]: page["markdown_url"] for page in pages}
+    markdown = {page["route"]: page["markdown_url"] for page in pages if not page.get("markdown_only")}
     catalog_url = f"{base_url}/{SHOWCASE_CATALOG}"
     lines = ["## Showcase results", "",
              f"- [Showcase catalog]({catalog_url}): schema {catalog['schema']}; per case its page, "
@@ -357,10 +357,10 @@ def finish_generated_index(generated: Path, *, has_authored_index: bool, base_ur
 
 
 def agent_index(pages: list[dict]) -> list[str]:
-    agents = [p for p in pages if p["route"].startswith("agent/")]
+    agents = [p for p in pages if p.get("markdown_only")]
     if not agents:
         return []
-    agents.sort(key=lambda p: (p["route"] != "agent/overview", p["route"]))
+    agents.sort(key=lambda p: (Path(p["source_path"]).stem != "overview", p["source_path"]))
     return ["## For coding agents", "", *[
         f"- [{p['title']}]({p['markdown_url']}): {p['description']}" for p in agents
     ], ""]
@@ -404,7 +404,8 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(header + body)
             full.append(header + body)
-            pages.append({"route": route, "title": title, "description": metadata.get("description", ""),
+            pages.append({**({"route": route} if source.is_relative_to(public) else {"markdown_only": True}),
+                          "title": title, "description": metadata.get("description", ""),
                           "url": url, "markdown_url": f"{base_url}/{name}", "source_path": source_path,
                           "source_url": source_url, "source_sha256": digest(source)["sha256"]})
         support = []
@@ -431,7 +432,7 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
         if errors:
             raise ValueError("\n".join(errors))
         finish_generated_index(
-            generated, has_authored_index=any(page["route"] == "api/generated" for page in pages),
+            generated, has_authored_index=any(page.get("route") == "api/generated" for page in pages),
             base_url=base_url, channel=channel, package_version=inventory["package_version"], source_sha=sha,
         )
         anchors = set(re.findall(r'id="([^"\n]+)"', (generated / "rfx.html").read_text()))
@@ -478,7 +479,7 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
                 *[f"- [{s['source_path']}]({s['url']})" for s in support],
                 f"- [Build manifest]({base_url}/docs-manifest.json): source SHA and file hashes.",
                 f"- [Combined manual]({base_url}/llms-full.txt)", "", *agent_index(pages), *showcase, "## Manual and examples", ""]
-        llms += [f"- [{p['title']}]({p['markdown_url']}): {p['description']}" for p in pages if not p["route"].startswith("agent/")]
+        llms += [f"- [{p['title']}]({p['markdown_url']}): {p['description']}" for p in pages if not p.get("markdown_only")]
         (files / "llms.txt").write_text("\n".join(llms) + "\n")
         (files / "llms-full.txt").write_text("\n\n---\n\n".join(full))
         check_no_symlinks(files)
@@ -517,6 +518,12 @@ def validate_bundle(bundle: Path, root: Path | None = None) -> dict:
     validate_public_identity(manifest.get("base_url"), manifest.get("channel"))
     if manifest.get("schema_version") != 1 or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("source_sha", "")):
         raise ValueError("invalid docs manifest identity")
+    for page in manifest.get("pages", []):
+        if page.get("markdown_only") is True:
+            if "route" in page:
+                raise ValueError("Markdown-only page has a route")
+        elif not isinstance(page.get("route"), str):
+            raise ValueError("page needs a route or markdown_only: true")
     expected = manifest["files"]
     actual = {p.relative_to(files).as_posix() for p in files.rglob("*") if p.is_file()}
     if actual != set(expected) | {"docs-manifest.json"}:

@@ -6,10 +6,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 import jax
+import numpy as np
 import pytest
 
 from tests.contracts.boundary_compare import BoundaryDeparture, classify, compare_values, departures
 from tests.contracts.boundary_fields import measure, measured_fields
+from tests.contracts.boundary_cases import ENTRIES
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,7 +23,7 @@ WALLED_DEFAULT_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query",
 GUIDE_REFUSAL_ENTRIES = WALLED_DEFAULT_ENTRIES | {"nonuniform"}
 CELLS = [dict(c, status="REFUSED_AT_DISPATCH", departures=[])
          if c["case"] == "waveguide-cpml" and c["entry"] in GUIDE_REFUSAL_ENTRIES else c
-         for c in BASELINE["cells"]]
+         for c in BASELINE["cells"] if c["entry"] in ENTRIES]
 
 
 def backed(cell):
@@ -75,8 +77,6 @@ CELLS = [tfsf_slab_20261026(backed(magnetic_distributed(periodic_graded(c)))) fo
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
-def adi_absorber_cell(case, entry):
-    return entry == "adi" and case not in ("pec", "pmc-pec", "upml")
 
 
 @lru_cache(maxsize=None)
@@ -90,11 +90,8 @@ def measured(case, entry):
 
 
 def floquet_refused(entry):
-    """#1944 supersedes B1's floquet cells: they record explicit CPML lateral faces
-    silently made periodic, which a Floquet port now refuses by name. The graded-z
-    and ADI refusals fire first, at registration and construction. Keep B1 immutable."""
-    match = {"nonuniform": "do not support non-uniform z mesh",
-             "adi": "refuses absorbing boundaries"}.get(entry, "requires periodic lateral faces")
+    """Shared checks for the supported solver paths."""
+    match = {"nonuniform": "do not support non-uniform z mesh"}.get(entry, "requires periodic lateral faces")
     with pytest.raises(ValueError, match=match):
         measured("floquet", entry)
 
@@ -113,6 +110,11 @@ def compare_departures(problems):
 def test_no_unlisted_departures(cell):
     if cell["case"] == "floquet":
         return floquet_refused(cell["entry"])
+    if cell["case"] == "tfsf" and cell["entry"] not in ("nonuniform",):
+        # #1945 supersedes B1's explicit CPML replacement, at registration.
+        with pytest.raises(ValueError, match="y_lo='cpml'.*z_hi='cpml'"):
+            measured(cell["case"], cell["entry"])
+        return
     if cell["status"] == "REFUSED_AT_DISPATCH":
         with pytest.raises(ValueError) as caught:
             measured(cell["case"], cell["entry"])
@@ -121,11 +123,6 @@ def test_no_unlisted_departures(cell):
         assert all(face in message for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
         assert "declare boundary=" in message and "'y': 'pec'" in message and "'z': 'pec'" in message
         return
-    # The public sponge refusal supersedes B1; retain the historical record.
-    if adi_absorber_cell(cell["case"], cell["entry"]):
-        with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
-            measured(cell["case"], cell["entry"])
-        return
     # #1465 supersedes B1's subgrid refusal reason; the two construction /
     # preflight refusals still occur before lane admission. Keep B1 immutable.
     if cell["entry"] == "subgridded" and cell["case"] not in ("upml", "waveguide-pmc"):
@@ -133,10 +130,10 @@ def test_no_unlisted_departures(cell):
             measured(cell["case"], cell["entry"])
         return
     if cell["status"] == "REFUSED":
+        # B1 records builtin families; public refusal subclasses retain them.
         exception_type = {"ValueError": ValueError, "NotImplementedError": NotImplementedError}[cell["exception"]]
         with pytest.raises(exception_type) as exc:
             measured(cell["case"], cell["entry"])
-        assert type(exc.value) is exception_type
         assert str(exc.value).startswith(cell["message_prefix"])
         return
     expected = {key(d) for d in cell["departures"]}
@@ -149,8 +146,8 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
                                 pytest.mark.xfail(strict=True, raises=BoundaryDeparture,
                                                   reason=f"{departure['code']}; {departure['detail']}; fixed in {departure['step']}")])
             for cell in CELLS if cell["status"] == "MEASURED"
-            and not adi_absorber_cell(cell["case"], cell["entry"])
             and cell["case"] != "floquet"  # refused since #1944; pinned in test_no_unlisted_departures
+            and not (cell["case"] == "tfsf" and cell["entry"] != "nonuniform")
             for departure in cell["departures"]]
 # PMC images are checked at the declared plane on both device counts.
 EXPECTED += [pytest.param(case, entry, face, code,
@@ -172,8 +169,8 @@ def test_declared_face(case, entry, face, code):
 
 
 def test_wrapped_wall_keeps_field_classification():
-    import rfx.simulation as simulation
-    original = simulation.apply_pec_faces
+    import rfx.boundaries.pec as walls
+    original = walls.apply_pec_faces
     baseline = measured("pec", "run")
     calls = []
 
@@ -182,7 +179,7 @@ def test_wrapped_wall_keeps_field_classification():
         return original(*args, **kwargs)
 
     jax.clear_caches()
-    with patch.object(simulation, "apply_pec_faces", renamed_operation):
+    with patch.object(walls, "apply_pec_faces", renamed_operation):
         sim, grid, _, records = measure("pec", "run")
     fields, psi, reference = measured_fields(records, grid, "run")
     assert calls, "the wrapped wall did not run"
@@ -192,28 +189,25 @@ def test_wrapped_wall_keeps_field_classification():
 
 def test_worse_magnetic_wall_value_is_rejected():
     import rfx.boundaries.pmc as pmc
-    original = pmc.apply_pmc_faces
+    original = pmc.magnetic_update_factors
     calls = []
 
-    def worse(state, faces, **kwargs):
+    def worse(faces, shape, periodic=(False, False, False)):
         calls.append(1)
-        state = original(state, faces, **kwargs)
-        values = {name: getattr(state, name) for name in ("hx", "hy", "hz")}
+        factors = list(original(faces, shape, periodic))
         for face in faces:
             axis = "xyz".index(face[0])
-            selection = [slice(None)] * 3
-            selection[axis] = 1 if face.endswith("lo") else -3
-            for component, name in enumerate(values):
-                if component != axis:
-                    values[name] = values[name].at[tuple(selection)].set(0.0)
-        return state._replace(**values)
+            if factors[axis] is None:
+                factors[axis] = np.ones(shape[axis], dtype=np.float32)
+            factors[axis][1 if face.endswith("lo") else -3] = 0.
+        return tuple(factors)
 
     jax.clear_caches()
     try:
-        with patch.object(pmc, "apply_pmc_faces", worse):
+        with patch.object(pmc, "magnetic_update_factors", worse):
             sim, grid, _, records = measure("pmc-pec", "run")
         fields, psi, reference = measured_fields(records, grid, "run")
-        assert calls, "the original magnetic wall helper must still run"
+        assert calls, "the magnetic coefficient builder must run"
         faces = classify(fields, grid, psi, reference)
         baseline = BY_CELL["pmc-pec", "run"]
         with pytest.raises(AssertionError, match="away from the declared plane") as exc:
@@ -273,3 +267,29 @@ def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
     defaults = [w for w in caught if issubclass(w.category, WaveguideBoundaryWarning)]
     assert len(defaults) == 1
     assert all(face in str(defaults[0].message) for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
+
+
+@pytest.mark.parametrize("case", ("pmc-pec", "pmc-cpml"))
+@pytest.mark.parametrize("steps", (1, 2))
+def test_nonuniform_pmc_high_hold(case, steps):
+    """Hold from the first step, with physical face fields still seeded."""
+    from tests.contracts.boundary_fields import seed_fields
+
+    # Independent seed witness: the three physical components on x_hi must
+    # retain the original variant-0 pattern, not silently become zero.
+    seed_shape = (5, 4, 3)
+    seed = seed_fields(tuple(np.zeros(seed_shape, np.float32) for _ in range(6)), 0, ('x_hi',))
+    xyz = np.indices(seed_shape, dtype=np.float32)
+    pattern = 1 + .01 * xyz[0] + .013 * xyz[1] + .017 * xyz[2]
+    for ci in (1, 2, 3):
+        expected = pattern * (1.0 if ci < 3 else 1 / 376.730313668) * (ci + 1)
+        np.testing.assert_array_equal(np.asarray(seed[ci])[-1], expected[-1])
+    for ci in (0, 4, 5):
+        np.testing.assert_array_equal(np.asarray(seed[ci])[-1], np.zeros(seed_shape[1:], np.float32))
+    sim, grid, _, records = measure(case, "nonuniform", n_steps=steps)
+    fields, psi, reference = measured_fields(records, grid, "nonuniform")
+    # Whole tangential ghost row, all twelve original seed variants; exact zero.
+    np.testing.assert_array_equal(fields[:, 4:6, -1], np.zeros_like(fields[:, 4:6, -1]))
+    if steps == 2:
+        faces = classify(fields, grid, psi, reference)
+        compare_values(sim.boundary_model(), grid, faces, BY_CELL[case, "nonuniform"]["faces"])

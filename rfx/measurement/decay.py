@@ -5,9 +5,9 @@ Both time loops (``simulation.run_until_decay`` on the uniform mesh,
 module at their chunk boundaries ``c = k * interval``; neither scan
 program contains any of it.
 
-* ``drive_end``: the step at which every built drive has ended, with the
-  settling check's definition (``rfx.probes.settling.source_end_step``).
-* ``boundary_energy``: the leapfrog-conserved interior energy
+* ``drive_end`` (``rfx.measurement.record_end``): the step at which every
+  built drive has ended, the source-end rule at distance zero.
+* ``boundary_energy``: the leapfrog-conserved field energy
   ``W_c = sum((eps E^c . E^c + (mu0/eps0) mu H^(c-1/2) . H^(c+1/2)) dV)``.
   ``H^(c+1/2)`` comes from one side step of the loop's own chunk program on
   the boundary state (scan length 1); that step's output is discarded except
@@ -24,8 +24,12 @@ program contains any of it.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
+
+from rfx.errors import AccuracyWarning, RfxRefusal
 
 import math
+from typing import NamedTuple
 from dataclasses import dataclass, field
 
 import jax
@@ -33,6 +37,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import EPS_0, MU_0
+from rfx.measurement.record_end import drive_end
 
 AUTO_END = object()   # the loop resolves the drive end from its own tables
 MU0_OVER_EPS0 = MU_0 / EPS_0   # a vacuum constant (Z0 squared); no permittivity divides by it
@@ -62,59 +67,14 @@ REMEDIES = (
     "the outgoing flux, which a static field does not carry; or run a fixed n_steps")
 
 
-def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
-              waveguide_ports=()):
-    """Last step any built drive is on, plus the TF/SF box transit.
-
-    Point, port and Floquet drives (``sources``, ``mag_sources``) and a
-    driven waveguide port's applied incident table (``cfg.e_inc_table``,
-    held at its last entry past its end, as the port reads it) are read at
-    distance zero; TF/SF uses its waveform and the total-field box diagonal
-    (``tfsf_source_drive``). Returns None when a drive has not ended by
-    ``max_steps`` (the stop then never fires). Raises ValueError naming a
-    drive whose end cannot be computed before the loop.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.probes.settling import source_end_step, tfsf_source_drive
-
-    drives = []
-    for kind, entries in (("source", sources), ("magnetic source", mag_sources)):
-        for index, src in enumerate(entries or ()):
-            table = src.waveform if hasattr(src, "waveform") else src[4]
-            if table is not None and not is_tracer(table):
-                # Zero padded or cut to the loop's length, as the loops do.
-                table = np.asarray(table)[:max_steps]
-                table = np.pad(table, (0, max_steps - len(table)))
-            drives.append((f"{kind}[{index}]", table, 0.0))
-    if tfsf is not None:
-        drives.append(("TF/SF source", *tfsf_source_drive(tfsf[0], grid)))
-    for index, cfg in enumerate(waveguide_ports or ()):
-        if cfg.src_amp:
-            # Read E: the companion H table rings physically at the mode cutoff.
-            # That ringing is assessed by the per-bin tail witness, not drive end.
-            table = cfg.e_inc_table
-            if is_tracer(table) or table.shape[0] <= 1:
-                raise ValueError(
-                    f"until_decay: waveguide port[{index}] was initialised without dt, so "
-                    "the incident table it applies is not available before the loop; "
-                    "initialise it with dt and dft_total_steps, or use a fixed n_steps")
-            table = np.asarray(table)[:max_steps]
-            drives.append((f"waveguide port[{index}]",
-                           np.pad(table, (0, max_steps - len(table)), mode="edge"), 0.0))
-    end = 0
-    for name, samples, distance in drives:
-        value, rows = source_end_step([(samples, distance)], max_steps, grid.dt,
-                                      return_detail=True)
-        if value is not None:
-            end = max(end, value)
-            continue
-        if rows and rows[0][1] > 0 and rows[0][2] >= len(rows[0][0]) \
-                and np.isfinite(rows[0][0]).all():
-            return None   # still on at max_steps
-        raise ValueError(
-            f"until_decay: the drive end of {name} cannot be computed before the "
-            "loop (its samples are missing, traced, nonfinite or of the wrong length)")
-    return None if end > max_steps else end
+def warn_unused_decay_monitor(component, position):
+    """One warning at the public call for the retired point-monitor options."""
+    if component != "ez" or position is not None:
+        import warnings
+        warnings.warn(
+            "decay_monitor_component/decay_monitor_position no longer affect until_decay; "
+            "the stop reads the field energy after the drive. They will be removed.",
+            DeprecationWarning, stacklevel=user_stacklevel())
 
 
 def known_drive_ready_step(waveguide_ports, interval):
@@ -168,7 +128,7 @@ def refuse_windowed_flux(sim, path):
     for monitor in getattr(sim, "_flux_monitors", None) or []:
         window = getattr(monitor, "dft_window", "rect")
         if window != "rect":
-            raise ValueError(
+            raise RfxRefusal(
                 f"flux monitor {monitor.name!r} uses dft_window={window!r}, which is not "
                 f"supported with until_decay on the {path} path: a streaming windowed DFT "
                 "needs the true total step count in advance, and a decay-terminated run "
@@ -240,7 +200,10 @@ def yee_volumes(grid, region):
     H_a: dual width along a, primal widths across (``grid.cells``,
     ``grid.duals``). The single primal cell volume for all six left W
     drifting by 5e-3 in a closed lossless graded box."""
-    primal = [jnp.asarray(np.asarray(grid.cells(a))[region[a]], jnp.float32) for a in range(3)]
+    from rfx.model.graded_admission import host_cells, refuse_window_cells
+    for a in range(3):
+        refuse_window_cells(grid, a, region[a], "waveguide ports energy volume")
+    primal = [jnp.asarray(host_cells(grid, a)[region[a]], jnp.float32) for a in range(3)]
     dual = [jnp.asarray(np.asarray(grid.duals(a))[region[a]], jnp.float32) for a in range(3)]
     box = lambda w: w[0][:, None, None] * w[1][None, :, None] * w[2][None, None, :]
     e = tuple(box([primal[b] if b == a else dual[b] for b in range(3)]) for a in range(3))
@@ -248,7 +211,7 @@ def yee_volumes(grid, region):
     return e, h
 
 
-def boundary_energy(grid, materials, side_step, *, dx=None,
+def boundary_energy(grid, materials, side_step, *, dx=None, absorbing=True,
                     periodic=(False, False, False)):
     """``measure(carry, count) -> float``: W at the chunk boundary ``count``.
 
@@ -257,13 +220,14 @@ def boundary_energy(grid, materials, side_step, *, dx=None,
     ``xs_of(count)`` of step ``count``; only the advanced carry's H fields,
     H^(c+1/2), are read. The step and the reduction are one jitted program
     that returns the scalar W, so the advanced carry never leaves it. ``eps`` and ``mu`` are the arrays the E and H
-    updates read (the realized components, through ``rfx._realized`` when it
+    updates read (the realized components, through ``rfx._internal._realized`` when it
     observes); dV is ``dx**3`` with the loop's cell size on the uniform mesh
     and each component's Yee control volume on the graded mesh (``yee_volumes``). The sum covers the
-    non-absorber interior. The per-cell arrays are arguments of the jitted
+    non-absorber interior for absorbing boundaries, and the whole grid (pads
+    included) for a closed box. The per-cell arrays are arguments of the jitted
     reduction, not constants.
     """
-    from rfx import _realized
+    from rfx._internal import _realized
     from rfx.core.jax_utils import split_loop_invariants
     from rfx.model.materials import with_components
 
@@ -273,7 +237,8 @@ def boundary_energy(grid, materials, side_step, *, dx=None,
     periodic = tuple(a in grid.periodic_axes for a in "xyz") if graded else tuple(periodic)
     materials = with_components(materials, grid, periodic=periodic)
     sizes = (grid.dx_arr, grid.dy_arr, grid.dz) if graded else None
-    region = tuple(slice(lo, hi) for lo, hi in _interior(grid))
+    bounds = _interior(grid) if absorbing else ((0, grid.nx), (0, grid.ny), (0, grid.nz))
+    region = tuple(slice(lo, hi) for lo, hi in bounds)
     axes = field_axes(grid)
     arrays, rebuild = split_loop_invariants(dict(materials=materials), (grid.nx, grid.ny, grid.nz))
     if graded:
@@ -379,14 +344,82 @@ class DecayStop:
         return self.stop
 
 
+def refuse_radiated_flux_stop(box, until_decay, boundary):
+    """A flux box selects an absorbing-boundary decay stop, never a fixed-run monitor."""
+    if box is None:
+        return
+    if until_decay is None or not until_decay > 0:
+        raise RfxRefusal(
+            "radiated_flux_box selects the radiated-flux until_decay stop; use a positive "
+            "until_decay with cpml/upml, or omit the box and use add_flux_monitor() "
+            "for a fixed n_steps measurement")
+    if boundary not in ("cpml", "upml"):
+        raise RfxRefusal(
+            "radiated_flux_box selects the radiated-flux until_decay stop and requires "
+            "cpml/upml; use an absorbing boundary, or omit the box to use the "
+            "after-drive energy stop")
+
+
+@dataclass
+class FluxStop:
+    """Radiated-power envelope, with its peak tracked from the first check."""
+
+    thr: float
+    min_steps: int
+    interval: int
+    consecutive: int
+    n_end: int | None
+    n_d: int = 0
+    env_checks: int = 4
+    peak: float = 0.0
+    below: int = 0
+    stop: int | None = None
+    history: list = field(default_factory=list)
+    drive_reason: str | None = None
+
+    def check(self, count, power):
+        if count % self.interval:
+            return self.stop
+        self.history.append(abs(float(power())))
+        env = max(self.history[-self.env_checks:])
+        self.peak = max(self.peak, env)
+        if (self.n_end is not None and count >= max(self.min_steps, self.n_end, self.n_d)
+                and self.peak > 0.0 and env < self.thr * self.peak):
+            self.below += 1
+            if self.stop is None and self.below >= self.consecutive and self.thr > 0:
+                self.stop = count
+        else:
+            self.below = 0
+        return self.stop
+
+
+def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
+                          consecutive=2, env_checks=4, n_end=AUTO_END,
+                          sources=(), mag_sources=(), tfsf=None, waveguide_ports=()):
+    """Resolve the applied-drive end for the radiated-flux stop."""
+    drives = dict(sources=sources, mag_sources=mag_sources, tfsf=tfsf,
+                  waveguide_ports=waveguide_ports)
+    if n_end is AUTO_END:
+        n_end = drive_end(grid, max_steps, **drives) if thr > 0 else None
+    n_d = known_drive_ready_step(waveguide_ports, interval) if thr > 0 else 0
+    common = dict(thr=thr, min_steps=min_steps, interval=interval, n_end=n_end, n_d=n_d)
+    rule = FluxStop(**common, consecutive=consecutive, env_checks=env_checks)
+    if n_end is None and thr > 0:
+        from rfx.measurement.record_end import injection_end
+        _, rule.drive_reason, _ = injection_end(
+            max_steps, grid.dt, grid=grid, **dict(drives, tfsf=None if tfsf is None else tfsf[0]),
+            return_detail=True)
+    return rule
+
+
 def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
-                    criterion, max_steps, side_step, n_end=AUTO_END, rows=False, dx=None,
+                    criterion, max_steps, side_step, n_end=AUTO_END, rows=False, dx=None, absorbing=True,
                     sources=(), mag_sources=(), tfsf=None, waveguide_ports=(),
                     periodic=(False, False, False)):
     """The rule and its W measurement for one loop.
 
-    ``criterion``: the energy criterion is this run's stop rule (absorbing
-    boundary, no flux box). ``rows``: the loop returns ``decay_checks``
+    ``criterion``: the energy criterion is this run's stop rule (no flux
+    box, on closed or absorbing boundaries). ``rows``: the loop returns ``decay_checks``
     (graded), so a ``thr = 0`` run still writes its rows. ``n_end`` is the
     runner's value; direct loop callers leave it to ``drive_end`` here.
     ``side_step = (program, xs_of, extra)``: one step of the loop's own chunk
@@ -406,25 +439,21 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
     rule = DecayStop(thr, min_steps, interval, consecutive, n_end, enabled)
     if enabled:
         rule.n_d = known_drive_ready_step(waveguide_ports, interval)
-    measure = (boundary_energy(grid, materials, side_step, dx=dx, periodic=periodic)
+    measure = (boundary_energy(grid, materials, side_step, dx=dx,
+                               absorbing=absorbing, periodic=periodic)
                if n_end is not None else None)
     return rule, measure
 
 
 # --- how the run ended ---------------------------------------------------------
 
-def _stop_record(rule, steps, *, fired, flux, point):
+def _stop_record(rule, steps, *, fired, flux):
     """(quantity, criterion, reached, floor_ratio) of one run end."""
     nan = float("nan")
-    if flux is not None or point is not None:
-        quantity = "radiated_flux" if flux is not None else "point_field"
-        if flux is not None:
-            history, checks, peak = flux
-            reached = max(history[-checks:]) / peak if history and peak > 0 else nan
-        else:
-            value, peak = point
-            reached = value / peak if peak > 0 else nan
-        return quantity, "threshold" if fired else "cap", reached, nan
+    if flux is not None:
+        history, checks, peak = flux
+        reached = max(history[-checks:]) / peak if history and peak > 0 else nan
+        return "radiated_flux", "threshold" if fired else "cap", reached, nan
     if rule.stop is not None:
         criterion = rule.criterion
     else:
@@ -435,17 +464,16 @@ def _stop_record(rule, steps, *, fired, flux, point):
     return "conserved_energy", criterion, w / ref, KAPPA * wmax / ref
 
 
-def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=None,
+def finish_decay(rule, steps, *, fired=False, flux=None, reporter=None,
            state=None, materials=None, grid=None, advisory=None, sources=()):
     """One ``until_decay.stop`` Diagnostic for a run that ended at ``steps``.
 
-    ``rule`` is the loop's DecayStop. ``flux`` = (|P| history, envelope
+    ``rule`` is the loop's DecayStop or FluxStop. ``flux`` = (|P| history, envelope
     checks, peak) when the radiated-flux criterion was the stop rule;
-    ``point`` = (last squared sample, peak) for the closed-box point stop;
-    ``fired`` says whether either of them stopped the run. Data:
+    ``fired`` says whether the flux criterion stopped the run. Data:
     ``criterion`` ("threshold", "float32_floor" or "cap"),
     ``requested_threshold``, ``reached`` (W_c/ref at the stop, or at the last
-    boundary read for a cap; that rule's own ratio for flux and point),
+    boundary read for a cap; that rule's own ratio for flux),
     ``floor_ratio`` (KAPPA * Wmax_c / ref), ``stop_step``,
     ``drive_end_step`` and ``quantity``; NaN where a value does not exist.
     A float32-floor end also warns once (UserWarning). An energy "cap" end
@@ -460,8 +488,11 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
 
     if not rule.thr > 0:
         return None
+    if isinstance(rule, FluxStop):
+        flux = (rule.history, rule.env_checks, rule.peak)
+        fired = rule.stop is not None
     quantity, criterion, reached, floor_ratio = _stop_record(
-        rule, steps, fired=fired, flux=flux, point=point)
+        rule, steps, fired=fired, flux=flux)
     nan = float("nan")
     head = f"until_decay ended at step {steps} ({quantity})"
     if criterion == "threshold":
@@ -472,13 +503,22 @@ def finish_decay(rule, steps, *, fired=False, flux=None, point=None, reporter=No
         message = (f"{head}: requested threshold {rule.thr:.3g}; the energy stopped falling at "
                    f"{reached:.3g} of the after-drive reference ({w / wmax:.3g} of the drive's "
                    f"peak energy); {FLOOR_TEXT}")
-        warnings.warn(message, UserWarning, stacklevel=3)
+        warnings.warn(message, AccuracyWarning, stacklevel=user_stacklevel())
     elif quantity == "conserved_energy" and rule.n_end is None:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    "a drive was still on at decay_max_steps, so the energy stop could not fire")
+    elif rule.n_end is None:
+        message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
+                   f"{getattr(rule, 'drive_reason', None) or 'a drive was still on at decay_max_steps'}, "
+                   f"so the {quantity} stop could not fire")
     else:
         message = (f"{head}: requested threshold {rule.thr:.3g} not met at decay_max_steps; "
                    f"last level reached {reached:.3g}")
+    if (criterion == "cap" and quantity == "conserved_energy"
+            and rule.last is not None and rule.last[2] > 0):
+        _, _, ref, wmax = rule.last
+        message += (f"; the after-drive reference is {ref / wmax:.3g} "
+                    "of the drive's peak energy")
     if criterion == "cap" and rule.n_d > steps:
         message += (f"; the drive's known tail exceeded 1e-2 of the in-record drive "
                     f"until step {rule.n_d}")
@@ -544,17 +584,27 @@ def _relative_dc(samples, dt):
     return abs(s_int) / denom, s_int
 
 
+class DCNotEvaluated(NamedTuple):
+    """A soft drive whose user waveform could not be evaluated for DC."""
+
+    label: str
+    waveform: str
+    error: str
+
+
 def dc_census(sim, *, dt, n_table):
     """Each soft drive's waveform DC over the planned table.
 
     Rows ``(label, class name, relative DC, sum s dt, t_done)`` for every
-    soft source (``impedance == 0`` excited port entries) and excited MSL
+    evaluated soft source (``impedance == 0`` excited port entries) and excited MSL
     port (the same soft-Ez deposit), with ``relative DC = |sum s(t_n) dt| /
     sum |s(t_n)| dt`` over ``n_table`` steps and ``t_done = t0 + 4.5 tau``
     (None when the waveform has no ``tau``). A soft current source deposits
-    ``sum s dt`` as a static end-charge (issue #388).
+    ``sum s dt`` as a static end-charge. Failed waveform calls
+    produce a ``DCNotEvaluated`` row with the exception type and text.
     """
     from rfx.core.jax_utils import is_tracer
+    from rfx.api._port_kind import is_soft_source
 
     if is_tracer(dt):
         return []   # traced dt: advisory host math is impossible here
@@ -562,17 +612,21 @@ def dc_census(sim, *, dt, n_table):
     if not dt > 0.0 or n_table <= 0:
         return []
     t = np.arange(int(n_table), dtype=np.float64) * dt
-    soft = [pe for pe in sim._ports if pe.impedance == 0.0 and getattr(pe, "excite", True)]
+    soft = [pe for pe in sim._ports if is_soft_source(pe) and getattr(pe, "excite", True)]
     soft += [pe for pe in sim._msl_ports if getattr(pe, "excite", True)]
     rows = []
     for pe in soft:
         wf = getattr(pe, "waveform", None)
         if wf is None or isinstance(wf, str):
             continue
+        label = f"{pe.position} ({getattr(pe, 'component', 'msl port')})"
         try:
-            s = np.asarray(wf(jnp.asarray(t)), dtype=np.float64)
-        except Exception:
-            continue  # non-vectorizable CustomWaveform etc. -- skip
+            s = np.asarray(jax.vmap(wf)(jnp.asarray(t)), dtype=np.float64)
+        except (TimeoutError,):
+            raise
+        except Exception as exc:  # noqa: BLE001 - recorded in DCNotEvaluated.error
+            rows.append(DCNotEvaluated(label, type(wf).__name__, f"{type(exc).__name__}: {exc}"))
+            continue
         dc = _relative_dc(s, dt) if s.shape == t.shape else None
         if dc is None:
             continue
@@ -588,7 +642,6 @@ def dc_census(sim, *, dt, n_table):
                 t0 = 3.0 * tau
             # The differentiated Gaussian is below 1.4e-8 of its amplitude there.
             t_done = t0 + 4.5 * tau
-        label = f"{pe.position} ({getattr(pe, 'component', 'msl port')})"
         rows.append((label, type(wf).__name__, dc[0], dc[1], t_done))
     return rows
 
@@ -610,7 +663,7 @@ def table_dc(sources):
 
 
 def warn_dc_floor(sim, *, dt, n_table):
-    """Pre-run predictor (issue #388): warn for each soft drive whose waveform's
+    """Pre-run predictor: warn for each soft drive whose waveform's
     relative DC over the planned ``n_table``-step table exceeds ``DC_ADVISE``.
 
     The deposited static charge's field neither decays nor is absorbed by
@@ -621,7 +674,12 @@ def warn_dc_floor(sim, *, dt, n_table):
     """
     import warnings
 
-    for label, name, rel_dc, s_int, t_done in dc_census(sim, dt=dt, n_table=n_table):
+    for row in dc_census(sim, dt=dt, n_table=n_table):
+        if isinstance(row, DCNotEvaluated):
+            warnings.warn(f"soft source at {row.label}: waveform {row.waveform} DC not evaluated: "
+                          f"{row.error}", AccuracyWarning, stacklevel=3)
+            continue
+        label, name, rel_dc, s_int, t_done = row
         if rel_dc <= DC_ADVISE:
             continue
         if t_done is not None and n_table * float(dt) < t_done:
@@ -631,20 +689,20 @@ def warn_dc_floor(sim, *, dt, n_table):
                 f"decay_max_steps window ends inside the source pulse (table "
                 f"{n_table * float(dt):.3e} s < pulse completion t0+4.5*tau ~ {t_done:.3e} s) "
                 "— the DC estimate is truncation-dominated, not intrinsic waveform DC; "
-                "until_decay may cap-hit (issue #388). Increase decay_max_steps (or run "
+                "until_decay may cap-hit. Increase decay_max_steps (or run "
                 "with a fixed n_steps) so the table covers the full pulse; raising the "
                 "waveform cutoff makes this WORSE (it lengthens the onset).",
-                UserWarning, stacklevel=3)
+                AccuracyWarning, stacklevel=user_stacklevel())
         else:
             warnings.warn(
                 f"soft source at {label}: waveform {name} has relative DC {rel_dc:.2e} "
                 f"(|sum s*dt| = {abs(s_int):.3e} over the planned {int(n_table)}-step "
                 "table): it deposits a static charge whose field neither decays nor is "
                 "absorbed by CPML, so the energy left after the drive may never fall to "
-                "the until_decay threshold and the run may cap-hit (issue #388); thin "
+                "the until_decay threshold and the run may cap-hit; thin "
                 "source cells make a small charge's field large, so this warns from "
                 f"relative DC {DC_ADVISE:g}. Remedies: {REMEDIES}.",
-                UserWarning, stacklevel=3)
+                AccuracyWarning, stacklevel=user_stacklevel())
 
 
 def advisory_inputs(sim, *, dt, n_table):
@@ -675,7 +733,7 @@ def array_lossy(materials):
 
 
 def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) -> None:
-    """Post-run advisory on an energy "cap" end (issue #388).
+    """Post-run advisory on an energy "cap" end.
 
     Warns when the final interior energy is electrostatic: physical energy
     (1/2 eps |E|^2 against 1/2 mu |H|^2) with ``H-share < 1e-2``. A
@@ -691,6 +749,7 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
     import warnings
 
     from rfx.core.yee import component_h_materials
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
 
     e_axes, h_axes = field_axes(grid)
     (ix0, ix1), (iy0, iy1), (iz0, iz1) = _interior(grid)
@@ -698,7 +757,7 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
     eps_r = _wide(materials.eps_r[sl])
     state = state._replace(**{n: _wide(getattr(state, n)) for n in ("ex", "ey", "ez", "hx", "hy", "hz")})
     mu_h = component_h_materials(
-        materials, cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
+        materials, high_wall=unpadded_high_walls(grid), cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
         if hasattr(grid, "dx_arr") else None)
     mu_h = tuple(_wide(m[sl]) if jnp.ndim(m) else m for m in mu_h)
     e2 = sum(getattr(state, "e" + "xyz"[a])[sl] ** 2 for a in e_axes)
@@ -719,8 +778,12 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
     h_share = u_h / tot
     if h_share >= 1e-2:
         return
-    named = [f"{label}: {name}, relative DC {rel:.2e}"
-             for label, name, rel, _, _ in soft_drives if rel > DC_ADVISE]
+    named = []
+    for row in soft_drives:
+        if isinstance(row, DCNotEvaluated):
+            named.append(f"{row.label}: {row.waveform}, DC not evaluated: {row.error}")
+        elif row[2] > DC_ADVISE:
+            named.append(f"{row[0]}: {row[1]}, relative DC {row[2]:.2e}")
     if not named:
         lossy = array_lossy(materials) if lossy is None else lossy
         # A conductor relaxes within a step (eps/sigma < dt): not a lossy medium here.
@@ -734,17 +797,17 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
             "remnant is quasi-static charge left by the drive, or charge relaxing in a lossy "
             "medium (relaxation time eps/sigma). Lossy materials: "
             f"{'; '.join(media) if media else 'none (no sigma > 0 in the model)'}. Its field is "
-            "out of band and the record stays correct (issue #388). Remedies: a fixed n_steps, "
+            "out of band and the record stays correct. Remedies: a fixed n_steps, "
             "radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator, or a larger "
             "until_decay threshold.",
-            UserWarning, stacklevel=3)
+            AccuracyWarning, stacklevel=user_stacklevel())
         return
     warnings.warn(
         f"run(until_decay=...) cap-hit at max_steps without the energy criterion firing, "
         f"and {100 * (1 - h_share):.1f}% of the final interior energy is electrostatic "
         f"(H-share {h_share:.1e}): a static charge left by a soft drive holds the energy "
-        "above the threshold; it neither radiates nor is absorbed by CPML (issue #388). "
+        "above the threshold; it neither radiates nor is absorbed by CPML. "
         "Soft drives with relative DC above "
-        f"{DC_ADVISE:g}: {'; '.join(named) if named else 'none found'}. "
+        f"{DC_ADVISE:g} or not evaluated: {'; '.join(named)}. "
         f"Remedies: {REMEDIES}.",
-        UserWarning, stacklevel=3)
+        AccuracyWarning, stacklevel=user_stacklevel())

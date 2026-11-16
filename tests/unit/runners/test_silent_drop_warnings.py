@@ -1,18 +1,5 @@
 """A ``Simulation.run`` argument a lane does not implement is refused.
 
-Before 2.0 the distributed, non-uniform, subgridded and ADI lanes warned
-that an argument "is silently ignored" and ran without it, so the result
-was a different computation from the one requested: a staircase PEC
-instead of the Dey-Mittra conformal boundary (``conformal_pec``), scalar
-eps at interfaces instead of the smoothed tensor (``subpixel_smoothing``),
-a fixed ``n_steps`` instead of a run to decay (``until_decay``), no field
-snapshot (``snapshot``), a full AD tape instead of checkpointing
-(``checkpoint``), an S-parameter record of the wrong length
-(``s_param_n_steps``). Each of those now raises ``NotImplementedError``
-naming the argument and the lane, before any time step. The rows below pin
-every (lane x argument) pair that refuses; the controls pin that the same
-argument still runs on a lane that implements it.
-
 ``report_every`` only prints progress, so it stays a warning.
 
 The file keeps its old name because other files cite it. It also carries
@@ -96,19 +83,6 @@ def _subgrid_sim(pec=False):
     return _quiet(build)
 
 
-def _adi_sim(pec=False):
-    def build():
-        dx = 0.5e-3 if pec else 299792458.0 / 10e9 / 20.0
-        domain = (0.02, 0.02, 0.01) if pec else (14 * dx, 14 * dx, 0.01)
-        sim = Simulation(freq_max=10e9, domain=domain, dx=dx,
-                         boundary="pec", mode="2d_tmz", solver="adi")  # solved length; #1887
-        if pec:
-            sim.add(Box((0.002, 0.002, 0.0), (0.004, 0.004, 0.01)),
-                    material="pec")
-        sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
-        sim.add_probe((0.012, 0.01, 0.0), "ez")
-        return sim
-    return _quiet(build)
 
 
 def _devices():
@@ -122,14 +96,14 @@ LANES = {
     "non-uniform": (_nu_sim, "non-uniform mesh", {}),
     "distributed": (_distributed_sim, "distributed multi-device", None),
     "subgridded": (_subgrid_sim, "subgridded (SBP-SAT)", {}),
-    "adi": (_adi_sim, "ADI (solver='adi')", {}),
+
 }
 
 REFUSED = [
     ("non-uniform", "snapshot"),
     ("non-uniform", "until_decay"),      # closed boundary: no decay stop
     ("non-uniform", "conformal_pec"),
-    *[(lane, kw) for lane in ("distributed", "subgridded", "adi")
+    *[(lane, kw) for lane in ("distributed", "subgridded")
       for kw in ASKS if (lane, kw) != ("distributed", "snapshot")],
 ]
 
@@ -401,10 +375,6 @@ def _optimize(sim, **kw):
 
 CONFORMAL_PATHS = {
     # path: (call, entry, lane label)
-    "forward-uniform": (
-        lambda: _conformal_cavity(True).forward(
-            n_steps=8, checkpoint=False, skip_preflight=True),
-        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "forward-nonuniform": (
         lambda: _conformal_cavity(True, nonuniform=True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True),
@@ -414,9 +384,6 @@ CONFORMAL_PATHS = {
             n_steps=8, checkpoint=False, skip_preflight=True,
             distributed=True, devices=_devices()),
         "the differentiable forward solve (forward/optimize or an S-matrix override)", "distributed non-uniform forward"),
-    "optimize": (
-        lambda: _optimize(_conformal_cavity(True), skip_preflight=True),
-        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "waveguide-nonuniform": (
         lambda: _wr90_sim(debye=False, conformal=True,
                           dz=np.full(4, 0.00254)).compute_waveguide_s_matrix(
@@ -435,8 +402,8 @@ def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
     assert msg.startswith(f"{entry} refuses"), msg
     assert msg.count("drop Boundary(conformal=True)") == 1, msg
     if path != "waveguide-nonuniform":
-        assert ("use run() on a uniform mesh to keep conformal PEC "
-                "for a forward-only result") in msg, msg
+        assert ("use run() or forward() on a uniform mesh and one device "
+                "to keep default conformal PEC") in msg, msg
 
 
 @pytest.mark.parametrize("nonuniform", [False, True],
@@ -500,7 +467,7 @@ def test_distributed_waveguide_refuses_conformal_request():
             devices=_devices(), skip_preflight=True))
 
 
-def _copper_sheet_sim(nonuniform):
+def _copper_sheet_sim(nonuniform, corners=((0.0033, 0.0033, 0.0063), (0.0087, 0.0087, 0.0063))):
     """The only metal is one add_thin_conductor sheet (copper by default,
     which is PEC)."""
     def build():
@@ -510,8 +477,7 @@ def _copper_sheet_sim(nonuniform):
                          domain=(0.012, 0.012, 0.0 if nonuniform else 0.0122),
                          dx=1e-3, boundary="pec", cpml_layers=0, **kw, snap="declared")
         assert_declared_wall_warning(sim)
-        sim.add_thin_conductor(Box((0.0033, 0.0033, 0.0063),
-                                   (0.0087, 0.0087, 0.0063)))
+        sim.add_thin_conductor(Box(*corners))
         sim.add_source((0.002, 0.006, 0.003), "ez", amplitude_kind="field")
         sim.add_probe((0.006, 0.010, 0.009), "ez")
         return sim
@@ -519,17 +485,26 @@ def _copper_sheet_sim(nonuniform):
 
 
 def test_a_copper_thin_conductor_is_pec_to_conform():
-    """A PEC thin conductor is one of the shapes the conformal weights act
-    on, so conformal_pec=True on a graded mesh with only such a sheet is
-    refused; on a uniform mesh the same request moves the answer."""
+    """A PEC thin conductor is one of the shapes conformal_pec reaches, so a
+    graded mesh with only such a sheet is refused. The cut-cell model places
+    PEC volumes; a sheet has none, so on a uniform mesh a sheet off the node
+    lattice is refused (it would stay at its staircase plane, #1651) and a
+    sheet on node planes, exact already, gives the staircase answer (to the
+    1e-4 of the peak by which main's conformal and staircase paths already
+    differ on an uncut scene, test_conformal_sc's bit patterns)."""
     with pytest.raises(NotImplementedError,
                        match=_refusal("non-uniform mesh", "conformal_pec")):
         _copper_sheet_sim(True).run(n_steps=8, conformal_pec=True,
                                     skip_preflight=True)
-    on, off = (np.asarray(_quiet(lambda: _copper_sheet_sim(False).run(
+    with pytest.raises(NotImplementedError, match="0.3 cell off the node lattice"):
+        _quiet(lambda: _copper_sheet_sim(False).run(
+            n_steps=8, conformal_pec=True, skip_preflight=True))
+    on_nodes = ((0.003, 0.003, 0.006), (0.009, 0.009, 0.006))
+    on, off = (np.asarray(_quiet(lambda: _copper_sheet_sim(False, on_nodes).run(
         n_steps=200, conformal_pec=flag, skip_preflight=True)).time_series)
         for flag in (True, False))
-    assert np.max(np.abs(on - off)) > 0.01 * np.max(np.abs(off))
+    assert np.max(np.abs(off)) > 0
+    assert np.max(np.abs(on - off)) < 1e-3 * np.max(np.abs(off))
 
 
 @pytest.mark.parametrize("lane", list(LANES))
@@ -550,7 +525,7 @@ def _graded_pec_sim(nonuniform=True, pec=False):
         sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
                          dx=1e-3, boundary="pec", cpml_layers=0, **kw)
         if pec:
-            sim.add(Box((0.0085, 0.0085, 0.003), (0.0105, 0.0105, 0.009)),
+            sim.add(Box((8 * 1e-3, 8 * 1e-3, 3 * 1e-3), (10 * 1e-3, 10 * 1e-3, 9 * 1e-3)),
                     material="pec")
         sim.add_source((0.004, 0.006, 0.004), "ez", amplitude_kind="field")
         sim.add_probe((0.008, 0.006, 0.008), "ez")
@@ -622,11 +597,12 @@ def test_nu_smoothing_refuses_a_shape_it_cannot_place():
 
 def _upml_sim(boundary):
     def build():
+        cell = 1e-3
         sim = Simulation(freq_max=10e9, domain=(0.014, 0.014, 0.014),
                          dx=1e-3, boundary=boundary, cpml_layers=4)
         sim.add(Box((0.0035, 0.0035, 0.0035), (0.0075, 0.0075, 0.0075)),
                 material="fr4")
-        sim.add(Cylinder((0.0095, 0.0095, 0.007), 0.0017, 0.008, axis="z"),
+        sim.add(Cylinder((9.5 * cell, 9.5 * cell, 7 * cell), 1.5 * cell, 8 * cell, axis="z"),
                 material="pec")
         sim.add_source((0.004, 0.010, 0.007), "ez", amplitude_kind="field")
         sim.add_probe((0.009, 0.004, 0.007), "ez")
@@ -674,12 +650,13 @@ def test_fidelity_report_names_the_nu_thin_conductor_refusal():
 
 def _uniform_sim(boundary="pec"):
     def build():
+        cell = 1e-3
         sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
                          dx=1e-3, boundary=boundary,
                          cpml_layers=4 if boundary == "cpml" else 0)
         sim.add(Box((0.003, 0.003, 0.003), (0.006, 0.006, 0.006)),
                 material="fr4")
-        sim.add(Cylinder((0.009, 0.009, 0.006), 0.0015, 0.008, axis="z"),
+        sim.add(Cylinder((9 * cell, 9 * cell, 6 * cell), cell, 8 * cell, axis="z"),
                 material="pec")
         sim.add_source((0.004, 0.009, 0.006), "ez")
         sim.add_probe((0.008, 0.004, 0.006), "ez")
@@ -740,7 +717,7 @@ def test_nu_path_until_decay_runs_on_absorbing_boundary():
     # truncation-dominated (longer decay_max_steps / fixed n_steps) —
     # NOT recommend a higher cutoff, which lengthens the onset and
     # makes truncation worse.
-    dc_msgs = [m for m in msgs if "issue #388" in m]
+    dc_msgs = [m for m in msgs if "relative DC" in m]
     assert dc_msgs, "the #388 advisory should fire on this fixture"
     assert "truncation-dominated" in dc_msgs[0], (
         f"table-truncated rel_DC must take the truncation branch, "
@@ -782,7 +759,7 @@ def test_nu_lane_still_smooths_a_dielectric():
     assert np.max(np.abs(a - b)) > 1e-3 * np.max(np.abs(b))
 
 
-@pytest.mark.parametrize("lane", ["adi", "subgridded"])
+@pytest.mark.parametrize("lane", [ "subgridded"])
 def test_report_every_stays_a_warning(lane):
     """Progress lines change no result: the lane says so and runs on."""
     build, label, _ = LANES[lane]

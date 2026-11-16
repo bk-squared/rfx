@@ -12,6 +12,9 @@ gradient loop, and how to write your own loop with `Simulation.forward()`. For
 the background (and how this relates to adjoint solvers), see
 [Autodiff and Adjoint Background](/rfx/design/gradients/).
 
+`rfx.optimize` is the function; import the module's other names with
+`from rfx.optimize import DesignRegion, ...`.
+
 | You want to | Use |
 |---|---|
 | optimize the permittivity of a box | `optimize(sim, DesignRegion(...), objective)` |
@@ -319,3 +322,5 @@ a bounded latent variable).
   Every iteration then recompiles; remove the host read, or pass `jit=False`.
 - **Out of memory in the backward pass**: use a design box, segmented
   checkpointing or fewer steps. See [Memory Reduction](/rfx/run/memory-and-speed/).
+
+Compare several objectives with [Pareto fronts and selection rules](/rfx/design/pareto/).

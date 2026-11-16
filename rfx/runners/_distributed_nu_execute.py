@@ -1,10 +1,12 @@
 """Shared graded distributed assembly, staging and forward packaging."""
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
+from rfx.errors import ConfigurationWarning
 import math
 import jax
 import jax.numpy as jnp
 import numpy as np
-from rfx import _realized, _grid_metric
+from rfx._internal import _realized, _grid_metric
 from rfx.model import conductors as _conductors
 from rfx.model.overrides import apply_material_overrides
 from rfx._diagnostic_transport import merge_diagnostics
@@ -47,6 +49,8 @@ def execute_from_materials(
     Run requests gathered fields and an assembly record; forward keeps the
     fields sharded. Sources, materials, ADE, CPML and PEC staging are shared.
     """
+    from rfx.model.occupancy import refuse_graded_occupancy_model
+    refuse_graded_occupancy_model(self, pec_occupancy_override)
     is_run = lane == "run_distributed_nu"
     if n_steps < 1:
         entry = "run(devices=...)" if is_run else "forward(distributed=True)"
@@ -73,7 +77,7 @@ def execute_from_materials(
         stage_forward_dispersion_x_slab,
     )
     from rfx.core.yee import MaterialArrays
-    from rfx.nonuniform import (
+    from rfx.model.source_coefficients import (
         make_current_source as _nu_make_current_source,
         current_source_samples as _nu_current_source_samples,
         current_source_volume as _nu_current_source_volume,
@@ -189,8 +193,8 @@ def execute_from_materials(
                 "more time on recomputation overhead than it saves "
                 "in memory; consider checkpoint_every=None for small "
                 "runs.",
-                UserWarning,
-                stacklevel=3,
+                ConfigurationWarning,
+                stacklevel=user_stacklevel(),
             )
 
     sharded_grid = build_sharded_nu_grid(
@@ -232,12 +236,17 @@ def execute_from_materials(
                                             n_devices=mesh.devices.size)
     diagnostics = merge_diagnostics(diagnostics, solve_diagnostics)
     from rfx.model.distributed_ports import assemble
-    materials, pec_mask, pec_edges, geometry_record, sources, material_drive, port_specs, pec_occupancy_override = assemble(
+    stepping_product, materials, pec_mask, pec_edges, geometry_record, sources, material_drive, port_specs, pec_occupancy_override = assemble(
         self, grid, materials, conductors, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
         eps_override=eps_override, sigma_override=sigma_override, pec_mask_override=pec_mask_override,
         pec_occupancy_override=pec_occupancy_override, debye_spec=debye_spec, lorentz_spec=lorentz_spec, n_steps=n_steps, lane=lane,
-        gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh)
+        gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh,
+        compute_s_params=compute_s_params)
+    from rfx.stepping import prepared as prepared_step
+    prepared_step.release_dense(stepping_product)
     del conductors
+    from rfx.stepping.slab_lumped import metadata
+    rlc_metas = metadata(self, grid, materials)
     from rfx.stepping.slab_ports import global_plan
     port_plan = global_plan(self, grid, port_specs, lane, s_param_freqs, compute_s_params)
 
@@ -292,15 +301,19 @@ def execute_from_materials(
         records = SlabRecords(self, grid, sharded_grid.nx_per_rank, mesh,
                               sharded_materials.eps_r.dtype, n_steps, snapshot)
     _require_wrapped_records(records, sharded_grid.step_kind)
+    from rfx.measurement.prepared import finish_measurement
+    finish_measurement(stepping_product)
 
     # ---- Launch the sharded NU runner. ----
-    result = run_nonuniform_distributed_pec(
+    prepared_step.stage(stepping_product, grid=sharded_grid, materials=sharded_materials, pec_edges=sharded_pec_mask)
+    result = prepared_step.advance(stepping_product, run_nonuniform_distributed_pec,
         sharded_grid,
         sharded_materials,
         sharded_pec_mask,
         n_steps,
         sources=sources,
         probes=probes,
+        _operand_layout="graded_slab",
         n_devices=n_devices,
         exchange_interval=exchange_interval,
         debye=sharded_debye,
@@ -315,12 +328,13 @@ def execute_from_materials(
         gather_final_state=gather_final_state,
         pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         material_drive=tuple(material_drive),
-        port_plan=port_plan,
+        port_plan=port_plan, rlc_metas=rlc_metas,
         slab_records=records,
         prepare_only=port_plan is not None,
     )
     if port_plan is not None:
         del sharded_materials
+        prepared_step.release_dense(stepping_product)
         result = result()
 
     return (
@@ -336,12 +350,16 @@ def forward_from_materials(
     self, *, diagnostics=(), **kwargs
 ) -> ForwardResult:
     """Pack the shared distributed graded solve for differentiable callers."""
-    grid, result, _ = self._execute_distributed_nonuniform_from_materials(
+    grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
         diagnostics=diagnostics,
         **kwargs,
     )
     from rfx.api._forward_result import pack_nu_forward_result
+    from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+    warn_if_singular_value_exceeds_one(
+        result.get('s_params'), result.get('s_param_freqs'), extractor="forward(distributed graded)")
     return pack_nu_forward_result(
+        realized_geometry=geometry_record,
         diagnostics=result.get('diagnostics', diagnostics),
         time_series=result.get('time_series'), grid=grid, dt=grid.dt,
         s_params=result.get('s_params'), freqs=result.get('s_param_freqs'),
@@ -355,11 +373,16 @@ def forward_from_materials(
 
 
 def dispatch_forward(self, *, plan, _solve_assembly, _call_args):
-    """Refuse unsupported sources before the graded execution fences."""
-    from rfx.runners._admission import refuse_distributed_sources
-    refuse_distributed_sources(self, "fwd_distributed_nu")
+    """Apply shared multi-device admission before the graded execution fences."""
+    from rfx.model.distributed_ports import refuse_unsupported_distributed_features
+    refuse_unsupported_distributed_features(
+        self, lane="distributed multi-device forward()",
+        diagnostics=_solve_assembly.diagnostics,
+    )
     from rfx.api._gradient_witness import with_conductivity_record
     from rfx.materials.thin_conductor import refuse_f0_sheets
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(self, "distributed non-uniform forward()")
     refuse_f0_sheets(self._thin_conductors,
                      "distributed non-uniform forward()")
     result = self._forward_distributed_nonuniform_from_materials(

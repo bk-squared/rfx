@@ -29,7 +29,7 @@ the time step.
 The goal of 2.0 is that the solver paths (uniform mesh, graded mesh, several
 devices) differ only in the kernels they plug into the time step: every path
 solves one realized model, steps through one order, and is measured by one
-measurement plan. Not every path is there yet (below). ADI and subgridding stay
+measurement plan. Not every path is there yet (below). Subgridding stays
 outside 2.0.
 
 ## The order of one step
@@ -51,7 +51,7 @@ over the fields.
 
 <p data-rfx="note">Pending for 2.0: the multi-device paths step through their
 own step function; making this the one order for every path is tracker 1373.
-ADI (an implicit scheme) and subgridding do not use it.</p>
+Subgridding does not use it.</p>
 
 ## Declarations, refusals and the path table
 

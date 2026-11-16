@@ -5,12 +5,16 @@ preflight keeps using the diagnostic audit cache.
 """
 from __future__ import annotations
 
+from rfx._warning_origin import user_stacklevel
+from rfx.errors import AccuracyWarning, RfxRefusal
+
 import jax
 
 from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.preflight._common import (
     PreflightErrorWarning, PreflightIssue, PreflightReport, PreflightWarning,
 )
+from rfx.model.conductors import prepare_solve
 
 
 def _preflight_impl(
@@ -24,6 +28,7 @@ def _preflight_impl(
     available_memory_gb: float | None = None,
     _conductors=None,
     _tfsf_material_overrides=(),
+    _conformal_run=None,
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
     import warnings
@@ -33,6 +38,15 @@ def _preflight_impl(
         import copy
         self = copy.copy(self)
         self._waveguide_call_overrides = _tfsf_material_overrides
+    if _conformal_run is not None:
+        # run() passes its resolved conformal_pec: cut-cell conformal PEC solves
+        # PEC Box faces at their drawn planes.
+        import copy
+        from rfx.boundaries.features import share_wall_warning_history
+        run_copy = copy.copy(self)
+        share_wall_warning_history(self, run_copy)
+        self = run_copy
+        self._conformal_run_call = bool(_conformal_run)
     if _conductors is not None:
         # Execution lends its assembled, pre-port products for this call only.
         # Bind the legacy validators to an isolated reader, never the public
@@ -54,7 +68,17 @@ def _preflight_impl(
     # Selection information belongs outside the captured legality findings.
     # Resolve before any validator reads a profile or fallback spacing.
     self._resolve_mesh()
+    from rfx.preflight._subjects import finding_record
     issues = PreflightReport()
+    verdict_findings = []
+    if _conductors is not None:
+        self._finding_record_reader = lambda: _conductors._realization_record or finding_record(self)
+        tables = _conductors._realization_tables
+        issues._realization_reader = lambda: tables[-1] if tables else None
+        if tables:
+            verdict_findings.extend(tables[-1].findings)
+    else:
+        issues._realization_reader = lambda: self.realized_geometry().realization_table
 
     # Static geometry diagnostics must stay host-side under an outer
     # jit, just like mesh selection. Otherwise even a concrete Box's
@@ -64,13 +88,31 @@ def _preflight_impl(
     from rfx.preflight.realization import assembly_warning_scope
     with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval(), assembly_warning_scope():
         warnings.simplefilter("always")
-        # MSL automatic probe counts from the full declaration (#1584),
+        # MSL automatic probe counts from the full declaration,
         # before any check reads them.
         from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
         admit_msl_auto_probes(self)
         from rfx.measurement import admit_waveguide_entries
         admit_waveguide_entries(self)
         self._collect_flux_regions(issues)
+        try:
+            if _conductors is None:
+                from rfx.model.realization_verdict import admit_table
+                ctx = self._campaign_ctx()
+                root = ctx.bind_realization()
+                if root is not None:
+                    admit_table(self, root, deliver=False)
+                    admit_table(self, root, finished=True, deliver=False)
+                    table = root.realization_table
+                    setattr(issues, "_realization_reader", lambda: table)
+                    verdict_findings.extend(table.findings)
+        except ValueError as overlap_error:
+            if getattr(overlap_error, "code", None) != "absorber_overlap":
+                raise
+            from typing import cast
+            verdict_findings.append(PreflightIssue(str(overlap_error), severity="error",
+                code=cast(str, getattr(overlap_error, "code")),
+                source=cast(str | None, getattr(overlap_error, "source"))))
         try:
             from rfx.model.thin_conductors import warn_dc_films
             warn_dc_films(self, warnings)
@@ -113,6 +155,9 @@ def _preflight_impl(
                     loc=getattr(e, "loc", None),
                     source=getattr(e, "source", None),
                     diagnostic=getattr(e, "diagnostic", None),
+                    scope=getattr(e, "scope", "model"),
+                    subjects=getattr(e, "_subjects", ()),
+                    region=getattr(e, "_region", None),
                 ))
 
     # The explicit per-film reader owns DC findings. Diagnostic assembly may
@@ -121,8 +166,12 @@ def _preflight_impl(
     dc_findings = {str(w.message) for w in caught
                    if getattr(w.message, 'source', None) == 'admit_dc_film'
                    and getattr(w.message, 'loc', None) is not None}
+    verdict_issues = tuple(issues)
     for w in caught:
         msg = str(w.message)
+        if any(issue.code == getattr(w.message, 'code', None) and str(issue) == msg
+               for issue in verdict_issues):
+            continue
         if (getattr(w.message, 'source', None) == 'admit_dc_film'
                 and getattr(w.message, 'loc', None) is None and msg in dc_findings):
             continue
@@ -153,8 +202,24 @@ def _preflight_impl(
                 loc=loc,
                 source=source,
                 diagnostic=getattr(inst, "diagnostic", None),
+                scope=getattr(inst, "scope", "model"),
+                subjects=getattr(inst, "_subjects", ()),
+                region=getattr(inst, "_region", None),
             )
         )
+
+    # Existing diagnostics keep their call order. New rows follow them;
+    # legacy rows already replayed at their original sites are not duplicated.
+    for finding in verdict_findings:
+        if finding.code in {"sheet_effective_size", "sheet_cavity_spacing", "port_aperture_snap"}:
+            for index, issue in enumerate(issues):
+                if issue.code == finding.code and str(issue) == str(finding):
+                    # Preserve delivery state when replaying a legacy finding.
+                    issues[index] = finding
+            if any(issue.code == finding.code for issue in issues):
+                continue
+        if not any(issue.code == finding.code and str(issue) == str(finding) for issue in issues):
+            issues.append(finding)
 
     if check_ad_memory:
         if n_steps_for_memory is None:
@@ -177,11 +242,12 @@ def _preflight_impl(
     # the generic assembly finding, regardless of validator order.
     assembly_codes = {"assembly_refusal", "assembly_fault"}
     # Only these emitters repeat an admission refusal on a specific entry.
-    # Other errors (notably ADI compatibility) may merely quote that refusal.
+    # Other errors may merely quote that refusal.
     located_refusal_codes = {
         "pec_box_subcell", "pec_zero_cells", "pec_realization_refused",
         "dc_film_area", "dc_film_layers", "dc_film_unchecked",
         "source_decoupled", "declared-span-short-of-padded-face",
+        "port_aperture_unrasterizable", "absorber_point_refused",
     }
     if any(issue.code in assembly_codes for issue in issues):
         exc = self._campaign_ctx()._assembly_exception
@@ -191,7 +257,9 @@ def _preflight_impl(
         ):
             issues[:] = [issue for issue in issues if issue.code not in assembly_codes]
 
-    if strict and len(issues):   # PreflightReport refuses bool() (#980)
+    from rfx.preflight._subjects import resolve_findings
+    resolve_findings(issues)
+    if strict and len(issues):   # PreflightReport refuses bool()
         # Aggregate-then-raise: escalate ALL findings at once. Preserves the
         # historical "strict escalates any issue to ValueError" contract,
         # but reports every problem in one pass instead of fail-on-first
@@ -203,7 +271,7 @@ def _preflight_impl(
             + "\n  - ".join(issues)
         )
 
-    if len(issues):              # PreflightReport refuses bool() (#980)
+    if len(issues):              # PreflightReport refuses bool()
         for iss in issues:
             print(f"  [PREFLIGHT] {iss}")
     elif check_ntff is True:
@@ -228,9 +296,13 @@ _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 
 
 def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
-    """Apply the same warning/error policy to full or scoped preflight."""
-    issues = PreflightReport(issues)
-    if not len(issues):          # PreflightReport refuses bool() (#980)
+    """Apply the same warning/error policy to full or scoped preflight.
+
+    The advisory names the first caller frame outside rfx, however many rfx frames lie between;
+    ``stacklevel`` is accepted from older callers and not used.
+    """
+    issues = PreflightReport(i for i in issues if not getattr(i, "_realization_delivered", False))
+    if not len(issues):          # PreflightReport refuses bool()
         return
     import warnings
     errors = [i for i in issues if getattr(i, "severity", "warning") == "error"]
@@ -240,8 +312,8 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         warnings.warn(
             f"[{context}] preflight found {len(warns)} advisory issue(s) - "
             f"pass skip_preflight=True to suppress:\n  - {body}",
-            UserWarning,
-            stacklevel=stacklevel + 1,
+            AccuracyWarning,
+            stacklevel=user_stacklevel(),
         )
     if errors:
         # Error-severity findings are structurally-impossible configs
@@ -253,12 +325,67 @@ def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
         # skip_preflight=True remains the explicit escape hatch.
         detail = "\n  - ".join(errors)
         from rfx._diagnostic_transport import diagnostic_refusal
+        # Sheet-size rows are realization rows too: admitted on every lane (admit_sheet_sizes).
+        realized_refusals = sum(getattr(i, "source", None) == "judge_realization"
+                          or getattr(i, "code", None) == "sheet_effective_size" for i in errors)
+        hint = ("pass skip_preflight=True to bypass" if not realized_refusals else
+                ("skip_preflight=True bypasses only the non-realization errors; "
+                 if realized_refusals < len(errors) else "") +
+                "skip_preflight=True does not bypass a realization refusal: "
+                'use Simulation(..., snap="declared") to report it as a warning, '
+                "or apply the remedy in the message")
 
         raise diagnostic_refusal(
-            ValueError(
+            RfxRefusal(
                 f"[{context}] preflight found {len(errors)} blocking error(s) "
-                f"(pass skip_preflight=True to bypass):\n  - {detail}"
+                f"({hint}):\n  - {detail}"
             ),
             issues.diagnostics,
             causes=PreflightReport(errors).diagnostics,
         )
+
+
+def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
+                   conductors=None, prepare=False, distributed=False, tfsf_material_overrides=(),
+                   conformal=None, realization_options=None):
+    """Emit a UserWarning if preflight finds issues.
+
+    Called automatically at the start of ``forward()``, ``optimize()``,
+    and ``topology_optimize()`` so users discover physics violations
+    (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
+    spending minutes of GPU compute. Pass ``skip_preflight=True`` at
+    the call site to opt out (tests, already-validated configs).
+
+    ``check_ntff`` gates the NTFF check family. ``run()`` passes
+    ``check_ntff="advisory"``: the λ/4 near-field gap
+    and sub-wavelength ground-plane advisories are
+    physics-relevant to any far-field computation and
+    run() is the common NTFF entry point, so they are surfaced as
+    warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``
+    (the inverse-design entry points) hard-fail on the PEC-overlap
+    error. Previously run() skipped the family entirely and still
+    printed "All checks passed", which contradicted explicit
+    ``sim.preflight()`` output on the same configuration.
+
+    ``prepare=True`` also returns an execution-local solve handoff. With
+    skipped preflight it stays lazy until lane admission; otherwise checks
+    read its assembled product before the selected runner takes ownership.
+    """
+    assembly = prepare_solve(sim, distributed=distributed, realization_options=realization_options) if prepare else None
+    if skip:
+        return assembly if prepare else PreflightReport()
+    if assembly is not None:
+        conductors = assembly.realized()
+    # A validator bug must propagate, rather than become an advisory.
+    if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides,
+            _conformal_run=conformal)
+    else:
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                                     _conductors=conductors, _conformal_run=conformal)
+    # gate -> this helper -> facade -> public entry -> user
+    sim._run_preflight_gate(issues, context=context, stacklevel=5)
+    if assembly is not None:
+        assembly.diagnostics = tuple(getattr(issues, "diagnostics", ()))
+    return assembly if prepare else issues

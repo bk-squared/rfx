@@ -5,8 +5,8 @@ or complex64 matrix product is TF32, which rounds the operands to a 10-bit
 mantissa. On one RTX 3090 that moved the completed S of the ring-down tests by
 up to 4e-4, against float32 bars of 1.5e-5 and 2e-5. With
 ``JAX_DEFAULT_MATMUL_PRECISION=highest`` or ``NVIDIA_TF32_OVERRIDE=0``, the same
-tests on the same card agreed to 1e-6 (VESSL 369367266046; rfx-archive
-``rfx/records/20260929-tf32-ab/``). A CPU computes the same result at either
+tests on the same card agreed to 1e-6 (VESSL 369367266046).
+A CPU computes the same result at either
 setting, so a numerical test on CPU CI cannot see this defect. The precision is
 written into the lowered program, though. These tests read it there, on CPU.
 
@@ -161,9 +161,9 @@ def test_conformal_weights_sdf():
     from rfx.geometry import Sphere
     from rfx.geometry.conformal import compute_conformal_weights_sdf
     grid = _geometry_grid()
-    text = jax.jit(lambda radius: compute_conformal_weights_sdf(
-        grid, [Sphere((4.3e-3, 5.2e-3, 4.7e-3), radius)])).lower(
-            jnp.float32(2.6e-3)).as_text()
+    weights = compute_conformal_weights_sdf(
+        grid, [Sphere((4.3e-3, 5.2e-3, 4.7e-3), 2.6e-3)])
+    text = jax.jit(lambda: weights).lower().as_text()
     assert _assert_all_highest(text, "conformal weights SDF") >= 0
 
 
@@ -207,7 +207,7 @@ def test_current_moment_monitor_and_its_far_field():
 
 def test_ntff_far_field():
     from rfx import Simulation
-    from rfx.farfield import compute_far_field_jax
+    from rfx.measurement.farfield import compute_far_field_jax
     sim = Simulation(freq_max=12e9, domain=(12e-3, 12e-3, 12e-3), dx=1e-3,
                      boundary="cpml", cpml_layers=4)
     sim.add_source((6e-3, 6e-3, 6e-3), "ez")

@@ -17,7 +17,7 @@ Limitations
 - Only material parameters (``eps_r``, ``sigma``, ``mu_r``) can be swept.
   For geometry sweeps (different shapes/sizes) use ``parametric_sweep()``.
 - ``until_decay`` is not supported (requires Python-level control flow).
-- CPML and DFT plane probes (``add_dft_plane_probe``, #578) ARE supported on
+- CPML and DFT plane probes (``add_dft_plane_probe``) ARE supported on
   the fast path because they use the same grid topology as PEC/periodic
   walls. This bullet used to claim the WHOLE feature list below it was
   "fully supported" — that was a drifted inversion of the true limitation
@@ -25,16 +25,23 @@ Limitations
   it). Lumped/MSL/coaxial/floquet ports, TFSF, dispersion, waveguide ports,
   flux monitors, NTFF, and RLC elements are NOT wired into the
   fast-path scan bodies and trigger the sequential fallback instead (still
-  correct, just slower — and, as of #578, that fallback also carries DFT
+  correct, just slower — and that fallback also carries DFT
   plane accumulators, so no feature silently vanishes on either path).
 """
 
 from __future__ import annotations
 
-from rfx._precision import resolve_field_dtype
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from rfx.api import Simulation
+
+from rfx.errors import ConfigurationWarning
+from rfx._internal._precision import resolve_field_dtype
 from rfx.stepping.vmap_scan import _build_vmap_scan_fn
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, replace
 
 import jax
@@ -99,6 +106,9 @@ class VmapSweepResult:
     param_values: np.ndarray
     final_fields: dict | None = None
     dft_planes: dict | None = None
+    settling_db: np.ndarray | None = None
+    settling_witness: tuple | None = None
+    dt: np.ndarray | None = None
 
     def peak_field(self) -> np.ndarray:
         """Return peak |probe value| per batch element."""
@@ -150,25 +160,16 @@ def _extend_batched_cpml_pad(
     padding faces of ``base_materials`` were replicated from the BASE
     simulation's edge slice, so every batch element would otherwise
     inherit the base material's absorber there regardless of its own
-    swept value (issue #637). Re-running the shared rule on the
+    swept value. Re-running the shared rule on the
     already-batch-correct interior makes each batch element's padding
     byte-identical to what ``Simulation.run()`` builds for that same
     swept value.
 
-    **Why ``jax.vmap`` and not a hand-written batched copy (issue #643).** #637's
-    original version of this function reproduced
-    ``_assemble_materials``' rule *as it stood at the time* — a straight
-    per-face edge-slice copy — in a second, hand-maintained
-    implementation. #627 (PR #638) then changed that rule underneath it,
-    adding a per-transverse-cell hi-face fallback (if the naive
-    interior-edge column is vacuum but the column one further in is not,
-    replicate from that inner column instead, recovering the node a
-    ``Box`` flush with the domain's hi face loses to half-open ``[lo,
-    hi)`` rasterization). The two copies then disagreed for exactly that
-    geometry: ``run()``'s x-hi pad read the material, the batched path
-    read vacuum. That is the defect this repo's own feature-discovery
-    rule names — two hand-maintained copies of one rule is the defect,
-    not which copy is right — so the copy is gone rather than resynced.
+    **Why ``jax.vmap`` and not a hand-written batched copy.** ``_assemble_materials`` applies a per-transverse-cell
+    hi-face fallback: if the naive interior-edge column is vacuum but the column one further in is not, it replicates
+    from that inner column, recovering the node a ``Box`` flush with the domain's hi face loses to half-open ``[lo,
+    hi)`` rasterization. A separate per-face edge-slice copy disagreed for that geometry: ``run()``'s x-hi pad read
+    material while the batched path read vacuum. Sharing the assembly rule prevents that divergence.
 
     ``vmap`` is what makes reuse possible at all. The shared helper slices
     axes 0/1/2 and evaluates its vacuum predicate on whole transverse
@@ -187,22 +188,13 @@ def _extend_batched_cpml_pad(
     element changes that element's ``sigma``/``mu_r`` pad too. A per-field
     call cannot express that coupling.
 
-    **The caller must hand this UN-extended arrays (issue #655).** The
-    correctness argument is that the result depends only on the interior
-    values, which the caller has already made batch-correct; pad cells are
-    all overwritten by one of the three passes, so their incoming contents
-    are irrelevant. #637/#643 relied on that to feed already-extended
-    ``base_materials`` in. #655 then made the shared rule repair the
-    dropped hi-face boundary NODE too — an INTERIOR cell, and one
-    ``Shape.mask`` does not cover — so an already-extended input carries
-    the BASE material at that node and the "interior is batch-correct"
-    premise fails. The caller therefore now assembles with
-    ``include_cpml_pad_extension=False``. Verified by the byte-identity
-    matrix in
+    **The caller must hand this UN-extended arrays.** The shared rule
+    repairs the dropped hi-face boundary node as well as the pad. That
+    node is an interior cell not covered by ``Shape.mask``; an already
+    extended input carries the base material there instead of the swept
+    value. Assemble with ``include_cpml_pad_extension=False`` so the
+    shared rule writes every swept material to that node. Verified by
     ``tests/unit/runners/test_vmap_sweep_dft_planes.py::TestVmapBatchedPadByteIdentity``.
-
-    Unpadded non-periodic high walls receive the same #655 node repair
-    as ordinary assembly (#1966). Periodic faces remain untouched.
 
     Returns
     -------
@@ -211,8 +203,7 @@ def _extend_batched_cpml_pad(
     plx, phx = grid.pad_x_lo, grid.pad_x_hi
     ply, phy = grid.pad_y_lo, grid.pad_y_hi
     plz, phz = grid.pad_z_lo, grid.pad_z_hi
-    walls = unpadded_high_walls(grid)
-    if max(plx, phx, ply, phy, plz, phz) <= 0 and not any(walls):
+    if max(plx, phx, ply, phy, plz, phz) <= 0:
         return eps_r, sigma, mu_r
 
     def _one(e, s, m):
@@ -220,10 +211,10 @@ def _extend_batched_cpml_pad(
         # geometry-derived and the sweep only substitutes eps_r/sigma/mu_r
         # values), so it rides in as a closed-over constant rather than a
         # mapped operand — the helper sees the same (Nx, Ny, Nz) mask
-        # ``run()`` hands it (#808 gate).
+        # ``run()`` hands it.
         return extend_cpml_pad_materials(
             e, s, m, plx, phx, ply, phy, plz, phz,
-            dispersion_pole_mask=dispersion_pole_mask, high_wall=walls)
+            dispersion_pole_mask=dispersion_pole_mask)
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)
 
@@ -237,14 +228,14 @@ def _apply_batched_thin_conductors(
     — once per batch element under ``jax.vmap``, in the same order
     ``Simulation._assemble_materials`` runs it.
 
-    This is the second half of the #642 fix. ``_assemble_materials``
+    ``_assemble_materials``
     extends the material arrays and only THEN applies thin conductors from
     their continued geometry. The batched path re-extends the pad per
     swept value; to reproduce ``run()`` it must therefore re-extend the
     *pre-conductor* arrays and re-apply the conductors afterwards, which
     is exactly this call plus the ``include_thin_conductors=False``
     assembly in ``_build_batched_materials``. Doing it the other way
-    round — extending the finished arrays, as the code did before #642 —
+    round — extending the finished arrays —
     replicates the conductor's own ``eps_r``/``sigma`` outward into a pad
     that ``run()`` fills with the background material instead.
 
@@ -267,21 +258,23 @@ def _apply_batched_thin_conductors(
                        for tc in sim._thin_conductors)
     if not conductors:
         return eps_r, sigma, mu_r, None
+    from rfx.model.film_geometry import prepare_film_footprints
+    films = prepare_film_footprints(conductors, grid)
 
     def _one(e, s, m):
         mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m, sigma_film=None)
-        for tc in conductors:
-            # #677: an f0 (surface-impedance) conductor is a no-op on the
+        for i, tc in enumerate(conductors):
+            # an f0 (surface-impedance) conductor is a no-op on the
             # material arrays by design — the sheet is a per-step operator
             # ctx now, and sims carrying one never reach the fast path
             # (has_f0_sheets ineligibility in _build_full_scan_fn).
-            # #931: a PEC thin conductor is a SheetSpec, a no-op on the
+            # a PEC thin conductor is a SheetSpec, a no-op on the
             # material arrays. The batched lane realizes it in
             # ``_build_vmap_scan_fn`` from the sheets the CALLER collected
             # off the full assembly, so the collector here is deliberately
             # discarded (it would be a per-batch-element duplicate).
             mats, _ = apply_thin_conductor(grid, tc, mats, pec_mask=None,
-                                           sheets=[], snap=sim._snap)
+                                           sheets=[], snap=sim._snap, film_geometry=films.get(i))
         return mats.eps_r, mats.sigma, mats.mu_r, mats.sigma_film
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)
@@ -303,7 +296,7 @@ def _build_batched_materials(
     material's actual (non-vacuum) value into its padding
     (``_assemble_materials``), so the ``!= 1.0`` / ``!= 0.0`` test is True
     there too and the global sweep overwrites those pad cells along with
-    the interior ones (issue #637 scope note — verified by
+    the interior ones (verified by
     ``test_global_sweep_pad_cells_still_correct`` in
     ``tests/unit/runners/test_vmap_sweep_dft_planes.py``).
 
@@ -312,20 +305,17 @@ def _build_batched_materials(
     cells only, via ``Shape.mask``. Unlike the global case, ``mask`` is
     False everywhere in the CPML padding (padding cells sit outside the
     physical domain ``Shape.mask`` tests against), so the padding is
-    handled separately below via ``_extend_batched_cpml_pad`` (issue #637;
-    issue #643 for why that now routes through the package's single shared
-    pad rule rather than a second copy of it): without it, every swept
+    handled separately below via ``_extend_batched_cpml_pad``: without it, every swept
     batch element would run against a pad matched to the BASE material
     instead of its own.
 
-    **Thin conductors and pipeline ORDER (issue #642).**
+    **Thin conductors and pipeline ORDER.**
     ``_assemble_materials`` extends the pad and only THEN applies thin
     conductors, so ``run()``'s padding carries the background material,
     never the conductor. ``base_materials`` is the finished, post-conductor
     array; re-extending it would copy the conductor's own ``eps_r`` /
-    ``sigma`` outward into the pad. #643 could not close that by making
-    the extension rule more faithful, because the rule was never the
-    problem — the batched path was handed the wrong INPUT. So when the
+    ``sigma`` outward into the pad. The extension rule cannot correct
+    an input that already includes the conductor. So when the
     simulation declares thin conductors, the material-named branch below
     re-derives the PRE-conductor arrays from the same assembler
     (``include_thin_conductors=False``), builds the sweep and the pad from
@@ -344,9 +334,9 @@ def _build_batched_materials(
     mu_r = base_materials.mu_r
 
     if mat_name is not None:
-        # #642: build from the state run() extends the pad from, i.e.
+        # build from the state run() extends the pad from, i.e.
         # before its own thin-conductor pass.
-        # #655: and before the pad extension itself. The shared rule now
+        # and before the pad extension itself. The shared rule
         # also repairs the hi-face boundary NODE the rasterizer dropped,
         # and that node is an INTERIOR cell ``mask`` does not cover, so
         # substituting into already-extended arrays leaves the base
@@ -355,7 +345,7 @@ def _build_batched_materials(
         # restores the invariant ``_extend_batched_cpml_pad`` documents
         # (its result depends only on interior values, which must all be
         # batch-correct) instead of special-casing the node here.
-        # #931: eps/sigma/mu only — this arm rebuilds the batched CPML pad
+        # eps/sigma/mu only — this arm rebuilds the batched CPML pad
         # from the pre-conductor arrays. Geometry sheets (a zero-thickness
         # PEC Box) are still classified even with the thin-conductor loop
         # off, so the collectors are required; the sweep's OWN assembly
@@ -369,7 +359,7 @@ def _build_batched_materials(
         sigma = pre_materials.sigma
         mu_r = pre_materials.mu_r
 
-        # #808: run() gates the hi-face fallback on the combined pole mask,
+        # run() gates the hi-face fallback on the combined pole mask,
         # so the batched re-extension below must hand the shared rule the
         # same mask or a dispersive sweep's pad would diverge from run().
         _pole_mask_any = None
@@ -384,9 +374,11 @@ def _build_batched_materials(
         mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
         coords = coords_from_uniform_grid(grid)
         centres = centres_from_uniform_grid(grid)
+        from rfx.model.materials import assembled_as_pec
         for entry in sim._geometry:
             if entry.material_name == mat_name:
-                mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid)
+                mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid, name=entry.material_name,
+                                                  size_rule=not assembled_as_pec(sim, entry))
 
         # For each batch: where mask, use param_values[b]; else keep base.
         # The two unswept fields still have to be broadcast to the batch
@@ -404,10 +396,10 @@ def _build_batched_materials(
         else:  # mu_r
             batch_mu = jnp.where(mask[None], swept, mu_r[None])
 
-        # #637: the mask above only covers the physical-domain interior --
+        # the mask above only covers the physical-domain interior --
         # extend the (now per-batch-correct) interior into the CPML pad the
         # same way the base simulation would for each swept value, instead
-        # of leaving the base material's pad fill. #643: via the package's
+        # of leaving the base material's pad fill. Use the package's
         # single shared rule, vmapped over the sweep axis, not a second
         # hand-maintained copy of it.
         batch_eps, batch_sigma, batch_mu = _extend_batched_cpml_pad(
@@ -415,7 +407,7 @@ def _build_batched_materials(
             dispersion_pole_mask=_pole_mask_any,
         )
 
-        # #642: and only NOW the conductors, which is where
+        # and only NOW the conductors, which is where
         # _assemble_materials applies them relative to the extension above.
         batch_eps, batch_sigma, batch_mu, batch_film = _apply_batched_thin_conductors(
             sim, grid, batch_eps, batch_sigma, batch_mu,
@@ -492,7 +484,7 @@ def _build_full_scan_fn(
     boundary = sim._boundary
 
     # Detect if simulation uses features incompatible with simple vmap
-    has_ports = any(pe.impedance != 0.0 for pe in sim._ports)
+    has_ports = any(pe.is_port for pe in sim._ports)
     has_tfsf = sim._tfsf is not None
     has_waveguide = len(sim._waveguide_ports) > 0
     has_dispersion = debye_spec is not None or lorentz_spec is not None
@@ -500,13 +492,13 @@ def _build_full_scan_fn(
     # onto the fast path (neither scan body launches/records them); coaxial
     # ports are NOT consumed by plain run() at all today, so this guard is
     # added for honesty/uniformity with the other port families rather than
-    # because the fast path would corrupt anything (#578 design v2 PR B.3).
+    # because the fast path would corrupt anything.
     has_msl_ports = len(getattr(sim, "_msl_ports", []) or []) > 0
     has_floquet_ports = len(getattr(sim, "_floquet_ports", []) or []) > 0
     has_coaxial_ports = len(getattr(sim, "_coaxial_ports", []) or []) > 0
 
     # Allowlist guard: the vmap scan bodies implement ONLY pec/periodic
-    # walls, CPML, and (as of #578) DFT plane probes. Anything below must
+    # walls, CPML, and DFT plane probes. Anything below must
     # take the sequential fallback (return None) or it would be SILENTLY
     # DROPPED from the swept runs:
     #   - boundary='upml': neither scan body applies a UPML step, so the
@@ -514,17 +506,19 @@ def _build_full_scan_fn(
     #   - lumped RLC elements: not wired into either scan body;
     #   - flux monitors / NTFF: frequency-domain accumulators exist only in
     #     the canonical Simulation.run() loop (DFT PLANE probes are the
-    #     #578 exception — built into ``dft_probes`` below and threaded
+    #     exception — built into ``dft_probes`` below and threaded
     #     into the fast-path scan body);
     #   - non-uniform mesh profiles: scan bodies assume a uniform grid.
     if boundary == "upml":
         return None, None
-    #   - surface-impedance (f0) sheets (#677): the sheet is a per-step
+    #   - surface-impedance (f0) sheets: the sheet is a per-step
     #     node-thin operator ctx, not a materials.sigma fold, and neither
     #     vmap scan body applies it — the fast path would silently sweep a
     #     sheet-FREE model. The sequential fallback runs Simulation.run()
     #     per value, which applies the ctx (batch-invariant by
     #     construction there).
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "vmap_sweep batched kernel")
     from rfx.materials.thin_conductor import has_f0_sheets
     if has_f0_sheets(getattr(sim, "_thin_conductors", None)):
         return None, None
@@ -543,13 +537,15 @@ def _build_full_scan_fn(
 
     # Material-dependent source samples are prepared per sweep element by
     # run()'s scalar helpers; the scan builder needs only their locations.
+    from rfx.model.point_placement import admit_simulation_points
+    admit_simulation_points(sim, grid)
     sources = []
     j_source_meta: list[tuple[int, int, int, str]] = []
     probes = []
 
     for pe in sim._ports:
-        if pe.impedance == 0.0:
-            # amplitude_kind (issue #571) routing:
+        if pe.is_soft_source:
+            # amplitude_kind routing:
             #   'field'   -> raw make_source on EVERY boundary (E += w has
             #               no material dependence, so no dynamic path)
             #   'current' -> dynamic-Cb J-source on EVERY boundary, with the
@@ -567,10 +563,10 @@ def _build_full_scan_fn(
     for pe in sim._probes:
         probes.append(make_probe(grid, pe.position, pe.component))
 
-    # DFT plane probes (#578): mirrors rfx/runners/uniform.py:478-498
+    # DFT plane probes: mirrors rfx/runners/uniform.py:478-498
     # exactly, including calling the SAME init_dft_plane_probe helper, so
     # the accumulator dtype/shape/init state is identical to run()'s by
-    # construction (the #477/#484 x64-contract pin below is therefore a
+    # construction (the x64-contract pin below is therefore a
     # sanity assertion, not a computed correction).
     axis_to_index = {"x": 0, "y": 1, "z": 2}
     dft_probes: list[DFTPlaneProbe] = []
@@ -605,7 +601,7 @@ def _build_full_scan_fn(
             assert _probe.accumulator.dtype == _expected_dtype, (
                 f"vmap DFT accumulator dtype {_probe.accumulator.dtype} != "
                 f"run()'s {_expected_dtype} "
-                f"(x64_enabled={jax.config.x64_enabled}) — #477/#484 "
+                f"(x64_enabled={jax.config.x64_enabled}) — "
                 "x64-contract pin violated"
             )
 
@@ -628,7 +624,7 @@ def _build_full_scan_fn(
         for axis_name, is_periodic in zip(axis_names, periodic):
             if is_periodic:
                 cpml_axes = cpml_axes.replace(axis_name, "")
-        # The walls by the one per-face rule (#1164). These scan bodies have
+        # The walls by the one per-face rule. These scan bodies have
         # no H-side hook for a magnetic face, so a PMC declaration is refused
         # here rather than shorted by an axis wall.
         from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
@@ -671,7 +667,7 @@ def _build_full_scan_fn(
                 conductors=conductors,
                 sources=sources,
                 # non-empty only for amplitude_kind='current' soft sources
-                # on a non-cpml boundary (issue #571): their Cb is material-
+                # on a non-cpml boundary: their Cb is material-
                 # dependent and is prepared per sweep element, as on CPML.
                 j_source_meta=j_source_meta,
                 probes=probes,
@@ -682,6 +678,7 @@ def _build_full_scan_fn(
                 pec_wires=pec_wires,
                 dft_probes=dft_probes,
             )
+        run_one_fn.dft_probes = tuple(dft_probes)
         return run_one_fn, dft_names
 
     # Fallback: for complex sims, run sequentially (not vmapped)
@@ -693,9 +690,9 @@ def _build_full_scan_fn(
 # ---------------------------------------------------------------------------
 
 def vmap_material_sweep(
-    sim,
+    sim: Simulation,
     param_name: str,
-    param_values,
+    param_values: ArrayLike,
     *,
     n_steps: int | None = None,
     num_periods: float = 20.0,
@@ -816,7 +813,7 @@ def vmap_material_sweep(
             n_steps = sim._nu_n_steps(num_periods)
         import warnings
         warnings.warn("Resolved non-uniform mesh: Falling back to sequential execution.",
-                      UserWarning, stacklevel=2)
+                      ConfigurationWarning, stacklevel=2)
         return _sequential_fallback(sim, param_name, param_values, n_steps=n_steps)
 
     # Build grid and base materials once
@@ -846,7 +843,7 @@ def vmap_material_sweep(
         from rfx.runners._admission import admit
         admit(sim, "vmap_sweep_batched")
         # The batched kernel has no subgrid and never read add_refinement;
-        # the sequential fallback below runs it through run() (#1240).
+        # the sequential fallback below runs it through run().
         sim._require_no_refinement_without_a_subgrid("vmap_material_sweep()")
         # Fast path: vmap over material arrays
         batched_materials = _build_batched_materials(
@@ -857,14 +854,14 @@ def vmap_material_sweep(
         # Besides preserving product order, this avoids a float32 scalar/
         # vector division difference in Cb/dV (8972096 vs 8972095 in the
         # PEC eps_r=6 fixture). Only source preparation is serial; the
-        # field evolution below remains vmapped (#1373).
+        # field evolution below remains vmapped.
         from rfx.model.source_coefficients import uniform_source_table
         from rfx.simulation import resolve_periodic
         source_periodic = resolve_periodic(
             grid, tuple(a in sim._periodic_axes for a in "xyz"))
         dynamic_sources = [
             pe for pe in sim._ports
-            if pe.impedance == 0.0 and pe.amplitude_kind == "current"
+            if pe.is_soft_source and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
         native = "cb" if sim._boundary == "cpml" else "raw"
@@ -906,11 +903,15 @@ def vmap_material_sweep(
                 for name, acc in zip(dft_names, dft_accs)
             }
 
+        from rfx.measurement.sweep_settling import sweep_member_witnesses
+        dbs, witnesses = sweep_member_witnesses(
+            sim, grid, time_series_np, dft_names, run_one_fn.dft_probes, dft_planes_out)
         return VmapSweepResult(
             time_series=time_series_np,
             param_name=param_name,
             param_values=param_values,
-            dft_planes=dft_planes_out,
+            dft_planes=dft_planes_out, settling_db=dbs,
+            settling_witness=witnesses, dt=np.full(len(param_values), grid.dt),
         )
     else:
         # Fallback: sequential execution for complex simulations
@@ -921,14 +922,14 @@ def vmap_material_sweep(
             "(ports incl. MSL/coaxial/floquet, TFSF, dispersion, "
             "waveguide, flux monitors, NTFF). Falling back to sequential "
             "execution. Use parametric_sweep() for better sequential "
-            "support.",
+            "support.", ConfigurationWarning,
             stacklevel=2,
         )
         # Every swept copy gets the same explicit count, so the traces stack
         # (auto-meshing can give each value its own cell). On the subgridded
         # lane run() reads an explicit count as FINE steps, so a refined
         # model gets the fine count for num_periods, as run() resolves it
-        # itself; the coarse count would cover 1/ratio of the time (#1240).
+        # itself; the coarse count would cover 1/ratio of the time.
         fallback_n_steps = n_steps
         if caller_n_steps is None and sim._refinement is not None:
             fallback_n_steps = n_steps * int(sim._refinement["ratio"])
@@ -946,7 +947,7 @@ def _sequential_fallback(
 ) -> VmapSweepResult:
     """Sequential fallback when vmap is not possible.
 
-    Issue #578: also populates ``VmapSweepResult.dft_planes`` by stacking each
+    also populates ``VmapSweepResult.dft_planes`` by stacking each
     swept value's ``Result.dft_planes[name].accumulator`` — the SAME
     carrier the fast path populates (dict[str, ndarray] with a leading
     batch axis), so a DFT plane registered on a simulation that must take
@@ -957,7 +958,7 @@ def _sequential_fallback(
     """
     mat_name, field = _parse_param_name(param_name)
 
-    all_ts = []
+    all_ts, all_db, all_witness, all_dt = [], [], [], []
     dft_acc_lists: dict[str, list] = {}
     for _i, val in enumerate(param_values):
         # Clone the simulation and modify the material
@@ -984,6 +985,9 @@ def _sequential_fallback(
         # preflight noise.
         result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0)
         all_ts.append(np.asarray(result.time_series))
+        all_db.append(result.settling_db)
+        all_witness.append(result.settling_witness)
+        all_dt.append(result.dt)
 
         if result.dft_planes:
             for name, probe in result.dft_planes.items():
@@ -1004,5 +1008,6 @@ def _sequential_fallback(
         time_series=time_series,
         param_name=param_name,
         param_values=param_values,
-        dft_planes=dft_planes_out,
+        dft_planes=dft_planes_out, settling_db=np.asarray(all_db, dtype=float),
+        settling_witness=tuple(all_witness), dt=np.asarray(all_dt),
     )

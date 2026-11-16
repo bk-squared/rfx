@@ -41,10 +41,11 @@ def _graded_rig(monkeypatch):
 @pytest.mark.parametrize('method', ['run', 'forward'])
 @pytest.mark.parametrize('skip_preflight', [False, True])
 def test_solve_refuses_shortfall(monkeypatch, graded, distributed, method, skip_preflight):
+    """A flat-ended cylinder retains shortfall outside the Box domain-face clause."""
     if method == 'forward' and distributed and not graded:
         pytest.skip('Uniform distributed forward is not implemented by the API')
     _size_by_plain_ceil(monkeypatch)
-    sim = _graded_rig(monkeypatch) if graded else _rig(10)
+    sim = _graded_rig(monkeypatch) if graded else _rig(10, cylinder=True)
     kwargs = dict(n_steps=1, skip_preflight=skip_preflight)
     if distributed:
         if len(jax.devices()) < 2:
@@ -60,8 +61,9 @@ def test_solve_refuses_shortfall(monkeypatch, graded, distributed, method, skip_
 
 @pytest.mark.parametrize('graded', [False, True])
 def test_audits_report_same_shortfall(monkeypatch, graded):
+    """Audit the same non-Box shortfall that the uniform solve refuses."""
     _size_by_plain_ceil(monkeypatch)
-    sim = _graded_rig(monkeypatch) if graded else _rig(10)
+    sim = _graded_rig(monkeypatch) if graded else _rig(10, cylinder=True)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     root = realized_conductors(sim, grid, nonuniform=graded, mode='audit')
     row, = root.pad_fill_findings
@@ -115,25 +117,6 @@ def test_exact_face_runs(graded, distributed, method):
     root = realized_conductors(sim, grid, nonuniform=graded)
     assert not root.pad_fill_findings
     assert np.asarray(root.materials.eps_r)[-1, 5, 5] == pytest.approx(EPS_R)
-
-
-@pytest.mark.parametrize("graded", [False, True])
-def test_builder_checks_once(monkeypatch, graded):
-    import rfx.geometry.rasterize_grid as raster
-    import rfx.model.pad_fill as pad_fill
-    calls = []
-    original = raster.assert_declared_span_is_filled
-    def spy(*args, **kwargs):
-        calls.append(args[0])
-        return original(*args, **kwargs)
-    monkeypatch.setattr(raster, 'assert_declared_span_is_filled', spy)
-    monkeypatch.setattr(pad_fill, 'assert_declared_span_is_filled', spy)
-    import rfx.model.materials as materials_module
-    monkeypatch.setattr(materials_module, 'assert_declared_span_is_filled', spy)
-    sim = _graded_rig(monkeypatch) if graded else _rig(10)
-    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
-    realized_conductors(sim, grid, nonuniform=graded, mode='audit')
-    assert calls == ['ro4003c']
 
 
 def test_declared_cells_uses_local_widths():

@@ -11,8 +11,8 @@ Timestep scheme
 Global dt: both coarse and fine grids use the same timestep, limited by
 the fine-grid CFL condition. No temporal sub-stepping.
 
-Status: EXPERIMENTAL / NOT physics-validated. An energy-stability check
-(2026-04-12) showed energy is net dissipative over 1000 steps (ratio=0.87x
+Status: EXPERIMENTAL / NOT physics-validated. An energy-stability check showed energy is net dissipative over 1000 steps
+(ratio=0.87x
 at step 1000); the small transient growth (~1.004x) at step 100 is SAT
 penalty equilibration, not instability. That is a stability observation
 only — 3D SBP-SAT subgridding has NOT been validated against a reference
@@ -143,60 +143,21 @@ def init_subgrid_3d(
     return config, state
 
 
-def _make_mats(shape):
-    """Create vacuum MaterialArrays."""
-    from rfx.core.yee import MaterialArrays
-    return MaterialArrays(
-        eps_r=jnp.ones(shape, dtype=jnp.float32),
-        sigma=jnp.zeros(shape, dtype=jnp.float32),
-        mu_r=jnp.ones(shape, dtype=jnp.float32),
-    )
+from rfx.stepping.subgrid_sat import _make_mats
 
 
-def _update_h_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None):
-    """H half-step only (Faraday)."""
-    from rfx.core.yee import FDTDState
-    from rfx.stepping import update_h
-    shape = ex.shape
-    state = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
-                      step=jnp.array(0, dtype=jnp.int32))
-    if mats is None:
-        mats = _make_mats(shape)
-    state = update_h(state, mats, dt, dx)
-    return state.hx, state.hy, state.hz
+from rfx.stepping.subgrid_sat import _update_h_only
 
 
-def _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats=None,
-                   pec_mask=None, boundary_pec=True):
-    """E full-step only (Ampere) + PEC."""
-    from rfx.core.yee import FDTDState
-    from rfx.stepping import update_e
-    from rfx.boundaries.pec import apply_pec, apply_pec_mask
-    shape = ex.shape
-    state = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
-                      step=jnp.array(0, dtype=jnp.int32))
-    if mats is None:
-        mats = _make_mats(shape)
-    state = update_e(state, mats, dt, dx)
-    if pec_mask is not None:
-        # #931: ``apply_pec_mask`` IS the shared realization
-        # (realized_pec_edge_masks, volume branch). This lane
-        # carries VOLUMES only — run() refuses a declared sheet
-        # or wire before it gets here (rfx/api/_execute.py) — and
-        # has no periodic branch, so the default #689 flags are
-        # the run's own.
-        state = apply_pec_mask(state, pec_mask)
-    if boundary_pec:
-        state = apply_pec(state)
-    return state.ex, state.ey, state.ez
+from rfx.stepping.subgrid_sat import _update_e_only
 
 
 def _update_3d(ex, ey, ez, hx, hy, hz, dt, dx,
-               mats=None, pec_mask=None, boundary_pec=True):
+               mats=None, pec_mask=None, boundary_pec=True, *, high_wall):
     """Full 3D Yee update (H + E) using rfx core kernels."""
-    hx, hy, hz = _update_h_only(ex, ey, ez, hx, hy, hz, dt, dx, mats)
+    hx, hy, hz = _update_h_only(ex, ey, ez, hx, hy, hz, dt, dx, mats, high_wall=high_wall)
     ex, ey, ez = _update_e_only(ex, ey, ez, hx, hy, hz, dt, dx, mats,
-                                pec_mask, boundary_pec)
+                                pec_mask, boundary_pec, high_wall=high_wall)
     return ex, ey, ez, hx, hy, hz
 
 
@@ -417,6 +378,8 @@ def step_subgrid_3d(
     state: SubgridState3D,
     config: SubgridConfig3D,
     *,
+    high_wall_c,
+    high_wall_f,
     mats_c=None,
     mats_f=None,
     pec_mask_c=None,
@@ -443,12 +406,12 @@ def step_subgrid_3d(
     hx_c, hy_c, hz_c = _update_h_only(
         state.ex_c, state.ey_c, state.ez_c,
         state.hx_c, state.hy_c, state.hz_c,
-        dt, config.dx_c, mats=mats_c)
+        dt, config.dx_c, mats=mats_c, high_wall=high_wall_c)
 
     hx_f, hy_f, hz_f = _update_h_only(
         state.ex_f, state.ey_f, state.ez_f,
         state.hx_f, state.hy_f, state.hz_f,
-        dt, config.dx_f, mats=mats_f)
+        dt, config.dx_f, mats=mats_f, high_wall=high_wall_f)
 
     # === Step 2: SAT_H coupling (tangential H on all 6 faces) ===
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _shared_node_coupling_h_3d(
@@ -464,13 +427,13 @@ def step_subgrid_3d(
         state.ex_c, state.ey_c, state.ez_c,
         hx_c, hy_c, hz_c,
         dt, config.dx_c, mats=mats_c, pec_mask=pec_mask_c,
-        boundary_pec=True)
+        boundary_pec=True, high_wall=high_wall_c)
 
     ex_f, ey_f, ez_f = _update_e_only(
         state.ex_f, state.ey_f, state.ez_f,
         hx_f, hy_f, hz_f,
         dt, config.dx_f, mats=mats_f, pec_mask=pec_mask_f,
-        boundary_pec=False)
+        boundary_pec=False, high_wall=high_wall_f)
 
     # === Step 4: SAT_E coupling (tangential E on all 6 faces) ===
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = _shared_node_coupling_3d(

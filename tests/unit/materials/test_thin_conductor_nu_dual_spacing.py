@@ -66,7 +66,7 @@ import jax.numpy as jnp
 from rfx import Box, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.materials.thin_conductor import ThinConductor, leontovich_rs
-from rfx.nonuniform import e_node_dual_spacings
+from rfx.model.graded_grid import e_node_dual_spacings
 from rfx.runners.nonuniform import (assemble_materials_nu,
                                     build_nonuniform_grid)
 
@@ -115,7 +115,7 @@ def test_dual_spacing_is_the_e_update_metric():
     """``e_node_dual_spacings`` must be the reciprocal of the metric the NU E
     update actually divides by, and must return a uniform profile's cell size
     bit-exactly (so uniform-profile results cannot move)."""
-    from rfx.nonuniform import _profile_to_inv_arrays
+    from rfx.model.graded_grid import _profile_to_inv_arrays
 
     for prof in ([0.5e-3] * 6,
                  [0.25e-3] * 3 + [1.0e-3] * 4,
@@ -197,8 +197,7 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     # The old diagnostic assumed the cell value was read at the node. Since
     # the E-edge mean (#1210), the solver realizes sum(sigma_edge * dual) over
     # node planes. On main this was 2.5% off sigma*t between 0.9h|1.1h cells
-    # while that diagnostic passed. Record: rfx-archive/rfx/records/
-    # 20261008-dc-sheet-realized-conductance-unequal-cells/.
+    # while that diagnostic passed.
     # matched node (deep in the coarse region): primal == dual, unchanged
     sig, primal, dual, rs = _graded_sheet_sigma(
         9.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True, profile=spacings)
@@ -292,8 +291,10 @@ def test_preflight_advises_on_a_sheet_landing_on_a_grading_step():
                 freq_max=10e9,
                 domain=(L, L, 0.0 if dz is not None else 8.0e-3),
                 dx=dx, dz_profile=dz, boundary="cpml", cpml_layers=6)
+            edge = 0.35 if kw.get("surface_impedance_f0") or kw["sigma_bulk"] > 1e6 else 0.0
             sim.add_thin_conductor(
-                Box((6 * dx, 6 * dx, zc), (18 * dx, 18 * dx, zc)), **kw)
+                Box(((6 - edge) * dx, (6 - edge) * dx, zc),
+                    ((18 + edge) * dx, (18 + edge) * dx, zc)), **kw)
             return " ".join(sim.preflight())
 
     lossy = dict(sigma_bulk=1.0e3, thickness=35e-6)

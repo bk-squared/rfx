@@ -12,8 +12,9 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.api import Simulation
+from rfx.api._ad_carry import scan_carry_invars
 from rfx.api._ad_memory_types import ADMemoryUnavailable
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 from rfx.geometry import Sphere
 
 
@@ -111,8 +112,7 @@ def _scan_carries(jaxpr):
     jaxpr = getattr(jaxpr, "jaxpr", jaxpr)
     for eqn in jaxpr.eqns:
         if eqn.primitive.name == "scan":
-            start, count = eqn.params["num_consts"], eqn.params["num_carry"]
-            yield eqn.params["length"], [v.aval for v in eqn.invars[start:start + count]]
+            yield eqn.params["length"], [v.aval for v in scan_carry_invars(eqn)]
         for value in eqn.params.values():
             if hasattr(value, "jaxpr") or hasattr(value, "eqns"):
                 yield from _scan_carries(value)
@@ -245,6 +245,24 @@ def test_carry_contract(feature, graded):
             for m in build_flux_monitor_cfgs(sim, grid, 4, periodic=sim._periodic_flags())))))
     excluded = Counter((tuple(r["shape"]), r["dtype"]) for r in estimate.excluded_linear)
     assert excluded == Counter((tuple(a.shape), str(a.dtype)) for a in expected), "declared linear accumulators must be excluded exactly (including NTFF)"
+
+
+@pytest.mark.parametrize("n_steps", (80, 160))
+def test_box_incident_line_is_resident_not_per_step_tape(n_steps):
+    from rfx.sources.tfsf import tfsf_from_declaration
+
+    sim, grid, corners, _ = _scene()
+    state = jax.eval_shape(lambda: tfsf_from_declaration(
+        sim._tfsf, grid, sim._freq_max, n_steps=n_steps)[1])
+    # Independent forward initializer, not the estimator's matching helper.
+    arrays = [getattr(state, name) for name in ("ex", "ey", "ez", "hx", "hy", "hz")]
+    expected_resident = sum(math.prod(a.shape) * a.dtype.itemsize for a in arrays)
+    estimate = sim.estimate_ad_memory(n_steps, checkpoint=False, design_box=corners)
+    # Analytic resident storage is included in the fixed allocation; the
+    # public resident_bytes field is populated only by compiled estimates.
+    assert estimate.ad_fixed_gb == (192 * math.prod(grid.shape) + expected_resident) * 1e-9
+    # Six write windows plus one frequency's four complex64 NTFF phases.
+    assert estimate.tape_step_bytes == 6 * 8**3 * 4 + 1 * 4 * 8
 
 
 def test_ad_memory_tape_terms():

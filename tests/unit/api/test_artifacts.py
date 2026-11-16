@@ -102,6 +102,18 @@ def test_build_runtime_report_without_result():
     assert validate_artifact_report(report) == []
 
 
+def test_build_runtime_report_summarizes_typed_random_key():
+    import jax
+
+    key = jax.random.key(0)
+    report = build_runtime_report(_minimal_sim(), extra={"seed_key": key})
+
+    assert report["extra"]["seed_key"] == {
+        "present": True, "shape": [], "dtype": str(key.dtype), "size": 1,
+    }
+    assert validate_artifact_report(report) == []
+
+
 def test_build_runtime_report_with_result_like_object():
     sim = _minimal_sim()
     report = build_runtime_report(sim, _fake_result(sim))

@@ -1,8 +1,8 @@
-"""Conductor realization for preflight, moved verbatim out of ``rfx.api._preflight``.
+"""Conductor realization for preflight.
 
-Issue #980 Phase 3, leg 7 -- the last motion leg. This module is not a check
+This module is not a check
 family: it emits no advisory at all. It is the DATA layer every family reads
-when it needs to know where metal actually is on this lattice, under the #931
+when it needs to know where metal actually is on this lattice, under the
 lattice ownership contract: a declaration and its realization are the same
 statement, so every conductor number preflight prints is read from
 ``rfx.boundaries.pec.realized_pec_edge_masks``, never from a cell mask or a
@@ -16,7 +16,7 @@ Three module-level classes and four leaves carry that:
 * :class:`_EntryRealization` -- what ONE conductor declaration realizes as
   (``volume`` / ``sheet`` / ``wire`` / ``lossy`` / ``refused``), with its own
   edge masks, wall planes and shifted-origin re-realization.
-* :class:`_CampaignStaticsContext` -- the per-configuration shared state the #703
+* :class:`_CampaignStaticsContext` -- the per-configuration shared state the
   campaign checks and every other conductor-reading check build once:
   grid, production ``GridCoords``, cell centres, per-axis spacings, periodic
   flags, the realized set and the per-entry realizations.
@@ -27,9 +27,7 @@ Three module-level classes and four leaves carry that:
 Plus the four ``_PreflightMixin`` methods that hand them to the families:
 ``_assemble_realized`` (the production assembly call), ``_port_realized_edges``
 and its kept-name alias ``_port_pec_mask``, and ``_campaign_ctx`` (the
-configuration-keyed cache). Everything here was relocated byte for byte out of
-``rfx/api/_preflight.py`` -- same text, same order, same indentation, same
-docstrings, nothing renamed, reordered, tidied or rewritten.
+configuration-keyed cache).
 
 Import contract, inherited from ``rfx.api._preflight``: import ONLY external
 ``rfx.*`` / stdlib / jax / numpy, never ``rfx.api`` -- that keeps
@@ -48,7 +46,7 @@ thirty-line helper.
 ``_CampaignStaticsContext.entry_realizations`` function-locally imports
 ``rfx.geometry.rasterize_grid._local_cell as _rasterize_local_cell``. That
 alias is leg 5's and is load-bearing prose, not style: a DIFFERENT
-``_local_cell``, the #743 coarsest-cell helper with signature
+``_local_cell``, the coarsest-cell helper with signature
 ``(profile, lo, hi, fallback)``, lives in ``rfx/preflight/mesh.py`` and is
 re-exported by the facade. The local import always shadowed the module global
 inside that method; the alias says so.
@@ -110,7 +108,7 @@ def _shape_bounds(shape):
 
 
 def _shift_back_np(arr, ax: int, periodic: bool):
-    """``arr[i-1]`` along ``ax`` under the #689 convention (numpy twin of
+    """``arr[i-1]`` along ``ax`` under the convention (numpy twin of
     ``rfx.boundaries.pec._shift``): wrap on a periodic or length-1 axis,
     zero pad otherwise."""
     if arr.shape[ax] == 1 or periodic:
@@ -149,14 +147,18 @@ def _realized_edges_np(pec_mask, sheets, wires, periodic, shape):
     from rfx.boundaries.pec import realized_pec_edge_masks
     if pec_mask is None and not sheets and not wires:
         return tuple(np.zeros(tuple(shape), dtype=bool) for _ in range(3))
-    cells = None if pec_mask is None else jnp.asarray(pec_mask)
-    edges = realized_pec_edge_masks(cells, sheets, wires, periodic)
-    return tuple(np.asarray(m, dtype=bool) for m in edges)
+    # This reader requires concrete geometry, including under a user's jit.
+    # Keep its shared edge-rule calculation concrete as well as its inputs.
+    import jax
+    with jax.ensure_compile_time_eval():
+        cells = None if pec_mask is None else jnp.asarray(pec_mask)
+        edges = realized_pec_edge_masks(cells, sheets, wires, periodic)
+        return tuple(np.asarray(m, dtype=bool) for m in edges)
 
 
 class _RealizedPEC:
     """The run's realized conductor set, read once from the production
-    assembly with the #931 collectors: volume cells (``pec_mask``),
+    assembly with the collectors: volume cells (``pec_mask``),
     :class:`~rfx.boundaries.pec.SheetSpec` sheets, wires, and the
     ``(Mx, My, Mz)`` edge masks the solver zeroes — host numpy.
     """
@@ -186,8 +188,7 @@ class _RealizedPEC:
                                     periodic=self.periodic)
 
     def is_pec_edge(self, component, i, j, k) -> bool:
-        # thin delegate; named differently from the owner so the single-owner
-        # lock (tests/contracts/test_pec_single_owner_lock.py) reads one rule
+        # Delegate PEC-edge ownership to the shared boundary rule.
         from rfx.boundaries.pec import edge_is_pec
         return edge_is_pec(self.edges, component, i, j, k)
 
@@ -199,7 +200,7 @@ class _RealizedPEC:
 
 
 class _EntryRealization:
-    """What ONE conductor declaration realizes as under #931.
+    """What ONE conductor declaration realizes as under the lattice ownership contract.
 
     ``kind`` is ``"volume"`` (centre-sampled cells), ``"sheet"`` (a
     :class:`SheetSpec`: one plane, closed footprint, no cell), ``"wire"``
@@ -211,8 +212,9 @@ class _EntryRealization:
 
     def __init__(self, *, label, name, shape, kind, cells=None, sheet=None,
                  wire=None, error=None, lo=None, hi=None, declared_mid=None,
-                 tie_planes=None, solved_shape=None):
+                 tie_planes=None, solved_shape=None, subject_label=None):
         self.label = label
+        self.subject_label = label if subject_label is None else subject_label
         self.name = name
         self.shape = shape
         self.solved_shape = shape if solved_shape is None else solved_shape
@@ -321,18 +323,18 @@ def assembly_warning_scope():
 
 
 class _CampaignStaticsContext:
-    """Shared lazily-built state for the issue-#703 campaign checks and
+    """Shared lazily-built state for the campaign checks and
     every other preflight check that reads conductor geometry.
 
     Built once per CONFIGURATION through :meth:`_PreflightMixin
-    ._campaign_ctx` (a cache keyed on the entry identities and the mesh
+    ._campaign_ctx` (a cache keyed on the declarations and their mesh
     parameters, so an ``add()`` after a preflight misses it — a plain
     instance cache would have gone stale). The grid, sample coordinates,
     cell centres and the realized conductor set come from the PRODUCTION
     builders — the check must see the run's realization, not a hand model
     of it (the ``_validate_cfg_graded_box_rasterization`` lesson: a hand
     model of the sampling diverged from the rasterizer on exactly the
-    cases it existed to catch). Under #931 that means one thing: every
+    cases it existed to catch). Under the lattice ownership contract that means one thing: every
     conductor number a check prints is read from
     ``rfx.boundaries.pec.realized_pec_edge_masks`` (through
     :meth:`realized` for the whole model and :meth:`entry_realizations`
@@ -419,7 +421,7 @@ class _CampaignStaticsContext:
     # ------------------------------------------------------------------
 
     def realized(self, *, strict=False, defer_warnings=False):
-        """:class:`_RealizedPEC` from the PRODUCTION assembly (with the #931
+        """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         sheet/wire collectors), once; ``None`` when the assembly
         raised (``assembly_error`` says why). Strict execution/build readers
         re-raise the original exception, including after a diagnostic read.
@@ -445,6 +447,19 @@ class _CampaignStaticsContext:
             raise self._assembly_exception
         return self._realized
 
+    def bind_realization(self):
+        """Keep record assembly failures in the diagnostic assembly channel."""
+        from rfx.model.realization_table import bind_table
+        root = self.realized() if self.grid is not None else None
+        if root is None or self._assembly_exception is not None:
+            return None
+        try:
+            bind_table(self.sim, root, lane=root.lane, compact=False)
+        except self._NARROW_EXCS as exc:
+            self._assembly_exception = exc
+            return None
+        return root
+
     def _emit_assembly_warnings(self):
         import warnings
         emitted = getattr(self, '_assembly_warnings', ())
@@ -467,17 +482,9 @@ class _CampaignStaticsContext:
         (``thin_conductor[i]``) — through the shared classifier."""
         if self._entries is not None:
             return self._entries
-        # ``_local_cell`` is ALIASED here, and the alias is the whole of
-        # what changed in this body under #980 Phase 3 leg 5. Two different
-        # functions carry that name: this one, ``(nodes, d, pos)`` from
-        # ``rfx.geometry.rasterize_grid``, and the #743 helper
-        # ``(profile, lo, hi, fallback)`` that leg 5 moved to
-        # ``rfx/preflight/mesh.py`` and this module re-exports at module
-        # level. The function-local import always shadowed the module global
-        # inside this method, so the call below has always resolved to the
-        # rasterizer's; naming them apart says so instead of relying on it,
-        # and keeps ruff's F811 honest now that the re-exported name has no
-        # reader left in this file. Same object, same call, same arguments.
+        # Alias ``_local_cell`` to distinguish the rasterizer's ``(nodes, d, pos)``
+        # helper from the mesh family's ``(profile, lo, hi, fallback)`` helper. The
+        # call here uses ``rfx.geometry.rasterize_grid``.
         from rfx.geometry.rasterize_grid import (
             classify_pec_entry, sheet_spec_from_shape,
             _local_cell as _rasterize_local_cell,
@@ -515,7 +522,7 @@ class _CampaignStaticsContext:
                 return None, None
             a = int(sheet.normal_axis)
             mid = 0.5 * (float(lo[a]) + float(hi[a]))
-            from rfx._periodic import plane_coordinate
+            from rfx._internal._periodic import plane_coordinate
             mid = plane_coordinate(self.grid, a, mid)
             nodes = self.nodes[a]
             d_local = _rasterize_local_cell(nodes, self.cell_sizes[a], mid)
@@ -523,7 +530,7 @@ class _CampaignStaticsContext:
             if k + 1 < len(nodes):
                 d_lo = abs(mid - float(nodes[k]))
                 d_hi = abs(float(nodes[k + 1]) - mid)
-                from rfx._grid_metric import node_tie_tol
+                from rfx._internal._grid_metric import node_tie_tol
                 if abs(d_lo - d_hi) <= node_tie_tol(mid, d_local) and d_lo > 0.0:
                     return mid, (k, k + 1)
             return mid, None
@@ -552,7 +559,7 @@ class _CampaignStaticsContext:
                 # crash: preflight's job is to report. One unplaceable
                 # conductor used to kill the whole per-entry loop, so every
                 # other entry lost its realization too (measured on the
-                # #685 `_NoBBox` fixture: NotImplementedError out of
+                # `_NoBBox` fixture: NotImplementedError out of
                 # classify_pec_entry, no advisory at all).
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=entry.shape,
@@ -631,6 +638,7 @@ class _CampaignStaticsContext:
                 continue  # Assembly owns structural refusals.
             out.append(_EntryRealization(
                 label='add_thin_conductor(surface_impedance_f0=...)',
+                subject_label=f'thin_conductor[{i}]',
                 name=f'thin_conductor[{i}]', shape=tc.shape, kind='sheet',
                 sheet=sheet, lo=lo, hi=hi, solved_shape=solved))
         return out
@@ -722,7 +730,7 @@ class _CampaignStaticsContext:
 
 
 def _assemble_realized(self, grid, *, nonuniform: bool):
-    """The run's realized conductor set on ``grid`` (#931 §1.7).
+    """The run's realized conductor set on ``grid``.
 
     Runs the PRODUCTION assembly with the sheet / wire collectors and
     realizes the ``(Mx, My, Mz)`` edge masks through
@@ -731,7 +739,7 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
     preflight consumer that needs "where is metal" reads the returned
     :class:`_RealizedPEC` (wall planes, ``is_pec_edge``), never the
     cell mask: a sheet owns no cell, and a volume's far face is a
-    wall the cell mask does not mark (the #868 class).
+    wall the cell mask does not mark (the class).
     """
     from rfx.model.conductors import realized_conductors
     return realized_conductors(self, grid, nonuniform=nonuniform, mode="audit")
@@ -739,7 +747,7 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
 def _port_realized_edges(self, grid):
     """:class:`_RealizedPEC` for the uniform lane, or ``None``.
 
-    Issue #738 review: the guide a waveguide port sits in is defined
+    the guide a waveguide port sits in is defined
     by its WALLS, and on the committed sub-aperture fixtures those
     walls are interior PEC shapes, not the domain faces. Read from
     the PRODUCTION assembly so preflight sees the same realized
@@ -757,11 +765,11 @@ def _port_realized_edges(self, grid):
         realized = self._assemble_realized(grid, nonuniform=False)
     except (ValueError, TypeError, NotImplementedError, KeyError,
             AttributeError, IndexError):
-        # Deliberately NOT ``except Exception`` (PR #555): an async
+        # Deliberately NOT ``except Exception``: an async
         # worker timeout must propagate through this advisory. On a
         # narrow failure the caller falls back to the aperture,
-        # which is always defined. Issue #482 also made the timeout/
-        # cancel exceptions themselves ``BaseException``-derived, so
+        # which is always defined. The timeout/cancel exceptions
+        # themselves derive from ``BaseException``, so
         # this tuple is belt-and-suspenders, not the only guard --
         # see the longer comment at the other ``_assemble_materials``
         # call site in this file.
@@ -775,43 +783,33 @@ def _port_pec_mask(self, grid):
     (``transverse_spans``), which reads the guide the way preflight
     does. Returns :meth:`_port_realized_edges` — the run's realized
     conductor set, NOT a cell mask (a cell mask cannot carry a
-    volume's far face or a sheet, #931 §1.9); the object is what
+    volume's far face or a sheet); the object is what
     :meth:`_port_transverse_spans` takes. Callers should move to the
     new name; delete this once the fixture does."""
     return self._port_realized_edges(grid)
 
 
 def context_from_conductors(sim, conductors):
-    """Lend realized products to readers without reassembling declarations."""
-    from rfx.realized_geometry import _node_arrays
-    ctx = object.__new__(_CampaignStaticsContext)
-    ctx.sim, ctx.grid = sim, conductors.grid
-    ctx.lane, ctx.periodic = conductors.lane, conductors.periodic
-    ctx.error = ctx.assembly_error = ctx._assembly_exception = None
-    ctx._realized, ctx._entries = conductors, []
-    ctx.spacings, ctx.nodes = _node_arrays(sim, ctx.grid, ctx.lane == 'nonuniform')
-    products = {key: (cells, sheet, wire, shape)
-                for key, cells, sheet, wire, shape in conductors.assembly_entries}
-    for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):
-        for i, entry in enumerate(collection):
-            label = f'{prefix}[{i}]'
-            cells, sheet, wire, shape = products.get(id(entry), (None, None, None, entry.shape))
-            if id(entry) not in products and prefix == 'geometry':
-                continue
-            kind = 'volume' if cells is not None else 'sheet' if sheet is not None else 'wire' if wire is not None else 'lossy'
-            bounds = _shape_bounds(entry.shape)
-            ctx._entries.append(_EntryRealization(label=label,
-                name=getattr(entry, 'material_name', label), shape=entry.shape,
-                solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire,
-                lo=None if bounds is None else np.asarray(bounds[0]),
-                hi=None if bounds is None else np.asarray(bounds[1])))
-    for entity in conductors.stamped_entities:
-        if entity.kind != 'material':
-            lo, hi = entity.shape.bounding_box()
-            ctx._entries.append(_EntryRealization(label=entity.entity_id,
-                name=entity.entity_id, shape=entity.shape, kind=entity.kind,
-                cells=entity.cells, lo=np.asarray(lo), hi=np.asarray(hi)))
-    return ctx
+    from rfx.model.realization_context import context_from_conductors as prepared_context
+    return prepared_context(sim, conductors)
+
+
+def release_inspection(sim):
+    """Release the model-owned inspection products."""
+    sim._pf_campaign_ctx = None
+    sim._realized_geometry_record = None
+    sim._coax_geometry = None
+
+
+def clear_inspection_cache(self) -> None:
+    """Release this model's cached inspection products.
+
+    Clears preflight's assembly context, the realized-geometry record and
+    the coax stamp. They are rebuilt on the next call that needs them.
+    They are released automatically while the solve runs. Call this after
+    inspecting a model you will not solve. Returns None.
+    """
+    release_inspection(self)
 
 
 def _campaign_ctx(self):
@@ -819,32 +817,17 @@ def _campaign_ctx(self):
 
     Built once per configuration and reused by every check that reads
     conductor geometry (thin metal on NU, port/probe liveness, NTFF
-    walls, the #703 campaign checks, the #931 realization findings):
+    walls, the campaign checks, the realization findings):
     the context runs the production assembly, which on a large model
     is the most expensive thing preflight does, and five checks each
     building their own would run it five times. The cache key is the
-    identity of every geometry / thin-conductor / pinned-sheet entry
-    plus the mesh parameters, so an ``add()`` or ``add_pinned_sheet()``
-    after a preflight (a new entry object) or a mesh change misses the
-    cache and rebuilds — the staleness a plain instance cache would
-    have had.  EVERY declaration surface that reaches the assembly must
-    have a term here: a conductor the solve realizes and preflight's
-    cached context does not is a preflight reporting a different model
-    from the one that runs.
+    shared declaration snapshot. Entry references prevent address reuse;
+    concrete profile contents detect in-place edits. Observer-only changes
+    also rebuild: both public records describe the same declaration state.
     """
-    sim = self
-    key = (
-        tuple(id(e) for e in sim._geometry),
-        tuple(id(tc) for tc in getattr(sim, "_thin_conductors", ())),
-        tuple(id(ps) for ps in getattr(sim, "_pinned_sheets", ())),
-        *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
-          ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")),
-        id(sim._dx), id(sim._dx_profile), id(sim._dy_profile),
-        id(sim._dz_profile), tuple(sim._domain),
-        getattr(sim, "_periodic_axes", None), sim._cpml_layers,
-        id(getattr(sim, "_refinement", None)),
-        tuple(sorted((name, id(spec)) for name, spec in sim._materials.items())),
-    )
+    from rfx._declarations import declaration_key
+
+    key = declaration_key(self)
     cached = getattr(self, "_pf_campaign_ctx", None)
     if cached is not None and cached[0] == key:
         return cached[1]
@@ -886,6 +869,7 @@ _assemble_realized.__qualname__ = "_PreflightMixin._assemble_realized"
 _port_realized_edges.__qualname__ = "_PreflightMixin._port_realized_edges"
 _port_pec_mask.__qualname__ = "_PreflightMixin._port_pec_mask"
 _campaign_ctx.__qualname__ = "_PreflightMixin._campaign_ctx"
+clear_inspection_cache.__qualname__ = "_PreflightMixin.clear_inspection_cache"
 
 
 # Standalone preflight: report what the production assembly refuses (an error, never a pass).

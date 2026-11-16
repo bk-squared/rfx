@@ -26,11 +26,8 @@ from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
+from rfx._plotting import _pyplot
+
 
 
 class DebyeFitResult(NamedTuple):
@@ -485,6 +482,8 @@ def eval_lorentz(freqs: np.ndarray, eps_inf: float,
     -------
     eps_complex : (N,) complex array
     """
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(poles, "material_fit.eval_lorentz")
     # Straight from the pole fields: eps = eps_inf + sum kappa / (w0^2 - w^2 + 2j*delta*w).
     # For w0 > 0 this is the Lorentz form (kappa = delta_eps * w0^2). It used to
     # go through delta_eps = kappa / w0^2 and set delta_eps = 0 when w0 == 0, so a
@@ -493,7 +492,9 @@ def eval_lorentz(freqs: np.ndarray, eps_inf: float,
     omega = 2.0 * np.pi * np.asarray(freqs, dtype=float)
     eps = np.full(omega.shape, eps_inf, dtype=complex)
     for p in poles:
-        eps = eps + p.kappa / (p.omega_0 ** 2 - omega ** 2 + 2j * p.delta * omega)
+        from rfx.materials.relative_strength import RelativeStrength
+        kappa = p.kappa.si if isinstance(p.kappa, RelativeStrength) else p.kappa
+        eps = eps + kappa / (p.omega_0 ** 2 - omega ** 2 + 2j * p.delta * omega)
     return eps
 
 
@@ -528,8 +529,7 @@ def plot_material_fit(
     -------
     fig : matplotlib Figure
     """
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for plot_material_fit")
+    plt = _pyplot()
 
     freqs = np.asarray(freqs)
     eps_measured = np.asarray(eps_measured)

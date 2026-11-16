@@ -1,6 +1,8 @@
 """Shared run/forward lane admission, before execution or sharding."""
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
+from rfx.errors import AccuracyWarning
 import functools
 import jax.numpy as jnp
 
@@ -8,6 +10,7 @@ from typing import NamedTuple
 import numpy as np
 
 from rfx.runners._admission import guard_shape_tangents
+from rfx.preflight.realization import release_inspection
 
 
 class _DispatchPlan(NamedTuple):
@@ -26,7 +29,7 @@ class _DispatchPlan(NamedTuple):
     n_steps:
         Resolved timestep count for lanes whose step count is derived from
         a *throwaway* grid build (the non-uniform / distributed lanes). For
-        lanes that build-and-reuse a grid (uniform / adi / subgridded), this
+        lanes that build-and-reuse a grid (uniform / subgridded), this
         is ``None`` and the caller resolves ``n_steps`` from the grid it
         already holds — avoiding a duplicate grid build.
 
@@ -80,36 +83,41 @@ def _dispatch_plan(
     disjoint lane-token sets:
 
     - forward: ``fwd_distributed`` / ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
-    - run: ``run_distributed`` / ``run_distributed_nu`` / ``run_nonuniform`` / ``run_adi`` /
+    - run: ``run_distributed`` / ``run_distributed_nu`` / ``run_nonuniform`` /
       ``run_subgridded`` / ``run_uniform``
 
     ``n_steps`` is returned resolved for the NU/distributed lanes (whose
     step count comes from a throwaway grid) and ``None`` for lanes that
     build-and-reuse a grid (the caller resolves it there).
     """
+    from rfx.model.wall_loss import admit_wall_loss, refuse_wall_loss
+    admit_wall_loss(self, mode + " dispatch", smoothing=subpixel_smoothing)
+    if distributed or devices is not None:
+        refuse_wall_loss(self, mode + " distributed dispatch")
+    if self._refinement is not None:
+        refuse_wall_loss(self, mode + " subgridded dispatch")
     from rfx.model.smoothing_admission import admit_full_tensor
     admit_full_tensor(self, subpixel_smoothing, distributed=distributed, devices=devices)
     from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(self)
-    admit_waveguide(self, lane=f"{mode} dispatch")
-    # ADI must first report that it does not support NTFF accumulation.
-    if self._solver != "adi":
-        admit_ntff(self, lane=f"{mode} dispatch")
+    # A multi-device lane steps no waveguide port and refuses it below, so
+    # the aperture edges are not judged there, as on the runner entries.
+    admit_waveguide(self, lane=f"{mode} dispatch",
+                    edges=not (distributed or (devices is not None and len(devices) > 1)))
+    admit_ntff(self, lane=f"{mode} dispatch")
     from rfx.boundaries.tfsf import admit_simulation
     admit_simulation(self, material_overrides=tfsf_material_overrides)
     # Constructor checks cover explicit profiles only. Geometry can make
     # auto mesh non-uniform later, so validate the declared solver against
     # the completed mesh before ANY Yee lane (including distributed) wins
     # dispatch. This is execution legality, independent of preflight.
-    if self._solver == "adi":
-        self._require_uniform_mesh("solver='adi'")
     self._require_mode_the_nonuniform_lane_solves()
     # Every non-uniform lane below, single-device and distributed, run()
-    # and forward(), has no subgrid and would drop a refinement (#1240).
+    # and forward(), has no subgrid and would drop a refinement.
     self._require_no_refinement_on_the_nonuniform_lane()
     # A point feature one cell off a conductor drawn at the same half
-    # node (#1295, #1342); run() and forward(), both lanes.
+    # node; run() and forward(), both lanes.
     self._require_no_half_node_split()
     is_nonuniform = self._uses_nonuniform_mesh
 
@@ -136,23 +144,13 @@ def _dispatch_plan(
             raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
     def _reject_lane_precision(lane: str) -> None:
-        # Issue #630 follow-up: field_dtype is threaded ONLY on the
-        # uniform-lane runner (rfx/runners/uniform.py). The non-uniform,
-        # distributed, distributed-NU, and subgridded runners have zero
-        # field_dtype occurrences, so a non-float32 precision would
-        # silently run float32 fields there -- the exact SILENT_WRONG
-        # class this repo removes on sight. distributed=True is a
-        # call-time kwarg invisible to preflight (see the "P3
-        # (Distributed path)" precedent in
-        # _validate_cfg_subgrid_limitations), so THIS is the only
-        # enforcement point for that case; for the non-uniform-mesh
-        # case _validate_cfg_precision_x64 also warns in advance, but
-        # this raise is what actually stops it (and cannot be bypassed
-        # with skip_preflight=True, unlike a preflight warning).
-        if self._precision != "float32":
+        # Only single-device graded Yee carries float64; mixed stays refused.
+        if self._precision != "float32" and not (
+            self._precision == "float64" and lane in {"run_nonuniform", "fwd_nonuniform"}
+        ):
             raise NotImplementedError(
                 f"precision={self._precision!r} is currently supported "
-                f"only on the uniform single-device lane (issue #630); "
+                f"only on the uniform single-device lane; "
                 f"the {lane!r} lane does not thread field_dtype through "
                 "its runner and would silently run float32 fields "
                 "regardless of this setting. Use precision='float32' "
@@ -161,22 +159,32 @@ def _dispatch_plan(
                 "reach the uniform lane, where this knob is honoured."
             )
 
+    # One refusal for both entries (census: one raising line per refusal):
+    # forward() selects the multi-device lanes with distributed=True, run()
+    # with more than one device.
+    multi_device = (distributed if mode == "forward"
+                    else devices is not None and len(devices) > 1)
+    if not multi_device and not is_nonuniform and self._refinement is None:
+        from rfx.runners._smoothing_admission import warn_kottke_pec_volume
+        warn_kottke_pec_volume(self, subpixel_smoothing)
+    if multi_device and self._boundary == "upml":
+        raise ValueError("boundary='upml' does not support distributed execution")
+
     if mode == "forward":
         if isinstance(checkpoint_segments, tuple):
             raise ValueError("forward checkpoint_segments must be an int; use checkpoint_every for levels on the graded path")
         def _fwd_nu_n_steps() -> int:
             return self._nu_n_steps(num_periods)
 
-        # Issue #73: forward(checkpoint_segments=...) is currently wired only
+        # forward(checkpoint_segments=...) is currently wired only
         # on the uniform single-device path. Reject loudly elsewhere — both
         # for distributed=True and for non-uniform meshes — so users don't
         # get a silent fall-back to the linear-memory scan that this kwarg
-        # was meant to fix. NU follow-up will mirror the pattern in
-        # run_nonuniform; track on issue #73.
+        # was meant to fix.
         if checkpoint_segments is not None and is_nonuniform:
             raise NotImplementedError(
                 "forward(checkpoint_segments=...) is currently wired only "
-                "on the uniform single-device forward path (issue #73). "
+                "on the uniform single-device forward path. "
                 "Drop checkpoint_segments or run on a uniform mesh without "
                 "distributed=True. NU support is tracked as a follow-up."
             )
@@ -184,23 +192,21 @@ def _dispatch_plan(
         # Phase 3: distributed dispatch (V3 lines 842-847).
         if distributed:
             if not is_nonuniform:
-                if self._solver == "adi":
-                    raise ValueError("solver='adi' does not support distributed execution")
-                if self._boundary == "upml":
-                    raise ValueError("boundary='upml' does not support distributed execution")
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
+                release_inspection(self)
                 return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
-            # T8 (2026-04): PMC is now wired across all three sharded
-            # runners (distributed_nu, distributed_v2, distributed).
-            # The reject guard that used to live here (introduced in
-            # f3cab7c) has been removed. The single-device PMC runtime
-            # hook lives in rfx/simulation.py:703-705 and the sharded
-            # PMC helpers live in each runner next to their PEC analog.
+            # Uniform and graded distributed runners admit PMC faces.
+            # The curl reads the declared magnetic image; no separate
+            # post-H face write is dispatched here. Uniform slabs use
+            # assembled magnetic update factors, while graded slabs
+            # retain zero-padded inverse H spacings. Both preserve a
+            # zero-initialized stored high ghost at zero.
             self._reject_upml_on_nonuniform(
                 "distributed non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_distributed_nu")
+            release_inspection(self)
             return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
 
         if is_nonuniform:
@@ -209,6 +215,7 @@ def _dispatch_plan(
             self._reject_upml_on_nonuniform("non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_nonuniform")
+            release_inspection(self)
             return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
 
         # Uniform forward lane: the remaining kwargs are NU-only.
@@ -222,34 +229,31 @@ def _dispatch_plan(
             raise NotImplementedError(
                 "checkpoint_every (segmented remat) is currently only "
                 "supported on the non-uniform forward path. For the "
-                "uniform path, use checkpoint_segments instead (issue #73)."
+                "uniform path, use checkpoint_segments instead."
             )
         if n_warmup > 0:
             raise NotImplementedError(
-                "n_warmup (issue #40) is currently only supported on the "
+                "n_warmup is currently only supported on the "
                 "non-uniform / distributed-non-uniform forward paths "
                 "(_forward_from_materials has no warmup-split parameter); "
                 "on the uniform lane it was previously accepted and "
-                "silently ignored (issue #626 — measured bit-identical "
+                "silently ignored (measured bit-identical "
                 "gradient at n_warmup=0 vs n_warmup=60), which is worse "
                 "than an error. For reverse-mode memory relief on the "
-                "uniform lane use checkpoint_segments instead (issue #73) "
+                "uniform lane use checkpoint_segments instead "
                 "— it is EXACT (no gradient approximation), unlike "
                 "n_warmup which trades memory/compute for a truncated, "
                 "increasingly biased gradient as n_warmup approaches the "
-                "loss window (measured on the non-uniform lane, issue "
-                "#626 part 2)."
+                "loss window (measured on the non-uniform lane"
+                ")."
             )
         # n_steps for the uniform forward lane is resolved by the caller
         # from the grid it builds and reuses for material assembly.
+        release_inspection(self)
         return _DispatchPlan(lane="fwd_uniform", n_steps=n_steps)
 
     # mode == "run"
-    distributed_run = devices is not None and len(devices) > 1
-    if self._solver == "adi" and distributed_run:
-        raise ValueError("solver='adi' does not support distributed execution")
-    if self._boundary == "upml" and distributed_run:
-        raise ValueError("boundary='upml' does not support distributed execution")
+    distributed_run = multi_device
 
     # Distributed graded meshes share forward's NU runner and staging.
     if distributed_run and is_nonuniform:
@@ -272,16 +276,12 @@ def _dispatch_plan(
                 "<= 5:1 for shared-dt stability; got "
                 f"{_max_ratio:.2f}:1."
             )
-        if self._solver == "adi":
-            raise ValueError(
-                "Distributed + non-uniform does not support solver='adi'."
-            )
         if _max_ratio > 3.0:
             _wmod.warn(
                 f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
                 ":1 exceeds the 3:1 stability caution threshold. "
-                "Monitor for numerical dispersion / late-time drift.",
-                stacklevel=2,
+                "Monitor for numerical dispersion / late-time drift.", AccuracyWarning,
+                stacklevel=user_stacklevel(),
             )
 
     # ---- Distributed multi-device lane ----
@@ -294,6 +294,7 @@ def _dispatch_plan(
                 grid = self._build_grid()
                 _n = grid.num_timesteps(num_periods=num_periods)
         _reject_lane_precision("run_distributed_nu" if is_nonuniform else "run_distributed")
+        release_inspection(self)
         return _DispatchPlan(lane="run_distributed_nu" if is_nonuniform else "run_distributed", n_steps=_n)
 
     # ---- Non-uniform mesh lane ----
@@ -303,24 +304,24 @@ def _dispatch_plan(
         if _n is None:
             _n = self._nu_n_steps(num_periods)
         _reject_lane_precision("run_nonuniform")
+        release_inspection(self)
         return _DispatchPlan(lane="run_nonuniform", n_steps=_n)
 
-    # ---- ADI lane (n_steps resolved by caller from the reused grid) ----
-    if self._solver == "adi":
-        return _DispatchPlan(lane="run_adi", n_steps=n_steps)
 
     # ---- Subgridded lane (n_steps resolved by caller — refinement ratio
     # scaling needs the reused grid) ----
     if self._refinement is not None:
         _reject_lane_precision("run_subgridded")
+        release_inspection(self)
         return _DispatchPlan(lane="run_subgridded", n_steps=n_steps)
 
     # ---- Uniform lane (n_steps resolved by caller from the reused grid) ----
+    release_inspection(self)
     return _DispatchPlan(lane="run_uniform", n_steps=n_steps)
 
 
 def _staged_by_an_outer_trace() -> bool:
-    """Whether ``forward()`` is being recorded into a compiled program (#1225).
+    """Whether ``forward()`` is being recorded into a compiled program.
 
     Under ``jax.jit`` — and ``jax.checkpoint``, ``lax.scan`` or
     ``jax.eval_shape`` — JAX records every array operation instead of running
@@ -335,7 +336,7 @@ def _staged_by_an_outer_trace() -> bool:
 
 
 def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
-    """Whether a forward entry evaluates its set-up while being traced (#1367).
+    """Whether a forward entry evaluates its set-up while being traced.
 
     The rule: set-up that reads only the declaration is always concrete, and
     the time stepping is always recorded (``rfx.core.jax_utils``). Under an
@@ -344,18 +345,16 @@ def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
     places: a wire port's live edges and an MSL port's geometry check read
     the realized PEC edge mask, a graded-lane port takes its cell sizes as
     Python floats, the far-field transform reads an NTFF box's frequency
-    count. #1225 answered True for a whitelist of ports and missed the rest
-    (MSL ports, #1367; the NTFF box, #1364), so the answer no longer depends
-    on the model: staged by an outer trace, and not distributed.
+    count. The answer therefore does not depend on the model: staged by
+    an outer trace.
 
     Operations that read a traced input stay recorded, so a gradient is
-    unchanged. The distributed lane is excluded: its ``shard_map`` step
-    cannot run its constant-operand collectives outside the mesh.
+    unchanged. Multi-device advances leave through ``recorded_sharded_call``.
     """
-    return not distributed and _staged_by_an_outer_trace()
+    return _staged_by_an_outer_trace()
 
 
-def _declaration_setup_at_trace_time(entry):
+def _declaration_setup_at_trace_time(entry=None, *, run=False):
     """Give a shared forward entry the set-up / time-stepping boundary.
 
     ``forward()`` and the entries its single-device lanes share with the
@@ -374,15 +373,29 @@ def _declaration_setup_at_trace_time(entry):
 
     The body runs in the region only if the region really made constants
     concrete: inside an eager ``jax.shard_map`` the probe still reads True
-    there, and the entry then runs its body outside the region, exactly as
-    before #1225, instead of re-entering without end.
+    there, and the entry then runs its body outside the region instead of re-entering without end.
+
+    The post-admission run entry uses ``devices=`` to select distributed
+    calls. Its host-controlled decay/progress and subgrid paths retain their
+    existing execution context; fixed one- and multi-device scans enter.
     """
+    if entry is None:
+        return functools.partial(_declaration_setup_at_trace_time, run=run)
+
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
         self._resolve_field_dtype()
         guard_shape_tangents(self)
-        if _setup_evaluated_at_trace_time(
-                distributed=bool(kwargs.get("distributed", False))):
+        distributed = bool(kwargs.get("distributed", False))
+        if run:
+            devices = kwargs.get("devices")
+            distributed = devices is not None and len(devices) > 1
+            if (kwargs.get("until_decay") is not None
+                    or kwargs.get("report_every") is not None
+                    or kwargs.get("until_identified", False) is not False
+                    or self._refinement is not None):
+                return entry(self, *args, **kwargs)
+        if _setup_evaluated_at_trace_time(distributed=distributed):
             from rfx.core.jax_utils import declaration_setup
             with declaration_setup():
                 if not _staged_by_an_outer_trace():

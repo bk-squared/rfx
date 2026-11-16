@@ -57,7 +57,10 @@ e. Slow, Linux only: the x-sharded override across two processes gives the
 
 Mutations (slow): the drive handed the arrays as drawn, every builder call
 kept, sends a, b and c red; the drive reading the seam edge's own row for its
-i-1 cells sends a red.
+i-1 cells sends a red. Since #2045 concrete drive materials are realized on
+the whole grid from owned rows, so the seam mutation replaces the owned
+i-1 row in the drive's input slabs; a halo-only change is discarded. The E
+update keeps the real slabs.
 Since #1813 the graded forward builds the drive in the wrapped slab step
 (``rfx.stepping.slab_setup.slab_drive_columns``, from the slabs it stages for
 the E update); the mutations patch it there and fail if it is not reached.
@@ -91,12 +94,13 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
 from rfx import Simulation  # noqa: E402
-from rfx.core.yee import (  # noqa: E402
-    FDTDState, MaterialArrays, curl_h_nu, update_e_nu,
-)
+from rfx.geometry.rasterize_grid import unpadded_high_walls  # noqa: E402
+from rfx.core.yee import FDTDState, MaterialArrays, curl_h_nu
+from rfx.stepping.yee import update_e_nu
 from rfx.geometry import Box  # noqa: E402
 from rfx.nonuniform import position_to_index  # noqa: E402
 from rfx.runners import distributed_nu as nu  # noqa: E402
+from rfx.stepping import slab_graded_legacy_loop  # noqa: E402
 from rfx.sources import GaussianPulse  # noqa: E402
 
 pytestmark = pytest.mark.distributed
@@ -228,7 +232,7 @@ def _stepper_cb(grid, eps, sigma):
                           jnp.ones(grid.shape, jnp.float32))
     from rfx.model.materials import electric_cell_sizes
     new = update_e_nu(state, mats, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
-                      cell_sizes=electric_cell_sizes(grid))
+                      cell_sizes=electric_cell_sizes(grid), high_wall=unpadded_high_walls(grid))
     curl = curl_h_nu(*h, grid.inv_dx, grid.inv_dy, grid.inv_dz)
     return {c: np.asarray(getattr(new, c), np.float64) / np.asarray(curl[a], np.float64)
             for a, c in enumerate(("ex", "ey", "ez"))}
@@ -312,7 +316,7 @@ def _frozen_drive():
     """The drive's Cb read through ``stop_gradient``: what the gradient is
     without the drive's own derivative (a witness of its size)."""
     from rfx.model import source_coefficients
-    real = nu.material_drive_scales
+    real = slab_graded_legacy_loop.material_drive_scales
     columns = source_coefficients.drive_columns
 
     def frozen(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None, **film):
@@ -324,7 +328,7 @@ def _frozen_drive():
         return columns(jax.lax.stop_gradient(eps), jax.lax.stop_gradient(sigma), *args, **kwargs)
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(nu, "material_drive_scales", frozen)
+        patch.setattr(slab_graded_legacy_loop, "material_drive_scales", frozen)
         patch.setattr(source_coefficients, "drive_columns", frozen_columns)
         yield
 
@@ -451,7 +455,7 @@ def test_the_traced_drive_coefficient_has_a_finite_gradient_under_a_large_cotang
     NaN gradient at the four cells a current source's drive reads -- on this lane
     and on the single-device lane since #1280 (#1279 review). In eps_r units the
     same Cb keeps the reverse pass finite far past any objective a board makes."""
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     dt = float(_board(EPS_LO)._build_nonuniform_grid().dt)
     for cotangent in (1e18, 1e22, 1e26, 1e30):
         grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt),
@@ -540,18 +544,21 @@ def _drive_from_drawn(sim):
 
 
 def _seam_reads_its_own_row():
-    """The drive reads the override, at the wrong cells: the seam owner's
-    halo row replaced by its own first real row, so an Ey/Ez edge on rank 1's
-    first real cell replicates its own row where its i-1 cells (rank 0's)
-    belong."""
+    """The drive reads the override at the wrong owned cells: replace rank
+    0's last real row (global i-1) by rank 1's first real row (global i).
+    Cut input row n on rank r maps to r * nx_per_rank + n - ghost_width - 1
+    (one extra low row). Changing the owner's row survives the whole-grid
+    rebuild, so seam Ey/Ez replicate their own row for their i-1 cells.
+    Only the drive's realization receives these slabs; the E update keeps
+    the real ones."""
     i = nu.build_sharded_nu_grid(_edge_board()._build_nonuniform_grid(), N_DEVICES).nx_per_rank
 
     def own_row(materials, layout, mesh):
-        # The slabs arrive cut, (device, row, y, z): rank r's row n is global
-        # cell r * nx_per_rank + n - 2 (rfx.stepping.slab_view.uniform_from_cut).
-        rank = i // layout.nx_per_rank
-        n = i - rank * layout.nx_per_rank + 2
-        return materials._replace(**{name: getattr(materials, name).at[rank, n - 1].set(
+        # Owned input rows include the low ghost and the extra producer row.
+        rank, previous_rank = layout.owner(i), layout.owner(i - 1)
+        n = i - layout.owned[rank][0] + layout.ghost_width + 1
+        previous_n = i - 1 - layout.owned[previous_rank][0] + layout.ghost_width + 1
+        return materials._replace(**{name: getattr(materials, name).at[previous_rank, previous_n].set(
             getattr(materials, name)[rank, n]) for name in ("eps_r", "sigma")})
     return _drive_reads(own_row)
 

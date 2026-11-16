@@ -379,7 +379,7 @@ Recorded before the verdict, because one of them changes a leg's outcome.
    must not be compared as if they were. The pre-declaration is left unedited; this is the
    record.
 
-## 9. What a fix would be — for the PI, not done here
+## 9. What a fix would be — not done here
 
 `rfx/` carries no diff in this PR, per the pre-declaration. Two candidates, with what each
 would cost:

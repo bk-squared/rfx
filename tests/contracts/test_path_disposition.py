@@ -29,8 +29,8 @@ ROOT = Path(__file__).resolve().parents[2]
 # A value is a column of the table, "internal to <columns>" or
 # "grid-level: <why>" for a function that takes a Grid, not a Simulation.
 KERNEL_CALLERS = {
-    "rfx/api/_execute.py:_ExecuteMixin.run":
-        "internal to run_uniform, run_nonuniform, run_subgridded, run_adi, run_distributed, run_distributed_nu",
+    "rfx/runners/run.py:run_after_admission":
+        "internal to run_uniform, run_nonuniform, run_subgridded, run_distributed, run_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin.forward":
         "internal to fwd_uniform, fwd_nonuniform, fwd_distributed, fwd_distributed_nu",
     "rfx/runners/uniform_forward.py:_forward_from_materials":
@@ -41,7 +41,6 @@ KERNEL_CALLERS = {
     "rfx/runners/_distributed_nu_execute.py:execute_from_materials":
         "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/_distributed_nu_execute.py:dispatch_forward": "internal to fwd_distributed_nu",
-    "rfx/runners/adi.py:_run_adi_from_materials": "internal to run_adi, fwd_adi",
     "rfx/api/_execute.py:_ExecuteMixin._run_nonuniform": "internal to run_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._run_subgridded": "internal to run_subgridded",
     "rfx/runners/_distributed_entry.py:execute_distributed":
@@ -52,31 +51,27 @@ KERNEL_CALLERS = {
     "rfx/runners/uniform.py:run_uniform": "internal to run_uniform",
     "rfx/probes/sparam_driver.py:compute_lumped_wire_s_matrix_via_scan": "s_matrix_scan",
     "rfx/probes/sparam_driver.py:_distributed_lumped_accumulators": "internal to run_distributed",
-    "rfx/sparams/mixed.py:compute_mixed_s_matrix": "mixed_s_matrix",
+    "rfx/sparams/_mixed_stages.py:_run_mixed_drive": "mixed_s_matrix",
     "rfx/topology.py:topology_optimize": "topology_optimize",
     "rfx/sparams/waveguide.py:_compute_waveguide_s_matrix_nu": "waveguide_s_matrix",
     **{f"rfx/measurement/waveguide_s.py:{name}": "internal to waveguide_s_matrix" for name in (
         "extract_waveguide_s_matrix", "extract_waveguide_s_matrix_flux",
         "extract_waveguide_s_params_normalized", "extract_multimode_s_matrix",
         "extract_multimode_s_matrix_flux")},
-    "rfx/sparams/coax.py:compute_coaxial_line_reflection": "coaxial_line_reflection",
+    "rfx/sparams/_coax_oneport_record.py:run_reflection_record": "coaxial_line_reflection",
     "rfx/sparams/coax.py:compute_coaxial_two_port": "coaxial_two_port",
     "rfx/sparams/coax.py:compute_coax_msl_transition": "coax_msl_transition",
     "rfx/differentiable_material_fit.py:differentiable_material_fit": "material_fit",
-    "rfx/gpu.py:benchmark": "grid-level: times rfx.run on a Grid",
-    "rfx/rcs.py:compute_rcs": "grid-level: takes a Grid and a TFSF/NTFF setup",
+    "rfx/measurement/rcs.py:compute_rcs": "grid-level: takes a Grid and a TFSF/NTFF setup",
 }
 
 # Top-level functions that call a field update themselves: a new one is a new
 # kernel, and its paths need cells.
 FIELD_STEPPERS = {
-    "rfx/adi.py:run_adi_2d": "internal to run_adi",
-    "rfx/adi.py:run_adi_3d": "internal to run_adi",
-    "rfx/runners/_distributed_common.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
-    "rfx/runners/_distributed_common.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
-    "rfx/runners/_distributed_common.py:_update_e_local_with_dispersion":
+    "rfx/stepping/slab_update.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
+    "rfx/stepping/slab_update.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
+    "rfx/stepping/slab_update.py:_update_e_local_with_dispersion":
         "internal to run_distributed, run_distributed_nu, fwd_distributed_nu",
-    "rfx/runners/distributed_v2.py:run_distributed": "internal to run_distributed",
     "rfx/stepping/uniform_setup.py:_update_e_with_optional_dispersion":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",
@@ -84,34 +79,38 @@ FIELD_STEPPERS = {
     # grid-level eager lumped and wire extractors all build their step here.
     "rfx/stepping/uniform.py:make_uniform_step":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
-        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched",
+        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched, "
+        "run_distributed, fwd_distributed",
     # The one graded-mesh step (S3-2 stage B).
     "rfx/stepping/graded.py:make_graded_step": "internal to run_nonuniform, fwd_nonuniform",
-    "rfx/subgridding/disjoint_3d.py:_yee_step": "internal to run_subgridded",
-    "rfx/subgridding/disjoint_3d.py:_yee_h_step": "internal to run_subgridded",
-    "rfx/subgridding/disjoint_3d.py:_yee_e_step": "internal to run_subgridded",
+    "rfx/stepping/subgrid_disjoint.py:_yee_step": "internal to run_subgridded",
+    "rfx/stepping/subgrid_disjoint.py:_yee_h_step": "internal to run_subgridded",
+    "rfx/stepping/subgrid_disjoint.py:_yee_e_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_apply_faces_maxwell_sat_from_snapshot": "internal to run_subgridded",
-    "rfx/subgridding/jit_runner.py:_make_step_fn": "internal to run_subgridded",
-    "rfx/subgridding/runner.py:run_subgridded": "grid-level: the non-jitted subgrid runner; rfx does not call it",
-    "rfx/subgridding/sbp_sat_3d.py:_update_h_only": "internal to run_subgridded",
-    "rfx/subgridding/sbp_sat_3d.py:_update_e_only": "internal to run_subgridded",
+    "rfx/stepping/subgrid_jit.py:_make_step_fn": "internal to run_subgridded",
+    "rfx/stepping/subgrid_loop.py:run_subgridded_loop": "grid-level: the non-jitted subgrid runner; rfx does not call it",
+    "rfx/stepping/subgrid_sat.py:_update_h_only": "internal to run_subgridded",
+    "rfx/stepping/subgrid_sat.py:_update_e_only": "internal to run_subgridded",
 }
 
 _KERNELS = {
     "_forward_from_materials", "_forward_nonuniform_from_materials",
-    "_forward_distributed_nonuniform_from_materials", "_run_adi_from_materials",
+    "_forward_distributed_nonuniform_from_materials",
     "_execute_distributed_nonuniform_from_materials",
     "_run_nonuniform", "_run_subgridded", "run_uniform", "run_nonuniform_path",
     "run_subgridded_path", "run_disjoint_stage2_path", "run_distributed",
-    "run_nonuniform_distributed_pec", "run_subgridded_jit", "run_adi_2d",
-    "run_adi_3d", "run_nonuniform",
+    "run_nonuniform_distributed_pec", "run_subgridded_jit",
+    "run_nonuniform", "run_uniform_loop",
 }
 _SIMULATION_KERNELS = {"run", "run_until_decay"}  # rfx.simulation, under any alias
+# rfx.simulation re-exports run from the module that defines it; a read there is the same kernel.
+_KERNEL_MODULES = {"rfx.simulation", "rfx.stepping.uniform_loop"}
+_KERNEL_FILES = {"rfx/simulation.py", "rfx/stepping/uniform_loop.py"}
 _FIELD_UPDATES = {
     "update_e", "update_h", "update_e_nu", "update_h_nu", "update_he_fast",
     "update_e_fast", "update_h_fast", "update_e_aniso", "update_e_aniso_inv",
     "update_e_nu_aniso", "_update_e_local", "_update_h_local",
-    "_update_e_local_nu", "_update_h_local_nu", "adi_step_2d", "adi_step_3d",
+    "_update_e_local_nu", "_update_h_local_nu",
 }
 
 
@@ -134,14 +133,14 @@ def _aliases(tree):
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             for a in node.names:
-                if node.module == "rfx.simulation" and a.name in _SIMULATION_KERNELS:
+                if node.module in _KERNEL_MODULES and a.name in _SIMULATION_KERNELS:
                     bound[a.asname or a.name] = f"rfx.simulation.{a.name}"
                 elif a.name in _KERNELS | _FIELD_UPDATES:
                     bound[a.asname or a.name] = a.name
-                elif node.module == "rfx" and a.name == "simulation":
+                elif (node.module, a.name) in (("rfx", "simulation"), ("rfx.stepping", "uniform_loop")):
                     modules.add(a.asname or a.name)
         elif isinstance(node, ast.Import):
-            modules |= {a.asname for a in node.names if a.name == "rfx.simulation" and a.asname}
+            modules |= {a.asname for a in node.names if a.name in _KERNEL_MODULES and a.asname}
     return bound, modules
 
 
@@ -174,7 +173,7 @@ def _referenced(node, aliases):
 def _references_a_kernel(rel, node, aliases):
     name = _referenced(node, aliases)
     if name.startswith("rfx.simulation."):
-        return rel != "rfx/simulation.py"
+        return rel not in _KERNEL_FILES
     return name in _KERNELS
 
 
@@ -324,6 +323,19 @@ def test_lane_gates_are_the_listed_ones():
     assert gated == set(T.LANE_GATES), sorted(gated ^ set(T.LANE_GATES))
     for lane, (attr, feature) in gated:
         assert T.cell(attr, feature, lane).kind == T.REFUSES, (lane, attr, feature)
+
+
+def test_graded_precision_disposition_by_value():
+    sim = Simulation(freq_max=10e9, domain=(.008, .008, .016), dx=.002, boundary="pec")
+    row = ("_precision", "")
+    for precision, kind in (("float64", T.CARRIES), ("mixed", T.REFUSES)):
+        sim._precision = precision
+        for lane in ("run_nonuniform", "fwd_nonuniform"):
+            assert T.cell(*row, lane, precision=precision).kind == kind
+            assert (row in A.refused(sim, lane)) == (kind == T.REFUSES)
+        for lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu", "run_subgridded"):
+            assert T.cell(*row, lane, precision=precision).kind == T.REFUSES
+            assert row in A.refused(sim, lane)
 
 
 def test_subgridded_production_disposition_requires_explicit_opt_in():

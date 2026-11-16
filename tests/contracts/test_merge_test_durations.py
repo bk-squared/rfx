@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.tooling
+
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("merge_test_durations", ROOT / "scripts/ci/merge_test_durations.py")
 merge = importlib.util.module_from_spec(SPEC)

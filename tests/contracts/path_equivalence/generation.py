@@ -9,8 +9,20 @@ PAIRS = (
     ('run_uniform', 'run_distributed', False),
     ('fwd_uniform', 'fwd_nonuniform', False),
     ('run_nonuniform', 'run_distributed_nu', True),
+    ('fwd_uniform', 'fwd_distributed', False),
+    ('fwd_nonuniform', 'fwd_distributed_nu', True),
 )
 LONG_ROWS = {('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'), ('_ports', 'wire_port')}
+
+
+def untraced(row, lane):
+    """A forward lane that refuses the design argument the cell differentiates.
+
+    Uniform multi-device forward takes no override or design argument; graded
+    multi-device forward takes no ``design_box``, which the current-moment
+    monitor needs. Their records come from a plain forward() on both lanes.
+    """
+    return lane == 'fwd_distributed' or (lane == 'fwd_distributed_nu' and row[0] == '_current_moments')
 
 
 @dataclass(frozen=True)
@@ -26,6 +38,11 @@ class Cell:
     @property
     def id(self):
         return ':'.join((*self.row, self.a, self.b, 'graded' if self.graded else 'constant', str(self.steps)))
+
+    @property
+    def traced(self):
+        """Both forward lanes take the design; objective and gradient are compared."""
+        return self.a.startswith('fwd_') and not any(untraced(self.row, lane) for lane in (self.a, self.b))
 
 
 def generate(builders):
@@ -54,16 +71,23 @@ def generate(builders):
                                   None if equivalent else b if on_a else a, steps))
     # These paths are outside equivalence scope: only their refusals run.
     for row, admitted in admission._ADMITTED_ON.items():
-        for lane in ('run_adi', 'fwd_adi', 'run_subgridded'):
+        # The constructor refuses every non-Yee solver.
+        if row == ('_solver', ''):
+            continue
+        for lane in ('run_subgridded',):
             if lane not in admitted:
                 assert row in builders, f'S0 missing refusal builder: {row}'
                 cells.append(Cell(row, lane, 'refusal', False, False, lane, 0))
+    cells.extend(Cell(("_float64", ""), a, b, False, True, None, steps)
+                 for a, b in (("run_uniform", "run_nonuniform"), ("fwd_uniform", "fwd_nonuniform"))
+                 for steps in (12, 36))
     return tuple(cells)
 
 
 # Filled from the measured cold-solve cost of passing 12-step candidates.
 PR_CHOICES = {
-    "_adi_cfl_factor": "_adi_cfl_factor::run_uniform:run_nonuniform:constant:12",
+    "_float64": "_float64::run_uniform:run_nonuniform:constant:12",
+
     "_boundary": "_boundary:cpml:run_uniform:run_nonuniform:constant:12",
     "_boundary_spec": "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12",
     "_cpml_kappa_max": "_cpml_kappa_max:kappa:run_uniform:run_distributed:constant:12",
@@ -95,7 +119,6 @@ PR_CHOICES = {
 }
 
 
-# Experimental ADI/subgrid refusals remain weekly unless selected as a cause witness.
 PR_REFUSAL_LANES = frozenset((
     'run_uniform', 'fwd_uniform', 'run_nonuniform', 'fwd_nonuniform',
     'run_distributed', 'run_distributed_nu', 'fwd_distributed_nu',
@@ -106,13 +129,15 @@ PR_REFUSAL_LANES = frozenset((
 PR_FINDING_CHOICES = {
     "nu-missing-vref": "_ports:wire_port:run_uniform:run_nonuniform:constant:12",
     "port-time-record-missing": "_ports:lumped_port:run_uniform:run_distributed:constant:12",
-    "distributed-wire-dft-record-missing": "_ports:wire_port:run_uniform:run_distributed:constant:12"
+    "distributed-wire-dft-record-missing": "_ports:wire_port:run_uniform:run_distributed:constant:12",
+    "uniform-forward-distributed-port-spectra-refused": "_ports:lumped_port:fwd_uniform:fwd_distributed:constant:12"
 }
 
 
 def pr_subset(cells, findings):
     """Main-path refusals, one strict witness per cause, and passing families."""
-    chosen = {c.id for c in cells if not c.equivalence and c.refused in PR_REFUSAL_LANES}
+    chosen = {c.id for c in cells if (not c.equivalence and c.refused in PR_REFUSAL_LANES)
+              or c.row == ('_float64', '')}
     causes = {entry['cause'] for groups in findings.values()
               for entries in groups.values() for entry in entries}
     by_id = {c.id: c for c in cells}

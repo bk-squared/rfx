@@ -85,6 +85,16 @@ print(f"Directivity: {D[0]:.2f} dBi")   # a short dipole is about 1.76 dBi
 (D = 4π U_max / P_rad). Sample `theta` over [0, π] and `phi` over [0, 2π), as
 above. A single cut gives the wrong P_rad.
 
+Space `phi` evenly and leave out 2π (`endpoint=False`). The integral weights
+each φ sample by its spacing to its neighbours, so with `endpoint=True` the
+seam at 0 and 2π counts twice: N evenly spaced samples carry a total φ weight
+of 2π·N/(N − 1). For a pattern that does not change with φ, `directivity()`
+and `antenna_gain()` without `input_power` then read 10·log10(N/(N − 1)) dB
+low (0.35 dB at N = 13, 0.09 dB at N = 49), and `antenna_efficiency()` reads
+N/(N − 1) times high. Unevenly spaced φ samples also give a total weight other
+than 2π. Realized gain (`antenna_gain(..., input_power=...)`) does not
+integrate over the sphere and is unaffected.
+
 For optimization, `compute_far_field_jax(..., max_phase_bytes=4e9)` is the
 differentiable version. The byte budget splits the theta grid into chunks to
 bound memory; the result is the same. For a directivity objective use
@@ -140,8 +150,8 @@ incidence), so it does not depend on the observation grid you pass.
 ### Which RCS numbers to trust
 
 **Monostatic (backscatter).** `monostatic_rcs` is the quantity checked
-against the exact Mie series for a PEC sphere at ka ≈ 1 (λ/40 cells). In that
-test it reads 0.73 dB above Mie. It is always taken from the plain
+against the exact Mie series for a PEC sphere at ka ≈ 1 (λ/40 cells); that
+test holds it within 1.0 dB of Mie on that one mesh. It is always taken from the plain
 run, whatever you set for `subtract_incident_reference`.
 
 **Bistatic.** With the default `subtract_incident_reference=False`, the
@@ -184,9 +194,11 @@ run otherwise, naming the faces that don't clear it.
   grid only, with z-invariant targets. Its y faces are inset from the
   absorber, not from the injection planes, so the box encloses the injected
   region only for `1 <= ntff_offset <= tfsf_margin - 2`. Raise `tfsf_margin`
-  if you need a larger offset. At oblique incidence the direction of the
-  specular peak is checked; treat the absolute RCS as accurate to about
-  ±2 dB. The oblique model is 2.5-D (periodic in z), so the returned RCS
+  if you need a larger offset. The pattern and specular direction are validated.
+  For the 2.2-wavelength plate at 20° and 40°, four settled meshes from λ/30
+  to λ/120 give a specular RCS +0.08 to +0.16 dB from physical optics at 5 GHz,
+  converged within 0.006 dB from λ/60 to λ/120.
+  The oblique model is 2.5-D (periodic in z), so the returned RCS
   belongs to a strip of height 2 `dx`; scale by (L_z / (2 dx))² for a strip
   of height L_z.
 
@@ -228,6 +240,10 @@ for the other helpers.
   ring-down check reads your probes, not the NTFF surface, so it is a guide,
   not a proof. Repeat with a longer run (or `until_decay=`) and compare the
   patterns.
+- **`compute_rcs` warns that the record ends before the field leaves the NTFF
+  box** → raise `n_steps`. Without that warning a resonant target can still be
+  ringing at the end of the record; `compute_rcs` does not check this, so
+  compare the RCS from two record lengths.
 - **Directivity looks wrong** → sample the full sphere; a single cut gives
   the wrong total power.
 - **Box too close to the radiator or touching the absorber** → preflight
@@ -236,6 +252,19 @@ for the other helpers.
 - **Bistatic RCS with a strong forward-oblique lobe** → you left
   `subtract_incident_reference=False`; turn it on. A larger `ntff_offset`
   does not fix it.
+- **Far-field phase on an electrically long domain** → the far-field
+  transform uses the free-space wavenumber k, while the scattered wave
+  crosses the grid with the Yee wavenumber k_num, slightly larger
+  (along an axis, sin(ωΔt/2)/(cΔt) = sin(k_num·Δx/2)/Δx; the relation
+  `tests/oracle/test_numerical_dispersion_oracle.py` measures). The far
+  field then carries an extra phase −(k_num − k)·L, L the distance from the
+  scatterer to the box along the direction read. Magnitudes, monostatic RCS
+  and flux do not change; phase uses do (the optical theorem's forward
+  amplitude, coherent sums of far fields from separate runs). With the
+  default time step, along an axis, it is 0.35 rad over 20 wavelengths at
+  20 cells per wavelength and 0.09 rad at 40, falling as the square of the
+  cell size. Keep the box close to the scatterer, refine until the forward
+  phase converges, or multiply by exp(+j(k_num − k)·L).
 - **RCS of a new target** → only the monostatic sphere case is checked
   against Mie. Run your own convergence study and compare with a reference.
 - **Oblique incidence refuses your setup** → it needs `polarization="ez"`, a

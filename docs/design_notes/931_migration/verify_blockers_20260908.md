@@ -211,7 +211,7 @@ measurement driver passes. `git diff --check` passes.
 
 ## Constraints and audit
 
-Local `docs/agent-memory/` is absent; no sibling checkout supplied substitute
+No sibling checkout supplied substitute
 memory. The external memory registry was consulted only for the prior RFX
 source-evidence review standard, not as evidence about this branch.
 The normative conductor note's section 1.7 says the realized edge

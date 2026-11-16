@@ -51,9 +51,9 @@ def _drawing(case, top, bottom=3, gap=1):
     return shapes
 
 
-def _build(shapes, domain, dx, **profiles):
+def _build(shapes, domain, dx, *, snap="strict", **profiles):
     sim = Simulation(freq_max=10e9, domain=domain, dx=dx, boundary='pec',
-                     snap='strict', **profiles)
+                     snap=snap, **profiles)
     labels = {}
     for name, shape in shapes.items():
         labels[name] = f'geometry[{len(labels)}]'
@@ -129,7 +129,7 @@ def test_case(case, mesh):
     bottom = (3.2 if graded else 4) if case == 3 else 3
     profiles = {'dz_profile': np.array([1, 1, 1] + [.2] * 4 + [1] * 4) * MM} if graded else {}
     shapes = _drawing(case, top, bottom)
-    sim, labels = _build(shapes, (20 * MM, 20 * MM, (7.8 if graded else 9) * MM), MM, **profiles)
+    sim, labels = _build(shapes, (20 * MM, 20 * MM, (7.8 if graded else 9) * MM), MM, snap="declared", **profiles)
     issues, fidelity, record = _reports(sim)
     entities = {entity.label: entity for entity in record.entities}
     wall_u, wall_g, patch = EXPECTED[case]
@@ -192,7 +192,7 @@ def test_pinned_patch_metric_wall():
         'ground': _box((4, 4, 3), (16, 16, 3)),
         'wall': _box((8, 6, 3), (8, 14, 5)),
     }
-    sim, labels = _build(shapes, (.020, .020, .009), .001)
+    sim, labels = _build(shapes, (.020, .020, .009), .001, snap="declared")
     sim.add_pinned_sheet(plane_index=5, i_range=(8, 14), j_range=(6, 14))
     issues, fidelity, record = _reports(sim)
     entities = {entity.label: entity for entity in record.entities}

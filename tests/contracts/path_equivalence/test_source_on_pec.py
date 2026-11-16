@@ -30,14 +30,16 @@ def model(path='uniform', kind='volume', *, adjacent=False, component='ez'):
             profile[2:4] = (0.9 * DX, 1.1 * DX)
             kwargs[f'd{axis}_profile'] = profile
     sim = Simulation(freq_max=15e9, domain=point(12, 8, 8), dx=DX,
-                     boundary='pec', **kwargs)
+                     boundary='pec', snap='declared' if kind == 'sheet' else 'strict', **kwargs)
     if kind == 'volume':
-        sim.add(Box(point(6, 3, 3), point(8, 5, 5)), material='pec')
+        low_yz = float(np.cumsum(kwargs['dy_profile'])[2]) if 'graded' in path else 3 * DX
+        sim.add(Box((6 * DX, low_yz, low_yz), point(8, 5, 5)), material='pec')
     elif kind == 'sheet':
         # Off-node declaration: only the realized x=6 plane owns the source.
         sim.add(Box(point(6.2, 3, 3), point(6.2, 5, 5)), material='pec')
     elif kind == 'wire':
-        sim.add(PolylineWire((point(6, 4, 3), point(6, 4, 5)), radius=0),
+        wire_lo = float(np.sum(kwargs['dz_profile'][:3])) if 'graded' in path else 3 * DX
+        sim.add(PolylineWire(((6 * DX, 4 * DX, wire_lo), point(6, 4, 5)), radius=0),
                 material='pec')
     position = point(5 if adjacent else 6, 4, 4)
     sim.add_source(position, 'ez', waveform=waveform, amplitude_kind='field')
@@ -129,13 +131,10 @@ def test_lumped_port_releases_its_edge(path):
     assert np.max(np.abs(result.time_series)) > 0
 
 
-@pytest.mark.parametrize('solver', ['adi', 'subgrid'])
+@pytest.mark.parametrize('solver', [ 'subgrid'])
 def test_experimental_paths_refuse_before_lane_dispatch(solver):
     sim = model()
-    if solver == 'adi':
-        sim._solver = 'adi'
-    else:
-        sim.add_refinement(z_range=(0., 4 * DX), ratio=2, validation='research')
+    sim.add_refinement(z_range=(0., 4 * DX), ratio=2, validation='research')
     with pytest.raises(ValueError, match='Soft source'):
         execute(sim, 'uniform', skip=False)
 
@@ -233,7 +232,6 @@ def test_vmap_adjacent_source_matches_scalar_run(kind):
 
 
 def test_topology_optimize_refuses_dead_source():
-    pytest.importorskip('optax')
     from rfx.topology import TopologyDesignRegion, topology_optimize
     sim = model()
     region = TopologyDesignRegion(corner_lo=point(1, 1, 1),

@@ -2,16 +2,16 @@
   "runs": {
     "base": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101/base.json",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101/base.json",
         "sha256": "13601004e6fbb2d8ebcf1e5c30bdb14b5f775c46f951d859c09e061e4a0eacad"
       },
       "run_id": "369367259636",
       "run_id_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101/run_id.txt",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101/run_id.txt",
         "sha256": "c6a4b80270d8b9081d509d0df442a13ab37b602772a47e449a115f74d82c0bf8"
       },
       "commit_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101/commit.txt",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101/commit.txt",
         "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
       },
       "run_name": "issue931-fixture-repair-msl-base-20260909T020254Z-b36fc46cdf21-101-base",
@@ -84,16 +84,16 @@
     },
     "long": {
       "input": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/long.json",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/long.json",
         "sha256": "9ab2dd0d4ccec89b55861a9d2e68329c99a6e8a862223a6a7f264788c27925b6"
       },
       "run_id": "369367259637",
       "run_id_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/run_id.txt",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/run_id.txt",
         "sha256": "f7bb6d625546f3c0b36fc2e67d93ee60e63958f969a100ce02de1b066b730558"
       },
       "commit_witness": {
-        "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/commit.txt",
+        "path": "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101/commit.txt",
         "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
       },
       "run_name": "issue931-fixture-repair-msl-long-20260909T020258Z-b36fc46cdf21-101-long",

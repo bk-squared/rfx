@@ -55,17 +55,19 @@ from rfx.current_moments import (
     NONUNIFORM_PLANE_STAMP_STEPS,
     UNIFORM_PLANE_STAMP_STEPS,
     accumulate_current_moments,
-    block_far_field_jax,
-    block_far_field_np,
     build_current_moment_monitor,
     current_moment_far_field,
     current_moment_monitor_from_grid,
     e_dual_spacings,
-    end_of_record_moments,
     init_current_moment_data,
     moments_to_PQT,
     plane_stamp_steps,
     slab_e_snapshot,
+)
+from rfx.measurement.current_moments import (
+    block_far_field_jax,
+    block_far_field_np,
+    end_of_record_moments,
     to_post_processing_convention,
 )
 from rfx.probes.probes import init_dft_plane_probe
@@ -830,9 +832,11 @@ def _strip_dipole_run():
     xc, yc, zc = lx / 2, ly / 2, lz / 2
     sim = Simulation(freq_max=12e9, domain=(lx, ly, lz), dx=1e-3,
                      boundary="cpml", cpml_layers=8)
-    sim.add(Box((xc - L / 2, yc, zc), (xc - 1e-3, yc + 1e-3, zc)),
+    sim.add(Box((xc - (7 + .35) * 1e-3, yc - .35 * 1e-3, zc),
+                (xc - (1 - .35) * 1e-3, yc + (1 + .35) * 1e-3, zc)),
             material="pec")
-    sim.add(Box((xc + 1e-3, yc, zc), (xc + L / 2, yc + 1e-3, zc)),
+    sim.add(Box((xc + (1 - .35) * 1e-3, yc - .35 * 1e-3, zc),
+                (xc + (7 + .35) * 1e-3, yc + (1 + .35) * 1e-3, zc)),
             material="pec")
     sim.add_source((xc, yc, zc), "ex")
     sim.add_ntff_box((4e-3, 4e-3, 4e-3), (lx - 4e-3, ly - 4e-3, lz - 4e-3),
@@ -1318,8 +1322,8 @@ def _runner_mutations(kind):
             (acc, ""),
             ("    attachments = {", "    def moved_current_moments(frame):\n"
              + acc + "\n    attachments = {"),
-            ("    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)",
-             "    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)\n"
+            ("    attachments[HookPoint.AFTER_SOURCES] = () if slab else (after_sources,)",
+             "    attachments[HookPoint.AFTER_SOURCES] = () if slab else (after_sources,)\n"
              "    attachments[HookPoint.BEFORE_SOURCES] = (moved_current_moments,)"),
         ]
     return {
@@ -1703,7 +1707,8 @@ def test_refuses_a_radiator_the_slab_does_not_hold(case):
         # cells 9..10 on x: cell 9's edges lie on the slab's first layer
         _block(sim, (6, 10, 10), (10, 14, 14))
     elif case == "conductor sheet crossing the slab":
-        sim.add(Box((8e-3, 8e-3, 12e-3), (20e-3, 16e-3, 12e-3)), material="pec")
+        sim.add(Box(((4 - .35) * DX, (4 - .35) * DX, 12e-3),
+                    ((10 + .35) * DX, (8 + .35) * DX, 12e-3)), material="pec")
     elif case == "source outside":
         sim.add_source((3e-3, 12e-3, 12e-3), "ez", amplitude_kind="current")
     elif case == "port outside":
@@ -1725,7 +1730,8 @@ def test_accepts_the_same_structures_one_cell_further_in():
     from rfx import Box
     sim = _guard_sim()
     _block(sim, (8, 10, 10), (12, 14, 14))
-    sim.add(Box((8e-3, 8e-3, 14e-3), (16e-3, 16e-3, 14e-3)), material="pec")
+    sim.add(Box(((4 - .35) * DX, (4 - .35) * DX, 14e-3),
+                ((8 + .35) * DX, (8 + .35) * DX, 14e-3)), material="pec")
     sim.add_port((14e-3, 12e-3, 10e-3), "ez", impedance=50.0)
     sim.add_lumped_rlc((10e-3, 14e-3, 12e-3), "ez", R=50.0)
     res = _guard_runs(sim)
@@ -1927,10 +1933,9 @@ def test_refuses_kottke_pec_and_accepts_the_other_conductor_updates():
 
 
 def test_refuses_the_kottke_occupancy_lane(monkeypatch):
-    sim = _guard_sim()
+    sim = _guard_sim(pec_occupancy_model="kottke")
     occ = np.zeros(sim._build_grid().shape, dtype=np.float32)
     occ[12, 12, 12] = 1.0
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
     with pytest.raises(NotImplementedError, match="zeroes H"):
         sim.forward(pec_occupancy_override=jnp.asarray(occ), n_steps=4,
                     skip_preflight=True)
@@ -1957,17 +1962,12 @@ def _topology(region_lo_mm, region_hi_mm, material_fg):
 @pytest.mark.parametrize("material_fg", ["diel6", "pec"])
 def test_topology_design_region_outside_the_slab_is_refused(material_fg):
     """``topology_optimize`` hands the solve whole-grid traced design arrays;
-    it gives the guard the design region's bounds instead, before it imports
-    optax, so this refusal holds where the optimization extra is absent."""
+    it gives the guard the design region's bounds before tracing the forward."""
     with pytest.raises(NotImplementedError, match="topology design region"):
         _topology((18, 8, 8), (22, 16, 16), material_fg)
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    not importlib.util.find_spec("optax"),
-    reason="optax not installed",
-)
 def test_topology_design_region_inside_the_slab_runs():
     assert _topology((10, 10, 10), (14, 14, 14), "diel6") is not None
 
@@ -1977,7 +1977,7 @@ def test_topology_design_region_inside_the_slab_runs():
 def _surface_impedance_sheet(sim, inside):
     from rfx import Box
     z = 12e-3 if inside else 20e-3
-    sim.add_thin_conductor(Box((10e-3, 10e-3, z), (14e-3, 14e-3, z)),
+    sim.add_thin_conductor(Box(((5 - .35) * DX, (5 - .35) * DX, z), ((7 + .35) * DX, (7 + .35) * DX, z)),
                            sigma_bulk=1e5, thickness=1e-5,
                            surface_impedance_f0=4e9)
 
@@ -2027,7 +2027,7 @@ def test_refuses_a_pmc_face_and_accepts_absorbing_faces():
 
 
 def test_refuses_a_plane_port_and_accepts_a_lumped_port():
-    from rfx import Simulation
+    from rfx import Box, Simulation
 
     def bare():
         sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
@@ -2040,6 +2040,12 @@ def test_refuses_a_plane_port_and_accepts_a_lumped_port():
     sim = bare()
     sim.add_waveguide_port(4e-3, y_range=(4e-3, 20e-3), z_range=(8e-3, 16e-3),
                            freqs=GUARD_FREQS)
+    # PEC guide walls on the aperture edges, ending before the slab (x < 6 mm)
+    for lo, hi in (((0., 2e-3, 6e-3), (2 * DX, 4e-3, 9 * DX)),
+                   ((0., 20e-3, 6e-3), (2 * DX, 22e-3, 9 * DX)),
+                   ((0., 2e-3, 6e-3), (2 * DX, 22e-3, 8e-3)),
+                   ((0., 2e-3, 16e-3), (2 * DX, 22e-3, 9 * DX))):
+        sim.add(Box(lo, hi), material="pec")
     with pytest.raises(NotImplementedError, match="waveguide port"):
         _guard_runs(sim)
     sim = bare()
@@ -2068,7 +2074,7 @@ def _msl_guard_sim(slab_y=(7e-3, 17e-3), *, lane="uniform", **port_kw):
     from rfx import Box, Simulation
     kw, lz = (({"dz_profile": MSL_GUARD_DZ}, float(MSL_GUARD_DZ.sum()))
               if lane == "graded" else ({}, 14e-3))
-    sim = Simulation(freq_max=1.2e10, domain=(24e-3, 24e-3, lz), dx=1e-3,
+    sim = Simulation(snap="declared", freq_max=1.2e10, domain=(24e-3, 24e-3, lz), dx=1e-3,
                      cpml_layers=6, boundary="cpml", **kw)
     for z in (6e-3, 8e-3):
         sim.add(Box((8e-3, 11e-3, z), (16e-3, 13e-3, z)), material="pec")
@@ -2115,9 +2121,9 @@ def test_the_checked_msl_edges_hold_every_edge_the_lane_stamps(
     """What the running lane stamps, recorded, against what the check reads.
 
     The port's load conductivity and its drive are recorded as the runner
-    writes them. Every recorded edge must be in the checked set. On the
-    uniform lanes ``mode="uniform"`` drives the trace width only, a strict
-    subset; everywhere else the two sets are equal.
+    writes them. Every recorded edge must be in the checked set. On every
+    lane ``mode="uniform"`` drives the trace width only, a strict subset;
+    ``mode="laplace"`` stamps exactly the checked set.
     """
     import rfx.sources.msl_port as msl
     from rfx.current_moments import _msl_port_edges
@@ -2144,7 +2150,7 @@ def test_the_checked_msl_edges_hold_every_edge_the_lane_stamps(
     checked = {("e" + "xyz"[c], e) for e in checked}
     assert stamped and driven == stamped
     assert stamped <= checked
-    if lane == "uniform" and mode == "uniform":
+    if mode == "uniform":
         assert len(stamped) < len(checked)
     else:
         assert stamped == checked
@@ -2176,9 +2182,12 @@ def _msl_patch_run(lane):
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((3 * mm, 3 * mm, 3 * mm), (25 * mm, 21 * mm, 4 * mm)),
             material="sub")
-    for lo, hi in (((3, 3, 3), (25, 21, 3)),          # ground
-                   ((12, 6, 4), (22, 18, 4)),         # patch
-                   ((5, 10.5, 4), (12, 13.5, 4))):    # trace
+    for lo, hi in (((3 - .35 * .5, 3 - .35 * .5, 3),
+                    (25 + .35 * .5, 21 + .35 * .5, 3)),  # ground
+                   ((12 - .35 * .5, 6 - .35 * .5, 4),
+                    (22 + .35 * .5, 18 + .35 * .5, 4)),  # patch
+                   ((5, 10.5 - .35 * .5, 4),
+                    (12, 13.5 + .35 * .5, 4))):         # trace
         sim.add(Box(tuple(v * mm for v in lo), tuple(v * mm for v in hi)),
                 material="pec")
     sim.add_msl_port((5 * mm, 12 * mm, 3 * mm), width=3 * mm, height=1 * mm,
@@ -2315,8 +2324,8 @@ def test_declaration_rejects_an_unknown_keyword():
 
 def _sim_with_monitor(**kw):
     from rfx import Simulation
-    sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, 2.4e-2), dx=DX,
-                     cpml_layers=6, boundary="pec" if kw.get("solver") == "adi" else "cpml", **kw)
+    sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, float(np.sum(kw["dz_profile"])) if "dz_profile" in kw else 2.4e-2), dx=DX,
+                     cpml_layers=6, boundary="cpml", **kw)
     sim.add_source(position=(1.2e-2, 1.2e-2, 1.2e-2), component="ez")
     sim.add_current_moment_monitor(
         corner_lo=(0.6e-2, 0.6e-2, 0.6e-2), corner_hi=(1.8e-2, 1.8e-2, 1.8e-2),
@@ -2371,7 +2380,7 @@ def test_the_distributed_nu_forward_lane_carries_it():
     """Graded forward(distributed=True) carries the monitor since #1402 step 4g.
 
     CPML: the wrapped step differs from one device by compile-form rounding
-    (rfx-archive DESIGN.md 4g amendment 1), so the record-summed bar 1e-4.
+    so the record-summed bar 1e-4.
     """
     from tests._multi_device_scene import host_devices
     dz = np.full(10, DX)
@@ -2384,19 +2393,6 @@ def test_the_distributed_nu_forward_lane_carries_it():
     assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b))
 
 
-@pytest.mark.parametrize("entry", ["run", "forward"])
-def test_the_adi_lane_refuses_it(entry):
-    """The ADI update is not the Yee Ampere step, so the identity the monitor
-    rests on does not hold there at all."""
-    sim = _sim_with_monitor(solver="adi")
-    # The lane's own refusal, before any step (the backstop would raise only
-    # after the whole run, with a different message).
-    with pytest.raises(NotImplementedError,
-                       match="not supported on the ADI lane"):
-        if entry == "run":
-            sim.run(n_steps=4, skip_preflight=True)
-        else:
-            sim.forward(n_steps=4, skip_preflight=True)
 
 
 def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
@@ -2444,7 +2440,7 @@ def test_every_user_facing_return_carries_the_backstop():
             counts[path.relative_to(REPO_ROOT).as_posix()] = (returns, guards)
     # Each file that hands a result back guards every such site.
     assert all(r == g for r, g in counts.values()), counts
-    assert sum(r for r, _ in counts.values()) == 6, counts
+    assert sum(r for r, _ in counts.values()) == 5, counts
 
 
 def test_the_traceable_moment_unpack_matches_the_host_one():

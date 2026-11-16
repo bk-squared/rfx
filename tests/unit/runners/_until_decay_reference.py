@@ -8,11 +8,13 @@ rfx.measurement: the conserved W from this loop's fields (one ``update_h``
 for H^(n+1/2)) at every count k * I, the drive end from this loop's own
 source tables, below when W < decay_by * ref, or W < 1e-12 * largest W so far
 and W >= 0.95 ** (I / 50) * W at the previous check.
-Point and flux checks keep their decisions at counts k * I.
+Closed boxes use the same energy check; flux checks stay at counts k * I.
 Retained DFT and S-parameter records follow the current runner interface.
 """
 
 from __future__ import annotations
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 
 from rfx.simulation import (
     Grid,
@@ -33,7 +35,8 @@ from rfx.simulation import (
 from rfx.stepping.uniform_loop import _build_step_setup
 from rfx.measurement.decay import static_remnant_advisory, table_dc
 from rfx.core.drives import Drives, StepDrives
-from rfx.core.yee import component_e_materials, component_h_materials, update_h, MU_0, EPS_0
+from rfx.core.yee import component_e_materials, component_h_materials, MU_0, EPS_0
+from rfx.stepping.yee import update_h
 
 import numpy as np
 
@@ -89,6 +92,7 @@ def run_until_decay_reference(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
+    subpixel_smoothing: bool | str = False,
     pec_mask: object | None = None,
     pec_sheets: object = (),
     pec_wires: object = (),
@@ -146,6 +150,7 @@ def run_until_decay_reference(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        subpixel_smoothing=subpixel_smoothing,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -251,9 +256,9 @@ def run_until_decay_reference(
     # caller's n_end is not read.
     del n_end
     eps = (materials.components.eps_update if materials.components is not None
-           else component_e_materials(materials, _setup.periodic)[0])
+           else component_e_materials(materials, _setup.periodic, high_wall=unpadded_high_walls(grid))[0])
     mu = (materials.components.mu_update if materials.components is not None
-          else component_h_materials(materials, _setup.periodic))
+          else component_h_materials(materials, _setup.periodic, high_wall=unpadded_high_walls(grid)))
     n_end = 0
     for table in (*np.asarray(src_waveforms).T, *np.asarray(mag_src_waveforms).T):
         magnitude = np.abs(table.astype(np.float64))
@@ -267,7 +272,7 @@ def run_until_decay_reference(
     def _interior_energy(state) -> float:
         region = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
         new_h = update_h(state, materials, grid.dt, grid.dx,
-                         _setup.periodic, stencil_order, _step_ctx.bloch)
+                         _setup.periodic, stencil_order, _step_ctx.bloch, high_wall=unpadded_high_walls(grid))
         e_axes, h_axes = {"2d_tmz": ((2,), (0, 1)), "2d_tez": ((0, 1), (2,))}.get(
             getattr(grid, "mode", "3d"), (range(3), range(3)))
         electric = sum(eps[a][region] * getattr(state, "e" + "xyz"[a])[region] ** 2
@@ -303,7 +308,6 @@ def run_until_decay_reference(
         p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
         return float(p)
 
-    peak_sq = 0.0
     peak_U = 0.0
     largest_W = 0.0
     previous_W = None
@@ -357,14 +361,15 @@ def run_until_decay_reference(
                 env = max(flux_hist[-flux_env_checks:])
                 if env > peak_flux:
                     peak_flux = env
-                if actual_steps >= min_steps and peak_flux > 0.0 and (env < decay_by * peak_flux):
+                if (n_end is not None and actual_steps >= max(min_steps, n_end)
+                        and peak_flux > 0.0 and (env < decay_by * peak_flux)):
                     flux_below += 1
                     if flux_below >= decay_energy_consecutive:
                         decayed_fired = True
                         break
                 else:
                     flux_below = 0
-        elif use_absorbing:
+        else:
             if decay_by > 0 and n_end is not None and actual_steps % check_interval == 0:
                 U = _interior_energy(carry["fdtd"])
                 largest_W = max(largest_W, U)
@@ -377,17 +382,10 @@ def run_until_decay_reference(
                     if actual_steps >= min_steps and energy_below >= decay_energy_consecutive:
                         decayed_fired = True
                         break
-        else:
-            val_sq = float(monitor_val) ** 2
-            if val_sq > peak_sq:
-                peak_sq = val_sq
-            if actual_steps >= min_steps and actual_steps % check_interval == 0 and (peak_sq > 0.0):
-                if val_sq < decay_by * peak_sq:
-                    break
     if _reporter is not None and _reporter.last_reported != actual_steps:
         jax.block_until_ready(carry["fdtd"])
         _reporter.report(actual_steps)
-    if use_absorbing and (not decayed_fired) and (not use_flux_stop) and decay_by > 0:
+    if (not decayed_fired) and (not use_flux_stop) and decay_by > 0:
         static_remnant_advisory(carry["fdtd"], materials, grid,
                                 *((table_dc(sources), None) if advisory is None
                                   else (advisory["drives"], advisory["lossy"])))

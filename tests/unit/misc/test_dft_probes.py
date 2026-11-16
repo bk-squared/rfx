@@ -4,11 +4,14 @@ Validates that running DFT accumulation matches post-hoc FFT of stored
 time series, ensuring correct frequency-domain field extraction.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse, add_point_source
 from rfx.probes.probes import (
@@ -38,8 +41,8 @@ def test_dft_point_probe_matches_fft():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = add_point_source(state, grid, src_pos, "ez", pulse(t))
 
@@ -105,8 +108,8 @@ def test_dft_plane_probe_matches_point():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = add_point_source(state, grid, src_pos, "ez", pulse(t))
 
@@ -146,8 +149,8 @@ def test_dft_plane_probe_spatial_pattern():
     )
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = add_point_source(state, grid, src_pos, "ez", pulse(t))
 

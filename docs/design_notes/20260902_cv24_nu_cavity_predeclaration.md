@@ -2,7 +2,7 @@
 
 > cv24 was removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
 
-Date: 2026-09-02. Gap lane 3 of the cross-validation campaign (PI-approved 2026-09-02). Written and committed BEFORE any arm runs. Numbers here are derived from committed data and from an exact lattice model of the solver's own difference operators, never from a run of this case. Every constant lives once, in `validation/crossval/comparators/nu_cavity_gates.py`; the note quotes it.
+Date: 2026-09-02. Gap lane 3 of the cross-validation campaign. Written and committed BEFORE any arm runs. Numbers here are derived from committed data and from an exact lattice model of the solver's own difference operators, never from a run of this case. Every constant lives once, in `validation/crossval/comparators/nu_cavity_gates.py`; the note quotes it.
 
 > **Historical timing scope (2026-09-08).** The dated measurement tables below
 > retain the original run's timings. The regenerated `_24_nu_cavity_results/
@@ -211,7 +211,7 @@ Uniform arm: lattice residual −0.10 / +0.16 / −0.15 / −0.43 / −0.07 / �
 
 ## 13. Round 1 read (VESSL 369367257837, 2026-09-02) — green on the first run; every number by key
 
-Artifacts committed under `validation/crossval/_24_nu_cavity_results/` (this commit; the branch commit that ran was `83b0756`, recorded by `validation/crossval/_24_nu_cavity_results/r1_commit.txt` from `.staged_commit`; run tree `~/mnt/remilab-fs/personal-workspaces/claude-workspace/rfx/runs/cv24-nu-cavity-20260902T135906Z/`, log `~/Documents/vessl-run-logs/369367257837_cv24-nu-cavity-r1.log`). rfx baseline rc 0 (`validation/crossval/_24_nu_cavity_results/rfx.json::verdict.exit_code = 0`), all five falsifiers rc 1, gate test 33 passed on the pod (`r1_pytest_gates.log`) and locally on the committed set with no skips; pre-declaration witnesses 27 passed before any arm ran (`r1_pytest_predeclared.log`). No window, allowance, record or gate moved between sections 1–12 and this run. Every citation below is an artifact reference (path, key and value in one backtick span) and resolves against the committed JSON with the #829 resolver.
+Artifacts committed under `validation/crossval/_24_nu_cavity_results/` (this commit; the branch commit that ran was `83b0756`, recorded by `validation/crossval/_24_nu_cavity_results/r1_commit.txt` from `.staged_commit`; run tree `<workspace>/rfx/runs/cv24-nu-cavity-20260902T135906Z/`, log `~/Documents/vessl-run-logs/369367257837_cv24-nu-cavity-r1.log`). rfx baseline rc 0 (`validation/crossval/_24_nu_cavity_results/rfx.json::verdict.exit_code = 0`), all five falsifiers rc 1, gate test 33 passed on the pod (`r1_pytest_gates.log`) and locally on the committed set with no skips; pre-declaration witnesses 27 passed before any arm ran (`r1_pytest_predeclared.log`). No window, allowance, record or gate moved between sections 1–12 and this run. Every citation below is an artifact reference (path, key and value in one backtick span) and resolves against the committed JSON with the #829 resolver.
 
 ### 13.1 Per arm, per mode: measured vs pre-declared (raw and equal-dt spatial), lattice residual, stationarity
 

@@ -13,6 +13,10 @@ helper is exposed by rfx, so the printed ``pi*r^2`` geometric-optics limit is
 only a scale check.  That limit describes spheres much larger than a
 wavelength; it is not an accurate value for this electrical size.
 
+The setup prints the drawn diameter and the solved x/y/z spans of the
+centre-sampled PEC sphere from its grid record. Quote those solved spans
+with the cell size when describing the sphere used by the setup check.
+
 One honest limitation: deep pattern nulls very close to the collection box
 carry larger errors.  This is a known limitation of near-field-to-far-field
 integration; do not tune the setup trying to remove it.
@@ -29,7 +33,7 @@ import numpy as np
 
 from rfx import Grid, Simulation, Sphere, compute_rcs
 from rfx.geometry import rasterize
-from rfx.materials import MaterialArrays
+from rfx.core.yee import MaterialArrays
 
 
 C0 = 299_792_458.0
@@ -40,10 +44,14 @@ BANDWIDTH = 0.5
 DOMAIN = 0.100
 DX = (C0 / F0) / 40.0
 CPML_LAYERS = 8
-N_STEPS = 500
+# The field leaves the NTFF box at step 524 (the run's record-end guard,
+# printed below); 800 steps cover it with room for the sphere's ring-down.
+N_STEPS = 800
 
-RADIUS = 15.9e-3
-CENTER = (DOMAIN / 2.0,) * 3
+# The grid uses DX on x, y and z: draw the sphere's axial extrema on
+# nodes 14 and 26, keeping its electrical size close to ka = 1.
+RADIUS = 6 * DX
+CENTER = (20 * DX,) * 3
 SPHERE = Sphere(center=CENTER, radius=RADIUS)
 
 THETA_OBS = np.asarray([np.pi / 2.0])
@@ -131,6 +139,9 @@ def main() -> None:
     # radius, a wrong centre, a sphere that vanished — fails here instead of
     # showing up as a quiet 3 dB in the RCS.
     record = sim.realized_geometry()
+    solved_mm = tuple(axis.extent_m * 1e3 for axis in record.entities[0].axes)
+    print(f"Sphere drawn diameter: {2 * RADIUS * 1e3:.5f} mm; "
+          f"PEC solved spans x/y/z: {solved_mm} mm; cells: {grid.dx * 1e3:.5f} mm")
     n_pec = int(record.pec_mask.sum())
     n_sigma = int((np.asarray(materials.sigma) > 0.0).sum())
     n_analytic = (4.0 / 3.0) * np.pi * RADIUS**3 / DX**3
@@ -171,6 +182,7 @@ def main() -> None:
 
     # For +x incidence, (theta=pi/2, phi=pi) is backscatter.  It is the final
     # sample in this H-plane cut, after the empty-reference subtraction.
+    report_record_coverage("RCS run", result.settling_witness)
     backscatter = float(np.asarray(result.rcs_linear)[0, 0, -1])
     if not np.isfinite(backscatter) or backscatter <= 0.0:
         raise RuntimeError("Backscatter RCS is not finite and positive")
@@ -194,6 +206,18 @@ def main() -> None:
         "Deep-null limitation: values near a pattern null can carry larger "
         "near-field-to-far-field integration errors."
     )
+
+
+def report_record_coverage(label, witness):
+    """Print the run's record-end guard and stop if a monitor is not covered."""
+    rows = (witness or {}).get("coverage", ())
+    print(f"  {label}: settling witness {(witness or {}).get('status')}")
+    for row in rows:
+        print(f"    {row['name']}: {row['verdict']} (field leaves at step "
+              f"{row['end_step']}, record {row['n_record']} steps)")
+    uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
+    if not rows or uncovered:
+        raise RuntimeError(f"{label}: the record ends before the field leaves {uncovered or 'the monitors'}")
 
 
 if __name__ == "__main__":

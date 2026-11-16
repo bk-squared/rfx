@@ -1,4 +1,6 @@
 """#1373: conformal PEC must not replace dielectric edge means with cells."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from tests._wall_axis_declaration import assert_declared_wall_warning
 from unittest.mock import patch
 
@@ -37,9 +39,8 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         sim.add_lumped_rlc((.007, .006, .010), component="ez", C=1e-13,
                            R=100, topology="parallel")
     if cut_capacitor:
-        # An Ez capacitor on the node just outside the cut x wall (x = 6 dx),
-        # where the Ez weight is fractional (0 < w < 1).
-        sim.add_lumped_rlc((6/1024, 8/1024, 10.5/1024), component="ez",
+        # An Ex capacitor crosses the declared x wall at x = .0057.
+        sim.add_lumped_rlc((5.5/1024, 8/1024, 10/1024), component="ex",
                            C=1e-13, topology="parallel")
     sim.add_source((.007, .005, .008), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=5e9, bandwidth=.8))
@@ -51,7 +52,7 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         inverse = kwargs.get("aniso_inv_eps")
         seen["inverse"] = None if inverse is None else np.asarray(inverse)
         periodic = simulation.resolve_periodic(grid, kwargs.get("periodic"))
-        plain, sigma = component_e_materials(materials, periodic)
+        plain, sigma = component_e_materials(materials, periodic, high_wall=unpadded_high_walls(grid))
         eps = kwargs.get("aniso_eps") or plain
         state = init_state(grid.shape)._replace(ex=eps[0], ey=eps[1], ez=eps[2])
         faces = resolve_wall_faces(grid, periodic)[0]
@@ -66,7 +67,7 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         seen["lumped_eps"] = np.asarray([np.zeros(grid.shape) if st is None
                                          else np.asarray(st) for st in stamps])
         seen["volume_mean"] = np.asarray(edge_mean_components(
-            permittivity_without_lumped(materials), periodic))
+            permittivity_without_lumped(materials), periodic, high_wall=unpadded_high_walls(grid)))
         seen.update(eps=np.asarray(eps), plain=np.asarray(plain),
                     realized=np.asarray((realized.ex, realized.ey, realized.ez)),
                     live=np.asarray((live.ex, live.ey, live.ez), dtype=bool),
@@ -136,10 +137,10 @@ def test_capacitor_on_a_cut_edge_is_added_after_the_weight_division():
     # A lumped C is a device on its edge, not volume: the conformal 1/w
     # scales the volume mean only, and the capacitor is added afterwards.
     result = _run(True, cut=True, cut_capacitor=True)
-    eps, w = result["eps"][2], result["weights"][2]
+    eps, w = result["eps"][0], result["weights"][0]
     f32 = np.float32
-    mean = result["volume_mean"][2].astype(f32)
-    stamp = result["lumped_eps"][2].astype(f32)
+    mean = result["volume_mean"][0].astype(f32)
+    stamp = result["lumped_eps"][0].astype(f32)
     w = w.astype(f32)
     on_cut = (stamp != 0) & (w > 0) & (w < 1) & result["live"][2]
     assert np.count_nonzero(on_cut) == 1
@@ -189,7 +190,7 @@ def test_waveguide_conformal_builder_uses_component_means(monkeypatch):
         pass
 
     def capture(grid, materials, ref_materials, cfgs, n_steps, **kwargs):
-        plain = component_e_materials(materials)[0]
+        plain = component_e_materials(materials, high_wall=unpadded_high_walls(grid))[0]
         weights = kwargs["conformal_weights"]
         for actual, eps, w, ref in zip(kwargs["aniso_eps"], plain, weights,
                                        kwargs["ref_aniso_eps"]):
@@ -230,9 +231,10 @@ def test_occupancy_kottke_lane_starts_from_the_four_cell_mean(monkeypatch):
     import jax.numpy as jnp
     from rfx import Box, GaussianPulse, Simulation
 
-    def build():
+    def build(pec_occupancy_model="edge_keep"):
         sim = Simulation(freq_max=10e9, domain=(13 / 1024, 16.7 / 1024, 19.2 / 1024),
-                         dx=1 / 1024, boundary="pec", snap="declared")
+                         dx=1 / 1024, boundary="pec", snap="declared",
+                         pec_occupancy_model=pec_occupancy_model)
         assert_declared_wall_warning(sim)
         sim.add_material("diel", eps_r=4.0)
         sim.add(Box((.0041, .0032, .0063), (.0094, .0106, .0148)), material="diel")
@@ -242,8 +244,7 @@ def test_occupancy_kottke_lane_starts_from_the_four_cell_mean(monkeypatch):
         return sim
 
     plain = np.asarray(build().forward(n_steps=240, skip_preflight=True).time_series)
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
-    sim = build()
+    sim = build(pec_occupancy_model="kottke")
     zeros = jnp.zeros(sim._build_grid().shape, jnp.float32)
     lane = np.asarray(sim.forward(n_steps=240, skip_preflight=True,
                                   pec_occupancy_override=zeros).time_series)

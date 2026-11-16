@@ -1,14 +1,6 @@
 {
- "_comment": "Per-row disposition for every preflight advisory pinned in example_fidelity_snapshot.json (#737 item 1). The snapshot pins WHAT each audited example emits; this file says WHY each of those rows is there, so the gate is a zero-UNEXPLAINED-advisory bar rather than a drift pin. Entries are keyed by (variant, code) and carry the number of pinned rows that pair covers -- rows that share a code on one variant are the same condition on different ports, axes or entities, and the snapshot already pins each one's full text. test_example_fidelity_contract.py asserts the mapping is a bijection and that the row counts add up, so a new advisory, a removed one, or a stale entry all fail. disposition: 'intended' = the example deliberately shows or tolerates this condition (reason cites the example's own docstring/comment or the physics); 'defect-open' = the example should not emit this and the fix needs work beyond this file's PR, with the issue number that tracks it. A defect small enough to fix leaves no entry -- the row is gone from the snapshot instead. validation/crossval/* scripts belong to the crossval leader session (#928): their rows are classified here, never edited.",
+ "_comment": "Per-row disposition for every preflight advisory pinned in example_fidelity_snapshot.json (#737 item 1). The snapshot pins WHAT each audited example emits; this file says WHY each of those rows is there, so the gate is a zero-UNEXPLAINED-advisory bar rather than a drift pin. Entries are keyed by (variant, code) and carry the number of pinned rows that pair covers -- rows that share a code on one variant are the same condition on different ports, axes or entities, and the snapshot already pins each one's full text. test_example_fidelity_contract.py asserts the mapping is a bijection and that the row counts add up, so a new advisory, a removed one, or a stale entry all fail. disposition: 'intended' = the example deliberately shows or tolerates this condition (reason cites the example's own docstring/comment or the physics); 'defect-open' = the example should not emit this and the fix needs work beyond this file's PR, with the issue number that tracks it. A defect small enough to fix leaves no entry -- the row is gone from the snapshot instead. validation/crossval/* scripts are frozen research records (#928): their rows are classified here, never edited.",
  "entries": [
-  {
-   "code": "adi_3d_accuracy",
-   "disposition": "intended",
-   "reason": "This variant exists to SHOW the advisory. The tutorial reads TE101 three ways (yee, ADI at factor 2, ADI at factor 5) and prints the frequency error each way 'so the accuracy-vs-timestep trade is visible rather than asserted'; its own docstring says the default factor 5 'carries a visible wavelength-scale error (shown below)'. run_and_read() prints the report verbatim and labels it 'quoted verbatim, not suppressed'.",
-   "ref": "examples/tutorials/adi_solver_demo.py:26-31,40-45,102-105",
-   "rows": 1,
-   "variant": "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl5"
-  },
   {
    "code": "floating_port",
    "disposition": "intended",
@@ -16,14 +8,6 @@
    "ref": "examples/tutorials/artifact_report_demo.py:1-13,45-58",
    "rows": 1,
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
-  },
-  {
-   "code": "mesh_import_underresolved",
-   "disposition": "intended",
-   "reason": "The tutorial exists to show this advisory. Its docstring says the workflow is to read the resolution advisory that fires on the plate's 1.5 mm thickness (1.5 cells at dx = 1 mm, under the 2-cell floor), step 1 draws that thickness on purpose so the advisory fires, and step 3 explains what it warns about: the plate is solved 2.0 mm thick against 1.5 mm drawn, which the snapshot's fidelity row for the same plate also reads. main() prints the preflight report verbatim before the run.",
-   "ref": "examples/tutorials/cad_mesh_import_demo.py:1-6,36-38,61-67,86-95",
-   "rows": 1,
-   "variant": "examples/tutorials/cad_mesh_import_demo.py::build_simulation::default"
   },
   {
    "code": "no_sources",
@@ -37,7 +21,7 @@
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-283,467-473,531-536",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:307-310,467-473,539-540",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -45,7 +29,7 @@
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin: D 6.59 dBi against openEMS 6.83 dBi, -0.24 dB (module docstring).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,106-111,386-392,520-524",
+   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,104-109,384-390,518-522",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -53,7 +37,7 @@
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
    "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'ntff_small_ground_plane for finite-ground diffraction'; the openEMS reference solves the same finite ground plane.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,520-524",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,518-522",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -415,7 +399,7 @@
    "disposition": "intended",
    "reason": "The interface example deliberately extends the dielectric half-space through the absorbing layers, avoiding an unintended rear slab face. The displayed physical domain stops before those layers; absorber-region fields are not interpreted as material physics.",
    "ref": "examples/visualization/field_movies.py:5-10,62-72",
-   "rows": 1,
+   "rows": 2,
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
   {
@@ -557,7 +541,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/issue683_sampling_order_decision.py:1-6,96-104",
    "rows": 1,
    "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
@@ -565,7 +549,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/issue764_wireport_norm_falsifiers.py:1-6,106-118",
    "rows": 1,
    "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
@@ -573,7 +557,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,111-115",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
@@ -581,7 +565,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,111-115",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
@@ -589,7 +573,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/metal_edge/m6_wire_port_ad.py:1-6,216-218",
    "rows": 1,
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
@@ -597,7 +581,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/thru_feedpost_deembed.py:1-6,105-108",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
@@ -605,7 +589,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/thru_feedpost_deembed.py:1-6,105-108",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
@@ -613,7 +597,7 @@
   {
    "code": "wire_port_no_radius",
    "disposition": "intended",
-   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
    "ref": "validation/research/thru_feedpost_twoseg_extraction.py:1-6,248-251",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
@@ -630,7 +614,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.5 mm substrate (t/h 2.33 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:130,287-289",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:157,314-316",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -638,7 +622,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.524 mm substrate (t/h 2.3 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,371-373",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,369-371",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -649,6 +633,54 @@
    "ref": "examples/tutorials/ports_and_sparams_101.py:157-184",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "the demo never time-steps; the warning is part of the exported report. z: realized 1 cells (0.001 m), declared 1 cells (0.001 m).",
+   "ref": "examples/tutorials/artifact_report_demo.py:39-40",
+   "rows": 1,
+   "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 62 cells (0.05937 m), declared 62.6579080344 cells (0.06 m).",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-281,315",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 30 cells (0.0586 m), declared 30.7167235495 cells (0.06 m).",
+   "ref": "examples/tutorials/patch_antenna_demo.py:326-327,375",
+   "rows": 1,
+   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "true positive on the substrate; strip and ports silent. y: realized 36 cells (0.00835125 m), declared 36.641221374 cells (0.0085 m).",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:120-129,179-182",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "the variant lengthens the patch by half a cell by growing the 8 cells inside its +x edge (m6_wire_port_ad.py:1-14, 133-138); the substrate drawn 10 mm is then solved 10.125 mm.",
+   "ref": "validation/research/metal_edge/m6_wire_port_ad.py:205-213",
+   "rows": 1,
+   "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "realization",
+   "disposition": "intended",
+   "reason": "centroid only; the strip width the notch depends on is solved within 1 %. x: realized 262 cells (0.033274 m), declared 261.417322835 cells (0.0332 m).",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:247-269",
+   "rows": 2,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   }
  ]
 }

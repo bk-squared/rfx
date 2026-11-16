@@ -303,6 +303,7 @@ def test_the_known_lanes_are_all_covered():
         "compute_waveguide_s_matrix",
         "compute_msl_s_matrix",
         "compute_mixed_s_matrix",
+        "compute_coaxial_line_reflection",
         "compute_coaxial_two_port",
         "compute_coax_msl_transition",
         "attach_run_settling_witness",
@@ -468,7 +469,7 @@ def test_witness_flag_does_not_perturb_s_extractor_level():
 
     def _port(x_index, direction):
         return WaveguidePort(
-            x_index=x_index, y_slice=(0, grid.ny), z_slice=(0, grid.nz),
+            x_index=x_index, y_slice=(0, grid.ny - 1), z_slice=(0, grid.nz - 1),
             a=(grid.ny - 1) * dx, b=(grid.nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction=direction,
         )

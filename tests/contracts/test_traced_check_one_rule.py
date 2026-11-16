@@ -1,4 +1,4 @@
-"""#1830: the eleven real check closures obey one concrete/traced rule."""
+"""#1830: the twelve real check closures obey one concrete/traced rule."""
 
 import ast
 import os
@@ -11,11 +11,14 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, Simulation, _periodic, _realized, _traced_check
+from rfx import Box, Simulation
+from rfx._internal import _periodic, _realized
+from rfx import _traced_check
 from rfx.api._source_semantics import guard_float16_source_increment
 from rfx.backend import backend_class
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import MaterialArrays
+from rfx.geometry.rasterize_grid import GridCoords, _material_cell_mask
 from rfx.model import conductors, graded_grid, pole_stability
 from rfx.preflight import sources
 
@@ -58,12 +61,20 @@ def invoke(site, x):
         )
         materials = MaterialArrays(x, jnp.zeros_like(x), jnp.ones_like(x))
         sources._validate_tfsf_vacuum_boundary(materials, cfg)
+    elif site == "material zero cells":
+        centres = GridCoords(x, x, x, (2, 2, 2))
+        coords = GridCoords(x - 0.5, x - 0.5, x - 0.5, centres.shape)
+        _material_cell_mask(
+            Box((0.0,) * 3, (0.25,) * 3), coords, centres,
+            cell_sizes=(np.ones(2),) * 3, name="layer",
+        )
     elif site == "source increment":
         guard_float16_source_increment(x, np.float16, "field")
     return jnp.float32(0.0)
 
 
 INPUTS = {
+    "material zero cells": np.array([0.5, 1.5], np.float32),
     "periodic interval": np.float32(-1.0),
     "periodic fill": np.float32(-2.0),
     "realized record": np.zeros(2, np.float32),
@@ -80,6 +91,7 @@ INPUTS = {
 
 # Captured by executing the original checks before the implementation changed.
 MESSAGES = {
+    "material zero cells": "Material volume 'layer' (Box) rasterizes to ZERO cells: drawn thickness (x, y, z) = (0.25, 0.25, 0.25) m; local cell widths at the layer midpoint (x, y, z) = (1.0, 1.0, 1.0) m. Refine so a primal-cell centre lies inside the layer. There is no sub-cell dielectric film model; a conducting sheet uses add_thin_conductor (the sheet API).",
     "periodic interval": "periodic axis 'x': interval [-1.0, 2.0] m crosses the seam of period L=1.0 m; split the interval into declarations inside [0, L].",
     "periodic fill": "periodic axis 'x': fill bounds [-2.0, 3.0] m must lie inside [-L, 2L] for traced bounds; L=1.0 m",
     "realized record": "a zero waveform cannot measure a drive scale",
@@ -95,6 +107,7 @@ MESSAGES = {
 
 
 NAMES = {
+    "material zero cells": ("material volume", "nonempty cells"),
     "periodic interval": ("periodic geometry", "interval seam"),
     "periodic fill": ("periodic geometry", "fill bounds"),
     "realized record": ("realized geometry", "record operands"),
@@ -115,6 +128,9 @@ def no_callbacks(monkeypatch):
 
 
 def _check_operands(site, *, invalid):
+    if site == "material zero cells":
+        return (np.full((2, 2, 2), not invalid),
+                *(np.ones(2),) * 3, *(np.array([0.5, 1.5]),) * 3)
     x = float(invalid)
     if site == "periodic interval":
         return (-x, 2.0 if invalid else 0.5)
@@ -130,7 +146,7 @@ def _check_operands(site, *, invalid):
     if site == "graded node index":
         return (np.int32(invalid), not invalid)
     if site == "pole stability":
-        return (1.0, 0.0, 0.0, 1.0 if invalid else 0.1, 0.0, 1, 0.0, 0.0, 9.0)
+        return (1.0, 0.0, 0.0, 1.0 if invalid else 0.1, 0.0, 1, (), 0.0, 0.0, 9.0)
     if site == "sheet film overlap":
         return (np.array([invalid]),)
     if site in ("TFSF box", "TFSF slab"):
@@ -373,7 +389,7 @@ def _callback_references(source):
 
 
 def _assert_callback_references_allowed(root):
-    allowed = {"_traced_check.py", "_ringdown_jax.py"}
+    allowed = {"_traced_check.py", "ringdown/_jax.py"}
     forbidden = []
     for path in sorted(root.rglob("*.py")):
         if path.relative_to(root).as_posix() in allowed:
@@ -453,12 +469,14 @@ def test_callback_guard_resolves_name_uses_and_ignores_unrelated_names():
     )
 
 
-@pytest.mark.parametrize("name", ["_traced_check.py", "_ringdown_jax.py"])
+@pytest.mark.parametrize("name", ["_traced_check.py", "ringdown/_jax.py"])
 def test_callback_guard_exempts_only_root_owners(tmp_path, name):
+    (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
     (tmp_path / name).write_text("import jax; jax.debug.callback")
     _assert_callback_references_allowed(tmp_path)
     nested = tmp_path / "nested"
     nested.mkdir()
+    (nested / name).parent.mkdir(parents=True, exist_ok=True)
     (nested / name).write_text("import jax; jax.debug.callback")
     with pytest.raises(AssertionError, match="jax.debug.callback"):
         _assert_callback_references_allowed(tmp_path)
@@ -521,7 +539,7 @@ def _forward_scene(feature):
         )
     if feature == "graded":
         sim.add_thin_conductor(
-            Box((0.001, 0.002, 0.004), (0.003, 0.004, 0.004)),
+            Box(((1 - .35) * .001, (2 - .35) * .001, .004), ((3 + .35) * .001, (4 + .35) * .001, .004)),
             sigma_bulk=1e5,
             thickness=1e-5,
             surface_impedance_f0=5e9,

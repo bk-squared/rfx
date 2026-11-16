@@ -7,21 +7,28 @@ Validates that:
 4. TFSF + periodic-boundary integration matches the manual loop
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
 
 from rfx.grid import Grid, C0
-from rfx.core.yee import (
-    init_state, init_materials, update_e, update_h, EPS_0, MU_0,
-)
+from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.geometry.csg import Box
 from rfx.sources.sources import GaussianPulse, LumpedPort
 from rfx.sources.tfsf import (
-    init_tfsf, update_tfsf_1d_h, update_tfsf_1d_e, apply_tfsf_h, apply_tfsf_e,
+    init_tfsf,
+    update_tfsf_1d_h,
+    update_tfsf_1d_e,
     is_tfsf_2d,
+)
+from rfx.stepping.tfsf import (
+    apply_tfsf_h,
+    apply_tfsf_e,
 )
 from rfx.simulation import (
     ProbeSpec, make_source, make_probe, run, run_until_decay,
@@ -32,6 +39,7 @@ from rfx.probes.probes import (
 from rfx.sources.waveguide_port import (
     WaveguidePort, init_waveguide_port, inject_waveguide_port,
     update_waveguide_port_probe, extract_waveguide_s21, extract_waveguide_s_matrix,
+    extract_waveguide_port_waves,
 )
 
 
@@ -183,8 +191,8 @@ def test_compiled_runner_matches_python_loop():
     pi, pj, pk = grid.position_to_index(prb_pos)
     manual_ts = []
     for step in range(n_steps):
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         # Soft source
         val = float(pulse(step * grid.dt))
@@ -225,8 +233,8 @@ def test_compiled_runner_dft_plane_matches_manual_loop():
     manual_probe = plane_probe
     si, sj, sk = grid.position_to_index((0.015, 0.015, 0.015))
     for step in range(n_steps):
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         val = float(pulse(step * grid.dt))
         state = state._replace(ez=state.ez.at[si, sj, sk].add(val))
@@ -280,12 +288,12 @@ def test_compiled_runner_tfsf_matches_manual_loop():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
-        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -343,12 +351,12 @@ def test_compiled_runner_tfsf_ey_matches_manual_loop():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
-        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -407,12 +415,12 @@ def test_compiled_runner_tfsf_negative_x_matches_manual_loop():
 
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
-        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic)
+        state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -476,7 +484,11 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
     _is_2d = is_tfsf_2d(tfsf_cfg)
     if _is_2d:
         from rfx.sources.tfsf_2d import (
-            update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+            update_tfsf_2d_h,
+            update_tfsf_2d_e,
+        )
+        from rfx.stepping.tfsf_2d import (
+            bloch_phase_tuple,
         )
         _bloch = bloch_phase_tuple(tfsf_cfg, grid.dx)
         _fdt = jnp.complex64
@@ -492,7 +504,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
     for step in range(n_steps):
         t = step * grid.dt
         state = update_h(state, materials, grid.dt, grid.dx, periodic=periodic,
-                         bloch=_bloch)
+                         bloch=_bloch, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_h(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_h(state, cp, cpml_state, grid, axes="x")
         if _is_2d:
@@ -501,7 +513,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
             tfsf_state = update_tfsf_1d_h(tfsf_cfg, tfsf_state, grid.dx, grid.dt)
 
         state = update_e(state, materials, grid.dt, grid.dx, periodic=periodic,
-                         bloch=_bloch)
+                         bloch=_bloch, high_wall=unpadded_high_walls(grid))
         state = apply_tfsf_e(state, tfsf_cfg, tfsf_state, grid.dx, grid.dt)
         state, cpml_state = apply_cpml_e(state, cp, cpml_state, grid, axes="x")
         state = apply_pec(state, axes="x")
@@ -550,6 +562,8 @@ class _CompiledWgGrid:
 
 def test_compiled_runner_waveguide_port_matches_manual_loop():
     """Compiled runner should preserve waveguide-port source/probe behavior."""
+    import sys
+
     a_wg = 0.04
     b_wg = 0.02
     length = 0.12
@@ -559,13 +573,16 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
 
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
-    freqs = jnp.linspace(4.5e9, 8e9, 12)
+    # TE20 cutoff c/a = 7.49 GHz for a = 40 mm; above it the single-mode V-I
+    # extractor is not physical. Use the same band as
+    # test_extract_waveguide_s_matrix_two_port_reciprocity.
+    freqs = jnp.linspace(5.0e9, 7.0e9, 12)
     n_steps = grid.num_timesteps(num_periods=30)
 
     port = WaveguidePort(
         x_index=nc + 5,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -594,9 +611,9 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
     manual_cfg = cfg0
     for step in range(n_steps):
         t = step * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         # Source injection before cpml_e/pec to match the compiled scan-body
         # ordering introduced in 15c6a13 (waveguide-port TFSF-pair / soft-E
         # fallback both run between update_e and apply_cpml_e).
@@ -608,7 +625,7 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
     s21_compiled = np.array(extract_waveguide_s21(compiled_cfg))
     s21_manual = np.array(extract_waveguide_s21(manual_cfg))
     max_err = np.max(np.abs(s21_compiled - s21_manual))
-    print(f"\nCompiled waveguide vs manual loop max S21 error: {max_err:.2e}")
+    print(f"\nCompiled waveguide vs manual loop max|dS21| (5-7 GHz): {max_err:.9e}", file=sys.stderr)
     assert max_err < 1e-3, f"Compiled waveguide runner diverged from manual loop: {max_err:.2e}"
 
 
@@ -634,8 +651,8 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
 
     port0 = WaveguidePort(
         x_index=nc + 5,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -644,8 +661,8 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
     )
     port1 = WaveguidePort(
         x_index=grid.nx - nc - 6,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=(grid.ny - 1) * dx,
         b=(grid.nz - 1) * dx,
         mode=(1, 0),
@@ -685,22 +702,9 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
 def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
     """Mixed x/y boundary ports in a PEC T-junction should remain reciprocal.
 
-    #931 SCOPE: the walls here are a SIGMA FILL stamped straight into the
-    material arrays (``sigma = 1e10`` where the Box's node mask is True),
-    not a ``sim.add(..., material=pec)`` declaration — they never reach
-    ``pec_mask`` and therefore no realized edge set. The lattice ownership
-    contract fences sigma-fill conductors out explicitly (design note
-    §1.8): they are a lossy VOLUME model, fields decay inside a conductive
-    cell, and that is a different physical model from a PEC edge set. So
-    this fixture is unchanged and its numbers do not move.
-
-    What the fence does NOT settle, and this test is a live example of, is
-    that the port then declares ``a = 0.04`` while the channel realized
-    between the two half-open wall masks measures 0.042 wall node to wall
-    node (nodes 0.038 and 0.080 at dx = 0.002). That is the #868
-    declared-vs-realized guide-width class, owned by the follow-up issue
-    §1.8 names, not by this branch. The gates below are loose (|s21| > 0.5,
-    recip_err < 0.2) and do not discriminate on it.
+    Walls are sigma-filled material cells sampled at cell centres. The
+    node-aligned drawing keeps the same occupied cells under the shared
+    volume rule, so the reciprocity thresholds stay unchanged.
     """
     dx = 0.002
     nc = 10
@@ -713,7 +717,11 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
         Box((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
         Box((0.08, 0.08, 0.0), (0.12, 0.12, 0.02)),
     ):
-        mask = box.mask(grid)
+        from rfx.geometry.rasterize_grid import (
+            _material_cell_mask, coords_from_uniform_grid, centres_from_uniform_grid,
+        )
+        mask = _material_cell_mask(box, coords_from_uniform_grid(grid),
+                                   centres_from_uniform_grid(grid), grid=grid)
         materials = materials._replace(
             sigma=jnp.where(mask, 1e10, materials.sigma),
         )
@@ -728,7 +736,7 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
     # and a port aperture holding wall material is refused (rfx#1994).
     xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)))
     yslice = (pady + int(round(0.04 / dx)), pady + int(round(0.08 / dx)))
-    zslice = (padz, grid.nz - padz)
+    zslice = (padz, grid.nz - padz - 1)
 
     left = WaveguidePort(
         x_index=nc + 5,

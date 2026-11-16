@@ -41,21 +41,16 @@ def stop_kernel(monkeypatch, *, periodic=None):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_declared_walls_refuse_a_finite_box(skip):
-    sim = plane(finite=True, boundary={"x": "cpml", "y": "pmc", "z": "pec"})
-    with pytest.raises(ValueError, match=r"y_lo, y_hi.*eps_r.*closed_box"):
-        sim.run(n_steps=1, skip_preflight=skip)
+    with pytest.raises(ValueError, match="y_lo='pmc'.*z_hi='pec'"):
+        plane(finite=True, boundary={"x": "cpml", "y": "pmc", "z": "pec"}).run(
+            n_steps=1, skip_preflight=skip)
 
 
 @pytest.mark.parametrize("skip", [False, True])
-def test_declared_invariant_walls_keep_the_reported_legacy_wrap(skip, monkeypatch):
-    sim = plane(boundary={"x": "cpml", "y": "pmc", "z": "pec"})
-    findings = [p for p in sim.preflight(check_ntff=False)
-                if p.code == "tfsf_transverse_periodic"]
-    assert len(findings) == 1
-    assert all(face in str(findings[0]) for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
-    stop_kernel(monkeypatch, periodic=(False, True, True))
-    with pytest.raises(Admitted):
-        sim.run(n_steps=1, skip_preflight=skip)
+def test_declared_invariant_walls_refuse_the_legacy_wrap(skip):
+    with pytest.raises(ValueError, match="y_lo='pmc'.*y_hi='pmc'.*z_lo='pec'.*z_hi='pec'"):
+        plane(boundary={"x": "cpml", "y": "pmc", "z": "pec"}).run(
+            n_steps=1, skip_preflight=skip)
 
 
 @pytest.mark.parametrize("skip", [False, True])
@@ -81,7 +76,7 @@ def test_upml_remains_refused(skip):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_propagation_axis_wall_keeps_main_admission(skip, monkeypatch):
-    sim = plane(boundary={"x": {"lo": "cpml", "hi": "pec"}, "y": "cpml", "z": "cpml"})
+    sim = plane(boundary={"x": {"lo": "cpml", "hi": "pec"}, "y": "periodic", "z": "periodic"})
     stop_kernel(monkeypatch, periodic=(False, True, True))
     with pytest.raises(Admitted):
         sim.run(n_steps=1, skip_preflight=skip)

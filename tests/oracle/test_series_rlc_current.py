@@ -30,7 +30,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import Simulation, GaussianPulse
-from rfx.materials import MaterialArrays
+from rfx.core.yee import MaterialArrays
 from rfx.lumped import (init_rlc_state, LumpedRLCSpec, build_rlc_meta,
                         setup_rlc_materials, _update_series)
 

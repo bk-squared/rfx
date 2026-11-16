@@ -106,7 +106,8 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
     devices = _devices(count)
     expected = _reference(kind, graded, boundary, count)
     staged = []
-    original = C.stage_distributed_edges if graded else D.cut
+    from rfx.stepping import slab_wrap
+    original = C.stage_distributed_edges if graded else slab_wrap.cut
 
     def capture(*args, **kwargs):
         result = original(*args, **kwargs)
@@ -117,7 +118,7 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
         return result
 
     with monkeypatch.context() as patch:
-        patch.setattr(C if graded else D, 'stage_distributed_edges' if graded else 'cut', capture)
+        patch.setattr(C if graded else slab_wrap, 'stage_distributed_edges' if graded else 'cut', capture)
         sim, grid, _ = _build(kind, graded, boundary, count=count)
         sim.run(n_steps=2, devices=devices, compute_s_params=False, skip_preflight=True)
     assert len(staged) == 3
@@ -228,7 +229,6 @@ def _port_model():
 
 
 def test_b3_sheet_contact_wire_port(monkeypatch):
-    from rfx.probes import sparam_driver
     from tests.unit.runners.test_distributed_wire_ports import FREQS
     expected_sim = _port_model()
     grid = expected_sim._build_grid()
@@ -244,9 +244,9 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     kwargs = dict(n_steps=300, s_param_n_steps=320, s_param_freqs=FREQS,
                   compute_s_params=True, skip_preflight=True)
     single = expected_sim.run(**kwargs)
-    counts = []
     reader_counts = []
     from rfx.sources import sources as port_sources
+    from rfx.model import lumped_stamp
     original_live = port_sources._wire_port_live_cells
 
     def capture_live(g, port, pec_edge_masks=None):
@@ -255,16 +255,10 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
         return result
 
     monkeypatch.setattr(port_sources, '_wire_port_live_cells', capture_live)
-    original = sparam_driver._distributed_port_cells
-
-    def capture(g, ports, pec_edge_masks=None):
-        for pe in ports:
-            counts.append(_wire_port_live_cells(g, wire_port_from_entry(pe), pec_edge_masks)[2])
-        return original(g, ports, pec_edge_masks)
-
-    monkeypatch.setattr(sparam_driver, '_distributed_port_cells', capture)
+    monkeypatch.setattr(lumped_stamp, '_wire_port_live_cells', capture_live)
     multi = _port_model().run(devices=_devices(), **kwargs)
-    assert counts == expected_counts
+    # The slab port sampler reads the live cells resolved inside run_distributed
+    # (#2175): every resolution, main run and S-driver drives, is one reader.
     by_position = {tuple(pe.position): n for pe, n in zip(expected_sim._ports, expected_counts)}
     assert reader_counts
     for position, live_count in reader_counts:
@@ -347,7 +341,8 @@ def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
                   compute_s_params=True, skip_preflight=True)
     single = single_sim.run(**kwargs)
     staged = []
-    original = D.cut
+    from rfx.stepping import slab_wrap
+    original = slab_wrap.cut
 
     def capture(*args, **kw):
         result = original(*args, **kw)
@@ -355,7 +350,7 @@ def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
             staged.extend(np.asarray(edge) for edge in result)
         return result
 
-    monkeypatch.setattr(D, 'cut', capture)
+    monkeypatch.setattr(slab_wrap, 'cut', capture)
     multi_sim = _lumped_model(kind, boundary)
     assert multi_sim._build_grid().dt == grid.dt
     multi = multi_sim.run(devices=_devices(), **kwargs)

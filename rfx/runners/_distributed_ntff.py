@@ -85,7 +85,7 @@ class SlabNTFF:
         result = list(init_ntff_data(self.box, field_dtype=jnp.float64
                                     if self.dtype == jnp.complex128 else jnp.float32))
         # Indexing the x-sharded buffer by rank compiles a gather with an
-        # XLA partition-id (#1441); replicate it first, which stays
+        # XLA partition-id; replicate it first, which stays
         # differentiable. The multi-process caller passes an already
         # gathered host array, which needs neither.
         if isinstance(buffer, (jax.Array, jax.core.Tracer)):

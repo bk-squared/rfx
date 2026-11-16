@@ -24,7 +24,7 @@ def apply(kernel, ctx, invariants, state, psi, **kwargs):
 
 
 def export_state(psi, grid, layout, *, native=False):
-    """Return psi in the runner's ``init_cpml_slabs`` layout (#1745).
+    """Return psi in the runner's ``init_cpml_slabs`` layout.
 
     Field order with the rank merged into x: y/z faces keep this rank's x rows;
     x faces hold the one-device depth, real only on the owning end rank (rank 0
@@ -55,7 +55,7 @@ def export_state(psi, grid, layout, *, native=False):
 def import_state(psi, canonical, layout, *, native=False):
     """Recover one-device psi from the runner's per-rank input.
 
-    ``init_cpml_slabs`` layout (#1745): field order on every rank, x faces
+    ``init_cpml_slabs`` layout: field order on every rank, x faces
     (s_x, Ny, Nz) at the one-device depth, y/z faces over the rank's local x
     rows; the rank axis is leading or merged into x.
     """
@@ -82,7 +82,7 @@ def import_state(psi, canonical, layout, *, native=False):
     return type(psi)(**fields)
 
 
-def publish(setup, layout, mesh):
+def publish(setup, layout, mesh, *, staged_state=False):
     """Publish dynamic whole profiles and rank-local ``init_cpml_slabs`` psi.
 
     X faces retain one-device depth on each rank; y/z faces use local x rows.
@@ -116,6 +116,9 @@ def publish(setup, layout, mesh):
     fields = {}
     psi = setup.carry_init['cpml']
     for name, value in zip(psi._fields, psi):
+        if staged_state:
+            fields[name] = value
+            continue
         face = name.split('_')[-1]
         if face[0] == 'x':
             owner = 0 if face.endswith('lo') else layout.n_devices - 1
@@ -129,4 +132,3 @@ def publish(setup, layout, mesh):
                       cpml_spacings=(electric, magnetic))
     return context, {**setup.invariants, 'cpml_x': params}, {
         **setup.carry_init, 'cpml': type(psi)(**fields)}
-

@@ -21,7 +21,7 @@ from tests._pec_short_advisory_fixture import build
     ((5e9, 7e9), 1e-3, 10, 40),
 ], ids=["coarse", "fine"])
 def test_pec_short_isolates_two_observable_ports(monkeypatch, band, dx, cpml, periods):
-    import rfx.simulation as solver
+    import rfx.stepping.uniform_loop as solver
     from rfx.sources.waveguide_port import extract_waveguide_port_waves
 
     records, waves = {}, []

@@ -95,7 +95,7 @@ def run_rfx():
     from rfx.grid import Grid, C0
     from rfx.geometry.csg import Sphere, rasterize
     from rfx.core.yee import MaterialArrays
-    from rfx.rcs import compute_rcs
+    from rfx.measurement.rcs import compute_rcs
 
     lam = C0 / F0
     dx = lam / RESOLUTION

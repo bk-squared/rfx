@@ -1,4 +1,4 @@
-"""Streaming NTFF multi-frequency accumulation (issue #43).
+"""Streaming NTFF multi-frequency accumulation.
 
 NTFF DFT arrays scale as ``n_freqs × face_cells × 4`` complex64. For
 broadband antenna sweeps (100+ frequency points) this dominates the
@@ -15,7 +15,7 @@ a 1-frequency NTFF box.
 
 from __future__ import annotations
 
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 
 import numpy as np
 
@@ -82,7 +82,7 @@ def ntff_sweep(sim, freqs, *, batch_size: int | None = None,
         batch_size = len(freqs)
 
     corner_lo, corner_hi, orig_freqs = sim._ntff
-    run_kwargs = run_kwargs or {}
+    run_kwargs = {"compute_s_params": False, **(run_kwargs or {})}
 
     batches: list[np.ndarray] = [
         freqs[i:i + batch_size] for i in range(0, len(freqs), batch_size)

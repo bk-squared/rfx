@@ -1,9 +1,10 @@
 """#1913: a PEC short must be visible from the reflection measurement plane.
 
-Synthetic 42 x 21 mm guide; 3 mm cells; 40 periods (the leader's sweep),
+Synthetic 42 x 21 mm guide; 3 mm cells; 40 periods,
 only the two band endpoints, 5 and 6.5 GHz; normalize=True.
 The phase oracle is the closed form 180 - 2 beta d at the reported plane.
 """
+import inspect
 import warnings
 
 import numpy as np
@@ -42,7 +43,7 @@ def _findings(sim):
 def _segment_refused(sim):
     call = sim.compute_waveguide_s_matrix if len(sim._waveguide_ports) > 1 else sim.run
     kwargs = {"normalize": "flux"} if len(sim._waveguide_ports) > 1 and sim._uses_nonuniform_mesh else {}
-    with pytest.raises(ValueError, match=r"(left|right).*(eps|PEC).*rfx#1994"):
+    with pytest.raises(ValueError, match=r"(left|right).*(eps|PEC).*one homogeneous"):
         call(n_steps=2, skip_preflight=True, **kwargs)
 
 
@@ -85,7 +86,7 @@ def test_visible_short_has_closed_form_reflection(cells, record_property):
 def test_one_port_entry_refuses(method):
     with pytest.raises(ValueError, match="right.*face at 87 mm"):
         getattr(_guide(1, one_port=True), method)(n_steps=4)
-    with pytest.raises(ValueError, match="right.*PEC.*rfx#1994"):
+    with pytest.raises(ValueError, match="right.*PEC.*one homogeneous"):
         getattr(_guide(1, one_port=True), method)(n_steps=2, skip_preflight=True)
 
 
@@ -99,7 +100,7 @@ def test_skip_preflight_bypasses_calculator(monkeypatch):
 
     def build(self, *args, **kwargs):
         import sys
-        if sys._getframe(1).f_code is calculator.compute_waveguide_s_matrix.__code__:
+        if sys._getframe(1).f_code is inspect.unwrap(calculator.compute_waveguide_s_matrix).__code__:
             raise CalculatorReached
         return original(self, *args, **kwargs)
 
@@ -132,7 +133,7 @@ def test_face_on_reference_plane_refused():
 def test_face_built_on_reference_plane_refused(hi, refused):
     """Drawn at 80.5 mm the face is built at 81 mm and read |S22| 0.504 / 0.505
     with no finding; drawn at 79.5 mm it is built at 78 mm and reads 0.999."""
-    sim = _guide()
+    sim = _guide(snap="declared")
     sim.add(Box((0.075, 0, 0), (hi, A, B)), material="pec")
     assert len(_findings(sim)) == int(refused)
 
@@ -156,7 +157,7 @@ def test_graded_box_thinner_than_samples_refused():
         sim = Simulation(freq_max=10e9, domain=(0.12, A, B), dx=DX,
                          boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                                                z=Boundary(lo="pec", hi="pec")),
-                         cpml_layers=10, dx_profile=profile)
+                         cpml_layers=10, dx_profile=profile, snap="declared")
         sim.add(Box((0.084, 0, 0), (0.084009, A, B)), material="pec")
         sim.add_waveguide_port(0.090, direction="-x", name="right",
                                mode=(1, 0), mode_type="TE", freqs=FREQS, f0=6e9,
@@ -480,7 +481,7 @@ def test_vacuum_box_with_empty_pole_tuples_admitted():
 def test_pec_post_under_later_dielectric_refused():
     # A later dielectric box does not clear PEC cells when assembled, so the
     # post's 85 mm face is a PEC/dielectric interface inside the span.
-    sim = _guide()
+    sim = _guide(snap="declared")
     sim.add_material("fill", eps_r=2.2)
     sim.add(Box((0.050, 0.015, 0), (0.085, 0.027, B)), material="pec")
     sim.add(Box((0.040, 0, 0), (0.110, A, B)), material="fill")
@@ -493,6 +494,6 @@ def test_abutting_boxes_of_two_pec_materials_admitted():
     # Both resolve above the PEC threshold, so assembly builds one PEC wall.
     sim = _guide()
     sim.add_material("pec_b", eps_r=1.0, sigma=1e10)
-    sim.add(Box((0.050, 0, 0), (0.085, 0.010, B)), material="pec")
-    sim.add(Box((0.085, 0, 0), (0.110, 0.010, B)), material="pec_b")
+    sim.add(Box((17 * DX, 0, 0), (28 * DX, 3 * DX, 7 * DX)), material="pec")
+    sim.add(Box((28 * DX, 0, 0), (37 * DX, 3 * DX, 7 * DX)), material="pec_b")
     assert not _findings(sim)

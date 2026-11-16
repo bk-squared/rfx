@@ -3,7 +3,7 @@
 What each test actually binds (corrected 2026-07-20, issue #395 — the
 earlier "locks the core physical properties" framing overstated the
 empty-guide cases, which are two-run identities):
-- empty guide: S11==0 / |S21|==1 hold *by construction* (device run IS the
+- empty guide: S11==0 / S21==single-run S21 hold by construction (device IS the
   reference run), so ``test_normalized_twoport_empty_is_extraction_identity``
   is an extraction-algebra / determinism tripwire, NOT a physics gate.
 - dielectric obstacle (device != reference): reciprocity, sub-unity
@@ -110,31 +110,18 @@ def _build_twoport_sim(*, kind: str, left_ref=None, right_ref=None):
 
 
 def test_normalized_twoport_empty_is_extraction_identity():
-    """Empty guide: S11==0 / |S21|==1 hold BY CONSTRUCTION (not physics).
-
-    Issue #395: on an empty guide the device run *is* the reference run, so
-    ``S11 = (b_dev - b_ref)/a_inc`` is identically 0 and ``S21 = b_dev/b_ref``
-    is identically 1 for bit-identical runs — independent of PML/extractor
-    physics. This test is an extraction-algebra / determinism tripwire: it
-    fails only if the two-run subtraction/normalization plumbing breaks. The
-    tight tolerances (1e-4, far below the old 0.15 physics-looking gate)
-    reflect that the values are exact identities, not measured quantities.
-    The real physics lives in
-    ``test_normalized_twoport_dielectric_binds_reciprocity_and_transmission``.
-    """
+    """Empty-guide subtraction is exact; transmission keeps propagation."""
     sim = _build_twoport_sim(kind="empty")
     result = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
+    single = sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
     s = np.asarray(result.s_params)
+    s_single = np.asarray(single.s_params)
 
-    # Identity, not physics: device==reference => exact 0 / exact 1.
-    assert float(np.max(np.abs(s[0, 0, :]))) < 1e-4, (
-        "empty-guide S11 is not the expected two-run identity 0 — the "
-        "diagonal subtraction plumbing regressed"
-    )
-    assert float(np.max(np.abs(np.abs(s[1, 0, :]) - 1.0))) < 1e-4, (
-        "empty-guide |S21| is not the expected two-run identity 1 — the "
-        "off-diagonal normalization plumbing regressed"
-    )
+    assert np.array_equal(s[0, 0], np.zeros_like(s[0, 0]))
+    for i, j in ((1, 0), (0, 1)):
+        assert np.max(np.abs(s[i, j] - s_single[i, j])) <= (
+            1e-5 * np.max(np.abs(s_single[i, j]))
+        )
 
 
 def test_normalized_twoport_dielectric_binds_reciprocity_and_transmission():
@@ -242,24 +229,10 @@ def test_normalized_twoport_pec_short_is_strongly_reflective():
 
 
 def test_normalized_twoport_reference_plane_magnitude_invariant_on_reflecting_dut():
-    """Reference-plane shift preserves |S| on a REFLECTING DUT (binding).
+    """A plane shift preserves magnitudes and rotates one scattering matrix.
 
-    Issue #395: the pre-#395 test ran on an empty guide, where S11==0 and the
-    same ref_shift cancels in numerator and denominator of every two-run
-    ratio, so a wrong-magnitude reference-plane implementation still passed.
-
-    On a reflecting eps_r=4 DUT the diagonal S11 is non-zero, so the test
-    actually exercises the de-embed path. A pure phase de-embed must leave
-    the S-parameter MAGNITUDES unchanged (probe 2026-07-20: max|dmag|=0.0
-    for S11 and S21) while legitimately rotating the S11 PHASE (up to ~4.4
-    rad). A ref-plane bug that applied a real gain/attenuation instead of a
-    unit-modulus phase would change |S| and trip this gate.
-
-    Scope split (do not duplicate): the PHASE-rotation sign/magnitude
-    correctness is gated by
-    ``tests/unit/sparams/test_waveguide_phase_gate.py::test_deembed_step_sign_rotation_correct``;
-    here we bind only that the shift is a pure phase (magnitude-preserving)
-    and that the transmission (off-diagonal) is fully invariant.
+    Transmission uses driven-port reference incidence, retaining propagation;
+    its doubled phase rotation equals the sum of the reflection rotations.
     """
     base = _build_twoport_sim(kind="dielectric").compute_waveguide_s_matrix(
         num_periods=40, normalize=True
@@ -282,12 +255,11 @@ def test_normalized_twoport_reference_plane_magnitude_invariant_on_reflecting_du
         "reference-plane shift changed |S| on a reflecting DUT — the "
         "de-embed is not a pure phase (wrong-magnitude ref-plane bug)"
     )
-    # Binding: the transmission (off-diagonal) is fully complex-invariant —
-    # its exp(+jbeta d) / exp(+jbeta d) cancels in b_dev/b_ref exactly.
-    assert np.allclose(s_base[1, 0, :], s_shift[1, 0, :], rtol=1e-3, atol=1e-4), (
-        "reference-plane shift moved the complex S21 — the off-diagonal "
-        "ref_shift factors must cancel between device and reference runs"
-    )
+    rotations = np.angle(s_shift * np.conj(s_base))
+    residual = np.angle(np.exp(1j * (
+        2 * rotations[1, 0] - rotations[0, 0] - rotations[1, 1]
+    ))) / 2
+    assert np.max(np.abs(residual)) < 1e-4
     # Witness that this is not merely re-checking an all-equal matrix: the
     # diagonal PHASE *does* rotate under the shift (that is the de-embed).
     diag_phase_shift = float(

@@ -182,7 +182,7 @@ def _add_geometry(sim: Simulation, geometry_cfg) -> None:
 
 
 def _add_thin_conductors(sim: Simulation, tc_cfg) -> None:
-    """``thin_conductors:`` — sheet declarations (#931 §1.3).
+    """``thin_conductors:`` — sheet declarations.
 
     A sheet is a footprint on ONE node plane with zero thickness, so the
     front end needs a way to say it: a Box drawn with ``lo == hi`` on its
@@ -271,7 +271,7 @@ def _add_sources(sim: Simulation, sources_cfg) -> None:
         # Lumped port.
         extra = set(entry) - {
             "type", "position", "component", "waveform",
-            "impedance", "extent", "excite", "direction",
+            "impedance", "extent", "radius", "excite", "direction",
         }
         if extra:
             raise KeyError(
@@ -280,6 +280,8 @@ def _add_sources(sim: Simulation, sources_cfg) -> None:
         port_kwargs: dict = {"impedance": float(entry.get("impedance", 50.0))}
         if "extent" in entry and entry["extent"] is not None:
             port_kwargs["extent"] = float(entry["extent"])
+        if "radius" in entry and entry["radius"] is not None:
+            port_kwargs["radius"] = float(entry["radius"])
         if "excite" in entry:
             port_kwargs["excite"] = bool(entry["excite"])
         if "direction" in entry and entry["direction"] is not None:

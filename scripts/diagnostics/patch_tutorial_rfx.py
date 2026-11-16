@@ -30,7 +30,8 @@ from rfx.boundaries.spec import BoundarySpec
 from rfx.sources.sources import GaussianPulse
 from rfx.auto_config import smooth_grading
 from rfx.harminv import harminv
-from rfx.farfield import compute_far_field, directivity
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import directivity
 # The ONE spelling of the build-time realization check (#931 §1.7).
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))), "tests"))

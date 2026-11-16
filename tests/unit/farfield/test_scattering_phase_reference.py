@@ -11,11 +11,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import rfx.rcs as rcs
+import rfx.measurement.rcs as rcs
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0, Grid
 from rfx.simulation import ProbeSpec, run
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 from tests._x64_compat import enable_x64
 
 F0 = 6e9
@@ -92,8 +93,13 @@ def test_source_delay_cancels_from_complex_response(monkeypatch):
     times = np.arange(STEPS) * float(grid.dt)
     spectra = []
     for t0 in (cfg.src_t0, cfg.src_t0 + delay):
+        # #1839: each finite charge-free DG uses its own cutoff t0/tau.
+        c, u = t0 / cfg.src_tau, times / cfg.src_tau
         arg = (times - t0) / cfg.src_tau
-        pulse = -2 * arg * np.exp(-arg**2)
+        bare = -2.0 * arg * np.exp(-arg**2)
+        onset = np.exp(-c**2 - u**2) * (
+            2 * c + (4 * c**2 - 2) * u - 4 * c * u**2 - 4 * c**2 * u**3)
+        pulse = np.where(times >= 0, bare - onset, 0.0)
         spectra.append(np.exp(-2j * np.pi * FREQS[:, None] * times) @ pulse)
     np.testing.assert_allclose(delayed.incident_spectrum / original.incident_spectrum,
                                spectra[1] / spectra[0], rtol=2e-3, atol=0)

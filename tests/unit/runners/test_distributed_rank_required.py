@@ -35,8 +35,9 @@ def test_cpml_rejects_absent_rank(graded, monkeypatch):
     from rfx.stepping import absorber
     # The graded wrapped step reaches the kernel through rfx.boundaries.cpml
     # and rfx.stepping.absorber (H, bound when the slab setup is built); the
-    # legacy runners through their own names.
-    modules = (nu, cpml, absorber) if graded else (uniform,)
+    # legacy graded runner through its own names; the uniform wrapped setup
+    # captures both kernels from rfx.boundaries.cpml.
+    modules = (nu, cpml, absorber) if graded else (cpml,)
     calls = []
     for module, name in [(m, n) for m in modules for n in ("apply_cpml_e", "apply_cpml_h")]:
         original = getattr(module, name)

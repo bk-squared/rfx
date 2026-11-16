@@ -6,14 +6,10 @@ Import contract (Part B Stage 1a refactor):
   It must NEVER do ``from rfx.api import ...`` or ``from . import ...``
   the package, to keep ``rfx/api/__init__.py`` the sole composition point.
 
-The methods here were moved verbatim out of ``rfx/api/__init__.py``'s
-``class Simulation`` body. They are pure structural relocations — same
-indentation, decorators, signatures, and logic. ``Simulation`` inherits
-``_PreflightMixin`` so every method below remains a bound method on
-``Simulation`` instances; ~79 test call-sites are unaffected.
+``Simulation`` inherits ``_PreflightMixin``, so every method below is
+bound on ``Simulation`` instances.
 
-FINAL SHAPE after #980 Phase 3 (legs 0-7, complete). This file is now a
-FACADE and holds three things:
+This file is a facade and holds three things:
 
 1. The EXECUTION family, which stays here by design and is everything that
    decides WHAT to run rather than checking a configuration: ``preflight``
@@ -24,11 +20,11 @@ FACADE and holds three things:
    then iterates ``rfx/preflight/_registry.py``'s ``CORE_CONFIG_CHECKS``,
    whose ORDER is the observable
    ``tests/locks/test_preflight_split_snapshot.py`` pins —
-   ``_collect_flux_regions``, and the x64 / ADI / settling-witness
+   ``_collect_flux_regions``, and the x64 / settling-witness
    configuration checks.
 2. The module-level RE-EXPORT blocks. Every name any leg moved is re-bound
    here, so the module namespace is exactly as wide as it was before the
-   split (55 names, pinned by set equality) and the 17 files that do
+   split (55 names, pinned by set equality) and the existing readers that do
    ``from rfx.api._preflight import <name>`` keep resolving. Classes are
    re-exported, never redefined: one ``PreflightWarning``, one
    ``_RealizedPEC``.
@@ -61,22 +57,22 @@ from rfx.geometry.csg import Box
 
 
 # ---------------------------------------------------------------------------
-# #980 Phase 3 re-export surface (leg 0).
+# Re-export surface.
 #
-# The report/result types and the formatting + absorber leaves that used to sit
-# here now live in ``rfx.preflight._common``, moved verbatim. They are re-bound
+# The report/result types and the formatting + absorber leaves live in
+# ``rfx.preflight._common``. They are re-bound
 # as module globals of THIS module because three things depend on that
 # namespace and none of them would fail loudly if it quietly emptied out:
 #
-#   * 17 files do ``from rfx.api._preflight import <name>``, including
-#     ``rfx/sparams/_common.py`` (``PreflightWarning``) and
-#     ``validation/research/convergence_floor/fixture.py``;
+#   * Existing facade readers include
+#     ``validation/research/convergence_floor/fixture.py``; S-parameter
+#     helpers now import ``PreflightWarning`` from ``rfx.preflight._common``.
 #   * ``tests/unit/preflight/test_preflight_rasterization.py`` and
 #     ``tests/unit/ports/test_msl_clearance_diagnostic.py`` hold the MODULE
-#     OBJECT and ``monkeypatch.setattr`` a global on it across 9 call sites, so
-#     a name that stops living here aims those patches at a module nobody
-#     reads. (None of the 9 patched names is moved by this leg; the re-export
-#     is what keeps that true for the readers that stayed behind.)
+#     OBJECTS of the defining modules and ``monkeypatch.setattr`` their
+#     globals, so preflight and S-parameter readers share those patch targets.
+#     Those patches do not target this facade; its re-exports preserve
+#     compatibility for the readers that still import names from here.
 #   * ``_PreflightMixin`` below calls every one of these by BARE NAME, so they
 #     have to resolve as globals of this module.
 #
@@ -115,7 +111,7 @@ from rfx.preflight._common import (
     PreflightIssue,
     PreflightReport,
     # Leg 6 added the last two, in the relative order they held here. The
-    # ``port_in_pec`` dead-component rule (#929) and the H-curl-loop table it
+    # ``port_in_pec`` dead-component rule and the H-curl-loop table it
     # reads are the leg-6 equivalent of leg 2's ``_sorted_box_corners``: a
     # pure leaf whose two readers straddle this split. One is
     # ``_validate_cfg_port_inside_pec``, which leaves with leg 6 for
@@ -133,11 +129,11 @@ from rfx.preflight._common import (
 
 
 # ---------------------------------------------------------------------------
-# #980 Phase 3 re-export surface (leg 1).
+# Re-export surface.
 #
-# The MSL probe-clearance geometry block and the MSL check-2c constants moved
-# verbatim to ``rfx.preflight.msl``. They are re-bound as module globals of
-# THIS module for the three reasons the leg-0 block above lists, plus a fourth
+# The MSL probe-clearance geometry block and the MSL check-2c constants are defined in ``rfx.preflight.msl``. They are
+# re-bound as module globals of
+# THIS module for the three reasons the report/result re-export block above lists, plus a fourth
 # that belongs to this family alone:
 #
 #   * ``_validate_forward_sparameter_request`` STAYS on ``_PreflightMixin``
@@ -170,11 +166,11 @@ from rfx.preflight.msl import (
 
 
 # ---------------------------------------------------------------------------
-# #980 Phase 3 re-export surface (leg 2).
+# Re-export surface.
 #
-# The five issue-#703 gate constants and the banner that derives them moved
-# verbatim to ``rfx.preflight.pec_geometry``. They are re-bound as module
-# globals of THIS module for the reasons the leg-0 block above lists -- the
+# The five gate constants and the banner that derives them are defined in ``rfx.preflight.pec_geometry``. They are
+# re-bound as module
+# globals of THIS module for the reasons the report/result re-export block above lists -- the
 # namespace is pinned by set equality, and 17 files import names from here.
 #
 # What the re-export does NOT do, and must not be mistaken for: it is not the
@@ -203,12 +199,12 @@ from rfx.preflight.pec_geometry import (
 
 
 # ---------------------------------------------------------------------------
-# #980 Phase 3 re-export surface (leg 3).
+# Re-export surface.
 #
 # The three module-level waveguide leaves -- ``_waveguide_skipped_note``,
 # ``WAVEGUIDE_DEFAULT_NUM_PERIODS`` and ``resolve_waveguide_port_freqs`` --
-# moved verbatim to ``rfx.preflight.waveguide``. They are re-bound as module
-# globals of THIS module for the reasons the leg-0 block above lists, and for
+# are defined in ``rfx.preflight.waveguide``. They are re-bound as module
+# globals of THIS module for the reasons the report/result re-export block above lists, and for
 # one that is specific to this family and does NOT go away when the check
 # bodies follow:
 #
@@ -226,15 +222,15 @@ from rfx.preflight.pec_geometry import (
 # keeps both arrangements working, and it is required either way:
 # ``tests/unit/preflight/test_waveguide_setup_audits.py`` imports
 # ``WAVEGUIDE_DEFAULT_NUM_PERIODS`` from HERE and ``rfx/sparams/waveguide.py``
-# imports ``resolve_waveguide_port_freqs`` from HERE.
+# imports ``resolve_waveguide_port_freqs`` from ``rfx.preflight.waveguide``.
 #
-# Unlike the leg-2 block, this one is also a legitimate patch point -- there
-# is simply nothing patching it. An AST sweep over ``tests/ rfx/ validation/
-# scripts/ examples/`` resolving aliases, ``importlib`` forms and string-form
-# targets finds no ``monkeypatch``/``setattr``/``mock.patch`` site on any of
-# the three names, which is why ``rfx/sparams/waveguide.py`` is left importing
-# the resolver from here rather than being repointed at the leg module the way
-# leg 1 had to repoint its own S-matrix readers.
+# The S-parameter calculator imports the resolver from its defining module
+# so the lower package does not depend on this API facade. A scan of
+# ``tests/`` and ``rfx/`` finds no ``monkeypatch``/``setattr``/``mock.patch``
+# targeting this facade's resolver and expecting the calculator to see it.
+# Patches to ``rfx.preflight.waveguide`` target the defining module directly.
+# The re-export remains available to existing facade readers and the
+# preflight routing entry point below.
 #
 # 3 names move out and 3 come back, so the module namespace
 # ``tests/locks/test_preflight_split_snapshot.py`` pins by set equality is
@@ -246,40 +242,23 @@ from rfx.preflight.waveguide import (
     resolve_waveguide_port_freqs,
 )
 
-# ---------------------------------------------------------------------------
-# #980 Phase 3 re-export surface (leg 5).
-#
-# ONE module-level name moves with the mesh / non-uniform leg: the #743
-# coarsest-cell helper ``_local_cell``, whose only reader is
-# ``_validate_mesh_quality``. The split inventory filed it as SHARED with
-# ``_CampaignStaticsContext`` and therefore as a ``_common`` leaf. It is not
-# shared -- it is not even the same function. ``_CampaignStaticsContext.
-# entry_realizations`` imports a DIFFERENT ``_local_cell`` from
-# ``rfx.geometry.rasterize_grid`` function-locally, with the signature
-# ``(nodes, d, pos)`` against this one's ``(profile, lo, hi, fallback)``, and
-# that local binding shadows the module global everywhere inside it. An AST
-# scope walk over this file finds four loads of the name: one in
-# ``entry_realizations``'s nested ``_tie``, bound to its local import, and
-# three in ``_validate_mesh_quality``, bound to the module global. So the
-# helper is mesh-family-local and went to ``rfx/preflight/mesh.py``.
-#
-# Nothing outside this module imports it from here, and the sweep finds no
-# patch site on it either, so this re-export exists for ONE reason: the
-# module-namespace surface ``tests/locks/test_preflight_split_snapshot.py``
-# pins by set equality in both directions. 1 name moves out and 1 comes back,
-# so that namespace is still exactly 55 names wide.
-# ---------------------------------------------------------------------------
+# Re-export ``_local_cell`` from ``rfx/preflight/mesh.py`` for the module-
+# namespace surface pinned by
+# ``tests/locks/test_preflight_split_snapshot.py``. Its ``(profile, lo, hi,
+# fallback)`` signature differs from the ``(nodes, d, pos)`` helper imported
+# locally from ``rfx.geometry.rasterize_grid`` by
+# ``_CampaignStaticsContext.entry_realizations``.
 from rfx.preflight.mesh import _local_cell
 
 
 # ---------------------------------------------------------------------------
-# #980 Phase 3 re-export surface (leg 7, the last motion leg).
+# Re-export surface.
 #
 # The whole realization block -- the three classes that carry the run's
 # conductor realization (``_RealizedPEC``, ``_EntryRealization``,
 # ``_CampaignStaticsContext``) and the four numpy leaves they read
 # (``_shape_bounds``, ``_shift_back_np``, ``_wall_nodes_on_plane``,
-# ``_realized_edges_np``) -- moved verbatim to ``rfx.preflight.realization``.
+# ``_realized_edges_np``) -- are defined in ``rfx.preflight.realization``.
 # They are re-bound as module globals of THIS module for the reasons the leg-0
 # block above lists: the namespace is pinned by set equality, and 17 files
 # import names from here.
@@ -320,8 +299,7 @@ class _PreflightMixin:
     """Preflight / validation methods mixed into :class:`Simulation`."""
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the TFSF vacuum-boundary lane guard moved
-    # VERBATIM to ``rfx/preflight/sources.py`` and is bound back here, AT
+    # the TFSF vacuum-boundary lane guard is defined in ``rfx/preflight/sources.py`` and is bound back here, AT
     # THE POSITION it held in this class body.
     #
     # It is the ONE ``@staticmethod`` this leg moves, and the decorator
@@ -360,14 +338,14 @@ class _PreflightMixin:
             or s_param_freqs is not None
             or s_param_n_steps is not None
         )
-        from rfx.runners._admission import resolve_plain_source_s_request
+        from rfx.runners._admission import default_run_forms_s, resolve_plain_source_s_request
         compute_s_params = resolve_plain_source_s_request(
             self, compute_s_params, requested=requested, devices=devices)
-        if not requested:
+        if not (requested or (compute_s_params is None and default_run_forms_s(self, devices=devices))):
             return compute_s_params
 
         port_entries = self._port_sparameter_entries()
-        source_only_entries = [pe for pe in self._ports if pe.impedance == 0.0]
+        source_only_entries = [pe for pe in self._ports if pe.is_soft_source]
         messages: list[str] = []
 
         if self._msl_ports:
@@ -425,11 +403,6 @@ class _PreflightMixin:
                 + "."
             )
 
-        if self._solver == "adi":
-            raise NotImplementedError(
-                "run(compute_s_params=True) is not supported with "
-                "solver='adi'; use the uniform Yee solver."
-            )
         if devices is not None and len(devices) > 1:
             from rfx.model.distributed_ports import refuse_unsupported_distributed_features
             refuse_unsupported_distributed_features(
@@ -446,7 +419,7 @@ class _PreflightMixin:
         # The lumped/wire S-parameter extractor runs a SEPARATE eager FDTD
         # re-run that does NOT apply periodic boundaries, so it would silently
         # ignore BoundarySpec periodic faces and return an S-matrix for the wrong
-        # (non-periodic) boundary-value problem (issue #206). Fail loudly
+        # (non-periodic) boundary-value problem. Fail loudly
         # instead of returning silently-wrong S-parameters.
         if self._periodic_axes and port_entries:
             raise NotImplementedError(
@@ -463,22 +436,22 @@ class _PreflightMixin:
         """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""
 
         # The port S11 is the port drive's own reflection only if nothing else
-        # excites the model (#1420), as on run()'s S request.
+        # excites the model, as on run()'s S request.
         from rfx.runners._admission import admit_forward_s_matrix
         admit_forward_s_matrix(self)
         port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:
             messages.append("MSL ports use compute_msl_s_matrix()")
-            # Near-field guard (issue #80): probe 0 must clear the source
+            # Near-field guard: probe 0 must clear the source
             # FRINGING transient (~5·h_sub), which decays over a few substrate
             # thicknesses, not over λ. Inside it the V·I-split S11 of a high-Q
-            # resonant load is corrupted (the issue-#80 edge-fed patch read
+            # resonant load is corrupted (the edge-fed patch read
             # |S11|=8.94/1.11 at offset~5; passive ~0.99 once cleared). The
             # default n_probe_offset already floors to max(λ-clearance,
             # 5·h_sub/dx); this warns when an EXPLICIT value under-provisions it.
             for pe in self._msl_ports:
-                # Issue #823: the SAME predicate _check_msl_port_geometry's
+                # the SAME predicate _check_msl_port_geometry's
                 # check 5 and add_msl_port's auto floor use. This site used to
                 # spell it as a raw float comparison (< 5.0*h/dx) while the
                 # other two rounded to cells, so the three disagreed in a band
@@ -542,7 +515,7 @@ class _PreflightMixin:
                     )
                 elif self._dx and pe.n_probe_offset is not None:
                     # What leaving the offset None gives on this port, counted
-                    # the way the driver counts it (#810): the automatic
+                    # the way the driver counts it: the automatic
                     # lengths in this runway's cell where the ladder lies in
                     # one zone, in the scalar dx cell where it would cross a
                     # ramp. An automatic port is judged on that same count,
@@ -602,7 +575,7 @@ class _PreflightMixin:
                             f"{_off} sits within the source fringing "
                             f"transient ({_nf_cells} cells = max(3, round("
                             f"5·h_sub/runway_cell))); probe 0 may corrupt the V·I-split "
-                            f"S11 of a high-Q resonant load (issue #80) — "
+                            f"S11 of a high-Q resonant load — "
                             + _remedy
                         )
         if self._waveguide_ports:
@@ -621,7 +594,7 @@ class _PreflightMixin:
                 "for a through line"
             )
         if not port_entries:
-            source_only = any(pe.impedance == 0.0 for pe in self._ports)
+            source_only = any(pe.is_soft_source for pe in self._ports)
             if source_only:
                 messages.append("add_source(...) is not an impedance port")
             detail = "; ".join(messages) if messages else (
@@ -641,10 +614,10 @@ class _PreflightMixin:
             )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 5: the three contiguous mesh-quality checks -- the
+    # the three contiguous mesh-quality checks -- the
     # P0 resolution scan, the Taflove Ch.4 numerical-dispersion estimate it
     # calls, and the realized-metal-plane-on-a-graded-axis advisory it also
-    # calls -- moved VERBATIM to ``rfx/preflight/mesh.py`` and are bound
+    # calls -- are defined in ``rfx/preflight/mesh.py`` and are bound
     # back here, AT THE POSITION they held in this class body. Position is
     # not cosmetic: ``preflight`` calls ``_validate_mesh_quality`` before
     # ``_validate_simulation_config`` and the resulting advisory ORDER is
@@ -671,9 +644,9 @@ class _PreflightMixin:
     )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 7: the three realization ACCESSORS -- the production
-    # assembly call and the port-side pair that reads it -- moved VERBATIM
-    # to ``rfx/preflight/realization.py`` and are bound back here, AT THE
+    # the three realization ACCESSORS -- the production
+    # assembly call and the port-side pair that reads it -- are defined in ``rfx/preflight/realization.py`` and are
+    # bound back here, AT THE
     # POSITION they held in this class body. Position is not cosmetic --
     # ``_validate_simulation_config`` calls its checks in a fixed sequence
     # and the resulting advisory ORDER is the observable
@@ -707,7 +680,7 @@ class _PreflightMixin:
         _port_pec_mask,
     )
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 3: the realized-aperture pair moved VERBATIM to
+    # the realized-aperture pair is defined in
     # ``rfx/preflight/waveguide.py`` and is bound back here, AT THE
     # POSITION it held in this class body. Position is not cosmetic --
     # ``_validate_simulation_config`` calls these checks in a fixed
@@ -729,7 +702,7 @@ class _PreflightMixin:
     )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the coax junction-aperture check -- the single
+    # the coax junction-aperture check -- the single
     # body of the ports_coax family -- moved VERBATIM to
     # ``rfx/preflight/ports.py`` and is bound back here, AT THE POSITION it
     # held in this class body. Position is not cosmetic --
@@ -751,8 +724,7 @@ class _PreflightMixin:
     from rfx.preflight.ports import _check_coaxial_port_junction_aperture
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 3: the cutoff emitter and its two lanes moved
-    # VERBATIM to ``rfx/preflight/waveguide.py``, bound back at their
+    # the cutoff emitter and its two lanes are defined in ``rfx/preflight/waveguide.py``, bound back at their
     # original position for the reason the block above gives.
     #
     # ``_check_waveguide_port_evanescent`` keeps three ``self.`` calls to
@@ -766,69 +738,7 @@ class _PreflightMixin:
         _check_waveguide_port_evanescent,
     )
 
-    def _collect_flux_regions(self, report: PreflightReport) -> None:
-        """Record the same finite windows the uniform/NU runners consume.
-
-        Only geometry is evaluated, never material arrays or field values.
-        Traced geometry cannot provide metre bounds; keep that limitation
-        explicit without forcing a material-AD caller off its tape.
-        """
-        from rfx.probes.flux_region import (
-            flux_region_message, resolve_flux_region, validate_flux_region_inputs,
-        )
-
-        source = "_collect_flux_regions"
-
-        def finding(entry, message, code, severity="warning"):
-            report.append(PreflightIssue(
-                message, severity=severity, code=code,
-                loc=getattr(entry, "name", None), source=source,
-            ))
-
-        def traced(value):
-            return any(is_tracer(leaf) for leaf in jax.tree_util.tree_leaves(value))
-
-        finite = []
-        for entry in getattr(self, "_flux_monitors", ()):
-            geometry = (entry.size, entry.center, entry.coordinate)
-            if traced(geometry):
-                finding(entry, "Flux monitor region is unavailable: traced geometry.",
-                        "flux_region_unavailable")
-                continue
-            try:
-                size, _ = validate_flux_region_inputs(entry.size, entry.center)
-            except (ValueError, TypeError) as exc:
-                finding(entry, f"Flux monitor {entry.name!r}: {exc}",
-                        "flux_region_invalid", "error")
-                continue
-            if size is not None:
-                finite.append(entry)
-        if not finite:
-            return
-
-        # Resolve the selected/frozen mesh, including inferred NU profiles.
-        # No independent rounding or declaration-only grid choice belongs here.
-        try:
-            if traced(self._resolve_mesh()):
-                raise ValueError("traced mesh has no concrete metre bounds")
-            grid = self._build_realized_grid()
-        except (ValueError, TypeError, NotImplementedError, AttributeError,
-                IndexError, KeyError) as exc:
-            for entry in finite:
-                finding(entry, f"Flux monitor {entry.name!r} region is unavailable: {exc}",
-                        "flux_region_unavailable")
-            return
-
-        for entry in finite:
-            try:
-                record = resolve_flux_region(grid, entry, self._domain, warn=False)
-            except (ValueError, TypeError, IndexError) as exc:
-                finding(entry, f"Flux monitor {entry.name!r}: {exc}",
-                        "flux_region_invalid", "error")
-                continue
-            report.flux_regions.append(record)
-            if record["clamped"]:
-                finding(entry, flux_region_message(record), "flux_region_clamped")
+    from rfx.preflight._flux_subjects import _collect_flux_regions  # type: ignore[misc]  # mypy does not support class-scoped imports.
 
     def preflight(
         self,
@@ -970,9 +880,9 @@ class _PreflightMixin:
             "compute_waveguide_s_matrix": "waveguide",
             "coaxial": "coaxial",
         }
-        if calculator.lower() == "compute_coaxial_s_matrix":  # removed, #1212
+        if calculator.lower() == "compute_coaxial_s_matrix":
             raise ValueError(
-                "calculator='compute_coaxial_s_matrix' names a method removed in #1212. "
+                "calculator='compute_coaxial_s_matrix' names a method that was removed. "
                 "Use calculator='coaxial' to check the coaxial methods, "
                 "compute_coaxial_line_reflection() (one-port reflection) and "
                 "compute_coaxial_two_port() (through line)."
@@ -1035,12 +945,8 @@ class _PreflightMixin:
         # waveguide ports there is no layout to audit. Emitted as warnings by
         # the check sites (the repo idiom) and folded into the report here, so
         # the coded fields survive into PreflightIssue.
-        # Issue #726 item 2: the msl route used to return NOTHING on a port
-        # whose deepest probe sat inside a reflector (measured: 0 findings
-        # here against 18 from preflight(), same sim, while the result
-        # object's probe_clearance read "insufficient"). Same fold-in shape
-        # as the waveguide block below.
-        if key == "msl" and not len(issues):   # refuses bool() (#980)
+        # Same fold-in shape as the waveguide block below.
+        if key == "msl" and not len(issues):   # refuses bool()
             if list(self._msl_ports):
                 import warnings as _mslmod
                 # Function-local, like compute_msl_s_matrix's own import of
@@ -1048,7 +954,7 @@ class _PreflightMixin:
                 # pinned by SET EQUALITY in
                 # tests/locks/test_preflight_split_snapshot.py, and a new
                 # module-level name would be a surface change for a function
-                # that is not part of the #980 code motion.
+                # that is not part of the code motion.
                 from rfx.preflight.msl import (
                     preflight_msl_probe_clearance,
                 )
@@ -1060,13 +966,16 @@ class _PreflightMixin:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
                         _inst,
+                        scope=getattr(_inst, "scope", "model"),
+                        subjects=getattr(_inst, "_subjects", ()),
+                        region=getattr(_inst, "_region", None),
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "msl_port_geometry"),
                         source=getattr(_inst, "source",
                                        "preflight_sparameters"),
                     ))
 
-        if key == "waveguide" and not len(issues):   # refuses bool() (#980)
+        if key == "waveguide" and not len(issues):   # refuses bool()
             _wg_entries = list(self._waveguide_ports)
             if _wg_entries:
                 import warnings as _wmod
@@ -1081,6 +990,9 @@ class _PreflightMixin:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
                         _inst,
+                        scope=getattr(_inst, "scope", "model"),
+                        subjects=getattr(_inst, "_subjects", ()),
+                        region=getattr(_inst, "_region", None),
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "uncoded"),
                         loc=getattr(_inst, "loc", None),
@@ -1094,6 +1006,8 @@ class _PreflightMixin:
             issues.extend(general)
             issues.flux_regions.extend(general.flux_regions)
 
+        from rfx.preflight._subjects import resolve_findings
+        resolve_findings(issues)
         _errors = issues.errors
         if strict and _errors:
             _advisory = len(issues) - len(_errors)
@@ -1105,7 +1019,7 @@ class _PreflightMixin:
                 + ":\n  - " + "\n  - ".join(_errors)
             )
 
-        if len(issues):              # PreflightReport refuses bool() (#980)
+        if len(issues):              # PreflightReport refuses bool()
             for issue in issues:
                 print(f"  [SPARAM PREFLIGHT] {issue}")
         else:
@@ -1134,7 +1048,7 @@ class _PreflightMixin:
         if self._solver != "yee":
             raise NotImplementedError(
                 "compute_waveguide_s_matrix() does not support "
-                f"solver={self._solver!r} (#1300). Use solver='yee'."
+                f"solver={self._solver!r}. Use solver='yee'."
             )
         if not self._waveguide_ports:
             raise ValueError(
@@ -1233,7 +1147,7 @@ class _PreflightMixin:
                 "boundary='cpml' with cpml_layers > 0 (got "
                 f"boundary={self._boundary!r}, cpml_layers={self._cpml_layers})")
         else:
-            # Both lanes absorb on all three axes (issue 1218): a face without
+            # Both lanes absorb on all three axes: a face without
             # an absorber is a PEC wall that closes a can around the line.
             from rfx.boundaries.depths import has_positive_cpml_faces
             if not has_positive_cpml_faces(self._boundary_spec, self._cpml_layers):
@@ -1275,8 +1189,8 @@ class _PreflightMixin:
                 + ".")
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the NTFF inverse-design umbrella (PEC overlap as
-    # an ERROR, the lambda/4 near-field advisory) and the #334 small
+    # the NTFF inverse-design umbrella (PEC overlap as
+    # an ERROR, the lambda/4 near-field advisory) and the small
     # ground-plane check it calls moved VERBATIM to
     # ``rfx/preflight/ntff.py`` and are bound back here, AT THE POSITIONS
     # they held in this class body. Position is not cosmetic --
@@ -1301,6 +1215,8 @@ class _PreflightMixin:
         _validate_ntff_small_ground_plane,
     )
 
+    from rfx.preflight.f0_sheet_backed_gap import _validate_cfg_f0_sheet_backed_gap
+
     def _validate_simulation_config(self) -> None:
         """Comprehensive pre-simulation configuration validation.
 
@@ -1310,7 +1226,7 @@ class _PreflightMixin:
 
         Called from run() after _validate_mesh_quality().
 
-        Stage 1b refactor (2026-05-17): the original ~592-line body was
+        Stage 1b refactor: the original ~592-line body was
         decomposed into per-check ``_validate_cfg_*`` helpers. This method
         keeps its signature and remains the public entry point; its body
         computes the shared local state (``dx``, CPML thicknesses,
@@ -1318,14 +1234,13 @@ class _PreflightMixin:
         as the original checks. No logic, ordering, or warning text
         changed — pure readability decomposition.
 
-        Issue #980 Phase 3 leg 8: the 37 hand-written helper calls that used to
-        follow moved into ``rfx/preflight/_registry.py`` as
+        The helper calls are registered in ``rfx/preflight/_registry.py`` as
         :data:`~rfx.preflight._registry.CORE_CONFIG_CHECKS`, one entry per
         call, in the same order and with the same arguments — so a new check
         is registered in its family module instead of edited into this body,
         and the suite can be listed without reading it. What stays here is
         exactly the context-building step: this method still computes the
-        shared state once and now hands it over as a
+        shared state once and hands it over as a
         :class:`~rfx.preflight._registry.ConfigCheckContext`.
         """
         # Function-local, not module-level: rfx.api._preflight's module
@@ -1361,7 +1276,7 @@ class _PreflightMixin:
 
     def _validate_cfg_precision_x64(self, _w) -> None:
         """Report missing x64 as an error; retain the nonuniform advisory."""
-        from rfx._precision import FLOAT64_MODE_ERROR
+        from rfx._internal._precision import FLOAT64_MODE_ERROR
 
         if self._precision == "float64" and not jax.config.x64_enabled:
             _w.warn(PreflightWarning(
@@ -1376,13 +1291,13 @@ class _PreflightMixin:
             or self._dx_profile is not None
             or self._dy_profile is not None
         )
-        if self._precision != "float32" and is_nonuniform:
+        if self._precision == "mixed" and is_nonuniform:
             _w.warn(PreflightWarning(
                 f"precision={self._precision!r} was requested on a "
                 "non-uniform mesh (dx/dy/dz profile set), but the "
                 "non-uniform runner does not thread field_dtype -- fields "
-                "would silently run float32 regardless of this setting "
-                "(issue #630). run()/forward() will raise NotImplementedError "
+                "would silently run float32 regardless of this setting"
+                ". run()/forward() will raise NotImplementedError "
                 "at dispatch rather than proceed silently; this warning "
                 "exists to explain that error before you hit it. Use "
                 "precision='float32' (the default) with a non-uniform mesh, "
@@ -1392,142 +1307,32 @@ class _PreflightMixin:
                 source="_validate_cfg_precision_x64",
             ))
 
-    # (#980 Phase 3 leg 6 bound the #425 TFSF-plus-lumped-RLC warning here;
-    # #1163 deleted it with the series-element coupling it was about.)
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 5: the graded-Box rasterization check moved VERBATIM
-    # to ``rfx/preflight/mesh.py``, bound back at its original position for
+    # the graded-Box rasterization check is defined
+    # in ``rfx/preflight/mesh.py``, bound back at its original position for
     # the reason the block above gives.
     # ------------------------------------------------------------------
     from rfx.preflight.mesh import _validate_cfg_graded_box_rasterization
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the two #313 reference-plane advisories moved
-    # VERBATIM to ``rfx/preflight/ports.py``, bound back at their original
+    # the two reference-plane advisories are defined in ``rfx/preflight/ports.py``, bound back at their original
     # position for the reason the blocks above give.
     # ------------------------------------------------------------------
     from rfx.preflight.ports import _validate_cfg_refplane_placement
 
-    # ------------------------------------------------------------------
-    # The conformal-fine-dx guard that #980 leg 2 bound here was DELETED
-    # 2026-09-15 (#1043 / PR #1047): its own tripwire XPASSed, which its
-    # comment named as the signal to remove it. See the note at the top of
-    # ``rfx/preflight/pec_geometry.py``'s check section for the measurement.
-    # Nothing takes its position -- removing a core check SHORTENS the
-    # sequence rather than reordering it, so every surviving advisory keeps
-    # its relative order and only the deleted one leaves the snapshots.
-    # ------------------------------------------------------------------
 
 
-    def _validate_adi_interior_pec(self, pec_edge_masks) -> None:
-        """Unskippable lane guard shared by run and forward after assembly."""
-        from rfx.adi import _validate_interior_pec
-        _validate_interior_pec(pec_edge_masks)
 
-    def _validate_cfg_adi_interior_pec(self, _w) -> None:
-        """Report the same refusal from the production conductor assembly."""
-        if self._solver != "adi" or self._mode not in ("3d", "2d_tmz"):
-            return
-        # #1373: the same realized-material test lane admission applies.
-        # Reported here, beside the other ADI geometry refusal, so the
-        # registry sequence is unchanged.
-        from rfx.runners._admission import _adi_homogeneous
-        if self._geometry and not self._uses_nonuniform_mesh:
-            try:
-                homogeneous = _adi_homogeneous(self, None)
-            except Exception:   # assembly errors are reported by their own checks
-                homogeneous = True
-            if not homogeneous:
-                from rfx.adi import ADI_INTERFACE_MESSAGE
-                _w.warn(PreflightErrorWarning(
-                    ADI_INTERFACE_MESSAGE,
-                    code="adi_material_interface_unsupported",
-                    source="_validate_cfg_adi_interior_pec",
-                ), stacklevel=2)
-        if not self._geometry and not self._thin_conductors:
-            return
-        from rfx.adi import ADI_INTERIOR_PEC_MESSAGE
-        ctx = self._campaign_ctx()
-        realized = None if ctx.error else ctx.realized()
-        if realized is not None and realized.empty:
-            return
-        detail = ""
-        if realized is None:
-            detail = (
-                f" Interior PEC compatibility could not be evaluated: "
-                f"{ctx.error or ctx.assembly_error}. Resolve assembly first.")
-        _w.warn(PreflightWarning(
-            ADI_INTERIOR_PEC_MESSAGE + detail,
-            code="adi_interior_pec_unsupported",
-            severity="error",
-            source="_validate_cfg_adi_interior_pec",
-        ), stacklevel=2)
 
-    def _validate_cfg_adi_boundary(self, _w) -> None:
-        from rfx._adi_notice import ADI_SPONGE_REFUSAL, has_absorber
-        if self._solver == "adi" and has_absorber(self):
-            _w.warn(PreflightWarning(
-                ADI_SPONGE_REFUSAL,
-                code="adi_absorber_unsupported",
-                severity="error",
-                source="_validate_cfg_adi_boundary",
-            ), stacklevel=2)
 
-    def _validate_cfg_adi_3d_accuracy(self, _w) -> None:
-        """Advise on the 3D ADI large-timestep accuracy envelope (OPT-C1 fixed).
-
-        HISTORY: until 2026-07-13 the 3D ADI path was an LOD split with
-        artificial diffusion (OPT-C1) and this validator flagged it as
-        KNOWN-INACCURATE unconditionally. ``adi_step_3d`` now implements the
-        full Zheng–Chen–Zhang two-sub-step 3D ADI (issue #338 follow-up):
-        eigenfrequency error measured 1.2% at 2x CFL on the 12^3 PEC-cavity
-        adjudication test (``tests/unit/misc/test_review_tier1_validation_battery.py::
-        test_optc1_adi_3d_cavity_eigenfrequency``, 2% gate, ~15 cells/wave).
-
-        What remains is the honest large-dt envelope of ANY Crank–Nicolson-
-        class implicit scheme: dispersion error grows ~dt^2, so at ~15
-        cells per wavelength the <2% eigenfrequency envelope holds only for
-        CFL factors up to ~2x (von Neumann: -1.4% at 2x, -2.8% at 3x, -6.7%
-        at 5x). This envelope is for a cavity without interior PEC; it is
-        not a stability guarantee for projected conductors or arbitrary
-        material interfaces. Advise (WARNING severity) when
-        ``adi_cfl_factor > 2.0`` on a 3D grid.
-        The 2D TMz cavity accuracy check is separate. Interior PEC on
-        either lane is refused by the independent conductor guard.
-        """
-        if self._solver != "adi" or self._mode != "3d":
-            return
-        if self._adi_cfl_factor <= 2.0:
-            return
-        _w.warn(
-            PreflightWarning(
-                f"solver='adi' with a 3D grid at adi_cfl_factor="
-                f"{self._adi_cfl_factor:g}: the homogeneous, lossless ADI "
-                f"split with compatible domain boundaries removes the "
-                f"explicit CFL stability restriction. This does not "
-                f"guarantee stability with interior PEC projection "
-                f"(refused) or arbitrary material interfaces. For the "
-                f"cavity without interior PEC, dispersion error grows "
-                f"~dt^2 — at ~15 cells/wavelength the <2% eigenfrequency "
-                f"envelope holds only up to ~2x CFL (measured -1.4% at 2x; "
-                f"-2.8% at 3x, -6.7% at 5x by von Neumann analysis). Use "
-                f"adi_cfl_factor <= 2 for wavelength-scale accuracy, or "
-                f"reserve large factors for geometrically stiff meshes "
-                f"(features far below the wavelength).",
-                code="adi_3d_accuracy",
-                severity="warning",
-                source="_validate_cfg_adi_3d_accuracy",
-            ),
-            stacklevel=2,
-        )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 4: the eight contiguous absorber-configuration
-    # checks -- lossless-Q, the #636 dispersive pole at a face, per-face
-    # CPML thickness, the #647/#742 budget advisory, the shared
+    # the eight contiguous absorber-configuration
+    # checks -- lossless-Q, the dispersive pole at a face, per-face
+    # CPML thickness, the budget advisory, the shared
     # ``_preflight_face_layers``, pec_faces-vs-finite-PEC, and the two
-    # UPML refusals -- moved VERBATIM to ``rfx/preflight/absorber.py`` and
+    # UPML refusals -- are defined in ``rfx/preflight/absorber.py`` and
     # are bound back here, AT THE POSITION they held in this class body.
     # Position is not cosmetic: ``_validate_simulation_config`` calls these
     # checks in a fixed sequence and the resulting advisory ORDER is the
@@ -1558,13 +1363,13 @@ class _PreflightMixin:
         _validate_cfg_pec_faces_with_finite_pec,
         _validate_cfg_upml_refinement,
         _validate_cfg_upml_nonuniform_lane,
-        # #1043 stage B: the seam counterpart of _validate_cfg_geometry_in_cpml
+        # the seam counterpart of _validate_cfg_geometry_in_cpml
         # -- geometry ABSENT from the absorber under the feature that says it
         # puts it there. Defined in the family module like the eleven above,
         # never in this class body.
         _validate_cfg_dielectric_at_absorber_seam,
         _validate_cfg_port_conductor_continues,
-        # #801: the measured conjunction -- a conductor realizing within two
+        # the measured conjunction -- a conductor realizing within two
         # cells of an absorbing face that carries six layers or fewer. Defined
         # in the family module like the twelve above, never in this class body.
         _validate_cfg_conductor_in_thin_absorber,
@@ -1572,8 +1377,8 @@ class _PreflightMixin:
     )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 5: the P1.1 Floquet-on-a-non-uniform-mesh refusal
-    # moved VERBATIM to ``rfx/preflight/mesh.py``, bound back at its
+    # the P1.1 Floquet-on-a-non-uniform-mesh refusal
+    # is defined in ``rfx/preflight/mesh.py``, bound back at its
     # original position for the reason the blocks above give. The split
     # inventory filed it as ambiguous between the absorber lane and the
     # non-uniform one; it went with the mesh family because its subject is
@@ -1583,8 +1388,8 @@ class _PreflightMixin:
     from rfx.preflight.mesh import _validate_cfg_floquet_nonuniform
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 4: the probe/source placement check moved VERBATIM
-    # to ``rfx/preflight/absorber.py``, bound back at its original position
+    # the probe/source placement check is defined
+    # in ``rfx/preflight/absorber.py``, bound back at its original position
     # for the reason the block above gives. It is separated from that block
     # by ``_validate_cfg_floquet_nonuniform``, which is not an absorber
     # check -- leg 5 moved it to ``rfx/preflight/mesh.py`` and rebound it
@@ -1593,8 +1398,7 @@ class _PreflightMixin:
     from rfx.preflight.absorber import _validate_cfg_absorber_placement
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the P1.6 source-on-a-reflector-plane check moved
-    # VERBATIM to ``rfx/preflight/sources.py``, bound back at its original
+    # the P1.6 source-on-a-reflector-plane check is defined in ``rfx/preflight/sources.py``, bound back at its original
     # position. Position is not cosmetic --
     # ``_validate_simulation_config`` calls these checks in a fixed
     # sequence and the resulting advisory ORDER is the observable
@@ -1603,13 +1407,12 @@ class _PreflightMixin:
     from rfx.preflight.sources import _validate_cfg_source_on_reflector_plane
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the #500 NTFF-box-in-the-absorber check moved
-    # VERBATIM to ``rfx/preflight/ntff.py``, bound back at its original
+    # the NTFF-box-in-the-absorber check is defined in ``rfx/preflight/ntff.py``, bound back at its original
     # position. The P1.5 comment that used to sit after it is part of that
     # body's suite and travelled with it.
     #
     # The P1.7 minimum-steps hint travelled with it and was then DELETED by
-    # issue #1030: ``_validate_cfg_ntff_min_steps`` emitted nothing, it only
+    # ``_validate_cfg_ntff_min_steps`` emitted nothing, it only
     # wrote the instance attribute ``self._ntff_min_steps_hint``, and a
     # census found that attribute had no consumer -- its only readers were
     # ``rfx/interop/_design.py``'s ``EXCLUDED_SIMULATION_ATTRS`` (which named
@@ -1623,7 +1426,7 @@ class _PreflightMixin:
         """Warn when the declared inputs cannot produce a ring-down witness.
 
         Input-side fact, not a result prediction: ``run()`` and ``forward()`` score their
-        energy ring-down settling witness (#885) from the probe time series,
+        energy ring-down settling witness from the probe time series,
         so a simulation that registers NTFF or a field-DFT plane and NO
         point probe will come back with ``settling_db=None`` -- the
         claims-bearing open-domain DFT numbers this project's -40 dB
@@ -1635,8 +1438,8 @@ class _PreflightMixin:
         registered probe is INDEPENDENT of the drive is decided on the
         finished record, not here: the run/forward witness flags a probe
         sharing a Yee cell with a registered drive as source-dominated and
-        says so in ``settling_witness["qualifier"]`` plus a runtime warning
-        (#1090). This advisory only states the advice, which is why its
+        says so in ``settling_witness["qualifier"]`` plus a runtime warning. This advisory only states the advice,
+        which is why its
         text names the drive cell.
 
         Both entry points use the same recorded-probe arithmetic. Forward's
@@ -1658,12 +1461,12 @@ class _PreflightMixin:
             f"this simulation requests {' and '.join(wants)} but registers no "
             "point probe. run() and forward() score their ring-down settling witness from "
             "the recorded probe time series, so the result will carry settling_db=None "
-            "and those DFT numbers will have no truncation guard (#885); add "
+            "and those DFT numbers will have no truncation guard; add "
             "sim.add_probe(position, component) somewhere the field is live "
             "and NOT on a source/port drive cell — a record on the drive "
             "cell peaks on the drive pulse, so its end/peak ratio measures "
             "source turn-off rather than the structure's ring-down and does "
-            "not count as an independent witness (#1090) — and retain its "
+            "not count as an independent witness — and retain its "
             "time series. Inspect forward's diagnostic on "
             "the concrete result after JIT/AD evaluation.",
             code="settling_witness_will_be_absent",
@@ -1671,43 +1474,29 @@ class _PreflightMixin:
         ))
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 4: the #660 geometry-in-absorber reporting check
-    # moved VERBATIM to ``rfx/preflight/absorber.py``, bound back at its
+    # the geometry-in-absorber reporting check
+    # is defined in ``rfx/preflight/absorber.py``, bound back at its
     # original position for the reason the blocks above give.
     # ------------------------------------------------------------------
-    from rfx.preflight.absorber import _validate_cfg_geometry_in_cpml
+    from rfx.preflight.absorber import _validate_cfg_geometry_in_cpml, _validate_cfg_body_flush_on_absorber
 
-    # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the port/source/probe-frozen-by-realized-PEC
-    # check (345 lines, five emission sites -- the largest single body in
-    # this file), the wire-port cell-centre helper it calls and the #71
-    # floating-single-cell-port advisory moved VERBATIM to
-    # ``rfx/preflight/ports.py``, bound back at their original positions.
-    #
-    # ``_validate_cfg_port_inside_pec`` reads the run's REALIZED edge set
-    # through ``self._campaign_ctx``, which stays HERE with the realization
-    # family, and calls ``self._wire_port_cell_centers``, which travels
-    # with it. Both are attribute lookups on the composed ``Simulation``,
-    # so the rebind is the whole of what keeps them resolving.
-    #
-    # Its module-global read, ``_component_is_dead`` (the #929 one-sentence
-    # dead-component rule), did NOT travel with it: that leaf has a second
-    # reader in ``_RealizedPEC.component_is_dead`` above, so it went to
-    # ``rfx/preflight/_common.py`` where both sides can reach it, and is
-    # re-exported here for the bare-name read and the namespace surface.
-    # ------------------------------------------------------------------
+    # Port checks bind from ``rfx/preflight/ports.py``.
+    # ``_validate_cfg_port_inside_pec`` reads ``self._campaign_ctx`` and calls
+    # ``self._wire_port_cell_centers`` on the composed ``Simulation``.
+    # ``_component_is_dead`` is shared with ``_RealizedPEC.component_is_dead``
+    # through ``rfx/preflight/_common.py`` and re-exported here for the
+    # namespace contract.
     from rfx.preflight.ports import (
         _validate_cfg_port_inside_pec,
         _wire_port_cell_centers,
         _validate_cfg_floating_single_cell_port,
-        # #1295 / #1342: not a moved body -- written in the family module and
-        # bound here like the three above, so it carries their qualname pin.
+        # Bind the family-module functions here to preserve their qualname contract.
         _validate_cfg_half_node_split,
     )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 4: the P0.4 PEC-boundary-on-an-open-structure
-    # advisory moved VERBATIM to ``rfx/preflight/absorber.py``, bound back
+    # the P0.4 PEC-boundary-on-an-open-structure
+    # advisory is defined in ``rfx/preflight/absorber.py``, bound back
     # at its original position for the reason the blocks above give. The
     # split inventory filed this one as ambiguous; that module's docstring
     # records why reading the body puts it with the absorber family.
@@ -1715,13 +1504,13 @@ class _PreflightMixin:
     from rfx.preflight.absorber import _validate_cfg_pec_boundary_open_structure
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the P0.5 no-sources guard moved VERBATIM to
+    # the P0.5 no-sources guard is defined in
     # ``rfx/preflight/sources.py``, bound back at its original position for
     # the reason the blocks above give.
     # ------------------------------------------------------------------
     from rfx.preflight.sources import _validate_cfg_no_sources
 
-    # Validated multi-band grading envelope (SPEC-01 WP6, #780; witness
+    # Validated multi-band grading envelope (SPEC-01 WP6; witness
     # battery validation/research/multiband_nu/, pre-declaration note
     # docs/design_notes/20260829_spec01_multiband_predeclaration.md,
     # support row docs/guides/support_matrix.md "Multi-band graded mesh").
@@ -1729,10 +1518,10 @@ class _PreflightMixin:
     # What the witnesses establish for fine bands ALONG Z (small-large-
     # small-large included), witnessed only up to 3 fine bands / 4
     # transitions — the widest profile in the battery — with EVERY
-    # adjacent-cell ratio <= 1.4. Nothing below is an in-plane statement:
-    # every witness holds the transverse mesh uniform, and no witness
-    # grades dx_profile or dy_profile (adversarial review 2026-08-29,
-    # BL1; note section WP6R.1/WP6R.7 item 1). More bands are expected to
+    # adjacent-cell ratio <= 1.4. These battery witnesses hold the
+    # transverse mesh uniform; the in-plane ones are listed after F-S5
+    # (adversarial review, BL1; note section WP6R.1/WP6R.7
+    # item 1). More bands are expected to
     # behave the same way (each transition is local, and the measured
     # quantity is per-transition) but are NOT witnessed:
     #   F-S1  Remis-class dual-cell discrete energy is bounded at the
@@ -1750,6 +1539,18 @@ class _PreflightMixin:
     #         reading (p = 1.95) is superseded: that fixture carried ~1 %
     #         of its error on the graded axis (note WP6R.2).
     #   F-S5  the mesh-gradient AD path is unchanged by multi-band.
+    #
+    # In plane (dx_profile, dy_profile) at an adjacent ratio of 1.40:
+    #   F-S2 on x and y (validation/research/multiband_nu/results/e5_x.json,
+    #         e5_y.json: every transition inside the same chain
+    #         window as z);
+    #   F-S1 and F-S4 on a 40 x 34 x 10 mm PEC cavity graded on x and y
+    #         (conserved energy
+    #         within 5.1e-7 over 1e6 steps; TM110/TM210 at order 1.92, 1.01-
+    #         1.19 x the 1.30 error, simulation = discrete model to 3e-7;
+    #         pinned by tests/unit/nonuniform/test_inplane_grading_witness.py).
+    # F-S3 is not run in plane; E along the graded axis, materials, ports,
+    # plane waves and absorbers on an in-plane graded mesh are not covered.
     #
     # 1.4 is a CAP, not a threshold fitted to data: it is the value the
     # spec claims and the witnesses were run at, and it matches the
@@ -1771,26 +1572,22 @@ class _PreflightMixin:
     # all about accuracy. So: NO witness measures an accuracy observable
     # with an absorber present, and this envelope says NOTHING about
     # grading that interacts with one. That exclusion is what the second
-    # check reports (BL1 repair, review 2026-08-30; note WP6R.13).
-    # z: the witnessed multi-band envelope cap. x/y: the pre-existing
-    # in-plane threshold, deliberately NOT moved to 1.4 — every witness in
-    # the multi-band battery grades z with a uniform transverse mesh, so
-    # there is no in-plane provenance for moving an in-plane lock
-    # (SPEC-00 0.2-4; adversarial review 2026-08-29, finding BL1).
+    # check reports (BL1 repair, review; note WP6R.13).
+    # Separate z and x/y cap constants let each follow its own witnesses listed above.
     _MULTIBAND_RATIO_CAP = 1.4
-    _INPLANE_RATIO_CAP = 1.3
+    _INPLANE_RATIO_CAP = 1.4
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 5: the SPEC-01 WP6 multi-band grading advisories and
-    # the #669 lossy-sheet-on-a-graded-node advisory moved VERBATIM to
+    # the SPEC-01 WP6 multi-band grading advisories and
+    # the lossy-sheet-on-a-graded-node advisory are defined in
     # ``rfx/preflight/mesh.py``, bound back at their original positions.
     #
     # The two CAPS above do NOT move. They are class-BODY assignments read
     # as ``self._MULTIBAND_RATIO_CAP`` / ``self._INPLANE_RATIO_CAP`` by the
     # moved body, and read OFF THE CLASS by
-    # ``tests/unit/nonuniform/test_multiband_nu_envelope.py:329``, which
-    # asserts they are DIFFERENT numbers so a single shared constant cannot
-    # silently re-couple the in-plane lock to the z one. They are not
+    # ``tests/unit/nonuniform/test_multiband_nu_envelope.py``, which pins
+    # each value, so a single shared constant cannot silently re-couple
+    # the in-plane lock to the z one. They are not
     # module-level names, so no namespace lock would see them leave; the
     # snapshot lock pins them on the mixin directly. The provenance comment
     # above stays with the values it documents.
@@ -1800,14 +1597,14 @@ class _PreflightMixin:
         _validate_cfg_thin_conductor_graded_node,
     )
 
-    # ---- issue #672: primal-vs-dual metrics at a source / wire-port node --
+    # ---- primal-vs-dual metrics at a source / wire-port node --
 
     _AXIS_OF_COMPONENT = {"ex": 0, "ey": 1, "ez": 2}
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 5: the #672 graded-node metric helper and the two
+    # the graded-node metric helper and the two
     # advisories that read it -- a current source and a wire/lumped port on
-    # a grading step -- moved VERBATIM to ``rfx/preflight/mesh.py``, bound
+    # a grading step -- are defined in ``rfx/preflight/mesh.py``, bound
     # back at their original positions.
     #
     # ``_AXIS_OF_COMPONENT`` above does NOT move, for the same reason the
@@ -1828,8 +1625,8 @@ class _PreflightMixin:
     )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 2: the #669 Leontovich surface-impedance advisories
-    # moved VERBATIM to ``rfx/preflight/pec_geometry.py``, bound back at
+    # the Leontovich surface-impedance advisories
+    # are defined in ``rfx/preflight/pec_geometry.py``, bound back at
     # their original position for the reason the block above gives.
     # ------------------------------------------------------------------
     from rfx.preflight.pec_geometry import (
@@ -1839,17 +1636,17 @@ class _PreflightMixin:
 
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 6: the #386 unresolved-pulse advisory moved VERBATIM
-    # to ``rfx/preflight/sources.py``, bound back at its original position
+    # the unresolved-pulse advisory is defined
+    # in ``rfx/preflight/sources.py``, bound back at its original position
     # for the reason the blocks above give.
     # ------------------------------------------------------------------
     from rfx.preflight.sources import _validate_cfg_unresolved_pulse
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 5: the two lane-limitation checks -- what the
+    # the two lane-limitation checks -- what the
     # non-uniform runner does not implement (z-directed and oblique TFSF,
-    # and the #647 thin-z-CPML advisory) and what the SBP-SAT subgridded
-    # path refuses -- moved VERBATIM to ``rfx/preflight/mesh.py``, bound
+    # and the thin-z-CPML advisory) and what the SBP-SAT subgridded
+    # path refuses -- are defined in ``rfx/preflight/mesh.py``, bound
     # back at their original positions.
     #
     # ``_validate_cfg_nonuniform_limitations`` calls
@@ -1864,7 +1661,7 @@ class _PreflightMixin:
     )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 3: the P2.8 reference-plane check moved VERBATIM to
+    # the P2.8 reference-plane check is defined in
     # ``rfx/preflight/waveguide.py``, bound back at its original position
     # for the reason the blocks above give.
     # ------------------------------------------------------------------
@@ -1872,7 +1669,7 @@ class _PreflightMixin:
     from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 3: the three post-v1.8 waveguide S-parameter setup
+    # the three post-v1.8 waveguide S-parameter setup
     # audits, their shared plane/geometry builders and the single hook
     # both waveguide entry points call moved VERBATIM to
     # ``rfx/preflight/waveguide.py`` -- one contiguous class-body block,
@@ -1901,7 +1698,7 @@ class _PreflightMixin:
     )
 
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 1: the five MSL-family bodies moved VERBATIM to
+    # the five MSL-family bodies are defined in
     # ``rfx/preflight/msl.py`` and are bound back here, AT THE POSITION
     # they held in this class body. Position is not cosmetic --
     # ``_validate_simulation_config`` calls ``_check_msl_port_geometry`` in
@@ -1926,36 +1723,23 @@ class _PreflightMixin:
     )
 
     # ------------------------------------------------------------------
-    # Issue #703: campaign statics checks. Four failure classes a month
+    # campaign statics checks. Four failure classes a month
     # of external cross-validation hit, all detectable before the first
     # time step. Shared state (grid, coords, per-entry masks, assembly)
     # is built once in _CampaignStaticsContext; each check emits at most
-    # ONE aggregated advisory (the #697 duplication lesson).
+    # ONE aggregated advisory (the duplication lesson).
     # ------------------------------------------------------------------
 
+    # The configuration-keyed context cache is defined in
+    # ``rfx/preflight/realization.py`` and bound here. ``_campaign_ctx`` is
+    # reached through attribute lookups on the composed ``Simulation`` by mesh,
+    # NTFF, PEC-geometry and port checks, and directly by tests; those family
+    # modules do not import this facade.
+    from rfx.preflight.realization import _campaign_ctx, _validate_cfg_assembly, clear_inspection_cache
     # ------------------------------------------------------------------
-    # #980 Phase 3 leg 7: the configuration-keyed context cache moved
-    # VERBATIM to ``rfx/preflight/realization.py``, bound back at its
-    # original position for the reason the block above gives. The #703
-    # section comment above stays here: it introduces the campaign checks
-    # leg 2 took to ``rfx/preflight/pec_geometry.py`` as much as this cache.
-    #
-    # ``_campaign_ctx`` is the single most-reached member of the whole
-    # split: 64 of the 65 snapshot fixtures build a context through it, and
-    # five families call it by ``self.`` from four different leg modules
-    # (``mesh._validate_thin_metal_on_nu_mesh``,
-    # ``ntff._validate_ntff_inverse_design``,
-    # ``pec_geometry._validate_cfg_campaign_statics``,
-    # ``ports._validate_cfg_port_inside_pec``), plus three test modules that
-    # call ``sim._campaign_ctx()`` directly. All are attribute lookups on the
-    # composed ``Simulation``, so not one call site changes and none of those
-    # modules imports this one.
-    # ------------------------------------------------------------------
-    from rfx.preflight.realization import _campaign_ctx, _validate_cfg_assembly
-    # ------------------------------------------------------------------
-    # #980 Phase 3 leg 2: the #703 campaign-statics umbrella, its four
-    # checks and the #931 per-declaration realization findings moved
-    # VERBATIM to ``rfx/preflight/pec_geometry.py`` -- one contiguous
+    # the campaign-statics umbrella, its four
+    # checks and the per-declaration realization findings are defined in ``rfx/preflight/pec_geometry.py`` -- one
+    # contiguous
     # class-body block -- and are bound back here at the position they
     # held, for the reason the conformal block above gives.
     #
@@ -1997,42 +1781,3 @@ class _PreflightMixin:
     _congruence_origin_shift = staticmethod(_congruence_origin_shift)
 
 
-    def _validate_adi_configuration(self, materials: MaterialArrays, debye_spec, lorentz_spec) -> None:
-        """Validate that the current simulation is compatible with the ADI path."""
-        if self._mode not in ("2d_tmz", "3d"):
-            raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
-        if self._boundary == "upml":
-            raise ValueError("solver='adi' does not support boundary='upml'")
-        from rfx._adi_notice import require_closed_boundary
-        require_closed_boundary(self)
-        if self._refinement is not None:
-            raise ValueError("solver='adi' does not support subgridding yet")
-        if self._tfsf is not None:
-            raise ValueError("solver='adi' does not support TFSF sources yet")
-        if self._waveguide_ports or self._floquet_ports:
-            raise ValueError("solver='adi' does not support waveguide or Floquet ports yet")
-        if self._periodic_axes:
-            raise ValueError("solver='adi' does not support manual periodic axes yet")
-        if self._dft_planes:
-            raise ValueError("solver='adi' does not support DFT plane probes yet")
-        if self._ntff is not None:
-            raise ValueError("solver='adi' does not support NTFF accumulation yet")
-        if self._coaxial_ports:
-            raise ValueError("solver='adi' does not support coaxial ports yet")
-        if self._lumped_rlc:
-            raise ValueError("solver='adi' does not support lumped RLC elements yet")
-        if self._thin_conductors:
-            raise ValueError("solver='adi' does not support thin-conductor corrections yet")
-        if debye_spec is not None or lorentz_spec is not None:
-            raise ValueError("solver='adi' does not support dispersive materials yet")
-        # Conductivity is now supported: implicit sigma in ADI tridiagonal.
-        # Internal absorbing layers also use sigma, so no restriction needed.
-        for pe in self._ports:
-            if pe.impedance != 0.0 or pe.extent is not None:
-                raise ValueError("solver='adi' currently supports only add_source()-style soft sources")
-            if self._mode == "2d_tmz" and pe.component != "ez":
-                raise ValueError("solver='adi' in 2D TMz mode supports only Ez soft sources")
-        _valid_adi_probes = {"ez", "hx", "hy"} if self._mode == "2d_tmz" else {"ex", "ey", "ez", "hx", "hy", "hz"}
-        for probe in self._probes:
-            if probe.component not in _valid_adi_probes:
-                raise ValueError(f"solver='adi' supports probes on {_valid_adi_probes} only")

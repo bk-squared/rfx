@@ -166,13 +166,17 @@
       "required": [
         "precision",
         "solver",
-        "adi_cfl_factor",
         "stencil_order",
         "interface_eps",
         "dt_pin",
         "dt_min_cell"
       ],
       "properties": {
+        "pec_occupancy_model": {
+          "type": "string",
+          "enum": ["edge_keep", "kottke"],
+          "default": "edge_keep"
+        },
         "snap": {
           "type": "string",
           "enum": ["strict", "declared"],
@@ -444,7 +448,7 @@
       "properties": {
         "soft_sources": {
           "type": "array",
-          "description": "add_source() entries. Only the four fields add_source can set are recorded: an impedance-0 entry carrying extent / excite / direction / reference_plane_cells was not built through the public API and is refused at export.",
+          "description": "add_source() entries. Only the five fields add_source can set are recorded: an impedance-0 entry carrying extent / excite / direction / reference_plane_cells was not built through the public API and is refused at export.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -471,6 +475,10 @@
               },
               "waveform": {
                 "$ref": "#/$defs/waveform_or_null"
+              },
+              "allow_in_absorber": {
+                "type": "boolean",
+                "default": false
               }
             }
           }
@@ -518,6 +526,10 @@
               },
               "excite": {
                 "type": "boolean"
+              },
+              "allow_in_absorber": {
+                "type": "boolean",
+                "default": false
               },
               "direction": {
                 "type": [
@@ -1055,6 +1067,10 @@
               "component": {
                 "type": "string",
                 "minLength": 1
+              },
+              "allow_in_absorber": {
+                "type": "boolean",
+                "default": false
               }
             }
           }

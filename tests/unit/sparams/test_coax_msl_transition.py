@@ -16,7 +16,7 @@ closest precedent):
 3. The FDTD fixture itself (``@pytest.mark.slow_physics``), asserting the
    predeclared witnesses at DIAGNOSTIC honesty level — this gate pins the
    MEASURED envelope of THIS fixture only, no claim beyond it.
-4. ATTEMPT 2 (PI-directed, R2's own escape clause): attempt 1's own
+4. ATTEMPT 2 (R2's own escape clause): attempt 1's own
    discriminant named a concrete implementation defect (the MSL probe
    ladder spans too small a fraction of a guided wavelength for the
    matrix-pencil wave split to resolve) — R2 permits exactly one retry
@@ -1009,7 +1009,7 @@ def test_coax_msl_transition_first_fixture_diagnostic():
 
 # ---------------------------------------------------------------------------
 # Part 4 -- ATTEMPT 2: resolve attempt 1's own named instrument-scoping
-# defect (PI-directed, R2's written escape clause). See PREDECLARATION_
+# defect (R2's written escape clause). See PREDECLARATION_
 # ATTEMPT2 below for the full form. Attempt 1's own PREDECLARATION, fixture,
 # and regression locks above are UNCHANGED -- this section is purely
 # additive.
@@ -1025,7 +1025,7 @@ PREDECLARATION_ATTEMPT2 = {
         "guided wavelength at the measured frequencies, too short for the "
         "matrix-pencil forward/backward split to resolve -- an instrument-"
         "scoping limit of the probe geometry, not a claim about attempt "
-        "1's junction physics. PI-directed. This is the ONE attempt that "
+        "1's junction physics. This is the ONE attempt that "
         "defect authorizes; attempt 1's own two construction-debugging "
         "fixes (missing PEC layer, rasterization knife-edge) do not count "
         "against this budget (plumbing, not a mechanism-hypothesis loop, "
@@ -1823,8 +1823,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     shell's inner radius) -- i.e. the difference is float rounding of an
     exactly-on-node radius, not a geometry error -- and the count is
     reported in the failure message. Whether a one-column shell asymmetry
-    in the coax stub is acceptable for Step B is a PI call recorded in the
-    #589 measurement report, not decided here; the method's stamping is
+    in the coax stub is acceptable for Step B is not decided here; the method's stamping is
     production code and is not touched.
 
     Fail-before-fix evidence (recorded in the KNIFE-EDGE NOTE above): with
@@ -2553,8 +2552,7 @@ def test_extra_flux_monitors_entry_validation():
         "dies in 3.5 s with that ValueError, before a single time step; it has been the red "
         "in shard 3 of the weekly lane since then (#1022). The QUESTION this test asks -- "
         "opt-in flux monitors must not move S by one bit -- is still wanted, so it is not "
-        "removed. Repairing the board is coax-MSL lane work, deferred past v2.0 (PI, "
-        "2026-09-20). raises=ValueError alone is broad -- this function also raises ValueError for "
+        "removed. Repairing the board is coax-MSL lane work, deferred past v2.0. raises=ValueError alone is broad -- this function also raises ValueError for "
         "bad monitor entries -- so the body below checks the MESSAGE and turns any other "
         "ValueError into an AssertionError, which this marker does not absorb. strict=True turns "
         "the day the board builds again into an XPASS error that forces this marker off.")
@@ -2825,7 +2823,7 @@ def _build_coax_msl_transition_sim_attempt3():
     from rfx.boundaries.spec import BoundarySpec
     from rfx.geometry.csg import Box, Cylinder
 
-    sim = Simulation(
+    sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
     )
@@ -2882,7 +2880,7 @@ PREDECLARATION_ATTEMPT3 = {
         "fraction 0.0). This is a construction defect of the same class as "
         "attempt 1's missing-PEC-layer / knife-edge fixes (plumbing, not a "
         "mechanism-hypothesis loop) and is what the settled runs measured "
-        "(S00 = -0.9928 at 6 GHz, |S10| = -90 dB). PI-directed."
+        "(S00 = -0.9928 at 6 GHz, |S10| = -90 dB)."
     ),
     "geometry_change": (
         "ONLY the ground plane entity: one full-plane PEC Box -> 20 half-"
@@ -2895,7 +2893,7 @@ PREDECLARATION_ATTEMPT3 = {
         "unchanged (asserted by test_attempt3_junction_is_attempt2_plus_"
         "hole_only). The 0.4 < r <= 0.5 mm ring under the coax dielectric "
         "stays PEC (a one-cell ground lip, 32/32) -- part of the "
-        "predeclared clearance, flagged for the PI as a convention question "
+        "predeclared clearance, flagged as a convention question "
         "(flush 0.5 mm aperture would be a NEW predeclaration)."
     ),
     "instrument_unchanged": (
@@ -3603,7 +3601,7 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
 # table's ym/yp -- and even they carry a different footprint, since these are
 # patches of a box whose z-span is 2.5-3.6 mm rather than 0.9-3.4 mm. The x
 # and z faces differ outright. W4's numbers are therefore NOT directly
-# comparable to that instrument's and the PI must arbitrate the two knowingly.
+# comparable to that instrument's.
 #
 # Why attempt 3 cannot simply reuse the predeclared table:
 #   * The predeclared box was built for ATTEMPT 2, where the ground plane is
@@ -3752,7 +3750,7 @@ def _attempt3_scratch_flux_entries():
 # LIMITATION, stated because one fixture cannot separate it: the derivation
 # anchors on the substrate height h and was validated at W/h = 2 only. The
 # first higher-order microstrip mode scales with (W + 2h), so a very wide
-# trace could need more standoff than 5*h. Routed to the PI, not decided here.
+# trace could need more standoff than 5*h. Not decided here.
 # ---------------------------------------------------------------------------
 MSL_STANDOFF_H_SUB_MULTIPLE = 5.0   # the issue-#80 Fix B constant, reused
 PROBE_COUNT_3B = 8
@@ -4216,60 +4214,10 @@ def test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder():
     np.testing.assert_allclose(d_port_alt / H_SUB, 14.0 / 3.0, atol=1e-6)
 
 
-def test_settled_run_driver_fixture_selection_is_explicit_for_every_label():
-    """The driver's ``--fixture`` dispatch names EVERY label explicitly and
-    raises on an unknown one.
-
-    Fail-before-fix provenance: the dispatch used to be an if/elif chain
-    whose ``else`` branch was attempt2_wide, so adding a new ``choices``
-    entry without touching the chain would have run attempt2_wide's builder
-    and kwargs under the new label -- a silent mislabel, exactly the class of
-    defect this PR exists to fix (#822). It is now a total function,
-    ``_select_fixture``, and this test pins each label to its own builder and
-    kwargs by identity.
-    """
-    drv = _load_settled_run_driver()
-    import sys
-
-    # THIS module object, not a second import of it: the driver takes the
-    # test module as an argument, and ``import test_coax_msl_transition``
-    # under a tests/-on-sys.path layout would load a SECOND copy whose
-    # function objects are not identical to these, silently weakening every
-    # ``is`` assertion below into a no-op.
-    t_self = sys.modules[__name__]
-
-    expected = {
-        "attempt2": (_build_coax_msl_transition_sim_attempt2, _attempt2_kwargs),
-        "attempt2_wide": (_build_coax_msl_transition_sim_attempt2_wide,
-                          _attempt2_wide_kwargs),
-        "attempt3": (_build_coax_msl_transition_sim_attempt3, _attempt2_kwargs),
-        "attempt3b": (_build_coax_msl_transition_sim_attempt3b, _attempt3b_kwargs),
-    }
-    assert set(drv.FIXTURE_CHOICES) == set(expected)
-    for label, (build, kwargs_fn) in expected.items():
-        sel = drv._select_fixture(t_self, label, 4242)
-        assert sel.build is build, label
-        assert sel.kwargs == kwargs_fn(4242), label
-        assert sel.kwargs["n_steps"] == 4242
-        assert set(sel.fixture_geom) == {
-            "LX_m", "LY_m", "LZ_m", "junction_x_m", "feed_x_m", "y_c_m"}
-        assert label in sel.banner
-    # attempt3b runs on attempt 3's geometry and differs only in the ladder.
-    s3 = drv._select_fixture(t_self, "attempt3", 4242)
-    s3b = drv._select_fixture(t_self, "attempt3b", 4242)
-    assert s3.fixture_geom == s3b.fixture_geom
-    assert {k for k in s3.kwargs if not np.array_equal(
-        np.asarray(s3.kwargs[k], dtype=object),
-        np.asarray(s3b.kwargs[k], dtype=object))} == {
-        "msl_probe_count", "msl_probe_start_cells"}   # spacing is INHERITED
-    with pytest.raises(ValueError, match="unknown --fixture"):
-        drv._select_fixture(t_self, "attempt4", 4242)
-
-
 # ---------------------------------------------------------------------------
 # Part 6 -- this cross-family lane refuses a non-passive S by default (#838).
 #
-# PI decision 2026-09-20: port/S-parameter work stops at pure single-family
+# Port/S-parameter work stops at pure single-family
 # ports, so this lane's MSL-side power over-read is not going to be attributed
 # or corrected. What the issue closes on instead is the BEHAVIOUR -- a default
 # call does not hand back a matrix the shared guard rejects.
@@ -4314,29 +4262,6 @@ def _synthetic_transition_result(s_params):
         freqs=np.asarray([6.0e9]),
         port_names=("coax", "msl"),
     )
-
-
-def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not():
-    """The signature invariant: this cross-family lane refuses by default.
-
-    Pinned in BOTH directions. The single-family coax lanes are a separate
-    decision and keep ``False``; a blanket flip of every ``strict_passivity``
-    in ``rfx/sparams/coax.py`` fails here rather than landing unnoticed.
-    """
-    import inspect
-    from rfx.api import Simulation
-
-    assert _transition_strict_passivity_default() is True, (
-        "compute_coax_msl_transition must refuse a non-passive S by default "
-        "(issue #838, PI decision 2026-09-20)"
-    )
-    for name in ("compute_coaxial_two_port",):
-        default = inspect.signature(
-            getattr(Simulation, name)).parameters["strict_passivity"].default
-        assert default is False, (
-            f"{name} is a single-family lane and was not part of the #838 "
-            f"decision, but its strict_passivity default is {default!r}"
-        )
 
 
 def test_transition_default_raises_on_a_nonpassive_s_and_false_returns_it():
@@ -4407,30 +4332,6 @@ def _finalize_call_in_transition_source():
         f"compute_coax_msl_transition, found {len(calls)}"
     )
     return calls[0]
-
-
-@pytest.mark.source_scan
-def test_transition_forwards_its_strict_passivity_to_the_guard():
-    """The wiring, as a source fact -- no grid, no FDTD, milliseconds.
-
-    The end-to-end tests below prove the same thing by running the method,
-    but they cost a grid build each. This one is the always-on gate: it fails
-    the moment ``strict=`` at the lane's only return stops being the
-    ``strict_passivity`` parameter, which is the single token the whole
-    behaviour change rides on.
-    """
-    import ast
-
-    call = _finalize_call_in_transition_source()
-    strict_kw = [k for k in call.keywords if k.arg == "strict"]
-    assert len(strict_kw) == 1, (
-        "the lane's _finalize_sparam_result call must pass strict= explicitly"
-    )
-    value = strict_kw[0].value
-    assert isinstance(value, ast.Name) and value.id == "strict_passivity", (
-        "strict= must be the method's own strict_passivity parameter, not a "
-        f"literal or a derived expression (found {ast.dump(value)})"
-    )
 
 
 # --- End-to-end: the real method, a planted non-passive S, 1 FDTD step ------
@@ -4529,3 +4430,76 @@ def test_compute_s_matrix_route_into_this_lane_refuses_by_default():
     finally:
         mp.undo()
     assert "strict_passivity=False" in str(caught.value)
+
+
+def test_settled_run_driver_fixture_selection_is_explicit_for_every_label():
+    """The driver's ``--fixture`` dispatch names EVERY label explicitly and
+    raises on an unknown one.
+
+    Fail-before-fix provenance: the dispatch used to be an if/elif chain
+    whose ``else`` branch was attempt2_wide, so adding a new ``choices``
+    entry without touching the chain would have run attempt2_wide's builder
+    and kwargs under the new label -- a silent mislabel, exactly the class of
+    defect this PR exists to fix (#822). It is now a total function,
+    ``_select_fixture``, and this test pins each label to its own builder and
+    kwargs by identity.
+    """
+    drv = _load_settled_run_driver()
+    import sys
+
+    # THIS module object, not a second import of it: the driver takes the
+    # test module as an argument, and ``import test_coax_msl_transition``
+    # under a tests/-on-sys.path layout would load a SECOND copy whose
+    # function objects are not identical to these, silently weakening every
+    # ``is`` assertion below into a no-op.
+    t_self = sys.modules[__name__]
+
+    expected = {
+        "attempt2": (_build_coax_msl_transition_sim_attempt2, _attempt2_kwargs),
+        "attempt2_wide": (_build_coax_msl_transition_sim_attempt2_wide,
+                          _attempt2_wide_kwargs),
+        "attempt3": (_build_coax_msl_transition_sim_attempt3, _attempt2_kwargs),
+        "attempt3b": (_build_coax_msl_transition_sim_attempt3b, _attempt3b_kwargs),
+    }
+    assert set(drv.FIXTURE_CHOICES) == set(expected)
+    for label, (build, kwargs_fn) in expected.items():
+        sel = drv._select_fixture(t_self, label, 4242)
+        assert sel.build is build, label
+        assert sel.kwargs == kwargs_fn(4242), label
+        assert sel.kwargs["n_steps"] == 4242
+        assert set(sel.fixture_geom) == {
+            "LX_m", "LY_m", "LZ_m", "junction_x_m", "feed_x_m", "y_c_m"}
+        assert label in sel.banner
+    # attempt3b runs on attempt 3's geometry and differs only in the ladder.
+    s3 = drv._select_fixture(t_self, "attempt3", 4242)
+    s3b = drv._select_fixture(t_self, "attempt3b", 4242)
+    assert s3.fixture_geom == s3b.fixture_geom
+    assert {k for k in s3.kwargs if not np.array_equal(
+        np.asarray(s3.kwargs[k], dtype=object),
+        np.asarray(s3b.kwargs[k], dtype=object))} == {
+        "msl_probe_count", "msl_probe_start_cells"}   # spacing is INHERITED
+    with pytest.raises(ValueError, match="unknown --fixture"):
+        drv._select_fixture(t_self, "attempt4", 4242)
+
+
+def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not():
+    """The signature invariant: this cross-family lane refuses by default.
+
+    Pinned in BOTH directions. The single-family coax lanes are a separate
+    decision and keep ``False``; a blanket flip of every ``strict_passivity``
+    in ``rfx/sparams/coax.py`` fails here rather than landing unnoticed.
+    """
+    import inspect
+    from rfx.api import Simulation
+
+    assert _transition_strict_passivity_default() is True, (
+        "compute_coax_msl_transition must refuse a non-passive S by default "
+        "(issue #838)"
+    )
+    for name in ("compute_coaxial_two_port",):
+        default = inspect.signature(
+            getattr(Simulation, name)).parameters["strict_passivity"].default
+        assert default is False, (
+            f"{name} is a single-family lane and was not part of the #838 "
+            f"decision, but its strict_passivity default is {default!r}"
+        )

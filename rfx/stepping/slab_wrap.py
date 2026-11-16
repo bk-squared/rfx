@@ -7,13 +7,14 @@ import jax.numpy as jnp
 import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
+from rfx._host_limits import check_map_count
 from rfx.core.yee import FDTDState
-from rfx.measurement.projector import ComponentTerms, SampleTable
 from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
-from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
+from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place, material_kind
+from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
@@ -48,27 +49,6 @@ def runner_step_kind(grid, **flags):
 
 def _place(value, mesh):
     return place(value, NamedSharding(mesh, P('x')))
-
-
-def _nodes(indices, layout):
-    owners = np.asarray(indices[0]) // layout.nx_per_rank
-    rows = []
-    for rank in range(layout.n_devices):
-        keep = np.flatnonzero(owners == rank)
-        rows.append(keep)
-    width = max(map(len, rows), default=0)
-    nodes, selections, valid = [], [], []
-    for rank, keep in enumerate(rows):
-        n = len(keep)
-        local = np.zeros((3, width), np.int32)
-        local[0] = layout.ghost_width
-        for axis in range(3):
-            local[axis, :n] = np.asarray(indices[axis])[keep]
-        local[0, :n] += layout.ghost_width - rank * layout.nx_per_rank
-        nodes.append(local)
-        selections.append(np.pad(keep, (0, width-n)))
-        valid.append(np.arange(width) < n)
-    return np.asarray(nodes), np.asarray(selections), np.asarray(valid)
 
 
 def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
@@ -120,12 +100,21 @@ def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
             raise ValueError(f'per-rank drive table: waves read on several ranks {shared}; '
                              'each rank block holds only the sources it owns')
     if per_rank and layout.n_devices > 1 and n_src > 0:
-        @partial(jax.shard_map, mesh=mesh,
-                 in_specs=(P(None, 'x'), P('x'), P('x')),
-                 out_specs=P(None, 'x'), check_vma=False)
-        def select(local, ids, valid):
-            return jnp.where(valid[None], local[:, ids], jnp.zeros((), local.dtype))
-        samples = select(waveforms, _place(selected_waves, mesh), _place(wave_valid, mesh))
+        if (not isinstance(waveforms, jax.core.Tracer)
+                and getattr(waveforms, 'is_fully_addressable', True)):
+            table = np.asarray(waveforms)
+            samples = np.zeros((table.shape[0], layout.n_devices, width), table.dtype)
+            for rank in range(layout.n_devices):
+                block = table[:, rank * n_src:(rank + 1) * n_src]
+                samples[:, rank, :] = np.where(
+                    wave_valid[rank], block[:, selected_waves[rank]], 0)
+        else:
+            @partial(jax.shard_map, mesh=mesh,
+                     in_specs=(P(None, 'x'), P('x'), P('x')),
+                     out_specs=P(None, 'x'), check_vma=False)
+            def select(local, ids, valid):
+                return jnp.where(valid[None], local[:, ids], jnp.zeros((), local.dtype))
+            samples = select(waveforms, _place(selected_waves, mesh), _place(wave_valid, mesh))
     else:
         samples = jnp.where(wave_valid[None, :, :], waveforms[:, selected_waves],
                             jnp.zeros((), waveforms.dtype))
@@ -133,30 +122,16 @@ def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
     return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner, waves=samples)
 
 
-def cut_probe_table(table, layout, mesh):
-    """Array payload; component names and channel count stay static in wrap."""
-    terms, all_ids = [], []
-    for term in table.components:
-        local, ids, valid = _nodes(term.indices, layout)
-        channels = np.where(valid, term.channel_ids[ids], table.n_channels)
-        weights = jnp.where(valid, term.weights[ids], 0)
-        terms.append((tuple(local[:, axis] for axis in range(3)), channels, weights))
-        all_ids.append(channels)
-    ids = np.concatenate(all_ids, axis=1) if all_ids else np.empty((layout.n_devices, 0), np.int32)
-    order = np.argsort(ids, axis=1, kind='stable').astype(np.int32)
-    sorted_ids = np.take_along_axis(ids, order, axis=1)
-    assert np.all(np.diff(sorted_ids, axis=1) >= 0), 'slab segment ids must be sorted'
-    return jax.tree.map(lambda a: _place(a, mesh), (tuple(terms), order, sorted_ids))
-
-
-def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
-    """Cut every spatial operand with the shared FILL policy, and route nodes."""
+def split(invariants, carry, layout, mesh, *, waveforms, dt=None, staged=False):
+    """Route nodes and cut spatial operands unless already staged per slab."""
     tags = dict(inv_dx='inv_dx', inv_dx_h='inv_dx_h', dx_arr='width',
                 pec_edge_masks='pec_edge', pec_static_edge_masks='pec_edge',
                 pec_occupancy='pec_occupancy')
     result = {}
     for key, value in invariants.items():
-        if key in tags:
+        if staged and key not in ('drives', 'probe_table', 'port_table'):
+            result[key] = value
+        elif key in tags:
             result[key] = cut(value, layout, tags[key], mesh=mesh)
         elif key == 'e_loss' and value is not None:
             eps, sigma, inverse = value
@@ -171,13 +146,13 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
                 if name == 'components':
                     # Kernel operands (KernelComponents) or, under a realized-model
                     # capture, the whole realization: cut every grid-shaped leaf,
-                    # padded by the field family its top-level name belongs to.
+                    # padded by the operand table's neutral value.
                     def cut_component(path, a):
-                        top = str(getattr(path[0], 'name', getattr(path[0], 'key', path[0])))
+                        # Nonspatial metadata stays in its original form.
                         if np.ndim(a) != 3 or np.shape(a)[0] != layout.nx:
                             return a
-                        kind = ('eps_r' if 'eps' in top else 'sigma' if 'sigma' in top
-                                else 'mu_r' if top.startswith('mu') else 'lumped')
+                        kind = material_kind(path, prefix='materials.components')
+                        # Component increments are zero even for eps/mu names.
                         return cut(a, layout, kind, mesh=mesh)
                     fields[name] = None if field is None else jax.tree_util.tree_map_with_path(
                         cut_component, field)
@@ -205,6 +180,8 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     result['owns_x'] = {face: _place(np.asarray([pair[side] for pair in layout.faces]), mesh)
                         for side, face in enumerate(('x_lo', 'x_hi'))}
     state = carry['fdtd']
+    if staged:
+        return result, carry
     local = {name: cut(getattr(state, name), layout, 'state', mesh=mesh)
              for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')}
     local_carry = {'fdtd': FDTDState(**local, step=state.step)}
@@ -223,12 +200,13 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
 def wrap(step, layout, mesh, *, table, port_table=None):
     """Execute the supplied graded step on each slab, attaching two copies."""
     from rfx.runners.distributed_nu import _exchange_h_ghosts_nu, _exchange_e_ghosts_nu
-    components = tuple(term.component for term in table.components)
-    n_channels, channel_names = table.n_channels, table.channel_names
     context = replace(step.context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
     def local(carry, xs, invariants, *, rank):
+        local_context = replace(context, slab_rlc=(layout, rank))
+        if context.use_lumped_rlc:
+            carry = dict(carry, rlc_states=jax.tree.map(lambda a: a[0], carry['rlc_states']))
         def h(frame):
             frame.st = _exchange_h_ghosts_nu(frame.st, mesh, layout.n_devices, ranks=rank, local=True)
 
@@ -240,22 +218,16 @@ def wrap(step, layout, mesh, *, table, port_table=None):
         if inputs.get('e_loss') is not None:
             inputs['e_loss'] = (*inputs['e_loss'], False)
         inputs['drives'] = jax.tree.map(lambda a: a[0], inputs['drives'])
-        terms, order, ids = jax.tree.map(lambda a: a[0], inputs['probe_table'])
-        inputs['probe_table'] = SampleTable(tuple(
-            ComponentTerms(component, *part) for component, part in zip(components, terms)),
-            n_channels, channel_names, order, ids)
+        inputs['probe_table'] = local_table(table, inputs['probe_table'])
         if port_table is not None:
-            parts, port_order, port_ids = jax.tree.map(lambda a: a[0], inputs['port_table'])
-            inputs['port_table'] = SampleTable(tuple(
-                ComponentTerms(term.component, *part) for term, part in zip(port_table.components, parts)),
-                port_table.n_channels, port_table.channel_names, port_order, port_ids)
+            inputs['port_table'] = local_table(port_table, inputs['port_table'])
             carry = dict(carry)
             for key in ('wire_sparams', 'sparam_time_records'):
                 if key in carry:
                     carry[key] = jax.tree.map(lambda a: a[0], carry[key])
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
-        advance = make_graded_step(context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
-        from rfx import _realized
+        advance = make_graded_step(local_context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
+        from rfx._internal import _realized
         if _realized.ACTIVE is None:
             carry, record = advance(carry, xs, inputs)
         else:
@@ -264,11 +236,13 @@ def wrap(step, layout, mesh, *, table, port_table=None):
                 carry, record = advance(carry, xs, inputs)
         # Owner-masked samples summed here, as the legacy step does: a record
         # leaving per device would make its replicated cotangent be sliced by
-        # device identity in the backward program (#1441).
+        # device identity in the backward program.
         if port_table is not None:
             for key in ('wire_sparams', 'sparam_time_records'):
                 if key in carry:
                     carry[key] = jax.tree.map(lambda a: a[None], carry[key])
+        if context.use_lumped_rlc:
+            carry['rlc_states'] = jax.tree.map(lambda a: a[None], carry['rlc_states'])
         return carry, jax.lax.psum(record, 'x')
 
     def mapped(carry, xs, invariants, *, ranks):
@@ -294,6 +268,7 @@ def reduce(records, state, layout, *, gather=True):
 def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, checkpoint_every,
               compile_loop=jax.jit, scan_loop=jax.lax.scan):
     """Drive canonical slab steps, including warmup and checkpoint segments."""
+    check_map_count()
     @compile_loop
     def run_fn(carry, invariants, waves, ranks):
         step = partial(advance, invariants=invariants, ranks=ranks)
@@ -310,7 +285,8 @@ def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, ch
             records = jnp.concatenate((warm, records))
         return carry, records
 
-    return run_fn(carry, invariants, waves, ranks)
+    from rfx.stepping.sharded import recorded_sharded_call
+    return recorded_sharded_call(run_fn, carry, invariants, waves, ranks)
 
 
 def validate_scan_controls(n_steps, n_warmup, checkpoint_every, *, path="slab_wrap"):

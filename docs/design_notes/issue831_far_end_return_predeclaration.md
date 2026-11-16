@@ -1,6 +1,6 @@
 # Issue #831 — cv03's far-end return: pre-declared hypotheses, arms and gates
 
-> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are kept with the project, outside this repository. Historical paths below refer to those records; reproduction commands that read them need the archived files.
 
 Written 2026-09-15 (KST), **before any measurement in this lane**. Frozen here
 so every verdict below is judged against a threshold that existed before the
@@ -68,7 +68,7 @@ is what actually crosses observable against rig.
 - **Boundary family is not the answer either.** #831's own table has
   `cpml`, 40 cells at 0.605 against `upml`, 40 cells at 0.598 — the same
   number. Whatever this is, it is not UPML-specific, so
-  `docs/agent-memory/rfx-known-issues.md:1989` ("rfx UPML reflects ~25 dB MORE
+  the recorded claim ("rfx UPML reflects ~25 dB MORE
   than CPML"; mechanism: the parallel-E component attenuated only indirectly
   through curl coupling) cannot carry it alone. Arm A runs both families at
   all three depths so this is measured rather than argued.
@@ -77,10 +77,8 @@ is what actually crosses observable against rig.
 
 ## 1. R1 — memory this plan is checked against
 
-Read read-only at the primary checkout
-`/root/workspace/byungkwan-workspace/research/rfx/docs/agent-memory/`.
 
-1. `rfx-known-issues.md:4158` — *"in an empty WR-90 waveguide driven from port
+1. Recorded entry — *"in an empty WR-90 waveguide driven from port
    1, `|b1/a1|` ... scales with CPML thickness as 10 layers -> 11.7 %, 20 -> 4.2 %,
    40 -> 1.8 %"*, and the default was raised 8 -> 16 on that evidence.
    **Contradicts #831's trend.** A guided mode's reflection off a CPML fell
@@ -88,7 +86,7 @@ Read read-only at the primary checkout
    opposite on a different guide. Either the guide (`eps = 12` dielectric slab
    vs hollow metal WR-90) changes the sign, or one of the two measurements is
    an artefact. That is what this lane decides.
-2. `rfx-known-issues.md:4247` — *"CPML guided-mode reflection ~-4 dB -> resolved:
+2. Recorded entry — *"CPML guided-mode reflection ~-4 dB -> resolved:
    D/B-equivalent UPML + subpixel smoothing. Material-independent PML loss
    (sigma/eps_0) ... Self-T = 0.995."* **Consistent with the code as it stands**:
    `rfx/boundaries/upml.py:232` (`loss_pml = sigma_perp * dt / (2 * eps_0)`)
@@ -96,13 +94,13 @@ Read read-only at the primary checkout
    the D/B-equivalent form, which is impedance-matched in **any** material.
    The absorber therefore is not, on its face, mis-matched against the
    `eps_r = 12` pad.
-3. `rfx-known-issues.md:1989` — *"rfx UPML reflects ~25 dB MORE than CPML —
+3. Recorded entry — *"rfx UPML reflects ~25 dB MORE than CPML —
    measured clean floor -43.0 dB vs -68.3 dB"*. Both floors are ~40 dB below
    #831's measured 0.5 (-6 dB), and the CPML row of #831's table matches its
    UPML rows, so this entry bounds neither the level nor the trend.
    **Scope-limited, not contradicted.**
-4. `research/CLAUDE.md`, comparator-first rule, and the case ledger at
-   `rfx-known-issues.md:4343`: *every* case recorded in this workspace to date
+4. `research/CLAUDE.md`, comparator-first rule, and the recorded case history:
+   *every* case recorded in this workspace to date
    has closed as a comparator/extractor bug, not a solver/physics bug. The
    design's own N-scaling makes every absorber-side mechanism predict
    improvement with depth (section 2 below), so an extractor/record cause is the
@@ -132,7 +130,7 @@ and `rfx/boundaries/upml.py:69-92`.
 - The per-cell grading step scales as `sigma_max/N ~ 1/N^2`, and the first pad
   cell at the hi face carries `sigma_max*(0.5/N)^2 ~ 1/N^3`. Discretisation
   reflection — the term that actually sets a numerical PML's floor — therefore
-  *falls* with N. This is the cv01/#1027 direction and the `:4158` direction.
+  *falls* with N. This is the cv01/#1027 direction and the direction of recorded entry 1 above.
 
 So there is no absorber mechanism in this code that produces #831's sign. Either
 the absorber is not delivering its assembled profile (measurable, Arm C), or the
@@ -300,7 +298,7 @@ Attempts consumed at the time of writing: **0**.
 - It will not modify anything under `rfx/`. If the identified cause is in the
   absorber, the lane STOPS at the diagnosis and writes the landing
   pre-declaration (which tests and fixtures move, including cv01's #813
-  numbers) for the PI to decide.
+  numbers) for a separate decision.
 - It will not change cv03's committed record, gates or tolerances.
 - If the cause is a rig/comparator defect, the cv03 rig change is proposed as a
   **separate** commit under the same append-only evidence rules, with no gate
@@ -400,7 +398,7 @@ without another append.
 
 ---
 
-## 8. Landing pre-declaration — for the PI, not executed in this lane
+## 8. Landing pre-declaration — not executed in this lane
 
 Written 2026-09-15 (KST) after the arms closed. Results:
 `docs/design_notes/issue831_far_end_return_results.md`. **Nothing below is
@@ -564,7 +562,7 @@ divergent is worse than the facet.
 
 ### 8.6 If this lands it is the first of its kind in the case ledger
 
-`docs/agent-memory/rfx-known-issues.md:4343` is the comparator-bug case ledger,
+The comparator-bug cases are
 currently 13 of 13 closed as comparator/extractor defects, and
 `research/CLAUDE.md` states that as an invariant rather than a tally. This one
 would close as a **solver-assembly** defect: the comparator (cv03's two-wave
@@ -572,16 +570,16 @@ estimator) was right, the extractor was right, the oracle was right, and the
 array the solver received was wrong.
 
 The ledger and that invariant sentence live in gitignored memory, which this
-lane does not edit. Flagged here for the PI to update after landing.
+lane does not edit. Flagged here for an update after landing.
 
-### 8.7 Also for the PI, separately: two preflight gaps this exposed
+### 8.7 Two preflight gaps this exposed
 
 Neither is filed as an issue here; both are decisions, not findings.
 
 1. **Nothing warns that a dielectric ends at the absorber seam.** The preflight
    has a geometry-in-absorber check; the failure mode here is geometry
    ABSENT from the absorber under a flag that claims to put it there, and it is
-   silent. The PI's stated order after v1.8 puts preflight work behind the mesh
+   silent. The stated order after v1.8 puts preflight work behind the mesh
    rasterization viz; this belongs in that slot.
 2. **The committed cv03 has no point probe, so `settling_db` is `None`** and
    its own ring-down witness cannot fire. With one added, every committed arm

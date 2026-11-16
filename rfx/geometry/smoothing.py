@@ -25,6 +25,9 @@ Three design improvements over the original rfx linear-SDF scheme:
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
+
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
 
 from typing import NamedTuple
 
@@ -43,7 +46,7 @@ from rfx.geometry.csg import Shape
 # Every SDF and normal below takes an array backend ``xp`` -- ``jax.numpy``
 # (the default, and the only choice for traced inputs) or ``numpy``. The
 # smoothing functions evaluate them with ``xp=numpy`` on host float64 when
-# every input is concrete (#833): the same formulas, only the arithmetic
+# every input is concrete: the same formulas, only the arithmetic
 # precision differs, and the result is cast to the active JAX dtype once at
 # the end. ``rfx.geometry.conformal`` calls them with the default.
 
@@ -55,7 +58,7 @@ def _exterior_norm(xp, *terms):
     sample point. ``d/du sqrt(u)`` is ``+inf`` at ``u = 0``, and the chain
     rule then multiplies that by the zero inner derivative: ``0 * inf =
     nan``, which ``jnp.where`` propagates into every voxel of the gradient
-    (issue #1085 -- ``jax.grad`` of ``compute_smoothed_eps`` w.r.t. a Box
+    (``jax.grad`` of ``compute_smoothed_eps`` w.r.t. a Box
     shift was NaN at both ``jax_enable_x64`` flags while the central finite
     difference was finite).
 
@@ -253,7 +256,7 @@ def _get_normal_fn(shape: Shape):
 
 
 # ---------------------------------------------------------------------------
-# CPML pad continuation for the SMOOTHED lane (#1043 stage B)
+# CPML pad continuation for the SMOOTHED lane
 # ---------------------------------------------------------------------------
 #
 # ``_assemble_materials`` continues a boundary-touching structure into the
@@ -262,7 +265,7 @@ def _get_normal_fn(shape: Shape):
 # beyond the domain". The smoothed lane rebuilds its update permittivity from
 # ``sim._geometry`` and never saw that step, so under ``subpixel_smoothing`` a
 # guide that touches the domain edge was solved with VACUUM in the pad and a
-# Kottke half-cell at the seam -- a facet the guided mode reflects off (#831:
+# Kottke half-cell at the seam -- a facet the guided mode reflects off (
 # ``|B/A|`` 0.53 at 20 CPML cells, and WORSE as the absorber deepens, because
 # the first pad cell's conductivity falls as N^-3 and loads the facet less).
 #
@@ -280,8 +283,8 @@ def _get_normal_fn(shape: Shape):
 # The smoothed array's interior-edge column IS the Kottke half-cell, so
 # replicating it fills the pad with a medium that is neither the guide nor
 # vacuum; sourcing one column inward gets the pad right but strands that
-# half-cell INSIDE the absorber -- the one-cell film #655 already had to repair
-# on the staircase lane. Only continuing the GEOMETRY and smoothing THAT
+# half-cell INSIDE the absorber -- the same one-cell film the staircase lane repairs. Only
+# continuing the GEOMETRY and smoothing THAT
 # reproduces the reference row, which is what this helper does: the reached
 # face is moved out past the array, so the smoothing sees no interface there at
 # all and the pad and seam cells come out at bulk eps through the ordinary
@@ -317,13 +320,105 @@ _PAD_REACH_TOL_CELLS = 1e-6
 _PAD_CONTINUE_CELLS = 2.0
 
 
+def medium_key(eps_r):
+    """The identity of a dielectric medium in the smoother's grouping.
+
+    Shapes with one key can share a union SDF when declared order permits
+    it (see :func:`_medium_groups`). A concrete ``eps_r`` keys by its float
+    value. A JAX tracer has no value while the program is built, so it
+    keys by object identity: one material traced once is one tracer object
+    (``add_material`` stores it, ``_resolve_material`` returns it), and two
+    materials given the same tracer object are one medium. Two different
+    tracers are two media even if their values turn out equal.
+    """
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(eps_r):
+        return ("traced", id(eps_r))
+    return float(eps_r)
+
+
+def _medium_groups(shapes, grid, *, nominal_h_max=None):
+    """``{(group_index, medium_key): (eps_r, shapes)}`` in painting order.
+
+    Join the most recent equal-medium group only when every entry already
+    assigned to a later-painted group is farther than two maximum cell
+    widths from the new entry.
+    This preserves unions across unrelated declarations without moving a
+    later material ahead of a nearby intervening one. Unknown or traced
+    bounds conservatively count as near. Traced widths use the caller's
+    declared nominal maximum; a reach-dependent join without it is refused.
+    """
+    from collections import OrderedDict
+    import math
+    from rfx.geometry.csg import declared_bounds
+
+    widths = tuple(grid.cells(axis) for axis in range(3))
+    h_max = max(float(np.max(w)) for w in widths) if _host_path(*widths) else nominal_h_max
+    reach = None if h_max is None else 2 * h_max
+    bounds = [declared_bounds(shape) for shape, _ in shapes]
+
+    def near(j, index):
+        a, b = bounds[j], bounds[index]
+        if a is None or b is None or not _host_path(*jax.tree.leaves((a, b))):
+            return True
+        if reach is None:
+            raise RfxUnsupported(
+                "subpixel smoothing on traced cell widths requires nominal_profiles "
+                f"to decide the grouping reach between entries {j} "
+                f"({type(shapes[j][0]).__name__}) and {index} "
+                f"({type(shapes[index][0]).__name__}); declare nominal_profiles "
+                "for every traced mesh axis.")
+        for axis, name in enumerate('xyz'):
+            alo, ahi = float(a[0][axis]), float(a[1][axis])
+            blo, bhi = float(b[0][axis]), float(b[1][axis])
+            if not all(math.isfinite(v) for v in (alo, ahi, blo, bhi)):
+                return True
+            if name in grid.periodic_axes:
+                length = float(grid.domain[axis])
+                # There is an image b + n*length within reach iff this
+                # closed interval contains an integer. Absolute positions
+                # and axis-specific periods also cover distant images.
+                if math.ceil((alo - reach - bhi) / length) > math.floor((ahi + reach - blo) / length):
+                    return False
+            elif alo - reach > bhi or blo - reach > ahi:
+                return False
+        return True
+
+    groups: OrderedDict = OrderedDict()
+    groups.declared = tuple(shapes)  # type: ignore[attr-defined]
+    latest: dict = {}
+    group_of: list = []
+    for index, (shape, eps_r) in enumerate(shapes):
+        medium = medium_key(eps_r)
+        target = latest.get(medium)
+        if target is not None and all(
+                not near(j, index)
+                for j in range(index) if group_of[j][0] > target[0]):
+            key = target
+            groups[key][1].append(shape)
+        else:
+            key = (len(groups), medium)
+            groups[key] = (eps_r, [shape])
+        latest[medium] = key
+        group_of.append(key)
+    groups.declaration_groups = tuple(group_of)  # type: ignore[attr-defined]
+    return groups
+
+
+def _concrete_eps(eps_r):
+    """``float(eps_r)``, or None for a JAX tracer (no value to report)."""
+    from rfx.core.jax_utils import is_tracer
+    return None if is_tracer(eps_r) else float(eps_r)
+
+
 class UnextendableShape(NamedTuple):
     """One (shape, axis, side) a pad continuation could not express.
 
     ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"`` (``"all"``
     when a traced mesh axis disables conductor continuation). It carries the
     shape's declared ``eps_r`` so a caller can say what the pad will hold
-    instead of what was drawn, without re-resolving the material.
+    instead of what was drawn, without re-resolving the material (None when
+    ``eps_r`` is a JAX tracer).
 
     ``entry_index`` and ``material_name`` identify the geometry entry, and
     they are FIELDS rather than something a caller recovers by identity.
@@ -336,7 +431,7 @@ class UnextendableShape(NamedTuple):
     and restores ``shape`` to the DECLARED object.
 
     Two callers surface these, and they are the SAME list from the SAME
-    predicate, not two rules that happen to agree today (the #627
+    predicate, not two rules that happen to agree today (the
     duplication class): :func:`warn_unextendable_shapes` at run time, and
     preflight's ``_validate_cfg_dielectric_at_absorber_seam``, which calls
     :func:`smoothed_shape_pairs` itself rather than re-deriving "reaches a
@@ -347,7 +442,7 @@ class UnextendableShape(NamedTuple):
     axis: int
     side: str
     reason: str
-    eps_r: float = 1.0
+    eps_r: float | None = 1.0
     entry_index: int = -1
     material_name: str = "?"
     conductor: bool = False
@@ -360,7 +455,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     Preflight says this before the run when it can (it builds the grid
     itself); this says it from inside the runner, where the realized pads
     are no longer in question. A shape that reaches a padded face and is
-    not continued is solved with vacuum in its own absorber -- the #831
+    not continued is solved with vacuum in its own absorber -- the
     facet -- and nothing downstream distinguishes that from a structure
     the user meant to end there.
     """
@@ -372,7 +467,7 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     if traced:
         _w.warn("Conducting geometry is kept as declared: "
                 + "; ".join(dict.fromkeys(u.reason for u in traced))
-                + ". No continuation is applied.", stacklevel=stacklevel)
+                + ". No continuation is applied.", ConfigurationWarning, stacklevel=stacklevel)
         conductors = [u for u in conductors if u.side != "all"]
     if conductors:
         faces = ", ".join(
@@ -380,13 +475,13 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
             for u in conductors)
         _w.warn("Conducting geometry reaches an absorbing face but has no "
                 f"geometry continuation: {faces}. No continuation is applied "
-                "across those faces.", stacklevel=stacklevel)
+                "across those faces.", ConfigurationWarning, stacklevel=stacklevel)
     unextendable = [u for u in unextendable if not u.conductor]
     if not unextendable:
         return
     faces = ", ".join(
         f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} "
-        f"(eps_r {u.eps_r:g}; {u.reason})"
+        f"(eps_r {'traced' if u.eps_r is None else format(u.eps_r, 'g')}; {u.reason})"
         for u in unextendable)
     _w.warn(
         "subpixel smoothing: "
@@ -394,8 +489,8 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
         f"were NOT continued into it -- {faces}. Those pads are solved at "
         "eps_r = 1.0, so each structure is terminated by an end facet at the "
         "interior/pad seam and the guided/standing field sees a reflector "
-        "there (issue #1043). Draw the structure as a Box or an "
-        "axis-aligned Cylinder, or move it clear of the face.",
+        "there. Draw the structure as a Box or an "
+        "axis-aligned Cylinder, or move it clear of the face.", AccuracyWarning,
         stacklevel=stacklevel,
     )
 
@@ -485,9 +580,8 @@ def extend_shapes_into_cpml_pad(
     shapes : list of (shape, eps_r)
         The pairs the smoothing is about to be handed. Shapes whose material
         carries a dispersion pole must be filtered out by the caller: pole
-        extension into a pad diverges (#627b) and promoting a pole-carrying
-        column's statics moved a committed Debye recovery past its gate
-        (#808).
+        extension into a pad diverges and promoting a pole-carrying
+        column's statics moved a committed Debye recovery past its gate.
     node_coords : (x, y, z)
         1-D E-NODE coordinate arrays over the FULL array, pads included --
         ``coords_from_uniform_grid`` / ``coords_from_nonuniform_grid``.
@@ -524,7 +618,7 @@ def extend_shapes_into_cpml_pad(
         # Same retrieval as the assembly check
         # ``rfx.geometry.rasterize_grid.assert_declared_span_is_filled``:
         # both ask "how far was this drawn" through ``declared_bounds`` so a
-        # shape excluded from one is excluded from the other (PR #1136, B).
+        # shape excluded from one is excluded from the other.
         bounds = declared_bounds(shape)
         if bounds is None:
             out.append((shape, eps_r))
@@ -575,14 +669,14 @@ def extend_shapes_into_cpml_pad(
                         unextendable.append(UnextendableShape(
                             current, axis, side,
                             "a cylinder has no continuation across its axis",
-                            float(eps_r)))
+                            _concrete_eps(eps_r)))
                     else:
                         current = grown
                 else:
                     unextendable.append(UnextendableShape(
                         current, axis, side,
                         f"{type(current).__name__} has no pad continuation",
-                        float(eps_r)))
+                        _concrete_eps(eps_r)))
         out.append((current, eps_r))
     return out, unextendable
 
@@ -605,16 +699,21 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
                 name = f"thin_conductor[{sim._thin_conductors.index(thin)}]"
                 sheet = sheet_spec_from_shape(
                     shape, coords, sizes, name=name, refuse_thick=True, grid=grid)
-                return [(np.asarray(sheet.footprint), (False, False, False))]
+                return [(sheet.footprint, (False, False, False))]
             if not isinstance(shape, Box):
                 from rfx.model.thin_conductors import admit_dc_film
-                film = admit_dc_film(shape, grid, snap=sim._snap, emit=False)
+                # Pair area admission belongs after continuation and the
+                # drawn-gap pre-pass; this read only classifies pad occupancy.
+                paired = sum(not tc.is_pec and tc.surface_impedance_f0 is None
+                             for tc in sim._thin_conductors) > 1
+                film = admit_dc_film(shape, grid, snap='declared' if paired else sim._snap,
+                                     emit=False, judge_area=False)
                 return [(np.asarray(film.mask), (False, False, False))]
-            if getattr(grid, 'periodic_axes', ''):
-                from rfx.materials.thin_conductor import _thin_conductor_cell_mask
-                return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),
-                         (False, False, False))]
-            return [(np.asarray(shape.mask_on_coords(coords.x, coords.y, coords.z)),
+            # Continuation must see the same cell-centred Box footprint as
+            # assembly, on non-periodic axes as well as across a seam.
+            # The normal sample and Box's own tie rule remain unchanged.
+            from rfx.materials.thin_conductor import _thin_conductor_cell_mask
+            return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),
                      (False, False, False))]
         centres = cell_centres_from_nodes(coords, sizes)
         name = next((e.material_name for e in getattr(sim, "_geometry", ())
@@ -624,9 +723,18 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
         if cells is not None:
             return [(np.asarray(cells), (True, True, True))]
         if sheet is not None:
-            return [(np.asarray(sheet.footprint), (False, False, False))]
+            return [(sheet.footprint, (False, False, False))]
         return [(np.asarray(mask), tuple(a == component for a in range(3)))
                 for component, mask in enumerate(wire.edges)]
+
+
+def _conductor_section(mask, index, axis):
+    from rfx.boundaries.pec import SheetFootprint
+    if isinstance(mask, SheetFootprint):
+        if axis == mask.normal_axis:
+            return mask.mask if index == mask.plane else np.zeros_like(mask.mask)
+        return np.take(mask.mask, index, axis=axis - (axis > mask.normal_axis))
+    return np.take(mask, index, axis=axis)
 
 
 def _occupied_conductor_faces(lattice, grid):
@@ -639,7 +747,7 @@ def _occupied_conductor_faces(lattice, grid):
             for mask, cell_axes in lattice:
                 index = (pad if side == "lo" else
                          grid.shape[axis] - 1 - pad - int(cell_axes[axis]))
-                if np.take(mask, index, axis=axis).any():
+                if _conductor_section(mask, index, axis).any():
                     faces.add((axis, side))
     return faces
 
@@ -751,15 +859,9 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     nodes = (coords.x, coords.y, coords.z)
     traced_axes = tuple(a for a, n in enumerate(nodes) if is_tracer(n))
     if traced_axes:
-        reason = ("mesh axis " + ", ".join("xyz"[a] for a in traced_axes)
-                  + " is traced; conductor continuation is disabled on every face")
-        findings = [UnextendableShape(
-            shape, traced_axes[0], "all", reason, conductor=True)]
-        if unextendable is not None:
-            unextendable.extend(findings)
-        else:
-            warn_unextendable_shapes(findings)
-        return shape
+        from rfx.geometry._traced_conductor import continued_traced_conductor_shape
+        return continued_traced_conductor_shape(
+            sim, grid, shape, traced_node_axes=traced_axes, entry=entry, unextendable=unextendable)
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
     # A shape without a bounding box has nothing to continue (no face to
@@ -814,8 +916,8 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
                 neighbour = source - 1
             if not (first <= source <= last and first <= neighbour <= last):
                 continue
-            cross = np.take(footprint, source, axis=axis)
-            inner = np.take(footprint, neighbour, axis=axis)
+            cross = _conductor_section(footprint, source, axis)
+            inner = _conductor_section(footprint, neighbour, axis)
             if not (cross.any() and np.array_equal(cross, inner)):
                 continue
             accepted.add((axis, side))
@@ -841,8 +943,8 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     return solved
 
 
-class CurvedSmoothingWarning(UserWarning):
-    """Subpixel smoothing of a curved high-contrast dielectric (rfx #1632)."""
+class CurvedSmoothingWarning(AccuracyWarning):
+    """Subpixel smoothing of a curved high-contrast dielectric."""
 
 
 def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=None):
@@ -851,15 +953,18 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
     Called only where smoothing is applied. The smoother keeps only the diagonal of the
     inverse-permittivity tensor; on a curved high-contrast interface the resonance then
     converges first order and was measured further off than the unsmoothed model
-    (#1632, docs/guides/known_limitations.md). The comparison set is the background and
+    (docs/guides/known_limitations.md). The comparison set is the background and
     every other declared dielectric, so a low-permittivity hole in a high-permittivity
     host is included; the set is every declared dielectric anywhere in the run, so a shape
     that touches only a near-equal host can be flagged too. Conductors (``sim``'s PEC
     conductivity threshold) are neither a subject nor part of the set.
     """
+    from rfx.core.jax_utils import is_tracer
     from rfx.geometry.csg import Cylinder, Sphere
 
     def value(eps_r):
+        if is_tracer(eps_r):
+            return None
         try:
             v = float(eps_r)
         except (TypeError, ValueError):
@@ -879,6 +984,23 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
             continue
         if any(max(v / o, o / v) >= contrast for o in others):
             curved.append(f"{type(declared).__name__} eps_r={v:g}")
+    # A traced eps_r has no value while the program is built, so its contrast
+    # cannot be judged; say so once instead of dropping it silently.
+    traced = [s_ for s_, e in pairs if is_tracer(e)]
+    if traced and any(isinstance(getattr(s_, "declared", s_), (Sphere, Cylinder))
+                      for s_, _ in pairs):
+        names = {} if sim is None else {id(e.shape): e.material_name for e in sim._geometry}
+        labels = dict.fromkeys(
+            names.get(id(getattr(s_, "declared", s_)),
+                      type(getattr(s_, "declared", s_)).__name__)
+            for s_ in traced)
+        import warnings as _w
+        _w.warn("subpixel_smoothing: the curved high-contrast check was not judged for the "
+                "traced material(s) " + ", ".join(f"'{n}'" for n in labels) + ": a traced "
+                "eps_r has no value while the program is built. A curved dielectric 10x or "
+                "more from vacuum or another dielectric converges first order under "
+                "subpixel_smoothing; see docs/guides/known_limitations.md.",
+                CurvedSmoothingWarning, stacklevel=user_stacklevel())
     if curved:
         import warnings as _w
         _w.warn("subpixel_smoothing on a curved high-contrast dielectric (" + ", ".join(curved)
@@ -886,8 +1008,8 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
                 "permittivity keeps only its diagonal, so a resonance converges first order and "
                 "can be further off than with subpixel_smoothing=False. Check a mesh series "
                 "against the unsmoothed run, or use subpixel_smoothing='full_tensor' on a uniform "
-                "single-device mesh; see docs/guides/known_limitations.md (rfx #1632).",
-                CurvedSmoothingWarning, stacklevel=3)
+                "single-device mesh; see docs/guides/known_limitations.md.",
+                CurvedSmoothingWarning, stacklevel=user_stacklevel())
 
 
 def smoothed_shape_pairs(sim, grid):
@@ -896,9 +1018,8 @@ def smoothed_shape_pairs(sim, grid):
     ONE implementation for the three sites that rebuild the update
     permittivity from ``sim._geometry`` -- Stage-2 ``kottke_pec`` and Stage-1
     in ``rfx/runners/uniform.py`` and the NU mirror in
-    ``rfx/runners/nonuniform.py``. #627 exists because the array-side
-    replication was hand-duplicated across two assemblers and drifted; this
-    one is not duplicated a second time.
+    ``rfx/runners/nonuniform.py``. Sharing this implementation prevents
+    the pad-continuation rules from drifting between assemblers.
 
     The continuation is applied when the run has absorbing pads at all
     (``sim._boundary`` in ``cpml``/``upml`` with ``_cpml_layers > 0``) --
@@ -909,17 +1030,22 @@ def smoothed_shape_pairs(sim, grid):
     caller passes ``False`` and runs no subpixel lane, so the two gates cannot
     disagree today; a future caller that wants the flag honoured here has to
     thread it -- and only to shapes whose material carries
-    no dispersion pole (#627b, #808: a pole in a pad diverges, and a
+    no dispersion pole (a pole in a pad diverges, and a
     pole-carrying column's promoted statics are a material no declared model
     has).
+
+    Conductors leave the dielectric average: the field inside metal is
+    zero, and the realized PEC edge masks / ``pec_shapes`` carry the metal.
 
     Returns ``(pairs, unextendable)``; ``unextendable`` is empty whenever
     nothing reaches a padded face.
     """
-    pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
-             for entry in sim._geometry]
+    from rfx.model.materials import assembled_as_pec
+
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
+        pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
+                 for entry in sim._geometry if not assembled_as_pec(sim, entry)]
         return pairs, []
 
     if hasattr(grid, "dx_arr"):
@@ -946,30 +1072,31 @@ def smoothed_shape_pairs(sim, grid):
     # is rebuilt position for position rather than partitioned and rejoined.
     out = []
     unextendable = []
-    # 1e6, the value every other reader of this threshold defaults to
-    # (rfx/surrogate.py, rfx/fidelity.py, rfx/pcb.py). An ``inf``
-    # default fails OPEN: a sim without the attribute would classify a
-    # PEC material as a dielectric and miss its port-entry exception.
-    pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
-    for idx, (entry, (shape, eps_r)) in enumerate(zip(sim._geometry, pairs)):
+    for idx, entry in enumerate(sim._geometry):
+        shape = entry.shape
         mat = sim._resolve_material(entry.material_name)
-        if (getattr(mat, "debye_poles", None)
-                or getattr(mat, "lorentz_poles", None)):
-            out.append((shape, eps_r))
-            continue
+        has_poles = (getattr(mat, "debye_poles", None)
+                     or getattr(mat, "lorentz_poles", None))
         # Both lanes realize conductors through the same geometry helper.
-        if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
+        if assembled_as_pec(sim, entry):
             unext = []
-            solved = continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
-            out.append((solved, eps_r))
-            unextendable.extend(u._replace(entry_index=idx,
-                                          material_name=entry.material_name)
-                                for u in unext)
+            continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
+            # Pole-carrying entries previously bypassed the pad report.
+            if not has_poles:
+                unextendable.extend(u._replace(entry_index=idx,
+                                              material_name=entry.material_name)
+                                    for u in unext)
+            continue
+        eps_r = mat.eps_r
+        if has_poles:
+            out.append((shape, eps_r))
             continue
         one, unext = extend_shapes_into_cpml_pad(
             [(shape, eps_r)], node_coords, pads,
             declared_domain=sim._unresolved_domain)
         out.extend(one)
+        from rfx.model.realization_integrals import quantities
+        quantities(grid, create=True).setdefault("owners", {}).update({id(s): idx for s, _ in one})
         # Stamp the entry's identity HERE, in the loop that knows it, and put
         # the DECLARED shape back. The builder reports whatever object it held
         # when the face was reached, which is already a continued copy once a
@@ -1002,11 +1129,8 @@ def _yee_coords(grid: Grid):
     - Ey lives at (i, j+0.5, k)
     - Ez lives at (i, j, k+0.5)
 
-    We return the integer-grid positions (nodes); the caller ADDS +0.5*dx to
-    reach a centre. That direction is the contract: the NU sibling
-    ``compute_smoothed_eps_nonuniform`` subtracted instead, and when #562 made
-    the NU coordinates node-based the subtraction put every smoothed voxel half
-    a cell off (review F1). Derive centres FROM nodes, never the reverse.
+    We return the integer-grid positions (nodes); the caller ADDS +0.5*dx to reach a centre. Subtracting from a node
+    displaces the smoothed voxel by half a cell. Derive centres FROM nodes, never the reverse.
     """
     # Keep the coordinate construction in the shared host-float64 node
     # builder.  Constructing ``jnp.arange`` here made the Kottke SDF sample
@@ -1032,6 +1156,7 @@ def _kottke_tensor_eps(
     nx: jnp.ndarray,
     ny: jnp.ndarray,
     nz: jnp.ndarray,
+    *, outside_content=None, xp=jnp,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute the Kottke tensor-averaged ε and return its diagonals.
 
@@ -1049,6 +1174,9 @@ def _kottke_tensor_eps(
     """
     # Harmonic (perpendicular) inverse-eps
     inv_perp = f / eps_inside + (1.0 - f) / (eps_outside + 1e-30)
+    if outside_content is not None:
+        inv_perp = xp.where(outside_content.single, inv_perp,
+                            f / eps_inside + (1.0 - f) * outside_content.inv)
 
     # Arithmetic (parallel) eps, then invert
     eps_par = f * eps_inside + (1.0 - f) * eps_outside
@@ -1074,7 +1202,7 @@ def _kottke_tensor_eps(
 
 
 # ---------------------------------------------------------------------------
-# Host-float64 evaluation for concrete inputs (#833)
+# Host-float64 evaluation for concrete inputs
 # ---------------------------------------------------------------------------
 #
 # The smoothed permittivity is a constant geometry input, not a traced design
@@ -1083,7 +1211,7 @@ def _kottke_tensor_eps(
 # normals and Kottke averaging all rounded in float32, and every interface
 # voxel came out up to 15 f32 ulps away from the x64=1 value (measured on the
 # boundary-voxel fixture in tests/unit/geometry/test_smoothing_coordinate_
-# contract.py). Coordinate routing alone (ab280a38, #1088) could not close
+# contract.py). Coordinate routing alone (ab280a38) could not close
 # that: the coordinates were already the correctly rounded float32 of the
 # exact spine, and the rest was arithmetic.
 #
@@ -1147,7 +1275,117 @@ def _fallback_masks(shapes, mask_fn) -> dict:
     return {id(s): mask_fn(s) for s in shapes if not _has_sdf(s)}
 
 
-def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None):
+def _material_fallback_mask(shape, grid):
+    """Use material-cell ownership for staircase dielectric Box composites."""
+    from rfx.geometry.curved import CurvedPatch
+    from rfx.geometry.via import Via
+    if not isinstance(shape, (CurvedPatch, Via)):
+        return shape.mask(grid)
+    from rfx.geometry.rasterize_grid import (
+        _material_cell_mask, cell_centres_from_nodes,
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+    )
+    graded = hasattr(grid, "dx_arr")
+    coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
+    sizes = cell_sizes_from_nonuniform_grid(grid) if graded else cell_sizes_from_uniform_grid(grid)
+    return _material_cell_mask(shape, coords, cell_centres_from_nodes(coords, sizes),
+                               grid=grid, cell_sizes=sizes)
+
+
+def _normal_cell_length(xp, extents, normal):
+    """Project box extents onto the normal; preserve the scalar cubic path."""
+    if not isinstance(extents, tuple):
+        return extents
+    s = sum((n * d) ** 2 for n, d in zip(normal, extents))
+    safe = xp.where(s > 0, s, 1.0)
+    # Zero normals at interior symmetry points need both a finite sqrt
+    # derivative and a positive divisor for the clipped fill fraction.
+    fallback = xp.maximum(xp.maximum(extents[0], extents[1]), extents[2])
+    return xp.where(s > 0, xp.sqrt(safe), fallback)
+
+
+def _cell_width_pairs(xp, sizes, periodic_axes):
+    """Broadcast preceding/current primal widths at each node."""
+    lengths = []
+    for axis, size in enumerate(sizes):
+        plus = xp.asarray(size)
+        minus = (xp.roll(plus, 1) if 'xyz'[axis] in periodic_axes else
+                 xp.concatenate((plus[:1], plus[:-1])))
+        shape = tuple(len(plus) if a == axis else 1 for a in range(3))
+        lengths.append((minus.reshape(shape), plus.reshape(shape)))
+    return tuple(lengths)
+
+
+def _yee_cell_extents(lengths):
+    """Primal width along an E component, dual widths across it."""
+    return {comp: tuple(plus if axis == component else (minus + plus) / 2
+                        for axis, (minus, plus) in enumerate(lengths))
+            for component, comp in enumerate(('ex', 'ey', 'ez'))}
+
+
+def _bulk_outside(xp, groups, current, coords, distance, normal, length,
+                  background, masks, grid, *, normal_source=None, normal_image=None):
+    """Sample bulk media half a normal cell beyond this SDF surface.
+
+    SDF groups own points with signed distance <= 0. Mask-only groups own
+    primal cells, clamped at the grid boundary. Existing group priority is
+    retained. In the current group only the (SDF shape, periodic image)
+    supplying the normal is excluded; the shape index counts SDF
+    shapes only. Other images, shapes and mask-only bodies count. Neither
+    smoothed operands nor node tensors are read. ``groups`` is
+    :func:`_medium_groups`'s mapping and ``current`` the current group's
+    unique ``(group_index, medium_key)`` key.
+    """
+    from rfx._internal._periodic import periodic_sdf
+    from rfx.geometry.rasterize_grid import (
+        coords_from_uniform_grid, coords_from_nonuniform_grid,
+    )
+
+    offset = .5 * length - distance
+    points = tuple(p + offset * n for p, n in zip(coords, normal))
+    outside = background
+    indices = None
+    for key, (eps_r, group) in groups.items():
+        sdf_index = 0
+        for shape in group:
+            if _has_sdf(shape):
+                mask = periodic_sdf(
+                    grid, shape, points, _get_sdf_fn(shape), xp=xp,
+                    exclude_image=normal_image if key == current else None,
+                    exclude_where=normal_source == sdf_index) <= 0
+                sdf_index += 1
+            else:
+                mask = masks[id(shape)]
+                if mask is None:
+                    continue
+                if indices is None:
+                    graded = hasattr(grid, 'dx_arr')
+                    nodes = (coords_from_nonuniform_grid(grid) if graded
+                             else coords_from_uniform_grid(grid))
+                    axis_indices = []
+                    for axis, point in enumerate(points):
+                        line = xp.asarray(nodes[axis])
+                        index = (xp.searchsorted(line, point, side='right') - 1 if graded
+                                 else xp.floor((point - line[0]) / grid.dx).astype(xp.int32))
+                        axis_indices.append(xp.clip(index, 0, mask.shape[axis] - 1))
+                    indices = tuple(axis_indices)
+                mask = xp.asarray(mask)[indices]
+            outside = xp.where(mask, eps_r, outside)
+    return outside
+
+
+# The outside part of each normal support lives in its own module. It reads
+# _bulk_outside, _has_sdf, _host_path and medium_key from this module, so the
+# import stays here, after their definitions.
+from rfx.geometry.outside_content import (  # noqa: E402
+    _LinePieces, _SegmentContent, _line_interval, _outside_pieces, _depth_cdf,
+    _segment_content,
+)
+
+
+def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None,
+                   nominal_h_max=None):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
 
     This is the ONE smoothing body; the uniform and non-uniform public
@@ -1158,15 +1396,25 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
     ----------
     xp : numpy or jax.numpy
     shapes : list of (shape, eps_r)
-        Applied in order; later shapes overwrite earlier ones. Shapes sharing
-        an ``eps_r`` form one group and are smoothed against their union SDF
+        Applied in order; later shapes overwrite earlier ones. Shapes of one
+        medium share a group only when every entry in a later-painted group
+        is farther than two maximum cell widths from the joining entry,
+        and are smoothed against their union SDF
         with the nearest shape's analytic normal, so overlapping same-material
-        bodies are not double-smoothed.
+        bodies are not double-smoothed. Grouping is by medium identity
+        (:func:`medium_key`): equal concrete ``eps_r`` values are one medium;
+        a traced ``eps_r`` is one medium per tracer object, so the
+        permittivity can be differentiated through the smoothed interfaces.
     sample_coords : {"ex" | "ey" | "ez": (X, Y, Z)}
         Broadcastable coordinate arrays at each component's Yee position.
-    cell_len : scalar or broadcastable array
-        Local cell length normalising SDF -> fill fraction,
-        ``f = clip(0.5 - sdf / cell_len, 0, 1)``.
+    cell_len : scalar or dict of per-component (dx, dy, dz) arrays
+        Cubic width, or averaging-cell extents at each sample. The latter
+        give ``L = sqrt(sum((n_axis * d_axis)**2))`` for the selected normal,
+        and ``f = clip(0.5 - sdf / L, 0, 1)``. This linear fill is exact for
+        flat axis-aligned faces and approximate for oblique interfaces.
+        Where a run of planar own bodies has both faces inside the support,
+        the fill is the run's own length over L and the outside medium is
+        the declared content on both sides of it.
     eps : (eps_ex, eps_ey, eps_ez)
         Starting (background) arrays; returned updated.
     masks : {id(shape): bool mask or None}
@@ -1174,12 +1422,10 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
         :func:`_fallback_masks`); ``None`` skips that shape.
     """
     eps = dict(zip(("ex", "ey", "ez"), eps))
-    from collections import OrderedDict
-    groups: OrderedDict[float, list] = OrderedDict()
-    for shape, eps_r in shapes:
-        groups.setdefault(eps_r, []).append(shape)
+    background = eps.copy()
+    groups = _medium_groups(shapes, grid, nominal_h_max=nominal_h_max)
 
-    for eps_r, group_shapes in groups.items():
+    for key, (eps_r, group_shapes) in groups.items():
         sdf_shapes = [s for s in group_shapes if _has_sdf(s)]
 
         # Fallback shapes: staircased mask
@@ -1205,36 +1451,65 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
             best_abs_sdf = None
             best_nx = best_ny = best_nz = None
 
-            for shape in sdf_shapes:
-                from rfx._periodic import periodic_sdf
-                s, (n_x, n_y, n_z) = periodic_sdf(
+            from rfx.model.realization_integrals import host_owner
+            owner = None
+            for shape_index, shape in enumerate(sdf_shapes):
+                from rfx._internal._periodic import periodic_sdf
+                s, (n_x, n_y, n_z), image = periodic_sdf(
                     grid, shape, (Xc, Yc, Zc), _get_sdf_fn(shape), xp=xp,
-                    normal_fn=_get_normal_fn(shape))
+                    normal_fn=_get_normal_fn(shape), return_image=True)
 
                 if sdf_union is None:
+                    owner = host_owner(s)
                     sdf_union = s
+                    best_s = s
                     best_abs_sdf = xp.abs(s)
                     best_nx, best_ny, best_nz = n_x, n_y, n_z
+                    normal_source = xp.asarray(shape_index, dtype=xp.int32)
+                    normal_image = image
                 else:
+                    owner = host_owner(s, shape_index, owner, sdf_union)
                     sdf_union = xp.minimum(sdf_union, s)
                     # Update normal where this shape's surface is closer
                     closer = xp.abs(s) < best_abs_sdf
+                    best_s = xp.where(closer, s, best_s)
+                    normal_source = xp.where(closer, shape_index, normal_source)
+                    normal_image = tuple(xp.where(closer, k, old)
+                                         for k, old in zip(image, normal_image))
                     best_abs_sdf = xp.where(closer, xp.abs(s), best_abs_sdf)
                     best_nx = xp.where(closer, n_x, best_nx)
                     best_ny = xp.where(closer, n_y, best_ny)
                     best_nz = xp.where(closer, n_z, best_nz)
 
             # Fill fraction from union SDF
-            f = xp.clip(0.5 - sdf_union / cell_len, 0.0, 1.0)
+            extents = cell_len[comp] if isinstance(cell_len, dict) else cell_len
+            length = _normal_cell_length(xp, extents, (best_nx, best_ny, best_nz))
+            f = xp.clip(0.5 - sdf_union / length, 0.0, 1.0)
+            pieces = _outside_pieces(
+                xp, groups, key, (Xc, Yc, Zc), sdf_union,
+                (best_nx, best_ny, best_nz), length, background[comp], masks, grid,
+                normal_source=normal_source, normal_image=normal_image,
+                best_s=best_s, nominal_h_max=nominal_h_max, own_fill=True)
+            content = _segment_content(xp, pieces, pieces.face, length / 2)
+            own = pieces.own
+            if own is not None:
+                # Both faces of a thin planar run lie in the support: the
+                # one-face fill would miss the far face. Elsewhere the
+                # selects keep the one-face operands bit for bit.
+                f = xp.where(own.thin, own.fill, f)
+                both_sides = _segment_content(xp, pieces, pieces.face, length / 2, gaps=own.gaps)
+                content = _SegmentContent(*(xp.where(own.thin, a, b)
+                                            for a, b in zip(both_sides, content)))
+            from rfx.model.realization_integrals import capture
+            capture(grid, sdf_shapes, f, owner, ("ex", "ey", "ez").index(comp))
 
-            # Fix #1: fully-inside voxels get bulk eps, no smoothing
+            #  fully-inside voxels get bulk eps, no smoothing
             inside = f >= 1.0
             # Boundary voxels
             bnd = (f > 0.0) & (f < 1.0)
 
-            # The "outside" eps is whatever was there before.
-            # Fix #3: full Kottke tensor averaging
-            kt = _kottke_tensor_eps(f, eps_r, eps[comp], best_nx, best_ny, best_nz)
+            kt = _kottke_tensor_eps(f, eps_r, content.eps, best_nx, best_ny, best_nz,
+                                    outside_content=content, xp=xp)
             smooth = kt[("ex", "ey", "ez").index(comp)]
 
             # Apply: interior -> bulk, boundary -> Kottke, exterior -> unchanged
@@ -1254,13 +1529,14 @@ def _uniform_sample_coords(xp, coords, dx):
     return {"ex": (X + half, Y, Z), "ey": (X, Y + half, Z), "ez": (X, Y, Z + half)}
 
 
-def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks):
+def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks, *,
+                          nominal_h_max=None):
     """``compute_smoothed_eps`` body on backend ``xp``; returns ``xp`` arrays."""
     acc_dtype = np.float64 if xp is np else jnp.float32
     eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
     return _kottke_smooth(
         xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps, masks,
-        grid=grid,
+        grid=grid, nominal_h_max=nominal_h_max,
     )
 
 
@@ -1272,6 +1548,7 @@ def compute_smoothed_eps_nonuniform(
     nu_grid,
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
+    *, nominal_h_max: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Kottke tensor-averaged ε on a NonUniformGrid (per-component).
 
@@ -1279,11 +1556,10 @@ def compute_smoothed_eps_nonuniform(
     cell-size arrays from ``nu_grid`` for both coordinate placement
     (per-axis half-cell offsets) and SDF fill-fraction normalisation.
 
-    Fill-fraction normalisation uses the geometric mean of the three
-    local cell sizes — first-order accurate for non-cubic Yee cells, in
-    line with the SDF-to-fill approximation in the uniform path.
+    Fill-fraction normalisation uses the averaging-cell extent along the
+    interface normal: primal along the E component, dual across it.
 
-    Concrete inputs are evaluated in host float64 and cast once (#833);
+    Concrete inputs are evaluated in host float64 and cast once;
     a traced axis (mesh as design variable) keeps traced arithmetic.
     """
     from rfx.geometry.rasterize_grid import (
@@ -1292,12 +1568,11 @@ def compute_smoothed_eps_nonuniform(
     )
 
     coords = coords_from_nonuniform_grid(nu_grid)
-    # `coords` are E-NODE positions (cell edges) since #562 unified the NU
-    # convention with the uniform builder's. This function needs BOTH the node
+    # `coords` are E-NODE positions (cell edges) on both the NU and uniform builders. This
+    # function needs BOTH the node
     # and the cell centre per axis, so the centre is derived FROM the node
     # rather than the other way round. Getting that direction wrong is not a
-    # cosmetic slip: it displaces every smoothed voxel by half a cell, which is
-    # exactly the defect #562 removed elsewhere, and the committed
+    # cosmetic slip: it displaces every smoothed voxel by half a cell, and the committed
     # interface-value bound (1 < eps < 4) passes under either sign — see
     # test_compute_smoothed_eps_nonuniform_reduces_to_uniform, which is the
     # assertion that catches it.
@@ -1305,7 +1580,7 @@ def compute_smoothed_eps_nonuniform(
     # Cell centres — centre[i] = node[i] + d[i]/2 from the shared producer
     # rasterize_grid.centres_from_nonuniform_grid: d comes from the float64
     # cell-size spine (not the float32 store) and the sum is formed in host
-    # float64 (#833). ``node + f32(store)/2`` sat 3.7e-12 m off the exact
+    # float64. ``node + f32(store)/2`` sat 3.7e-12 m off the exact
     # spine at x64=1 and 1.1e-9 m at x64=0 on the graded WR-90 fixture.
     centres = centres_from_nonuniform_grid(nu_grid, coords)
     # Per-cell sizes from the same float64 spine, for the fill-fraction
@@ -1322,7 +1597,9 @@ def compute_smoothed_eps_nonuniform(
         if _has_sdf(shape):
             continue
         try:
-            masks[id(shape)] = shape.mask(nu_grid)
+            masks[id(shape)] = _material_fallback_mask(shape, nu_grid)
+        except RfxRefusal:
+            raise  # a refusal already names the cause and the remedy
         except Exception as exc:
             # The uniform builder calls ``shape.mask(grid)`` too, so a
             # uniform mesh is a way out only for a shape that has one.
@@ -1344,15 +1621,7 @@ def compute_smoothed_eps_nonuniform(
 
     node_x, node_y, node_z = (xp.asarray(a) for a in coords[:3])
     centre_x, centre_y, centre_z = (xp.asarray(a) for a in centres[:3])
-    dx_arr, dy_arr, dz_arr = (xp.asarray(d) for d in cell_sizes)
-
-    # Local-cell characteristic length (geometric mean of three cell
-    # widths) — used to normalise SDF → fill fraction. Anisotropic cell
-    # geometry: this is a first-order approximation, mirroring the
-    # uniform-path single-dx normalisation.
-    dx_loc = (dx_arr[:, None, None]
-              * dy_arr[None, :, None]
-              * dz_arr[None, None, :]) ** (1.0 / 3.0)
+    extents = _yee_cell_extents(_cell_width_pairs(xp, cell_sizes, nu_grid.periodic_axes))
 
     # Per-component half-cell offsets along the COMPONENT axis only:
     # Ex sits at (centre_x, node_y, node_z); Ey at (node_x, centre_y,
@@ -1366,7 +1635,8 @@ def compute_smoothed_eps_nonuniform(
     acc_dtype = np.float64 if host else jnp.float32
     eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
                 for _ in range(3))
-    eps = _kottke_smooth(xp, shapes, sample, dx_loc, eps, masks, grid=nu_grid)
+    eps = _kottke_smooth(xp, shapes, sample, extents, eps, masks, grid=nu_grid,
+                         nominal_h_max=nominal_h_max)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
@@ -1374,6 +1644,7 @@ def compute_smoothed_eps(
     grid: Grid,
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
+    *, nominal_h_max: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute Kottke tensor-averaged permittivity for each E-field component.
 
@@ -1383,8 +1654,8 @@ def compute_smoothed_eps(
 
     Concrete inputs (host node spine, Python-float shape parameters and
     permittivities) are evaluated in host float64 and cast to the active
-    JAX dtype once, so the result does not depend on ``jax_enable_x64``
-    (#833); a traced shape parameter keeps traced ``jax.numpy`` arithmetic.
+    JAX dtype once, so the result does not depend on ``jax_enable_x64``; a traced shape parameter keeps traced
+    ``jax.numpy`` arithmetic.
 
     Parameters
     ----------
@@ -1402,13 +1673,13 @@ def compute_smoothed_eps(
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
     coords = coords_from_uniform_grid(grid)
-    masks = _fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
+    masks = _fallback_masks([s for s, _ in shapes], lambda s: _material_fallback_mask(s, grid))
     host = _host_path(*coords[:3], grid.dx, background_eps,
                       *(e for _, e in shapes),
                       *(p for s, _ in shapes for p in _shape_parameters(s)),
                       *masks.values())
     eps = _smoothed_eps_uniform(np if host else jnp, grid, coords, shapes,
-                                background_eps, masks)
+                                background_eps, masks, nominal_h_max=nominal_h_max)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 
@@ -1454,7 +1725,7 @@ def _kottke_inv_eps_diag(
         Switches to the σ→∞ / ε→∞ limit branch (Farjadpour 2006 §VI
         plus the limit derived in stage2_ca_cb_derivation.md §4).
     xp : numpy or jax.numpy
-        Array backend; ``numpy`` on the concrete host-float64 path (#833).
+        Array backend; ``numpy`` on the concrete host-float64 path.
 
     Returns
     -------
@@ -1496,6 +1767,7 @@ def compute_inv_eps_tensor_diag(
     dielectric_shapes: list[tuple[Shape, float]] | None = None,
     pec_shapes: list[Shape] | None = None,
     background_eps: float = 1.0,
+    *, nominal_h_max: float | None = None,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Stage 2 unified subpixel ε⁻¹ tensor: dielectric Kottke + PEC limit.
 
@@ -1545,7 +1817,7 @@ def compute_inv_eps_tensor_diag(
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
     coords = coords_from_uniform_grid(grid)
-    diel_masks = _fallback_masks([s for s, _ in dielectric_shapes], lambda s: s.mask(grid))
+    diel_masks = _fallback_masks([s for s, _ in dielectric_shapes], lambda s: _material_fallback_mask(s, grid))
     pec_masks = _fallback_masks(pec_shapes, lambda s: s.mask(grid))
     host = _host_path(*coords[:3], grid.dx, background_eps,
                       *(e for _, e in dielectric_shapes),
@@ -1557,7 +1829,7 @@ def compute_inv_eps_tensor_diag(
     # Step 1: dielectric subpixel smoothing (existing Kottke path).
     if dielectric_shapes:
         eps = _smoothed_eps_uniform(xp, grid, coords, dielectric_shapes,
-                                    background_eps, diel_masks)
+                                    background_eps, diel_masks, nominal_h_max=nominal_h_max)
     else:
         acc_dtype = np.float64 if host else jnp.float32
         eps = tuple(xp.full(tuple(grid.shape), background_eps, dtype=acc_dtype)
@@ -1568,8 +1840,7 @@ def compute_inv_eps_tensor_diag(
     # ``eps_r`` may arrive as a Python float), so it is rounded here on both
     # backends and the PEC limit below is folded in on top of that value. The
     # host path widens the rounded value back to float64 for the PEC
-    # arithmetic: that keeps x64=1 bit-identical to the pre-#833 path and
-    # makes x64=0 its float32 image.
+    # arithmetic: x64=0 is its float32 image.
     inv = [(1.0 / e).astype(xp.float32) for e in eps]
     if host:
         inv = [a.astype(np.float64) for a in inv]
@@ -1593,12 +1864,14 @@ def compute_inv_eps_tensor_diag(
         promoted = True
         for i, comp in enumerate(("ex", "ey", "ez")):
             Xc, Yc, Zc = sample[comp]
-            from rfx._periodic import periodic_sdf
+            from rfx._internal._periodic import periodic_sdf
             sdf, (n_x, n_y, n_z) = periodic_sdf(
                 grid, pec_shape, (Xc, Yc, Zc), _get_sdf_fn(pec_shape), xp=xp,
                 normal_fn=_get_normal_fn(pec_shape))
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
+            from rfx.model.realization_integrals import capture, host_owner
+            capture(grid, (pec_shape,), f, host_owner(f), i)
             inv_c = _kottke_inv_eps_diag(
                 f, xp.inf, eps[i], n_x, n_y, n_z, is_pec=True, xp=xp,
             )[i]
@@ -1625,13 +1898,13 @@ def kottke_inv_eps_from_occupancy(
     background_eps: float = 1.0,
     periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Inverse-permittivity tensor from a continuous-fill PEC occupancy (#1197).
+    """Inverse-permittivity tensor from a continuous-fill PEC occupancy.
 
     The AD-traceable analogue of the ``pec_shapes`` branch in
     :func:`compute_inv_eps_tensor_diag`, built from the lattice ownership
     contract's own rule rather than from a cell-centred Kottke fill: each E
     edge is conductor to the degree that the four cells sharing it are
-    occupied (``_volume_occupancy_masks``, #931 §1.2 hard / §1.6 relaxed),
+    occupied (``_volume_occupancy_masks``, hard occupancy / §1.6 relaxed occupancy),
     ``inv_c = (1 - M_c) * baseline_c``. At binary occupancy the zeros are
     ``realized_pec_edge_masks`` bit for bit; a fractional cell is a lossless
     interpolation (a static high-permittivity cell), exact at 0 and 1 and a
@@ -1667,10 +1940,10 @@ def kottke_inv_eps_from_occupancy(
         ``simulation.run(aniso_inv_eps=...)`` or
         ``update_e_aniso_inv``.
     """
-    # #1197. The tensor is the E-update form of the lattice ownership
+    # The tensor is the E-update form of the lattice ownership
     # contract, so it is built from the contract's own rule: an E edge is
     # conductor to the degree that the FOUR cells sharing it are occupied
-    # (#931 §1.2 hard, §1.6 relaxed: ``M_c = 1 - prod(1 - o)`` over the two
+    # (hard occupancy, §1.6 relaxed occupancy: ``M_c = 1 - prod(1 - o)`` over the two
     # backward shifts transverse to the component), and ``inv_c = 1 - M_c``
     # scales the baseline. At binary occupancy this IS
     # ``realized_pec_edge_masks`` bit for bit -- the conductor ends where the
@@ -1686,16 +1959,13 @@ def kottke_inv_eps_from_occupancy(
     # where a cavity mode's normal E is largest. Measured on a 24 mm PEC cube
     # with a binary PEC slab (TM110 is independent of the slab height):
     # analytic 8.833 GHz, ``apply_pec_occupancy`` 8.8305, this builder with
-    # the dilation 8.5266 (-3.5 %), at a half-cell edge 8.3228 (-5.8 %). The
-    # dilation had been kept (2026-05-31 review) on the |S21| witness of one
-    # open-stub run (run #962) in 60939e0's commit message; that run's
-    # fixture is not recorded anywhere, and the cavity oracle supersedes it.
+    # the dilation 8.5266 (-3.5 %), at a half-cell edge 8.3228 (-5.8 %).
     from rfx.boundaries.pec import _volume_occupancy_masks
     from rfx.model.occupancy import clip_occupancy
 
     f = clip_occupancy(pec_occupancy.astype(jnp.float32))
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
-    # pinned zero (2026-05-17 decision, kept).
+    # pinned zero.
     f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)
     m_x, m_y, m_z = _volume_occupancy_masks(f, tuple(bool(p) for p in periodic))
     if aniso_inv_eps_baseline is not None:
@@ -1750,7 +2020,7 @@ def refuse_pmc_smoothing(sim, grid):
                      - np.asarray(sdf_fn(*upper, shape, xp=np)))
             if np.any((abs(sdf) <= d / 2) &
                       (abs(delta) > d * 8 * np.finfo(np.float32).eps)):
-                raise NotImplementedError(
+                raise RfxUnsupported(
                     f"subpixel smoothing at PMC magnetic face {face}: material "
                     f"{entry.material_name!r} has a surface within half a cell; "
                     "the smoother has no even magnetic extension. Extend the "

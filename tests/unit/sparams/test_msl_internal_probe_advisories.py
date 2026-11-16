@@ -65,7 +65,7 @@ def test_witness_probes_produce_no_probe_advisories_and_no_332():
         res = sim.compute_msl_s_matrix(freqs=FREQS, num_periods=2.0)
     msgs = [str(w.message) for w in caught]
     assert not any("Probe at" in m for m in msgs), msgs
-    assert not any("issue #332" in m for m in msgs), msgs
+    assert not any("ring-down truncated" in m for m in msgs), msgs
     assert any("settling witness" in m for m in msgs), msgs
     assert res.settling_db is not None
     # bookkeeping fully restored: no internal probes leak out of the call
@@ -110,7 +110,7 @@ def test_user_probe_advisories_and_332_still_fire():
         "within 2 cells" in m and "CPML absorber" in m and "fringe/reflection" in m
         for m in msgs
     ), msgs
-    assert any("issue #332" in m for m in msgs), msgs
+    assert any("ring-down truncated" in m for m in msgs), msgs
     # user probes survive the call
     assert len(sim._probes) == 2
     assert sim._internal_probe_indices == set()

@@ -172,7 +172,7 @@ def test_the_preflight_advice_names_the_drive_cell():
               report.by_code("settling_witness_will_be_absent")]
     assert len(spoken) == 1, [issue.code for issue in report]
     assert "NOT on a source/port drive cell" in spoken[0]
-    assert "#1090" in spoken[0]
+    assert "does not count as an independent witness" in spoken[0]
 
 
 # --- 4. metadata ----------------------------------------------------------
@@ -208,9 +208,14 @@ def test_probe_record_info_marks_only_the_named_columns():
 
 
 def test_a_backend_fallback_record_still_supplies_no_witness():
-    """No user probe means no witness at all -- unchanged by #1090."""
+    """No user probe means no tail witness -- unchanged by #1090. The DFT
+    plane is a record (#2030 S2b): this 60-step record ends while the source
+    still injects, so the status is "undetermined" with the plane's reason."""
     sim = _sim([])
     result, _ = _run(sim)
     assert result.settling_db is None
-    assert result.settling_witness["status"] == "absent"
-    assert result.settling_witness["source_dominated"] is False
+    witness = result.settling_witness
+    (row,) = witness["coverage"]
+    assert row["verdict"].endswith("still injecting at the record end")
+    assert witness["status"] == "undetermined" and witness["reason"] == row["verdict"]
+    assert witness["source_dominated"] is False

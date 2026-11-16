@@ -61,9 +61,15 @@ Example
 
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.material_fit import DebyeFitResult
+    from rfx.material_fit import LorentzFitResult
+
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, cast
 
 import jax
 import jax.numpy as jnp
@@ -73,6 +79,7 @@ import numpy as np
 
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
+from rfx.optimize import _adam_update
 
 
 # ---------------------------------------------------------------------------
@@ -124,17 +131,23 @@ def _poles_to_params(
     Layout: [log(eps_inf), log(de_1), log(tau_1), ...,
              log(de_L1), log(omega0_L1), log(delta_L1), ...]
     """
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(lorentz_poles, "differentiable_material_fit")
     params = [jnp.log(jnp.array(max(eps_inf, 1e-12)))]
     for pole in debye_poles:
         params.append(jnp.log(jnp.array(max(pole.delta_eps, 1e-12))))
         params.append(jnp.log(jnp.array(max(pole.tau, 1e-30))))
-    for pole in lorentz_poles:
+    for lorentz_pole in lorentz_poles:
+        from rfx.materials.relative_strength import RelativeStrength
+        from rfx.errors import RfxUnsupported
+        if isinstance(lorentz_pole.kappa, RelativeStrength):
+            raise RfxUnsupported("differentiable_material_fit does not optimize RelativeStrength; supply SI pole strengths")
         # Recover delta_eps from kappa = delta_eps * omega_0^2
-        omega_0 = max(pole.omega_0, 1e-6)
-        delta_eps = pole.kappa / (omega_0 ** 2) if omega_0 > 0 else 1.0
+        omega_0 = max(lorentz_pole.omega_0, 1e-6)
+        delta_eps = lorentz_pole.kappa / (omega_0 ** 2) if omega_0 > 0 else 1.0
         params.append(jnp.log(jnp.array(max(delta_eps, 1e-12))))
         params.append(jnp.log(jnp.array(omega_0)))
-        params.append(jnp.log(jnp.array(max(pole.delta, 1e-12))))
+        params.append(jnp.log(jnp.array(max(lorentz_pole.delta, 1e-12))))
     return jnp.stack(params)
 
 
@@ -262,7 +275,7 @@ def _default_lorentz_guess(
 
 
 # ---------------------------------------------------------------------------
-# Adam optimizer (manual fallback, follows optimize.py pattern)
+# Compatibility wrapper for callers of the former local Adam helper
 # ---------------------------------------------------------------------------
 
 def _adam_step(
@@ -277,12 +290,8 @@ def _adam_step(
     eps: float = 1e-8,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Single Adam optimizer step. Returns (new_params, new_m, new_v)."""
-    m = beta1 * m + (1 - beta1) * grad
-    v = beta2 * v + (1 - beta2) * grad ** 2
-    m_hat = m / (1 - beta1 ** (step + 1))
-    v_hat = v / (1 - beta2 ** (step + 1))
-    params = params - lr * m_hat / (jnp.sqrt(v_hat) + eps)
-    return params, m, v
+    update, m, v = _adam_update(m, v, grad, step, lr, beta1, beta2, eps)
+    return params - update, m, v
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +308,7 @@ def _normalize_probe_spectra(
 ) -> "jnp.ndarray":
     """Probe DFT spectra -> diagonal S-proxy, under the selected mode.
 
-    Pure function (unit-tested directly, issue #580). ``s_raw`` is
+    Pure function (unit-tested directly). ``s_raw`` is
     (n_probes, n_freqs) complex; returns ``target_shape`` complex
     ((n_ports, n_ports, n_freqs)) with only the diagonal populated.
 
@@ -346,7 +355,7 @@ def _require_supported_fixture(sim) -> None:
     if any(axis != "z" or sim._mode == "3d" for axis in sim._periodic_axes):
         raise NotImplementedError(
             "differentiable_material_fit() does not support periodic axes "
-            "(BoundarySpec per-face periodic declarations) (#1290). Remove the "
+            "(BoundarySpec per-face periodic declarations). Remove the "
             "periodic-axis override from sim_factory; use Simulation.forward() "
             "with a custom loss to retain it.")
 
@@ -356,17 +365,21 @@ def _require_ports_clear_of_pec(sim, grid, pec_mask, pec_sheets, pec_wires) -> N
     if pec_mask is None and not pec_sheets and not pec_wires:
         return
     from rfx.boundaries.pec import edge_is_pec, realized_pec_edge_masks
+    from rfx.core.jax_utils import is_tracer
     from rfx.simulation import resolve_periodic
 
-    edges = realized_pec_edge_masks(
-        pec_mask, sheets=pec_sheets, wires=pec_wires,
-        periodic=resolve_periodic(grid, None))
+    with jax.ensure_compile_time_eval():
+        edges = realized_pec_edge_masks(
+            pec_mask, sheets=pec_sheets, wires=pec_wires,
+            periodic=resolve_periodic(grid, None))
+    if any(is_tracer(mask) for mask in edges):
+        return
     for pe in sim._ports:
         if edge_is_pec(edges, pe.component, *field_index(grid, pe.position, pe.component)):
             raise NotImplementedError(
                 "differentiable_material_fit() does not support add_port() "
-                f"on a PEC edge (position={pe.position} m, component={pe.component}) "
-                "(#1290). Move the port off the PEC edge in sim_factory, or "
+                f"on a PEC edge (position={pe.position} m, component={pe.component}"
+                "). Move the port off the PEC edge in sim_factory, or "
                 "use Simulation.forward() with a custom loss to retain its "
                 "port-edge clearing."
             )
@@ -381,7 +394,7 @@ def differentiable_material_fit(
     *,
     n_iterations: int = 50,
     learning_rate: float = 0.01,
-    initial_guess=None,
+    initial_guess: DebyeFitResult | LorentzFitResult | None = None,
     weight_mag: float = 1.0,
     weight_phase: float = 0.1,
     checkpoint: bool = True,
@@ -495,7 +508,7 @@ def differentiable_material_fit(
         debye_init[:n_debye_poles],
         lorentz_init[:n_lorentz_poles],
     )
-    from rfx._precision import resolve_field_dtype
+    from rfx._internal._precision import resolve_field_dtype
     resolve_field_dtype(dummy_sim._precision)
     s_meas_jnp = jnp.array(s_measured)
     params = _poles_to_params(eps_inf_init, debye_init[:n_debye_poles],
@@ -517,10 +530,14 @@ def differentiable_material_fit(
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(sim, "differentiable material fit")
         _refuse_f0(sim._thin_conductors, "differentiable material fit")
         _require_supported_fixture(sim)
         if _validate_only:
             return None
+        from rfx.model.point_placement import admit_simulation_points
+        admit_simulation_points(sim, grid)
         _fit_pec_sheets: list = []
         _fit_pec_wires: list = []
         materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(
@@ -534,7 +551,7 @@ def differentiable_material_fit(
                 position=pe.position,
                 component=pe.component,
                 impedance=pe.impedance,
-                excitation=pe.waveform,
+                excitation=pe.waveform, allow_in_absorber=pe.allow_in_absorber,
             )
             materials = setup_lumped_port(grid, lp, materials)
             loaded_ports.append(lp)
@@ -590,7 +607,7 @@ def differentiable_material_fit(
         s_raw = probe_spectrum(ts, freqs, dt)
 
         # Probe spectra -> diagonal S-proxy under the selected mode
-        # (issue #580; the pure helper carries the unit-tested arithmetic)
+        # (the pure helper carries the unit-tested arithmetic)
         n_ports = s_meas_jnp.shape[0]
         s_sim = _normalize_probe_spectra(
             s_raw, n_ports, s_meas_jnp.shape,
@@ -610,7 +627,7 @@ def differentiable_material_fit(
     dt = grid.dt
     n_steps = grid.num_timesteps(num_periods=20.0)
 
-    # ---- normalization-mode validation (issue #580), fail-loud up front --
+    # ---- normalization-mode validation, fail-loud up front --
     if normalization not in ("per_probe_max", "reference_probe"):
         raise ValueError(
             f"normalization must be 'per_probe_max' or 'reference_probe', "
@@ -665,9 +682,8 @@ def differentiable_material_fit(
         loss_history.append(loss_val)
         last_s_sim = s_sim_aux
 
-        params, m, v = _adam_step(
-            params, grad, m, v, it, learning_rate,
-        )
+        step, m, v = _adam_update(m, v, grad, it, learning_rate)
+        params = params - step
 
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             print(f"  iter {it:4d}  loss = {loss_val:.6e}  "
@@ -687,7 +703,7 @@ def differentiable_material_fit(
         for p in final_debye
     ]
     lorentz_out = [
-        LorentzPole(omega_0=float(p.omega_0), delta=float(p.delta), kappa=float(p.kappa))
+        LorentzPole(omega_0=float(p.omega_0), delta=float(p.delta), kappa=float(cast(float, p.kappa)))
         for p in final_lorentz
     ]
 

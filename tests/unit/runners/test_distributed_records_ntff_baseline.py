@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from tests.unit.runners.test_distributed_ntff import _model
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 
 
 @pytest.mark.parametrize("n_devices", [2, 3])

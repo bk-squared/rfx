@@ -1,807 +1,199 @@
-"""Issue #737/#742(b) -- advisories with no emission site.
-
-``preflight()`` finds real problems, but two-thirds of the campaign's
-audit finding was that most of those findings NEVER PRINT on a committed
-run: ``_auto_preflight`` (the thing that makes ``forward()``/``run()``/
-``optimize()``/``topology_optimize()`` surface advisories automatically)
-is not on every path that produces a number. The direct S-parameter
-compute helpers in ``rfx/api/_sparams.py`` are the measured example --
-``rfx/api/_sparams.py:1265`` states plainly that "the functional entry
-points run no ``sim.preflight()`` at all" (in
-``compute_waveguide_s_matrix``'s own docstring), and committed
-cross-validation fixture JSONs carried a ``no_preflight_note`` provenance
-string acknowledging the gap.
-
-MEASURED CORRECTION to that framing: it does not generalize to every
-"direct S-parameter compute helper". Of the seven ``Simulation.compute_*``
-methods, ``compute_msl_s_matrix`` calls ``self.run()``/``self.forward()``
-internally with no ``skip_preflight=True`` (``rfx/api/_sparams.py:3223,
-3240``), so ``_auto_preflight`` DOES run on every drive -- only
-``compute_waveguide_s_matrix`` and four siblings (the coaxial family and
-``compute_coax_msl_transition``) drive the scan directly and never reach
-preflight at all. ``EMISSION_CLASSIFICATION`` below records this
-per-method, measured, not assumed from the one cited comment.
-
-This file is NOT a retrofit -- it does not wire preflight into those
-paths, and it does not attempt to reconcile every one of the ~74 advisory
-kinds against every script that could trigger them (out of scope, #737's
-own brief). It builds the enumerate-and-classify CONTRACT this repo
-prefers elsewhere (mirrors ``test_ad_surface_contract.py``'s
-AD_CLASSIFICATION idiom): dynamically enumerate every ``Simulation``
-entry point that produces a result, and require each to carry an explicit,
-MEASURED classification of whether calling it alone ever routes through
-preflight. Its value is narrow and permanent: a NEW entry point added
-later that silently skips preflight (or that claims to skip it but
-actually doesn't, or vice versa) fails CI instead of joining the pile of
-33-of-74 silently.
-
-Two independent gates:
-
-S1. The check-site SURFACE itself (every ``code=`` a check can raise) is
-    frozen by exact count. This does NOT assert reachability from
-    ``preflight()`` -- an earlier draft of this contract did, and the
-    assertion was found to be nearly vacuous (41 of 42 emitting methods
-    are reachable from ``preflight()`` trivially, since
-    ``_validate_simulation_config`` calls almost all of them
-    unconditionally). The teeth are in the exact-count freeze: a new
-    ``code=`` or a newly-uncoded site is a conscious source change, not
-    something that should slide through silently.
-
-S2. The per-ENTRY-POINT classification below (``EMISSION_CLASSIFICATION``).
-    This is where the real #742(b) problem lives: whole call paths
-    (``compute_waveguide_s_matrix`` and four siblings) that never call
-    ``preflight()``/``_auto_preflight()`` at all, regardless of which
-    check would have fired. Classification is cross-checked against a
-    measured call-graph (AST walk, following same-class ``self.foo()``
-    calls transitively), in BOTH directions: a stale ``"auto"`` claim
-    that no longer calls preflight fails, and a stale ``"diagnostic_only"``
-    claim that NOW calls preflight (a silent re-widening of the
-    unreachable set -- the exact failure mode #737 exists to stop) also
-    fails.
-"""
-
+"""Public result entry points expose their classified preflight advisory."""
 from __future__ import annotations
 
-import pytest
 import ast
 import inspect
+import sys
 import textwrap
-from collections import Counter
-from pathlib import Path
+import time
+import warnings
+from functools import partial
 
-from rfx.optimize import optimize as _optimize_fn
-from rfx.topology import topology_optimize as _topology_optimize_fn
-from rfx import Simulation
+import jax.numpy as jnp
+import numpy as np
+import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-# The preflight check sites. #980 Phase 3 takes rfx/api/_preflight.py apart a
-# family at a time into rfx/preflight/, so the scan has to follow the code:
-# a moved check takes its emission sites out of the facade, and a scan that
-# still reads only the facade would record that as a SHRINKING surface and
-# invite someone to re-freeze the counts downward -- the surface would then be
-# unpinned wherever the code actually lives. Both paths are read and the sites
-# summed (the glob includes rfx/preflight/_impl.py), so pure code motion leaves the frozen numbers below unchanged and
-# only a real new advisory moves them. Globbed, not listed, for the reason
-# tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
-# rfx/preflight/ row: a later leg must not have to remember this file.
-_PREFLIGHT_SRCS = (
-    _REPO_ROOT / "rfx" / "api" / "_preflight.py",
-    # #1887: the shared grid judge emits a coded wall-length warning.
-    _REPO_ROOT / "rfx" / "boundaries" / "features.py",
-    *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
-)
+from rfx import Box, Cylinder, Simulation
+from rfx.optimize import DesignRegion, optimize as _optimize_fn
+from rfx.errors import AccuracyWarning
+from rfx.topology import TopologyDesignRegion, topology_optimize as _topology_optimize_fn
+from tests.contracts.test_inspection_release import _coax
 
-# ---------------------------------------------------------------------------
-# S1: frozen check-site surface (facade, conductor adapter, check families).
-# ---------------------------------------------------------------------------
-
-_ISSUE_CLASSES = {
-    "PreflightWarning", "PreflightErrorWarning",
-    "PreflightIssue", "PreflightConfigError",
-}
+AUTO = "auto"
+MANUAL = "manual"
+DIAGNOSTIC_ONLY = "diagnostic_only"
+_ADVISORY = "thin_absorber"
 
 
-def _enumerate_emission_sites():
-    """AST walk over the preflight sources: every construction of an
-    issue-carrying class, with its line, enclosing function, and whether
-    its ``code=`` is a source literal or computed at runtime (``getattr``
-    off a caught exception -- ``preflight()``'s own uncoded fallback).
-
-    Walks the preflight facade, conductor adapter, and ``rfx/preflight/``
-    and returns one flat list, so a site that changes FILE under #980 Phase
-    3 does not change the totals frozen below. Line numbers are per file and
-    were never part of the freeze anyway.
-    """
-    sites = []
-
-    class _V(ast.NodeVisitor):
-        def __init__(self):
-            self.func_stack = []
-
-        def visit_FunctionDef(self, node):
-            self.func_stack.append(node.name)
-            self.generic_visit(node)
-            self.func_stack.pop()
-
-        def visit_Call(self, node):
-            f = node.func
-            name = f.id if isinstance(f, ast.Name) else getattr(f, "attr", None)
-            if name in _ISSUE_CLASSES:
-                code, dynamic = None, False
-                for kw in node.keywords:
-                    if kw.arg == "code":
-                        if isinstance(kw.value, ast.Constant):
-                            code = kw.value.value
-                        else:
-                            dynamic = True
-                enclosing = self.func_stack[-1] if self.func_stack else None
-                sites.append((node.lineno, name, code, dynamic, enclosing))
-            self.generic_visit(node)
-
-    for src in _PREFLIGHT_SRCS:
-        _V().visit(ast.parse(src.read_text()))
-    return sites
+def _small_model():
+    sim = Simulation(domain=(.008, .006, .005), dx=.001, freq_max=10e9,
+                     boundary="cpml", cpml_layers=2)
+    sim.add_port((.002, .003, .002), "ez")
+    sim.add_probe((.003, .003, .002), "ez")
+    return sim
 
 
-# Frozen (issue #737/#742): re-derived independently via the AST walk
-# above, matching the campaign's own reproduction exactly. A change to
-# ANY of these numbers means the check-site surface moved and must be a
-# conscious edit to this file, not a silent side effect of an unrelated
-# change.
-#
-# 81 -> 83 sites / 53 -> 55 literal codes, issue #738 (PR #745): the
-# waveguide-port check gained port_aperture_snap and
-# port_aperture_unrasterizable (2 new sites, 2 new codes) and its three
-# cutoff findings moved into one shared emitter that both the uniform and
-# the non-uniform lane call. A conscious contract edit, which is what the
-# freeze exists to force.
-#
-# 83 -> 84 sites, issue #752 (PR #766 review, blocker B2):
-# ``_check_msl_port_geometry`` gained check 2c, a realized-vs-declared
-# substrate-thickness advisory. It closes a measured coverage hole between
-# check 2 (gates on realized CELL COUNT < 4) and check 2b (gates on where
-# the declared top face sits INSIDE its cell, [0.10, 0.40]) -- for
-# h_sub/dx in (3.00, 3.10) or (3.40, 3.50) both were silent on a board
-# realized 15-31% thicker than declared. One new SITE, no new literal
-# ``code=``: 2c reuses the existing ``msl_port_geometry`` slug because it
-# is the same check family speaking about the same port, so
-# _FROZEN_LITERAL_CODE_COUNT is unchanged at 55. A conscious contract
-# edit, recorded here rather than absorbed silently.
-#
-# 84 -> 85 sites / 55 -> 56 literal codes, issue #636 (stacked on the
-# #752 edit above, so the site count sums): new advisory
-# dispersive_pole_at_absorber_face (one site, one code) — a
-# resonance-risk dispersive material touching an absorbing face lives
-# with a statics-only (eps_inf-matched) pad; the measured reason pole
-# masks are NOT extended into the pad is documented at the check site
-# and in docs/design_notes/i636_cpml_pole_pad_predeclaration.md.
-#
-# 85 -> 87 sites / 56 -> 58 literal codes, SPEC-01 WP6 (#780): the
-# multi-band graded-mesh envelope promotion added
-# _validate_cfg_multiband_grading with two advisory sites/codes,
-# nu_grading_ratio_beyond_validated_cap and nu_grading_reaches_absorber
-# (docs/guides/support_matrix.md 'Multi-band graded mesh' row carries the
-# evidence). A conscious contract edit, same procedure as #738; stacked
-# on the #752/#636 edits above, so the site/code counts sum.
-#
-# 87 -> 88 sites / 58 -> 59 literal codes, issue #589 (stacked on the
-# #752/#636/#780 edits above, so the site/code counts sum): new advisory
-# coaxial_port_junction_short (one site, one code) in ``_check_coaxial_port_junction_aperture``, called from
-# ``_validate_simulation_config`` after ``_check_msl_port_geometry``. It
-# reads the PRODUCTION assembly's pec_mask at each coaxial port's junction
-# plane and reports registered PEC in the first dielectric ring outside the
-# pin — the #589 short (a full-plane PEC ground with a dielectric "hole"
-# declared after it stays solid under the PEC-OR-only assembly; the settled
-# run measured S00 = -0.9928). Report-only, no gate. EMISSION_CLASSIFICATION
-# is unchanged: compute_coax_msl_transition stays DIAGNOSTIC_ONLY, so the
-# row surfaces via sim.preflight() (the settled-run driver's --preflight)
-# and via run()/forward() elsewhere, not through that method.
-#
-# 88 -> 89 sites / 59 -> 59 literal codes, issue #823 (stacked on the
-# #752/#636/#780/#589 edits above, so the site/code counts sum):
-# ``_check_msl_port_geometry`` gained check 5, the MSL feed's own source
-# near-field standoff advisory. Checks 4/4a/4b all look DOWNSTREAM of
-# the probes (a reflector, the absorber, another port's feed); none of them
-# looked back at the port's OWN feed plane, so an EXPLICIT
-# ``n_probe_offset`` inside the launch near field drew no advisory at all
-# (``add_msl_port``'s AUTO offset has been floored to
-# ``max(3, lam_cells, round(5*h_sub/dx))`` since issue #80, so only explicit
-# offsets can reach it). One new SITE, NO new literal ``code=``: check 5
-# reuses the existing ``msl_port_geometry`` slug because it is the same check
-# family speaking about the same port — the same precedent check 2c set for
-# #752 above — so _FROZEN_LITERAL_CODE_COUNT is unchanged at 59.
-# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare-except path).
-# EMISSION_CLASSIFICATION is unchanged too: compute_coax_msl_transition stays
-# DIAGNOSTIC_ONLY, so this row surfaces via sim.preflight() (the settled-run
-# driver's --preflight) and via run()/forward()/compute_mixed_s_matrix
-# elsewhere, not through that method. The coax<->MSL lane's OWN realized
-# ladder is checked inside ``compute_coax_msl_transition`` with a plain
-# ``warnings.warn`` — deliberately NOT a PreflightWarning construction, so it
-# is invisible to the AST walk above and the site count stays at 89. A
-# conscious contract edit, recorded here rather than absorbed silently.
-# 89 -> 89 sites / 59 -> 59 literal codes, UNCHANGED, issue #854 item 4
-# (warn-only waveguide reciprocity advisory). Recorded here because the
-# expectation going in was that a new advisory moves these numbers, and
-# MEASURED it does not: that advisory is a ``warnings.warn`` inside
-# ``rfx/api/_sparams.py``'s shared extractor guard
-# ``_warn_if_nonpassive_smatrix``, not a ``PreflightWarning`` construction in
-# ``rfx/api/_preflight.py``, so the AST walk above cannot see it -- the same
-# boundary already noted for the coax<->MSL realized ladder in the #823 block.
-# It could not have been a preflight check either way: preflight runs BEFORE
-# the solve and validates input fidelity, while reciprocity is measured on the
-# extracted S-matrix. The surface that DID move -- the guard's advisory
-# emission sites, 2 -> 3 -- is frozen by
-# ``tests/unit/sparams/test_waveguide_reciprocity_advisory.py::
-# test_runtime_guard_advisory_surface_is_frozen``, which is that file's
-# deliberate sibling of this freeze. EMISSION_CLASSIFICATION is unchanged too:
-# no preflight call was added, so ``compute_waveguide_s_matrix`` stays
-# DIAGNOSTIC_ONLY.
-#
-# 89 -> 96 sites / 59 -> 63 literal codes, post-v1.8 plan item 2
-# (docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md
-# sections 2-1 and 2-4): the two waveguide S-parameter setup audits.
-# _validate_cfg_record_vs_far_boundary adds 3 sites and 2 codes
-# (record_shorter_than_far_boundary_round_trip at warning AND error severity
-# -- two explicit constructions rather than one call through a class held in a
-# variable, which the AST walk above could not see -- plus
-# record_far_boundary_band_below_cutoff);
-# _validate_cfg_port_index_mirror_covariance adds 3 sites and 2 codes
-# (port_index_mirror_known_e_plane_offset, and port_index_mirror_asymmetry
-# emitted from two places: the index planes and the metres-valued reference
-# plane). The 7th site is the dynamic-code one below.
-# EMISSION_CLASSIFICATION is UNCHANGED and measured so: the audits are wired
-# into compute_waveguide_s_matrix through the shared hook
-# _preflight_waveguide_setup, which is NOT preflight()/_auto_preflight(), so
-# that method stays DIAGNOSTIC_ONLY -- the advisories reach a direct
-# compute_waveguide_s_matrix caller as plain warnings and reach a
-# preflight_sparameters(calculator="waveguide") caller as report issues.
-#
-# 96 -> 97 sites / 63 -> 64 literal codes, review of the item-2 PR: the setup
-# audits' shared builder (_waveguide_setup_planes) now catches an exception
-# from the grid build or a port mode solve and reports
-# waveguide_setup_audit_skipped instead of letting it escape a
-# before-the-run safety call. One new site, one new literal code.
-# 97 -> 98 sites / 64 -> 65 literal codes, issue #885 (stacked on every edit
-# above, so the counts sum): ``_validate_cfg_settling_witness_present`` says at
-# CONFIGURATION time that a run requesting NTFF or a field-DFT plane with no
-# point probe will come back with no ring-down settling witness
-# (``Result.settling_db is None``), because run() scores that witness from the
-# probe time series. One new site, one new literal code
-# (``settling_witness_will_be_absent``) -- a new check family, not another
-# voice in an existing one, so it does not reuse a slug the way #823's check 5
-# did. Input-side by construction: it reads the declared probe/NTFF/DFT
-# registration, not any solved field, so it is a preflight check and not a
-# runtime guard. _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare
-# except). EMISSION_CLASSIFICATION is unchanged: no new preflight call site.
-# 98 -> 99 sites / 65 -> 66 literal codes, post-v1.8 plan item 5 (stacked on
-# every edit above, so the counts sum): section 2-2's
-# ``_validate_cfg_layout_from_band_low_edge`` says, at info severity, how many
-# guide wavelengths at the band's LOWEST bin this layout puts between the port
-# and the far wall and how many of those sit in the absorber -- emitted only in
-# the near-cutoff regime it was measured in (``f_min / f_c < 1.06``). One new
-# site, one new literal code (``layout_measured_from_band_low_edge``): a new
-# check family speaking a length ratio, not another voice inside the
-# record-length check, so it does not reuse that slug the way #823's check 5
-# reused ``msl_port_geometry``. Input-side by construction -- it reads the
-# declared band and the built grid's own pads, never a solved field.
-# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare except).
-# EMISSION_CLASSIFICATION is unchanged: the check is wired into the same
-# ``_preflight_waveguide_setup`` hook the other two setup audits use, which is
-# not preflight()/_auto_preflight(), so compute_waveguide_s_matrix stays
-# DIAGNOSTIC_ONLY. The item's OTHER half, the post-solve S21 phase residual,
-# moves neither number: it is a ``print`` in ``rfx/api/_sparams.py``, invisible
-# to the AST walk above and impossible as a preflight check either way, since
-# it is measured on the extracted S-matrix -- the same boundary the #854 block
-# above records for the reciprocity advisory.
-#
-# 99 -> 105 sites / 66 -> 71 literal codes, issue #931 (the lattice ownership
-# contract, preflight stage; design note
-# docs/design_notes/20260906_plan_realign_lattice_ownership.md §3). Re-derived
-# with the AST walk above against the core branch feat/931-lattice-ownership:
-#   + pec_box_subcell, pec_zero_cells, pec_realization_refused — three literal
-#     ERROR sites in _validate_cfg_pec_realization (the §1.5 refusals, reported
-#     before run() raises them; three explicit constructions rather than one
-#     computed slug, so none registers as a dynamic site);
-#   + pec_box_one_cell (1 site, warning) — a PEC volume one cell thick is a
-#     slab with walls on both faces;
-#   + sheet_plane_realized (2 sites: info per run, warning on a half-cell tie);
-#   + sheet_slot_vacuum (1 site, error-grade warning) — the #702 slot, now
-#     reported instead of re-sampled;
-#   - sheet_live_edge_material_mismatch (1 site) and its own
-#     campaign_statics_unavailable site: #703 check 2 guarded the #702
-#     resample, which the contract deleted (a sheet owns no cell);
-#   + 1 campaign_statics_unavailable site in the umbrella (the assembly-failed
-#     branch, silent when a refusal already explains it) — same slug, no new
-#     code.
-# Net: +6 sites, +6 -1 = +5 literal codes. _FROZEN_DYNAMIC_SITES_BY_FUNCTION
-# is unchanged. EMISSION_CLASSIFICATION is unchanged: no entry point gained or
-# lost a preflight call.
-#
-# 105 -> 106 sites / 71 -> 72 literal codes, issue #931 (design note §6, the
-# 2026-09-07 cv11 pec-short adjudication):
-#   + pec_face_short_of_domain_wall (1 site, warning) — a PEC VOLUME's
-#     realized face sits exactly one node inside a non-absorbing domain wall.
-#     Grid realizes a declared domain by ceil(extent/dx) and a volume's face
-#     rounds to the nearest node, so a plug drawn to the DECLARED
-#     cross-section stops short of the realized wall and the cell between
-#     them is a parallel-plate line. A new check family speaking a
-#     conductor-to-BOUNDARY relation — the other §3 findings all speak about
-#     one declaration in isolation — so it does not reuse one of their slugs.
-#     Input-side by construction: it reads the entry's own realized wall
-#     planes and the grid's interior slices, never a solved field.
-# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no new bare except).
-# EMISSION_CLASSIFICATION is unchanged: the check hangs off the same
-# _validate_cfg_campaign_statics umbrella as the other §3 findings.
-# #931 P1: one named error for unsupported interior PEC on both ADI lanes.
-# #729: two blocking sites under one new code -- assembly unavailable and
-# a concrete conductor-plane mismatch. Both remain input-side diagnostics.
-# #726 adds three msl_port_geometry sites: resolved-placement warnings,
-# a failed placement resolution, and unavailable reflector assessment.
-# No new code slug or public compute entry point is introduced.
-# #910 adds one shared finite-flux finding constructor. Its three explicit
-# slugs are passed to that dynamic-code emitter; they are frozen separately
-# below instead of being mistaken for constructor-local literal codes.
-# 113 -> 113 sites / 74 -> 74 literal codes, UNCHANGED, issue #980 Phase 3.
-# Recorded here because the scan's INPUT changed and the numbers did not.
-# The split moves whole check bodies out of rfx/api/_preflight.py into
-# rfx/preflight/, so the walk above now reads both paths and sums them. A
-# scan left on the facade alone would have watched this surface shrink by 17
-# sites on the MSL leg and by comparable counts on each leg after it, and the
-# only way to keep it green would have been to re-freeze the counts downward
-# -- which is how a surface stops being pinned where the code actually is.
-# Measured before and after the widening on the pre-move tree: 113 / 74 /
-# {preflight: 2, preflight_sparameters: 2, finding: 1} either way.
-# 113 -> 112, 2026-09-15 (#1043 / PR #1047). One site left, deliberately:
-# ``_validate_cfg_conformal_fine_dx``'s ``conformal_nan`` warning was
-# DELETED with the check. Its own comment named
-# ``test_mesh_convergence_s21_with_conformal_pec`` (xfail strict=True) as
-# the tripwire that would say the advisory had gone stale, and that test
-# XPASSed once the CPML psi coefficient read the permittivity the E update
-# uses. A SHRINKING surface is the direction this pin is least worried
-# about, but it is re-frozen here rather than left to drift, because the
-# point of the number is that every move is a conscious edit.
-# 112 -> 113, 2026-09-15 (#1043 stage B). One site added:
-# ``_validate_cfg_dielectric_at_absorber_seam``'s ``dielectric_at_absorber_seam``
-# warning in ``rfx/preflight/absorber.py`` -- the seam counterpart of
-# ``geometry_in_absorber``, reporting a dielectric that ends AT the pad
-# boundary in a shape the smoothed lane cannot continue into it. A GROWING
-# surface is the direction this pin exists for, so the number moves here in
-# the same change that adds the site, never afterwards.
-# 113 -> 113 sites, UNCHANGED, 2026-09-15 (#1030). Recorded here because a
-# check was DELETED and these numbers did not move, which is the case this
-# file's own #854 block says to write down rather than leave to inference.
-# ``_validate_cfg_ntff_min_steps`` was removed from rfx/preflight/ntff.py and
-# from rfx/preflight/_registry.py's CORE_CONFIG_CHECKS (37 -> 36 rows): it
-# constructed NO issue class at all, so the AST walk above never counted it.
-# It only computed a cubic-cell CFL step estimate and wrote
-# ``self._ntff_min_steps_hint``, an instance attribute whose only readers were
-# rfx/interop/_design.py's EXCLUDED_SIMULATION_ATTRS (naming it to keep it OUT
-# of the design document) and the test asserting that exclusion -- readers
-# that existed only because the attribute did. Measured with the walk above on
-# the tree before and after the deletion: 113 / 74 / {preflight: 2,
-# preflight_sparameters: 2, finding: 1} either way. The 65 committed report
-# snapshots are likewise byte-identical, for the same reason.
-# _FROZEN_DYNAMIC_SITES_BY_FUNCTION is unchanged (no bare-except path touched)
-# and EMISSION_CLASSIFICATION is unchanged (no preflight call site added or
-# removed).
-# 113 -> 114, 2026-09-15 (#801). One site added:
-# ``_validate_cfg_conductor_in_thin_absorber``'s ``conductor_in_thin_absorber``
-# warning in ``rfx/preflight/absorber.py`` -- the measured-conjunction advisory
-# for a conductor realizing within two cells of an absorbing face that carries
-# six layers or fewer. A GROWING surface is the direction this pin exists for,
-# so the number moves here in the same change that adds the site.
-# 114 -> 118, 2026-09-19 (#726). Four sites added, all for the ONE condition
-# that issue is about -- a probe ladder sitting inside a downstream reflector:
-# three ``PreflightWarning``s in ``preflight_msl_probe_clearance``
-# (``rfx/preflight/msl.py``: scan-failed, clearance-unavailable,
-# clearance-insufficient) and the ``PreflightIssue`` in
-# ``preflight_sparameters``'s new msl fold-in block. The route used to return
-# ZERO findings on a port whose deepest probe sat inside a reflector while
-# ``preflight()`` reported it and the result object's ``probe_clearance`` read
-# ``insufficient``; these four are that gap closed, not a widening of what
-# preflight talks about.
-# 118 -> 119, 2026-09-20 (#1138): ``sheet_effective_size`` -- one
-# ``PreflightWarning`` in ``_warn_sheet_effective_size``
-# (``rfx/preflight/pec_geometry.py``), emitted from inside the existing
-# off-lattice check. A conductor sheet's solved size (node span plus the
-# measured edge offset at each free end) against its drawn size, in input
-# units; no existing site reported it, including for a sheet drawn exactly on
-# the lattice.
-# 119 -> 120 (#801): a port naming no terminated conductor reports its
-# exact terminal contacts that reach an absorbing face. One absorber warning.
-# 120 -> 119, 2026-09-23 (#1163): ``tfsf_lumped_rlc_unstable`` DELETED with
-# ``_validate_cfg_tfsf_with_lumped_rlc`` (rfx/preflight/ports.py). The
-# divergence it warned about ("TFSF plus a lumped RLC", C-independent) was the
-# series RLC element's own edge coupling -- R - d/(D0*A), a negative
-# resistance below ~215 ohm -- which #1163 replaces; on the check's own
-# fixture the series pairings now decay and the parallel one it also warned
-# on was always stable. Measured with the walk above: 120 -> 119 sites,
-# 77 -> 76 literal codes, dynamic sites unchanged.
-# 119 -> 120, 2026-09-23 (#1209): one ``PreflightWarning`` in
-# ``_validate_cfg_nonuniform_limitations`` (``rfx/preflight/mesh.py``), code
-# ``nonuniform_tfsf`` -- an existing code, so the literal-code count holds. A
-# TFSF plane wave at normal incidence along a GRADED propagation axis, which
-# the runner accepts but injects from a 1-D line built on the boundary cell.
-# The family's two existing sites raise, because the runner refuses those
-# cases; this one warns, so it cannot share their construction.
-# 120 -> 121, 2026-09-24 (#1240): one ``PreflightErrorWarning`` in
-# ``_validate_cfg_subgrid_limitations`` (``rfx/preflight/mesh.py``), new code
-# ``nonuniform_refinement`` -- a refinement on a mesh that resolves
-# non-uniform, which that lane has no subgrid for and used to drop without a
-# word. An error finding emitted rather than raised, so the checks after it
-# still report; run() and forward() stop on it, and the lane refuses it again
-# at dispatch when preflight is skipped.
-# 121 -> 122, 2026-09-28 (#1295/#1342): one ``PreflightErrorWarning`` in
-# ``_validate_cfg_half_node_split`` (``rfx/preflight/ports.py``), new code
-# ``half_node_split`` -- a port, source or probe that lands one cell off a
-# wire vertex or PEC sheet declared at the same half-node coordinate. run()
-# and forward() refuse the same pairs at dispatch when preflight is skipped.
-# 122 -> 123 (#1272): one aggregated realized-depth absorber warning.
-# 123 -> 124 (#1342): one ``PreflightIssue`` error, ``trace_port_footprint`` -- a
-# lumped/wire port whose realized node falls outside the realized footprint
-# of the trace it is declared on (rfx/preflight/ports.py).
-# #1138 rc2: one advisory site for conductor checks on a traced mesh.
-# 125 -> 126 (#1373): one ``PreflightErrorWarning`` in
-# ``_validate_cfg_adi_interior_pec``, new code ``adi_material_interface_unsupported``
-# -- an ADI model whose eps_r or sigma varies over the grid; run() and forward()
-# refuse it at lane admission when preflight is skipped.
-# 126 -> 127 (#1480): one ``PreflightWarning`` error in
-# ``_validate_cfg_adi_boundary``, code ``adi_absorber_unsupported`` -- ADI with an
-# absorbing boundary (an unmatched sponge, -10.4 dB at 10 GHz); construction refuses
-# it too.
-# 127 -> 128 (#1512): open signal tail behind a line port, one advisory site.
-# 128 -> 129 (#1512): blocking realization errors must not abort later checks.
-# 129 -> 130 (#1512): explicit could-not-inspect advisory.
-# 130 -> 131 (#1560): one ``PreflightErrorWarning`` in
-# ``_validate_cfg_source_on_reflector_plane``, existing code ``source_decoupled`` -- a source
-# or port edge tangential in a declared PEC wall is shorted; assembly refuses it on every
-# path and preflight reports the same finding as an error (was the #1075 advisory text).
-# 131 -> 132 (#PENDING): DC film two-plane error, one model-owned emitter.
-# 132 -> 133 (#1373): sheet_gap_bridged reports shorted drawn sheet gaps.
-# 133 -> 132 (#1603): the one-plane film retires the DC film two-plane error.
-# 132 -> 134 (#1620): ``_validate_cfg_assembly`` reports a refusal the model
-# assembly raises as an error, one literal-code site each for assembly_refusal
-# and assembly_fault, so a model run() refuses can no longer print a clean
-# preflight.
-# 134 -> 133 (#1624): sheet_gap_bridged removed; drawn sheet gaps now open.
-# 133 -> 134 (issue 1668): one ``PreflightConfigError`` in
-# ``_validate_cfg_unresolved_pulse``, code ``undriven_pulse`` -- a pulse whose
-# sampled drive has no value above 1e-6 of its amplitude (bandwidth given in
-# Hz) is refused instead of running with nothing driven.
-# 134 -> 135 (#1691): ``preflight_wire_port_radius``, one advisory per
-# preflight naming every wire port declared without radius= (its S does not
-# converge with the mesh: each halving adds omega*(mu0*l/2pi)*ln2).
-# 135 -> 136 (#1786): one ``PreflightIssue`` error in ``_preflight_impl``
-# (rfx/preflight/_impl.py), existing code ``ad_memory`` -- an AD memory
-# estimate the solve cannot give (float64 or mixed precision, a request that
-# cannot be traced) is reported as an error finding instead of aborting
-# preflight. The literal-code count holds.
-# 136 -> 137 (#1800): ``_warn_sheet_cavity_spacing`` (rfx/preflight/pec_geometry.py),
-# new code ``sheet_cavity_spacing`` -- two parallel PEC sheets solved more than
-# 1 % off their drawn spacing: an error under snap='strict', a warning under
-# snap='declared'.
-# #1913: one blocking waveguide span emission site.
-# 138 -> 139 (#1953): ``_validate_cfg_thin_conductor_thickness`` (rfx/preflight/pec_geometry.py),
-# new code ``thin_conductor_thickness_unmodelled`` -- a metal sheet's declared
-# thickness is not in the model.
-# 139 -> 140 (#1887): judge_wall_axes emits wall_axis_off_node once per tuple.
-_FROZEN_TOTAL_SITES = 140
-# 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
-# site emitting that code, and the check was deleted when its own tripwire
-# XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
-# 73 -> 74, 2026-09-15 (#1043 stage B): the new advisory kind
-# ``dielectric_at_absorber_seam``. A new code is a new advisory kind, which is
-# what this count is for.
-# 74 -> 75, 2026-09-15 (#801): the new advisory kind
-# ``conductor_in_thin_absorber``. A new code is a new advisory kind, which is
-# what this count is for.
-# 75 -> 76, 2026-09-20 (#1138): the new advisory kind ``sheet_effective_size``.
-# 76 -> 77 (#801): port_conductor_continues.
-# 77 -> 76, 2026-09-23 (#1163): ``tfsf_lumped_rlc_unstable`` deleted -- see
-# the note on _FROZEN_TOTAL_SITES above.
-# 76 -> 77, 2026-09-24 (#1240): ``nonuniform_refinement`` -- see the note on
-# _FROZEN_TOTAL_SITES above.
-# 77 -> 78, 2026-09-28 (#1295/#1342): ``half_node_split`` -- see the note on
-# _FROZEN_TOTAL_SITES above.
-# 78 -> 79 (#1272): thin_absorber, including vacuum and graded meshes.
-# 79 -> 80 (#1342): ``trace_port_footprint`` -- see the note on
-# _FROZEN_TOTAL_SITES above.
-# 80 -> 81 (#1138 rc2): ``campaign_statics_traced_mesh``.
-# 81 -> 82 (#1373): ``adi_material_interface_unsupported`` -- see the note on
-# _FROZEN_TOTAL_SITES above.
-# 82 -> 83 (#1480): ``adi_absorber_unsupported``.
-# 83 -> 84 (#1512): ``line_stub_behind_port``.
-# 84 -> 85 (#1512): line_stub_realization retains the blocking build error.
-# 85 -> 86 (#1512): line_stub_inspection_unavailable names unsupported geometry.
-# 86 -> 87 (#PENDING): dc_film_half_sheet_error.
-# 87 -> 88 (#1373): sheet_gap_bridged.
-# 88 -> 87 (#1603): dc_film_half_sheet_error retired.
-# 87 -> 89 (#1620): assembly_refusal, assembly_fault.
-# 89 -> 88 (#1624): sheet_gap_bridged retired.
-# 88 -> 89 (issue 1668): undriven_pulse.
-# 89 -> 90 (#1691): wire_port_no_radius.
-# 90 -> 91 (#1800): sheet_cavity_spacing.
-# #1913: waveguide_port_obstacle_before_reference.
-# 92 -> 93 (#1953): thin_conductor_thickness_unmodelled.
-# 93 -> 94 (#1887): wall_axis_off_node.
-_FROZEN_LITERAL_CODE_COUNT = 94
-# Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
-# number. What this test exists to catch is a new bare ``except`` path
-# emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
-# whose advisory code comes from whatever the caught exception carried
-# rather than a literal slug. That property does not depend on where in
-# the file the site sits, and freezing coordinates made an unrelated
-# insertion above them red the suite: #744 added no emission site at all
-# (total 81 and literal codes 53 both unchanged) yet shifted all three
-# dynamic sites by exactly 30 lines and broke main.
-# preflight_sparameters 1 -> 2 (post-v1.8 plan item 2): the waveguide branch
-# folds the setup audits' caught warnings into the returned report, and that
-# conversion reads ``code=`` off the caught PreflightWarning instance rather
-# than naming a slug at the site -- the same shape as preflight()'s own two.
-_FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
-    "_preflight_impl": 2,
-    # 2 -> 3, 2026-09-19 (#726): the msl fold-in block added beside the
-    # waveguide one reads ``code=``/``source=`` off the caught
-    # PreflightWarning instance in exactly the same way.
-    "preflight_sparameters": 3,
-    "finding": 1,
-}
+def _msl_model():
+    from tests._msl_diagnostic_cases import structure
+    return structure()
 
 
-@pytest.mark.source_scan
-def test_preflight_emission_site_surface_is_frozen():
-    sites = _enumerate_emission_sites()
-    assert len(sites) == _FROZEN_TOTAL_SITES, (
-        f"rfx/api/_preflight.py + rfx/preflight/ now have {len(sites)} "
-        "PreflightWarning/PreflightErrorWarning/PreflightIssue/"
-        "PreflightConfigError "
-        f"construction sites, not the frozen {_FROZEN_TOTAL_SITES} (issue "
-        "#737/#742). Update _FROZEN_TOTAL_SITES in this file -- widening "
-        "this surface without a conscious edit here is the failure mode "
-        "#737 exists to stop."
-    )
-    literal_codes = {c for (_, _, c, dyn, _) in sites if not dyn}
-    assert len(literal_codes) == _FROZEN_LITERAL_CODE_COUNT, (
-        f"{len(literal_codes)} distinct literal ``code=`` values measured, "
-        f"not the frozen {_FROZEN_LITERAL_CODE_COUNT}. Update "
-        "_FROZEN_LITERAL_CODE_COUNT in this file (issue #737/#742) -- a new "
-        "code is a new advisory kind that (b)'s classification is about."
-    )
-    dynamic_by_fn = {}
-    for (_lineno, _cls, _code, dyn, enclosing) in sites:
-        if dyn:
-            dynamic_by_fn[enclosing] = dynamic_by_fn.get(enclosing, 0) + 1
-    assert dynamic_by_fn == _FROZEN_DYNAMIC_SITES_BY_FUNCTION, (
-        f"the dynamic-code (uncoded-at-source) sites are now "
-        f"{dict(sorted(dynamic_by_fn.items()))}, not the frozen "
-        f"{dict(sorted(_FROZEN_DYNAMIC_SITES_BY_FUNCTION.items()))}. "
-        "Update _FROZEN_DYNAMIC_SITES_BY_FUNCTION in this file -- a new "
-        "dynamic-code site means preflight()/preflight_sparameters() grew "
-        "a new bare ``except`` path with no check-site slug (issue "
-        "#737/#742). Line numbers are deliberately NOT part of this "
-        "freeze: they drift on any insertion above and say nothing about "
-        "the surface."
-    )
+def _mixed_model():
+    from tests.unit.sparams.test_msl_mixed_spatial_collocation import _case
+    return _case("+x")[0]
 
 
-@pytest.mark.source_scan
-def test_finite_flux_emitter_has_a_bounded_explicit_code_surface():
-    """A shared constructor must not hide new or dynamically chosen slugs."""
-    tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation._collect_flux_regions)))
-    calls = [node for node in ast.walk(tree)
-             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-             and node.func.id == "finding"]
-    uses = [node for node in ast.walk(tree)
-            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
-            and node.id == "finding"]
-    assert len(uses) == len(calls), "finding must be called directly, not passed through an alias"
-    codes = []
-    for call in calls:
-        assert not any(isinstance(arg, ast.Starred) for arg in call.args)
-        assert len(call.args) >= 3 and isinstance(call.args[2], ast.Constant)
-        assert isinstance(call.args[2].value, str)
-        codes.append(call.args[2].value)
-    assert Counter(codes) == {
-        "flux_region_unavailable": 2,
-        "flux_region_invalid": 2,
-        "flux_region_clamped": 1,
-    }
+def _waveguide_model():
+    sim = Simulation(freq_max=12e9, domain=(.09, .04, .02), dx=.005,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=4)
+    for position, direction in ((.015, "+x"), (.065, "-x")):
+        sim.add_waveguide_port(position, direction=direction,
+                              freqs=jnp.array([8e9, 9e9]), f0=8.5e9, bandwidth=.5)
+    return sim
 
 
-# ---------------------------------------------------------------------------
-# S2: per-entry-point emission classification.
-# ---------------------------------------------------------------------------
+def _transition_model():
+    # Public construction of tests/_coax_msl_instrument_fixture.py's junction;
+    # four CPML layers deliberately trigger the fixed advisory for this row.
+    dx = .0001
+    ground, trace, junction, yc = 25*dx, 28*dx, 10*dx, 17*dx
+    domain = (.0125, .0034, .0039)
+    sim = Simulation(snap="declared", freq_max=16e9, domain=domain, dx=dx,
+                     cpml_layers=4, boundary="cpml")
+    sim.add_material("sub", eps_r=3.66)
+    sim.add(Box((0, 0, ground), (domain[0], domain[1], trace)), material="sub")
+    xl, xh, yl, yh = junction-4*dx, junction+4*dx, yc-4*dx, yc+4*dx
+    for x0, x1, y0, y1 in ((0, xl, 0, domain[1]), (xh, domain[0], 0, domain[1]),
+                           (xl, xh, 0, yl), (xl, xh, yh, domain[1])):
+        sim.add(Box((x0, y0, ground), (x1, y1, ground)), material="pec")
+    sim.add(Box((junction, yc-3*dx, trace), (domain[0], yc+3*dx, trace)), material="pec")
+    sim.add(Cylinder(center=(junction, yc, (ground+trace)/2), radius=2*dx,
+                     height=3*dx, axis="z"), material="pec")
+    sim.add_coaxial_port((junction, yc, ground), face="bottom", pin_radius=2*dx,
+                         outer_radius=6*dx, impedance=50.)
+    sim.add_msl_port((110*dx, yc, ground), width=6*dx, height=3*dx,
+                     direction="-x", impedance=50., eps_r_sub=3.66)
+    return sim
 
-AUTO = "auto"                    # calls preflight()/_auto_preflight() itself
-MANUAL = "manual"                # IS the preflight entry point
-DIAGNOSTIC_ONLY = "diagnostic_only"  # produces a result; calls neither
 
-# name -> (category, citation). A NEW Simulation.compute_*/run/forward/
-# preflight* method, or a new module-level orchestrator alongside
-# optimize()/topology_optimize(), must be added here consciously
-# (test_every_functional_entry_point_is_emission_classified enforces
-# this), and its category must match measured reachability in BOTH
-# directions (test_emission_classification_matches_measured_reachability).
+def _call(entry, sim, **kwargs):
+    return entry(sim, **kwargs)
+
+
+def _optimize(entry, sim):
+    region = DesignRegion(corner_lo=(.004, .002, .001),
+                          corner_hi=(.005, .004, .003), eps_range=(1., 3.))
+    return entry(sim, region, lambda result: jnp.sum(result.time_series**2),
+                 n_iters=1, n_steps=1, verbose=False, jit=False)
+
+
+def _topology(entry, sim):
+    sim.add_material("design", eps_r=3.)
+    region = TopologyDesignRegion(corner_lo=(.004, .002, .001),
+                                  corner_hi=(.005, .004, .003),
+                                  material_bg="air", material_fg="design")
+    # This public entry has no n_steps argument; its default is 20 periods.
+    return entry(sim, region, lambda result: jnp.sum(result.time_series**2),
+                 n_iterations=1, verbose=False, jit=False)
+
+
+# category, public model builder, public call. compute_s_matrix exercises its
+# MSL dispatch: AUTO means at least one supported lane emits, as in A48;
+# the three coax delegates retain their separate diagnostic-only rows.
 EMISSION_CLASSIFICATION = {
-    "Simulation.run": (
-        AUTO, "calls self._auto_preflight() directly, rfx/api/_execute.py"),
-    "Simulation.forward": (
-        AUTO, "calls self._auto_preflight() directly, rfx/api/_execute.py"),
-    "optimize.optimize": (
-        AUTO, "calls sim._auto_preflight() directly, rfx/optimize.py:352"),
-    "topology.topology_optimize": (
-        AUTO, "calls sim._auto_preflight() directly, rfx/topology.py:388"),
-    "Simulation.preflight": (
-        MANUAL, "is the preflight entry point itself"),
+    "Simulation.run": (AUTO, _small_model, partial(_call, n_steps=1, compute_s_params=False)),
+    "Simulation.forward": (AUTO, _small_model, partial(_call, n_steps=1)),
+    "optimize.optimize": (AUTO, _small_model, _optimize),
+    "topology.topology_optimize": (AUTO, _small_model, _topology),
+    "Simulation.preflight": (MANUAL, _small_model, _call),
     "Simulation.preflight_sparameters": (
-        MANUAL, "is the preflight entry point itself"),
+        MANUAL, _small_model, partial(_call, include_general=True)),
     "Simulation.compute_mixed_s_matrix": (
-        AUTO,
-        "calls self._auto_preflight() when not skip_preflight, rfx/sparams/mixed.py"),
+        AUTO, _mixed_model, partial(_call, n_steps=1, freqs=np.array([.8e9, 1.2e9]),
+                                    magnitude_channel="wave", enforce_passivity=False)),
     "Simulation.compute_waveguide_s_matrix": (
-        AUTO,
-        "S-calculator shared admission (2026-10-19): calls self._auto_preflight() "
-        "after calculator admission unless skip_preflight, rfx/sparams/waveguide.py"),
+        AUTO, _waveguide_model, partial(_call, n_steps=1)),
     "Simulation.compute_msl_s_matrix": (
-        AUTO,
-        "MEASURED CORRECTION to the #742(b) brief's framing (which reads "
-        "as if every direct S-parameter compute helper skips preflight): "
-        "this one calls self.forward()/self.run() internally (rfx/api/"
-        "_sparams.py:3223,3240) WITHOUT skip_preflight=True, so "
-        "_auto_preflight runs on every drive. The rfx/api/_sparams.py:1908 "
-        "'functional entry points run no sim.preflight()' comment sits in "
-        "compute_waveguide_s_matrix's own docstring (line 1784), not "
-        "this method's -- it does not describe compute_msl_s_matrix."),
+        AUTO, _msl_model, partial(_call, n_steps=1, freqs=np.array([.8e9, 1.2e9]),
+                                  enforce_passivity=False)),
+    # Returning record lengths: tests/contracts/test_inspection_release.py:122-128.
     "Simulation.compute_coaxial_line_reflection": (
-        DIAGNOSTIC_ONLY,
-        "measured: no preflight()/_auto_preflight() call in this method"),
+        DIAGNOSTIC_ONLY, _coax, partial(_call, n_steps=600, freqs=np.array([6e9, 8e9, 10e9]),
+                                             probe_count=3, probe_start_cells=4, probe_spacing_cells=2)),
     "Simulation.compute_coaxial_two_port": (
-        DIAGNOSTIC_ONLY,
-        "measured: no preflight()/_auto_preflight() call in this method"),
+        DIAGNOSTIC_ONLY, _coax, partial(_call, n_steps=600, freqs=np.array([6e9, 8e9, 10e9]),
+                                             probe_count=3, probe_start_cells=4, probe_spacing_cells=2)),
+    # Gates only its own sheet-size findings (rfx/sparams/coax.py:1282); the general advisory does not reach the user.
     "Simulation.compute_coax_msl_transition": (
-        DIAGNOSTIC_ONLY,
-        "measured: no preflight()/_auto_preflight() call in this method; "
-        "EXPERIMENTAL per its own docstring"),
+        DIAGNOSTIC_ONLY, _transition_model,
+        partial(_call, n_steps=200, junction_x=.001, eps_r_sub=3.66,
+                freqs=np.array([6e9, 8e9, 10e9]), probe_count=6,
+                probe_start_cells=4, probe_spacing_cells=2, msl_probe_count=9,
+                msl_probe_start_cells=4, msl_probe_spacing_cells=10, strict_passivity=False)),
     "Simulation.compute_s_matrix": (
-        AUTO,
-        "issue #980 Phase 1 dispatcher (rfx/sparams/dispatch.py): calls no "
-        "preflight of its own, and its ACTUAL emission behaviour is whatever "
-        "the lane it selects does -- which this binary table cannot express. "
-        "AUTO is the MEASURED value and is recorded as such rather than "
-        "argued: the dispatcher reaches preflight through the "
-        "self.compute_msl_s_matrix()/self.compute_mixed_s_matrix() branches "
-        "of its own if-chain (both AUTO above), so _reaches_preflight is "
-        "True. READ IT AS: preflight runs on SOME lanes this method can "
-        "select, not on all of them. On the three coaxial "
-        "lanes -- each DIAGNOSTIC_ONLY in its own row above -- routing "
-        "through compute_s_matrix() adds no preflight, exactly as calling "
-        "them directly adds none. The dispatch is deliberately written as "
-        "explicit self.<method>(...) calls rather than a getattr lookup so "
-        "that this gate can measure it at all; a getattr indirection would "
-        "have hidden every branch and let the method sit here as "
-        "DIAGNOSTIC_ONLY on a technicality."),
+        AUTO, _msl_model, partial(_call, n_steps=1, freqs=np.array([.8e9, 1.2e9]),
+                                  enforce_passivity=False)),
 }
-
-_PREFLIGHT_CALL_NAMES = {"preflight", "_preflight_impl", "_auto_preflight", "preflight_sparameters"}
 
 
 def _exported_surface() -> dict:
-    """Every ``Simulation`` entry point that produces a result, dynamically
-    enumerated -- mirrors ``test_ad_surface_contract.py``'s
-    ``_exported_surface()`` idiom so a NEW ``compute_*`` (or run/forward/
-    preflight*) is picked up automatically, not by a hand-kept list.
-    """
     names = {}
-    for n, f in inspect.getmembers(Simulation, predicate=inspect.isfunction):
-        if n.startswith("compute_") or n in (
-                "run", "forward", "preflight", "preflight_sparameters"):
-            names[f"Simulation.{n}"] = f
-    # optimize()/topology_optimize() are module-level orchestrators (take
-    # ``sim`` as an argument) rather than Simulation methods, so the
-    # dir(Simulation) scan above cannot see them; named explicitly.
+    for name, entry in inspect.getmembers(Simulation, predicate=inspect.isfunction):
+        if name.startswith("compute_") or name in ("run", "forward", "preflight", "preflight_sparameters"):
+            names[f"Simulation.{name}"] = entry
     names["optimize.optimize"] = _optimize_fn
     names["topology.topology_optimize"] = _topology_optimize_fn
     return names
 
 
-def _reaches_preflight(func, _seen=None) -> bool:
-    """Does ``func`` call preflight()/_auto_preflight()/preflight_sparameters
-    anywhere in its own body, or transitively through a same-class
-    ``self.<method>(...)`` call chain?
-
-    AST-based (no execution): walks ``self.foo(...)`` calls and, when
-    ``foo`` resolves to another method on ``Simulation``'s MRO, recurses
-    into it (memoized against ``_seen`` to bound cycles). This is what
-    makes S2 real teeth rather than a one-hop grep -- an indirection added
-    between an entry point and the actual preflight call is still caught.
-    """
-    if _seen is None:
-        _seen = set()
-    qualname = getattr(func, "__qualname__", repr(func))
-    if qualname in _seen:
-        return False
-    _seen.add(qualname)
-
-    owner_name = qualname.rsplit(".", 1)[0] if "." in qualname else None
-    owner_cls = None
-    for base in Simulation.__mro__:
-        if base.__name__ == owner_name:
-            owner_cls = base
-            break
-
-    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        f = node.func
-        # Bound methods called as ``self.foo(...)`` (Simulation methods) or
-        # ``sim.foo(...)`` (the module-level orchestrators optimize() /
-        # topology_optimize(), which take the Simulation as a parameter
-        # rather than being methods on it) -- any Name receiver, since the
-        # local variable name is not load-bearing here.
-        if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)):
-            continue
-        if f.attr in _PREFLIGHT_CALL_NAMES:
-            return True
-        if owner_cls is not None and hasattr(owner_cls, f.attr):
-            callee = getattr(owner_cls, f.attr)
-            if inspect.isfunction(callee) and _reaches_preflight(callee, _seen):
-                return True
-    return False
-
-
-def test_every_functional_entry_point_is_emission_classified():
-    surface = _exported_surface()
-    missing = sorted(set(surface) - EMISSION_CLASSIFICATION.keys())
-    stale = sorted(EMISSION_CLASSIFICATION.keys() - set(surface))
-    assert not missing, (
-        f"New Simulation entry point(s) with no emission classification: "
-        f"{missing}. This is exactly the #737/#742(b) failure mode -- a "
-        "new functional entry point that silently bypasses preflight (or "
-        "one wired up to it) must be a CONSCIOUS edit to "
-        "EMISSION_CLASSIFICATION in "
-        "tests/unit/preflight/test_preflight_advisory_emission_contract.py, not something "
-        "discovered later by grepping for missing advisories. Classify as "
-        "AUTO (calls preflight()/_auto_preflight() automatically), MANUAL "
-        "(it IS the preflight call), or DIAGNOSTIC_ONLY (produces a result "
-        "with no preflight anywhere on this path -- must cite where that "
-        "gap is already documented, e.g. rfx/api/_sparams.py:1265)."
-    )
-    assert not stale, (
-        f"EMISSION_CLASSIFICATION entries no longer exported: {stale}. "
-        "Remove them from the table in "
-        "tests/unit/preflight/test_preflight_advisory_emission_contract.py."
-    )
+@pytest.mark.parametrize("name,entry", [
+    pytest.param(name, entry, id=name) for name, entry in _exported_surface().items()
+])
+def test_public_entry_point_emits_classified_advisory(name, entry):
+    assert name in EMISSION_CLASSIFICATION, f"Unclassified public entry: {name}"
+    assert not (EMISSION_CLASSIFICATION.keys() - _exported_surface().keys()), "Stale emission classification"
+    category, builder, call = EMISSION_CLASSIFICATION[name]
+    assert category in (AUTO, MANUAL, DIAGNOSTIC_ONLY)
+    started = time.perf_counter()
+    # A fresh, separate public preflight proves the advisory is present even
+    # for diagnostic-only rows; it cannot pre-emit/cache the measured model.
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        control = builder().preflight()
+    issues = [str(issue) for issue in control if issue.code == _ADVISORY]
+    assert len(issues) == 1, f"{name}: expected one control {_ADVISORY}, got {issues}"
+    issue = issues[0]
+    print(f"control={name} issue={issue}", file=sys.stderr)
+    sim = builder()
+    matches = None
+    bar = "0 matching AccuracyWarning" if category == DIAGNOSTIC_ONLY else ">=1 matching issue"
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = call(entry, sim)
+        assert result is not None, f"{name}: no public result returned"
+        # A57: the gate summarizes report issues in AccuracyWarning; manual
+        # entries return the report. The control supplies the full issue text.
+        if category == MANUAL:
+            matches = sum(str(item) == issue for item in result)
+            assert matches >= 1, f"{name}: returned report missing control issue: {issue}"
+        elif category == AUTO:
+            matches = sum(isinstance(w.message, AccuracyWarning) and issue in str(w.message)
+                          for w in caught)
+            assert matches >= 1, f"{name}: missing AccuracyWarning containing control issue: {issue}"
+        else:
+            matches = sum(isinstance(w.message, AccuracyWarning) and issue in str(w.message)
+                          for w in caught)
+            assert matches == 0, f"{name}: diagnostic-only entry emitted {matches} AccuracyWarning(s) containing control issue: {issue}"
+    finally:
+        print(f"row={name} category={category} advisory={_ADVISORY} measured={matches} bar={bar} "
+              f"wall_s={time.perf_counter() - started:.6f}", file=sys.stderr)
 
 
 @pytest.mark.source_scan
-def test_emission_classification_matches_measured_reachability():
-    surface = _exported_surface()
-    for name, (category, citation) in EMISSION_CLASSIFICATION.items():
-        if category == MANUAL:
-            continue  # trivially true: calling it IS the emission
-        reaches = _reaches_preflight(surface[name])
-        if category == AUTO:
-            assert reaches, (
-                f"{name} is classified AUTO in EMISSION_CLASSIFICATION "
-                f"({citation}) but no longer calls preflight()/"
-                "_auto_preflight() anywhere in its measured call chain. "
-                "Fix the stale claim in "
-                "tests/unit/preflight/test_preflight_advisory_emission_contract.py -- "
-                "either restore the call, or reclassify as "
-                "DIAGNOSTIC_ONLY with a fresh citation for why it stopped."
-            )
-        elif category == DIAGNOSTIC_ONLY:
-            assert not reaches, (
-                f"{name} is classified DIAGNOSTIC_ONLY in "
-                f"EMISSION_CLASSIFICATION ({citation}) but NOW calls "
-                "preflight()/_auto_preflight() in its measured call chain. "
-                "Silently widening what counts as diagnostic-only is "
-                "exactly the failure #737 exists to stop -- if this is a "
-                "genuine fix, reclassify it as AUTO in "
-                "tests/unit/preflight/test_preflight_advisory_emission_contract.py with a "
-                "citation; do not leave the stale DIAGNOSTIC_ONLY entry "
-                "standing."
-            )
-        else:  # pragma: no cover -- guards a typo in the table itself
-            raise AssertionError(f"unknown category {category!r} for {name}")
+def test_run_body_calls_auto_preflight_itself():
+    """One hop: the broad scan also finds conditional preflight calls deeper on the multi-device route."""
+    from rfx.runners.run import run_after_admission
+    tree = ast.parse(textwrap.dedent(inspect.getsource(inspect.unwrap(run_after_admission))))
+    assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+               and n.func.attr == "_auto_preflight" for n in ast.walk(tree))

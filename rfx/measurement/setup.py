@@ -38,7 +38,7 @@ def register_plane(sim, axis, coordinate, component, freqs, n_freqs, name, regio
     return sim
 
 
-def build_planes(sim, grid, n_steps):
+def build_planes(sim, grid, n_steps, *, dft_window='rect'):
     from rfx.measurement import default_frequency_grid
     from rfx.probes.probes import init_dft_plane_probe
     from rfx.measurement.plan import _index
@@ -53,5 +53,6 @@ def build_planes(sim, grid, n_steps):
         probes.append(init_dft_plane_probe(
             axis=axis, index=_index(grid, tuple(position))[axis], component=entry.component,
             freqs=bins, grid_shape=grid.shape, dft_total_steps=n_steps,
+            dft_window=dft_window,
             region=getattr(sim, '_dft_plane_regions', {}).get(entry.name)))
     return probes

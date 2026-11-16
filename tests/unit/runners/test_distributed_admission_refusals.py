@@ -1,7 +1,7 @@
 """Refuse the input classes the distributed lanes would drop or get wrong.
 
 Periodic/Bloch boundaries, reference-plane and passive ports, surface monitors
-(flux, DFT planes), Kerr materials, lumped RLC elements, subgridding.
+(flux, DFT planes), Kerr materials, subgridding.
 
 Exercise the public dispatch and the shard_map runner entry with two CPU
 devices. The pmap runner entry went with that runner (#1296).
@@ -77,13 +77,17 @@ def test_mixed_lorentz_refusal_matches_one_device(entry):
     assert str(distributed.value) == str(native.value)
 
 
+TRACED_MULTI_DEVICE = (r"cannot judge Lorentz/Drude time-step stability: this multi-device run's "
+                       r"material values or cell sizes are traced by an outer jax\.jit")
+
+
 def _devices():
     devices = jax.devices("cpu")
     assert len(devices) >= 2, "requires the root conftest's two CPU devices"
     return devices[:2]
 
 
-def test_two_device_pole_override_is_judged_eagerly_but_not_under_outer_jit():
+def test_two_device_pole_override_is_judged_eagerly_and_refused_under_outer_jit():
     import jax.numpy as jnp
 
     sim = _mixed_lorentz_admission_scene(2.0)
@@ -104,14 +108,20 @@ def test_two_device_pole_override_is_judged_eagerly_but_not_under_outer_jit():
     assert eager.shape == (2, 1)
     assert np.all(np.isfinite(eager))
 
-    # Documented limitation: outer-traced material values are not judged on
-    # multiple devices. Pin completion/shape, not stability, for both inputs.
+    # An eager vmap carries concrete members: each is judged, so one unstable
+    # member refuses the batch with its stable step (#1934).
+    with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
+        jax.vmap(forward)(jnp.stack([stable, unstable]))
+
+    # #1934: a jit-traced value cannot be judged on two devices, so it is
+    # refused by name whatever its value (it ran unjudged before).
     compiled = jax.jit(forward)
     for eps in (stable, unstable):
-        assert np.asarray(compiled(eps)).shape == (2, 1)
+        with pytest.raises(ValueError, match=TRACED_MULTI_DEVICE):
+            compiled(eps)
 
 
-def test_two_device_traced_declared_pole_material_runs():
+def test_two_device_traced_declared_pole_material_is_refused():
     import jax.numpy as jnp
 
     devices = _devices()
@@ -124,9 +134,9 @@ def test_two_device_traced_declared_pole_material_runs():
     # Independent literal material values and observation dimensions.
     with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
         forward(jnp.float32(1.0))
-    result = np.asarray(jax.jit(forward)(jnp.float32(2.0)))
-    assert result.shape == (2, 1)
-    assert np.all(np.isfinite(result))
+    assert np.all(np.isfinite(np.asarray(forward(jnp.float32(2.0)))))
+    with pytest.raises(ValueError, match=TRACED_MULTI_DEVICE):
+        jax.jit(forward)(jnp.float32(2.0))
 
 
 def test_one_device_distributed_outer_jit_refuses_unstable_pole_override(monkeypatch):
@@ -300,16 +310,46 @@ def test_kerr_material_is_refused(entry):
 @pytest.mark.parametrize("entry", ENTRIES)
 @pytest.mark.parametrize("element", ({"R": 10.0}, {"R": 10.0, "L": 1e-9}),
                          ids=("stamped_R", "series_RL"))
-def test_lumped_rlc_element_is_refused(entry, element):
-    """An element between source and probe: this lane never applies it (#1239).
-
-    Measured before the refusal (#1239's 12 mm box, 10 ohm): the multi-device
-    probe peak was bit-identical to the box without the element and 76 % above
-    the single-device peak, where the element lowers it by 43 %. A lone R is
-    stamped into the material; R+L has its own time update.
-    """
+def test_lumped_rlc_element_is_admitted(entry, element):
+    """Both entries reach the solve; class-specific bars live in the RLC contract."""
     sim = _build(entry=entry, rlc=element)
-    _assert_refused(sim, entry, "add_lumped_rlc()", "as if the elements were absent")
+    result = _run(sim, entry)
+    samples = result.time_series
+    assert np.isfinite(samples).all()
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("mesh", ("uniform", "graded"))
+def test_lumped_rlc_pmc_face_is_refused(entry, mesh):
+    sim = Simulation(freq_max=15e9, domain=(.024, .012, .012), dx=.001,
+                     boundary=BoundarySpec(x=Boundary(lo="pmc", hi="pec"), y="pec", z="pec"),
+                     **({"dx_profile": np.full(24, .001)} if mesh == "graded" else {}))
+    sim.add_lumped_rlc((.009, .006, .006), "ez", R=50., L=1e-9, C=1e-12,
+                       topology="series")
+    sim.add_source((.006, .006, .006), "ez", amplitude_kind="field")
+    with pytest.raises(NotImplementedError, match="add_lumped_rlc with PMC faces"):
+        kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
+        if entry == "run":
+            sim.run(**kwargs, compute_s_params=False)
+        else:
+            sim.forward(**kwargs, distributed=True, checkpoint=False)
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("overlap", ("domain_face", "conductor_edge"))
+def test_lumped_rlc_pec_overlap_is_refused(entry, overlap):
+    sim = _build()
+    point = (0., .006, .006)
+    if overlap == "conductor_edge":
+        sim.add(Box((.008, .004, .004), (.010, .008, .008)), material="pec")
+        point = (.008, .004, .006)
+    sim.add_lumped_rlc(point, "ez", R=50., L=1e-9, C=1e-12, topology="series")
+    with pytest.raises(NotImplementedError, match="on a PEC face or realized PEC edge"):
+        kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
+        if entry == "run":
+            sim.run(**kwargs, compute_s_params=False)
+        else:
+            sim.forward(**kwargs, distributed=True, checkpoint=False)
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
@@ -550,9 +590,9 @@ def test_closed_box_device_limit_without_mesh():
     from types import SimpleNamespace
     from rfx.runners._admission import refuse_slab_tfsf_devices
     declaration = SimpleNamespace(closed_box=True)
-    refuse_slab_tfsf_devices(declaration, 2)
-    with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 3 devices.*multi-seam validation"):
-        refuse_slab_tfsf_devices(declaration, 3)
+    refuse_slab_tfsf_devices(declaration, 4)
+    with pytest.raises(NotImplementedError, match="closed-box TFSF.*on 5 devices.*5 or more are refused"):
+        refuse_slab_tfsf_devices(declaration, 5)
 
 
 def test_uniform_forward_user_jit_refuses_port_s():
@@ -568,6 +608,38 @@ def test_uniform_forward_user_jit_refuses_port_s():
             skip_preflight=True, port_s11_freqs=np.array([3e9, 5e9, 7e9])).s_params)()
     assert str(failure.value) == (
         "forward(distributed=True) on a uniform mesh cannot compute port S-parameters inside jax.jit "
-        "(or another JAX trace that stages it): the S-parameters are measured from a second "
-        "multi-device run outside the trace. Omit port_s11_freqs for the fields and probe records, "
+        "(or another JAX trace that stages it): on this path the port S-parameters are assembled "
+        "on the host from the main run's port records. Omit port_s11_freqs for the fields and probe records, "
         "call forward() directly, or run on one device (omit distributed=True).")
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['distributed_v2', 'distributed_nu'])
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_pole_map_named_refusal(graded, entry):
+    from rfx import drude_pole_map
+    from tests.unit.materials.test_pole_map_runs import record
+    sim = Simulation(freq_max=6e9, domain=(.006,) * 3, dx=.0005, boundary='pec',
+                     **(dict(dx_profile=np.full(12, .0005)) if graded else {}))
+    sim.add_material('map', eps_r=1., lorentz_poles=[drude_pole_map(lambda x, y, z: 2e9 + 0*x, 2e9)])
+    sim.add(Box((.001,) * 3, (.005,) * 3), material='map')
+    sim.add_source((.002, .0025, .003), 'ez')
+    sim.add_probe((.004, .0035, .003), 'ez')
+    with pytest.raises((ValueError, NotImplementedError),
+                       match='LorentzPoleMap is not supported by distributed_v2 / distributed_nu') as error:
+        if entry == 'run':
+            sim.run(n_steps=2, devices=_devices(), compute_s_params=False, skip_preflight=True)
+        else:
+            sim.forward(n_steps=2, distributed=True, devices=_devices(), skip_preflight=True)
+    record(f'P4-distributed-{entry}-{graded}', dict(message=str(error.value)))
+
+
+@pytest.mark.parametrize("validation", ["production", "research", "off"])
+def test_subgrid_refuses_relative_strength_by_name(validation):
+    from rfx import LorentzPole, RelativeStrength
+    sim = _build(refine=True)
+    sim._refinement["validation"] = validation
+    sim.add_material("relative", eps_r=1., lorentz_poles=[
+        LorentzPole(0., 2e9, RelativeStrength(4e20, .5))])
+    sim.add(Box((.008, .003, .003), (.016, .009, .009)), material="relative")
+    with pytest.raises(NotImplementedError, match="run_subgridded.*RelativeStrength"):
+        sim.run(n_steps=1, skip_preflight=True)

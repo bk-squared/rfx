@@ -110,15 +110,6 @@ def test_order4_fenced_nonuniform():
         sim.run(n_steps=10, skip_preflight=True)
 
 
-def test_order4_fenced_adi():
-    """stencil_order=4 with the ADI solver raises."""
-    sim = Simulation(
-        freq_max=10e9, domain=(0.016, 0.016, 0.016), dx=0.001,
-        boundary="pec", solver="adi", mode="2d_tmz", stencil_order=4,
-    )
-    sim.add_source((0.008, 0.008, 0.0), component="ez")
-    with pytest.raises(NotImplementedError, match="stencil_order=4"):
-        sim.run(n_steps=10, skip_preflight=True)
 
 
 def test_order4_fenced_dispersive():

@@ -15,8 +15,11 @@ def _simulation(profile, axis, sheets):
         domain=(0.02, 0.02, 0.02), dx=0.001, freq_max=10e9,
         boundary="pec", **{f"d{axis}_profile": profile},
     )
+    cell = .001 if isinstance(profile, jax.core.Tracer) else float(profile[0])
+    cell_x, cell_y = (cell if axis == "x" else .001), (cell if axis == "y" else .001)
     for z in (0.006, 0.012)[:sheets]:
-        sim.add_thin_conductor(Box((0.004, 0.004, z), (0.014, 0.014, z)))
+        sim.add_thin_conductor(Box(((4 - .35) * cell_x, (4 - .35) * cell_y, z),
+                                   ((14 + .35) * cell_x, (14 + .35) * cell_y, z)))
     return sim
 
 

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from rfx.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
+from rfx._host_limits import check_map_count
+from rfx.stepping.progress import ProgressReporter, check_not_traced, concat_chunks, validate_report_every
 
 
 def scan_with_progress(
@@ -41,11 +42,11 @@ def scan_with_progress(
     ``jax.lax.scan(body, carry, xs_chunk)`` with
     ``chunk_scan(carry, xs_chunk, lo)``, ``lo`` being the global index of
     the chunk's first step. ``run()`` passes one that records field
-    snapshots at global multiples of their interval (#1258); it must return
+    snapshots at global multiples of their interval; it must return
     the same ``(carry, outputs)`` pair, with every output leaf stacked on a
     leading axis that concatenates across chunks.
 
-    ``stop_fn``, when given (issue #1254, ``run(..., until_identified=True)``),
+    ``stop_fn``, when given (``run(..., until_identified=True)``),
     is called after every chunk as ``stop_fn(done, carry, chunk_outputs)``,
     ``done`` being the steps run so far and ``carry`` the state after them;
     a true return ends the loop there, and the returned outputs hold those
@@ -69,6 +70,7 @@ def scan_with_progress(
       and XLA's compile cost grows superlinearly in argument count — 232 s
       at 22,500 chunks, against 0.99 s grouped. See :func:`concat_chunks`.
     """
+    check_map_count()
     import jax
 
     if stop_fn is None:
@@ -119,8 +121,7 @@ def scan_with_progress(
         if stop_fn is not None and n_steps - done - this == 1:
             # never a one-step last chunk: XLA inlines a loop that runs once,
             # and the inlined step can move the last bit of a field against
-            # the single scan (rfx-known-issues, "A one-step scan compiles
-            # differently"); the stopped record must be the single scan's.
+            # the single scan; the stopped record must be the single scan's.
             this += 1
         lo, hi = done, done + this
         xs_chunk = jax.tree_util.tree_map(lambda a: a[lo:hi], xs)

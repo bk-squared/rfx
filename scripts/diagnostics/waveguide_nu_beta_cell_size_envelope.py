@@ -78,7 +78,7 @@ from tests.unit.autodiff.test_waveguide_nu_flux_ad import (  # noqa: E402  (the 
 
 import rfx  # noqa: E402
 from rfx.api._sparams import _assert_nu_shift_span_in_one_grading_zone  # noqa: E402
-from rfx.nonuniform import interior_cells  # noqa: E402
+from rfx.model.graded_grid import interior_cells  # noqa: E402
 from rfx.runners.nonuniform import _build_waveguide_port_config_nu  # noqa: E402
 from rfx.sources.waveguide_port import C0_LOCAL, waveguide_plane_positions
 from rfx.model.waveguide_modes import PortMedium, _compute_beta, _compute_mode_impedance

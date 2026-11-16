@@ -216,7 +216,7 @@ def _pw_box(direction, p0, p1, w0, w1, z0, z1):
 def _nu_sim(direction="+x", **profiles):
     """The Sheen-parameter feed+patch board, oriented along ``direction``."""
     dom = _board_domain(direction)
-    sim = Simulation(freq_max=20e9, domain=dom, dx=DX,
+    sim = Simulation(freq_max=20e9, domain=(dom[0], dom[1], float(np.sum(profiles["dz_profile"]))) if "dz_profile" in profiles else dom, dx=DX,
                      boundary="cpml", cpml_layers=8, **profiles)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (dom[0], dom[1], H_SUB)), material="sub")
@@ -335,7 +335,7 @@ def test_graded_propagation_axis_bails_out_and_says_so(direction):
             else "counted in this port's own runway cell") in msgs[0]
     assert f"direction={direction!r}" in msgs[0]
     assert "'p1'" in msgs[0]
-    assert "#686" in msgs[0]
+    assert "This used to be silent for every non-uniform mesh" in msgs[0]
 
 
 @pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
@@ -741,7 +741,7 @@ def _y_runway_board(direction, **port_kw):
     axis is not graded, so the interval solve runs on it."""
     ny = 120
     ly, lx = ny * _RW_FINE, 10 * _RW_H
-    sim = Simulation(freq_max=20e9, domain=(lx, ly, _RW_H + 1.5e-3),
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(lx, ly, _RW_H + 1.5e-3),
                      dx=2 * _RW_FINE, cpml_layers=8,
                      dy_profile=np.full(ny, _RW_FINE))
     sim.add_material("sub", eps_r=_RW_EPS)

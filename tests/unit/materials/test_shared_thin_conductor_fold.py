@@ -23,7 +23,7 @@ def float32_path_comparison():
         yield
 
 
-def build(case, nu=False, h=1/1024, order=('dc', 'pec', 'f0'), radius=2.5):
+def build(case, nu=False, h=1/1024, order=('dc', 'pec', 'f0'), radius=2.5, centre=(16, 16)):
     def p(*x):
         return tuple(v*h for v in x)
     counts = (32, 32, 8) if case == 'disc' else (12, 10, 8)
@@ -71,7 +71,7 @@ def build(case, nu=False, h=1/1024, order=('dc', 'pec', 'f0'), radius=2.5):
             for kind in order:
                 thin(box, kind, sigma=1234, thickness=h/7)
         elif case == 'disc':
-            thin(Cylinder(p(16, 16, 4), radius=radius*h, height=0), 'dc')
+            thin(Cylinder(p(*centre, 4), radius=radius*h, height=0), 'dc')
         else:
             raise AssertionError(case)
     grid = sim._build_nonuniform_grid() if nu else sim._build_grid()
@@ -133,9 +133,19 @@ def test_overlap_order_and_paths():
 
 
 def test_dc_nonbox_admission_stays_path_specific():
-    """DC admission declaration replaces the old per-path tiny-disc asymmetry."""
+    """DC admission declaration replaces the old per-path tiny-disc asymmetry.
+
+    The film is sampled at cell centres (#1958 F8): a 0.4-cell disc centred on a
+    cell centre holds that one cell; centred on a node it holds no cell centre
+    (nearest 0.71 cell away) and is refused on both paths under both snaps."""
     for nonuniform in (False, True):
-        sim, grid = build('disc', nonuniform, radius=.4)
+        for snap in ('strict', 'declared'):
+            sim, grid = build('disc', nonuniform, radius=.4)
+            sim._snap = snap
+            with pytest.raises(ValueError, match='Cylinder DC film: 0 occupied layers') as caught:
+                products(sim, grid, nonuniform)
+            assert caught.value.code == 'dc_film_layers'
+        sim, grid = build('disc', nonuniform, radius=.4, centre=(16.5, 16.5))
         with pytest.raises(ValueError, match='Cylinder.*A_d=.*A_r='):
             products(sim, grid, nonuniform)
         sim._snap = 'declared'

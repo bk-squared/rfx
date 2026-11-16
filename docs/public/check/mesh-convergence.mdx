@@ -88,12 +88,12 @@ Mesh Convergence Summary
 ==================================================
    dx (mm)          Metric    Rel. Error
 --------------------------------------------------
-    2.0000     2.92606e+09       0.0998%
-    1.6000      2.9269e+09       0.0708%
-    1.0000     2.92797e+09       0.0344%
+    2.0000     2.92606e+09       0.1001%
+    1.6000      2.9269e+09       0.0712%
+    1.0000     2.92797e+09       0.0347%
 --------------------------------------------------
-Extrapolated value : 2.92898e+09
-Convergence order  : 1.54
+Extrapolated value : 2.92899e+09
+Convergence order  : 1.53
 ```
 
 `study.metrics`, `study.extrapolated`, `study.order` and `study.errors` hold
@@ -128,7 +128,7 @@ longer record for every mesh in the study.
   the error follows a power law in `dx`. `errors` are relative to it.
 - **The observed order** should be plausible. Standard Yee is second order;
   staircased dielectric edges and conductors often pull it lower, as here
-  (1.54). An order near zero, a negative one, or metrics that don't move
+  (1.53). An order near zero, a negative one, or metrics that don't move
   monotonically mean the study is not in the converging range. Refine
   further or look for a setup problem before trusting the extrapolation.
 

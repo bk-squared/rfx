@@ -12,12 +12,12 @@ import numpy as np
 import jax.numpy as jnp
 import pytest
 
-from rfx.core.yee import init_state, init_materials, update_h, update_e
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_h, update_e
 
 # Oblique leakage runs need a narrowband source (bw<=0.15: off-f0 content carries
 # the wrong single-f0 k_y and breaks TFSF cancellation) which in turn needs a long
 # run (~1700 steps) for the pulse to fully develop — hence @pytest.mark.slow. See
-# docs/research_notes/2026-07-21_issue404_phaseB_session_findings.md.
 # The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when 1700 was set; the
 # 509 steps (2 tau at f0 5 GHz, bw 0.15, dt 1.667 ps) keep the snapshot 3.7 tau after the peak.
 _OBLIQUE_BW = 0.15
@@ -39,12 +39,21 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
     it matches the real ``**2`` for the normal path).
     """
     from rfx.sources.tfsf import (
-        init_tfsf, apply_tfsf_e, apply_tfsf_h,
-        update_tfsf_1d_h, update_tfsf_1d_e,
+        init_tfsf,
+        update_tfsf_1d_h,
+        update_tfsf_1d_e,
         is_tfsf_2d,
     )
+    from rfx.stepping.tfsf import (
+        apply_tfsf_e,
+        apply_tfsf_h,
+    )
     from rfx.sources.tfsf_2d import (
-        update_tfsf_2d_h, update_tfsf_2d_e, bloch_phase_tuple,
+        update_tfsf_2d_h,
+        update_tfsf_2d_e,
+    )
+    from rfx.stepping.tfsf_2d import (
+        bloch_phase_tuple,
     )
 
     dx = 1e-3
@@ -78,7 +87,7 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
 
         # H update
         sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic,
-                             bloch=bloch)
+                             bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_h(sim_state, cfg, state, dx, dt)
 
         # Advance aux grid H
@@ -89,7 +98,7 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
 
         # E update
         sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic,
-                             bloch=bloch)
+                             bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_e(sim_state, cfg, state, dx, dt)
 
         # Advance aux grid E + source

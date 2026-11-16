@@ -96,9 +96,9 @@ def grid_face_depths(grid, *, spec=None, pec_faces=None, pmc_faces=None, budget=
 def simulation_face_depths(sim):
     """Realized pad depths before allocating metrics, including waveguide axes.
 
-    §7 Addendum 3: uniform waveguide grids pad only their port-normal axes;
-    diagnostics must describe those actual pads. The NU builder does not make
-    that transverse rewrite and keeps its declared absorbing axes.
+    Uniform waveguide grids keep undeclared full-aperture transverse walls;
+    partial apertures realize the declared absorbers. Diagnostics read the
+    built face table, including that default. Graded grids keep their declaration.
     """
     if sim._waveguide_ports and not sim._uses_nonuniform_mesh:
         return sim._build_grid().boundary_depths
@@ -114,11 +114,6 @@ def has_positive_cpml_faces(spec, budget):
             and all(face.realized > 0 for face in resolve_face_depths(spec, budget=budget)))
 
 
-def adi_uniform_faces(spec, budget):
-    """ADI's scalar-only absorber cannot carry a wall or a depth override."""
-    return all(face.kind == Kind.ABSORBER and face.declared == budget
-               for face in resolve_face_depths(spec, budget=budget)) and all(
-                   token == "cpml" for _, _, token in spec.faces())
 
 
 def distributed_electric_walls(grid):

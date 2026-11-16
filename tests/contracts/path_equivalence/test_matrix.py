@@ -20,7 +20,7 @@ def record_groups(cell):
         groups.extend(('port_samples', 'port_dft'))
     if cell.row[0] in ('_dft_planes', '_flux_monitors', '_ntff', '_current_moments'):
         groups.append('observers')
-    if cell.a.startswith('fwd_'):
+    if cell.traced:
         groups.extend(('objective', 'gradient'))
     return tuple(groups)
 

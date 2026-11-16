@@ -1,4 +1,4 @@
-"""Saved carry and formulation-specific AD tape accounting (#1786)."""
+"""Saved carry and formulation-specific AD tape accounting."""
 from __future__ import annotations
 
 import math
@@ -8,9 +8,29 @@ from rfx.model.design_box import design_box_bounds, design_box_window
 
 
 # Calibrated (GPU, jax 0.10.2): maximum G1 intercept/cell, rounded up to 8 B.
-# rfx-archive:rfx/records/20261016-ad-memory-tape-terms/
-# G1 acc-admem-g1-20261016t043022z-648d9; both maxima are the 21^3 rows.
+# Both G1 maxima are the 21^3 rows.
 AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
+
+# Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2.
+# Working arrays beyond one carry.
+AD_MEMORY_WORKING_CARRIES = 6.5
+
+
+def box_observation_residual_bytes(excluded):
+    """Read streaming observation phase sizes from the realized carry leaves.
+
+    print_saved_residuals on a box saves (nf, 1, 1) per plane/flux
+    component, not its spatial accumulator. NTFF shares one (nf, 1, 1, 4)
+    phase across all faces; neither face sums nor Kahan compensation are
+    per-step residuals. Frequency count and dtype come from read_carry.
+    """
+    size = 0
+    for leaf in excluded:
+        if leaf["name"].startswith(("dft_planes[", "flux_monitors[")):
+            size += leaf["bytes"] // math.prod(leaf["shape"][1:])
+        elif leaf["name"] == "ntff.x_lo":
+            size += leaf["bytes"] // math.prod(leaf["shape"][1:-1])
+    return size
 
 
 def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmented,
@@ -36,14 +56,21 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         if grid is None:
             raise ValueError("design_box requires a successfully built grid")
         bounds, shape = design_box_bounds(sim._design_box_bounds_from_corners(grid, design_box), grid)
-        _, slices, _, _ = design_box_window(bounds, grid.shape)
-        window = math.prod(s.stop - s.start for s in slices)
+        write_bounds, slices, _, _ = design_box_window(bounds, grid.shape)
+        if checkpoint and not segmented:
+            # Preserve the existing unsegmented remat bound, including its
+            # computation window; its mechanism has not been identified.
+            window = math.prod(s.stop - s.start for s in slices)
+        else:
+            window = math.prod(write_bounds[2 * d + 1] - write_bounds[2 * d]
+                               for d in range(3))
     else:
         shape = tuple(grid.shape) if grid is not None else ()
     from rfx.api._ad_carry import read_carry
+    replay_tables = []
     saved, excluded, carry_warnings = read_carry(sim, grid, n_steps, design_box=design_box, design=design,
         shape=shape, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
-        checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
+        checkpoint_segments=checkpoint_segments, n_warmup=n_warmup, replay_tables=replay_tables)
     carry = sum(x["bytes"] for x in saved)
     resident = face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
         checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
@@ -58,9 +85,20 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         # The rematted box's no-segment mechanism is not identified: bound
         # it by the carry plus six window arrays, rather than claiming a fit.
         tape = carry + 6 * window * 4
+    elif window is not None:
+        tape += box_observation_residual_bytes(excluded)
+        if not resident:
+            # A stop_gradient incident line has no per-step AD residual,
+            # but its six forward arrays remain resident. Their realized
+            # length grows with n_steps, so omitting them also biases a
+            # compiled-memory slope. Read their bytes, never fit a slope.
+            # A chosen face record already replaces this resident line.
+            resident += carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
+                replay_table_bytes=sum(size for _, size in replay_tables),
+                replay_table_bytes_by_kind=tuple(replay_tables),
                 modelled=True, unmodelled_features=[],
-                carry_bytes=carry,
+                carry_bytes=carry, working_bytes=int(AD_MEMORY_WORKING_CARRIES * carry),
                 resident_bytes=resident,
                 tape_step_bytes=tape, tape_window_cells=window,
                 design_box_bounds=bounds, tape_is_bound=bounded,
@@ -126,7 +164,7 @@ def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
     grow with the box's face area for oblique incidence. A checkpointed
     gradient saves the six float32 line arrays once per saved boundary B:
     segment_counts(...)[0] for segments/intervals (every segment is
-    rematerialised, whatever ``checkpoint`` says, #1815), steps - warmup
+    rematerialised, whatever ``checkpoint`` says), steps - warmup
     for per-step remat (checkpoint=True alone), and zero otherwise.
     Choose B * line_bytes > record_bytes. The resident record is not
     itself a saved carry.

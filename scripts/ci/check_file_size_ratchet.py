@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Enforce the down-only line-count baseline for rfx Python sources.
 
-PI 2026-10-05 and the structure plan §11 put file structure in the 2.0 bar.
+The structure plan §11 puts file structure in the 2.0 bar.
 The only way to add lines to a listed file is to remove at least as many from
 it. Split the file instead of raising its baseline; comparisons use numbers,
 never source text. Counts exclude blank and comment-only terminated lines;
@@ -10,11 +10,13 @@ string contents use the same byte-level rule, without token analysis.
 BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
 check the working tree, including uncommitted edits. An absent baseline at
 BASE_SHA permits the initial adoption; an unreadable revision fails closed.
+The float64 invariant's PENDING_CEILING follows the same numeric down-only rule.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 from pathlib import Path
@@ -23,6 +25,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[2]
 BASELINE = "scripts/ci/file_size_baseline.json"
+PENDING = "tests/contracts/float64_pending.py"
 SPLIT_ADVICE = "; split the file rather than raise the number."
 
 
@@ -56,6 +59,28 @@ def baseline(raw: bytes) -> dict:
     return data
 
 
+def pending_ceiling(repo: Path, revision: str = "") -> int | None:
+    if revision:
+        if not git(repo, "ls-tree", revision, "--", PENDING):
+            return None
+        raw = git(repo, "show", f"{revision}:{PENDING}")
+    else:
+        if not (repo / PENDING).exists():
+            return None
+        raw = (repo / PENDING).read_bytes()
+    try:
+        values = [node.value for node in ast.parse(raw).body
+                  if isinstance(node, (ast.Assign, ast.AnnAssign))
+                  and any(isinstance(target, ast.Name) and target.id == "PENDING_CEILING"
+                          for target in (node.targets if isinstance(node, ast.Assign) else [node.target]))]
+    except SyntaxError as exc:
+        raise ValueError(f"{PENDING}: unreadable PENDING_CEILING") from exc
+    if (len(values) != 1 or not isinstance(values[0], ast.Constant)
+            or type(values[0].value) is not int or values[0].value < 0):
+        raise ValueError(f"{PENDING}: PENDING_CEILING must be a nonnegative integer literal")
+    return values[0].value
+
+
 def check(repo: Path, base: str = "", head: str = "") -> int:
     read = (lambda path: git(repo, "show", f"{head}:{path}")) if head else (
         lambda path: (repo / path).read_bytes()
@@ -63,13 +88,37 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
     current = baseline(read(BASELINE))
     if current.get("counts") != "code-lines":
         raise ValueError("current baseline counts must be code-lines")
+    if head:
+        paths = [p.decode() for p in git(
+            repo, "ls-tree", "-r", "--name-only", "-z", head, "--", "rfx/",
+        ).split(b"\0") if p.endswith(b".py")]
+    else:
+        paths = [p.relative_to(repo).as_posix() for p in (repo / "rfx").rglob("*.py")]
     failures = []
+    ceiling = pending_ceiling(repo, head)
+    if base:
+        old_ceiling = pending_ceiling(repo, base)
+        if old_ceiling is not None and (ceiling is None or ceiling > old_ceiling):
+            failures.append(
+                f"{PENDING}: PENDING_CEILING baseline {old_ceiling}, count {ceiling}; "
+                "remove fixed entries rather than raise the ceiling."
+            )
     transition = False
     if base:
         # ls-tree fails for a bad revision but returns empty for an absent file.
         if git(repo, "ls-tree", base, "--", BASELINE):
             previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
             transition = "counts" not in previous
+            gone = previous["files"].keys() - set(paths) - current["files"].keys()
+            renames = {}
+            if gone and not transition and current["files"].keys() - previous["files"].keys():
+                revisions = (base, head) if head else (base,)
+                changes = git(
+                    repo, "diff", "-M90%", "--name-status", "--diff-filter=R", "-z",
+                    *revisions, "--", "rfx/",
+                ).split(b"\0")
+                for index in range(0, len(changes) - 1, 3):
+                    renames[changes[index + 2].decode()] = changes[index + 1].decode()
             if current["cap"] > previous["cap"]:
                 failures.append(
                     f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
@@ -77,17 +126,19 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
                 )
             for path, value in current["files"].items():
                 old = previous["files"].get(path, previous["cap"] if transition else None)
+                if old is None and path in paths:
+                    source = (path.removesuffix("/__init__.py") + ".py"
+                              if path.endswith("/__init__.py") else None)
+                    if source not in gone:
+                        source = renames.get(path)
+                    if source in gone:
+                        old = previous["files"][source]
+                        gone.remove(source)
                 if old is None or value > old:
                     failures.append(
                         f"{path}: baseline {old if old is not None else 'unlisted'}, "
                         f"count {value} in proposed baseline" + SPLIT_ADVICE
                     )
-    if head:
-        paths = [p.decode() for p in git(
-            repo, "ls-tree", "-r", "--name-only", "-z", head, "--", "rfx/",
-        ).split(b"\0") if p.endswith(b".py")]
-    else:
-        paths = [p.relative_to(repo).as_posix() for p in (repo / "rfx").rglob("*.py")]
     if transition:
         for path in sorted(current["files"].keys() - set(paths)):
             failures.append(f"{path}: transition baseline entry has no source file")

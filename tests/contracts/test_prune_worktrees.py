@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.tooling
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "dev" / "prune_worktrees.py"
 
 OLD_DATE = "2020-01-02T03:04:05+00:00"

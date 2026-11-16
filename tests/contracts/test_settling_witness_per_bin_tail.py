@@ -165,15 +165,16 @@ def issue_1451_scaled_cavity():
     from rfx.geometry.csg import Box
 
     fine = .000635
+    # Use the built 65-cell length.
     sim = Simulation(
-        freq_max=12.4e9, domain=(36*fine, 16*fine, 129*fine), dx=2*fine,
+        freq_max=12.4e9, domain=(36*fine, 16*fine, 130*fine), dx=2*fine,
         boundary=BoundarySpec(x='pec', y='pec', z=Boundary(lo='cpml', hi='pec')),
         cpml_layers=20)
     z0, z1 = 96*fine, 98*fine
-    for lo, hi in [((-1, -1, z0), (13*fine, 1, z1)),
-                   ((23*fine, -1, z0), (1, 1, z1)),
-                   ((-1, -1, z0), (1, 3*fine, z1)),
-                   ((-1, 13*fine, z0), (1, 1, z1))]:
+    for lo, hi in [((-1, -1, z0), (6 * (2*fine), 1, z1)),
+                   ((11 * (2*fine), -1, z0), (1, 1, z1)),
+                   ((-1, -1, z0), (1, 1 * (2*fine), z1)),
+                   ((-1, 6 * (2*fine), z0), (1, 1, z1))]:
         sim.add(Box(lo, hi), material='pec')
     sim.add_waveguide_port(
         32*fine, direction='+z', mode=(1, 0), mode_type='TE', f0=10.3e9,
@@ -358,7 +359,7 @@ def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout
         incident[0] = 1.
         cfg = SimpleNamespace(
             v_probe_t=port, i_probe_t=port, v_ref_t=port, i_ref_t=port,
-            dt=DT, freqs=np.array([.5]), src_amp=1., v_inc_t=incident,
+            dt=DT, freqs=np.array([.5]), src_amp=1., v_inc_t=incident, e_inc_table=incident,
             source_x_m=0., reference_x_m=0., probe_x_m=0.)
         ports = dict(s_params=None, waveguide_ports={'p': cfg})
     result = Result(state=None, dt=DT, time_series=slow[:, None],

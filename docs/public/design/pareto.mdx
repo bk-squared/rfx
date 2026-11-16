@@ -1,0 +1,129 @@
+---
+title: "Pareto Fronts"
+description: "Compare design objectives with non-dominated fronts, weighted scalarization, and epsilon constraints."
+sidebar:
+  order: 5
+---
+
+A Pareto front contains the candidates for which no other candidate is at
+least as good on every objective and strictly better on one. It describes
+tradeoffs rather than a single winner: a smaller design may have less
+bandwidth, for example. The front is relative to the candidates you evaluated;
+it does not establish a global optimum or simulation accuracy.
+
+## Three selection rules
+
+Run the blocks on this page in order. These illustrative objective rows
+minimize footprint and maximize bandwidth. Set `minimize=True` to minimize
+all columns, `False` to maximize all, or a tuple with one boolean per column.
+
+```python
+import numpy as np
+from rfx import (
+    pareto_front, weighted_scalarization,
+    epsilon_constraint_mask, select_epsilon_constrained,
+)
+
+objectives = np.array([[1.0, 2.0], [2.0, 4.0], [3.0, 3.0]])
+names = ["footprint", "bandwidth"]
+front = pareto_front(objectives, minimize=(True, False), objective_names=names)
+assert front.front_indices == (0, 1)
+```
+
+**Non-dominated front:** `pareto_front` retains all tradeoffs; `pareto_mask`
+returns just the corresponding boolean mask. Duplicate non-dominated rows
+are retained.
+
+**Weighted scalarization:** combine objectives into a lower-is-better score,
+then choose its minimum. Maximization columns are sign-flipped. Weights must
+be finite and non-negative, with at least one positive. Choose scales and
+weights to express your preferences; a weighted sum need not recover every
+point on a non-convex front. `normalize=True` min-max scales the oriented
+columns over these candidates (constant columns contribute zero).
+
+```python
+scores = weighted_scalarization(
+    objectives, weights=[1.0, 1.0], minimize=(True, False), normalize=True,
+)
+assert scores.tolist() == [1.0, 0.5, 1.5]
+assert int(np.argmin(scores)) == 1
+```
+
+**Epsilon constraint:** set acceptable limits for other columns, then optimize
+one primary column. Dictionary keys are zero-based column indices. A minimized
+column must be at most its limit; a maximized column must be at least its
+limit. The result is an original row index, or `None` if no row is feasible.
+
+```python
+feasible = epsilon_constraint_mask(objectives, {1: 3.0}, minimize=(True, False))
+choice = select_epsilon_constrained(
+    objectives, primary_index=0, epsilons={1: 3.0}, minimize=(True, False),
+)
+assert feasible.tolist() == [False, True, True]
+assert choice == 1
+```
+
+## Objectives from sweeps and optimization
+
+A [parametric sweep](/rfx/design/sweeps/) returns a `SweepResult`. Pass a
+mapping of objective names to one value per case to `.pareto_front(...)`,
+or pass built-in metric names such as `("peak_field",)`. It records the sweep
+parameter as each point's ID and metadata. Here a small stored sweep
+illustrates the mapping without running a solver:
+
+```python
+from rfx.sweep import SweepResult
+
+sweep = SweepResult(results=[None, None, None], param_name="width_mm",
+                    param_values=np.array([1.0, 2.0, 3.0]))
+sweep_front = sweep.pareto_front(
+    {"footprint": objectives[:, 0], "bandwidth": objectives[:, 1]},
+    minimize=(True, False),
+)
+assert sweep_front.front_indices == (0, 1)
+assert sweep_front.points[1].metadata == {"width_mm": 2.0}
+```
+
+For a list of `OptimizeResult` objects, assemble one row per optimized design.
+This self-contained example uses small stored results, comparing final recorded
+loss and mean permittivity. For physical tradeoffs, re-evaluate each returned
+design with the same independent metrics and converged simulation settings;
+a scalar loss history does not retain its individual objective components.
+
+```python
+from rfx.optimize import OptimizeResult
+
+results = [
+    OptimizeResult(eps_design=np.array([2.0]), loss_history=[0.4, 0.2], latent=np.array([0.0])),
+    OptimizeResult(eps_design=np.array([4.0]), loss_history=[0.3, 0.1], latent=np.array([0.0])),
+    OptimizeResult(eps_design=np.array([5.0]), loss_history=[0.5, 0.3], latent=np.array([0.0])),
+]
+rows = [[result.loss_history[-1], float(np.mean(result.eps_design))] for result in results]
+optimized_front = pareto_front(rows, objective_names=["recorded_loss", "mean_eps_r"])
+assert optimized_front.front_indices == (0, 1)
+```
+
+## JSON artifact and runnable example
+
+`ParetoFront.to_dict()` returns JSON-native data; `.to_json()` returns JSON
+text and rejects non-finite values. The artifact includes objective names and
+directions, source count, front and dominated indices, and each front point's
+original index, ID, objective values and metadata. It contains selected points,
+so keep the original objective table if you also need dominated candidates.
+
+```python
+import json
+from pathlib import Path
+
+Path("pareto_front.json").write_text(front.to_json() + "\n", encoding="utf-8")
+artifact = json.loads(Path("pareto_front.json").read_text(encoding="utf-8"))
+assert artifact["evidence_class"] == "pareto_front"
+assert artifact["front_indices"] == [0, 1]
+assert artifact["dominated_indices"] == [2]
+```
+
+Run `PYTHONPATH=. python examples/inverse_design/pareto_front_sweep.py` from
+the repository root for a CPU dielectric-insert sweep. It prints the front and
+one choice with `eps_r <= 3`, and writes `pareto_front.json` beside the script.
+Its short PEC-box transient demonstrates the API; refine the mesh and run
+length before interpreting a ranking as a device-design decision.

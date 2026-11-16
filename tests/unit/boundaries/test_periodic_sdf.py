@@ -19,9 +19,9 @@ from rfx.geometry.rasterize_grid import TracedShapeDimensionError
 SHIFT = 8
 
 
-def grid_model(periodic=True):
+def grid_model(periodic=True, *, snap="strict"):
     # solved length; #1887
-    return Simulation(20e9, (L, 8 * DX, 6 * DX), dx=DX, cpml_layers=0,
+    return Simulation(20e9, (L, 8 * DX, 6 * DX), dx=DX, cpml_layers=0, snap=snap,
                       boundary=BoundarySpec(x='periodic' if periodic else 'pec',
                                             y=Boundary(lo='pec', hi='pmc'), z='pec'))
 
@@ -34,7 +34,7 @@ def declaration(kind, x):
 
 
 def configured(kind, option, shift=0):
-    sim = model()
+    sim = grid_model(snap="declared")
     sim.add_material('dielectric', eps_r=3.7)
     sim.add(declaration(kind, L - shift * DX),
             material='dielectric' if option == 'subpixel' else 'pec')

@@ -10,7 +10,14 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
-from rfx._grid_metric import nearest_uniform_index
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import jax
+
+from rfx.errors import RfxRefusal
+
+from rfx._internal._grid_metric import nearest_uniform_index
 from rfx.boundaries.depths import resolve_face_depths
 
 import math  # noqa: F401  (used by moved method bodies)
@@ -45,7 +52,7 @@ class _CompileMixin:
     """
 
     def _periodic_flags(self) -> tuple[bool, bool, bool]:
-        """THE run's per-axis periodic flags (#689) — one spelling.
+        """THE run's per-axis periodic flags — one spelling.
 
         `realized_pec_edge_masks` is only correct under the flags the step
         function will use, so every site that realizes PEC edges outside a
@@ -62,7 +69,7 @@ class _CompileMixin:
     from rfx.boundaries.features import build_grid as _build_grid
 
     def _resolve_face_layers(self) -> dict:
-        """T7 Phase 2 PR2: per-face active CPML layer counts from the
+        """Per-face active CPML layer counts from the
         canonical ``BoundarySpec``. Faces without an explicit
         ``lo_thickness`` / ``hi_thickness`` default to the scalar
         ``cpml_layers`` (the symmetric common case — no padding).
@@ -132,23 +139,26 @@ class _CompileMixin:
         budget=None,
         grid_kind="Grid",
         periodic=(False, False, False),
+        grid=None,
+        high_wall=None,
     ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Initialize Debye/Lorentz coefficients for the given materials.
 
         ``field_dtype`` is the field storage dtype the ADE state will be
         driven by; the P carry is allocated at
-        ``ade_state_dtype(field_dtype)`` (issue #656). Callers that leave it
+        ``ade_state_dtype(field_dtype)``. Callers that leave it
         ``None`` get the ambient default float with a float32 floor.
 
         ``periodic`` is the run's per-axis flags, as its E update takes them:
         the coefficients are per E component, averaged over each edge's four
-        cells (#1260), and a periodic axis wraps that average.
+        cells, and a periodic axis wraps that average.
         """
         debye = None
         if debye_spec is not None:
             debye_poles, debye_masks = debye_spec
             debye = init_debye(debye_poles, materials, dt, mask=debye_masks,
-                               field_dtype=field_dtype, periodic=periodic)
+                               field_dtype=field_dtype, periodic=periodic,
+                               grid=grid, high_wall=high_wall)
 
         lorentz = None
         if lorentz_spec is not None:
@@ -159,14 +169,15 @@ class _CompileMixin:
             lorentz_poles, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
                                    field_dtype=field_dtype, periodic=periodic,
-                                   budget=budget if debye_spec is None else None, grid_kind=grid_kind)
+                                   budget=budget if debye_spec is None else None, grid_kind=grid_kind,
+                                   grid=grid, high_wall=high_wall)
             if debye_spec is not None and budget is not None:
                 from rfx.materials.lorentz import mark_judged
                 lorentz = (mark_judged(lorentz[0]), lorentz[1])
 
         return materials, debye, lorentz
 
-    # Default sigma floor for "this cell is a conductor" (#695). Two
+    # Default sigma floor for "this cell is a conductor". Two
     # decades below the PEC promotion threshold so ordinary lossy
     # dielectrics (sigma ~ 1e-3 - 1e0 S/m) stay out while a real
     # conductor -- including a DC-fold thin-conductor sheet, whose
@@ -175,10 +186,10 @@ class _CompileMixin:
 
     def conductor_mask(
         self,
-        grid=None,
+        grid: Grid | NonUniformGrid | None = None,
         *,
         sigma_threshold: float | None = None,
-    ):
+    ) -> jax.Array:
         """Return the FULL conductor cell footprint of this simulation.
 
         A surface-impedance (``surface_impedance_f0``) thin
@@ -241,7 +252,7 @@ class _CompileMixin:
             materials, _, _, pec_mask, _, _, _ = self._assemble_materials(
                 grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
                 pec_wires=pec_wires)
-        # A sub-cell PolylineWire owns no cell either (#931 §1.4), so a
+        # A sub-cell PolylineWire owns no cell either, so a
         # footprint built from cells + sheet planes alone reports a
         # wire-fed model as metal-free exactly where the wire runs. Its
         # path NODES are the cell-shaped answer for a 1-D region.
@@ -297,7 +308,7 @@ class _CompileMixin:
             raise NotImplementedError(
                 "the coaxial S-parameter lanes (compute_coaxial_line_reflection, "
                 "compute_coaxial_two_port) "
-                "do not realize declared PEC geometry of ANY kind (#931): "
+                "do not realize declared PEC geometry of ANY kind: "
                 "this material-only builder discards the cell mask, and "
                 "a sheet or a wire owns no cell to begin "
                 f"with. Declared here: {', '.join(_declared)} — all of it "
@@ -309,7 +320,7 @@ class _CompileMixin:
                 "forward(), which realize the declaration.")
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
-            periodic=self._periodic_flags())
+            periodic=self._periodic_flags(), grid=grid)
         return materials, debye, lorentz
 
     @staticmethod
@@ -319,14 +330,21 @@ class _CompileMixin:
         dx: float,
         grid_size: int,
         axis_pad: int,
+        axis_pad_hi: int | None = None,
     ) -> tuple[tuple[int, int], float]:
-        """Convert a physical range to a grid slice and actual physical span."""
+        """Convert a physical range to a grid slice and actual physical span.
+
+        ``axis_pad`` is the low-side pad; ``axis_pad_hi`` the high-side pad,
+        which differs when one transverse face is an absorber and the other
+        is not (default: equal to ``axis_pad``).
+        """
+        pad_hi = axis_pad if axis_pad_hi is None else axis_pad_hi
         if value_range is None:
-            return (axis_pad, grid_size - axis_pad), domain_max
+            return (axis_pad, grid_size - pad_hi), domain_max
         lo, hi = value_range
         lo_idx = nearest_uniform_index(lo / dx) + axis_pad
         hi_idx = nearest_uniform_index(hi / dx) + axis_pad + 1
-        if lo_idx < axis_pad or hi_idx > grid_size - axis_pad or hi_idx - lo_idx < 2:
+        if lo_idx < axis_pad or hi_idx > grid_size - pad_hi or hi_idx - lo_idx < 2:
             raise ValueError(
                 f"range {value_range!r} does not resolve to a valid aperture on the current grid"
             )
@@ -341,7 +359,7 @@ class _CompileMixin:
         """Default waveguide source center = center of the requested DFT band.
 
         The old fallback (``freq_max / 2``) had no relation to the port mode
-        and could land below the mode cutoff (issue #150: an evanescent
+        and could land below the mode cutoff (an evanescent
         launch whose near-cutoff content crawls at vanishing group velocity,
         producing junk S-parameters that GROW with run length while the
         in-band incident reference sits in the source tail). Centering on
@@ -354,6 +372,10 @@ class _CompileMixin:
         except (TypeError, ValueError):
             pass
         return self._freq_max / 2.0
+
+    def _resolve_waveguide_f0(self, entry: _WaveguidePortEntry, freqs) -> float:
+        """Use one source center for waveguide builders and cutoff checks."""
+        return entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs)
 
     def _build_waveguide_port_config(
         self,
@@ -391,14 +413,14 @@ class _CompileMixin:
                 "flip direction, or move x_position inward"
             )
         if normal_axis == "x":
-            u_slice, a_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1])
-            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2])
+            u_slice, a_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1], grid.pad_y_hi)
+            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2], grid.pad_z_hi)
         elif normal_axis == "y":
-            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0])
-            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2])
+            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0], grid.pad_x_hi)
+            v_slice, b_span = self._range_to_slice(entry.z_range, self._domain[2], grid.dx, grid.nz, grid.axis_pads[2], grid.pad_z_hi)
         else:
-            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0])
-            v_slice, b_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1])
+            u_slice, a_span = self._range_to_slice(entry.x_range, self._domain[0], grid.dx, grid.nx, grid.axis_pads[0], grid.pad_x_hi)
+            v_slice, b_span = self._range_to_slice(entry.y_range, self._domain[1], grid.dx, grid.ny, grid.axis_pads[1], grid.pad_y_hi)
         u_slice, v_slice = _node_span_to_cell_span(u_slice), _node_span_to_cell_span(v_slice)
         port = WaveguidePort(
             x_index=x_index,
@@ -420,7 +442,7 @@ class _CompileMixin:
                 grid.dx,
                 freqs,
                 n_modes=entry.n_modes,
-                f0=entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs),
+                f0=self._resolve_waveguide_f0(entry, freqs),
                 bandwidth=entry.bandwidth,
                 amplitude=entry.amplitude,
                 probe_offset=entry.probe_offset,
@@ -437,7 +459,7 @@ class _CompileMixin:
             port,
             grid.dx,
             freqs,
-            f0=entry.f0 if entry.f0 is not None else self._default_waveguide_f0(freqs),
+            f0=self._resolve_waveguide_f0(entry, freqs),
             bandwidth=entry.bandwidth,
             amplitude=entry.amplitude,
             probe_offset=entry.probe_offset,
@@ -481,6 +503,7 @@ class _CompileMixin:
             dt_caller="Simulation",
             nominal_profiles=getattr(self, "_nominal_profiles", None),
             automatic=self._declared_mesh["_dx"] is None,
+            snap=getattr(self, "_snap", "strict"),
         )
         from rfx.boundaries.features import judge_wall_axes
         judge_wall_axes(self, grid, boundary_depths=depths)
@@ -531,7 +554,7 @@ def _uncollected_pec_caller() -> str:
 def _refuse_uncollected_pec(sheets, wires, *, lane: str) -> None:
     """Refuse to return a ``pec_mask`` that silently omits a sheet or wire.
 
-    A sheet owns no cell (#931 §1.3), so it cannot ride out in
+    A sheet owns no cell, so it cannot ride out in
     ``pec_mask``: a caller that passes no collector receives a mask with
     the conductor MISSING, and nothing downstream can tell that from a
     model that never had one.  This was a ``UserWarning`` while the
@@ -552,11 +575,11 @@ def _refuse_uncollected_pec(sheets, wires, *, lane: str) -> None:
         what.append(f"{len(sheets)} PEC sheet(s)")
     if wires:
         what.append(f"{len(wires)} PEC wire(s)")
-    raise ValueError(
+    raise RfxRefusal(
         f"_assemble_materials ({lane} lane): {' and '.join(what)} were "
         f"classified, but {_uncollected_pec_caller()} passed no "
-        "pec_sheets/pec_wires collector. A sheet owns no cell (#931 "
-        "§1.3), so it cannot be returned in pec_mask and this caller "
+        "pec_sheets/pec_wires collector. A sheet owns no cell"
+        ", so it cannot be returned in pec_mask and this caller "
         "would step or report a model with the conductor MISSING. Pass "
         "pec_sheets=[] / pec_wires=[]: realize them with "
         "rfx.boundaries.pec.realized_pec_edge_masks if this path steps "

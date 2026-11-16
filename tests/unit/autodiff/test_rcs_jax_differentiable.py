@@ -14,7 +14,6 @@ Three gates (ground truths):
     CONVERGES to AD as h→0. σ(ε) sits near a backscatter maximum here (strongly curved), so
     a single large-h FD is unreliable (ch07 doctrine: step-sweep, not single-h).
 
-Harness: docs/research_notes/experiments/i404_oblique_20260720/rcs_jax_validate.py
 """
 import numpy as np
 import jax
@@ -23,10 +22,13 @@ import pytest
 
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
-from rfx.farfield import NTFFBox, compute_far_field
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.farfield import NTFFBox
+from rfx.measurement.farfield import compute_far_field
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 from rfx.simulation import run
-from rfx.rcs import compute_rcs, compute_rcs_jax
+from rfx.measurement.rcs import compute_rcs
+from rfx.rcs import compute_rcs_jax
 
 F0, BW = 10e9, 0.5
 CPML = 8

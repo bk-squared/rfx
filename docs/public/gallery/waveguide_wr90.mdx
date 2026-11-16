@@ -1,6 +1,6 @@
 ---
 title: "Hollow rectangular waveguide (WR-90, TE10)"
-description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11| stays below 0.007 and |S21| within 0.0014 of 1 against the exact matched-guide answer, with a jax.grad sensitivity of |S21| to the dielectric fill validated against finite differences."
+description: "A TE10 mode propagates down an empty WR-90 guide above cutoff — |S11| stays below 0.007 and |S21| within 0.0014 of 1 against the exact matched-guide answer, with a jax.grad sensitivity of |S21|² to the dielectric fill that matches central finite differences of the same model to 0.22 % in one float32 computation."
 sidebar:
   order: 13
 ---
@@ -40,8 +40,10 @@ below fills only a short section instead, whose two faces reflect.
   while lower frequencies would not.
 - Reading two-port **|S11| (reflection) and |S21| (transmission)** against the
   exact matched empty-guide answer (`|S11| = 0`, `|S21| = 1`).
-- Taking a **gradient through the FDTD solver** with `jax.grad`: how `|S21|`
-  responds to the guide's dielectric fill, validated against finite differences.
+- Taking a **gradient through the FDTD solver** with `jax.grad`: how `|S21|²`
+  responds to the guide's dielectric fill, checked against central finite
+  differences of the same model for one float32 computation. The case has no check
+  against a longer run.
 
 ## Geometry & materials
 
@@ -84,7 +86,7 @@ The render above confirms the guide before committing compute: broad wall a,
 narrow wall b, the two port planes set back from the absorbers, and clearance to
 the CPML on both ends. An empty WR-90 run at 1.27 mm (about 36k cells with the
 absorbers, about 6,000 steps for each of the two driven ports) finishes in under
-a minute on a CPU; peak memory is a few tens of megabytes.
+a minute on a CPU; the Python process peaked at about 750 MB.
 
 ## Run
 
@@ -183,9 +185,9 @@ frequency above cutoff. The figure plots how far rfx is from it, `|S11|` and
 so that 6×10⁻⁴ is extraction error as well. The calculation is
 `normalize=False`, the modal voltage and current at each port with no reference
 run. `normalize=True` and `normalize="flux"` divide by a reference run of the
-empty guide, which for this structure is the same run, so they return
-`|S11| = 0` and `|S21| = 1` by construction: on an empty guide they are not a
-check of the port.
+empty guide, which for this structure is the same run. Both return `|S11| = 0`
+by construction: on an empty guide they are not a check of the port's
+reflection.
 
 ![|S11| and |S21| vs the exact matched empty-guide answer](/rfx/gallery/assets/waveguide_wr90/validation.png)
 
@@ -248,13 +250,5 @@ divides by a separate reference run assembled outside JAX, so it is not: under
 `jax.grad`/`jax.jit`, a traced
 `eps_override`/`sigma_override` makes `compute_waveguide_s_matrix` raise
 `NotImplementedError` before any FDTD run.
-
-## Next
-
-<LinkCard
-  title="Dielectric slab (normal incidence)"
-  href="/rfx/gallery/multilayer_fresnel/"
-  description="Reflection and transmission of a dielectric slab vs the exact transfer-matrix solution, with an exact-derivative autodiff check."
-/>
 
 <p style="opacity:0.6;font-size:0.85em">Computed with rfx 2.0.0rc1 · <code>9f1abcc</code> · generated 2026-10-21T23:58:55Z</p>

@@ -17,7 +17,8 @@ from rfx.api import Simulation
 from rfx.farfield import NTFFBox
 from rfx.rcs import compute_rcs_jax
 from rfx.sources.sources import CustomWaveform
-from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
+from rfx.sources.tfsf import init_tfsf
+from rfx.measurement.incident import measure_normal_incident_spectrum
 
 
 N_STEPS = 192

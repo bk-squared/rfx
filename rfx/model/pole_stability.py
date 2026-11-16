@@ -1,10 +1,12 @@
 """Admission of the explicit Lorentz update on realized cell pole patterns.
 
-The state is (e, h, p_1, q_1, ...), with polarization in eps0 units and
-q the previous polarization. Cell patterns use their lowest epsilon and
+The state is (e, h, p_1, v_1, ...), with polarization in eps0 units and
+v the per-step polarization increment. Cell patterns use their lowest epsilon and
 both conductivity extrema, including Debye polarizations in the same cells.
 """
 from __future__ import annotations
+
+from rfx.errors import RfxRefusal
 
 from typing import NamedTuple
 
@@ -19,16 +21,15 @@ X_SAMPLES = 129
 def largest_growth(eps_inf, sigma, poles, dt, x_max, *, debye=(), x_min=0.0):
     """Maximum spectral radius of the actual combined ADE update.
 
-    State: (e, h, p_1, q_1, ..., r_1, ...), with Lorentz p=P/eps0,
-    q=p at the previous step, Debye r=P_D/eps0, and h=dt curl(H)/eps0.
+    State: (e, h, p_1, v_1, ..., r_1, ...), with Lorentz p=P/eps0,
+    v=(P-P_prev)/eps0, Debye r=P_D/eps0, and h=dt curl(H)/eps0.
     Faraday gives h'=h-x e, x=4(c0 dt)^2 sum sin(k_a d_a/2)^2/d_a^2.
-    ``lorentz_p_component`` gives p'=A p+B q+C e, q'=p, where
-    A=(2-w0^2 dt^2)/(1+delta dt), B=-(1-delta dt)/(1+delta dt),
-    C=kappa dt^2/(1+delta dt). ``debye_e_component`` and the mixed update
+    ``lorentz_p_component`` gives v'=(1-damping)v-restoring*p+C*e,
+    p'=p+v', with increment terms from the shared elementwise core. ``debye_e_component`` and the mixed update
     in ``uniform_setup`` use a=(2 tau-dt)/(2 tau+dt), b=de dt/(2 tau+dt):
     gamma=eps_inf+sigma dt/(2 eps0)+sum b,
     gamma e'=(eps_inf-sigma dt/(2 eps0)-sum b)e+h'
-             -sum(p'-p)+sum((1-a)r), and r'=a r+b(e'+e).
+             -sum(v')+sum((1-a)r), and r'=a r+b(e'+e).
     These are also the Debye-only rows when there are no Lorentz poles.
     The default samples the unchanged 129 modes; x_min=x_max isolates one
     Fourier mode for the independent time-domain kernel witness.
@@ -48,15 +49,21 @@ def largest_growth(eps_inf, sigma, poles, dt, x_max, *, debye=(), x_min=0.0):
     matrix[:, 1, 1] = 1.0
     matrix[:, 0, :] = matrix[:, 1, :]
     matrix[:, 0, 0] += b_eps
-    for i, (w0, delta, kappa) in enumerate(poles):
-        p, q = 2 + 2 * i, 3 + 2 * i
-        d = delta * dt
-        matrix[:, p, 0] = kappa * dt * dt / (1.0 + d)
-        matrix[:, p, p] = (2.0 - (w0 * dt) ** 2) / (1.0 + d)
-        matrix[:, p, q] = -(1.0 - d) / (1.0 + d)
-        matrix[:, q, p] = 1.0
-        matrix[:, 0, :] -= matrix[:, p, :]
-        matrix[:, 0, p] += 1.0
+    if poles:
+        from jax import enable_x64, ensure_compile_time_eval
+        from rfx.materials.lorentz import pole_update_coeffs
+        with enable_x64(), ensure_compile_time_eval():
+            omega_0, delta, kappa = np.asarray(poles, dtype=np.float64).T
+            damping, restoring, coupling = (np.asarray(v) for v in pole_update_coeffs(
+                omega_0, delta, kappa, np.float64(dt), field_dtype=None))
+        for i in range(len(poles)):
+            p, v = 2 + 2 * i, 3 + 2 * i
+            matrix[:, v, 0] = coupling[i] / EPS_0
+            matrix[:, v, p] = -restoring[i]
+            matrix[:, v, v] = 1.0 - damping[i]
+            matrix[:, p, :] = matrix[:, v, :]
+            matrix[:, p, p] += 1.0
+            matrix[:, 0, :] -= matrix[:, v, :]
     start = 2 + 2 * len(poles)
     for i, (a, b) in enumerate(terms, start):
         matrix[:, 0, i] = 1 - a
@@ -173,10 +180,12 @@ class PoleSetExtremes(NamedTuple):
     count: object
     occupied: tuple
     debye: tuple = ()
+    map_corners: tuple = ()
 
 
 def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     """Reduce static pole patterns over owned cells only; never count halos."""
+    import jax
     import jax.numpy as jnp
     from rfx.core.jax_utils import is_tracer
 
@@ -219,11 +228,15 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     else:
         unique_codes, inverse, counts = np.unique(codes, return_inverse=True, return_counts=True)
     patterns = [[bool((int(code) >> bit) & 1) for bit in range(len(poles))] for code in unique_codes]
-    values = [materials.eps_r, materials.sigma] + [v for p in poles for v in p]
+    values = [materials.eps_r, materials.sigma] + jax.tree.leaves([v for p in poles for v in p])
     traced = abstract_masks or any(is_tracer(v) for v in values)
     # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
     xp = jnp if traced or spread else np
+    # A concrete sigma keeps concrete extremes when only eps is traced (the passive-Debye skip reads them).
+    sigma = values[1]
+    xs = np if not (abstract_masks or is_tracer(sigma)
+                    or not getattr(sigma, "is_fully_addressable", True)) else xp
     records = []
     for index, (pattern, count) in enumerate(zip(patterns, counts)):
         if not np.any(pattern):
@@ -236,11 +249,21 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
             count = jnp.sum(selected)
         else:
             selected = (inverse == index).reshape(shape)
-        chosen = tuple(p for p, present in zip(lp, pattern) if present)
+        from rfx.materials.pole_map import SampledPoleMap, pattern_corner
+        chosen_list: list = []
+        map_corners = []
+        for p, present in zip(lp, pattern):
+            if not present:
+                continue
+            if isinstance(p, SampledPoleMap):
+                p, position = pattern_corner(p, selected, xp)
+                map_corners.append((len(chosen_list), position))
+            chosen_list.append(p)
+        chosen = tuple(chosen_list)
         debye = tuple(p for p, present in zip(dp, pattern[len(lp):]) if present)
         eps_low = xp.min(xp.where(selected, materials.eps_r, xp.inf))
-        sigma_low = xp.min(xp.where(selected, materials.sigma, xp.inf))
-        sigma_high = xp.max(xp.where(selected, materials.sigma, -xp.inf))
+        sigma_low = xs.min(xs.where(selected, materials.sigma, xs.inf))
+        sigma_high = xs.max(xs.where(selected, materials.sigma, -xs.inf))
 
         occupied = tuple((jnp if abstract_masks else np).any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
                          for axis in range(selected.ndim))
@@ -250,7 +273,7 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
                 global_x[view.x0:view.x1] = occupied[0]
             occupied = (global_x,) + occupied[1:]
         records.append(PoleSetExtremes(int(unique_codes[index]), chosen, eps_low,
-                                      sigma_low, sigma_high, count, occupied, debye))
+                                      sigma_low, sigma_high, count, occupied, debye, tuple(map_corners)))
     return tuple(records)
 
 
@@ -266,30 +289,81 @@ def combine_pole_extremes(records_from_all_slabs):
                 combined[record.code] = record
                 continue
             previous = combined[record.code]
+            # Counts and occupancy follow the extremes: a jax operator on concrete
+            # records under an outer jit would stage them, and the judge would refuse.
             values = (previous.eps_low, previous.sigma_low, previous.sigma_high,
-                      record.eps_low, record.sigma_low, record.sigma_high)
+                      record.eps_low, record.sigma_low, record.sigma_high,
+                      previous.count, record.count, *previous.occupied, *record.occupied)
             xp = jnp if any(is_tracer(v) for v in values) else np
             combined[record.code] = previous._replace(
                 eps_low=xp.minimum(previous.eps_low, record.eps_low),
                 sigma_low=xp.minimum(previous.sigma_low, record.sigma_low),
                 sigma_high=xp.maximum(previous.sigma_high, record.sigma_high),
-                count=previous.count + record.count,
-                occupied=tuple(a | b for a, b in zip(previous.occupied, record.occupied)))
+                count=xp.add(previous.count, record.count),
+                occupied=tuple(xp.logical_or(a, b) for a, b in zip(previous.occupied, record.occupied)))
     return tuple(combined[code] for code in sorted(combined))
 
 
 def _concrete(value):
     """The concrete value under an eager trace (jvp, grad), else the value."""
     from rfx.core.jax_utils import is_tracer
+    from rfx.materials.relative_strength import RelativeStrength
 
+    if isinstance(value, RelativeStrength):
+        return RelativeStrength(value.reference, _concrete(value.value)).si
     if not is_tracer(value):
         return value
     concrete = value.to_concrete_value()
     return value if concrete is None else concrete
 
 
+def _refuse_traced_out_of_program():
+    raise RfxRefusal(
+        "cannot judge Lorentz/Drude time-step stability: this multi-device run's material values or "
+        "cell sizes are traced by an outer jax.jit (or a nested jax.vmap), and a check cannot be raised "
+        "from inside a multi-device program. Call it without jax.jit (jax.grad, jax.jvp and one "
+        "jax.vmap alone keep concrete values and are judged), or run on one device.")
+
+
+def _eager_batch_members(args):
+    """Each member's concrete arguments under one eager ``jax.vmap``, else None.
+
+    An eager vmap carries concrete values (``BatchTracer.val``); a vmap under
+    ``jit`` or a nested vmap does not, and returns None.
+    """
+    from jax._src.interpreters.batching import BatchTracer
+
+    batched = [v for v in args if isinstance(v, BatchTracer) and v.batch_dim is not None]
+    if not batched or any(v._trace is not batched[0]._trace for v in batched):
+        return None
+    if any(_is_abstract(v) and not isinstance(v, BatchTracer) for v in args) or \
+            any(_is_abstract(v.val) for v in args if isinstance(v, BatchTracer)):
+        return None
+    size = batched[0].val.shape[batched[0].batch_dim]
+
+    def member(v, i):
+        if not isinstance(v, BatchTracer):
+            return v
+        value = np.asarray(_concrete(v.val))   # an eager grad/jvp around the vmap wraps the batch
+        return value if v.batch_dim is None else np.take(value, i, axis=v.batch_dim)
+    return [tuple(member(v, i) for v in args) for i in range(size)]
+
+
+def _passive_debye(record):
+    """Concrete Debye poles with delta_eps >= 0, tau > 0 and a concrete sigma_low >= 0."""
+    values = [_concrete(record.sigma_low)] + [_concrete(v) for p in record.debye for v in p]
+    if any(_is_abstract(v) for v in values):
+        return False
+    sigma, *flat = (float(v) for v in values)
+    return sigma >= 0 and all(de >= 0 and tau > 0 for de, tau in zip(flat[::2], flat[1::2]))
+
+
 def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
-    """Judge concrete values; stage checks only in single-device programs."""
+    """Judge concrete values; stage checks only in single-device programs.
+
+    Out of program (multi-device) the members of an eager ``jax.vmap`` are judged
+    one by one; any other traced value is refused: it cannot be judged there.
+    """
     from rfx._traced_check import traced_check
 
     if budget is None:
@@ -297,7 +371,7 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
     for record in records:
         local = budget.local_axes(record.occupied) if hasattr(budget, "local_axes") else float(budget)
 
-        def check(eps, low, high, step, budget, count, *parameters, n_lorentz=len(record.poles)):
+        def check(eps, low, high, step, budget, count, corners, *parameters, n_lorentz=len(record.poles)):
             pole_values = np.asarray(parameters[:3 * n_lorentz], dtype=np.float64).reshape(-1, 3)
             debye = np.asarray(parameters[3 * n_lorentz:], dtype=np.float64).reshape(-1, 2)
             eps, low, high, step = map(float, (eps, low, high, step))
@@ -325,17 +399,30 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
                           f"so that dt={stable:.16g} can be passed") + "; or raise eps_inf"
             names = ", ".join(f"(omega_0={w:.6g}, delta={d:.6g}, kappa={k:.6g})"
                               for w, d, k in pole_values)
+            if corners:
+                names += "; " + ", ".join(
+                    f"LorentzPoleMap corner {int(i)} kappa_max at {tuple(float(x) for x in position)} m"
+                    for i, position in corners)
             raise ValueError(
                 f"Lorentz/Drude poles {names} on {count} cells, eps_low={eps:.6g}, "
                 f"sigma_low={low:.6g}, sigma_high={high:.6g}: unstable at this model's time step "
                 f"dt = {step:.6g} s; growth per step = {growth:.9g}; {limit}. To run: {remedy}.")
 
-        args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.count,
+        args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.count, record.map_corners,
                 *(v for p in record.poles + record.debye for v in p))
         # Eager autodiff carries concrete primals: judge them on the host. A
         # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         if not in_program and any(_is_abstract(v) for v in args):
+            if not record.poles and _passive_debye(record):
+                # A passive Debye-only set (delta_eps >= 0, tau > 0, sigma >= 0) grows at most 1 inside the
+                # check's Courant pre-filter (trapezoidal update), so the check cannot refuse it.
+                continue
+            members = _eager_batch_members(args)
+            if members is None:
+                _refuse_traced_out_of_program()
+            for member in members:
+                check(*member)
             continue
         traced_check("Lorentz/Drude poles", "time-step stability", check, *args, ordered=True)
 
@@ -355,7 +442,7 @@ def _prebuilt_cell_error(edges, component, precision):
 
 
 def _check_prebuilt_cells(values, edges, component, periodic, precision, *, positive=False,
-                          invalid_message=None):
+                          invalid_message=None, high_wall: tuple[bool, bool, bool]):
     """Refuse uncertain positivity or a reconstruction that changes an edge."""
     from rfx.core.yee import _edge_mean_component
     error = _prebuilt_cell_error(edges, component, precision)
@@ -365,13 +452,13 @@ def _check_prebuilt_cells(values, edges, component, periodic, precision, *, posi
             + ("finite and positive" if positive else "finite and nonnegative")))
     values = np.maximum(values, 0.)
     axes = [a for a in range(3) if a != component]
-    averaged = _edge_mean_component(values, *axes, periodic, None, array_module=np)
+    averaged = _edge_mean_component(values, *axes, periodic, None, array_module=np, high_wall=high_wall)
     if not np.all(np.isfinite(averaged)) or np.any(abs(averaged - edges) > error):
         raise ValueError(f"cannot judge prebuilt Lorentz coefficients: recovered cells do not reproduce component {component} edges within rounding")
     return values
 
 
-def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False):
+def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False, high_wall: tuple[bool, bool, bool]):
     """Invert clipped means or the odd periodic cyclic system, then check it.
 
     Along a periodic axis, y[i]+y[i-1]=2*edge[i], including the seam.
@@ -404,7 +491,7 @@ def _unaverage_prebuilt(edges, component, periodic, precision, *, positive=False
     ambiguity = (f"cannot judge prebuilt Lorentz coefficients: periodic edge mean on even axis {ambiguous} does not determine unique cells"
                  if ambiguous is not None else None)
     values = _check_prebuilt_cells(values, edges, component, periodic, precision,
-                                  positive=positive, invalid_message=ambiguity)
+                                  positive=positive, invalid_message=ambiguity, high_wall=high_wall)
     if ambiguity is not None:
         raise ValueError(ambiguity)
     return values
@@ -425,11 +512,15 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
         return
     from rfx._traced_check import traced_check
     from rfx.materials.debye import per_component
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = unpadded_high_walls(grid)
     cells = getattr(grid, "cells", None)
     if not callable(cells) or getattr(grid, "dt", None) is None:
         raise ValueError("prebuilt Lorentz coefficients require cell sizes and dt for pole stability admission")
     axes = (0, 1) if getattr(grid, "is_2d", False) else (0, 1, 2)
     lc = lorentz[0]
+    if isinstance(lc.damping, tuple) or isinstance(lc.restoring, tuple):
+        raise ValueError("LorentzPoleMap tuple damping/restoring coefficients require a judged realization; judge_prebuilt_poles cannot recover them")
     dc = None if debye is None else debye[0]
 
     def check(step, widths, coeffs, debye_coeffs):
@@ -441,11 +532,11 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
             cc = np.asarray(per_component(coeffs.cc, "cc")[component])
             precision = max(np.finfo(ca.dtype).eps, np.finfo(cc.dtype).eps)
             ca = ca.astype(np.float64)
-            a, b = np.asarray(coeffs.a), np.asarray(coeffs.b)
+            damping, restoring = np.asarray(coeffs.damping), np.asarray(coeffs.restoring)
             c = np.asarray(per_component(coeffs.c, "c")[component])
-            shape, n = ca.shape, a.shape[0]
+            shape, n = ca.shape, damping.shape[0]
             def unaverage(values, *, positive=False):
-                return _unaverage_prebuilt(values, component, periodic, precision, positive=positive)
+                return _unaverage_prebuilt(values, component, periodic, precision, positive=positive, high_wall=high_wall)
 
             def pole_cells(values):
                 result = unaverage(values)
@@ -465,13 +556,13 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
                             scale = np.median(values[quarters == q]) * (4 / q)
                             break
                     result = binary * scale
-                return _check_prebuilt_cells(result, values, component, periodic, precision)
+                return _check_prebuilt_cells(result, values, component, periodic, precision, high_wall=high_wall)
 
             with np.errstate(divide="ignore", invalid="ignore"):
                 eps = unaverage((1. + ca) / (2. * cc * EPS_0), positive=True)
                 sigma = unaverage((1. - ca) / (cc * step))
             cell_c = np.stack([pole_cells(v) for v in c])
-            columns = [v.reshape(-1) for terms in (a, b, cell_c) for v in terms]
+            columns = [v.reshape(-1) for terms in (damping, restoring, cell_c) for v in terms]
             nd = 0 if debye_coeffs is None else debye_coeffs.alpha.shape[0]
             if nd:
                 beta = per_component(debye_coeffs.beta, "beta")[component]
@@ -480,14 +571,15 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
                                (debye_coeffs.alpha, cell_beta) for v in terms)
             rows, inverse = np.unique(np.stack(columns, axis=1), axis=0, return_inverse=True)
             for index, row in enumerate(rows):
-                av, bv, cv = row[:3 * n].reshape(3, n)
+                dv, rv, cv = row[:3 * n].reshape(3, n)
                 present = cv != 0.
                 if not np.any(present):
                     continue
-                av, bv, cv = av[present], bv[present], cv[present]
-                denom = 2. / (1. - bv)
-                poles = tuple(zip(np.sqrt(np.maximum(2. - av * denom, 0.)) / step,
-                                  (denom - 1.) / step, cv * denom / (EPS_0 * step * step)))
+                dv, rv, cv = dv[present], rv[present], cv[present]
+                ddt = dv / (2. - dv)
+                denom = 1. + ddt
+                poles = tuple(zip(np.sqrt(np.maximum(rv * denom, 0.)) / step,
+                                  ddt / step, cv * denom / (EPS_0 * step * step)))
                 selected = (inverse == index).reshape(shape)
                 dp = ()
                 if nd:
@@ -516,5 +608,5 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
     operands = (grid.dt, tuple(cells(a) for a in axes), lc, dc)
     operands = jax.tree.map(_concrete, operands)
     if not in_program and any(_is_abstract(v) for v in jax.tree.leaves(operands)):
-        return
+        _refuse_traced_out_of_program()
     traced_check("prebuilt Lorentz coefficients", "time-step stability", check, *operands, ordered=True)

@@ -13,7 +13,7 @@
 > the lattice").
 
 Date: 2026-09-02. Branch `agent/reorg-tier4b-unit`, stacked on tier 4a
-(`agent/reorg-tier4a-studio`). Approved by the PI on 2026-09-02 as the last
+(`agent/reorg-tier4a-studio`). This is the last
 MOVE tier: everything still at top level `tests/test_*.py` after tiers 1-4a
 (390 files) moves into `tests/oracle/` (flat) or `tests/unit/<module>/`.
 MOVES ONLY — `git mv`, basenames unchanged, no content rewrites beyond the

@@ -655,7 +655,7 @@ def test_extract_lumped_s11_is_the_decompose_diagonal():
 def test_run_forward_shapes_are_the_intended_ranks(crosscheck):
     """Rank contract: run() and forward() both return S[receive, drive, freq].
 
-    Until decision C on #1373 (rfx-lead) this pinned forward()'s 1-D
+    Until decision C on #1373 this pinned forward()'s 1-D
     per-port diagonal (n_freqs,) against run()'s (1, 1, n_freqs). Since then
     forward() returns the (N, N, n_freqs) matrix on both meshes from the
     shared assembler (rfx.measurement.port_s.port_s_from_record), so one

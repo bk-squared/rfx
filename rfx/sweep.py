@@ -17,6 +17,11 @@ and may be added as a future fast-path.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+
 from dataclasses import dataclass
 from collections.abc import Mapping, Sequence
 from typing import Callable, Any
@@ -25,16 +30,7 @@ import numpy as np
 
 from rfx.pareto import ParetoFront, pareto_front as build_pareto_front
 
-try:
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError("matplotlib is required for sweep visualization")
+from rfx._plotting import _pyplot
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +166,7 @@ class SweepResult:
 def parametric_sweep(
     sim_factory: Callable,
     param_name: str,
-    param_values,
+    param_values: ArrayLike,
     *,
     n_steps: int | None = None,
     until_decay: float | None = None,
@@ -266,7 +262,7 @@ def plot_sweep(
     -------
     matplotlib Figure
     """
-    _require_mpl()
+    plt = _pyplot()
 
     if callable(metric):
         y = np.asarray([metric(r) for r in sweep_result.results])

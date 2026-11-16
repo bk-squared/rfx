@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from rfx.ringdown import RingdownModel, _as_2d, _cmul
+from rfx.measurement.ringdown_model import RingdownModel, _as_2d, _cmul
 
 
 def plain_dft(series, dt, freqs, *, chunk: int = 4096) -> np.ndarray:
@@ -59,3 +59,25 @@ def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
     zn1 = np.exp(-1j * wdt * n1)
     one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])          # (nf, K)
     return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
+
+
+def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
+    """A caller-supplied ``(nf,)`` or ``(nf, C)`` spectrum as ``(nf, C)``, or raise."""
+    a = np.asarray(arr)
+    if a.ndim == 1:
+        a = a[:, None]
+    if a.shape != (nf, n_ch):
+        raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
+                         f"or ({nf},) for a single channel")
+    return a
+
+
+def completion_tail(model, n_last, freqs, *, unit_tol=1e-6):
+    """Infinite-sum tail with unresolved non-static poles omitted."""
+    from dataclasses import replace
+    from rfx.measurement.ringdown_resolution import completion_poles
+
+    _, keep = completion_poles(model, n_last + 1, unit_tol)
+    if not np.all(keep):
+        model = replace(model, s=model.s[keep], c=model.c[keep])
+    return tail_dft(model, n_last, freqs)

@@ -16,8 +16,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx._precision import FLOAT64_MODE_ERROR
-from rfx.farfield import compute_far_field_jax
+from rfx._internal._precision import FLOAT64_MODE_ERROR
+from rfx.measurement.farfield import compute_far_field_jax
 from rfx.sources.sources import GaussianPulse
 
 

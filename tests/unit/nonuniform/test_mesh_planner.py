@@ -32,6 +32,7 @@ EXPECTED_TOP_KEYS = {
     "grid_shape",
     "domain",
     "margin",
+    "offset",
     "cfl",
     "absorber",
     "resolution_basis",

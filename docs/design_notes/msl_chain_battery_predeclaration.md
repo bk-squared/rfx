@@ -63,7 +63,7 @@ Falsifiers declared now:
 - If the notch frequency's successive differences do not shrink (ratio >= 1), the ladder is not
   interpretable and no cell size is recommended.
 - If the 25 um notch is more than 1 % from the analytic value, the family does not close on this
-  battery; the curve and the realized stub length are reported and the PI decides.
+  battery; the curve and the realized stub length are reported and the disposition remains open.
 - If the raw column power exceeds 1.02 at the claims rung on a settled record, the family does not
   close; `enforce_passivity=True` is not used to pass it.
 - If plane invariance fails in magnitude by more than 2 dB anywhere outside the notch core, the
@@ -78,7 +78,7 @@ stage writes its own JSON; an assembler joins them into
 chosen per rung from the settling witness of a short pilot at 100 um and written into the record;
 a record above -40 dB is re-run longer, not interpreted.
 
-## Addendum 2026-09-21 (leader; written after the 100 and 50 um rungs, before the 25 um rung was read)
+## Addendum 2026-09-21 (written after the 100 and 50 um rungs, before the 25 um rung was read)
 
 Three things the note above left open were settled while the battery ran. None moves a verdict
 number.
@@ -88,7 +88,7 @@ number.
    `bandwidth = 1.0` instead of the shipped `f0 = 3.5 GHz`, `bandwidth = 0.8`, because the shipped
    pulse is about 39 dB below its own peak at 7 GHz and leaves 6.4 - 7.0 GHz unreliable on both
    ports. Both pilots are in the fixture.
-2. **Deep nulls (PI ruling, 2026-09-21).** A quantity that is near zero by construction is not
+2. **Deep nulls.** A quantity that is near zero by construction is not
    compared in dB from rung to rung. (a) The thru's |S11| is held to an upper bound, -20 dB at every
    bin of every rung, and recorded as the line's own reflection floor. (b) The 2 dB comparison
    applies to the thru's |S21| and to the notch's |S21| and |S11| OUTSIDE the notch core — the bins

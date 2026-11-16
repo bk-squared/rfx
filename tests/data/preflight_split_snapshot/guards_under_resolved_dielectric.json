@@ -57,10 +57,38 @@
         ],
         "severity": "warning",
         "source": "_check_numerical_dispersion"
+      },
+      {
+        "code": "realization",
+        "loc": "geometry[0]",
+        "numbers": [
+          0.0,
+          0.25,
+          15.0,
+          0.03,
+          15.0,
+          0.03,
+          -0.5,
+          -0.001,
+          15.0,
+          0.03,
+          15.0,
+          0.03,
+          -0.5,
+          -0.001,
+          15.0,
+          0.03,
+          15.0,
+          0.03,
+          -0.5,
+          -0.001
+        ],
+        "severity": "warning",
+        "source": "judge_realization"
       }
     ],
     "n_errors": 0,
-    "n_issues": 4,
+    "n_issues": 5,
     "ok": true
   }
 }

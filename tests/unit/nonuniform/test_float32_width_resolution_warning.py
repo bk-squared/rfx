@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx._grid_metric import Float32WidthResolutionWarning
+from rfx._internal._grid_metric import Float32WidthResolutionWarning
 from rfx.model.graded_grid import make_nonuniform_grid
 
 ROWS = [(100, .7e-3, 1e-6), (200, .381e-3, 1e-6), (100, .7e-3, 5e-6)]

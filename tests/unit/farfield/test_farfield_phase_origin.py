@@ -12,9 +12,16 @@ import numpy as np
 import pytest
 
 from rfx.farfield import (
-    ETA_0, NTFFBox, NTFFData, compute_far_field, compute_far_field_jax,
-    init_ntff_data, make_ntff_box,
+    ETA_0,
+    NTFFBox,
+    NTFFData,
+    init_ntff_data,
+    make_ntff_box,
     with_face_centre_collocation,
+)
+from rfx.measurement.farfield import (
+    compute_far_field,
+    compute_far_field_jax,
 )
 from rfx.grid import C0, Grid
 from rfx.nonuniform import make_nonuniform_grid, position_to_index

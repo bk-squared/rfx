@@ -54,6 +54,7 @@ def validate_radius(radius):
 RADIUS_SUPPORTED_PATHS = frozenset({
     "run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform",
     "s_matrix_scan", "mixed_s_matrix", "topology_optimize",
+    "run_distributed", "run_distributed_nu", "fwd_distributed_nu",
 })
 
 
@@ -99,8 +100,8 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     plate oracle's 1% resistance bound in the measured profiles. Grading
     away from this stencil is allowed, including declared traced ranges
     separated from it by a one-cell margin. The stamp reads only widths
-    and indices, and the pin index is resolved on the nominal profile
-    (PR 1686): a moving range elsewhere may shift node positions without
+    and indices, and the pin index is resolved on the nominal profile:
+    a moving range elsewhere may shift node positions without
     changing the stamp.
     Because the stamp uses nominal widths, a whole-profile gradient has no
     stamp term for the stencil's own cells; those cells are declared fixed
@@ -113,7 +114,7 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
     transverse = [t for t in range(3) if t != axis]
     if hasattr(grid, "dx_arr"):
-        from rfx.nonuniform import port_metric_axes
+        from rfx.model.graded_ports import port_metric_axes
         spine = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
         if all(v is not None for v in spine):
             # A fixed mesh built inside jit has traced solver arrays but

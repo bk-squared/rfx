@@ -44,16 +44,18 @@ from rfx.geometry.rasterize_grid import (
 )
 from rfx.nonuniform import (
     NonUniformGrid,
+    e_node_dual_spacing_at,
+    make_band_profile,
+    make_nonuniform_grid,
+    position_to_index,
+)
+from rfx.model.graded_grid import (
     _append_bounding_node,
     _pad_profile,
     _profile_to_inv_arrays,
     assert_cells_span_declared_profile,
-    e_node_dual_spacing_at,
     e_node_dual_spacings,
     interior_cells,
-    make_band_profile,
-    make_nonuniform_grid,
-    position_to_index,
 )
 
 AXES = ("x", "y", "z")
@@ -696,16 +698,10 @@ def test_index_of_refuses_a_coordinate_outside_the_domain(name, axis):
 
 
 @pytest.mark.parametrize("name", sorted(FIXTURES))
-def test_the_legacy_lookup_still_clamps(name):
-    """0a moves no consumer, so ``position_to_index`` keeps its clamp.
-
-    Pinned as a fact, not endorsed: this is the behaviour the accessor
-    replaces, and 0b retires it. If this test goes red because the clamp is
-    gone, the accessor's refusal is the replacement and this test should go
-    with it.
-    """
+def test_lookup_at_interior_endpoint(name):
+    """Endpoint lookup stays integer-valued; outside refusal is in the pad contract."""
     grid = FIXTURES[name]()
-    far = position_to_index(grid, (1e9, 1e9, 1e9))
+    far = position_to_index(grid, tuple(grid.node_of(a, _layout(grid, a)[0] - _layout(grid, a)[2] - 1) for a in AXES))
     assert all(isinstance(i, int) for i in far)
     with pytest.raises(ValueError, match="outside"):
         grid.index_of("z", 1e9)

@@ -6,7 +6,7 @@ stamp on the build-local descriptor for subsequent source assembly.
 
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field
 
 import math
@@ -14,210 +14,73 @@ import math
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import (EPS_0, lumped_axis,
-                          lumped_components)
+from rfx.core.yee import EPS_0
+from rfx.model.lumped_stamp import (
+    _PORT_AXIS,
+    _nu_cell_arrays,
+    _axis_cell_sizes,
+    _axis_dual_sizes,
+    port_dual_transverse,
+    port_sigma,
+    _stamp_lumped,
+    stamp_lumped_sigma,
+    stamp_lumped_eps,
+    port_d_parallel,
+    setup_lumped_port,
+    _wire_port_cells,
+    wire_port_edge_span,
+    _axis_node_position,
+    _wire_port_live_cells,
+    setup_wire_port,
+)
 
 
-_PORT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
-
-
-def _nu_cell_arrays(grid):
-    """Per-cell (dx, dy, dz) arrays for a ``NonUniformGrid``, else ``None``.
-
-    Read as float64 — the same dtype the already-corrected termination stamp
-    in ``rfx/runners/nonuniform.py`` uses — so the sigma a port stamps and the
-    metrics an extractor weights its Ampere legs by are one set of numbers.
-
-    A TRACED mesh (mesh-as-design-variable) raises. That is INTENTIONAL and it
-    is a deliberate behaviour change — see the ``NotImplementedError`` below.
-    """
-    dx_arr = getattr(grid, "dx_arr", None)
-    if dx_arr is None:
-        return None
-    import numpy as _np
-    import jax
+def _validate_dg_cutoff(cutoff):
     try:
-        return (
-            _np.asarray(dx_arr, dtype=_np.float64),
-            _np.asarray(grid.dy_arr, dtype=_np.float64),
-            _np.asarray(grid.dz, dtype=_np.float64),
-        )
-    except jax.errors.TracerArrayConversionError as exc:
-        # DELIBERATE, and a change from the pre-#691 behaviour rather than a
-        # restatement of it. Before #691 this read the SCALAR ``grid.dx`` /
-        # ``grid.dy`` for the two transverse axes; those are plain floats even
-        # when the profile is traced, so a traced ``dx_profile`` with a
-        # concrete ``dz`` did not raise — it RAN, sized the port from the
-        # BOUNDARY cell instead of the cell at the node, and returned a
-        # gradient of exactly 0.0 (measured: ``jax.grad`` -> 0.0, grad-norm
-        # 0.0). A wrong number carrying a silently zero gradient is the worse
-        # outcome: an optimiser reads it as a converged, insensitive design
-        # variable. This is the #294 empty-window-gradient class.
-        #
-        # So the limitation is unchanged — the port metric has always needed
-        # concrete per-cell spacings — but it is now LOUD. Do not "restore"
-        # the old behaviour by falling back to the scalars.
-        raise NotImplementedError(
-            "port metrics (port_sigma / "
-            "port_dual_transverse) need CONCRETE per-cell mesh spacings: the "
-            "realized conductance of a stamped sigma is fixed by the E node's "
-            "discrete Ampere control volume, which is built from the cell "
-            "sizes AT the port node. This grid carries a TRACED profile "
-            "(mesh-as-design-variable), which is not supported on this path. "
-            "Differentiate with respect to the port/material values on a "
-            "concrete mesh instead.\n\n"
-            "Before issue #691 this did not raise: it silently used the "
-            "BOUNDARY cell size for the two transverse axes and returned a "
-            "gradient of exactly 0.0 w.r.t. the mesh. Raising is intentional."
-        ) from exc
+        cutoff = float(cutoff)
+    except TypeError:  # traced: checked where it was concrete
+        return
+    if not cutoff >= 2.5:
+        raise ValueError(
+            f"GaussianPulse cutoff={cutoff!r} is below 2.5: the start would "
+            "jump by 2c*exp(-c^2) of the amplitude and making it charge-free "
+            "changes the pulse by more than 2 % (1.84e-2 at c = 2.5). Use "
+            "cutoff >= 2.5 (default 3).")
 
 
-def _axis_cell_sizes(grid, position_ijk: tuple[int, int, int]
-                     ) -> tuple[float, float, float]:
-    """PRIMAL (dx, dy, dz) cell sizes AT ``position_ijk``.
+def charge_free_dg(t, tau, cutoff, *, _arg_timing=None):
+    """Unit-amplitude differentiated Gaussian with a charge-free onset.
 
-    Uniform ``Grid`` is cubic and carries a single scalar, so all three are
-    ``grid.dx`` — byte-identical to the pre-#691 spelling.
-
-    ``NonUniformGrid`` carries per-cell ``dx_arr`` / ``dy_arr`` / ``dz``.
-    This used to read the SCALAR ``grid.dx`` / ``grid.dy`` for the x and y
-    sizes, which on that grid are the BOUNDARY cell sizes (see the
-    ``NonUniformGrid`` field comments) — the wrong cell everywhere the mesh
-    is graded, not merely at a grading step. Measured (issue #691) on a
-    0.5/1.0 mm doubly-graded fixture, a nominal 50 ohm parallel-R RLC element
-    realized 12.5 ohm at a LOCALLY UNIFORM node in the coarse region.
+    The onset and near-start series are shared by GaussianPulse and TF/SF.
+    Values and slopes start continuously at zero; the time integral is zero.
     """
-    arrs = _nu_cell_arrays(grid)
-    if arrs is None:
-        dx = float(grid.dx)
-        dy = float(getattr(grid, "dy", dx))
-        dz_arr = getattr(grid, "dz", None)
-        dz = float(dz_arr[position_ijk[2]]) if dz_arr is not None else dx
-        return dx, dy, dz
-    dx_arr, dy_arr, dz_arr = arrs
-    return (float(dx_arr[position_ijk[0]]),
-            float(dy_arr[position_ijk[1]]),
-            float(dz_arr[position_ijk[2]]))
-
-
-def _axis_dual_sizes(grid, position_ijk: tuple[int, int, int]
-                     ) -> tuple[float, float, float]:
-    """E-node DUAL spacings ``(dual_x, dual_y, dual_z)`` at ``position_ijk``.
-
-    ``dual[k] = (d[k-1] + d[k]) / 2`` (``dual[0] = d[0]``) — the control
-    volume the non-uniform E update actually divides its curl by. Delegates
-    to :func:`rfx.nonuniform.e_node_dual_spacing_at` so there is one spelling
-    of that rule. On a uniform mesh dual == primal bit-exactly, so a uniform
-    ``Grid`` returns the same three numbers :func:`_axis_cell_sizes` does.
-    """
-    arrs = _nu_cell_arrays(grid)
-    if arrs is None:
-        return _axis_cell_sizes(grid, position_ijk)
-    from rfx.nonuniform import e_node_dual_spacing_at
-    return tuple(
-        float(e_node_dual_spacing_at(arrs[ax], int(position_ijk[ax])))
-        for ax in range(3)
-    )
-
-
-def port_dual_transverse(grid, position_ijk: tuple[int, int, int],
-                         component: str) -> tuple[float, float]:
-    """The two DUAL spacings transverse to ``component`` at the node.
-
-    They are the sides of the dual face the node's conduction / displacement
-    current pierces, i.e. the area factor in the discrete Ampere law the E
-    update integrates. Anything folded into ``sigma`` or ``eps_r`` at an E
-    node realizes its lumped value through THIS area — never through the
-    primal cell widths (issue #691, and #672/#688 for the current that
-    measures it).
-    """
-    duals = _axis_dual_sizes(grid, position_ijk)
-    axis = _PORT_AXIS[component]
-    return tuple(duals[i] for i in range(3) if i != axis)
-
-
-def port_sigma(grid, position_ijk: tuple[int, int, int],
-               component: str, impedance: float) -> float:
-    """Compute lumped port equivalent conductivity for anisotropic cells.
-
-    σ = d_parallel_primal / (Z0 · dual_perp1 · dual_perp2)
-
-    ``d_parallel`` is PRIMAL — it is the length of the E edge the port
-    voltage ``V = E·d_parallel`` is taken over. The two transverse factors
-    are DUAL: the realized conductance of a stamped σ is
-    ``G = σ·dual_b·dual_c/d_parallel``, fixed by the E node's discrete
-    Ampere / Joule control volume (issue #691). This ensures
-    P_dissipated = V²/Z0 regardless of cell aspect ratio; for cubic cells
-    (dx=dy=dz=d) it reduces to 1/(Z0·d).
-    """
-    axis = _PORT_AXIS[component]
-    d_par = _axis_cell_sizes(grid, position_ijk)[axis]
-    d_perp = port_dual_transverse(grid, position_ijk, component)
-    return d_par / (impedance * d_perp[0] * d_perp[1])
-
-
-def _stamp_lumped(materials, cell, value, component, total_name, record_name):
-    i, j, k = (int(c) for c in cell)
-    axis = lumped_axis(component)
-    total = getattr(materials, total_name)
-    parts = list(lumped_components(getattr(materials, record_name, None)))
-    own = parts[axis]
-    if own is None:
-        own = jnp.zeros_like(total)
-    parts[axis] = own.at[i, j, k].add(value)
-    return materials._replace(**{
-        total_name: total.at[i, j, k].add(value),
-        record_name: tuple(parts)})
-
-
-def stamp_lumped_sigma(materials, cell, value, component):
-    """Add a lumped conductance on ONE E edge, recorded as edge-owned.
-
-    ``component`` (``"ex"``, ``"ey"`` or ``"ez"``) is the edge the element
-    sits on: the edge that starts at ``cell``'s node along that axis.
-
-    The stamp goes into ``materials.sigma`` as before -- a reader that wants
-    the total conductivity at the cell still finds it there -- and into
-    component ``component`` of ``materials.sigma_lumped``, which the E update
-    removes before averaging over the edge's four cells and adds back at this
-    cell, to that component only. A port's load is a device across one edge,
-    not a property of a cell volume: averaged, a 50 ohm wire port read
-    |S11| = 0.20 against the closed-form 1/3, and a lumped port inside a CPML
-    dielectric read a non-physical |S11| = 1.86 (#1210). Added back to all
-    three components, as the record did before it carried one (#1236), a
-    50 ohm port on Ez was also a 50 ohm resistor on the Ex and Ey edges
-    leaving its node.
-    """
-    return _stamp_lumped(materials, cell, value, component,
-                         "sigma", "sigma_lumped")
-
-
-def stamp_lumped_eps(materials, cell, value, component):
-    """Add a lumped permittivity (a capacitor's fold) on ONE E edge.
-
-    Same argument as :func:`stamp_lumped_sigma`, for the ``C`` fold of an RLC
-    element: a capacitor sits across one edge, ``component``'s.
-    """
-    return _stamp_lumped(materials, cell, value, component,
-                         "eps_r", "eps_r_lumped")
-
-
-def port_d_parallel(grid, position_ijk: tuple[int, int, int],
-                    component: str) -> float:
-    """Return the port edge's PRIMAL length, retaining a traced profile.
-
-    Only the parallel axis is needed. In particular, a traced transverse
-    axis must not force a host read when building a voltage-port drive.
-    Concrete metrics retain the stored-array value used historically.
-    """
-    axis = _PORT_AXIS[component]
-    if getattr(grid, "dx_arr", None) is not None:
-        from rfx.core.jax_utils import is_tracer
-
-        widths = getattr(grid, ("dx_arr", "dy_arr", "dz")[axis])
-        value = widths[position_ijk[axis]]
-        return value if is_tracer(value) else float(value)
-    return _axis_cell_sizes(grid, position_ijk)[axis]
+    _validate_dg_cutoff(cutoff)
+    u = t / tau
+    c = cutoff
+    # Both terms are exactly 0 in float32 beyond 50 tau (exp(-2500)); the
+    # clamps keep u**3 and arg**2 from overflowing there (inf * 0 = NaN in
+    # the value and its gradient, e.g. for a tau of 1e-20 s), and change
+    # nothing, value or gradient, for u < 50.
+    uc = jnp.clip(u, -50.0, 50.0)
+    # Preserve GaussianPulse's independent width evaluations in its reverse
+    # f0 derivative. Sharing their value would change the rounding of that sum.
+    t0, arg_tau = (cutoff * tau, tau) if _arg_timing is None else _arg_timing
+    arg = jnp.clip((t - t0) / arg_tau, -50.0, 50.0)
+    onset = jnp.exp(-c**2 - uc**2) * (2*c + (4*c**2 - 2)*uc - 4*c*uc**2 - 4*c**2*uc**3)
+    value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
+    # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
+    # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
+    # with R1, R2 = exp(z) less its Taylor terms through z^1, z^2, summed as series
+    # so every evaluation path keeps float32's relative accuracy.
+    z = jnp.clip(2*c*u, 0.0, 3.0)
+    term, r1, r2 = z**2 / 2, 0.0, 0.0
+    for k in range(2, 22):
+        r1 = r1 + term
+        r2 = r2 + (term if k >= 3 else 0.0)
+        term = term * z / (k + 1)
+    near = jnp.exp(-c**2 - uc**2) * (2*c*r1 - 2*uc*r2)
+    value = jnp.where(2*c*u < 3.0, near, value)
+    return jnp.where(t >= 0, value, 0.0)
 
 
 @dataclass(frozen=True)
@@ -257,16 +120,7 @@ class GaussianPulse:
     cutoff: float = 3.0
 
     def __post_init__(self):
-        try:
-            cutoff = float(self.cutoff)
-        except TypeError:  # traced: checked where it was concrete
-            return
-        if not cutoff >= 2.5:
-            raise ValueError(
-                f"GaussianPulse cutoff={cutoff!r} is below 2.5: the start would "
-                "jump by 2c*exp(-c^2) of the amplitude and making it charge-free "
-                "changes the pulse by more than 2 % (1.84e-2 at c = 2.5). Use "
-                "cutoff >= 2.5 (default 3).")
+        _validate_dg_cutoff(self.cutoff)
 
     @property
     def tau(self) -> float:
@@ -280,29 +134,8 @@ class GaussianPulse:
 
     def __call__(self, t: float) -> float:
         """Evaluate pulse at time t (zero before t=0)."""
-        u = t / self.tau
-        c = self.cutoff
-        # Both terms are exactly 0 in float32 beyond 50 tau (exp(-2500)); the
-        # clamps keep u**3 and arg**2 from overflowing there (inf * 0 = NaN in
-        # the value and its gradient, e.g. for a tau of 1e-20 s), and change
-        # nothing, value or gradient, for u < 50.
-        uc = jnp.clip(u, -50.0, 50.0)
-        arg = jnp.clip((t - self.t0) / self.tau, -50.0, 50.0)
-        onset = jnp.exp(-c**2 - uc**2) * (2*c + (4*c**2 - 2)*uc - 4*c*uc**2 - 4*c**2*uc**3)
-        value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
-        # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
-        # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
-        # with R1, R2 = exp(z) less its Taylor terms through z^1, z^2, summed as series
-        # so every evaluation path keeps float32's relative accuracy.
-        z = jnp.clip(2*c*u, 0.0, 3.0)
-        term, r1, r2 = z**2 / 2, 0.0, 0.0
-        for k in range(2, 22):
-            r1 = r1 + term
-            r2 = r2 + (term if k >= 3 else 0.0)
-            term = term * z / (k + 1)
-        near = jnp.exp(-c**2 - uc**2) * (2*c*r1 - 2*uc*r2)
-        value = jnp.where(2*c*u < 3.0, near, value)
-        return self.amplitude * jnp.where(t >= 0, value, 0.0)
+        return self.amplitude * charge_free_dg(
+            t, self.tau, self.cutoff, _arg_timing=(self.t0, self.tau))
 
 
 @dataclass(frozen=True)
@@ -435,22 +268,10 @@ class LumpedPort:
     component: str
     impedance: float
     excitation: GaussianPulse
+    allow_in_absorber: bool = False
     # Build-local record of the actual stamp and unit-voltage shape. Excluded
     # from descriptor identity; setup populates it before source assembly.
     _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
-
-
-def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
-    """Fold port impedance into material conductivity at the port cell.
-
-    Uses the 3D formula σ = d_parallel / (Z0 · d_perp1 · d_perp2)
-    which reduces to 1/(Z0·dx) for cubic cells.
-    """
-    idx = field_index(grid, port.position, port.component)
-    sp = port_sigma(grid, idx, port.component, port.impedance)
-    port._drive_stamps.clear()
-    port._drive_stamps[tuple(idx)] = (sp, 1 / port_d_parallel(grid, idx, port.component))
-    return stamp_lumped_sigma(materials, idx, sp, port.component)
 
 
 def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) -> object:
@@ -460,7 +281,8 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
-    idx = field_index(grid, port.position, port.component)
+    idx = field_index(grid, port.position, port.component,
+                      allow_in_absorber=port.allow_in_absorber)
     i, j, k = idx
     increment = port_drive_waveform(
         grid, idx, port.component, port.excitation, None, materials,
@@ -496,6 +318,7 @@ class WirePort:
     impedance: float = 50.0
     excitation: object = None  # GaussianPulse or similar
     radius: float | None = None
+    allow_in_absorber: bool = False
     _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -503,205 +326,21 @@ class WirePort:
         validate_radius(self.radius)
 
 
-def _wire_port_cells(grid, port):
-    """The E edges the wire port drives — the extent, HALF-OPEN in edges.
-
-    The port's declared extent is the node interval ``[start, end)`` along
-    its axis, and the edges it drives are the ones whose OWN location lies
-    inside that interval. The port's component is staggered half a cell
-    along the axis, so edge ``a`` sits between node ``a`` and node
-    ``a + 1``: it lies inside ``[start, end)`` exactly for
-    ``lo <= a <= hi - 1``, where ``lo``/``hi`` are the endpoints' node
-    indices. An extent of n cells therefore drives n edges.
-
-    This used to be endpoint-INCLUSIVE (``range(lo, hi + 1)``), which
-    drove n + 1 edges — the last one spanning one cell ABOVE the declared
-    end. On the issue-#313 THRU that surplus Ez edge sits above the
-    microstrip trace: while the trace was drawn as a one-cell PEC Box the
-    edge was shorted and ``_wire_port_live_cells`` reported the right
-    ``n_live`` by accident, so the off-by-one was invisible. Under the
-    lattice ownership contract the trace is a sheet, which does not short
-    the edge above it, and the port drove one cell too many
-    (``n_live`` 2 -> 3, i.e. ``Z0_cell = Z0 / n_live`` off by 3/2).
-
-    An extent shorter than the cell it lands in snaps to a single node
-    (``lo == hi``) and would give NO edge. That port still drives exactly
-    one edge — the one its extent lies in — chosen on the side of the node
-    the extent occupies; it is a sub-cell declaration, not an empty one.
-    """
-    import numpy as np
-    s = np.array(port.start)
-    e = np.array(port.end)
-    diff = e - s
-    nonzero = np.abs(diff) > 1e-10
-    if np.sum(nonzero) != 1:
-        raise ValueError("WirePort start and end must be axis-aligned")
-    axis = int(np.argmax(nonzero))
-
-    if port.radius is not None and port.component != ("ex", "ey", "ez")[axis]:
-        raise ValueError("a radius wire port's component must follow its start/end axis")
-
-    from rfx._periodic import interval_indices
-    idx_s, idx_e = interval_indices(grid, tuple(s), tuple(e))
-
-    lo = min(idx_s[axis], idx_e[axis])
-    hi = max(idx_s[axis], idx_e[axis])
-    first, last = wire_port_edge_span(
-        grid, axis, lo, hi, float(s[axis]), float(e[axis]))
-
-    cells = []
-    for a in range(first, last + 1):
-        cell = list(idx_s)
-        cell[axis] = a
-        cells.append(tuple(cell))
-    return cells
-
-
-def wire_port_edge_span(grid, axis: int, lo: int, hi: int,
-                        start_pos: float, end_pos: float) -> tuple[int, int]:
-    """``(first, last)`` E-edge index of a wire port extent — ONE spelling.
-
-    ``lo``/``hi`` are the extent endpoints' node indices (ordered). The
-    span is HALF-OPEN in edges: ``lo .. hi - 1``. Both the uniform lane
-    (:func:`_wire_port_cells`) and the non-uniform runner call this, so
-    the same declaration cannot rasterize to a different number of driven
-    edges on the two lanes.
-
-    ``start_pos``/``end_pos`` are the declared endpoint coordinates on
-    ``axis`` and are used only for the sub-cell case below.
-    """
-    if hi > lo:
-        return lo, hi - 1
-    # Sub-cell extent: both ends snapped to node ``lo``, so the half-open
-    # span is empty. The port still drives exactly one edge — the one its
-    # extent lies in — chosen on the side of the node the extent occupies.
-    # A tie (an extent centred on the node) takes the upper edge, which is
-    # what the half-open rule would give for a one-cell extent.
-    mid = 0.5 * (float(start_pos) + float(end_pos))
-    node_pos = _axis_node_position(grid, axis, lo)
-    k = lo if mid >= node_pos else max(lo - 1, 0)
-    return k, k
-
-
-def _axis_node_position(grid, axis: int, index: int) -> float:
-    """Physical position of node ``index`` on ``axis``, in DOMAIN metres.
-
-    Read from the library's own node-line producers so this does not
-    become a second spelling of where a node is (the #562 class).
-    """
-    from rfx.geometry.rasterize_grid import (
-        coords_from_nonuniform_grid, coords_from_uniform_grid)
-    from rfx.nonuniform import NonUniformGrid
-    import numpy as np
-
-    if 'xyz'[axis] in getattr(grid, 'periodic_axes', '') and index == grid.shape[axis]:
-        return float(grid.domain[axis])
-    coords = (coords_from_nonuniform_grid(grid)
-              if isinstance(grid, NonUniformGrid)
-              else coords_from_uniform_grid(grid))
-    line = np.asarray((coords.x, coords.y, coords.z)[axis], dtype=np.float64)
-    return float(line[int(np.clip(index, 0, line.size - 1))])
-
-
 def wire_port_from_entry(pe):
     """Build the axis-aligned wire declaration used by distributed setup/recording."""
     end = list(pe.position)
     end[{"ex": 0, "ey": 1, "ez": 2}[pe.component]] += pe.extent
     return WirePort(start=pe.position, end=tuple(end), component=pe.component,
-                    impedance=pe.impedance, excitation=pe.waveform, radius=pe.radius)
-
-
-def _wire_port_live_cells(grid, port, pec_edge_masks=None):
-    """Split the wire cells into (cells, live_flags, n_live) — issue #318.
-
-    A cell is *live* when the port's OWN E edge at that index is not a
-    realized PEC edge (#931 §1.9: ``edge_is_pec(edge_masks, component, i,
-    j, k)``, read BEFORE the runner's port-cell clearing).  A dead cell —
-    one whose edge is shorted by a conductor — carries essentially no port
-    current (measured on the issue-#313 thru: |I_dead|/|I_mid| =
-    0.003-0.03), so its per-cell port resistor is bypassed and it must not
-    be counted in the series impedance distribution or the
-    drive/normalization cell counts.  Reading the component's own edge, not
-    a cell mask, is what makes a sheet trace (which owns no cell) visible
-    here.
-
-    ``pec_edge_masks=None`` treats every cell as live — identical to the
-    historical behaviour, and the degenerate case n_live == n makes every
-    caller's formula bit-identical to the pre-#318 one.
-
-    The masks must be concrete (host-readable): the live split is a static
-    geometry decision, made once at setup time, mirroring the
-    reference-plane spec builder's concreteness requirement.
-
-    Raises
-    ------
-    ValueError
-        When every extent cell is inside PEC (n_live == 0): such a port
-        has no live cell to terminate or drive.
-    """
-    from rfx.boundaries.pec import edges_are_pec
-
-    cells = _wire_port_cells(grid, port)
-    if pec_edge_masks is None:
-        return cells, [True] * len(cells), max(len(cells), 1)
-
-    # One host transfer for the whole extent (``edge_is_pec`` pulls the
-    # full component mask per call, and the eager S-param loops read this
-    # three times per port per step).
-    live_flags = [not d for d in
-                  edges_are_pec(pec_edge_masks, port.component, cells)]
-    n_live = sum(live_flags)
-    if n_live == 0:
-        raise ValueError(
-            f"WirePort {port.start} -> {port.end} ({port.component}): all "
-            f"{len(cells)} extent cells have their {port.component} edge "
-            "shorted by realized PEC, so the "
-            "port has no live cell to terminate or drive (issue #318). "
-            "Shorten the extent or move the port so at least one of its "
-            "rasterized cells is not PEC (per the assembled geometry -- "
-            "not a cell-center guess)."
-        )
-    return cells, live_flags, n_live
-
-
-def setup_wire_port(grid, port, materials, pec_edge_masks=None):
-    """Distribute port impedance across the LIVE wire cells (issue #318).
-
-    For n_live live cells in series with total impedance Z0:
-      σ_cell = n_live · d_parallel / (Z0 · d_perp1 · d_perp2)
-    On uniform grids this reduces to n_live / (Z0 · dx).
-
-    Cells whose extent lies inside PEC (dead cells) get NO port sigma:
-    their resistor is bypassed by the surrounding conductor, so counting
-    them made the physical series termination Z0·(n_live/n) instead of Z0
-    (issue #318; measured 33.3 ohm on the issue-#313 thru, n=3 with one
-    dead cell).  With ``pec_edge_masks=None`` — or no dead cells — this is
-    bit-identical to the historical all-cells formula.
-    """
-    cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
-    port._drive_stamps.clear()
-
-    if port.radius is not None:
-        from rfx.sources.wire_radius import stamp_wire_radius
-        materials = stamp_wire_radius(
-            grid, materials, port.component, port.radius,
-            [c for c, live in zip(cells, live_flags) if live])
-    for cell, live in zip(cells, live_flags):
-        if not live:
-            continue
-        sp = port_sigma(grid, cell, port.component, port.impedance) * n_live
-        port._drive_stamps[tuple(cell)] = (
-            sp, 1 / (n_live * port_d_parallel(grid, cell, port.component)))
-        materials = stamp_lumped_sigma(materials, cell, sp, port.component)
-    return materials
+                    impedance=pe.impedance, excitation=pe.waveform, radius=pe.radius,
+                    allow_in_absorber=getattr(pe, "allow_in_absorber", False))
 
 
 def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
     """Inject source voltage distributed across the LIVE wire cells.
 
     Each live cell gets V_src / n_live, with Cb computed from local
-    materials.  Dead extent cells (inside PEC, issue #318) receive no
-    injection — pre-#318 they accumulated phantom EMF on an edge whose
+    materials.  Dead extent cells (inside PEC) receive no
+    injection: otherwise they accumulate phantom EMF on an edge whose
     only discharge path was the port sigma folded at that cell.
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform

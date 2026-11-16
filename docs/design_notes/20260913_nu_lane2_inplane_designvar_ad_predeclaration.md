@@ -22,7 +22,7 @@ the new module `validation/research/multiband_nu/e6_inplane_designvar.py`
 (this commit). No `rfx/` change (`git diff --stat rfx/` empty at every
 commit of the lane).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-full/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Every JSON the instrument writes records `rfx.__file__`, `git_sha`,
 `git_dirty`, `argv`, `started_utc`, the judge self-check and the fixture
@@ -45,7 +45,7 @@ a smooth spectral observable that does not carry the L2 ripple? Judged by
 the AD-Q judges verbatim; coverage of the x cell-space gradient reported.
 
 Everything the program document specifies for Lane 2 (5.2 instrument, 5.3
-arms, 5.4 windows, 5.5 regression, 5.6 cost, 5.7 claims, 5.8 PI
+arms, 5.4 windows, 5.5 regression, 5.6 cost, 5.7 claims, 5.8
 confirmations — the index-attached PEC strip and the Hann + comb
 observable, both taken as confirmed by the executor's brief) is taken as
 written. Section 1 records what was found while turning it into code, with

@@ -1,4 +1,4 @@
-"""Single-device order; rfx issue 1373 tracks the one order for all lanes."""
+"""Single-device stepping order."""
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping

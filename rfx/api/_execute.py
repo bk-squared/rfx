@@ -13,28 +13,27 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxUnsupported
+
 from rfx.stepping import steps_for_periods
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 from rfx.api._forward_result import pack_nu_forward_result
 from rfx.api._gradient_witness import with_conductivity_record
-from rfx.preflight._impl import run_preflight_gate
-from rfx._diagnostic_transport import merge_diagnostics
+from rfx.preflight._impl import auto_preflight, run_preflight_gate, user_stacklevel
 
 import functools
-import math
 
-from rfx import _realized, _grid_metric
-from rfx.model import conductors as _conductors, design_box_window
-from rfx.model.overrides import apply_material_overrides
+from rfx._internal import _realized, _grid_metric
+from rfx.model import apply_material_overrides, conductors as _conductors, design_box_window
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import admit_traced_run, refuse_forward_smoothing
+from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing, refuse_conformal_occupancy_overrides
 from rfx.runners._exchange_interval import validate_exchange_interval
-from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
+from rfx.runners.nonuniform import bind_solve_call
 
 
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
@@ -47,14 +46,11 @@ from rfx.api._spec import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Phase 3 (issue #44 V3 §M6): module-level flag so the distributed=True
-# UserWarning fires exactly once per process.  Reset to False on import,
-# flipped to True the first time ``Simulation.forward(distributed=True, ...)``
-# is invoked.  Lives here (not in __init__.py) because ``forward`` — which
-# does ``global _DISTRIBUTED_FIRST_CALL_WARNED`` — was moved into this
-# module; the ``global`` statement binds to this module's namespace.
-# ---------------------------------------------------------------------------
+# Module-level flag so the distributed=True UserWarning fires exactly once
+# per process. Reset to False on import and set to True on the first
+# ``Simulation.forward(distributed=True, ...)`` call. The flag belongs to
+# this module because ``forward`` uses ``global
+# _DISTRIBUTED_FIRST_CALL_WARNED``, which binds to this namespace.
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
 
 
@@ -84,17 +80,17 @@ class _ExecuteMixin:
 
     def _resolve_field_dtype(self):
         """Resolve the requested field dtype before any allocation."""
-        from rfx._precision import resolve_field_dtype
+        from rfx._internal._precision import resolve_field_dtype
         return resolve_field_dtype(self._precision)
 
-    # ---- (2,4) stencil comprehensive API fence (PR-1b) ----
+    # ---- (2,4) stencil comprehensive API fence ----
 
     def _check_stencil_order_supported(self, *, distributed: bool = False) -> None:
         """Reject ``stencil_order=4`` on any unsupported execution lane.
 
         order=4 is implemented ONLY in the plain uniform-Cartesian core_step
         kernel (``rfx.simulation.update_e``/``update_h``). The nonuniform,
-        distributed, distributed-NU, and ADI lanes are SEPARATE runners that
+        distributed and distributed-NU lanes are SEPARATE runners that
         do not flow through that kernel; CPML/UPML boundaries pull the E/H
         update onto the absorber path. None of those honour ``stencil_order``,
         so a 4th-order request there would silently fall back to 2nd order —
@@ -103,7 +99,7 @@ class _ExecuteMixin:
         can never reach an unsupported runner even if a per-path fence is
         missed. Magnetic images require a second-order kernel.
         """
-        from rfx.boundaries.pmc import refuse_waveguide_pmc
+        from rfx.boundaries import refuse_waveguide_pmc
         refuse_waveguide_pmc(self)
         magnetic_faces = sorted(self._boundary_spec.pmc_faces())
         if getattr(self, "_stencil_order", 2) != 4:
@@ -121,8 +117,6 @@ class _ExecuteMixin:
         )
         if is_nonuniform:
             unsupported.append("non-uniform mesh (dx/dy/dz profile)")
-        if self._solver == "adi":
-            unsupported.append("solver='adi'")
         if self._refinement is not None:
             unsupported.append("subgridding (refinement)")
         if distributed:
@@ -203,12 +197,11 @@ class _ExecuteMixin:
                         conformal_pec=None):
         """Run simulation on non-uniform grid with graded dz.
 
-        ``until_decay`` (issue #383) is threaded through to
+        ``until_decay`` is threaded through to
         ``run_nonuniform_path`` only when the caller has already gated on
         absorbing boundaries. ``run()`` refuses ``until_decay`` for
         closed-boundary NU sims, where the interior energy does not decay. ``decay_monitor_component`` / ``decay_monitor_position``
-        are NOT threaded: they parameterize the uniform lane's
-        closed/PEC point-field fallback, which has no NU counterpart.
+        are legacy uniform monitor arguments and do not select the stop rule.
         """
         # Defense-in-depth: the NU runner does not honour stencil_order.
         self._check_stencil_order_supported()
@@ -282,7 +275,7 @@ class _ExecuteMixin:
         return settling_source_end(self, result, records)
 
     def _settling_probe_selection(self, result):
-        """Numeric probe selection metadata, with the #1090 drive flag.
+        """Numeric probe selection metadata, with the drive flag.
 
         The grid is read off the RESULT (``Result.grid`` /
         ``ForwardResult.grid``) -- the grid the run actually built, not a
@@ -318,7 +311,7 @@ class _ExecuteMixin:
 
         Warn-only, single ``run()``-level site so both lanes that honour
         ``until_decay`` (uniform and absorbing-boundary non-uniform) are
-        covered by one check (post-#392 review):
+        covered by one check:
 
         * ``decay_min_steps > decay_max_steps`` — every check index lies
           past the table end, so zero energy checks occur and the run is
@@ -340,7 +333,7 @@ class _ExecuteMixin:
                 "the decay stop can never fire and this is a forced "
                 "decay_max_steps run. Lower decay_min_steps or raise "
                 "decay_max_steps.",
-                UserWarning, stacklevel=3,
+                ConfigurationWarning, stacklevel=user_stacklevel(),
             )
         try:
             _ud = float(until_decay)
@@ -352,14 +345,14 @@ class _ExecuteMixin:
                 "(W < until_decay * reference) holds at every check where W "
                 "is not still rising, so the stop can fire right after the "
                 "drive end and decay_min_steps; use a fraction such as 1e-3.",
-                UserWarning, stacklevel=3,
+                AccuracyWarning, stacklevel=user_stacklevel(),
             )
 
     def _reject_refplane_ports_off_uniform_lane(self, path_name: str,
                                                 compute_s_params) -> None:
         """Fail loudly when reference-plane ports hit a non-uniform lane.
 
-        The issue #313 plane V/I accumulators are wired only into the
+        The plane V/I accumulators are wired only into the
         uniform single-device production scan; silently returning legacy
         port-cell off-diagonals on another lane would defeat the opt-in.
         """
@@ -370,8 +363,7 @@ class _ExecuteMixin:
             raise NotImplementedError(
                 "add_port(reference_plane_cells=...) S-parameters are only "
                 f"supported on the uniform single-device run() lane, not "
-                f"the {path_name} lane. Drop the opt-in or use a uniform "
-                "mesh (issue #313)."
+                f"the {path_name} lane. Drop the opt-in or use a uniform " "mesh."
             )
 
     @staticmethod
@@ -451,7 +443,7 @@ class _ExecuteMixin:
             "s_param_n_steps":
                 "S-matrix assembly is not plumbed through this lane",
             "report_every":
-                "host-side progress chunking (issue #667) is wired on the "
+                "host-side progress chunking is wired on the "
                 "uniform and non-uniform lanes only",
         }
         remedies = {
@@ -496,7 +488,7 @@ class _ExecuteMixin:
                 + (f", or {other}." if other else ".")
             )
         if refused:
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"{entry} refuses {len(refused)} argument(s) the "
                 f"{path_name} lane does not implement; running on without "
                 "them would not be the run that was asked for:\n"
@@ -508,7 +500,7 @@ class _ExecuteMixin:
                 f"report_every={val!r} is ignored on the {path_name} run "
                 f"path ({reasons['report_every']}); the run goes on without "
                 "progress lines and its result is unchanged.",
-                UserWarning, stacklevel=3,
+                ConfigurationWarning, stacklevel=user_stacklevel(),
             )
 
     from rfx.runners._admission import _refuse_conformal_boundary
@@ -538,67 +530,19 @@ class _ExecuteMixin:
 
         return [pe for pe in self._ports if pe.impedance > 0.0]
 
-    def _auto_configure_mesh(self):
-        """Compute the host-side auto-mesh proposal; _resolve_mesh owns it."""
-        from rfx.auto_config import auto_configure
-
-        geometry_pairs = [
-            (entry.shape, entry.material_name)
-            for entry in self._geometry
-        ]
-        materials_dict = {}
-        for name, spec in self._materials.items():
-            materials_dict[name] = {
-                "eps_r": spec.eps_r,
-                "sigma": spec.sigma,
-            }
-        # Include library materials used by geometry but not explicitly registered
-        for entry in self._geometry:
-            mname = entry.material_name
-            if mname not in materials_dict and mname in MATERIAL_LIBRARY:
-                materials_dict[mname] = MATERIAL_LIBRARY[mname]
-
-        # Thin conductors are PEC/lossy sheets absent from self._geometry
-        # (issue #371 Bug 2). They add no wavelength constraint, but their
-        # IN-PLANE feature size must feed the feature-based dx. Register each
-        # under a synthetic material so analyze_features() folds its bbox dims
-        # into min_thickness while classifying it by sigma (PEC vs lossy), NOT
-        # as a dielectric: sigma_bulk>=1e6 => has_pec (kept out of max_eps_r),
-        # and a sheet's zero z-extent (< 1e-12, plus the sigma<pec_threshold
-        # guard) keeps it out of z_features (no false non-uniform-z). The
-        # zero z-extent is dropped by the nonzero-dims filter, so min_thickness
-        # resolves to the in-plane extent.
-        for i, tc in enumerate(self._thin_conductors):
-            tc_mat = f"__thin_conductor_{i}__"
-            materials_dict[tc_mat] = {"eps_r": tc.eps_r, "sigma": tc.sigma_bulk}
-            geometry_pairs.append((tc.shape, tc_mat))
-
-        config = auto_configure(
-            geometry=geometry_pairs,
-            freq_range=(self._freq_max / 10, self._freq_max),
-            materials=materials_dict,
-            boundary=self._boundary,
-            # #931 §1.9: a sheet's PLANE is a z feature even though its zero
-            # thickness is not — the profile must leave a mesh line there.
-            thin_conductors=self._thin_conductors,
-        )
-
-        return config
-
     from rfx.runners._admission import _reject_upml_on_nonuniform
 
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
-        prepare=False, distributed=False, tfsf_material_overrides=(),
+        prepare=False, distributed=False, tfsf_material_overrides=(), conformal=None, realization_options=None,
     ) -> _conductors.PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
-        return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides)
+        return auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides, conformal=conformal, realization_options=realization_options)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         return run_preflight_gate(issues, context, stacklevel)
 
-    from rfx.runners.adi import _run_adi_from_materials
 
     from rfx.runners.uniform_forward import _forward_from_materials
 
@@ -641,17 +585,16 @@ class _ExecuteMixin:
         from rfx.runners.nonuniform import run_nonuniform_path
 
         # A grid-shaped override is (cells + 1) per axis, because N cells are
-        # bounded by N+1 E-nodes (#562) — the same shape the uniform path has
+        # bounded by N+1 E-nodes — the same shape the uniform path has
         # always wanted. Caller code that sized arrays from the PROFILE length
         # is one sample short, and without this check the mismatch surfaces
-        # deep inside XLA as an opaque broadcast TypeError (#562 review F9).
+        # deep inside XLA as an opaque broadcast TypeError.
         _overrides = (("eps_override", eps_override),
                       ("sigma_override", sigma_override),
                       ("pec_mask_override", pec_mask_override),
                       ("pec_occupancy_override", pec_occupancy_override))
-        # Build the grid ONLY when there is an array to check, so the common
-        # override-free forward() does not pay for a second grid build
-        # (#568 observation 1 — negligible against the solve, but free to skip).
+        # Build the grid only when there is an array to check, so override-free
+        # forward() avoids a second grid build.
         if any(_a is not None and hasattr(_a, "shape") for _n, _a in _overrides):
             _grid = self._build_nonuniform_grid()
             for _name, _arr in _overrides:
@@ -664,7 +607,7 @@ class _ExecuteMixin:
                     f"non-uniform grid is {tuple(_grid.shape)}. Grid-shaped "
                     f"arrays are one sample larger per axis than the cell "
                     f"counts / profile lengths you requested: N cells are "
-                    f"bounded by N+1 field nodes (#562). Build the array from "
+                    f"bounded by N+1 field nodes. Build the array from "
                     f"the grid shape rather than from the profile length."
                 )
 
@@ -711,7 +654,7 @@ class _ExecuteMixin:
             current_moment_monitor=getattr(result, "current_moment_monitor", None),
         )
 
-    def distributed_override_layout(self, devices=None):
+    def distributed_override_layout(self, devices: tuple[jax.Device, ...] | list[jax.Device] | None = None) -> tuple[tuple[int, int, int], jax.sharding.NamedSharding]:
         """Return ``(shape, NamedSharding)`` for distributed forward designs.
 
         The global shape is ``(nx_padded, ny, nz)`` with no ghosts, where
@@ -734,7 +677,7 @@ class _ExecuteMixin:
         return ((grid.nx_padded, grid.ny, grid.nz),
                 NamedSharding(Mesh(np.array(devices), ("x",)), P("x")))
 
-    def shard_distributed_override(self, array, devices=None, *, pad_value=0.0):
+    def shard_distributed_override(self, array: np.ndarray | jax.Array | tuple[object, ...] | list[object], devices: tuple[jax.Device, ...] | list[jax.Device] | None = None, *, pad_value: float | complex = 0.0) -> jax.Array:
         """Place a concrete local whole-domain design in the forward layout.
 
         This convenience initializer copies addressable x slabs from a host
@@ -749,7 +692,7 @@ class _ExecuteMixin:
         if host.shape != expected:
             raise ValueError(f"local override must have grid shape {expected}; got {host.shape}")
 
-        from rfx.stepping.slab import Slab, Fill, cut
+        from rfx.stepping import Slab, Fill, cut
         return cut(host, Slab(expected[0], sharding.mesh.size, 0),
                    Fill(pad_value, pad_value), mesh=sharding.mesh)
 
@@ -795,7 +738,7 @@ class _ExecuteMixin:
         kerr_chi3,
         holds_ports=False,
     ):
-        """Turn the ``forward(design_box=...)`` arguments into specs (#1179/#1183).
+        """Turn the ``forward(design_box=...)`` arguments into specs.
 
         Resolves the declared corners against the grid the solve builds and
         rejects every combination this lane does not carry. The checks that
@@ -806,8 +749,8 @@ class _ExecuteMixin:
         can be decided from the call itself.
 
         Returns ``(box spec or None, occupancy spec or None)``: one design
-        box, and the design variable it carries — a permittivity (#1179) or
-        a PEC occupancy (#1183).
+        box, and the design variable it carries — a permittivity or
+        a PEC occupancy.
 
         ``holds_ports`` (``forward(design_box_holds_ports=True)``) lets the
         permittivity box contain lumped and wire ports: every edge a port
@@ -833,8 +776,8 @@ class _ExecuteMixin:
             raise ValueError(
                 "forward(design_box=...) and one of "
                 "forward(design_eps_override=...) / "
-                "forward(design_occupancy_override=...) are used together "
-                "(#1179/#1183): the box says WHICH cells and the array says "
+                "forward(design_occupancy_override=...) are used together"
+                ": the box says WHICH cells and the array says "
                 "what the design variable is there. Got design_box="
                 f"{'set' if design_box is not None else 'None'}, "
                 f"design_eps_override={'set' if _want_eps else 'None'}, "
@@ -843,7 +786,7 @@ class _ExecuteMixin:
             raise NotImplementedError(
                 "forward(design_eps_override=...) and "
                 "forward(design_occupancy_override=...) in one call are not "
-                "supported (#1183). Each is exact on its own against its "
+                "supported. Each is exact on its own against its "
                 "whole-grid counterpart; the two together have no equality "
                 "gate, and the permittivity box is fenced against an "
                 "occupancy anyway. Differentiate one at a time, or use "
@@ -851,7 +794,7 @@ class _ExecuteMixin:
         if design_sigma_override is not None and not _want_eps:
             raise ValueError(
                 "forward(design_sigma_override=...) is the conductivity of a "
-                "PERMITTIVITY design box (#1179) and needs "
+                "PERMITTIVITY design box and needs "
                 "design_eps_override with it.")
 
         bounds = self._design_box_bounds_from_corners(grid, design_box)
@@ -877,7 +820,7 @@ class _ExecuteMixin:
         if _collides:
             raise ValueError(
                 "forward(design_box=...) does not combine with "
-                + " / ".join(_collides) + " (#1179). The design box exists to "
+                + " / ".join(_collides) + ". The design box exists to "
                 "keep the whole-grid material arrays CONSTANT; a traced "
                 "override puts them back on the AD tape, which is the cost "
                 "the box removes. Put the design values in "
@@ -887,19 +830,19 @@ class _ExecuteMixin:
         if debye_spec is not None or lorentz_spec is not None:
             raise NotImplementedError(
                 "forward(design_box=...) does not support Debye/Lorentz "
-                "dispersive materials (#1179): the dispersive E update runs "
+                "dispersive materials: the dispersive E update runs "
                 "its own ADE coefficients, which the box redo would "
                 "overwrite. Use eps_override.")
         if kerr_chi3 is not None:
             raise NotImplementedError(
                 "forward(design_box=...) does not support Kerr chi3 "
-                "materials (#1179): the reactive Kerr correction rescales "
+                "materials: the reactive Kerr correction rescales "
                 "the E increment using the background eps_r. Use "
                 "eps_override.")
         if pec_occupancy_override is not None:
             raise NotImplementedError(
                 "forward(design_box=...) does not combine with "
-                "pec_occupancy_override (#1179): the relaxed-conductor lane "
+                "pec_occupancy_override: the relaxed-conductor lane "
                 "can route the E update through a Kottke inverse-eps tensor "
                 "built from the background permittivity. Use eps_override "
                 "for a design region that is itself the conductor.")
@@ -940,7 +883,7 @@ class _ExecuteMixin:
             return all(_w[2 * d] <= cell[d] < _w[2 * d + 1] for d in range(3))
 
         for _pe in self._ports:
-            if _pe.impedance == 0.0:
+            if _pe.is_soft_source:
                 # A plain soft source: caught as a source cell at the step --
                 # except on a held port edge, where a port's drive is
                 # accepted, so it is refused here whatever it sits on.
@@ -961,7 +904,7 @@ class _ExecuteMixin:
             if getattr(_pe, "extent", None) is not None:
                 _end = list(_pe.position)
                 _end[_axis] += _pe.extent
-                from rfx._periodic import interval_indices
+                from rfx._internal._periodic import interval_indices
                 _start_idx, _end_idx = interval_indices(
                     grid, tuple(float(v) for v in _pe.position),
                     tuple(float(v) for v in _end))
@@ -984,7 +927,7 @@ class _ExecuteMixin:
                     f"port's impedance fold and its drive coefficient are "
                     f"built from the background permittivity before the time "
                     f"loop starts, so the design permittivity would not reach "
-                    f"them (#1179). Move the box off the port, pass "
+                    f"them. Move the box off the port, pass "
                     f"design_box_holds_ports=True to keep the port inside on "
                     f"its own drawn coefficients (its edges then take no "
                     f"design value), or use eps_override.")
@@ -1002,7 +945,7 @@ class _ExecuteMixin:
 
         ``Grid`` carries the method; ``NonUniformGrid`` is a pytree-registered
         NamedTuple and its resolver is a module function that walks the
-        cumulative cell edges (#1183).
+        cumulative cell edges.
         """
         if hasattr(grid, "position_to_index"):
             return grid.position_to_index(tuple(float(v) for v in position))
@@ -1010,7 +953,7 @@ class _ExecuteMixin:
         return _nu_pos_to_idx(grid, tuple(float(v) for v in position))
 
     def _design_box_bounds_from_corners(self, grid, design_box):
-        """Half-open cell bounds of a declared design box (#1179).
+        """Half-open cell bounds of a declared design box.
 
         Same index resolution topology_optimize uses (rfx/topology.py):
         nearest index of each corner, both ends inclusive, so a corner pair
@@ -1032,7 +975,7 @@ class _ExecuteMixin:
                     "pair of (x, y, z) positions in metres, or an object "
                     "carrying corner_lo/corner_hi (DesignRegion, "
                     f"TopologyDesignRegion). Got {design_box!r}.") from None
-        from rfx._periodic import interval_indices
+        from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = interval_indices(
             grid, tuple(float(v) for v in corner_lo), tuple(float(v) for v in corner_hi))
         return tuple(
@@ -1073,7 +1016,7 @@ class _ExecuteMixin:
         port_s11_freqs: object | None = None,
         rlc_values_override: dict | None = None,
         ringdown: RingdownSpec | None = None,
-        **_removed_kwargs,
+        **_removed_kwargs: object,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
 
@@ -1158,7 +1101,7 @@ class _ExecuteMixin:
 
             Fenced, not degraded — for a design PERMITTIVITY
             (*design_eps_override*): ``distributed=True``,
-            ``solver='adi'``, ``boundary='upml'``, Debye/Lorentz
+            ``boundary='upml'``, Debye/Lorentz
             dispersion, Kerr, subpixel/anisotropic permittivity,
             ``pec_occupancy_override``, ``stencil_order=4``, the oblique
             Bloch path, combining with ``eps_override`` / ``sigma_override``
@@ -1206,14 +1149,14 @@ class _ExecuteMixin:
             ``checkpoint=False`` with it, for the reason above.
 
             Uniform single-device Yee lane only; a graded mesh,
-            ``distributed=True`` and ``solver='adi'`` raise. So do a
+            ``distributed=True`` raises. So do a
             periodic axis (the incident rule wraps across the seam, so the
             box's window is no longer the whole set of cells its occupancy
             can move), combining it with *design_eps_override* in one call,
             a box covering a cell the port setup CLEARS the occupancy at
             (the port cell, its six face neighbours, an MSL port's in-plane
             diagonal owners), and the Kottke occupancy lane
-            (``RFX_PEC_OCC_KOTTKE=1``), where the occupancy becomes an
+            (``pec_occupancy_model="kottke"``), where the occupancy becomes an
             inverse-eps tensor inside the E update that the box's values
             never reach.
         design_box_holds_ports : bool
@@ -1346,19 +1289,19 @@ class _ExecuteMixin:
             relief instead — it is exact regardless of placement, at the
             cost of recompute rather than gradient accuracy.
         skip_preflight : bool
-            Skip the consolidated :meth:`preflight` validation suite that
-            normally runs before the forward simulation (default False).
-            Use only when preflight has already been run by the caller
-            (e.g. :func:`rfx.optimize` runs it once at entry) or to bypass a
-            known-spurious warning on a deliberate configuration.
+            Skip advisory :meth:`preflight` checks only (default False).
+            Realization refusals and runtime admission guards still apply.
+            Use ``snap='declared'`` to warn on geometry size misses.
+            Skip advisories when already reviewed for the same model
+            (e.g. :func:`rfx.optimize` runs preflight once at entry).
         distributed : bool, optional
             Run on several devices: a uniform mesh uses the runner of
-            ``run(devices=...)``, including its one-device fallback; a graded mesh
-            the graded multi-device runner. On a uniform mesh, override and design
-            arguments, ``checkpoint=True`` and the other checkpoint arguments,
-            ``n_warmup``, ``emit_time_series=False``, ``ringdown`` and a call
-            inside ``jax.jit`` are refused. Multi-device runs are compared with
-            one-device runs in the test suite; no accuracy statement of their own.
+            ``run(devices=...)``, a graded mesh the graded multi-device runner;
+            every waveguide port, and every plane wave but a normal-incidence
+            closed box on a uniform mesh, is refused by name. On a uniform mesh,
+            override, design and checkpoint arguments (``checkpoint=True`` too),
+            ``n_warmup``, ``emit_time_series=False``, ``ringdown`` and port S inside
+            ``jax.jit`` are refused. Compared with one device in tests; no accuracy claim.
         devices : list of jax.Device or None, optional
             Devices for the distributed run.  When ``distributed=True``
             and ``devices=None``, defaults to ``jax.devices()``.  When
@@ -1460,6 +1403,7 @@ class _ExecuteMixin:
         rounding, not necessarily bit for bit.
         """
         _call_args = dict(locals()); del _call_args["self"], _call_args["_removed_kwargs"]
+        refuse_conformal_occupancy_overrides(self, pec_occupancy_override, design_occupancy_override)
         self, pinned_sheet_layout = _conductors.prepare_sheet_layout(
             self, pinned_sheet_layout, distributed=distributed)
         refuse_forward_smoothing(self, subpixel_smoothing=subpixel_smoothing,
@@ -1485,7 +1429,7 @@ class _ExecuteMixin:
             refuse_forward_request(self, ringdown, distributed=distributed,
                                    emit_time_series=emit_time_series)
 
-        # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
+        # One-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable
         # / pending GPU evidence.  The flag lives at module scope so we
         # warn exactly once per process, not per Simulation instance.
@@ -1497,8 +1441,8 @@ class _ExecuteMixin:
                 "compared with one-device runs in the test suite but carry no "
                 "accuracy statement of their own; see the 'Distributed execution' "
                 "row of docs/guides/support_matrix.md before relying on one.",
-                UserWarning,
-                stacklevel=2,
+                AccuracyWarning,
+                stacklevel=user_stacklevel(),
             )
             _DISTRIBUTED_FIRST_CALL_WARNED = True
 
@@ -1512,21 +1456,12 @@ class _ExecuteMixin:
                 "Either set distributed=True or omit devices."
             )
 
-        if self._coaxial_ports:
-            raise NotImplementedError(
-                "add_coaxial_port() is not wired into Simulation.forward(). "
-                "A coaxial port's S-parameters come from "
-                "compute_coaxial_line_reflection(...) (one-port reflection) "
-                "or compute_coaxial_two_port(...) (through line); both take "
-                "eps_scale= for jax.grad. Use add_port(..., extent=...) for "
-                "differentiable probe-feed S11 objectives."
-            )
-
+        refuse_coaxial_port(self, "forward")
         if port_s11_freqs is not None or ringdown is not None:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override))
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, conformal=bool(self._boundary_spec.conformal_faces()), tfsf_material_overrides=(eps_override, sigma_override, mu_r_override), realization_options=(subpixel_smoothing, bool(self._boundary_spec.conformal_faces())))
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=distributed)
@@ -1562,15 +1497,13 @@ class _ExecuteMixin:
                 checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
                 emit_time_series=emit_time_series, ringdown=ringdown)
         checkpoint = True if checkpoint is None else checkpoint
-        # No forward lane (and so no optimize()) applies Dey-Mittra weights.
-        self._refuse_conformal_boundary(
-            {"fwd_uniform": "uniform forward",
-             "fwd_nonuniform": "non-uniform forward",
-             "fwd_distributed_nu": "distributed non-uniform forward",
-             }.get(plan.lane, plan.lane),
-            entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
-            instead="use run() on a uniform mesh to keep conformal PEC "
-                    "for a forward-only result")
+        if plan.lane != "fwd_uniform":
+            self._refuse_conformal_boundary(
+                {"fwd_uniform": "uniform forward", "fwd_nonuniform": "non-uniform forward",
+                 "fwd_distributed_nu": "distributed non-uniform forward"}.get(plan.lane, plan.lane),
+                entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
+                instead="use run() or forward() on a uniform mesh and one device "
+                        "to keep default conformal PEC")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(
@@ -1590,7 +1523,7 @@ class _ExecuteMixin:
                 "add_lumped_rlc elements)."
             )
 
-        # Reactive Kerr χ³ (#437) is threaded through the shared _run scan on the
+        # Reactive Kerr χ³ is threaded through the shared _run scan on the
         # UNIFORM forward lane only.  The non-uniform / distributed forward lanes
         # discard kerr_chi3, so a Kerr material there would silently give LINEAR
         # physics (and a linear gradient) — fail loud on those lanes only.
@@ -1603,31 +1536,25 @@ class _ExecuteMixin:
                 "for differentiable nonlinear (Kerr) design."
             )
 
-        # Both single-device lanes build TFSF; distributed/ADI lanes do not.
+        # Both single-device lanes build TFSF; distributed lanes do not.
         if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
             raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward refuses distributed and "
-                f"ADI lanes, including {plan.lane!r}. Use a uniform or graded "
+                "Differentiable TFSF plane-wave forward refuses distributed "
+                f"lanes, including {plan.lane!r}. Use a uniform or graded "
                 "single-device forward lane for TFSF/plane-wave inverse design."
             )
 
         # mu_r_override is wired only on the uniform lane; the NU/distributed
         # material-override paths do not thread it, so fail loud instead of
         # silently dropping it to a zero-gradient no-op.
-        if mu_r_override is not None and self._solver == "adi":
-            raise NotImplementedError(
-                "forward(mu_r_override=...) is not supported with solver='adi': "
-                "the ADI update does not read the permeability override. "
-                "Use solver='yee' on a uniform single-device mesh, or omit mu_r_override."
-            )
         if mu_r_override is not None and plan.lane != "fwd_uniform":
             raise NotImplementedError(
                 "mu_r_override (differentiable permeability) is supported only on "
                 f"the uniform single-device forward lane, not {plan.lane!r}."
             )
 
-        # #1179/#1183 design box: the lanes that carry it. The distributed
-        # and ADI runners never see ``design_box``, so without this they
+        # design box: the lanes that carry it. The distributed
+        # runners never see ``design_box``, so without this they
         # would run the BACKGROUND design variable and return a zero
         # gradient — a silent wrong answer.
         _design_requested = (design_box is not None
@@ -1643,15 +1570,9 @@ class _ExecuteMixin:
                 raise NotImplementedError(
                     "forward(design_box=...) is supported on the "
                     + " / ".join(_design_lanes)
-                    + f" forward lane(s), not {plan.lane!r} "
-                    "(#1179 permittivity, #1183 graded mesh and occupancy). "
+                    + f" forward lane(s), not {plan.lane!r}"
+                    ". "
                     "Use eps_override / pec_occupancy_override there.")
-            if self._solver != "yee":
-                raise NotImplementedError(
-                    "forward(design_box=...) is supported only on the Yee "
-                    f"solver, not solver={self._solver!r} (#1179): the ADI "
-                    "lane builds its own implicit update coefficients from "
-                    "``materials``. Use eps_override there.")
 
         if plan.lane == "fwd_distributed_nu" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' cannot combine with forward eps_override or distributed NU")
@@ -1663,7 +1584,7 @@ class _ExecuteMixin:
         if plan.lane == "fwd_nonuniform":
             _nu_design_spec = None
             if _design_requested:
-                # #1183: the corners resolve against the GRADED grid, whose
+                # the corners resolve against the GRADED grid, whose
                 # z cell edges are not a multiple of any dx. Everything the
                 # resolved step context decides is
                 # ``rfx.model.resolve_design_box``'s, from
@@ -1699,14 +1620,14 @@ class _ExecuteMixin:
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
             )
-            _nu_fwd_call, _nu_grid = _conductors.bind_solve_call(_solve_assembly, _nu_fwd_call)
+            _nu_fwd_call, _nu_grid = bind_solve_call(_solve_assembly, _nu_fwd_call)
             if ringdown is None:
                 result = _nu_fwd_call()
             else:
                 from rfx.ringdown import RingdownForward, host_bins
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32)).run(_nu_fwd_call)
+                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32, caller="forward", argument="port_s11_freqs")).run(_nu_fwd_call)
             result = _conductors.with_sheet_layout_reports(result, pinned_sheet_layout)
             if _nu_design_spec is not None:
                 result = result._replace(
@@ -1725,34 +1646,28 @@ class _ExecuteMixin:
                 materials, eps_override=eps_override, sigma_override=sigma_override,
                 mu_r_override=mu_r_override)
 
-        if pec_mask_override is not None:
-            pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
+        from rfx.runners._admission import merge_forward_pec_mask
+        pec_mask = merge_forward_pec_mask(self, pec_mask, pec_mask_override)
 
         if n_steps is None:
-            if self._solver == "adi":
-                dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
-            else:
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+            n_steps = grid.num_timesteps(num_periods=num_periods)
 
-        # #677: node-thin sheet ctx against the realized PEC edges of this
-        # forward run (PEC wins on overlapping edges).  #931: the PEC
+        # node-thin sheet ctx against the realized PEC edges of this
+        # forward run (PEC wins on overlapping edges).  The PEC
         # sheets AND WIRES belong in that realization too — they own no
         # cell, so the "is there any PEC?" question cannot be asked of
-        # ``pec_mask`` and the sheet list alone.  A model whose only
-        # conductor is a filament used to reach the lossy operator with
-        # ``pec_edge_masks=None``, and the operator then wrote field back
-        # onto the wire's own PEC edge.
+        # ``pec_mask`` and the sheet list alone.  Passing ``pec_edge_masks=None`` for a filament-only model lets the
+        # lossy operator write field back onto the wire's PEC edge.
         #
-        # ``periodic=`` on the OUTER call is the same #689 requirement:
+        # ``periodic=`` on the OUTER call is the same requirement:
         # the builder realizes the f0 footprint's own edges, and on a
         # periodic axis the seam edge (node n-1 to node 0) is in the sheet.
         # Without the flags it is zero-padded away, so the seam carries no
         # loss — measured on an x-periodic f0 sheet at dx = 2 mm, 35 loaded
         # Ex edges through run() against 30 through forward().
-        # ``self._periodic_flags()`` is the single spelling (#931 §1.7).
+        # ``self._periodic_flags()`` is the single spelling.
         _fwd_sheet_ctx = _conductors.forward_sheet_context(conductors, pec_mask)
-        # #679: the same UPML refusal run_uniform carries. forward() reaches
+        # the same UPML refusal run_uniform carries. forward() reaches
         # the solver by its own route (it never enters run_uniform), so
         # WITHOUT this the eps_override / forward() channel silently ran the
         # combination run() refuses: _forward_from_materials passes
@@ -1764,7 +1679,7 @@ class _ExecuteMixin:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets are not "
                 "supported with boundary='upml' on the uniform forward() / "
-                "eps_override lane (#677 v1): UPML replaces the whole E "
+                "eps_override lane: UPML replaces the whole E "
                 "update with its split-field form, which the sheet operator "
                 "would silently override at its edges. Use boundary='cpml' "
                 "or 'pec'.")
@@ -1773,7 +1688,7 @@ class _ExecuteMixin:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "
                 "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported (#677 v1): the sheet operator would "
+                "not supported: the sheet operator would "
                 "silently override the ADE dispersion update at its edges.")
 
         _design_spec = None
@@ -1802,8 +1717,7 @@ class _ExecuteMixin:
             # halves of one grid would be stepped at two precisions: the
             # float32 rounding of ``eps_r * EPS_0`` alone moves the field by
             # ~1e-7 relative, which is 1e9 x the difference between the two
-            # formulations. ``_assemble_materials`` pins float32 (#646
-            # promote-never-pin), so the promotion belongs here.
+            # formulations. ``_assemble_materials`` pins float32, so the promotion belongs here.
             materials = apply_material_overrides(materials, design_box=_design_spec)
 
         _fwd_call = functools.partial(
@@ -1874,7 +1788,7 @@ class _ExecuteMixin:
         s_param_n_steps: int | None = None,
         snapshot: SnapshotSpec | None = None,
         subpixel_smoothing: bool | str = False,
-        conformal_pec: bool | None = None,
+        conformal_pec: bool | str | None = None,
         conformal_min_weight: float = 0.1,
         devices: list | None = None,
         exchange_interval: int = 1,
@@ -1903,7 +1817,7 @@ class _ExecuteMixin:
             Timesteps for S-parameter simulation (may need more than
             the main simulation for frequency resolution).
         until_decay : float or None
-            When provided, overrides *n_steps*. On absorbing boundaries the
+            When provided, overrides *n_steps*. On the uniform mesh the
             run stops when the stored field energy left after the source has
             ended has decayed to this fraction of its value after the drive:
             the leapfrog-conserved interior energy
@@ -1913,8 +1827,8 @@ class _ExecuteMixin:
             structure the run is as long as the threshold asks. On a high-Q
             structure whose mode reaches the absorber, the stop can move by
             about 170 steps with the check phase while the spectra stay within
-            1e-2 of the band peak. Closed uniform boxes keep the instantaneous
-            point-field stop (see :func:`rfx.simulation.run_until_decay`).
+            1e-2 of the band peak. Closed uniform boxes use this same energy rule
+            (see :func:`rfx.simulation.run_until_decay`).
             **Non-uniform meshes:** the same rule on absorbing
             boundaries (per-cell dV); closed boundaries refuse ``until_decay``.
             On the decay path every step-sized buffer is allocated at
@@ -1941,7 +1855,7 @@ class _ExecuteMixin:
         decay_max_steps : int
             Hard upper limit on steps (default 50000).
         decay_energy_consecutive : int
-            Absorbing-boundary only: consecutive sub-threshold energy checks
+            Consecutive sub-threshold energy checks
             before stopping (default ``2``; values below 2 are refused).
         radiated_flux_box : tuple or None
             Physical lower/upper corners of a closed box enclosing the radiator,
@@ -1957,18 +1871,19 @@ class _ExecuteMixin:
             "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC occupancy rule.
         skip_preflight : bool
-            Skip advisory preflight checks. Runtime admission guards still apply.
+            Skip advisories only; realization refusals and runtime admission still apply.
         decay_monitor_component : str
-            Field component to monitor (default ``"ez"``). Used only by the
-            closed/PEC point-field fallback stop.
+            Legacy uniform monitor component (default ``"ez"``); does not
+            affect the energy or radiated-flux stop.
         decay_monitor_position : tuple or None
-            Physical position to monitor. If None, use domain center.
-        conformal_pec : bool
-            Enable Dey-Mittra conformal PEC for second-order accuracy
-            on curved PEC surfaces. Default False (staircase PEC).
+            Legacy uniform monitor position; does not affect the stop.
+        conformal_pec : bool, str or None
+            Cut-cell conformal PEC; None reads Boundary(conformal=True).
+            "cut_cell_floor" uses true edges and a q**2 face-area floor on uniform Yee.
+            Requires Simulation(dt=q * Grid.courant_dt(dx, ndim)), q=0.5 or 0.25.
+            An explicit n_steps still counts steps: half or quarter the ordinary duration.
         conformal_min_weight : float
-            Minimum conformal weight for CFL stability clamping.
-            Default 0.1. Recommended range: 0.05-0.3.
+            Legacy; only the default 0.1 is accepted (the SC clamp replaced it).
         devices : list of jax.Device or None
             When a list with len > 1 is provided, run the simulation
             distributed across those devices using 1D slab decomposition
@@ -1986,7 +1901,7 @@ class _ExecuteMixin:
 
             Supported on the **uniform lane only** (both the fixed
             ``n_steps`` scan and ``until_decay``); the distributed,
-            non-uniform, ADI and subgridded lanes warn and drop it rather
+            non-uniform and subgridded lanes warn and drop it rather
             than silently producing no output. It is forward-only and
             raises under ``jax.jit``/``grad``/``vmap`` (the check inspects
             the carry, the per-step inputs and the material / geometry
@@ -2057,317 +1972,15 @@ class _ExecuteMixin:
         -------
         Result
         """
+        from rfx.geometry.conformal import validate_conformal_min_weight
+        validate_conformal_min_weight(conformal_min_weight)
         self._resolve_field_dtype()
-        admit_traced_run(self, until_decay, decay_max_steps)
-        validate_exchange_interval(exchange_interval)
-        fixed_num_periods = n_steps is None
-        if until_decay is not None and self._tfsf is not None:
-            from rfx.sources.sources import CustomWaveform
-            if isinstance(self._tfsf.waveform, CustomWaveform):
-                raise NotImplementedError(
-                    "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
-        if until_identified is not False:
-            from rfx.ringdown import refuse_until_identified
-            until_identified = refuse_until_identified(
-                self, ringdown, until_identified, until_decay=until_decay,
-                snapshot=snapshot)
-        if ringdown is not None:
-            from rfx.ringdown import refuse_run_request
-            refuse_run_request(self, ringdown, devices=devices,
-                               until_decay=until_decay,
-                               compute_s_params=compute_s_params)
-
-        # Behaviour-neutral decay-parameter sanity advisories (post-#392
-        # review): single run()-level site, before dispatch, so both lanes
-        # that honour until_decay (uniform + absorbing-boundary
-        # non-uniform) are covered by one check.
-        self._warn_decay_param_sanity(
-            until_decay=until_decay,
-            decay_min_steps=decay_min_steps,
-            decay_max_steps=decay_max_steps,
-        )
-
-        # ---- Stage 1 conformal PEC auto-routing ----
-        # When the user passes ``conformal_pec=None`` (default), derive
-        # it from ``BoundarySpec.conformal_faces()``: any axis declared
-        # ``Boundary(conformal=True)`` flips conformal_pec on. Explicit
-        # True/False from the caller is preserved as a power-user
-        # override (e.g. for A/B regression diagnosis).
-        if conformal_pec is None:
-            conformal_pec = bool(self._boundary_spec.conformal_faces())
-
-        if self._coaxial_ports:
-            raise NotImplementedError(
-                "add_coaxial_port() is not wired into Simulation.run(). A "
-                "coaxial port's S-parameters come from "
-                "compute_coaxial_line_reflection(...) (one-port reflection) "
-                "or compute_coaxial_two_port(...) (through line); for a "
-                "single add_coaxial_port(), compute_s_matrix(method=...) "
-                "dispatches to either. Use add_port(..., extent=...) for "
-                "probe-feed S-parameters."
-            )
-
-        compute_s_params = self._validate_run_sparameter_request(
-            compute_s_params=compute_s_params,
-            s_param_freqs=s_param_freqs,
-            s_param_n_steps=s_param_n_steps,
-            devices=devices,
-        )
-        _line_stub_scope = _line_stub_admit(self, s_param_freqs)
-
-        _distributed_run = devices is not None and len(devices) > 1
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)
-        _diagnostics = _solve_assembly.diagnostics
-
-        # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
-        self._check_stencil_order_supported(distributed=_distributed_run)
-
-        # ---- W6.3 unified lane dispatch: one place decides + rejects ----
-        # _dispatch_plan computes the is_nonuniform/_nu_profile boolean, runs
-        # the distributed adi/upml ValueErrors + the distributed+NU grading
-        # guardrail, selects the lane, and resolves n_steps for the
-        # NU/distributed lanes (the uniform/adi/subgridded lanes resolve it
-        # below from the grid they build and reuse).
-        plan = self._dispatch_plan(
-            mode="run", subpixel_smoothing=subpixel_smoothing,
-            diagnostics=_diagnostics,
+        admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box, conformal_pec)
+        from rfx.runners.run import run_after_admission
+        return run_after_admission(
+            self,
             n_steps=n_steps,
             num_periods=num_periods,
-            devices=devices,
-            exchange_interval=exchange_interval,
-        )
-        n_steps = plan.n_steps
-        if plan.lane == "run_subgridded":
-            from rfx.subgridding._notice import require_experimental
-            require_experimental(
-                self,
-                diagnostics=_diagnostics,
-            )
-        if _realized.ACTIVE is not None:
-            _realized.enter(self, plan.lane)
-        if ringdown is not None:
-            from rfx.ringdown import refuse_run_lane
-            refuse_run_lane(plan.lane, sum(
-                1 for p in self._ports
-                if float(p.impedance) > 0.0 and p.extent is not None))
-
-        # ---- Distributed multi-device lane ----
-        if plan.lane in ("run_distributed", "run_distributed_nu"):
-            from rfx.runners._distributed_entry import execute_distributed
-            return execute_distributed(
-                self, plan=plan, _solve_assembly=_solve_assembly,
-                _diagnostics=_diagnostics,
-                n_steps=n_steps, num_periods=num_periods, devices=devices,
-                exchange_interval=exchange_interval, skip_preflight=skip_preflight,
-                compute_s_params=compute_s_params, s_param_freqs=s_param_freqs,
-                s_param_n_steps=s_param_n_steps, conformal_pec=conformal_pec,
-                subpixel_smoothing=subpixel_smoothing, checkpoint=checkpoint,
-                snapshot=snapshot, until_decay=until_decay, report_every=report_every)
-
-        # ---- Non-uniform mesh lane ----
-        if plan.lane == "run_nonuniform":
-            # #383: absorbing NU domains support the interior-energy decay
-            # stop; closed/PEC domains refuse it because their energy does
-            # not decay and this lane has no point-field fallback. A single
-            # port reads S from the main record; more ports run their own
-            # drives of that record's length: n_steps, or the decay stop
-            # under until_decay. A different s_param_n_steps is refused;
-            # with until_decay, an explicit length is always refused.
-            _nu_refused = {
-                "snapshot": snapshot,
-                "conformal_pec": bool(
-                    conformal_pec and self._has_pec_to_conform()),
-                "s_param_n_steps": self._s_param_n_steps_off_record(
-                    s_param_n_steps, n_steps, until_decay),
-            }
-            if self._boundary not in ("cpml", "upml"):
-                _nu_refused["until_decay"] = until_decay
-            _uniform = "run on a uniform mesh (no dx/dy/dz profile)"
-            self._refuse_unsupported_run_kwargs(
-                "non-uniform mesh", _nu_refused,
-                # One wire port reads S from the main record on the uniform
-                # lane too; only a multi-port S-matrix runs its own records.
-                instead={"*": _uniform, "s_param_n_steps": (
-                    _uniform if len(self._port_sparameter_entries()) > 1
-                    else None)},
-                reason_overrides={
-                    "until_decay":
-                        "the interior-energy decay stop needs absorbing "
-                        "boundaries (cpml/upml); a closed non-uniform "
-                        "domain's energy does not decay, and the "
-                        "non-uniform lane has no point-field fallback "
-                        "(issue #383)",
-                    "s_param_n_steps":
-                        "this lane matches the S-parameter record to the main "
-                        "run's port record, whose length is n_steps, or the decay stop under until_decay",
-                },
-            )
-            if until_decay is not None:
-                # #388 DC-floor predictor for the NU decay stop. The grid
-                # build is pure (no sim-state mutation) and cheap; an
-                # advisory must never block the run, so any build failure
-                # simply skips the check (the runner will surface it).
-                try:
-                    _nu_dt_for_dc = self._build_nonuniform_grid().dt
-                except Exception:
-                    _nu_dt_for_dc = None
-                if _nu_dt_for_dc is not None:
-                    from rfx.measurement import warn_dc_floor
-                    warn_dc_floor(self, dt=_nu_dt_for_dc, n_table=decay_max_steps)
-            _nu_call = functools.partial(
-                self._run_nonuniform,
-                n_steps=n_steps,
-                conformal_pec=conformal_pec,
-                report_every=report_every,
-                report_label=report_label,
-                compute_s_params=compute_s_params,
-                s_param_freqs=s_param_freqs,
-                subpixel_smoothing=subpixel_smoothing,
-                checkpoint=checkpoint,
-                until_decay=until_decay,
-                decay_check_interval=decay_check_interval,
-                decay_min_steps=decay_min_steps,
-                decay_max_steps=decay_max_steps,
-                decay_energy_consecutive=decay_energy_consecutive,
-                radiated_flux_box=radiated_flux_box,
-                flux_env_checks=flux_env_checks,
-            )
-            _nu_call, _nu_grid = _conductors.bind_solve_call(_solve_assembly, _nu_call)
-            if ringdown is None:
-                _res = _nu_call()
-            elif until_identified:
-                from rfx.ringdown import RingdownStop
-                _res = RingdownStop(
-                    self, ringdown, lane="graded", n_max=n_steps,
-                    grid=_nu_grid).run(_nu_call)
-                n_steps = _res.ringdown.stop.n_stop
-            else:
-                from rfx.ringdown import RingdownRun
-                _res = RingdownRun(
-                    self, ringdown, lane="graded", n_steps=n_steps,
-                    grid=_nu_grid, bins=s_param_freqs).run(_nu_call)
-            self._warn_run_sparams_if_nonpassive(_res)
-            self._warn_postrun_energy_witness(
-                _res,
-                fixed_num_periods=fixed_num_periods,
-                until_decay=until_decay,
-            )
-            _res = self._attach_run_settling_witness(
-                _res, n_steps=n_steps, num_periods=num_periods)
-            _warn_if_nonfinite_result(_res, context="run")
-            from rfx.current_moments import require_accumulated_current_moments
-            require_accumulated_current_moments(self, _res, "run")
-            return _res
-
-        conductors, grid, assembly_inputs, _run_sheet_specs, _run_pec_sheets, _run_pec_wires = _conductors.uniform_solve_inputs(_solve_assembly)
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembly_inputs
-        from rfx.realized_geometry import attach_record
-        geometry_record = _conductors.early_run_record(self, conductors, plan.lane)
-
-        if plan.lane == "run_adi":
-            from rfx.materials.thin_conductor import refuse_f0_sheets
-            refuse_f0_sheets(self._thin_conductors, "ADI run()")
-            from rfx.current_moments import refuse_current_moment_monitor
-            refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
-            self._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
-                "subpixel_smoothing": subpixel_smoothing,
-                "checkpoint": checkpoint,
-                "snapshot": snapshot,
-                "until_decay": until_decay,
-                "conformal_pec": bool(conformal_pec and pec_shapes),
-                **({} if report_every is None else {"report_every": report_every}),
-            }, instead="use the default solver='yee'")
-            if n_steps is None:
-                dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
-            _res = self._run_adi_from_materials(
-                grid,
-                base_materials,
-                debye_spec,
-                lorentz_spec,
-                n_steps=n_steps,
-                pec_mask=pec_mask,
-                pec_sheets=tuple(_run_pec_sheets),
-                pec_wires=tuple(_run_pec_wires),
-                return_state=True,
-                lane="run_adi",
-                diagnostics=_diagnostics,
-                conformal_pec=conformal_pec,
-            )
-            _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
-            _warn_if_nonfinite_result(_res, context="run")
-            from rfx.current_moments import require_accumulated_current_moments
-            require_accumulated_current_moments(self, _res, "run")
-            return attach_record(_res, geometry_record)
-
-        # ---- Subgridded lane ----
-        if plan.lane == "run_subgridded":
-            from rfx.materials.thin_conductor import refuse_f0_sheets
-            refuse_f0_sheets(self._thin_conductors, "subgridded (SBP-SAT) run()")
-            self._refuse_unsupported_run_kwargs("subgridded (SBP-SAT)", {
-                "subpixel_smoothing": subpixel_smoothing,
-                "checkpoint": checkpoint,
-                "snapshot": snapshot,
-                "until_decay": until_decay,
-                "conformal_pec": bool(conformal_pec and pec_shapes),
-                **({} if report_every is None else {"report_every": report_every}),
-            }, instead="drop add_refinement() to run on the uniform lane")
-            subgrid_n_steps = n_steps
-            if subgrid_n_steps is None:
-                # The subgrid runner advances with the fine-grid CFL timestep
-                # (dx_coarse / ratio), while ``grid.num_timesteps`` is based
-                # on the coarse-grid timestep.  Preserve the user's requested
-                # physical duration by scaling the automatically computed
-                # coarse step count by the refinement ratio.  Explicit
-                # ``n_steps`` remains a low-level escape hatch and is passed
-                # through unchanged.
-                subgrid_n_steps = grid.num_timesteps(num_periods=num_periods) * int(
-                    self._refinement["ratio"]
-                )
-            if _run_pec_sheets or _run_pec_wires:
-                raise NotImplementedError(
-                    "solver='subgridded' (SBP-SAT) does not realize PEC "
-                    "sheets or wires (#931): the coarse/fine SBP-SAT "
-                    "operators apply PEC from a cell mask on two grids "
-                    "and a sheet owns no cell, so a declared sheet would "
-                    "be silently absent. Draw the conductor as a volume "
-                    "(a Box at least one cell thick) or use the uniform "
-                    "or non-uniform lane.")
-            _res = self._run_subgridded(
-                grid,
-                base_materials,
-                pec_mask,
-                n_steps=subgrid_n_steps,
-                diagnostics=_diagnostics,
-                conformal_pec=conformal_pec,
-                compute_s_params=compute_s_params,
-                s_param_freqs=s_param_freqs,
-                s_param_n_steps=s_param_n_steps,
-            )
-            _res = self._attach_run_settling_witness(
-                _res, n_steps=subgrid_n_steps)
-            _warn_if_nonfinite_result(_res, context="run")
-            from rfx.current_moments import require_accumulated_current_moments
-            require_accumulated_current_moments(self, _res, "run")
-            return attach_record(_res, geometry_record)
-
-        # ---- Uniform path ----
-        if n_steps is None:
-            n_steps = grid.num_timesteps(num_periods=num_periods)
-
-        if until_decay is not None:
-            # #388 DC-floor predictor for the decay stop (rfx.measurement.decay).
-            from rfx.measurement import warn_dc_floor
-            warn_dc_floor(self, dt=grid.dt, n_table=decay_max_steps)
-
-        from rfx.runners.uniform import run_uniform
-        _field_dtype = self._resolve_field_dtype()
-        _uniform_call = functools.partial(
-            run_uniform,
-            self,
-            conductors=conductors,
-            diagnostics=_diagnostics,
-            n_steps=n_steps,
             until_decay=until_decay,
             decay_check_interval=decay_check_interval,
             decay_min_steps=decay_min_steps,
@@ -2385,41 +1998,11 @@ class _ExecuteMixin:
             subpixel_smoothing=subpixel_smoothing,
             conformal_pec=conformal_pec,
             conformal_min_weight=conformal_min_weight,
-            pec_shapes=pec_shapes,
-            grid=grid,
-            base_materials=base_materials,
-            debye_spec=debye_spec,
-            lorentz_spec=lorentz_spec,
-            pec_mask=pec_mask,
-            pec_sheets=tuple(_run_pec_sheets),
-            pec_wires=tuple(_run_pec_wires),
-            kerr_chi3=kerr_chi3,
-            field_dtype=_field_dtype,
-            sheet_specs=_run_sheet_specs,
-            **(
-                {} if report_every is None else {"report_every": report_every, "report_label": report_label}
-            ),
+            devices=devices,
+            exchange_interval=exchange_interval,
+            skip_preflight=skip_preflight,
+            report_every=report_every,
+            report_label=report_label,
+            ringdown=ringdown,
+            until_identified=until_identified,
         )
-        if ringdown is None:
-            _res = _uniform_call()
-        elif until_identified:
-            from rfx.ringdown import RingdownStop
-            _res = RingdownStop(self, ringdown, lane="uniform", n_max=n_steps,
-                                grid=grid).run(_uniform_call)
-            n_steps = _res.ringdown.stop.n_stop
-        else:
-            from rfx.ringdown import RingdownRun
-            _res = RingdownRun(self, ringdown, lane="uniform", n_steps=n_steps,
-                               grid=grid, bins=s_param_freqs).run(_uniform_call)
-        self._warn_run_sparams_if_nonpassive(_res)
-        self._warn_postrun_energy_witness(
-            _res,
-            fixed_num_periods=fixed_num_periods,
-            until_decay=until_decay,
-        )
-        _res = self._attach_run_settling_witness(
-            _res, n_steps=n_steps, num_periods=num_periods)
-        _warn_if_nonfinite_result(_res, context="run")
-        from rfx.current_moments import require_accumulated_current_moments
-        require_accumulated_current_moments(self, _res, "run")
-        return _res

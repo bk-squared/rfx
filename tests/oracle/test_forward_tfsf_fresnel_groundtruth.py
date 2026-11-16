@@ -15,7 +15,6 @@ Replaces the retracted ``test_forward_tfsf_reflection_objective.py`` (#417), whi
 SINGLE-POINT (T−I)/I extraction (the #404-defective method → |Γ|>1, 170–290% vs analytic).
 Measured envelope (CPU, this config): |Γ| err 1.7/2.4/3.6% @ εr=2/4/9; phase 10.7° off 180°
 (the εr-independent Yee half-cell reference-plane constant); d|Γ|/dε AD==FD 0.01%.
-Validation harness: docs/research_notes/experiments/i404_oblique_20260720/diffrefl_v3_complex_and_grad.py
 """
 import numpy as np
 import jax

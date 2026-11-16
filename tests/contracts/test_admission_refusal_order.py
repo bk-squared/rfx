@@ -7,7 +7,7 @@ from rfx.runners import _admission as admission
 
 
 @pytest.mark.parametrize("lane", (
-    "run_adi", "fwd_adi", "run_subgridded",
+      "run_subgridded",
 ))
 @pytest.mark.parametrize("kind,feature", (
     ("sheet", "a PEC sheet (a zero-thickness PEC Box)"),
@@ -48,3 +48,32 @@ def test_distributed_carriers_match_graded_support(row, graded):
 @pytest.mark.parametrize('lane', ('run_distributed', 'run_distributed_nu', 'fwd_distributed_nu'))
 def test_distributed_mode2d_is_not_admitted(lane):
     assert ('_mode', '') not in admission.ADMITS[lane]
+
+
+@pytest.mark.parametrize('lane', [
+    'coaxial_line_reflection', 'coaxial_two_port', 'coax_msl_transition',
+    'mixed_s_matrix', 's_matrix_scan', 'run_subgridded',
+])
+def test_conformal_pec_refusal_rows(lane):
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    sim = Simulation(20e9, (.012, .012, .012), dx=.001,
+                     boundary=BoundarySpec(x=Boundary('pec', 'pec', conformal=True), y='pec', z='pec'))
+    sim.add(Box((.004, .004, .004), (.006, .006, .006)), material='pec')
+    if lane == 's_matrix_scan':
+        admission.admit(sim, lane, run_args={'conformal_pec': True})
+        with pytest.raises(NotImplementedError, match='cut_cell_floor'):
+            admission.admit(sim, lane, run_args={'conformal_pec': 'cut_cell_floor'})
+        from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+        with pytest.raises(NotImplementedError, match=r'devices=.*conformal PEC'):
+            compute_lumped_wire_s_matrix_via_scan(sim, [10e9], n_steps=1, devices=[object(), object()])
+    else:
+        with pytest.raises(NotImplementedError, match='conformal'):
+            admission.admit(sim, lane, run_args={'conformal_pec': True})
+
+
+def test_2d_box_face_on_slice_refuses_conformal_by_name():
+    sim = Simulation(20e9, (.012, .012, .001), dx=.001, boundary='pec',
+                     mode='2d_tmz', snap='declared')
+    sim.add(Box((.004, .004, 0.), (.008, .008, .004)), material='pec')
+    with pytest.raises(NotImplementedError, match=r'conformal PEC.*Box.*2-D.*/issues/1373'):
+        sim.run(n_steps=4, conformal_pec=True, skip_preflight=True, compute_s_params=False)

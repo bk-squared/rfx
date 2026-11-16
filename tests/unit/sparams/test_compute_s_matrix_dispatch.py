@@ -17,8 +17,8 @@ plausible-looking numbers from the wrong lane.
 delegate with the same ``**kw``, or the dispatcher is a second, divergent
 implementation. Each leg builds two identical simulations, drives one through
 the dispatcher and one directly, and compares with ``np.array_equal`` -- bit
-identity, no tolerance, the same gate ``docs/agent-memory/
-development_methodology.md`` section 2.2 puts on code motion. The fixtures and
+identity, no tolerance, the same code-motion rule requiring bit-identical
+results before and after. The fixtures and
 truncated kwargs are copied verbatim from
 ``tests/locks/test_sparams_split_bit_identity.py``, which selected them as the
 smallest deterministic run that walks each whole path. Those records are
@@ -283,7 +283,7 @@ def test_removed_coaxial_lane_is_not_selectable():
     assert not hasattr(Simulation, "compute_coaxial_s_matrix")
     with pytest.raises(ValueError) as exc:
         _coax_sim().s_matrix_lane(method="compute_coaxial_s_matrix")
-    assert "#1212" in str(exc.value)
+    assert "removed" in str(exc.value)
     assert "compute_coaxial_line_reflection" in str(exc.value)
 
 
@@ -337,7 +337,7 @@ def test_no_ports_from_compute_raises_the_same_valueerror():
     (_floquet_sim, ["add_floquet_port", "no S-matrix calculator"]),
     (_tfsf_sim, ["add_tfsf_source", "not a port"]),
     (_three_coax_sim, ["add_coaxial_port x3", "EXACTLY ONE",
-                       "compute_coaxial_line_reflection", "#1212"]),
+                       "compute_coaxial_line_reflection", "removed"]),
     (_waveguide_plus_msl_sim, ["add_waveguide_port x2", "add_msl_port x1",
                                "compute_waveguide_s_matrix",
                                "compute_msl_s_matrix"]),
@@ -361,7 +361,7 @@ def test_three_coax_is_refused_because_no_lane_accepts_several():
     with pytest.raises(NotImplementedError) as exc:
         _three_coax_sim().compute_s_matrix()
     assert "EXACTLY ONE" in str(exc.value)
-    assert "#1212" in str(exc.value)
+    assert "removed" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

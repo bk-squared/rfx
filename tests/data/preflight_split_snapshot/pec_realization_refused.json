@@ -13,8 +13,7 @@
         "loc": null,
         "numbers": [
           0.0,
-          931.0,
-          1.5
+          20260906.0
         ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"

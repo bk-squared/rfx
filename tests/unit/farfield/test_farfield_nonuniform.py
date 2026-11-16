@@ -32,7 +32,8 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
-from rfx.farfield import compute_far_field, directivity
+from rfx.measurement.farfield import compute_far_field
+from rfx.farfield import directivity
 
 #: Ring-down rule (#885): the record must have decayed this far before a
 #: rect-window DFT of it means anything.
@@ -41,11 +42,12 @@ N_STEPS = 600
 
 
 def _nu_dipole_directivity(dz_profile):
-    # The 6-layer CPML (9 mm) is padded OUTSIDE the declared 30 mm domain
+    # The 6-layer CPML (9 mm) is padded OUTSIDE the declared 30 mm x/y extent
     # (realized 33 cells per x/y axis), so the 10-20 mm NTFF box — realized
     # 10.5-19.5 mm — sits seven cells from the absorber and three from the
     # source.
-    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), dx=1.5e-3,
+    # z is the profile sum (27 or 29 mm), the length the grid solves (#1941).
+    sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, float(np.sum(dz_profile))), dx=1.5e-3,
                      dz_profile=dz_profile, boundary="cpml", cpml_layers=6)
     sim.add_source((0.015, 0.015, 0.015), "ez")
     sim.add_probe((0.015, 0.015, 0.015), "ez")

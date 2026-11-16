@@ -97,10 +97,10 @@
       "default": "refused (validation='production'); validation='research' runs it with ExperimentalSubgridWarning"
     },
     "adi": {
-      "status": "experimental",
-      "public_docs_policy": "bounded_public_workflow",
-      "solver": "Zheng-Chen-Zhang ADI",
-      "limits": "outside the 2.0 supported scope; warns ExperimentalADIWarning; runs a closed boundary='pec', homogeneously filled cavity; refuses absorbing boundaries, dielectric or conductivity interfaces, graded meshes, interior PEC and ports; no accuracy claimed; explicit Yee remains required for claims-bearing physics",
+      "status": "removed",
+      "public_docs_policy": "no_current_public_workflow",
+      "solver": "adi",
+      "limits": "solver=\"adi\" raises ValueError: ADI was removed in 2.1: its unmatched absorber, half-cell interface error and unstable interior PEC outweigh the median 1.22x time-step gain. Use solver=\"yee\" on a graded mesh (dz_profile, dx_profile, dy_profile) for thin layers, or local refinement where it is supported.",
       "validated_speedup": false
     },
     "distributed": {

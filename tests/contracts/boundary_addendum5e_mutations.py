@@ -26,22 +26,24 @@ def main(mode):
 
         tfsf.replacement_axes = empty
         judge = "test_oblique_non_tilt_finite_box_refuses"
-    elif mode == "oblique-tilt-not-reported":
-        original = tfsf.report
+    elif mode == "oblique-tilt-unjudged":
+        original = tfsf.replacement_axes
 
-        def omit(sim, issues, **kwargs):
-            from rfx.preflight._common import PreflightIssue
-            original(sim, issues, **kwargs)
-            if sim._tfsf is not None and sim._tfsf.angle_deg != 0:
-                tilt = "y" if sim._tfsf.polarization == "ez" else "z"
-                for index, issue in enumerate(issues):
-                    if issue.code == "tfsf_transverse_periodic":
-                        issues[index] = PreflightIssue(
-                            str(issue).replace(f"{tilt}_lo, {tilt}_hi", ""),
-                            severity=issue.severity, code=issue.code)
+        def unjudged(cfg, grid, **kwargs):
+            from dataclasses import replace
+            if getattr(cfg, "angle_deg", 0) != 0:
+                electric = getattr(cfg, "electric_component", getattr(cfg, "polarization", "ez"))[-1]
+                tilt = "y" if electric == "z" else "z"
+                records = kwargs.get("records")
+                records = tfsf.grid_face_depths(grid) if records is None else records
+                # Bypass both the requirement loop and the array judge on tilt.
+                kwargs["records"] = tuple(replace(face, kind=tfsf.Kind.PERIODIC)
+                                          if face.name.startswith(tilt + "_") else face
+                                          for face in records)
+            return original(cfg, grid, **kwargs)
 
-        tfsf.report = omit
-        judge = "test_oblique_tilt_finite_box_reports_unjudged"
+        tfsf.replacement_axes = unjudged
+        judge = "test_oblique_tilt_finite_box_refuses"
     elif mode in ("explicit-full-admitted", "partial-refused"):
         original = features.full_aperture
 

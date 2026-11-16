@@ -34,7 +34,7 @@ def _board(*, f0=None, dz_profile=None):
     is the volume's other half: the hi node plane is an electric wall with no
     conductor cell on it.
     """
-    sim = Simulation(freq_max=20e9, domain=DOM, dx=DX, cpml_layers=4,
+    sim = Simulation(freq_max=20e9, domain=(DOM[0], DOM[1], float(np.sum(dz_profile))) if dz_profile is not None else DOM, dx=DX, cpml_layers=4,
                      boundary="cpml", dz_profile=dz_profile)
     sim.add_material("sub", eps_r=4.0, sigma=0.0)
     sim.add(Box((0, 0, 0), (DOM[0], DOM[1], H_SUB)), material="sub")
@@ -751,7 +751,7 @@ def test_position_search_reaches_the_same_physical_distance_on_a_graded_axis():
     prof = np.full(nz, 50e-6)
     prof[10:] = 200e-6
     dom = (3e-3, 3e-3, 3e-3)
-    sim = Simulation(freq_max=20e9, domain=dom, dx=DX, cpml_layers=4,
+    sim = Simulation(freq_max=20e9, domain=(dom[0], dom[1], float(np.sum(prof))), dx=DX, cpml_layers=4,
                      boundary="cpml", dz_profile=prof)
     sim.add_material("sub", eps_r=1.0, sigma=0.0)
     grid = sim._build_nonuniform_grid()

@@ -1,16 +1,11 @@
 """Rejection of removed ``Simulation.forward()`` keyword arguments.
 
-Moved out of ``rfx/api/_execute.py`` unchanged (file-size ratchet, #1512 PR).
+
 """
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Arc-audit follow-up item 5(b): a removed public kwarg (currently just
-# `design_mask`, issue #625) used to surface as the bare Python default --
-# `TypeError: _ExecuteMixin.forward() got an unexpected keyword argument
-# 'design_mask'` -- which leaks this mixin's internal class name (the
-# public surface is `Simulation.forward`, never `_ExecuteMixin.forward`)
-# and gives no reason or replacement. `forward()` now accepts
+# `forward()` accepts
 # `**_removed_kwargs` and calls this helper so a removed kwarg gets a
 # `TypeError` naming the actual reason and the one-line migration path
 # instead. Deliberately still a `TypeError` (not some other exception
@@ -20,7 +15,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 _REMOVED_FORWARD_KWARGS: dict = {
     "design_mask": (
-        "removed entirely in issue #625, not deprecated: it was measured "
+        "removed entirely, not deprecated: it was measured "
         "to save ZERO reverse-mode AD memory (partial-eval residuals have "
         "whole-array granularity) while corrupting the gradient in every "
         "configuration tested. For memory relief use checkpoint_every / "
@@ -37,6 +32,9 @@ def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
     reason and replacement for a KNOWN removed one (see
     ``_REMOVED_FORWARD_KWARGS``) instead of leaking ``_ExecuteMixin`` (the
     internal mixin, not the public ``Simulation.forward`` surface)."""
+    if removed_kwargs.get("conformal_pec") == "cut_cell_floor":
+        from rfx.runners._admission import refuse_forward_floor
+        refuse_forward_floor()
     parts = []
     for name in removed_kwargs:
         reason = _REMOVED_FORWARD_KWARGS.get(name)

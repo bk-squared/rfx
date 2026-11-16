@@ -20,7 +20,7 @@ DOMAIN = (20 * DX, 16 * DX, 12 * DX)
 FACES = tuple(f'{a}_{side}' for a in 'xyz' for side in ('lo', 'hi'))
 PATHS = ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward',
          'distributed_run', 'distributed_graded_run', 'distributed_graded_forward',
-         'adi_run', 'adi_forward', 'subgrid_run')
+           'subgrid_run')
 WALL_CASES = (
     ('x_lo', (0, 7, 5), 'ez'), ('x_lo', (0, 7, 5), 'ey'),
     ('x_hi', (20, 7, 5), 'ez'), ('y_lo', (6, 0, 5), 'ez'),
@@ -32,8 +32,7 @@ def model(path='uniform_run', *, boundary='pec'):
     kw = {}
     if 'graded' in path:
         kw['dy_profile'] = np.array([1] + [.9, 1.1] * 7 + [1]) * DX
-    if path.startswith('adi'):
-        kw['solver'] = 'adi'
+    pass
     sim = Simulation(freq_max=15e9, domain=DOMAIN, dx=DX, boundary=boundary, **kw)
     if path.startswith('subgrid'):
         sim.add_refinement((0, DOMAIN[2]), ratio=2, validation='off')
@@ -124,8 +123,7 @@ def test_b2_path_zero_sets(path, record_property):
 @pytest.mark.parametrize('case', WALL_CASES)
 @pytest.mark.parametrize('amplitude_kind', ('current', 'field'))
 def test_b3_soft_wall(path, case, amplitude_kind):
-    if path.startswith('adi') and amplitude_kind == 'current':
-        pytest.skip('ADI does not take current-amplitude sources')
+    pass
     face, position, component = case
     sim = model(path)
     pos = tuple(v * DX for v in position)
@@ -233,16 +231,16 @@ def test_absorber_backing_plane_source_admitted(path):
     graded = path == 'graded_run'
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     assert grid.pad_x_lo > 0
-    position = (-grid.pad_x_lo * DX, 7 * DX, 5 * DX)
+    position = (0.0 if graded else -grid.pad_x_lo * DX, 7 * DX, 5 * DX)
     if graded:
         from rfx.nonuniform import position_to_index
         cell = position_to_index(grid, position)
     else:
         cell = grid.position_to_index(position)
-    # The graded lookup clamps exterior coordinates to the physical interface.
-    # Only uniform placement reaches the backing and discriminates falsifier (d).
+    # Declare the graded control at the interior face it formerly clamped to.
+    # The uniform control deliberately drives the backing (falsifier d).
     assert cell[0] == (grid.pad_x_lo if graded else 0)
-    sim.add_source(position, 'ez', amplitude_kind='current')
+    sim.add_source(position, 'ez', amplitude_kind='current', allow_in_absorber=True)
     sim.add_probe((4 * DX, 7 * DX, 5 * DX), 'ez')
     sim.add_probe((13 * DX, 9 * DX, 4 * DX), 'ez')
     result = execute(sim, path, steps=2)
@@ -264,7 +262,7 @@ def test_outside_coordinate_reports_domain_and_wall(path, x, face):
 
 CONTROL_PATHS = [(path, case) for path in PATHS
                  for case in ('normal', 'inside', 'cpml', 'pmc', 'periodic')
-                 if not (path.startswith(('adi', 'subgrid')) and
+                 if not (path.startswith('subgrid') and
                          case not in ('normal', 'inside'))
                  and not (path.startswith('distributed') and case in ('pmc', 'periodic'))
                  and not ('graded' in path and case == 'periodic')]
@@ -278,7 +276,7 @@ def test_b3_control_admission(path, case):
     sim = model(path, boundary=boundary)
     component = 'ex' if case == 'normal' else 'ez'
     sim.add_source((DX if case == 'inside' else 0, 7 * DX, 5 * DX), component,
-                   amplitude_kind='field' if path.startswith('adi') else 'current')
+                   amplitude_kind='current')
     sim.add_probe((4 * DX, 7 * DX, 5 * DX), component)
     sim.add_probe((13 * DX, 9 * DX, 4 * DX), component)
     result = execute(sim, path, steps=2)
@@ -286,9 +284,9 @@ def test_b3_control_admission(path, case):
     assert np.all(np.isfinite(result.time_series))
 
 
-@pytest.mark.parametrize('solver', ('yee', 'adi'))
+@pytest.mark.parametrize('solver', ('yee',))
 def test_private_material_forward_refuses(solver):
-    sim = model('adi_forward' if solver == 'adi' else 'uniform_forward')
+    sim = model('uniform_forward')
     sim.add_source((0, 7 * DX, 5 * DX), 'ez', amplitude_kind='field')
     grid = sim._build_grid()
     root = realized_conductors(sim, grid)

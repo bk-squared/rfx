@@ -41,10 +41,10 @@ import jax  # noqa: E402
 import pytest  # noqa: E402
 
 # A test that reads a note, a guide or a README must be marked docs_consistency,
-# which only the non-required docs-consistency workflow runs (PI, 2026-09-24).
+# which only the non-required docs-consistency workflow runs.
 # With RFX_DURATIONS_LOG set, every test phase's duration is appended as it ends
 # (the weekly lane; tests/_durations_log.py).
-pytest_plugins = ("tests._prose_reads", "tests._durations_log", "tests._module_cache_clear")
+pytest_plugins = ("tests._prose_reads", "tests._durations_log", "tests._module_cache_clear", "tests._jax_version_xfails", "tests._whole_file_shards")
 
 
 def pytest_configure(config):
@@ -67,6 +67,10 @@ def pytest_configure(config):
             "Check that nothing imported jax before this conftest was loaded.",
             stacklevel=1,
         )
+    # The suite's hosts are managed; keep the one-time vm.max_map_count warning (#2421) out of
+    # order-dependent no-warning asserts. tests/contracts/test_map_count_warning.py resets it.
+    import rfx._host_limits
+    rfx._host_limits._checked = True
     _maybe_register_rss_reporter(config)
 
 

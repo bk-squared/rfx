@@ -1,7 +1,7 @@
 # X-D phase 2b — manifest digit refresh, claim_scope literals, and the pass-2 landing checklist
 
 Group X-D (cv18, cv19), branch `feat/931-wr90-iris`, worktree
-`/root/workspace/byungkwan-workspace/research/rfx-931-XD-wr90iris`, merged up to
+`<workspace>/research/rfx-931-XD-wr90iris`, merged up to
 `feat/931-lattice-ownership` at `770c4e6c`.
 
 Two things live here. **§1-§2** are replacement text for
@@ -223,8 +223,8 @@ is either produced by the run or derived by a committed builder from a produced 
 
 ### 3.1 Poll, do not `vessl run list`
 
-    /root/workspace/claude-workspace/rfx/runs/issue931-post-cv18-<ts>/{cv18.rc,cv18.log,produced/}
-    /root/workspace/claude-workspace/rfx/runs/issue931-post-cv19-<ts>/{cv19.rc,cv19.log,produced/}
+    <workspace>/rfx/runs/issue931-post-cv18-<ts>/{cv18.rc,cv18.log,produced/}
+    <workspace>/rfx/runs/issue931-post-cv19-<ts>/{cv19.rc,cv19.log,produced/}
 
 `.latest` in the runs directory names the current output dir. **Expected rc is 0 for
 both.** If a log carries an `ENVELOPE/GATE MISMATCH` line the constants in `901a3ad9` /

@@ -1,10 +1,13 @@
 """The admission matrix follows the actual combined ADE kernel (#1934)."""
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.core.yee import EPS_0, init_materials, init_state, update_h
+from rfx.core.yee import EPS_0, init_materials, init_state
+from rfx.stepping.yee import update_h
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import drude_pole, init_lorentz
 from rfx.model.pole_stability import C0, largest_growth
@@ -21,8 +24,8 @@ def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
     periodic = (True,) * 3
     dp = [DebyePole(de, tau * dt)]
     lp = [drude_pole(wp / dt, 0.)] if wp else []
-    db = init_debye(dp, materials, dt, periodic=periodic, field_dtype=jnp.complex64)
-    lr = init_lorentz(lp, materials, dt, periodic=periodic, field_dtype=jnp.complex64) if lp else None
+    db = init_debye(dp, materials, dt, periodic=periodic, field_dtype=jnp.complex64, high_wall=(False, False, False))
+    lr = init_lorentz(lp, materials, dt, periodic=periodic, field_dtype=jnp.complex64, high_wall=(False, False, False)) if lp else None
     mode = jnp.asarray((-1.) ** np.arange(8))[:, None, None]
     empty = init_state(shape, field_dtype=jnp.complex64)
     impedance = C0 * 1.25663706212e-6
@@ -32,27 +35,27 @@ def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
         state = empty._replace(ey=mode * v[0], hz=mode * v[1] / impedance)
         dbs = db[1]._replace(py=mode[None] * v[2] * EPS_0)
         lrs = None if lr is None else lr[1]._replace(
-            py=mode[None] * v[3] * EPS_0, py_prev=mode[None] * v[4] * EPS_0)
+            py=mode[None] * v[3] * EPS_0, vy=mode[None] * v[4] * EPS_0)
         return state, dbs, lrs
 
     def vector_from_carry(carry):
         state, dbs, lrs = carry
         values = [state.ey[0, 0, 0], state.hz[0, 0, 0] * impedance, dbs.py[0, 0, 0, 0] / EPS_0]
         if lrs is not None:
-            values += [lrs.py[0, 0, 0, 0] / EPS_0, lrs.py_prev[0, 0, 0, 0] / EPS_0]
+            values += [lrs.py[0, 0, 0, 0] / EPS_0, lrs.vy[0, 0, 0, 0] / EPS_0]
         return jnp.asarray(values)
 
     @jax.jit
     def step(carry, unused):
         state, dbs, lrs = carry
-        state = update_h(state, materials, dt, dx, periodic)
+        state = update_h(state, materials, dt, dx, periodic, high_wall=(False, False, False))
         state, dbs, lrs = _update_e_with_optional_dispersion(
             state, materials, dt, dx, debye=(db[0], dbs),
-            lorentz=None if lr is None else (lr[0], lrs), periodic=periodic)
+            lorentz=None if lr is None else (lr[0], lrs), periodic=periodic, high_wall=(False, False, False))
         # Full dynamic state norm; P is in eps0 units. Hz is in impedance units.
         values = [state.ey, state.hz * impedance, dbs.py / EPS_0]
         if lrs is not None:
-            values += [lrs.py / EPS_0, lrs.py_prev / EPS_0]
+            values += [lrs.py / EPS_0, lrs.vy / EPS_0]
         norm = jnp.sqrt(sum(jnp.sum(jnp.abs(v) ** 2) for v in values))
         return (state, dbs, lrs), norm
 
@@ -100,7 +103,7 @@ def test_unstable_combined_medium_reaches_each_judge(route):
     with pytest.raises(ValueError, match="unstable at this model's time step"):
         if route == "compile_budget":
             grid = sim._build_realized_grid()
-            sim._init_dispersion(init_materials(grid.shape), grid.dt, (dp, None), (lp, None), budget=courant_budget(grid))
+            sim._init_dispersion(init_materials(grid.shape), grid.dt, (dp, None), (lp, None), budget=courant_budget(grid), high_wall=unpadded_high_walls(grid))
         elif route == "graded_override":
             grid = sim._build_realized_grid()
             sim.forward(n_steps=5, eps_override=jnp.ones(grid.shape), sigma_override=jnp.zeros(grid.shape),

@@ -81,7 +81,7 @@ def test_t2_single_device_series(kind, seam, devices):
     for steps in (1, 12):
         single = _forward(sim, eps, 1, steps)
         slabs = _forward(sim, eps, devices, steps)
-        # Since W1 (lead decision D:f05aa5) the wrapped single-device step rounds differently inside
+        # Since W1 the wrapped single-device step rounds differently inside
         # shard_map with bit-equal operands, so a field source is judged by the cross-trace bar too;
         # the drive table itself is pinned bit for bit by the one-slab model-identity test.
         assert _ulp(slabs, single) <= 9
@@ -113,7 +113,9 @@ def test_t3_local_material_read():
     sigma = jnp.full_like(eps, .02)
     drives = ((0, 0, (2, 1, 1), 'ez', 1e-9, 0.),
               (1, 0, (1, 1, 1), 'ey', 1e-9, 0.))
-    call = partial(material_drive_scales, mesh=mesh, drives=drives, dt=1e-12, ranks=ranks)
+    grid = SimpleNamespace(nx=8, nx_per_rank=4, nx_local=4,
+                           e_cell_sizes=(None, None, None), high_wall=(False,) * 3)
+    call = partial(material_drive_scales, mesh=mesh, drives=drives, dt=1e-12, ranks=ranks, grid=grid)
     local = jax.jit(partial(call, reduce_devices=False))
     values = np.asarray(local(eps, sigma))
     replicated = np.asarray(jax.jit(call)(eps, sigma))
@@ -132,7 +134,7 @@ def test_t4_warmup_checkpoint(steps):
     checkpointed scan) with byte-identical loop operands, as it does on one
     device (test_nonuniform_segmented.py). 48 and 500 steps are lengths where
     the two records do differ (2 ULP of the peak measured), so the bar is
-    exercised; lead decision L:01b7c7, rfx #1402.
+    exercised; rfx #1402.
     """
     from tests.contracts.path_equivalence.comparison import compare
     sim, eps = _scene('current')

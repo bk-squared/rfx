@@ -3,8 +3,8 @@
 Issue #1038 moves duplicated helpers out of ``distributed.py`` /
 ``distributed_v2.py`` / ``distributed_nu.py`` into the existing shared
 ``rfx/runners/_distributed_common.py``, one leg at a time. Every leg is PURE
-CODE MOTION, and ``docs/agent-memory/development_methodology.md`` §2.2 gates a
-code-motion refactor on BIT IDENTITY -- ``np.array_equal`` on the raw arrays,
+CODE MOTION, and the code-motion rule gates a
+refactor on BIT IDENTITY before and after -- ``np.array_equal`` on the raw arrays,
 never a tolerance -- not on "the physics still looks right".
 
 This module is that gate. It drives each runner end to end on the smallest
@@ -132,7 +132,6 @@ from __future__ import annotations
 
 LOCK_PROVENANCE = {
     "fixture": (
-        "tests/locks/test_cpml_axis_params_refactor_bit_identical.py,"
         "tests/unit/nonuniform/test_nu_flux_monitor_finite_size.py,"
         "tests/unit/runners/test_distributed_nu_smoke.py,"
         "tests/unit/runners/test_distributed.py,"
@@ -672,6 +671,10 @@ def _flatten(obj, prefix, out, missing):
                 "this lock cannot serialise it byte-exactly")
         out[key] = arr
         return
+    from rfx.sparams._record_selection import SReadPorts
+    if isinstance(obj, SReadPorts):
+        out[f"{key}.ids"] = np.asarray(obj.ids, dtype=str)
+        return
     raise TypeError(
         f"{key}: unhandled type {type(obj).__name__} in the runner observable. "
         "Teach _flatten about it -- do NOT let it be skipped, or the gate goes "
@@ -922,16 +925,6 @@ _SHARED_HELPER_BINDINGS = (
      "_apply_pec_shmap"),
     ("apply_pec_face_shmap", "rfx.runners.distributed_nu",
      "_apply_pec_face_nu_shmap"),
-    # #1038 leg 3 -- the domain-face PMC kernel (inventory §2.3(d)). Same story
-    # as the PEC row above and the same single token of difference; after the
-    # rename the two inner bodies were byte-identical, not merely
-    # AST-equivalent. NOTE the kernel is shared but the HOOK POINT is not: v2
-    # calls it after the H ghost exchange, the NU runner before it. That
-    # divergence is leg 5 / inventory §3.2 and these rows do not speak to it.
-    ("apply_pmc_face_shmap", "rfx.runners.distributed_v2",
-     "_apply_pmc_shmap"),
-    ("apply_pmc_face_shmap", "rfx.runners.distributed_nu",
-     "_apply_pmc_face_nu_shmap"),
     # #1053 leg 2 -- the realized-PEC CELL-MASK kernel, as opposed to the
     # domain-face one two rows up. Moved out of distributed_nu.py by value so
     # v2 could stop refusing declared PEC volumes; it was already
@@ -1226,7 +1219,7 @@ def test_the_package_no_longer_exports_run_distributed():
     assert v1.run_distributed is not v2.run_distributed, (
         "rfx.runners.distributed.run_distributed and "
         "rfx.runners.distributed_v2.run_distributed collapsed to one object. "
-        "PI decision 2026-09-15 is that v1 is NOT merged into v2 -- they are "
+        "v1 is NOT merged into v2 -- they are "
         "not bit-identical and they disagree on the odd-nx rule.")
     assert v1.run_distributed.__module__ == "rfx.runners.distributed"
     assert v2.run_distributed.__module__ == "rfx.runners.distributed_v2"
@@ -1236,7 +1229,7 @@ def test_the_package_no_longer_exports_run_distributed():
     with pytest.raises(RuntimeError) as excinfo:
         v1.run_distributed(object(), n_steps=1)
     msg = str(excinfo.value)
-    for needle in ("removed in #1296", "Simulation.run(",
+    for needle in ("was removed", "Simulation.run(",
                    "rfx.runners.distributed_v2.run_distributed"):
         assert needle in msg, msg
 

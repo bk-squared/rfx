@@ -180,7 +180,7 @@ def _upml_e_coeffs_si(sigma_perp, eps_r, sigma_mat, dt):
 
 
 def _upml_e_coeffs_eps_r(sigma_perp, eps_r, sigma_mat, dt):
-    """:func:`_upml_e_coeffs_si` written in eps_r units (#1357).
+    """:func:`_upml_e_coeffs_si` written in eps_r units.
 
     ``k = dt/(2*EPS_0)``: ``loss = sigma_perp*k + sigma_mat*k/eps_r`` and
     ``Cb = (dt/EPS_0) / (eps_r*(1 + sigma_perp*k) + sigma_mat*k)``, the SI
@@ -229,16 +229,15 @@ def init_upml(
     from rfx.model.materials import with_components
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="UPML", unsupported=True)
-    from rfx.simulation import resolve_periodic
+    from rfx._internal._uniform_specs import resolve_periodic
     if periodic is None:
         periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
     components = with_components(materials, grid,
         periodic=resolve_periodic(grid, periodic)).components
     mu_abs = tuple(m * jnp.float32(MU_0) for m in components.mu_update)
-    # #1236: a lumped element (a port's load, an RLC R or C) loads its own E
+    # a lumped element (a port's load, an RLC R or C) loads its own E
     # edge only. This lane's E coefficients stay CELL-owned for the volume --
-    # #1210's four-cell edge average was not carried into UPML, and doing it
-    # here would move every inhomogeneous UPML result, a separate change --
+    # four-cell edge averaging here would change every inhomogeneous UPML result --
     # so each component takes the cell total minus the stamps that belong to
     # the other two components, the rule the distributed slab update uses.
     # With no lumped record the three entries ARE materials.eps_r / .sigma.
@@ -282,7 +281,7 @@ def init_upml(
     sigma_perp_ez = sEx + sEy
 
     def _e_coeffs(sigma_perp, eps_r, sigma_mat):
-        # #1357: the SI spelling's bits (:func:`_upml_e_coeffs_si`), the
+        # the SI spelling's bits (:func:`_upml_e_coeffs_si`), the
         # eps_r-unit derivative. ``dt / eps_abs`` handed the cotangent a
         # factor (eps_r*EPS_0)**-2 ~ 1.3e22 and overflowed float32.
         return si_value_eps_r_grad(_upml_e_coeffs_si, _upml_e_coeffs_eps_r,
@@ -308,6 +307,14 @@ def init_upml(
     da_hx, db_hx = _h_coeffs(sigma_perp_hx, mu_abs[0])
     da_hy, db_hy = _h_coeffs(sigma_perp_hy, mu_abs[1])
     da_hz, db_hz = _h_coeffs(sigma_perp_hz, mu_abs[2])
+
+    from rfx.boundaries.pmc import high_face_row_factors, magnetic_update_coefficients, magnetic_update_factors
+    db_hx, db_hy, db_hz = magnetic_update_coefficients(
+        (db_hx, db_hy, db_hz), magnetic_update_factors(
+            getattr(grid, "pmc_faces", ()) or (), grid.shape, periodic or (False, False, False)))
+    db_hx, db_hy, db_hz = magnetic_update_coefficients(
+        (db_hx, db_hy, db_hz), high_face_row_factors(
+            grid.shape, periodic or (False, False, False)))
 
     return UPMLCoeffs(
         ca_ex=ca_ex, ca_ey=ca_ey, ca_ez=ca_ez,

@@ -310,6 +310,14 @@ def _coax_two_port(monkeypatch, eps_scale=None, impedance=50.0):
     port = sim._coaxial_ports[0]
     z_tem = coaxial_tem_characteristic_impedance(port.pin_radius,
                                                  port.outer_radius)
+    # This fixture plants a native S at z_tem. Plant the corresponding source
+    # metadata too: the real source now reports its mesh-dependent built Z.
+    build_source = coax_mod.build_coaxial_tem_plane_source_specs
+
+    def planted_source(**kwargs):
+        return build_source(**kwargs)._replace(z_tem_ohm=z_tem)
+
+    monkeypatch.setattr(coax_mod, "build_coaxial_tem_plane_source_specs", planted_source)
     run = lambda scale: sim.compute_coaxial_two_port(  # noqa: E731
         n_steps=10, freqs=np.array([8.0e9]), probe_count=12, eps_scale=scale)
     return run, sim, z_tem

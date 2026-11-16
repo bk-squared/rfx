@@ -13,8 +13,6 @@ ROOT = Path(__file__).resolve().parents[2]
 NAMED_SCANS = (
     ("tests/unit/farfield/test_current_moment_monitor.py",
      "test_every_user_facing_return_carries_the_backstop"),
-    ("tests/unit/materials/test_sheet_impedance.py",
-     "test_every_fence_in_the_source_is_pinned"),
     ("tests/unit/sparams/test_settling_witness.py",
      "test_every_settling_db_producer_routes_through_the_shared_warner"),
     ("tests/unit/sparams/test_settling_witness.py",
@@ -183,7 +181,7 @@ def test_path_disposition_kernel_module_checks_are_not_source_reads():
 def test_settling_witness_source_readers_are_detected():
     path = ROOT / "tests/unit/sparams/test_settling_witness.py"
     tests = {test.name: test for test in scan_source(path.read_text()).tests}
-    for _, name in NAMED_SCANS[2:]:
+    for _, name in NAMED_SCANS[1:]:
         assert tests[name].hit_line is not None
         assert tests[name].reader_line is not None
 

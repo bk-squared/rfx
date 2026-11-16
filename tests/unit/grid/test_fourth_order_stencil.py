@@ -1,8 +1,7 @@
 """Contract + bit-identity tests for the (2,4) fourth-order-in-space stencil
 option on the core ``update_e`` / ``update_h`` kernels (``rfx/core/yee.py``).
 
-Provenance: the A1 spike (``docs/research_notes/20260627_memory_efficiency_techniques_exploration.md``
-+ ``docs/research_notes/experiments/a1_fourth_order_spike/``). The 4th-order
+The 4th-order
 option cuts cells-per-WAVELENGTH ~2.5x for the same dispersion error (a SMOOTH-
 PROPAGATION / electrically-large lever). Gate-2 established it gives NO benefit
 at PEC / geometric features (it reverts to 2nd order in the 1-cell boundary
@@ -22,10 +21,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.core.yee import (
-    EPS_0, MU_0, MaterialArrays, _diff_bwd_o, _diff_fwd_o, _shift_bwd,
-    _shift_fwd, init_state, update_e, update_h,
-)
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, _diff_bwd_o, _diff_fwd_o, _shift_bwd, _shift_fwd, init_state
+from rfx.stepping.yee import update_e, update_h
 
 
 def test_order2_helpers_byte_identical():
@@ -93,8 +90,8 @@ def test_update_order2_state_byte_identical():
             a[(slice(None),) * ax + (slice(1, None),)]
         return out
 
-    e2 = update_e(st, mats, dt, dx, per, stencil_order=2)
-    h2 = update_h(st, mats, dt, dx, per, stencil_order=2)
+    e2 = update_e(st, mats, dt, dx, per, stencil_order=2, high_wall=(False, False, False))
+    h2 = update_h(st, mats, dt, dx, per, stencil_order=2, high_wall=(False, False, False))
 
     dx32 = np.float32(dx)
     # E update reference (sigma=0 -> ca=1, cb=dt/eps). ey's curl_y spans AXIS 0
@@ -172,8 +169,8 @@ def test_order4_nonperiodic_stable():
     per = (False, False, False)
     peak = 0.0
     for _ in range(500):
-        st = update_h(st, mats, dt, dx, per, stencil_order=4)
-        st = update_e(st, mats, dt, dx, per, stencil_order=4)
+        st = update_h(st, mats, dt, dx, per, stencil_order=4, high_wall=(False, False, False))
+        st = update_e(st, mats, dt, dx, per, stencil_order=4, high_wall=(False, False, False))
         peak = max(peak, float(jnp.max(jnp.abs(st.ez))))
     assert np.isfinite(peak) and peak < 2.0, f"order4 not bounded: peak={peak}"
 
@@ -183,9 +180,9 @@ def test_invalid_stencil_order_raises():
     st, mats = _rand_state_mats()
     for bad in (1, 3, 6):
         with pytest.raises(ValueError):
-            update_e(st, mats, 1e-13, 1e-3, (False, False, False), stencil_order=bad)
+            update_e(st, mats, 1e-13, 1e-3, (False, False, False), stencil_order=bad, high_wall=(False, False, False))
         with pytest.raises(ValueError):
-            update_h(st, mats, 1e-13, 1e-3, (False, False, False), stencil_order=bad)
+            update_h(st, mats, 1e-13, 1e-3, (False, False, False), stencil_order=bad, high_wall=(False, False, False))
 
 
 def test_order4_ad_finite_and_matches_fd():
@@ -196,7 +193,7 @@ def test_order4_ad_finite_and_matches_fd():
 
     def loss(scale):
         m2 = mats._replace(eps_r=mats.eps_r * scale)
-        return jnp.sum(update_e(st, m2, dt, dx, per, stencil_order=4).ex ** 2)
+        return jnp.sum(update_e(st, m2, dt, dx, per, stencil_order=4, high_wall=(False, False, False)).ex ** 2)
 
     g = float(jax.grad(loss)(1.0))
     assert np.isfinite(g) and abs(g) > 0

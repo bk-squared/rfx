@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from rfx.sources.waveguide_port import WaveguidePortConfig
+    from rfx.model.waveguide_modes import WaveguidePortConfig
 
 import jax.numpy as jnp
 
@@ -17,28 +17,35 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
     The S-parameter spectra are computed POST-SCAN by
     ``_extract_global_waves_from_time_series`` via a rectangular
     full-record DFT on the recorded arrays. No in-scan windowed DFT
-    accumulators are kept (Phase 2 cleanup, 2026-04-25). The previous
-    in-scan windowed/gated path silently integrated partially-decayed
+    accumulators are kept. In-scan windowed/gated accumulation
+    integrates partially-decayed
     standing waves and produced ``|S11| → ∞`` as the gate widened.
     """
-    from rfx.sources.waveguide_port import modal_voltage, modal_current
-    t = state.step * dt
+    from rfx.measurement.waveguide_modal import modal_voltage, modal_current
 
     v_ref = modal_voltage(state, cfg, cfg.ref_x, dx)
     v_probe = modal_voltage(state, cfg, cfg.probe_x, dx)
     i_ref = modal_current(state, cfg, cfg.ref_x, dx)
     i_probe = modal_current(state, cfg, cfg.probe_x, dx)
 
+    return write_waveguide_record(cfg, (v_probe, i_probe, v_ref, i_ref), state.step, dt)
+
+
+def write_waveguide_record(cfg: WaveguidePortConfig, values, step, dt: float) -> WaveguidePortConfig:
+    """Write completed-step values in owner channel order at their physical stamp."""
+    v_probe, i_probe, v_ref, i_ref = values
+    completed_step = step
+    t = step * dt
     arg = (t - cfg.src_t0) / cfg.src_tau
     v_inc = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
 
-    # Preserve the historical sample set: scan step N-1 remains excluded.
-    # Record the retained samples at slot n with the physical stamp.
+    # Each completed step contributes one sample at its physical stamp.
+    # Completed steps 1 through N occupy slots 0 through N-1.
     n_t = cfg.v_probe_t.shape[0]
-    # A call before the first step (state.step == 0) has no slot: index n_t is
+    # A call before the first step (completed_step == 0) has no slot: index n_t is
     # dropped, where -1 would have written the last slot.
-    step = jnp.where((state.step >= 1) & (state.step < n_t),
-                     jnp.asarray(state.step, dtype=jnp.int32)-1, n_t)
+    step = jnp.where((completed_step >= 1) & (completed_step <= n_t),
+                     jnp.asarray(completed_step, dtype=jnp.int32)-1, n_t)
     return cfg._replace(
         dt=float(dt),
         v_probe_t=cfg.v_probe_t.at[step].set(
@@ -51,18 +58,18 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
             jnp.asarray(i_ref, cfg.i_ref_t.dtype), mode='drop'),
         v_inc_t=cfg.v_inc_t.at[step].set(
             jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
-        # The count of samples written: the dropped last step is not one.
+        # Count every completed step, up to the allocated record length.
         n_steps_recorded=jnp.maximum(cfg.n_steps_recorded, jnp.minimum(
-            jnp.asarray(state.step, dtype=jnp.int32), n_t - 1)),
+            jnp.asarray(completed_step, dtype=jnp.int32), n_t)),
     )
 
 
 def recorded(cfg, name):
     """A port's time record cut to the samples written (no unwritten tail).
 
-    A full scan leaves the last slot unwritten; a reader of the raw record
-    (the settling witness, the source-end search) must not take that zero
-    for a sample, or a source still on at the end reads as having ended.
+    A full scan fills every slot. A record stopped early can have unwritten
+    slots; concrete readers trim them so the settling witness and source-end
+    search do not mistake padding for a source that has ended.
     """
     from rfx.core.jax_utils import is_tracer
     record, count = getattr(cfg, name), getattr(cfg, 'n_steps_recorded', None)

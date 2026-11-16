@@ -15,7 +15,7 @@ from rfx.boundaries.depths import Kind
 from rfx.boundaries.model import realize
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
-# Classes W/R remain separate rows so a leader can explicitly defer either.
+# Classes W/R remain separate rows so either can be explicitly deferred.
 NAMED_EXCEPTIONS = {}
 CASES = ('absorbing', 'mixed', 'pmc', 'periodic', 'asymmetric',
          'plane', 'closed_box', 'W-guide')
@@ -138,6 +138,7 @@ def capture(sim, entry, path, invoke=None):
     jit_original = jax.jit
     grid_original = sim._build_nonuniform_grid
     from rfx.runners import _distributed_nu_wrapped as wrapped
+    from rfx.stepping import slab_wrap_uniform
     wrapped_original = wrapped.wrap
 
     def built_grid(*args, **kwargs):
@@ -201,22 +202,13 @@ def capture(sim, entry, path, invoke=None):
         # handing the driver to jit. Stop at that builder boundary, before
         # even tracing a field update. The recorded free variable is the
         # actual pec_faces argument of the CPML step's wall application.
-        if fun is not None and fun.__module__ == 'rfx.runners.distributed_v2' and fun.__name__ in ('_run_cpml', '_run_pec'):
-            driver = closure_values(fun)
-            step = driver['step_fn_cpml' if fun.__name__ == '_run_cpml' else 'step_fn_pec']
-            bound = closure_values(step)
-            frame = inspect.currentframe().f_back
-            captured.update(grid=frame.f_locals['grid'],
-                            faces=bound['e_wall_faces'] if fun.__name__ == '_run_cpml' else bound['_pec_faces_frozen'],
-                            backend='distributed-uniform')
-            raise Captured
-        if fun is not None and fun.__module__ == 'rfx.runners.distributed_nu' and fun.__name__ == 'run_fn':
+        if fun is not None and fun.__module__ == 'rfx.stepping.slab_graded_legacy_loop' and fun.__name__ == 'run_fn':
             frame = inspect.currentframe().f_back
             # The step passes the runner's e_wall_faces (#1221 B4). Resolve it inside
             # the unmodified wall factory and stop at its shard-map builder;
             # no state is read and no field operation is traced or executed.
             from rfx.runners.distributed_nu import _apply_pec_face_nu_shmap
-            from rfx.runners import _distributed_common as walls
+            from rfx.stepping import slab_walls as walls
             assert 'grid' in captured
             captured['backend'] = 'distributed-graded'
 
@@ -231,6 +223,11 @@ def capture(sim, entry, path, invoke=None):
             raise AssertionError('distributed wall factory was not observed')
         return jit_original(fun, *args, **kwargs)
 
+    def uniform_wrapped_factory(context, *args, **kwargs):
+        captured.update(grid=context.grid, faces=context.pec_faces_frozen,
+                        backend='distributed-uniform')
+        raise Captured
+
     def forbidden(*args, **kwargs):
         raise AssertionError('backing-wall factory judge reached a field scan')
 
@@ -240,6 +237,7 @@ def capture(sim, entry, path, invoke=None):
                                        (uniform_loop, 'make_core_step', factory),
                                        (nu, '_build_nu_scan', nu_factory),
                                        (wrapped, 'wrap', wrapped_factory),
+                                       (slab_wrap_uniform, 'wrap_uniform', uniform_wrapped_factory),
                                        (jax, 'jit', distributed_factory),
                                        (jax.lax, 'scan', forbidden)):
             stack.enter_context(patch.object(obj, name, replacement))
@@ -315,7 +313,7 @@ def tube():
     sim.add_source((1.23*dx, 3*dx, 5*dx), 'ez', amplitude_kind='field',
                    waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
     sim.add_probe((dx, 3*dx, 5*dx), 'ez')
-    sim.add_probe(((nx+layers)*dx, 4*dx, 4*dx), 'ez')
+    sim.add_probe(((nx+layers)*dx, 4*dx, 4*dx), 'ez', allow_in_absorber=True)
     return sim
 
 
@@ -362,7 +360,7 @@ def test_class_W_calculator(normalize, n_modes):
 
 def test_class_R_oblique_calculator():
     from rfx.core.yee import init_materials
-    from rfx.rcs import compute_rcs
+    from rfx.measurement.rcs import compute_rcs
     sim = Simulation(15e9, (.06, .08, .006), dx=.002, cpml_layers=6, boundary='cpml')
     grid = sim._build_grid()
     got = capture(sim, 'calculator', 'uniform', invoke=lambda: compute_rcs(

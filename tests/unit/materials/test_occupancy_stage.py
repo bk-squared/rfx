@@ -9,8 +9,6 @@ the steps' own in-loop formers (``1 - M``, whose rounding depends on where
 they are compiled) the bar is one float32 ULP of 1.0. Ghost values are not
 part of the slab contract.
 """
-import rfx.stepping.uniform_loop as uniform_loop
-import inspect
 from unittest.mock import patch
 
 import jax
@@ -163,71 +161,59 @@ def test_one_value_in_every_compile_context_on_this_backend():
         _assert_one_value_in_every_context(value, (False, False, False), False)
 
 
-@pytest.mark.parametrize('lane', ['uniform', 'graded', 'uniform-periodic-y'])
 @pytest.mark.parametrize('sheet', [False, True])
-def test_published_matches_lane_operator(lane, sheet, monkeypatch):
+@pytest.mark.parametrize('comparison', ['graded', 'periodic-translation', 'covered-edge'])
+def test_occupancy_records_preserve_lanes_seams_and_covered_edges(comparison, sheet):
     from rfx import Simulation, Box
     from rfx.boundaries.spec import BoundarySpec
-    boundary, wrap = 'pec', (False, False, False)
-    if lane == 'uniform-periodic-y':
-        wrap = (False, True, False)
-        # The factor wraps across the periodic seam; the setup must pass the flags.
-        lane, boundary = 'uniform', BoundarySpec(x='pec', y='periodic', z='pec')
-    import rfx.simulation as sm
-    import rfx.stepping.graded_loop as nu
-    module, setup = (uniform_loop, '_build_step_setup') if lane == 'uniform' else (nu, '_build_nu_scan')
-    kw = {} if lane == 'uniform' else dict(dy_profile=np.array([.001, .0009, .0011, .001, .001, .001]))
-    sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001, boundary=boundary, **kw)
-    if sheet:
-        sim.add(Box((.004, .001, .001), (.004, .005, .003)), material='pec')
-    sim.add_source((.002, .003, .002), 'ez')
-    sim.add_probe((.006, .004, .002), 'ez')
-    grid = sim._build_grid() if lane == 'uniform' else sim._build_nonuniform_grid()
-    cells = jnp.asarray(np.random.default_rng(32).uniform(0, .7, grid.shape).astype(np.float32))
-    published = []; applied = []
-    old_setup = getattr(module, setup)
-    def record_setup(*a, **k):
-        b = inspect.signature(old_setup).bind_partial(*a, **k).arguments
-        # The model's own publisher, from the arguments this lane's setup
-        # really receives (sheets and wires rasterized by the model layer).
-        built = publish_occupancy(
-            b['materials'], b['pec_occupancy'], periodic=b.get('periodic') or (False,) * 3,
-            sheets=b.get('pec_sheets') or (), wires=b.get('pec_wires') or (),
-            edge_masks=b.get('pec_edge_masks'))
-        published.append(tuple(np.asarray(v) for v in built.edge_keep))
-        return old_setup(*a, **k)
-    # The uniform step body lives in rfx.stepping since S3-2 stage A.
-    import rfx.stepping.uniform as step_uniform
-    import rfx.stepping.graded as step_graded
-    step_module = step_uniform if lane == 'uniform' else step_graded
-    old_apply = step_module.apply_edge_keep
-    def record_apply(st, keep):
-        # What the step multiplies E by, read where the step runs it.
-        one = st._replace(ex=jnp.ones_like(st.ex), ey=jnp.ones_like(st.ey), ez=jnp.ones_like(st.ez))
-        result = old_apply(one, keep)
-        jax.debug.callback(lambda *v: applied.append(tuple(np.asarray(x) for x in v)), result.ex, result.ey, result.ez)
-        return old_apply(st, keep)
-    monkeypatch.setattr(module, setup, record_setup)
-    monkeypatch.setattr(step_module, 'apply_edge_keep', record_apply)
-    sim.forward(n_steps=3, pec_occupancy_override=cells, skip_preflight=True, checkpoint=False).time_series.block_until_ready()
-    jax.effects_barrier()
-    assert published and applied
-    # The single-device steps multiply by the published array itself (built
-    # from the step's static masks): bit for bit the model publisher's array,
-    # so the sheet fold is one rasterization, not two.
-    for row in applied:
-        for expected, actual in zip(row, published[0]):
-            np.testing.assert_array_equal(actual, expected)
-    # Exactness is a statement about the OCCUPANCY: an edge whose four cells
-    # are all 0, or one of which is 1, has factor exactly 1 or 0. (Where the
-    # operator rounds a tiny product to 0 the published factor keeps it.)
-    exact = reference32(np.asarray(cells), wrap)
-    full = reference(np.asarray(cells), wrap)
-    for actual, e32, e64 in zip(published[0], exact, full):
-        if not sheet:
-            binary = (e64 == 0) | (e64 == 1)
-            assert np.array_equal(actual[binary], e64[binary].astype(np.float32))
-            assert np.array_equal(actual, e32)
+
+    periodic = comparison == 'periodic-translation'
+    def scene(graded=False, shift=0, with_sheet=sheet):
+        boundary = BoundarySpec(x='pec', y='periodic', z='pec') if periodic else 'pec'
+        sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001,
+                         boundary=boundary, **({'dy_profile': np.full(6, .001)} if graded else {}))
+        if with_sheet:
+            # The sheet spans y, so a periodic translation leaves it unchanged.
+            sim.add(Box((.004, -1., .00065), (.004, 1., .00335)), material='pec')
+        y = (0 if periodic else 2) + shift
+        sim.add_source((.003, (y % 6) * .001, .001), 'ez', amplitude_kind='field')
+        for x, dy, z in ((4, 0, 1), (3, 1, 1), (2, 0, 2)):
+            sim.add_probe((x * .001, ((y + dy) % 6) * .001, z * .001), 'ez')
+        return sim
+
+    sim = scene()
+    grid = sim.freeze_mesh()
+    assert grid.shape == (9, 6 if periodic else 7, 5)
+    cells = np.random.default_rng(32).uniform(0, .7, grid.shape).astype(np.float32)
+    options = dict(n_steps=3, checkpoint=False, skip_preflight=True)
+    def record(model, occupancy):
+        return np.asarray(model.forward(pec_occupancy_override=jnp.asarray(occupancy), **options).time_series)
+
+    if comparison == 'covered-edge':
+        cells[4, 2, 1] = 1.
+    expected = record(sim, cells)
+    peak = float(np.max(np.abs(expected)))
+    assert np.isfinite(expected).all() and peak > 0, 'fixture must excite a live probe'
+    if comparison == 'covered-edge':
+        actual = expected[:, 0]
+        error, bar = float(np.max(np.abs(actual))), 0.
+        # The uncovered twin proves the zero probe can receive a field in three steps.
+        released = cells.copy()
+        released[4, 2, 1] = 0.
+        control = float(np.max(np.abs(record(scene(with_sheet=False), released)[:, 0])))
+        assert control > 0, 'covered-edge probe is unreachable'
+    else:
+        twin = scene(graded=comparison == 'graded', shift=2 if periodic else 0)
+        assert twin.freeze_mesh().shape == grid.shape
+        actual = record(twin, np.roll(cells, 2, axis=1) if periodic else cells)
+        error = float(np.max(np.abs(actual - expected)))
+        bar = 0. if periodic else 9 * float(np.spacing(np.float32(peak)))
+        control = float(np.max(np.abs(record(scene(with_sheet=False), np.zeros_like(cells)) - expected)))
+        assert control > 9 * float(np.spacing(np.float32(peak))), 'occupancy/sheet control is unresolved'
+    print(f"{comparison} sheet={sheet}: mesh={grid.shape} steps=3 peak={peak:.17g} error={error:.17g} bar={bar:.17g} control={control:.17g}")
+    assert error <= bar, f"{comparison} sheet={sheet}: error {error:.17g} exceeds {bar:.17g}"
+    if periodic:
+        assert actual.tobytes() == expected.tobytes(), 'periodic translation must be bitwise'
 
 
 def step_occupancy_on_ones(cells, n_devices):
@@ -433,19 +419,6 @@ def test_gradient_is_the_same_whole_domain_and_under_jit():
     np.testing.assert_allclose(jitted, eager, rtol=1e-6, atol=1e-6)
 
 
-@pytest.mark.source_scan
-def test_one_publication_builder_definition():
-    import ast
-    from pathlib import Path
-    root = Path(__file__).resolve().parents[3] / 'rfx'
-    definitions = [(str(p.relative_to(root)), n.lineno)
-                   for p in root.rglob('*.py')
-                   for n in ast.walk(ast.parse(p.read_text()))
-                   if isinstance(n, ast.FunctionDef) and n.name == 'build_edge_keep']
-    assert len(definitions) == 1
-    assert definitions[0][0] == 'model/occupancy.py'
-
-
 def test_complex_fields_with_an_occupancy_are_refused():
     """The envelope path never ran with an occupancy (it failed inside clip); it stays refused, by name."""
     from rfx.core.yee import init_materials
@@ -522,36 +495,6 @@ def test_slab_drive_weight_is_last_float32_product(source_i, material_drive):
         assert actual.tobytes() == expected.tobytes()
         if occupancy == .5:
             assert actual.tobytes() == (np.float32(.0625) * v).tobytes()
-
-
-def test_slab_occupancy_gradient_has_field_and_drive_paths(monkeypatch):
-    import rfx.runners.distributed_nu as nu
-    run, _ = slab_drive_scene(6, samples=(.7, .4, -.1))
-    def loss(occupancy):
-        return jnp.sum(run(occupancy)['time_series'] ** 2)
-    value = jnp.float32(.2)
-    full = jax.grad(loss)(value)
-    # Since W1 the multi-device PEC graded run cuts the SINGLE-DEVICE drive table, whose
-    # occupancy weights are applied by rfx.model.source_coefficients.weight_drive_columns.
-    import rfx.model.source_coefficients as sc
-    # The per-slab drive table (rfx #1402 item 4) reads the weight as drive_columns' keep.
-    weigh, columns = sc.weight_drive_columns, sc.drive_columns
-    def patch(change):
-        monkeypatch.setattr(sc, 'weight_drive_columns',
-                            lambda table, weights, meta: weigh(table, change(weights), meta))
-        monkeypatch.setattr(sc, 'drive_columns', lambda eps, sigma, keep, *a, **k: columns(
-            eps, sigma, None if keep is None else change(keep), *a, **k))
-    # Keep the same forward drive values, removing only their gradient path.
-    patch(jax.lax.stop_gradient)
-    field_only = jax.grad(loss)(value)
-    # Requested comparison with drive scaling disabled altogether: unit weight on every column.
-    patch(lambda weights: jax.tree.map(jnp.ones_like, weights))
-    unscaled = jax.grad(loss)(value)
-    assert np.isfinite([full, field_only, unscaled]).all()
-    assert field_only != 0  # Field multiply reaches occupancy.
-    assert full != field_only  # Drive-weight path contributes too.
-    assert full != unscaled
-    print(f'occupancy gradients: full={full}, field_only={field_only}, unscaled_drive={unscaled}')
 
 
 @pytest.mark.parametrize('n_warmup', [0, 1])

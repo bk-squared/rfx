@@ -1,4 +1,4 @@
-"""CAD mesh import (issue #358) — a ``Shape`` backed by a watertight triangle mesh.
+"""CAD mesh import — a ``Shape`` backed by a watertight triangle mesh.
 
 ``MeshShape`` lets users bring geometry drawn in CAD (STL/OBJ/PLY, and STEP/STP)
 straight into the solver instead of re-modelling it with CSG primitives. It implements
@@ -29,13 +29,13 @@ from rfx.geometry.csg import _grid_coords
 
 
 # --------------------------------------------------------------------------- #
-# #687: deterministic point-in-mesh containment.
+# deterministic point-in-mesh containment.
 #
 # ``trimesh.ray.ray_util.contains_points`` (what ``mesh.contains`` calls) is
 # NONDETERMINISTIC near mesh surfaces, and the boundary-fitted meshers put
 # rasterization sample points exactly there (a conductor sheet registered at
 # its mid-plane node lands cell centres on its lateral faces). Two defects in
-# that function, both measured here (2026-08-24, fix/687 worktree, trimesh
+# that function, both measured here (trimesh
 # 5.0.0, ray engine ray_triangle):
 #
 # 1. Its forward-hit cull is ``distance > -1e-6`` in MESH UNITS (metres for
@@ -45,8 +45,8 @@ from rfx.geometry.csg import _grid_coords
 #    OS-ENTROPY-SEEDED RNG — a per-call coin flip. Measured: a mid-plane
 #    sample 1 ulp off a sheet's lateral face flipped inside/outside across 40
 #    fresh calls (states 0,1,1,0,1,0,...); 18/121 mid-plane samples of a
-#    17 um sheet reached the RNG branch. Issue #687 measured the same flip
-#    as a 1-cell PEC-count spread on an imported board.
+#    17 um sheet reached the RNG branch. The same flip measured as a 1-cell PEC-count spread on an
+# imported board.
 # 2. The 1 um slack is ABSOLUTE, so the coin-flip shell extends ~0.5 um into
 #    the solid: a point 0.2 um strictly INSIDE a face returned
 #    True,False,False,... over 8 repeated calls. Sub-micron grids would
@@ -65,7 +65,7 @@ from rfx.geometry.csg import _grid_coords
 # so the own-face hit lands at ``t = -eps`` (forward ray) / ``t = +eps``
 # (backward ray) and both parities count it identically and correctly.
 #
-# Boundary convention (documented per the #687 ask): the nudge direction has
+# Boundary convention (documented per the ask): the nudge direction has
 # a strictly POSITIVE component on every axis, so a sample exactly on an
 # axis-aligned face resolves INSIDE on a lo face and OUTSIDE on a hi face —
 # exactly ``Box``'s half-open ``[lo, hi)`` volume convention (``csg.py``).
@@ -103,7 +103,7 @@ def _crossing_parity(intersector, origins, direction):
 
 
 def _contains_deterministic(intersector, pts):
-    """Point-in-mesh for (n, 3) ``pts`` — see the #687 block above."""
+    """Point-in-mesh for (n, 3) ``pts`` — see the block above."""
     origins = pts + _TIE_BREAK_EPS_M * _D1
     fwd = _crossing_parity(intersector, origins, _D1)
     bwd = _crossing_parity(intersector, origins, -_D1)
@@ -143,7 +143,8 @@ class MeshShape:
 
     def __init__(self, mesh, *, validate: bool = True):
         _require_trimesh()  # ensure trimesh is importable even on the direct path
-        if validate and not bool(getattr(mesh, "is_watertight", False)):
+        self._is_watertight = bool(getattr(mesh, "is_watertight", False))
+        if validate and not self._is_watertight:
             raise ValueError(
                 "MeshShape requires a watertight mesh — the given mesh has holes or "
                 "non-manifold edges, so the inside/outside test is undefined and the "
@@ -160,7 +161,7 @@ class MeshShape:
         Explicitly ``ray_triangle`` rather than ``mesh.ray``: with an embree
         backend installed ``mesh.ray`` would silently switch to a FLOAT32
         engine whose ulp at board coordinates (~3e-11 m at 400 um) swallows
-        the 1e-12 m tie-break nudge, reopening the #687 boundary coin flip."""
+        the 1e-12 m tie-break nudge, reopening the boundary coin flip."""
         if self._ray is None:
             _require_trimesh()
             from trimesh.ray import ray_triangle
@@ -239,11 +240,11 @@ class MeshShape:
     def mask_on_coords(self, x, y, z):
         """(Nx, Ny, Nz) bool occupancy at cell centres via point-in-mesh containment.
 
-        Only cell centres inside the mesh bounding box are ray-tested (the rest are
-        trivially outside), so cost scales with the object's footprint, not the whole
-        domain.
+        Watertight meshes use scanline parity within the bounding box. With
+        ``validate=False``, non-watertight meshes retain the legacy oblique-ray
+        path; their occupancy is direction-dependent and mathematically undefined.
 
-        Host-side only: rasterisation runs through ``trimesh.contains``, so this cannot be
+        Host-side only: rasterisation uses NumPy, so this cannot be
         traced/jitted or used as a differentiable mesh — a traced coordinate raises a clear
         error rather than a cryptic JAX array-conversion failure."""
         from rfx.core.jax_utils import is_tracer
@@ -258,7 +259,7 @@ class MeshShape:
         y = np.asarray(y, dtype=np.float64).ravel()
         z = np.asarray(z, dtype=np.float64).ravel()
 
-        # Cache the occupancy by coordinate CONTENT: trimesh.contains (a ray-cast) is the
+        # Cache the occupancy by coordinate CONTENT: containment is the
         # expensive step and otherwise reruns on every material build — the S-parameter paths
         # rebuild materials repeatedly, so a large imported part would be re-contained each time.
         key = (x.tobytes(), y.tobytes(), z.tobytes())
@@ -269,7 +270,7 @@ class MeshShape:
         nx, ny, nz = x.size, y.size, z.size
         out = np.zeros((nx, ny, nz), dtype=bool)
 
-        # #687: widen the trivially-outside cull by the tie-break step so a
+        # widen the trivially-outside cull by the tie-break step so a
         # sample within the +-eps tie band of a bounding-box face reaches the
         # ray test (a sample 1 ulp below the lo face must resolve INSIDE per
         # the half-open convention; the raw cull dropped it before the
@@ -280,16 +281,22 @@ class MeshShape:
         iy = np.where((y >= loy - eps) & (y <= hiy + eps))[0]
         iz = np.where((z >= loz - eps) & (z <= hiz + eps))[0]
         if ix.size and iy.size and iz.size:
-            X, Y, Z = np.meshgrid(x[ix], y[iy], z[iz], indexing="ij")
-            pts = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
-            # #687: NOT ``self._mesh.contains`` — that path re-decides any
+            # NOT ``self._mesh.contains`` — that path re-decides any
             # near-surface point along an OS-entropy-random ray direction
             # (nondeterministic; see the module block above). The cache key
             # and the bbox window use the caller's coordinates unchanged;
             # only the ray-cast origin carries the tie-break nudge.
-            inside = np.asarray(
-                _contains_deterministic(self._intersector(), pts)
-            ).reshape(ix.size, iy.size, iz.size)
+            if self._is_watertight:
+                from rfx.geometry._mesh_scanline import scanline_mask
+                inside = scanline_mask(
+                    self._mesh.triangles, x[ix] + eps * _D1[0],
+                    y[iy] + eps * _D1[1], z[iz] + eps * _D1[2])
+            else:
+                X, Y, Z = np.meshgrid(x[ix], y[iy], z[iz], indexing="ij")
+                pts = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+                inside = np.asarray(
+                    _contains_deterministic(self._intersector(), pts)
+                ).reshape(ix.size, iy.size, iz.size)
             out[np.ix_(ix, iy, iz)] = inside
 
         result = jnp.asarray(out)

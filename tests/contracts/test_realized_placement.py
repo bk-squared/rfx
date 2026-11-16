@@ -14,7 +14,8 @@ import pytest
 
 import rfx.runners.nonuniform as nu_runner
 import rfx.simulation as uniform_kernel
-from rfx import Box, Simulation, _realized
+from rfx import Box, Simulation
+from rfx._internal import _realized
 
 C0 = 299_792_458.0
 DZ = np.array([1e-3] * 3 + [0.75e-3] * 6 + [1e-3] * 3)
@@ -155,7 +156,7 @@ def test_record_materials_are_the_stepped_cell_materials(smoothing):
                                   np.asarray(record.materials.eps_r))
     if not smoothing:
         from rfx.core.yee import component_e_materials
-        means = component_e_materials(record.materials, e_site["periodic"])[0]
+        means = component_e_materials(record.materials, e_site["periodic"], high_wall=(False, False, False))[0]
         for consumed, mean in zip(e_site["eps_e"], means):
             np.testing.assert_array_equal(np.asarray(consumed), np.asarray(mean))
 

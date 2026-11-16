@@ -1,8 +1,11 @@
 """Resolve ring-down identification channels before the time loop."""
+from rfx.errors import ConfigurationWarning
+from contextlib import contextmanager
+from contextvars import ContextVar
 import inspect
 import warnings
 
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 
 def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=True):
@@ -32,5 +35,30 @@ def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=Tr
             f"Duplicate ring-down identification probe indices {duplicates} "
             "(zero-based) resolve to the same cell and component and produce "
             "identical columns. Remove the repeated probes or move them to "
-            "different cells.", UserWarning, stacklevel=stacklevel)
+            "different cells.", ConfigurationWarning, stacklevel=stacklevel)
     return tuple(keys)
+
+
+# Temporary route until graded entries leave api/_execute.py; structure plan §11.
+_ringdown_probes: ContextVar[tuple | None] = ContextVar("ringdown_probes", default=None)
+
+
+@contextmanager
+def ringdown_probes(probes, entries, entry_point):
+    """Lend probes to lanes sharing the declaration list, including drive copies."""
+    token = _ringdown_probes.set((probes, tuple(entries), entry_point))
+    try:
+        yield
+    finally:
+        _ringdown_probes.reset(token)
+
+
+def read_ringdown_probes(probes, reader):
+    """Return scoped entries; a changed declaration-list identity is an error."""
+    context = _ringdown_probes.get()
+    if context is None:
+        return ()
+    key, entries, entry_point = context
+    if key is not probes:
+        raise RuntimeError(f"{entry_point}: {reader} missed the ring-down probe-list key")
+    return entries

@@ -4,6 +4,8 @@ F0 is fixed before implementation. Its referee evaluates world-space plane
 inequalities on independently constructed physical coordinates, rather than
 calling the product's rotation, mask, or node/centre helpers.
 """
+
+from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import FrozenInstanceError
 from contextlib import nullcontext
 from itertools import product
@@ -73,7 +75,7 @@ def _assert_materials(mats, expected):
     eps, sigma = np.where(expected, 3.25, 1.), np.where(expected, .125, 0.)
     np.testing.assert_array_equal(mats.eps_r, eps)
     np.testing.assert_array_equal(mats.sigma, sigma)
-    for got, want in zip(edge_averaged_materials(mats.eps_r, mats.sigma),
+    for got, want in zip(edge_averaged_materials(mats.eps_r, mats.sigma, high_wall=(False, False, False)),
                          (_edge_means(eps), _edge_means(sigma))):
         for actual, target in zip(got, want):
             np.testing.assert_array_equal(actual, target)
@@ -142,10 +144,10 @@ def test_nonuniform_dual_average_uses_the_same_cell_centres():
     from rfx.runners.nonuniform import assemble_interface_eps_nu
     sim = _sim(dz_profile=np.full(50, DX), interface_eps="dual_average")
     grid = sim._build_nonuniform_grid()
-    mats = sim._assemble_materials_nu(grid)[0]
+    mats, _, _, pec_mask, *_ = sim._assemble_materials_nu(grid)
     centres = [(np.arange(n)-PAD+.5)*DX for n in grid.shape]
     expected = np.where(_world_inside(centres), 3.25, 1.)
-    for got, want in zip(assemble_interface_eps_nu(sim, grid, mats), _edge_means(expected)):
+    for got, want in zip(assemble_interface_eps_nu(sim, grid, mats, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid)), _edge_means(expected)):
         np.testing.assert_array_equal(got, want)
 
 

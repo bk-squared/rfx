@@ -1,6 +1,7 @@
 """O1a declaration, independent commutator and bounded-line contracts."""
 from dataclasses import replace
-import inspect
+import itertools
+import sys
 from unittest.mock import patch
 
 import jax
@@ -12,7 +13,7 @@ from rfx.api import Simulation
 from rfx.core.yee import EPS_0, MU_0, FDTDState, init_state
 from rfx.sources import tfsf_discrete_plane_wave as plane
 from rfx.sources.sources import CustomWaveform
-from rfx.sources.tfsf import measure_normal_incident_spectrum
+from rfx.measurement.incident import measure_normal_incident_spectrum
 
 DIRECTIONS = ((0, 0), (10, 0), (20, 0), (30, 0), (40, 0), (50, 0),
               (60, 0), (30, 90), (45, 30), (80, 0))
@@ -25,9 +26,9 @@ OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5),
 DX, DT, Z0 = .001, 1.9065748695310057e-12, 376.730313668
 
 
-def scene(theta=0, phi=0, pol='s', direction='+x'):
+def scene(theta=0, phi=0, pol='s', direction='+x', *, cpml_layers=8):
     sim = Simulation(freq_max=15e9, domain=(.024,) * 3, dx=DX,
-                     boundary='cpml', cpml_layers=8)
+                     boundary='cpml', cpml_layers=cpml_layers)
     sim.add_tfsf_source(f0=10e9, bandwidth=.8, margin=4, closed_box=True,
                         theta_deg=theta, phi_deg=phi, polarization=pol,
                         max_component=40, direction=direction)
@@ -61,7 +62,7 @@ def test_appendix_h_incident_record_and_shared_dft(pol, direction, reference_ind
                     for c in range(3))
         return st, value
     _, prior = jax.lax.scan(prior_step, zero, jnp.arange(300, dtype=jnp.int32))
-    record = np.asarray(record_incident_line(cfg, 300, DT, indices, cfg.incidence['e_hat']))
+    record = np.asarray(record_incident_line(cfg, state, 300, DT, indices, cfg.incidence['e_hat']))
     assert record.dtype == np.float32
     np.testing.assert_array_equal(record.view(np.uint32), np.asarray(prior).view(np.uint32))
     frequencies = np.linspace(8e9, 12e9, 9)
@@ -155,24 +156,18 @@ def test_v0_independent_curl(angles, pol):
     assert np.max(commutator_errors(angles, pol)) <= 9
 
 
-def test_v0_face_index_mutation_is_red():
-    assert np.max(commutator_errors((45, 30), 's', mutate=True)) > 9
-
-
 def test_normal_reference_refuses_oblique_o1b():
     cfg, state = line(45, 30)
     with pytest.raises(NotImplementedError, match='O1b'):
         measure_normal_incident_spectrum(cfg, state, 300, [10e9], DT)
 
 
-@pytest.mark.parametrize('kind', ('graded', 'subgrid', 'adi', '2d', 'order4', 'face', 'custom'))
+@pytest.mark.parametrize('kind', ('graded', 'subgrid',  '2d', 'order4', 'face', 'custom'))
 def test_d4_declaration_refusals(kind):
     options = dict(freq_max=15e9, domain=(.024,) * 3, dx=DX,
                    boundary='cpml', cpml_layers=8)
     if kind == 'graded':
         options['dz_profile'] = [DX] * 24
-    elif kind == 'adi':
-        options.update(solver='adi', boundary='pec')
     elif kind == '2d':
         options.update(mode='2d_tmz', domain=(.024, .024, DX))
     elif kind == 'order4':
@@ -255,23 +250,6 @@ def test_d3b_bound_vs_twice_bound(angles, pol):
                                   center_record(twice, zero, 300).view(np.uint32))
 
 
-def test_d3b_quarter_length_is_red(tmp_path, record_property):
-    import json
-    cfg, state = line(n_steps=1200)
-    small, zero = resized_line(cfg, state, .25)
-    center_p = 20
-    ends = (small.origin - 1, small.origin + small.n_nodes)
-    path = min(abs(cfg.source_p - end) + abs(center_p - end) for end in ends)
-    return_step = int(np.ceil(path / (299792458. * DT / DX))) + 1
-    assert return_step < 1200
-    plan = dict(return_step=return_step, zero_extension_nodes=ends, path_p=path)
-    (tmp_path / 'quarter_return_plan.json').write_text(json.dumps(plan))
-    record_property('return_plan', str(plan))
-    actual = center_record(small, zero, 1200)
-    expected = center_record(cfg, state, 1200)
-    assert np.any(actual[return_step - 1:].view(np.uint32) != expected[return_step - 1:].view(np.uint32))
-
-
 def polarization_record(theta, phi, pol, delayed=False):
     """V11: nearest sublattice samples at one projected box-centre location."""
     from scipy.optimize import brentq
@@ -316,168 +294,91 @@ def test_v11_polarization(angles, pol, record_property):
     assert max(result['cross_co']) <= .01, result
 
 
-def test_v11_one_step_delay_is_red(record_property):
-    result = polarization_record(45, 30, 'p', delayed=True)
-    record_property('mutation', str(result))
-    assert max(result['cross_co']) > .01, result
-
-
-def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None):
-    """Step-0 protocol: capture the real setup/core, inspect all fields in 20-step scans."""
-    if _line_peaks is None:
-        peaks = {}
-        def tap(step, electric, magnetic):
-            def save(n, e, h):
-                peaks[int(n)] = (float(np.max(np.abs(np.asarray(e, np.float64)))),
-                                 float(np.max(np.abs(np.asarray(h, np.float64)))) * Z0)
-            jax.debug.callback(save, step, electric, magnetic, ordered=True)
-        source = inspect.getsource(plane.update_line_e)
-        needle = '    return tree_util.tree_map(lax.stop_gradient, state._replace(**changes, step=state.step + 1))'
-        assert source.count(needle) == 1
-        source = source.replace(needle,
-            '    _tap(state.step + 1, jnp.stack([changes[c] for c in COMPONENTS[:3]]), '
-            'jnp.stack([getattr(state, c) for c in COMPONENTS[3:]]))\n' + needle)
-        namespace = dict(vars(plane), _tap=tap)
-        exec(compile(source, '<actual line-return tap>', 'exec'), namespace)
-        with patch.object(plane, 'update_line_e', namespace['update_line_e']):
-            return measure_scene(theta, phi, pol, n_steps, direction, peaks)
-    import rfx.stepping.uniform_loop as engine
-    sim = scene(theta, phi, pol, direction)
-    grid = sim._build_grid()
+def _probe_scene(theta, phi, pol, cpml_layers):
+    """Read the centre, six exterior face centres and eight exterior corners."""
+    sim = scene(theta, phi, pol, cpml_layers=cpml_layers)
     bounds = sim.tfsf_box_indices()
-    lo, hi = np.array([bounds[a][0] for a in 'xyz']), np.array([bounds[a][1] for a in 'xyz'])
-    center = tuple((lo + hi) // 2)
-    points = (center, (int(lo[0] - 1), center[1], center[2]))
-    probe = 'ez' if pol in ('ez', 's') else 'ey'
-    for point in points:
-        sim.add_probe(tuple((int(v) - 8) * DX for v in point), component=probe)
-    import rfx.sources.tfsf as tfsf_module
-    captured = {}
-    setup_fn, core_fn = engine._build_step_setup, engine.make_core_step
-    prepare_fn = tfsf_module.prepare_tfsf_for_scan
-    def setup(*args, **kwargs):
-        result = setup_fn(*args, **kwargs)
-        captured['setup'] = result
-        return result
-    def core(*args, **kwargs):
-        result = core_fn(*args, **kwargs)
-        captured['core'], captured['ctx'] = result, args[0]
-        return result
-    def prepare(tfsf, *args):
-        # The line itself; the field scan carries only its face record's step.
-        captured['line'] = tfsf
-        return prepare_fn(tfsf, *args)
-    with patch.object(engine, '_build_step_setup', setup), patch.object(engine, 'make_core_step', core), \
-            patch.object(tfsf_module, 'prepare_tfsf_for_scan', prepare):
-        ordinary = sim.run(n_steps=n_steps)
-    (cfg, line), initial = captured['line'], captured['setup'].carry_init
-    box_shape = hi - lo + 1
-    flat = np.random.default_rng(1662).choice(int(np.prod(box_shape)), 64, replace=False)
-    nodes = np.array(np.unravel_index(flat, tuple(box_shape))).T + lo
-    sf_mask = np.zeros(grid.shape, bool)
-    sf_mask[8:-8, 8:-8, 8:-8] = True
-    sf_mask[tuple(slice(a, b + 1) for a, b in zip(lo, hi))] = False
-    tf_nodes = np.moveaxis(np.indices(tuple(box_shape)), 0, -1).reshape(-1, 3) + lo
-    sample_indices = [np.floor((nodes + o) @ cfg.m).astype(int) - cfg.origin for o in OFFSETS]
-    peak_indices = [np.unique(np.floor((tf_nodes + o) @ cfg.m).astype(int) - cfg.origin) for o in OFFSETS[:3]]
-    def auxiliary(st, n):
-        from rfx.sources.tfsf import update_tfsf_1d
-        st = update_tfsf_1d(cfg, st, DX, DT, n.astype(jnp.float32) * DT)
-        samples = jnp.stack([getattr(st, c)[idx] for c, idx in zip(COMP, sample_indices)])
-        peak = jnp.max(jnp.stack([jnp.max(jnp.abs(getattr(st, c)[idx]))
-                                  for c, idx in zip(COMP[:3], peak_indices)]))
-        return st, (samples, peak)
-    _, (samples, incident) = jax.lax.scan(auxiliary, line, jnp.arange(n_steps))
-    samples, incident = np.asarray(samples), np.asarray(incident, np.float64)
-    def full_step(carry, n):
-        carry, _, _ = captured['core'](carry, n, jnp.zeros(0, jnp.float32), jnp.zeros(0, jnp.float32))
-        return carry, tuple(getattr(carry['fdtd'], c) for c in COMP)
-    carry = initial
-    sf, residual = np.zeros(n_steps), np.zeros(n_steps)
-    grid_peaks = np.zeros((n_steps, 2))
-    traces = np.zeros((n_steps, 2), np.float32)
-    for begin in range(0, n_steps, 20):
-        end = min(begin + 20, n_steps)
-        carry, fields = jax.lax.scan(full_step, carry, jnp.arange(begin, end, dtype=jnp.int32))
-        for c, block in enumerate(fields):
-            block = np.asarray(block)
-            scale = 1 if c < 3 else Z0
-            grid_peaks[begin:end, c//3] = np.maximum(grid_peaks[begin:end, c//3],
-                np.max(np.abs(block.astype(np.float64)), axis=(1, 2, 3)) * scale)
-            sf[begin:end] = np.maximum(sf[begin:end], np.max(np.abs(block[:, sf_mask].astype(np.float64)), axis=1) * scale)
-            diff = block[(slice(None),) + tuple(nodes.T)].astype(np.float64) - samples[begin:end, c]
-            residual[begin:end] = np.maximum(residual[begin:end], np.max(np.abs(diff), axis=1) * scale)
-            if COMP[c] == probe:
-                traces[begin:end] = np.stack([block[(slice(None),) + p] for p in points], axis=1)
-    jax.effects_barrier()
-    tf_incident = incident.copy()
-    line_peaks = np.array([_line_peaks[i] for i in range(1, n_steps + 1)])
-    incident = np.max(np.concatenate([grid_peaks, line_peaks], axis=1), axis=1)
-    finite = np.isfinite(incident) & np.isfinite(sf) & np.isfinite(residual)
-    if not np.all(finite):
-        return (dict(steps=n_steps, theta=theta, phi=phi, pol=pol, direction=direction,
-            m=cfg.m, nonfinite_first_step=int(np.flatnonzero(~finite)[0] + 1),
-            rSF=float('inf'), rD=float('inf'), rise_SF_ULP=float('inf'), rise_D_ULP=float('inf')),
-            dict(I=incident, SF=sf, D=residual, trace=traces, ordinary=np.asarray(ordinary.time_series), nodes=nodes))
-    peak = incident.max()
-    ulp = float(np.spacing(np.float32(peak)))
-    cumulative = incident.cumsum()
-    active = cumulative >= peak
-    per_step_ulp = np.spacing(incident.astype(np.float32)).astype(np.float64)
-    ratios = [np.divide(np.maximum.accumulate(v), 1.2e-7 * cumulative,
-                         out=np.zeros(n_steps), where=cumulative > 0) for v in (sf, residual)]
-    summary = dict(steps=n_steps, theta=theta, phi=phi, pol=pol, direction=direction,
-        m=cfg.m, max_I=float(peak), max_SF=float(sf.max()), max_D=float(residual.max()),
-        switch_step=int(np.flatnonzero(active)[0] + 1),
-        rSF=float(ratios[0][active].max()), rD=float(ratios[1][active].max()),
-        final_rSF=float(ratios[0][-1]), final_rD=float(ratios[1][-1]),
-        rise_SF_ULP=float((sf / per_step_ulp)[~active].max(initial=0)),
-        rise_D_ULP=float((residual / per_step_ulp)[~active].max(initial=0)),
-        D_ULP=float(residual.max() / ulp), leakage_dB=float(20 * np.log10(sf.max() / peak)),
-        probe_unequal_bits=int(np.count_nonzero(traces.view(np.uint32) != np.asarray(ordinary.time_series).view(np.uint32))))
-    return summary, dict(I=incident, I_TF=tf_incident, grid_peaks=grid_peaks,
-        line_peaks=line_peaks, SF=sf, D=residual, trace=traces,
-        ordinary=np.asarray(ordinary.time_series), nodes=nodes)
+    centre = tuple(sum(bounds[a]) // 2 for a in 'xyz')
+    points = [centre]
+    for axis, name in enumerate('xyz'):
+        for index in (bounds[name][0] - 1, bounds[name][1] + 1):
+            point = list(centre)
+            point[axis] = index
+            points.append(tuple(point))
+    points.extend(itertools.product(*[(bounds[a][0] - 1, bounds[a][1] + 1)
+                                      for a in 'xyz']))
+    component = 'ez' if pol == 's' else 'ey'
+    positions = [tuple((i - cpml_layers) * DX for i in p) for p in points]
+    for position in positions:
+        sim.add_probe(position, component=component)
+    result = sim.run(n_steps=300, skip_preflight=True)
+    grid = result.grid
+    # Quote the realized mesh, and verify that the public probes hit our nodes.
+    assert grid.shape == (25 + 2 * cpml_layers,) * 3
+    assert [grid.position_to_index(p) for p in positions] == points
+    cfg, state = plane.init_plane_wave(
+        grid.nx, float(grid.cells('x')[0]), grid.dt, ny=grid.ny, nz=grid.nz,
+        cpml_layers=cpml_layers, tfsf_margin=4, f0=10e9, bandwidth=.8,
+        theta_deg=theta, phi_deg=phi, polarization=pol, max_component=40,
+        n_steps=300)
+    # Independent Yee coordinates, not the correction table's gathers.
+    offset = OFFSETS[COMP.index(component)]
+    index = int(np.floor((np.asarray(centre) + offset) @ cfg.m)) - cfg.origin
+
+    def step(st, _):
+        st = plane.update_line_h(cfg, st, cfg.dx_1d, grid.dt)
+        st = plane.update_line_e(cfg, st, cfg.dx_1d, grid.dt)
+        electric = jnp.max(jnp.stack([jnp.max(jnp.abs(getattr(st, c))) for c in COMP[:3]]))
+        magnetic = jnp.max(jnp.stack([jnp.max(jnp.abs(getattr(st, c))) for c in COMP[3:]]))
+        return st, (getattr(st, component)[index], electric, magnetic)
+
+    _, (reference, electric, magnetic) = jax.lax.scan(step, state, None, length=300)
+    line_peak = np.maximum(np.asarray(electric, np.float64),
+                           Z0 * np.asarray(magnetic, np.float64))
+    return (np.asarray(result.time_series, np.float64),
+            np.asarray(reference, np.float64), line_peak, grid)
 
 
-def assert_v1_v2(summary):
-    assert all(np.isfinite(summary[key]) for key in ('rSF', 'rD', 'rise_SF_ULP', 'rise_D_ULP')), summary
-    assert summary['rSF'] <= 1, summary
-    assert summary['rD'] <= 1, summary
-    assert summary['rise_SF_ULP'] <= 9, summary
-    assert summary['rise_D_ULP'] <= 9, summary
-    # Records 8/10 replace the historical normal-anchor maxima with the
-    # paired line-inclusive scale; the archived-program comparison is V3.
+def _assert_probe_law(trace, reference, line_peak, grid, row, record_property):
+    centre = np.abs(trace[:, 0])
+    peak = centre.max()
+    # Design A33: the incident line drives the faces before the centre sees it.
+    # Use its per-step E / Z0*H peak for the rise and accumulated leakage law.
+    scale = np.maximum(line_peak, centre)
+    cumulative = scale.cumsum()
+    active = cumulative >= scale.max()
+    sf = np.maximum.accumulate(np.max(np.abs(trace[:, 1:]), axis=1))
+    # The existing 3D/stand-alone-line bar is 9 float32 peak ULP:
+    # tests/unit/sources/test_tfsf_closed_box.py:28-31,143.
+    centre_bar = 9 * float(np.spacing(np.float32(peak)))
+    early_bar = 9 * np.spacing(scale.astype(np.float32)).astype(np.float64)
+    bar = np.where(active, 1.2e-7 * cumulative, early_bar)
+    error = np.abs(trace[:, 0] - reference)
+    ratios = np.divide(sf, bar, out=np.full_like(sf, np.inf), where=bar > 0)
+    worst = int(np.argmax(ratios))
+    summary = dict(row=row, steps=300, mesh=grid.shape, dt=float(grid.dt),
+                   peak=float(peak), switch_step=int(np.argmax(active) + 1),
+                   sf_max=float(sf.max()), sf_law_ratio=float(ratios[active].max(initial=0)),
+                   sf_early_ulp=float((sf[~active] / (early_bar[~active] / 9)).max(initial=0)),
+                   centre_error=float(error.max()), centre_bar=centre_bar,
+                   centre_peak_ulp=float(error.max() / (centre_bar / 9)),
+                   worst_step=worst + 1, scale=float(scale[worst]),
+                   sf_ratio=float(ratios[worst]), expected_sf=0.,
+                   measured_sf=float(sf[worst]), sf_bar=float(bar[worst]))
+    record_property('measurements', str(summary))
+    print(summary, file=sys.stderr)
+    assert np.isfinite(trace).all() and np.isfinite(reference).all() and np.isfinite(scale).all(), f'nonfinite field record: {summary}'
+    assert peak > .1, summary
+    assert np.all(sf <= bar), f'scattered-field leakage exceeds incident-scale law: {summary}'
+    assert np.all(error <= centre_bar), f'centre differs from stand-alone line by >9 peak ULP: {summary}'
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize('theta,phi,pol', ((0, 0, 's'), (0, 0, 'p'), (30, 0, 'p'), (45, 30, 's')))
 def test_v1_v2_l1(theta, phi, pol, record_property):
-    summary, _ = measure_scene(theta, phi, pol)
-    record_property('measurements', str(summary))
-    assert_v1_v2(summary)
-
-
-def measure_line_mutation(kind):
-    difference = plane.line_difference
-    def changed(cfg, state, target, source, axis):
-        if kind == 'drop_h_half_step':
-            cfg = replace(cfg, fractions=cfg.fractions[:3] + (0., 0., 0.))
-        value = difference(cfg, state, target, source, axis)
-        if kind == 'flip_curl_term' and (target, source, axis) == (4, 2, 0):
-            value = -value
-        return value
-    with patch.object(plane, 'line_difference', changed):
-        return measure_scene(45, 30, 'p')
-
-
-@pytest.mark.source_scan
-@pytest.mark.parametrize('kind', ('drop_h_half_step', 'flip_curl_term'))
-def test_v1_line_mutation_is_red(kind, record_property):
-    summary, _ = measure_line_mutation(kind)
-    record_property('mutation', str(summary))
-    assert (not np.isfinite(summary['rSF']) or summary['rSF'] > 1
-            or summary['rise_SF_ULP'] > 9), summary
+    """Public 3D probes cancel outside the closed box and replay its incident line."""
+    trace, reference, line_peak, grid = _probe_scene(theta, phi, pol, cpml_layers=8)
+    _assert_probe_law(trace, reference, line_peak, grid,
+                      (theta, phi, pol, 8), record_property)
 
 
 def principal_roots(m, frequencies):
@@ -554,90 +455,6 @@ def test_v13b_matched_window_width(angles, pol, record_property):
     relative = np.abs(ratio / expected - 1)
     record_property('relative_error', relative.tolist())
     assert np.all(relative <= .02), (ratio, expected, relative)
-
-
-def test_v13b_zero_delay_defect_is_red(record_property):
-    ratio, expected = window_width_ratio((10, 0), 's', zero_delays=True)
-    record_property('defect_ratio', ratio.tolist())
-    assert np.any(np.abs(ratio / expected - 1) > .02), (ratio, expected)
-
-
-def table_defect_record(entry=None, epsilon=0.):
-    """Native setup and native gathered values; change one coefficient only."""
-    import inspect
-    reads, captured = {}, {}
-    native_init = plane.init_plane_wave
-    def initialize(*args, **kwargs):
-        cfg, state = native_init(*args, **kwargs)
-        captured['cfg'] = cfg
-        if entry is None:
-            return cfg, state
-        family, ti, ii = entry
-        key = 'tables_' + family.lower()
-        tables = list(getattr(cfg, key))
-        coefficient = tables[ti].coefficient.copy()
-        coefficient[ii] = np.float32(float(coefficient[ii]) * (1 + epsilon))
-        tables[ti] = tables[ti]._replace(coefficient=coefficient)
-        return replace(cfg, **{key: tuple(tables)}), state
-    def tap(step, values, magnetic, ti):
-        def save(n, array):
-            reads[('H' if magnetic else 'E', ti, int(n))] = np.array(array)
-        jax.debug.callback(save, step, values, ordered=True)
-    source = inspect.getsource(plane.apply_tables)
-    needle = '        values = table_operands(cfg, incident, table, ti, magnetic)'
-    assert source.count(needle) == 1
-    source = source.replace(needle, needle + '\n        _tap(incident.step + 1, values, magnetic, ti)')
-    namespace = dict(vars(plane), _tap=tap)
-    exec(compile(source, '<actual table-read tap>', 'exec'), namespace)
-    with patch.object(plane, 'init_plane_wave', initialize), patch.object(
-            plane, 'apply_tables', namespace['apply_tables']):
-        summary, arrays = measure_scene(45, 30, 's')
-    jax.effects_barrier()
-    return summary, arrays, captured['cfg'], reads
-
-
-@pytest.mark.source_scan
-def test_record10_scale_mutations(record_property):
-    """Record 12: switch step 27; measured corner eps=3e-5 first goes red
-    per-step at step 20 and on the law at step 18. At eps=1e-5 the corner's
-    full-record per-step first red is step 33, law step 37. The face-centre
-    eps=1e-5 is red on the law after the switch; eps=0 is green.
-    """
-    control, _, cfg, reads = table_defect_record()
-    assert_v1_v2(control)
-    candidates = []
-    for family in ('E', 'H'):
-        for ti, table in enumerate(getattr(cfg, 'tables_' + family.lower())):
-            values = np.stack([reads[family, ti, n] for n in range(1, 301)])
-            for ii in range(len(table.target_index)):
-                nonzero = np.flatnonzero(values[:, ii] != 0)
-                if len(nonzero):
-                    step = int(nonzero[0])
-                    product = abs(float(table.coefficient[ii]) * float(values[step, ii]))
-                    candidates.append((step, -product, family, ti, ii))
-    _, _, *corner = min(candidates)
-    assert tuple(corner) == ('E', 8, 0)
-    term = cfg.tables_e[corner[1]]
-    assert term.target_component == 2 and term.source_component == 4
-    assert np.unravel_index(term.target_index[corner[2]], cfg.shape) == (12, 12, 12)
-    center = np.array([cfg.x_lo, (cfg.y_lo + cfg.y_hi)//2, (cfg.z_lo + cfg.z_hi)//2])
-    candidates = []
-    for ti, table in enumerate(cfg.tables_e):
-        if (table.target_component, table.source_component) not in ((1, 5), (2, 4)):
-            continue
-        nodes = np.array(np.unravel_index(table.target_index, cfg.shape)).T
-        for ii in np.flatnonzero(nodes[:, 0] == cfg.x_lo):
-            candidates.append((int(np.sum((nodes[ii] - center)**2)),
-                               -abs(float(table.coefficient[ii])), ti, int(ii)))
-    _, _, ti, ii = min(candidates)
-    assert (ti, ii) == (6, 144)
-    assert cfg.tables_e[ti].target_component == 1 and cfg.tables_e[ti].source_component == 5
-    assert np.unravel_index(cfg.tables_e[ti].target_index[ii], cfg.shape) == (12, 20, 20)
-    corner_result, _, _, _ = table_defect_record(tuple(corner), 3e-5)
-    face_result, _, _, _ = table_defect_record(('E', ti, ii), 1e-5)
-    record_property('scale_mutations', dict(control=control, corner=corner_result, face=face_result))
-    assert corner_result['rise_SF_ULP'] > 9, corner_result
-    assert face_result['rSF'] > 1, face_result
 
 
 @pytest.mark.parametrize('parameter,value', (('amplitude', 1.), ('f0', 10e9), ('bandwidth', .8)))

@@ -1,5 +1,7 @@
 """Two-stage refusal before allocation, with independent byte estimates."""
 
+
+
 import json
 import os
 from pathlib import Path
@@ -10,6 +12,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
 from rfx import ringdown as rd
 from rfx.sparams._tail_witness import tail_share_witness
 
@@ -172,7 +175,7 @@ def test_run_completion_does_not_swallow_refusal(monkeypatch):
 def test_forward_callback_does_not_swallow_refusal(monkeypatch):
     import jax
     import jax.numpy as jnp
-    from rfx import _ringdown_jax as rj
+    from rfx.ringdown import _jax as rj
 
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', 1)
     y = record(200).real
@@ -215,7 +218,7 @@ def test_we_refusal_preserves_synthetic_completion(monkeypatch):
     plan = object.__new__(rd.RingdownRun)
     plan.spec, plan.n_steps, plan.source_ratio_long = spec, 40000, 0.
     witnesses = plan._error_witnesses(y, .0001, [.4], .5, lambda value: value,
-                                     rd.plain_dft(y, .0001, [.4]), w2, {})
+                                     ringdown_tail.plain_dft(y, .0001, [.4]), w2, {})
     we = witnesses[0]
     assert we.name == 'WE' and np.isnan(we.value) and not we.ok
     assert w2.spectra.tobytes() == expected
@@ -227,7 +230,7 @@ def test_we_refusal_preserves_synthetic_completion(monkeypatch):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_we_refusal_keeps_cavity_main_s(monkeypatch, entry):
     from tests.unit.sparams.test_ringdown_run import _box, FREQS
-    from rfx import _ringdown_jax as rj
+    from rfx.ringdown import _jax as rj
 
     # At 1200 steps both windows reject FIR q=6 for insufficient capacity:
     # main: n=600, C=2, L=198, M=402, k=396; WE: n=900, L=297, M=603, k=594.

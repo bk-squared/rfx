@@ -1,18 +1,14 @@
-"""Mesh-quality and non-uniform-lane preflight, moved verbatim out of
-``rfx.api._preflight``.
+"""Mesh-quality and non-uniform-lane preflight.
 
-Issue #980 Phase 3, leg 5. The mesh family: whether the grid resolves what is
+The mesh family: whether the grid resolves what is
 drawn on it (cells per wavelength in every material, imported-CAD thin
-features, the #743 per-body coarsest-cell rule and the Taflove Ch.4
+features, the per-body coarsest-cell rule and the Taflove Ch.4
 phase-velocity estimate), whether a GRADED mesh is inside the validated
 SPEC-01 WP6 envelope and what that envelope excludes, what lands ON a grading
-transition (the #669 lossy sheet, the #672 current source, the #688 lumped /
+transition (the lossy sheet, the current source, the lumped /
 wire port -- each reported on its Ampere-loop axes only, through the shared
 ``_graded_node_report``), how a Box rasterizes across a graded z column, and
 which features the non-uniform and SBP-SAT subgridded lanes do not implement.
-Everything here was relocated byte for byte out of ``rfx/api/_preflight.py``
--- same text, same order, same indentation, same docstrings, nothing renamed,
-reordered, tidied or rewritten.
 
 The move is gated on the committed advisory-text snapshot every
 ``sim.preflight()`` fixture renders
@@ -40,9 +36,9 @@ THE THREE CLASS-BODY CONSTANTS DO NOT MOVE. ``_MULTIBAND_RATIO_CAP``,
 ``_INPLANE_RATIO_CAP`` and ``_AXIS_OF_COMPONENT`` are assignments in the
 ``_PreflightMixin`` class body, read as ``self.<NAME>`` by four of the bodies
 below and -- for the first two -- read off the CLASS by
-``tests/unit/nonuniform/test_multiband_nu_envelope.py:329``, which asserts the
-two caps are DIFFERENT numbers so that a single shared constant cannot
-silently re-couple the in-plane lock to the z one. Moving them here would keep
+``tests/unit/nonuniform/test_multiband_nu_envelope.py``, which pins each cap
+(both 1.4, as two constants) so that a single shared constant
+cannot silently re-couple the in-plane lock to the z one. Moving them here would keep
 every ``self.`` read working (the method travels with the constant) while
 breaking that test, and no module-level namespace lock would see it happen,
 because they are not module-level names. They stay in the facade, the moved
@@ -64,7 +60,7 @@ that local binding shadows the module global for every read inside it. An AST
 scope walk over the whole facade finds four loads of the name: one inside
 ``entry_realizations``'s nested ``_tie``, resolving to its local import, and
 three inside ``_validate_mesh_quality``, resolving to the module global. So
-the #743 helper is mesh-family-local and comes here rather than to
+the helper is mesh-family-local and comes here rather than to
 ``_common``. Nothing outside the facade imports it from there.
 
 That shadowing is also the ONE edit this leg made outside a moved block, and
@@ -80,14 +76,16 @@ instead of leaving two different functions sharing one name.
 
 from __future__ import annotations
 
+from rfx.preflight._subjects import finding_subjects, runway_region
+
 import math
 
 import numpy as np
 
 from rfx.grid import C0
-from rfx._grid_metric import is_one_cell_size
+from rfx._internal._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
-from rfx.geometry.csg import Box
+from rfx.geometry.csg import Box, Cylinder, Sphere
 
 from rfx.preflight._common import (
     _fmt_freq,
@@ -99,7 +97,7 @@ from rfx.preflight._common import (
 
 
 def _local_cell(profile, lo, hi, fallback):
-    """Coarsest cell a body spans on one axis (#743).
+    """Coarsest cell a body spans on one axis.
 
     ``profile`` is a per-cell size array whose cumulative sum gives node
     positions from the padded array's origin; ``lo``/``hi`` are the body's
@@ -116,6 +114,64 @@ def _local_cell(profile, lo, hi, fallback):
     if not inside.any():
         return fallback
     return float(d[inside].max())
+
+
+def _realized_cell_samples(self, cache):
+    """Primal-cell centres and widths of the grid the run builds, built once."""
+    if not cache:
+        from rfx.geometry.rasterize_grid import (
+            cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+            centres_from_nonuniform_grid, centres_from_uniform_grid,
+        )
+        grid = self._build_realized_grid()
+        graded = hasattr(grid, "dx_arr")
+        cache.append(((centres_from_nonuniform_grid(grid) if graded
+                       else centres_from_uniform_grid(grid)),
+                      (cell_sizes_from_nonuniform_grid(grid) if graded
+                       else cell_sizes_from_uniform_grid(grid))))
+    return cache[0]
+
+
+def _warn_small_curved_body(self, entry, cache, is_pec) -> None:
+    """Warn for an admitted dielectric Sphere, or a Cylinder across its
+    radius, whose diameter is under three widths of the cell containing its
+    centre along an axis across it. A body below the size rule of
+    :mod:`rfx.geometry.curved_body_size` is refused at assembly instead, and
+    gets no warning here. A Cylinder thin only along its own axis is planar
+    and is not judged here. ``is_pec`` is the mesh check's own decision for
+    the entry's material."""
+    import warnings as _w
+    from rfx.geometry.curved_body_size import body_size_threshold, is_below_size
+    shape = entry.shape
+    if is_tracer(shape.radius) or any(is_tracer(v) for v in shape.center):
+        return
+    if is_pec:
+        return
+    centres, sizes = _realized_cell_samples(self, cache)
+    rule = body_size_threshold(shape, centres, sizes)
+    if rule is None or is_below_size(shape, centres, sizes):
+        return
+    _, _, widths, axes = rule
+    diameter = 2.0 * float(shape.radius)
+    cells, axis = min((diameter / widths[a], a) for a in axes)
+    if cells >= 3.0:
+        return
+    _w.warn(
+        PreflightWarning(
+            f"Small dielectric body: '{entry.material_name}' ({type(shape).__name__}) "
+            f"diameter {_fmt_len(diameter)} is {cells:.2f} cells across along "
+            f"{'xyz'[axis]} (containing cell {_fmt_len(widths[axis])}). A body this "
+            "small is over-polarized: against the converged result a sphere two "
+            "cells across measured 1.30× with subpixel smoothing and 1.25× without, "
+            "and a rod two cells across 1.10× and 1.13×; its polarizability and "
+            "scattering are overestimated by about that much. A sphere four cells "
+            "across read 1.07×. Put more cells across the body.",
+            **finding_subjects(self, objects=(entry,)),
+            code="mesh_resolution",
+            source="_validate_mesh_quality",
+        ),
+        stacklevel=4,
+    )
 
 
 def _validate_mesh_quality(self) -> None:
@@ -150,14 +206,15 @@ def _validate_mesh_quality(self) -> None:
     else:
         min_dz = dx
 
+    realized_cells: list = []
     for entry in self._geometry:
         shape = entry.shape
         mat_name = entry.material_name
 
-        # Imported CAD mesh (#358): warn when the thinnest dimension (bbox extent — a
+        # Imported CAD mesh: warn when the thinnest dimension (bbox extent — a
         # tessellation-independent proxy, e.g. a plate/wall thickness) falls below ~2 cells;
         # rasterisation is a cell-centre staircase, so a sub-2-cell dimension is lost or
-        # misregistered (the #330 thin-conductor class).
+        # misregistered (the thin-conductor class).
         if hasattr(shape, "min_feature_size"):
             try:
                 feat = float(shape.min_feature_size())
@@ -169,6 +226,7 @@ def _validate_mesh_quality(self) -> None:
                         f"(~{2 * cell * 1e3:.3f} mm at dx={cell * 1e3:.3f} mm); it will "
                         f"be lost or staircased by rasterisation. Refine the mesh region "
                         f"(finer dx / subpixel smoothing) or thicken the feature.",
+                        **finding_subjects(self, objects=(entry,)),
                         code="mesh_import_underresolved", source="_validate_mesh_quality"))
             except (ValueError, AttributeError, TypeError):
                 pass
@@ -186,8 +244,8 @@ def _validate_mesh_quality(self) -> None:
         # Score against the LOCAL cell where this body actually sits,
         # not the global minimum. Using the finest cell anywhere made
         # the check vacuously green exactly where grading hurts — a
-        # body in a coarse region judged by a fine cell it never sees
-        # (#743). Falls back to the global minimum when a profile has
+        # body in a coarse region judged by a fine cell it never sees.
+        # Falls back to the global minimum when a profile has
         # no usable extent for this body.
         cell_sizes = [
             _local_cell(self._dx_profile, c1[0], c2[0], min_dx),
@@ -195,7 +253,7 @@ def _validate_mesh_quality(self) -> None:
             _local_cell(self._dz_profile, c1[2], c2[2], min_dz),
         ]
 
-        # FP1 refinement (2026-05-06): the partial-volume warning
+        # FP1 refinement: the partial-volume warning
         # at 3-5 cells along one axis is meaningful only for actual
         # *volumes* (≥3 cells in every axis).  A thin strip
         # (e.g. an MSL trace at LX × W_trace × dx → many × 4.7 × 1
@@ -214,7 +272,7 @@ def _validate_mesh_quality(self) -> None:
             axis_name = "xyz"[axis]
             if dim <= 0:
                 # Zero-thickness geometry. For a PEC Box that IS the
-                # sheet declaration (lattice ownership contract #931
+                # sheet declaration (lattice ownership contract
                 # §1.5: "zero thickness is a statement of intent") —
                 # it is realized on one node plane and reported by
                 # ``sheet_plane_realized``, so nothing to say here.
@@ -231,6 +289,7 @@ def _validate_mesh_quality(self) -> None:
                         f"at least one cell of thickness "
                         f"({_fmt_len(cell)}). (A zero-thickness PEC Box "
                         f"is the sheet declaration and is fine.)",
+                        **finding_subjects(self, objects=(entry,)),
                         code="mesh_resolution",
                         source="_validate_mesh_quality",
                     ),
@@ -238,7 +297,7 @@ def _validate_mesh_quality(self) -> None:
                 )
             elif dim < cell:
                 cells_count = dim / cell
-                # #931 §1.5: a PEC Box (or any PEC shape with a
+                # a PEC Box (or any PEC shape with a
                 # bounding box) thinner than one local cell is REFUSED
                 # at assembly — nothing is inferred from raster
                 # thickness. This advisory only documents the rule;
@@ -246,9 +305,9 @@ def _validate_mesh_quality(self) -> None:
                 hint = (
                     " A PEC shape passed to sim.add() is a VOLUME "
                     "(realized with both faces and a shorted interior, "
-                    "lattice ownership contract #931 §1.2), and a "
+                    "lattice ownership contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md), and a "
                     "volume thinner than one local cell is refused at "
-                    "assembly (§1.5) rather than snapped to a plane. "
+                    "assembly rather than snapped to a plane. "
                     "If this is foil (a ground plane, patch, trace), "
                     "declare a SHEET: a zero-thickness Box via add(), "
                     "or add_thin_conductor(shape) — realized on the "
@@ -263,15 +322,16 @@ def _validate_mesh_quality(self) -> None:
                         f"'{mat_name}' {axis_name}-extent {_fmt_len(dim)} = "
                         f"{cells_count:.1f} cells — below 1 cell resolution."
                         + hint,
+                        **finding_subjects(self, objects=(entry,)),
                         code="mesh_resolution",
                         source="_validate_mesh_quality",
                     ),
                     stacklevel=3,
                 )
             else:
-                # Physics-based resolution thresholds (issue #37).
+                # Physics-based resolution thresholds.
                 # A PEC volume 1-2 cells thick is a FILLED SLAB with
-                # walls on both faces (#931 §1.2 — ``pec_box_one_cell``
+                # walls on both faces (``pec_box_one_cell``
                 # says so for the 1-cell case); its thickness is
                 # realized as drawn, so there is no partial-volume
                 # question. Only warn on partial volume: 3-5 cells
@@ -290,6 +350,7 @@ def _validate_mesh_quality(self) -> None:
                                 "curved/edge features need ≥5 cells; a "
                                 "1-2 cell slab is realized as drawn, "
                                 "with walls on both faces).",
+                                **finding_subjects(self, objects=(entry,)),
                                 code="mesh_resolution",
                                 source="_validate_mesh_quality",
                             ),
@@ -311,8 +372,7 @@ def _validate_mesh_quality(self) -> None:
                     # extraction with a port or flux monitor
                     # amplifies dielectric-interface phase error
                     # into |S| magnitude error (see
-                    # validation/crossval/11 rfx-vs-analytic audit,
-                    # 2026-04-24): at 17.7 cells/λ_eff we measure
+                    # validation/crossval/11 rfx-vs-analytic audit): at 17.7 cells/λ_eff we measure
                     # ~5% |S21| deficit at Fabry-Perot peaks; at
                     # 35 cells/λ_eff (dx halved) it halves to ~2%.
                     # Require 20 cells/λ_eff when S-param
@@ -342,14 +402,19 @@ def _validate_mesh_quality(self) -> None:
                                 f"{threshold:.0f} cells/λ_eff for "
                                 f"phase-accurate propagation."
                                 f"{suffix}",
+                                **finding_subjects(self, objects=(entry,)),
                                 code="mesh_resolution",
                                 source="_validate_mesh_quality",
                             ),
                             stacklevel=3,
                         )
 
+        if isinstance(shape, (Sphere, Cylinder)):
+            _warn_small_curved_body(self, entry, realized_cells, is_pec)
+
     # Check gaps between PEC structures
-    pec_entries = [e for e in self._geometry if e.material_name == "pec"]
+    from rfx.model.materials import assembled_as_pec
+    pec_entries = [e for e in self._geometry if assembled_as_pec(self, e)]
     if len(pec_entries) >= 2:
         for i in range(len(pec_entries)):
             for j in range(i + 1, min(i + 5, len(pec_entries))):
@@ -367,6 +432,7 @@ def _validate_mesh_quality(self) -> None:
                                     f"{_fmt_len(gap)} = {gap/cell:.1f} cells "
                                     f"along {'xyz'[ax]} — coupling may be "
                                     f"under-resolved.",
+                                    **finding_subjects(self, objects=(pec_entries[i], pec_entries[j])),
                                     code="mesh_resolution",
                                     source="_validate_mesh_quality",
                                 ),
@@ -381,7 +447,7 @@ def _validate_mesh_quality(self) -> None:
     # dispersion relation. This is application-independent.
     self._check_numerical_dispersion()
 
-    # Thin-metal-on-NU-mesh symmetry (Meep/OpenEMS convention — issue #48).
+    # Thin-metal-on-NU-mesh symmetry (Meep/OpenEMS convention).
     self._validate_thin_metal_on_nu_mesh()
 
 def _check_numerical_dispersion(self) -> None:
@@ -417,6 +483,8 @@ def _check_numerical_dispersion(self) -> None:
 
     inv_sq = sum(1.0 / di ** 2 for di in d)
     dt_cfl = 0.99 / (C0 * math.sqrt(inv_sq))
+    if not self._uses_nonuniform_mesh and self._dt_pin is not None:
+        dt_cfl = float(self._dt_pin)
     omega = 2.0 * math.pi * self._freq_max
 
     errors = {}
@@ -455,9 +523,9 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
     """Warn when a realized metal PLANE sits on a NU axis without
     symmetric neighbouring cells (Meep/OpenEMS require equal dz on
     both sides of a metal plane, else surface currents pick up O(1)
-    error and the far-field pattern is corrupted — issue #48).
+    error and the far-field pattern is corrupted).
 
-    Lattice ownership contract (#931): the plane examined is the one
+    Lattice ownership contract: the plane examined is the one
     the run REALIZES — a sheet's node plane, or each wall plane of a
     thin volume (a slab at most two cells thick along the NU axis,
     whose two faces are both surface-current planes) — read from the
@@ -512,9 +580,10 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
                         f"({_fmt_len(d_below)} below, {_fmt_len(d_above)} "
                         f"above, ratio {ratio:.2f}). Meep/OpenEMS require "
                         f"equal cell sizes across a metal plane; "
-                        f"radiation pattern may be corrupted (issue #48). "
+                        f"radiation pattern may be corrupted. "
                         f"Put the metal plane on a preserved-region "
                         f"boundary or refine the neighbouring cell.",
+                        **finding_subjects(self, objects=(e,)),
                         code="thin_metal_nu_mesh",
                         source="_validate_thin_metal_on_nu_mesh",
                     ),
@@ -531,24 +600,9 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
     if dz.size == 0:
         return
     edges = np.concatenate(([0.0], np.cumsum(dz)))
-    # Sample positions must be the ones the RUN uses, and the occupancy
-    # rule must be the run's rule. This validator previously modelled both
-    # by hand — cell centres plus a bare half-open span — and was wrong on
-    # each count: dielectric coordinates are E-NODES (cell edges) since
-    # #562 (the node sampler's thin-sheet branch snaps a sub-cell
-    # dielectric Box onto its nearest node, #48/#75/#371). With the hand
-    # model this check diverged from the rasterizer on boxes straddling a
-    # grading transition — the #325 signature it exists to catch — and
-    # went SILENT on one of them (#562 review, F2). So call the production
-    # path instead of imitating it: node positions through the same two
-    # steps the grid builder composes, and the shape's own mask for a
-    # dielectric; for a PEC Box the production rule is the #931 §1.1
-    # CENTRE-sampled volume rule (half-open on cell centres), spelled by
-    # ``rasterize_grid._box_axis_volume`` and called here. x/y are passed
-    # as single-sample arrays because only the z profile is needed here;
-    # the mask admits the box's own midpoint, so the combined mask's z
-    # profile is the z-axis mask.
-    from rfx.nonuniform import node_positions_from_profile
+    # Count the production volume window on the graded spine. Only the z
+    # profile is needed; the other axes are sampled at the Box midpoint.
+    from rfx.model.graded_grid import node_positions_from_profile
     z_nodes = np.asarray(node_positions_from_profile(dz), dtype=np.float64)
 
     z_centres = z_nodes[:-1] + 0.5 * np.diff(z_nodes)
@@ -563,25 +617,20 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
 
         x_mid = np.array([0.5 * (float(c1[0]) + float(c2[0]))])
         y_mid = np.array([0.5 * (float(c1[1]) + float(c2[1]))])
-        try:
-            is_pec = (self._resolve_material(entry.material_name).sigma
-                      >= self._PEC_SIGMA_THRESHOLD)
-        except KeyError:
-            is_pec = False
-        if is_pec:
-            # #931 §1.1: a PEC VOLUME is centre-sampled, half-open on
-            # the cell centres — the production rule
-            # (rasterize_grid._box_axis_volume), not the node sampler.
-            from rfx.geometry.rasterize_grid import _box_axis_volume
-            actual = int(np.count_nonzero(
-                np.asarray(_box_axis_volume(z_centres, z_lo, z_hi, np.diff(z_nodes)))))
-        else:
-            mask = np.asarray(entry.shape.mask_on_coords(x_mid, y_mid, z_nodes))
-            actual = int(np.count_nonzero(mask))
+        from rfx.geometry.rasterize_grid import GridCoords, _material_cell_mask
+        coords = GridCoords(x_mid, y_mid, z_nodes[:-1], (1, 1, len(z_centres)))
+        centres = GridCoords(x_mid, y_mid, z_centres, coords.shape)
+        sizes = tuple(np.array([max(abs(c2[a] - c1[a]), float(np.min(dz)))])
+                      for a in (0, 1)) + (np.diff(z_nodes),)
+        declared_z = self._unresolved_domain[2]
+        faces = (None, None, (declared_z, z_nodes[-1]) if declared_z > 0 and len(dz) > 1 else None)
+        mask = _material_cell_mask(entry.shape, coords, centres, cell_sizes=sizes,
+                                   domain_faces=faces, refuse_empty=False)
+        actual = int(np.count_nonzero(np.asarray(mask)))
         local = (edges[:-1] < z_hi) & (edges[1:] > z_lo)
         if not np.any(local):
             continue
-        # The #325 signature is a fine band SHIFTED OUT of the Box span by
+        # The signature is a fine band SHIFTED OUT of the Box span by
         # smooth_grading's transition insertion — the intended fine cells
         # then sit ADJACENT to the span, so measure min dz over a padded
         # neighborhood (±5 cells), not the span alone (span-only misses
@@ -599,8 +648,9 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
                     f"[{_fmt_len(z_lo)}, {_fmt_len(z_hi)}). "
                     "smooth_grading transition cells may have shifted the "
                     "fine band — derive z coordinates from the actual "
-                    "fine-band edges and assert the rasterized cell count "
-                    "(issue #325)",
+                    "fine-band edges and assert the rasterized cell count"
+                    "",
+                    **finding_subjects(self, objects=(entry,)),
                     code="graded_box_rasterization",
                     loc=f"z=[{z_lo}, {z_hi})",
                     source="_validate_cfg_graded_box_rasterization",
@@ -670,9 +720,7 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                else self._INPLANE_RATIO_CAP)
         scope = ("validated multi-band grading cap"
                  if ax_name == "z" else
-                 "in-plane grading threshold (the validated 1.4 "
-                 "multi-band cap is a z-axis envelope: no witness in "
-                 "it grades an in-plane axis)")
+                 "validated in-plane grading cap")
         if max_ratio > cap + 1e-6:
             _w.warn(
                 PreflightWarning(
@@ -683,14 +731,14 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                     f"mesh'). WHY: stability is unaffected (dt is the "
                     f"global min-cell CFL, sufficient on any tensor "
                     f"grid), but per-transition accuracy is witnessed "
-                    f"only along z and only up to ratio 1.4 — the -54 dB "
+                    f"only up to ratio 1.4 — the -54 dB "
                     f"reflection class at 30 cells/wavelength (it scales "
                     f"as (dz/lambda)^2), against -44 dB measured at "
                     f"ratio 2.0. COST: an unquantified reflection and "
                     f"grading-dispersion error at that transition. "
                     f"REMEDY: split it into ratio<={cap:g} steps (e.g. "
                     f"rfx.smooth_grading) to stay inside the "
-                    f"{'validated envelope' if ax_name == 'z' else 'pre-existing in-plane threshold (no in-plane envelope is validated)'}, "
+                    f"validated envelope, "
                     f"or accept it and say so in the report. STALE-IF: "
                     f"the support-matrix row raises the cap.",
                     code="nu_grading_ratio_beyond_validated_cap",
@@ -710,7 +758,7 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
             # against the face, i.e. `layers - 1` adjacent ratios among
             # p[0..layers-1]; taking layers+1 cells here demanded one
             # uniform cell MORE than the remedy and fired on an exactly
-            # compliant profile (review 2026-08-29).
+            # compliant profile.
             runway = p[:layers] if side == "lo" else p[-layers:]
             r_run = runway[1:] / runway[:-1]
             dev = float(np.max(np.abs(r_run - 1.0)))
@@ -741,6 +789,7 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                         f"witness that SCORES an accuracy observable "
                         f"with an absorber present is added to that "
                         f"row.",
+                        **finding_subjects(self, region=runway_region(self, ax_name, side, runway)),
                         code="nu_grading_reaches_absorber",
                         source="_validate_cfg_multiband_grading",
                     ),
@@ -753,23 +802,22 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
     A lossy sheet folds into ``materials.sigma`` at ONE E node along its
     normal, and the length that node's sigma acts over is the DUAL spacing
     ``(d[k-1]+d[k])/2`` — not either adjacent cell. Where the two adjacent
-    cells are equal the distinction is invisible, which is precisely how
-    the pre-#669-review fold (which divided by the primal cell ``d[k]``)
-    stayed silent: every uniform mesh and every NU node away from a step
+    cells are equal the distinction is invisible, so a fold dividing by the primal cell ``d[k]`` conceals the error:
+    every uniform mesh and every NU node away from a step
     agrees. This check surfaces the case that does not agree.
 
     Advisory tier, concrete profiles only, LOSSY sheets only — a PEC thin
-    sheet is a :class:`~rfx.boundaries.pec.SheetSpec` (#931 §1.3) and
+    sheet is a :class:`~rfx.boundaries.pec.SheetSpec` and
     folds no sigma, so it has no sheet resistance to normalize.
     Threshold: adjacent cells differing by more than 10%.
 
     The node is located through the lossy fold's OWN production path
     (node positions + the shape's node mask): the sigma-fill sheet is
-    fenced out of the #931 contract (design note §1.8 — a lossy volume
+    fenced out of the contract (design note §1.8 — a lossy volume
     model, unchanged), so mirroring its mask here IS reading what the
     run realizes, not a re-derivation.
     """
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx.model.graded_grid import node_positions_from_profile
     from rfx.materials.thin_conductor import sheet_bounds
 
     tcs = [tc for tc in getattr(self, "_thin_conductors", ())
@@ -797,7 +845,7 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
 
         # Locate the node the RUN will realize the sheet on, through the
         # production path (node positions + the shape's own mask), not a
-        # hand-rolled nearest-node rule (#562 review F2, #568).
+        # hand-rolled nearest-node rule.
         nodes = np.asarray(node_positions_from_profile(d),
                            dtype=np.float64)
         _other = tuple(a for a in range(3) if a != n_axis)
@@ -823,14 +871,20 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         dc_film = tc.surface_impedance_f0 is None and not isinstance(tc.shape, Box)
         if dc_film:
             from rfx.model.thin_conductors import admit_dc_film
+            from rfx.model.film_geometry import diagnostic_film_footprints
             grid = self._build_realized_grid()
-            film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False)
+            _, films = diagnostic_film_footprints(self, grid)
+            declaration = next(j for j, declared in enumerate(self._thin_conductors)
+                               if declared is tc)
+            film = films.get(declaration)
+            if film is None:
+                film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False, judge_area=False)
             hit = np.flatnonzero(np.asarray(film.mask).any(axis=_other))
             hit = hit - int(getattr(grid, f'pad_{"xyz"[n_axis]}_lo'))
         else:
             hit = _occupied_layers((0.5,))
         if hit.size == 0 and not dc_film:
-            # #674: a PATTERNED sheet can have its bbox centre inside a
+            # a PATTERNED sheet can have its bbox centre inside a
             # clearance hole, which would read as "no sheet here" and
             # silently drop the advisory. Fan out before giving up.
             hit = _occupied_layers((0.1, 0.3, 0.5, 0.7, 0.9))
@@ -862,6 +916,7 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
                 f"mesh-sensitive: move the sheet onto a locally uniform "
                 f"node (or flatten the grading there) if its loss is "
                 f"claims-bearing.",
+                **finding_subjects(self, objects=(tc,)),
                 code="thin_conductor_graded_node",
                 source="_validate_cfg_thin_conductor_graded_node",
             ),
@@ -873,14 +928,13 @@ def _graded_node_report(self, axis: int, coord: float):
     """``(node_pos, d_below, d_above, dual, ratio)`` when the E node
     nearest ``coord`` on ``axis`` sits on a >10% grading step, else None.
 
-    Concrete profiles only (a tracer profile is skipped, matching the #671
+    Concrete profiles only (a tracer profile is skipped, matching the
     check). The node is located with ``node_positions_from_profile``
-    — the production node convention — not a hand-rolled rule (#562
-    review F2, #568). ``k == 0`` and ``k >= d.size`` are matched by
+    — the production node convention — not a hand-rolled rule. ``k == 0`` and ``k >= d.size`` are matched by
     construction and never report.
     """
-    from rfx._grid_metric import nearest_node_index
-    from rfx.nonuniform import node_positions_from_profile
+    from rfx._internal._grid_metric import nearest_node_index
+    from rfx.model.graded_grid import node_positions_from_profile
 
     prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]
     if prof is None or is_tracer(prof):
@@ -889,7 +943,7 @@ def _graded_node_report(self, axis: int, coord: float):
     if d.size < 2:
         return None
     nodes = np.asarray(node_positions_from_profile(d), dtype=np.float64)
-    # The node the port is stamped on: the one tie rule (#1295, #1342).
+    # The node the port is stamped on: the one tie rule.
     from rfx.geometry.rasterize_grid import _local_cell
     k = nearest_node_index(nodes, coord, _local_cell(nodes, d, coord))
     if k <= 0 or k >= d.size:
@@ -902,7 +956,7 @@ def _graded_node_report(self, axis: int, coord: float):
             0.5 * (d_below + d_above), large / small)
 
 def _validate_cfg_source_on_graded_node(self, _w) -> None:
-    """Advisory: a current source sitting on a grading transition (#672).
+    """Advisory: a current source sitting on a grading transition.
 
     ``make_current_source`` divides the waveform by the E node's control
     volume, which is the PRIMAL per-cell width on the component's own
@@ -913,9 +967,9 @@ def _validate_cfg_source_on_graded_node(self, _w) -> None:
 
     The counterfactual ratio in the message is ``d[k] / dual``, where
     ``d[k]`` is the cell ABOVE the node (``d_above``) — that is the width
-    the pre-#672 code actually used on every axis, so it is the one that
+    a primal-only fold would use on every axis, so it is the one that
     makes the number and the sentence describe the same thing. Using
-    ``max(d_below, d_above)`` instead, as this message did until the #673
+    ``max(d_below, d_above)`` instead, as this message did until the
     split review, silently reported the wrong cell on every DOWN-step
     node (where ``d_above < d_below``).
     """
@@ -945,11 +999,12 @@ def _validate_cfg_source_on_graded_node(self, _w) -> None:
                     f"primal cell {_fmt_len(d_above)} — and the realized "
                     f"current moment would be off by "
                     f"{d_above / dual:.3f}x "
-                    f"on this axis alone if the primal cell were used "
-                    f"(issue #672). That IS handled, but a source on a "
+                    f"on this axis alone if the primal cell were used"
+                    f". That IS handled, but a source on a "
                     f"grading step is where the injected amplitude is "
                     f"most mesh-sensitive: move it onto a locally "
                     f"uniform node if its amplitude is claims-bearing.",
+                    **finding_subjects(self, objects=(pe,)),
                     code="source_on_graded_node",
                     source="_validate_cfg_source_on_graded_node",
                 ),
@@ -967,7 +1022,7 @@ def _validate_cfg_wire_port_on_graded_node(self, _w) -> None:
     also drives through ``make_current_source``, so the source-side
     normalization above applies to it as well.
 
-    Since #688 the same two dual spacings also size the TERMINATION
+    the same two dual spacings also size the TERMINATION
     conductance (``sigma = n_live * d_par / (Z0 * dual_b * dual_c)``),
     which is why this now covers single-cell lumped ports too: they
     carry no ``extent``, so the old filter skipped them entirely while
@@ -1001,13 +1056,14 @@ def _validate_cfg_wire_port_on_graded_node(self, _w) -> None:
                     f"above). {'xyz'[a]} is one of the port's two "
                     f"Ampere-loop axes, so the DUAL spacing "
                     f"{_fmt_len(dual)} weights BOTH that leg of the loop "
-                    f"that measures I (issue #672) and the termination "
-                    f"conductance that realizes Z0 (issue #688). The "
+                    f"that measures I and the termination "
+                    f"conductance that realizes Z0. The "
                     f"extracted Z_in = -V/I, and every S-parameter built "
                     f"on it, is most mesh-sensitive here: move the port "
                     f"onto a locally uniform node (or flatten the "
                     f"grading there) if its S-parameters are "
                     f"claims-bearing.",
+                    **finding_subjects(self, objects=(pe,)),
                     code="wire_port_on_graded_node",
                     source="_validate_cfg_wire_port_on_graded_node",
                 ),
@@ -1019,6 +1075,7 @@ def _validate_cfg_nonuniform_limitations(
     self, _w, cpml_thickness: float
 ) -> None:
     """P2: Non-uniform mesh shadow-lane limitations."""
+    from rfx.sources.tfsf import is_oblique
     # Keyed on "is this the non-uniform lane", not on "was a z profile
     # given". A dx-only or dy-only mesh used to skip both checks below and
     # report All checks passed, though the TFSF auxiliary line runs along x
@@ -1029,7 +1086,7 @@ def _validate_cfg_nonuniform_limitations(
     if self._uses_nonuniform_mesh:
         # P2.3: TFSF on nonuniform mesh — narrowed scope.
         # Axis-aligned ±x incidence with angle_deg=0 runs the 1D
-        # auxiliary along x and is supported only when x is uniform. The
+        # auxiliary along the realized x cells. The
         # z-directed and oblique cases would need a z-nonuniform 1D
         # aux (resp. nonuniform 2D aux) and are deferred.
         if self._tfsf is not None:
@@ -1041,54 +1098,45 @@ def _validate_cfg_nonuniform_limitations(
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
-            if abs(self._tfsf.angle_deg) > 0.01:
+            if is_oblique(self._tfsf.angle_deg):
                 raise PreflightConfigError(
                     "TFSF oblique incidence is not yet supported on "
                     "a nonuniform mesh. Use angle_deg=0 with a uniform x axis.",
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
-            # Normal incidence along a GRADED propagation axis is not the
-            # supported case either. The runner builds the 1-D incident line
-            # as ``init_tfsf(grid.nx, grid.dx, ...)``: nx cells of the
-            # boundary cell, while the 3-D axis is graded (G14). A warning,
-            # not a refusal: the runner accepts this case, and whether to
-            # block it is a separate decision.
+            # The closed box still uses its uniform discrete plane wave.
             _tfsf_ax = self._tfsf.direction[-1]
             _tfsf_prof = {"x": self._dx_profile, "y": self._dy_profile,
                           "z": self._dz_profile}[_tfsf_ax]
-            if (_tfsf_prof is not None and not is_tracer(_tfsf_prof)
+            if (self._tfsf.closed_box
+                    and _tfsf_prof is not None and not is_tracer(_tfsf_prof)
                     and not is_one_cell_size(_tfsf_prof)):
                 _tp = np.asarray(_tfsf_prof, dtype=float)
-                _w.warn(
-                    PreflightWarning(
-                        f"TFSF plane wave along {_tfsf_ax} on a mesh whose "
-                        f"{_tfsf_ax} cells are not one size "
-                        f"({_fmt_len(float(_tp.min()))} to "
-                        f"{_fmt_len(float(_tp.max()))}). The 1-D line that "
-                        f"computes the incident wave is built on one cell "
-                        f"size, the boundary cell, while the 3-D grid "
-                        f"carries the wave through the graded {_tfsf_ax} "
-                        f"cells. The wave the TFSF planes inject then does "
-                        f"not match the wave arriving at them, and the "
-                        f"difference leaks into the scattered-field region "
-                        f"as a spurious field. Measured with no scatterer on "
-                        f"a 60-cell +x line graded 1 / 0.5 / 1 mm: the "
-                        f"scattered-field region read 0.7 of the total-field "
-                        f"peak, against 1e-5 or less on uniform 1 mm cells "
-                        f"and with only y graded (tests/unit/preflight/"
-                        f"test_graded_axis_findings.py). Keep the "
-                        f"{_tfsf_ax} cells uniform, grading y or z instead, "
-                        f"or run on the uniform lane.",
-                        code="nonuniform_tfsf",
-                        source="_validate_cfg_nonuniform_limitations",
-                    ),
-                    stacklevel=3,
+                raise PreflightConfigError(
+                    f"TFSF plane wave along {_tfsf_ax} on a mesh whose "
+                    f"{_tfsf_ax} cells are not one size "
+                    f"({_fmt_len(float(_tp.min()))} to "
+                    f"{_fmt_len(float(_tp.max()))}). The 1-D line that "
+                    f"computes the incident wave is built on one cell "
+                    f"size, the boundary cell, while the 3-D grid "
+                    f"carries the wave through the graded {_tfsf_ax} "
+                    f"cells. The wave the TFSF planes inject then does "
+                    f"not match the wave arriving at them, and the "
+                    f"difference leaks into the scattered-field region "
+                    f"as a spurious field: 0.72 of the total-field peak "
+                    f"with no scatterer on a 60-cell +x line graded "
+                    f"1 / 0.5 / 1 mm, against 1e-5 or less on uniform 1 mm "
+                    f"cells and with only y graded. Keep the "
+                    f"{_tfsf_ax} cells uniform, grading y or z instead, "
+                    f"or run on the uniform lane.",
+                    code="nonuniform_tfsf",
+                    source="_validate_cfg_nonuniform_limitations",
                 )
 
         # P2.6: CPML z-thickness on non-uniform mesh.
         # Skip on tracer profiles — advisory warning only.
-        # Issue #647: the cell count is the z faces' OWN allocation, not
+        # the cell count is the z faces' OWN allocation, not
         # the global budget. Keyed off `_boundary_spec` via
         # `_preflight_face_layers`, so a per-face spec whose z faces are
         # PEC/PMC (allocation 0) no longer reports a thin absorber that
@@ -1108,7 +1156,7 @@ def _validate_cfg_nonuniform_limitations(
             # The thinnest face is reported, since that is the one whose
             # absorption is worst. A face that allocates no absorber
             # (PEC/PMC/periodic) has no thickness to compare, and including
-            # its 0 would resurrect the #647 false positive.
+            # its 0 would resurrect the false positive.
             _ct_lo, _ct_hi, _ = self._validate_cfg_compute_cpml_thickness(
                 cpml_thickness)
             _z_thick_by_face = {
@@ -1141,7 +1189,7 @@ def _validate_cfg_subgrid_limitations(self, _w) -> None:
     here.
     """
     if self._refinement is not None:
-        # #1240: on a non-uniform mesh the refinement is not run at all. An
+        # on a non-uniform mesh the refinement is not run at all. An
         # error finding rather than a raise, so the checks after this one
         # still report; the run-time refusal is
         # ``_require_no_refinement_on_the_nonuniform_lane``, which

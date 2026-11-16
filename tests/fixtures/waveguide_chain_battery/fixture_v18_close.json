@@ -20767,7 +20767,7 @@
    "time": "exp(+j omega t); forward wave exp(-j beta x)",
    "dft": "rectangular full-record DFT with kernel exp(-j omega t) (rfx.sources.waveguide_port._rect_dft)",
    "yee_half_step": "beta for plane shifts and the PEC-short oracle from _compute_beta(dt, dx) (Yee-discrete dispersion); the Airy oracle uses the continuous vacuum beta",
-   "external_phase_data": "none enters; if it ever does it is conjugated first (rfx-known-issues.md, time-convention conjugation)"
+   "external_phase_data": "none enters; if it ever does it is conjugated first (time-convention conjugation)"
   }
  },
  "physics_gates": {

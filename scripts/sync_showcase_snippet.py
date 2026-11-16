@@ -5,7 +5,8 @@ The excerpt is the inner ``J`` of ``make_objective`` in
 ``scripts/showcase/patch_sensitivity.py`` and the statement that calls
 ``jax.value_and_grad`` on it, copied line for line, after one ``...`` line
 naming what the full script sets up. That placeholder marks the block as an
-excerpt, so ``check_public_docs_blocks.py`` skips it instead of running it.
+excerpt, so ``scripts/docs/check_public_docs_blocks.py`` skips it instead of
+running it.
 Run with --check to report documentation drift without modifying files.
 """
 from __future__ import annotations
@@ -18,7 +19,7 @@ import textwrap
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = "scripts/showcase/patch_sensitivity.py"
-PAGES = ("docs/public/index.mdx", "docs/public/showcase/sensitivity-map.mdx")
+PAGES = ("docs/public/index.mdx",)
 START = "{/* rfx-showcase-objective:start */}"
 END = "{/* rfx-showcase-objective:end */}"
 SETUP = "...  # imports, board, corners, freqs, n_steps, checkpoint_segments, eps_bg: see the full script"

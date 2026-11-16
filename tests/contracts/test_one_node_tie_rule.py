@@ -19,7 +19,7 @@ def model(lane):
         # Truly graded, with the declared witnesses in the 1 mm portion.
         d = np.array([.001] * 12 + [.0009, .0011] * 3 + [.001] * 2)
         kw.update(dx_profile=d, dy_profile=d, dz_profile=d)
-    sim = Simulation(**kw)
+    sim = Simulation(snap="declared", **kw)
     grid = sim._build_realized_grid()
     coords = (coords_from_nonuniform_grid(grid) if lane == "graded"
               else coords_from_uniform_grid(grid))
@@ -29,7 +29,7 @@ def model(lane):
 
 
 KINDS = ["point", "interval", "wire_vertex", "wire_radius", "sheet",
-         "traced_sheet", "csg_thin_box", "aperture", "flux", "current_window", "thin_wire",
+         "traced_sheet", "csg_thin_box", "aperture", "flux", "current_window",
          "port_wire", "source_wire", "lumped_wire", "port_sheet", "port_lossy", "port_face",
          "probe_sheet", "dft_sheet", "subgrid_bound", "disjoint_bound",
          "disjoint_point", "preflight_node"]
@@ -101,14 +101,6 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
     elif kind == "current_window":
         from rfx.current_moments import _index_window
         assert _index_window(coords.x, .0035, .0105, grid.shape[0]) == (3, 10)
-    elif kind == "thin_wire":
-        if lane == "graded":
-            pytest.skip("legacy Holland correction accepts uniform Grid only")
-        from rfx.geometry.thin_wire import ThinWire, compute_thin_wire_correction
-        _, sigma = compute_thin_wire_correction(grid, ThinWire((.0035,) * 3, (.0035, .0035, .0095), .0001))
-        occupied = np.nonzero(np.asarray(sigma))
-        assert set(occupied[0]) == set(occupied[1]) == {3}
-        assert (min(occupied[2]), max(occupied[2])) == (3, 9)
     elif kind in ("port_wire", "source_wire", "lumped_wire"):
         pos = (.010, .0095, .008)
         sim.add(PolylineWire(((.010, .0095, .003), pos), radius=0), material="pec")
@@ -223,14 +215,14 @@ def test_trace_port_realized_footprint(lane, extent, lo, hi, x, node, footprint,
     assert [str(i) for i in reported] == findings
     assert all(i.severity == "error" for i in reported)
     if refused:
-        with pytest.raises(ValueError, match="Move the port.*#1342"):
+        with pytest.raises(ValueError, match="Move the port and the trace end onto the same mesh node"):
             sim.run(n_steps=1, skip_preflight=True)
     else:
         assert np.isfinite(sim.run(n_steps=1, skip_preflight=True).time_series).all()
 
 
 def test_off_ties_keep_rounding_and_input_dtype():
-    from rfx._grid_metric import nearest_uniform_index
+    from rfx._internal._grid_metric import nearest_uniform_index
     for dtype in (np.float32, np.float64):
         for ratio in np.linspace(-20, 20, 401):
             ratio = dtype(ratio)

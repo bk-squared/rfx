@@ -19,8 +19,14 @@ Example
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.api import Simulation
+
+from rfx.errors import AccuracyWarning, ConfigurationWarning
 from rfx.stepping.step_count import steps_for_periods
-from rfx._precision import resolve_field_dtype
+from rfx._internal._precision import resolve_field_dtype
 from rfx._traced_refusal import TracedStructureRefusal
 
 import math
@@ -101,11 +107,30 @@ def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
                 "every iteration now recompiles the whole simulation (on a board-sized "
                 "model most of the iteration's wall time); pass jit=False to choose "
                 "this path without a warning, or make the objective traceable",
-                UserWarning, stacklevel=2,
+                ConfigurationWarning, stacklevel=2,
             )
             return eager(*args, **kwargs)
 
     return evaluate
+
+
+def _adam_update(
+    m, v, grad, it, lr, beta1=0.9, beta2=0.999, eps=1e-8, step_clamp=None,
+):
+    """Return the Adam step and updated moments; ``it`` is zero-based.
+
+    When requested, cap the step's L2 norm before the caller subtracts it.
+    """
+    m = beta1 * m + (1 - beta1) * grad
+    v = beta2 * v + (1 - beta2) * grad ** 2
+    m_hat = m / (1 - beta1 ** (it + 1))
+    v_hat = v / (1 - beta2 ** (it + 1))
+    step = lr * m_hat / (jnp.sqrt(v_hat) + eps)
+    if step_clamp is not None:
+        snorm = jnp.linalg.norm(step)
+        step = jnp.where(snorm > step_clamp,
+                         step * (step_clamp / snorm), step)
+    return step, m, v
 
 
 def _adam_multistart(
@@ -125,8 +150,8 @@ def _adam_multistart(
 ):
     """Best-of multi-start Adam with optional best-iterate + step-clamp.
 
-    Generic promotion of the MSL open-stub example's ``_multistart_adam``
-    (issue #171).  The three knobs are all OPT-IN and, with a single
+    Generic promotion of the MSL open-stub example's ``_multistart_adam``.  The three knobs are all OPT-IN and, with a
+    single
     start (``len(latent_inits) == 1``), ``best_iterate=False`` and
     ``step_clamp=None``, this runs the hand-rolled Adam loop with the exact
     same arithmetic as the legacy inline ``optimize()`` loop. With
@@ -157,7 +182,7 @@ def _adam_multistart(
     best_iterate : bool
         If True, each start returns (and is scored by) its lowest-loss
         visited iterate rather than its final iterate.  Guards the sharp-
-        null overshoot the #171 GPU run caught.
+        null overshoot the GPU run caught.
     step_clamp : float or None
         If set (>0), clamp the L2 norm of each latent update to this value.
     it_count : list([int]) or None
@@ -211,7 +236,7 @@ def _adam_multistart(
                     f"causes: dt above CFL, conformal=True at fine dx (a known NaN), "
                     f"PEC inside the CPML region, or a sub-cell PEC feature. Stopping early and "
                     f"returning the last finite design (from before iteration "
-                    f"{it}).",
+                    f"{it}).", AccuracyWarning,
                     stacklevel=2,
                 )
                 latent = last_good
@@ -226,18 +251,10 @@ def _adam_multistart(
                 latents.append(latent)
 
             # Adam update
-            m = beta1 * m + (1 - beta1) * grad
-            v = beta2 * v + (1 - beta2) * grad ** 2
-            m_hat = m / (1 - beta1 ** (it + 1))
-            v_hat = v / (1 - beta2 ** (it + 1))
-            if step_clamp is None:
-                latent = latent - lr * m_hat / (jnp.sqrt(v_hat) + eps_adam)
-            else:
-                step = lr * m_hat / (jnp.sqrt(v_hat) + eps_adam)
-                snorm = jnp.linalg.norm(step)
-                step = jnp.where(snorm > step_clamp,
-                                 step * (step_clamp / snorm), step)
-                latent = latent - step
+            step, m, v = _adam_update(
+                m, v, grad, it, lr, beta1, beta2, eps_adam, step_clamp,
+            )
+            latent = latent - step
 
             if verbose and (it % 10 == 0 or it == n_iters - 1):
                 print(f"  iter {it:4d}  loss = {loss_val:.6e}")
@@ -285,7 +302,7 @@ def _adam_multistart(
 
 
 def optimize(
-    sim,
+    sim: Simulation,
     region: DesignRegion,
     objective: Callable,
     *,
@@ -415,12 +432,14 @@ def optimize(
         For ``n_starts>1`` this is the winning restart's result
         (``loss_history`` is that restart's own trajectory).
     """
+    if sim._boundary_spec.conformal_faces() and sim._has_pec_to_conform():
+        raise NotImplementedError("optimize() refuses conformal PEC before time stepping")
     resolve_field_dtype(sim._precision)
     if n_starts < 1:
         raise ValueError(f"optimize: n_starts must be >= 1, got {n_starts}")
     sim._auto_preflight(skip=skip_preflight, context="optimize")
 
-    # #64: dispatch to NU or uniform grid. The differentiable pipeline
+    # dispatch to NU or uniform grid. The differentiable pipeline
     # is then the same (sim.forward with eps_override + pec_mask_override),
     # so optimize() automatically inherits checkpoint_every, emit_time_series,
     # and NU support as forward() gains them.
@@ -431,11 +450,13 @@ def optimize(
     )
     if is_nonuniform:
         grid = sim._build_nonuniform_grid()
-        from rfx._periodic import interval_indices
+        from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(sim, "optimize() non-uniform design")
         _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
-        # #931 §1.9: this assembly is BOOKKEEPING — it supplies base eps_r
+        # this assembly is BOOKKEEPING — it supplies base eps_r
         # and the volume cell mask that ride into sim.forward() as
         # eps_override / pec_mask_override. The sheets and wires collected
         # here are NOT threaded onward on purpose: forward() re-assembles
@@ -456,9 +477,11 @@ def optimize(
         _n_steps_auto = steps_for_periods(grid.dt, sim._freq_max, num_periods)
     else:
         grid = sim._build_grid()
-        from rfx._periodic import interval_indices
+        from rfx._internal._periodic import interval_indices
         lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
+        from rfx.model.wall_loss import refuse_wall_loss
+        refuse_wall_loss(sim, "optimize() design")
         _refuse_f0(sim._thin_conductors, "optimize() design")
         # Bookkeeping assembly — see the non-uniform branch above.
         _opt_sheets: list = []
@@ -467,7 +490,7 @@ def optimize(
             grid, pec_sheets=_opt_sheets, pec_wires=_opt_wires)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
-    # Per-face clamp (2026-04): using the symmetric ``pad_{axis}`` would
+    # Per-face clamp: using the symmetric ``pad_{axis}`` would
     # over-clamp a design region against a PMC/PEC reflector face whose
     # ``pad_lo`` or ``pad_hi`` is 0. Clamp each side to its own pad.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
@@ -582,7 +605,7 @@ class GradientCheckResult:
 
 
 def gradient_check(
-    sim,
+    sim: Simulation,
     design_params: jnp.ndarray,
     objective_fn: Callable,
     *,
@@ -623,9 +646,11 @@ def gradient_check(
     resolve_field_dtype(sim._precision)
     grid = sim._build_realized_grid()
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_gc
+    from rfx.model.wall_loss import refuse_wall_loss
+    refuse_wall_loss(sim, "gradient-check")
     _refuse_f0_gc(sim._thin_conductors, "gradient-check")
     # Baseline eps_r only; the solve is sim.forward(), which assembles and
-    # realizes its own sheets and wires (#931 §1.9). Collect-and-drop so
+    # realizes its own sheets and wires. Collect-and-drop so
     # the omission is a decision at this call site, not an accident.
     assemble = (sim._assemble_materials_nu if sim._uses_nonuniform_mesh
                 else sim._assemble_materials)
@@ -675,7 +700,7 @@ def gradient_check(
 
 
 # ---------------------------------------------------------------------------
-# Progressive multi-resolution orchestrator (issue #42)
+# Progressive multi-resolution orchestrator
 # ---------------------------------------------------------------------------
 
 
@@ -737,7 +762,7 @@ def _resize_latent(latent: jnp.ndarray, new_shape: tuple[int, int, int],
 
 
 def progressive_optimize(
-    sim_factory: Callable[[float], object],
+    sim_factory: Callable[[float], Simulation],
     region: DesignRegion,
     objective: Callable,
     schedule: list[ProgressiveStage],
@@ -826,10 +851,10 @@ def progressive_optimize(
         # Compute this stage's design-region shape using the same logic
         # as optimize() so upsample target is exact.
         if is_nonuniform:
-            from rfx._periodic import interval_indices
+            from rfx._internal._periodic import interval_indices
             lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         else:
-            from rfx._periodic import interval_indices
+            from rfx._internal._periodic import interval_indices
             lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
 
         pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)

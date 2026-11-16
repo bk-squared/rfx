@@ -7,7 +7,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import init_state, init_materials, EPS_0
-from rfx.materials.nonlinear import KerrMaterial, apply_kerr_update, apply_kerr_ade
+from rfx.materials.nonlinear import KerrMaterial, apply_kerr_update
+from rfx.stepping.kerr import apply_kerr_ade
 
 pytestmark = pytest.mark.gpu
 
@@ -81,7 +82,7 @@ def test_kerr_intensity_dependent():
 # (lossless) by scaling the E-UPDATE INCREMENT, not the whole field:
 #   E^{n+1} = E^n + (E_lin - E^n) / (1 + χ³·|E^n|²/ε_r)
 # The pre-#437 form E_lin/(1+factor) was a nonlinear ABSORBER (reduced |E|, zero
-# phase shift) — see docs/research_notes/2026-07-22_kerr_operator_defect.md.
+# phase shift).
 # ---------------------------------------------------------------------------
 
 def test_kerr_zero_chi3_unchanged():
@@ -154,7 +155,7 @@ def test_kerr_ade_differentiable():
 def test_kerr_reactive_conserves_energy():
     """A reactive-Kerr FDTD run stays finite and LOSSLESS — the total energy does not
     systematically drain (the pre-#437 dissipative operator would bleed it toward zero)."""
-    from rfx.core.yee import update_e, update_h
+    from rfx.stepping.yee import update_e, update_h
 
     shape = (20, 20, 20)
     materials = init_materials(shape)          # vacuum, lossless (sigma=0)
@@ -167,8 +168,8 @@ def test_kerr_reactive_conserves_energy():
     energies = []
     for step in range(200):
         e_prev = (state.ex, state.ey, state.ez)
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=(False, False, False))
+        state = update_e(state, materials, dt, dx, high_wall=(False, False, False))
         state = apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr)
         energies.append(float(jnp.sum(state.ex ** 2 + state.ey ** 2 + state.ez ** 2)))
         assert jnp.all(jnp.isfinite(state.ez)), f"NaN/Inf at step {step}"

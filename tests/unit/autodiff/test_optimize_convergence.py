@@ -8,6 +8,8 @@ two real EM problems:
 Each test must complete in <120 seconds on CPU.
 """
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import pytest
 
 import jax
@@ -77,7 +79,7 @@ def _build_forward(sim, region, n_steps, objective_fn):
             probes.append(_make_probe(grid, pe.position, pe.component))
 
         _, debye, lorentz = sim._init_dispersion(
-            materials, grid.dt, debye_spec, lorentz_spec)
+            materials, grid.dt, debye_spec, lorentz_spec, high_wall=unpadded_high_walls(grid))
 
         result = _run(
             grid, materials, n_steps,

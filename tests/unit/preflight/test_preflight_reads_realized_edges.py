@@ -26,10 +26,10 @@ DX = 1 * MM
 N_STEPS = 60
 
 
-def _sim():
+def _sim(*, snap="strict"):
     """10 mm PEC-walled cube, dx = 1 mm: node i at (i - pad)·dx with pad 0."""
     return Simulation(freq_max=10e9, domain=(10 * MM, 10 * MM, 10 * MM),
-                     dx=DX, boundary="pec")
+                     dx=DX, boundary="pec", snap=snap)
 
 
 def _state(sim):
@@ -157,7 +157,7 @@ def test_wire_port_through_a_sheet_ground_keeps_its_normal_edges_live():
     """A sheet ground shorts only the edges IN its plane: a vertical Ez
     port passing through the sheet plane has every Ez edge live (no dead
     cell), and starting on the plane is galvanic (no gap advisory)."""
-    sim = _sim()
+    sim = _sim(snap="declared")
     sim.add(Box((1 * MM, 1 * MM, 3 * MM), (9 * MM, 9 * MM, 3 * MM)),
             material="pec")                 # sheet at z = 3 mm
     sim.add_port(position=(5 * MM, 5 * MM, 2 * MM), component="ez",

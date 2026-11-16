@@ -14,6 +14,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 
+from rfx.measurement.plane_records import update_plane_records
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -28,7 +30,7 @@ if TYPE_CHECKING:
     from rfx.boundaries.cpml import CPMLAxisParams
     from rfx.current_moments import CurrentMomentMonitor
     from rfx.farfield import NTFFBox
-    from rfx.nonuniform import NonUniformGrid
+    from rfx.model.graded_grid import NonUniformGrid
     from rfx.sources.tfsf import TFSFConfig
 
 
@@ -83,6 +85,8 @@ class GradedStepContext:
     port_record_specs: tuple | None = None
     port_acc_indices: tuple = ()
     cpml_spacings: tuple | None = None
+    wall_loss_faces: frozenset = frozenset()
+    slab_rlc: tuple | None = None
 
 
 @dataclass
@@ -134,6 +138,9 @@ def make_graded_step(
 ) -> Callable:
     """Bind graded kernels and measurements, then user hooks at each point."""
     from rfx.stepping.graded_setup import _update_e_nu_dispersive
+    from rfx.geometry.rasterize_grid import unpadded_high_walls
+    high_wall = getattr(ctx.grid, "high_wall", unpadded_high_walls(ctx.grid))
+    dy_cells, dz_cells = ctx.grid.dy_arr, ctx.grid.dz
     from rfx.measurement.projector import port_table, project, port_owners
     port_specs = ctx.port_record_specs if ctx.port_record_specs is not None else tuple(
         (m[3], m[13], 'wire', m[:3], i) for i, m in enumerate(ctx.wp_meta))
@@ -175,11 +182,14 @@ def make_graded_step(
         frame.design_box_coeffs = frame.invariants["design_box_coeffs"]
         frame.step_idx, frame.src_vals = frame.xs
         frame.st = frame.carry["fdtd"]
-        # #1163: E^n at each lumped RLC edge, read before the E update (the
+        # E^n at each lumped RLC edge, read before the E update (the
         # series element is solved together with its edge field).
         frame.rlc_e_prev = (
             tuple(getattr(frame.st, m.component)[m.i, m.j, m.k] for m in ctx.rlc_metas)
-            if ctx.use_lumped_rlc else ())
+            if ctx.use_lumped_rlc and ctx.slab_rlc is None else ())
+        if ctx.use_lumped_rlc and ctx.slab_rlc is not None:
+            from rfx.stepping.slab_lumped import read
+            frame.rlc_e_prev = read(frame.st, ctx.rlc_metas, *ctx.slab_rlc)
 
         # E^n on the slab, before anything in this step writes E (the H
         # update below does not touch it). Slab-sized so the reverse-mode
@@ -190,15 +200,16 @@ def make_graded_step(
     def h_update(frame: GradedFrame):
         # H update (non-uniform)
         frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx_h"], ctx.inv_dy_h, ctx.inv_dz_h,
-                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz), periodic=ctx.curl_boundary.periodic)
+                         cell_sizes=(frame.invariants["dx_arr"], dy_cells, dz_cells),
+                         high_wall=high_wall, periodic=ctx.curl_boundary.periodic)
 
     def h_boundary(frame: GradedFrame):
         frame.tfsf_h_state = None
         if ctx.use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_h
+            from rfx.stepping.tfsf import apply_tfsf_h
             frame.st = apply_tfsf_h(frame.st, ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
         if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_nu
+            from rfx.stepping.waveguide_source import apply_waveguide_port_h as _apply_wg_h_nu
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_h_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[0])
@@ -212,19 +223,15 @@ def make_graded_step(
                                          materials=frame.materials)
         else:
             frame.cpml_new = None
-        if ctx.use_pmc_faces:
-            from rfx.boundaries.pmc import apply_pmc_faces
-            frame.st = apply_pmc_faces(frame.st, ctx._pmc_faces_frozen, image=True,
-                                       frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
         if ctx.use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             frame.tfsf_h_state = update_tfsf_1d_h(ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
 
     def e_update(frame: GradedFrame):
-        # Snapshot E^n for the #677 sheet operator (it REPLACES the
+        # Snapshot E^n for the sheet operator (it REPLACES the
         # standard update at masked tangential edges with A*E^n + B*curlH).
         frame.e_prev_sheet = (frame.st.ex, frame.st.ey, frame.st.ez) if ctx.use_sheet_impedance else None
-        # #1183: the design box REDOES the E update at its own cells from
+        # the design box REDOES the E update at its own cells from
         # the pre-update state (E^n and the same H^{n+1/2}).
         frame.st_prev_design = frame.st if ctx.use_design_box else None
 
@@ -244,12 +251,13 @@ def make_graded_step(
             frame.st = update_e_nu_aniso(
                 frame.st, frame.materials, _eex, _eey, _eez, ctx.dt,
                 frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary,
+                high_wall=high_wall,
             )
         else:
             frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
-                             boundary=ctx.curl_boundary)
+                             boundary=ctx.curl_boundary, high_wall=high_wall)
 
-        # #1183 design box: redo the E update at the design cells from the
+        # design box: redo the E update at the design cells from the
         # traced permittivity, on the graded-mesh curl. Same slot as the
         # uniform lane — immediately after the E update, on the same H,
         # before anything that reads or writes E.
@@ -263,10 +271,10 @@ def make_graded_step(
 
     def e_boundary(frame: GradedFrame):
         if ctx.use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_e
+            from rfx.stepping.tfsf import apply_tfsf_e
             frame.st = apply_tfsf_e(frame.st, ctx.tfsf_cfg, frame.tfsf_h_state, ctx.grid.dx, ctx.dt)
         if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_nu
+            from rfx.stepping.waveguide_source import apply_waveguide_port_e as _apply_wg_e_nu
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_e_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[1])
@@ -303,13 +311,14 @@ def make_graded_step(
 
     def constitutive(frame: GradedFrame):
         """Apply sheets, then domain faces, then lumped constitutive laws."""
-        # #677 node-thin surface-impedance sheet operator. Contract slot:
+        # node-thin surface-impedance sheet operator. Contract slot:
         # AFTER apply_pec_mask/apply_pec_occupancy, BEFORE domain faces
         # (PEC wins on overlap), lumped updates, sources and port sampling.
         # curlH comes from
         # the SAME shared stencil helper update_e_nu uses, on the same
         # H^{n+1/2} the E update consumed.
         if ctx.use_sheet_impedance:
+            frame.st = apply_pec_faces(frame.st, ctx.wall_loss_faces)
             from rfx.core.yee import curl_h_nu as _curl_h_nu
             from rfx.stepping.conductors import (
                 apply_sheet_impedance_e as _apply_sheet_e)
@@ -320,39 +329,36 @@ def make_graded_step(
             frame.st = _apply_sheet_e(frame.st, frame.e_prev_sheet, _curls,
                                 frame.sheet_impedance, frame.sheet_coeffs)
 
-        # PEC, per face (#1164)
+        # PEC, per face
         frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
-                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
+                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"),
+                                   normal_ghost_faces=ctx.wall_loss_faces)
 
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         frame.new_rlc_states = None
         if ctx.use_lumped_rlc:
             from rfx.stepping.lumped import update_rlc_elements
-            frame.st, frame.new_rlc_states = update_rlc_elements(
-                frame.st, frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev)
+            from rfx.stepping.slab_lumped import update
+            solve = update_rlc_elements if ctx.slab_rlc is None else update
+            frame.st, frame.new_rlc_states = solve(
+                frame.st, frame.carry["rlc_states"], ctx.rlc_metas, frame.rlc_e_prev,
+                *(() if ctx.slab_rlc is None else ctx.slab_rlc))
 
     def sources(frame: GradedFrame):
         # Sources (point sources + wire port excitation)
         frame.st = inject_drives(frame.st, frame.invariants["drives"], frame.src_vals)
 
     def after_sources(frame: GradedFrame):
-        # Waveguide-port injection + DFT probe accumulation. The dx
-        # arg is unused by the per-cell-weighted integrals (cfg already
-        # stores u_widths/v_widths), but kept in the function signature
-        # for back-compat. It is handed the port's own primal cell rather
-        # than the grid's boundary scalar so that nothing here reads a
-        # scalar the port does not sit on; because the callee ignores it,
-        # no recorded number moves either way.
+        # Record the completed fields after the canonical source corrections.
         frame.new_waveguide_port_accs = None
         if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
-                update_waveguide_port_probe,
-            )
+            from rfx.measurement.modal import write_waveguide_record
+            waveguide_values = project(frame.st, frame.invariants['waveguide_table'])
             frame.new_waveguide_port_accs = []
-            for accs, cfg_meta, _m in zip(
+            for port, (accs, cfg_meta, _m) in enumerate(zip(
                 frame.carry["waveguide_port_accs"], ctx.waveguide_meta,
                 ctx.waveguide_port_metrics,
-            ):
+            )):
                 cfg = cfg_meta._replace(
                     v_probe_t=accs[0],
                     v_ref_t=accs[1],
@@ -362,7 +368,7 @@ def make_graded_step(
                     n_steps_recorded=accs[5],
                 )
                 # TFSF-style corrections applied earlier at canonical slots.
-                cfg_updated = update_waveguide_port_probe(cfg, frame.st, ctx.dt, _m[0])
+                cfg_updated = write_waveguide_record(cfg, waveguide_values[4*port:4*port+4], frame.st.step, ctx.dt)
                 frame.new_waveguide_port_accs.append((
                     cfg_updated.v_probe_t,
                     cfg_updated.v_ref_t,
@@ -374,9 +380,9 @@ def make_graded_step(
 
         # Wire port V/I DFT accumulation.
         #
-        # Ordering: AFTER source injection.  Issue #683 is DECIDED (by
-        # measurement, 2026-08-29 — docs/design_notes/
-        # issue683_sampling_order_decision_protocol.md section 9): this
+        # Ordering: AFTER source injection. Measurement
+        # (docs/design_notes/issue683_sampling_order_decision_protocol.md section 9)
+        # establishes that this
         # slot is the terminal-consistent, physically correct one.  The
         # known-load circuit law holds only for the post-injection pair
         # (n*a = +0.9987/+0.9950, n*|b| = 0.08/0.32 Ohm over a six-point
@@ -388,14 +394,12 @@ def make_graded_step(
         # had failed to load the port), and the once-UNEXAMINED Ampere
         # identity was examined in the same run (section 7).
         #
-        # The uniform lane (rfx/simulation.py wire block) flipped to this
-        # same POST slot for its physical V/I/V_port channels, with the
-        # pre-injection drive sample kept as a separate calibration
-        # reference channel for its #308/#313 off-diagonal decomposition
-        # (issue #683 x #764,
+        # The uniform lane uses this same POST slot for its physical
+        # V/I/V_port channels, with a pre-injection drive sample as a separate
+        # calibration reference for its off-diagonal decomposition (see
         # docs/design_notes/issue683_decomposer_flip_predeclaration.md).
-        # This lane's decomposition was calibrated in the POST frame
-        # directly, so it needs NO reference channel and NO change.
+        # This lane's decomposition is calibrated in the POST frame directly,
+        # so it needs no separate reference channel.
         #
         # PASSIVE ports are unaffected either way: I reads H only, and the
         # source loop writes E only, at the SOURCE cell.
@@ -458,9 +462,8 @@ def make_graded_step(
     def finish(frame: GradedFrame):
         new_carry = {"fdtd": frame.st}
         if "dft_time_records" in frame.carry:
-            new_carry["dft_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
-                for record, sample in zip(frame.carry["dft_time_records"], frame.plane_samples))
+            new_carry["dft_time_records"] = update_plane_records(
+                frame.carry["dft_time_records"], frame.plane_samples, frame.step_idx)
         if "sparam_time_records" in frame.carry:
             assert len(frame.carry["sparam_time_records"]) == len(frame.port_samples)
             new_carry["sparam_time_records"] = tuple(
@@ -492,9 +495,14 @@ def make_graded_step(
 
     attachments = {point: () for point in HookPoint}
     attachments[HookPoint.BEFORE_SOURCES] = (before_sources,) if port_specs else ()
-    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)
+    slab = ctx.x_face_frame is not None
+    # Slab observers read owned rows from the exchanged state, so the
+    # ghost write does not need to preserve a separate pre-exchange E.
+    attachments[HookPoint.AFTER_SOURCES] = () if slab else (after_sources,)
+    attachments[HookPoint.STEP_END] = (after_sources,) if slab else ()
     for point, extra in (hooks or {}).items():
-        attachments[point] += tuple(extra)
+        attachments[point] = (tuple(extra) + attachments[point] if slab
+                              else attachments[point] + tuple(extra))
     advance = compose({
         Kernel.H_UPDATE: h_update,
         Kernel.H_BOUNDARY: h_boundary,

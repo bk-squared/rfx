@@ -26,7 +26,7 @@ configured by:
   so that adding one later does not silently open a hole, which is cheaper than
   noticing it after a merge;
 * any `conftest.py` -- fixtures and collection hooks;
-* any `.test_durations` file -- what `pytest-split` balances the twelve shards on,
+* any `.test_durations` file -- what `pytest-split` balances the twenty shards on,
   so a change there changes which test lands in which shard;
 * `.github/workflows/pr-tests.yml`, `scripts/ci/changed_paths.py` and
   `scripts/ci/classify_changes.sh` -- the lane and the gatekeeper themselves. A
@@ -37,9 +37,10 @@ Everything else -- `docs/`, the other workflows, the rest of `scripts/`,
 `changelog.d/`, `README.md` -- is NOT code by this definition.
 
 The classifier never decides to skip on its own: `classify_changes.sh` answers
-`true` unconditionally for a push to `main` and for any diff it could not
-compute. Skipping is only ever the answer to a pull-request diff that was read
-successfully.
+`true` unconditionally for merge groups and for any diff it could not compute.
+Legacy/manual push inputs also return `true`, but `pr-tests.yml` no longer
+subscribes to push. Skipping is only ever the answer to a pull-request diff
+that was read successfully.
 
 Usage
 -----

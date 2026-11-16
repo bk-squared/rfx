@@ -7,8 +7,7 @@ port, with an amplitude decay time Q / (pi f) of 5.9 ns on the uniform lane and
 record cut while the box still rings; the early stop ends the run at the first
 record T the completion can stand on: every source off over [T/4, T], the
 error witness WE (the completions from [T/2, T] and [T/4, T] against each
-other) within its 1e-3 bar at two checks in a row, and -- the PI's floor
-(2026-09-27) -- T at least half the decay time of the slowest identified
+other) within its 1e-3 bar at two checks in a row, and -- the floor -- T at least half the decay time of the slowest identified
 mode (a pole whose own tail moves the completed S by the bar; a static field
 left out), because a pair of modes that no window of a record separates is completed as
 one mode while every witness agrees (rfx #1254, R-i: 0.03 % apart, recorded
@@ -55,13 +54,14 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
 from rfx import GaussianPulse
 from rfx import ringdown as rd
 from rfx.ringdown import RingdownSpec
 from tests.unit.sparams.test_ringdown_run import (
     BAR_DB, BAR_DEG, FREQS, N_LONG, _box, _db_deg, _digest, _long)
 
-#: The PI's floor (2026-09-27), written here rather than read from the module
+#: The floor, written here rather than read from the module
 #: so that changing the module's constant is caught.
 FLOOR = 0.5
 LANES = ("uniform", "graded")
@@ -252,7 +252,7 @@ def test_a_static_field_does_not_hold_the_floor():
     f_bins = np.linspace(5e9, 15e9, 41)
     # the completed spectrum is 2.5x the record's at half a decay time: scale
     # so the synthetic "S" stays below 1 and reads passive
-    scale = 4.0 * float(np.max(np.abs(rd.plain_dft(Y - np.array([0.5, -0.3]),
+    scale = 4.0 * float(np.max(np.abs(ringdown_tail.plain_dft(Y - np.array([0.5, -0.3]),
                                                    dt, f_bins))))
     spec = RingdownSpec()
     sched = rd._StopSchedule(2500)
@@ -357,8 +357,8 @@ def _synthetic_stop(Y, dt, bins, obs, n_max, *, ref_hz, n_off=0):
         c = sched.record(done, done * dt, dict(sources_off=True,
                                                source_ratio_long=0.0, **fields), 0.0)
         model = rd.identify(Y[:done], dt, n0, done, freq_max=ref_hz)
-        errors.append(np.asarray(obs(rd.plain_dft(Y[:done], dt, bins)
-                                     + rd.tail_dft(model, done - 1, bins))))
+        errors.append(np.asarray(obs(ringdown_tail.plain_dft(Y[:done], dt, bins)
+                                     + ringdown_tail.tail_dft(model, done - 1, bins))))
         if c.stop:
             break
     return sched.checks, errors
@@ -463,7 +463,7 @@ def test_a_blended_pair_between_coarse_bins_holds_the_floor():
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "accepted limitation (PI decision 2026-09-30; docs/guides/known_limitations.md, the early stop "
+    "accepted limitation (docs/guides/known_limitations.md, the early stop "
     "and a weak unresolved high-Q pair): a pair no window of the record separates beats, the short record reads the beat as fast "
     "decay (apparent Q 619 for a true 50,000), and the blended pole's tail then "
     "weighs below the bar, so the stop can fire before the pair is resolved"))
@@ -717,7 +717,7 @@ def test_a_maximum_whose_window_holds_the_pulse_is_refused_before_the_run():
 
 
 def test_the_floor_is_the_pis_half_decay_time():
-    """The PI's decision (2026-09-27): no stop before half the amplitude decay
+    """No stop before half the amplitude decay
     time Q / (pi f) of the slowest identified mode. The rest of the rule is the
     lead's, not pinned here: which poles count as identified modes (a pole
     whose own tail moves the completed S by witness_tol of its peak, a static

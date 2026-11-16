@@ -7,36 +7,37 @@ interactive/publication-quality rendering.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from rfx.core.yee import FDTDState
+    from rfx.grid import Grid
+    from rfx.nonuniform import NonUniformGrid
+    from rfx.api import Simulation
+
 import numpy as np
 
-try:
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: F401
-    HAS_MPL3D = True
-except (ImportError, Exception):
-    # mpl_toolkits.mplot3d may fail with dual matplotlib installations
-    HAS_MPL3D = False
+from rfx._plotting import _pyplot
+
+
+def _mpl3d():
     try:
-        import matplotlib.pyplot as plt
-        HAS_MPL = True
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
     except ImportError:
-        HAS_MPL = False
-
-try:
-    import pyvista as pv
-    HAS_PYVISTA = True
-except ImportError:
-    HAS_PYVISTA = False
+        return None
+    return Poly3DCollection
 
 
-def _has_mpl():
-    """Check if any form of matplotlib is available."""
-    return HAS_MPL3D or globals().get("HAS_MPL", False)
-
-
-def _require_mpl():
-    if not _has_mpl():
-        raise ImportError("matplotlib is required for visualization")
+def _pyvista(*, required=False):
+    try:
+        import pyvista as pv
+    except ImportError as exc:
+        if required:
+            raise ImportError(
+                'pyvista is required; pip install "rfx-fdtd[visualization]"'
+            ) from exc
+        return None
+    return pv
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +60,7 @@ def _box_faces(p0, p1, color="C0", alpha=0.3):
 
 
 def plot_geometry_3d(
-    sim,
+    sim: Simulation,
     *,
     show_domain: bool = True,
     show_ports: bool = True,
@@ -94,9 +95,9 @@ def plot_geometry_3d(
     -------
     Figure (matplotlib) or Plotter (pyvista)
     """
-    use_pyvista = (backend == "pyvista") or (backend == "auto" and HAS_PYVISTA)
+    use_pyvista = backend in ("auto", "pyvista") and _pyvista(required=backend == "pyvista") is not None
 
-    if use_pyvista and HAS_PYVISTA:
+    if use_pyvista:
         return _plot_geometry_pyvista(sim, show_domain, show_ports, title, scale, scale_label)
 
     return _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scale_label)
@@ -104,7 +105,7 @@ def plot_geometry_3d(
 
 def _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scale_label):
     """Matplotlib geometry renderer (3D if available, 2D multi-view fallback)."""
-    _require_mpl()
+    plt = _pyplot()
 
     domain = sim._domain
     s = scale
@@ -119,7 +120,8 @@ def _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scal
         ("C3", 0.25), ("C4", 0.25),
     ]
 
-    if HAS_MPL3D:
+    Poly3DCollection = _mpl3d()
+    if Poly3DCollection is not None:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111, projection="3d")
 
@@ -230,6 +232,7 @@ def _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scal
 
 def _plot_geometry_pyvista(sim, show_domain, show_ports, title, scale, scale_label):
     """PyVista geometry renderer."""
+    pv = _pyvista(required=True)
     pl = pv.Plotter(off_screen=True)
     s = scale
 
@@ -287,8 +290,8 @@ def _plot_geometry_pyvista(sim, show_domain, show_ports, title, scale, scale_lab
 # ---------------------------------------------------------------------------
 
 def plot_field_3d(
-    state,
-    grid,
+    state: FDTDState,
+    grid: Grid | NonUniformGrid,
     *,
     component: str = "ez",
     threshold: float = 0.1,
@@ -320,9 +323,9 @@ def plot_field_3d(
     Figure (matplotlib) or Plotter (pyvista)
     """
     field = np.asarray(getattr(state, component))
-    use_pyvista = (backend == "pyvista") or (backend == "auto" and HAS_PYVISTA)
+    use_pyvista = backend in ("auto", "pyvista") and _pyvista(required=backend == "pyvista") is not None
 
-    if use_pyvista and HAS_PYVISTA:
+    if use_pyvista:
         return _plot_field_pyvista(field, grid, component, threshold,
                                    title, cmap, scale, scale_label)
 
@@ -332,14 +335,15 @@ def plot_field_3d(
 
 def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, scale, scale_label):
     """Matplotlib field visualization (3D if available, else 2D tri-panel)."""
-    _require_mpl()
+    plt = _pyplot()
 
     nx, ny, nz = field.shape
     from rfx.visualize import _slice_coords
     coords = [values * scale for values in _slice_coords(None, grid)]
     vmax = float(np.max(np.abs(field))) or 1.0
 
-    if HAS_MPL3D:
+    Poly3DCollection = _mpl3d()
+    if Poly3DCollection is not None:
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(111, projection="3d")
 
@@ -401,6 +405,7 @@ def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, sca
 
 def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, scale_label):
     """PyVista isosurface / volume rendering."""
+    pv = _pyvista(required=True)
     nx, ny, nz = field.shape
     dx = grid.dx * scale
 
@@ -409,7 +414,6 @@ def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, s
     z = np.arange(nz + 1) * dx
     mesh = pv.RectilinearGrid(x, y, z)
     mesh.cell_data[component] = field.ravel(order="F")
-
     pl = pv.Plotter(off_screen=True)
     vmax = float(np.max(np.abs(field))) or 1.0
 
@@ -435,8 +439,8 @@ def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, s
 # ---------------------------------------------------------------------------
 
 def save_field_vtk(
-    state,
-    grid,
+    state: FDTDState,
+    grid: Grid | NonUniformGrid,
     filename: str,
     *,
     components: tuple[str, ...] = ("ex", "ey", "ez", "hx", "hy", "hz"),
@@ -462,7 +466,8 @@ def save_field_vtk(
     nx, ny, nz = grid.shape
     dx = grid.dx * scale
 
-    if HAS_PYVISTA:
+    pv = _pyvista()
+    if pv is not None:
         x = np.arange(nx + 1) * dx
         y = np.arange(ny + 1) * dx
         z = np.arange(nz + 1) * dx
@@ -506,127 +511,6 @@ def save_field_vtk(
 # Convenience: save geometry + field screenshot
 # ---------------------------------------------------------------------------
 
-def save_field_animation(
-    snapshots: dict,
-    grid,
-    filename: str = "rfx_animation",
-    *,
-    component: str = "ez",
-    slice_axis: str = "z",
-    slice_index: int | None = None,
-    fps: int = 15,
-    cmap: str = "RdBu_r",
-    scale: float = 1e3,
-    dpi: int = 100,
-    axes: dict | None = None,
-) -> str:
-    """Create a field animation (GIF/MP4) from snapshot data.
-
-    Parameters
-    ----------
-    snapshots : dict
-        From ``result.snapshots`` — keys are component names,
-        values are (n_frames, ...) arrays.
-    axes : dict or None
-        ``result.snapshot_axes`` (#1259). When given, each frame's title
-        carries the time it was taken; without it frames are numbered only
-        (a frame is ``SnapshotSpec.interval`` time steps, not one).
-    grid : Grid
-    filename : str
-        Output filename (without extension). GIF by default.
-    component : str
-        Field component to animate.
-    slice_axis : "x", "y", or "z"
-        Axis for 2D slice.
-    slice_index : int or None
-        Index along axis (default: center).
-    fps : int
-        Frames per second.
-    cmap : colormap name.
-    scale : coordinate scale factor.
-    dpi : image resolution.
-
-    Returns
-    -------
-    str : path to saved animation file.
-    """
-    _require_mpl()
-
-    if component not in snapshots:
-        raise ValueError(f"Component {component!r} not in snapshots: {list(snapshots.keys())}")
-
-    data = np.asarray(snapshots[component])  # (n_frames, nx, ny) or (n_frames, ...)
-    n_frames = data.shape[0]
-    if n_frames == 0:
-        raise ValueError("No frames in snapshot data")
-
-    axis_idx = {"x": 0, "y": 1, "z": 2}[slice_axis]
-
-    # If data is 3D per frame (full volume snapshots)
-    if data.ndim == 4:
-        if slice_index is None:
-            slice_index = data.shape[axis_idx + 1] // 2
-        if axis_idx == 0:
-            data = data[:, slice_index, :, :]
-        elif axis_idx == 1:
-            data = data[:, :, slice_index, :]
-        else:
-            data = data[:, :, :, slice_index]
-
-    # data is now (n_frames, n1, n2)
-    vmax = float(np.max(np.abs(data))) or 1.0
-    grid.dx * scale
-
-    times_s = None
-    if axes is not None and component in axes:
-        times_s = np.asarray(axes[component].times_s)
-        if len(times_s) != n_frames:
-            raise ValueError(
-                f"axes[{component!r}] lists {len(times_s)} frame times for "
-                f"{n_frames} frames")
-
-    def _title(frame):
-        if times_s is None:
-            return f"{component} (frame {frame}/{n_frames})"
-        return (f"{component}  t = {times_s[frame] * 1e12:.2f} ps "
-                f"(frame {frame}/{n_frames})")
-
-    fig, ax = plt.subplots(figsize=(7, 5))
-    im = ax.imshow(data[0].T, origin="lower", cmap=cmap,
-                   vmin=-vmax, vmax=vmax, aspect="equal")
-    fig.colorbar(im, ax=ax, label=component)
-    title = ax.set_title(_title(0))
-
-    axis_labels = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
-    xlabel, ylabel = axis_labels[slice_axis]
-    ax.set_xlabel(f"{xlabel} (cells)")
-    ax.set_ylabel(f"{ylabel} (cells)")
-
-    def _update(frame):
-        im.set_data(data[frame].T)
-        title.set_text(_title(frame))
-        return [im, title]
-
-    try:
-        from matplotlib.animation import FuncAnimation, PillowWriter
-        anim = FuncAnimation(fig, _update, frames=n_frames, blit=True, interval=1000//fps)
-        out_path = f"{filename}.gif"
-        anim.save(out_path, writer=PillowWriter(fps=fps), dpi=dpi)
-        plt.close(fig)
-        return out_path
-    except Exception:
-        # Fallback: save individual frames
-        import os
-        frame_dir = f"{filename}_frames"
-        os.makedirs(frame_dir, exist_ok=True)
-        for i in range(min(n_frames, 100)):
-            im.set_data(data[i].T)
-            title.set_text(_title(i))
-            fig.savefig(f"{frame_dir}/frame_{i:04d}.png", dpi=dpi)
-        plt.close(fig)
-        return frame_dir
-
-
 def save_screenshot(
     sim,
     state=None,
@@ -664,5 +548,5 @@ def save_screenshot(
 
     out_path = f"{filename}.png"
     fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
+    _pyplot().close(fig)
     return out_path

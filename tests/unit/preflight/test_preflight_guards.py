@@ -101,7 +101,8 @@ def test_zero_thickness_pec_box_is_a_sheet_and_draws_no_thickness_advice():
     sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
                      cpml_layers=4)
     sim.add_source((0.005, 0.005, 0.002), "ez")
-    sim.add(Box((0.003, 0.003, 0.005), (0.007, 0.007, 0.005)), material="pec")
+    sim.add(Box(((6 - .35) * .5e-3, (6 - .35) * .5e-3, 0.005),
+                ((14 + .35) * .5e-3, (14 + .35) * .5e-3, 0.005)), material="pec")
     from tests._realized_geometry import realized, node_index
 
     issues = _issues(sim)
@@ -539,8 +540,8 @@ def _msl_sim_with_probe(component: str, trace: str = "sheet",
     y_trace = LY / 2.0
     z_hi = H_SUB if trace == "sheet" else H_SUB + DX
     sim.add(
-        Box((0, y_trace - W_TRACE / 2, H_SUB),
-            (LX, y_trace + W_TRACE / 2, z_hi)),
+        Box((0, y_trace - W_TRACE / 2, H_SUB), (LX, y_trace + W_TRACE / 2, z_hi)) if trace == "sheet" else
+        Box((0, 17 * DX, 2 * DX), (79 * DX, 22 * DX, 3 * DX)),
         material="pec",
     )
     sim.add_source((0.5e-3, y_trace, 0.5 * H_SUB), "ez")
@@ -621,28 +622,6 @@ def test_hy_probe_inside_thick_pec_volume_still_warns():
     )
 
 
-# ---------------------------------------------------------------------------
-# Item #3 (LLM-naive-usage audit) — pec_boundary_open advisory: R2-STOP lock.
-#
-# The audit asked whether the ``pec_boundary_open`` advisory
-# (``_validate_cfg_pec_boundary_open_structure``) should be UNGATED from its
-# ``self._ntff is not None`` condition so an open radiator read via a near-field
-# probe / S11 alone (no NTFF box) also warns. Investigation (2026-07-09)
-# R2-STOPPED that ungating: NTFF is the SOLE radiation-intent signal on the
-# Simulation config (there is no directivity / far-field / "radiate" flag), so
-# a source (and/or a finite PEC object) inside a ``boundary="pec"`` domain is
-# config-IDENTICAL between an open radiator that mistakenly used PEC and a
-# legitimate closed cavity / internal-PEC numerics test. The committed suite is
-# full of the latter — e.g. ``test_adi.py::
-# test_simulation_adi_internal_pec_geometry_masks_ez`` (PEC Box in a pec box +
-# source), ``test_extract_s_matrix_pec_mask.py``, ``test_conformal.py::
-# test_api_conformal_flag`` (PEC cylinder in a pec box + port). Any broadening
-# that catches the footgun would false-alarm all of them, and a false-alarming
-# preflight erodes trust worse than the silent gap. These tests LOCK that
-# decision: the NTFF-declared open radiator still warns; the valid closed
-# structures must stay silent so a future well-meaning ungating cannot regress
-# them unnoticed.
-# ---------------------------------------------------------------------------
 def test_pec_boundary_open_still_warns_when_ntff_declared():
     """Radiation intent (an NTFF box) + boundary='pec' must still warn —
     the existing, principled gate is preserved by the R2-STOP."""
@@ -657,11 +636,7 @@ def test_pec_boundary_open_still_warns_when_ntff_declared():
 
 
 def test_pec_cavity_with_internal_pec_object_stays_silent():
-    """FALSE-POSITIVE lock: a source + finite PEC object inside a pec box
-    (the ``test_adi`` internal-PEC-masks-Ez / ``test_conformal`` patterns) is a
-    VALID closed structure and must NOT emit pec_boundary_open. This is the
-    population that any ntff-ungating would false-alarm — the reason #3 was
-    R2-STOPPED."""
+    """Shared checks for the supported solver paths."""
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                      boundary="pec")
     sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.01)), material="pec")
@@ -691,8 +666,8 @@ def test_pec_empty_cavity_with_source_stays_silent():
 # ---------------------------------------------------------------- (a) records
 def test_preflight_returns_back_compatible_structured_issues():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
-    sim.add_probe((0.01, 0.01, 0.022), component="ez")
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     assert len(report), "expected a preflight finding for a source/probe in CPML"
     for issue in report:
@@ -714,8 +689,8 @@ def test_preflight_report_is_a_list_with_canonical_api():
     idiom (.issues/.errors/.warnings/.infos/.ok/.format()/.to_dict()/
     .to_json())."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
-    sim.add_probe((0.01, 0.01, 0.022), component="ez")
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     assert isinstance(report, PreflightReport) and isinstance(report, list)
     # list[str] ops the 65 legacy call sites rely on
@@ -744,8 +719,8 @@ def test_codes_set_at_check_site():
     emitting check.
     """
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
-    sim.add_probe((0.01, 0.01, 0.022), component="ez")
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     absorber = report.by_code("absorber_overlap")
     assert absorber, f"expected absorber_overlap code, got {[i.code for i in report]}"
@@ -837,8 +812,8 @@ def test_lossy_dielectric_silent():
 # ------------------------------------------------ (d) Phase A meta-coverage
 def _bad_sim_probe_in_cpml():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
-    sim.add_probe((0.01, 0.01, 0.022), component="ez")
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     return sim
 
 
@@ -942,8 +917,8 @@ def test_strict_aggregates_all_issues_in_one_raise():
     raise), not fail-on-first — preserving the historical 'strict escalates any
     issue' contract while reporting all problems at once."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez")  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
-    sim.add_probe((0.01, 0.01, 0.022), component="ez")     # in exterior CPML (#500)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)     # in exterior CPML (#500)
     # strict=False shows >= 2 findings...
     report = sim.preflight()
     assert len(report) >= 2, f"need a multi-issue config; got {list(report)}"
@@ -1050,8 +1025,7 @@ def test_absorber_overlap_no_false_positive_on_2d_collapsed_z():
 def test_absorber_overlap_still_fires_on_2d_xy():
     """The 2D-z exemption must not silence real x/y absorber overlap.
 
-    Issue #500: CPML pads EXTERIOR to the requested domain (see
-    rfx-known-issues.md #500), so a source has to sit at a genuinely
+    Issue #500: CPML pads EXTERIOR to the requested domain, so a source has to sit at a genuinely
     negative x (past the x=0 domain edge, inside the 2e-6m-thick x_lo
     absorber: cpml_layers=20 * dx=1e-7) to be "in" it — x=1e-7 (interior,
     just past the edge) used to false-fire under the pre-#500

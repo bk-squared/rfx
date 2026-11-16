@@ -1,14 +1,16 @@
 """Settling measurements from named port records."""
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
+from rfx.errors import AccuracyWarning
 import math
 
 import numpy as np
 
 
 _SETTLING_RECORD_NAMES = ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")
-# #1909: only co-located records tell a field null's rounding from signal.
+# only co-located records tell a field null's rounding from signal.
 _LONE_PROBE_NOTE = (
     " (no other component of its field (E or H) is recorded at its cell: a probe on a field null "
     "holds only rounding and cannot be judged alone; record the co-located "
@@ -20,11 +22,13 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                    freq_max=None, source_end_index=None,
                                    record_noun="port records", return_detail=False,
                                    rounding_groups=None, _warn_stacklevel=2,
-                                   known_drives=None, n_record=None):
+                                   known_drives=None, n_record=None,
+                                   scale_groups=None, _channel_labels=None):
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
     ``rounding_groups`` maps record names to co-located same-kind groups
-    compared for rounding-only peaks (#1909).
+    compared for rounding-only peaks.
+    ``scale_groups`` maps names to same-quantity keys (or per-column keys).
     sensitivities are judged by a separate witness
     """
     from rfx.sparams._tail_witness import tail_share_witness
@@ -33,6 +37,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
     per_record = {}
     result = tail_share_witness(named, dt, source_end_index, freqs, freq_max=freq_max,
                                 rounding_groups=rounding_groups,
+                                scale_groups=scale_groups, _channel_labels=_channel_labels,
                                 known_drives=known_drives, n_record=n_record,
                                 _record_results=per_record if return_detail else None)
     if not return_detail:
@@ -52,35 +57,34 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.measurement.modal import recorded as _recorded
+    from rfx.measurement.record_end import injection_end
     from rfx.model.waveguide_modes import incident_tables_uncut
-    from rfx.probes.settling import source_end_step
 
     final_cfgs = tuple(final_cfgs)
-    timing_fields = ("v_inc_t", "src_amp", "source_x_m", "reference_x_m", "probe_x_m", "dt")
-    timing_available = all(
-        hasattr(cfg, name) and not is_tracer(getattr(cfg, name))
-        for cfg in final_cfgs for name in timing_fields)
-    drives = []
-    source_end = None
-    if (final_cfgs and timing_available
-            and len({getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}) == 1):
-        # Use the recorded incident pulse with the same amplitude threshold.
-        # Include free-space travel to every scored plane.
-        for cfg in final_cfgs:
-            if not cfg.src_amp:
-                continue
-            distance = max(abs(float(cfg.source_x_m) - float(x))
-                           for other in final_cfgs
-                           for x in (other.reference_x_m, other.probe_x_m))
-            drives.append((_recorded(cfg, "v_inc_t"), distance))
-        if drives:
-            source_end = source_end_step(drives, len(drives[0][0]), final_cfgs[0].dt)
     named = [
         (f"port{port_index}/{name}", _recorded(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
         for name in _SETTLING_RECORD_NAMES
     ]
     n_record = len(named[0][1]) if named else 0
+    timing_fields = ("e_inc_table", "src_amp", "source_x_m", "reference_x_m", "probe_x_m", "dt")
+    timing_available = all(
+        hasattr(cfg, name) and not is_tracer(getattr(cfg, name))
+        for cfg in final_cfgs for name in timing_fields)
+    source_end = None
+    axes = {getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}
+    if final_cfgs and timing_available and len(axes) == 1:
+        # The applied incident E table with the one source-end rule, plus
+        # free-space travel to every scored plane.
+        axis = "xyz".index(axes.pop())
+        planes = []
+        for other in final_cfgs:
+            for x in (other.reference_x_m, other.probe_x_m):
+                point = np.zeros(3)
+                point[axis] = float(x)
+                planes.append(point)
+        source_end = injection_end(n_record, final_cfgs[0].dt, records=planes,
+                                   waveguide_ports=final_cfgs)
     try:
         known_drives = [table for cfg in final_cfgs for table in incident_tables_uncut(cfg)
                         if len(table) > n_record]
@@ -92,6 +96,8 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
         freq_max = float(np.max(bins)) if np.size(bins) else None
     return settling_db_from_named_records(
         named, source_end_index=source_end,
+        scale_groups={name: f"{name.split('/')[0]}/{name.split('/')[1][0]}"
+                      for name, _ in named},
         dt=getattr(final_cfgs[0], "dt", None) if final_cfgs else None,
         freqs=bins, freq_max=freq_max, record_noun="port records",
         known_drives=known_drives if isinstance(known_drives, ValueError) else (known_drives or None),
@@ -119,12 +125,12 @@ def warn_postrun_energy_witness(
     if is_tracer(time_series):
         return
     series = None if time_series is None else np.asarray(time_series)
-    # Issue #470: exclude library-internal witness probes (the MSL
+    # exclude library-internal witness probes (the MSL
     # settling witnesses) — their record is judged by the MSL driver's
-    # own settling_db witness, so #332/#336 here speak for USER probes
+    # own settling_db witness, so the advisories here speak for USER probes
     # only and the two differently-defined witnesses never double-fire
     # on the same columns. With only internal probes present this
-    # behaves as if no probe series was recorded (the pre-#468 state).
+    # behaves as if no probe series was recorded.
     # Time-series columns are in probe registration order (the same
     # convention the MSL driver's witness slice relies on).
     _internal = getattr(sim, "_internal_probe_indices", None)
@@ -140,8 +146,8 @@ def warn_postrun_energy_witness(
             warnings.warn(
                 "no field energy was recorded — the source may not have "
                 "coupled (position off-grid, wrong component, or zero "
-                "amplitude) (issue #336)",
-                stacklevel=4,
+                "amplitude)", AccuracyWarning,
+                stacklevel=user_stacklevel(),
             )
             return
 
@@ -159,9 +165,9 @@ def warn_postrun_energy_witness(
                 warnings.warn(
                     f"run ended at {tail_db:.1f} dB of peak — ring-down "
                     "truncated; Harminv/DFT/NTFF quantities may carry "
-                    "transient error; consider until_decay or more periods "
-                    "(issue #332)",
-                    stacklevel=4,
+                    "transient error; consider until_decay or more periods"
+                    "", AccuracyWarning,
+                    stacklevel=user_stacklevel(),
                 )
         return
 
@@ -176,8 +182,8 @@ def warn_postrun_energy_witness(
         warnings.warn(
             "no field energy was recorded — the source may not have "
             "coupled (position off-grid, wrong component, or zero "
-            "amplitude) (issue #336)",
-            stacklevel=4,
+            "amplitude)", AccuracyWarning,
+            stacklevel=user_stacklevel(),
         )
 
 
@@ -187,26 +193,36 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     """Attach the value witness and warn for requested spectral outputs."""
     from rfx.api._spec import ForwardResult
 
+    from rfx.measurement.coverage import accumulator_coverage, warn_uncovered, with_coverage
     forward_result = isinstance(result, ForwardResult)
+    if not forward_result and (not hasattr(result, "_replace") or not hasattr(result, "settling_witness")):
+        return result
+    coverage = accumulator_coverage(result, sim=sim, n_steps=n_steps)
     if forward_result:
         from rfx.core.jax_utils import is_tracer
         from rfx.sparams._record_selection import s_read_records
         result = result._replace(
             settling_probe_info=sim._settling_probe_selection(result),
             settling_freq_max=sim._freq_max,
+            settling_accumulator_end_index=coverage.max_end(),
+            settling_coverage=coverage,
             settling_source_end_index=sim._settling_source_end(
                 result, records=sim._ports if s_read_records(result) else None),
             settling_probe_source_end_index=sim._settling_source_end(result))
         if is_tracer(result.time_series):
             return result
-    elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
-        return result
     from rfx.measurement import decay_stop_first
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
+    tail_status = witness["status"]
+    settling_db, witness = with_coverage(settling_db, witness, coverage)
     if not forward_result:
         result = result._replace(settling_db=settling_db,
                                  settling_witness=witness)
     if getattr(sim, "_internal_probe_indices", None):
+        return result
+    # The coverage warning stands in for the absent advisory or a passing
+    # record; a tail check that failed keeps its own warning below.
+    if tail_status in {"pass", "absent"} and warn_uncovered(witness):
         return result
 
     from rfx.api._sparams import (
@@ -256,9 +272,9 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
         warnings.warn(
             f"no ring-down settling witness on this {operation}: "
             f"{witness['reason']}. This {operation} requests NTFF and/or "
-            "field-DFT output, so its truncation is unguarded (#885); "
-            "settling_db is None, which is not a pass.",
-            stacklevel=4,
+            "field-DFT output, so its truncation is unguarded; "
+            "settling_db is None, which is not a pass.", AccuracyWarning,
+            stacklevel=user_stacklevel(),
         )
     elif witness.get("source_dominated"):
         # A RUNTIME warning, not a preflight advisory: the emission
@@ -266,8 +282,8 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
         # fact about the finished record, not about the declared
         # inputs. Scoped exactly like the two above -- NTFF/field-DFT
         # runs only, silent on library-internal driver runs -- so it
-        # cannot flood (#470). It fires only where the verdict PASSED
-        # on a dominated record, which is the #1090 vacuous pass; a
+        # cannot flood. It fires only where the verdict PASSED
+        # on a dominated record, which is the vacuous pass; a
         # dominated FAIL already warns above, in the safe direction.
         import warnings
         warnings.warn(
@@ -276,7 +292,36 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             f"{witness['worst_record']} = {float(settling_db):+.1f} dB "
             "is a source turn-off measurement, so this "
             f"{operation}'s NTFF/field-DFT output is effectively "
-            "unguarded.",
-            stacklevel=4,
+            "unguarded.", AccuracyWarning,
+            stacklevel=user_stacklevel(),
         )
     return result
+
+
+def tfsf_source_drive(cfg, grid):
+    """TF/SF waveform and reach from its realized launch through the box."""
+    import jax.numpy as jnp
+
+    def waveform(t):
+        custom = getattr(cfg, "custom_waveform", None)
+        if custom is not None:
+            return cfg.src_amp * custom(t)
+        arg = (t - cfg.src_t0) / cfg.src_tau
+        env = jnp.exp(-(arg ** 2))
+        kind = getattr(cfg, "src_waveform", "analytic")
+        if kind == "modulated_gaussian":
+            return cfg.src_amp * env * jnp.cos(2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        if kind == "continuous_wave":
+            ramp = .5 * (1 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0., 1.)))
+            return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
+        if kind == "analytic":
+            return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        from rfx.sources.tfsf import line_source_value
+        return line_source_value(cfg, t, cfg.src_amp)
+
+    is_traced = getattr(grid, "is_traced", None)
+    if is_traced is not None and any(is_traced(axis) for axis in "xyz"):
+        from rfx.measurement.record_end import TRACED
+        return None, ("traced", TRACED)   # the box corners sit on traced nodes
+    from rfx.measurement.tfsf_reach import tfsf_reach
+    return waveform, tfsf_reach(cfg, grid)

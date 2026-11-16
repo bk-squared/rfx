@@ -249,7 +249,7 @@ def test_t1_the_box_coefficients_are_the_grid_wide_ones_bit_for_bit(
         assert spec.held_edges == _port_edges(port), spec.held_edges
         w = coeffs.bounds
         wsl = tuple(slice(w[2 * d], w[2 * d + 1]) for d in range(3))
-        grid_ca, grid_cb = e_component_coeffs(mats, dt)
+        grid_ca, grid_cb = e_component_coeffs(mats, dt, high_wall=(False, False, False))
         for c in range(3):
             for name, got, want in (("Ca", coeffs.ca[c], grid_ca[c]),
                                     ("Cb", coeffs.cb[c], grid_cb[c])):
@@ -584,9 +584,9 @@ def test_the_drive_cb_equals_the_held_update_cb_and_the_no_box_cb(
     for (cell, comp), m in driven.items():
         i, j, k = cell
         cb_box = float(np.asarray(coeffs.cb[2])[i - w[0], j - w[2], k - w[4]])
-        cb_drive = float(cell_component_e_coeffs(m, cell, comp, dt)[1])
+        cb_drive = float(cell_component_e_coeffs(m, cell, comp, dt, high_wall=(False, False, False))[1])
         cb_nobox = float(cell_component_e_coeffs(
-            driven_nobox[(cell, comp)], cell, comp, dt)[1])
+            driven_nobox[(cell, comp)], cell, comp, dt, high_wall=(False, False, False))[1])
         assert cb_box == cb_drive == cb_nobox, (cell, cb_box, cb_drive,
                                                 cb_nobox)
 

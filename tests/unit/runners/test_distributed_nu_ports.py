@@ -10,7 +10,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.sources.sources import GaussianPulse, _axis_node_position
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 
 pytestmark = pytest.mark.distributed
 BINS = np.array([3e9, 7e9, 13e9], np.float32)
@@ -253,7 +253,8 @@ def test_refuses_before_staging(entry, kind, monkeypatch):
     def staging(*args, **kwargs):
         pytest.fail('refusal reached material staging')
     monkeypatch.setattr(electric_metrics, 'stage_forward_materials', staging)
-    with pytest.raises(NotImplementedError, match=message):
+    exception = ValueError if entry == 'forward' and kind == 'reference_plane' else NotImplementedError
+    with pytest.raises(exception, match=message):
         evaluate(sim, entry, 8, jax.devices())
 
 
@@ -306,7 +307,7 @@ def test_model_drives_and_cut(case, n, entry, monkeypatch):
     from rfx.stepping import slab_setup
     from rfx.stepping.slab import cut
     from rfx.model.materials import e_update_coefficient_at
-    from rfx.nonuniform import current_source_cb
+    from rfx.model.source_coefficients import current_source_cb
     from jax.sharding import Mesh
     selected = jax.devices('cpu')
     sim = scene(case, len(selected))
@@ -399,10 +400,10 @@ def restored_defect(monkeypatch):
     defect = os.environ.get('RFX_STEP2_MUTATION')
     if not defect:
         return
-    from rfx.stepping import slab_ports, slab_setup, slab_wrap
+    from rfx.stepping import slab_measurements, slab_setup, slab_wrap
     from rfx.model import distributed_ports
     if defect in ('M1', 'M1b', 'M1c'):
-        original = slab_ports.sum_partials
+        original = slab_measurements.sum_partials
         def broken(final, mesh, ranks):
             totals = original(final, mesh, ranks)
             for key in ('wire_sparams', 'sparam_time_records'):
@@ -419,7 +420,7 @@ def restored_defect(monkeypatch):
                         totals[key] = rank_shard_map(again, mesh=mesh, in_specs=P(),
                             out_specs=P(), check_rep=False)(ranks, totals[key])
             return totals
-        monkeypatch.setattr(slab_ports, 'sum_partials', broken)
+        monkeypatch.setattr(slab_measurements, 'sum_partials', broken)
     elif defect in ('M2', 'M7'):
         from rfx.measurement import projector
         from rfx.stepping.sequence import HookPoint

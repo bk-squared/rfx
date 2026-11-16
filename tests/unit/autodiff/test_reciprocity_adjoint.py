@@ -1,4 +1,7 @@
 """#1424 F2 gates: CPU fixtures; measurements use record_property, never stdout."""
+
+import rfx.stepping.adjoint_scan as adjoint_scan
+
 import rfx.stepping.uniform_loop as uniform_loop
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
@@ -119,10 +122,10 @@ def test_design_sigma_refused_at_admission(sigma):
     sim, eps = fixture("float32")
     for value in (sigma, jnp.full_like(eps, sigma), (eps * 0 + sigma,) * 3):
         with patch.object(sim, "_build_grid", side_effect=AssertionError("past admission")):
-            with pytest.raises(NotImplementedError, match="#1424.*on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
+            with pytest.raises(NotImplementedError, match="on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
                 sim.forward(gradient="adjoint", design_box=(BOX_LO, BOX_HI),
                             design_eps_override=eps, design_sigma_override=value)
-    with pytest.raises(NotImplementedError, match="#1424.*on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
+    with pytest.raises(NotImplementedError, match="on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
         jax.grad(objective(sim, mode="adjoint"), argnums=1)(eps, jnp.full_like(eps, sigma))
 
 
@@ -216,7 +219,7 @@ def test_g5_mutation(precision, record_property):
 
 @pytest.mark.parametrize("path", ["graded", "distributed", "ringdown", "ports",
     "debye", "lorentz", "kerr", "upml", "occupancy", "whole_grid", "missing_box",
-    "tfsf", "precision", "solver", "invalid", "sheet", "current_moments", "stencil",
+    "tfsf", "precision", "invalid", "sheet", "current_moments", "stencil",
     "ntff", "h_plane", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
     "different_bins", "time_domain"])
 def test_g5_refusals(path):
@@ -264,8 +267,6 @@ def test_g5_refusals(path):
     elif path == "stencil":
         sim._stencil_order = 4
         match = "stencil_order"
-    elif path == "solver":
-        sim._solver = "adi"
     elif path == "invalid":
         options["gradient"] = "unknown"
         match = "gradient must"
@@ -317,7 +318,7 @@ def test_wavelet_targets(precision, record_property):
     "use_pec_occupancy", "use_pmc_faces"])
 def test_g5_kernel_refusals(flag):
     from types import SimpleNamespace
-    from rfx.adjoint import design_adjoint_scan
+    from rfx.stepping.adjoint_scan import design_adjoint_scan
     class Context(SimpleNamespace):
         def __getattr__(self, name):
             if name.startswith("use_"):
@@ -330,7 +331,7 @@ def test_g5_kernel_refusals(flag):
 @pytest.mark.parametrize("case", ["missing_design", "bloch", "periodic", "anisotropy", "dtype", "stencil"])
 def test_g5_kernel_admission(case):
     from types import SimpleNamespace
-    from rfx.adjoint import design_adjoint_scan
+    from rfx.stepping.adjoint_scan import design_adjoint_scan
     from rfx.model.tensor_operands import TensorOperands
     class Context(SimpleNamespace):
         def __getattr__(self, name):
@@ -372,7 +373,8 @@ def _raw_coefficient_results(n_steps):
 
     with enable_x64():
         sim, eps = fixture("float64", True)
-        with patch.object(adjoint, "design_adjoint_scan", capture):
+        import rfx.stepping.adjoint_scan as adjoint_scan
+        with patch.object(adjoint_scan, "design_adjoint_scan", capture):
             with pytest.raises(Captured):
                 objective(sim, steps=n_steps, mode="adjoint")(eps, None)
         ctx, initial, xs = (captured[k] for k in ("ctx", "initial", "xs"))
@@ -382,7 +384,7 @@ def _raw_coefficient_results(n_steps):
             local = replace(ctx, design_box=ctx.design_box._replace(
                 ca=coeffs[0], cb=coeffs[1]))
             if mode == "adjoint":
-                last, _ = adjoint.design_adjoint_scan(local, initial, xs)
+                last, _ = adjoint_scan.design_adjoint_scan(local, initial, xs)
             else:
                 core = make_core_step(local, core_step_invariants(local))
                 def step(carry, row):
@@ -483,7 +485,7 @@ def test_clearing_drives_suppresses_electric_and_magnetic_sources(monkeypatch):
 
 def test_adjoint_zero_cotangent_has_no_primal_drive(monkeypatch):
     """Exercise the actual adjoint context replacement and its full scan."""
-    import rfx.simulation as runner
+    import rfx.stepping.uniform_setup as runner
     original = runner.make_core_step
     adjoint_contexts = []
     def capture(ctx, *args, **kwargs):

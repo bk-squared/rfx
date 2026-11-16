@@ -121,6 +121,7 @@ def _wr90_sim(*, conformal: bool):
     domain_z = 0.012  # > WR_90_B
     sim = Simulation(
         freq_max=10e9,
+        snap="declared",
         domain=(domain_x, domain_y, domain_z),
         dx=0.001,
         boundary=BoundarySpec(
@@ -140,6 +141,32 @@ def _wr90_sim(*, conformal: bool):
         f0=8e9,
         bandwidth=0.5,
         name="left",
+    )
+    return sim
+
+
+def _rim_faced_sim(*, conformal: bool):
+    """The routing scene with PEC faces on the snapped aperture rims.
+
+    Rule 4 (#1826) admits a waveguide port only on a conducting aperture,
+    so the binary twin of :func:`_wr90_sim` is refused. Here the domain
+    ends on the rims the port snaps to (23 and 10 mm), so the binary model
+    is a guide, while the conformal walls (22.86 and 9.6 mm) still cut the
+    last cells: at z = 9.5 mm the Ez edge has open fraction 0.6.
+    """
+    sim = Simulation(
+        freq_max=10e9, domain=(0.06, 0.023, 0.010), dx=0.001,
+        snap="declared",
+        boundary=BoundarySpec(
+            x="cpml",
+            y=Boundary(lo="pec", hi="pec", conformal=conformal),
+            z=Boundary(lo="pec", hi="pec", conformal=conformal),
+        ),
+        cpml_layers=8,
+    )
+    sim.add_waveguide_port(
+        0.020, y_range=(0.0, WR_90_A), z_range=(0.0, 0.0096), direction="+x",
+        mode=(1, 0), mode_type="TE", f0=8e9, bandwidth=0.5, name="left",
     )
     return sim
 
@@ -196,38 +223,19 @@ def test_assemble_materials_unchanged_without_conformal():
 
 
 def test_conformal_weights_fractional_at_wr90_y_boundary_cell():
-    """Sanity that the existing Dey-Mittra weight machinery reproduces
-    the plan-stated boundary-cell weight (~0.36 at WR-90 dx=1 mm) when
-    the half-space Box from Stage 1 is in place. Skipped until the Box
-    injection actually lands — without that the assertion is vacuous."""
+    """The y edge crosses 22.86 mm; the x edge at y=23 mm is metal."""
     from rfx.geometry.conformal import compute_conformal_weights_sdf
 
     sim = _wr90_sim(conformal=True)
     grid = sim._build_grid()
     _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
-    if not pec_shapes:
-        pytest.skip("conformal injection not yet implemented")
-
-    w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
-    w_ex = np.asarray(w_ex)
-
-    # Expected fractional cell: Yee Ex at (i+0.5, j, k) carries y=j*dx.
-    # The SDF half-space starts at y=WR_90_A=22.86 mm; the cell with
-    # |sdf| ≈ 0.14 mm sits at j = round(WR_90_A/dx) (=23 for dx=1 mm).
-    j_boundary = int(round(WR_90_A / float(grid.dx)))
-    # Pick an interior x and the middle-z cell.
-    i_mid = grid.shape[0] // 2
-    k_mid = grid.shape[2] // 2
-    w_at_boundary = float(w_ex[i_mid, j_boundary, k_mid])
-
-    # Plan reproduction: 0.36 ± 0.05 (handover memory entry 4910).
-    assert 0.0 < w_at_boundary < 1.0, (
-        f"boundary cell weight should be fractional, got {w_at_boundary:.4f}"
-    )
-    assert abs(w_at_boundary - 0.36) < 0.05, (
-        f"WR-90 dx=1 mm boundary-cell weight should be ≈0.36, got "
-        f"{w_at_boundary:.4f}"
-    )
+    assert pec_shapes
+    w_ex, w_ey, _ = compute_conformal_weights_sdf(grid, pec_shapes)
+    j = int(round(WR_90_A / float(grid.dx)))
+    i, k = grid.shape[0] // 2, grid.shape[2] // 2
+    assert float(w_ex[i, j, k]) == 0.
+    expected = WR_90_A / float(grid.dx) - (j - 1)
+    assert float(w_ey[i, j - 1, k]) == pytest.approx(expected, abs=1e-7)
 
 
 # -----------------------------------------------------------------------------
@@ -262,9 +270,9 @@ def test_run_conformal_auto_routes_from_boundaryspec():
         explicit ``conformal_pec=True`` (auto-routing is consistent
         with the manual flag, no surprise from setting both)."""
     n = 30
-    r_off = _wr90_sim(conformal=False).run(n_steps=n)
-    r_on = _wr90_sim(conformal=True).run(n_steps=n)
-    r_on_explicit = _wr90_sim(conformal=True).run(
+    r_off = _rim_faced_sim(conformal=False).run(n_steps=n)
+    r_on = _rim_faced_sim(conformal=True).run(n_steps=n)
+    r_on_explicit = _rim_faced_sim(conformal=True).run(
         n_steps=n, conformal_pec=True,
     )
 
@@ -293,8 +301,8 @@ def test_run_explicit_false_overrides_conformal_boundary():
     declares ``conformal=True``. Useful for A/B regression diagnosis
     and for keeping older diagnostic scripts on the legacy path."""
     n = 30
-    r_off = _wr90_sim(conformal=False).run(n_steps=n)
-    r_forced = _wr90_sim(conformal=True).run(
+    r_off = _rim_faced_sim(conformal=False).run(n_steps=n)
+    r_forced = _rim_faced_sim(conformal=True).run(
         n_steps=n, conformal_pec=False,
     )
 
@@ -391,31 +399,8 @@ def test_grid_carries_conformal_faces_from_boundaryspec():
     assert getattr(grid_off, "conformal_faces", set()) == set()
 
 
-def test_waveguide_port_skips_drop_on_conformal_face():
-    """``init_waveguide_port``'s binary DROP at the +face boundary
-    cell must be suppressed when that face is conformal — the
-    Dey-Mittra eps_correction at the same cell is the principled
-    handler. Otherwise the cell is zeroed twice (DROP in V/I + 1/α
-    eps scaling) which over-corrects and caps PEC-short closure
-    (the 2026-04-29 first-attempt failure mode).
-
-    TWO PATHS, and after issue #868 they differ. The DROP fires only when
-    the aperture slice reaches the array edge, i.e. only when the aperture
-    contains a cell PAST the +face wall:
-
-    * the ``Simulation`` builder now hands the port the guide's CELL span,
-      so its aperture stops at the last real guide cell and there is nothing
-      past the wall to drop — the double correction this test guards against
-      cannot arise on that path at all, in either conformal setting. That is
-      asserted below as an equality between the two settings plus an exact
-      aperture area, which is a STRONGER statement than "the last row is
-      zero": under the old node span the area came out right only BECAUSE
-      the extra row was dropped.
-    * a low-level caller that hands ``WaveguidePort`` the whole node plane
-      (``y_slice=(0, grid.ny)``) still has that cell inside its aperture, and
-      the suppression logic still has to discriminate there. That is where
-      the original assertion is re-run, so the guard keeps a firing path.
-    """
+def test_waveguide_port_refuses_node_plane_with_or_without_conformal_faces():
+    """The builder keeps its cell span; low-level node planes are refused."""
     import jax.numpy as jnp
     from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
 
@@ -449,8 +434,8 @@ def test_waveguide_port_skips_drop_on_conformal_face():
     # And the area is the rasterized guide's, exactly.
     assert float(dA_off.sum()) == pytest.approx(n_u * dx * n_v * dx, rel=1e-6)
 
-    # --- low-level path: the node plane still contains the ghost cell -----
-    def _lowlevel_dA(grid):
+    # Low-level node planes are outside the guide under both conformal settings.
+    for grid in (grid_off, grid_on):
         port = WaveguidePort(
             x_index=int(0.030 / grid.dx) + grid.axis_pads[0],
             y_slice=(0, grid.ny), z_slice=(0, grid.nz),
@@ -458,20 +443,11 @@ def test_waveguide_port_skips_drop_on_conformal_face():
             mode=(1, 0), mode_type="TE", direction="+x", normal_axis="x",
             u_slice=(0, grid.ny), v_slice=(0, grid.nz),
         )
-        cfg = init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
-                                  dft_total_steps=200, dt=float(grid.dt),
-                                  grid=grid)
-        return np.asarray(cfg.aperture_dA)
-
-    ll_off, ll_on = _lowlevel_dA(grid_off), _lowlevel_dA(grid_on)
-    assert np.all(ll_off[-1, :] == 0.0), (
-        f"expected DROP at u_hi (y_hi) without conformal on the node-plane "
-        f"aperture; got dA[-1,:]={ll_off[-1, :]}")
-    assert np.all(ll_on[-1, :] > 0.0), (
-        f"expected aperture preserved at u_hi when conformal=True; "
-        f"got dA[-1,:]={ll_on[-1, :]}")
-    assert np.all(ll_off[:, -1] == 0.0)
-    assert np.all(ll_on[:, -1] > 0.0)
+        with pytest.raises(ValueError, match="as Simulation builds it") as error:
+            init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
+                                dft_total_steps=200, dt=float(grid.dt), grid=grid)
+        assert f"y_slice={(0, grid.ny)}" in str(error.value)
+        assert f"cell span y_slice={(0, grid.ny - 1)}" in str(error.value)
 
 
 def test_run_battery_geometry_auto_routes():

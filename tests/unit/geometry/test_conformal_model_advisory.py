@@ -1,4 +1,4 @@
-"""A run with conformal PEC says that its model enlarges a metal body (#1651)."""
+"""The PFC/SC model retains its accuracy-under-measurement advisory (#1651)."""
 
 import warnings
 
@@ -7,7 +7,7 @@ from rfx.geometry.csg import Sphere
 
 
 def _sim():
-    sim = Simulation(freq_max=10e9, domain=(0.012,) * 3, dx=0.0015,
+    sim = Simulation(snap="declared", freq_max=10e9, domain=(0.012,) * 3, dx=0.0015,
                      boundary="cpml", cpml_layers=4)
     sim.add(Sphere(center=(0.006,) * 3, radius=0.002), material="pec")
     sim.add_source((0.003, 0.006, 0.006), component="ez", amplitude_kind="current")
@@ -20,14 +20,15 @@ def _advisories(conformal):
         warnings.simplefilter("always")
         _sim().run(n_steps=4, conformal_pec=conformal, compute_s_params=False,
                    skip_preflight=True)
-    return [w for w in caught if "#1651" in str(w.message)]
+    return [w for w in caught if "conformal PEC uses partially filled cells" in str(w.message)]
 
 
 def test_conformal_run_warns_once_and_names_the_limitation():
     found = _advisories(True)
     assert len(found) == 1
     text = str(found[0].message)
-    assert "eps/w" in text and "known_limitations" in text
+    assert all(part in text for part in ("eps/lbar", "mu*sbar", "SC clamp", "drawn plane",
+                                         "first order", "known_limitations"))
 
 
 def test_staircase_run_does_not_warn():

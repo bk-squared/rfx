@@ -1,12 +1,15 @@
 """Tests for WirePort S-parameter extraction."""
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import numpy as np
 import pytest
 import jax.numpy as jnp
 
 from rfx.geometry.csg import Box
 from rfx.grid import Grid
-from rfx.core.yee import init_state, init_materials, update_e, update_h
+from rfx.core.yee import init_state, init_materials
+from rfx.stepping.yee import update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import (
     GaussianPulse, WirePort, setup_wire_port, apply_wire_port,
@@ -35,8 +38,8 @@ def test_wire_port_voltage_nonzero():
 
     for n in range(20):
         t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_wire_port(state, grid, port, t, materials)
 
@@ -61,8 +64,8 @@ def test_wire_port_current_nonzero():
 
     for n in range(20):
         t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_wire_port(state, grid, port, t, materials)
 
@@ -90,8 +93,8 @@ def test_wire_sparam_probe_accumulates():
     state = init_state(grid.shape)
     for n in range(100):
         t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         state = apply_wire_port(state, grid, port, t, materials)
         probe = update_wire_sparam_probe(probe, state, grid, port, grid.dt)
@@ -148,8 +151,8 @@ def test_wire_s11_pec_cavity():
     v_t = np.zeros(n_steps)
     for n in range(n_steps):
         t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx)
-        state = update_e(state, materials, grid.dt, grid.dx)
+        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         # update_wire_sparam_probe samples the PHYSICAL V/I after injection
         # (issue #683); this loop used to call it before, which is the slot

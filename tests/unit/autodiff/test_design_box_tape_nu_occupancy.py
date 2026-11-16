@@ -52,6 +52,8 @@ loop below runs the lane's own kernels in the lane's own order.
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 from unittest import mock
 
 import numpy as np
@@ -66,10 +68,8 @@ from rfx.boundaries.pec import (
     apply_pec, apply_pec_occupancy, apply_pec_occupancy_box,
     pec_occupancy_box_keep,
 )
-from rfx.core.yee import (
-    MaterialArrays, e_update_coeffs, init_state, init_materials,
-    update_e_box, update_e_nu, update_h_nu,
-)
+from rfx.core.yee import MaterialArrays, e_update_coeffs, init_state, init_materials
+from rfx.stepping.yee import update_e_box, update_e_nu, update_h_nu
 from rfx.nonuniform import make_nonuniform_grid, position_to_index
 from rfx.model.materials import electric_cell_sizes
 from rfx.model.materials import _design_box_edge_coeffs
@@ -99,7 +99,7 @@ BOX_HI = (14e-3, 12e-3, 10e-3)
 # ---------------------------------------------------------------------------
 
 def _nu_sim(domain=DOMAIN, **kwargs):
-    sim = Simulation(freq_max=2 * F0, domain=domain, dx=DX, boundary="cpml",
+    sim = Simulation(freq_max=2 * F0, domain=(domain[0], domain[1], float(np.sum(DZ_PROFILE))), dx=DX, boundary="cpml",
                      cpml_layers=CPML, dz_profile=DZ_PROFILE, **kwargs)
     sim.add_source((4e-3, 10e-3, 6e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=F0, bandwidth=0.8))
@@ -169,7 +169,7 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
     box_shape = tuple(box[2 * d + 1] - box[2 * d] for d in range(3))
     cpml_params, cpml_init = init_cpml(grid, field_dtype=field_dtype)
     src = position_to_index(grid, (0.004, 0.004, 0.004))
-    prb = position_to_index(grid, (0.005, 0.005, 0.006))
+    prb = position_to_index(grid, (0.005, 0.005, 0.005))
     t = np.arange(n_steps) * dt
     drive = jnp.asarray(
         np.exp(-((t - 1.0e-10) / 3e-11) ** 2) * np.sin(2 * np.pi * 10e9 * t),
@@ -196,12 +196,12 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
             def step(carry, n):
                 st, cpml, acc = carry
                 st = update_h_nu(st, m, dt, grid.inv_dx_h, grid.inv_dy_h,
-                                 grid.inv_dz_h)
+                                 grid.inv_dz_h, high_wall=unpadded_high_walls(grid))
                 st, cpml = apply_cpml_h(st, cpml_params, cpml, grid, "xyz",
                                         materials=m)
                 prev = st
                 st = update_e_nu(st, m, dt, grid.inv_dx, grid.inv_dy,
-                                 grid.inv_dz, cell_sizes=cell_sizes)
+                                 grid.inv_dz, cell_sizes=cell_sizes, high_wall=unpadded_high_walls(grid))
                 if split:
                     st = update_e_box(
                         st, prev, box_w, ca, cb, grid.dx,
@@ -433,7 +433,7 @@ def _nu_scan_case(n_steps=8):
     src = make_current_source(grid, src_idx, "ez",
                               GaussianPulse(f0=10e9, bandwidth=0.5),
                               n_steps, mats)
-    probe = position_to_index(grid, (5e-3, 5e-3, 6e-3)) + ("ez",)
+    probe = position_to_index(grid, (5e-3, 5e-3, 5e-3)) + ("ez",)
     return grid, mats, [src], [probe]
 
 
@@ -475,7 +475,7 @@ def test_nu_fence_subpixel_anisotropic_permittivity():
 
 
 def test_nu_fence_box_holding_the_source_cell():
-    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="cpml",
+    sim = Simulation(freq_max=2 * F0, domain=(DOMAIN[0], DOMAIN[1], float(np.sum(DZ_PROFILE))), dx=DX, boundary="cpml",
                      cpml_layers=CPML, dz_profile=DZ_PROFILE)
     sim.add_source((12e-3, 10e-3, 6e-3), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=F0, bandwidth=0.8))
@@ -761,7 +761,7 @@ def test_occupancy_fence_box_holding_a_port_cell():
 
 
 def test_occupancy_fence_kottke_occupancy_lane(monkeypatch):
-    """``RFX_PEC_OCC_KOTTKE=1`` moves the occupancy into the E update.
+    """``pec_occupancy_model="kottke"`` moves the occupancy into the E update.
 
     On that lane the occupancy becomes an inverse-eps tensor built from the
     STATIC array and ``pec_occupancy_for_run`` is set to None, so the
@@ -771,8 +771,7 @@ def test_occupancy_fence_kottke_occupancy_lane(monkeypatch):
     before the fence: value 19x and gradient 2.8x off
     ``pec_occupancy_override``, silently.
     """
-    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
-    sim = _sim()
+    sim = _sim(pec_occupancy_model="kottke")
     grid = sim._build_grid()
     _, shape = _box_cells(sim)
     static = jnp.zeros(grid.shape, jnp.float32).at[6:9, 6:9, 6:9].set(0.7)

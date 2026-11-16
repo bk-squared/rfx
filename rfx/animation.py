@@ -6,30 +6,22 @@ ffmpeg for MP4.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike
+    from rfx.api._spec import Result
+    from rfx._internal._uniform_specs import SimResult
+
 import numpy as np
 
-try:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.animation import FuncAnimation, PillowWriter
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-
-
-def _require_mpl():
-    if not HAS_MPL:
-        raise ImportError(
-            "matplotlib and Pillow are required for animation export. "
-            "Install with: pip install matplotlib Pillow"
-        )
+from rfx._plotting import _pyplot
 
 
 def _animation_frame_times(result, component: str, interval: int):
     """Time in seconds of each animated frame, or ``None`` without axes.
 
-    A ``Result`` carries ``snapshot_axes`` (#1259), so its frames are
+    A ``Result`` carries ``snapshot_axes``, so its frames are
     labelled by the time they were taken; a bare snapshots dict does not,
     and its frames are labelled by number only.
     """
@@ -43,7 +35,7 @@ def _animation_frame_times(result, component: str, interval: int):
 
 
 def save_field_animation(
-    result,
+    result: Result | SimResult | dict[str, ArrayLike],
     filename: str,
     *,
     component: str = "ez",
@@ -56,7 +48,7 @@ def save_field_animation(
     dpi: int = 100,
     figsize: tuple = (6, 5),
     interval: int = 1,
-):
+) -> str:
     """Save field animation from simulation snapshots.
 
     Parameters
@@ -108,11 +100,13 @@ def save_field_animation(
     ImportError
         If matplotlib or Pillow are not installed.
     """
-    _require_mpl()
+    plt = _pyplot()
+    from matplotlib.animation import FuncAnimation, PillowWriter
 
     # ------------------------------------------------------------------
     # Extract snapshot data
     # ------------------------------------------------------------------
+    snapshots: dict | None
     if isinstance(result, dict):
         snapshots = result
     elif hasattr(result, "snapshots"):
@@ -235,7 +229,7 @@ def save_field_animation(
         try:
             from matplotlib.animation import FFMpegWriter
             writer = FFMpegWriter(fps=fps)
-        except (ImportError, RuntimeError):
+        except ImportError:
             # ffmpeg not available — fall back to GIF
             filename = filename[:-4] + ".gif"
             writer = PillowWriter(fps=fps)

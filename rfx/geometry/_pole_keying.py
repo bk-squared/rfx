@@ -1,24 +1,27 @@
-"""Dispersion-pole mask keying helpers (issue #274).
+"""Dispersion-pole mask keying helpers.
 
 Lives in its own module (imported by ``rfx/api/_compile.py`` at ``import
 rfx`` time). It was split out to dodge the ``rfx.geometry.rasterize``
 submodule/function name collision that once clobbered the public
 ``rasterize`` FUNCTION (broke the rcs_scattering tutorial). That landmine
 is now fixed at the source — the offending submodule was renamed to
-``rfx/geometry/rasterize_grid.py`` (issue #393), so no ``rasterize``
+``rfx/geometry/rasterize_grid.py``, so no ``rasterize``
 submodule exists to shadow the function. This module stays separate for
 organisation; the split is no longer load-bearing.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
+from rfx.errors import AccuracyWarning
 import warnings
 
 from rfx.core.jax_utils import is_tracer
+from rfx.materials.relative_strength import RelativeStrength
 
 
 def _pole_key(pole):
-    """Mask-dict key for a dispersion pole (issue #274).
+    """Mask-dict key for a dispersion pole.
 
     Key by VALUE whenever value equality is decidable: equal-valued
     poles from different ``add_material`` calls merge into one
@@ -26,8 +29,7 @@ def _pole_key(pole):
     same pole twice (``init_debye`` / ``init_lorentz`` sum
     contributions over entries — a duplicate entry would silently
     double delta_eps on overlap cells). Plain id-keying for all poles
-    is the recorded do-not-repeat (PR #272 branch: overlap-cell beta
-    ratio 2.000 vs 1.000).
+    doubles the overlap-cell beta ratio: measured 2.000 vs 1.000.
 
     Key resolution order:
 
@@ -48,13 +50,16 @@ def _pole_key(pole):
        representable values (0.5, 1.5, ...).
     3. Fields carrying JAX TRACERS — ``id(pole)``. Value equality is
        undecidable at trace time; identity is the only stable key
-       (the documented differentiable-dispersion path, #273).
+       (the documented differentiable-dispersion path).
     4. Eager but not ``float()``-coercible — fields that are
        non-scalar arrays OR scalars ``float()`` rejects (e.g. a
        complex 0-d array) — ``id(pole)`` plus a loud ``UserWarning``:
        such poles will not dedupe against value-equal duplicates
        (fail-loud beats silent double-counting).
     """
+    from rfx.materials.pole_map import is_map
+    if is_map(pole):
+        return id(pole)
     try:
         hash(pole)
         return pole
@@ -65,7 +70,7 @@ def _pole_key(pole):
     try:
         # NamedTuples hash/compare equal to plain tuples of the same
         # values, so this key merges with value-equal hashable poles.
-        return tuple(float(f) for f in pole)
+        return tuple(f if isinstance(f, RelativeStrength) else float(f) for f in pole)
     except (TypeError, ValueError):
         warnings.warn(
             f"Dispersion pole {pole!r} has unhashable fields that "
@@ -73,10 +78,10 @@ def _pole_key(pole):
             f"non-float-coercible scalars, e.g. a complex 0-d array); "
             f"keying its geometry mask by object identity. "
             f"Value-equal duplicates of this pole will NOT dedupe and "
-            f"can double-apply delta_eps on overlapping geometry "
-            f"(issue #274).",
-            UserWarning,
-            stacklevel=3,
+            f"can double-apply delta_eps on overlapping geometry"
+            f".",
+            AccuracyWarning,
+            stacklevel=user_stacklevel(),
         )
         return id(pole)
 

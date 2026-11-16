@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx import Box, DebyePole, LorentzPole, Simulation
-from rfx._grid_metric import field_index
+from rfx._internal._grid_metric import field_index
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 STEPS = 48

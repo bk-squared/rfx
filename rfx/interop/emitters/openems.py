@@ -116,7 +116,7 @@ docs/design_notes/geometry_setup_interop.md):
         numpy is 2.x and ``openEMS.ports.MSLPort`` itself uses ``np.int``.
 ``D16`` Metal thickness is taken verbatim from the rfx shape; the emitter does
         not choose between a sheet and a one-cell box.
-``D17`` PMC-face wall position (#1221 B3b). Single-device Yee paths center
+``D17`` PMC-face wall position. Single-device Yee paths center
         the odd tangential-H image on the E-node mesh plane. The emitter
         maps a ``pmc`` face to openEMS's ``'PMC'`` on that same mesh line;
         no half-cell compensation is needed.
@@ -132,7 +132,7 @@ import textwrap
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
-from rfx.interop._errors import UnsupportedDesignFeature
+from rfx.interop._errors import UnsupportedDesignFeature, _refuse, refuse_openems_floor
 
 __all__ = [
     "OPENEMS_EMITTER_VERSION",
@@ -166,22 +166,6 @@ _LINE_TOL_REL = 1.0e-9
 _AXES = ("x", "y", "z")
 _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 _SUPPORTED_SHAPE_KINDS = ("box", "cylinder")
-
-
-# ---------------------------------------------------------------------------
-# Refusal
-# ---------------------------------------------------------------------------
-
-def _refuse(construct: str, reason: str) -> UnsupportedDesignFeature:
-    """Refusal naming the construct first, then why it cannot be projected.
-
-    Per decision D4 of the design note the emitter refuses rather than
-    approximating, and per the task's refusal contract the message must name
-    the construct so a reader knows what to remove or which target to use.
-    """
-    return UnsupportedDesignFeature(
-        f"openEMS emitter cannot project {construct}: {reason}"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -486,7 +470,7 @@ def _plan_materials(document: dict) -> dict[str, _MaterialPlan]:
                 )
             if lorentz:
                 raise _refuse(
-                    f"material {name!r} with Lorentz poles",
+                    f"material {name!r} with Lorentz poles (including RelativeStrength)",
                     "same as Debye: no reachable openEMS counterpart, and "
                     "flattening to a single eps_r would change the material",
                 )
@@ -544,7 +528,7 @@ def _plan_geometry(
     Ports sit between the bands: a dielectric must not bury a port (rfx folds
     the port conductance in on top of the material), while PEC must win over a
     port (rfx marks port cells inside PEC as *dead* and applies no port sigma
-    there — issue #318).  Returns the two port/metal band bases.
+    there).  Returns the two port/metal band bases.
     """
     entries = _require_list(_get(document, "geometry", "document"), "geometry")
     n = len(entries)
@@ -694,7 +678,7 @@ def _plan_ports(
         _get(document, "excitations", "document"), "excitations"
     )
     removed_in_1212 = (
-        "the builder was removed from rfx in #1212 with the single-plane "
+        "the builder was removed from rfx with the single-plane "
         "coaxial S-matrix lane it fed, and rfx itself refuses this entry on "
         "import; its offset was also in *cells*, which means nothing on "
         "another solver's mesh. For a coaxial one-port with a short, open or "
@@ -801,7 +785,7 @@ def _plan_ports(
     direction_drops: list[str] = []
 
     def snap(value_m: float, label: str) -> float:
-        from rfx._grid_metric import nearest_uniform_index
+        from rfx._internal._grid_metric import nearest_uniform_index
         cells = nearest_uniform_index(value_m / dx_m)
         snapped = cells * dx_m
         # Grid.position_to_index uses nearest_uniform_index(pos/dx); reporting the shift makes
@@ -1134,17 +1118,18 @@ def plan_openems_projection(
     if _get(document, "refinement", "document") is not None:
         raise _refuse(
             "add_refinement(...) (SBP-SAT subgrid)",
-            "the subgrid path is an rfx research prototype, falsified in 3D "
-            "(PR #90) and outside the public support scope. The design note is "
+            "the subgrid path is an rfx research prototype, falsified in 3D (docs/design_notes/geometry_setup_interop.md)"
+            " and outside the public support scope. The design note is "
             "explicit: round-trip it for rfx, never project it outward, because "
             "its presence in a foreign setup would read as a validated capability",
         )
 
     solver = _require_mapping(_get(document, "solver", "document"), "solver")
+    refuse_openems_floor(solver)
     if str(_get(solver, "solver", "solver")) != "yee":
         raise _refuse(
             f"solver={_get(solver, 'solver', 'solver')!r}",
-            "rfx's ADI solver has no openEMS counterpart (openEMS is explicit "
+            "The declared solver has no openEMS counterpart (openEMS is explicit "
             "Yee only); emitting the same structure under a different time "
             "integrator would compare two different numerical schemes",
         )
@@ -1166,7 +1151,7 @@ def plan_openems_projection(
         raise _refuse(
             f"interface_eps={_get(solver, 'interface_eps', 'solver')!r}",
             "openEMS samples materials on its own mesh; the rfx non-uniform "
-            "dual-cell-area interface rule (#949) has no counterpart",
+            "dual-cell-area interface rule has no counterpart",
         )
 
     domain = _require_mapping(_get(document, "domain", "document"), "domain")
@@ -1200,7 +1185,7 @@ def plan_openems_projection(
                 "expressible in principle — but rfx's absorber padding on a "
                 "non-uniform axis, and the transition cells smooth_grading "
                 "inserts, decide where the material stack actually rasterises "
-                "(the #325 class of defect). Emitting a cumulative-sum guess "
+                "(material-stack misregistration). Emitting a cumulative-sum guess "
                 "would compare a differently-graded structure. v1 refuses; the "
                 "fix is a pinned NonUniformGrid coordinate comparison, not a "
                 "wider emitter",

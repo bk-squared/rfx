@@ -11,14 +11,16 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.runners import _admission as A
 
 
-def _scene(entry, source, *, pec=True):
+def _scene(entry, source, *, pec=True, dt=None):
     if entry.startswith("waveguide"):
         # Simulation/boundary/port setup from the validation battery's _build_sim.
         boundary = {"x": "cpml", "y": "pec", "z": "pec"}
         if source == "B":
             boundary["y"] = Boundary("pec", "pec", conformal=True)
-        sim = Simulation(freq_max=9e9, domain=(.12, .04, .02), dx=.002,
-                         boundary=boundary, cpml_layers=10)
+        sim = Simulation(snap="declared", freq_max=9e9, domain=(.12, .04, .02), dx=.002,
+                         boundary=boundary, cpml_layers=10, dt=dt,
+                         **({"dz_profile": np.full(10, .002)}
+                            if entry == "waveguide_graded" else {}))
         if pec:
             sim.add(Cylinder((.0601, .0198, .0097), .0033, .008, "z"),
                     material="pec")
@@ -32,12 +34,12 @@ def _scene(entry, source, *, pec=True):
     boundary = (BoundarySpec(x="pec", y=Boundary("pec", "pec", conformal=True),
                              z="pec") if source == "B" else "pec")
     sim = Simulation(
-        freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary=boundary,
+        snap="declared", freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary=boundary,
         cpml_layers=0, mode="2d_tmz" if two_d else "3d",
         **({"dz_profile": np.full(12, .001)}
            if entry in ("graded", "distributed_nu") else {}))
     if pec:
-        shape = (Cylinder((.0061, .0058, .006), .0017, .012, "z") if two_d
+        shape = (Cylinder((.0061, .0058, 0.), .0017, .012, "z") if two_d
                  else Sphere((.0061, .0058, .0057), .0017))
         sim.add(shape, material="pec")
     if entry == "subgridded":
@@ -85,7 +87,7 @@ REFUSED = [
                   "distributed_nu", "subgridded", "waveguide",
                   "waveguide_normalized", "lumped")
     for source in ("K", "B")
-    if not (source == "K" and entry in ("forward", "waveguide", "waveguide_normalized"))
+    if not (source == "K" and entry == "forward")
 ]
 
 
@@ -94,22 +96,25 @@ def test_combination_refused_before_step(monkeypatch, entry, source):
     from rfx import simulation
     from rfx.model import tensor_operands
     from rfx.runners import nonuniform
+    from rfx.stepping import uniform_loop
 
     monkeypatch.setattr(tensor_operands, "form_tensor_operands", _no_step)
+    # The uniform runner reads run from rfx.simulation, the waveguide S extractors from uniform_loop.
     monkeypatch.setattr(simulation, "run", _no_step)
+    monkeypatch.setattr(uniform_loop, "run", _no_step)
     monkeypatch.setattr(nonuniform, "run_nonuniform", _no_step)
     # The graded lane already rejects conformal_pec before considering smoothing.
     # All other reachable rows name both inputs; no implementation text is imported.
     match = (r"conformal_pec" if entry == "graded" else
              r"(?s)(?=.*subpixel_smoothing)(?=.*kottke_pec)(?=.*conformal_pec)")
+    if entry.startswith("waveguide") and source == "K":
+        match = r"conformal_pec=True.*Boundary\(conformal=True\)"
     with pytest.raises(NotImplementedError, match=match):
         _invoke(entry, source)
 
 
 UNREACHABLE = [
     ("forward", "K", "conformal_pec"),
-    ("waveguide", "K", "conformal_pec"),
-    ("waveguide_normalized", "K", "conformal_pec"),
     *[(entry, source, "subpixel_smoothing")
       for entry in ("msl", "mixed") for source in ("K", "B")],
 ]
@@ -123,11 +128,11 @@ def test_keyword_not_accepted(entry, source, keyword):
 
 
 @pytest.mark.parametrize("source", ["K", "B"])
-def test_lumped_scan_refuses_conformal_once(source):
+def test_lumped_scan_refuses_kottke_conformal(source):
     with pytest.raises(NotImplementedError,
-                       match="lumped/wire S-matrix scan does not carry") as caught:
+                       match="kottke_pec.*cannot combine") as caught:
         _invoke("lumped_scan", source)
-    assert str(caught.value).count("Boundary(conformal=True) or conformal_pec=True") == 1
+    assert str(caught.value).count("cannot combine") == 1
 
 
 CONFORMAL_ROWS = (("_boundary_spec", "conformal"),
@@ -184,3 +189,104 @@ def test_waveguide_controls_run(smoothing, source):
     result = _invoke("waveguide", source, smoothing=smoothing)
     assert result.s_params.shape == (2, 2, 3)
     assert np.isfinite(np.asarray(result.s_params)).all()
+
+
+@pytest.mark.parametrize("entry", ["waveguide", "waveguide_graded"])
+@pytest.mark.parametrize("value", [True, False, "staircase"])
+def test_waveguide_conformal_keyword_refused_before_admission(monkeypatch, entry, value):
+    from rfx.errors import RfxUnsupported
+    from rfx.model import tensor_operands
+
+    sim = _scene(entry, "none")
+    monkeypatch.setattr(A, "admit_conformal_floor", _no_step)
+    monkeypatch.setattr(tensor_operands, "form_tensor_operands", _no_step)
+    with pytest.raises(RfxUnsupported, match=r"Boundary\(conformal=True\)") as caught:
+        sim.compute_waveguide_s_matrix(conformal_pec=value, n_steps=1, skip_preflight=True)
+    assert f"conformal_pec={value!r}" in str(caught.value)
+    assert 'the keyword only takes "cut_cell_floor"' in str(caught.value)
+
+
+def test_cut_cell_floor_admission_paths():
+    from rfx.grid import Grid
+    from rfx.interop.emitters.openems import plan_openems_projection
+    from rfx.interop import design_to_dict
+    ordinary = Grid.courant_dt(.001)
+    # No PEC shapes: the opt-in itself must refuse, never disappear as a no-op.
+    for entry in ('run', 'forward', 'graded', 'distributed', 'subgridded', 'kottke'):
+        kwargs = dict(freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary='pec')
+        if entry != 'run':
+            kwargs['dt'] = .5 * ordinary
+        if entry == 'graded':
+            kwargs['dz_profile'] = np.full(12, .001)
+        sim = Simulation(**kwargs)
+        options = dict(n_steps=1, skip_preflight=True, conformal_pec='cut_cell_floor')
+        if entry == 'distributed':
+            options['devices'] = jax.devices('cpu')[:2]
+        if entry == 'subgridded':
+            sim.add_refinement((.008, .012), ratio=2, validation='research')
+        if entry == 'kottke':
+            options['subpixel_smoothing'] = 'kottke_pec'
+        with pytest.raises(NotImplementedError, match='cut_cell_floor'):
+            getattr(sim, 'forward' if entry == 'forward' else 'run')(**options)
+    for entry in ('run', 'forward'):
+        sim = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec', dt=.5 * ordinary)
+        with pytest.raises(NotImplementedError, match='cut_cell_floor'):
+            getattr(sim, entry)(n_steps=1, skip_preflight=True)
+    sim = Simulation(20e9, (.012,) * 3, dx=.001, dt=.4 * ordinary)
+    with pytest.raises(ValueError) as caught:
+        sim.run(n_steps=1, conformal_pec='cut_cell_floor', skip_preflight=True)
+    assert repr(.5 * ordinary) in str(caught.value)
+    assert repr(.25 * ordinary) in str(caught.value)
+    with pytest.raises(ValueError, match='cut_cell_floor'):
+        Boundary('pec', 'pec', conformal='cut_cell_floor')
+    sim = Simulation(20e9, (.012,) * 3, dx=.001, dt=.5 * ordinary)
+    from rfx.interop import UnsupportedDesignFeature
+    with pytest.raises(UnsupportedDesignFeature, match='cut_cell_floor'):
+        plan_openems_projection(design_to_dict(sim))
+
+
+def test_cut_cell_floor_grid_tolerance_and_reference(monkeypatch):
+    from rfx.grid import Grid
+    from rfx.geometry.conformal_cells import compute_conformal_fractions
+    from rfx.model.tensor_operands import form_reference_operands
+    from rfx.model.materials import with_components
+    from rfx.core.yee import init_materials
+    from rfx import Box
+    for mode in ('3d', '2d_tmz', '2d_tez'):
+        ordinary = .001 / (299792458. * np.sqrt(3. if mode == '3d' else 2.)) * .99
+        for q in (.5, .25):
+            pin = q * ordinary * (1 + .5e-9)
+            sim = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec', mode=mode, dt=pin)
+            grid = sim._build_grid()
+            assert grid.dt == pin
+            assert grid.num_timesteps(2) == int(np.ceil(2 / 20e9 / pin))
+            bad = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec', mode=mode,
+                             dt=q * ordinary * (1 + 2e-9))
+            with pytest.raises(ValueError, match='cut_cell_floor'):
+                bad._build_grid()
+    grid = Grid(20e9, (.012,) * 3, dx=.001, cpml_layers=0)
+    grid.dt = .5 * Grid.courant_dt(.001)
+    wall = Box((-1.,) * 3, (.0029, 1., 1.))
+    weights, _ = compute_conformal_fractions(grid, [wall], clamp=False)
+    mats = with_components(init_materials(grid.shape), grid, periodic=(False,) * 3)
+    eps, _, reference = form_reference_operands(
+        grid, mats, subpixel_smoothing=False, conformal_weights=weights,
+        boundary_pec_shapes=[wall], conformal_pec='cut_cell_floor')
+    assert float(eps[0][2, 5, 5]) == pytest.approx(10.)
+    for normal in (1, 2):
+        assert float(reference[1][normal][2, 5, 5]) == .25
+    from rfx.model import tensor_operands
+    captured = []
+    original = tensor_operands.form_reference_operands
+    def capture(*args, **kwargs):
+        assert kwargs['conformal_pec'] == 'cut_cell_floor'
+        captured.append(float(args[0].dt))
+        return original(*args, **kwargs)
+    monkeypatch.setattr(tensor_operands, 'form_reference_operands', capture)
+    for q in (.5, .25):
+        sim = _scene('waveguide', 'B', dt=q * Grid.courant_dt(.002))
+        result = sim.compute_waveguide_s_matrix(
+            n_steps=4, normalize=True, conformal_pec='cut_cell_floor', skip_preflight=True)
+        assert np.isfinite(np.asarray(result.s_params)).all()
+        assert captured[-1] == q * Grid.courant_dt(.002)
+    assert len(captured) == 2

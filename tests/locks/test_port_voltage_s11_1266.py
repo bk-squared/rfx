@@ -37,10 +37,10 @@ def measure(lane, kind):
         profiles = {f'd{a}_profile': np.r_[h, np.full(int(np.ceil((length-2*h)/step)), step), h]
                     for a, length, step in zip('xy', domain, (.0005, .0004))}
         profiles['dz_profile'] = np.full(int(np.ceil(domain[2]/h)), h)
-    sim = Simulation(freq_max=20e9, domain=domain, dx=h, cpml_layers=3,
+    sim = Simulation(freq_max=20e9, domain=(domain[0], domain[1], float(np.sum(profiles["dz_profile"]))) if lane == "graded" else domain, dx=h, cpml_layers=3,
                      boundary=BoundarySpec(x=Boundary('pec', 'cpml'),
                          y=Boundary('cpml', 'cpml'), z=Boundary('cpml', 'cpml')),
-                     **profiles)
+                     **({"snap": "declared"} if lane == "graded" else {}), **profiles)
     sim.add_port((.0063, .0052, .0044), 'ez', impedance=50., extent=.0023 if kind == 'wire' else None,
                  waveform=GaussianPulse(f0=8e9, bandwidth=.9))
     sim.add_probe((.0091, .0073, .0062), 'ez')

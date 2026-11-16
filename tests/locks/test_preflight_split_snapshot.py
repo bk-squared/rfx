@@ -4,8 +4,8 @@
 Issue #980 Phase 3 breaks the 9 376-line ``rfx/api/_preflight.py`` into an
 ``rfx/preflight/`` package a leg at a time, on the recipe the
 ``rfx/api/_sparams.py`` -> ``rfx/sparams/`` split just finished. Every leg is
-PURE CODE MOTION, and ``docs/agent-memory/development_methodology.md`` §2.2
-gates a code-motion refactor on an identity witness, not on "the checks still
+PURE CODE MOTION, and the code-motion rule requires bit-identical results
+before and after, witnessed by identity, not by "the checks still
 look right".
 
 This module is that witness for preflight.
@@ -97,6 +97,49 @@ reaches: the two remaining ``precision_*`` guards,
 ``campaign_statics_unavailable`` (leg 2), ``mesh_import_underresolved``
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
+
+SNAPSHOT CHANGE, 2026-11-13 (the wire-port-without-radius advisory names the declared port's contour storage).
+Written before the regeneration. wire_port_microstrip, wire_port_dead_extent, refplane_near_field,
+refplane_partial_optin, wire_port_end_gap, wire_port_dead_cell_nu: that advisory gains five numeric tokens (0.20,
+0.027, 11 and 21 from S11 and S21, 0.5) from the added sentence; codes, counts, severity, order and every other
+number are unchanged.
+
+SNAPSHOT CHANGE, 2026-11-05 (one realization verdict). Written before the regeneration.
+congruence_off_lattice: +2 realization error; PEC boxes x 1.0–4.5 mm and 6.02–9.52 mm on 1 mm cells are solved 3 and 4 cells against 3.5 drawn (−14.3 %, +14.3 %): the off-lattice pair this scene exists to show; strict refuses metal.
+sheet_congruence_off_lattice: +2 realization error; Patterned sheets, area-equivalent length −2.5 % and −16.7 %: the footprint verdict for non-Box sheets (Box sheets keep sheet_effective_size; one quantity, one rule).
+stack_snapped_patch: +2 realization warning; Dielectric layer z 2.3 cells drawn, 2 solved (−13 %; dielectric warns); sheet centroid −0.3 cell in z.
+tie_stack: +2 realization warning; Two 0.1 mm thin conductors solved as zero-thickness sheets: centroid −0.5 cell in z (−50 µm). Footprint stays with sheet_effective_size.
+off_lattice_edges: +1 realization warning; PEC box x 1.3–10.3 mm: extent 9 cells kept, both faces move to 1 and 10 mm, centroid −0.3 cell; extent within 1 %, so only the centroid warns.
+msl_x_clearance: +2 realization warning; snap="declared" fixture: RO4350B substrate 254 µm solved 240 µm (−5.5 %); 0.6 mm PEC strip on 80 µm cells solved 7 cells, 0.56 mm (−6.7 %): the S2 case, warned because the fixture declares snap.
+msl_y_clearance: +2 realization warning; snap="declared" fixture: RO4350B substrate 254 µm solved 240 µm (−5.5 %); 0.6 mm PEC strip on 80 µm cells solved 7 cells, 0.56 mm (−6.7 %): the S2 case, warned because the fixture declares snap.
+guards_probe_in_cpml: +1 absorber_overlap error; Source at z = 22.5 mm lies outside the interior [0, 20.99] mm (in the padded absorber): a point outside the interior now refuses on both grids (NOTE §2 graded item, applied to uniform too).
+guards_lossless_q: +1 realization warning; Alumina box 5–15 mm on 0.4 mm cells: all six faces at half-cell ties go to the lower node, so the box sits 0.2 mm (0.5 cell) low on every axis; extent exact.
+guards_box_alumina: +1 realization warning; Alumina box 5–15 mm on 0.4 mm cells: all six faces at half-cell ties go to the lower node, so the box sits 0.2 mm (0.5 cell) low on every axis; extent exact.
+guards_msl_sheet_probe: +2 realization warning; Substrate y +1.6 % (dielectric); strip sheet centroid +0.31 cell in y (+40 µm).
+guards_under_resolved_dielectric: +1 realization warning; Dielectric box at half-cell ties: centroid −0.5 cell (−1 mm) on every axis, extent exact.
+ntff_pec_overlap: +1 realization error; PEC box z 10–40 mm on 2.998 mm cells solved 11 cells against 10.0 (+9.9 %).
+ntff_pec_overlap_full: +1 realization error; PEC box z 10–40 mm on 2.998 mm cells solved 11 cells against 10.0 (+9.9 %).
+pec_face_short_of_wall: +1 realization warning; PEC volume z 10.16 mm solved 10 cells (−1.6 %); snap="declared" fixture.
+wire_port_dead_extent: +1 realization error; Wire port drawn 1.5 mm (3 cells) solved 2 cells (−33 %).
+conformal_fine_dx: 2 port_aperture_snap warnings → 1 error; WR-90 aperture 10.16 mm on 1 mm cells solved 10.00 mm (−1.6 %); the existing port_aperture_snap text is kept (bar B3) and is now a strict refusal; one finding per port instead of one per axis.
+waveguide_nu_declared_geometry: +1 port_aperture_snap warning; Graded WR-90 aperture y −1.6 %, z +3.3 %; snap="declared" fixture, so it warns.
+coax_junction_short: +1 realization warning; 0.3 mm dielectric layer at half-cell ties: centroid −0.5 cell (−50 µm), extent exact.
+wire_port_dead_cell_nu: +3 realization warning; Graded: substrate z 254 µm solved 226 µm (−10.9 %), strip sheet centroid +0.28 cell, wire port z −10.9 % (follows the substrate).
+The two congruence_off_lattice count-mutation tests pass again after the regeneration (they failed only because the new code reached the lock before their count assertion).
+
+SNAPSHOT CHANGE, 2026-10-29 (in-plane grading cap 1.3 -> 1.4). Written before the regeneration.
+``nu_wire_port_on_graded_node``'s two in-plane ``nu_grading_ratio_beyond_validated_cap`` lines (dx ratio 2.0, dy 3.0)
+now name the in-plane cap 1.4 instead of 1.3 and no longer quote the z cap in their scope, so their numbers go from
+[r, 1.4, 1.3, 1.4, -54, 30, 2, -44, 2, 1.3] to [r, 1.4, 1.4, -54, 30, 2, -44, 2, 1.4], the form of that fixture's dz
+line. Both ratios are above either cap, so the lines stay. Every other fixture's report is identical (65 of 66 matched
+before the regeneration); only that fixture's snapshot is regenerated.
+
+SNAPSHOT CHANGE, 2026-10-28 (#1941). Written before the regeneration. ``guards_msl_sheet_probe`` gains one
+``body_flush_on_absorber`` line. That fixture lays its 254 um RO4350B substrate on z = 0 with the default boundary,
+so the z-lo face is an absorber and the substrate's thinnest axis is z: the absorber continues the substrate's
+material into its layers, and the run models a half-space of it below the board. It is a true positive by the new
+check's definition; the fixture is a guards demo, not a claims-bearing run. Only that fixture's snapshot is
+regenerated; on main and on the branch every other fixture's report is identical (#1941 moved-value runs).
 
 SNAPSHOT CHANGE, 2026-10-12 (#1662). The below-cutoff advisory now evaluates
 the default bins a waveguide port declared without freqs is run with.
@@ -320,6 +363,17 @@ and would red every same-process pytest-split shard.
 
 from __future__ import annotations
 
+import json
+import os
+import warnings
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from tests._structured_snapshot import assert_structured_close, without_prose
+
+
 LOCK_PROVENANCE = {
     # Every module a fixture builder below imports from, plus the
     # snapshot directory itself. REGENERATE, do not hand-edit: the
@@ -342,7 +396,6 @@ LOCK_PROVENANCE = {
         "tests/unit/nonuniform/test_nonuniform_upml_guard.py,"
         "tests/unit/nonuniform/test_nu_port_sigma_dual_spacing.py,"
         "tests/unit/ports/test_msl_realized_port_contract.py,"
-        "tests/unit/preflight/test_adi_preflight.py,"
         "tests/unit/preflight/test_flux_region_preflight.py,"
         "tests/unit/preflight/test_inverse_design_preflight.py,"
         "tests/unit/preflight/test_pec_face_short_of_domain_wall.py,"
@@ -370,16 +423,6 @@ LOCK_PROVENANCE = {
     "pinned_until": "2027-03-14",
 }
 
-import json
-import os
-import warnings
-from pathlib import Path
-
-import numpy as np
-import pytest
-
-from tests._structured_snapshot import assert_structured_close, without_prose
-
 
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
@@ -406,87 +449,11 @@ _UPDATE_HINT = (
 #   python -c "import rfx.api._preflight as m; print(sorted(n for n in vars(m) \
 #              if not (n.startswith('__') and n.endswith('__'))))"
 # ---------------------------------------------------------------------------
-_PREFLIGHT_NAMESPACE_AT_8586F549 = (
-    "Box", "C0", "Literal", "MSL_EPS_EFF_PROXY", "MaterialArrays",
-    "PreflightConfigError", "PreflightErrorWarning", "PreflightIssue",
-    "PreflightReport", "PreflightWarning", "WAVEGUIDE_DEFAULT_NUM_PERIODS",
-    "_ABSORBER_PROXIMITY_CELLS", "_CAMPAIGN_MAX_OFFENDERS",
-    "_CAVITY_THICKNESS_TOL", "_CONGRUENCE_EXTENT_QUANTUM_M",
-    "_CONGRUENCE_SPREAD_TOL_EDGES", "_CampaignStaticsContext",
-    "_EntryRealization", "_H_LOOP", "_MSL_NEAR_FIELD_MIN_OFFSET_CELLS",
-    "_MSL_NEAR_FIELD_STANDOFF_H_SUB", "_MSL_REALIZED_THICKNESS_TOL",
-    "_MSL_REALIZED_THICKNESS_Z0_BUDGET",
-    "_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY", "_OFF_LATTICE_EDGE_TOL",
-    "_PreflightMixin", "_RealizedPEC", "_absorber_boundary_for_axis",
-    "_axis_pad_thickness_m", "_component_is_dead", "_coord_in_absorber",
-    "_coord_near_absorber", "_fmt_freq", "_fmt_len", "_fmt_signed",
-    "_local_cell", "_realized_edges_np", "_shape_bounds", "_shift_back_np",
-    "_sorted_box_corners", "_wall_nodes_on_plane", "_waveguide_skipped_note",
-    "annotations", "is_tracer", "jax", "jnp", "json", "math",
-    "msl_absorber_compliant_offset_max", "msl_min_probe_clearance",
-    "msl_nearest_downstream_reflector", "msl_probe_clearance_for_port",
-    "msl_source_near_field_standoff_cells", "np",
-    "resolve_waveguide_port_freqs",
-)
-
 #: Class-BODY constants of ``_PreflightMixin``. They are read as
 #: ``self.<NAME>`` inside the checks and two of them are read off the CLASS by
 #: ``tests/unit/nonuniform/test_multiband_nu_envelope.py:329``. They are not in
 #: the module namespace above, so the module lock cannot see them move; the
 #: mesh leg is the one that would take them, and they must stay on the mixin.
-_MIXIN_CLASS_CONSTANTS = (
-    "_AXIS_OF_COMPONENT", "_INPLANE_RATIO_CAP", "_MULTIBAND_RATIO_CAP",
-)
-
-
-def test_preflight_module_namespace_is_the_pre_split_surface():
-    """``rfx.api._preflight``'s module namespace must stay exactly whole.
-
-17 files do ``from rfx.api._preflight import <name>``, and two more --
-    ``tests/unit/preflight/test_preflight_rasterization.py`` and
-    ``tests/unit/ports/test_msl_clearance_diagnostic.py`` -- hold the MODULE
-    OBJECT and ``monkeypatch.setattr`` a global on it across 9 call sites. A
-    name that stops living here breaks the import sites loudly and the
-    monkeypatch sites by aiming the patch at a module nobody reads.
-
-    So when #980 moves a body out, the explicit re-export block has to put the
-    name back. A name the split ACCIDENTALLY adds is just as much a surface
-    change, so this is set equality in both directions, not a subset check.
-    """
-    import rfx.api._preflight as mod
-
-    live = {n for n in vars(mod) if not (n.startswith("__") and n.endswith("__"))}
-    declared = set(_PREFLIGHT_NAMESPACE_AT_8586F549)
-    assert live - declared == set(), (
-        "rfx.api._preflight gained module-level names not in the pre-split "
-        f"surface: {sorted(live - declared)}"
-    )
-    assert declared - live == set(), (
-        "rfx.api._preflight lost module-level names the pre-split surface had "
-        f"(the re-export block is incomplete): {sorted(declared - live)}"
-    )
-
-
-def test_preflight_mixin_keeps_its_class_body_constants():
-    """The three class-body constants must stay ON ``_PreflightMixin``.
-
-    They are not module-level, so the namespace lock above is blind to them.
-    Moving one into a new leg module would keep every ``self.<NAME>`` read
-    working (the method moves with it) while silently breaking
-    ``test_multiband_nu_envelope.py``'s reads off the class.
-    """
-    from rfx.api._preflight import _PreflightMixin
-
-    own = vars(_PreflightMixin)
-    missing = [n for n in _MIXIN_CLASS_CONSTANTS if n not in own]
-    assert not missing, (
-        f"_PreflightMixin no longer carries {missing} in its own class body. "
-        "These are read as self.<NAME> by the mesh/nonuniform checks and off "
-        "the CLASS by tests/unit/nonuniform/test_multiband_nu_envelope.py:329 "
-        "-- a moved method may take its body elsewhere, but not these."
-    )
-
-
 # ===========================================================================
 # Deliverable 2b: the re-export block binds OBJECTS, never copies.
 # ===========================================================================
@@ -503,29 +470,6 @@ def test_preflight_mixin_keeps_its_class_body_constants():
 # ---------------------------------------------------------------------------
 #: Names #980 Phase 3 leg 0 moved to ``rfx.preflight._common`` and that
 #: ``rfx/api/_preflight.py`` re-exports. Extend this as later legs land.
-_REEXPORTED_FROM_COMMON = (
-    "PreflightConfigError", "PreflightErrorWarning", "PreflightIssue",
-    "PreflightReport", "PreflightWarning", "_ABSORBER_PROXIMITY_CELLS",
-    "_absorber_boundary_for_axis", "_axis_pad_thickness_m",
-    "_coord_in_absorber", "_coord_near_absorber", "_fmt_freq", "_fmt_len",
-    "_fmt_signed",
-    # Leg 2. A shared leaf whose readers straddle two legs: the cavity check
-    # left with pec_geometry, _shape_bounds and _CampaignStaticsContext stay
-    # in the facade until the realization leg. It lives in _common so neither
-    # side has to import from the other.
-    "_sorted_box_corners",
-    # Leg 6, the same shape. _component_is_dead is the port_in_pec
-    # dead-component rule (#929) and has exactly two readers:
-    # _validate_cfg_port_inside_pec, which leaves for rfx/preflight/ports.py,
-    # and _RealizedPEC.component_is_dead, which stays in the facade until the
-    # realization leg. _H_LOOP is its curl-loop table and has no other reader
-    # at all (AST scope walk over the whole facade: one load, inside that
-    # function). Neither is monkeypatched anywhere and nothing outside the
-    # facade imports either, so this re-export exists for the namespace
-    # surface and for _RealizedPEC's bare-name read.
-    "_H_LOOP", "_component_is_dead",
-)
-
 #: Names #980 Phase 3 leg 2 moved to ``rfx.preflight.pec_geometry``. Three of
 #: the five -- ``_CONGRUENCE_SPREAD_TOL_EDGES``, ``_CAVITY_THICKNESS_TOL`` and
 #: ``_OFF_LATTICE_EDGE_TOL`` -- are mutated in both directions by
@@ -533,27 +477,11 @@ _REEXPORTED_FROM_COMMON = (
 #: load-bearing. That patch must be aimed at the LEG module, where the readers
 #: resolve them; the re-export below exists for the namespace surface, not as
 #: a patch point.
-_REEXPORTED_FROM_PEC_GEOMETRY = (
-    "_CAMPAIGN_MAX_OFFENDERS", "_CAVITY_THICKNESS_TOL",
-    "_CONGRUENCE_EXTENT_QUANTUM_M", "_CONGRUENCE_SPREAD_TOL_EDGES",
-    "_OFF_LATTICE_EDGE_TOL",
-)
-
 #: Names #980 Phase 3 leg 1 moved to ``rfx.preflight.msl``. Two of them --
 #: ``_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY`` and
 #: ``_MSL_REALIZED_THICKNESS_Z0_BUDGET`` -- have no reader inside the package
 #: at all; ``tests/unit/ports/test_msl_port_preflight.py`` imports them from
 #: the facade and nothing else does, so the re-export is their only path.
-_REEXPORTED_FROM_MSL = (
-    "MSL_EPS_EFF_PROXY", "_MSL_NEAR_FIELD_MIN_OFFSET_CELLS",
-    "_MSL_NEAR_FIELD_STANDOFF_H_SUB", "_MSL_REALIZED_THICKNESS_TOL",
-    "_MSL_REALIZED_THICKNESS_Z0_BUDGET",
-    "_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY",
-    "msl_absorber_compliant_offset_max", "msl_min_probe_clearance",
-    "msl_nearest_downstream_reflector", "msl_probe_clearance_for_port",
-    "msl_source_near_field_standoff_cells",
-)
-
 #: Names #980 Phase 3 leg 3 moved to ``rfx.preflight.waveguide``. None of the
 #: three is monkeypatched anywhere (AST sweep over tests/ rfx/ validation/
 #: scripts/ examples/, resolving aliases, importlib forms and string targets),
@@ -563,11 +491,6 @@ _REEXPORTED_FROM_MSL = (
 #: ``WAVEGUIDE_DEFAULT_NUM_PERIODS``, are read by BARE NAME from
 #: ``preflight_sparameters``, which never leaves the facade -- so this block
 #: stays load-bearing after every remaining leg has landed.
-_REEXPORTED_FROM_WAVEGUIDE = (
-    "WAVEGUIDE_DEFAULT_NUM_PERIODS", "_waveguide_skipped_note",
-    "resolve_waveguide_port_freqs",
-)
-
 #: The one name #980 Phase 3 leg 5 moved to ``rfx.preflight.mesh``: the #743
 #: coarsest-cell helper, whose only reader is ``_validate_mesh_quality``. The
 #: split inventory filed it as shared with ``_CampaignStaticsContext`` and so
@@ -576,10 +499,6 @@ _REEXPORTED_FROM_WAVEGUIDE = (
 #: a different signature, and the local binding shadows the module global
 #: throughout. Nothing outside the facade imports this name and nothing
 #: patches it, so the re-export exists purely for the namespace surface above.
-_REEXPORTED_FROM_MESH = (
-    "_local_cell",
-)
-
 #: The seven names #980 Phase 3 leg 7 -- the last motion leg -- moved to
 #: ``rfx.preflight.realization``: the three conductor-realization CLASSES and
 #: the four numpy leaves only they read. Nothing outside the facade imports
@@ -592,100 +511,9 @@ _REEXPORTED_FROM_MESH = (
 #: re-typed ``_RealizedPEC`` would leave two classes behind one name and every
 #: ``isinstance`` reading it would silently test the wrong one, exactly the
 #: failure ``PreflightWarning`` was pinned against in leg 0.
-_REEXPORTED_FROM_REALIZATION = (
-    "_CampaignStaticsContext", "_EntryRealization", "_RealizedPEC",
-    "_realized_edges_np", "_shape_bounds", "_shift_back_np",
-    "_wall_nodes_on_plane",
-)
-
 #: Every leg's re-export block, keyed by the module it pulls from. The
 #: identity and whole-block tests below walk this, so a new leg adds one row
 #: here instead of a second copy of either test.
-_REEXPORT_BLOCKS = {
-    "rfx.preflight._common": _REEXPORTED_FROM_COMMON,
-    "rfx.preflight.mesh": _REEXPORTED_FROM_MESH,
-    "rfx.preflight.msl": _REEXPORTED_FROM_MSL,
-    "rfx.preflight.pec_geometry": _REEXPORTED_FROM_PEC_GEOMETRY,
-    "rfx.preflight.realization": _REEXPORTED_FROM_REALIZATION,
-    "rfx.preflight.waveguide": _REEXPORTED_FROM_WAVEGUIDE,
-}
-
-def test_reexported_preflight_names_are_the_same_objects():
-    """``rfx.api._preflight.<name> is rfx.preflight._common.<name>``.
-
-    Set equality on names is not enough. A leg that re-typed a class body into
-    the facade instead of importing it would keep this module's namespace lock
-    green while breaking every identity comparison in the suite.
-    """
-    import importlib
-
-    import rfx.api._preflight as facade
-
-    wrong = []
-    for modname, names in _REEXPORT_BLOCKS.items():
-        leg = importlib.import_module(modname)
-        for name in names:
-            assert hasattr(leg, name), f"{modname} lost {name}"
-            assert hasattr(facade, name), (
-                f"rfx.api._preflight no longer binds {name}; the re-export "
-                f"block for {modname} is incomplete")
-            if getattr(facade, name) is not getattr(leg, name):
-                wrong.append(f"{modname}.{name}")
-    assert not wrong, (
-        f"rfx.api._preflight REDEFINES {wrong} instead of re-exporting the "
-        "leg modules' objects. Two classes reached by one name is how "
-        "pytest.warns and isinstance start testing the wrong one.")
-
-
-@pytest.mark.source_scan
-def test_the_declared_reexport_surface_is_the_whole_import_block():
-    """The tuple above must name exactly what the facade imports.
-
-    Read off the source, so a name added to the re-export block without being
-    pinned here (or removed from it while still pinned) is caught. The block
-    is written as one explicit ``from rfx.preflight._common import (...)`` --
-    never ``import *`` -- precisely so it can be read this way.
-    """
-    import ast
-
-    src = (_REPO / "rfx" / "api" / "_preflight.py").read_text(encoding="utf-8")
-    imported: dict[str, list[str]] = {m: [] for m in _REEXPORT_BLOCKS}
-    star = []
-    stray = []
-    # MODULE-level statements only, deliberately not ast.walk: a later leg
-    # binds moved METHOD bodies back with a CLASS-scoped import from the same
-    # leg module, and those names belong to the mixin, not to this module's
-    # re-export surface. Walking the whole tree would pour them into the same
-    # bucket and the two surfaces could no longer be told apart.
-    for node in ast.parse(src).body:
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        if not (node.module or "").startswith("rfx.preflight"):
-            continue
-        if node.module not in imported:
-            stray.append((node.lineno, node.module))
-            continue
-        for alias in node.names:
-            if alias.name == "*":
-                star.append(node.lineno)
-            assert alias.asname is None, (
-                f"re-export line {node.lineno} renames {alias.name}; the "
-                "surface is the contract, so it must keep its own name")
-            imported[node.module].append(alias.name)
-    assert not star, (
-        f"rfx/api/_preflight.py line(s) {star} re-export a leg module with "
-        "`import *`. The surface is the contract; list the names.")
-    assert not stray, (
-        f"rfx/api/_preflight.py imports {stray} from a leg module with no "
-        "pinned re-export tuple; add it to _REEXPORT_BLOCKS")
-    for modname, declared in _REEXPORT_BLOCKS.items():
-        got = imported[modname]
-        assert sorted(got) == sorted(declared), (
-            f"the {modname} re-export block and its pinned tuple disagree: "
-            f"block-only={sorted(set(got) - set(declared))}, "
-            f"pinned-only={sorted(set(declared) - set(got))}")
-
-
 # ===========================================================================
 # Deliverable 2c: methods moved off the mixin are bound back, with their
 # pre-move __qualname__.
@@ -708,187 +536,6 @@ def test_the_declared_reexport_surface_is_the_whole_import_block():
 # PRIVATE members: tests/unit/autodiff/test_design_mask_removed.py walks
 # public members only, and every name below is private.
 # ---------------------------------------------------------------------------
-_REBOUND_ON_MIXIN = {
-    # S1 G1: the run-all-checks body moved out of rfx/api/_preflight.py.
-    "rfx.preflight._impl": ("_preflight_impl",),
-    "rfx.preflight.msl": (
-        "_check_msl_port_geometry", "_msl_assemble_once",
-        "_msl_conductor_gap", "_msl_declared_face_geometry",
-        "_msl_realized_substrate",
-    ),
-    "rfx.preflight.pec_geometry": (
-        # ``_validate_cfg_conformal_fine_dx`` stood here and was DELETED
-        # 2026-09-15 (#1043 / PR #1047) -- its own tripwire
-        # (test_mesh_convergence_s21_with_conformal_pec, xfail strict=True)
-        # XPASSed, which its comment named as the signal to remove it. The
-        # NaN it warned about was the CPML psi coefficient reading a
-        # different permittivity than the E update; it no longer happens,
-        # so the advisory became a false positive.
-        "_congruence_origin_shift", "_validate_cfg_campaign_statics",
-        "_validate_cfg_congruent_rasterization_parity",
-        "_validate_cfg_off_lattice_design_edges",
-        "_validate_cfg_pec_face_short_of_domain_wall",
-        "_validate_cfg_pec_realization", "_validate_cfg_sheet_cavity_thickness",
-        "_validate_cfg_sheet_slot_vacuum",
-        "_validate_cfg_thin_conductor_surface_impedance",
-        # 2026-10-21 (#1523): bind the declared thickness advisory beside
-        # the f0 check, at its new config-registry position.
-        "_validate_cfg_thin_conductor_thickness",
-    ),
-    # Leg 3. None of these twelve was a @staticmethod, so the frozenset
-    # below stays a one-element set and every qualname here is restored to
-    # "Simulation.<name>".
-    # #1913: the port-span admission (an object face between a waveguide
-    # port's source and its measured reflection plane).
-    "rfx.preflight.waveguide_port_span": ("_validate_cfg_waveguide_port_span",),
-    "rfx.preflight.waveguide": (
-        "_check_waveguide_port_aperture_snap",
-        "_check_waveguide_port_evanescent",
-        "_check_waveguide_port_evanescent_declared_geometry",
-        "_emit_waveguide_port_cutoff_findings", "_port_transverse_spans",
-        "_preflight_waveguide_setup",
-        "_validate_cfg_layout_from_band_low_edge",
-        "_validate_cfg_port_index_mirror_covariance",
-        "_validate_cfg_record_vs_far_boundary",
-        "_validate_cfg_waveguide_reference_plane", "_waveguide_far_geometry",
-        "_waveguide_setup_planes",
-    ),
-    # Leg 4. None of these eleven was a @staticmethod either. The one to
-    # watch is _preflight_face_layers: it is the only member of any leg so
-    # far that is called by ``self.`` from bodies in THREE other families --
-    # _validate_cfg_multiband_grading and _validate_cfg_nonuniform_limitations
-    # (leg 5, rfx/preflight/mesh.py) and _validate_cfg_pec_face_short_of_
-    # domain_wall over in rfx/preflight/pec_geometry.py. Those are lookups on the
-    # composed Simulation, so the rebind below is the whole of what keeps
-    # them resolving; drop it and three families outside the absorber one
-    # raise AttributeError at their first call, which no module-level lock
-    # in this file would see.
-    # Leg 5. None of these twelve was a @staticmethod either. Two things to
-    # watch. _validate_mesh_quality is the only rebound member reached from
-    # preflight() rather than from _validate_simulation_config, so its
-    # advisories land FIRST in every report and a lost rebind would show up
-    # as an AttributeError on the very first check rather than deep in the
-    # sequence. And four of the twelve read a class-BODY constant of the
-    # mixin by self. -- _MULTIBAND_RATIO_CAP / _INPLANE_RATIO_CAP in
-    # _validate_cfg_multiband_grading, _AXIS_OF_COMPONENT in the two
-    # graded-node advisories -- which is why those three constants stay in
-    # the facade class body and are pinned separately above. The other
-    # cross-family edges are self._campaign_ctx (realization, still in the
-    # facade) and self._preflight_face_layers (absorber, in
-    # rfx/preflight/absorber.py): both attribute lookups on the composed
-    # Simulation, so mesh.py imports neither module.
-    "rfx.preflight.mesh": (
-        "_check_numerical_dispersion",
-        "_graded_node_report",
-        "_validate_cfg_floquet_nonuniform",
-        "_validate_cfg_graded_box_rasterization",
-        "_validate_cfg_multiband_grading",
-        "_validate_cfg_nonuniform_limitations",
-        "_validate_cfg_source_on_graded_node",
-        "_validate_cfg_subgrid_limitations",
-        "_validate_cfg_thin_conductor_graded_node",
-        "_validate_cfg_wire_port_on_graded_node",
-        "_validate_mesh_quality",
-        "_validate_thin_metal_on_nu_mesh",
-    ),
-    # Leg 6. None of these six was a @staticmethod either -- the one
-    # staticmethod this leg moves went to rfx/preflight/sources.py, which is
-    # why _REBOUND_AS_STATICMETHOD below grows to two names and not to seven.
-    # The one to watch is _validate_cfg_port_inside_pec: 345 lines and five
-    # emission sites, the largest single body the split moves, reaching
-    # self._campaign_ctx (realization, still in the facade) and
-    # self._wire_port_cell_centers (intra-module) plus the module-global
-    # _component_is_dead, which this leg put in rfx/preflight/_common.py
-    # rather than beside it because _RealizedPEC still reads it too.
-    # Leg 6, third module. _validate_cfg_ntff_min_steps was the one rebound
-    # name in the whole split with NO emission site: it wrote the instance
-    # attribute self._ntff_min_steps_hint, which rfx/interop/_design.py named
-    # in EXCLUDED_SIMULATION_ATTRS. Issue #1030 DELETED it -- a census found
-    # that attribute had no consumer, so its only readers were that exclusion
-    # row and the test asserting the exclusion. It is dropped from this tuple
-    # rather than commented, because this map pins what rfx/api/__init__.py
-    # must rebind and a deleted function is nothing to rebind; the removal IS
-    # commented in place in tests/locks/test_preflight_registry_sequence.py,
-    # and the reasoning lives in rfx/preflight/ntff.py's module docstring.
-    # The snapshot corpus is unaffected: the body emitted nothing, so no
-    # committed report byte moves.
-    "rfx.preflight.ntff": (
-        "_validate_cfg_ntff_absorber_overlap",
-        "_validate_ntff_inverse_design",
-        "_validate_ntff_small_ground_plane",
-    ),
-    # Leg 6, second module. _validate_tfsf_vacuum_boundary is the ONE
-    # @staticmethod of the whole split after leg 2's, and unlike every other
-    # rebound name here it is NOT reached from preflight() at all: it is a
-    # runtime lane guard called from rfx/runners/uniform.py:610 during a run,
-    # through an INSTANCE. That is why the staticmethod wrapper below is
-    # load-bearing rather than decorative, and why the snapshot corpus cannot
-    # witness this body -- its gate is behavioural (five tests enter it; the
-    # positive control on its raise is
-    # tests/unit/farfield/test_oblique_rcs_absolute_sigma.py::
-    # test_simulation_lane_vacuum_guard_fires_on_y_plane).
-    "rfx.preflight.sources": (
-        "_validate_cfg_no_sources",
-        "_validate_cfg_source_on_reflector_plane",
-        "_validate_cfg_unresolved_pulse",
-        "_validate_tfsf_vacuum_boundary",
-    ),
-    # Leg 7, the last motion leg. None of these four was a @staticmethod
-    # either, so _REBOUND_AS_STATICMETHOD stays at two names. These are the
-    # split's most-reached members and they emit NOTHING: they hand the
-    # realized conductor set to the families that do. _campaign_ctx is
-    # entered by 64 of the 65 fixtures below and _assemble_realized by 35,
-    # from four leg modules by self. (msl._msl_assemble_once,
-    # ports._check_coaxial_port_junction_aperture + _validate_cfg_port_
-    # inside_pec, waveguide._check_waveguide_port_evanescent,
-    # mesh._validate_thin_metal_on_nu_mesh, ntff._validate_ntff_inverse_
-    # design, pec_geometry._validate_cfg_campaign_statics) and from six test
-    # modules directly -- so a lost rebind here does not surface as one
-    # missing advisory, it reds most of the corpus. _port_pec_mask is the
-    # kept name tests/_waveguide_chain_battery_fixture.py:351 still uses.
-    "rfx.preflight.realization": (
-        "_assemble_realized", "_campaign_ctx", "_port_pec_mask",
-        "_port_realized_edges",
-        # 2026-10-11 (#1620): the assembly-refusal check, bound on the mixin.
-        "_validate_cfg_assembly",
-    ),
-    "rfx.preflight.ports": (
-        "_check_coaxial_port_junction_aperture",
-        "_validate_cfg_floating_single_cell_port",
-        "_validate_cfg_port_inside_pec",
-        "_validate_cfg_refplane_placement",
-        # ``_validate_cfg_tfsf_with_lumped_rlc`` stood here; deleted
-        # 2026-09-23 (#1163) with the series-RLC coupling it warned about.
-        "_wire_port_cell_centers",
-        # #1295 / #1342: written in the family module, bound the same way.
-        "_validate_cfg_half_node_split",
-    ),
-    "rfx.preflight.absorber": (
-        "_preflight_face_layers",
-        "_validate_cfg_absorber_budget_vs_grid",
-        "_validate_cfg_absorber_placement",
-        "_validate_cfg_compute_cpml_thickness",
-        # 2026-09-15 (#801): written in the family module like the row below,
-        # never moved, and bound on the mixin the same way -- so it wants the
-        # same qualname pin.
-        "_validate_cfg_conductor_in_thin_absorber",
-        "_validate_cfg_thin_absorber",
-        # 2026-09-15 (#1043 stage B): not a MOVED body -- written in the
-        # family module, bound on the mixin the same way, so it wants the
-        # same qualname pin as the eleven that moved.
-        "_validate_cfg_dielectric_at_absorber_seam",
-        # #801: the explicit-termination diagnostic joins the absorber family.
-        "_validate_cfg_port_conductor_continues",
-        "_validate_cfg_dispersive_pole_at_absorber_face",
-        "_validate_cfg_geometry_in_cpml",
-        "_validate_cfg_lossless_resonator_in_absorber",
-        "_validate_cfg_pec_boundary_open_structure",
-        "_validate_cfg_pec_faces_with_finite_pec",
-        "_validate_cfg_upml_nonuniform_lane",
-        "_validate_cfg_upml_refinement",
-    ),
-}
-
 #: The moved bodies that were ``@staticmethod`` in the class and have to be
 #: re-wrapped by the facade. The decorator cannot travel with the body -- at
 #: module level ``@staticmethod`` makes a staticmethod OBJECT, not a callable
@@ -913,94 +560,6 @@ _REBOUND_ON_MIXIN = {
 #: one, the same failure mode as ``_congruence_origin_shift``'s but on the
 #: RUN path rather than the preflight one, where this lock's fixtures would
 #: never see it.
-_REBOUND_AS_STATICMETHOD = frozenset({
-    "_congruence_origin_shift", "_validate_tfsf_vacuum_boundary",
-})
-
-
-def test_moved_mixin_methods_are_rebound_objects_with_their_qualname():
-    """Each moved check body is still the SAME object on ``_PreflightMixin``,
-    and still reports the qualname it reported before the move."""
-    import importlib
-
-    from rfx import Simulation
-    from rfx.api._preflight import _PreflightMixin
-
-    for modname, names in _REBOUND_ON_MIXIN.items():
-        leg = importlib.import_module(modname)
-        for name in names:
-            assert hasattr(leg, name), f"{modname} lost {name}"
-            assert name in vars(_PreflightMixin), (
-                f"_PreflightMixin no longer binds {name}; the class-scoped "
-                f"import of {modname} is incomplete, and nothing fails until "
-                "a run reaches that check")
-            bound = vars(_PreflightMixin)[name]
-            if name in _REBOUND_AS_STATICMETHOD:
-                assert isinstance(bound, staticmethod), (
-                    f"_PreflightMixin.{name} was a @staticmethod before the "
-                    "move and is no longer wrapped as one. Its caller uses "
-                    f"self.{name}(...), which now passes self as the first "
-                    "positional argument and shifts every other by one")
-                bound = bound.__func__
-                want_qualname = f"_PreflightMixin.{name}"
-            else:
-                want_qualname = f"Simulation.{name}"
-            assert bound is getattr(leg, name), (
-                f"_PreflightMixin.{name} is a copy of {modname}.{name}, not "
-                "the object itself")
-            assert getattr(Simulation, name).__qualname__ == want_qualname, (
-                f"Simulation.{name}.__qualname__ is "
-                f"{getattr(Simulation, name).__qualname__!r}, not "
-                f"{want_qualname!r}. A moved body must restore "
-                f"__qualname__ = '_PreflightMixin.{name}' at the foot of its "
-                "leg module, or rfx/api/__init__.py's rewrite loop skips it "
-                "and the mixin name leaks into TypeError text")
-
-
-@pytest.mark.source_scan
-def test_the_class_scoped_imports_are_the_declared_rebind_surface():
-    """The tuples above must name exactly what ``_PreflightMixin`` imports.
-
-    Read off the source, inside the class body only, so a method moved to a
-    leg module without being pinned here is caught -- and so the module-level
-    re-export surface and this one cannot be confused for each other.
-    """
-    import ast
-
-    src = (_REPO / "rfx" / "api" / "_preflight.py").read_text(encoding="utf-8")
-    mixin = [n for n in ast.parse(src).body
-             if isinstance(n, ast.ClassDef) and n.name == "_PreflightMixin"]
-    assert len(mixin) == 1, "rfx/api/_preflight.py no longer defines exactly one _PreflightMixin"
-
-    bound: dict[str, list[str]] = {m: [] for m in _REBOUND_ON_MIXIN}
-    stray = []
-    for node in mixin[0].body:
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        if not (node.module or "").startswith("rfx.preflight"):
-            continue
-        if node.module not in bound:
-            stray.append((node.lineno, node.module))
-            continue
-        for alias in node.names:
-            assert alias.name != "*", (
-                f"class-body line {node.lineno} rebinds {node.module} with "
-                "`import *`; name the methods")
-            assert alias.asname is None, (
-                f"class-body line {node.lineno} renames {alias.name}; a "
-                "rebound method must keep the name it had")
-            bound[node.module].append(alias.name)
-    assert not stray, (
-        f"_PreflightMixin imports {stray} from a leg module with no pinned "
-        "rebind tuple; add it to _REBOUND_ON_MIXIN")
-    for modname, declared in _REBOUND_ON_MIXIN.items():
-        got = bound[modname]
-        assert sorted(got) == sorted(declared), (
-            f"the {modname} class-scoped import and its pinned tuple "
-            f"disagree: block-only={sorted(set(got) - set(declared))}, "
-            f"pinned-only={sorted(set(declared) - set(got))}")
-
-
 # ===========================================================================
 # Fixtures.
 # ===========================================================================
@@ -1116,10 +675,6 @@ def _flux_region_sim():
     return sim
 
 
-def _adi_conductor_sim():
-    import tests.unit.preflight.test_adi_preflight as mod
-
-    return mod._conductor_sim("3d", "sheet")
 
 
 def _pec_face_short_sim():
@@ -1565,7 +1120,7 @@ def _nonuniform_tfsf_oblique_sim():
     from rfx import Simulation
 
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
-    sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, 0.006),
+    sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, float(np.sum(dz))),
                      boundary="cpml", cpml_layers=8, dx=0.001, dz_profile=dz)
     sim.add_tfsf_source(f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3,
                         angle_deg=30.0)
@@ -1956,10 +1511,7 @@ _FIXTURES = (
      lambda: _inverse_design("_sane_sim"),
      {"check_ad_memory": True, "n_steps_for_memory": 1000,
       "available_memory_gb": 0.5}, None),
-    # -- 25-28. ADI / non-uniform grading / flux windows / PEC-to-wall ------
-    # #1448 ADI default CFL 5 -> 2: measured adi_3d_accuracy count 1 -> 0.
-    # The retained conductor refusal now calls factor 5 the former default.
-    ("adi_conductor_sheet", _adi_conductor_sim, {}, None),
+
     ("nu_grading_beyond_cap",
      lambda: _nu_grading_sim(np.array([1, 1, 1, 2, 2, 2, 1, 1, 1]) * _MM),
      {}, None),
@@ -2153,7 +1705,7 @@ def _render(fixture_id, build, kwargs, calculator) -> str:
             "coax_msl_instrument": "signal x +5.83%, arms y +2.69%, trace y +11.67%",
             "stack_snapped_patch": "patch x/y +11.67%",
             "tie_stack": "sheets x/y +5.83%",
-            "adi_conductor_sheet": "sheet x +5.83%",
+
             "msl_conductor_plane_mismatch": "trace y +17.5%",
             "coax_junction_short": "trace y +11.67%",
             "refplane_near_field": "trace x/y +2.06%/+7%",
@@ -2188,6 +1740,8 @@ def test_preflight_report_matches_the_committed_snapshot(
     fixture_id, build, kwargs, calculator,
 ):
     """The report's structured fields and emission order are pinned.
+
+    MSL material-column counts follow centre sampling; conductor gaps stay unchanged.
 
     Order first: ``PreflightReport`` is a ``list``, so the sequence below is
     ``_validate_simulation_config``'s own call order made observable. A
@@ -2243,7 +1797,7 @@ def test_preflight_report_matches_the_committed_snapshot(
     if fixture_id == "waveguide_refplane_in_slab":
         sim = build()
         solve = sim.run if len(sim._waveguide_ports) == 1 else sim.compute_waveguide_s_matrix
-        with pytest.raises(ValueError, match=r"left.*eps.*rfx#1994"):
+        with pytest.raises(ValueError, match=r"left.*eps.*one homogeneous"):
             solve(n_steps=2, skip_preflight=True)
 
 
@@ -2325,3 +1879,30 @@ def test_reported_cell_count_mutation_trips_split_lock(monkeypatch, replacement,
             test_preflight_report_matches_the_committed_snapshot(*fixture)
     else:
         test_preflight_report_matches_the_committed_snapshot(*fixture)
+
+
+@pytest.mark.parametrize('fixture_id,dielectric', [
+    ('stack_snapped_patch', 4.),
+    ('coax_junction_short', 2.1),
+    ('wire_port_dead_cell_nu', 3.66),
+])
+def test_sheet_warning_vanishes_at_material_interface(fixture_id, dielectric):
+    """Centre sampling ends the dielectric at the previously buried sheet."""
+    import numpy as np
+    from rfx.model.materials import assemble_cells
+
+    build = next(row[1] for row in _FIXTURES if row[0] == fixture_id)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        sim = build()
+        sim._snap = 'declared'
+        grid = (sim._build_nonuniform_grid() if sim._dz_profile is not None
+                else sim._build_grid())
+        sheets = []
+        materials = assemble_cells(sim, grid, pec_sheets=sheets)[0]
+    sheet = sheets[0]
+    eps = np.asarray(materials.eps_r)
+    occupied = np.isclose(eps, dielectric)
+    transverse = tuple(a for a in range(3) if a != sheet.normal_axis)
+    high_node = np.flatnonzero(occupied.any(axis=transverse))[-1] + 1
+    assert high_node == sheet.plane

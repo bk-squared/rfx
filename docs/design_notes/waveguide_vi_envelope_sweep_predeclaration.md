@@ -12,7 +12,7 @@
 > interior) is a clipped measurement. The harness now carries `record_rule="far_boundary"`
 > and `"grid_extent"`; the plateau is rung-dependent because the criterion is relative and
 > the remnant is absolute (N=18 at T/τ≈3, N=36 at ≈5, N=72 deeper). The measured boundary is
-> NOT yet converged; see `docs/research_notes/20260904_vi_envelope_predeclaration.md`. This
+> NOT yet converged. This
 > document is kept as written so the prediction and the outcome can be compared.
 > **Second annotation (2026-09-05, later).** §3.1's layout rule — every clearance a fixed
 > multiple of λ_g(f_low) — is itself a defect: a box sized for a band's low edge serves that
@@ -39,10 +39,8 @@ caller in `rfx/api/_sparams.py`). Probed on the empty matched WR-90 guide, where
 reviews were told the port-asymmetry archive had been destroyed with its worktree, and
 that is wrong — the NFS run directory kept full-precision per-case JSON. Everything
 attributed to it below has been re-checked against
-`/root/workspace/claude-workspace/rfx/runs/vi_envelope_presweep/20260904T113144Z-b59e1d99-chk2sym/`
-(`chk2_results.json`, 52 rows; `cases_m4/*.json`, full float). All four are mirrored at
-`docs/research-archive/rfx/research_notes/vi_envelope_presweep_archive/` in the workspace
-repo, commit `2c29d5f`.
+`<workspace>/rfx/runs/vi_envelope_presweep/20260904T113144Z-b59e1d99-chk2sym/`
+(`chk2_results.json`, 52 rows; `cases_m4/*.json`, full float).
 
 Two cautions that survive the recovery:
 - The port-asymmetry rows at a converged absorber for N = 9/18/36 carry a
@@ -1162,7 +1160,7 @@ Recorded so it is not re-argued. Both reviews recomputed the archives independen
   is list-identical across all rungs of a locked lane.
 - **A band-aggregate mixture cannot explain the per-bin antisymmetric scatter** — it
   scatters through zero on every fitting convention tried.
-- **The deliverable answers the PI directive in shape**: `r_min` is delivered as intervals
+- **Deliverable form**: `r_min` is delivered as intervals
   indexed by the finest rung, never as a point, and the failing bracket is named in advance
   so a confirming result cannot be sold as a discovery.
 - **Preflight expectations were checked against the source**, not the prose:

@@ -161,7 +161,7 @@ def classify(points, counts_f, counts_2f, *, timing_trusted=True):
                 timing_clause_raw=a_raw, a=a, b=b, growing_opcodes=growing,
                 s_c=sc, e_c=ec, c_report_only=True, disagree=disagree,
                 flag=flag,
-                conclusion="리더가 채움")
+                conclusion="Conclusion pending")
 
 
 def _tensor_sizes(text):
@@ -283,7 +283,7 @@ def check_distributed_result(result):
 
 def fallback_record(exc):
     return {"status": "falls back (one device)", "devices_used": 1,
-            "warning": str(exc), "message": str(exc), "conclusion": "리더가 채움"}
+            "warning": str(exc), "message": str(exc), "conclusion": "Conclusion pending"}
 
 
 def cost_record(compiled):
@@ -328,7 +328,7 @@ def scan_cost_calibration():
             "scan_body_counted_once_observed": independent and one_body,
             "interpretation": "Costs include one body plus loop overhead; no division by trip count."
             if independent and one_body else "Calibration did not establish once-per-body accounting.",
-            "conclusion": "리더가 채움"}
+            "conclusion": "Conclusion pending"}
 
 
 def memory_record(compiled):
@@ -353,8 +353,8 @@ def injected_control(footprint, path):
     import jax.numpy as jnp
     module = importlib.import_module(
         "rfx.stepping.graded" if path == "multi-graded" else
-        "rfx.runners._distributed_common" if path.startswith("multi") else
-        "rfx.stepping.graded" if "graded" in path else "rfx.simulation")
+        "rfx.stepping.slab_update" if path.startswith("multi") else
+        "rfx.stepping.graded" if "graded" in path else "rfx.core.drives")
     original = module.inject_drives
 
     def inject(state, drives, values):
@@ -406,8 +406,8 @@ class Program:
         if fun is None:
             return lambda f: self._capture_jit(f, **kwargs)
         compiled_fn = self.original_jit(fun, **kwargs)
-        legacy_runner = (fun.__module__ in ("rfx.runners.distributed_v2", "rfx.runners.distributed_nu")
-                         and fun.__name__ in ("_run_cpml", "_run_pec", "run_fn"))
+        legacy_runner = (fun.__module__ == "rfx.stepping.slab_graded_legacy_loop"
+                         and fun.__name__ == "run_fn")
         wrapped_graded_runner = (fun.__module__, fun.__name__) == ("rfx.stepping.slab_wrap", "run_fn")
         if not (legacy_runner or wrapped_graded_runner):
             return compiled_fn
@@ -480,7 +480,7 @@ def _scenes():
 
 def _refusal(exc):
     return {"status": "refuses", "exception": type(exc).__name__, "message": str(exc),
-            "conclusion": "리더가 채움"}
+            "conclusion": "Conclusion pending"}
 
 
 class Unavailable2F(Exception):
@@ -489,7 +489,7 @@ class Unavailable2F(Exception):
 
 def unavailable_2f_record(exc):
     return {"status": "unavailable 2F", "exception": type(exc).__name__,
-            "message": str(exc), "conclusion": "리더가 채움"}
+            "message": str(exc), "conclusion": "Conclusion pending"}
 
 
 def is_api_refusal(exc):
@@ -632,7 +632,7 @@ def run_reference(n, path, phase):
     result = dict(N=n, C=(n + 16)**3, phase=phase, status="ok", geometry=geometry,
                   runs_seconds=runs, median_seconds=median(runs), t_step_seconds=t_step,
                   sigma_seconds=sigma, sigma_fraction_of_t_step=sigma / t_step,
-                  program=program.record, conclusion="리더가 채움")
+                  program=program.record, conclusion="Conclusion pending")
     del program, scene
     jax.clear_caches()
     gc.collect()
@@ -685,7 +685,7 @@ def main(argv=None):
               "source_tar_sha256": os.environ.get("CENSUS_TAR_SHA256"),
               "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "scenes_sha256": hashlib.sha256(Path(scenes.__file__).read_bytes()).hexdigest(),
-              "rows": {}, "conclusion": "리더가 채움"}
+              "rows": {}, "conclusion": "Conclusion pending"}
     print(json.dumps({k: v for k, v in report.items() if k != "rows"}, ensure_ascii=False), flush=True)
     t0 = time.perf_counter()
     if args.smoke:

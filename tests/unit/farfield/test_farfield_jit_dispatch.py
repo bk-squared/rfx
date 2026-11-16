@@ -22,7 +22,7 @@ import numpy as np
 MM = 1e-3
 THETA = np.linspace(0.2, 2.9, 4)
 PHI = np.array([0.0, 1.5])
-#: Far fields are sums over the surface and the record (PI 2026-09-25).
+#: Far fields are sums over the surface and the record.
 MAX_REL_SUMMED = 1.0e-4
 
 
@@ -63,7 +63,8 @@ def test_compute_far_field_dispatches_on_a_traced_frequency_list():
     the face data are concrete: the dispatcher must take the jnp path (it
     checked three face arrays and hid the failure under a bare ``except``),
     and the pattern must equal the host path's."""
-    from rfx.farfield import compute_far_field, make_ntff_box
+    from rfx.measurement.farfield import compute_far_field
+    from rfx.farfield import make_ntff_box
 
     grid, lo, hi, box, data = _far_field_inputs()
     host = compute_far_field(data, box, grid, THETA, PHI)
@@ -83,7 +84,8 @@ def test_compute_far_field_jax_under_jit_of_the_gradient_with_numpy_freqs():
     box built from numpy frequencies inside ``jax.jit(jax.grad(...))`` (the
     issue's workaround, moved into the objective) traces and matches the
     plain gradient."""
-    from rfx.farfield import compute_far_field_jax, make_ntff_box
+    from rfx.measurement.farfield import compute_far_field_jax
+    from rfx.farfield import make_ntff_box
 
     grid, lo, hi, _box, data = _far_field_inputs()
 

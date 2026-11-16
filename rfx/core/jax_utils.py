@@ -2,6 +2,7 @@
 import contextlib
 import contextvars
 import functools
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -18,7 +19,7 @@ def is_tracer(x: object) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# The set-up / time-stepping boundary under an outer trace (#1367, #1354)
+# The set-up / time-stepping boundary under an outer trace
 # ---------------------------------------------------------------------------
 #
 # Rule: set-up that reads only the declaration is always concrete, and the
@@ -62,12 +63,12 @@ def compile_time_switch():
     is turned off. A JAX that fails the probe in any way (the declared
     0.4.20 floor implements the region differently) gets ``None``, and
     :func:`recorded_scan` uses its fallback. Every plain ``run()`` reaches
-    this probe, so no exception it raises may escape.
+    this probe, so probe failures warn and return None; timeout signals still escape.
     """
     try:
         from jax._src import config as _config
         switch = _config.eager_constant_folding
-    except Exception:
+    except (ImportError, AttributeError):
         return None
     seen = []
 
@@ -81,7 +82,10 @@ def compile_time_switch():
 
     try:
         jax.make_jaxpr(probe)()
-    except Exception:
+    except (TimeoutError,): raise
+    except Exception as exc:  # noqa: BLE001 - recorded in warning message
+        warnings.warn(f"compile_time_switch probe failed: {type(exc).__name__}: {exc}",
+                      RuntimeWarning, stacklevel=2)
         return None
     return switch if seen == [True] else None
 
@@ -169,8 +173,7 @@ def split_loop_invariants(tree, grid_shape):
     non-uniform board (~1e8 cells) the first chunk's compile took +27.8 GiB
     of host memory and 67.6 s with the materials, masks and coefficients
     closed over, against +0.16 GiB and 5.1 s with them as arguments (the
-    same outputs, bit for bit). #1211 and #1217 made the same change for the
-    distributed runners.
+    same outputs, bit for bit).
 
     Returns ``(arrays, rebuild)``. ``arrays`` is the list of per-cell arrays in
     ``tree`` (see :func:`_is_cell_array`; ``grid_shape`` is the grid's
@@ -183,11 +186,11 @@ def split_loop_invariants(tree, grid_shape):
       it is lowered as one scalar broadcast, so it costs the compile
       nothing, and as a constant the compiler keeps simplifying arithmetic
       on it. As an argument it does not, which moved uniform-permittivity
-      results by up to 7 float32 ULP in #1211. It stays a constant, but not
+      results by up to 7 float32 ULP. It stays a constant, but not
       a closed-over array: when it is a ``jax.Array`` with one bit pattern
       everywhere, ``rebuild`` forms it as ``jnp.full(shape, value)`` inside
       the traced function (see :func:`_one_bit_pattern`), so the function
-      holds no grid-sized object (rfx tracker 1606).
+      holds no grid-sized object.
     * CPML profiles and other small arrays, for the same reason (as
       arguments they moved results by float32 rounding).
     * Python scalars and tuples (slice bounds, flags), which must stay static.
@@ -211,7 +214,7 @@ def split_loop_invariants(tree, grid_shape):
             # as a broadcast of that value, formed where the step is traced,
             # so no array of the grid's size is closed over. A jitted step
             # that closes over one and is called inside a scan stays in JAX's
-            # caches with it after the run (rfx tracker 1606).
+            # caches with it after the run.
             one = _one_bit_pattern(value)
             if one is not None:
                 import jax.numpy as jnp
@@ -248,7 +251,7 @@ def split_loop_invariants(tree, grid_shape):
     return arrays, rebuild
 
 
-# Complex linear solves (#1829). The jax-mps plugin (Apple-silicon GPUs) has no
+# Complex linear solves. The jax-mps plugin (Apple-silicon GPUs) has no
 # complex triangular-solve kernel, so complex solves go through the real
 # 2n x 2n block form there; every other backend runs the native op unchanged.
 def _is_complex(*arrays):
@@ -308,7 +311,5 @@ _LAZY_EXPORTS = {
 
 
 def __getattr__(name):
-    if name not in _LAZY_EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    from importlib import import_module
-    return getattr(import_module(_LAZY_EXPORTS[name]), name)
+    from rfx._moved_names import resolve_moved
+    return resolve_moved(__name__, _LAZY_EXPORTS, name)

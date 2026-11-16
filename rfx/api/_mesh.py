@@ -5,14 +5,16 @@ inputs without triggering resolution. Declaration validation uses that snapshot;
 grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
+from rfx.errors import RfxUnsupported, RfxWarning
 import warnings
 
 import jax
 import numpy as np
 
 
-class AutoMeshWarning(UserWarning):
+class AutoMeshWarning(RfxWarning):
     """Mesh selection information, not a preflight legality finding."""
 
 
@@ -57,7 +59,7 @@ class _MeshMixin:
         The frozen snapshot when the mesh is frozen, otherwise the caller's
         declaration. Material assembly uses this: it is handed a built grid
         and must never run the mesh planner (a fresh simulation carrying
-        traced materials would run it on a tracer, PR #1140). The frozen
+        traced materials would run it on a tracer). The frozen
         snapshot comes first so that a caller-owned mutable ``domain``
         container mutated after ``freeze_mesh()`` cannot move what assembly
         sees, which is what ``_freeze_mesh`` exists to guarantee. On every
@@ -123,18 +125,72 @@ class _MeshMixin:
             + (f", non-uniform z ({len(resolved['_dz_profile'])} cells)"
                if resolved["_dz_profile"] is not None else "")
             + ". Set dx= explicitly to suppress.",
-            AutoMeshWarning, stacklevel=3,
+            AutoMeshWarning, stacklevel=user_stacklevel(),
         )
         for message in config.warnings:
-            warnings.warn(message, AutoMeshWarning, stacklevel=3)
+            warnings.warn(message, AutoMeshWarning, stacklevel=user_stacklevel())
         return resolved
+
+    def _auto_configure_mesh(self):
+        """Compute the host-side auto-mesh proposal; _resolve_mesh owns it."""
+        from rfx.auto_config import auto_configure
+        from rfx.materials.library import MATERIAL_LIBRARY
+
+        geometry_pairs = [
+            (entry.shape, entry.material_name)
+            for entry in self._geometry
+        ]
+        materials_dict = {}
+        for name, spec in self._materials.items():
+            materials_dict[name] = {
+                "eps_r": spec.eps_r,
+                "sigma": spec.sigma,
+            }
+        # Include library materials used by geometry but not explicitly registered
+        for entry in self._geometry:
+            mname = entry.material_name
+            if mname not in materials_dict and mname in MATERIAL_LIBRARY:
+                materials_dict[mname] = MATERIAL_LIBRARY[mname]
+
+        # Thin conductors are PEC/lossy sheets absent from self._geometry.
+        # They add no wavelength constraint, but their
+        # IN-PLANE feature size must feed the feature-based dx. Register each
+        # under a synthetic material so analyze_features() folds its bbox dims
+        # into min_thickness while classifying it by sigma (PEC vs lossy), NOT
+        # as a dielectric: sigma_bulk>=1e6 => has_pec (kept out of max_eps_r),
+        # and a sheet's zero z-extent (< 1e-12, plus the sigma<pec_threshold
+        # guard) keeps it out of z_features (no false non-uniform-z). The
+        # zero z-extent is dropped by the nonzero-dims filter, so min_thickness
+        # resolves to the in-plane extent.
+        for i, tc in enumerate(self._thin_conductors):
+            tc_mat = f"__thin_conductor_{i}__"
+            materials_dict[tc_mat] = {"eps_r": tc.eps_r, "sigma": tc.sigma_bulk}
+            geometry_pairs.append((tc.shape, tc_mat))
+
+        config = auto_configure(
+            geometry=geometry_pairs,
+            freq_range=(self._freq_max / 10, self._freq_max),
+            materials=materials_dict,
+            boundary=self._boundary,
+            domain=self._declared_mesh["_domain"],
+            dt_override=(self._dt_pin if all(self._declared_mesh[key] is None
+                         for key in ("_dx_profile", "_dy_profile", "_dz_profile")) else None),
+            # a sheet's PLANE is a z feature even though its zero
+            # thickness is not — the profile must leave a mesh line there.
+            thin_conductors=self._thin_conductors,
+        )
+
+        return config
 
     def _freeze_mesh(self):
         """Own a resolved snapshot for the public construction boundary."""
         if "_frozen_mesh" not in self.__dict__:
             grid = self._build_realized_grid()
             frozen = dict(self._resolve_mesh())
-            frozen["_domain"] = tuple(frozen["_domain"])
+            from rfx.model.realization_reference import retain_declared_domain
+            original = self._declared_mesh["_domain"]
+            frozen["_domain"] = retain_declared_domain(
+                tuple(frozen["_domain"]), getattr(original, "declared", original))
             # An empty automatic model has no planner result yet. Capture the
             # grid's actual default spacing so adding its first body is safe.
             if frozen["_dx"] is None:
@@ -168,8 +224,8 @@ class _MeshMixin:
         without the caller passing a profile.
 
         * ``2d_tmz`` on ONE z cell between PEC walls is solved as that 3-D
-          box, with a different timestep from the uniform lane's 2-D solve
-          (#1340); equal step counts compare different physical times. One declaration
+          box, with a different timestep from the uniform lane's 2-D solve; equal step counts compare different physical
+          times. One declaration
           cannot mean both, so it is refused, and the message names the 3-D
           box to declare instead (``mode="3d"``, one cell, PEC z walls). On a
           thicker z stack every amplitude scales with the z cell count.
@@ -196,7 +252,7 @@ class _MeshMixin:
         The non-uniform lane has no subgrid: nothing on it reads
         ``add_refinement``, so a refined model ran the unrefined graded mesh,
         bit-identical to the same model without the refinement and with no
-        warning (#1240). Decided on the RESOLVED mesh, the property that picks
+        warning. Decided on the RESOLVED mesh, the property that picks
         the lane, so a profile that auto-meshing produced counts too. One text
         for the preflight finding and the run-time refusal.
         """
@@ -211,7 +267,7 @@ class _MeshMixin:
             "axis profile was given, or auto-meshing produced one), and that "
             "is refused: the non-uniform lane has no subgrid, so it would "
             "ignore the refinement and solve the unrefined mesh, "
-            "bit-identical to the same model without it (#1240). Either use "
+            "bit-identical to the same model without it. Either use "
             "a uniform base mesh (dx= and no dx/dy/dz profile) and keep "
             "add_refinement, or remove add_refinement and pass a dz_profile "
             f"whose cells between z = {z_lo * 1e3:g} and {z_hi * 1e3:g} mm "
@@ -229,9 +285,9 @@ class _MeshMixin:
         vertex or PEC sheet declared at the same half-node coordinate.
 
         Wire vertices and sheet planes round a tie to the lower node, and so
-        do point features on both lanes (#1342). The preflight finding
+        do point features on both lanes. The preflight finding
         ``half_node_split`` says the same thing; this is the refusal
-        ``skip_preflight=True`` does not bypass, as for #1240. Features are
+        ``skip_preflight=True`` does not bypass. Features are
         paired on their DECLARED coordinates first, so a model with no port,
         source or probe at a conductor's coordinate returns without building
         a grid.
@@ -247,7 +303,7 @@ class _MeshMixin:
         Only ``run()`` dispatches to the subgridded lane. The other entry
         points that solve a uniform model never read ``add_refinement``, so a
         refined model came back bit-identical to the unrefined one, with no
-        warning (#1240): ``forward()`` (and ``optimize()`` through it),
+        warning: ``forward()`` (and ``optimize()`` through it),
         ``topology_optimize()``, the ``vmap_material_sweep()`` batched kernel,
         the uniform ``compute_waveguide_s_matrix()`` scan and its per-port
         reference models, ``differentiable_material_fit()``,
@@ -260,12 +316,12 @@ class _MeshMixin:
         z_lo, z_hi = ref["z_range"]
         ratio = ref["ratio"]
         from rfx._diagnostic_transport import diagnostic_refusal
-        raise diagnostic_refusal(NotImplementedError(
+        raise diagnostic_refusal(RfxUnsupported(
             f"add_refinement(z_range=({z_lo * 1e3:g}, {z_hi * 1e3:g}) mm, "
             f"ratio={ratio}) is refused on {entry}: there is no "
             f"subgridded lane behind {entry}, so the refinement would be "
             "ignored and the unrefined grid solved, bit-identical to the same "
-            "model without it (#1240). add_refinement takes effect in run(), "
+            "model without it. add_refinement takes effect in run(), "
             f"on a uniform mesh. Remove the refinement to use {entry}. "
             "forward(), optimize(), compute_waveguide_s_matrix() and "
             "vmap_material_sweep() also take a non-uniform mesh: a dz_profile "

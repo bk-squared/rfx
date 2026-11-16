@@ -73,6 +73,7 @@ from rfx import Box, GaussianPulse, Simulation
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import lorentz_pole
 from rfx.runners import nonuniform as _nu_runner
+from rfx.stepping import graded_precision as _graded_precision
 
 DX = 1e-3
 L = 16 * DX
@@ -136,7 +137,7 @@ def _board(port, disp, impedance, mesh):
         sim.add_material("sub", eps_r=3.0)
         sim.add(Box((0, 0, 3 * DX), (L, L, 5 * DX)), material="sub")
         sim.add(Box((0, 0, 3 * DX), (L, L, 3 * DX)), material="pec")
-        sim.add(Box((0, 7 * DX, 5 * DX), (L, 9 * DX, 5 * DX)), material="pec")
+        sim.add(Box((0, (7 - .35) * DX, 5 * DX), (L, (9 + .35) * DX, 5 * DX)), material="pec")
         sim.add_msl_port((4 * DX, 8 * DX, 3 * DX), width=2 * DX,
                          height=2 * DX, direction="+x", impedance=impedance,
                          waveform=PULSE)
@@ -158,19 +159,20 @@ def _dispersion_built_before_the_stamps(*kinds):
     def _assemble(*a, **kw):
         out = real_assemble(*a, **kw)
         assembled["materials"] = out[0]
+        assembled["grid"] = a[1]
         return out
 
     with contextlib.ExitStack() as stack:
         stack.enter_context(
             mock.patch.object(_nu_runner, "assemble_materials_nu", _assemble))
         for kind in kinds:
-            real = getattr(_nu_runner, f"init_{kind}")
+            real = getattr(_graded_precision, f"init_{kind}")
 
             def _pre_stamp(poles, materials, dt, *a, _real=real, **kw):
-                return _real(poles, assembled["materials"], dt, *a, **kw)
+                return _real(poles, assembled["materials"], dt, *a, grid=assembled["grid"], **kw)
 
             stack.enter_context(
-                mock.patch.object(_nu_runner, f"init_{kind}", _pre_stamp))
+                mock.patch.object(_graded_precision, f"init_{kind}", _pre_stamp))
         yield
 
 

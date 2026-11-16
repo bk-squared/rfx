@@ -220,6 +220,6 @@ comparison with a reference; see
 
 The default is `precision="float32"`, which suits most work and is what the
 GPU runs fastest. `"float64"` needs JAX 64-bit mode: build and run the simulation
-inside `with jax.enable_x64():`. `"mixed"` stores fields in float16. Both are limited to the
-uniform, single-device solver. Mixed precision raises the CPML's reflection
+inside `with jax.enable_x64():`. `"mixed"` stores fields in float16. Float64 runs on one
+device, on a uniform or graded mesh; mixed runs on a uniform mesh on one device. Mixed precision raises the CPML's reflection
 floor, so avoid it for low-reflection or S-parameter work.

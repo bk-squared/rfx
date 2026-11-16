@@ -1,30 +1,7 @@
-"""Issue #630 follow-up: precision="mixed"/"float64" must fail LOUD, not
-silently degrade to float32, on lanes whose runner does not thread
-field_dtype.
+"""Single-device graded Yee accepts float64 and retains mixed refusals.
 
-`field_dtype` is threaded only by `rfx/runners/uniform.py`. The
-non-uniform-mesh, distributed, distributed-NU, and subgridded runners have
-zero `field_dtype` occurrences (grepped as part of the #630 follow-up
-review), so before this fix a non-uniform-mesh or distributed simulation
-with `precision="mixed"`/`"float64"` would silently run float32 fields
-while reporting no error at all -- the SILENT_WRONG class this repo removes
-on sight. `_dispatch_plan` (the single lane-decision point for `run()` and
-`forward()`) now rejects the combination with `NotImplementedError` before
-any compute runs, on every affected lane. `_validate_cfg_precision_x64`
-also warns in advance for the non-uniform-mesh case (the distributed case
-is a call-time kwarg invisible to preflight, so the dispatch-time raise is
-the ONLY enforcement point there -- see that check's docstring).
-
-These tests are deliberately NOT `pytest.mark.gpu`: they only exercise the
-dispatch-time guard (a Python-level raise before any FDTD compute), so they
-run on CPU in the default local suite. (`tests/unit/grid/test_mixed_precision.py` used
-to be module-wide `gpu`-marked, which is why it could not serve as that
-coverage; issue #644 removed that mark after measuring the file at 6.5 s on
-CPU, so it now runs in the default lane too.)
-
-Also covers the `forward()` + CPML precision matrix, which issue #644 turned
-from a guarded-off combination into a working one -- see the module section
-below.
+Distributed and subgridded precision refusals keep their existing messages.
+Uniform mixed and float64 CPML coverage remains unchanged.
 """
 
 from __future__ import annotations
@@ -63,14 +40,14 @@ def _uniform_sim(*, precision: str) -> Simulation:
     return sim
 
 
-@pytest.mark.parametrize("precision", ["mixed", "float64"])
+@pytest.mark.parametrize("precision", ["mixed"])
 def test_nonuniform_run_rejects_nonfloat32_precision(precision):
     sim = _nu_sim(precision=precision)
     with enable_x64() if precision == "float64" else nullcontext(), pytest.raises(NotImplementedError, match="run_nonuniform"):
         sim.run(n_steps=5, skip_preflight=True)
 
 
-@pytest.mark.parametrize("precision", ["mixed", "float64"])
+@pytest.mark.parametrize("precision", ["mixed"])
 def test_nonuniform_forward_rejects_nonfloat32_precision(precision):
     sim = _nu_sim(precision=precision)
     with enable_x64() if precision == "float64" else nullcontext(), pytest.raises(NotImplementedError, match="fwd_nonuniform"):
@@ -242,3 +219,13 @@ def test_forward_float32_cpml_works():
     sim = _cpml_sim(precision="float32")
     result = sim.forward(n_steps=5, skip_preflight=True)
     assert result is not None
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_nonuniform_float64_accepted(entry):
+    with enable_x64():
+        sim = _nu_sim(precision="float64")
+        sim.add_probe((.01, .01, .005), "ez")
+        assert not sim.preflight(strict=False).by_code("precision_nonuniform_lane_unsupported")
+        result = getattr(sim, entry)(n_steps=5, skip_preflight=True)
+        assert result.time_series.dtype == np.float64

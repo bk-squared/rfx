@@ -14,7 +14,7 @@ Case grid (16 cases total):
 Each case targets a 50 Ω trace width (Hammerstad-Jensen). The stub geometry
 is an open-circuited λ/4 branch line attached at mid-line.
 
-Scope notes (docs/research_notes/20260528_msl_broad_e5_scope.md):
+Scope notes (the measurement notes):
   - Architectural blockers (NU MSL, eigenmode source) are intentionally
     out of scope.
   - External openEMS reference comparison is layered on top by the
@@ -201,7 +201,7 @@ def case_geometry_params(case: CaseSpec) -> dict:
     )
 
 
-def build_simulation(case: CaseSpec, geo: dict) -> Simulation:
+def build_simulation(case: CaseSpec, geo: dict, *, snap: str | None = None) -> Simulation:
     """Build a Simulation for the case. PEC ground at z=0, substrate above,
     trace strip at z=h_sub, MSL port at each end."""
     sub: SubstrateSpec = geo["substrate"]
@@ -217,6 +217,7 @@ def build_simulation(case: CaseSpec, geo: dict) -> Simulation:
             z=Boundary(lo="pec", hi="cpml"),
         ),
         cpml_layers=geo["cpml_layers"],
+        **({"snap": snap} if snap is not None else {}),
     )
 
     sim.add_material(f"sub_{sub.name.lower()}", eps_r=sub.eps_r, sigma=0.0)

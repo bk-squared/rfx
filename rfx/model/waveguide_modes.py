@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from rfx.model.graded_admission import host_cells
+
 from typing import NamedTuple
+import warnings
 import jax.numpy as jnp
 import numpy as np
-from rfx.boundaries.axes import hi_face_is_wall
 from rfx.core.yee import EPS_0, MU_0
+from rfx.errors import RfxRefusal
 from rfx.model.waveguide_waveform import waveguide_waveform_error
 from rfx.model.waveguide_mode_solver import (
     _aperture_area,
@@ -137,7 +140,7 @@ class WaveguidePortConfig(NamedTuple):
     dft_total_steps: int
 
     # Source waveform parameters. ``waveform`` selects the pulse shape:
-    # ``"differentiated_gaussian"`` is refused (circular precursor, #1942);
+    # ``"differentiated_gaussian"`` is refused (circular precursor);
     # ``"modulated_gaussian"`` (Meep-style, src = cos(2π·f₀·(t-t₀))·exp(-arg²)).
     # ``src_fcen`` is only used by the modulated-Gaussian dispatch.
     src_amp: float
@@ -157,7 +160,7 @@ class WaveguidePortConfig(NamedTuple):
     # The S-parameter spectra are computed POST-SCAN by
     # ``_extract_global_waves_from_time_series`` via a rectangular
     # full-record DFT on these arrays — no in-scan DFT accumulators
-    # are kept (deleted Phase 2 cleanup, 2026-04-25).
+    # are kept.
     v_probe_t: jnp.ndarray     # (n_steps,) float32 — modal V at probe plane
     v_ref_t: jnp.ndarray       # (n_steps,) float32 — modal V at ref plane
     i_probe_t: jnp.ndarray     # (n_steps,) float32 — modal I at probe plane
@@ -334,6 +337,18 @@ def cutoff_frequency(a: float, b: float, m: int, n: int) -> float:
     return kc * C0_LOCAL / (2 * np.pi)
 
 
+def _project_degenerate_mode(evals, evecs, rank, template, mass):
+    """Project the requested scalar shape into its mass-orthonormal eigenspace."""
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    basis = evecs[:, group]
+    projected = basis @ (basis.T @ (mass * template))
+    norm = np.sqrt(np.sum(mass * projected**2))
+    template_norm = np.sqrt(np.sum(mass * template**2))
+    if norm < 0.5 * template_norm:
+        raise RfxRefusal("Degenerate eigenspace contains less than half the requested template norm.")
+    return projected / norm, float(np.min(evals[group]))
+
+
 def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
                                 u_widths: np.ndarray,
                                 v_widths: np.ndarray,
@@ -386,6 +401,15 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
         )
         kc2 = float(max(evals[rank], 0.0))
     hx = evecs[:, rank].reshape(nu, nv)
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    if len(group) > 1:
+        try:
+            vector, kc2 = _project_degenerate_mode(
+                evals, evecs, rank, hx_ana.ravel(), np.kron(mu, mv),
+            )
+        except RfxRefusal as exc:
+            raise RfxRefusal(f"Requested TE{m}{n} on {nu} x {nv} cells: {exc}") from exc
+        hx = vector.reshape(nu, nv)
 
     # Align sign (eigh returns arbitrary sign).
     if float(np.sum(hx * hx_ana * dA)) < 0.0:
@@ -427,12 +451,18 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
         else:
             lower_modes = []
         for lm, ln in lower_modes:
-            ley, lez, lhy, lhz, _ = _discrete_te_mode_profiles(
-                a, b, lm, ln, u_widths, v_widths,
-                aperture_dA=aperture_dA,
-                h_offset=h_offset,
-                _orthogonalize=True,
-            )
+            try:
+                ley, lez, lhy, lhz, _ = _discrete_te_mode_profiles(
+                    a, b, lm, ln, u_widths, v_widths,
+                    aperture_dA=aperture_dA,
+                    h_offset=h_offset,
+                    _orthogonalize=True,
+                )
+            except RfxRefusal as exc:
+                raise RfxRefusal(
+                    f"Requested TE{m}{n} on {nu} x {nv} cells, "
+                    f"while building lower mode TE{lm}{ln}: {exc}"
+                ) from exc
             previous.append((ley, lez, lhy, lhz))
         if previous:
             ey, ez, hy, hz = _orthonormalize_profile_arrays(
@@ -487,6 +517,15 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
         )
         kc2 = float(max(evals[rank], 0.0))
     ex = evecs[:, rank].reshape(nu, nv)
+    group = np.flatnonzero(np.abs(evals - evals[rank]) <= 1e-9 * abs(evals[rank]))
+    if len(group) > 1:
+        try:
+            vector, kc2 = _project_degenerate_mode(
+                evals, evecs, rank, ex_ana.ravel(), np.kron(mu, mv),
+            )
+        except RfxRefusal as exc:
+            raise RfxRefusal(f"Requested TM{m}{n} on {nu} x {nv} cells: {exc}") from exc
+        ex = vector.reshape(nu, nv)
 
     if float(np.sum(ex * ex_ana * dA)) < 0.0:
         ex = -ex
@@ -532,7 +571,7 @@ def _node_span_to_cell_span(span: tuple[int, int]) -> tuple[int, int]:
     eigenproblem on a guide ONE CELL WIDER than the walls make, which put
     ``WaveguidePortConfig.f_cutoff`` — and with it every ``_compute_beta``
     reference-plane rotation and every ``_compute_mode_impedance`` Z_TE — on
-    the wrong guide (issue #868): 5.877 instead of 6.524 GHz on WR-90 at
+    the wrong guide: 5.877 instead of 6.524 GHz on WR-90 at
     dx = a/9, 6.378 instead of 6.555 GHz at dx = a/36. Corrected, the port's
     cutoff is the discrete TE10 cutoff of the N-cell guide,
     ``(2/dx)·sin(π/(2N))·c/2π``, which is what the guide propagates with.
@@ -577,18 +616,18 @@ def init_waveguide_port(
     ref_offset : int
         Cells downstream from source for reference probe.
     grid : Grid or None
-        Optional Grid object for face-aware aperture pruning. When passed,
-        the modal V/I aperture excludes "ghost" cells whose centre lies
-        inside a PEC conductor (the cell at the array boundary on a +face
-        marked PEC). Without this, uniform-Grid callers integrate over
-        the ghost row, producing an ~8% PEC-short |S11| deficit.
+        Validate the aperture against a uniform Grid's declared electric,
+        magnetic and periodic boundaries.
     """
-    # Explicit grid supplies uniform boundary detection.
+    from rfx.grid import Grid
+
+    aperture_grid = dx if isinstance(dx, Grid) else grid
     grid_obj = None
-    if hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
+    if isinstance(dx, Grid):
+        dx = float(dx.dx)
+    elif hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
         grid_obj = dx
         dx = float(grid_obj.dx)
-    boundary_grid = grid_obj if grid_obj is not None else grid
     m, n = port.mode
     normal_axis = port.normal_axis
     if normal_axis not in ("x", "y", "z"):
@@ -613,117 +652,76 @@ def init_waveguide_port(
             "non-x-normal ports require u_slice and v_slice explicit transverse aperture slices"
         )
 
+    if isinstance(aperture_grid, Grid):
+        from rfx._internal._uniform_specs import resolve_periodic
+        from rfx.boundaries.pec import resolve_wall_faces
+        from rfx.model.waveguide_aperture import validate_waveguide_aperture
+
+        periodic = resolve_periodic(
+            aperture_grid, tuple(axis in aperture_grid.periodic_axes for axis in "xyz"),
+        )
+        faces, _ = resolve_wall_faces(aperture_grid, periodic, None)
+        try:
+            validate_waveguide_aperture(
+                normal_axis, (u_lo, u_hi), (v_lo, v_hi), aperture_grid.shape,
+                faces, name=port.direction,
+            )
+        except ValueError as error:
+            raise ValueError(
+                f"{error} These walls are the Grid's declared faces; overrides by a run "
+                "or extractor (an axis made periodic, a PMC face, or an axis withheld "
+                "by pec_axes) must be declared on the Grid."
+            ) from error
+
     nu_port = u_hi - u_lo
     nv_port = v_hi - v_lo
 
     # --- Per-axis cell widths covering the transverse aperture ---
     # The mapping (u,v) → (x,y,z) depends on normal_axis and is the same
     # one used by `_plane_indexer`.
-    # (u, v) → (axis name, grid size along that axis) mapping for the
-    # transverse-aperture face-PEC heuristic below. Filled from the grid
-    # object when one is available (NU duck-typed grid_obj, or explicit
-    # uniform Grid via the `grid=` kwarg).
-    u_axis_name = v_axis_name = None
-    u_grid_size = v_grid_size = -1
     if grid_obj is not None:
-        dx_arr_np = np.asarray(grid_obj.dx_arr)
-        dy_arr_np = np.asarray(grid_obj.dy_arr)
-        dz_arr_np = np.asarray(grid_obj.dz)
+        dx_arr_np = host_cells(grid_obj, "x", store=True)
+        dy_arr_np = host_cells(grid_obj, "y", store=True)
+        dz_arr_np = host_cells(grid_obj, "z", store=True)
         if normal_axis == "x":
             u_widths_np = dy_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
-            u_axis_name, v_axis_name = "y", "z"
-            u_grid_size, v_grid_size = dy_arr_np.shape[0], dz_arr_np.shape[0]
         elif normal_axis == "y":
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
-            u_axis_name, v_axis_name = "x", "z"
-            u_grid_size, v_grid_size = dx_arr_np.shape[0], dz_arr_np.shape[0]
         else:  # z-normal
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dy_arr_np[u_lo:u_hi] if False else dy_arr_np[v_lo:v_hi]
-            u_axis_name, v_axis_name = "x", "y"
-            u_grid_size, v_grid_size = dx_arr_np.shape[0], dy_arr_np.shape[0]
     else:
         u_widths_np = np.full(nu_port, float(dx))
         v_widths_np = np.full(nv_port, float(dx))
-        if grid is not None:
-            # Uniform Grid: cell widths are scalar dx but boundary
-            # information is still on the Grid object.
-            if normal_axis == "x":
-                u_axis_name, v_axis_name = "y", "z"
-                u_grid_size, v_grid_size = grid.ny, grid.nz
-            elif normal_axis == "y":
-                u_axis_name, v_axis_name = "x", "z"
-                u_grid_size, v_grid_size = grid.nx, grid.nz
-            else:
-                u_axis_name, v_axis_name = "x", "y"
-                u_grid_size, v_grid_size = grid.nx, grid.ny
+
+    if not isinstance(aperture_grid, Grid):
+        transverse_axes = [axis for axis in "xyz" if axis != normal_axis]
+        oversized_axes = [
+            axis for axis, widths, declared_size in zip(
+                transverse_axes, (u_widths_np, v_widths_np), (port.a, port.b),
+            )
+            if len(widths) and np.sum(widths) - declared_size > 0.5 * widths[-1]
+        ]
+        if oversized_axes:
+            from rfx.preflight._common import PreflightWarning
+
+            warnings.warn(PreflightWarning(
+                "The aperture reaches past the declared guide size on "
+                f"{', '.join(oversized_axes)}; the walls are not checked on this path "
+                "(a configuration built from a scalar dx or a graded grid); "
+                "build with a uniform Grid to have them checked, or use the "
+                "cell span `(lo, hi - 1)`.",
+                code="waveguide_aperture_size_unchecked", source="init_waveguide_port",
+            ), stacklevel=2)
 
     # Cell-centre coordinates (cumulative-sum midpoints). For uniform
     # widths this collapses to the original `np.linspace(0.5*dx, ...)`.
     u_coords = np.cumsum(u_widths_np) - 0.5 * u_widths_np
     v_coords = np.cumsum(v_widths_np) - 0.5 * v_widths_np
 
-    # ----- Aperture dA with face-aware boundary-cell weighting -----
-    # Why: when a transverse face is PEC and the port slice reaches the array
-    # boundary on that side, the last Yee cell at index Nu-1 (or Nv-1) sits
-    # at-or-past the conductor surface. Including it with full weight in the
-    # modal V/I integral lets a spurious Ez (which apply_pec_faces does NOT
-    # zero — Ez is "normal" at z_hi by staircase convention) contaminate the
-    # extraction. Empirically this drops PEC-short WR-90 |S11| from 1.0 to
-    # 0.91 (see scripts/_aperture_trim_test.py and ../_aperture_trapezoidal_test.py).
-    #
-    # Convention: DROP PEC +face cells (weight=0.0). This matches the
-    # OpenEMS convention — its mode-function probe integration box is
-    # specified to the physical aperture, naturally excluding ghost
-    # cells that sit past the conductor (see /usr/lib/python3/dist-packages
-    # /openEMS/ports.py:347-360 for the WaveguidePort probe construction).
-    # Empirically: weight 0.5 (PROD half-weight kludge, used 2026-04-23..27)
-    # gives PEC-short min |S11| ≈ 0.94, weight 0.0 (DROP, OpenEMS-equivalent)
-    # gives min |S11| = 0.9997. The half-weight was a 2026-04-26 staging
-    # compromise (Phase 2 dead-end) that protected mesh-conv and asymmetric-obstacle
-    # reciprocity at the cost of capping PEC-short closure.
-    #
-    # 2026-04-29 update: test_mesh_convergence_s21_scaled_cpml in
-    # tests/oracle/test_waveguide_port_validation_battery.py is a LIVE, currently
-    # green committed gate under DROP, not xfail. The 2026-04-22..04-29 jitter
-    # that briefly locked it as xfail was root-caused to Box.mask_on_coords
-    # closed-closed semantics (issue #75), not to the DROP weight; see the
-    # block comment directly above that test ("Test 6 — Mesh convergence of
-    # |S21| ..."). The receive-side multi-mode extractor (per the
-    # dead-end note's recommendation) remains the path to recovering
-    # PEC-short closure without capping it via the half-weight kludge.
-    #
-    # The hi-face drop (``hi_face_is_wall``) does NOT fire for a port built by ``Simulation``/``run_nonuniform``: those
-    # hand ``WaveguidePort`` the guide's CELL span (issue #868), which ends one
-    # index short of the array edge, so there is no cell past the wall left to
-    # drop. It still fires for a low-level caller that passes the whole node
-    # plane (``y_slice=(0, grid.ny)``), which is what it was written for.
-    u_aperture_weights = np.ones_like(u_widths_np)
-    v_aperture_weights = np.ones_like(v_widths_np)
-    if boundary_grid is not None and u_axis_name is not None:
-        # Stage 1 conformal PEC: when a +face is conformal, the
-        # Dey-Mittra eps_correction handles the staircase shift at the
-        # boundary cell. Zeroing the same cell here in the modal V/I
-        # integral would be a second copy of that correction — the
-        # 2026-04-29 first-attempt failure mode where PEC-short |S11|
-        # diff vs OpenEMS regressed 0.025 → 0.094.
-        conformal_faces = getattr(boundary_grid, "conformal_faces", set()) or set()
-        u_hi_face_pec = hi_face_is_wall(boundary_grid, u_axis_name)
-        v_hi_face_pec = hi_face_is_wall(boundary_grid, v_axis_name)
-        u_hi_face_conformal = f"{u_axis_name}_hi" in conformal_faces
-        v_hi_face_conformal = f"{v_axis_name}_hi" in conformal_faces
-        if (u_hi == u_grid_size and u_hi_face_pec
-                and not u_hi_face_conformal and u_widths_np.size > 0):
-            u_aperture_weights[-1] = 0.0
-        if (v_hi == v_grid_size and v_hi_face_pec
-                and not v_hi_face_conformal and v_widths_np.size > 0):
-            v_aperture_weights[-1] = 0.0
-    aperture_dA_np = (
-        (u_widths_np * u_aperture_weights)[:, None]
-        * (v_widths_np * v_aperture_weights)[None, :]
-    )
+    aperture_dA_np = u_widths_np[:, None] * v_widths_np[None, :]
 
     if mode_profile not in ("analytic", "discrete"):
         raise ValueError(
@@ -792,11 +790,11 @@ def init_waveguide_port(
     # uniform path this reduces to offset * dx bit-identically.
     if grid_obj is not None:
         if normal_axis == "x":
-            d_axis = np.asarray(grid_obj.dx_arr)
+            d_axis = host_cells(grid_obj, "x", store=True)
         elif normal_axis == "y":
-            d_axis = np.asarray(grid_obj.dy_arr)
+            d_axis = host_cells(grid_obj, "y", store=True)
         else:
-            d_axis = np.asarray(grid_obj.dz)
+            d_axis = host_cells(grid_obj, "z", store=True)
 
         def _cum_offset(from_idx: int, to_idx: int) -> float:
             if to_idx == from_idx:
@@ -916,7 +914,7 @@ def _incident_table_build(*, length, f_c, medium, dt, dx, t0, tau,
     e_spec = np.fft.rfft(e_raw)
     freqs = np.fft.rfftfreq(length, d=float(dt))
     if waveform != "modulated_gaussian":
-        # Unreachable for waveguide ports since the #1942 refusal.
+        # Unreachable for waveguide ports since the refusal.
         ratio = np.clip((freqs - f_c) / (0.2 * f_c), 0.0, 1.0)
         e_spec *= 0.5 * (1.0 - np.cos(np.pi * ratio))
     kw = dict(dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)
@@ -927,7 +925,7 @@ def _incident_table_build(*, length, f_c, medium, dt, dx, t0, tau,
         raise ValueError(
             f"waveguide incident table: a bin of the length-{length} build falls exactly on the "
             f"{mode_type} cutoff (f0={f0}, f_c={f_c}), where the admittance is infinite; "
-            "move f0 so the source spectrum at f_c is below about 1e-3 of its peak (#2013)")
+            "move f0 so the source spectrum at f_c is below about 1e-3 of its peak")
     # exp(j(omega*t - beta*x)): H is upstream by dx/2 and later by dt/2.
     # The evanescent continuation is essential to a causal response at cutoff.
     phase = np.exp(0.5j * beta * float(dx) + 1j * np.pi * freqs * float(dt))
@@ -1013,7 +1011,7 @@ def _converged_incident_tables(*, f_c, medium, dt, dx, t0, tau,
         f"f0={f0}, bandwidth={bandwidth}, f_c={f_c}. The source spectrum reaches the "
         f"{mode_type} cutoff, where the forward wave's H decays too slowly to tabulate (a TM "
         "admittance diverges at cutoff; a TE one at DC); raise f0 or narrow the bandwidth so "
-        "the source spectrum at f_c is below about 1e-3 of its peak (#2013)")
+        "the source spectrum at f_c is below about 1e-3 of its peak")
 
 
 def with_port_medium(cfg, medium):
@@ -1033,8 +1031,7 @@ def _aperture_dA(cfg: WaveguidePortConfig) -> jnp.ndarray:
     """Per-cell area element (nu, nv) on the port aperture.
 
     Returns the precomputed `cfg.aperture_dA` when populated by
-    `init_waveguide_port` (which applies face-aware ghost-cell pruning at
-    PEC boundaries). Falls back to the legacy `u_widths × v_widths`
+    `init_waveguide_port`. Falls back to the legacy `u_widths × v_widths`
     product when called on a cfg built without the precomputed area
     (low-level test fixtures predating this field).
     """
@@ -1259,13 +1256,22 @@ def init_multimode_waveguide_port(
         # Only the first (dominant) mode is actively driven
         mode_amplitude = amplitude if mode_idx == 0 else 0.0
 
-        cfg = init_waveguide_port(
-            mode_port, dx, freqs, f0=f0, bandwidth=bandwidth,
-            amplitude=mode_amplitude, probe_offset=probe_offset,
-            ref_offset=ref_offset, dft_total_steps=dft_total_steps,
-            dt=dt, waveform=waveform, mode_profile=mode_profile,
-            grid=grid, h_offset=h_offset, field_dtype=field_dtype,
-        )
+        # All modes share one aperture; report its size only on the first mode.
+        from rfx.preflight._common import PreflightWarning
+
+        with warnings.catch_warnings():
+            if mode_idx:
+                warnings.filterwarnings(
+                    "ignore", message="The aperture reaches past the declared guide size",
+                    category=PreflightWarning,
+                )
+            cfg = init_waveguide_port(
+                mode_port, dx, freqs, f0=f0, bandwidth=bandwidth,
+                amplitude=mode_amplitude, probe_offset=probe_offset,
+                ref_offset=ref_offset, dft_total_steps=dft_total_steps,
+                dt=dt, waveform=waveform, mode_profile=mode_profile,
+                grid=grid, h_offset=h_offset, field_dtype=field_dtype,
+            )
         cfgs.append(cfg._replace(multimode=True))
 
     return _gram_schmidt_modes(cfgs)

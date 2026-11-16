@@ -48,7 +48,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
 from rfx.sources.waveguide_port import cutoff_frequency
 import rfx.preflight.waveguide as wgpf
-from tests._realized_geometry import assert_wall_planes, realized
+from tests._realized_geometry import assert_wall_planes
 
 _A_WR90 = 22.86e-3
 _B_WR90 = 10.16e-3
@@ -108,7 +108,7 @@ def _sub_aperture_sim(freqs, f0=5.5e9):
     wrong (it reported fc_TE10 = 1.249 GHz for the 120 mm DOMAIN instead
     of the guide the PEC Boxes actually leave)."""
     sim = Simulation(freq_max=10e9, domain=(0.12, 0.12, 0.02),
-                     boundary="cpml", cpml_layers=10, dx=0.002)
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10, dx=0.002)
     sim.add(Box((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)), material="pec")
     sim.add(Box((0.0, 0.08, 0.0), (0.12, 0.12, 0.02)), material="pec")
     sim.add_waveguide_port(

@@ -1,8 +1,14 @@
 """Non-uniform grid run path extracted from Simulation."""
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
-from rfx._grid_metric import field_index
+from rfx.errors import ConfigurationWarning
+from rfx.model.graded_admission import host_cells
+
+from rfx._internal._grid_metric import field_index
+from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
+
 import warnings
 from dataclasses import replace
 
@@ -13,19 +19,18 @@ import jax.numpy as jnp
 from rfx.grid import C0
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lumped
-from rfx.materials.debye import init_debye
-from rfx.materials.lorentz import init_lorentz
+from rfx.stepping.graded_precision import field_grid, field_poles, init_graded_dispersion
 from rfx.model.overrides import apply_material_overrides
 from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.sources.port_drive import port_drive_waveform
 from rfx.nonuniform import (
     NonUniformGrid,
-    interior_cells,
     make_nonuniform_grid,
     run_nonuniform,
     run_nonuniform_until_decay,
     make_current_source,
 )
+from rfx.model.graded_grid import interior_cells
 
 
 INTERFACE_EPS_RULES = ("sampled", "dual_average")
@@ -46,8 +51,10 @@ def _validate_interface_eps_nu(sim, *, subpixel_smoothing=False, eps_override=No
         raise ValueError("interface_eps='dual_average' requires concrete profiles, not traced profiles")
 
 
-def assemble_interface_eps_nu(sim, grid, materials):
-    """Cell-centre eps averaged over the four cells sharing each E edge.
+def assemble_interface_eps_nu(sim, grid, materials, *, pec_mask, high_wall: tuple[bool, bool, bool]):
+    """Production cell eps averaged over the four cells sharing each E edge.
+
+    ``pec_mask`` is the production cell set used to realize PEC edge masks.
 
     Tangential weights are dual-face areas, with PEC cells excluded. Along
     its own axis the edge stays in its own cell (no node-aligned interface
@@ -55,35 +62,21 @@ def assemble_interface_eps_nu(sim, grid, materials):
     eps as a finite fallback; the existing PEC mask enforces their fields.
     Scalar materials, conductivity and source normalization are untouched.
     """
-    from rfx.geometry.rasterize_grid import GridCoords, coords_from_nonuniform_grid, rasterize_geometry
-
     _validate_interface_eps_nu(sim)
-    nodes = coords_from_nonuniform_grid(grid)
-    widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
-    if any(d is None for d in widths):
+    if any(d is None for d in (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)):
         raise ValueError("interface_eps='dual_average' requires the exact float64 grid spine")
-    centres = [np.asarray(x) + np.asarray(d) / 2 for x, d in zip(nodes[:3], widths)]
-    # The bounding node has no outgoing real cell: copy the last centre.
-    for x in centres:
-        x[-1] = x[-2]
-    from rfx.geometry.smoothing import continued_conductor_shape
-    geometry = [replace(entry, shape=continued_conductor_shape(
-                    sim, grid, entry.shape, entry=entry, unextendable=[]))
-                if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
-                else entry for entry in sim._geometry]
-    cell_coords = GridCoords(*centres, grid.shape)
-    cell, debye, lorentz, pec, *_ = rasterize_geometry(
-        geometry, sim._resolve_material, cell_coords,
-        centres=cell_coords, pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
-    if debye is not None or lorentz is not None:
-        raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
-    eps = np.asarray(cell.eps_r, dtype=np.float64)
-    volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
-    live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
+    widths = tuple(host_cells(grid, axis) for axis in "xyz")
+    # Reuse the production cells, including conductor continuation and CPML pads.
+    eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
+    volume_eps = eps
+    live = np.ones(grid.shape, dtype=np.float64) if pec_mask is None else (~np.asarray(pec_mask)).astype(np.float64)
     if any(not grid.is_constant(a) for a in range(3)):
         from rfx.model.materials import geometric_interface_components
         return tuple(jnp.asarray(e, dtype=materials.eps_r.dtype) for e in
-                     geometric_interface_components(eps, live, volume_eps, widths))
+                     geometric_interface_components(eps, live, volume_eps, widths, high_wall=high_wall))
+    from rfx.core.yee import _material_wall_view
+    eps = _material_wall_view(eps, high_wall, array_module=np)
+    live = _material_wall_view(live, high_wall, array_module=np)
     components = []
     for c in range(3):
         num, den = eps * live, live
@@ -93,6 +86,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
             shape = [1, 1, 1]
             shape[a] = grid.shape[a]
             d = np.asarray(widths[a]).reshape(shape)
+            d = _material_wall_view(d, high_wall, array_module=np)
             num, den = num * d, den * d
             lower = np.maximum(np.arange(grid.shape[a]) - 1, 0)
             num = num + np.take(num, lower, axis=a)
@@ -123,13 +117,14 @@ def build_nonuniform_grid(
     periodic_axes: str = "",
     automatic: bool | None = None,
     boundary_depths: tuple | None = None,
+    snap: str = "strict",
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
     ``dx_profile`` / ``dy_profile`` are optional; when omitted the
     corresponding axis is uniform with spacing ``dx`` across
     ``domain``. ``pec_faces`` / ``pmc_faces`` force per-face pad=0 on
-    the listed faces (PMC+CPML composition fix on the NU path, 2026-04).
+    the listed faces.
     ``dt`` / ``dt_min_cell`` pin a concrete time step across a mesh
     deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
     ``nominal_profiles`` is handed to it unchanged.
@@ -160,6 +155,9 @@ def build_nonuniform_grid(
                 raise ValueError(
                     f"periodic axis {axis!r}: declared period {length:.12g} m differs "
                     f"from realized period {len(profile) * spacing:.12g} m")
+    # judges a caller's z profile against the declared z; a column
+    # synthesised here rounds up to whole cells as the uniform grid does.
+    snap = snap if dz_profile is not None else "declared"
     if dz_profile is None:
         # Synthesise the uniform dz profile LOCALLY (pure) when only
         # dx/dy are non-uniform. This used to be done at every
@@ -183,6 +181,7 @@ def build_nonuniform_grid(
             face_layers=face_layers, boundary_depths=depths,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
             nominal_profiles=nominal_profiles, periodic_axes=periodic_axes, domain=tuple(map(float, domain)),
+            snap=snap,
         )
 
 
@@ -234,18 +233,17 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
             f"[0, {float(edges[-1]):.12g}] m; requested bounds "
             f"{result['requested_bounds_m']} m, realized bounds "
             f"{result['realized_bounds_m']} m. The monitor integrates the realized extent.",
-            UserWarning, stacklevel=2,
+            ConfigurationWarning, stacklevel=2,
         )
     return result["cell_slice"]
 
 
 def _range_to_slice_nu(grid, axis, value_range):
     """Runner node aperture and physical span, shared with the geometry record."""
-    d_arr_jnp = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
     n_axis = grid.shape["xyz".index(axis)]
     pad_lo = getattr(grid, f"pad_{axis}_lo")
     pad_hi = getattr(grid, f"pad_{axis}_hi")
-    d_np = np.asarray(d_arr_jnp)
+    d_np = host_cells(grid, axis, store=True)
     # Cell-edge positions in physical coords (interior only, edge=0 at first
     # interior face). Length = n_interior + 1.
     interior = interior_cells(d_np, pad_lo, pad_hi, periodic=axis in grid.periodic_axes)
@@ -253,9 +251,9 @@ def _range_to_slice_nu(grid, axis, value_range):
     if value_range is None:
         return (pad_lo, n_axis - pad_hi), float(edges[-1])
     lo, hi = value_range
-    # Each end on the node pos_to_nu_index names (the #1295 tie rule),
+    # Each end on the node pos_to_nu_index names (the tie rule),
     # as the uniform builder puts it on round(lo/dx).
-    from rfx.nonuniform import _axis_position_to_index
+    from rfx.model.graded_grid import _axis_position_to_index
     lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
     hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
     if hi_local <= lo_local:
@@ -272,16 +270,8 @@ def _range_to_slice_nu(grid, axis, value_range):
     return (lo_idx, hi_idx), actual_span
 
 
-def _resolve_waveguide_run_freqs_nu(sim):
-    """The shared bins built by the graded runner, also read by preflight."""
-    for entry in sim._waveguide_ports:
-        if entry.freqs is not None:
-            return jnp.asarray(entry.freqs, dtype=jnp.float32)
-    return jnp.linspace(sim._freq_max * 0.5, sim._freq_max, 20, dtype=jnp.float32)
-
-
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
-                                     freqs: jnp.ndarray, n_steps: int):
+                                     freqs: jnp.ndarray, n_steps: int, *, field_dtype=None):
     """NU-aware waveguide port config builder.
 
     Mirrors the uniform-path ``Simulation._build_waveguide_port_config``
@@ -294,6 +284,10 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         init_multimode_waveguide_port,
     )
 
+    if field_dtype is None:
+        field_dtype = jnp.float64 if sim._precision == "float64" else jnp.float32
+    if field_dtype == jnp.float64:
+        freqs = jnp.asarray(freqs, dtype=jnp.float64)
     normal_axis = entry.direction[1]
     axis_idx = {"x": 0, "y": 1, "z": 2}[normal_axis]
     pos_vec = [0.0, 0.0, 0.0]
@@ -311,7 +305,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         v_slice, b_span = _range_to_slice_nu(grid, "y", entry.y_range)
 
     # NODE span -> CELL span, same conversion and same reason as the uniform
-    # builder (issue #868): ``_range_to_slice_nu`` reports the aperture as
+    # builder: ``_range_to_slice_nu`` reports the aperture as
     # ``edges[hi] - edges[lo]``, i.e. the cells lo..hi-1, while
     # ``WaveguidePort.u_slice`` is the field-array slice the transverse mode
     # operator is sized from.
@@ -321,11 +315,11 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     # Use the cumulative cell-edge position corresponding to the snapped cell
     # index along the port-normal axis.
     if normal_axis == "x":
-        d_axis_np = np.asarray(grid.dx_arr)
+        d_axis_np = host_cells(grid, "x", store=True)
     elif normal_axis == "y":
-        d_axis_np = np.asarray(grid.dy_arr)
+        d_axis_np = host_cells(grid, "y", store=True)
     else:
-        d_axis_np = np.asarray(grid.dz)
+        d_axis_np = host_cells(grid, "z", store=True)
     _pad_lo_axis = getattr(grid, f"pad_{normal_axis}_lo")
     _pad_hi_axis = getattr(grid, f"pad_{normal_axis}_hi")
     _interior = interior_cells(d_axis_np, _pad_lo_axis, _pad_hi_axis, periodic=normal_axis in grid.periodic_axes)
@@ -352,7 +346,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         return with_segment_declaration(init_multimode_waveguide_port(
             port, grid, freqs,
             n_modes=entry.n_modes,
-            f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
+            f0=sim._resolve_waveguide_f0(entry, freqs),
             bandwidth=entry.bandwidth,
             amplitude=entry.amplitude,
             probe_offset=entry.probe_offset,
@@ -360,11 +354,11 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
             dft_total_steps=n_steps,
             dt=float(grid.dt),
             waveform=entry.waveform,
-            mode_profile=entry.mode_profile,
+            mode_profile=entry.mode_profile, field_dtype=field_dtype,
         ), entry)
     return with_segment_declaration(init_waveguide_port(
         port, grid, freqs,
-        f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
+        f0=sim._resolve_waveguide_f0(entry, freqs),
         bandwidth=entry.bandwidth,
         amplitude=entry.amplitude,
         probe_offset=entry.probe_offset,
@@ -372,7 +366,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         dft_total_steps=n_steps,
         dt=float(grid.dt),
         waveform=entry.waveform,
-        mode_profile=entry.mode_profile,
+        mode_profile=entry.mode_profile, field_dtype=field_dtype,
     ), entry)
 
 
@@ -387,8 +381,8 @@ def _port_drive_source(grid, cell, component, excitation, n_steps, *, materials,
 
 def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
-                        sheet_specs=(), drawn_eps_r=None, conductors=None):
-    """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
+                        sheet_specs=(), drawn_eps_r=None, conductors=None, source_grid=None):
+    """Set up uniform or static-Laplace Ez feeds on the non-uniform mesh.
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
     but with two NU-specific differences:
@@ -397,9 +391,9 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         nowhere to go; and
       * the feed's own termination conductance is stamped into
         ``materials_drive`` as well as ``materials`` before the feed is
-        queued (#1256). The queue reads final realized materials after all
+        queued. The queue reads final realized materials after all
         stamps; ``materials_drive`` carries any whole-grid
-        eps/sigma override, traced or not (#1267).
+        eps/sigma override, traced or not.
 
     The substrate ``eps_r`` of the launch fixture -- the static-Laplace mode
     shape, when the port does not state ``eps_r_sub`` -- is read at the
@@ -407,7 +401,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
     whenever an override is in force, and from ``materials_drive`` (which is
     then the drawn one) otherwise. The fixture is a static shape: under an
     override the uniform ``forward()`` reads it from the registered
-    materials too (#483), so a finite difference through the override and
+    materials too, so a finite difference through the override and
     ``jax.grad`` differentiate one function, and a traced override never
     reaches the host-side Laplace solve. Only the Cb each feed cell is
     driven through follows the override.
@@ -417,7 +411,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
     separately by ``compute_msl_s_matrix`` via ``add_dft_plane_probe`` and
     flow through the existing NU ``dft_plane_probes`` accumulation. Returns
     the (possibly σ-updated) ``materials`` and the port-cleared realized PEC
-    edge masks (#931 §1.9).
+    edge masks.
     """
     from rfx.sources.msl_port import (
         _msl_yz_cells,
@@ -437,7 +431,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
             periodic=tuple(a in grid.periodic_axes for a in "xyz"), sheet_specs=sheet_specs), pec_edges=pec_edge_masks)
     original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
     for _msl_port_index, pe in enumerate(sim._msl_ports):
-        # Issue #661: one shared projection of position -> port frame.
+        # one shared projection of position -> port frame.
         mp = msl_port_from_entry(pe)
         port_mode = getattr(pe, "mode", "laplace")
         if port_mode == "eigenmode":
@@ -448,41 +442,44 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                 "mode='laplace' (the add_msl_port default) on the "
                 "non-uniform lane."
             )
-        # laplace / uniform: build the static-Laplace Ez mode profile from the
-        # substrate eps_r read concretely under the trace centre.
+        if port_mode not in ("laplace", "uniform"):
+            raise ValueError(f"Unsupported non-uniform MSL port mode: {port_mode!r}")
         from rfx.sources.msl_port import validate_msl_port_geometry
         validate_msl_port_geometry(
             grid, mp, pec_edge_masks=original_edges, conductors=conductors,
             pec_faces=sim._boundary_spec.pec_faces(), name=pe.name,
             periodic=tuple(a in grid.periodic_axes for a in "xyz"))
-        span = msl_cross_section_span(grid, mp)
-        k_mid = (span["n_lo"] + span["n_hi"]) // 2
-        eps_cell = msl_cell(
-            pe.direction, span["i_feed"], span["w_centre"], k_mid
-        )
-        if pe.eps_r_sub is not None:
-            eps_r_sub = float(pe.eps_r_sub)
-        else:
-            _fixture_eps = (materials_drive.eps_r if drawn_eps_r is None
-                            else drawn_eps_r)
-            eps_r_sub = float(np.asarray(_fixture_eps[eps_cell]))
-        mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
+        mode_profile = None
+        if port_mode == "laplace":
+            span = msl_cross_section_span(grid, mp)
+            k_mid = (span["n_lo"] + span["n_hi"]) // 2
+            eps_cell = msl_cell(
+                pe.direction, span["i_feed"], span["w_centre"], k_mid
+            )
+            if pe.eps_r_sub is not None:
+                eps_r_sub = float(pe.eps_r_sub)
+            else:
+                _fixture_eps = (materials_drive.eps_r if drawn_eps_r is None
+                                else drawn_eps_r)
+                eps_r_sub = float(np.asarray(_fixture_eps[eps_cell]))
+            mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
 
         materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)
-        materials_drive = setup_msl_port(      # #1256
+        materials_drive = setup_msl_port(
             grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
             sources.defer(make_msl_port_sources,
-                grid, mp, n_steps=n_steps, mode_profile=mode_profile,
+                grid if source_grid is None else source_grid, mp, n_steps=n_steps, mode_profile=mode_profile,
             )
         # Only the SUBSTRATE-NORMAL component: the edge the modal
         # source drives.  The three-component form opened a
-        # width-long slot in the ground plane at the feed (#931
-        # §1.9, corrected).
+        # width-long slot in the ground plane at the feed.
         conductors = clear_conductor_edges(
             conductors, list(_msl_yz_cells(grid, mp)),
             component=_msl_normal_component(mp),
-            entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip", released_edges=mode_profile["cell_indices"])
+            entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip",
+            released_edges=(mode_profile["cell_indices"] if mode_profile is not None
+                            else list(_msl_yz_cells(grid, mp))))
         pec_edge_masks = conductors.pec_edges
     return materials, conductors if return_object else pec_edge_masks
 
@@ -523,7 +520,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         Number of timesteps.
     until_decay : float or None
         When not None, run via :func:`run_nonuniform_until_decay`
-        (issue #383 — NU port of the #169 interior-energy stop): every
+        (NU interior-energy stop): every
         step-count-sized build (source tables, waveguide port record
         buffers, DFT planes, flux monitors) is sized with
         ``decay_max_steps`` instead of ``n_steps``, and the scan is
@@ -544,10 +541,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         Threaded to :func:`run_nonuniform_until_decay` (same semantics
         as ``Simulation.run``'s ``decay_*`` kwargs).
     stop_fn, stop_interval :
-        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        ``run(..., ringdown=..., until_identified=True)``: the
         ``n_steps`` record runs as :func:`run_nonuniform_until_decay`'s
         chunked loop (chunks of ``stop_interval`` steps, energy stop off,
-        the #667 progress route's settings) and ``stop_fn(steps_done,
+        the progress route's settings) and ``stop_fn(steps_done,
         peek)`` decides after each chunk whether it ends there; ``peek()``
         gives the record so far (``time_series``, ``wire_port_sparams``,
         ``freqs``, ``grid``, ``dt`` as this function reports them).
@@ -561,11 +558,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     pec_mask_override : jnp.ndarray or None
         Extra hard-PEC mask ORed into the geometry-derived pec_mask.
     design_box : DesignBoxSpec or None
-        Issue #1183. One static box whose E update is redone from its own
+        One static box whose E update is redone from its own
         (usually traced) permittivity, so reverse-mode AD keeps box-shaped
         arrays per timestep instead of grid-shaped ones. The graded-mesh
-        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``
-        (#1179); ``rfx.model.resolve_design_box``, called from
+        counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``; ``rfx.model.resolve_design_box``, called
+        from
         ``_build_nu_scan``, carries the fences that need the resolved step
         context, and the ones below are this lane's own.
     lane : str
@@ -578,6 +575,23 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     -------
     Result
     """
+    from rfx._internal._precision import resolve_field_dtype
+    field_dtype = resolve_field_dtype(sim._precision) or jnp.float32
+    from rfx.runners._admission import refuse_mixed_waveguide_sources
+    refuse_mixed_waveguide_sources(sim)
+    # The S-matrix calculator requests raw records, driving one port per run;
+    # ordinary run()/forward() instead form each port's S from this record.
+    if sim._waveguide_ports and not waveguide_reference_only:
+        from rfx.runners._admission import require_isolated_s_drive
+        require_isolated_s_drive(sim)
+    from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs
+    wg_freqs = resolve_shared_waveguide_port_freqs(
+        sim, route="graded forward()" if lane == "fwd_nonuniform" else "graded run()")
+    from rfx.model.occupancy import refuse_graded_occupancy_model
+    refuse_graded_occupancy_model(sim, pec_occupancy_override)
+    from rfx.measurement.decay import refuse_radiated_flux_stop
+    refuse_radiated_flux_stop(radiated_flux_box, until_decay, sim._boundary)
+
     # run()'s S for the port sets uniform run() scans: one drive per port through
     # the shared driver (compute_lumped_wire_s_matrix_via_scan), not this record.
     from rfx.runners._admission import _s_matrix_ports, graded_lumped_default_s
@@ -585,13 +599,15 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     passive_diagnostic = passive_record_diagnostic(sim)  # all-passive set: V/I kept, as uniform
     # One excited lumped port alone reads S from the main record, as uniform run() does.
     single_lumped = (len(sim._ports) == 1 and sim._ports[0].extent is None
-                     and sim._ports[0].impedance != 0.0 and sim._ports[0].excite)
+                     and sim._ports[0].is_port and sim._ports[0].excite)
     scan = (lane == "run_nonuniform" and not _drive_scan and compute_s_params is not False
             and _s_matrix_ports(sim) and not single_lumped
             and (compute_s_params is True or s_param_freqs is not None
-                 or any(p.impedance != 0.0 and p.extent is not None for p in sim._ports)
+                 or any(p.is_port and p.extent is not None for p in sim._ports)
                  or graded_lumped_default_s(sim)))
     if scan:
+        from rfx.runners._admission import refuse_foreign_s_drives
+        refuse_foreign_s_drives(sim)
         # The main record keeps its port records at the scan's bins; its S is not formed.
         from rfx.measurement.monitors import default_frequency_grid
         compute_s_params = True
@@ -599,7 +615,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                          else default_frequency_grid(sim._freq_max, 50, host=True))
 
     if not scan and (lane == "run_nonuniform" and compute_s_params is not False
-            and any(p.impedance != 0.0 and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
+            and any(p.is_port and (p.extent is not None or compute_s_params is True or s_param_freqs is not None) for p in sim._ports)):
         from rfx.runners._admission import refuse_plain_sources_s_matrix
         if not refuse_plain_sources_s_matrix(sim, main_record=True,
                 implicit=passive_diagnostic and compute_s_params is None and s_param_freqs is None):
@@ -614,21 +630,23 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             compute_s_params = False
 
     # every single-device non-uniform solve (run AND forward) enters here
-    from rfx.sources.tfsf import _refuse_extended_tfsf
+    from rfx.sources.tfsf import _refuse_extended_tfsf, is_oblique
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
     sim._require_mode_the_nonuniform_lane_solves()
     # compute_waveguide_s_matrix's graded branch reaches this lane without
-    # _dispatch_plan, so the lane refuses the refinement it drops (#1240).
+    # _dispatch_plan, so the lane refuses the refinement it drops.
     sim._require_no_refinement_on_the_nonuniform_lane()
     from rfx.api import Result
 
+    from rfx.model.wall_loss import admit_wall_loss, build_wall_operator
+    admit_wall_loss(sim, lane, smoothing=subpixel_smoothing, conformal=conformal_pec)
     from rfx.runners._smoothing_admission import refuse_nonuniform_smoothing
     refuse_nonuniform_smoothing(sim, subpixel_smoothing=subpixel_smoothing,
         eps_override=eps_override, pec_occupancy=pec_occupancy_override)
     _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,
                                eps_override=eps_override)
 
-    # ---- #1183 design box: the fences only this lane can see ----
+    # ---- design box: the fences only this lane can see ----
     # Everything the resolved step context decides (the absorber, the
     # source/wire-port/RLC cells, dispersion, subpixel eps, a sheet inside
     # the box) is rfx.model.resolve_design_box's, from _build_nu_scan.
@@ -639,20 +657,20 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if design_box is not None:
         if sim._waveguide_ports:
             raise NotImplementedError(
-                "a design box (#1183) does not combine with a waveguide "
+                "a design box does not combine with a waveguide "
                 "port on the non-uniform lane: the port injects and "
                 "extracts a modal field over its whole plane, built from "
                 "the background permittivity before the time loop. Use "
                 "eps_override.")
         if getattr(sim, "_msl_ports", None):
             raise NotImplementedError(
-                "a design box (#1183) does not combine with an MSL port on "
+                "a design box does not combine with an MSL port on "
                 "the non-uniform lane: the port rewrites ``materials`` "
                 "across its cross-section at setup, which the design "
                 "permittivity would not reach. Use eps_override.")
         if until_decay is not None:
             raise NotImplementedError(
-                "a design box (#1183) does not combine with until_decay on "
+                "a design box does not combine with until_decay on "
                 "the non-uniform lane: the decay stop is a forward-only "
                 "host loop, so there is no gradient tape for the box to "
                 "keep small. Use a fixed n_steps run.")
@@ -661,9 +679,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # with the uniform path). Full-plane AND finite-region (``size=``)
     # monitors are supported; the finite-region tangential CELL window is
     # resolved against the graded cumulative cell edges in the monitor-build
-    # block below (``_nu_flux_tangential_bounds``, audit c/B1, issue #764).
+    # block below (``_nu_flux_tangential_bounds``, audit c/B1).
 
-    # ---- until_decay (issue #383) fences + sizing ----
+    # ---- until_decay fences + sizing ----
     if until_decay is not None:
         if checkpoint_every is not None:
             raise NotImplementedError(
@@ -714,7 +732,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             debye_spec is not None or lorentz_spec is not None):
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     if strip_sheet_impedance:
-        # #677 operator-isolation control, used by the sheet negative
+        # operator-isolation control, used by the sheet negative
         # controls and resonance A/B lock. A sigma override cannot remove
         # this separate surface operator.
         _sheet_specs = []
@@ -722,10 +740,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
     # arrays for the scan, and every source and port DRIVE is built from
     # ``materials_drive``, which starts from the SAME arrays -- overridden,
-    # and traced when the override is (#1267). A drive pushes its current
+    # and traced when the override is. A drive pushes its current
     # through the Cb = dt/(eps + sigma*dt/2) of the edge it feeds, so it has
     # to read the permittivity the E update reads there. Built from the
-    # arrays as drawn, as this lane did until #1267, a device whose
+    # arrays as drawn, a device whose
     # permittivity under the port came from the override was driven
     # Cb_drawn/Cb_override times too hard: a layered substrate (eps_r
     # 3.38/3.38/10.2 under a 50 ohm wire) supplied by override read S11
@@ -741,9 +759,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # any current source through its own arrays; its modal port drives never
     # read them. The one thing still read from the arrays as drawn is the
     # MSL launch fixture's substrate eps_r (``_setup_msl_ports_nu``,
-    # ``drawn_eps_r``): a static mode shape, as on the uniform lane (#483).
+    # ``drawn_eps_r``): a static mode shape, as on the uniform lane.
     #
-    # #1256: ``materials_drive`` is not a frozen snapshot. Each port below
+    # ``materials_drive`` is not a frozen snapshot. Each port below
     # stamps its termination conductance into BOTH copies. A port drives a
     # current into an edge whose update coefficient Cb = dt/(eps + sigma*dt/2)
     # includes that port's own conductance; a drive built without it
@@ -755,20 +773,20 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # a layered substrate, graded cells or a lumped R/C under the port
     # made the factors unequal and moved S11 too. The uniform lane builds
     # its port sources after the stamp and never had this. On a concrete mesh the stamp is a host float and the copy stays
-    # concrete; on a traced mesh (#1207) sigma_port is traced, and so is the
+    # concrete; on a traced mesh sigma_port is traced, and so is the
     # drive, exactly as the E update is.
     materials_drive = materials
     _drawn_eps_r = None     # only an override separates drawn from stepped
     if eps_override is not None or sigma_override is not None:
         _drawn_eps_r = materials.eps_r
         # A whole-grid override REPLACES the array, so any lumped stamp that
-        # was folded into it is gone; its #1210 record goes with it, or the
+        # was folded into it is gone; its record goes with it, or the
         # E update would add back a load the override does not carry.
         materials = apply_material_overrides(
             materials, eps_override=eps_override, sigma_override=sigma_override)
-        materials_drive = materials     # #1267: the drive sees the override
+        materials_drive = materials     # the drive sees the override
     elif design_box is not None:
-        # #1183, the same rule at the same place: the design permittivity
+        # The design permittivity
         # sets the precision of the material arithmetic, exactly as an
         # ``eps_override`` array does one branch up. Without it the two
         # halves of one grid step at two precisions -- the float32 rounding
@@ -778,7 +796,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
-    # #931 §1.7: realize (Mx, My, Mz) ONCE here with the grid's periodic
+    # realize (Mx, My, Mz) ONCE here with the grid's periodic
     # flags, matching the seam convention of the 3-D NU step function.
     # Port clearing, wire-port liveness and the sheet ctx all read
     # THIS object from here on.
@@ -788,6 +806,15 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         _pec_sheets, _pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"), sheet_specs=_sheet_specs, root=conductors)
     pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
+    from rfx.measurement.prepared import attach_measurement
+    attach_measurement(sim, conductors, n_steps=sizing_n, path=lane,
+                       frequencies=(s_param_freqs if lane == 'fwd_nonuniform'
+                                    or compute_s_params is None or compute_s_params
+                                    or passive_diagnostic else None), staggered_area=True,
+                       overrides={'eps_r': eps_override, 'sigma': sigma_override,
+                                  'pec_mask': pec_mask_override,
+                                  'pec_occupancy': pec_occupancy_override,
+                                  'design_box': design_box})
     from rfx.model.conductors import (
         refuse_layout_metal_consumers, refuse_layout_port_releases,
         refuse_layout_sheet_impedance,
@@ -818,14 +845,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                     "would get scalar eps"},
             )
         else:
-            # #1043 stage B: the pairs carry the CPML/UPML pad continuation,
-            # the NU mirror of the two uniform sites. Same shared builder, so
-            # the three cannot drift the way the array-side replication did
-            # before #627.
+            # The pairs carry the CPML/UPML pad continuation, the NU mirror of the two
+            # uniform sites. A shared builder keeps the three continuations consistent.
             from rfx.geometry.smoothing import (
                 smoothed_shape_pairs, warn_unextendable_shapes, warn_curved_high_contrast,
             )
             shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+            from rfx.model.realization_integrals import begin
+            begin(sim, grid, shapes=shape_eps_pairs, smoothing=subpixel_smoothing)
             if subpixel_smoothing != "full_tensor":
                 warn_curved_high_contrast(shape_eps_pairs, sim=sim)
             warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
@@ -834,15 +861,18 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                     from rfx.model.tensor_operands import full_tensor_eps
                     aniso_eps = full_tensor_eps(sim, grid, materials, shape_eps_pairs)
                 else:
+                    from rfx.model.tensor_operands import smoothing_nominal_h_max
                     aniso_eps = compute_smoothed_eps_nonuniform(
                         grid, shape_eps_pairs, background_eps=1.0,
+                        nominal_h_max=smoothing_nominal_h_max(sim, grid),
                     )
 
     if getattr(sim, "_interface_eps", "sampled") == "dual_average":
-        aniso_eps = assemble_interface_eps_nu(sim, grid, materials)
+        from rfx.geometry.rasterize_grid import unpadded_high_walls
+        aniso_eps = assemble_interface_eps_nu(sim, grid, materials, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))
 
     # Fold RLC R/C into materials before other port/source setup
-    # (mirrors the uniform path). #1256: into the drive's copy too -- an
+    # (mirrors the uniform path), including the drive's copy -- an
     # R or C across a driven edge is part of that edge's Cb, and a drive
     # built without it is off by the element's own (eps + sigma*dt/2) ratio.
     if sim._lumped_rlc:
@@ -858,6 +888,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()
+    source_grid = grid._replace(dt=field_grid(grid, field_dtype).dt)
     probes = []
     from rfx.model.graded_ports import assemble_graded_ports
     from rfx.runners._admission import graded_lumped_default_s
@@ -881,18 +912,19 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     for port_index, drive in ports.drives:
         drives_by_port.setdefault(port_index, []).append(drive)
     for port_index, pe in enumerate(sim._ports):
-        if pe.impedance == 0.0:
+        if pe.is_soft_source:
             idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
                    else field_index(grid, pe.position, pe.component))
             sources.defer(make_current_source,
-                          grid, idx, pe.component, pe.waveform, sizing_n,
+                          source_grid, idx, pe.component, pe.waveform, sizing_n,
                           amplitude_kind=pe.amplitude_kind)
         for cell, component, waveform, sigma_port, unit_field in drives_by_port.get(port_index, ()):
             sources.defer(_port_drive_source,
-                          grid, cell, component, waveform, sizing_n,
+                          source_grid, cell, component, waveform, sizing_n,
                           sigma_port=sigma_port, unit_field=unit_field)
 
-    for pe in sim._probes:
+    from rfx.measurement.identification import read_ringdown_probes
+    for pe in (*sim._probes, *read_ringdown_probes(sim._probes, "runners/nonuniform.py")):
         idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
                else field_index(grid, pe.position, pe.component))
         probes.append((*idx, pe.component))
@@ -931,7 +963,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # finite-region (``size=``) monitors restrict the DFT accumulation to the
     # CELL window whose cumulative face area matches the requested physical
     # size, resolved against the graded cumulative cell edges via
-    # ``_nu_flux_tangential_bounds`` (audit c/B1, issue #764). Tangential cell
+    # ``_nu_flux_tangential_bounds`` (audit c/B1). Tangential cell
     # sizes are passed as per-cell arrays so a graded tangential axis is
     # integrated correctly by FluxMonitor.dA.
     flux_monitor_objs = build_flux_monitor_cfgs_nu(sim, grid, sizing_n)
@@ -950,11 +982,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # init_waveguide_port (duck-types on grid for per-axis widths).
     waveguide_port_cfgs = []
     if sim._waveguide_ports:
-        wg_freqs = _resolve_waveguide_run_freqs_nu(sim)
         for pe in sim._waveguide_ports:
             waveguide_port_cfgs.append(
                 _build_waveguide_port_config_nu(
-                    sim, pe, grid, wg_freqs, sizing_n,
+                    sim, pe, grid, wg_freqs, sizing_n, field_dtype=field_dtype,
                 )
             )
 
@@ -964,7 +995,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if getattr(sim, "_msl_ports", None):
         materials, conductors = _setup_msl_ports_nu(
             sim, grid, materials, materials_drive, sources, sizing_n,
-            pec_edge_masks,
+            pec_edge_masks, source_grid=source_grid,
             geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
             drawn_eps_r=_drawn_eps_r, conductors=conductors,
         )
@@ -973,6 +1004,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    materials = field_poles(materials, source_grid, debye_spec, lorentz_spec, field_dtype)
     sources = sources.resolve(materials)
 
     # Lumped RLC: build per-element metadata + zero-init ADE states
@@ -980,34 +1012,25 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     rlc_states_init: tuple = ()
     if sim._lumped_rlc:
         from rfx.lumped import (build_rlc_meta, init_rlc_state,
-                                refuse_stacked_solved_elements)
+                                refuse_stacked_solved_elements, rlc_carry_dtype)
         rlc_metas = tuple(
             build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc
         )
-        # #1245: at most one element with its own solve per realized edge.
+        # at most one element with its own solve per realized edge.
         refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
-        rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
+        rlc_states_init = tuple(init_rlc_state(dtype=rlc_carry_dtype(rlc_metas, field_dtype)) for _ in sim._lumped_rlc)
 
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
     # (the wire, lumped and MSL port loads above), as the uniform lane builds
     # them. With a dispersive material anywhere in the model the E update runs
-    # on these coefficients alone and never reads ``materials.sigma`` (#1257):
+    # on these coefficients alone and never reads ``materials.sigma``:
     # built before the port stamps they left every port unterminated, and a
     # 50 ohm and a 5000 ohm port gave the same waveform.
-    debye = None
-    if debye_spec is not None:
-        debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks,
-                           periodic=tuple(a in grid.periodic_axes for a in "xyz"))
-
-    lorentz = None
-    if lorentz_spec is not None:
-        lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks,
-                               periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+    debye, lorentz = init_graded_dispersion(
+        materials, source_grid.dt, grid.periodic_axes, debye_spec, lorentz_spec, field_dtype)
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
-    # probe plane (issue #88 flux-extractor path). Built from the same
+    # probe plane. Built from the same
     # cfg geometry the uniform ``extract_waveguide_s_matrix_flux`` uses,
     # but with per-cell tangential cell-size arrays so a graded tangential
     # axis integrates correctly via FluxMonitor.dA.
@@ -1032,14 +1055,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             )
 
     # TFSF plane-wave source. Scope: axis-aligned +x / -x incidence with
-    # angle_deg=0 so the 1D auxiliary grid runs along the uniform x axis
-    # with scalar cell size grid.dx. Oblique angles (2D auxiliary grid)
+    # angle_deg=0; the 1D auxiliary grid runs on the realized x cells
+    # (tfsf_from_declaration, which also refuses traced x). Oblique angles (2D auxiliary grid)
     # and +z / -z incidence (which would require a z-nonuniform 1D aux)
     # are rejected here with actionable messages.
     tfsf_pair = None
     if sim._tfsf is not None:
         entry = sim._tfsf
-        if abs(entry.angle_deg) > 0.01:
+        if is_oblique(entry.angle_deg):
             raise ValueError(
                 "TFSF oblique incidence (angle_deg != 0) is not yet "
                 "supported on nonuniform z mesh — the 2D auxiliary grid "
@@ -1057,10 +1080,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "TFSF on nonuniform mesh supports only direction='+x' or "
                 f"'-x'; got {entry.direction!r}."
             )
-        if is_tracer(grid.cells("x")):
-            raise ValueError(
-                "a plane wave on a graded mesh needs a fixed, uniform x axis; "
-                "the x cell sizes are traced")
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_pair = tfsf_from_declaration(
             entry, grid, sim._freq_max, n_steps=n_steps,
@@ -1081,7 +1100,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if sim._ntff is not None:
         from rfx.farfield import make_ntff_box, init_ntff_data
         ntff_box = make_ntff_box(grid, *sim._ntff)
-        ntff_data_init = init_ntff_data(ntff_box)
+        ntff_data_init = init_ntff_data(ntff_box, field_dtype=field_dtype)
 
     # In-loop block current moments (rfx.current_moments), realized against
     # the grid the solve actually builds.
@@ -1095,7 +1114,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                    "pec_occupancy": pec_occupancy_override,
                    "design_box": design_box})
 
-    # #677: assemble the surface-impedance sheet ctx from the specs the
+    # assemble the surface-impedance sheet ctx from the specs the
     # assembler emitted, against the FINAL realized PEC edges of this run
     # (PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
@@ -1108,16 +1127,18 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "
                 "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported (#677 v1): the sheet operator would "
+                "not supported: the sheet operator would "
                 "silently override the ADE dispersion update at its edges. "
                 "Remove the dispersive material or the f0 sheet.")
         if aniso_eps is not None:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "
                 "with subpixel_smoothing / anisotropic permittivity are "
-                "not supported (#677 v1): the sheet operator assumes the "
+                "not supported: the sheet operator assumes the "
                 "isotropic E update at its edges. Disable "
                 "subpixel_smoothing or drop the f0 sheet.")
+
+    sheet_ctx = build_wall_operator(sim, conductors, sheet_ctx, lane=lane)
 
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
@@ -1127,7 +1148,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     admit(
         sim,
         lane,
-        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params},
+        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params,
+                  "subpixel_smoothing": subpixel_smoothing},
         diagnostics=diagnostics,
     )
 
@@ -1141,10 +1163,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         for index, config in enumerate(waveguide_port_cfgs):
             released = waveguide_port_stage(released, config, f'waveguide_port[{index}]')
         refuse_layout_port_releases(pinned_sheet_layout, released)
+    from rfx.stepping import prepared as prepared_step
+    conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
+    stepping_product = conductors
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
     _shared_run_kwargs = dict(
+        field_dtype=field_dtype,
         design_box=design_box,
         sheet_impedance=sheet_ctx,
         aniso_eps=aniso_eps,
@@ -1163,7 +1189,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         pec_faces=getattr(sim, '_pec_faces', None),
         pmc_faces=sim._boundary_spec.pmc_faces() if getattr(sim, '_boundary_spec', None) is not None else None,
         dft_planes=dft_plane_probes if dft_plane_probes else None,
-        record_dft=bool(getattr(sim, "_internal_probe_indices", ())),
+        record_dft=time_recorded_dft_selection(sim),
         flux_monitors=(
             (flux_monitor_objs + wg_flux_monitors)
             if (flux_monitor_objs or wg_flux_monitors) else None
@@ -1178,12 +1204,12 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         emit_time_series=emit_time_series,
     )
     if stop_fn is not None:
-        # #1254: the chunked loop of the #667 progress route (energy stop
+        # the chunked loop of the progress route (energy stop
         # off, min_steps past the end) with the caller's stop check.
         if until_decay is not None or checkpoint_every is not None or n_warmup:
             raise NotImplementedError(
                 "run_nonuniform_path(stop_fn=...) does not combine with "
-                "until_decay, checkpoint_every or n_warmup (issue #1254).")
+                "until_decay, checkpoint_every or n_warmup.")
         from types import SimpleNamespace as _NS
 
         from rfx.progress import validate_report_every
@@ -1199,7 +1225,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                            freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt)
             return stop_fn(steps_done, partial)
 
-        r = run_nonuniform_until_decay(
+        r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=0.0,
             check_interval=int(stop_interval),
@@ -1213,16 +1239,17 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         )
     elif until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
-        from rfx.measurement.decay import advisory_inputs, drive_end
-        n_end = (drive_end(grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
+        from rfx.measurement.decay import advisory_inputs
+        from rfx.measurement.record_end import drive_end
+        n_end = (drive_end(source_grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
                            waveguide_ports=waveguide_port_cfgs)
-                 if until_decay > 0 and radiated_flux_box is None else None)
-        # #383: chunked host loop with the interior-energy stop. The
+                 if until_decay > 0 else None)
+        # chunked host loop with the interior-energy stop. The
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored
         # (forward-only host loop — mirrors uniform run_until_decay's
         # treatment of the grad-tape flag).
-        r = run_nonuniform_until_decay(
+        r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=until_decay,
             n_end=n_end,
@@ -1239,14 +1266,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         )
     elif (report_every is not None and not checkpoint
           and checkpoint_every is None and not n_warmup):
-        # #667 on the NU lane: drive the SAME chunked host loop the decay
+        # on the NU lane: drive the SAME chunked host loop the decay
         # stop uses, with the stop disabled (decay_by=0.0 is that loop's
         # documented forced-N escape) and min_steps past the end so no
         # energy check ever runs. Chunk re-entry threads the full carry
         # (bit-identity locked by tests/unit/nonuniform/test_nu_progress_chunking.py).
         from rfx.progress import validate_report_every
         _re = validate_report_every(report_every, n_steps=n_steps)
-        r = run_nonuniform_until_decay(
+        r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=0.0,
             check_interval=_re,
@@ -1262,11 +1289,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             import warnings
             warnings.warn(
                 f"report_every={report_every} is ignored on this non-uniform "
-                "run: chunked progress (#667) composes with neither "
+                "run: chunked progress composes with neither "
                 "checkpoint/segmented-remat nor n_warmup on the NU lane "
                 "(the chunked loop is forward-only).",
-                UserWarning, stacklevel=2)
-        r = run_nonuniform(
+                ConfigurationWarning, stacklevel=user_stacklevel())
+        r = prepared_step.advance(stepping_product, run_nonuniform,
             grid, materials, n_steps,
             checkpoint=checkpoint,
             checkpoint_every=checkpoint_every,
@@ -1276,6 +1303,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     s_params = r.get("s_params")
     freqs_out = r.get("s_param_freqs")
+    if lane == "fwd_nonuniform":
+        from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
+        warn_if_singular_value_exceeds_one(s_params, freqs_out, extractor="forward(graded)")
     s_settling = None
     if scan:
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
@@ -1288,7 +1318,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.measurement import package_declared_measurements
     declared_measurements = package_declared_measurements(
-        sim, grid,
+        sim, grid, entry="forward()" if lane == "fwd_nonuniform" else "run()",
         flux_monitors=r.get("flux_monitors", ()),
         waveguide_cfgs=r.get("waveguide_ports", ()),
         waveguide_reference_only=waveguide_reference_only,
@@ -1303,15 +1333,15 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             for entry, probe in zip(sim._dft_planes, r["dft_planes"])
         }
 
-    # Extract per-waveguide-port Poynting flux spectra (issue #88 flux path).
+    # Extract per-waveguide-port Poynting flux spectra.
     waveguide_port_flux_result = None
     if attach_waveguide_flux and wg_flux_monitors and "flux_monitors" in r:
         from rfx.probes.probes import flux_spectrum
         n_sim_flux = len(flux_monitor_objs)
         wg_final = r["flux_monitors"][n_sim_flux:]
-        # jnp-native (NU flux-AD, mirrors the uniform PR #172 fix): keep
+        # jnp-native (NU flux-AD): keep
         # flux_spectrum on the AD tape — np.array() here would detach the
-        # eps_override-traced gradient (the issue #148 concretization bug).
+        # eps_override-traced gradient (the concretization bug).
         # The sole consumer (compute_waveguide_s_matrix_nu, normalize='flux')
         # is jnp-native; np.asarray(...) downstream still accepts these for
         # any concrete-path numpy reader, so forward values are unchanged.
@@ -1322,9 +1352,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
     _stop = r.get("decay_stop")
     from rfx.model.design_admission import with_design_diagnostics
+    from rfx.model.realization_transport import publish_forward_geometry as _forward_geometry
     return with_design_diagnostics(Result(
         diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
-        realized_geometry=geometry_record,
+        realized_geometry=(_forward_geometry(grid, geometry_record)
+                           if lane == "fwd_nonuniform" else geometry_record),
         state=r["state"],
         time_series=r["time_series"],
         s_params=s_params,
@@ -1339,9 +1371,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         lumped_port_sparams=r.get("lumped_port_sparams"),
         sparam_time_records=r.get("sparam_time_records"),
         sparam_read_ids=r.get("sparam_read_ids"),
-        dft_time_records={
-            entry.name: record for entry, record in zip(sim._dft_planes, r.get("dft_time_records", ()))
-        },
+        dft_time_records=named_plane_records(sim, r.get("dft_time_records", ())),
         **declared_measurements,
         waveguide_port_flux=waveguide_port_flux_result,
         grid=grid,
@@ -1392,3 +1422,14 @@ def build_flux_monitor_cfgs_nu(sim, grid, sizing_n):
             )
 
     return flux_monitor_objs
+
+
+def bind_solve_call(assembly, call):
+    """Consume a graded solve before ring-down adds internal probes."""
+    from functools import partial
+    root = assembly.take()
+    return partial(
+        call,
+        conductors=root,
+        diagnostics=assembly.diagnostics,
+    ), root.grid

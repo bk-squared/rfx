@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings
 
 from pathlib import Path
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -36,15 +36,6 @@ from tests.unit.sparams.test_msl_port_integration import (
 # Historical S1-base evidence; incomplete for the current H-collocated algorithm.
 # Preserve these binaries. Current structural gates use manufactured data below.
 # ---------------------------------------------------------------------------
-
-REPLAY_ACCUMULATORS_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "fixtures"
-    / "msl_replay_accumulators.npz"
-)
-REPLAY_GOLDEN_F64_PATH = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "msl_replay_golden_f64.npy"
-)
 
 # Slow end-to-end golden: a capture of the CURRENT pipeline (re-baselined
 # 2026-09-12, #726), regenerable ONLY with a written reason in
@@ -118,7 +109,6 @@ E2E_DZ_PROFILE = np.repeat(
     np.asarray([100e-6] + [77e-6] * 14 + [100e-6] * 8) / 2, 2)
 E2E_DOMAIN = (14e-3, 3.4e-3, 1.978e-3)
 E2E_PERIODS = 12
-E2E_REPAIR_ID = "931-msl-254um-600um-aligned-v2"
 # The implicit f0=F_MAX/2 pulse falls below the API low-signal screen at
 # 4.5/5 GHz. This explicit drive covers the entire declared measurement band.
 E2E_WAVEFORM = GaussianPulse(f0=F_MAX, bandwidth=.8)
@@ -160,59 +150,9 @@ def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
     return sim
 
 
-def _build_historical_capture_sim() -> Simulation:
-    """Interpret the unchanged PR #516 captures on their original mesh.
-
-    The replay binaries predate #931's on-lattice redraw.
-    DX and LY imported from the live integration fixture now describe a
-    different grid; using them to index old DFT planes moves both the V span
-    and Ampere contour. Freeze the capture's 80 um mesh and lateral extent
-    here as historical geometry evidence. The capture lacks the left H
-    planes required by #726 and is not a current-algorithm oracle. The
-    declared 254 um port height also differs from its realized 320 um foil.
-    """
-    dx = 80e-6
-    return _build_thru_line_sim(
-        dx=dx, ly=W_TRACE + 2 * (2 * H_SUB + 8 * dx),
-    )
-
-
 # ---------------------------------------------------------------------------
 # Replay helpers
 # ---------------------------------------------------------------------------
-
-def _make_replay_fake_run(acc_data: dict, run_idx: int):
-    """Return a sim.run replacement that replays captured accumulators.
-
-    The real FDTD scanner is NEVER called. The complex64 arrays are retained
-    only for historical geometry and missing-data rejection witnesses; no
-    missing neighbour is synthesized for the current extraction algorithm.
-    """
-    def fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False):
-        del n_steps, num_periods, compute_s_params
-        grid = self._build_grid()
-        planes = {}
-        for key, arr in acc_data.items():
-            if not key.startswith(f"run{run_idx}__"):
-                continue
-            assert arr.shape[1:] == (grid.ny, grid.nz), (
-                f"Replay plane {key} has transverse shape {arr.shape[1:]}, "
-                f"but the simulation grid has {(grid.ny, grid.nz)}; "
-                "captured fields and geometry must be updated together"
-            )
-            plane_name = key[len(f"run{run_idx}__"):]
-            planes[plane_name] = SimpleNamespace(accumulator=arr)
-        return SimpleNamespace(dft_planes=planes)
-    return fake_run
-
-
-def _load_replay_accumulators():
-    """Load captured accumulator .npz and return (data_dict, freqs)."""
-    with np.load(REPLAY_ACCUMULATORS_PATH) as npz:
-        freqs = npz["freqs"]
-        data = {k: npz[k] for k in npz.files if k != "freqs"}
-    return data, freqs
-
 
 def _run_manufactured_assembly(*, use_x64: bool):
     """Complete c64 DFT records -> production assembly -> independent S.
@@ -291,18 +231,20 @@ def _run_manufactured_assembly(*, use_x64: bool):
         sim.add_material("substrate", eps_r=2.0)
         sim.add(Box((0, 0, 0), (40 * u, 12 * u, 2 * u)), material="substrate")
         sim.add(Box((0, 0, 0), (40 * u, 12 * u, 0)), material="pec")
-        sim.add(Box((0, 4 * u, 2 * u), (40 * u, 8 * u, 2 * u)), material="pec")
+        sim.add(Box((0, (4 - .35) * u, 2 * u),
+                    (40 * u, (8 + .35) * u, 2 * u)), material="pec")
         for feed, direction in ((2 * u, "+x"), (38 * u, "-x")):
             sim.add_msl_port(position=(feed, 6 * u, 0), width=4 * u, height=2 * u,
                              direction=direction, mode="uniform", eps_r_sub=2.0,
                              n_probe_offset=10, n_probe_spacing=2, n_probes=3)
-        sim.run = MethodType(fake_run, sim)
-        result = sim.compute_msl_s_matrix(
-            n_steps=1, freqs=freqs, num_periods=1.0, enforce_passivity=False)
-        assert result.S.dtype == (jnp.complex128 if use_x64 else jnp.complex64)
-        assert result.assembly == "multi_drive_solve"
-        assert np.max(result.cond_a) < 2
-        actual = np.asarray(probe0_s(result, line_s(result)))
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(Simulation, "run", fake_run)
+            result = sim.compute_msl_s_matrix(
+                n_steps=1, freqs=freqs, num_periods=1.0, enforce_passivity=False)
+            assert result.S.dtype == (jnp.complex128 if use_x64 else jnp.complex64)
+            assert result.assembly == "multi_drive_solve"
+            assert np.max(result.cond_a) < 2
+            actual = np.asarray(probe0_s(result, line_s(result)))
     for driven in range(2):
         for port, target in enumerate((12 * u, 28 * u)):
             for component in ("hy", "hz"):
@@ -347,52 +289,6 @@ def test_float32_deployment_delta_bounded():
     delta = float(np.max(np.abs(s_f64 - s_f32)))
     print(f"\n[manufactured float32-vs-float64 assembly] max_abs_dev = {delta:.3e}")
     assert delta < 1e-3
-
-
-def test_historical_capture_cannot_supply_current_bracketing_h_data():
-    """Reject the incomplete capture rather than inventing a left H plane."""
-    from rfx.api._sparams import _collocated_msl_h
-
-    acc_data, freqs = _load_replay_accumulators()
-    assert np.load(REPLAY_GOLDEN_F64_PATH).shape == (2, 2, len(freqs))
-    frame = _make_replay_fake_run(acc_data, 0)(_build_historical_capture_sim())
-    assert not any(name.endswith("_left") for name in frame.dft_planes)
-    pairs = (("_msl_run0_p0_hy_left", "_msl_run0_p0_hy"),
-             ("_msl_run0_p0_hz_left", "_msl_run0_p0_hz"))
-    assert all(right in frame.dft_planes for _, right in pairs)
-    with pytest.raises(ValueError, match="requires bracketing H-plane data"):
-        _collocated_msl_h(frame.dft_planes, pairs, (0.5, 0.5))
-
-
-def test_replay_geometry_matches_the_captured_lattice():
-    """Frozen fields need their captured indices, not the live board's DX.
-
-    Independent witnesses: the stored plane dimensions, the realized trace
-    wall, and the ground-to-trace voltage / Ampere-loop indexing metadata.
-    """
-    from rfx.probes.msl_wave_decomp import register_msl_plane_probes
-    from tests._realized_geometry import (
-        assert_sheet_planes, assert_wall_planes, realized,
-    )
-
-    sim = _build_historical_capture_sim()
-    grid = sim._build_grid()
-    assert (grid.nx, grid.ny, grid.nz) == (192, 54, 31)
-    assert_sheet_planes(sim, 2, [320e-6], what="captured MSL trace")
-    assert_wall_planes(sim, 2, [320e-6], what="captured MSL trace")
-    rz = realized(sim)
-    assert rz.pec_mask is None
-    assert not np.any(rz.edge_masks[2]), "normal Ez through the sheet stays live"
-    acc_data, freqs = _load_replay_accumulators()
-    assert {arr.shape for arr in acc_data.values()} == {(len(freqs), 54, 31)}
-    probes = register_msl_plane_probes(sim, port_index=0, freqs=freqs)
-    assert (probes.j_centre, probes.k_lo, probes.k_hi) == (26, 0, 4)
-    assert (probes.j_lo, probes.j_hi, probes.k_trace_lo, probes.k_trace_hi) == (
-        22, 30, 4, 4,
-    )
-    # Fail at the replay boundary, before silently sampling a different mesh.
-    with pytest.raises(AssertionError, match="captured fields and geometry"):
-        _make_replay_fake_run(acc_data, 0)(_build_thru_line_sim())
 
 
 # ---------------------------------------------------------------------------
@@ -490,8 +386,7 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
     gates only that the assembly is differentiable; it deliberately does NOT
     assert physical S/Z0 (the data isn't physical). The real physics-sanity gate
     (forward S in [0, ~1.2] + finite-difference cross-check) belongs on the REAL
-    end-to-end path and is a required acceptance criterion of G-AD-WIRE
-    (docs/research_notes/2026-05-24_next_goals_and_miss_audit.md). Real-path
+    end-to-end path and is a required acceptance criterion of G-AD-WIRE. Real-path
     passivity is already gated by test_msl_thru_line_passive_gate.
 
     REBUILT (issue #515, 2026-08-04; CORRECTED 2026-08-04 per adversarial
@@ -598,26 +493,27 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
 
     def objective(theta):
         sim = _build_thru_line_sim()
-        sim.run = MethodType(_fake_run_for_theta(theta), sim)
-        result = sim.compute_msl_s_matrix(
-            n_steps=1,
-            freqs=freqs,
-            num_periods=1.0,
-            # Explicit, mode-independent — do NOT rely on the default. The
-            # default gates passivity projection on
-            # `eps_override is None and not is_tracer(S)` (rfx/api/_sparams.py),
-            # so a traced call (jax.grad) and an eager call (e.g. an FD
-            # cross-check) silently take DIFFERENT branches on this
-            # eps_override=None path and would compare two different
-            # functions (PR #468 defect class; see this test's docstring,
-            # "CROSS-CHECK CORRECTION"). This flag makes objective() return
-            # the identical (raw) reduction either way. Since 2026-09-21 it
-            # is also the default — kept explicit anyway, because what this
-            # objective needs is a MODE-INDEPENDENT flag, not whichever
-            # value the default happens to hold.
-            enforce_passivity=False,
-        )
-        return msl_band_mean_s21_sq(result.S)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(Simulation, "run", _fake_run_for_theta(theta))
+            result = sim.compute_msl_s_matrix(
+                n_steps=1,
+                freqs=freqs,
+                num_periods=1.0,
+                # Explicit, mode-independent — do NOT rely on the default. The
+                # default gates passivity projection on
+                # `eps_override is None and not is_tracer(S)` (rfx/api/_sparams.py),
+                # so a traced call (jax.grad) and an eager call (e.g. an FD
+                # cross-check) silently take DIFFERENT branches on this
+                # eps_override=None path and would compare two different
+                # functions (PR #468 defect class; see this test's docstring,
+                # "CROSS-CHECK CORRECTION"). This flag makes objective() return
+                # the identical (raw) reduction either way. Since 2026-09-21 it
+                # is also the default — kept explicit anyway, because what this
+                # objective needs is a MODE-INDEPENDENT flag, not whichever
+                # value the default happens to hold.
+                enforce_passivity=False,
+            )
+            return msl_band_mean_s21_sq(result.S)
 
     grad = jax.grad(objective)(jnp.asarray(0.7, dtype=jnp.float32))
     print(f"\n[AD smoke] grad = {float(grad):.6e}")
@@ -654,8 +550,6 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     three-point fits with a free order, which pass through all three rungs by
     construction (zero residual) and so carry no check of their own. The difference
     between the two trees' S shrinks from 0.0114 to 0.0084 to 0.0067 on that ladder.
-    Records: bk-squared/rfx-archive
-    rfx/records/20260927-1292-locked-results/ (R4).
 
     Captured with scripts/capture_msl_e2e_golden.py --write-golden on VESSL CPU (run
     369367265506; JAX 0.6.2, numpy 2.2.6, float32 fields): base 1292-msl-base-
@@ -680,11 +574,9 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     The measured frequency vector is identical on all three records, and
     actual sampled voltage planes remain 5 and 9 mm. Import the base S
     after these checks; retain rtol=.005/atol=.002 below. Current provenance
-    is tests/fixtures/msl_s_matrix_golden.json; the prior golden and full
-    manifest are preserved under docs/research_notes/issue726/collocation/
-    pre-collocation-golden/. The earlier migration records below are history.
+    is tests/fixtures/msl_s_matrix_golden.json. The earlier migration records below are history.
 
-    FIXTURE REPAIRED 2026-09-08 (#931): retain the PI-authorized 254 um
+    FIXTURE REPAIRED 2026-09-08 (#931): retain the 254 um
     substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
     dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
     substrate, declare the foil at its actual interface, and hold domain/absorber thickness fixed under refinement.
@@ -763,7 +655,7 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     2e-3 - 1.2e-4; the next deliberate re-baseline should quote this number
     as its starting point.
 
-    PLANE (rfx-archive MSL-PLANE.md, decision record 14). The committed golden
+    PLANE. The committed golden
     and ``qualify_result``'s line oracle (``REFERENCE_PLANES_M`` = 5 and 9 mm)
     are probe-0-plane quantities. ``compute_msl_s_matrix`` now reports S at the
     declared feed planes, so this test compares the live S with the feed-plane

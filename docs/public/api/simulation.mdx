@@ -18,7 +18,7 @@ Simulation(freq_max, domain, *, boundary="cpml", cpml_layers=16,
            cpml_kappa_max=1.0, dx=None, mode="3d",
            dz_profile=None, dx_profile=None, dy_profile=None, dt=None,
            dt_min_cell=None, precision="float32", solver="yee",
-           adi_cfl_factor=2.0, stencil_order=2, nominal_profiles=None,
+           stencil_order=2, nominal_profiles=None,
            interface_eps="sampled", snap="strict")
 ```
 
@@ -44,10 +44,15 @@ sim = Simulation(
 | `cpml_layers` | Absorber thickness in cells (default 16). rfx adds the absorber **outside** `domain` on each CPML face, so the whole domain is interior. Keep sources and structures a few cells from its edge. |
 | `dx_profile`, `dy_profile`, `dz_profile` | Cell sizes along an axis, for a graded mesh. See [Non-Uniform Mesh](/rfx/model/domain-mesh/). |
 | `mode` | `"3d"` (default), `"2d_tmz"` (Ez, Hx, Hy) or `"2d_tez"` (Hz, Ex, Ey). |
-| `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). The last two run on the uniform single-device solver only. |
-| `solver` | `"yee"` (default) or the experimental `"adi"`. See [ADI Solver](/rfx/guide/adi-solver/). |
+| `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). Float64 runs on one device, on a uniform or graded mesh; mixed on a uniform mesh on one device. |
+| `pec_occupancy_model` | `"edge_keep"` (default) scales the E-edge update; `"kottke"` converts occupancy to an inverse-permittivity tensor on single-device uniform `forward()` and topology. Graded `forward()` (including distributed) refuses `"kottke"` with an occupancy input. Uniform distributed `forward()` refuses occupancy overrides; `run()` has no occupancy input. |
+| `solver` | `"yee"` (default). `"adi"` was removed in 2.1 and is refused by name. |
 | `stencil_order` | `2` (default) or `4`. Order 4 only runs on a uniform, PEC or periodic, non-dispersive model. |
 | `dt`, `dt_min_cell` | Pin the time step on a graded mesh (for mesh-as-design-variable work). Refused on a uniform mesh. |
+
+Set the occupancy model when constructing `Simulation`, before tracing or calling
+`forward()`. The removed `RFX_PEC_OCC_KOTTKE` environment variable raises at
+construction while set, even to `0`; unset it and use the constructor option.
 
 Put PEC faces in a `BoundarySpec`. Neither
 is a finite ground plane: for that, draw a sheet with `add_thin_conductor()`.
@@ -86,6 +91,7 @@ sim.add_probe((0.030, 0.015, 0.015), "ez")
 | `freeze_mesh()` | `Grid` or `NonUniformGrid` | Fix the mesh now, so you can read grid indices before placing more geometry. |
 | `plan_mesh(*, n_steps=None, available_memory_gb=None, sparameter_calculator=None, ...)` | `MeshPlan` | A serializable summary of the mesh, memory estimate and checks. See [Automation](/rfx/api/functions/). |
 | `mesh_intelligence_report(...)` | `MeshIntelligenceReport` | Grid, preflight issues and AD memory in one report. |
+| `clear_inspection_cache()` | `None` | Free the cached preflight assembly context, realized-geometry record and coax stamp after inspection; the next call that needs them rebuilds them. Solves release them automatically. |
 
 ```python
 report = sim.preflight()
@@ -99,6 +105,13 @@ sim.fidelity_report()
 raises `TypeError`, because an advisory-only report is non-empty but fine.
 `strict=True` raises on any finding, warnings included; for an errors-only
 check call `report.raise_for_failure()` on a normal report.
+
+Each finding also carries `scope`: `object` for affected declarations, `place`
+for a grid region, or `model` for the whole configuration. `subjects` lists the
+affected realization labels in declaration order. When available, `region`
+contains metre `bounds_m` and half-open grid `cells`; it is `None` when no
+concrete box is available, including traced meshes. These fields are included
+in `to_dict()` and let a UI select objects or highlight cells.
 
 ## `run()`
 
@@ -129,13 +142,13 @@ print(result.time_series.shape, result.settling_witness["status"])
 | `num_periods=P` | P periods at `freq_max` (default 20, used when nothing else is given) |
 | `until_decay=1e-3` | step until the interior field energy falls to that fraction of its largest value after the source ended, up to `decay_max_steps` |
 
-`until_decay` works on absorbing boundaries, on uniform and graded meshes. It
-watches the total energy in the interior, so it is a sound stop for spectra,
-flux and S-parameters. In a closed PEC box the energy does not decay. There
-the uniform solver falls back to a single field sample, which is reliable only
-for lossy or radiating ring-down, and a graded mesh refuses `until_decay`
-(set `n_steps`). Use a fixed `n_steps` in closed structures and in convergence
-studies.
+Without `radiated_flux_box`, `until_decay` watches the total interior field
+energy relative to its largest value after the drive ends. This applies to
+uniform meshes with closed or absorbing boundaries and graded meshes with
+absorbing boundaries. A lossless closed PEC box generally reaches the step
+cap; a lossy box can stop when its energy decays. The public graded-mesh runner
+still refuses closed-boundary `until_decay` (set `n_steps`). Use a fixed
+`n_steps` in convergence studies.
 
 **Other arguments you will use:**
 
@@ -145,15 +158,15 @@ studies.
 | `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
 | `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. |
-| `conformal_pec=True` | Weighted updates at cut cells of curved metal. Not for accuracy until the Dey–Mittra update lands: it makes a metal body electrically larger, and every run with it warns. Use the staircase. |
+| `subpixel_smoothing="kottke_pec"` | Experimental. Also smooths metal faces, but it is not recommended for metal: on every measured case with a metal face off the grid it was farther from the reference than the staircase. A run that uses it with a PEC volume warns. For curved metal use `conformal_pec=True`. |
+| `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
 | `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
 | `devices=[...]` | Run across several devices (x-slab decomposition). `exchange_interval` must stay 1. |
-| `skip_preflight=True` | Skip the automatic preflight. Use only after you have read it once. |
+| `skip_preflight=True` | Skip advisories only, for both `run()` and `forward()`. Realization refusals still apply; `snap='declared'` warns on geometry size misses. |
 
 A run argument that the selected solver path does not implement **raises
-before the first step**, for example snapshots on a graded mesh or `until_decay`
-with the ADI solver. The one exception is `report_every`, which only prints
-progress: the graded, ADI, subgridded and multi-device paths ignore it with a
+before the first step**, for example snapshots on a graded mesh. The one exception is `report_every`, which only prints
+progress: the graded, subgridded and multi-device paths ignore it with a
 warning.
 
 **Warnings after the run.** `run()` warns when a probe recorded no field,

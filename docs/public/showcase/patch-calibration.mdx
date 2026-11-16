@@ -1,0 +1,67 @@
+---
+title: "A substrate's permittivity and loss, recovered from |S11| by gradient"
+description: "Gradient descent through the FDTD solve fits a probe-fed RT/Duroid 5880 patch antenna's |S11| over 2.15–2.50 GHz and recovers the substrate's permittivity and conductivity from datasheet start values: εr 2.301 for 2.30, σ 3.19×10⁻³ S/m for 3.0×10⁻³ S/m."
+sidebar:
+  order: 6
+---
+
+A patch antenna's |S11| curve is set by its substrate: the permittivity moves the
+resonance, and the loss sets how deep and how wide the dip is. Fitting a computed
+curve to a reference one therefore recovers both values. Here the antenna is a
+probe-fed patch on RT/Duroid 5880, and the two unknowns are the substrate's relative
+permittivity εr and its conductivity σ. The misfit is the mean, over 71 frequencies
+from 2.15 to 2.50 GHz, of (|S11 model| − |S11 reference|)² in linear magnitude. Adam
+lowers it, with its gradient with respect to εr and σ taken through the FDTD solve.
+
+The reference curve is not a measurement. rfx computed it on the same antenna model
+and mesh, with the substrate set to εr 2.30 and σ 3.0×10⁻³ S/m; the fit starts
+without these values. The case shows that the gradient recovers material values a
+model was built with. It does not show how close the model is to a real board.
+
+<figure data-rfx="media">
+  <video controls playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/f1abd0bff18d/patch-calibration/patch_calibration_film_poster.png" aria-label="A narrated film of the calibration: the patch antenna cut open at its probe, the field of one run, and the model's |S11| curve moving onto the reference curve while the permittivity and loss values move toward the values the reference was computed with">
+    <source src="https://remilab.cnu.ac.kr/share/f1abd0bff18d/patch-calibration/patch_calibration_film.mp4" type="video/mp4" />
+    <a href="https://remilab.cnu.ac.kr/share/f1abd0bff18d/patch-calibration/patch_calibration_film.mp4">Download the film (MP4, 1920×1080, 77 s)</a>.
+  </video>
+  <figcaption>The calibration in 77 seconds, with narration.</figcaption>
+</figure>
+
+<div data-rfx="tiles">
+  <div><strong>εr 2.301</strong> <span>recovered (reference built with 2.30; start 2.20)</span></div>
+  <div><strong>σ 3.19×10⁻³ S/m</strong> <span>recovered (reference built with 3.0×10⁻³; start 2.94×10⁻⁴)</span></div>
+</div>
+
+## What happened
+
+The fit starts from the datasheet permittivity, εr 2.20, and a conductivity of
+2.94×10⁻⁴ S/m. After 51 updates it stands at εr 2.3012 and σ 3.193×10⁻³ S/m:
+0.05 % and 6.4 % from the values the reference was computed with. The misfit falls
+from 4.4×10⁻² to 9.9×10⁻⁶. The permittivity is within 0.1 % of 2.30 after 11
+updates. The optimizer's momentum then carries both values past the reference ones,
+the conductivity up to 4.9×10⁻³ S/m, and they swing back around them with a
+shrinking amplitude. The fit ends at its declared limit of 51 updates, while the
+conductivity still moves by up to about 1 % per update.
+
+All runs use one mesh, cells of 0.79 mm. Because the reference comes from the same
+model and mesh, the recovered values are those of this mesh's model; on a real
+board, the mesh error would enter the recovered values.
+
+## How it was checked
+
+The checks and their thresholds were fixed before the runs.
+
+- **Gradient against a 1.5× longer simulation time**, at the start and at a point
+  between the start and the reference values: at most 4.6×10⁻⁴ relative difference for σ and 2.9×10⁻⁵
+  for εr, against a threshold of 5×10⁻².
+- **End of the simulation**: the response still arriving after the reference run
+  ends is 83 dB below its peak.
+- **The same model through `run()` and `forward()`**: |S11| agrees to 1.8×10⁻⁶ at
+  every frequency.
+
+## Files
+
+<ul>
+  <li><a href="https://remilab.cnu.ac.kr/share/f1abd0bff18d/patch-calibration/result.json">result.json</a> (start, reference and recovered values, objective, optimizer, band, cell size)</li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f1abd0bff18d/patch-calibration/curves.npz">curves.npz</a> (the reference |S11| and the curve, εr, σ and misfit at every update)</li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f1abd0bff18d/patch-calibration/patch_calibration_film.mp4">patch_calibration_film.mp4</a></li>
+</ul>

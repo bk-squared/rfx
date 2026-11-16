@@ -187,6 +187,9 @@ def checkpoint_memory(n, lengths, *, boundary_bytes, step_bytes, static_bytes,
     each level is clamped exactly as the scan clamps its full units.
     Each extra cotangent adds ``working_bytes + boundary_bytes``. The
     caller supplies c (static_bytes) and w (working_bytes) from its scene.
+    The AD scene model supplies w = 6.5 carries, calibrated on one graded
+    whole-grid scene (GPU, JAX 0.10.2); design boxes use the same unmeasured
+    whole-grid workspace estimate. The generic default remains zero.
     """
     cotangents = validate_cotangents(cotangents)
     if lengths is None:

@@ -1,5 +1,6 @@
 ---
-title: "Migration Guide"
+title: "Coming from Meep or openEMS"
+description: "How a Meep or openEMS model maps to rfx: the concepts, three translated scripts, and the differences that most often catch newcomers."
 sidebar:
   order: 6
 ---
@@ -117,9 +118,10 @@ a PEC- or PMC-walled length by more than 1 % is refused (`snap="declared"`
 accepts it with a warning). The example runs in seconds on a CPU. The
 calculator's warnings name the absorber depth and simulation time it needs; 26
 layers and 48 periods satisfy them here. `normalize=False` (the default) is the
-modal V/I decomposition from one run per port; `normalize=True` divides by a
-reference run of the empty guide, which cancels the grid's dispersion in
-transmission but not in reflection; `normalize="flux"` takes every |S|, S11
+modal V/I decomposition from one run per port; `normalize=True` divides every
+entry by the incident wave of an empty-guide reference run and subtracts that
+guide's own reflection from S11, while S21 keeps the grid's one-way dispersion,
+as with `normalize=False`; `normalize="flux"` takes every |S|, S11
 included, from the Poynting flux and the phase from the modal V/I. The last two
 cost 2 × N_ports runs. There is no single `CalcPort` equivalent:
 `run(compute_s_params=True)` is only for lumped and wire `add_port(...)` ports.
@@ -186,7 +188,7 @@ the final result. See
   the uniform grid, with a fixed `n_steps` or with `until_decay`. The frames
   are `interval` steps apart (default 10); read their times from
   `result.snapshot_axes`. Multi-device runs record them on both meshes. On one
-  device, a graded mesh, the ADI solver and a subgridded run do not, and raise
+  device, a graded mesh and a subgridded run do not, and raise
   if you ask for them.
 - **A built-in material library.** `fr4`, `rogers4003c`, `rogers4350b`,
   `rt_duroid_5880`, `alumina`, `ptfe`, `silicon`, `copper`, `aluminum`, `pec`,

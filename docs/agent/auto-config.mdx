@@ -19,6 +19,12 @@ for RF judgement or support-matrix checks.
 5. Promote to a longer run only after the smoke output has sane field/probe
    amplitudes and the selected feature lane is documented.
 
+The geometry planner returns an `offset`; add it to all drawn coordinates to
+leave the planned margin below and above the board. A `Simulation(domain=...)`
+without `dx` instead builds its auto mesh over the declared domain and keeps
+the drawn coordinates. `body_flush_on_absorber` warns when a body's thin face
+is flush with an absorber, which continues its material beyond that face.
+
 ## Gating on the preflight report
 
 Read the gate off the report, never off its truthiness. `sim.preflight()`
@@ -53,10 +59,13 @@ config = auto_configure(
 sim = Simulation(**config.to_sim_kwargs())
 sim.add_material("fr4", eps_r=4.4, sigma=0.025)
 for shape, material in geometry:
-    sim.add(shape, material=material)
-sim.add_source((0.029, 0.03, 0.0008), "ez", waveform=GaussianPulse(2.4e9, 0.8),
+    lo = tuple(v + d for v, d in zip(shape.corner_lo, config.offset))
+    hi = tuple(v + d for v, d in zip(shape.corner_hi, config.offset))
+    sim.add(Box(lo, hi), material=material)
+position = tuple(v + d for v, d in zip((0.029, 0.03, 0.0008), config.offset))
+sim.add_source(position, "ez", waveform=GaussianPulse(2.4e9, 0.8),
                amplitude_kind="current")
-sim.add_probe((0.029, 0.03, 0.0008), "ez")
+sim.add_probe(position, "ez")
 
 result = sim.run(n_steps=min(config.n_steps, 200))  # smoke first; increase only after inspection
 ```

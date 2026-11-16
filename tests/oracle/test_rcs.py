@@ -26,7 +26,8 @@ import jax.numpy as jnp
 
 from rfx.grid import Grid, C0
 from rfx.geometry.csg import Box, Sphere, rasterize
-from rfx.rcs import compute_rcs, RCSResult
+from rfx.measurement.rcs import compute_rcs
+from rfx.rcs import RCSResult
 
 
 # PEC conductivity: very high value to approximate perfect conductor

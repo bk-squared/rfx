@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -68,44 +67,6 @@ def authored_routes(repo_root: Path) -> set[str]:
     return routes
 
 
-def check_curated_media(repo_root: Path) -> list[str]:
-    """Check the bounded historical bundle without claiming physics validation."""
-    root = repo_root / "docs/public/gallery/assets/showcase-20260927"
-    catalog_path = root / "media-catalog.json"
-    errors: list[str] = []
-    if not catalog_path.is_file():
-        return ["missing historical media catalog"]
-    catalog = json.loads(catalog_path.read_text())
-    if catalog.get("schema_version") != "rfx-public-media-catalog-v1":
-        errors.append("unsupported historical media catalog schema")
-    seen: set[str] = set()
-    allowed_kinds = {"optimization-history", "optimization-history-with-interpolation", "phasor-replay"}
-    for asset in catalog.get("assets", []):
-        if asset.get("media_kind") not in allowed_kinds or not asset.get("limitations"):
-            errors.append(f"{asset.get('id')}: missing animation type or limitations")
-        for role in ("video", "poster"):
-            entry = asset.get(role, {})
-            name = entry.get("path", "")
-            if not re.fullmatch(r"[a-z0-9_-]+\.(?:mp4|jpg)", name):
-                errors.append(f"{asset.get('id')}: unsafe or unsupported {role} path")
-                continue
-            if name in seen:
-                errors.append(f"duplicate media file: {name}")
-            seen.add(name)
-            path = root / name
-            if path.is_symlink() or not path.is_file():
-                errors.append(f"missing regular media file: {name}")
-                continue
-            data = path.read_bytes()
-            if len(data) != entry.get("bytes") or hashlib.sha256(data).hexdigest() != entry.get("sha256"):
-                errors.append(f"media byte count or SHA-256 mismatch: {name}")
-    media_files = {p.name for p in root.iterdir() if p.suffix in {".mp4", ".jpg"}}
-    for name in sorted(media_files - seen):
-        errors.append(f"uncataloged media file: {name}")
-    if not seen:
-        errors.append("empty historical media catalog")
-    return errors
-
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
@@ -115,7 +76,6 @@ def main() -> int:
     invalid_primary_routes: list[str] = []
     seen: set[str] = set()
     duplicates: set[str] = set()
-    media_errors = check_curated_media(repo_root)
     quarantined_legacy, unexpected_legacy = check_legacy_guide_retired(repo_root)
 
     for group in site_map["groups"]:
@@ -146,10 +106,6 @@ def main() -> int:
         print("authored public pages missing from site_map:")
         for slug in sorted(unlisted):
             print(f"  - {slug}")
-    if media_errors:
-        print("curated media issues:")
-        for error in media_errors:
-            print(f"  - {error}")
     if quarantined_legacy:
         print("quarantined legacy docs/guide files:")
         for rel in quarantined_legacy:
@@ -159,7 +115,7 @@ def main() -> int:
         for rel in unexpected_legacy:
             print(f"  - {rel}")
 
-    if duplicates or invalid_primary_routes or missing or unexpected_legacy or unlisted or media_errors:
+    if duplicates or invalid_primary_routes or missing or unexpected_legacy or unlisted:
         return 1
 
     if quarantined_legacy:

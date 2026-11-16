@@ -39,7 +39,6 @@ verdict("forward()",             lambda: peaks(mk().forward(n_steps=N, skip_pref
 verdict("run() subpixel=True",   lambda: peaks(mk().run(n_steps=N, skip_preflight=True, compute_s_params=False, subpixel_smoothing=True)))
 verdict("run() kottke_pec",      lambda: peaks(mk().run(n_steps=N, skip_preflight=True, compute_s_params=False, subpixel_smoothing="kottke_pec")))
 verdict("run() conformal_pec",   lambda: peaks(mk().run(n_steps=N, skip_preflight=True, compute_s_params=False, conformal_pec=True)))
-verdict("solver='adi'",          lambda: peaks(mk(solver="adi").run(n_steps=N, skip_preflight=True, compute_s_params=False)))
 verdict("stencil_order=4",       lambda: peaks(mk(stencil_order=4).run(n_steps=N, skip_preflight=True, compute_s_params=False)))
 verdict("precision=float64",     lambda: peaks(mk(precision="float64").run(n_steps=N, skip_preflight=True, compute_s_params=False)))
 

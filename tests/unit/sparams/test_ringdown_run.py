@@ -46,6 +46,8 @@ import jax
 import numpy as np
 import pytest
 
+import rfx.measurement.ringdown_tail as ringdown_tail
+import rfx.stepping.ringdown_emulation as stepping_ringdown_emulation
 from rfx import Box, GaussianPulse, Simulation
 from rfx import ringdown as rd
 from rfx.ringdown import RingdownSpec
@@ -130,7 +132,7 @@ def _run_captured(sim, n, **kw):
                            freq_max=k["freq_max"], guard=k["guard"],
                            sv_rel=k["sv_rel"], unit_tol=k["unit_tol"])
         S_hand = np.asarray(k["observable"](
-            k["plain"] + rd.tail_dft(main, n_record - 1, freqs)))
+            k["plain"] + ringdown_tail.tail_dft(main, n_record - 1, freqs)))
         assert S_hand.dtype == r.ringdown.s_params.dtype
         assert np.array_equal(S_hand[:, 0], r.ringdown.s_params[:, 0]), (
             "the completed S is not the completion from the main window")
@@ -199,7 +201,7 @@ def test_w0_holds_and_the_completion_has_the_shape_of_the_run(short_runs):
     assert amp == sorted(amp, reverse=True)
     assert 0.0 < rep.tail_share < 1.0 and rep.slowest_decay_over_window > 0.0
     gw = rep.witness("growing_poles")
-    assert gw.ok and gw.value == 0.0 and "not judged" in gw.rule
+    assert gw.ok and gw.value == 0.0 and gw.bar == 1e-2 and "not judged" in gw.rule
     assert rep.discarded_growth_max is not None
     print(f"[{lane}] W1 {rep.witness('W1').value:.3g}, accumulator round-off "
           f"{rep.s_accumulator_roundoff:.3g}; {gw.note}")
@@ -284,7 +286,7 @@ def _replay_without_half_step(monkeypatch):
     Since S2 M2 the half step is the H stamp of the one DFT kernel, so the
     defect is the replay stamping the current as an E sample."""
     import rfx.core.dft_utils as dft_utils
-    orig = rd._emulate_accumulators
+    orig = stepping_ringdown_emulation._emulate_accumulators
     phase = dft_utils.port_dft_phase
 
     def replay(*a, **k):
@@ -293,14 +295,13 @@ def _replay_without_half_step(monkeypatch):
                       lambda step, freqs, dt, kind="E", **kw: phase(step, freqs, dt, "E", **kw))
             return orig(*a, **k)
 
-    monkeypatch.setattr(rd, "_emulate_accumulators", replay)
     import rfx.stepping.ringdown_emulation as ringdown_emulation
     monkeypatch.setattr(ringdown_emulation, "_emulate_accumulators", replay)
 
 
 def _replay_one_step_late(monkeypatch):
     """The W0 replay is fed the probe series shifted one step later."""
-    orig = rd._emulate_accumulators
+    orig = stepping_ringdown_emulation._emulate_accumulators
 
     def shift(a):
         a = np.asarray(a)
@@ -309,7 +310,6 @@ def _replay_one_step_late(monkeypatch):
     def replay(lane, pm, e32, h32, dt):
         return orig(lane, pm, shift(e32), {k: shift(v) for k, v in h32.items()}, dt)
 
-    monkeypatch.setattr(rd, "_emulate_accumulators", replay)
     import rfx.stepping.ringdown_emulation as ringdown_emulation
     monkeypatch.setattr(ringdown_emulation, "_emulate_accumulators", replay)
 
@@ -458,7 +458,7 @@ def test_the_error_witness_fails_a_graded_record_cut_at_a_fifth_of_its_decay_tim
     kw = {key: k[key] for key in ("freq_max", "guard", "sv_rel", "unit_tol")}
     Y = np.asarray(Y)[:n]
     S_half, S_quarter = (
-        np.asarray(k["observable"](k["plain"] + rd.tail_dft(
+        np.asarray(k["observable"](k["plain"] + ringdown_tail.tail_dft(
             rd.identify(Y, dt, n0, n, **kw), n - 1, freqs))).astype(np.complex128)
         for n0 in (600, 300))
     we_hand = float(np.max(np.abs(S_half - S_quarter)))
@@ -491,7 +491,10 @@ def test_w2_is_judged_when_the_pulse_is_still_on_in_the_longer_window():
     assert rep.completed and rep.witness("source_off").ok
     assert not we.judged and math.isnan(we.value) and not we.ok
     assert we.note.startswith("not formed") and "of its peak in [0.25 T, T]" in we.note
-    assert w2.judged and "could not be formed" in w2.note and "R-i" in w2.note
+    assert (w2.judged and "could not be formed" in w2.note
+            and ("on synthetic close-mode pairs, the graded and uniform box fixtures, "
+                 "and a metal cavity with a 2.7 % mode pair, W2 read the actual error "
+                 "0.003-22x") in w2.note)
     assert rep.long_rank is None and rep.long_n_kept is None
     assert w2.ok and rep.ok
     assert rep.ok == all(w.ok for w in rep.witnesses if w.name != "WE")
@@ -519,12 +522,14 @@ def test_a_graded_port_on_an_absorbing_floor_is_probed_inside_the_grid():
     the extra edge below the span would lie in the absorber pad, where the
     graded lane's positions cannot reach; it is not probed, and the run
     completes with W0 holding."""
-    sim = Simulation(freq_max=12e9, domain=(24 * MM, 20 * MM, 7.5 * MM), dx=1.0 * MM,
+    # z is the profile sum, 8.5 mm, the length the grid solves (#1941).
+    sim = Simulation(freq_max=12e9, domain=(24 * MM, 20 * MM, 8.5 * MM), dx=1.0 * MM,
                      boundary="cpml", cpml_layers=6,
                      dz_profile=np.array([0.5, 0.5, 0.5, 1, 1, 1, 1, 1, 1, 1]) * MM)
     sim.add_material("sub", eps_r=3.5)
     sim.add(Box((0, 0, 0), (24 * MM, 20 * MM, 1.5 * MM)), material="sub")
-    sim.add(Box((6 * MM, 5 * MM, 1.5 * MM), (18 * MM, 15 * MM, 1.5 * MM)), material="pec")
+    sim.add(Box(((6 - .35) * MM, (5 - .35) * MM, 1.5 * MM),
+                ((18 + .35) * MM, (15 + .35) * MM, 1.5 * MM)), material="pec")
     sim.add_port(position=(9 * MM, 10 * MM, 0.0), component="ez", impedance=50.0,
                  extent=1.5 * MM, waveform=GaussianPulse(f0=8e9, bandwidth=0.9))
     r = sim.run(n_steps=1500, compute_s_params=True,
@@ -612,6 +617,8 @@ def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
 
     monkeypatch.setattr(rd, "two_window_witness", two_window)
     monkeypatch.setattr(rd, "_assemble", assemble)
+    import rfx.measurement.ringdown_port_s as ringdown_port_s
+    monkeypatch.setattr(ringdown_port_s, "_assemble", assemble)
     with pytest.warns(UserWarning, match="witness failed -- passivity"):
         r = _box("uniform", cells=3).run(
             n_steps=1500, compute_s_params=True, s_param_freqs=FREQS,

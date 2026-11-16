@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx import _realized
+from rfx._internal import _realized
 from rfx.runners import _admission as admission
 from tests.contracts import path_disposition
 
@@ -17,9 +17,9 @@ from .comparison import array_peak, compare, component_peaks, container, exclude
 
 
 @functools.lru_cache(maxsize=None)
-def solve(row, lane, graded, steps, dt):
+def solve(row, lane, graded, steps, dt, traced=True, precision=None):
     started = time.perf_counter()
-    sim = build(row, lane, graded=graded, dt=dt)
+    sim = build(row, lane, graded=graded, dt=dt, precision=precision)
     grid = sim._build_realized_grid()
     geometry = sim.realized_geometry()
     kwargs = dict(n_steps=steps, skip_preflight=True)
@@ -27,6 +27,10 @@ def solve(row, lane, graded, steps, dt):
     if forward:
         run = sim.forward
         kwargs['checkpoint'] = False
+        if lane in ('fwd_distributed', 'fwd_distributed_nu'):
+            devices = jax.devices('cpu')
+            assert len(devices) == 2, 'S0 requires exactly two CPU devices'
+            kwargs.update(distributed=True, devices=devices)
         # An all-passive record has no S column to form (#1929): forward refuses it.
         if row[0] == '_ports' and row[1] in ('lumped_port', 'wire_port'):
             from .builders import FREQS
@@ -46,7 +50,7 @@ def solve(row, lane, graded, steps, dt):
     # S0 observes materials and leaves every production source spec unchanged.
     with patch.object(_realized, 'sources', lambda grid, materials, specs, site, **kw: specs):
         with _realized.capture() as capture:
-            if forward:
+            if forward and traced:
                 eps = jnp.asarray(geometry.materials.eps_r)
                 mask = eps != 1.0
                 box = None
@@ -69,14 +73,15 @@ def solve(row, lane, graded, steps, dt):
                     return jnp.sum(out.time_series ** 2), out
 
                 objective, gradient, result = jax.jvp(
-                    loss, (jnp.float32(1.0),), (jnp.float32(1.0),), has_aux=True)
+                    loss, (jnp.asarray(1.0, dtype=precision or jnp.float32),),
+                    (jnp.asarray(1.0, dtype=precision or jnp.float32),), has_aux=True)
                 jax.block_until_ready(gradient)
             else:
                 result = run(**kwargs)
             jax.block_until_ready(result.time_series)
     assert capture.lane == lane, f're-routed: requested {lane}, observed {capture.lane}'
     assert result.time_series.shape == (steps, 2), f'probe record shape: {result.time_series.shape}'
-    assert result.time_series.dtype == jnp.float32, f'probe dtype: {result.time_series.dtype}'
+    assert result.time_series.dtype == np.dtype(precision or 'float32'), f'probe dtype: {result.time_series.dtype}'
     return dict(grid=grid, geometry=geometry, result=result, capture=capture,
                 objective=objective, gradient=gradient, elapsed=time.perf_counter()-started)
 
@@ -260,7 +265,7 @@ def _entry_refusal(sim, cell, report):
 
     def before_scan(*args, **kwargs):
         caller = sys._getframe(1).f_code.co_filename.replace('\\', '/')
-        if any(part in caller for part in ('rfx/stepping/uniform_loop.py', 'rfx/stepping/graded_loop.py', 'rfx/nonuniform.py', 'rfx/runners/', 'rfx/stepping/progress_scan.py')):
+        if any(part in caller for part in ('rfx/stepping/uniform_loop.py', 'rfx/stepping/graded_loop.py', 'rfx/nonuniform.py', 'rfx/runners/', 'rfx/stepping/slab_', 'rfx/stepping/progress_scan.py')):
             report['refusal_scan_started'] = True
             raise RuntimeError('refusal reached the first kernel scan')
         return scan(*args, **kwargs)
@@ -273,6 +278,8 @@ def _entry_refusal(sim, cell, report):
         kwargs['compute_s_params'] = False
     if cell.refused in ('run_distributed', 'run_distributed_nu'):
         kwargs['devices'] = jax.devices('cpu')[:2]
+    if cell.refused in ('fwd_distributed', 'fwd_distributed_nu'):
+        kwargs.update(distributed=True, devices=jax.devices('cpu')[:2])
     with patch.object(sim, '_dispatch_plan', select), patch.object(jax.lax, 'scan', before_scan):
         try:
             run(**kwargs)
@@ -282,6 +289,13 @@ def _entry_refusal(sim, cell, report):
 
 
 def execute(cell):
+    if cell.row == ("_float64", ""):
+        with jax.enable_x64(True):
+            return _execute(cell, precision="float64")
+    return _execute(cell)
+
+
+def _execute(cell, precision=None):
     started = time.perf_counter()
     report = dict(cell=cell.id, failures=[], measurements=[])
     try:
@@ -297,7 +311,7 @@ def execute(cell):
             try:
                 sim = build(cell.row, cell.refused, graded=cell.graded)
             except (ValueError, NotImplementedError) as exc:
-                targeted = (cell.row[0] in ('_dt_pin', '_dt_min_cell') and 'dt= pins' in str(exc)) or (cell.row[0] == '_floquet_ports' and 'Floquet ports do not support' in str(exc))
+                targeted = (cell.row[0] in ('_dt_pin', '_dt_min_cell') and 'dt= pins' in str(exc)) or (cell.row[0] == '_floquet_ports' and 'Floquet ports do not support' in str(exc)) or (cell.row == ('_tfsf', 'closed_box') and 'CustomWaveform and closed_box TFSF require a uniform' in str(exc))
                 if not targeted:
                     raise
                 report['refusal'] = str(exc)
@@ -323,12 +337,13 @@ def execute(cell):
         row = ('_materials', 'eps') if cell.row in BASE_ROWS else cell.row
         # The graded pair takes its first lane's computed time step. Other
         # pairs use the uniform lane's computed time step as declared.
-        sim_a = build(row, cell.a, graded=cell.graded)
+        sim_a = build(row, cell.a, graded=cell.graded, precision=precision)
         dt = float(sim_a._build_realized_grid().dt)
-        assert admission.DETECTORS[cell.row](sim_a), f'builder did not activate {cell.row}'
-        a = solve(row, cell.a, cell.graded, cell.steps, None)
+        assert admission.DETECTORS[('_precision', '') if precision else cell.row](sim_a), f'builder did not activate {cell.row}'
+        traced = cell.traced or not cell.a.startswith('fwd_')
+        a = solve(row, cell.a, cell.graded, cell.steps, None, traced, precision)
         pin_b = cell.graded or cell.b == 'run_nonuniform' or cell.b == 'fwd_nonuniform'
-        b = solve(row, cell.b, cell.graded, cell.steps, dt if pin_b else None)
+        b = solve(row, cell.b, cell.graded, cell.steps, dt if pin_b else None, traced, precision)
         report['uncached_solve_seconds'] = a['elapsed'] + b['elapsed']
         _comparison(a['grid'].dt, b['grid'].dt, 'dt', 'exact', report)
         _comparison(a['result'].dt, b['result'].dt, 'result.dt', 'exact', report)
@@ -339,7 +354,18 @@ def execute(cell):
         except AssertionError as exc:
             report['failures'].append(f'kernel: {exc}')
         for name in RECORDS:
-            x, y = getattr(a['result'], name, None), getattr(b['result'], name, None)
+            # A record a lane refuses on read is a difference of that record,
+            # not of the whole cell: the other records are still compared.
+            values, refused = {}, []
+            for side, solved in (('A', a), ('B', b)):
+                try:
+                    values[side] = getattr(solved['result'], name, None)
+                except NotImplementedError:
+                    refused.append(side)
+            if refused:
+                report['failures'].append(f"{name}: record refused on read on {' and '.join(refused)}")
+                continue
+            x, y = values['A'], values['B']
             x = None if isinstance(x, (tuple, list, dict)) and not x else x
             y = None if isinstance(y, (tuple, list, dict)) and not y else y
             required = (name == 'time_series' or OBSERVERS.get(cell.row[0]) == name
@@ -355,7 +381,7 @@ def execute(cell):
                 _comparison(x, y, name, 'step' if name in ('time_series', 'sparam_time_records') else 'accumulated', report)
             else:
                 _tree(x, y, name, 'step' if name in ('time_series', 'sparam_time_records') else 'accumulated', report)
-        if cell.a.startswith('fwd_'):
+        if cell.traced:
             for name in ('objective', 'gradient'):
                 _comparison(a[name], b[name], name, 'accumulated', report)
     except Exception as exc:

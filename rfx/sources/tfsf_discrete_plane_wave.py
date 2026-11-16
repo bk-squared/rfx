@@ -1,6 +1,7 @@
 """Exact rational plane waves on the uniform three-dimensional Yee lattice."""
 from __future__ import annotations
 
+from rfx.errors import AccuracyWarning
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -24,6 +25,16 @@ YEE_OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5),
                         (0, .5, .5), (.5, 0, .5), (.5, .5, 0)))
 # Target x/y/z curl: (positive source, derivative axis, negative source, axis).
 CURL_TERMS = ((2, 1, 1, 2), (0, 2, 2, 0), (1, 0, 0, 1))
+
+
+def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
+    """Amplitude at |f0 sin(theta)| relative to f0 for the Bloch drive."""
+    # init_tfsf dispatches BOTH Gaussian waveform names to init_tfsf_2d,
+    # whose drive is exp(-i*2*pi*f0*t) * exp(-(t/tau)**2),
+    # tau = 1/(pi*f0*bandwidth). Thus |S(fc)/S(f0)| = exp(-offset**2).
+    # Work directly in dB to avoid underflow for narrow pulses.
+    offset = (1.0 - abs(math.sin(math.radians(angle_deg)))) / bandwidth
+    return -(20.0 / math.log(10.0)) * offset * offset
 
 
 class CorrectionTable(NamedTuple):
@@ -361,7 +372,7 @@ def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
         raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
     indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
                     for c in range(3))
-    record = record_incident_line(cfg, n_steps, dt, indices, cfg.incidence["e_hat"])
+    record = record_incident_line(cfg, state, n_steps, dt, indices, cfg.incidence["e_hat"])
     return np.asarray(transform(record, freqs, dt, kind="E",
                                 time_shift=-1 if reference_index is None else 0))
 
@@ -435,7 +446,7 @@ def incidence(theta_deg=0.0, phi_deg=0.0, direction="+x", polarization="ez",
                 angle_error_deg=error, axis=direction)
 
 
-def tfsf_incidence(self):
+def tfsf_incidence(self) -> dict[str, object]:
     """Return the closed box's realized direction and unit polarization vectors."""
     entry = self._tfsf
     if entry is None or not entry.closed_box:
@@ -526,16 +537,20 @@ def add_tfsf_source(
     Nonzero theta requires s or p polarization. direction_tol_deg is a
     refusal threshold; max_component bounds the exhaustive integer search.
 
-    Current scope is intentionally narrow: x-directed propagation,
-    ``ez``/``ey`` polarization, 3D mode, and CPML boundaries. For
-    oblique incidence, only the single transverse-axis plane implied
-    by the chosen polarization is supported.
+    The slab (``closed_box=False``) keeps a narrow scope: x-directed
+    propagation, ``ez``/``ey`` polarization, 3D mode and CPML along x;
+    ``angle_deg`` tilts it only in the transverse plane implied by the
+    chosen polarization.
 
     Parameters
     ----------
     closed_box : bool
-        Use a finite six-face total-field box with CPML on all three
-        axes. Normal incidence, uniform 3D Yee only. The default keeps
+        Use a finite six-face total-field box with CPML on all six
+        faces, uniform 3D Yee with cubic cells only. Normal or oblique
+        incidence (``theta_deg``/``phi_deg``, ``s`` or ``p``): the box
+        carries the lattice plane wave along the realized rational
+        direction. No incident spectrum is formed for an oblique box
+        (``measure_normal_incident_spectrum`` refuses it). The default keeps
         the historical x slab with periodic y/z. Read the realized
         inclusive node bounds with :meth:`tfsf_box_indices`.
     waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
@@ -585,8 +600,7 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
-    from rfx.api import _bloch_cutoff_level_db
-    from rfx.sources.tfsf import resolve_waveform
+    from rfx.sources.tfsf import is_oblique, resolve_waveform
     if closed_box:
         validate_declaration(self, theta_deg, phi_deg, direction_tol_deg,
                              max_component, polarization, direction, angle_deg, waveform, margin)
@@ -602,7 +616,7 @@ def add_tfsf_source(
             f"TFSF plane-wave source requires mode='3d', '2d_tmz', or '2d_tez', got {self._mode!r}"
         )
     transverse = "" if closed_box else (
-        "z" if method == "methodB" and abs(angle_deg) > .01 else "yz")
+        "z" if method == "methodB" and is_oblique(angle_deg) else "yz")
     if any(axis not in transverse for axis in self._periodic_axes):
         raise ValueError(
             "TFSF plane-wave source conflicts with periodic-axis overrides "
@@ -643,7 +657,7 @@ def add_tfsf_source(
     if method not in ("bloch", "methodB"):
         raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
     if method == "methodB":
-        if abs(angle_deg) <= 0.01:
+        if not is_oblique(angle_deg):
             raise ValueError(
                 "method='methodB' is the open-domain OBLIQUE path; use a "
                 "non-zero angle_deg (angle_deg=0 uses the normal 1D-aux path)"
@@ -654,7 +668,7 @@ def add_tfsf_source(
                 "(transverse=y) only; 'ey' is future work"
             )
 
-    if method == "bloch" and abs(angle_deg) > 0.01:  # the 2D-aux dispatch test in tfsf.py
+    if method == "bloch" and is_oblique(angle_deg):  # the 2D-aux dispatch test in tfsf.py
         cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
         if cutoff_db > -60.0:
             import warnings
@@ -668,7 +682,7 @@ def add_tfsf_source(
                 "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
                 "depends on the record length. Narrow the bandwidth, or taper "
                 "the tail of the time series before the DFT.",
-                UserWarning,
+                AccuracyWarning,
                 stacklevel=2,
             )
 
@@ -685,6 +699,11 @@ def add_tfsf_source(
         closed_box=closed_box, theta_deg=theta_deg, phi_deg=phi_deg,
         direction_tol_deg=direction_tol_deg, max_component=max_component,
     )
+    mesh = self._declared_mesh
+    if mesh["_dx"] is not None and all(mesh[name] is None for name in (
+            "_dx_profile", "_dy_profile", "_dz_profile")):
+        from rfx.boundaries.tfsf import require_tfsf_side_faces
+        require_tfsf_side_faces(self)
     return self
 
 
@@ -699,7 +718,7 @@ def document_fields(_NUM, _INT, _STR, _BOOL, _opt):
         "direction": _STR,
         "angle_deg": _NUM,
         "waveform": _STR,
-        # PR #461: transverse boundary-value-problem selector — 'bloch' runs
+        # transverse boundary-value-problem selector — 'bloch' runs
         # periodic=(F,T,T)/cpml_axes="x" (laterally periodic: infinite array),
         # 'methodB' runs periodic=(F,F,T)/cpml_axes="xy" (open transverse
         # boundary: compact isolated scatterer). Design state, not run control:

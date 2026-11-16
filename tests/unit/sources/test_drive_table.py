@@ -64,7 +64,7 @@ def test_weight_against_independent_incident_cells(component, value):
 
 
 def test_released_port_edge_has_exactly_unit_weight():
-    from rfx._grid_metric import field_index
+    from rfx._internal._grid_metric import field_index
     from rfx.model.conductors import release_port_occupancy, solve_conductors, preview_port_stages
     sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001, boundary='pec')
     sim.add_port((.004, .003, .002), 'ez', impedance=50.)

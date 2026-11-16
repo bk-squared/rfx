@@ -129,7 +129,7 @@ MEASURED_PEC_MODES = (25.1741e9, 30.2153e9)
 
 def _build(mode):
     # #1138: PEC patches x/y solved +3.182%/-1.579%; this locks resonance position.
-    sim = Simulation(snap="strict" if mode in ("f0", "prefix") else "declared",
+    sim = Simulation(snap="declared",
                      freq_max=40e9, domain=DOMAIN, dx=DX,
                      dz_profile=[DZ] * NZ, boundary="pec")
     kw = dict(sigma_bulk=5.8e7)

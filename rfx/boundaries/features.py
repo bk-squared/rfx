@@ -1,12 +1,17 @@
-"""Feature admission for the unchanged PR3a boundary operators.
+"""Feature admission and realization of declared boundary faces.
 
-The declaration remains separate from the realized, legacy grid. In particular,
-small waveguide apertures retain the legacy rewrite, PR3b (boundary-model
-predeclaration, Addendum 5). Admission never changes mesh metrics.
+Partial waveguide apertures retain the declared absorbers. Full-aperture ports
+with an undeclared boundary keep the existing transverse electric-wall default.
+Admission never changes mesh metrics.
 """
 from __future__ import annotations
 
+from rfx.errors import RfxRefusal, RfxWarning
+from rfx._warning_origin import user_stacklevel
+from rfx.model.graded_admission import host_cells
+
 from dataclasses import replace
+from rfx.model.realization_verdict import legacy_mismatch
 import inspect
 from pathlib import Path
 import warnings
@@ -24,7 +29,7 @@ def share_wall_warning_history(sim, diagnostic_copy):
     _WALL_AXIS_WARNED[diagnostic_copy] = _WALL_AXIS_WARNED.setdefault(sim, set())
 
 
-class WaveguideBoundaryWarning(UserWarning):
+class WaveguideBoundaryWarning(RfxWarning):
     """An omitted boundary defaults to the waveguide's electric walls."""
 
 
@@ -41,6 +46,7 @@ def _guide_axes(sim, extra=""):
 
 def full_aperture(sim, entry, grid):
     """Recognize declared full ranges before comparing snapped interior bounds."""
+    grid = getattr(grid, "_waveguide_aperture_grid", grid)
     for index, axis in enumerate("xyz"):
         if axis == entry.direction[1]:
             continue
@@ -87,7 +93,7 @@ def _guide_declaration(sim, faces):
 
 def _record_defaults(sim, grid):
     if sim._waveguide_ports:
-        faces = guide_faces(sim, grid)
+        faces = guide_faces(sim, getattr(grid, "_waveguide_aperture_grid", grid))
         explicit = boundary_was_explicit(sim)
         incompatible = sorted(face.name for face in grid.boundary_depths
                               if face.name in faces and face.kind != Kind.PEC)
@@ -100,7 +106,7 @@ def _record_defaults(sim, grid):
         grid._waveguide_admission = (incompatible, _guide_declaration(sim, faces), explicit, state)
     if sim._waveguide_ports and not explicit:
         # The uniform legacy grid already has these electric backing walls.
-        # Do not change pads, allocation axes, or the NU operator (PR3b).
+        # Do not change pads, allocation axes, or the NU operator.
         grid.boundary_depths = tuple(
             replace(face, kind=Kind.PEC)
             if face.name in faces and face.realized == 0 and face.kind == Kind.ABSORBER else face
@@ -109,12 +115,36 @@ def _record_defaults(sim, grid):
 
 
 def build_grid(sim, *, extra_waveguide_axes=""):
-    """Build the uniform legacy lattice, then record its full-guide defaults."""
+    """Realize the declaration, preserving undeclared full-guide walls."""
+    if not sim._waveguide_ports and not extra_waveguide_axes:
+        grid = _build_uniform_grid(sim, "xyz")
+        judge_wall_axes(sim, grid)
+        return _record_defaults(sim, grid)
+    port_axes = _guide_axes(sim, extra_waveguide_axes)
+    declared = resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers)
+    axes = {face.name[0] for face in declared if face.kind == Kind.ABSORBER}
+    axes.update(port_axes)
+    if sim._waveguide_ports:
+        # Judge on exactly the former lattice: changing pads also changes an
+        # axis from nearest-cell wall sizing to covering-cell absorber sizing.
+        reference = _build_uniform_grid(sim, port_axes)
+        admission_faces = guide_faces(sim, reference)
+        if not boundary_was_explicit(sim):
+            axes.difference_update(face[0] for face in admission_faces
+                                   if face[0] not in port_axes)
+    grid = _build_uniform_grid(sim, "".join(a for a in "xyz" if a in axes))
+    if sim._waveguide_ports:
+        grid._waveguide_aperture_grid = reference
+    judge_wall_axes(sim, grid)
+    return _record_defaults(sim, grid)
+
+
+def _build_uniform_grid(sim, axes):
+    """Allocate a lattice for the selected axes, without feature admission."""
     from rfx.grid import C0, Grid, _periodic_resolution, axis_kinds
     sim._require_uniform_mesh("uniform grid construction")
     periodic = "".join(a for a, yes in zip("xyz", sim._periodic_flags()) if yes)
     dx = sim._dx if sim._dx is not None else C0 / sim._freq_max / 20.0
-    axes = _guide_axes(sim, extra_waveguide_axes) if sim._waveguide_ports or extra_waveguide_axes else "xyz"
     kwargs = dict(
         freq_max=sim._freq_max, domain=sim._domain,
         cpml_layers=sim._cpml_layers,
@@ -136,8 +166,18 @@ def build_grid(sim, *, extra_waveguide_axes=""):
         wall_axes="".join(a for a in "xyz" if kinds[a] == "wall"
                           and not (a == "z" and sim._mode.startswith("2d"))))
     grid = Grid(**kwargs, dx=dx, periodic_axes=periodic, boundary_depths=depths)
-    judge_wall_axes(sim, grid)
-    return _record_defaults(sim, grid)
+    pin = sim._dt_pin
+    if pin is not None:
+        import math
+        ordinary = Grid.courant_dt(grid.dx, 2 if grid.is_2d else 3)
+        admitted = (0.5 * ordinary, 0.25 * ordinary)
+        if not any(math.isclose(float(pin), step, rel_tol=1e-9, abs_tol=0.) for step in admitted):
+            raise ValueError(
+                'conformal_pec="cut_cell_floor" requires dt=0.5 * Grid.courant_dt '
+                f'({admitted[0]!r} s) or dt=0.25 * Grid.courant_dt ({admitted[1]!r} s) '
+                f'on this realized grid; got dt={pin!r}')
+        grid.dt = float(pin)
+    return grid
 
 
 def judge_wall_axes(sim, grid, *, boundary_depths=None):
@@ -150,6 +190,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
     depths = grid_face_depths(grid) if boundary_depths is None else boundary_depths
     messages = []
     findings = []
+    sim._realization_early_outcomes = {}
     for index, (axis, kind) in enumerate(axis_kinds(depths).items()):
         if kind != "wall" or (axis == "z" and sim._mode.startswith("2d")):
             continue
@@ -162,7 +203,9 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
         length = float(sim._domain[index])
         if hasattr(grid, "dx_arr_f64"):
             from rfx.model.graded_grid import interior_cells
-            widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[index]
+            from rfx.model.graded_admission import traced_cell_mask
+            widths = (host_cells(grid, index) if traced_cell_mask(grid, index) is not None
+                      else (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)[index])
             cells = interior_cells(widths, getattr(grid, f"pad_{axis}_lo"),
                                    getattr(grid, f"pad_{axis}_hi"))
             n, solved = len(cells), float(sum(cells))
@@ -170,10 +213,10 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
         else:
             span = grid.interior[index]
             n = span.stop - span.start - 1
-            cell = float(grid.cells(axis)[span.start])
+            cell = float(host_cells(grid, axis)[span.start])
             solved = n * cell
         rel = solved / length - 1
-        if abs(rel) <= .01:
+        if not legacy_mismatch(rel, .01):
             continue
         nearest_n = realized_cells(length, cell, "wall")
         adjacent = min((length / count for count in (nearest_n - 1, nearest_n + 1) if count >= 1),
@@ -191,12 +234,17 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
             warned = _WALL_AXIS_WARNED.setdefault(sim, set())
             for axis, length, solved, dx, text in findings:
                 key = (axis, length, solved, dx)
+                from rfx.model.realization_verdict import legacy_outcome, remember_legacy
+                remember_legacy(sim, axis, legacy_outcome(
+                    f"legacy:wall:{axis}", solved/length-1, .01,
+                    text + "; accepted with snap='declared'.",
+                    "wall_axis_off_node", "judge_wall_axes", loc=axis))
                 if key in warned:
                     continue
                 warnings.warn(PreflightWarning(
                     text + "; accepted with snap='declared'.",
                     code="wall_axis_off_node", loc=axis, source="judge_wall_axes"),
-                    stacklevel=3)
+                    stacklevel=user_stacklevel())
                 warned.add(key)
         else:
             raise ValueError(message)
@@ -235,25 +283,29 @@ def refuse_ntff_reflecting_faces(faces, *, lane):
             incompatible[face.name] = "zero-depth absorber"
     if incompatible:
         descriptions = [f"{face} is {kind}" for face, kind in sorted(incompatible.items())]
-        raise ValueError(
+        raise RfxRefusal(
             f"{lane}: an NTFF box radiates its surface currents into free space, but "
             + "; ".join(descriptions)
             + ": the far field would miss their images (a symmetry or ground plane is not "
             "reconstructed). Every face of the realized model must be absorbing: draw a "
-            "finite ground plane as geometry, and note that a waveguide port on the uniform mesh "
-            "solves its transverse faces as PEC walls; a symmetry plane is not supported "
+            "finite ground plane as geometry, and note that a full-aperture waveguide port "
+            "with an undeclared boundary on the uniform mesh solves its transverse faces "
+            "as PEC walls; a symmetry plane is not supported "
             "with NTFF yet.")
 
 
-def admit_waveguide(sim, *, lane="dispatch"):
-    """Refuse undeclared guide models without changing a realized grid."""
+def admit_waveguide(sim, *, lane="dispatch", edges=True):
+    """Refuse undeclared guide models without changing a realized grid.
+    ``edges=False`` skips the aperture-edge rule, for a request a later
+    multi-device refusal ends anyway."""
     if not sim._waveguide_ports:
         return
+    refuse_traced_guide_mesh(sim, lane)
     if sim._uses_nonuniform_mesh:
-        _admit_graded_guide(sim, lane)
+        _admit_graded_guide(sim, lane, edges)
         return
     grid = sim._build_realized_grid()
-    faces = guide_faces(sim, grid)
+    faces = grid._waveguide_admission[0]
     _refuse_periodic_guide(sim, faces)
     declared = resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers)
     incompatible = sorted(face.name for face in declared
@@ -264,15 +316,20 @@ def admit_waveguide(sim, *, lane="dispatch"):
                          or any(sim._periodic_flags()["xyz".index(face[0])] for face in incompatible)):
         raise ValueError(
             f"{lane}: full-aperture waveguide defaults on {', '.join(incompatible)} "
-            "would change realized transverse pads or an active periodic feature; this requires PR3b.")
+            "would change realized transverse pads or an active periodic feature; "
+            "rfx does not apply these defaults on faces with a transverse absorber pad or an "
+            "active periodic axis. Remove the pad or periodic feature on those faces.")
     state = getattr(sim, "_boundary_default_warned", [False])
     if incompatible and not state[0]:
         _warn_caller("Waveguide boundary default: " + ", ".join(incompatible)
                      + " are solved as PEC electric walls.")
         state[0] = True
+    if edges:
+        from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+        refuse_bare_waveguide_edges(sim, grid, lane=lane)
 
 
-def _admit_graded_guide(sim, lane):
+def _admit_graded_guide(sim, lane, edges=True):
     # Addendum 5f: full guides require explicitly declared transverse PEC.
     grid = sim._build_realized_grid()
     faces = sorted({f"{axis}_{side}"
@@ -292,17 +349,37 @@ def _admit_graded_guide(sim, lane):
             f"{lane}: full-aperture waveguide boundary was not declared on {', '.join(faces)}; "
             "the graded mesh keeps absorbers there, so the port would not be in a guide; "
             f"declare boundary={_guide_declaration(sim, faces)!r} (absorber on the port axis).")
+    if edges:
+        from rfx.boundaries.waveguide_edges import refuse_bare_waveguide_edges
+        refuse_bare_waveguide_edges(sim, grid, lane=lane)
+
+
+def refuse_traced_guide_mesh(sim, lane):
+    """Admit only fixed-plane windowed x meshes in the flux S-matrix scope."""
+    from rfx.core.jax_utils import is_tracer
+    profiles = (sim._dx_profile, sim._dy_profile, sim._dz_profile)
+    traced = [axis for axis, profile in zip("xyz", profiles) if is_tracer(profile)]
+    if is_tracer(sim._dx):
+        traced.insert(0, "dx")
+    if not sim._waveguide_ports or not traced:
+        return
+    from rfx.model.waveguide_mesh import admit_traced_window
+    names = ", ".join(repr(entry.name or number)
+                      for number, entry in enumerate(sim._waveguide_ports))
+    admit_traced_window(sim, traced,
+        f"{lane}: waveguide port(s) {names} on a mesh whose {'/'.join(traced)} cell "
+        "widths are traced (permittivity remains differentiable through eps_override)")
 
 
 def _refuse_periodic_guide(sim, faces):
     periodic = sorted(face for face in faces if sim._periodic_flags()["xyz".index(face[0])])
     if periodic:
-        raise ValueError("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
+        raise RfxRefusal("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
                          + "; the active periodic feature requires PERIODIC on those faces.")
 
 
 def _refuse_guide(faces, declaration, lane):
-    raise ValueError(
+    raise RfxRefusal(
         f"{lane}: full-aperture waveguide requires PEC on {', '.join(faces)}; "
         f"declare boundary={declaration!r} (absorber on the port axis).")
 
@@ -321,7 +398,9 @@ def admit_grid_waveguide(grid, ports):
         _refuse_guide(faces, declaration, "low-level dispatch")
     elif faces and any(getattr(grid, f"pad_{face}") or face[0] in grid.periodic_axes for face in faces):
         raise ValueError("Full-aperture waveguide defaults would change realized transverse "
-                         "pads or an active periodic feature; this requires PR3b.")
+                         "pads or an active periodic feature; rfx does not apply these defaults "
+                         "on faces with a transverse absorber pad or an active periodic axis. "
+                         "Remove the pad or periodic feature on those faces.")
     elif faces and not state[0]:
         _warn_caller("Waveguide boundary default: " + ", ".join(faces)
                      + " are solved as PEC electric walls.")
@@ -344,8 +423,8 @@ def waveguide_segment_cells(cfg, grid):
     endpoints = [h, cfg.x_index, cfg.ref_x]
     if cfg.segment_planes:
         nodes = np.asarray(_axis_node_positions(
-            grid.cells(cfg.normal_axis), getattr(grid, f"pad_{cfg.normal_axis}_lo")))
-        centres = nodes + np.asarray(grid.cells(cfg.normal_axis)) / 2
+            host_cells(grid, cfg.normal_axis), getattr(grid, f"pad_{cfg.normal_axis}_lo")))
+        centres = nodes + np.asarray(host_cells(grid, cfg.normal_axis)) / 2
         endpoints.extend(int(np.searchsorted(centres, p, side="left") - 1)
                          if p >= nodes[cfg.x_index] else
                          int(np.searchsorted(centres, p, side="right"))
@@ -386,7 +465,8 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
     # H corrects cell x_index - 1 (+) or x_index (-). Its front node,
     # shared with the source plane, is x_index in either direction.
     nodes = [cfg.x_index, cfg.ref_x]
-    nodes.extend(grid.index_of(cfg.normal_axis, p) for p in cfg.segment_planes)
+    from rfx.model.waveguide_mesh import host_index
+    nodes.extend(host_index(grid, cfg.normal_axis, p) for p in cfg.segment_planes)
     edge_spatial = list(spatial)
     edge_spatial[normal] = slice(min(nodes), max(nodes) + 1)
     edge_spatial = tuple(edge_spatial)
@@ -481,10 +561,10 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
                 first = tuple(np.argwhere(bad)[0])
                 index = (tuple(int(first[start + a] + cut[a].start) for a in range(3))
                          if start >= 0 else tuple(lo for lo, _ in bounds))
-                raise ValueError(
+                raise RfxRefusal(
                     f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
                     f"{record.label} ({record.name}) at cell {index}; "
-                    "the port has no model for a thin element in its section (rfx#2047); "
+                    "the port has no model for a thin element in its section; "
                     "draw it beyond the reference plane.")
 
     traced_check("waveguide port", "section thin elements", check,
@@ -513,7 +593,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     wall_masks = wall_edge_masks(grid.shape, resolve_wall_faces(
         grid, tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))[0])
 
-    # Scalar cell media and PEC volume from the one realized operand list (#1961):
+    # Scalar cell media and PEC volume from the one realized operand list:
     # Thin elements are judged separately from the scalar medium below.
     scalar = ("materials.eps_r", "materials.sigma", "materials.mu_r")
     updates_scalar = ("debye", "lorentz", "kerr_chi3", "pec_mask", "pec_occupancy")
@@ -549,7 +629,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                     array = array * jnp.where(weight > 0, weight, 1.0)
                 operands.append((name, array, None, "anisotropic permittivity"))
     reason = ("waveguide sections require one homogeneous, isotropic, lossless, "
-              "non-dispersive medium (rfx#1994)")
+              "non-dispersive medium")
 
     def section(array, bounds):
         trailing = 0

@@ -9,7 +9,8 @@ from.  Nothing in it is typed by hand:
 
 * file names, sizes, hashes and commits are copied from the share host's
   ``manifest.json``;
-* titles and questions are the pages' own front matter;
+* titles and case questions are the pages' own front matter; source questions
+  come from result records (falling back to their example name);
 * each printed number is computed here from the share host's files (the
   ``result.json`` records, and for the two forward comparisons the curves,
   through the same estimators the cross-validation tests judge with), then
@@ -44,26 +45,18 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = REPO / "docs/public/showcase/showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/52f0a897c27d/"
+SHARE = "https://remilab.cnu.ac.kr/share/f1abd0bff18d/"
 SCHEMA = "rfx-showcase-catalog/1"
 SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
 HOME, INDEX = "/rfx/", "/rfx/showcase/"
-MAP, COST = "/rfx/showcase/sensitivity-map/", "/rfx/showcase/gradient-cost/"
-DESCENT, FORWARD = "/rfx/showcase/descent-to-optimum/", "/rfx/showcase/forward-checks/"
 
-#: Showcase pages: case id -> (page source, share folders the page draws on).
+#: Showcase pages in presentation order: case id -> (page source, share folders).
 CASES = {
-    "sensitivity-map": ("docs/public/showcase/sensitivity-map.mdx", ("patch-sensitivity",)),
-    "gradient-cost": ("docs/public/showcase/gradient-cost.mdx", ("patch-sensitivity",)),
-    "descent-to-optimum": ("docs/public/showcase/descent-to-optimum.mdx", ("ar-coating",)),
-    "forward-checks": ("docs/public/showcase/forward-checks.mdx", ("forward-patch", "forward-notch")),
-}
-CASES.update({
-    "grin-lens": ("docs/public/showcase/grin-lens.mdx", ("grin-lens", "grin-lens-fan")),
+    "patch-calibration": ("docs/public/showcase/patch-calibration.mdx", ("patch-calibration",)),
     "waveguide-filter": ("docs/public/showcase/waveguide-filter.mdx", ("waveguide-filter",)),
-})
-BOXES = ("patch", "design", "layer")
+    "grin-lens": ("docs/public/showcase/grin-lens.mdx", ("grin-lens", "grin-lens-fan")),
+}
 
 
 class Share:
@@ -99,20 +92,6 @@ class Share:
         return np.load(io.BytesIO(self.read(folder, name)), allow_pickle=False)
 
 
-def _claim(record: dict, quantity: str) -> float:
-    found = [c["value"] for c in record["claims"] if c["quantity"] == quantity]
-    if len(found) != 1:
-        raise SystemExit(f"{record['id']}: expected one claim {quantity!r}, found {len(found)}")
-    return found[0]
-
-
-def _derived(record: dict, quantity: str) -> float:
-    found = [d["value"] for d in record["derived"] if d["quantity"] == quantity]
-    if len(found) != 1:
-        raise SystemExit(f"{record['id']}: expected one derived {quantity!r}, found {len(found)}")
-    return found[0]
-
-
 def _load(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -121,10 +100,6 @@ def _load(path: Path, name: str):
 
 
 # ------------------------------------------------------------------ formats
-def comma(value: float) -> str:
-    return f"{round(value):,}"
-
-
 def fixed(digits: int):
     return lambda value: f"{value:.{digits}f}"
 
@@ -138,6 +113,18 @@ def sci(value: float) -> str:
     return f"{mantissa}×10{str(exponent).translate(SUPERSCRIPT)}"
 
 
+def sci_digits(n: int):
+    """Scientific notation with n significant digits, including trailing zeros."""
+    if n < 1:
+        raise ValueError("significant digits must be positive")
+
+    def format_value(value: float) -> str:
+        mantissa, exponent = f"{value:.{n - 1}e}".split("e")
+        return f"{mantissa}×10{str(int(exponent)).translate(SUPERSCRIPT)}"
+
+    return format_value
+
+
 def _printed(value, fmt) -> str:
     if isinstance(value, list):
         texts = {fmt(v) for v in value}
@@ -149,82 +136,37 @@ def _printed(value, fmt) -> str:
 
 # ------------------------------------------------------------------ numbers
 def headlines(share: Share) -> dict[str, list[dict]]:
-    """Every number the pages print in a tile, a card, the proof strip or the
-    cost table, by case."""
-    patch = share.json("patch-sensitivity", "result.json")
-    ar = share.json("ar-coating", "result.json")
-    gates = share.json("ar-coating", "gates.json")
-    tmm = share.json("ar-coating", "tmm.json")
-    iterations = share.npz("ar-coating", "iterations.npz")
-    src = "patch-sensitivity/result.json"
-    boxes = patch["model"]["boxes"]
-    fd64 = [c["value"] for c in patch["claims"]
-            if c["quantity"].startswith("|AD - FD| / |FD|") and c["quantity"].endswith("(float64)")]
-    grad = [_claim(patch, f"value_and_grad wall time, box {b}") for b in BOXES]
-    ratio = [_derived(patch, f"value_and_grad / forward wall-time ratio, box {b}") for b in BOXES]
-    fd_days = {b: _derived(patch, f"central finite-difference cost for every cell of box {b}") / 86400
-               for b in BOXES}
-
-    def h(quantity, value, unit, fmt, routes, source):
-        return {"quantity": quantity, "printed": _printed(value, fmt), "value": value,
+    """Calibration, lens and filter numbers printed on the public pages."""
+    def h(quantity, value, unit, fmt, routes, source, range_ok=False):
+        if range_ok:
+            low, high = map(fmt, value)
+            printed = low if low == high else f"{low}–{high}"
+        else:
+            printed = _printed(value, fmt)
+        return {"quantity": quantity, "printed": printed, "value": value,
                 "unit": unit, "routes": list(routes), "from": source}
 
+    patch = share.json("patch-calibration", "result.json")
+    src = "patch-calibration/result.json "
+    route = "/rfx/showcase/patch-calibration/"
     out: dict[str, list[dict]] = {}
-    out["sensitivity-map"] = [
-        h("design-box cells", boxes["design"]["n_cells"], "cells", comma, (MAP, HOME, INDEX),
-          f"{src} model.boxes.design.n_cells"),
-        h("largest |AD - FD| / |FD| over the six blocks, float64", max(fd64), "1", sci,
-          (MAP, HOME), f"{src} claims '|AD - FD| / |FD| ... (float64)', maximum of {len(fd64)}"),
-        h("value and gradient wall time, design box", grad[1], "s", fixed(0), (MAP,),
-          f"{src} claim 'value_and_grad wall time, box design'"),
-        h("value and gradient / forward wall time, design box", ratio[1], "1", fixed(1), (MAP,),
-          f"{src} derived 'value_and_grad / forward wall-time ratio, box design'"),
+    out["patch-calibration"] = [
+        h("hidden permittivity", patch["hidden"]["eps_r"], "1", fixed(2), (route,),
+          src + "hidden.eps_r"),
+        h("hidden loss", patch["hidden"]["sigma_s_per_m"], "S/m", sci_digits(2), (route,),
+          src + "hidden.sigma_s_per_m"),
+        h("start permittivity (datasheet)", patch["start"]["eps_r"], "1", fixed(2), (route,),
+          src + "start.eps_r"),
+        h("recovered permittivity", patch["recovered"]["eps_r"], "1", fixed(3), (route,),
+          src + "recovered.eps_r"),
+        h("recovered loss", patch["recovered"]["sigma_s_per_m"], "S/m", sci_digits(3), (route,),
+          src + "recovered.sigma_s_per_m"),
+        h("updates", patch["iterates"], "", fixed(0), (route,), src + "iterates"),
+        h("frequency bins", patch["bins"], "", fixed(0), (route,), src + "bins"),
+        h("band", [v / 1e9 for v in patch["band_hz"]], "GHz", fixed(2), (route,),
+          src + "band_hz / 1e9", range_ok=True),
     ]
-    cost = [
-        h("value and gradient / forward wall time, three boxes", [min(ratio), max(ratio)], "1",
-          fixed(1), (HOME,), f"{src} derived 'value_and_grad / forward wall-time ratio', min and max"),
-        h("value and gradient wall time, three boxes", [min(grad), max(grad)], "s", fixed(0),
-          (HOME, INDEX), f"{src} claims 'value_and_grad wall time', min and max"),
-        h("layer box: cells that are not laminate", boxes["layer"]["n_other_cells"], "cells", comma,
-          (COST,), f"{src} model.boxes.layer.n_other_cells"),
-    ]
-    for b in BOXES:
-        # The home page's proof strip and the two cards quote the smallest and
-        # the largest box: "12,400 to 43,008 design cells", "4.9 to 16.8 days".
-        ends = b != "design"
-        cost += [
-            h(f"{b} box cells", boxes[b]["n_cells"], "cells", comma,
-              (COST, HOME) if ends else (COST,), f"{src} model.boxes.{b}.n_cells"),
-            h(f"forward wall time, {b} box",
-              _claim(patch, f"forward wall time, box {b} ({boxes[b]['n_cells']} cells)"),
-              "s", fixed(2), (COST,), f"{src} claim 'forward wall time, box {b}'"),
-            h(f"value and gradient wall time, {b} box", grad[BOXES.index(b)], "s", fixed(2), (COST,),
-              f"{src} claim 'value_and_grad wall time, box {b}'"),
-            h(f"value and gradient peak device memory, {b} box",
-              _claim(patch, f"value_and_grad peak device memory, box {b}") / 1e9, "GB", fixed(2),
-              (COST,), f"{src} claim 'value_and_grad peak device memory, box {b}' / 1e9"),
-            h(f"central differences for every cell, {b} box (derived)", fd_days[b], "days", fixed(1),
-              (COST, HOME, INDEX) if ends else (COST,),
-              f"{src} derived 'central finite-difference cost for every cell of box {b}' / 86400"),
-        ]
-    out["gradient-cost"] = cost
 
-    final, optimum = gates["final_eps_r"], tmm["optimum_eps_r"]
-    out["descent-to-optimum"] = [
-        h("largest layer-permittivity gap to the transfer-matrix optimum",
-          100 * max(abs(f / o - 1) for f, o in zip(final, optimum)), "%", fixed(1),
-          (DESCENT, HOME, INDEX), "ar-coating/gates.json final_eps_r vs tmm.json optimum_eps_r"),
-        h("transfer-matrix band-mean |R|^2 of the final design above the optimum",
-          100 * (float(iterations["tmm_cost51"][-1]) / _claim(ar, "TMM optimum X-band mean |R|^2") - 1),
-          "%", fixed(1), (DESCENT,),
-          "ar-coating/iterations.npz tmm_cost51[-1] vs result.json claim 'TMM optimum X-band mean |R|^2'"),
-        h("Adam steps", ar["model"]["adam"]["iters"], "steps", comma, (DESCENT,),
-          "ar-coating/result.json model.adam.iters"),
-    ]
-    # The two forward numbers were computed on rfx 1.8.0 under the settling check before #1426;
-    # they are withdrawn until the cases are re-measured under the current one (#1471).
-    # Restore with: out["forward-checks"] = forward_headlines(share, h)
-    out["forward-checks"] = []
     lens = share.json("grin-lens", "mesh_trend.json")
     designed = lens["reported"]["boresight_dbi"][-1]
     feed = lens["no_lens"]["boresight_dbi"][-1]
@@ -306,11 +248,20 @@ def build(share: Share) -> dict:
             entry = share.manifest["cases"][folder]
             base = f"{SHARE}{folder}/"
             record = share.json(folder, "result.json")
+            if "question" in record:
+                question = record["question"]
+            elif "example" in record:
+                question = record["example"]
+            else:
+                raise SystemExit(f"{folder}/result.json: expected question or example")
             sources.append({
                 "folder": folder, "base_url": base, "rfx_commit": entry["rfx_commit"],
-                "question": record["question"], "result_json": base + "result.json",
+                "question": question, "result_json": base + "result.json",
                 "files": [{"name": name, "url": base + name, "bytes": rec["bytes"],
-                           "sha256": rec["sha256"]} for name, rec in sorted(entry["files"].items())],
+                           "sha256": rec["sha256"]} for name, rec in sorted(entry["files"].items())
+                           if folder != "grin-lens" or not name.endswith(".png")
+                           or name in {"grin_lens_fan.png", "grin_lens_film_poster.png", "grin_lens_start.png",
+                                       "lens_iterations.png", "lens_mesh.png", "lens_slices.png"}],
             })
         cases.append({
             "id": case, "title": meta["title"], "question": meta["description"],

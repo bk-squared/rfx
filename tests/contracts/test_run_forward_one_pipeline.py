@@ -1,4 +1,4 @@
-"""run() and forward() are one pipeline: the leader's C1–C5 contract.
+"""run() and forward() are one pipeline: the C1–C5 contract.
 
 The literal exceptions are progress toward zero at 2.0, not tolerances.
 No solver helper supplies an expected value: the other fresh entry does.
@@ -31,7 +31,10 @@ EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
     'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
 
 ASSEMBLY_ROWS = (
+    ('C-conformal', 'uniform'),
+    ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
+    ('C-full-tensor', 'uniform'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
     ('O-flux', 'multi-device-graded'),
@@ -113,6 +116,10 @@ ASSEMBLY_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-wire', 'graded'),
+    ('P-wire', 'uniform'),
+    ('P-wire-driven', 'graded'),
+    ('P-wire-driven', 'uniform'),
     ('PW-A', 'graded'),
     ('PW-A', 'uniform'),
     ('PW-B', 'uniform'),
@@ -120,6 +127,9 @@ ASSEMBLY_ROWS = (
     ('PW-closed', 'uniform'),
     ('PW-oblique', 'uniform'),
     ('R-rlc', 'graded'),
+    # RLC now pins admitted run/forward assembly on both multi-device meshes.
+    ('R-rlc', 'multi-device-graded'),
+    ('R-rlc', 'multi-device-uniform'),
     ('R-rlc', 'uniform'),
     ('S-field', 'graded'),
     ('S-field', 'multi-device-graded'),
@@ -130,7 +140,10 @@ ASSEMBLY_ROWS = (
 )
 
 FIELD_ROWS = (
+    ('C-conformal', 'uniform'),
+    ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
+    ('C-full-tensor', 'uniform'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
     ('O-flux', 'multi-device-graded'),
@@ -233,12 +246,22 @@ FIELD_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-wire', 'graded'),
+    ('P-wire', 'multi-device-graded'),
+    ('P-wire', 'multi-device-uniform'),
+    ('P-wire', 'uniform'),
+    ('P-wire-driven', 'graded'),
+    ('P-wire-driven', 'multi-device-uniform'),
+    ('P-wire-driven', 'uniform'),
     ('PW-A', 'uniform'),
     ('PW-B', 'uniform'),
     ('PW-closed', 'multi-device-uniform'),
     ('PW-closed', 'uniform'),
     ('PW-oblique', 'uniform'),
     ('R-rlc', 'graded'),
+    # Equal requests now compare admitted RLC records on both slab pipelines.
+    ('R-rlc', 'multi-device-graded'),
+    ('R-rlc', 'multi-device-uniform'),
     ('R-rlc', 'uniform'),
     ('S-field', 'graded'),
     ('S-field', 'multi-device-graded'),
@@ -291,7 +314,15 @@ ADMISSION_ROWS = (
 )
 
 
-BOTH_REFUSE_ROWS = (
+BOTH_REFUSE_ROWS = tuple((declaration, path)
+                         for declaration in ('C-conformal', 'P-conformal')
+                         for path in ('graded', 'multi-device-graded', 'multi-device-uniform')) + (
+    ('P-waveguide2', 'uniform'),
+    ('P-waveguide2', 'graded'),
+    ('C-full-tensor', 'multi-device-uniform'),
+    ('C-full-tensor', 'multi-device-graded'),
+    ('P-floquet', 'graded'),
+    ('P-floquet', 'multi-device-graded'),
     ('B-periodic', 'multi-device-graded'),
     ('B-periodic', 'multi-device-uniform'),
     ('B-upml', 'graded'),
@@ -309,6 +340,10 @@ BOTH_REFUSE_ROWS = (
     ('P-msl', 'multi-device-uniform'),
     ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'multi-device-uniform'),
+    ('P-waveguide-2mode', 'graded'),
+    ('P-waveguide-2mode', 'multi-device-graded'),
+    ('P-waveguide-2mode', 'multi-device-uniform'),
+    ('P-waveguide-2mode', 'uniform'),
     ('PW-A', 'multi-device-graded'),
     ('PW-A', 'multi-device-uniform'),
     ('PW-B', 'graded'),
@@ -319,8 +354,7 @@ BOTH_REFUSE_ROWS = (
     ('PW-oblique', 'graded'),
     ('PW-oblique', 'multi-device-graded'),
     ('PW-oblique', 'multi-device-uniform'),
-    ('R-rlc', 'multi-device-graded'),
-    ('R-rlc', 'multi-device-uniform'),
+    # RLC moved to the admitted assembly/field comparisons above.
 )
 
 # Item 20: only common time_series differences on this L2 pair
@@ -342,11 +376,30 @@ def directions(declaration):
     return ('a', 'b') if declaration in PORTED else (None,)
 
 
+# Both entries refuse, but from two guards, not one check both call.
+# MSL and coaxial port refusals now share one
+# check; RLC is admitted and compared in the tables above.
+TWO_GUARD_REFUSALS = {
+}
+
+
+OPEN_CAUSE_REFUSALS = {
+}
+
+
 def parameters(rows, level, *, slow=False):
+    def marks(d, p):
+        found = [pytest.mark.slow] if (
+            slow or (level == 'L1' and p == 'multi-device-graded' and DISTRIBUTED_L1_SLOW)) else []
+        if level == 'refusal' and (d, p) in TWO_GUARD_REFUSALS:
+            found.append(pytest.mark.xfail(strict=True, reason=TWO_GUARD_REFUSALS[d, p]))
+        if level == 'refusal' and (d, p) in OPEN_CAUSE_REFUSALS:
+            found.append(pytest.mark.xfail(strict=True, raises=AssertionError,
+                                           reason=OPEN_CAUSE_REFUSALS[d, p]))
+        return found
     return [pytest.param(d, p, direction, id=f'{d}-{p}' + (f'-{direction}' if direction else ''),
-                         marks=[pytest.mark.slow] if
-                         slow or (level == 'L1' and p == 'multi-device-graded' and DISTRIBUTED_L1_SLOW)
-                         else []) for d, p in rows for direction in directions(d)]
+                         marks=marks(d, p)) for d, p in rows for direction in directions(d)
+            if not (level in ('L1', 'L2') and (d, p, direction) in EQUAL_S_REFUSAL_ROWS)]
 
 
 def entry_options(declaration):
@@ -448,7 +501,7 @@ def test_assembly(declaration, path, direction):
             {'arguments', 'result'} if capture_path == 'graded' and level == 'b' else {'arguments'})
         for cap in pair.values():
             assert set(cap['value']) == required, cap['seam_sites']
-        if path == 'graded' and declaration in ('P-lumped', 'P-lumped2', 'C-full-tensor'):
+        if path == 'graded' and declaration in ('P-lumped', 'P-lumped2', 'P-wire-driven', 'C-full-tensor'):
             # run's default bins arrive as the float64 host grid, forward's
             # request as float32; the runner solves on float32 bins either way
             # (result/sp_freqs is compared exactly below).
@@ -480,7 +533,7 @@ def test_assembly(declaration, path, direction):
 
 
 def check_fields(declaration, path, direction=None):
-    port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2') and path in ('uniform', 'graded')
+    port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2', 'P-wire-driven') and path in ('uniform', 'graded')
     if port_s:
         pair = port_s_pair(declaration, path)
     elif direction:
@@ -509,9 +562,13 @@ def check_fields(declaration, path, direction=None):
     classify(declaration, path, 'L2', differences, ids)
 
 
-ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
+ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-conformal', 'P-conformal') or row in (
+    ('R-rlc', 'multi-device-graded'), ('R-rlc', 'multi-device-uniform'),
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),
+    ('C-full-tensor', 'uniform'),
+    ('P-wire-driven', 'uniform'),
+    ('P-wire-driven', 'multi-device-uniform'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
     ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))
@@ -539,23 +596,61 @@ def test_admission(declaration, path, direction):
         run, forward = pair['run'], pair['forward']
         assert run['outcome'] == forward['outcome'] == 'raised', pair
         assert (run['type'], run['message']) == (forward['type'], forward['message']), pair
-        assert run['type'] == 'NotImplementedError', pair
+        assert run['type'] in ('NotImplementedError', 'RfxUnsupported'), pair
         assert 'Lumped/wire S-matrix requests do not support plain sources' in run['message'], pair
         return
     ids = outcomes(declaration, path, 'admission', pair, direction)
     finish(declaration, path, 'admission', ids, set(), [])
 
 
-# Appendix I: these full-suite rows refuse while declaring the closed box.
-DECLARATION_REFUSAL_ROWS = (
-    ('PW-closed', 'graded'),
-    ('PW-closed', 'multi-device-graded'),
-)
+# These rows refuse at declaration, before either entry can be called.
+DECLARATION_REFUSAL_ROWS = {
+    ('PW-closed', 'graded'): 'closed_box TFSF require a uniform',
+    ('PW-closed', 'multi-device-graded'): 'closed_box TFSF require a uniform',
+    ('P-floquet', 'graded'): 'Floquet ports do not support non-uniform z mesh',
+    ('P-floquet', 'multi-device-graded'): 'Floquet ports do not support non-uniform z mesh',
+}
+
+MESSAGE_COMPARISON_ROWS = {
+    ('P-waveguide2', 'uniform'): 'One run() or forward() record supports a single waveguide port',
+    ('P-waveguide2', 'graded'): 'One run() or forward() record supports a single waveguide port',
+    ('C-full-tensor', 'multi-device-uniform'): 'is supported on a single-device Yee mesh only',
+    ('C-full-tensor', 'multi-device-graded'): 'is supported on a single-device Yee mesh only',
+    ('P-floquet', 'graded'): DECLARATION_REFUSAL_ROWS['P-floquet', 'graded'],
+    ('P-floquet', 'multi-device-graded'): DECLARATION_REFUSAL_ROWS['P-floquet', 'multi-device-graded'],
+}
+
+
+#: The exception classes rfx raises to refuse a request it does not solve
+#: (admission rows and lane refusals: NotImplementedError; configuration
+#: guards, PreflightConfigError included: ValueError).
+# RfxRefusal subclasses ValueError and RfxUnsupported subclasses NotImplementedError.
+REFUSAL_TYPES = ('NotImplementedError', 'RfxUnsupported', 'ValueError', 'RfxRefusal')
+
+
+def raised_in_rfx(record):
+    source_root = Path(__file__).resolve().parents[2] / 'rfx'
+    raising_path = Path(record['raising_site'].rsplit(':', 1)[0]).resolve()
+    return raising_path.is_relative_to(source_root)
+
+
+def same_raising_line(run, forward):
+    # One refusal both entries call raises from one line; two guards with
+    # the same text do not.
+    return (Path(run['raising_site'].rsplit(':', 1)[0]).resolve(),
+            run['raising_site'].rsplit(':', 1)[1]) == (
+        Path(forward['raising_site'].rsplit(':', 1)[0]).resolve(),
+        forward['raising_site'].rsplit(':', 1)[1])
 
 
 def both_refused(declaration, path, pair):
-    if all(record['outcome'] == 'raised' for record in pair.values()):
-        return True
+    # A crash on both entries is not a refusal: both must raise the same
+    # refusal type from the same line inside rfx. Messages are not compared.
+    run, forward = pair['run'], pair['forward']
+    if run['outcome'] == forward['outcome'] == 'raised':
+        return (run['type'] == forward['type'] and run['type'] in REFUSAL_TYPES
+                and raised_in_rfx(run) and raised_in_rfx(forward)
+                and same_raising_line(run, forward))
     if (declaration, path) not in DECLARATION_REFUSAL_ROWS:
         return False
     if not all(record['outcome'] == 'not_called' for record in pair.values()):
@@ -563,18 +658,16 @@ def both_refused(declaration, path, pair):
     construction = pair['run']['construction']
     if construction != pair['forward']['construction']:
         return False
-    source_root = Path(__file__).resolve().parents[2] / 'rfx'
-    raising_path = Path(construction['raising_site'].rsplit(':', 1)[0]).resolve()
     return (construction['outcome'] == 'raised'
-            and construction['type'] in ('NotImplementedError', 'ValueError')
-            and 'closed_box TFSF require a uniform' in construction['message']
-            and raising_path.is_relative_to(source_root))
+            and construction['type'] in REFUSAL_TYPES
+            and DECLARATION_REFUSAL_ROWS[declaration, path] in construction['message']
+            and raised_in_rfx(construction))
 
 
 @pytest.mark.parametrize('declaration,path,direction', parameters(BOTH_REFUSE_ROWS, 'refusal'))
 def test_both_refuse(declaration, path, direction):
     # Refusals occur before stepping; one step bounds an unexpectedly admitted call.
-    if direction:
+    if direction and (declaration, path) not in DECLARATION_REFUSAL_ROWS:
         pair = equal_request_pair(declaration, path, direction, n_steps=1,
                                   entry_options=entry_options(declaration))
     else:
@@ -582,6 +675,15 @@ def test_both_refuse(declaration, path, direction):
                               entry_options=entry_options(declaration))
                 for entry in ('run', 'forward')}
     assert both_refused(declaration, path, pair), pair
+    if (declaration, path) in MESSAGE_COMPARISON_ROWS:
+        if (declaration, path) in DECLARATION_REFUSAL_ROWS:
+            assert all('construction' in record for record in pair.values()), pair
+        records = [record['construction'] if (declaration, path) in DECLARATION_REFUSAL_ROWS else record
+                   for record in pair.values()]
+        assert records[0]['message'] == records[1]['message'], pair
+        expected = MESSAGE_COMPARISON_ROWS[declaration, path]
+        for record in records:
+            assert expected in record['message'], record
     if path.startswith('multi-device') and declaration in ('P-waveguide', 'PW-A', 'PW-B', 'PW-oblique'):
         expected = ('waveguide ports (add_waveguide_port) are not supported on'
                     if declaration == 'P-waveguide' else
@@ -592,10 +694,42 @@ def test_both_refuse(declaration, path, direction):
                         'PW-oblique': 'TFSF 2-D Bloch line (is_tfsf_2d)',
                     }[declaration])
         for record in pair.values():
-            assert record['type'] == 'NotImplementedError', record
+            assert record['type'] in ('NotImplementedError', 'RfxUnsupported'), record
             assert expected in record['message'], record
         print(json.dumps(dict(declaration=declaration, path=path, direction=direction,
                               dispositions=pair)), file=sys.stderr)
+    if declaration == 'P-waveguide-2mode':
+        # The per-mode list once reached the single-run assembly and raised
+        # AttributeError on both entries (#2070); pin the refusal's text too.
+        expected = ('waveguide ports (add_waveguide_port) are not supported on'
+                    if path.startswith('multi-device') else 'compute_waveguide_s_matrix()')
+        for record in pair.values():
+            assert record['type'] in ('NotImplementedError', 'RfxUnsupported'), record
+            assert expected in record['message'], record
+
+
+def _raised(kind, message, site='rfx/runners/_admission.py:1'):
+    root = Path(__file__).resolve().parents[2]
+    return {'outcome': 'raised', 'type': kind, 'message': message,
+            'raising_site': f'{root / site}'}
+
+
+@pytest.mark.parametrize('case,run,forward,refused', [
+    ('one refusal', _raised('NotImplementedError', 'm'), _raised('NotImplementedError', 'm'), True),
+    ('crash on both', _raised('AttributeError', "'list' object has no attribute 'v_probe_t'"),
+     _raised('AttributeError', "'list' object has no attribute 'v_probe_t'"), False),
+    ('different types', _raised('NotImplementedError', 'm'), _raised('ValueError', 'm'), False),
+    ('one entry crashes', _raised('AttributeError', 'm'), _raised('NotImplementedError', 'm'), False),
+    ('messages differ by entry name', _raised('ValueError', 'm run()'), _raised('ValueError', 'm forward()'), True),
+    ('two guards with one text', _raised('ValueError', 'm', 'rfx/api/_dispatch.py:252'),
+     _raised('ValueError', 'm', 'rfx/api/_dispatch.py:190'), False),
+    ('two guards in two files', _raised('ValueError', 'm'), _raised('ValueError', 'm', 'rfx/runners/distributed_v2.py:1'), False),
+    ('raised outside rfx', _raised('ValueError', 'm', 'tests/x.py:1'),
+     _raised('ValueError', 'm', 'tests/x.py:1'), False),
+])
+def test_both_refused_requires_one_refusal_from_rfx(case, run, forward, refused):
+    """#2070: a crash on both entries read as 'both refuse'."""
+    assert both_refused('P-waveguide', 'uniform', {'run': run, 'forward': forward}) is refused, case
 
 
 @pytest.mark.parametrize('error', (TypeError, ValueError, NotImplementedError))
@@ -613,10 +747,16 @@ def test_declaration_refusal_does_not_extend_to_unlisted_rows():
             for entry in ('run', 'forward')}
     assert both_refused('PW-closed', 'graded', pair), pair
     assert not both_refused('PW-A', 'graded', pair), pair
+    assert not both_refused('P-floquet', 'graded', pair), pair
+    floquet_pair = {entry: run_l2(BUILDERS['P-floquet'], entry, 'graded', n_steps=1)
+                    for entry in ('run', 'forward')}
+    assert both_refused('P-floquet', 'graded', floquet_pair), floquet_pair
+    assert not both_refused('PW-A', 'graded', floquet_pair), floquet_pair
+    assert not both_refused('PW-closed', 'graded', floquet_pair), floquet_pair
 
 
 @pytest.mark.parametrize('direction', ('a', 'b'))
-@pytest.mark.parametrize('declaration', ('P-lumped', 'P-lumped2'))
+@pytest.mark.parametrize('declaration', ('P-lumped', 'P-lumped2', 'P-wire-driven'))
 def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
     pair = equal_request_pair(declaration, 'multi-device-graded', direction, n_steps=16)
     assert all(item['outcome'] == 'admitted' for item in pair.values()), pair
@@ -626,7 +766,61 @@ def test_multi_device_graded_ports_reach_both_entries(declaration, direction):
         np.testing.assert_array_equal(a.samples, b.samples)
 
 
-@pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2'])
+@pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2', 'P-wire-driven'])
 @pytest.mark.parametrize('path', ['uniform', 'graded', 'multi-device-graded'])
 def test_port_s_equal_requests(declaration, path):
     assert port_s_pair(declaration, path) is not None
+
+
+# Both entries refuse partial opt-in for their own reason (forward() forms no reference-plane S; run() needs every wire port opted in), so raising lines differ by design and both_refused is not used.
+@pytest.mark.parametrize('entry', [
+    pytest.param('forward', id='P-wire-refplane-uniform-forward'),
+    pytest.param('run', id='P-wire-refplane-uniform-run'),
+])
+def test_port_s_refplane_refusals(entry):
+    record = run_l2(BUILDERS['P-wire-refplane'], entry, 'uniform', n_steps=1)
+    assert record['outcome'] == 'raised'
+    assert record['type'] in ('ValueError', 'RfxRefusal')
+    assert raised_in_rfx(record)
+    assert 'reference_plane_cells' in record['message']
+    expected = {
+        'forward': 'forward() does not form reference-plane S-parameters',
+        'run': 'reference_plane_cells must be set on every wire port of the S-parameter solve',
+    }
+    assert expected[entry] in record['message']
+
+
+def test_default_port_probes_equal_requests():
+    """forward() with ports and no probe equals run() with one probe at each port position.
+
+    The two plans' probe owners have equal nodes and weights; their ids differ
+    (``probe:port<i>`` against ``probe:<i>``) and are listed here.
+    """
+    from unittest.mock import patch
+    from rfx.model.conductors import PreparedSolve
+    from tests.contracts.path_equivalence.builders import build, FREQS
+
+    def entry(method, declare, **options):
+        sim = build(('_ports', 'lumped_port'), 'run_uniform')
+        sim._probes = []
+        for port in sim._ports if declare else ():
+            sim.add_probe(port.position, port.component)
+        prepared, original = [], PreparedSolve.__init__
+
+        def remember(self, *args, **kwargs):
+            original(self, *args, **kwargs)
+            prepared.append(self)
+        with patch.object(PreparedSolve, '__init__', remember):
+            result = getattr(sim, method)(n_steps=12, skip_preflight=True, **options)
+        owners = [o for o in prepared[0].measurement.owners if o.kind == 'probe']
+        return np.asarray(result.time_series), owners
+
+    forward, forward_owners = entry('forward', False, checkpoint=False, port_s11_freqs=FREQS)
+    run, run_owners = entry('run', True, compute_s_params=False)
+    assert forward.dtype == run.dtype and forward.shape == run.shape == (12, 1)
+    assert forward.tobytes() == run.tobytes()
+    assert [o.id for o in forward_owners] == ['probe:port0']
+    assert [o.id for o in run_owners] == ['probe:0']
+    for a, b in zip(forward_owners, run_owners, strict=True):
+        assert [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in a.channels] == \
+            [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in b.channels]

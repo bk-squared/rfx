@@ -59,8 +59,6 @@ def test_graded_run_returns_lumped_main_record():
     assert result.lumped_port_sparams is not None
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason='#1402: the uniform multi-device path does not join S')
 def test_two_device_uniform_run_returns_lumped_main_record():
     devices = jax.devices('cpu')
     if len(devices) < 2:

@@ -11,9 +11,8 @@ FAST (no FDTD / tiny FDTD):
   * add_port opt-in validation (wire-only, explicit transverse direction);
   * plumbing contract on the canonical thru (two planes per opted port,
     Phase-0-exact plane geometry, accumulator shapes);
-  * DEFAULT-PATH invariance: no opt-in => no plane registration, and
-    forward() is bitwise unaffected by the opt-in (its diagonal path
-    never touches the planes);
+  * DEFAULT-PATH invariance: no opt-in => no plane registration;
+    forward() refuses the opt-in before stepping (#2454);
   * short-run run(compute_s_params=True) wiring: diagonals bitwise equal
     to the default path (byte-frozen), off-diagonals move (loud).
 
@@ -302,12 +301,10 @@ def _two_port_synthetic(gamma_load, zc_true=48.3, beta_true=None):
 
 
 def test_decompose_refplane_two_port_synthetic_matched():
-    """Full wrapper on a matched synthetic thru: diagonals BITWISE equal
-    the legacy decomposer; S21 = S12 = exp(-j beta L) at complex64
+    """Full wrapper on a matched synthetic thru: diagonals equal zero;
+    S21 = S12 = exp(-j beta L) at complex64
     rounding; measured Zc/beta recovered."""
     s = _two_port_synthetic(gamma_load=0.0)
-    S_legacy = np.asarray(decompose_wire_s_matrix(
-        s["v_all"], s["i_all"], s["z0"], s["counts"]), dtype=np.complex64)
     S, diag = decompose_wire_s_matrix_with_reference_planes(
         s["v_all"], s["i_all"], s["z0"], s["counts"],
         plane_v=s["plane_v"], plane_im=s["plane_im"], plane_ip=s["plane_ip"],
@@ -317,9 +314,9 @@ def test_decompose_refplane_two_port_synthetic_matched():
         freqs=s["freqs"], dt=s["dt"], dx=s["dx"],
         return_line_diagnostics=True,
     )
-    # DIAGONAL: byte-frozen legacy path, always (issue #313 hard rule).
-    assert S[0, 0].tobytes() == S_legacy[0, 0].tobytes()
-    assert S[1, 1].tobytes() == S_legacy[1, 1].tobytes()
+    # PREDECLARE 20261108-2450-refplane-one-wave P5: closed-form thru S_jj = 0.
+    assert np.max(np.abs(S[0, 0])) < 1e-6
+    assert np.max(np.abs(S[1, 1])) < 1e-6
     for p in (0, 1):
         assert np.max(np.abs(diag["zc"][p] - s["zc_true"])) < 1e-6
         assert np.max(np.abs(diag["beta"][p] / s["beta_true"] - 1)) < 1e-9
@@ -341,6 +338,21 @@ def test_decompose_refplane_two_port_synthetic_matched():
     # power flows drive -> load: at the receive plane the port-incoming
     # wave carries it, and on the lossless line the two planes agree.
     assert np.max(np.abs(p_net_1 / p_net_0 - 1)) < 1e-9
+
+
+@pytest.mark.parametrize("gamma_load", [0.18 * np.exp(1j * 0.4), 0.0],
+                         ids=["reflective", "matched"])
+def test_decompose_refplane_one_wave_fast_gate(gamma_load):
+    """PREDECLARE Instrument: both drive passes remove the termination echo."""
+    s = _two_port_synthetic(gamma_load=gamma_load)
+    S, diag = _decompose(s, return_line_diagnostics=True)
+    expected = np.zeros_like(S, dtype=np.complex128)
+    expected[0, 1] = expected[1, 0] = np.exp(-1j * s["beta_true"] * s["L"])
+    error = np.max(np.abs(S - expected))
+    print(f"one-wave fast gate gamma_load={gamma_load}: max_abs_error={error:.12g}")
+    assert error < 1e-6
+    for i, j in ((0, 1), (1, 0)):
+        assert np.max(np.abs(diag["gamma_far"][(i, j)] - abs(gamma_load))) < 1e-12
 
 
 def test_decompose_refplane_two_port_synthetic_reflective():
@@ -522,6 +534,7 @@ def test_refplane_requires_pec_trace_at_plane():
     """Planes pointing AWAY from the line (wrong direction) find no trace
     cross-section and must fail loudly, not measure vacuum."""
     sim = Simulation(
+        snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -547,18 +560,15 @@ def test_refplane_requires_pec_trace_at_plane():
 
 
 def test_forward_bitwise_unaffected_by_optin():
-    """forward(port_s11_freqs=...) is BITWISE identical with and without
-    the opt-in: the plane registration is gated to the S-matrix driver
-    path and forward()'s diagonal extraction never touches it."""
-    f_default = _build_thru().forward(n_steps=64, port_s11_freqs=_FREQS,
-                                      skip_preflight=True)
-    f_opted = _build_thru(reference_plane_cells=3).forward(
-        n_steps=64, port_s11_freqs=_FREQS, skip_preflight=True)
-    a = np.asarray(f_default.s_params)
-    b = np.asarray(f_opted.s_params)
-    assert a.shape == b.shape and a.tobytes() == b.tobytes(), (
-        "forward() S11 changed under reference_plane_cells — the opt-in "
-        "must not touch the forward()/diagonal path")
+    """#2454: the former bitwise lock pinned an accepted, dropped input."""
+    with pytest.raises(ValueError) as error:
+        _build_thru(reference_plane_cells=3).forward(
+            n_steps=64, port_s11_freqs=_FREQS, skip_preflight=True)
+    assert str(error.value) == (
+        "forward() does not form reference-plane S-parameters: "
+        "add_port(reference_plane_cells=...) is set on port 0; "
+        "use run(compute_s_params=True) for reference-plane S, "
+        "or remove the option for forward()")
 
 
 def test_run_short_diagonals_byte_frozen_offdiagonals_move():

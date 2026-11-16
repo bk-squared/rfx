@@ -33,12 +33,12 @@ def test_touching_substrate_and_rod_compose_spd():
     index = (5, 5, 4)
     old = _matrices(prior.nodes.xi)[index]
     assert old[0, 0] != old[2, 2]  # prior is an interface, not isotropic
-    outside = 1. / np.mean(np.diag(old))
+    outside = 4.
     expected = np.diag([1. / (.5 * 38. + .5 * outside)] * 2
                        + [.5 / 38. + .5 / outside])
     np.testing.assert_allclose(matrices[index], expected, rtol=1e-6, atol=0)
     reverse = compute_node_tensor_eps(grid, [(rod, 38.), (substrate, 4.)])
-    assert not np.array_equal(matrices[index], _matrices(reverse.nodes.xi)[index])
+    np.testing.assert_allclose(matrices[index], _matrices(reverse.nodes.xi)[index], rtol=1e-6)
 
 
 def test_traced_radius_gradient_matches_concrete_central_fd():

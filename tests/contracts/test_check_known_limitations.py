@@ -8,6 +8,8 @@ import sys
 import pytest
 import yaml
 
+pytestmark = pytest.mark.tooling
+
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / 'scripts/ci/check_known_limitations.py'
 
@@ -209,4 +211,4 @@ def test_state_lookup_failure_is_not_a_green_sweep(tmp_path):
 def test_pending_new_issue_fails_cli(tmp_path):
     result = run_check(tmp_path, '## A\nTracker: TODO-NEW-ISSUE (silent gradient error)\n')
     assert result.returncode == 1
-    assert 'leader must open a tracker' in result.stdout
+    assert 'a maintainer must open a tracker' in result.stdout

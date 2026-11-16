@@ -48,7 +48,7 @@ def run_settling_witness(self, result):
     return db, {**detail, 'run_records_scored': True}
 
 def settling_source_end(self, result, records=None):
-    from rfx.probes.settling import simulation_source_end_step
+    from rfx.measurement.record_end import injection_end
 
     series = getattr(result, "time_series", None)
     shape = getattr(series, "shape", ())
@@ -66,6 +66,6 @@ def settling_source_end(self, result, records=None):
         internal = getattr(self, "_internal_probe_indices", ()) or ()
         count = 1 if len(shape) == 1 else shape[1]
         records = [p for i, p in enumerate(self._probes[:count]) if i not in internal]
-    return simulation_source_end_step(
-        self, series.shape[0], dt, records, grid=grid,
-        waveguide_configs=getattr(result, "waveguide_ports", None))
+    return injection_end(
+        series.shape[0], dt, records=tuple(records), grid=grid, sim=self,
+        waveguide_ports=getattr(result, "waveguide_ports", None))

@@ -1,4 +1,4 @@
-"""THRU feed-post de-embedding harness (PI disposition (b) on the held #683 gate).
+"""THRU feed-post de-embedding harness (disposition (b) on the held #683 gate).
 
 Pre-declaration (binding, committed BEFORE this file existed):
     docs/design_notes/thru_feedpost_deembed_predeclaration.md
@@ -19,7 +19,8 @@ from __future__ import annotations
 import argparse
 import os
 
-os.environ.setdefault("JAX_PLATFORMS", "cpu")
+if __name__ == "__main__":  # run by hand; an import leaves the environment alone
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
 import numpy as np
 

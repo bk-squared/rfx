@@ -7,6 +7,7 @@ name here.
 """
 
 from __future__ import annotations
+from rfx._warning_origin import user_stacklevel
 
 from typing import NamedTuple
 
@@ -21,7 +22,7 @@ from rfx.core.yee import (
     EPS_0, MU_0,
 )
 from rfx.core.jax_utils import is_tracer
-from rfx._grid_metric import (
+from rfx._internal._grid_metric import (
     DECLARED_SPAN_TOL_M,
     Float32WidthResolutionWarning,
     NODE_TOUCH_REL,
@@ -62,7 +63,7 @@ class NonUniformGrid(NamedTuple):
                            # an is_tracer(dt) guard or a host-boundary context.
     cpml_layers: int
     # Non-periodic cell-size arrays carry pads and a trailing duplicate so N
-    # cells are bounded by N+1 E-nodes (#562, see _append_bounding_node). The
+    # cells are bounded by N+1 E-nodes. The
     # duplicate is a node-provider, not physical extent: its H term is the one
     # the stencil zeroes. Read extents from node positions
     # (coords_from_nonuniform_grid, or cumsum edges up to index nx-1) — NEVER
@@ -78,14 +79,14 @@ class NonUniformGrid(NamedTuple):
     inv_dx_h: jnp.ndarray  # (nx,) — H update: 1/dx[i]; [nx-1]=0
     inv_dy_h: jnp.ndarray  # (ny,) — H update: 1/dy[j]; [ny-1]=0
     inv_dz_h: jnp.ndarray  # (nz,) — H update: 1/dz[k]; [nz-1]=0
-    # Per-face CPML padding (PMC+CPML composition fix, 2026-04)
+    # Per-face CPML padding for PMC+CPML composition
     pad_x_lo: int = 0
     pad_x_hi: int = 0
     pad_y_lo: int = 0
     pad_y_hi: int = 0
     pad_z_lo: int = 0
     pad_z_hi: int = 0
-    # Exact float64 copies of the padded cell-size profiles (#802/#807).
+    # Exact float64 copies of the padded cell-size profiles.
     # The node-position spine (coords_from_nonuniform_grid) reads these, so
     # realized geometry does not inherit the float32 quantization of the
     # solver-facing stores above — a cumsum of f32-widened cell sizes lands
@@ -94,7 +95,7 @@ class NonUniformGrid(NamedTuple):
     # uniform and NU lanes. Populated by make_nonuniform_grid on the
     # concrete path only (None when the profile is traced, and on grids
     # built by hand — the coordinate producer then widens the f32 store,
-    # the pre-#802 values, and emits ExactNodeSpineMissingWarning so the
+    # and emits ExactNodeSpineMissingWarning so the
     # degraded node line is never silent). Solver arithmetic keeps reading
     # the float32 fields; both derive from the same padded profile at
     # construction, so they cannot drift independently.
@@ -128,7 +129,7 @@ class NonUniformGrid(NamedTuple):
     #
     # THE CONVENTION -- index origin, the primal/dual rule, the end entries
     # of ``inv_d_e`` / ``inv_d_h``, and which consumer is entitled to which
-    # metric -- is written once, in ``rfx/_grid_metric.py``. Read that module
+    # metric -- is written once, in ``rfx/_internal/_grid_metric.py``. Read that module
     # before adding a metric formula at a call site.
     #
     # ``rfx.grid.Grid`` carries the same seven methods with the same meaning,
@@ -219,10 +220,10 @@ class NonUniformGrid(NamedTuple):
             warnings.warn(
                 f"NonUniformGrid axis {_axis_name(ax)!r} has no float64 "
                 "cell spine; cells() widened the float32 store instead. Node "
-                "positions derived from it carry the pre-#802 quantization "
+                "positions derived from it carry the float32 quantization "
                 "(~1e-10 m), which flips half-open inclusion at node-aligned "
                 "faces. Build the grid with make_nonuniform_grid.",
-                ExactNodeSpineMissingWarning, stacklevel=2)
+                ExactNodeSpineMissingWarning, stacklevel=user_stacklevel())
             return np.asarray(store, dtype=np.float64)
         return np.asarray(exact, dtype=np.float64)
 
@@ -410,7 +411,7 @@ class NonUniformGrid(NamedTuple):
 def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
     """Pad a 1-D cell-size profile with CPML cells on each end.
 
-    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation, 2026-04 —
+    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation —
     a PMC/PEC face gets 0 cells on that side while the opposing CPML
     face keeps its allocation). If ``pad_hi`` is omitted the symmetric
     ``pad_lo`` count is used on both ends (pre-per-face-allocation behaviour).
@@ -445,7 +446,7 @@ def _append_bounding_node(profile_full, *, periodic=False):
     edge-centred node). Without this the array carried only N nodes, the
     stencil zeroed the last cell's H term (``inv_d_h[N-1] = 0``), and the
     realized wall-to-wall extent came out ``sum(d) - d[-1]`` — one cell
-    short of what the caller asked for (#562: +2.47 % of TM110 on a
+    short of what the caller asked for (+2.47 % of TM110 on a
     45 x 39-cell PEC box, +37 MHz of WR-90 TE101 centre frequency from the
     guide-width axis alone).
 
@@ -468,10 +469,10 @@ def interior_cells(d_full, pad_lo: int, pad_hi: int, *, periodic=False):
     """The physical interior cells of a padded NU cell-size array.
 
     The array is ``[lo pad | interior | hi pad | bounding-node duplicate]``
-    (#562, see ``_append_bounding_node``), so the interior ends one entry
+    (see ``_append_bounding_node``), so the interior ends one entry
     before ``len - pad_hi``. Slicing without that ``-1`` pulls in a pad cell
     — or the duplicate itself on a face with no pad — and overstates the
-    extent by one cell, which is the same class of error #562 was.
+    extent by one cell.
     A periodic axis has neither pads nor duplicate, so every entry is interior.
 
     Returns the CELLS; ``np.insert(np.cumsum(cells), 0, 0.0)`` then gives the
@@ -498,7 +499,7 @@ def assert_cells_span_declared_profile(d_full, pad_lo, pad_hi, profile,
     sum lands on every declared edge to 1e-12 m, and whose total equals
     ``edges[-1] - edges[0]`` to the same figure. This grid-side check is the
     re-check of that guarantee after padding and the bounding node have been
-    applied -- the step where the #562 class of error lives, and the step the
+    applied -- the step where the class of error lives, and the step the
     band builder cannot see.
 
     ``make_nonuniform_grid`` takes a flat profile, not a set of declared
@@ -521,7 +522,7 @@ def assert_cells_span_declared_profile(d_full, pad_lo, pad_hi, profile,
             f"{axis} axis: the padded cell array realizes "
             f"{interior.shape[0]} interior cells but {declared.shape[0]} "
             "were declared. The interior of a padded array ends one entry "
-            "before len - pad_hi (the bounding-node duplicate, #562); a "
+            "before len - pad_hi (the bounding-node duplicate); a "
             "count that disagrees means the padding or that duplicate was "
             "applied differently than interior_cells reads it."
         )
@@ -546,10 +547,8 @@ def node_positions_from_profile(profile):
     profile's total extent — the same positions
     ``coords_from_nonuniform_grid`` produces for the interior of a built grid.
     Public because callers outside this module legitimately need the
-    convention (the #325 graded-rasterization preflight models what the
-    rasterizer will do, and modelling it with a private-import composition or,
-    worse, a hand-rolled copy, is how that check drifted in the first place — #562
-    review F2, #568).
+    convention (the graded-rasterization preflight models what the
+    rasterizer will do, and needs the same convention rather than a separate copy).
     """
     from rfx.geometry.rasterize_grid import _axis_node_positions
     return _axis_node_positions(_append_bounding_node(profile), 0)
@@ -559,7 +558,7 @@ def _profile_to_inv_arrays(profile_full: np.ndarray, *, periodic=False) -> tuple
     """Return ``(inv_d_e, inv_d_h)`` — the E-update and H-update inverse
     cell-spacing arrays for a padded 1-D cell-size profile ``d``.
 
-    CORE-C2 fix (2026-05-16). The non-uniform Yee stencil needs a
+    CORE-C2 fix. The non-uniform Yee stencil needs a
     *different* metric for each update:
 
     * **H update** — the H-curl differences two E nodes that straddle
@@ -611,7 +610,7 @@ def e_node_dual_spacings(profile_full):
     which is exactly ``1/inv_d_e``. An f0 sheet uses this node dual;
     a DC fold uses the occupied cell's primal width ``d[k]`` before the
     E-edge mean, realizing ``sigma_bulk * thickness`` integrated over duals.
-    The #669 Leontovich measurement gave ratios 1.2021 on a 0.25/0.50 mm
+    The Leontovich measurement gave ratios 1.2021 on a 0.25/0.50 mm
     transition and 0.6214 on a 1.00/0.25 mm transition against a matched mesh
     (expected 1.000), motivating the node dual for f0 sheets.
 
@@ -769,7 +768,34 @@ def _warn_float32_width_resolution(profile, axis):
             f"x={nodes[worst]:.12g} m have r={ratios[worst]:.12g}, "
             f"exceeding the node-band cap {cap:.12g}; faces declared near "
             "such nodes may move one cell. Widths built in float64 avoid it.",
-            Float32WidthResolutionWarning, stacklevel=3)
+            Float32WidthResolutionWarning, stacklevel=user_stacklevel())
+
+
+def _assert_boundary_cells(profile, boundary, axis, *, match_each_other=False):
+    """Match end cells at the caller's precision, with the declared-span floor."""
+    dtype = getattr(profile, "dtype", np.dtype(np.float64))
+    eps = np.finfo(dtype if np.issubdtype(dtype, np.floating) else np.float64).eps
+    boundary = float(boundary)
+    tolerance = max(DECLARED_SPAN_TOL_M, 4 * float(eps) * abs(boundary))
+
+    def _check(lo, hi):
+        ends = ((-1, hi),) if match_each_other else ((0, lo), (-1, hi))
+        for index, cell in ends:
+            if not abs(float(cell) - boundary) <= tolerance:
+                if match_each_other:
+                    raise ValueError(
+                        f"dy_profile boundary cells must match each other "
+                        f"(got lo={boundary}, hi={float(cell)}); "
+                        f"tolerance={tolerance} m."
+                    )
+                detail = " (CPML cells use the boundary spacing)" if index == 0 else ""
+                raise ValueError(
+                    f"d{axis}_profile[{index}]={float(cell)} must equal boundary "
+                    f"dx={boundary}{detail}; tolerance={tolerance} m."
+                )
+
+    from rfx._traced_check import traced_check
+    traced_check("graded mesh", "boundary cells", _check, profile[0], profile[-1])
 
 
 def make_nonuniform_grid(
@@ -791,6 +817,7 @@ def make_nonuniform_grid(
     periodic_axes: str = "",
     domain: tuple | None = None,
     boundary_depths: tuple | None = None,
+    snap: str = "strict",
 ) -> NonUniformGrid:
     """Create a non-uniform Yee grid.
 
@@ -808,14 +835,14 @@ def make_nonuniform_grid(
         absorbing — see ``pec_faces`` / ``pmc_faces``).
     dx_profile, dy_profile : 1D arrays or None
         Optional per-cell x / y spacings for the physical (non-CPML)
-        interior. When provided, the first and last values must match
-        ``dx`` (they set the boundary cell size used by the CPML).
+        interior. Both x ends must match ``dx`` within the profile's dtype
+        resolution (at least 1e-12 m). Concrete y ends must match each
+        other; traced y ends must match ``dx``, the stored boundary width.
     pec_faces, pmc_faces : set of str or None
         Face labels (``x_lo``, ``x_hi``, ``y_lo``, ``y_hi``, ``z_lo``,
         ``z_hi``) where the boundary is PEC / PMC. Per-face pad count
         is forced to 0 on these faces so the reflector plane aligns
-        with the user domain edge. Added 2026-04 to close the
-        PMC+CPML composition gap on the non-uniform mesh path.
+        with the user domain edge.
     cpml_axes : str
         Axes that participate in CPML allocation (default ``"xyz"``).
         Per-face allocation still applies; an axis absent from
@@ -844,7 +871,16 @@ def make_nonuniform_grid(
         point (see ``Simulation``); a metre coordinate on that axis resolves
         on this profile's node line. Validated by
         :func:`rfx.model.graded_admission.admit_nominal_profiles`.
+    domain, snap : declared extents and the ``Simulation`` snap choice
+        A positive declared z must equal a concrete ``dz_profile``'s sum within
+        1 %, or the build is refused: ``grid.domain`` is what periodic
+        z and flux regions read. ``snap="declared"`` keeps a declared z the
+        caller was already warned about.
     """
+    if (domain is not None and len(domain) >= 3 and float(domain[2]) > 0
+            and not is_tracer(dz_profile) and snap != "declared"):
+        from rfx.model.graded_admission import judge_declared_z
+        judge_declared_z(float(domain[2]), float(np.sum(dz_profile)))
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
     boundary_depths = boundary_depths if boundary_depths is not None else resolve_face_depths(
@@ -861,26 +897,15 @@ def make_nonuniform_grid(
         nx_interior = realized_cells(domain_xy[0], dx, kinds["x"])
         dx_prof_phys = np.full(nx_interior, float(dx))
     elif is_tracer(dx_profile):
-        # Tracer path (mesh-as-design-variable): stay in jnp and skip the
-        # concrete boundary validation. Caller is responsible for keeping
-        # `dx_profile[0] == dx_profile[-1] == dx` (the scalar `dx` still
-        # names the boundary cell; the CPML reads the traced end cells
-        # through `boundary_cell`). Mirrors the 2026-04-17 dz tracer refactor.
+        # With a nominal profile the ends are not checked here: the fixed-cell
+        # check holds them outside a declared window (free inside, or with no
+        # window), and dx agreement is judged where a structure is resolved.
         dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
+        if nominal_profiles is None or "x" not in nominal_profiles:
+            _assert_boundary_cells(dx_prof_phys, dx, "x")
     else:
+        _assert_boundary_cells(dx_profile, dx, "x")
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
-        # Guard: CPML cells must have the same size as the boundary interior
-        # cells, otherwise the CPML σ/κ profile is miscalibrated.
-        if abs(float(dx_prof_phys[0]) - float(dx)) > 1e-12:
-            raise ValueError(
-                f"dx_profile[0]={float(dx_prof_phys[0])} must equal boundary "
-                f"dx={float(dx)} (CPML cells use the boundary spacing)."
-            )
-        if abs(float(dx_prof_phys[-1]) - float(dx)) > 1e-12:
-            raise ValueError(
-                f"dx_profile[-1]={float(dx_prof_phys[-1])} must equal boundary "
-                f"dx={float(dx)}."
-            )
     dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi), periodic="x" in periodic_axes)
     if not is_tracer(dx_full):
         assert_cells_span_declared_profile(
@@ -894,19 +919,17 @@ def make_nonuniform_grid(
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
-        # Tracer path: stay in jnp. The scalar `dy` is the concrete `dx`
-        # (the CPML reads the traced end cells through `boundary_cell`) — the caller must align `dy_profile[0]` and
-        # `dy_profile[-1]` with `dx` (same contract as the concrete path).
+        # With a nominal profile the ends are not checked here: the fixed-cell
+        # check holds them outside a declared window (free inside, or with no
+        # window), and dx agreement is judged where a structure is resolved.
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)
+        if nominal_profiles is None or "y" not in nominal_profiles:
+            _assert_boundary_cells(dy_prof_phys, dy_boundary, "y")
     else:
+        dy_boundary = float(dy_profile[0])
+        _assert_boundary_cells(dy_profile, dy_boundary, "y", match_each_other=True)
         dy_prof_phys = np.asarray(dy_profile, dtype=np.float64)
-        dy_boundary = float(dy_prof_phys[0])
-        if abs(float(dy_prof_phys[-1]) - dy_boundary) > 1e-12:
-            raise ValueError(
-                f"dy_profile boundary cells must match each other "
-                f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
-            )
     dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi), periodic="y" in periodic_axes)
     if not is_tracer(dy_full):
         assert_cells_span_declared_profile(
@@ -951,7 +974,7 @@ def make_nonuniform_grid(
     dy_arr = jnp.asarray(dy_full, dtype=jnp.float32)
     dz_arr = jnp.asarray(dz_full, dtype=jnp.float32)
 
-    # Exact float64 spine for node positions (#802/#807): concrete profiles
+    # Exact float64 spine for node positions: concrete profiles
     # only — a traced profile has no host copy and its axis keeps the traced
     # coordinate path.
     def _exact_f64(d_full):
@@ -1020,6 +1043,30 @@ def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
     traced_check("graded mesh", "fixed cells", _check, jnp.any(bad), first, realized[first], nominal32[first])
 
 
+def _assert_traced_window_total(profile, nominal, window, axis):
+    """Keep downstream waveguide planes fixed, within the declared D2 bound.
+
+    This checks realized values, not tangent directions. Only tangents that
+    preserve each window's total describe planes fixed in physical metres.
+    """
+    from rfx._traced_check import traced_check
+    windows = window if isinstance(window[0], tuple) else (window,)
+    for lo, hi in windows:
+        expected = float(np.sum(nominal[lo:hi]))
+        tolerance = float(4 * np.finfo(np.float32).eps * (hi - lo)
+                          * np.max(nominal[lo:hi]))
+        realized = jnp.sum(jnp.asarray(profile, dtype=jnp.float32)[lo:hi])
+
+        def check(total, target=expected, bound=tolerance):
+            if not abs(float(total) - float(target)) <= float(bound):
+                raise ValueError(
+                    f"waveguide ports: nominal_profiles= {axis!r} traced window "
+                    f"total changed: realized {float(total)!r} m, nominal "
+                    f"{float(target)!r} m, tolerance {float(bound)!r} m.")
+
+        traced_check("waveguide ports", "fixed window total", check, realized)
+
+
 def _assert_traced_index_matches_realized(
     d_arr, total_pad: int, pad_lo: int, pos: float, nominal_idx: int,
     axis: str, declared: bool = False,
@@ -1045,7 +1092,7 @@ def _assert_traced_index_matches_realized(
     the uniform reference mesh; it changes the message only.
 
     A coordinate midway between two nodes is equally near both. The nominal
-    index takes the lower one (``nearest_node_index``, #1295), but the
+    index takes the lower one (``nearest_node_index``), but the
     realized edges are cumulative sums in the traced dtype, so one neighbour
     comes out a few ulp nearer, either one (at most 5 float32 ulp of the
     coordinate measured on constant 0.127 to 1 mm columns of up to 400
@@ -1055,15 +1102,14 @@ def _assert_traced_index_matches_realized(
     those columns; a deformation that moves a node line moves it by far more.
     """
     n_total = int(d_arr.shape[0])
-    pad_hi = total_pad - pad_lo
     if n_total - total_pad <= 0:
         return
-    interior = jnp.asarray(d_arr)[pad_lo:n_total - pad_hi]
-    edges = jnp.concatenate(
-        [jnp.zeros((1,), dtype=interior.dtype), jnp.cumsum(interior)])
+    cells = jnp.asarray(d_arr)
+    edges = jnp.concatenate([jnp.zeros((1,), dtype=cells.dtype), jnp.cumsum(cells[:-1])])
+    edges = edges - edges[pad_lo]
     dist = jnp.abs(edges - float(pos))
     nearest = jnp.argmin(dist)
-    nominal = min(int(nominal_idx), int(dist.shape[0]) - 1)
+    nominal = int(nominal_idx) + pad_lo
     tol = 16 * jnp.finfo(dist.dtype).eps * jnp.maximum(
         abs(float(pos)), edges[nearest])
     agrees = (nearest == nominal) | (
@@ -1077,7 +1123,7 @@ def _assert_traced_index_matches_realized(
             "with nominal_profiles=.")
 
     def _check(realized, agrees):
-        realized = int(realized)
+        realized = int(realized) - pad_lo
         if not bool(agrees):
             raise ValueError(
                 f"position {pos:.9g} m on the traced {axis} axis resolves to "
@@ -1112,23 +1158,7 @@ def _axis_position_to_index(
     pos: float,
     fallback_dx: float | None = None,
 ) -> int:
-    """Padded index of the node nearest ``pos`` on ``axis``, clamped.
-
-    The node is the one ``index_of`` names: ``nearest_node_index`` on the
-    node line the conductors are rasterized on, a tie to the lower node
-    (#1295, #1342). Two legacy behaviours stay here and not in ``index_of``:
-    a coordinate outside the interior CLAMPS to the end node, and a traced
-    axis answers from a nominal mesh.
-
-    When the axis's cell widths are a JAX tracer (mesh-as-design-variable
-    path) there is no host node line. If the caller declared the concrete
-    profile (``grid.nominal_cells``, from ``nominal_profiles=``) the index is
-    resolved on its node line ``[0, cumsum(w)]``; otherwise on a uniform
-    reference mesh of ``fallback_dx`` cells. Either way it is checked against
-    the realized mesh at run time (``_assert_traced_index_matches_realized``).
-    The traced cell sizes drive the FDTD physics downstream; only the
-    structural index is resolved from the nominal mesh, with the same rule.
-    """
+    """Nearest padded node; traced axes use the checked nominal mesh."""
     ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
     if _axis_name(ax) in grid.periodic_axes:
         return _periodic_index(grid, ax, pos)
@@ -1136,7 +1166,7 @@ def _axis_position_to_index(
     from rfx.model.graded_admission import nominal_cells
     widths = nominal_cells(grid, ax)
     if widths is not None:
-        idx = _nearest_on_line(np.concatenate([[0.0], np.cumsum(widths)]),
+        idx = _nearest_on_padded_line(grid, ax, np.concatenate([[0.0], np.cumsum(widths)]),
                                widths, pos)
         _assert_traced_index_matches_realized(
             store, pad_lo + pad_hi, pad_lo, float(pos), idx,
@@ -1151,14 +1181,14 @@ def _axis_position_to_index(
         last = n - pad_lo - pad_hi
         from rfx.geometry.rasterize_grid import _uniform_axis_nodes
         nominal = _uniform_axis_nodes(last + 1, 0, float(fallback_dx))
-        idx = _nearest_on_line(nominal, np.full(last, float(fallback_dx)),
+        idx = _nearest_on_padded_line(grid, ax, nominal, np.full(last, float(fallback_dx)),
                                pos)
         _assert_traced_index_matches_realized(
             store, pad_lo + pad_hi, pad_lo, float(pos), idx,
             _axis_name(ax))
         return idx + pad_lo
     nodes, cells = grid._node_line(ax)
-    return _nearest_on_line(nodes, cells, pos) + pad_lo
+    return _nearest_on_padded_line(grid, ax, nodes, cells, pos) + pad_lo
 
 
 def host_node_of(grid: NonUniformGrid, axis, i: int) -> float:
@@ -1179,7 +1209,12 @@ def host_node_of(grid: NonUniformGrid, axis, i: int) -> float:
     widths = nominal_cells(grid, ax)
     if widths is not None:
         nodes = np.concatenate([[0.0], np.cumsum(widths)])
-        return float(nodes[min(max(idx - pad_lo, 0), nodes.size - 1)])
+        local = idx - pad_lo
+        if local < 0:
+            return float(local * widths[0])
+        if local >= nodes.size:
+            return float(nodes[-1] + (local - nodes.size + 1) * widths[-1])
+        return float(nodes[local])
     from rfx.geometry.rasterize_grid import _uniform_axis_nodes
     fallback = _traced_fallback_width(grid, ax)
     return float(_uniform_axis_nodes(n, pad_lo, fallback)[idx])
@@ -1204,6 +1239,22 @@ def host_nominal_grid(grid: NonUniformGrid) -> NonUniformGrid:
     return grid._replace(**fields) if fields else grid
 
 
+def _nearest_on_padded_line(grid, axis, nodes, cells, pos) -> int:
+    """Interior-relative index including real low/high pad nodes."""
+    from rfx.model.point_placement import admit_axis
+    _, _, pad_lo, pad_hi = grid._axis_layout(axis)
+    admit_axis(pos, axis=_axis_name(axis), lo=float(nodes[0]), hi=float(nodes[-1]),
+               cell_lo=float(cells[0]), cell_hi=float(cells[-1]),
+               pad_lo=pad_lo, pad_hi=pad_hi, allow_in_absorber=True)
+    if nodes[0] <= pos <= nodes[-1]:
+        return _nearest_on_line(nodes, cells, pos)
+    padded = np.concatenate((nodes[0] - np.arange(pad_lo, 0, -1) * cells[0],
+                             nodes, nodes[-1] + np.arange(1, pad_hi + 1) * cells[-1]))
+    widths = np.concatenate((np.full(pad_lo, cells[0]), cells,
+                             np.full(pad_hi, cells[-1])))
+    return _nearest_on_line(padded, widths, pos) - pad_lo
+
+
 def _nearest_on_line(nodes, cells, pos) -> int:
     """``nearest_node_index`` on a node line, with the local cell the sheet
     snap uses (``_local_cell``). A coordinate outside the line gets its end
@@ -1213,17 +1264,12 @@ def _nearest_on_line(nodes, cells, pos) -> int:
                               _local_cell(nodes, cells, float(pos)))
 
 
-def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> tuple[int, int, int]:
-    """Convert physical (x, y, z) to grid indices for NonUniformGrid.
-
-    Accounts for per-face CPML padding (``pad_{axis}_lo`` leading offset).
-    Each axis resolves through ``_axis_position_to_index``: the node
-    ``index_of`` names, clamped into the interior. On a constant axis, for a
-    coordinate inside the interior that is not a tie, that is the uniform
-    ``Grid`` lookup. Both lanes take the lower node within the tie band. Outside the
-    interior this clamps to the end node, while the uniform grid returns a
-    pad index or refuses.
-    """
+def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float], *,
+                      allow_in_absorber=None) -> tuple[int, int, int]:
+    """Resolve coordinates on the full padded node line, without clamping."""
+    if allow_in_absorber is not None:
+        from rfx.model.point_placement import admit_point
+        admit_point(grid, pos, allow_in_absorber=allow_in_absorber)
     i = _axis_position_to_index(grid, "x", pos[0],
                                 fallback_dx=_traced_fallback_width(grid, "x"))
     j = _axis_position_to_index(grid, "y", pos[1],
@@ -1234,7 +1280,7 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
 
 def _periodic_index(grid, axis, coordinate):
     """Grid's half-open periodic point admission and lower-node tie rule."""
-    from rfx._grid_metric import nearest_uniform_index
+    from rfx._internal._grid_metric import nearest_uniform_index
     ratio = coordinate / float(grid.cells(axis)[0])
     n = grid.shape[axis]
     if ratio < -.5 or ratio >= n + .5:

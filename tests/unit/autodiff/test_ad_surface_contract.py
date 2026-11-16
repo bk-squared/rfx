@@ -115,10 +115,6 @@ AD_CLASSIFICATION = {
         "grows a body that touches arrays.",
     ),
     # --- top-level exports --------------------------------------------------
-    "compute_error_indicator": (
-        NOT_TRACEABLE,
-        "numpy AMR diagnostic (rfx/amr.py)",
-    ),
     "compute_far_field": (
         NOT_TRACEABLE,
         "numpy NTFF post-processor; the AD path is compute_far_field_jax",

@@ -20,7 +20,9 @@ FREQS = np.linspace(3e9, 9e9, 7)
 
 def _box(mesh):
     kw = (dict(dx_profile=np.r_[np.full(6, 1e-3), np.full(4, 0.6e-3), np.full(6, 1e-3)],
-               domain=(0, 12e-3, 10e-3)) if mesh == 'graded' else dict(domain=(12.4e-3, 12e-3, 10e-3)))
+               domain=(0, 12e-3, 10e-3)) if mesh == 'graded' else dict(domain=(13 * 1e-3, 12e-3, 10e-3)))
+    if mesh == 'graded':
+        kw['domain'] = (float(np.sum(kw['dx_profile'])), *kw['domain'][1:])
     sim = Simulation(freq_max=12e9, dx=1e-3, boundary='cpml', cpml_layers=6, **kw)
     for n, x in enumerate((4e-3, 8e-3)):
         sim.add_port(position=(x, 6e-3, 4e-3), component='ez', impedance=50.0, excite=n == 0,

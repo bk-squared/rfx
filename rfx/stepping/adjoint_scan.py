@@ -5,9 +5,18 @@ from __future__ import annotations
 from dataclasses import replace
 import jax
 import jax.numpy as jnp
-from rfx._precision import HIGHEST
-from rfx.adjoint import _plane_slice
+from rfx._internal._precision import HIGHEST
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
+
+
+def _plane_slice(meta, shape):
+    _, axis, index, _, region = meta
+    transverse = [d for d in range(3) if d != axis]
+    if region is None:
+        region = (0, shape[transverse[0]], 0, shape[transverse[1]])
+    out = [slice(region[0], region[1]), slice(region[2], region[3])]
+    out.insert(axis, index)
+    return tuple(out)
 
 
 def design_adjoint_scan(ctx, initial, xs):
@@ -19,7 +28,7 @@ def design_adjoint_scan(ctx, initial, xs):
     import numpy as np
     from rfx.stepping import recorded_scan
     from rfx.core.yee import curl_h, e_component_coeffs
-    from rfx.simulation import make_core_step, core_step_invariants
+    from rfx.stepping.uniform_setup import make_core_step, core_step_invariants
 
     unsupported = ("use_debye", "use_lorentz", "use_kerr", "use_upml",
                    "use_design_occupancy", "use_current_moments",
@@ -77,7 +86,9 @@ def design_adjoint_scan(ctx, initial, xs):
             # Suppress primal drives. CPML and ordinary Yee updates are reused.
             local = replace(local, drives=None,
                             use_dft_planes=False, dft_meta=(), prb_meta=())
-            monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic)[1])
+            from rfx.geometry.rasterize_grid import unpadded_high_walls
+            monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic,
+                             high_wall=unpadded_high_walls(ctx.grid))[1])
             monitor_cb = [a.at[sl].set(b) for a, b in zip(monitor_cb, coeffs[1])]
             weights = [_wavelet_coefficients(jnp.asarray(m[3], dtype=dtype), ctx.dt,
                                              wavelet_length, t)

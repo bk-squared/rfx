@@ -11,9 +11,10 @@ import numpy as np
 import pytest
 
 from rfx import Simulation, Sphere
-from rfx.farfield import compute_far_field
+from rfx.measurement.farfield import compute_far_field
 from rfx.grid import C0
-from rfx.sources.tfsf import measure_normal_incident_spectrum, tfsf_from_declaration
+from rfx.measurement.incident import measure_normal_incident_spectrum
+from rfx.sources.tfsf import tfsf_from_declaration
 
 
 def test_f4_one_device_mie_anchor():
@@ -28,7 +29,7 @@ def test_f4_one_device_mie_anchor():
 
     f0, radius = geo["f0_hz"], geo["radius_m"]
     dx = C0 / f0 / geo["resolution_cells_per_lambda"]
-    sim = Simulation(freq_max=f0 * 1.5, domain=tuple(geo["domain_m"]),
+    sim = Simulation(snap="declared", freq_max=f0 * 1.5, domain=tuple(geo["domain_m"]),
                      dx=dx, boundary="cpml", cpml_layers=geo["cpml_layers"])
     sim.add_material("PEC", eps_r=1.0, sigma=geo["pec_sigma_s_per_m"])
     sim.add(Sphere(center=tuple(d / 2 for d in geo["domain_m"]), radius=radius),

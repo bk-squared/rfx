@@ -8,6 +8,7 @@ from dataclasses import dataclass, fields, is_dataclass
 import enum
 from fnmatch import fnmatchcase
 
+import jax
 import numpy as np
 
 
@@ -39,9 +40,10 @@ OPERANDS = {
         "tfsf", "_feature_tfsf", "sources", "mag_sources", "probes", "dft_planes",
         "flux_monitors", "waveguide_ports", "ntff", "ntff_box", "ntff_data",
         "current_moments", "field_dtype", "stencil_order", "aniso_inv_eps_smooth",
+        "subpixel_smoothing",
         "wire_port_sparams", "lumped_port_sparams", "wire_refplane_sparams",
         "wire_ports", "s_param_freqs", "pec_faces", "pmc_faces", "emit_time_series",
-        "rlc_states")},
+        "rlc_states", "measurement")},
     "materials": ("leaves", "material", frozenset()),
     "debye": ("poles", "Debye pole medium", frozenset({OperandKind.DEBYE})),
     "lorentz": ("poles", "Drude/Lorentz pole medium", frozenset({OperandKind.LORENTZ, OperandKind.DRUDE})),
@@ -83,6 +85,10 @@ OPERANDS = {
         ("mu_update", 1, "component permeability", (OperandKind.MU,)),
         ("upml_eps", 1, "component permittivity", (OperandKind.EPS,)),
         ("upml_sigma", 0, "component conductivity", (OperandKind.SIGMA,)))},
+    # Realized Lorentz tuples store (damping, restoring, c); exterior D/R are one.
+    **{f"materials.components.lorentz.coefficients.{index}":
+       (1, "Drude/Lorentz pole medium", frozenset({OperandKind.LORENTZ, OperandKind.DRUDE}))
+       for index in (0, 1)},
     **{f"materials.components.{kind}.{field}.*": (0, label, frozenset(kinds))
        for kind, label, kinds in (("debye", "Debye pole medium", (OperandKind.DEBYE,)),
                                   ("lorentz", "Drude/Lorentz pole medium", (OperandKind.LORENTZ, OperandKind.DRUDE)))
@@ -93,7 +99,8 @@ OPERANDS = {
     **{f"materials.components.tensor.node_smoothing.{name}*": (value, "node tensor", frozenset(kinds))
        for name, value, kinds in (("xi", "symmetric_identity", (OperandKind.EPS,)),
                                   ("triplets", "identity", (OperandKind.EPS,)),
-                                  ("bulk", 1, (OperandKind.EPS,)), ("active", 0, (OperandKind.EPS,)),
+                                  ("bulk", 1, (OperandKind.EPS,)), ("active", None, ()),
+                                  ("masked_cross", 0, (OperandKind.EPS,)),
                                   ("cross", 0, (OperandKind.EPS,)), ("pec_keep", 1, (OperandKind.PEC_VOLUME,)),
                                   ("guard_count", None, ()))},
     "debye_spec": ("spec", "Debye pole medium", frozenset({OperandKind.DEBYE})),
@@ -126,7 +133,12 @@ COMPONENTS = {
         *(f"materials.components.tensor.{name}" for name in (
             "eps", "inv_eps", "conformal_weights")),
         *(f"materials.components.tensor.node_smoothing.{name}" for name in (
-            "bulk", "active", "pec_keep")))},
+            "bulk", "pec_keep")))},
+    **{f"materials.components.tensor.node_smoothing.masked_cross.{direction}.{pair}.{sa}.{sb}":
+       ("E", "xyz"[a if direction == "forward" else b])
+       for direction in ("forward", "reverse")
+       for pair, (a, b) in enumerate(((0, 1), (0, 2), (1, 2)))
+       for sa in (0, 1) for sb in (0, 1)},
     **{f"{family}.{c}": ("H", axis) for c, axis in enumerate("xyz") for family in (
         "materials.components.mu", "materials.components.mu_update",
         "materials.components.mu_wire", "materials.mu_r_wire")},
@@ -151,7 +163,44 @@ class OperandRecord:
     pole_spec: object = None
 
 
-def _leaves(value, name):
+def node_tensor_operands(nodes, *, periodic=(False, False, False)):
+    """Admission view: retain raw leaves, replace activation by edge couplings.
+
+    Eq. 10 sends cross[sa, sb] to output a, reverse[sa, sb] to b.
+    Each minus endpoint shifts forward before the output edge's active gate.
+    Use jnp throughout so these derived leaves remain callback operands in AD.
+    """
+    import jax.numpy as jnp
+
+    result = {field.name: getattr(nodes, field.name)
+              for field in fields(nodes) if field.name != "active"}
+    reverse = nodes.cross if nodes.cross_reverse is None else nodes.cross_reverse
+    masked: dict[str, dict[int, dict[int, dict[int, object]]]] = {"forward": {}, "reverse": {}}
+    for pair, (a, b) in enumerate(((0, 1), (0, 2), (1, 2))):
+        for direction, coupling, output in (("forward", nodes.cross[pair], a),
+                                             ("reverse", reverse[pair], b)):
+            ends: dict[int, dict[int, object]] = {}
+            for sa in (0, 1):
+                ends[sa] = {}
+                for sb in (0, 1):
+                    coefficient = coupling[sa, sb]
+                    if (sa if direction == "forward" else sb):
+                        coefficient = jnp.roll(coefficient, -1, axis=output)
+                        if not periodic[output]:
+                            last: list[slice | int] = [slice(None)] * 3
+                            last[output] = -1
+                            coefficient = coefficient.at[tuple(last)].set(0)
+                    ends[sa][sb] = jnp.where(nodes.active[output], coefficient, 0)
+            masked[direction][pair] = ends
+    result["masked_cross"] = masked
+    return result
+
+
+def _leaves(value, name, *, periodic=(False, False, False)):
+    from rfx.geometry.node_tensor import NodeTensor
+
+    if isinstance(value, NodeTensor):
+        value = node_tensor_operands(value, periodic=periodic)
     if value is None:
         return
     if hasattr(value, "shape"):
@@ -160,14 +209,14 @@ def _leaves(value, name):
         yield name, np.asarray(value)
     elif is_dataclass(value):
         for field in fields(value):
-            yield from _leaves(getattr(value, field.name), f"{name}.{field.name}")
+            yield from _leaves(getattr(value, field.name), f"{name}.{field.name}", periodic=periodic)
     elif isinstance(value, dict):
         for key, child in value.items():
-            yield from _leaves(child, f"{name}.{key}")
+            yield from _leaves(child, f"{name}.{key}", periodic=periodic)
     elif isinstance(value, (tuple, list)):
         names = getattr(value, "_fields", range(len(value)))
         for key, child in zip(names, value):
-            yield from _leaves(child, f"{name}.{key}")
+            yield from _leaves(child, f"{name}.{key}", periodic=periodic)
 
 
 def _record(name, kinds, array, vacuum, label, source=None, pole_spec=None):
@@ -184,7 +233,8 @@ def realized_operands(grid, materials, updates, localized) -> tuple[OperandRecor
     retain their prebuilt source and have no assembly ``pole_spec``.
     """
     records = []
-    for name, array in _leaves(materials, "materials"):
+    periodic = tuple(axis in getattr(grid, "periodic_axes", "") for axis in "xyz")
+    for name, array in _leaves(materials, "materials", periodic=periodic):
         if array.ndim < 3 and name not in ("materials.eps_r", "materials.sigma", "materials.mu_r"):
             continue
         vacuum, label, kinds = material_rule(name)
@@ -210,8 +260,9 @@ def realized_operands(grid, materials, updates, localized) -> tuple[OperandRecor
             coeffs = value[0]
             # Setups receive ADE coefficients, whose masked recurrence terms
             # carry the realized pole reach (not the initial, zero P state).
-            names = ("alpha", "beta") if name == "debye" else ("a", "b", "c")
-            value = {key: getattr(coeffs, key) for key in names}
+            names = ("alpha", "beta") if name == "debye" else ("damping", "restoring", "c")
+            value = {key: (jax.tree.map(lambda leaf: leaf - 1, getattr(coeffs, key)) if key in ("damping", "restoring")
+                           else getattr(coeffs, key)) for key in names}
             vacuum = 0
         elif vacuum == "sheet":
             value = {f"mask_e{a}": getattr(value, f"mask_e{a}") for a in "xyz"}

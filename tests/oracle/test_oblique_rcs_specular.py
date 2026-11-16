@@ -71,7 +71,8 @@ from rfx.geometry.csg import Box, rasterize
 from rfx.farfield import NTFFBox
 from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
 from rfx.simulation import run, SnapshotSpec
-from rfx.rcs import compute_rcs, compute_rcs_jax, _incident_spectrum_amplitude
+from rfx.measurement.rcs import compute_rcs, _incident_spectrum_amplitude
+from rfx.rcs import compute_rcs_jax
 
 F0 = 5e9
 LAM = C0 / F0

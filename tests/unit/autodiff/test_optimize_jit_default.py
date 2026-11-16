@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 
 import jax
@@ -106,7 +105,8 @@ def test_untraceable_warns_once_for_all_starts():
         actual = _run(3, objective, n_starts=2)
     fallback = [w for w in caught if "objective reads a traced value" in str(w.message)]
     assert len(fallback) == 1
-    assert fallback[0].category is UserWarning
+    from rfx.errors import ConfigurationWarning
+    assert fallback[0].category is ConfigurationWarning
     assert "optimize: ConcretizationTypeError:" in str(fallback[0].message)
     assert "every iteration now recompiles the whole simulation" in str(fallback[0].message)
     with warnings.catch_warnings(record=True) as caught:
@@ -141,7 +141,6 @@ def _topology(n_iterations, **kwargs):
                              verbose=False, skip_preflight=True, **kwargs)
 
 
-@pytest.mark.skipif(not importlib.util.find_spec("optax"), reason="optax not installed")
 def test_topology_dynamic_beta_compiles_once():
     _topology(4)
     _, n1 = _compiles(_topology, 1)

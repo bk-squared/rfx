@@ -21,8 +21,8 @@ POLICIES = {
     'debye_cc': ('1/eps0', '1/eps0'), 'debye_alpha': (0., 0.),
     'debye_beta': (0., 0.), 'debye_state': (0., 0.),
     'lorentz_ca': (1., 1.), 'lorentz_cb': ('dt/eps0', 'dt/eps0'),
-    'lorentz_cc': ('1/eps0', '1/eps0'), 'lorentz_a': (0., 0.),
-    'lorentz_b': (0., 0.), 'lorentz_c': (0., 0.), 'lorentz_state': (0., 0.),
+    'lorentz_cc': ('1/eps0', '1/eps0'), 'lorentz_damping': (1., 1.),
+    'lorentz_restoring': (1., 1.), 'lorentz_c': (0., 0.), 'lorentz_state': (0., 0.),
     'eps_r': (1., 1.), 'mu_r': (1., 1.), 'sigma': (0., 0.),
     'lumped': (0., 0.), 'state': (0., 0.),
     'pec_edge': (True, False), 'pec_cell': (True, False),
@@ -30,6 +30,8 @@ POLICIES = {
     'inv_dx_h': (0., 0.), 'width': ('edge', 'edge'),
     'cpml_psi': (0., 0.), 'cpml_zero': (0., 0.), 'cpml_one': (1., 1.),
     'edge_keep': (1., 1.),
+    # Uniform PMC: alignment and physical ghosts impose zero on the whole H update.
+    'pmc_h_factor': (0., 0.),
 }
 
 
@@ -262,8 +264,8 @@ PLACEMENT_ALLOWLIST = {
     ('runners/_distributed_records.py', 'replicated', 'jax.device_put(buffer, NamedSharding(self.mesh, P()))'): (1, 'Replicate a record buffer before indexing it by rank (#1441); output assembly.'),
     ('runners/_distributed_records.py', 'initial', "jax.device_put(np.zeros(shape, self.dtype), NamedSharding(self.mesh, P('x')))"): (1, 'Per-rank snapshot history per component, largest owner\'s share (#1402 step 4u).'),
     ('runners/_distributed_records.py', 'assemble', 'jax.device_put(a, NamedSharding(self.mesh, P()))'): (1, 'Replicate snapshot histories before indexing by rank (#1441); output assembly.'),
-    ('runners/distributed_nu.py', '_concrete_on_mesh', 'jax.device_put(arr, sharding)'): (1, 'Replicated geometry, CPML profiles, source tables and step indices; callers use P().'),
-    ('runners/distributed_nu.py', '_concrete_on_mesh', 'jax.make_array_from_callback(host.shape, sharding, lambda index: host[index])'): (1, 'Replicated geometry, CPML profiles, source tables and step indices; callers use P().'),
+    ('stepping/slab_update.py', '_concrete_on_mesh', 'jax.device_put(arr, sharding)'): (1, 'Replicated geometry, CPML profiles, source tables and step indices; callers use P().'),
+    ('stepping/slab_update.py', '_concrete_on_mesh', 'jax.make_array_from_callback(host.shape, sharding, lambda index: host[index])'): (1, 'Replicated geometry, CPML profiles, source tables and step indices; callers use P().'),
     ('runners/distributed_nu.py', 'run_nonuniform_distributed_pec._zeros', 'jnp.zeros((n_devices * nx_local, ny, nz), dtype=jnp.float32, device=shd)'): (1, 'Direct zero field-carry allocation; no whole-domain slicing.'),
     ('runners/distributed_v2.py', '_shard_field_state', 'jax.device_put(state.ex, shd)'): (1, 'Compatibility placement of already laid-out field buffers and replicated step.'),
     ('runners/distributed_v2.py', '_shard_field_state', 'jax.device_put(state.ey, shd)'): (1, 'Compatibility placement of already laid-out field buffers and replicated step.'),

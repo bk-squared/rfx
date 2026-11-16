@@ -179,7 +179,7 @@ def test_fallback_and_nested_calculator_scope():
 @pytest.mark.parametrize('method', ['compute_coax_msl_transition'])
 def test_coax_declared_pin_tail_is_guarded(method):
     sim = Simulation(domain=(.012, .012, .020), dx=.001,
-                     freq_max=20e9, boundary='cpml', cpml_layers=2)
+                     freq_max=20e9, boundary='cpml', cpml_layers=2, snap='declared')
     sim.add(Box((.0055, .0055, .002), (.0065, .0065, .0082)), material='pec')
     sim.add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
     sim.add_msl_port((.010, .006, .008), direction='-x', width=.002, height=.001, eps_r_sub=1.)

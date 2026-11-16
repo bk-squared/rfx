@@ -7,7 +7,7 @@ from rfx.boundaries.pec import wall_edge_masks
 
 
 def restrict_node_pec(materials, edge_masks, wall_faces):
-    """Fold final (including port releases) conductor and wall masks once.
+    """Keep final conductors (including port releases) separate from walls.
 
     Bulk/interface activation is not an input mask: a free bulk edge may
     supply a curl to an interface edge. Only PEC excludes both endpoints.
@@ -17,9 +17,10 @@ def restrict_node_pec(materials, edge_masks, wall_faces):
         return materials
     nodes = tensor.node_smoothing
     walls = wall_edge_masks(nodes.active[0].shape, wall_faces)
-    keep = tuple(~jnp.asarray(wall) if edge_masks is None else ~(wall | edge)
+    keep = tuple(jnp.ones_like(wall, dtype=bool) if edge_masks is None else ~edge
                  for wall, edge in zip(walls, edge_masks or walls))
     nodes = replace(nodes, pec_keep=keep,
-                    active=tuple(active & free for active, free in zip(nodes.active, keep)))
+                    active=tuple(active & free & ~wall
+                                 for active, free, wall in zip(nodes.active, keep, walls)))
     return materials._replace(components=replace(
         materials.components, tensor=replace(tensor, node_smoothing=nodes)))

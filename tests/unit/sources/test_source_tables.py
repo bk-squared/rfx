@@ -8,11 +8,19 @@ import numpy as np
 import pytest
 
 from rfx import Simulation, Box, DebyePole
+import rfx.model
 from rfx.model import source_coefficients as tables
 from rfx.simulation import make_source, make_j_source
 from rfx.nonuniform import make_current_source
 
 EPS = 8.8541878128e-12
+
+
+def _patch_source_table(monkeypatch, replacement):
+    """The graded lane reads the one builder through the rfx.model package top, the others through its module."""
+    assert rfx.model.source_table is tables.source_table
+    for owner in (tables, rfx.model):
+        monkeypatch.setattr(owner, 'source_table', replacement)
 
 
 def _wave(t):
@@ -188,7 +196,7 @@ def test_mutation_field_coefficient_round_trip_is_detected(monkeypatch):
             cb = kw['coefficient']()
             return (kw['volume'] / cb) * ((cb / kw['volume']) * samples)
         return original(samples, kind, **kw)
-    monkeypatch.setattr(tables, 'source_table', mutated)
+    _patch_source_table(monkeypatch, mutated)
     with pytest.raises(AssertionError):
         _field_oracle('graded')
 
@@ -198,7 +206,7 @@ def test_mutation_plain_coefficient_in_sweep_is_detected(monkeypatch):
     from rfx.core.yee import cell_component_e_materials, e_update_coeffs
     def plain(mats, cell, component, dt, *args, **kw):
         # Keep the table-builder call; drop ADE and final realized operands.
-        eps, sigma = cell_component_e_materials(mats, cell, component)
+        eps, sigma = cell_component_e_materials(mats, cell, component, high_wall=(False, False, False))
         return e_update_coeffs(eps, sigma, dt)[1]
     monkeypatch.setattr(materials, 'e_update_coefficient_at', plain)
     with pytest.raises(AssertionError):
@@ -207,11 +215,10 @@ def test_mutation_plain_coefficient_in_sweep_is_detected(monkeypatch):
         _sweep_oracle('seam')
 
 
-@pytest.mark.parametrize('lane', ['uniform-pec', 'uniform-cpml', 'graded', 'adi'])
+@pytest.mark.parametrize('lane', ['uniform-pec', 'uniform-cpml', 'graded'])
 def test_public_forward_field_table_has_zero_override_tangent(monkeypatch, lane):
     options = {'dx_profile': np.full(8, .001)} if lane == 'graded' else {}
-    if lane == 'adi':
-        options['solver'] = 'adi'
+    pass
     sim = Simulation(freq_max=8e9, domain=(.008,) * 3, dx=.001,
                      boundary='cpml' if lane == 'uniform-cpml' else 'pec',
                      cpml_layers=2 if lane == 'uniform-cpml' else 0, **options)
@@ -224,16 +231,16 @@ def test_public_forward_field_table_has_zero_override_tangent(monkeypatch, lane)
         result = original(*args, **kwargs)
         built.append(result)
         return result
-    monkeypatch.setattr(tables, 'source_table', capture)
+    _patch_source_table(monkeypatch, capture)
     def table(a):
         built.clear()
-        override = a if lane == 'adi' else jnp.ones(grid.shape) * a
+        override = jnp.ones(grid.shape) * a
         sim.forward(n_steps=4, eps_override=override,
                     checkpoint=False, skip_preflight=True)
         assert built
         return built[-1]
     actual, tangent = jax.jvp(table, (jnp.float32(1.1),), (jnp.float32(1.),))
-    dt = grid.dt * (sim._adi_cfl_factor if lane == 'adi' else 1.)
+    dt = grid.dt * (1.)
     expected = jax.vmap(_wave)(jnp.arange(4, dtype=jnp.float32) * dt)
     np.testing.assert_array_equal(actual, expected)
     assert np.all(np.asarray(tangent) == 0.)

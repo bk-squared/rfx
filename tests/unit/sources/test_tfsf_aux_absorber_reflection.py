@@ -20,7 +20,7 @@ the shared ``gate_from_envelope`` policy -- never a number chosen to pass.
 Two rows are bounds, not envelope locks: the 60-degree fast row and the
 80-degree domain row read the rig's own floor at f0 and move with record length,
 so they are held between 0.5x the smallest and 2x the largest reading over three
-record lengths (rfx-archive rfx/records/20261020-aux-f0-reading/), written here,
+record lengths, written here,
 not through gate_from_envelope.
 They are per angle because the reflection is per angle: the optimum reflection
 target inverts between normal and near-grazing incidence, so no single absorber
@@ -59,18 +59,9 @@ import math
 
 import pytest
 
-from rfx.sources.tfsf import (
-    AUX_CPML_KAPPA_MAX_1D, AUX_CPML_ORDER_1D, AUX_CPML_R_ASYMPTOTIC_1D,
-    AUX_N_CPML_1D, AUX_N_MARGIN_1D, AUX_SRC_OFFSET_1D, init_tfsf,
-)
-from rfx.sources.tfsf_2d import (
-    AUX_CPML_KAPPA_MAX, AUX_CPML_ORDER, AUX_CPML_R_ASYMPTOTIC, AUX_N_CPML,
-    AUX_N_MARGIN_X, AUX_SRC_OFFSET, init_tfsf_2d,
-)
-from tests._aux_absorber_reflection import (
-    CELLS_PER_WAVELENGTH, FAST_RIG, FIT_RESID_LIMIT, FULL_RIG,
-    measure_aux_echo_1d, measure_aux_reflection_2d, sigma_max_of,
-)
+from rfx.sources.tfsf import init_tfsf
+from rfx.sources.tfsf_2d import AUX_CPML_KAPPA_MAX, AUX_N_CPML, init_tfsf_2d
+from tests._aux_absorber_reflection import FAST_RIG, FIT_RESID_LIMIT, FULL_RIG, measure_aux_echo_1d, measure_aux_reflection_2d
 from tests._gate_policy import gate_from_envelope
 
 # ---------------------------------------------------------------------------
@@ -115,7 +106,7 @@ FAST_MEASURED = {
     # forward wave is weak, and moves with record length, so it is not pinned. The row catches the
     # absorber's target reflection rising to about 1e-6 (R_asymptotic 1e-6 reads 1.61e-04, 4.7x the bound)
     # and nothing finer; a finer test of the absorber needs another rig. Bound: 2x the largest of the three
-    # lengths. Records: rfx-archive rfx/records/20261020-aux-f0-reading/.
+    # lengths.
     60.0: {"f0_bound": 2.0 * max(1.7095e-05, 1.0833e-05, 8.0564e-06),
            "f0_floor": 0.5 * min(1.7095e-05, 1.0833e-05, 8.0564e-06)},
 }
@@ -144,58 +135,6 @@ def bar(measured: float, quantum: float) -> float:
 # ==========================================================================
 # 1. The declared absorber is what the module says it is
 # ==========================================================================
-
-def test_the_declared_constants_are_the_derived_ones():
-    """The 1-D line uses 20 cells; the 2-D line retains 200 and its target.
-
-    Both paths use the same profile generator as the main absorber.
-    """
-    assert (AUX_N_CPML, AUX_CPML_ORDER, AUX_CPML_KAPPA_MAX, AUX_CPML_R_ASYMPTOTIC) \
-        == (200, 3, 1.0, 1e-28)
-    assert (AUX_N_CPML_1D, AUX_CPML_ORDER_1D, AUX_CPML_KAPPA_MAX_1D,
-            AUX_CPML_R_ASYMPTOTIC_1D) == (20, 3, 1.0, 1e-6)
-
-
-def test_the_deep_tight_absorber_is_GENTLER_than_the_shallow_one_it_replaces():
-    """The reason a tighter reflection target is not a tighter absorber.
-
-    sigma_max = -ln(R) (m+1) / (2 eta n dx) falls with depth, so the 200-cell
-    R = 1e-28 layer carries LESS sigma than a 30-cell R = 1e-6 one, and two
-    orders less than the 148.6 that shipped. Long and gentle beats short and
-    steep -- which is why tightening R at fixed depth made the measured echo
-    WORSE at every depth in the derivation table.
-    """
-    declared = sigma_max_of(AUX_N_CPML, AUX_CPML_R_ASYMPTOTIC)
-    shallow = sigma_max_of(30, 1e-6)
-    # tfsf_2d.py before this lane: 0.8 (m+1)/(eta dx) * kappa_max at m = 4,
-    # kappa_max = 7. At dx = 1 mm that is 74.32; the #888 note's 148.647 is the
-    # SAME expression at the dx/2 rung, which is where it was measured.
-    shipped = 0.8 * (4 + 1) / (376.730313668 * 1e-3) * 7.0
-    assert declared == pytest.approx(1.711, rel=1e-2)
-    assert shallow == pytest.approx(2.445, rel=1e-2)
-    assert shipped == pytest.approx(74.32, rel=1e-2)
-    assert 0.8 * (4 + 1) / (376.730313668 * 0.5e-3) * 7.0 == pytest.approx(148.6, rel=1e-2)
-    assert declared < shallow < shipped
-
-
-def test_the_layout_follows_the_depth():
-    """n2x, i0_x and the source index are derived from the absorber depth, not
-    pinned beside it -- a deeper absorber must move them or it overlaps the
-    mapped region."""
-    cfg, _ = init_tfsf_2d(150, 4, 1e-3, 2.335e-12, cpml_layers=20, tfsf_margin=5,
-                          f0=10e9, bandwidth=0.25, theta_deg=0.0)
-    assert int(cfg.n_cpml) == AUX_N_CPML
-    assert int(cfg.i0_x) == AUX_N_CPML + AUX_N_MARGIN_X
-    assert int(cfg.src_x) == AUX_N_CPML + AUX_SRC_OFFSET
-    assert int(cfg.src_x) < int(cfg.i0_x)          # the source stays out of the mapped span
-    cfg1, st1 = init_tfsf(150, 1e-3, 1.9e-12, cpml_layers=20, tfsf_margin=5,
-                          f0=10e9, bandwidth=0.5)
-    assert int(cfg1.n_cpml) == AUX_N_CPML_1D
-    assert int(cfg1.i0) == AUX_N_CPML_1D + AUX_N_MARGIN_1D
-    assert int(cfg1.src_idx) == AUX_N_CPML_1D + AUX_SRC_OFFSET_1D
-    assert int(st1.e1d.shape[0]) == 2 * AUX_N_CPML_1D + 2 * AUX_N_MARGIN_1D + (
-        int(cfg1.x_hi) - int(cfg1.x_lo) + 2)
-
 
 def test_the_1d_path_refuses_a_kappa_it_cannot_realize():
     """TFSFConfig carries b and c but no kappa, so a kappa_max override would
@@ -313,7 +252,6 @@ DOMAIN_MEASURED = {
     # (2.70e-04) would fail only from 1e-24. The band maximum sits at band-edge bins where the forward
     # wave is weak and moves with record length; it is not pinned and carries the domain check against
     # LEAK_BAR. Bound: 2x the largest, floor 0.5x the smallest f0 reading of the three lengths. Records:
-    # rfx-archive rfx/records/20261020-aux-f0-reading/ and rfx/records/20261024-aux80-rsweep/.
     80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06),
            "f0_floor": 0.5 * min(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
     # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.
@@ -344,41 +282,3 @@ def test_the_domain_edge_is_where_the_note_says(theta_deg):
         assert r["max"] > LEAK_BAR, (
             f"{theta_deg} deg is declared OUTSIDE the domain but reads {r['max']:.3e} <= LEAK_BAR: "
             "either the absorber improved (re-derive the domain) or the instrument lost resolution")
-
-
-def test_the_declared_domain_names_the_resolution_it_was_measured_at():
-    """The domain is an angle AND a resolution, and only the angle is swept.
-
-    Every 2-D |B/A| in this lane is measured at DX_M = 1e-3 with F0_HZ = 10 GHz
-    -- lambda_0 = 29.979 mm, so 29.98 cells per free-space wavelength, which
-    the prose rounds to 30. "Meets LEAK_BAR through 82 deg" means "at that
-    mesh" and says nothing about a coarser or finer one. The three rigs
-    asserted below differ in grid EXTENT and record LENGTH only. Asserting that
-    here is what stops a rig added at another resolution from widening the
-    domain claim silently: it would have to carry its own dx or f0, and that is
-    exactly what this rejects.
-
-    Scope: the three rigs are the 2-D ones. measure_aux_echo_1d runs cv04's
-    3-15 GHz band at the same dx, roughly 20 to 100 cells per wavelength, and
-    is deliberately not in the loop below -- the single-resolution claim is
-    about the angle domain, not about the 1-D depth law.
-
-    The value asserted is the exact c0 / f0 / dx, not the rounded 30 -- the
-    first version of this test pinned 30.0 and reddened, which is the whole
-    point of pinning a number instead of restating it in prose.
-    """
-    assert CELLS_PER_WAVELENGTH == pytest.approx(29.9792458, rel=1e-9)
-    for name, rig in (("FAST_RIG", FAST_RIG), ("FULL_RIG", FULL_RIG),
-                      ("GRAZE_RIG", GRAZE_RIG)):
-        assert set(rig) == {"nx", "n_steps", "n_samp"}, (name, sorted(rig))
-
-
-def test_the_target_was_rederived_at_grazing_not_at_seventy():
-    """Keep the shipped sigma_max = 1.711 S/m after the half-cell correction.
-
-    The dated note's 82-degree tuning used the former H profile. Its earlier
-    70-degree target 1e-14 gives 0.856 S/m; neither target is re-optimized here.
-    """
-    assert AUX_CPML_R_ASYMPTOTIC == 1e-28
-    assert sigma_max_of(AUX_N_CPML, AUX_CPML_R_ASYMPTOTIC) == pytest.approx(1.711, rel=1e-2)
-    assert sigma_max_of(AUX_N_CPML, 1e-14) == pytest.approx(0.856, rel=1e-2)

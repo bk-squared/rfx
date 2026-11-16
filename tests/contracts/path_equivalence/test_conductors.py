@@ -115,7 +115,7 @@ def test_record_reads_kernel_after_port_clearing(monkeypatch, lane, kernel_objec
     monkeypatch.setattr(records, 'record_from_conductors', record_operand)
     result = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
     final = kernel_objects[-1]
-    assert result.realized_geometry.conductors is None
+    assert result.realized_geometry.conductors is final
     assert not final.edges[2][idx]
     assert final.provenance[-1].stage == 'port-edge-clearing'
     assert recorded[-1] is final
@@ -148,7 +148,7 @@ def test_two_device_conductors_are_the_same_object_fields(graded, two_device_tes
 def test_dump_replay_moves_fields_and_identity_is_exact(lane, distributed, two_device_test):
     import jax
     import jax.numpy as jnp
-    from rfx import _realized
+    from rfx._internal import _realized
     from .builders import point
     if distributed and len(jax.devices()) < 2:
         return two_device_test()
@@ -353,6 +353,7 @@ def test_distributed_releases_dense_products_before_staging(monkeypatch, graded,
     import rfx.model.conductors as products
     import rfx.runners.distributed_v2 as common
     import rfx.stepping.slab as nu
+    import rfx.stepping.slab_wrap as wrapped
     if len(jax.devices()) < 2:
         return two_device_test()
     sim = build(('_geometry', 'pec_volume'), 'run_nonuniform' if graded else 'run_uniform',
@@ -375,7 +376,7 @@ def test_distributed_releases_dense_products_before_staging(monkeypatch, graded,
 
     monkeypatch.setattr(products, 'realized_conductors', build_product)
     monkeypatch.setattr(products, 'at_kernel', kernel)
-    module, name = (nu if graded else common), 'cut'
+    module, name = (nu if graded else wrapped if entry == 'run' else common), 'cut'
     original_stage = getattr(module, name)
     staged = []
 
@@ -446,6 +447,7 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     """The channel probes belong to stepping, not declaration preflight."""
     import rfx.model.conductors as products
     from rfx.ringdown import RingdownSpec
+    from rfx.measurement.identification import read_ringdown_probes
     from tests.unit.sparams.test_ringdown_run import _box
     sim = _box(lane)
     declared = tuple(map(id, sim._probes))
@@ -468,7 +470,8 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
         return preflight(**kw)
 
     def at_kernel(*a, **kw):
-        events.append(('kernel', tuple(map(id, sim._probes))))
+        events.append(('kernel', (tuple(map(id, sim._probes)),
+                                  len(read_ringdown_probes(sim._probes, "test")))))
         return kernel(*a, **kw)
 
     monkeypatch.setattr(sim, method, assemble_once)
@@ -480,8 +483,8 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     result = getattr(sim, entry)(n_steps=600, ringdown=RingdownSpec(), **kwargs)
     assert [event for event, _ in events] == ['assembly', 'preflight', 'kernel']
     assert events[0][1] == declared
-    assert events[2][1][:len(declared)] == declared
-    assert len(events[2][1]) > len(declared)
+    assert events[2][1][0] == declared
+    assert events[2][1][1] > 0
     assert tuple(map(id, sim._probes)) == declared
     assert result.time_series.shape == (600, len(declared))
 

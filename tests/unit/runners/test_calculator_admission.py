@@ -6,6 +6,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec
+from rfx.errors import RfxUnsupported
 from rfx.runners import _admission as A
 from tests.unit.runners.test_silent_routes import _sim, _mixed
 from tests.unit.sparams.test_waveguide_solver_precision import _guide
@@ -61,6 +62,11 @@ def declare_physics(sim, feature):
     return ("_floquet_ports", feature if feature == "scan_angle" else "floquet_port")
 
 
+# The 1 mm fixture's solved lengths, 13 x 14 x 13 cells, declared at
+# construction (#1887).
+SOLVED_1MM = (13 * .001, 14 * .001, 13 * .001)
+
+
 def calculator_case(calculator, *, feature=None):
     """A registered model and one public call, with a four-step request."""
     if calculator == "waveguide_s_matrix":
@@ -93,13 +99,16 @@ def calculator_case(calculator, *, feature=None):
             lambda *args: sim, np.zeros((1, 1, 3), complex),
             np.array([2e9, 3e9, 4e9]), n_iterations=1, verbose=False)
     elif calculator == "mixed_s_matrix":
-        sim = _mixed(False)
+        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))  # solved length; #1887
         call = lambda: sim.compute_mixed_s_matrix(
             n_steps=4, skip_preflight=True, magnitude_channel="wave")
     else:
+        # The scan_angle witness keeps the declared box: declare_physics fits
+        # it to whole cells itself for the Floquet port.
         sim = _sim(ports="lumped" if calculator == "s_matrix_scan" else None,
                    absorber=BoundarySpec(x="periodic", y="periodic", z="pec")
-                   if feature == "scan_angle" else None)
+                   if feature == "scan_angle" else None,
+                   domain=None if feature == "scan_angle" else SOLVED_1MM)
         if calculator == "s_matrix_scan":
             from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
             call = lambda: compute_lumped_wire_s_matrix_via_scan(
@@ -127,12 +136,10 @@ def calculator_case(calculator, *, feature=None):
 ])
 def test_calculator_refuses_unread_setting_before_scan(monkeypatch, calculator, attr, value, words):
     sim, call = calculator_case(calculator)
-    if sim._domain == (.0123, .0131, .0127):
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    elif sim._domain == (.0123, .0061, .0047):
-        sim._domain = (.0123, 13 * .0005, .0047)  # solved length; #1887
     # Uniform Yee fixtures: these settings are unread on the base routes
     # (except material fit's existing interface-rule refusal).
+    if attr == "_dt_pin":
+        value = .5 * sim._build_grid().dt
     setattr(sim, attr, value)
 
     def forbidden(*args, **kwargs):
@@ -141,8 +148,11 @@ def test_calculator_refuses_unread_setting_before_scan(monkeypatch, calculator, 
     monkeypatch.setattr(jax.lax, "scan", forbidden)
     with pytest.raises(NotImplementedError) as caught:
         call()
-    assert A.CALCULATOR_WORDS[calculator] in str(caught.value)
-    assert words in str(caught.value)
+    if attr == "_dt_pin":
+        assert 'cut_cell_floor' in str(caught.value)
+    else:
+        assert A.CALCULATOR_WORDS[calculator] in str(caught.value)
+        assert words in str(caught.value)
     assert "does not carry" in str(caught.value)
 
 
@@ -205,32 +215,55 @@ def test_fit_hands_declared_faces_to_the_kernel(monkeypatch, wall):
 @pytest.mark.parametrize("graded", [False, True])
 def test_waveguide_timestep_gate(attr, value, graded, monkeypatch):
     sim = _guide(nonuniform=graded)
+    if attr == "_dt_pin" and not graded:
+        value = .5 * sim._build_grid().dt
     setattr(sim, attr, value)
     assert ((attr, "") in A.refused(sim, "waveguide_s_matrix")) is not graded
     if not graded:
         def forbidden(*args, **kwargs):
             pytest.fail("uniform waveguide reached a scan with an unread dt control")
         monkeypatch.setattr(jax.lax, "scan", forbidden)
-        with pytest.raises(NotImplementedError, match="compute_waveguide_s_matrix.*does not carry"):
+        expected = ('cut_cell_floor.*does not carry' if attr == '_dt_pin' else
+                    'compute_waveguide_s_matrix.*does not carry')
+        with pytest.raises(NotImplementedError, match=expected):
             sim.compute_waveguide_s_matrix(n_steps=4)
 
 
-@pytest.mark.parametrize("solver", ["yee", "adi"])
-def test_topology_cfl_gate(solver):
-    sim = _sim(solver=solver)
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    sim._adi_cfl_factor = 2.718
-    assert ("_adi_cfl_factor", "") not in A.refused(sim, "topology_optimize")
+@pytest.mark.parametrize("entry,conformal,refined,expected", [
+    ("run", "cut_cell_floor", False,
+     r"dt_min_cell= is not carried by the uniform run\(\) lane"),
+    ("run", None, False,
+     r'a uniform dt= pin requires run\(conformal_pec="cut_cell_floor"\); '
+     r'run_uniform does not carry this declaration'),
+    ("forward", None, False,
+     r'a uniform dt= pin requires run\(conformal_pec="cut_cell_floor"\); '
+     r'fwd_uniform does not carry this declaration'),
+    ("run", None, True,
+     r'a uniform dt= pin requires run\(conformal_pec="cut_cell_floor"\); '
+     r'run_subgridded does not carry this declaration'),
+])
+def test_dt_min_cell_refused_before_scan(entry, conformal, refined, expected, monkeypatch):
+    from rfx.errors import RfxUnsupported
+
+    kwargs = dict(freq_max=10e9, domain=(.012, .012, .012), dx=.001, boundary="pec")
+    dt = .5 * Simulation(**kwargs)._build_grid().dt
+    sim = Simulation(**kwargs, dt=dt, dt_min_cell=1e-3)
+    if refined:
+        sim.add_refinement(z_range=(.003, .009), ratio=2)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("dt_min_cell reached lax.scan before refusal")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    options = {"conformal_pec": conformal} if conformal is not None else {}
+    with pytest.raises(RfxUnsupported, match=expected):
+        getattr(sim, entry)(n_steps=4, **options)
 
 
 @pytest.mark.parametrize("calculator,feature", PHYSICS_CASES)
 def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator, feature):
     sim, call = calculator_case(calculator, feature=feature)
     row = declare_physics(sim, feature)
-    if sim._domain == (.0123, .0131, .0127):
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    elif sim._domain == (.0123, .0061, .0047):
-        sim._domain = (.0123, 13 * .0005, .0047)  # solved length; #1887
     assert A.DETECTORS[row](sim)
 
     def forbidden(*args, **kwargs):
@@ -243,14 +276,20 @@ def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator,
         return
     with pytest.raises(NotImplementedError) as caught:
         call()
-    assert "does not carry" in str(caught.value)
-    assert A.ROW_WORDS[row] in str(caught.value)
+    if calculator == "s_matrix_scan" and feature in ("coax", "scan_angle"):
+        assert type(caught.value) is RfxUnsupported
+        assert "Lumped/wire S scans require isolated port drives; foreign drives:" in str(caught.value)
+        assert ("coaxial port 0 at" if feature == "coax" else "Floquet floquet_0") in str(caught.value)
+        assert "run(compute_s_params=False)" in str(caught.value)
+    else:
+        assert "does not carry" in str(caught.value)
+        assert A.ROW_WORDS[row] in str(caught.value)
 
 
 EXTRA_SETTINGS = [
     ("waveguide_s_matrix", "_stencil_order", 4),
     ("vmap_sweep_batched", "_stencil_order", 4),
-    ("vmap_sweep_batched", "_solver", "adi"),
+
     ("vmap_sweep_batched", "_precision", "mixed"),
 ]
 
@@ -258,8 +297,6 @@ EXTRA_SETTINGS = [
 @pytest.mark.parametrize("calculator,attr,value", EXTRA_SETTINGS)
 def test_calculator_refuses_unread_setting_variant(monkeypatch, calculator, attr, value):
     sim, call = calculator_case(calculator)
-    if calculator != "waveguide_s_matrix":
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
     setattr(sim, attr, value)
 
     def forbidden(*args, **kwargs):
@@ -291,21 +328,11 @@ def test_waveguide_refuses_upml_before_scan(monkeypatch):
         sim.compute_waveguide_s_matrix(n_steps=4, normalize=False)
 
 
-@pytest.mark.parametrize("calculator", A.CALCULATORS)
-def test_yee_calculator_accepts_adi_cfl_setting(calculator):
-    sim, _ = calculator_case(calculator)
-    if sim._domain == (.0123, .0131, .0127):
-        sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    elif sim._domain == (.0123, .0061, .0047):
-        sim._domain = (.0123, 13 * .0005, .0047)  # solved length; #1887
-    sim._adi_cfl_factor = 2.718
-    assert ("_adi_cfl_factor", "") not in A.refused(sim, calculator)
 
 
 @pytest.mark.parametrize("compute_s_params", [None, True])
 def test_run_kerr_s_matrix_refuses_before_main_scan(monkeypatch, compute_s_params):
     sim, _ = calculator_case("s_matrix_scan")
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
     declare_physics(sim, "kerr")
 
     def forbidden(*args, **kwargs):
@@ -318,7 +345,6 @@ def test_run_kerr_s_matrix_refuses_before_main_scan(monkeypatch, compute_s_param
 
 def test_run_kerr_fields_only_reaches_main_scan(monkeypatch):
     sim, _ = calculator_case("s_matrix_scan")
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
     declare_physics(sim, "kerr")
 
     class Reached(Exception):
@@ -335,8 +361,7 @@ def test_run_kerr_fields_only_reaches_main_scan(monkeypatch):
 def test_devices_s_matrix_admission_precedes_distributed_runner(monkeypatch):
     from types import SimpleNamespace
     sim, _ = calculator_case("s_matrix_scan")
-    sim._domain = (13 * .001, 14 * .001, 13 * .001)  # solved length; #1887
-    sim._dt_pin = 1e-12
+    sim._dt_pin = .5 * sim._build_grid().dt
     monkeypatch.setattr(Simulation, "_dispatch_plan", lambda *args, **kwargs:
                         SimpleNamespace(lane="run_distributed", n_steps=4))
 
@@ -344,7 +369,7 @@ def test_devices_s_matrix_admission_precedes_distributed_runner(monkeypatch):
         pytest.fail("distributed runner entered before S-matrix admission")
 
     monkeypatch.setattr("rfx.runners.distributed_v2.run_distributed", forbidden)
-    with pytest.raises(NotImplementedError, match=r"run\(\).*pinned time step.*compute_s_params=False"):
+    with pytest.raises(NotImplementedError, match='cut_cell_floor'):
         sim.run(n_steps=4, devices=[jax.devices()[0]], skip_preflight=True)
 
 

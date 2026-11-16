@@ -1,7 +1,7 @@
 ============================= test session starts ==============================
 platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0 -- /usr/bin/python
 cachedir: .pytest_cache
-rootdir: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds
+rootdir: <workspace>/research/rfx-931-fastlane-reds
 configfile: pyproject.toml
 plugins: split-0.11.0, xdist-3.8.0, anyio-4.9.0
 created: 4/4 workers
@@ -50,55 +50,55 @@ tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_mode_estimator_read
 tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_drive_covers_the_declared_measurement_band
 tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[1]
 tests/unit/autodiff/test_msl_sparam_ad.py::test_migrated_trace_is_a_sheet_on_the_declared_plane[2]
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:145: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  tests/unit/autodiff/test_msl_sparam_ad.py:145: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(
 
 tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:50: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
+  scripts/harnesses/v173a_physics_equivalence.py:50: DeprecationWarning: pec_faces= kwarg is deprecated; encode PEC faces in BoundarySpec instead (e.g. boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml'))). The kwarg will be removed in rfx v2.0.
     sim = Simulation(
 
 tests/unit/misc/test_v173a_physics_equivalence_slow.py::test_v173a_drawing_and_gap_measurements_are_realized
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/harnesses/v173a_physics_equivalence.py:58: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
+  scripts/harnesses/v173a_physics_equivalence.py:58: UserWarning: add_thin_conductor: sigma_bulk=5.80e+07 S/m is at or above the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet. thickness is not used here, and neither is eps_r. Every metal is above this threshold — a lower sigma_bulk would be a different material, not thinner copper (issue #504). For conductor loss pass surface_impedance_f0=<band centre Hz> (Leontovich sheet, issue #669).
     sim.add_thin_conductor(Box(lo, hi), sigma_bulk=5.8e7, thickness=35e-6)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see rfx-known-issues standing-wave-null entry
+  rfx/api/_sparams.py:4572: UserWarning: standing-wave null at the port plane: 1 bins in [5.0000, 5.0000] GHz have |V|,|I| below 10% of band median — wave-split S-parameters are unreliable there (blind spot of single-run reflection measurements of strong reflectors); see the recorded standing-wave-null entry
     _warn_msl_wave_split_unreliable(reliable, freqs_arr)
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 5 bins in [0.5000, 5.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+  rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 5 bins in [0.5000, 5.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
     _warn_msl_beta_scan_railed(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:245: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 90.38 ohm deviates 93.6% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:245: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 90.38 ohm deviates 93.6% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_replay_float64_equivalence
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
 tests/unit/autodiff/test_msl_sparam_ad.py::test_float32_deployment_delta_bounded
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:245: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 90.35 ohm deviates 94.4% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:245: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = 90.35 ohm deviates 94.4% from analytic Hammerstad-Jensen 47.89 ohm at f = 5.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 1 bins in [1.0000, 1.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
+  rfx/api/_sparams.py:4595: UserWarning: N-probe beta scan pinned at its own window limit: 1 bins in [1.0000, 1.0000] GHz at port(s) 'msl_0', 'msl_1' minimized the fit residual at the edge of the ±35% scan around the analytic Hammerstad-Jensen guess — the reported Z0/beta at those bins are the scan limit, NOT a measurement (issue #681). S11/S21 are unaffected (they use the analytic Z0 anchor). Common causes: the real eps_eff is far from the HJ estimate (wrong eps_r_sub / substrate not detected under the port), or a contaminated/under-settled record at those bins (check settling_db and the reliable mask). Check the result's beta_railed mask before quoting Z0 or beta.
     _warn_msl_beta_scan_railed(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 2317.12 ohm deviates 13369.5% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_0' = 2317.12 ohm deviates 13369.5% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: V·I-split |S11| = 1.090 > 1 for MSL port 'msl_1' at f = 1.0000 GHz — non-physical for a passive structure. the closed Ampere-loop current is likely mismeasured (sign/scale); the extracted S11/S21 at this bin are UNRELIABLE.
+  tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: V·I-split |S11| = 1.090 > 1 for MSL port 'msl_1' at f = 1.0000 GHz — non-physical for a passive structure. the closed Ampere-loop current is likely mismeasured (sign/scale); the extracted S11/S21 at this bin are UNRELIABLE.
     result = sim.compute_msl_s_matrix(
 
 tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_ad_smoke_has_finite_gradient
-  /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = -2317.12 ohm deviates 13441.7% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
+  tests/unit/autodiff/test_msl_sparam_ad.py:566: UserWarning: compute_msl_s_matrix: reported Z0 for MSL port 'msl_1' = -2317.12 ohm deviates 13441.7% from analytic Hammerstad-Jensen 47.89 ohm at f = 1.0000 GHz. Z0 rides on the retained N-probe fit (S1 transitional); this can reflect Yee-staircase bias, or that the rasterized board (h_sub/W snapped to the lattice; see sim.fidelity_report()) genuinely differs from the declared one — not necessarily an extraction fault (issue #752). The V·I-split S11/S21 are unaffected.
     result = sim.compute_msl_s_matrix(
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
@@ -149,7 +149,7 @@ ____________________ test_float32_deployment_delta_bounded _____________________
   (Production float32 delta vs float64 structural result.)
   MSL Z0 staircase physics error at DX=80µm is >5% — delta is negligible.
 [test_float32_deployment_delta_bounded] PASS
-- generated xml file: /root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/follow-up/junit.xml -
+- generated xml file: <workspace>/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/follow-up/junit.xml -
 =========================== short test summary info ============================
 PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_accepts_matched_line_limit
 PASSED tests/unit/autodiff/test_msl_sparam_ad.py::test_aligned_coupon_qualification_rejects_wrong_observables[phase_conjugation-electrical-length phase]

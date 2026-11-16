@@ -13,6 +13,8 @@ introduced for issue #72:
 
 from __future__ import annotations
 
+from rfx.geometry.rasterize_grid import unpadded_high_walls
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -70,7 +72,8 @@ def test_pec_cavity_s11_magnitude_near_one():
 def test_jit_path_matches_python_loop_extractor():
     """JIT-integrated path must agree with the canonical extract_s11 path."""
     from rfx.grid import Grid
-    from rfx.core.yee import init_state, init_materials, update_e, update_h
+    from rfx.core.yee import init_state, init_materials
+    from rfx.stepping.yee import update_e, update_h
     from rfx.boundaries.pec import apply_pec
     from rfx.sources.sources import LumpedPort, setup_lumped_port, apply_lumped_port
     from rfx.probes.probes import (
@@ -98,8 +101,8 @@ def test_jit_path_matches_python_loop_extractor():
 
     for n in range(n_steps):
         t = n * dt
-        state = update_h(state, materials, dt, dx)
-        state = update_e(state, materials, dt, dx)
+        state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
+        state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
         # The eager loop must use the same two slots the JIT scan uses:
         # the PRE-injection drive sample into v_ref, the PHYSICAL V/I after

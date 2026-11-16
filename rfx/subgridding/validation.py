@@ -1,13 +1,13 @@
 """Production-envelope validation for the public subgridding API.
 
-Production runs are refused: this lane is unstable and unverified (#1465).
+Production runs are refused: this lane is unstable and unverified.
 The remaining checks describe experimental configurations, not evidence of
 physics support. Research/off are explicit diagnostic opt-ins.
 """
 
 from __future__ import annotations
 
-from rfx._grid_metric import nearest_uniform_index
+from rfx._internal._grid_metric import nearest_uniform_index
 
 import json
 from typing import NamedTuple
@@ -544,7 +544,7 @@ def _local_xy_center_source_candidate_allowed(sim) -> bool:
         return False
     if sim._boundary != "pec" or int(getattr(sim, "_cpml_layers", 0)) != 0:
         return False
-    sources = [pe for pe in getattr(sim, "_ports", ()) if pe.impedance == 0.0]
+    sources = [pe for pe in getattr(sim, "_ports", ()) if pe.is_soft_source]
     if not sources:
         return False
     center_tol = 1e-12
@@ -567,7 +567,7 @@ def validate_subgrid_setup(
 ) -> SubgridValidationReport:
     """Validate a ``Simulation.add_refinement`` setup against support claims.
 
-    ``sheets`` / ``wires`` are the #931 ``SheetSpec`` / ``WireSpec`` lists the
+    ``sheets`` / ``wires`` are the ``SheetSpec`` / ``WireSpec`` lists the
     assembly classified.  They own no cell, so they are absent from
     ``pec_mask``; a validator that reads only cells would call a
     sheet-declared board supported and then watch ``run(solver='subgridded')``
@@ -690,7 +690,7 @@ def validate_subgrid_setup(
                 )
             )
 
-    # #931: a sheet or a sub-cell wire has no cell for this lane's two
+    # a sheet or a sub-cell wire has no cell for this lane's two
     # grids to carry, so run(solver='subgridded') refuses it. Say so here
     # too — a "supported" verdict for a model the runner will refuse is
     # the failure this report exists to prevent. Checked before the region
@@ -702,8 +702,8 @@ def validate_subgrid_setup(
                 "subgrid_pec_sheet_or_wire_unsupported",
                 f"{len(list(sheets))} PEC sheet(s) and {len(list(wires))} PEC "
                 "wire(s) are declared: the SBP-SAT subgrid lane applies PEC "
-                "from a cell mask on two grids and a sheet owns no cell "
-                "(#931), so run(solver='subgridded') refuses this model. "
+                "from a cell mask on two grids and a sheet owns no cell"
+                ", so run(solver='subgridded') refuses this model. "
                 "Draw the conductor as a volume (a Box at least one cell "
                 "thick) or use the uniform or non-uniform lane.",
             )
@@ -839,7 +839,7 @@ def validate_subgrid_setup(
                         )
                     )
 
-        # #931: a CELL mask is the right reading here — this lane
+        # a CELL mask is the right reading here — this lane
         # realizes volumes only (run() refuses sheets and wires on it),
         # and the question below is which CELLS at the coarse/fine
         # interface carry metal, not which E edges are shorted.
@@ -893,7 +893,7 @@ def validate_subgrid_setup(
                             )
 
         for idx, pe in enumerate(getattr(sim, "_ports", ())):
-            label = "source" if pe.impedance == 0.0 else "port"
+            label = "source" if pe.is_soft_source else "port"
             if pe.impedance > 0.0:
                 port_allowed = (
                     mode == "production"
@@ -1118,15 +1118,17 @@ def validate_subgrid_setup(
                     )
                 )
         if spec.debye_poles or spec.lorentz_poles or spec.chi3:
+            from rfx.materials.pole_map import is_map
+            map_label = " LorentzPoleMap" if any(is_map(p) for p in spec.lorentz_poles or ()) else ""
             issues.append(
                 _issue(
                     "error",
                     "dispersive_or_nonlinear_material",
-                    f"material {name!r} uses dispersion/nonlinearity not wired into the subgrid runner",
+                    f"material {name!r}{map_label} uses dispersion/nonlinearity not wired into the subgrid runner",
                 )
             )
 
-    # #1465: opting in permits diagnostics, not a physics-support claim.
+    # opting in permits diagnostics, not a physics-support claim.
     unverified = any(issue.code == "subgrid_unstable_unverified" for issue in issues)
     supported = not unverified and not any(issue.severity == "error" for issue in issues)
     support_level = ("unsupported-unstable-unverified" if mode == "production"
@@ -1140,7 +1142,7 @@ def validate_subgrid_setup(
     )
 
 
-def validate_subgrid(self, *, mode: str | None = None):
+def validate_subgrid(self, *, mode: str | None = None) -> SubgridValidationReport:
     """Return the production-envelope validation report for subgridding.
 
         Every mode reports the subgridded lane as unsupported because it is
@@ -1148,7 +1150,7 @@ def validate_subgrid(self, *, mode: str | None = None):
         available for research diagnostics; opting in does not confer support.
         """
     self._require_uniform_mesh("validate_subgrid")
-    # #931 §1.9: sheets and wires own no cell, so a validator handed
+    # sheets and wires own no cell, so a validator handed
     # only pec_mask cannot see them — and this lane cannot realize
     # them (run(solver='subgridded') refuses). Collect and pass them
     # so the report refuses the same models the runner does.

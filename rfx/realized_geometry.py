@@ -6,8 +6,9 @@ Arrays are read-only numpy arrays; this API is not an autodiff interface.
 """
 from __future__ import annotations
 
-from rfx._grid_metric import field_index
-from dataclasses import dataclass
+from rfx._internal._grid_metric import field_index
+from dataclasses import InitVar, dataclass
+from rfx.model.realization_transport import GeometryMetadata
 
 import numpy as np
 
@@ -32,6 +33,7 @@ class AxisGeometry:
     # Sheet-size verdict excludes residuals at all non-free ends.
     comparison_bounds_m: tuple[float, float] | None = None
     free_ends: tuple[bool, bool] | None = None
+    occupied_intervals_m: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,7 @@ class EntityGeometry:
     sampling: str | None = None
     realized_footprint_area_m2: float | None = None
     declared_footprint_area_m2: float | None = None
+    edge_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,7 +82,11 @@ class DomainAxisGeometry:
 
 @dataclass(frozen=True)
 class PortGeometry:
-    """Driven E edges (component and indices), or a waveguide aperture."""
+    """Driven E edges (component and indices), or a waveguide aperture.
+
+    Only ``add_port`` entries are ports; an ``add_source`` soft point source
+    is a :class:`SourceGeometry` row (``_PortEntry.is_port``).
+    """
 
     label: str
     kind: str
@@ -127,17 +134,18 @@ class CellsPerWavelength:
     max_cell_m: float
     freq_hz: float
     max_eps_mu: float | None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
-class RealizedGeometry:
+class RealizedGeometry(GeometryMetadata):
     """Immutable geometry metadata with optional build-time diagnostic arrays.
 
     ``entities`` are in geometry then thin-conductor declaration order.
     ``nodes`` include the far face of the last stored cell. ``edge_masks``
     preview the Yee PEC edges after driven port edge clearing. Yee Result
-    records are bound at the kernel; ADI/subgrid records describe pre-port
-    assembly (the subgrid refinement is not represented).
+    records are bound at the kernel, including subgrid lanes.
+    ``realization_table`` also reports fine-region intervals and quantities.
     ``ports`` identifies the driven edges separately. Result records omit
     dense masks, materials and sheet/wire specs; entity edge counts/ranges
     summarize the interior solver geometry. Request diagnostic arrays through
@@ -168,11 +176,19 @@ class RealizedGeometry:
     probes: tuple[ProbeGeometry, ...] = ()
     dt: float | None = None
     cells_per_wavelength: CellsPerWavelength | None = None
+    realization_table: InitVar[object] = None
+
+    def __post_init__(self, realization_table):
+        # Execution metadata is outside the historical compared record fields.
+        # InitVar also lets dataclasses.replace preserve this reference.
+        object.__setattr__(self, 'realization_table', realization_table)
 
     @property
     def conductors(self):
-        """The source object of this view (outside the public record schema)."""
-        return getattr(self, '_conductors', None)
+        """The source object; compact records borrow it only while it is live."""
+        from weakref import ReferenceType
+        source = getattr(self, '_conductors', None)
+        return source() if isinstance(source, ReferenceType) else source
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
@@ -181,6 +197,14 @@ class RealizedGeometry:
             raise ValueError("Dense wall query requires Simulation.realized_geometry()")
         kwargs.setdefault("periodic", self.periodic)
         return realized_wall_planes(self.edge_masks, axis, **kwargs)
+
+
+# The generated constructor has captured the InitVar default. Expose the
+# inherited slot so metadata stays outside both fields() and vars(record).
+del RealizedGeometry.realization_table
+
+from rfx.model.realization_transport import register_metadata
+register_metadata(RealizedGeometry)
 
 
 def _readonly(value):
@@ -235,12 +259,15 @@ def _assembly_impl(sim, ctx):
 
 
 def _build_record(sim, ctx, *, compact=False):
+    from typing import cast
+    from rfx.preflight.realization import _EntryRealization
     from rfx.preflight.realization import _shape_bounds
 
     assembled, refused, refused_tc, pad_findings = _assembly(sim, ctx)
     sizes, nodes = _node_arrays(sim, ctx.grid, ctx.lane == "nonuniform")
     conductors = {e.label: e for e in ctx.entry_realizations()}
     interior = {e.label: e for e in ctx.interior_pec_entries()}
+    sheet_neighbors = [*interior.values(), *ctx.impedance_sheet_entries()]
     declarations = [(f"geometry[{i}]", e.material_name, e.shape)
                     for i, e in enumerate(sim._geometry)]
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
@@ -249,12 +276,13 @@ def _build_record(sim, ctx, *, compact=False):
     f0_specs = _f0_specs_by_conductor(sim, assembled, refused_tc)
     for index, (label, name, shape) in enumerate(declarations):
         mask_error = None
-        node_based = False
+        node_based = traced_f0 = False
         f0_spec = None
         e = interior.get(label, conductors.get(label))
         bounds = _shape_bounds(shape)
         sheet = None if e is None else e.sheet
         kind = "material" if e is None else e.kind
+        raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
         if e is None:
             mask = np.asarray(assembled.geometry_masks[id(sim._geometry[index])], dtype=bool)
         elif sheet is not None:
@@ -262,7 +290,7 @@ def _build_record(sim, ctx, *, compact=False):
         elif e.cells is not None:
             mask = e.cells
         elif e.kind == "wire":
-            mask = np.logical_or.reduce(e.edges(ctx.periodic, ctx.grid.shape))
+            mask = np.logical_or.reduce(raw_edges)
         elif e.kind == "lossy" and id(sim._thin_conductors[index - len(sim._geometry)]) in assembled.geometry_masks:
             from rfx.geometry.rasterize_grid import interior_lattice_mask
             mask = interior_lattice_mask(
@@ -270,6 +298,10 @@ def _build_record(sim, ctx, *, compact=False):
             # An f0 sheet's mask is its NODE footprint (the DC fold's is cells).
             node_based = sim._thin_conductors[index - len(sim._geometry)].surface_impedance_f0 is not None
             f0_spec = f0_specs.get(index - len(sim._geometry)) if node_based else None
+            from rfx.model.realization_reference import f0_traced_fields
+            # A traced f0 input leaves only this row unavailable: no host read.
+            if node_based and f0_traced_fields(sim._thin_conductors[index - len(sim._geometry)], f0_spec):
+                f0_spec, traced_f0 = None, True
         else:
             # Retain the refused declaration's diagnostic occupancy once.
             # It is explicitly NOT a solved conductor and contributes no edges.
@@ -284,25 +316,36 @@ def _build_record(sim, ctx, *, compact=False):
                         mask = ctx.rasterize(shape)
                 else:
                     mask = ctx.rasterize(shape)
-            except Exception as exc:
+            except (TimeoutError,): raise
+            except Exception as exc:  # noqa: BLE001 - recorded in mask_error
                 mask = None
                 mask_error = f"{type(exc).__name__}: {exc}"
         axes = []
-        if mask is not None and mask.any():
+        if mask is not None and mask.any() and not traced_f0:
             widths = assembled.width_axes(sim, mask, kind=kind, sheet=sheet,
                 node_based=node_based, f0_spec=f0_spec, bounds=bounds,
-                sizes=sizes, nodes=nodes, interior=interior.values())
+                sizes=sizes, nodes=nodes, interior=sheet_neighbors, wire_edges=raw_edges)
             for a, width in enumerate(widths):
                 i0, i1, cell_range = width.first, width.last, width.cell_range
                 rlo, rhi = width.lo, width.hi
                 comparison, free_ends = width.comparison, width.free_ends
                 declared = None if bounds is None else (float(bounds[0][a]), float(bounds[1][a]))
                 residual = None if declared is None else (rlo - declared[0], rhi - declared[1])
+                intervals: tuple[tuple[float, float], ...] = ()
+                # kind == "wire" comes from an existing entry, never from None.
+                interval_mask = (cast(_EntryRealization, e).edges(ctx.periodic, ctx.grid.shape)[a]
+                                 if ctx.periodic[a] and kind == "wire" else mask)
+                if ctx.periodic[a] and (cell_range is not None or
+                                        (kind == "wire" and np.any(interval_mask))):
+                    projection = np.any(interval_mask, axis=tuple(b for b in range(3) if b != a))
+                    starts = np.flatnonzero(np.diff(np.r_[False, projection, False].astype(int)) == 1)
+                    stops = np.flatnonzero(np.diff(np.r_[False, projection, False].astype(int)) == -1)
+                    intervals = tuple((float(nodes[a][lo]), float(nodes[a][hi]))
+                                      for lo, hi in zip(starts, stops))
                 axes.append(AxisGeometry(
                     'xyz'[a], (i0, i1 if cell_range is None else i1 + 1), cell_range,
                     declared, (rlo, rhi), rhi - rlo, residual,
-                    float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends))
-        raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
+                    float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends, intervals))
         edge_counts = tuple(int(m.sum()) for m in raw_edges)
         edge_ranges = tuple(_mask_ranges(m) for m in raw_edges)
         edges = () if compact else tuple(_readonly(m) for m in raw_edges)
@@ -336,6 +379,7 @@ def _build_record(sim, ctx, *, compact=False):
                     areas = dc_footprint_areas(shape, ctx.grid, mask, sheet_normal_axis(lo, hi))
             if tc_index in refused_tc:
                 kind = 'refused'
+        from rfx.model.conductors import f0_edge_note
         entities.append(EntityGeometry(
             label, name, kind, tuple(axes),
             int(mask.sum()) if mask is not None and kind not in ("sheet", "wire") else 0,
@@ -345,7 +389,8 @@ def _build_record(sim, ctx, *, compact=False):
             continued, mask_error, "diagnostic" if kind == "refused" else "solved",
             int(mask.sum()) if mask is not None and kind in ("sheet", "wire") else 0,
             edge_counts, edge_ranges, realized_footprint_area_m2=areas[0],
-            declared_footprint_area_m2=areas[1]))
+            declared_footprint_area_m2=areas[1],
+            edge_note=None if f0_spec is None else f0_edge_note(f0_spec)))
         if compact and e is not None:
             e._edges = None
     domain = []
@@ -425,6 +470,8 @@ def _ports(sim, ctx, assembled):
     locate = (lambda pos: position_to_index(grid, pos)) if ctx.lane == "nonuniform" else grid.position_to_index
     rows = []
     for i, pe in enumerate(sim._ports):
+        if not pe.is_port:
+            continue
         if pe.extent is None:
             cells = (tuple(int(k) for k in field_index(grid, pe.position, pe.component)),)
         else:
@@ -434,9 +481,9 @@ def _ports(sim, ctx, assembled):
             if ctx.lane == "uniform":
                 cells = tuple(tuple(int(k) for k in cell) for cell in _wire_port_cells(
                     grid, WirePort(start=pe.position, end=tuple(end), component=pe.component,
-                                   impedance=pe.impedance)))
+                                   impedance=pe.impedance, allow_in_absorber=pe.allow_in_absorber)))
             else:
-                from rfx._periodic import interval_indices
+                from rfx._internal._periodic import interval_indices
                 start_idx, end_idx = interval_indices(grid, pe.position, tuple(end))
                 lo, hi = sorted((start_idx[a], end_idx[a]))
                 first, last = wire_port_edge_span(grid, a, lo, hi, pe.position[a], end[a])
@@ -463,7 +510,8 @@ def _ports(sim, ctx, assembled):
                     sl, _ = _range_to_slice_nu(grid, axis, getattr(pe, f'{axis}_range'))
                 else:
                     sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
-                                                grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b])
+                                                grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b],
+                                                getattr(grid, f"pad_{axis}_hi"))
                 aperture.append((int(sl[0]), int(sl[1] - 1)))
         rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
     for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
@@ -475,29 +523,33 @@ def _ports(sim, ctx, assembled):
 
 
 def realized_geometry(sim):
-    """Build once per preflight context and port configuration, without stepping."""
+    """Build once per preflight context and declaration snapshot, without stepping."""
+    from rfx._declarations import declaration_key
+    from rfx.model.realization_reference import kernel_view
+    record = kernel_view(sim)
+    if record is not None:
+        return record
     ctx = sim._campaign_ctx()
-    key = (id(ctx), *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
-                     ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports",
-                      "_probes", "_dft_planes", "_flux_monitors")),
-           *(id(getattr(sim, attr, None)) for attr in ("_tfsf", "_ntff", "_current_moments")),
-           repr(sorted(getattr(sim, "_dft_plane_regions", {}).items())), sim._freq_max,
-           tuple(sorted(getattr(sim, "_internal_probe_indices", ()) or ())))
+    key = (ctx, declaration_key(sim))
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
-    from rfx.model.conductors import RealizedConductors, preview_port_stages
+    from rfx.model.conductors import RealizedConductors, preview_port_stages, PreparedSolve
+    from rfx.model.realization_table import bind_table, realization_table, PreparedRealization
     stamped = getattr(sim, '_coax_geometry', None)
     if stamped is not None and stamped[0] is ctx:
-        record = _record_from_conductors_impl(sim, stamped[1], lane='coax', compact=False)
+        record = bind_table(sim, stamped[1], lane='coax', compact=False)
         sim._realized_geometry_record = key, record
         return record
-    assembled = ctx.realized()
+    assembled = PreparedSolve(sim).realized(report_context=ctx)
     if isinstance(assembled, RealizedConductors):
-        record = _record_from_conductors_impl(
+        record = bind_table(
             sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
     else:
         record = _build_record(sim, ctx)
+        from dataclasses import replace
+        table = realization_table(PreparedRealization(sim, record.conductors, ctx.lane, record))
+        record = _conductor_view(replace(record, realization_table=table), record.conductors)
     sim._realized_geometry_record = key, record
     return record
 
@@ -514,7 +566,7 @@ def _node_arrays(sim, grid, nonuniform):
     ``np.full`` (uniform); on a graded 0.3048 mm profile that line sat
     3.9e-10 m off the rasterizer's, a uniform-valued NU axis reported a
     declared 500.0 um cell as 500.00002374872565 um, and exactly-on-node
-    faces carried ~1e-12 um residuals (#833 item 2, measured 2026-09-02).
+    faces carried ~1e-12 um residuals.
 
     ``sizes[a]`` has one entry per node-provider cell (``grid.shape[a]``
     entries); ``nodes[a]`` has one more — the grid's own nodes plus the far
@@ -542,6 +594,8 @@ def _node_arrays(sim, grid, nonuniform):
         sizes = tuple(grid.cells(a) for a in range(3))
         lines = tuple(_uniform_axis_nodes(n[a], pads[a], float(sizes[a][0]))
                       for a in range(3))
+    origin = getattr(grid, "_realization_origin", (0., 0., 0.))
+    lines = tuple(line + offset for line, offset in zip(lines, origin))
     nodes = tuple(np.concatenate([line, [line[-1] + d[-1]]])
                   for line, d in zip(lines, sizes))
     return sizes, nodes
@@ -555,10 +609,11 @@ def _mask_ranges(mask):
 def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     """Summarize the run's classifier outputs; never consult preflight caches."""
     from dataclasses import replace
-    from rfx.preflight.realization import context_from_conductors
+    from rfx.model.realization_context import context_from_conductors
     from rfx.core.jax_utils import is_tracer
+    from rfx.model.realization_reference import table_traced_inputs
     grid = conductors.grid
-    if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
+    if table_traced_inputs(sim, grid):
         return None
     if any(is_tracer(edge) for edge in conductors.pec_edges or ()):
         return None
@@ -613,7 +668,10 @@ def record_from_conductors(sim, conductors, *, lane, compact=True):
 def attach_record(result, record):
     """Attach metadata to the public Result, preserving custom runner results."""
     from rfx.api._spec import Result
-    if isinstance(result, Result):
+    if isinstance(result, Result) and result.realized_geometry is None:
+        from rfx.model.realization_table import PreparedRealization, finish_table
+        if isinstance(record, PreparedRealization):
+            record = finish_table(record.sim, record.conductors, lane=record.lane)
         return result._replace(realized_geometry=record)
     return result
 
@@ -623,3 +681,12 @@ def _conductor_view(record, conductors):
     # object includes assembly bookkeeping and lane-specific grid types.
     object.__setattr__(record, '_conductors', conductors)
     return record
+
+
+def early_run_record(sim, root, lane):
+    """Hand the assembly to legacy runners; defer the record until after ports."""
+    if lane == "run_uniform":
+        return None
+    from rfx.model.realization_table import PreparedRealization
+    root.grid._prepared_conductors = root
+    return PreparedRealization(sim, root, lane, None)
