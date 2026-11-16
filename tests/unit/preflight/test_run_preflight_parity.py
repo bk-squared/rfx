@@ -16,17 +16,17 @@ from rfx.api import Simulation
 
 def _sim_with_probe_in_cpml():
     # Probe placed past the domain edge, genuinely inside the (exterior-
-    # padded) CPML => preflight flags absorber_overlap. Issue #500: CPML
+    # padded) CPML => preflight flags absorber_overlap. CPML
     # pads EXTERIOR to the requested domain (see
     # tests/unit/preflight/test_preflight_absorber.py), so a probe merely
     # near an edge but still within [0, 0.02] no longer trips this check
-    # (z=0.018 here used to false-fire under the pre-#500 interior-frame
+    # (z=0.018 here used to false-fire under the earlier interior-frame
     # bug this file doesn't otherwise care about — it only needs ANY one
     # real preflight warning to exercise the run()-parity/consolidation
     # mechanism this file tests, and absorber_overlap is the original,
     # still-legitimate, and cheapest trigger to construct).
     #
-    # Node arithmetic (review finding L7): this domain (0.02m, freq_max=
+    # Node arithmetic: this domain (0.02m, freq_max=
     # 10e9, default cpml_layers=16) auto-resolves dx~=1.499mm, giving
     # nz=47 with pad_z_lo=pad_z_hi=16 -> interior absolute indices 16..30
     # (last interior node 30 = z~=20.99mm). z=0.021 rounds to node 30
@@ -53,8 +53,8 @@ def test_run_skip_preflight_suppresses_it():
         warnings.simplefilter("error")  # any preflight UserWarning => failure
         # A genuine numerical warning unrelated to preflight could still fire;
         # this config only trips the preflight surface, so silence == success.
-        # 20 steps: the default pulse starts at zero (issue 1668 PR), so the
-        # probe 8 cells away still reads exactly 0 after 10 steps (#336 warning).
+        # 20 steps: the default pulse starts at zero, so the
+        # probe 8 cells away still reads exactly 0 after 10 steps.
         sim.run(n_steps=20, skip_preflight=True)
 
 
