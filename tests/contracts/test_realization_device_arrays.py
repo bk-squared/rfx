@@ -1,4 +1,9 @@
-"""Device operands pinned to the pre-table stepping signatures and pad writes."""
+"""Device operands pinned to the pre-table stepping signatures and pad writes.
+
+The tensor operands the base passed as separate step kwargs (aniso_eps,
+aniso_inv_eps, conformal_weights) arrive attached to the model as
+materials.components.tensor; the renaming table is _ATTACHED.
+"""
 
 from dataclasses import fields, is_dataclass
 import numpy as np
@@ -25,6 +30,28 @@ LANES = (
     "nominal_mesh",
     "traced_shape",
 )
+
+
+_TENSOR = "materials.components.tensor"
+
+#: Base step-kwarg prefix -> the attached TensorOperands field it now arrives as
+#: (rfx/model/tensor_operands.py: eps, inv_eps, conformal_weights,
+#: node_smoothing; a full_tensor SmoothedEps splits into eps and node_smoothing).
+#: Written out by hand, never derived from the implementation.
+_ATTACHED = (
+    ("aniso_eps.diagonal.", f"{_TENSOR}.eps."),
+    ("aniso_eps.nodes.", f"{_TENSOR}.node_smoothing."),
+    ("aniso_eps.", f"{_TENSOR}.eps."),
+    ("aniso_inv_eps.", f"{_TENSOR}.inv_eps."),
+    ("conformal_weights.", f"{_TENSOR}.conformal_weights."),
+)
+
+
+def _attached_name(key):
+    for old, new in _ATTACHED:
+        if key.startswith(old):
+            return new + key[len(old):]
+    return key
 
 
 def arrays(value, path=""):
@@ -121,6 +148,9 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
             }
         )
         expected["aniso_eps.nodes.guard_count"] = ((), "int32")
+    # The base's separate tensor kwargs now arrive attached to the model
+    # (materials.components.tensor): same arrays, shapes and dtypes, new route.
+    expected = {_attached_name(key): value for key, value in expected.items()}
     calls = []
     orig = prepared.advance
 
@@ -136,8 +166,9 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
                 mats = {"materials": args[1]}
                 if lane == "subgridded":
                     mats["fine"] = args[2]
-            # The base stepping signatures pass these tensor operands separately.
-            mats.update(
+            # The base stepping signatures passed these tensor operands
+            # separately; any that still arrive that way are inventoried too.
+            separate = arrays(
                 {
                     name: kwargs[name]
                     for name in ("aniso_eps", "aniso_inv_eps", "conformal_weights")
@@ -145,6 +176,10 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
                 }
             )
             observed = arrays(mats)
+            attached = [k for k in observed if k.startswith(_TENSOR + ".")]
+            # One operand set: never both a step kwarg and the attached tensor.
+            assert not (separate and attached), (lane, separate, attached)
+            observed.update(separate)
             assert observed == expected, (lane, observed)
             calls.append(observed)
             return stepper(*args, **kwargs)

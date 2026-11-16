@@ -50,6 +50,14 @@ AXES = ('ex', 'ey', 'ez')
 _GRADED_X_PROFILE = np.array([.001] * 4 + [.0009, .0011] + [.001] * 6)
 
 
+@pytest.fixture(autouse=True)
+def _clear_eager_frequency_grid():
+    yield
+    # A frequency grid first built under disable_jit rounds differently and is cached for the process.
+    from rfx.measurement.monitors import _eager_frequency_grid
+    _eager_frequency_grid.cache_clear()
+
+
 def _edge(cell):
     return tuple(int(v) for v in cell)
 

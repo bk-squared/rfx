@@ -689,8 +689,9 @@ def _forward_from_materials(
                 window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
                                for d in range(3))
                 nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+        from rfx.boundaries.tfsf import without_attached_tensor
         self._validate_tfsf_vacuum_boundary(
-            materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
+            without_attached_tensor(materials), tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
 
     # Every declared input this lane does not carry is refused here,
     # after the specific refusals above and before the first step.
