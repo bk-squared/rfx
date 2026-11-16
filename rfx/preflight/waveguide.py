@@ -53,6 +53,8 @@ the path, and a pure code-motion leg touches one fewer file.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
+
 from rfx.preflight._subjects import finding_subjects
 
 from rfx.errors import AccuracyWarning
@@ -295,7 +297,9 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         pos_vec[normal_idx] = entry.x_position
         plane_idx = int(
             grid.position_to_index(tuple(pos_vec))[normal_idx])
-    except (ValueError, TypeError, IndexError, AttributeError):
+    except (ValueError, TypeError, IndexError, AttributeError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_port_transverse_spans", current_names())
         plane_idx = None
 
     for axis_name in axes:
@@ -1321,7 +1325,9 @@ def _validate_cfg_waveguide_reference_plane(
                         c1, c2 = g.shape.bounding_box()
                         lo_c = min(float(c1[ax_i]), float(c2[ax_i]))
                         hi_c = max(float(c1[ax_i]), float(c2[ax_i]))
-                    except (NotImplementedError, TypeError):
+                    except (NotImplementedError, TypeError) as _traced_exc:
+                        if is_tracer_error(_traced_exc):
+                            not_judged(None, "_validate_cfg_waveguide_reference_plane", current_names())
                         continue
                     if lo_c <= effective <= hi_c:
                         try:
@@ -1385,11 +1391,13 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
            (getattr(self, "_dx_profile", None),
             getattr(self, "_dy_profile", None),
             getattr(self, "_dz_profile", None))):
+        not_judged(None, "_waveguide_setup_planes", current_names())
         return None
     try:
         grid = (self._build_nonuniform_grid() if nonuniform
                 else self._build_grid())
         if is_tracer(grid.dt):
+            not_judged(None, "_waveguide_setup_planes", current_names())
             return None
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
@@ -1595,6 +1603,7 @@ def _validate_cfg_record_vs_far_boundary(
         grid, cfgs, n_steps, dt, freq_max = built
     else:
         if is_tracer(grid.dt):
+            not_judged(None, "C(record_vs_far_boundary)", current_names())
             return
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)

@@ -55,6 +55,8 @@ acyclic.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
+
 import math
 from typing import Literal
 
@@ -750,7 +752,9 @@ def _check_msl_port_geometry(
         if _face_grid is not None:
             try:
                 _face = self._msl_declared_face_geometry(pe, _face_grid)
-            except (ValueError, TypeError, NotImplementedError):
+            except (ValueError, TypeError, NotImplementedError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_check_msl_port_geometry", current_names())
                 pass  # no invented fraction or uniform fallback on a known grid
         recommended = 2.0 * h_sub
 

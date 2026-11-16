@@ -260,6 +260,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True, judge_area=True):
     without a new refusal; preflight judges the concrete realized grid.
     """
     from rfx._internal._periodic import periodic_mask, plane_coordinate
+    from rfx.preflight._not_judged import current_names, not_judged
     from rfx.geometry.rasterize_grid import _local_cell
     from rfx.preflight._common import PreflightWarning
     name = type(shape).__name__
@@ -270,6 +271,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True, judge_area=True):
             mask = dc_cell_mask(shape, grid)
             if any(is_tracer(v) for v in jax.tree_util.tree_leaves(
                     (lo, hi, _grid_coords(grid), mask))):
+                not_judged(None, "warn_dc_films", current_names())
                 return DCFilmGeometry(mask, normal, None, None)
             realized, declared = dc_footprint_areas(shape, grid, mask, normal)
         if judge_area:
@@ -420,6 +422,7 @@ def dc_film_plane(shape, grid):
 
 def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
     """Admission shared by Box/non-Box folds and the diagnostic audit."""
+    from rfx.preflight._not_judged import current_names, not_judged
     if conductor.is_pec or conductor.surface_impedance_f0 is not None:
         return
     if is_tracer(conductor.eps_r) or conductor.eps_r != 1:
@@ -441,6 +444,8 @@ def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
             "a film normal to a 2-D model's invariant axis is not supported",
             code='dc_film_invariant')
     faces = getattr(grid, 'pmc_faces', ()) if pmc_faces is None else pmc_faces
+    if is_tracer(plane):
+        not_judged(None, "warn_dc_films", current_names())
     if not is_tracer(plane):
         face = ('xyz'[normal] + '_lo' if plane == 0 else
                 'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)
@@ -499,6 +504,7 @@ def dc_film_refusals(sim, grid):
 
 def warn_dc_films(sim, warn):
     """Expose assembly refusals through the existing structured finding carrier."""
+    from rfx.preflight._not_judged import current_names, not_judged
     from rfx.preflight._common import PreflightWarning
     if not any(not tc.is_pec and tc.surface_impedance_f0 is None
                for tc in sim._thin_conductors):
@@ -537,6 +543,8 @@ def warn_dc_films(sim, warn):
         else:
             normal, plane = dc_film_plane(tc.shape, grid)
             face = None
+            if is_tracer(plane):
+                not_judged(None, "warn_dc_films", current_names())
             if not is_tracer(plane):
                 face = ('xyz'[normal] + '_lo' if plane == 0 else
                         'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)

@@ -410,15 +410,19 @@ def run_config_checks(sim: Any, ctx: ConfigCheckContext) -> None:
     """
     from rfx.preflight.line_stub import preflight_line_stubs
     from rfx.preflight.ports import preflight_wire_port_radius
-    preflight_line_stubs(sim, ctx.warn)
+    from rfx.preflight._not_judged import current_names, judge_or_report
+    names = current_names()
+    judge_or_report(
+        "preflight_line_stubs", lambda: preflight_line_stubs(sim, ctx.warn), ctx.warn, names)
     for check in CORE_CONFIG_CHECKS:
-        check.run(sim, ctx)
+        judge_or_report(check.name, lambda: check.run(sim, ctx), ctx.warn, names)
     # A radius-less wire port: one advisory, after every core advisory so no
     # committed report changes order, and before the opt-in extras so a
     # registered extra still lands last. Called like the line-stub report
     # above rather than as a CORE entry: an entry needs a method bound on
     # _PreflightMixin, i.e. a new import line in rfx/api/_preflight.py,
     # whose line count may only fall.
-    preflight_wire_port_radius(sim, ctx.warn)
+    judge_or_report(
+        "preflight_wire_port_radius", lambda: preflight_wire_port_radius(sim, ctx.warn), ctx.warn, names)
     for check in EXTRA_CONFIG_CHECKS:
-        check.run(sim, ctx)
+        judge_or_report(check.name, lambda: check.run(sim, ctx), ctx.warn, names)

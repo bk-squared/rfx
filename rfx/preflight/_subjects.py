@@ -5,6 +5,8 @@ Unresolvable subjects remain contract defects, never legality findings.
 """
 from __future__ import annotations
 
+from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
+
 from dataclasses import dataclass, replace
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
@@ -115,6 +117,7 @@ class _Region:
         from rfx.core.jax_utils import is_tracer
         sim = self.selection.sim
         if any(is_tracer(p) for p in (sim._dx_profile, sim._dy_profile, sim._dz_profile)):
+            not_judged(None, "resolve_findings", current_names())
             return None
         record = self.selection.record()
         if not record.nodes:
@@ -178,7 +181,9 @@ def resolve_findings(issues):
             issue._region = None
         try:
             issue._region = issue._region.resolve() if issue._region is not None else None
-        except Exception:
+        except Exception as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "resolve_findings", current_names())
             issue._region = None
 
 

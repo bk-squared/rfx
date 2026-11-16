@@ -51,6 +51,8 @@ which stay in the facade with the realization family. The third,
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
+
 from rfx.preflight._subjects import SubjectMessage, finding_subjects, public_probes
 
 from rfx._internal._grid_metric import field_index
@@ -619,7 +621,9 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
             continue
         try:
             idx = tuple(int(v) for v in field_index(grid, pos, component))
-        except (ValueError, TypeError, IndexError, AttributeError):
+        except (ValueError, TypeError, IndexError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_cfg_port_inside_pec", current_names())
             continue
         if not realized.component_is_dead(component, idx):
             continue
@@ -699,6 +703,8 @@ def _wire_port_cell_centers(self, pe):
         else:
             coords = coords_from_uniform_grid(grid)
         if not cells or any(is_tracer(line) for line in (coords.x, coords.y, coords.z)):
+            if cells and any(is_tracer(line) for line in (coords.x, coords.y, coords.z)):
+                not_judged(None, "_validate_cfg_port_inside_pec", current_names())
             return None
         nodes = [np.asarray(line, dtype=float)
                  for line in (coords.x, coords.y, coords.z)]
@@ -748,7 +754,9 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
                 continue
             try:
                 c1, c2 = entry.shape.bounding_box()
-            except (NotImplementedError, TypeError):
+            except (NotImplementedError, TypeError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_floating_single_cell_port", current_names())
                 continue
             inside = all(c1[ax] <= pos[ax] <= c2[ax] for ax in range(3))
             if inside:
@@ -761,6 +769,8 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
             continue
         eps_r = getattr(mspec, "eps_r", 1.0)
         if is_tracer(eps_r) or float(eps_r) <= 1.0 + 1e-3:
+            if is_tracer(eps_r):
+                not_judged(None, "_validate_cfg_floating_single_cell_port", current_names())
             continue
         enclosing_eps_r = float(eps_r)
         enclosing_name = enclosing.material_name
@@ -787,7 +797,9 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
                 continue
             try:
                 c1, c2 = entry.shape.bounding_box()
-            except (NotImplementedError, TypeError):
+            except (NotImplementedError, TypeError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_floating_single_cell_port", current_names())
                 continue
             adjacent_bounds.append((c1, c2))
         for tc in getattr(self, "_thin_conductors", ()):
@@ -795,7 +807,9 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
                 continue
             try:
                 c1, c2 = _sb(tc.shape)
-            except (NotImplementedError, TypeError, AttributeError):
+            except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_floating_single_cell_port", current_names())
                 continue
             if c1 is not None and c2 is not None:
                 adjacent_bounds.append((tuple(c1), tuple(c2)))
@@ -941,6 +955,7 @@ def half_node_split_findings(sim, grid=None) -> list[SubjectMessage]:
     if nonuniform:
         coords = coords_from_nonuniform_grid(grid)
         if any(is_tracer(getattr(coords, a)) for a in "xyz"):
+            not_judged(None, "_validate_cfg_half_node_split", current_names())
             return []
         centres = centres_from_nonuniform_grid(grid, coords)
         sizes = cell_sizes_from_nonuniform_grid(grid)
@@ -974,6 +989,8 @@ def half_node_split_findings(sim, grid=None) -> list[SubjectMessage]:
                 continue
             sigma = sim._resolve_material(entry.material_name).sigma
             if is_tracer(sigma) or float(sigma) < threshold:
+                if is_tracer(sigma):
+                    not_judged(None, "_validate_cfg_half_node_split", current_names())
                 continue
             _cells, sheet, wire = classify_pec_entry(
                 entry.shape, coords, centres, sizes, name=entry.material_name, grid=grid)
@@ -1070,6 +1087,7 @@ def trace_far_end_findings(sim, grid=None) -> list[SubjectMessage]:
     coords = (coords_from_nonuniform_grid(grid) if nu else coords_from_uniform_grid(grid))
     from rfx.core.jax_utils import is_tracer
     if any(is_tracer(getattr(coords, a)) for a in "xyz"):
+        not_judged(None, "_validate_cfg_half_node_split", current_names())
         return []  # No concrete sheet footprint on a traced mesh.
     sizes = (cell_sizes_from_nonuniform_grid(grid) if nu else cell_sizes_from_uniform_grid(grid))
     nodes = [np.asarray(getattr(coords, a), dtype=float) for a in "xyz"]
@@ -1205,6 +1223,7 @@ def wire_port_radius_findings(sim, grid=None) -> list[dict]:
             getattr(sim, "_dx_profile", None),
             getattr(sim, "_dy_profile", None),
             getattr(sim, "_dz_profile", None))):
+        not_judged(None, "preflight_wire_port_radius", current_names())
         return []
     if grid is None:
         grid = sim._build_realized_grid()

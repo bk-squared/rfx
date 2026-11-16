@@ -25,6 +25,8 @@ imported from ``rfx.preflight._common``.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
+
 from rfx.preflight._subjects import finding_subjects
 
 import jax.numpy as jnp
@@ -168,7 +170,9 @@ def _validate_ntff_inverse_design(
         try:
             c1, c2 = entry.shape.bounding_box()
             bboxes.append((entry.material_name, c1, c2, entry))
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design", current_names())
             continue
     # PEC thin conductors are sheets — conductors in the census.
     from rfx.materials.thin_conductor import sheet_bounds as _sheet_bounds
@@ -177,7 +181,9 @@ def _validate_ntff_inverse_design(
             continue
         try:
             c1, c2 = _sheet_bounds(tc.shape)
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design", current_names())
             continue
         if c1 is None or c2 is None:
             continue
@@ -314,7 +320,9 @@ def _validate_ntff_small_ground_plane(
             continue
         try:
             c1, c2 = entry.shape.bounding_box()
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design", current_names())
             continue
         candidates.append((c1, c2, entry))
     for tc in getattr(self, "_thin_conductors", ()):
@@ -322,7 +330,9 @@ def _validate_ntff_small_ground_plane(
             continue
         try:
             c1, c2 = _sheet_bounds(tc.shape)
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design", current_names())
             continue
         if c1 is None or c2 is None:
             continue

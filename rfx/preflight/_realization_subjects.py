@@ -2,6 +2,7 @@
 from types import SimpleNamespace
 
 from rfx.preflight._subjects import _Region, _Selection
+from rfx.preflight._not_judged import current_names, is_tracer_error, not_judged
 
 
 def retained_subjects(finding):
@@ -35,7 +36,9 @@ def bind_retained_subjects(finding, table):
             finding._subjects = selection.resolve()
             if isinstance(finding._region, _Region):
                 finding._region = _Region(selection, finding._region.bounds).resolve()
-        except Exception:
+        except Exception as exc:
             if isinstance(finding._subjects, _Selection):
                 finding._subjects = ("<unresolved finding subject>",)
+            elif is_tracer_error(exc):
+                not_judged(None, "bind_retained_subjects", current_names())
             finding._region = None
