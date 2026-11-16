@@ -123,7 +123,7 @@ def make_uniform_step(
     # observers read the physical cells only.
     pad_plan = getattr(ctx, "pad_plan", None)
     pad_frame = {} if pad_plan is None else dict(frame=pad_plan.frame)
-    if pad_plan is not None and (slab or design_hook is not None or hooks):
+    if pad_plan is not None and (slab or hooks):
         raise NotImplementedError("vector padding: a slab step or attached hooks not padded yet")
     from rfx.stepping.vector_pad import physical_state
     view = ((lambda st: st) if pad_plan is None else
@@ -293,6 +293,7 @@ def make_uniform_step(
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
                     boundary=ctx.curl_boundary,
+                    **pad_frame,
                 )
 
     def design(frame: UniformFrame):

@@ -25,8 +25,6 @@ def design_adjoint_scan(ctx, initial, xs):
     Point objectives select a pixel of a registered E-plane DFT. Direct
     records/final-field objectives are refused through symbolic cotangents.
     """
-    from rfx.stepping.vector_pad import refuse_if_forced
-    refuse_if_forced("adjoint scan")
     import numpy as np
     from rfx.stepping import recorded_scan
     from rfx.core.yee import curl_h, e_component_coeffs
@@ -75,6 +73,9 @@ def design_adjoint_scan(ctx, initial, xs):
     ab = (ctx.design_box.ca, ctx.design_box.cb)
     base = replace(ctx, design_box=ctx.design_box._replace(ca=None, cb=None))
     invariants = core_step_invariants(base)
+    # Padded (rfx.stepping.vector_pad), the step reads the padded kernel context;
+    # monitor slots, design windows and the residual read physical cells only.
+    step_base = base if ctx.pad_plan is None else invariants["ctx"]
     nf = len(freqs)
     cdtype = jnp.complex128 if dtype == jnp.float64 else jnp.complex64
     z = tuple(jnp.zeros((nf,) + a.shape, cdtype) for a in ab[0])
@@ -83,7 +84,7 @@ def design_adjoint_scan(ctx, initial, xs):
     wavelet_length = min(steps, max(16, steps // 4))
 
     def run(coeffs, targets=None, recording=False):
-        local = replace(base, design_box=base.design_box._replace(ca=coeffs[0], cb=coeffs[1]))
+        local = replace(step_base, design_box=base.design_box._replace(ca=coeffs[0], cb=coeffs[1]))
         if targets is not None:
             # Suppress primal drives. CPML and ordinary Yee updates are reused.
             local = replace(local, drives=None,

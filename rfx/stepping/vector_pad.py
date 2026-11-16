@@ -110,7 +110,18 @@ def resolve_target() -> str:
     requested = _REQUESTED.get()
     if requested != "auto":
         return requested
+    if not _MEASURED_GAIN:
+        return "off"
     return _MEASURED_GAIN.get(_device_kind(), "off")
+
+
+def planned_extents(shape, periodic=(False, False, False), *, two_d=False) -> tuple:
+    """The extents a step allocates for a grid of ``shape`` under the target resolved now.
+
+    For memory planners: padded when a forced target or the gate table's row
+    applies, else ``shape`` itself.
+    """
+    return plan_pad(shape, target=resolve_target(), periodic_axes=periodic, two_d=two_d).padded
 
 
 @contextlib.contextmanager
@@ -173,10 +184,7 @@ def uniform_unsupported(ctx_kwargs, *, stencil_order, field_dtype):
         ("complex fields", jnp.issubdtype(field_dtype, jnp.complexfloating)),
         ("waveguide ports", ctx_kwargs["use_waveguide_ports"]),
         ("surface-impedance sheets", ctx_kwargs["use_sheet_impedance"]),
-        ("design box", ctx_kwargs["use_design_box"]),
         ("design occupancy", ctx_kwargs["use_design_occupancy"]),
-        ("mixed Debye and Lorentz poles", ctx_kwargs["use_debye"] and ctx_kwargs["use_lorentz"]),
-        ("Kerr nonlinearity", ctx_kwargs["use_kerr"]),
         ("tensor permittivity (subpixel smoothing)", tensor is not None and (
             tensor.eps is not None or tensor.inv_eps is not None
             or tensor.node_smoothing is not None)),
@@ -196,7 +204,6 @@ def graded_unsupported(*, use_tfsf, use_waveguide_ports, use_sheet_impedance, us
         ("surface-impedance sheets", use_sheet_impedance),
         ("design box", use_design_box),
         ("tensor permittivity (subpixel smoothing)", aniso_eps is not None),
-        ("mixed Debye and Lorentz poles", use_debye and use_lorentz),
         ("complex fields", jnp.issubdtype(field_dtype, jnp.complexfloating)),
         ("realized-model capture", _realized.ACTIVE is not None),
     )
@@ -346,6 +353,29 @@ def pad_pole_tree(tree, plan):
     return jax.tree_util.tree_map(lambda leaf: pad_cells(leaf, plan, 0.0), tree)
 
 
+def pad_pole_coeffs(debye, lorentz, plan, dt):
+    """The pole coefficients a step reads, padded: ``(debye, lorentz)``.
+
+    Each path with one pole family pads with 0, so the pad's P stays 0. The
+    mixed Debye + Lorentz update divides by Lorentz ``cc`` (``1/0`` there), so
+    its pad takes, field by field, the values the same builder gives one
+    vacuum cell at this ``dt`` (``rfx.stepping.slab.vacuum_dispersion_values``,
+    which calls ``init_debye`` / ``init_lorentz`` on a one-cell vacuum material).
+    """
+    if debye is None or lorentz is None:
+        return tuple(None if c is None else pad_pole_tree(c, plan) for c in (debye, lorentz))
+    import jax
+    from rfx.stepping.slab import vacuum_dispersion_values
+
+    def vacuum(coeffs):
+        values = vacuum_dispersion_values(coeffs, dt)
+        return coeffs._replace(**{name: jax.tree_util.tree_map(
+            lambda leaf, v=values[name]: pad_cells(leaf, plan, v), getattr(coeffs, name))
+            for name in coeffs._fields})
+
+    return vacuum(debye), vacuum(lorentz)
+
+
 def unpad_pole_tree(tree, plan):
     import jax
     sl = plan.physical
@@ -461,15 +491,17 @@ def pad_invariants(invariants, plan):
 
 def pad_context(ctx, plan):
     """The step context with its per-cell operands padded and the plan attached."""
-    for name in ("fast_coeffs", "upml_coeffs", "tfsf_cfg", "design_box", "design_occupancy",
+    # A design box (bounds and window-shaped Ca, Cb) lies on physical cells: it passes.
+    for name in ("fast_coeffs", "upml_coeffs", "tfsf_cfg", "design_occupancy",
                  "sheet_impedance", "bloch"):
         if getattr(ctx, name) is not None:
             raise NotImplementedError(f"vector padding: uniform step with {name} not padded yet")
+    poles = pad_pole_coeffs(ctx.debye_coeffs, ctx.lorentz_coeffs, plan, ctx.dt)
     return dataclasses.replace(
         ctx,
         materials=pad_kernel_materials(ctx.materials, plan),
-        debye_coeffs=None if ctx.debye_coeffs is None else pad_pole_tree(ctx.debye_coeffs, plan),
-        lorentz_coeffs=None if ctx.lorentz_coeffs is None else pad_pole_tree(ctx.lorentz_coeffs, plan),
+        debye_coeffs=poles[0],
+        lorentz_coeffs=poles[1],
         pec_edge_masks=_cells(ctx.pec_edge_masks, plan, False),
         kerr_chi3=pad_cells(ctx.kerr_chi3, plan, 0.0),
         pad_plan=plan)
@@ -496,13 +528,14 @@ def _must_be_absent(value, name):
 _GRADED_PASS = frozenset({"drives", "probe_table", "port_table", "waveguide_table", "dx_arr"})
 
 
-def pad_graded_invariants(invariants, plan):
+def pad_graded_invariants(invariants, plan, dt):
     """Every per-cell or per-axis operand the graded step reads, padded.
 
     H metrics ``inv_d*_h`` get 0 (the zero ghost row reaches into the pad);
     E metrics ``inv_d*`` repeat the last physical value. A key without a pad
     rule is an error at trace time.
     """
+    poles = pad_pole_coeffs(invariants.get("debye_coeffs"), invariants.get("lorentz_coeffs"), plan, dt)
     out = {}
     for key, value in invariants.items():
         if key == "inv_dx":
@@ -520,7 +553,7 @@ def pad_graded_invariants(invariants, plan):
         elif key == "e_loss":
             out[key] = _pad_loss(value, plan)
         elif key in ("debye_coeffs", "lorentz_coeffs"):
-            out[key] = None if value is None else pad_pole_tree(value, plan)
+            out[key] = poles[key == "lorentz_coeffs"]
         elif key in ("aniso_eps", "sheet_impedance", "sheet_coeffs", "design_box_coeffs"):
             out[key] = _must_be_absent(value, key)
         elif key in _GRADED_PASS:

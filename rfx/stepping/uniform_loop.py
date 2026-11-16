@@ -340,8 +340,6 @@ def run(
     # Vector padding: resolved once from the assembled operands; the carry is
     # padded before the scan and unpadded before anything leaves it.
     from rfx.stepping import vector_pad
-    if gradient == "adjoint":
-        vector_pad.refuse_if_forced("adjoint scan")
     _pad = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
         _ctx, stencil_order=stencil_order, field_dtype=carry_init["fdtd"].ex.dtype))
     _pad = _pad if _pad.active else None

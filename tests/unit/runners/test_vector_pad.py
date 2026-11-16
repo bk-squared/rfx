@@ -72,6 +72,12 @@ def scene(name):
         # chi3 |E|^2 reaches about 1e-2 at the field this source drives (1e8 V/m).
         sim.add_material('kerr', eps_r=2., chi3=1e-18)
         sim.add(Box((.006, .002, .001), (.008, .004, .003)), material='kerr')
+    elif name == 'mixed':
+        sim = Simulation(freq_max=10e9, domain=(.0113, .0071, .0052), dx=.001,
+                         boundary=_walls(), cpml_layers=0, snap='declared')
+        sim.add_material('mixed', eps_r=2., debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)],
+                         lorentz_poles=[lorentz_pole(2.0, 2 * np.pi * 6e9, 1e9)])
+        sim.add(Box((.006, .002, .001), (.010, .006, .004)), material='mixed')
     else:
         raise ValueError(name)
     if name != 'cpml_port':
@@ -81,7 +87,7 @@ def scene(name):
     return sim
 
 
-SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x')
+SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x', 'kerr', 'mixed')
 
 
 def observed(result):
@@ -143,6 +149,8 @@ NOT_BITWISE = {
     ('forward', 'cpml_port', 'aligned'), ('forward', 'cpml_port', 'odd'),
     ('forward', 'lorentz', 'aligned'), ('forward', 'lorentz', 'odd'),
     ('vmap', 'vacuum', 'odd'), ('one_axis', 'vacuum', (0, 1, 0)),
+    # Kerr (stage 2): measured not bitwise on the CPU for either target in stage 1.
+    ('run', 'kerr', 'aligned'), ('run', 'kerr', 'odd'),
 }
 
 
@@ -395,14 +403,13 @@ def test_vmap_over_forward_padded_bitwise_or_within_bars(target):
 
 
 @pytest.mark.parametrize('target', TARGETS)
-@pytest.mark.parametrize('name', ('vacuum', 'cpml_port'))
+@pytest.mark.parametrize('name', ('vacuum', 'cpml_port', 'kerr'))
 def test_pad_contents_do_not_reach_physical_cells(name, target):
     """Fill every pad cell of the fields and psi with large random values."""
-    # Kerr is refused under a forced pad. Were it padded, its seed would stay at 1e10:
-    # Kerr squares the field in every cell, (1e30)^2 overflows float32, and the pad's
-    # 0 * inf would be NaN by arithmetic, not by a leak.
+    # Kerr squares the field in every cell: (1e30)^2 overflows float32, and the pad's
+    # 0 * inf would be NaN by arithmetic, not by a leak. Its seed is 1e10.
     ref, _ = run_record(scene(name), target)
-    with vector_pad.seed_pad(12345, magnitude=1e30):
+    with vector_pad.seed_pad(12345, magnitude=1e10 if name == 'kerr' else 1e30):
         got, plans = run_record(scene(name), target)
     assert_padded(plans, f'seeded {name}/{target}')
     assert_bitwise(ref, got, f'seeded {name}/{target}')
@@ -445,23 +452,12 @@ def _fourth_order():
     return sim
 
 
-def _adjoint():
-    from tests.unit.autodiff.test_reciprocity_adjoint import BOX_HI, BOX_LO, fixture
-    sim, eps = fixture('float32')
-    sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=eps, n_steps=8,
-                gradient='adjoint', skip_preflight=True)
-
-
 REFUSALS = {
     'subgridded': (lambda: _subgridded().run(n_steps=8, skip_preflight=True, compute_s_params=False),
                    'subgridded'),
     'distributed': (lambda: scene('vacuum').run(n_steps=8, skip_preflight=True, compute_s_params=False,
                                                 devices=jax.devices('cpu')[:2]),
                     'distributed'),
-    'adjoint': (_adjoint, 'adjoint scan'),
-    # Padded, Kerr was not bitwise on the CPU for either target (stage 1b ruling: refuse).
-    'kerr': (lambda: scene('kerr').run(n_steps=8, skip_preflight=True, compute_s_params=False),
-             'Kerr nonlinearity'),
     'stencil_order_4': (lambda: _fourth_order().run(n_steps=8, skip_preflight=True, compute_s_params=False),
                         'stencil_order=4'),
 }

@@ -97,8 +97,12 @@ def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
 
         traced = jax.make_jaxpr(forward)(*inputs)
         # Auxiliary waveform scans do not own six full-grid E/H arrays.
+        # A padded step (rfx.stepping.vector_pad) carries them at its allocated extents.
+        from rfx.stepping.vector_pad import planned_extents
+        extents = {tuple(grid.shape), planned_extents(tuple(grid.shape), sim._periodic_flags(),
+                                                      two_d=bool(getattr(grid, "is_2d", False)))}
         candidates = [leaves for leaves in _scans(traced)
-                      if sum(tuple(a.shape) == tuple(grid.shape) for a in leaves) >= 6]
+                      if sum(tuple(a.shape) in extents for a in leaves) >= 6]
         carry = max(candidates, key=lambda leaves: len(leaves))
         declared = defaultdict(deque)
         accumulators, warnings = linear_accumulators(sim, grid, n_steps)

@@ -685,7 +685,7 @@ def _build_nu_scan(
             use_debye=use_debye, use_lorentz=use_lorentz, field_dtype=state.ex.dtype))
     pad_plan = pad_plan if pad_plan.active else None
     if pad_plan is not None:
-        invariants = vector_pad.pad_graded_invariants(invariants, pad_plan)
+        invariants = vector_pad.pad_graded_invariants(invariants, pad_plan, grid.dt)
         ctx = vector_pad.pad_graded_context(ctx, pad_plan)
         carry_init = vector_pad.pad_carry(carry_init, pad_plan)
     step: Any = make_graded_step(ctx)

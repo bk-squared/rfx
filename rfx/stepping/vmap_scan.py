@@ -60,8 +60,6 @@ def _build_vmap_scan_fn(
         accumulators in the SAME order as ``dft_probes`` (empty tuple if
         no planes were registered).
     """
-    from rfx.stepping.vector_pad import refuse_if_forced
-    refuse_if_forced("vmap material sweep")
     check_map_count()
     dt = grid.dt
     dx = grid.dx
@@ -142,6 +140,16 @@ def _build_vmap_scan_fn(
             apply_cpml_h=apply_cpml_h if use_cpml else None,
             apply_cpml_e=apply_cpml_e if use_cpml else None,
         )
+        # Vector padding, by the stepping layer, after this lane's own init_state:
+        # the carry is padded here; the step pads its operands and reads physical cells.
+        import dataclasses
+        from rfx.stepping import vector_pad
+        pad = vector_pad.uniform_plan(grid, periodic, path="vmap material sweep",
+            unsupported=vector_pad.uniform_unsupported(
+                {f.name: getattr(ctx, f.name) for f in dataclasses.fields(ctx)},
+                stencil_order=2, field_dtype=fdtd.ex.dtype))
+        pad = pad if pad.active else None
+        ctx = ctx if pad is None else dataclasses.replace(ctx, pad_plan=pad)
         core = make_core_step(ctx)
 
         def step_fn(carry, xs):
@@ -161,6 +169,8 @@ def _build_vmap_scan_fn(
             init_carry["cpml"] = cpml_state_init
         if use_dft:
             init_carry["dft_planes"] = dft_acc_init
+        if pad is not None:
+            init_carry = vector_pad.pad_carry(init_carry, pad)
         final_carry, time_series = jax.lax.scan(step_fn, init_carry, xs)
         final_dft_accs = final_carry.get("dft_planes", ())
         return time_series, final_dft_accs
