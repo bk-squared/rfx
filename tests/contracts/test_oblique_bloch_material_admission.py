@@ -137,7 +137,8 @@ def test_low_level_oblique_tensor_refused_before_scan(monkeypatch):
     cfg, state = init_tfsf(grid.nx, grid.dx, grid.dt,
                            cpml_layers=grid.cpml_layers, tfsf_margin=3,
                            f0=5e9, bandwidth=0.2, amplitude=1.0,
-                           polarization="ez", angle_deg=30.0, ny=grid.ny)
+                           polarization="ez", angle_deg=30.0, ny=grid.ny,
+                           dtype='float32')
     eps_x = materials.eps_r.at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(2.0)
     tensor = (eps_x, materials.eps_r, materials.eps_r)
     calls = []
