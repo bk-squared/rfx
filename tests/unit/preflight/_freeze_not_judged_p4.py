@@ -1,7 +1,9 @@
-"""Run on main on the cluster: python -m tests.unit.preflight._freeze_not_judged_p4.
-
-Copy this script and _not_judged_scenes.py to main before running. Commit the
-resulting JSON with the PR after freezing; never regenerate it on the PR head.
+"""P4 JSON is produced by the cluster tool running the pytest wrapper
+``tests/unit/preflight/test_zz_freeze_not_judged_p4.py`` on branch
+``acceleration/2755-pr2-freeze``. The wrapper verifies that only tests differ
+from the designated base and prints one JSON line between P4-FROZEN-BEGIN
+and P4-FROZEN-END. Save that line as data/not_judged_p4_frozen.json and
+commit it with the PR; never regenerate the baseline on the PR head.
 """
 from pathlib import Path
 import json
