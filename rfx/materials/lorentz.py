@@ -221,7 +221,7 @@ def _pole_underflow_check_enabled():
     from rfx.backend import backend_class
 
     setting = os.environ.get("RFX_POLE_UNDERFLOW_CHECK")
-    return setting == "1" or (setting != "0" and backend_class().host_callbacks)
+    return setting == "1" or setting != "0"
 
 
 def _report_pole_underflow(count):
