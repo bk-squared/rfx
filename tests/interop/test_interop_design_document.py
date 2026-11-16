@@ -587,9 +587,9 @@ def test_every_declaration_has_exactly_one_document_disposition():
 
 
 def _dft_region_design():
-    sim = Simulation(freq_max=10e9, domain=(0.012,) * 3, dx=0.001, boundary="pec")
+    sim = Simulation(freq_max=10e9, domain=(0.012, 0.010, 0.008), dx=0.001, boundary="pec")
     sim.add_dft_plane_probe(axis="z", coordinate=0.006, component="ez",
-                            n_freqs=2, name="cropped", region=(2, 8, 2, 8))
+                            n_freqs=2, name="cropped", region=(1, 7, 2, 5))
     sim.add_dft_plane_probe(axis="z", coordinate=0.006, component="ez",
                             n_freqs=2, name="full")
     return sim
@@ -601,14 +601,14 @@ def test_dft_plane_region_round_trip_preserves_built_window():
     original = _dft_region_design()
     document = json.loads(design_to_json(original))
     rebuilt = simulation_from_design(document)
-    assert getattr(rebuilt, "_dft_plane_regions", {}) == original._dft_plane_regions == {"cropped": (2, 8, 2, 8)}
+    assert getattr(rebuilt, "_dft_plane_regions", {}) == original._dft_plane_regions == {"cropped": (1, 7, 2, 5)}
     assert "full" not in rebuilt._dft_plane_regions
-    assert document["observables"]["dft_planes"][0]["region"] == [2, 8, 2, 8]
+    assert document["observables"]["dft_planes"][0]["region"] == [1, 7, 2, 5]
     assert document["observables"]["dft_planes"][1]["region"] is None
     source_probes = build_planes(original, original._build_grid(), 1)
     rebuilt_probes = build_planes(rebuilt, rebuilt._build_grid(), 1)
-    assert source_probes[0].region == rebuilt_probes[0].region == (2, 8, 2, 8)
-    assert source_probes[0].accumulator.shape == rebuilt_probes[0].accumulator.shape == (2, 6, 6)
+    assert source_probes[0].region == rebuilt_probes[0].region == (1, 7, 2, 5)
+    assert source_probes[0].accumulator.shape == rebuilt_probes[0].accumulator.shape == (2, 6, 3)
     assert source_probes[1].region is rebuilt_probes[1].region is None
     assert source_probes[1].accumulator.shape == rebuilt_probes[1].accumulator.shape
 
