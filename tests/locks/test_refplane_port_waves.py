@@ -787,7 +787,7 @@ def test_nonuniform_lane_end_to_end_raises():
 # the Phase-0 pre-registration rule for the two-plane Zc/beta measurement.
 # The rejected first candidate N=3 (planes 3/6 cells) was measured
 # near-field contaminated (R2 stop -> placement conformed to the Phase-0
-# clean zone; one redesign, evidence-anchored). Current-code (gap-trimmed
+# clean zone; one redesign, evidence-anchored). Earlier (gap-trimmed
 # V) N=3 battery numbers: beta/(w/c) 1.16-1.20 (vs mid-line
 # 1.046-1.059), Zc 52.0-53.1 ohm with Im/Re to 8.2%, |S21| closed-box
 # referee residual -3.1% at 7 GHz, row energy to 1.019.  (The pre-trim

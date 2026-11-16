@@ -116,7 +116,7 @@ LOCK_PROVENANCE = {
     # first commit of the series, carried the shared-E floor this revision retired.
     # The scene was re-chosen (tau = 8 dt, bandwidth 0.8;
     # the old one was driven only by a 7.4e-4 jump at t = 0) and the GPU difference
-    # re-measured on it.
+    # re-measured on it at the commit below.
     "commit": "9230fde",
     "date": "2026-10-12",
     "run_id": ("local (Mac CPU derivation) + VESSL 369367270791 (GPU: scan-vs-jitloop "

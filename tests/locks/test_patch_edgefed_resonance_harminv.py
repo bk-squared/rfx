@@ -234,7 +234,7 @@ N_PROBE_Y = 5                   # probes along y (the parity line for TM001)
 # Threads and the x64 flag were not re-sampled (bit-identical raw series,
 # < 0.001 pp). Configurations ran on GPU; the fixture value is CPU.
 #
-# Configuration samples measured at h/3 and h/6 (-5.4795, -5.4771,
+# Earlier configuration samples measured at h/3 and h/6 (-5.4795, -5.4771,
 # -5.3949 %) are void: the laminate's top face, drawn on its node plane, came out at
 # 18.000000000000004 / 36.00000000000001 cells in floating point, so the laminate took an
 # extra cell (h realized 1049.33 / 918.17 um) and buried the patch sheet in the
@@ -282,7 +282,7 @@ LEG_A_HALF_PCT = 0.182          # = 0.168 configuration + 0.014 extractor
 # (-7.313 %) and a harmonic-mean permittivity on the E edges (-7.473 %) pass as well, so
 # this window cannot see an interface-rule regression; its spread is dominated by the
 # feed stub's rasterization across meshes (h/3 -6.12, h/4 -7.64, h/5 -6.69 %).
-# Configuration samples measured at h/3 (-6.7554, -6.7567 %) are void,
+# Earlier configuration samples measured at h/3 (-6.7554, -6.7567 %) are void,
 # for the laminate defect described under Leg A.
 #
 # History, the construction's first measurement (kept for its reasoning, its numbers superseded above):

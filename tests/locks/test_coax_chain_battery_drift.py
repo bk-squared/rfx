@@ -69,6 +69,8 @@ REMEASURE = (f"`PYTHONPATH=. python {DRIVER} --stage solve --dut <dut> --rung <4
 
 RUNG = 4
 DUTS = ("thru", "bead")
+# The records this guard reads, by the commit each was measured at: both at
+# one commit, measured after the coax lanes began to absorb on all three axes.
 RECORD_COMMITS = {"thru": LOCK_PROVENANCE["commit"], "bead": LOCK_PROVENANCE["commit"]}
 
 
