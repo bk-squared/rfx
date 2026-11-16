@@ -107,7 +107,7 @@ EXPECTED = {
 # Keep earlier graded boundary refusals; valid PEC guides now refuse on both meshes.
 MULTIPORT_REFUSAL = (
     "refused", ValueError,
-    "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow",
+    "One run() or forward() record supports at most one driven waveguide port; driven ports: {port_names}. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero.",
 )
 PUBLIC_OVERRIDES = {
     (declaration, entry): (
@@ -224,7 +224,11 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
                 for loop in ("scan", "fori_loop", "while_loop"):
                     guard.setattr(jax.lax, loop, no_field_loop)
                 with pytest.raises(expected[1]) as caught:
-                    invoke(guide(declaration, graded=graded), entry)
+                    sim = guide(declaration, graded=graded)
+                    if expected == MULTIPORT_REFUSAL:
+                        port_names = ", ".join(port.name for port in sim._waveguide_ports)
+                        expected = (*expected[:2], expected[2].format(port_names=port_names))
+                    invoke(sim, entry)
             assert loops == []
             message = str(caught.value)
             for lane in ("run dispatch", "forward dispatch", "dispatch"):

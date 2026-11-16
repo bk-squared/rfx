@@ -1186,20 +1186,7 @@ class _FloquetPortEntry:
     amplitude: float
 
 
-class WaveguideSParamResult(NamedTuple):
-    """High-level calibrated waveguide S-parameter data."""
-    freqs: np.ndarray
-    s11: np.ndarray
-    s21: np.ndarray
-    calibration_preset: str
-    source_plane: float
-    measured_reference_plane: float
-    measured_probe_plane: float
-    reference_plane: float
-    probe_plane: float
-
-
-from rfx.api._waveguide_result import WaveguideSMatrixResult
+from rfx.api._waveguide_result import WaveguideSMatrixResult, WaveguideSParamResult
 
 class CoaxialLineReflectionResult(NamedTuple):
     """One-port reflection from the validated coaxial transmission-line method.
