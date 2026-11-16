@@ -147,7 +147,7 @@ def test_graded_waveguide_illumination_with_passive_wire_refuses():
         with pytest.raises(ValueError) as caught:
             _scene("graded", wire=True, illumination="waveguide", single=True).run(
                 n_steps=64, skip_preflight=True)
-    assert str(caught.value) == "Waveguide ports are not supported together with lumped ports or TFSF"
+    assert str(caught.value) == "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
 
 
 def test_uniform_waveguide_composition_keeps_its_existing_refusal():
@@ -159,10 +159,10 @@ def test_uniform_waveguide_composition_keeps_its_existing_refusal():
 
 def test_tfsf_port_combination_is_refused_at_declaration():
     sim = _scene(illumination="none")
-    with pytest.raises(ValueError, match="TFSF.*not supported.*lumped ports"):
+    with pytest.raises(ValueError, match="TF/SF.*not supported.*lumped or wire port"):
         sim.add_tfsf_source()
     sim = base_scene(source=False).add_tfsf_source()
-    with pytest.raises(ValueError, match="Lumped ports.*not supported.*TFSF"):
+    with pytest.raises(ValueError, match="TF/SF.*not supported.*lumped or wire port"):
         sim.add_port((.012, .009, .004), "ez", impedance=50., excite=False)
 
 
