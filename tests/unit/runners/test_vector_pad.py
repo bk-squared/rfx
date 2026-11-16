@@ -3,10 +3,13 @@
 The uniform single-device step may allocate its arrays with padded extents
 (``aligned``: z to a multiple of 4; ``odd``: one cell on each even axis). The
 physical cells, probes, ports, planes and snapshots must not see the pad: on
-the CPU each padded run returns the unpadded run's bytes. Paths this stage
+the CPU each padded run returns the unpadded run's bytes, or, for the cases
+listed in ``NOT_BITWISE``, stays within the stage-move bars. Paths this stage
 does not pad refuse a forced pad; ``"auto"`` pads nothing until a measured
 gain is entered for the device.
 """
+
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -60,6 +63,12 @@ def scene(name):
                          boundary=_walls(x='periodic'), cpml_layers=0, snap='declared')
         sim.add_material('slab', eps_r=3.)
         sim.add(Box((0., .001, .001), (.010, .003, .004)), material='slab')
+    elif name == 'kerr':
+        sim = Simulation(freq_max=10e9, domain=(.0113, .0071, .0052), dx=.001,
+                         boundary=_walls(), cpml_layers=0, snap='declared')
+        # chi3 |E|^2 reaches about 1e-2 at the field this source drives (1e8 V/m).
+        sim.add_material('kerr', eps_r=2., chi3=1e-18)
+        sim.add(Box((.006, .002, .001), (.008, .004, .003)), material='kerr')
     else:
         raise ValueError(name)
     if name != 'cpml_port':
@@ -69,7 +78,9 @@ def scene(name):
     return sim
 
 
-SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x')
+SCENES = ('vacuum', 'cpml_port', 'pec_pmc_slab', 'lorentz', 'periodic_x', 'kerr')
+#: Scenes with pole media (Lorentz; Debye in the slab), judged by the running-sum bar.
+POLE_SCENES = frozenset({'lorentz', 'pec_pmc_slab'})
 
 
 def observed(result):
@@ -122,22 +133,90 @@ def run_record(sim, target, **extra):
     return out, plans
 
 
-#: Cases measured not bitwise on the CPU (jax 24.10 image): each first difference is
-#: one to three float32 ULP, and the seeded-pad cases (pad contents up to 1e30) stay bitwise.
-NOT_BITWISE_REASON = 'vector pad: not bitwise on CPU, leader to judge'
-NOT_BITWISE_MARK = pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason=NOT_BITWISE_REASON)
+#: Cases measured not bitwise on the CPU (jax 24.10 image): each first difference is one
+#: to three float32 ULP. Estimate: XLA CPU code generation changes with the array extent.
+#: The measured witness that the pad does not leak is the seeded-pad equality below
+#: (pad contents up to 1e30 give the zero-pad bytes). Every other case stays bitwise.
 NOT_BITWISE = {
     ('run', 'vacuum', 'odd'), ('run', 'pec_pmc_slab', 'odd'), ('run', 'lorentz', 'odd'),
     ('forward', 'cpml_port', 'aligned'), ('forward', 'cpml_port', 'odd'),
     ('forward', 'lorentz', 'aligned'), ('forward', 'lorentz', 'odd'),
-    ('vmap', 'vacuum', 'odd'),
+    ('vmap', 'vacuum', 'odd'), ('one_axis', 'vacuum', (0, 1, 0)),
 }
 
+# Stage-move bars for the cases above, declared before any value was read.
+#: Fields: max over physical cells of |padded - unpadded| at the last step, at most
+#: 9 float32 ULP of P, the largest |field| of that component over the unpadded record.
+FIELD_BAR = 9 * 2.0 ** -23
+#: Pole media, instead: |difference| at step n at most this times the running sum, to n,
+#: of the unpadded run's peak |field| of that component.
+POLE_BAR = 1.2e-7
+#: Summed or record quantities (probe series, DFT planes, flux, S11, value, jvp, grad):
+#: max |difference| at most this of the quantity's own max |value|.
+RECORD_BAR = 1e-4
+#: Each bar holds at N, 2N and 4N steps.
+LENGTHS = (N_STEPS, 2 * N_STEPS, 4 * N_STEPS)
 
-def cases(kind, names):
-    return [pytest.param(name, target, marks=NOT_BITWISE_MARK)
-            if (kind, name, target) in NOT_BITWISE else (name, target)
-            for name in names for target in TARGETS]
+
+def _ratio(diff, bar):
+    """max of difference / bar (0 where the difference is 0; inf where only the bar is)."""
+    diff, bar = np.broadcast_arrays(np.asarray(diff, np.float64), np.asarray(bar, np.float64))
+    with np.errstate(divide='ignore', invalid='ignore'):
+        ratio = np.where(diff == 0, 0., diff / bar)
+    return float(np.max(ratio)) if ratio.size else 0.
+
+
+def _per_step_peak(record):
+    return np.abs(record).reshape(len(record), -1).max(axis=1).astype(np.float64)
+
+
+def bar_ratios(ref, got, *, pole):
+    """difference / bar for every output (> 1 fails). Snapshots carry the record for P."""
+    assert ref.keys() == got.keys(), f'outputs {sorted(ref)} vs {sorted(got)}'
+    ratios = {}
+    for key, a in ref.items():
+        b = got[key]
+        assert a.shape == b.shape, f'{key}: shape {a.shape} vs {b.shape}'
+        if not a.size:
+            continue
+        diff = np.abs(b.astype(np.complex128) - a.astype(np.complex128))
+        if key.startswith('snapshots'):
+            if pole:
+                step_diff = diff.reshape(len(a), -1).max(axis=1)
+                ratios[key] = _ratio(step_diff, POLE_BAR * np.cumsum(_per_step_peak(a)))
+        elif key.startswith('state.'):
+            record = ref[f"snapshots['{key[len('state.'):]}']"]
+            bar = (POLE_BAR * _per_step_peak(record).sum() if pole
+                   else FIELD_BAR * np.abs(record).max())
+            ratios[key] = _ratio(diff.max(), bar)
+        else:
+            ratios[key] = _ratio(diff.max(), RECORD_BAR * np.abs(a).max())
+    return ratios
+
+
+def assert_bars(label, by_length):
+    """Every ratio at every record length at most 1; the ratios go to stderr and the message."""
+    lines, worst = [], 0.
+    for n, ratios in by_length.items():
+        key = max(ratios, key=ratios.get)
+        worst = max(worst, ratios[key])
+        lines.append(f'N={n}: worst {key} {ratios[key]:.3e} | '
+                     + ', '.join(f'{k} {v:.2e}' for k, v in sorted(ratios.items())))
+    text = f'{label} (difference / bar)\n  ' + '\n  '.join(lines)
+    sys.stderr.write('BAR ' + text.replace('\n', '\nBAR ') + '\n')
+    assert worst <= 1., text
+
+
+def run_lengths(name, target, label):
+    """Bars at N, 2N, 4N for run() on ``name``, with every field snapshotted each step."""
+    by_length = {}
+    for n in LENGTHS:
+        snap = SnapshotSpec(interval=1, components=FIELDS)
+        ref, _ = run_record(scene(name), 'off', n_steps=n, snapshot=snap)
+        got, plans = run_record(scene(name), target, n_steps=n, snapshot=snap)
+        assert_padded(plans, f'{label} N={n}')
+        by_length[n] = bar_ratios(ref, got, pole=name in POLE_SCENES)
+    assert_bars(label, by_length)
 
 
 def assert_padded(plans, label):
@@ -146,8 +225,13 @@ def assert_padded(plans, label):
         assert plan.active and plan.padded != plan.shape, f'{label}: plan {plan} pads nothing'
 
 
-@pytest.mark.parametrize('name,target', cases('run', SCENES))
-def test_run_padded_is_bitwise(name, target):
+@pytest.mark.parametrize('target', TARGETS)
+@pytest.mark.parametrize('name', SCENES)
+def test_run_padded_is_bitwise_or_within_bars(name, target):
+    if ('run', name, target) in NOT_BITWISE:
+        run_lengths(name, target, f'run {name}/{target}')
+        jax.clear_caches()
+        return
     ref, ref_plans = run_record(scene(name), 'off')
     assert ref_plans and not any(p.active for p in ref_plans)
     got, plans = run_record(scene(name), target)
@@ -166,12 +250,12 @@ def test_run_until_decay_padded_is_bitwise(target):
     jax.clear_caches()
 
 
-def _forward_objective(name, **kw):
+def _forward_objective(name, n_steps=N_STEPS, **kw):
     sim = scene(name)
     shape = sim._build_realized_grid().shape
 
     def objective(eps):
-        result = sim.forward(n_steps=N_STEPS, eps_override=eps, skip_preflight=True,
+        result = sim.forward(n_steps=n_steps, eps_override=eps, skip_preflight=True,
                              port_s11_freqs=FREQS if lumped(sim) else None, **kw)
         value = jnp.sum(result.time_series ** 2)
         if result.s_params is not None:
@@ -189,45 +273,68 @@ def _forward_outputs(result):
     return out
 
 
-@pytest.mark.parametrize('name,target', cases('forward', ('cpml_port', 'lorentz')))
-def test_forward_value_jvp_grad_padded_are_bitwise(name, target):
-    objective, eps = _forward_objective(name)
+def _forward_records(name, mode, n_steps):
+    objective, eps = _forward_objective(name, n_steps)
     tangent = jnp.zeros_like(eps).at[5, 3, 2].set(1.)
-    records = {}
-    for mode in ('off', target):
-        with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
-            (value, result) = objective(eps)
-            _, dvalue = jax.jvp(lambda e: objective(e)[0], (eps,), (tangent,))
-            grad = jax.grad(lambda e: objective(e)[0])(eps)
-        records[mode] = (dict(_forward_outputs(result), value=np.asarray(value),
-                              jvp=np.asarray(dvalue), grad=np.asarray(grad)), plans)
-    ref, ref_plans = records['off']
-    got, plans = records[target]
-    assert not any(p.active for p in ref_plans)
-    assert_padded(plans, f'forward {name}/{target}')
-    assert_bitwise(ref, got, f'forward {name}/{target}')
-    jax.clear_caches()
+    with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
+        (value, result) = objective(eps)
+        _, dvalue = jax.jvp(lambda e: objective(e)[0], (eps,), (tangent,))
+        grad = jax.grad(lambda e: objective(e)[0])(eps)
+    return dict(_forward_outputs(result), value=np.asarray(value),
+                jvp=np.asarray(dvalue), grad=np.asarray(grad)), plans
 
 
-@pytest.mark.parametrize('name,target', cases('vmap', ('vacuum',)))
-def test_vmap_over_forward_padded_is_bitwise(name, target):
-    objective, eps = _forward_objective(name)
-    batch = jnp.stack([eps, eps * 1.5])
-    outs = {}
-    for mode in ('off', target):
-        with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
-            outs[mode] = ({'value': np.asarray(jax.vmap(lambda e: objective(e)[0])(batch))}, plans)
-    assert_padded(outs[target][1], f'vmap forward/{target}')
-    assert_bitwise(outs['off'][0], outs[target][0], f'vmap forward/{target}')
+@pytest.mark.parametrize('target', TARGETS)
+@pytest.mark.parametrize('name', ('cpml_port', 'lorentz'))
+def test_forward_value_jvp_grad_padded_bitwise_or_within_bars(name, target):
+    label = f'forward {name}/{target}'
+    lengths = LENGTHS if ('forward', name, target) in NOT_BITWISE else (N_STEPS,)
+    by_length = {}
+    for n in lengths:
+        ref, ref_plans = _forward_records(name, 'off', n)
+        got, plans = _forward_records(name, target, n)
+        assert not any(p.active for p in ref_plans)
+        assert_padded(plans, f'{label} N={n}')
+        if lengths == (N_STEPS,):
+            assert_bitwise(ref, got, label)
+        else:
+            by_length[n] = bar_ratios(ref, got, pole=False)
+    if by_length:
+        assert_bars(label, by_length)
     jax.clear_caches()
 
 
 @pytest.mark.parametrize('target', TARGETS)
-@pytest.mark.parametrize('name', ('vacuum', 'cpml_port'))
+def test_vmap_over_forward_padded_bitwise_or_within_bars(target):
+    label = f'vmap forward vacuum/{target}'
+    lengths = LENGTHS if ('vmap', 'vacuum', target) in NOT_BITWISE else (N_STEPS,)
+    by_length = {}
+    for n in lengths:
+        objective, eps = _forward_objective('vacuum', n)
+        batch = jnp.stack([eps, eps * 1.5])
+        outs = {}
+        for mode in ('off', target):
+            with vector_pad.force_pad(mode), vector_pad.record_plans() as plans:
+                outs[mode] = ({'value': np.asarray(jax.vmap(lambda e: objective(e)[0])(batch))}, plans)
+        assert_padded(outs[target][1], f'{label} N={n}')
+        if lengths == (N_STEPS,):
+            assert_bitwise(outs['off'][0], outs[target][0], label)
+        else:
+            by_length[n] = bar_ratios(outs['off'][0], outs[target][0], pole=False)
+    if by_length:
+        assert_bars(label, by_length)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('target', TARGETS)
+@pytest.mark.parametrize('name', ('vacuum', 'cpml_port', 'kerr'))
 def test_pad_contents_do_not_reach_physical_cells(name, target):
     """Fill every pad cell of the fields and psi with large random values."""
+    # Kerr squares the field in every cell: (1e30)^2 overflows float32 and the pad's
+    # 0 * inf would be NaN by arithmetic, not by a leak, so its seed stays at 1e10.
+    magnitude = 1e10 if name == 'kerr' else 1e30
     ref, _ = run_record(scene(name), target)
-    with vector_pad.seed_pad(12345, magnitude=1e30):
+    with vector_pad.seed_pad(12345, magnitude=magnitude):
         got, plans = run_record(scene(name), target)
     assert_padded(plans, f'seeded {name}/{target}')
     assert_bitwise(ref, got, f'seeded {name}/{target}')
@@ -318,10 +425,8 @@ def test_unknown_operands_have_no_pad_rule():
         vector_pad.pad_cells(jnp.zeros((4, 4, 6)), plan, 0.)
 
 
-@pytest.mark.parametrize('pad', (
-    (1, 0, 0), pytest.param((0, 1, 0), marks=NOT_BITWISE_MARK),
-    (0, 0, 1), (2, 0, 0), (0, 0, 2)))
-def test_one_axis_pad_is_bitwise(pad, monkeypatch):
+@pytest.mark.parametrize('pad', ((1, 0, 0), (0, 1, 0), (0, 0, 1), (2, 0, 0), (0, 0, 2)))
+def test_one_axis_pad_is_bitwise_or_within_bars(pad, monkeypatch):
     """Each axis's pad alone, by one and two cells (the targets combine these)."""
     real = vector_pad.plan_pad
 
@@ -332,6 +437,10 @@ def test_one_axis_pad_is_bitwise(pad, monkeypatch):
         return vector_pad.PadPlan(base.shape, tuple(n + p for n, p in zip(base.shape, pad)), pad, target)
 
     monkeypatch.setattr(vector_pad, 'plan_pad', plan)
+    if ('one_axis', 'vacuum', pad) in NOT_BITWISE:
+        run_lengths('vacuum', 'aligned', f'run vacuum pad {pad}')
+        jax.clear_caches()
+        return
     ref, _ = run_record(scene('vacuum'), 'off')
     got, plans = run_record(scene('vacuum'), 'aligned')
     assert_padded(plans, f'pad {pad}')
