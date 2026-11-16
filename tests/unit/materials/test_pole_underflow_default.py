@@ -74,7 +74,9 @@ def test_default_jaxpr(monkeypatch, site, setting, enabled):
 def test_vmapped_grad_one_host_call(monkeypatch, site, entries, batch, small):
     fn = jax.jit(jax.vmap(jax.grad(objective(site, small))))
     _, calls, notices = observe(monkeypatch, fn, jnp.linspace(3e20, 4e20, batch, dtype=jnp.float32))
-    assert len(calls) == 1, f"batch={batch}, host_calls={len(calls)}, counts={calls}"
+    assert len(calls) == 1, (
+        f"batch={batch}, host_calls={len(calls)}, counts={calls}, "
+        f"warnings={len(notices)}, warning_counts={[w.count for w in notices]}")
     assert calls == [entries * batch if small else 0]
     assert len(notices) == (1 if small else 0)
     if small:
