@@ -67,7 +67,7 @@ The synthetic AD test guards a responsive gradient path, a separate property.
 
 Source anchors at the reviewed SHA: V173A harness
 `scripts/harnesses/v173a_physics_equivalence.py:59-123`; MSL replay
-`tests/unit/autodiff/test_msl_sparam_ad.py:125-278`, synthetic AD
+`tests/unit/autodiff/test_msl_sparam_ad.py:124-277`, synthetic AD
 `:499-536`, and E2E contract `:544-617`.
 
 Existing tests already provide parts of the desired physical coverage:
