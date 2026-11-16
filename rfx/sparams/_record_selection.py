@@ -123,7 +123,7 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
         db = detail['db']
     # Each distinct `reads` tuple, in row order, combined by the same rule:
     # the record-end warning names a group's outputs from that group alone.
-    by_reads = {}
+    by_reads: dict[tuple, list] = {}
     for row in rows:
         by_reads.setdefault(tuple(row.get('reads', ())), []).append(row)
     groups = [{**{k: v for k, v in _combine_rows(members, bins).items() if k != 'groups'},

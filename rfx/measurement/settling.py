@@ -333,7 +333,7 @@ def _warning_groups(result, witness, every_output, groups=None):
     if not groups:
         runs = witness.get("runs") or ()
         if runs and all("reads" in run for run in runs):
-            by_reads = {}
+            by_reads: dict[tuple, list] = {}
             for run in runs:
                 by_reads.setdefault(tuple(run["reads"]), []).append(run)
             groups = [{**_combine_rows(members, np.empty(0)), "reads": reads}
