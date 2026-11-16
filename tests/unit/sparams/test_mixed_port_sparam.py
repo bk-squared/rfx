@@ -33,7 +33,7 @@ from tests._realized_geometry import (
 _EPS_R = 3.66
 _H_SUB = 254e-6
 _W_TRACE = 600e-6
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the laminate
+# ON-LATTICE board: h_sub / dx = 3 exactly, so the laminate
 # face IS a node line and the foil sheet lands on it with no snap. The
 # fixture ran at dx = 80 um (h_sub/dx = 3.175) until the ownership
 # contract: there the substrate realizes FOUR cells (320 um, +26%) and a
@@ -102,7 +102,7 @@ def test_power_wave_normalization_unequal_z0():
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
     S = np.asarray(S)
-    pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746 — the #460 error
+    pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746
     assert abs(pseudo_ratio - 1.0) > 0.2
     # The invalid per-cell drive frame refuses the whole driven column.
     assert np.isnan(S[1, 0, :]).all()
@@ -186,7 +186,7 @@ def _base_sim(**kw):
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil: a SHEET (#931 §1.3) on the laminate face, declared by a
+    # 35 um foil: a SHEET on the laminate face, declared by a
     # zero-thickness Box. One cell thick it is a VOLUME — walls at both z
     # faces and the Ez edge between them shorted, i.e. 85 um of solid
     # metal.
@@ -221,8 +221,7 @@ def _bisecting_sim():
 
 
 def _add_msl(sim, y_c, x=5.5e-3, direction="-x", **kw):
-    # Default facing is TOWARD the wire feed (issue #488 attempt-1 defect
-    # D1: a port facing away from the DUT measures launch+return mixed
+    # Default facing is TOWARD the wire feed (a port facing away from the DUT measures launch+return mixed
     # in its a-channel and its probe ladder walks into the CPML).
     sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
                      height=_H_SUB, direction=direction, impedance=50.0,
@@ -232,7 +231,7 @@ def _add_msl(sim, y_c, x=5.5e-3, direction="-x", **kw):
 def _add_feed(sim, y_c, x=2e-3, extent=None):
     # Vertical probe feed: ez wire port, ground plane -> foil sheet. On
     # the lattice ``extent=_H_SUB`` lands the port's top NODE on the
-    # sheet plane, which is galvanic contact (#929: a feed that reaches a
+    # sheet plane, which is galvanic contact (a feed that reaches a
     # conductor is not "inside PEC").
     sim.add_port(position=(x, y_c, 0.0), component="ez",
                  impedance=50.0, extent=_H_SUB if extent is None else extent, terminates=sim._geometry[-1].shape)
@@ -600,15 +599,13 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert res.port_names[1] != "lw0" and res.port_names[0] == "lw0"
     assert res.z0_ref.shape == (2,)
     assert res.z0_ref[0] == pytest.approx(50.0)
-    assert res.z0_ref[1] == pytest.approx(50.0)  # declared impedance= (#2014)
+    assert res.z0_ref[1] == pytest.approx(50.0)  # declared impedance=
     assert 20.0 < res.line_impedances[1] < 120.0  # HJ analytic, sane band
     assert res.s21_power_witness.shape == (1, 1, 5)
     # The power witness of a refused wire-driven column is refused too.
     assert np.isnan(res.s21_power_witness).all()
     assert res.magnitude_channel == "flux"
     assert res.S_wave is not None and res.S_wave.shape == S.shape
-    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
-    # (0.0780274, 0.322321).
     _assert_drive_settling_witnesses(sim, res, 4., (0.0780033, 0.322213))
     # Registration state restored after the drive loop.
     assert len(sim._dft_planes) == 0
@@ -665,17 +662,14 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     assert np.all(np.isfinite(S[:, 1]))
     # Apply the unchanged bound to the retained, unprojected MSL column.
     assert np.all(np.abs(S[:, 1]) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S[:, 1])):.3f}"
-    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
-    # (4.13651e-21, 1.59952e-4).
     _assert_drive_settling_witnesses(sim, res, 8., (4.13523e-21, 1.59902e-4))
 
 
 # ---------------------------------------------------------------------------
-# Layer 1d (issue #520 leg 3) — the mixed lane's OWN V-span anchor
+# Layer 1d — the mixed lane's OWN V-span anchor
 # ---------------------------------------------------------------------------
 #
-# compute_msl_s_matrix's V-span anchoring fix (issue #511/PR #516 finding
-# F2: anchor k_hi on the RASTERIZED trace node, not round(h_sub/dx)) was
+# compute_msl_s_matrix's V-span anchoring fix (F2: anchor k_hi on the RASTERIZED trace node, not round(h_sub/dx)) was
 # copied by hand into compute_mixed_s_matrix's own MSL leg (the
 # msl_modal_voltage call at _sparams.py that reads
 # trace_k_per_port[p_idx][0] — the call site's own comment says it
@@ -835,7 +829,7 @@ def test_bisecting_mesh_reports_its_declared_vs_realized_offset():
 
 
 # ---------------------------------------------------------------------------
-# Issue #544: preflight's wire-port dead-extent-cell advisory disagreed
+# Preflight's wire-port dead-extent-cell advisory disagreed
 # with the assembler's actual n_live_lw on this fixture (3/4 advisory vs 4
 # actual). The fix makes the advisory derive its count from the SAME
 # primitive the assembler uses (_wire_port_live_cells against the real
@@ -859,7 +853,7 @@ def _ground_truth_wire_port_n_live(sim, position, component, extent,
     end[axis] += extent
     wp = WirePort(start=tuple(position), end=tuple(end),
                   component=component, impedance=impedance)
-    # #931 §1.9: liveness is read off the port component's own REALIZED
+    # Liveness is read off the port component's own REALIZED
     # edge, so the ground truth realizes the same geometry through the
     # single owner rather than scanning cells.
     _, live_flags, n_live = _wire_port_live_cells(
@@ -1045,7 +1039,7 @@ def test_a_cell_occupancy_classifier_cannot_see_a_sheet_at_all():
     assert (n_live_truth, n) == (n_live_old, n_old) == (3, 3)
 
     # A port lying IN the sheet: every cell dead under the contract, so
-    # the shared primitive refuses the port outright (#318).
+    # the shared primitive refuses the port outright.
     with pytest.raises(ValueError, match="ex edge shorted by realized PEC"):
         _ground_truth_wire_port_n_live(
             sim, position=(3e-3, y_c, _H_SUB), component="ex",
@@ -1200,8 +1194,8 @@ def test_wire_port_advisory_does_not_swallow_a_timeout_signal(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Issue #556 (D5 follow-up): wire port terminating one cell SHORT of a
-# realized conductor — the false-NEGATIVE sibling of the #544-fixed
+# D5 follow-up: wire port terminating one cell SHORT of a
+# realized conductor — the false-NEGATIVE sibling of the fixed
 # false-positive class. No port cell is dead, so #314/#319 are correctly
 # silent, yet the feed never galvanically reaches the conductor and
 # couples only capacitively (measured on the D5 lane: |S21| rising with
@@ -1304,7 +1298,7 @@ def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
     # PreflightIssue carries code/severity, but no side field (ports.py).
     assert str(hits[0]).count("+z-side") == 1
     # The advisory must not double-fire as a dead-cell finding: no cell
-    # is dead here (#544 regression lock pins 4/4 live).
+    # is dead here (regression lock pins 4/4 live).
     codes = [getattr(s, "code", None) for s in issues]
     assert "wire_port_dead_extent_cells" not in codes
     assert "wire_port_midpoint_in_pec" not in codes
@@ -1367,8 +1361,7 @@ def test_wire_port_end_gap_advisory_silent_in_open_vacuum():
     tests/unit/preflight/test_inverse_design_preflight.py's _clean_sim (which pins
     preflight() == [] on it, so this control is double-locked).
     """
-    # 8 layers, as _clean_sim: a 6-layer face now draws the #1272
-    # thin_absorber advisory, and this control must stay fully clean.
+    # 8 layers, as _clean_sim: a 6-layer face now draws the thin_absorber advisory, and this control must stay fully clean.
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                      dx=0.02 / 15, boundary="cpml", cpml_layers=8)
     sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
