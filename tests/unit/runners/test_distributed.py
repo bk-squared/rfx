@@ -39,7 +39,7 @@ from rfx.core.yee import init_state, init_materials
 # shards. The marker is removed so this family runs in the same
 # fast-suite/weekly CPU shards as the sibling
 # ``test_distributed_nu_kernel.py`` / ``test_distributed_nu_composition.py``
-# files. Measured (2-device conftest default):
+# files. Measured (this fix, 2-device conftest default):
 # 33/33 passed, 65-68 s wall, 1.74 GiB peak RSS — comparable to (and
 # below) the NU kernel file's precedent (62-66 s, 1.93 GiB) and well under the ``highmem``
 # marker's 3-24 GB band (pyproject.toml).

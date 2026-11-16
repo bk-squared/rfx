@@ -103,7 +103,7 @@ def test_uniform_lane_unaffected_by_the_new_guard(precision):
 
 
 # ---------------------------------------------------------------------------
-# precision="mixed" + CPML now works through forward().
+# Issue #644, RESOLVED: precision="mixed" + CPML now works through forward().
 #
 # It was a pre-existing, NOT-#630-caused defect (measured identical via run()
 # on the pre- and post-#630 trees): the CPML psi_* carry followed
@@ -113,9 +113,9 @@ def test_uniform_lane_unaffected_by_the_new_guard(precision):
 # newly exposed it there, and #630 shipped a temporary forward() guard raising
 # NotImplementedError rather than leak a raw JAX carry-dtype TypeError.
 #
-# The psi_* arrays are ACCUMULATION state and are
+# #644 fixed the root cause -- the psi_* arrays are ACCUMULATION state and are
 # now allocated at promote_types(field_dtype, float32), so they never sit
-# below float32. These tests were the guard's
+# below float32 -- and REMOVED that guard. These tests were the guard's
 # regression pins; they are kept (rather than deleted) and inverted to assert
 # SUCCESS, because the two cases they encode are exactly the two that must
 # keep working: a plain scalar boundary="cpml", and a per-face BoundarySpec
