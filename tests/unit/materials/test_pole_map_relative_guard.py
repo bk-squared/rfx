@@ -41,7 +41,7 @@ def test_b6_2_si_guard(monkeypatch, graded):
     record(f'B6.2-{graded}', dict(warnings=len(warnings_found), counts=[getattr(w, 'count', None) for w in warnings_found],
            objective=float(checked[0]), gradient=np.asarray(checked[1]).tolist()))
     assert len(warnings_found) == 1
-    monkeypatch.delenv('RFX_POLE_UNDERFLOW_CHECK')
+    monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '0')
     unchecked = jax.block_until_ready(jax.value_and_grad(objective)(parameters()))
     for a, b in zip(jax.tree.leaves(checked), jax.tree.leaves(unchecked)):
         assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
@@ -66,7 +66,7 @@ def test_b6_2_si_guard_jit(monkeypatch, graded):
 
     monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
     checked, found = evaluate()
-    monkeypatch.delenv('RFX_POLE_UNDERFLOW_CHECK')
+    monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '0')
     unchecked, _ = evaluate()
     equal = all(np.asarray(a).tobytes() == np.asarray(b).tobytes()
                 for a, b in zip(jax.tree.leaves(checked), jax.tree.leaves(unchecked)))

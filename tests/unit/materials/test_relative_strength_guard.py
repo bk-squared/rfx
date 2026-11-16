@@ -1,4 +1,4 @@
-"""T2: opt-in SI underflow warning and an unchanged primal/transpose/JVP."""
+"""T2: SI underflow warning and an unchanged primal/transpose/JVP."""
 import warnings
 
 import jax
@@ -41,7 +41,7 @@ def test_si_guard(lane, transform, flush, monkeypatch):
     p = jnp.log(jnp.float32(KAPPA))
     monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", "1")
     on = _read(objective(lane, a, relative=False), transform, p, flush)
-    monkeypatch.delenv("RFX_POLE_UNDERFLOW_CHECK", raising=False)
+    monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", "0")
     off = _read(objective(lane, a, relative=False), transform, p, False)
     for actual, expected in zip(on, off):
         assert actual.dtype == expected.dtype
