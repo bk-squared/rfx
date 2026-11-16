@@ -380,7 +380,7 @@ def test_unit_cell_with_floquet():
     Lx, Ly = 0.015, 0.015
     Lz = 0.03  # enough room for CPML on z
 
-    # #1138: geometry[1] x solved -3.75 % off; this test checks unit cell with floquet.
+    # geometry[1] x solved -3.75 % off; this test checks unit cell with floquet.
     sim = Simulation(snap="declared",
         freq_max=15e9,
         domain=(Lx, Ly, Lz),
@@ -393,10 +393,8 @@ def test_unit_cell_with_floquet():
     sim.add_material("substrate", eps_r=2.2)
     sim.add(Box((0, 0, Lz / 2 - 0.001), (Lx, Ly, Lz / 2)), material="substrate")
 
-    # PEC patch, 8 mm x 8 mm of foil on the substrate top: a SHEET
-    # (#931 §1.3), declared by a zero-thickness Box. It used to be drawn
-    # one cell thick "to avoid zero-thickness rasterization" — that
-    # workaround is exactly what the sheet primitive replaces, and under
+    # PEC patch, 8 mm x 8 mm of foil on the substrate top: a SHEET,
+    # declared by a zero-thickness Box. Drawn one cell thick, under
     # the ownership contract it would now realize a 1 mm slab of metal
     # (walls at both z faces, Ez shorted between) on a 1 mm substrate.
     patch_w = 0.008
