@@ -23,10 +23,21 @@ from tests.contracts.test_forward_result_static_state import (
 )
 from tests.contracts.test_port_bins_traced_under_jit import _scene
 from tests.unit.sparams.test_port_observable_validation import _passive_reciprocal_smatrix
-from tests.unit.sparams.test_ringdown_run import _box
 
 TRANSFORMS = ('jit', 'vmap', 'grad', 'value_and_grad', 'vjp', 'jvp', 'jacfwd', 'eval_shape')
 VALUES = (1., 1.05)
+
+
+def _box_scene(**mesh):
+    sim = Simulation(freq_max=20e9, domain=(12*MM, 11*MM, 5*MM), dx=MM,
+                     boundary='pec', **mesh)
+    sim.add_material('fill', eps_r=2.2, sigma=2*np.pi*12.5e9*8.854187817e-12*2.2/300)
+    sim.add(Box((0, 0, 0), (12*MM, 11*MM, 5*MM)), material='fill')
+    sim.add_port(position=(PORT_X_A, 3.8*MM, .8*MM), component='ez',
+                 impedance=50., extent=.6*MM,
+                 waveform=GaussianPulse(f0=13e9, bandwidth=.8, cutoff=4.5))
+    sim.add_probe(position=(6.1*MM, 5.3*MM, 2.1*MM), component='ez')
+    return sim
 
 
 def _graded(scale, *, pinned=True, ringdown=False, emit=True):
@@ -35,23 +46,23 @@ def _graded(scale, *, pinned=True, ringdown=False, emit=True):
     options = dict(dt=float(DT), dt_min_cell=.6*MM) if pinned else {}
     nominal = ({'x': NominalProfile(DX, traced_cells=(6, 8))}
                if isinstance(dx, jax.core.Tracer) else None)
-    sim = Simulation(freq_max=20e9, domain=(12*MM, 11*MM, 5*MM), dx=MM,
-                     boundary='pec', dx_profile=dx, dy_profile=DY, dz_profile=DZ,
+    sim = _box_scene(dx_profile=dx, dy_profile=DY, dz_profile=DZ,
                      nominal_profiles=nominal, **options)
-    sim.add_material('fill', eps_r=2.2, sigma=2*np.pi*12.5e9*8.854187817e-12*2.2/300)
-    sim.add(Box((0, 0, 0), (12*MM, 11*MM, 5*MM)), material='fill')
-    sim.add_port(position=(PORT_X_A, 3.8*MM, .8*MM), component='ez',
-                 impedance=50., extent=.6*MM,
-                 waveform=GaussianPulse(f0=13e9, bandwidth=.8, cutoff=4.5))
-    sim.add_probe(position=(8*MM, 7*MM, 2*MM), component='ez')
-    return sim.forward(n_steps=N_STEPS, port_s11_freqs=FREQS, skip_preflight=True,
-                       ringdown=RingdownSpec() if ringdown else None, emit_time_series=emit)
+    result = sim.forward(n_steps=N_STEPS, port_s11_freqs=FREQS, skip_preflight=True,
+                         ringdown=RingdownSpec() if ringdown else None, emit_time_series=emit)
+    if not pinned and isinstance(scale, jax.core.Tracer):
+        assert isinstance(result.dt, jax.core.Tracer)
+        assert isinstance(result.grid.dt, jax.core.Tracer)
+        print('TIMESTEP', type(scale).__name__, 'result.dt and grid.dt traced')
+    return result
 
 
 def _make_forward(scene, *, emit=True):
     if scene in ('G', 'GT', 'R'):
         return lambda scale: _graded(scale, pinned=scene != 'GT', ringdown=scene == 'R', emit=emit)
-    sim = _scene('waveguide', 'uniform') if scene == 'W' else _box('graded' if scene == 'M' else 'uniform')
+    mesh = (dict(dx_profile=DX, dy_profile=DY, dz_profile=DZ,
+                 dt=float(DT), dt_min_cell=.6*MM) if scene == 'M' else {})
+    sim = _scene('waveguide', 'uniform') if scene == 'W' else _box_scene(**mesh)
     grid = sim._build_nonuniform_grid() if scene == 'M' else sim._build_grid()
     eps = jnp.full(grid.shape, 1. if scene == 'W' else 2.2)
     options = {} if scene == 'W' else {'port_s11_freqs': FREQS}
