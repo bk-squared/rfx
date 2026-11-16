@@ -691,7 +691,7 @@ def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
     # including the CURRENT 3% one (measured: the
     # unanchored version admitted any floor in (4.449, 2.388e5), 4.7 decades,
     # against the THEN-current 10% gate; those specific historical bounds are
-    # not recomputed for the objective here, only the "10%" label is).
+    # not recomputed for the current objective here, only the "10%" label is).
     #
     # This assert is bidirectional: with _MIN_FD_ULP_SPAN fixed at 1e4, it
     # also lower-bounds any FUTURE tightening of _REL_ERR_THRESHOLD at

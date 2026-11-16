@@ -41,6 +41,6 @@ def test_graded_te10_flux_matches_fitted_mode_integral():
            primal_ratio=(old/exact).tolist(), after_before=(actual/old).tolist()))
     assert np.all(exact > 0), 'propagating TE10 must carry positive x power'
     assert np.all(fit_residual < .02), fit_residual
-    # <0.3% with dual widths,
+    # Predeclared from the independent review: <0.3% with dual widths,
     # >3% with primal widths; 1% separates them without pinning a formula.
     np.testing.assert_allclose(ratio, 1., rtol=.01, atol=0.)
