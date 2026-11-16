@@ -295,8 +295,8 @@ an open domain (uniform mesh, and a graded mesh with five 0.8 mm cells in x), at
 - On a table with ε′ 4.4 and tan δ 0.02 constant over 1–40 GHz, `fit_debye` with a free ε∞ returned ε∞ 0.5 before
   2.3 (it now keeps ε∞ at 1 or above). `run()` admits the 2-pole fit on both meshes; the fields grow by a factor of 1.04 per step and become
   non-finite at step 2025 (uniform) and 2008 (graded).
-- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returns ε∞ 0.1, its
-  lower bound, with 2 and with 3 resonances. `run()` admits both fits on both meshes; the fields grow by a factor of
+- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returned ε∞ 0.1, its
+  lower bound, with 2 and with 3 resonances before 2.3 (it now keeps ε∞ at 1 or above). `run()` admits both fits on both meshes; the fields grow by a factor of
   100 to 140 per step and become non-finite at step 22.
 
 In both cases preflight reports only advisories, and the run ends with the `AccuracyWarning` about non-finite values.
