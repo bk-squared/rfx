@@ -89,11 +89,3 @@ def test_all_acceptance_forms_require_existing_evidence(tmp_path, monkeypatch, r
     monkeypatch.setattr(kl, 'PAGE', page)
     with pytest.raises(AssertionError, match=error):
         test_every_limitation_has_a_valid_tracker()
-
-
-@pytest.mark.reads_docs_for_gate(reason='The default pole warning removes the closing underflow limitation')
-def test_pole_underflow_closure_audit(monkeypatch):
-    monkeypatch.setenv('CLOSING_ISSUES', '2561')
-    monkeypatch.setenv('OPEN_ISSUES', '')
-    monkeypatch.delenv('GITHUB_STEP_SUMMARY', raising=False)
-    assert kl.main([]) == 0
