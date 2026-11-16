@@ -236,19 +236,12 @@ def _report_pole_underflow(count):
     warnings.warn(warning, stacklevel=2)
 
 
-@jax.custom_batching.custom_vmap
 def _pole_underflow_report(count):
     """Send one count to the host, including zero after batching."""
-    from rfx._traced_check import traced_check
-    traced_check("RFX_POLE_UNDERFLOW_CHECK", "pole strength cotangent underflow",
-                 _report_pole_underflow, count)
+    from rfx._traced_check import require_host_callbacks
+    require_host_callbacks("RFX_POLE_UNDERFLOW_CHECK", "pole strength cotangent underflow")
+    jax.debug.callback(_report_pole_underflow, count)
     return jnp.int32(0)
-
-
-@_pole_underflow_report.def_vmap
-def _pole_underflow_report_vmap(axis_size, in_batched, count):
-    total = jnp.sum(count, axis=0) if in_batched[0] else count * axis_size
-    return _pole_underflow_report(total), False
 
 
 def pole_underflow_guard(out, factors, *, scalar=True):
