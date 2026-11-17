@@ -33,6 +33,7 @@ def _preflight_impl_body(
     _tfsf_material_overrides=(),
     _conformal_run=None,
     _traced_entry=None,
+    _conductor_operator=None,
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
     import warnings
@@ -42,7 +43,7 @@ def _preflight_impl_body(
         import copy
         self = copy.copy(self)
         self._waveguide_call_overrides = _tfsf_material_overrides
-    if _conformal_run is not None:
+    if _conformal_run is not None or _conductor_operator is not None:
         # run() passes its resolved conformal_pec: cut-cell conformal PEC solves
         # PEC Box faces at their drawn planes.
         import copy
@@ -50,7 +51,9 @@ def _preflight_impl_body(
         run_copy = copy.copy(self)
         share_wall_warning_history(self, run_copy)
         self = run_copy
-        self._conformal_run_call = bool(_conformal_run)
+        if _conformal_run is not None:
+            self._conformal_run_call = bool(_conformal_run)
+        self._conductor_operator_call = _conductor_operator
     if _conductors is not None:
         # Execution lends its assembled, pre-port products for this call only.
         # Bind the legacy validators to an isolated reader, never the public
@@ -76,7 +79,10 @@ def _preflight_impl_body(
     issues = PreflightReport()
     verdict_findings = []
     if _conductors is not None:
-        self._finding_record_reader = lambda: _conductors._realization_record or finding_record(self)
+        # Hold the diagnostic copy weakly so it and its context are freed by reference
+        # counting when preflight returns, not at the next cyclic collection.
+        ref = weakref.ref(self)
+        self._finding_record_reader = lambda: _conductors._realization_record or finding_record(ref())
         tables = _conductors._realization_tables
         issues._realization_reader = lambda: tables[-1] if tables else None
         if tables:
@@ -312,6 +318,7 @@ def _preflight_impl(
     _tfsf_material_overrides=(),
     _conformal_run=None,
     _traced_entry=None,
+    _conductor_operator=None,
 ) -> "PreflightReport":
     """Scope traced-input names and reporting to this preflight call."""
     with preflight_scope(self, {} if _traced_entry is None else _traced_entry):
@@ -321,6 +328,7 @@ def _preflight_impl(
             n_steps_for_memory=n_steps_for_memory, available_memory_gb=available_memory_gb,
             _conductors=_conductors, _tfsf_material_overrides=_tfsf_material_overrides,
             _conformal_run=_conformal_run, _traced_entry=_traced_entry,
+            _conductor_operator=_conductor_operator,
         )
 
 
@@ -411,15 +419,21 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
         conductors = assembly.realized()
     traced_entry = dict(zip(
         ("eps_override", "sigma_override", "mu_r_override"), tfsf_material_overrides))
+    from rfx.model.source_admission import conductor_operator
+    smoothing, resolved_conformal = realization_options or (False, conformal)
+    if resolved_conformal is None:
+        resolved_conformal = bool(sim._boundary_spec.conformal_faces())
+    operator = conductor_operator(smoothing=smoothing, conformal=resolved_conformal)
     # A validator bug must propagate, rather than become an advisory.
     if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
         issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
             _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides,
-            _conformal_run=conformal, _traced_entry=traced_entry)
+            _conformal_run=conformal, _traced_entry=traced_entry,
+            _conductor_operator=operator)
     else:
         issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
                                      _conductors=conductors, _conformal_run=conformal,
-                                     _traced_entry=traced_entry)
+                                     _traced_entry=traced_entry, _conductor_operator=operator)
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     if assembly is not None:

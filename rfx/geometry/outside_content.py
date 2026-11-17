@@ -254,13 +254,13 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
 def _planar_line(xp, shape, points, normal, reach, lo, hi):
     """Whether a body's interval on this line lies between parallel planes.
 
-    A Box's always does. A Cylinder's does only where both ends are its end
-    caps, not its curved side. A Sphere's never does: a chord is not a
+    A Box's does only for a normal with one nonzero component. A Cylinder's
+    does only where both ends are its end caps, not its curved side. A Sphere's never does: a chord is not a
     laminate, so a thin Sphere keeps the one-face fill.
     """
     from rfx.geometry.csg import Box, Cylinder
     if isinstance(shape, Box):
-        return True
+        return sum((n != 0).astype(xp.int32) for n in normal) == 1
     if isinstance(shape, Cylinder):
         cap_lo, cap_hi = _axial_interval(xp, shape, points, normal, reach)
         return (lo == cap_lo) & (hi == cap_hi)
