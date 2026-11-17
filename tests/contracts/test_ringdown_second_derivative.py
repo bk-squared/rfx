@@ -15,14 +15,16 @@ The record is the closed-form one of ``test_ringdown_completion_jax.py`` (four
 modes whose frequency, Q and residues move with a parameter ``p``), here
 ``y(p) = y0 + p v`` with ``v`` the exact tangent, read at six of its bins.
 The reference is the plain step monkeypatched in place of the
-custom-derivative one, computed once per form before the custom values. The
-in-record and joint second-order rows on this record are in
+custom-derivative one, computed once per form before the custom values.
+Every form here runs staged under one ``jax.jit``. The same rows as written
+(eager), and the in-record and joint second-order rows, are in
 ``tests/unit/sparams/test_ringdown_second_derivative.py``.
 """
 
 from __future__ import annotations
 
 import functools
+import sys
 import warnings
 
 import jax
@@ -183,38 +185,38 @@ def plain_references(cases):
     return out
 
 
-def _cases():
+def staged(compute):
+    """``compute`` traced and compiled as one program, built afresh on each call."""
+    return lambda: jax.jit(lambda: compute())()
+
+
+def cases(staging):
+    """The plain-step references every row compares with, each form under ``staging``."""
     batch = jnp.asarray([0.0, 1.0e-3, -2.0e-3])
-    cases = {("first", f): functools.partial(first_order, f, completed_objective,
-                                             completed_vector, _p0(), batch)
-             for f in FIRST_ORDER}
-    cases["grad"] = lambda: jax.grad(completed_objective)(_p0())
-    return cases
+    out = {("first", f): functools.partial(first_order, f, completed_objective,
+                                           completed_vector, _p0(), batch)
+           for f in FIRST_ORDER}
+    out["grad"] = lambda: jax.grad(completed_objective)(_p0())
+    out.update({("in-record", f): functools.partial(second_order, f, in_record_objective,
+                                                    in_record_vector, _p0())
+                for f in SECOND_ORDER})
+    out["joint"] = lambda: joint_hessian(scaled_objective, _p0(), jnp.float64(Q0))
+    return {key: staging(compute) for key, compute in out.items()}
 
 
-def synthetic_cases():
-    """The plain-step references of the in-record and joint rows (in the unit file)."""
-    cases = {("in-record", f): functools.partial(second_order, f, in_record_objective,
-                                                 in_record_vector, _p0())
-             for f in SECOND_ORDER}
-    cases["joint"] = lambda: joint_hessian(scaled_objective, _p0(), jnp.float64(Q0))
-    return cases
+def as_written(compute):
+    return compute
 
 
-@pytest.fixture(scope="module")
-def plain():
+def references(staging, keys=None):
     with enable_x64():
-        return plain_references(_cases())
+        built = cases(staging)
+        return plain_references({key: built[key] for key in (built if keys is None else keys)})
 
 
-def _custom(key):
+def custom(staging, key):
     with enable_x64():
-        return custom_values(_cases()[key])
-
-
-def synthetic_custom(key):
-    with enable_x64():
-        return custom_values(synthetic_cases()[key])
+        return custom_values(cases(staging)[key])
 
 
 def assert_completion_ok():
@@ -227,19 +229,18 @@ def assert_completion_ok():
     assert np.all(np.isfinite(value)) and np.all(np.isfinite(first))
 
 
-@pytest.mark.parametrize("form", FIRST_ORDER)
-def test_first_derivative_of_the_completed_spectrum_is_the_plain_step_s(form, plain):
-    custom, ours = _custom(("first", form))
-    assert all(np.all(np.isfinite(x)) for x in custom)
-    assert same_bits(plain["first", form], custom)
+def check_first_derivative(staging, form, plain):
+    result, ours = custom(staging, ("first", form))
+    assert all(np.all(np.isfinite(x)) for x in result)
+    assert same_bits(plain["first", form], result)
     assert not ours, [str(w.message) for w in ours]
 
 
-@pytest.mark.parametrize("form", SECOND_ORDER)
-def test_completed_second_derivative_is_nan(form, plain):
+def check_completed_second_derivative_is_nan(staging, form, plain):
     assert_completion_ok()
     with enable_x64(), pytest.warns(RingdownSecondDerivativeWarning):
-        out = leaves(second_order(form, completed_objective, completed_vector, _p0()))
+        out = leaves(staging(functools.partial(second_order, form, completed_objective,
+                                               completed_vector, _p0()))())
     if form == "jvp(grad)":
         primal, tangent = out
         assert np.isnan(tangent).all(), tangent
@@ -248,8 +249,43 @@ def test_completed_second_derivative_is_nan(form, plain):
         assert all(np.isnan(x).all() for x in out), out
 
 
+def check_in_record_second_derivative(staging, form, plain):
+    reference = plain["in-record", form]
+    result, _ours = custom(staging, ("in-record", form))
+    assert all(np.all(np.isfinite(x)) for x in reference)
+    assert same_bits(reference, result)
+
+
+def check_joint_hessian(staging, plain, label):
+    """For q G(p): H[p,p] and H[p,q] NaN; H[q,p] = G'(p) and H[q,q] = 0 as the plain step's."""
+    assert_completion_ok()
+    reference = plain["joint"]
+    pp, pq, qp, qq = custom(staging, "joint")[0]
+    print(f"\n[{label} joint hessian of q G(p)] custom pp {pp} pq {pq} qp {qp} qq {qq}; plain "
+          f"pp {reference[0]} pq {reference[1]} qp {reference[2]} qq {reference[3]}",
+          file=sys.stderr)
+    assert np.isnan(pp).all() and np.isnan(pq).all()
+    assert np.all(np.isfinite(qp)) and same_bits([reference[2]], [qp])
+    assert same_bits([reference[3]], [qq]) and float(qq) == 0.0
+
+
+@pytest.fixture(scope="module")
+def plain():
+    return references(staged, [("first", f) for f in FIRST_ORDER] + ["grad"])
+
+
+@pytest.mark.parametrize("form", FIRST_ORDER)
+def test_staged_first_derivative_of_the_completed_spectrum_is_the_plain_step_s(form, plain):
+    check_first_derivative(staged, form, plain)
+
+
+@pytest.mark.parametrize("form", SECOND_ORDER)
+def test_staged_completed_second_derivative_is_nan(form, plain):
+    check_completed_second_derivative_is_nan(staged, form, plain)
+
+
 def test_the_warning_filter_turns_a_completed_hessian_into_an_exception():
     with enable_x64(), warnings.catch_warnings():
         warnings.filterwarnings("error", category=RingdownSecondDerivativeWarning)
         with pytest.raises(RingdownSecondDerivativeWarning):
-            jax.hessian(completed_vector)(_p0())
+            jax.jit(jax.hessian(completed_vector))(_p0())

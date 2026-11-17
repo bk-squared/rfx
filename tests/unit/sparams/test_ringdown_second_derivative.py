@@ -28,10 +28,10 @@ import pytest
 
 from rfx.errors import RingdownSecondDerivativeWarning
 from rfx.ringdown import RingdownSpec, _jax as rj, gradient_witness
-from tests._x64_compat import enable_x64
+from tests.contracts import test_ringdown_second_derivative as synthetic
 from tests.contracts.test_ringdown_second_derivative import (
-    FIRST_ORDER, SECOND_ORDER, assert_completion_ok, custom_values, first_order, joint_hessian,
-    leaves, plain_references, same_bits, second_order, synthetic_cases, synthetic_custom,
+    FIRST_ORDER, SECOND_ORDER, custom_values, first_order, joint_hessian, leaves,
+    plain_references, same_bits, second_order,
 )
 from tests.unit.sparams import test_ringdown_probe_channels as probe_scene
 from tests.unit.sparams.test_ringdown_run import FREQS, _box
@@ -261,28 +261,26 @@ def test_probe_in_record_second_derivative_is_the_plain_step_s(plain):
     assert same_bits(reference, custom)
 
 
+
 @pytest.fixture(scope="module")
 def synthetic_plain():
-    with enable_x64():
-        return plain_references(synthetic_cases())
+    return synthetic.references(synthetic.as_written)
+
+
+@pytest.mark.parametrize("form", FIRST_ORDER)
+def test_synthetic_first_derivative_as_written_is_the_plain_step_s(form, synthetic_plain):
+    synthetic.check_first_derivative(synthetic.as_written, form, synthetic_plain)
+
+
+@pytest.mark.parametrize("form", SECOND_ORDER)
+def test_synthetic_completed_second_derivative_as_written_is_nan(form, synthetic_plain):
+    synthetic.check_completed_second_derivative_is_nan(synthetic.as_written, form, synthetic_plain)
 
 
 @pytest.mark.parametrize("form", SECOND_ORDER)
 def test_synthetic_in_record_second_derivative_is_the_plain_step_s(form, synthetic_plain):
-    reference = synthetic_plain["in-record", form]
-    custom, _ours = synthetic_custom(("in-record", form))
-    assert all(np.all(np.isfinite(x)) for x in reference)
-    assert same_bits(reference, custom)
+    synthetic.check_in_record_second_derivative(synthetic.as_written, form, synthetic_plain)
 
 
 def test_synthetic_joint_hessian_needs_the_second_derivative_only_where_it_is_nan(synthetic_plain):
-    """For q G(p): H[p,p] and H[p,q] NaN; H[q,p] = G'(p) and H[q,q] = 0 as the plain step's."""
-    assert_completion_ok()
-    reference = synthetic_plain["joint"]
-    pp, pq, qp, qq = synthetic_custom("joint")[0]
-    print(f"\n[synthetic joint hessian of q G(p)] custom pp {pp} pq {pq} qp {qp} qq {qq}; plain "
-          f"pp {reference[0]} pq {reference[1]} qp {reference[2]} qq {reference[3]}",
-          file=sys.stderr)
-    assert np.isnan(pp).all() and np.isnan(pq).all()
-    assert np.all(np.isfinite(qp)) and same_bits([reference[2]], [qp])
-    assert same_bits([reference[3]], [qq]) and float(qq) == 0.0
+    synthetic.check_joint_hessian(synthetic.as_written, synthetic_plain, "synthetic")
