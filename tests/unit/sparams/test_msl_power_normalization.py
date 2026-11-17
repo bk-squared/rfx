@@ -19,7 +19,7 @@ import pytest
 from jax import enable_x64
 
 from rfx import Box, Simulation
-# #980 Phase 2 moved compute_msl_s_matrix verbatim into rfx/sparams/msl.py, so
+# Phase 2 moved compute_msl_s_matrix verbatim into rfx/sparams/msl.py, so
 # ``msl_solve_s_from_waves`` is looked up as a global of THAT module. The two
 # monkeypatches below patch where the lane reads; patching the
 # ``rfx.api._sparams`` re-export would still succeed and silently stop biting
@@ -181,9 +181,9 @@ def test_passive_reciprocal_power_s_survives_raw_and_default_projection(
     assert calls == [route] * 4  # Both ports driven on each complete extraction.
     for result in (raw, default):
         assert result.assembly == "multi_drive_solve" and np.max(result.cond_a) < 3
-        # #2014: S is referenced to the declared 50 ohm; the waves are formed
+        # S is referenced to the declared 50 ohm; the waves are formed
         # at the line Z0, so the wave split is checked on S brought back there.
-        # Under an override the line Z0 is formed from it in float32 (#2199).
+        # Under an override the line Z0 is formed from it in float32.
         np.testing.assert_allclose(result.line_impedances, references,
                                    rtol=1e-12 if route == "run" else 1e-6)
         np.testing.assert_allclose(result.reference_impedances, [50.0, 50.0], rtol=1e-12)
@@ -231,7 +231,7 @@ def test_reference_metadata_is_neither_fitted_z0_nor_the_50_ohm_load(monkeypatch
         assert meta["current_convention"] == "native_msl_loop_current"
         np.testing.assert_allclose(meta["s_reference_impedances_ohm"], references, rtol=1e-12)
         assert [p["impedance_ohm"] for p in meta["port_definitions"]] == [50, 50]
-        # The dump keeps the line-Z0 matrix (#2014); referred to the declared
+        # The dump keeps the line-Z0 matrix; referred to the declared
         # 50 ohm by the producer's own step it is the returned S.
         np.testing.assert_array_equal(
             renormalize_power_waves(jnp.asarray(saved["production_smatrix"]),
@@ -255,7 +255,7 @@ def test_forward_power_objective_preserves_nonzero_material_tape_gradient(monkey
         def objective(theta):
             result = _compute(sim, eps_override=_knob(grid, theta))
             # Under an override the line Z0 is formed from it in its own
-            # precision (#2199): float32 rounding, not a different line.
+            # precision: float32 rounding, not a different line.
             np.testing.assert_allclose(result.line_impedances, references,
                                        rtol=1e-12 if x64 else 1e-6)
             np.testing.assert_allclose(result.reference_impedances, [50.0, 50.0], rtol=1e-12)

@@ -241,7 +241,7 @@ def test_msl_nu_fence_message_parity_sparams_vs_preflight():
 
 
 # Which single profile makes the sim non-uniform. dz joined the waveguide
-# dispatch in the #811 fix, so the fence/parity contracts below bind on it
+# dispatch, so the fence/parity contracts below bind on it
 # too. The dz profile is genuinely graded (a uniform-valued profile only
 # tests plumbing, never NU metrics); it sums exactly to the 0.010 m z
 # extent with adjacent ratios <= 1.4.
