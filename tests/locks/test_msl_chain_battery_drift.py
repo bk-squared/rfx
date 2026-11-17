@@ -61,7 +61,7 @@ A6000 for the notch (run 369367264070); 75 s for the notch and 68 s for the
 thru on an RTX 3080 (run 369367264556). The notch's solve takes 34 min on four
 VESSL CPU cores (run 369367264068), which keeps both off the CPU lanes.
 
-The trace's y extent and the stub's x extent are solved 11.667 % off their drawn size,
+The trace's y extent and the stub's x extent are solved 11.667 % larger than drawn,
 so this lock pins the stored S-parameters, not those sizes.
 """
 LOCK_PROVENANCE = {
