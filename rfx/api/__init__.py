@@ -323,7 +323,7 @@ class Simulation(
         from rfx.boundaries import normalize_boundary
 
         self._snap, self._interface_eps, self._pec_occupancy_model = _validate_constructor_choices(
-            snap, interface_eps, pec_occupancy_model)
+            snap, interface_eps, pec_occupancy_model, dx)
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;

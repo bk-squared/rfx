@@ -3,7 +3,6 @@ import math
 import numpy as np
 
 from rfx._internal._grid_metric import is_one_cell_size
-from rfx._traced_refusal import TracedStructureRefusal
 from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import profile_node_at, profile_cell_at, profile_span_is_uniform
 from rfx.preflight.msl_codes import msl_text, msl_join
@@ -163,14 +162,7 @@ def msl_auto_probe_declaration(sim, *, position, width, height, n_probes,
 
     Keep the bounding-box estimate used at registration; admission calls this
     again after all geometry has been declared. Explicit permittivity wins.
-    A traced ``sim._dx`` raises ``TracedStructureRefusal``: the ladder counts
-    are host integers sized from the cell size.
     """
-    if is_tracer(sim._dx):
-        raise TracedStructureRefusal(
-            "add_msl_port: the automatic probe ladder is sized on the host from the "
-            "cell size dx, and dx is traced (Simulation(dx=...) under jax.jit, "
-            "jax.grad or jax.vmap). Keep dx concrete in a model with an MSL port.")
     from rfx.grid import C0
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 

@@ -4,10 +4,7 @@ A site moved from ``ValueError`` raises ``RfxRefusal``; a site moved from
 ``NotImplementedError`` raises ``RfxUnsupported``. Each test reaches its
 site through the call named in its row, asserts the exact new type, the old
 builtin and ``RfxError`` as bases, and the old message. A kept
-``NotImplementedError`` site stays exactly ``NotImplementedError``. A traced
-``dx`` reaching ``add_msl_port``'s automatic probe ladder raises
-``TracedStructureRefusal``, and the same board with a concrete ``dx``
-registers its port.
+``NotImplementedError`` site stays exactly ``NotImplementedError``.
 
 Expected messages are literals, or are formatted here from the inputs the
 test passes. Where a message embeds a tracer's repr, the literal text on
@@ -22,7 +19,6 @@ import pytest
 
 from rfx import (Box, GaussianPulse, OrientedBox, RelativeStrength, Simulation, Sphere,
                  drude_pole_map, lorentz_pole, lorentz_pole_map)
-from rfx._traced_refusal import TracedStructureRefusal
 from rfx.boundaries.graded_periodic import admit_graded_periodic
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import init_materials
@@ -470,35 +466,6 @@ def test_run_refuses_an_extended_plane_wave_under_a_transform(kind):
     assert_moved(raised(jax.grad(trace), 1.0), RfxUnsupported, NotImplementedError,
                  "CustomWaveform and closed_box TFSF cannot be passed through run() under external "
                  "JAX transformations; differentiate forward() instead.")
-
-
-def msl_board(dx):
-    sim = Simulation(freq_max=16e9, domain=(24e-3, 12e-3, 8e-3), dx=dx, boundary="pec")
-    sim.add_material("substrate", eps_r=3.0)
-    sim.add(Box((2e-3, 2e-3, 1e-3), (14e-3, 10e-3, 3e-3)), material="substrate")
-    sim.add(Box((2e-3, 2e-3, 0.0), (14e-3, 10e-3, 1e-3)), material="pec")
-    sim.add_msl_port(position=(5e-3, 6e-3, 1e-3), width=2e-3, height=2e-3, direction="+x",
-                     impedance=50.0, waveform=GaussianPulse(f0=8e9, bandwidth=0.8))
-    return sim
-
-
-@pytest.mark.parametrize("transform", [jax.jit, jax.grad], ids=["jit", "grad"])
-def test_msl_port_refuses_a_traced_dx(transform):
-    def objective(v):
-        msl_board(jnp.float32(1e-3) + v * 1e-5)
-        return v * 1.0
-
-    exc = raised(transform(objective), jnp.float32(0.0))
-    assert type(exc) is TracedStructureRefusal
-    assert isinstance(exc, RfxUnsupported)
-    assert str(exc) == ("add_msl_port: the automatic probe ladder is sized on the host from the "
-                        "cell size dx, and dx is traced (Simulation(dx=...) under jax.jit, "
-                        "jax.grad or jax.vmap). Keep dx concrete in a model with an MSL port.")
-
-
-def test_msl_port_registers_with_a_concrete_dx():
-    sim = msl_board(jnp.float32(1e-3))
-    assert len(sim._msl_ports) == 1
 
 
 def test_kept_pad_reach_refusal_on_a_traced_shape_bound():
