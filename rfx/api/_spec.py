@@ -567,9 +567,6 @@ class Result(NamedTuple):
     settling_witness : dict or None
         Status, reason, per-bin tail shares and identification errors, and
         selected-record provenance for the value witness.
-    current_moment_monitor : object or None
-        Under a caller's ``jax.jit`` with x64 off, its ``centres`` come back
-        float32 and its ``block_key`` int32.
     """
     state: object
     time_series: jnp.ndarray
@@ -979,9 +976,6 @@ class ForwardResult(NamedTuple):
     Above about 1e-2 means unsettled; small proves nothing: it follows the strongest field
     and says nothing about the adjoint record. None for autodiff, NaN for zero signal.
     Use :func:`rfx.gradient_record_length_witness` to witness an adjoint gradient.
-
-    Under a caller's ``jax.jit`` with x64 off, ``current_moment_monitor.centres``
-    comes back float32 and ``current_moment_monitor.block_key`` int32.
     """
     time_series: jnp.ndarray
     ntff_data: object = None

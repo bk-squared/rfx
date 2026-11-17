@@ -123,7 +123,11 @@ class CurrentMomentMonitor(NamedTuple):
     centres : (n_blocks, 3) float64 numpy array
         Each block's expansion centre — the unweighted mean of the positions
         of the edges in it. Fixed geometry: it never moves with the
-        solution.
+        solution. Under a caller's ``jax.jit`` with x64 off it comes back
+        float32.
+    block_key : (n_blocks, 2) integer numpy array
+        Each block's in-plane (i, j) block index, in block order. Under a
+        caller's ``jax.jit`` with x64 off it comes back int32.
     inv_dx_e, inv_dy_e, inv_dz_e : (ni,), (nj,), (nk,) arrays
         The E-update inverse spacings the curl divides by, cropped to the
         slab. On a uniform grid every entry is ``1/dx``.

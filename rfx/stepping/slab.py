@@ -312,10 +312,10 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
     if mesh is not None and layout.ghost_width and is_sharded(array, layout, mesh):
         return _halo(array, layout, mesh, fill)
     if mesh is not None and not isinstance(array, jax.core.Tracer):
-        xp = np if isinstance(array, np.ndarray) else jnp
+        array = np.asarray(array)
         shape = (layout.n_devices * layout.nx_local, *array.shape[1:])
         def slab(index):
-            return _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, xp)
+            return _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, np)
         return jax.make_array_from_callback(shape, sharding or NamedSharding(mesh, P('x')),
                                            slab)
     # Match the historical local AD program: align first, then slice and stack.
