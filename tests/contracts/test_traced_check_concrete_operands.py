@@ -212,6 +212,11 @@ def _periodic_box(lo, hi):
 
 
 def test_box_with_one_traced_corner_on_a_periodic_axis_fills_as_the_plain_call():
+    """The jit fill matches the plain fill within rfx's cross-trace bar.
+
+    The traced corner is rounded in float32 arithmetic inside the program, so
+    the two fills agree to 9 float32 ULP of the peak permittivity, not bitwise.
+    """
     grid = _periodic_grid()
 
     def fill(lo):
@@ -223,4 +228,6 @@ def test_box_with_one_traced_corner_on_a_periodic_axis_fills_as_the_plain_call()
     jax.effects_barrier()
     plain = np.asarray(fill(BOX_LO))
     assert traced.shape == plain.shape
-    np.testing.assert_array_equal(traced, plain)
+    peak = float(np.max(np.abs(plain)))
+    np.testing.assert_allclose(traced, plain, rtol=0,
+                               atol=9 * float(np.spacing(np.float32(peak))))
