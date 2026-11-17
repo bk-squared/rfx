@@ -50,7 +50,6 @@ What it does NOT catch (stated plainly, because the gap is the point)
    bare-numeric detector here is a false-positive storm, not a gate.
 
 It asserts NO physics and changes NO gate value.
-The transmission-tilt floor is the earlier reproduced count of 54, raised from 45 by six citations for the corrected bound comparison and three more when the artifact field itself was re-paired.
 """
 
 from __future__ import annotations
@@ -682,6 +681,7 @@ def test_every_frozen_citation_still_matches_its_record(ref: Reference) -> None:
 
 @pytest.mark.docs_consistency
 def test_the_cited_population_is_still_present() -> None:
+    """The population floors preserve the merged-tree census measured earlier: 277 references, 264 value-checked references and 25 distinct artifacts."""
     refs = _refs()
     value_checked = [r for r in refs if r.literal is not None]
     artifacts = {r.path for r in refs}
@@ -716,6 +716,7 @@ def test_a_skipped_artifact_prefix_is_really_gone(prefix: str) -> None:
 @pytest.mark.parametrize("site,floor", sorted(REQUIRED_SITES.items()),
                          ids=lambda v: str(v) if not isinstance(v, tuple) else f"{v[0].split('/')[-1]}:{v[1]}")
 def test_each_registered_site_still_carries_its_references(site, floor) -> None:
+    """The transmission-tilt note's floor of 54 is the count of value-checked citations in its section 7, Numeric provenance."""
     doc, name = site
     found = [r for r in _refs() if r.doc == doc and r.site == name and r.literal is not None]
     assert len(found) >= floor, (

@@ -9,7 +9,7 @@ from rfx.ringdown import identify
 
 @pytest.mark.parametrize("scale", [1.0, 1e-34])
 def test_report_and_identification_share_poles(scale):
-    """The much larger frequency must not hide a decay drift."""
+    """Decay and frequency are compared separately so the much larger frequency cannot hide a decay drift."""
     dt = 1.9e-12
     t = np.arange(256) * dt
     expected = -np.pi * np.array([9e9, 11e9]) / [40, 200] + 2j * np.pi * np.array([9e9, 11e9])

@@ -21,7 +21,9 @@ def constant_scene(graded, kind):
 
 @pytest.mark.parametrize('kind', ['wire', 'lumped'])
 def test_constant_profile_reference_identity(kind):
-    """T1: exercise the actual hooks, time records, and in-scan spectrum."""
+    """T1: exercise the actual hooks, time records, and in-scan spectrum.
+    A driven pre/post swap must be visible.
+    """
     with enable_x64(False):
         kwargs = dict(n_steps=32, skip_preflight=True, checkpoint=False,
                       port_s11_freqs=np.array([3e9, 7e9, 13e9], np.float32))
