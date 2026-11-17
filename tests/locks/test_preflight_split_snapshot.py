@@ -1085,7 +1085,7 @@ def _refplane_partial_optin_sim():
     """The same thru with only ONE of the two wire ports opted in.
 
     Body of ``test_preflight_partial_optin_advisory``,
-    ``tests/locks/test_refplane_port_waves.py:686``, reproduced: the
+    ``tests/locks/test_refplane_port_waves.py:642``, reproduced: the
     geometry is inline in that test function, so there is no builder to
     import. Its module-level constants ARE imported rather than retyped,
     so the two cannot drift. Second of the two emission sites in
