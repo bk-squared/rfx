@@ -9,7 +9,7 @@ independent reference below uses the fixture's explicit 1 mm cell width.
 An internal PEC short provides a non-vacuous standing-wave witness. The tests
 retain their original numerical bars and compare each frequency. x64 is scoped
 so field-accumulation and integration roundoff can be separated from geometry.
-The SWR witness is a > 2.0 floor because the gates compare two monitors on the same run without pinning the standing-wave pattern.
+The SWR witness is a > 2.0 floor, not a pin of the standing-wave pattern.
 """
 from __future__ import annotations
 

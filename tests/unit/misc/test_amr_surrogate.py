@@ -93,7 +93,7 @@ class TestExportGeometrySDF:
 
     @pytest.mark.parametrize("material", ["pec", "glass"])
     def test_sdf_refuses_unsampled_thin_oriented_box(self, material):
-        """An already occupied region must not conceal the next entry's loss."""
+        """The unsnapped OrientedBox is refused because its z interval [15, 15.035) mm contains neither adjacent sample, 14*30/29 or 15*30/29 mm."""
         sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
         sim.add_material("glass", eps_r=4.0)
         sim.add(Box((0.002, 0.002, 0.002), (0.006, 0.006, 0.006)), material=material)

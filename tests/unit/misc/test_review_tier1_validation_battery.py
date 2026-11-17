@@ -10,7 +10,7 @@ Convention:
   XPASS once fixed, forcing the marker to be removed.
 - A factual-but-not-defect finding ⇒ a plain characterization test
   that documents the actual behavior.
-Yee staggering places H at the cell centre and E at a node.
+For the one-dimensional z-axis tests, Yee staggering places Ey at nodes and Hx at cell centres.
 """
 
 from __future__ import annotations
