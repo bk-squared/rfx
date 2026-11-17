@@ -543,6 +543,7 @@ def test_file_moved_into_full_ban_directory_judges_only_edited_lines(tmp_path, g
     repo, _ = make_repo(tmp_path, git_env)
     add_file(repo, git_env, "docs/m.py", "# an old prose comment\n" + "".join(f"x{i} = {i}\n" for i in range(20)))
     base = commit(repo, git_env)
+    (repo / "rfx").mkdir()
     git(repo, git_env, "mv", "docs/m.py", "rfx/m.py")
     result = check(repo, git_env, "--base", base)
     assert result.returncode == 0, result.stdout + result.stderr
