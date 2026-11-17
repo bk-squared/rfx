@@ -117,7 +117,7 @@ _GATE_LY = float(np.sum(_GATE_PROFILE))
 def _peak_modal_voltage_at_reference(port_y: float) -> float:
     """Run the real NU scan and return peak |v_ref_t| for one port position."""
     sim = Simulation(
-        freq_max=12e9, domain=(15 * _DX_COARSE, _GATE_LY, 7 * _DX_COARSE),  dx=_DX_COARSE,  # solved length; #1887
+        freq_max=12e9, domain=(15 * _DX_COARSE, _GATE_LY, 7 * _DX_COARSE),  dx=_DX_COARSE,  # solved length
         boundary=BoundarySpec(x=Boundary(lo="pec", hi="pec"),
                               y=Boundary(lo="cpml", hi="cpml"),
                               z=Boundary(lo="pec", hi="pec")),

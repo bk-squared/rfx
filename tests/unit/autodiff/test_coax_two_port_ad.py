@@ -104,32 +104,32 @@ PROBE_COUNT = 3
 PROBE_START_CELLS = 4
 PROBE_SPACING_CELLS = 2
 _FD_H = 2.0e-3
-# A6000 run 369367266495: AD=-1.2760622501, FD=-1.2760970846, gap=0.002730%; retain the 2% policy.
+# A6000: AD=-1.2760622501, FD=-1.2760970846, gap=0.002730%; retain the 2% policy.
 _REL_ERR_THRESHOLD = 0.02  # Retain the existing AD/FD policy.
 _MIN_FD_ULP_SPAN = 1.0e4
 assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0
 # The S21 phase itself against the closed form -beta*L: CPU mesh phase errors at
 # 6/8/10 GHz 0.0237/0.0287/0.0497 % (0.0206/0.0310/0.0456 % after the declared
-# line extent, #1138); repository envelope multiplier 1.5, round up to 0.01 %:
+# line extent); repository envelope multiplier 1.5, round up to 0.01 %:
 # ceil(0.000497 * 1.5 * 10000) / 10000 = 0.0008 (0.08 %).
-# A6000 run 369367266495: 6/8/10 GHz gaps=0.020715/0.030934/0.045568%; CPU envelope still sets the 0.08% bar.
+# A6000: 6/8/10 GHz gaps=0.020715/0.030934/0.045568%; CPU envelope still sets the 0.08% bar.
 _PHASE_ERROR_BAR = 0.0008
 # The AD phase gradient's gap to the closed form -beta*L/(2*eps) depends on
 # the record length, so the bar comes from the record-length witness, not
 # from the phase error alone. The earlier 0.08 % (1.5x the 0.0497 % mesh phase
 # error) was read on this 600-step record only; the same gradient from 1.5x
-# and 2x records reads 0.103 % / 0.115 % on the pre-#1138 tree and 0.124 % /
+# and 2x records reads 0.103 % / 0.115 % on the earlier tree and 0.124 % /
 # 0.110 % here (0.105 % at 600 steps), and scaling eps only between the
 # reference planes changes it by < 0.003 %. Largest gap 0.1236 %; repository
 # envelope multiplier 1.5, round up to 0.01 %:
 # ceil(0.001236 * 1.5 * 10000) / 10000 = 0.0019 (0.19 %). A stop_gradient on
 # the traced port voltage puts the gradient 7 % off and still fails.
-# A6000 run 369367266495: AD=-1.2760622501, closed=-1.2747280763, gap=0.104663%; CPU envelope still sets the 0.19% bar.
+# A6000: AD=-1.2760622501, closed=-1.2747280763, gap=0.104663%; CPU envelope still sets the 0.19% bar.
 _PHASE_GRAD_BAR = 0.0019
 # Derived from this fixture: measured |d mean |S21|^2 / d eps_scale|
 # = 0.00263521; round up, then multiply by 3. Catch the pre-fix spurious
 # power slope from the analytic 1/r drive.
-# A6000 run 369367266495: power AD=-0.0003003052843; below the CPU envelope and its 3x bound.
+# A6000: power AD=-0.0003003052843; below the CPU envelope and its 3x bound.
 _POWER_GRAD_BOUND = 0.00264 * 3
 
 
@@ -170,7 +170,7 @@ def phase_sensitivity():
     # expensive FDTD trace instead of running a separate simulation.
     # The closed forms here are the matched line's (phase -beta*L, constant power), so
     # S is read at the line (z_tem / sqrt(eps_scale)), not at the declared 50 ohm
-    # it is referred to since #2014, whose mismatch adds its own eps_scale slope.
+    # it is referred to, whose mismatch adds its own eps_scale slope.
     def objectives(eps):
         s = line_s(_two_port(eps))
         return _band_mean_s21_phase(s), coax_band_mean_s21_sq(s)
@@ -248,7 +248,6 @@ def test_coax_two_port_eps_scale_unity_matches_concrete_path(phase_sensitivity):
     error = np.abs(sb - sa) / scale
     print(f"column-normalized complex error: {error}; maximum={np.max(error):.10g}")
     # Measured maximum column-normalized complex difference: 8.22238e-6.
-    # A6000 run 369367266495: maximum=1.0694297116e-5, below the unchanged 1e-4 bar.
     assert np.all(error <= 1.0e-4)
     # Equal forward values alone cannot detect stop_gradient. Reuse the
     # phase tangent witness to require the differentiable path to stay live.
