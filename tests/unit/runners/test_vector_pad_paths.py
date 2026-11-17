@@ -27,6 +27,7 @@ ADJOINT_STEPS = 160
 SWEEP_STEPS = 60
 NOT_BITWISE = {
     ('design', 'adjoint', 'aligned'), ('design', 'adjoint', 'odd'),
+    ('design_h', 'adjoint', 'aligned'), ('design_h', 'adjoint', 'odd'),
     ('design', 'autodiff', 'aligned'), ('design', 'autodiff', 'odd'),
     ('design face', 'autodiff', 'aligned'), ('design face', 'autodiff', 'odd'),
     ('vmap', 'pec', 'odd'),
