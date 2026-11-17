@@ -52,7 +52,7 @@ def _intercept_grid_build(monkeypatch):
     original = Simulation._build_grid
     admitted = set()
     def _boom(self, **kwargs):
-        # #1512 admission must read the realized geometry before the calculator
+        # admission must read the realized geometry before the calculator
         # emits its NTFF warning; intercept the calculator's subsequent build.
         if self._msl_ports and id(self) not in admitted:
             admitted.add(id(self))
@@ -75,7 +75,7 @@ def _msl_thru() -> Simulation:
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
-    # the trace is foil: a SHEET on the substrate-top node plane (#931 §1.3),
+    # the trace is foil: a SHEET on the substrate-top node plane,
     # not a one-cell Box (which the contract realizes as a filled slab with a
     # wall on its underside AND its topside).
     sim.add(Box((0.002, y_c - (3 + .35) * 2e-4, 0.0008),
@@ -92,7 +92,7 @@ def _wr90() -> Simulation:
         freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=6)  # solved length; #1887
+        cpml_layers=6)  # solved length
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
         sim.add_waveguide_port(x, direction=d, mode=(1, 0), mode_type="TE",
@@ -140,7 +140,7 @@ def _assert_no_ntff_warning(records) -> None:
 
 
 # --------------------------------------------------------------------------
-# MSL — the path #704 names first
+# MSL
 # --------------------------------------------------------------------------
 
 
@@ -174,7 +174,7 @@ def test_msl_silent_without_ntff_box(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# waveguide — the audit sibling #704 names (the coaxial one left in #1212)
+# waveguide
 # --------------------------------------------------------------------------
 
 

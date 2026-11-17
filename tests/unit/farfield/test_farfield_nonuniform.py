@@ -35,7 +35,7 @@ from rfx import Simulation
 from rfx.measurement.farfield import compute_far_field
 from rfx.farfield import directivity
 
-#: Ring-down rule (#885): the record must have decayed this far before a
+#: Ring-down rule: the record must have decayed this far before a
 #: rect-window DFT of it means anything.
 SETTLING_MAX_DB = -40.0
 N_STEPS = 600
@@ -46,14 +46,14 @@ def _nu_dipole_directivity(dz_profile):
     # (realized 33 cells per x/y axis), so the 10-20 mm NTFF box — realized
     # 10.5-19.5 mm — sits seven cells from the absorber and three from the
     # source.
-    # z is the profile sum (27 or 29 mm), the length the grid solves (#1941).
+    # z is the profile sum (27 or 29 mm), the length the grid solves.
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, float(np.sum(dz_profile))), dx=1.5e-3,
                      dz_profile=dz_profile, boundary="cpml", cpml_layers=6)
     sim.add_source((0.015, 0.015, 0.015), "ez")
     sim.add_probe((0.015, 0.015, 0.015), "ez")
     # An independent ring-down witness: a probe OFF the drive cell, so the
     # record measures the field decaying rather than the source switching
-    # off (#1090). Without it the run reports no settling_db at all.
+    # off. Without it the run reports no settling_db at all.
     sim.add_probe((0.021, 0.015, 0.015), "ez")
     sim.add_ntff_box(corner_lo=(0.010, 0.010, 0.010),
                      corner_hi=(0.020, 0.020, 0.020), freqs=[3e9])
