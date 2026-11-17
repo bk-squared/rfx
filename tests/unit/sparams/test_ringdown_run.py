@@ -810,7 +810,7 @@ def _case_not_a_spec():
     (_case_waveguide, "waveguide"),
     (_case_coax, "coaxial"),
     (_case_floquet, "periodic axes|Floquet"),
-    (_case_tfsf_cw, "continuous wave"),
+    (_case_tfsf_cw, "measured for the closed-box plane wave"),
     (_case_kerr, "Kerr"),
     (_case_devices, "distributed"),
     (_case_source_on, "still on inside the identification window"),

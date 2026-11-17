@@ -59,11 +59,11 @@ def test_stream_window_levels_equal_record_levels(name):
     rec_end = pulse_end(level(rec_h, rec_e))
     stream_end = pulse_end(level(long_h, long_e))
     rec = windows(rec_h, rec_e, LENGTHS, rec_end)
+    got = {}
     for n in LENGTHS:
-        got = windows(*stream(name, n), (n,), stream_end)
-        for key, value in got.items():
-            assert same_level(value, rec[key]), (
-                f"{name} {key}: stream {value} against record {rec[key]}")
+        got.update(windows(*stream(name, n), (n,), stream_end))
+    differ = {key: (got[key], rec[key]) for key in rec if not same_level(got[key], rec[key])}
+    assert not differ, f"{name}: windows not at the record's level (stream, record): {differ}"
 
 
 def test_level_is_each_kind_by_its_own_peak():
