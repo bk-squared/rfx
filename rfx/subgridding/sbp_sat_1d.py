@@ -39,10 +39,6 @@ from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 
 
-# ---------------------------------------------------------------------------
-# SBP operator construction
-# ---------------------------------------------------------------------------
-
 def build_sbp_norm(n: int, dx: float) -> np.ndarray:
     """Build diagonal SBP norm matrix P (returned as 1-D vector of length *n*).
 
@@ -98,10 +94,6 @@ def build_sbp_diff(n: int, dx: float) -> np.ndarray:
     return D
 
 
-# ---------------------------------------------------------------------------
-# Interpolation matrices
-# ---------------------------------------------------------------------------
-
 def build_interpolation_c2f(n_coarse: int, n_fine: int, ratio: int) -> np.ndarray:
     """Build coarse-to-fine linear interpolation at the interface boundary.
 
@@ -132,21 +124,25 @@ def build_interpolation_f2c(n_fine: int, n_coarse: int, ratio: int) -> np.ndarra
     return build_interpolation_c2f(n_coarse, n_fine, ratio).T.copy()
 
 
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
-
 class SubgridConfig1D(NamedTuple):
-    """Configuration for 1D SBP-SAT subgridded domain."""
-    n_c: int            # coarse grid E-nodes
-    n_f: int            # fine grid E-nodes
-    dx_c: float         # coarse cell size
-    dx_f: float         # fine cell size
-    dt: float           # fine-grid timestep
-    ratio: int          # grid ratio (dx_c / dx_f)
-    tau: float          # SAT penalty parameter (semi-discrete)
-    p_c: jnp.ndarray    # SBP norm for coarse grid (n_c,)
-    p_f: jnp.ndarray    # SBP norm for fine grid (n_f,)
+    """Configuration for 1D SBP-SAT subgridded domain.
+
+    ``n_c`` and ``n_f`` count the E-nodes of the coarse and fine grids.
+    ``dx_c`` and ``dx_f`` are the coarse and fine cell sizes.  ``dt`` is the
+    fine-grid time step.  ``ratio`` is the grid ratio ``dx_c / dx_f``.
+    ``tau`` is the semi-discrete SAT penalty parameter.  ``p_c`` and ``p_f``
+    are the SBP norms of the coarse grid, shape ``(n_c,)``, and of the fine
+    grid, shape ``(n_f,)``.
+    """
+    n_c: int
+    n_f: int
+    dx_c: float
+    dx_f: float
+    dt: float
+    ratio: int
+    tau: float
+    p_c: jnp.ndarray
+    p_f: jnp.ndarray
 
 
 class SubgridState1D(NamedTuple):
@@ -154,17 +150,17 @@ class SubgridState1D(NamedTuple):
 
     The interface is between e_c[-1] and e_f[0].  These represent the
     same physical point and are kept synchronised (``e_c[-1] == e_f[0]``).
+
+    ``e_c`` and ``e_f`` hold Ez on the coarse grid, shape ``(n_c,)``, and on
+    the fine grid, shape ``(n_f,)``; ``h_c`` and ``h_f`` hold Hy, shapes
+    ``(n_c-1,)`` and ``(n_f-1,)``.
     """
-    e_c: jnp.ndarray    # Ez on coarse grid (n_c,)
-    h_c: jnp.ndarray    # Hy on coarse grid (n_c-1,)
-    e_f: jnp.ndarray    # Ez on fine grid (n_f,)
-    h_f: jnp.ndarray    # Hy on fine grid (n_f-1,)
+    e_c: jnp.ndarray
+    h_c: jnp.ndarray
+    e_f: jnp.ndarray
+    h_f: jnp.ndarray
     step: int
 
-
-# ---------------------------------------------------------------------------
-# Initialisation
-# ---------------------------------------------------------------------------
 
 def init_subgrid_1d(
     n_c: int = 60,
@@ -212,10 +208,6 @@ def init_subgrid_1d(
     return config, state
 
 
-# ---------------------------------------------------------------------------
-# Elementary 1D FDTD updates
-# ---------------------------------------------------------------------------
-
 def _update_h_1d(e: jnp.ndarray, h: jnp.ndarray,
                  dt: float, dx: float) -> jnp.ndarray:
     """Standard 1D Yee H-update:  H += (dt/mu0) * (E[i+1] - E[i]) / dx."""
@@ -229,10 +221,6 @@ def _update_e_1d(e: jnp.ndarray, h: jnp.ndarray,
     dh_dx = (h[1:] - h[:-1]) / dx
     return e.at[1:-1].add((dt / EPS_0) * dh_dx)
 
-
-# ---------------------------------------------------------------------------
-# Coupled SBP-SAT step
-# ---------------------------------------------------------------------------
 
 def step_subgrid_1d(
     state: SubgridState1D,
@@ -257,6 +245,18 @@ def step_subgrid_1d(
     and held frozen during fine sub-steps.  This temporal interpolation
     (zeroth-order hold) introduces an O(dt_c) splitting error which does
     not cause instability.
+
+    The combined norm ``dx_c/2 + dx_f/2`` is the total volume of the shared
+    E-node, a half cell on each side.  The shared node sits between
+    ``h_c[-1]`` (left, coarse) and ``h_f[0]`` (right, fine), and its update
+    is the Yee update generalised to the combined cell,
+    ``E_shared += (dt / eps0) * (h_f[0] - h_c[-1]) / P_shared``.  The outer
+    ends are PEC: ``e_f[-1]`` is set to zero after each fine E update and
+    ``e_c[0]`` after the coarse E update.  The coarse H update reads the
+    shared node ``e_c[-1]`` as updated during the fine sub-steps.
+    ``_update_e_1d`` changes only indices ``1:-1``, so the coarse E update
+    leaves ``e_c[-1]`` untouched and ``e_c[-1] == e_f[0]`` still holds after
+    the step.
     """
     dt = config.dt
     dx_c, dx_f = config.dx_c, config.dx_f
@@ -266,46 +266,24 @@ def step_subgrid_1d(
     e_c, h_c = state.e_c, state.h_c
     e_f, h_f = state.e_f, state.h_f
 
-    # Combined SBP norm at the shared interface node:
-    #   P_shared = dx_c/2 + dx_f/2
-    # This is the total "volume" associated with the shared E-node,
-    # accounting for the half-cell on each side.
     p_shared = dx_c / 2.0 + dx_f / 2.0
 
-    # ── Fine sub-steps ───────────────────────────────────────────
     for _ in range(ratio):
-        # 1. H-update on fine grid (all H nodes, using current E)
         h_f = _update_h_1d(e_f, h_f, dt, dx_f)
 
-        # 2. E-update on fine grid — interior only (indices 1:-1)
         e_f = _update_e_1d(e_f, h_f, dt, dx_f)
 
-        # 3. Shared interface E-node update.
-        #    This node sits between h_c[-1] (left, coarse) and h_f[0] (right, fine).
-        #    Standard Yee update generalised to the combined cell:
-        #      E_shared += (dt / eps0) * (h_f[0] - h_c[-1]) / P_shared
         e_shared = e_c[-1] + (dt / EPS_0) * (h_f[0] - h_c[-1]) / p_shared
         e_c = e_c.at[-1].set(e_shared)
         e_f = e_f.at[0].set(e_shared)
 
-        # 4. PEC at the far right end of the fine grid
         e_f = e_f.at[-1].set(0.0)
 
-    # ── Coarse step ──────────────────────────────────────────────
-    # H-update on coarse grid (all H nodes, using current E including
-    # the shared node e_c[-1] which was updated during fine sub-steps)
     h_c = _update_h_1d(e_c, h_c, dt_c, dx_c)
 
-    # E-update on coarse grid — interior only (indices 1:-1)
     e_c = _update_e_1d(e_c, h_c, dt_c, dx_c)
 
-    # PEC at the far left end of the coarse grid
     e_c = e_c.at[0].set(0.0)
-
-    # Re-synchronise the shared node after the coarse E interior update
-    # (the coarse interior update does NOT touch e_c[-1] because
-    #  _update_e_1d only modifies indices 1:-1, and e_c[-1] is the last
-    #  index which is excluded.  So e_c[-1] == e_f[0] still holds.)
 
     return SubgridState1D(
         e_c=e_c, h_c=h_c,
@@ -314,22 +292,16 @@ def step_subgrid_1d(
     )
 
 
-# ---------------------------------------------------------------------------
-# Diagnostics
-# ---------------------------------------------------------------------------
-
 def compute_energy(state: SubgridState1D, config: SubgridConfig1D) -> float:
     """Total discrete electromagnetic energy.
 
     To avoid double-counting the shared interface node, we use the
     SBP norm weights: the shared node gets ``dx_c/2 + dx_f/2`` total
     weight, split between the two grids.
+
+    The E energy weights interior nodes by ``dx_c`` or ``dx_f`` and boundary
+    nodes by ``dx_c/2`` or ``dx_f/2``.
     """
-    # E energy: coarse interior nodes get dx_c, coarse boundary nodes get dx_c/2
-    # Fine interior nodes get dx_f, fine boundary nodes get dx_f/2
-    # The shared node (e_c[-1] == e_f[0]) contributes dx_c/2 from coarse
-    # and dx_f/2 from fine = (dx_c + dx_f)/2 total.  This is exactly what
-    # we get by summing the SBP norm contributions from both grids.
     energy_e_c = float(jnp.sum(state.e_c ** 2 * config.p_c)) * EPS_0
     energy_h_c = float(jnp.sum(state.h_c ** 2)) * MU_0 * config.dx_c
     energy_e_f = float(jnp.sum(state.e_f ** 2 * config.p_f)) * EPS_0
