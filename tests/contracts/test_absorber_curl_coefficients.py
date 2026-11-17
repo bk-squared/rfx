@@ -112,8 +112,7 @@ def observe(monkeypatch, sim):
 def coefficient_ulp_bar(owner):
     # ce_today/(1+loss) and the update's one-expression Cb differ by rounding
     # of two extra operations; measured stand-alone on 200,000 random cells
-    # (eps 1-12, sigma 1e-3-1e3): max 6 ULP, 0.9 % above 2
-    # (independent review, 2026-10-10). A restored defect is 1e6 ULP.
+    # (eps 1-12, sigma 1e-3-1e3): max 6 ULP, 0.9 % above 2. A restored defect is 1e6 ULP.
     return 2 if owner in ('debye', 'mixed') else 8
 
 

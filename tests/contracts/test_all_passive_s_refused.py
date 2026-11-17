@@ -89,7 +89,7 @@ def _default(sim, *, devices=None):
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("wire", [False, True])
 def test_all_passive_drive_scan_forms_every_column(mesh, wire):
-    # Main #1915 drives each declared port, even when all are passive.
+    # Main drives each declared port, even when all are passive.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = _scene(mesh, wire=wire, illumination="none").run(

@@ -75,7 +75,7 @@ def test_msl_substrate_through_x_absorber_is_silent():
 
 @pytest.mark.parametrize("family", ["debye", "lorentz"])
 def test_a_pole_carrying_board_on_the_absorber_is_left_to_the_dispersive_advisory(family):
-    # Its hi pad stays background (#808) and its lo pad drops the poles, so
+    # Its hi pad stays background and its lo pad drops the poles, so
     # "continues this body's material" would misstate the pad; the dispersive
     # advisory reports that face with the real mechanism.
     from rfx.materials.debye import DebyePole
@@ -93,7 +93,7 @@ def test_a_pole_carrying_board_on_the_absorber_is_left_to_the_dispersive_advisor
 
 @pytest.mark.parametrize("face, z_lo, fires", [
     # ends 0.7 cell short of the z-hi face: the node one cell in is the board's,
-    # and the hi-face promotion (#638/#655) continues it into the pad
+    # and the hi-face promotion continues it into the pad
     ("z-hi", .01 - .0016 - .7 * .0004, True),
     # starts 0.3 cell above the z-lo face: the face node is vacuum, so is the pad
     ("z-lo", .3 * .0004, False),
