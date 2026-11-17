@@ -235,8 +235,10 @@ def run_uniform(
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
+    from rfx.model.source_admission import conductor_operator
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
-        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
+        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors,
+        operator=conductor_operator(smoothing=subpixel_smoothing, conformal=conformal_pec))
     from rfx.model.conductors import stepped_conductors
     conductors = stepped_conductors(conductors, conformal_operands=conformal_weights)
     pec_mask = conductors.pec_cells
@@ -681,6 +683,9 @@ def run_uniform(
     from rfx.stepping import prepared as prepared_step
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
+    if sim._lumped_rlc:
+        from rfx.model.source_admission import LumpedRLCInputs
+        rlc_metas = LumpedRLCInputs(rlc_metas, sim, stepping_product)
     # The record and the call below read the same final conductor object.
     conductors, geometry_record = at_kernel(sim, conductors, lane="run_uniform", pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges

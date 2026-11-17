@@ -535,12 +535,21 @@ def test_rlc_label_rows_are_non_geometric():
     'cavity_faces', 'stack_snapped_patch', 'off_lattice_edges',
 ])
 def test_rlc_rows_preserve_realization_findings(scene_id):
+    from rfx._internal._grid_metric import field_index
+    from rfx.realized_geometry import _assembly
     from tests.locks.test_preflight_split_snapshot import _FIXTURES
     _, build, kwargs, _ = next(row for row in _FIXTURES if row[0] == scene_id)
     sim = build()
     before = [i.to_dict() for i in sim.preflight(**kwargs)]
     rows = sim.realized_geometry().realization_table.rows
-    sim.add_lumped_rlc(tuple(float(v)/2 for v in sim._domain), 'ez', R=50.)
+    position = tuple(float(v)/2 for v in sim._domain)
+    if scene_id == 'off_lattice_edges':
+        # The centre is inside the PEC box; place the element in vacuum beyond its x face.
+        position = (.011, .004, .004)
+    conductors, _, _, _ = _assembly(sim, sim._campaign_ctx())
+    edge = tuple(map(int, field_index(conductors.grid, position, 'ez')))
+    assert conductors.pec_edges is None or not bool(np.asarray(conductors.pec_edges[2])[edge])
+    sim.add_lumped_rlc(position, 'ez', R=50.)
     after = [i.to_dict() for i in sim.preflight(**kwargs)]
     assert after == before
     assert tuple(r for r in sim.realized_geometry().realization_table.rows
