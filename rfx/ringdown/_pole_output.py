@@ -78,17 +78,21 @@ class RingdownForwardResult:
     In probe mode ``s_params`` and ``s_params_long`` are None;
     ``probe_spectra`` and ``probe_spectra_long`` hold (nf, P) working-complex
     spectra at ``freqs`` (working precision), with a leading axis under vmap.
+    ``_cells`` holds the cell arrays of the axes traced when the context was
+    built, in ``ctx.traced_axes`` order; as children, a transform returns them
+    concrete, the realized cells of that design step.
     A JAX pytree: the arrays are its leaves.
     """
 
     __slots__ = ("s_params", "s_params_long", "freqs", "_channels", "_accs",
                  "_s_plain", "_status", "_consistency", "_pole_counts", "_pole_budgets",
                  "_ctx", "_report", "_poles", "_poles_long", "_pole_mask", "_pole_mask_long",
-                 "probe_spectra", "probe_spectra_long")
+                 "probe_spectra", "probe_spectra_long", "_cells")
 
     def __init__(self, s_params, s_params_long, freqs, channels, accs, s_plain,
                  status, consistency, pole_counts, pole_budgets, ctx, *, poles=None, poles_long=None,
-                 pole_mask=None, pole_mask_long=None, probe_spectra=None, probe_spectra_long=None):
+                 pole_mask=None, pole_mask_long=None, probe_spectra=None, probe_spectra_long=None,
+                 cells=()):
         self.probe_spectra = probe_spectra
         self.probe_spectra_long = probe_spectra_long
         self.s_params = s_params
@@ -110,18 +114,21 @@ class RingdownForwardResult:
         self._poles_long = jnp.empty(0, cdt) if poles_long is None else poles_long
         self._pole_mask = jnp.empty(0, jnp.int32) if pole_mask is None else pole_mask
         self._pole_mask_long = jnp.empty(0, jnp.int32) if pole_mask_long is None else pole_mask_long
+        self._cells = tuple(cells)
 
     def tree_flatten(self):
         return ((self.s_params, self.s_params_long, self.freqs, self._channels,
                  self._accs, self._s_plain, self._status, self._consistency,
                  self._pole_counts, self._pole_budgets, self.poles, self.poles_long,
-                 self.pole_mask, self.pole_mask_long, self.probe_spectra, self.probe_spectra_long), self._ctx)
+                 self.pole_mask, self.pole_mask_long, self.probe_spectra, self.probe_spectra_long,
+                 self._cells), self._ctx)
 
     @classmethod
     def tree_unflatten(cls, ctx, children):
         return cls(*children[:10], ctx, poles=children[10], poles_long=children[11],
                    pole_mask=children[12], pole_mask_long=children[13],
-                   probe_spectra=children[14], probe_spectra_long=children[15])
+                   probe_spectra=children[14], probe_spectra_long=children[15],
+                   cells=children[16])
 
     @property
     def poles(self):
@@ -174,7 +181,7 @@ class RingdownForwardResult:
         from rfx.core.jax_utils import is_tracer
         leaves = jax.tree_util.tree_leaves(
             (self.s_params, self.s_params_long, self._channels, self._accs,
-             self._s_plain, self.probe_spectra, self.probe_spectra_long))
+             self._s_plain, self.probe_spectra, self.probe_spectra_long, self._cells))
         if any(is_tracer(x) for x in leaves):
             return None
         if np.ndim(self._channels) != 2:
