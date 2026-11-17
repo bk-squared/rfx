@@ -62,6 +62,41 @@ def record_face_values(cfg, state, dx, dt):
     return tuple(lax.stop_gradient(row) for row in record), (h_gathers, e_gathers)
 
 
+def face_read_maxima(cfg, state, dx, dt):
+    """Per-step maxima of the operands :func:`record_face_values` stores, in O(N) memory.
+
+    Returns ``(I_H, I_E)``, two arrays of length ``cfg.n_steps``. ``I_E(n)`` is
+    the largest |E-line value| the H tables read before the H update of step
+    ``n``; ``I_H(n)`` is the largest |H-line value| the E tables read after it,
+    before the E update. The read sets and the line updates are those of
+    :func:`record_face_values`. A kind that no table reads is zero at every
+    step. The line is stepped as its own program under
+    ``jax.ensure_compile_time_eval()``, so a call inside a traced function
+    returns concrete arrays for a concrete line.
+    """
+    import jax
+    from rfx.sources.tfsf_discrete_plane_wave import COMPONENTS, update_line_h, update_line_e
+
+    h_indices, _ = _face_reads(cfg.tables_h)
+    e_indices, _ = _face_reads(cfg.tables_e)
+
+    def largest(st, indices):
+        reads = tuple(jnp.abs(getattr(st, name)[row])
+                      for name, row in zip(COMPONENTS, indices) if len(row))
+        return jnp.max(jnp.concatenate(reads)) if reads else jnp.zeros((), st.ex.dtype)
+
+    def step(st, _):
+        i_e = largest(st, h_indices)
+        st = update_line_h(cfg, st, dx, dt)
+        i_h = largest(st, e_indices)
+        st = update_line_e(cfg, st, dx, dt)
+        return st, (i_h, i_e)
+
+    with jax.ensure_compile_time_eval():
+        _, (i_h, i_e) = lax.scan(step, state, None, length=cfg.n_steps)
+    return i_h, i_e
+
+
 def prepare_tfsf_for_scan(tfsf, dx, dt):
     """A marked closed box (``record_faces``) reads a face record; others carry the line."""
     from dataclasses import replace
