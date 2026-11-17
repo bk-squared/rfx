@@ -214,16 +214,15 @@ def forward_probe_report(ctx, res):
 def traced_probe_completion(plan, result, channels):
     """Complete the raw probe columns; failures poison values and derivatives."""
     import jax.numpy as jnp
-    from rfx.core.jax_utils import is_tracer
     from rfx.ringdown import _jax as rj
+    from rfx.ringdown._forward_context import report_context
     from rfx.measurement.ringdown_resolution import completion_poles
     from rfx.measurement.ringdown_tail_jax import plain_dft
 
     bins = plan.bins
     rdt, cdt = rj.working_dtypes()
-    step = getattr(result, "dt", None)
-    ctx = rd._ForwardReportContext(plan, (), result.grid, bins,
-                                   None if is_tracer(step) else step)
+    ctx = report_context(plan, result, bins)
+    cells = tuple(getattr(result.grid, store) for _axis, store in ctx.traced_axes)
     consistency = jnp.asarray(jnp.nan, dtype=jnp.real(channels).dtype)
     try:
         plan._check_solver_step(result)
@@ -237,7 +236,7 @@ def traced_probe_completion(plan, result, channels):
             jnp.full(2, rj.STATUS_PRECONDITION, jnp.int32), consistency,
             jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx,
             poles=pole_nan, poles_long=pole_nan, pole_mask=mask, pole_mask_long=mask,
-            probe_spectra=spectra, probe_spectra_long=spectra)
+            probe_spectra=spectra, probe_spectra_long=spectra, cells=cells)
     Y = channels[:, np.asarray(plan._identification_columns())].astype(rdt)
     dt, n, spec = float(result.grid.dt), plan.n_steps, plan.spec
     ref_hz = probe_reference(plan)
@@ -269,4 +268,4 @@ def traced_probe_completion(plan, result, channels):
         None, None, jnp.asarray(bins, dtype=rdt), channels, (), None,
         jnp.stack(status), consistency, jnp.stack(counts), jnp.asarray(budgets), ctx,
         poles=poles[0], poles_long=poles[1], pole_mask=masks[0], pole_mask_long=masks[1],
-        probe_spectra=out[0], probe_spectra_long=out[1])
+        probe_spectra=out[0], probe_spectra_long=out[1], cells=cells)
