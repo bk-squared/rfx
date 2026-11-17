@@ -141,11 +141,6 @@ def base_docstring_lines(repo: Path, base: str) -> dict[str, int]:
     return counts
 
 
-def package_source(path: str) -> str | None:
-    """Return ``<stem>.py`` for a package form ``<stem>/__init__.py``, else None."""
-    return path.removesuffix("/__init__.py") + ".py" if path.endswith("/__init__.py") else None
-
-
 def renamed(repo: Path, base: str, head: str) -> dict[str, str]:
     """Map each head path to its base path for the renames git finds at -M90% under rfx/."""
     revisions = (base, head) if head else (base,)
@@ -157,10 +152,18 @@ def renamed(repo: Path, base: str, head: str) -> dict[str, str]:
             for index in range(0, len(changes) - 1, 3)}
 
 
-def successors(source: str, paths, renames: dict[str, str]) -> list[str]:
-    """List the head paths that continue ``source``: its package form or its rename target."""
-    return sorted(path for path in paths
-                  if package_source(path) == source or renames.get(path) == source)
+def successor(source: str, paths, renames: dict[str, str]) -> str | None:
+    """Return the head path that continues ``source``, a base path absent at the head.
+
+    It is the -M90% rename target git paired with ``source``; only when git paired
+    none, the package form ``<stem>/__init__.py`` if it is among ``paths``; else None.
+    Inheritance and the delisting check both use this one choice.
+    """
+    for target, origin in renames.items():
+        if origin == source:
+            return target
+    package = source.removesuffix(".py") + "/__init__.py"
+    return package if package in paths else None
 
 
 def unit_change(repo: Path, base: str, head: str, previous: dict, current: dict,
@@ -236,7 +239,8 @@ def unit_change(repo: Path, base: str, head: str, previous: dict, current: dict,
     renames = renamed(repo, base, head) if gone else {}
     for path in sorted(gone):
         old, d = previous["files"][path], docs.get(path, 0)
-        for target in successors(path, counts, renames):
+        target = successor(path, counts, renames)
+        if target is not None:
             if target not in current["files"] and cap > old - d:
                 failures.append(
                     f"{path}: delisting moves the file to {target}, which gets the cap of {cap} "
@@ -321,6 +325,7 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
                 gone = previous["files"].keys() - set(paths) - current["files"].keys()
                 delisted = sorted(gone)
                 renames = renamed(repo, base, head) if gone and not transition else {}
+                heirs = {successor(path, paths, renames): path for path in delisted}
                 if current["cap"] > previous["cap"]:
                     failures.append(
                         f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
@@ -329,9 +334,7 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
                 for path, value in current["files"].items():
                     old = previous["files"].get(path, previous["cap"] if transition else None)
                     if old is None and path in paths:
-                        source = package_source(path)
-                        if source not in gone:
-                            source = renames.get(path)
+                        source = heirs.get(path)
                         if source in gone:
                             old = previous["files"][source]
                             gone.remove(source)
@@ -349,16 +352,17 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
                         )
                 for path in delisted:
                     old = previous["files"][path]
-                    for target in successors(path, paths, renames):
+                    target = successor(path, paths, renames)
+                    if target is not None:
                         if target not in current["files"] and old < current["cap"]:
                             failures.append(
                                 f"{path}: delisting moves the file to {target}, which gets the cap "
                                 f"of {current['cap']} instead of the baseline {old}; list {target} "
                                 f"at most {old}."
                             )
-    if transition:
-        for path in sorted(current["files"].keys() - set(paths)):
-            failures.append(f"{path}: transition baseline entry has no source file")
+    for path in sorted(current["files"].keys() - set(paths)):
+        failures.append(f"{path}: {'transition ' if transition else ''}baseline entry has no "
+                        "source file")
     for path, count in counts.items():
         limit = current["files"].get(path, current["cap"])
         if transition and path in current["files"] and count != limit:

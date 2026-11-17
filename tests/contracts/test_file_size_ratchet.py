@@ -332,7 +332,7 @@ def test_current_legacy_baseline_fails(tree, capsys):
     ("raised", 1, "rfx/nested/b.py: baseline 20, count 21 in proposed baseline"),
     ("below-similarity", 1, "rfx/nested/b.py: baseline unlisted, count 20 in proposed baseline"),
     ("source-present", 1, "rfx/nested/a/__init__.py: baseline unlisted, count 20 in proposed baseline"),
-    ("reuse", 1, "rfx/nested/b.py: baseline unlisted, count 20 in proposed baseline"),
+    ("reuse", 1, "rfx/nested/a/__init__.py: baseline unlisted, count 20 in proposed baseline"),
     ("count-growth", 1, "rfx/nested/b.py: baseline 20, count 21"),
 ])
 def test_moved_entry_inherits_only_its_old_cap(tree, capsys, head, case, expected, message):
@@ -497,6 +497,7 @@ NEW_UNIT_BOUND = "with docstrings not counted it must be at most"
      "rfx/a.py: entry removed while the file exists; with docstrings not counted the cap 15 "
      "must be at most 6 (10 minus 4 docstring lines at the base) to govern it, so keep the entry."),
     ("delisted-deleted", 0, ""),
+    ("stale-entry", 1, "rfx/a.py: baseline entry has no source file"),
     ("delisted-to-package", 1,
      "rfx/a.py: delisting moves the file to rfx/a/__init__.py, which gets the cap of 15 instead "
      "of the baseline 6 (10 minus 4 docstring lines at the base); keep rfx/a.py listed at most 6."),
@@ -540,6 +541,10 @@ def test_unit_change_bounds_come_from_the_base(tree, capsys, case, expected, mes
         if case == "delisted-to-package":
             (tree / "rfx/a").mkdir()
             (tree / "rfx/a/__init__.py").write_bytes(A_HEAD)
+    elif case == "stale-entry":
+        (tree / "rfx/a.py").unlink()
+        (tree / "rfx/a").mkdir()
+        (tree / "rfx/a/__init__.py").write_bytes(A_HEAD)
     (tree / gate.BASELINE).write_text(json.dumps({"counts": gate.UNIT, "cap": cap, "files": files}))
     code, err = run(tree, capsys, "--base", base)
     assert code == expected, err
@@ -556,10 +561,20 @@ def test_unit_change_bounds_come_from_the_base(tree, capsys, case, expected, mes
      "rfx/a.py: delisting moves the file to rfx/b.py, which gets the cap of 20 instead of the "
      "baseline 10; list rfx/b.py at most 10.\n"),
     ("rename-listed", 0, ""),
+    ("stale-entry", 1, "rfx/a.py: baseline entry has no source file\n"),
+    ("split-listed", 0, ""),
+    ("split-unlisted", 1,
+     "rfx/a.py: delisting moves the file to rfx/a/core.py, which gets the cap of 20 instead of "
+     "the baseline 10; list rfx/a/core.py at most 10.\n"),
 ])
 def test_delisted_file_moved_to_an_unlisted_path_fails(tree, capsys, case, expected, message):
-    """Base lists a.py at 10 under cap 20. The head deletes a.py and continues it as its
-    package form or as an unchanged rename, listing nothing or the new path at 10."""
+    """Base lists a.py (10 lines) at 10 under cap 20, and the head deletes a.py.
+
+    package-*: the head adds rfx/a/__init__.py (8 lines). rename-*: an unchanged copy at
+    rfx/b.py. stale-entry: the package form, unlisted, with the a.py entry kept at 10.
+    split-*: an unchanged copy at rfx/a/core.py plus a 3-line rfx/a/__init__.py; the
+    paired rename, not the package form, continues a.py. *-listed lists the successor at 10.
+    """
     original = b"".join(f"line_{i:02d} = {i}\n".encode() for i in range(10))
     (tree / "rfx/a.py").write_bytes(original)
     (tree / gate.BASELINE).write_text(json.dumps({
@@ -575,14 +590,20 @@ def test_delisted_file_moved_to_an_unlisted_path_fails(tree, capsys, case, expec
     base = gate.git(tree, "rev-parse", "HEAD").decode().strip()
 
     (tree / "rfx/a.py").unlink()
-    if case.startswith("package"):
+    (tree / "rfx/a").mkdir()
+    if case.startswith(("package", "stale")):
         target = "rfx/a/__init__.py"
-        (tree / "rfx/a").mkdir()
         (tree / target).write_bytes(b"".join(f"new_{i:02d} = {i}\n".encode() for i in range(8)))
-    else:
+    elif case.startswith("rename"):
         target = "rfx/b.py"
         (tree / target).write_bytes(original)
+    else:
+        target = "rfx/a/core.py"
+        (tree / target).write_bytes(original)
+        (tree / "rfx/a/__init__.py").write_bytes(b"from .core import *\n__all__ = []\nVERSION = 1\n")
     files = {target: 10} if case.endswith("-listed") else {}
+    if case == "stale-entry":
+        files = {"rfx/a.py": 10}
     (tree / gate.BASELINE).write_text(json.dumps({"counts": gate.UNIT, "cap": 20, "files": files}))
     gate.git(tree, "add", "--all")
     code, err = run(tree, capsys, "--base", base)
