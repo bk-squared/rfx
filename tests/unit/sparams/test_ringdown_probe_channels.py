@@ -302,14 +302,19 @@ def test_t3_forward_record_requirements(distributed, emit, words):
 
 def test_probe_bins_above_freq_max_use_one_reference(monkeypatch):
     """Physical anchor: decimation must retain modes at every requested spectral bin."""
+    import importlib
+
+    _pencil = importlib.import_module("rfx.ringdown._pencil")  # the module; rd._pencil is a function
+
     seen = []
-    original = rd.decimation_plan
+    original = _pencil.decimation_plan
 
     def capture(n, dt, freq_max):
         seen.append(float(freq_max))
         return original(n, dt, freq_max)
 
-    monkeypatch.setattr(rd, "decimation_plan", capture)
+    # Patch the name where the identification plan looks it up.
+    monkeypatch.setattr(_pencil, "decimation_plan", capture)
     request = spec(probe_freqs=(8e9, 18e9, 20.000000123e9))
     result = box().forward(n_steps=600, ringdown=request, skip_preflight=True).ringdown
     assert result.report.freq_max_hz == request.probe_freqs[-1]
