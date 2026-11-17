@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -10,7 +11,8 @@ import sys
 import pytest
 
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/ci/check_comment_content.py"
+REPO = Path(__file__).resolve().parents[2]
+SCRIPT = REPO / "scripts/ci/check_comment_content.py"
 GUIDANCE = "a comment says what the code does, not where it came from"
 
 
@@ -52,9 +54,9 @@ def make_repo(tmp_path, env, content="value = 0\n"):
     return repo, commit(repo, env)
 
 
-def check(repo, env, *args):
+def check(repo, env, *args, swept=()):
     return subprocess.run(
-        [sys.executable, str(SCRIPT), *args], cwd=repo, env=env,
+        [sys.executable, str(SCRIPT), *args, "--swept", *swept], cwd=repo, env=env,
         capture_output=True, text=True, timeout=30,
     )
 
@@ -571,4 +573,145 @@ def test_file_moved_into_full_ban_directory_judges_only_edited_lines(tmp_path, g
     assert result.stdout.splitlines() == [
         f"rfx/m.py:7: comment: # tuned by hand  -> {FULL_BAN}",
         summary(repo, git_env, base, 1, 1),
+    ]
+
+
+def swept_line(path, line, comment, entry):
+    return (
+        f"{path}:{line}: swept: {comment}  -> a name, an assertion, a test, the docstring, or a dated record; "
+        f"{entry} is swept, so every comment in it may only be a tool directive"
+    )
+
+
+def swept_repo(tmp_path, env, files):
+    repo, _ = make_repo(tmp_path, env)
+    for path, content in files.items():
+        add_file(repo, env, path, content)
+    return repo, commit(repo, env)
+
+
+def test_swept_file_with_prose_on_untouched_line_is_refused(tmp_path, git_env):
+    repo, base = swept_repo(tmp_path, git_env, {
+        "rfx/a.py": "# an old prose comment\nvalue = 0\n", "rfx/b.py": "value = 0\n",
+    })
+    result = check(repo, git_env, "--base", base, swept=("rfx/a.py",))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stderr == ""
+    assert result.stdout.splitlines() == [
+        swept_line("rfx/a.py", 1, "# an old prose comment", "rfx/a.py"),
+        summary(repo, git_env, base, 0, 0),
+        "swept: 1 refused in 1 files (1 entries)",
+    ]
+    result = check(repo, git_env, "--base", base, swept=("rfx/b.py",))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        summary(repo, git_env, base, 0, 0),
+        "swept: 0 refused in 1 files (1 entries)",
+    ]
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [summary(repo, git_env, base, 0, 0)]
+
+
+def test_directives_pass_in_swept_file(tmp_path, git_env):
+    repo, base = swept_repo(tmp_path, git_env, {"rfx/sub/x.py": (
+        "#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\nimport os  # noqa: F401\n"
+        "value = 1  # type: ignore[assignment]\nif value:  # pragma: no cover\n    pass\n"
+    )})
+    result = check(repo, git_env, "--base", base, swept=("rfx/sub/",))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        summary(repo, git_env, base, 0, 0),
+        "swept: 0 refused in 1 files (1 entries)",
+    ]
+
+
+def test_swept_entries_cover_packages_and_single_files(tmp_path, git_env):
+    note = "# a prose note"
+    repo, base = swept_repo(tmp_path, git_env, {
+        path: f"{note}\nvalue = 0\n"
+        for path in ("rfx/sub/x.py", "rfx/sub/deep/y.py", "rfx/subgrid/z.py", "rfx/a.py", "rfx/b.py")
+    })
+    result = check(repo, git_env, "--base", base, swept=("rfx/sub/", "rfx/a.py"))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        swept_line("rfx/a.py", 1, note, "rfx/a.py"),
+        swept_line("rfx/sub/deep/y.py", 1, note, "rfx/sub/"),
+        swept_line("rfx/sub/x.py", 1, note, "rfx/sub/"),
+        summary(repo, git_env, base, 0, 0),
+        "swept: 3 refused in 3 files (2 entries)",
+    ]
+
+
+@pytest.mark.parametrize("source", ["docs/m.py", "m.py"])
+def test_file_moved_unchanged_into_swept_package_is_refused(tmp_path, git_env, source):
+    repo, base = swept_repo(tmp_path, git_env, {
+        source: "# an old prose comment\n" + "".join(f"x{i} = {i}\n" for i in range(20)),
+    })
+    (repo / "rfx/sub").mkdir(parents=True)
+    git(repo, git_env, "mv", source, "rfx/sub/m.py")
+    result = check(repo, git_env, "--base", base, swept=("rfx/sub/",))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        swept_line("rfx/sub/m.py", 1, "# an old prose comment", "rfx/sub/"),
+        summary(repo, git_env, base, 0, 0),
+        "swept: 1 refused in 1 files (1 entries)",
+    ]
+
+
+@pytest.mark.parametrize("entry,message", [
+    ("rfx/missing/", "rfx/missing/: swept entry matches no file; name the file's new path or remove the entry"),
+    ("rfx/missing.py", "rfx/missing.py: swept entry matches no file; name the file's new path or remove the entry"),
+    ("rfx/notes/", "rfx/notes/: swept entry matches no file; name the file's new path or remove the entry"),
+    ("rfx/a", "rfx/a: swept entry must end with / (a package) or .py (one file)"),
+    ("rfx/../docs/a.py", "rfx/../docs/a.py: swept entry must not contain .."),
+    ("docs/a.py", "docs/a.py: swept entry must lie under rfx/, tests/, examples/ or scripts/"),
+    ("./rfx/a.py", "./rfx/a.py: swept entry must lie under rfx/, tests/, examples/ or scripts/"),
+])
+def test_stale_and_malformed_swept_entries_are_refused(tmp_path, git_env, entry, message):
+    repo, base = swept_repo(tmp_path, git_env, {
+        "rfx/a.py": "value = 0\n", "docs/a.py": "value = 0\n", "rfx/notes/readme.txt": "text\n",
+    })
+    result = check(repo, git_env, "--base", base, swept=(entry,))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        message,
+        summary(repo, git_env, base, 0, 0),
+        "swept: 1 refused in 0 files (1 entries)",
+    ]
+
+
+def load_checker():
+    spec = importlib.util.spec_from_file_location("check_comment_content", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_real_swept_entries_are_well_formed_and_pass():
+    checker = load_checker()
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, timeout=60, check=True,
+    ).stdout.split("\0")
+    for entry in checker.SWEPT_PREFIXES:
+        assert entry.endswith(("/", ".py")), entry
+        assert ".." not in entry, entry
+        assert entry.startswith(("rfx/", "tests/", "examples/", "scripts/")), entry
+        assert any(path.endswith(".py") and path.startswith(entry) for path in tracked), entry
+    entry_refusals, refused, _ = checker.check_swept(REPO, checker.SWEPT_PREFIXES, set())
+    assert entry_refusals == []
+    assert [refusal.text for refusal in refused] == []
+
+
+def test_token_refused_by_both_checks_is_printed_once(tmp_path, git_env):
+    repo, base = swept_repo(tmp_path, git_env, {"rfx/a.py": "# an old prose comment\nvalue = 0\n"})
+    (repo / "rfx/a.py").write_text(
+        "# an old prose comment\nvalue = 0\n# a new prose comment\n", encoding="utf-8")
+    result = check(repo, git_env, "--base", base, swept=("rfx/a.py",))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"rfx/a.py:3: comment: # a new prose comment  -> {FULL_BAN}",
+        swept_line("rfx/a.py", 1, "# an old prose comment", "rfx/a.py"),
+        summary(repo, git_env, base, 1, 1),
+        "swept: 1 refused in 1 files (1 entries)",
     ]

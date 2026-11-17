@@ -7,6 +7,14 @@ plus a shebang on line 1 and a PEP 263 coding line on line 1 or 2. Anything else
 including text after a directive, is refused there. Every other Python path is
 checked against the narrow rules: no date, issue number, predeclaration, move
 note, run id or quoted Korean text.
+
+Every tracked Python file that an entry of SWEPT_PREFIXES matches is also read
+whole on every run, whatever the base, so that a file moved unchanged into a
+swept package cannot bring prose comments with it. An entry is a
+repository-relative package path ending with ``/`` or one file ending with
+``.py``, under one of the four directories, and it must match a tracked file.
+``--swept`` replaces the entries for one run; ``--swept`` with no value runs
+with none.
 """
 
 from __future__ import annotations
@@ -19,6 +27,7 @@ import re
 import subprocess
 import sys
 import tokenize
+from typing import Iterator, NamedTuple
 
 
 RULES = (
@@ -68,6 +77,17 @@ DIRECTIVES = (
 _DIRECTIVE = "(?:" + "|".join(DIRECTIVES) + ")"
 DIRECTIVE_TOKEN = re.compile(rf"#\s*{_DIRECTIVE}(?:\s+#\s*{_DIRECTIVE})*\s*")
 CODING_LINE = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
+SWEPT_PREFIXES: tuple[str, ...] = ()
+SWEPT_DESTINATION = "a name, an assertion, a test, the docstring, or a dated record"
+
+
+class Refusal(NamedTuple):
+    """One refused comment token, keyed by its path, line and column."""
+
+    path: str
+    line: int
+    column: int
+    text: str
 
 
 class CheckError(Exception):
@@ -178,51 +198,124 @@ def narrow_refusal(path: str, line: int, token: str) -> str | None:
     return None
 
 
-def check_comments(root: Path, changed: dict[str, set[int]]) -> list[str]:
+def comment_tokens(root: Path, path: str) -> Iterator[tokenize.TokenInfo]:
+    """Every COMMENT token of a working-tree file, or CheckError when it cannot be tokenized."""
+    try:
+        with (root / path).open("rb") as source:
+            for token in tokenize.tokenize(source.readline):
+                if token.type == tokenize.ERRORTOKEN and not token.string.isspace():
+                    raise CheckError(f"{path}: cannot tokenize {token.string!r} at line {token.start[0]}")
+                if token.type == tokenize.COMMENT:
+                    yield token
+    except (OSError, SyntaxError, tokenize.TokenError, UnicodeError) as exc:
+        raise CheckError(f"{path}: cannot tokenize: {exc}") from exc
+
+
+def check_comments(root: Path, changed: dict[str, set[int]]) -> list[Refusal]:
+    """Refusals for comment tokens on added lines: the full ban under the four directories, the narrow rules elsewhere."""
     refused = []
     for path, lines in changed.items():
         full_ban = in_full_ban(path)
-        try:
-            with (root / path).open("rb") as source:
-                for token in tokenize.tokenize(source.readline):
-                    if token.type == tokenize.ERRORTOKEN and not token.string.isspace():
-                        raise CheckError(f"{path}: cannot tokenize {token.string!r} at line {token.start[0]}")
-                    line = token.start[0]
-                    if token.type != tokenize.COMMENT or line not in lines:
-                        continue
-                    if full_ban:
-                        if not is_directive(token):
-                            refused.append(
-                                narrow_refusal(path, line, token.string)
-                                or f"{path}:{line}: comment: {token.string}  -> {FULL_BAN_DESTINATION}"
-                            )
-                    elif diagnostic := narrow_refusal(path, line, token.string):
-                        refused.append(diagnostic)
-        except (OSError, SyntaxError, tokenize.TokenError, UnicodeError) as exc:
-            raise CheckError(f"{path}: cannot tokenize: {exc}") from exc
+        for token in comment_tokens(root, path):
+            line, column = token.start
+            if line not in lines:
+                continue
+            if full_ban:
+                if not is_directive(token):
+                    text = (
+                        narrow_refusal(path, line, token.string)
+                        or f"{path}:{line}: comment: {token.string}  -> {FULL_BAN_DESTINATION}"
+                    )
+                    refused.append(Refusal(path, line, column, text))
+            elif diagnostic := narrow_refusal(path, line, token.string):
+                refused.append(Refusal(path, line, column, diagnostic))
     return refused
+
+
+def malformed_entry(entry: str) -> str | None:
+    """Why a swept entry is not a well-formed repository-relative path, or None when it is."""
+    if ".." in entry:
+        return f"{entry}: swept entry must not contain .."
+    if not entry.startswith(FULL_BAN_PREFIXES):
+        return f"{entry}: swept entry must lie under rfx/, tests/, examples/ or scripts/"
+    if not entry.endswith(("/", ".py")):
+        return f"{entry}: swept entry must end with / (a package) or .py (one file)"
+    return None
+
+
+def check_swept(
+    root: Path, entries: tuple[str, ...], reported: set[tuple[str, int, int]],
+) -> tuple[list[str], list[Refusal], int]:
+    """Entry refusals, comment refusals and the number of files read for the swept entries.
+
+    Each tracked ``*.py`` file present in the working tree and matched by a
+    well-formed entry (``path.startswith(entry)``) is read whole; a file matched
+    by several entries is read once and named by the first. A malformed entry is
+    refused and not applied. A token already refused by the added-line check,
+    keyed by path, line and column, is not reported again.
+    """
+    if not entries:
+        return [], [], 0
+    tracked = [
+        path for path in git(root, "ls-files", "-z").stdout.split("\0")
+        if path.endswith(".py") and (root / path).is_file()
+    ]
+    entry_refusals = []
+    owner: dict[str, str] = {}
+    for entry in entries:
+        reason = malformed_entry(entry)
+        if reason is None:
+            matched = [path for path in tracked if path.startswith(entry)]
+            if not matched:
+                reason = f"{entry}: swept entry matches no file; name the file's new path or remove the entry"
+            for path in matched:
+                owner.setdefault(path, entry)
+        if reason is not None:
+            entry_refusals.append(reason)
+    refused = []
+    for path in sorted(owner):
+        for token in comment_tokens(root, path):
+            line, column = token.start
+            if (path, line, column) in reported or is_directive(token):
+                continue
+            refused.append(Refusal(path, line, column, (
+                f"{path}:{line}: swept: {token.string}  -> {SWEPT_DESTINATION}; "
+                f"{owner[path]} is swept, so every comment in it may only be a tool directive"
+            )))
+    return entry_refusals, refused, len(owner)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", default=os.environ.get("BASE_SHA"))
+    parser.add_argument("--swept", nargs="*", metavar="ENTRY",
+                        help="swept entries for this run in place of SWEPT_PREFIXES")
     args = parser.parse_args(argv)
+    entries = SWEPT_PREFIXES if args.swept is None else tuple(args.swept)
     try:
         root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").stdout.strip())
         base = resolve_base(root, args.base)
         changed = added_lines(root, base)
         refused = check_comments(root, changed)
+        entry_refusals, swept, files = check_swept(
+            root, entries, {(refusal.path, refusal.line, refusal.column) for refusal in refused})
         short = git(root, "rev-parse", "--short", base).stdout.strip()
     except (CheckError, OSError) as exc:
         print(f"comment content: {exc}", file=sys.stderr)
         return 2
-    for diagnostic in refused:
+    for refusal in refused:
+        print(refusal.text)
+    for diagnostic in entry_refusals:
         print(diagnostic)
+    for refusal in swept:
+        print(refusal.text)
     print(
         f"comment content: {len(refused)} refused on {sum(map(len, changed.values()))}"
         f" added lines (base {short})"
     )
-    return 1 if refused else 0
+    if entries:
+        print(f"swept: {len(entry_refusals) + len(swept)} refused in {files} files ({len(entries)} entries)")
+    return 1 if refused or entry_refusals or swept else 0
 
 
 if __name__ == "__main__":
