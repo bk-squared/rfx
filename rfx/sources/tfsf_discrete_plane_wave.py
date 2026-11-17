@@ -392,6 +392,19 @@ def tfsf_box_indices(sim) -> dict[str, tuple[int, int]]:
 def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
     """Normal-only compatibility replay; oblique phase references belong to O1b."""
     from rfx.measurement.dft import transform
+
+    record = normal_incident_record(cfg, state, n_steps, dt, reference_index)
+    return np.asarray(transform(record, freqs, dt, kind="E",
+                                time_shift=-1 if reference_index is None else 0))
+
+
+def normal_incident_record(cfg, state, n_steps, dt, reference_index):
+    """The line's E along e_hat at the E-node plane ``reference_index`` (``x_lo`` if None), per step.
+
+    Row n is the value after the E update of step n, in the line's own dtype.
+    Normal incidence only; the plane must lie inside the line's slab
+    ``x_lo..x_hi`` and ``n_steps`` within the line's step-count bound.
+    """
     from rfx.stepping.incident_line import record_incident_line
 
     if cfg.m not in ((1, 0, 0), (-1, 0, 0)):
@@ -404,9 +417,7 @@ def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
         raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
     indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
                     for c in range(3))
-    record = record_incident_line(cfg, state, n_steps, dt, indices, cfg.incidence["e_hat"])
-    return np.asarray(transform(record, freqs, dt, kind="E",
-                                time_shift=-1 if reference_index is None else 0))
+    return record_incident_line(cfg, state, n_steps, dt, indices, cfg.incidence["e_hat"])
 
 @lru_cache(maxsize=256)
 def rational_direction(theta_deg, phi_deg, direction, direction_tol_deg, max_component):

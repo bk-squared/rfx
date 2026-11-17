@@ -10,6 +10,7 @@ from rfx import ringdown as rd
 from rfx._warning_origin import user_stacklevel
 from rfx.errors import AccuracyWarning
 from rfx.ringdown._geometry import _user_geometry
+from rfx.ringdown._incident_norm import normalized
 
 
 RELATIVE_RULE = "max_c max_f |X_A,c - X_B,c| / max_f |X_main,c| over probe_freqs"
@@ -51,8 +52,10 @@ def _not_formed(name, reason):
 def _error_witnesses(plan, Y, dt, ref_hz, plain, w2, state):
     spec = plan.spec
     tol = float(spec.witness_tol)
-    w2_value = relative_difference(w2.spectra, w2.spectra_short, w2.spectra)
-    rule = RELATIVE_RULE
+    main = normalized(plan, w2.spectra)
+    w2_value = relative_difference(main, normalized(plan, w2.spectra_short), main)
+    rule = RELATIVE_RULE + ("" if plan.spec.probe_normalization is None
+                            else "; every operand normalized by the incident spectrum")
     if plan.source_ratio_long > spec.source_off_tol:
         why = (f"a source reaches {plan.source_ratio_long:.3e} of its peak in "
                f"[{0.5 * spec.window_start:g} T, T], above source_off_tol = {spec.source_off_tol:.1e}")
@@ -66,7 +69,7 @@ def _error_witnesses(plan, Y, dt, ref_hz, plain, w2, state):
             Y, dt, plan.bins, plan.n_steps, spec.window_start,
             freq_max=ref_hz, guard=spec.guard, sv_rel=spec.sv_rel,
             unit_tol=spec.unit_tol, observable=None, plain=plain, spectra=w2.spectra)
-        value = relative_difference(w2.spectra, we.spectra_long, w2.spectra)
+        value = relative_difference(main, normalized(plan, we.spectra_long), main)
         note = ""
         state.update(long_rank=we.model_long.rank, long_n_kept=int(we.model_long.s.size))
     except TimeoutError:
@@ -140,10 +143,11 @@ def _complete_probe(plan, result, Y, dt, ref_hz, witnesses):
         short_n_kept=int(w2.model_short.s.size), long_rank=state.get("long_rank"),
         long_n_kept=state.get("long_n_kept"), poles=model.poles(),
         growing_pole_rule=rd.GROWING_POLE_RULE,
-        tail_share=relative_difference(w2.spectra, plain, w2.spectra),
+        tail_share=relative_difference(normalized(plan, w2.spectra), normalized(plan, plain),
+                                       normalized(plan, w2.spectra)),
         slowest_decay_over_window=slowest, discarded_growth_max=g_max,
         discarded_growth_f_hz=g_f)
-    return w2.spectra * probe_stamp(plan, dt), extra
+    return normalized(plan, w2.spectra * probe_stamp(plan, dt)), extra
 
 
 def host_probe_report(plan, result, ts_all, n_user):
@@ -153,7 +157,9 @@ def host_probe_report(plan, result, ts_all, n_user):
     base = dict(n_record=plan.n_steps, dt=dt, window_steps=(plan.n_start, plan.n_steps),
                 window_s=(plan.n_start * dt, plan.n_steps * dt),
                 short_window_steps=(plan.n_start, plan.n_split),
-                long_window_steps=(plan.n_long, plan.n_steps), freq_max_hz=ref_hz)
+                long_window_steps=(plan.n_long, plan.n_steps), freq_max_hz=ref_hz,
+                probe_normalization=plan.spec.probe_normalization,
+                incident_spectra=getattr(plan, "incident_spectra", None))
     no_acc = "no port accumulator; a probe channel is the recorded field itself"
     witnesses = [_not_formed("W0", no_acc), _not_formed("W1", no_acc),
                  _not_formed("passivity", "a field spectrum has no passivity bound")]
@@ -258,7 +264,7 @@ def traced_probe_completion(plan, result, channels):
         spectra, aux = rj.completion(Y, dt, bins, n0, s0, mask.astype(rdt),
                                      tail_arg, plain=plain, return_aux=True)
         factor = jnp.where(st == rj.STATUS_OK, 1.0, jnp.nan).astype(rdt)
-        out.append(spectra * stamp * factor)
+        out.append(normalized(plan, spectra * stamp * factor, cdt))
         poles.append(aux["s"] * factor)
         masks.append(mask)
         status.append(st)

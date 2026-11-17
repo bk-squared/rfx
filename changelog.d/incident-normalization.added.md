@@ -1,0 +1,7 @@
+### Added — completed probe spectra divided by a closed-box plane wave's incident spectrum (#PR)
+
+- `RingdownSpec(..., probe_freqs=..., probe_normalization="incident")` returns every completed `ey` or `ez` channel divided by the incident E spectrum the plane wave carries at the channel's x plane, at the same bins and on the channel's own clock. For a shield this is the transfer function in one run, with no empty-box twin; 20 log10 |1 / X| is the shielding effectiveness.
+- `Result.ringdown.report.incident_spectra` holds the divisor and `report.probe_normalization` says it was applied. WE, W2, the traced witness, `tail_share` and `gradient_witness` read the divided spectra.
+- On the 2.5 mm, 0.6 GHz closed box the divisor matches the empty box's own field at the probe within 1e-3 at every bin from 0.18 to 1.44 GHz.
+- Refused, each with its reason: the option without `probe_freqs`, a model without a plane wave, an H or `ex` channel, a channel outside the total-field box, and a bin where the incident spectrum is below 1e-4 of its bound.
+- With `s` or `p` polarization at `phi_deg != 0`, the divisor is the incident E along the polarization, so an empty box reads cos phi at an `ez` channel.

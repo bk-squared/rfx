@@ -119,7 +119,7 @@ from rfx.ringdown._pencil import (
 import inspect
 import math
 import warnings
-from dataclasses import dataclass, replace as _dc_replace
+from dataclasses import dataclass, field, replace as _dc_replace
 from importlib import import_module
 from typing import NamedTuple
 
@@ -200,6 +200,11 @@ class RingdownSpec:
         Positive concrete frequency bins for completing the identification probes
         without ports. Spectra use each field kind's physical DFT clock. WE and
         W2 use each channel's peak over these bins as their relative scale.
+    probe_normalization : {"incident", None}
+        With "incident" (closed-box plane wave at normal incidence, ey and ez
+        channels), each completed channel and every witness operand is divided
+        by the incident E spectrum at the channel's x plane
+        (:mod:`rfx.ringdown._incident_norm`), so the error is judged on that scale.
     window_start : float
         Start of the identification window as a fraction of the record; the
         window is ``[window_start * T, T]``. The source must be off there
@@ -237,8 +242,11 @@ class RingdownSpec:
     source_off_tol: float = 1.0e-6
     identification_probes: tuple = ()
     probe_freqs: tuple | None = None
+    probe_normalization: str | None = None
 
     def __post_init__(self):
+        if self.probe_normalization not in (None, "incident"):
+            raise ValueError(f"RingdownSpec.probe_normalization must be 'incident' or None, got {self.probe_normalization!r}")
         if self.probe_freqs is not None:
             bins = host_bins(self.probe_freqs, np.float64, caller="RingdownSpec", argument="probe_freqs")
             if bins.ndim != 1 or not bins.size or not np.all(np.isfinite(bins) & (bins > 0)):
@@ -306,7 +314,8 @@ class RingdownReport:
     entry and one column per extra channel: |residue| / window RMS. This
     includes any TM pole the user identifies by frequency; no mode type or
     observability threshold is inferred. These channels have no W0-style
-    accumulator witness; the shares are information only.
+    accumulator witness; the shares are information only. With an incident
+    normalization, ``incident_spectra`` holds the (nf, P) divisor.
 
     ``tail_share`` takes its maximum over the identification-probe channels
     as well as the port channels when ``identification_probes`` is set.
@@ -345,6 +354,8 @@ class RingdownReport:
     # Information only: no W0-style witness, and no TM-mode classification.
     identification_channels: tuple = ()
     identification_amplitude_shares: tuple = ()
+    probe_normalization: str | None = None
+    incident_spectra: np.ndarray | None = field(default=None, compare=False)
 
     @property
     def completed(self) -> bool:
@@ -866,6 +877,7 @@ class RingdownRun:
         self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
         self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes(warn_identification=warn_identification)
+        self.incident_spectra = import_module("rfx.ringdown._incident_norm").incident_normalization(self)
 
     # -- before the run ------------------------------------------------------
 
