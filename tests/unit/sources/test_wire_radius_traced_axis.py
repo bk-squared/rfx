@@ -219,7 +219,7 @@ def test_forward_width_gradient_is_finite():
     assert np.isfinite(float(derivative))
 
 
-# Two moving windows, one on each side of the pin (#1750). The radius stamp
+# Two moving windows, one on each side of the pin. The radius stamp
 # reads the union of the windows: the pin is admitted when both stay clear of
 # its stencil and one-cell margin, and refused when either one reaches them.
 CLEAR = ((1, 4), (10, 13))
