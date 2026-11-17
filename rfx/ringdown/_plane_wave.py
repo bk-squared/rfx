@@ -65,3 +65,19 @@ def plane_wave_entries(plan) -> list:
     if any(is_tracer(v) for v in maxima):
         return [PlaneWaveDrive(None)]
     return [PlaneWaveDrive(plane_wave_face_level(*(np.asarray(v) for v in maxima)))]
+
+
+def _require_source_off_rows(entries, rows, caller, probe_mode=False):
+    """Refuse the first drive whose off time cannot be judged on the host."""
+    from rfx._traced_refusal import TracedStructureRefusal
+
+    for pe, row in zip(entries, rows, strict=True):
+        if row is None:
+            label = drive_label(pe)
+            raise TracedStructureRefusal(
+                f"{caller}(ringdown=...): the {label} cannot be judged for its off time inside the "
+                "identification window: its waveform samples or the time step are traced "
+                "(a waveform parameter, or a graded mesh without dt=, under jax.grad, "
+                "jax.jvp, jax.vmap or jax.jit). Declare that waveform with concrete values "
+                + ("(a completed probe spectrum is linear in the drive: scale it outside the call)"
+                   if probe_mode else "(S does not depend on the drive's amplitude)") + ", or pin dt=.")
