@@ -200,6 +200,7 @@ def test_zero_extent_dielectric_still_continues_along_its_normal():
 
 
 def test_shift_probe_uses_realized_fractional_face_trimmed_to_interior():
+    """The 9 x 4 x 2 occupied cells give 355 edges: Ex=9*5*3, Ey=10*4*3, Ez=10*5*2."""
     sim = _sim(fractional=True)
     sim.add(Box((0., 2., 2.), (8.2, 6., 4.)), material="pec")
     ctx = sim._campaign_ctx()

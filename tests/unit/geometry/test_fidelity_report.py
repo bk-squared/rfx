@@ -461,7 +461,9 @@ def test_node_aligned_faces_on_uniform_valued_axes_report_zero_residual():
     uniform-valued axes, whose exact node line is the same product; the
     report must read them back as exactly on-node. Pre-fix residuals:
     3.704e-05 um (lo) / 1.852e-04 um (hi) on x, from the widened float32
-    cell size 0.00030479999259114265."""
+    cell size 0.00030479999259114265.
+    The expected 2000 cells are 20 * 10 * 10 because z = [20D, 25D) spans ten D/2 cells, with D = _DX_WR90.
+    """
     def build():
         return _geo(_graded_z_sim().fidelity_report(print_report=False), 0)
 

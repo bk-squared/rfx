@@ -19,9 +19,7 @@ The cv11 PEC-short A/B and ``test_mesh_convergence_s21_scaled_cpml``
 acceptance tests will be added as a second TDD pass once these
 unit-level pieces land — running a full WR-90 scan in this file would
 turn the test suite into a multi-minute job.
-
-
-The PEC-short acceptance gate via the S-matrix path and the mesh-convergence S21 gate with Boundary(conformal=True) are included."""
+"""
 
 from __future__ import annotations
 

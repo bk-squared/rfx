@@ -105,7 +105,6 @@ def test_kottke_pec_short_time_stability_30_periods():
     Stage 2's inv=0 freezes E but not H). Energy accumulates at the
     PEC interior over many periods → eventual float32 overflow.
     Tracked as a deferred fix path on the Step 5 follow-up list.
-    An earlier 50-period run passed with the ghost-layer fix.
     """
     sim = Simulation(
         freq_max=10e9,
