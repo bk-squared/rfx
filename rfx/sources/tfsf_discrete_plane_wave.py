@@ -271,7 +271,7 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     ca, cb = e_update_coeffs(one, zero, dt)
     ch = dt / (one * MU_0)
     line_damping = _line_damping(
-        n_nodes, absorber_nodes, fractions, dx / norm, dt, _zero_absorber)
+        n_nodes, absorber_nodes, fractions, dx / norm, dt, _zero_absorber, dtype=dtype)
     cfg = PlaneWaveConfig(tuple(map(int, m)), info, shape, bounds, origin, n_nodes,
                           int(n_steps), tuple(fractions), tuple(projections),
                           translate(tables_e), translate(tables_h),
@@ -287,8 +287,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     return cfg, FDTDState(*fields, jnp.asarray(0, jnp.int32))
 
 
-def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False):
-    """Matched exponential loss at each component's own position."""
+def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False, *, dtype):
+    """Matched exponential loss at each component's own position, stored in the line dtype."""
     # Interfaces are at index L and n_nodes-L. Integral sigma*eta dz = ln(1e4).
     depth = length * spacing
     sigma_max = 4 * math.log(1e4) / (math.sqrt(MU_0 / EPS_0) * depth)
@@ -301,9 +301,9 @@ def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False):
         if zero_loss:
             sigma = np.zeros_like(sigma)
         factors = np.exp(-sigma * dt / EPS_0)
-        field = np.ones(n_nodes, np.float32)
+        field = np.ones(n_nodes, np.float64)
         field[:length], field[-length:] = factors[:length], factors[length:]
-        damping.append(jnp.asarray(field, jnp.float32))
+        damping.append(jnp.asarray(field, dtype))
     return tuple(damping)
 
 

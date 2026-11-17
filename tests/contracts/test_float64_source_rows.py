@@ -179,6 +179,24 @@ def test_e9_correction_tables(realized):
             assert_value(table.coefficient, reference, 4)
 
 
+def test_e18_line_damping(realized):
+    """exp(-sigma_max*rho**3*dt/EPS0) on each lossy end, sigma_max = 4 ln(1e4)/(eta0*N*dx/|m|)."""
+    cfg, state = realized('closed')['init_plane_wave'][-1][1]
+    length = cfg.absorber_nodes
+    assert length > 0
+    assert len(cfg.line_damping) == 6
+    spacing = cfg.dx_1d/np.linalg.norm(np.asarray(cfg.m, dtype=np.float64))
+    sigma_max = 4*np.log(1e4)/(np.sqrt(MU0/EPS0)*length*spacing)
+    n = np.arange(length, dtype=np.float64)
+    for i, fraction in enumerate(cfg.fractions):
+        rho = np.concatenate(((length-n-fraction)/length, (n+fraction)/length))
+        exponent = -sigma_max*rho**3*cfg.dt/EPS0
+        expected = np.ones(cfg.n_nodes)
+        expected[:length], expected[-length:] = np.exp(exponent[:length]), np.exp(exponent[length:])
+        assert cfg.line_damping[i].dtype == state.ex.dtype == jnp.float64
+        assert_value(cfg.line_damping[i], expected, np.ceil(4*np.max(np.abs(exponent)))+14, scale=expected)
+
+
 def test_e10_e11_delayed_window_launch(realized):
     from rfx.sources.tfsf_discrete_plane_wave import update_line_e
     cfg, state = realized('closed')['init_plane_wave'][-1][1]
