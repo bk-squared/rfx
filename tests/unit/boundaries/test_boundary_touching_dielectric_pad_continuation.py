@@ -66,7 +66,7 @@ DX = A / 10
 #: reflection for an eps_r = 12 guided mode -- it falls by ~8x per depth
 #: doubling, and it does not move with transverse clearance (sy 8a vs 16a:
 #: 0.0510 vs 0.0509), source position, fit window or record length (2x steps:
-#: 0.0509). A seam facet behaves the opposite way: #831 measured 0.53 / 0.59 /
+#: 0.0509). A seam facet behaves the opposite way: measured 0.53 / 0.59 /
 #: 0.62 over the same depths, WORSE as the absorber deepens, because the first
 #: pad cell's conductivity falls as N^-3 and loads the facet less. Reading the
 #: 0.03 bar at a depth where the absorber is not the limit is what makes it a
@@ -259,7 +259,7 @@ def test_boundary_touching_guide_is_stable_and_has_no_round_trip(
     assert m["n_nonfinite"] == 0, (
         f"{boundary}: {m['n_nonfinite']} non-finite samples in a "
         f"{m['n_steps']}-step record -- the run diverged")
-    # #1373: measured factor 1e21 equals predicted 1/dV (dx=1e-7 m).
+    # Measured factor 1e21 equals predicted 1/dV (dx=1e-7 m).
     assert m["peak"] < 1e3 * 1e21, (
         f"{boundary}: peak |Ez| {m['peak']:.3e} on a unit-amplitude source; "
         "finite is not the same as bounded")

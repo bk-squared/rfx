@@ -39,7 +39,7 @@ XPROBES = (0.16, 0.18, 0.20, 0.22, 0.33)
 
 
 # --------------------------------------------------------------------------- #
-# forward(): the differentiable path RUNS reactive Kerr on the uniform lane (#437),
+# forward(): the differentiable path RUNS reactive Kerr on the uniform lane,
 # byte-identical to run(), and is differentiable THROUGH the Kerr operator.
 # --------------------------------------------------------------------------- #
 def _kerr_sim(chi3):
