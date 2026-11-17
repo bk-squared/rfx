@@ -72,13 +72,13 @@ def test_design_box_admission_checks_only_corners(transform, build_box, refuses)
 
 @pytest.mark.parametrize("transform", ["make_jaxpr", "grad"])
 def test_forward_design_box_ignores_traced_eps_range(transform):
+    """The design box includes both corner indices, so it covers cells 4, 5 and 6 on each axis and the override is 3 by 3 by 3."""
     sim = Simulation(freq_max=16e9, domain=(.010, .010, .010), dx=.001,
                      boundary="pec")
     sim.add_source((.002, .005, .005), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=8e9, bandwidth=.8))
     sim.add_probe((.008, .005, .005), "ez")
     assert sim.freeze_mesh().shape == (11, 11, 11)
-    # Both corner indices are included: cells 4, 5 and 6 on each axis.
     eps = jnp.full((3, 3, 3), 2., jnp.float32)
 
     def call(value):
@@ -147,7 +147,6 @@ def test_walker_containers_pytrees_cycles_and_depth():
     assert not any(item is marker for item in walk([[[[[marker]]]]]))
 
 
-# These four decorators already exist on the base tree. No others may appear.
 BASE_WRAPPED = {
     "forward", "_forward_from_materials", "_forward_nonuniform_from_materials",
     "compute_waveguide_s_matrix",
@@ -169,10 +168,6 @@ def test_t9_only_baseline_callables_have_wrapped():
                 assert not hasattr(getattr(cls, name), "__wrapped__"), (cls, name)
 
 
-# Literal baseline source and stack depths. The trace callback adds one frame
-# to a body-issued stacklevel=2 warning; staging/flux wrappers add their existing
-# frame. Independent source/name matching still finds a body hidden by a closure
-# without __wrapped__, so adding such a wrapper cannot evade the attribution test.
 FRAME_CASES = (
     ("add_source", "rfx/api/__init__.py", 0),
     ("add_polarized_source", "rfx/api/__init__.py", 0),
@@ -272,5 +267,4 @@ def test_forward_invalid_binding_falls_through_to_type_error():
     with pytest.raises(TypeError) as caught:
         sim.forward(1)
     assert not isinstance(caught.value, TracedStaticInput)
-    # Python's own call error, not Signature.bind's "too many positional arguments".
     assert "takes 1 positional argument but 2 were given" in str(caught.value)

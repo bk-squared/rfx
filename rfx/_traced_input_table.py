@@ -588,6 +588,7 @@ ROWS = (
     ('RingdownSpec', 'passivity_tol', 'static', 'S1: WAVE-41; rfx/ringdown/__init__.py::RingdownSpec.__post_init__ host window, decimation or witness control'),
     ('RingdownSpec', 'source_off_tol', 'static', 'S1: WAVE-41; rfx/ringdown/__init__.py::RingdownSpec.__post_init__ host window, decimation or witness control'),
     ('RingdownSpec', 'identification_probes', 'undecided', 'step 2 decides; annotation admits a number'),
+    ('RingdownSpec', 'probe_freqs', 'undecided', 'step 2 decides; host_bins refuses a traced value by name (tests/unit/sparams/test_ringdown_probe_channels.py::test_t3_bins_hashable_and_traced_by_name)'),
     ('SnapshotSpec', 'interval', 'undecided', 'step 2 decides; rules did not decide; rfx/_internal/_uniform_specs.py:301'),
     ('SnapshotSpec', 'components', 'undecided', 'step 2 decides; annotation admits a number'),
     ('SnapshotSpec', 'slice_axis', 'undecided', 'step 2 decides; rules did not decide; rfx/_internal/_uniform_specs.py:303'),
@@ -648,7 +649,6 @@ ROWS = (
 )
 
 
-# Parameter names for report-only defaults; T1 checks these with inspect.
 DEFAULT_PARAMETERS = {
     'Simulation.ad_memory_compiled_certificate': ('compiled', 'n_steps', 'available_memory_gb', 'target_fraction', 'checkpoint_every', 'checkpoint_segments', 'n_warmup', 'design_box', 'design', 'checkpoint', 'distributed', 'precision', 'input_signature', 'static_signature', 'compiled_object_id', 'runner_or_objective', 'preflight', 'scope_context'),
     'Simulation.ad_memory_preflight': ('n_steps', 'available_memory_gb', 'target_fraction', 'n_warmup', 'design_box', 'design', 'checkpoint', 'distributed', 'cotangents', 'safety_factor', 'include_mesh_report', 'check_ntff', 'check_resolution', 'residual_fun', 'residual_args', 'residual_kwargs', 'residual_top_n', 'residual_workflow', 'residual_context'),
