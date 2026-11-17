@@ -54,7 +54,7 @@ def same_fill(actual, reference):
 def test_box_spanning_many_periods_fills_the_cell(material):
     reference = realized([box(0., L)], material)
     for lo, hi in [(-2 * L, 3.5 * L), (2 * L, 7.5 * L)]:
-        assert lo < 0 or lo > L, (
+        assert (lo >= L or hi <= 0) if lo >= 0 else True, (
             "The positive-side drawing must be wholly outside [0,L] so clipping cannot pass"
         )
         same_fill(realized([box(lo, hi)], material), reference)

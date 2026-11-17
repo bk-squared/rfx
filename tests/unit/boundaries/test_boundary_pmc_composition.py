@@ -39,7 +39,7 @@ def test_oq8_ntff_over_pmc_face_gives_zero_poynting():
 
     H[0] lies inside the domain and may not be used as the wall sample.
 
-    Hx / Hy must be non-zero just above the PMC face so the interior propagation still works; otherwise the cavity was not energised.
+    The Hx magnitude must exceed 1e-20 somewhere on the nz // 2 plane so zero face flux cannot pass merely because the cavity was not energised.
     """
     dx = 0.5e-3
     nx, ny, nz = 16, 16, 16
