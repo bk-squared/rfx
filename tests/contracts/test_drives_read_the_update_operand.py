@@ -31,6 +31,7 @@ Expected values never call the code's coefficient helpers.
 
 from __future__ import annotations
 
+import re
 import sys
 
 import jax
@@ -457,6 +458,50 @@ def test_upml_rlc_reads_the_cell_owned_conductivity(entry):
     np.testing.assert_allclose(row['sigma_owner'], .5, rtol=1e-6)
     np.testing.assert_allclose(row['sigma_mean'], .125, rtol=1e-6)
 
+
+def _upml_pad_rlc_scene(side):
+    """O2's plain UPML rlc scene with the element moved onto an x pad edge.
+
+    Returns the scene and the edge the element must realize: one cell inside
+    the x-lo pad at x = -1 mm, or the first x-hi pad cell, whose position is
+    computed from the grid's shape and pad counts.
+    """
+    sim = _scene('rlc', 'upml_plain', upml=True)
+    spec = sim._lumped_rlc.pop()
+    grid = sim._build_grid()
+    _, j, k = (round(v / grid.dx) + pad for v, pad in
+               zip(spec.position, (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)))
+    if side == 'x_lo':
+        i = grid.pad_x_lo - 1
+    else:
+        i = grid.shape[0] - grid.pad_x_hi
+    x = (i - grid.pad_x_lo) * grid.dx
+    sim.add_lumped_rlc((x, spec.position[1], spec.position[2]), spec.component,
+                       R=spec.R, L=spec.L, C=spec.C, topology=spec.topology)
+    return sim, (i, j, k)
+
+
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+@pytest.mark.parametrize('side', ('x_lo', 'x_hi'))
+def test_upml_rlc_on_an_absorber_pad_edge_is_refused(entry, side):
+    """A lumped RLC element on a UPML absorber pad edge is refused before any step.
+
+    On a pad edge the UPML step's Cb includes the perpendicular absorber
+    conductivity, while the element's D0 is the interior 1/Cb. Scene: O2's
+    smooth scene with ``boundary='upml'``, no smoothing, the series element
+    ez moved to x = -1 mm (edge (1, 6, 6), inside the two-cell x-lo pad) or
+    to the first x-hi pad cell. The interior element stays admitted (the
+    ``smoothing_off`` rows of ``test_upml_drives_read_the_upml_coefficient``).
+    """
+    from rfx.errors import RfxRefusal
+    sim, edge = _upml_pad_rlc_scene(side)
+    if side == 'x_lo':
+        assert edge == (1, 6, 6), edge
+    with pytest.raises(RfxRefusal, match=(
+            re.escape(f'realizes edge {edge}, which lies inside a UPML absorber pad')
+            + '.*' + re.escape('Place the element inside the physical domain, '
+                               'or enlarge the domain.'))):
+        getattr(sim, entry)(**_entry_options('upml_plain', entry))
 
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))

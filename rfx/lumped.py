@@ -72,7 +72,7 @@ with a plane wave on a sheet of pure 2 nH elements on 1 mm cells it read
 
 from __future__ import annotations
 
-from rfx.errors import RfxUnsupported
+from rfx.errors import RfxRefusal, RfxUnsupported
 
 from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass
@@ -288,7 +288,9 @@ def edge_update_denominator(materials, cell, component, dt,
     eps 1|4 corner edge the edge mean is 1.75 and the owner cell 4.0, so
     reading the mean scaled the element's D0 by 1.75/4.0. With a tensor the
     float32 diagonal and the cell-owned conductivity enter
-    ``eps/dt + sigma/2`` as before.
+    ``eps/dt + sigma/2`` as before. ``D0 = 1/Cb`` holds on interior edges;
+    an element on an absorber pad edge is refused before it is built
+    (:func:`refuse_rlc_in_absorber_pad`).
     """
     from rfx.model.materials import (
         e_update_material_at, tensor_operand_at, upml_operands_at, upml_update_cb)
@@ -441,6 +443,28 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
     return materials
 
 
+def refuse_rlc_in_absorber_pad(grid, spec, cell, materials):
+    """Refuse an element whose realized edge lies in a UPML absorber pad.
+
+    Under UPML the step's ``Cb`` on such an edge includes the absorber's
+    perpendicular conductivity; the element's ``D0`` is the interior
+    ``1/Cb`` (:func:`edge_update_denominator`), so the element would solve
+    its current against a different update than the one that steps the
+    edge. Same predicate as the drives
+    (:func:`rfx.model.source_coefficients.edge_in_absorber_pad`).
+    """
+    if not getattr(getattr(materials, "components", None), "source_upml", False):
+        return
+    from rfx.model.source_coefficients import edge_in_absorber_pad
+    if edge_in_absorber_pad(grid, cell, spec.component):
+        raise RfxRefusal(
+            f"lumped RLC element at {tuple(spec.position)} ({spec.component}, "
+            f"R={spec.R}, L={spec.L}, C={spec.C}, {spec.topology}) realizes edge "
+            f"{tuple(int(v) for v in cell)}, which lies inside a UPML absorber pad; "
+            "its update denominator does not include the absorber operator. "
+            "Place the element inside the physical domain, or enlarge the domain.")
+
+
 def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
                    r_val=None, l_val=None, c_val=None,
                    periodic=(False, False, False)) -> RLCCellMeta:
@@ -453,10 +477,15 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     run's periodic flags for that lookup. Topology uses the static spec;
     optional R/L/C overrides supply numeric values. Concrete inputs keep
     host arithmetic and traced inputs retain array arithmetic.
+
+    Under UPML (``materials.components.source_upml``) an element whose
+    realized edge lies in an absorber pad is refused
+    (:func:`refuse_rlc_in_absorber_pad`).
     """
     from rfx.sources.sources import port_d_parallel as _d_par
     from rfx.sources.sources import port_dual_transverse as _dual_t
     idx = field_index(grid, spec.position, spec.component)
+    refuse_rlc_in_absorber_pad(grid, spec, idx, materials)
     i, j, k = idx
     d_par = _d_par(grid, idx, spec.component)
     _b, _c = _dual_t(grid, idx, spec.component)
