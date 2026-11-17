@@ -495,7 +495,7 @@ class _CompileMixin:
         grid = build_nonuniform_grid(
             self._freq_max, self._domain, self._dx, self._cpml_layers,
             self._dz_profile, periodic_axes=self._periodic_axes or "",
-            dtype=jnp.promote_types(resolve_field_dtype(self._precision) or jnp.float32, jnp.float32),
+            dtype=jnp.promote_types(resolve_field_dtype(getattr(self, "_precision", None)) or jnp.float32, jnp.float32),
             dx_profile=self._dx_profile,
             dy_profile=self._dy_profile,
             face_layers=face_layers, pec_faces=pec_faces, pmc_faces=pmc_faces,

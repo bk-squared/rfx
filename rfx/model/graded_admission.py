@@ -381,7 +381,7 @@ def host_cells(grid, axis, *, store=False):
         widths = nominal_cells(grid, axis, padded=True)
         if widths is None or traced_cell_mask(grid, axis) is None:
             return stored if store else grid.cells(axis)
-        return np.asarray(widths, dtype=stored.dtype if store else np.float64)
+        return np.asarray(widths, dtype=getattr(stored, "dtype", np.float64) if store else np.float64)
     if store and stored is not None and not np.isscalar(stored):
         return np.asarray(stored)
     return np.asarray(grid.cells(axis), dtype=np.float64)

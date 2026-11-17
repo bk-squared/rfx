@@ -43,7 +43,7 @@ S. C. Tan and G. E. Potter, IEEE T-AP 58(9), 2010.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -270,7 +270,7 @@ def init_tfsf_2d(
     # reflection through the same law the 3-D absorber uses
     # (rfx/boundaries/cpml.py::_cpml_profile), never from a standalone
     # heuristic -- see AUX_CPML_* above.
-    profile_options = dict(
+    profile_options: dict[str, Any] = dict(
         order=AUX_CPML_ORDER if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=AUX_CPML_KAPPA_MAX if aux_cpml_kappa_max is None else float(aux_cpml_kappa_max),
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None

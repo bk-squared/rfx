@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from rfx.errors import RfxRefusal, RfxUnsupported
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -513,7 +513,7 @@ def init_tfsf(
             "the 1-D auxiliary CPML update carries no kappa (the split updates use b and c "
             f"only), so kappa_max must stay 1.0; got {_kappa_1d}"
         )
-    profile_options = dict(
+    profile_options: dict[str, Any] = dict(
         order=AUX_CPML_ORDER_1D if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=_kappa_1d,
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC_1D if aux_cpml_r_asymptotic is None
