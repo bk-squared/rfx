@@ -209,7 +209,7 @@ def test_mu_r_channel_is_live(mag_run):
 def test_mu_r_gradient_ad_vs_fd(mag_run):
     """Autodiff SELF-CONSISTENCY (not physics): jax.grad w.r.t. mu_r matches a FD
     step of the same forward. Physical validation is test_mu_r_gradient_vs_analytic_tmm.
-    An earlier run measured a +3.3 GB RSS high-water delta.
+    The highmem mark reflects the +3.3 GB RSS high-water delta measured earlier.
     """
     sim, shape, xi, xb, xpec = (mag_run[k] for k in ("sim", "shape", "xi", "xb", "xpec"))
     dists, dt, ns, inc = (mag_run[k] for k in ("dists", "dt", "ns", "inc"))

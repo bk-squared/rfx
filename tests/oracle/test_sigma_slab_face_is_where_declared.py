@@ -15,6 +15,7 @@ same fixture reads the PEC occupancy lane's number.
 The PEC lane is run here, in the same process and on the same build, rather
 than quoted: it is the reference that makes this a statement about WHERE the
 face is, not about how well a lossy slab imitates a PEC one.
+SIGMA = 1e5 S/m stays below the 1e6 S/m PEC-mask threshold.
 """
 from __future__ import annotations
 

@@ -270,6 +270,7 @@ def test_nonuniform_z_two_fine_band_cavity_tm111_accuracy():
     = 0.04 %. That envelope was measured on the SINGLE-band configuration, not
     on this one; this arm reports its own measured error against it and does not
     derive a gate of its own.
+    The 9 mm coarse bands keep the realized extent at 41.75 mm, within 0.4 mm of the single-band cavity's 41.37 mm, so both arms probe the same TM111 (~6.7 GHz) cavity-size regime.
     """
     from rfx.auto_config import smooth_grading
 

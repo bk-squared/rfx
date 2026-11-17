@@ -148,6 +148,7 @@ Related: #801 (the growth record and the live thin-absorber class), #931 (the co
 that ended the n = 4 / 8-layer growth), #1070 / #1136 (the absorber-pad defect found on the same
 fixture, whose fix removed the cell the growth record depended on), #1141 (the decision to
 record this rather than re-pin the old grid).
+Fixture lengths are in units of the substrate thickness h so they span whole cells at every integer resolution.
 """
 from __future__ import annotations
 
@@ -278,7 +279,6 @@ def _settling_db(time_series):
 
 
 def _run_rates(monkeypatch=None, continuation_off=False):
-    """An empty preflight would mean the board changed under the test."""
     sim = _build(n=3, pad_h=10, cpml=6)
     if continuation_off:
         from rfx.geometry import smoothing
