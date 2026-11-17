@@ -39,9 +39,13 @@ def global_plan(sim, grid, specs, lane, freqs, compute_s_params):
     return PortPlan(graded_specs(specs), graded_acc_indices(specs), meta, bins, use, initial)
 
 
-def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps):
-    """Broadcast only zero accumulators/records; never use slab indices as global."""
-    from rfx.measurement.projector import port_table
+def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps, *,
+                port_table, port_owners):
+    """Broadcast only zero accumulators/records; never use slab indices as global.
+
+    ``port_table`` and ``port_owners`` are the attached plan's, compiled once
+    by the caller for ``plan.specs``.
+    """
     from rfx.measurement.time_records import init_graded_records
     from rfx.stepping.graded import make_graded_step
     if plan is None:
@@ -50,12 +54,12 @@ def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps):
         port_acc_indices=plan.acc_indices, wp_meta=plan.wp_meta,
         sp_freqs=None if plan.sp_freqs is None else place(plan.sp_freqs, NamedSharding(mesh, P())),
         use_wire_ports=plan.use_wire_ports)
-    with jax.ensure_compile_time_eval():
-        invariants['port_table'] = port_table(context.grid, plan.specs, nu=True,
-            boundary=context.curl_boundary, dtype=carry['fdtd'].ex.dtype)
+    invariants['port_table'] = port_table
     initial = dict(plan.initial)
     initial['fdtd'] = carry['fdtd']
-    init_graded_records(initial, n_steps, SimpleNamespace(step_fn_inv=make_graded_step(context)))
+    step = make_graded_step(context)
+    step.port_owners = port_owners
+    init_graded_records(initial, n_steps, SimpleNamespace(step_fn_inv=step))
     for key in ('wire_sparams', 'sparam_time_records'):
         if key in initial:
             carry[key] = jax.tree.map(lambda a: place(
