@@ -386,7 +386,7 @@ def _reference_topology_optimize_04b960c1c(
             cells, eps_override=fields.eps.astype(base_materials.eps_r.dtype),
             sigma_override=fields.sigma.astype(base_materials.sigma.dtype),
             window=(slice(None),) * 3, box_local=window)._replace(mu_r=base_mu_r)
-        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy)
+        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy, dtype=jnp.float32)
 
         result = sim._forward_from_materials(
             grid,
