@@ -91,7 +91,7 @@ _N_STEPS = 4000
 def _build_thru(reference_plane_cells: int | None = None, *, snap="declared") -> Simulation:
     """The committed battery thru, optionally opted into the plane path.
 
-    S from one record needs isolated drives.
+    The trace x/y sizes are solved +2.059%/+7% off the drawing by the preflight effective-size rule, so the lock keeps the declared geometry on purpose.
     """
     sim = Simulation(snap=snap,
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
@@ -443,7 +443,6 @@ def test_refplane_registers_two_planes_per_port_with_phase0_geometry():
     sampled CLOSED, so the drawn 5.0 mm strip realizes y 23..33 where the
     old half-open rule stopped at 32, and the loop leg half a cell outside
     the bbox follows it).
-    The gap line integral spans the 2 live cells, exactly the 2-cell integral that measured Zc = 47.9-48.6 ohm.
     """
     raw = _raw_drive(_build_thru(reference_plane_cells=3))
     rp = raw["wire_refplane"]
@@ -492,7 +491,10 @@ def test_refplane_crossing_guard_rejects_planes_past_other_port():
 
 def test_refplane_requires_pec_trace_at_plane():
     """Planes pointing AWAY from the line (wrong direction) find no trace
-    cross-section and must fail loudly, not measure vacuum."""
+    cross-section and must fail loudly, not measure vacuum.
+
+    The trace x/y sizes are solved +2.059%/+7% off the drawing by the preflight effective-size rule, so the lock keeps the declared geometry on purpose.
+    """
     sim = Simulation(
         snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
@@ -652,7 +654,10 @@ def test_preflight_near_field_advisory_below_n10():
 
 def test_preflight_partial_optin_advisory():
     """Opting in only ONE of two wire ports leaves the off-diagonals on
-    the legacy path silently — preflight must say so."""
+    the legacy path silently — preflight must say so.
+
+    The trace x/y sizes are solved +2.059%/+7% off the drawing by the preflight effective-size rule, so the lock keeps the declared geometry on purpose.
+    """
     sim = Simulation(snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -693,7 +698,10 @@ def test_preflight_silent_without_optin():
 def test_nonuniform_lane_end_to_end_raises():
     """A real graded dz_profile routed through run(compute_s_params=True)
     hits the NU lane and must raise, not silently return legacy
-    off-diagonals (end-to-end witness for the unit-level guard above)."""
+    off-diagonals (end-to-end witness for the unit-level guard above).
+
+    The trace x/y sizes are solved +2.059%/+7% off the drawing by the preflight effective-size rule, so the lock keeps the declared geometry on purpose.
+    """
     dz = np.concatenate([np.full(10, 0.4e-3), np.full(12, 0.5e-3)])
     assert abs(float(np.sum(dz)) - _DOMAIN[2]) < 1e-12
     sim = Simulation(snap="declared",

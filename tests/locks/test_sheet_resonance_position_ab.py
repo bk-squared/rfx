@@ -58,7 +58,7 @@ CPU-sized fixture the copper-loss FWHM is far below the window-limited
 resolution, so the floor df binds on both sides — the gate then reads
 "resonances agree to spectral resolution", which the f0 operator passes
 by ~40x margin and the pre-fix realization fails by ~3.5x.
-Amplitude rank is not a mode label.
+The pin takes the two loudest peaks, and the gate compares f0 versus PEC residuals at the same chosen peaks in every arm.
 """
 
 LOCK_PROVENANCE = {
@@ -96,6 +96,7 @@ MEASURED_PEC_MODES = (25.1741e9, 30.2153e9)
 
 
 def _build(mode):
+    """The PEC patch x/y sizes are solved +3.182%/-1.579% off the drawing by the preflight effective-size rule, so the resonance-position lock keeps the declared geometry on purpose."""
     sim = Simulation(snap="declared",
                      freq_max=40e9, domain=DOMAIN, dx=DX,
                      dz_profile=[DZ] * NZ, boundary="pec")
@@ -157,7 +158,6 @@ def _run(mode):
 
 
 def test_g1_resonance_position_ab():
-    """The regression assertions allow small float drift (2*df)."""
     sim_f0 = _build("f0")
     grid = sim_f0._build_nonuniform_grid()
     specs = []

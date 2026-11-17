@@ -435,7 +435,6 @@ def test_bright_region_pattern_matches_sin2_theta(base_rung):
     Measured max |deviation| 0.0586 dB on the base rung (0.0056 dB at
     dx=0.75 mm); gate 0.30 dB (~5x measured base). A point dipole has no
     staircase, so this isolates pure NTFF surface-integration error.
-    Radiation intensity has axes (n_theta, n_phi).
     """
     U = _radiation_intensity(base_rung["ff"])[0]
     U_phi_mean = U.mean(axis=1)
@@ -484,7 +483,6 @@ def test_offset_dipole_phase_slope_is_plus_k_dz_cos_theta(base_rung,
     conjugation of the DFT/kernel or under r_hat -> -r_hat: either flip
     negates the slope (~200% deviation) and fails loudly. A fit-residual
     cap (measured 0.0050 rad, gate 0.05) keeps the linear fit meaningful.
-    The E_theta slice [:, 0] is the phi = 0 cut.
     """
     assert offset_rung["tail_over_peak"] < 1e-3, (
         f"offset fixture not settled: "
@@ -523,7 +521,6 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
     0.004593; phi=0-cut |E_theta| vs |cos(theta)| max|dev| 0.004575 (both
     normalized, bins where the model >= 0.5); gate 0.05 (~10x). Peak
     ratio max|E_phi|/max|E_theta| measured 1.002629; band [0.9, 1.1].
-    E_theta and E_phi have axes (n_theta, n_phi).
     """
     assert xdipole_rung["tail_over_peak"] < 1e-3, (
         f"x-dipole fixture not settled: "

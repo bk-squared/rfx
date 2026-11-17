@@ -136,6 +136,7 @@ _MSL_FREQS = jnp.linspace(2e9, 18e9, 16)
 
 
 def _msl_result():
+    """The 1.2 mm trace is solved as 1.34 mm (+11.67%) by the preflight effective-size rule, so the bit-identity lock keeps the declared geometry on purpose."""
     sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8, snap="declared")
     sim.add_material("sub", eps_r=2.2)
