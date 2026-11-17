@@ -1,10 +1,22 @@
 """A transformed ForwardResult keeps only host data in pytree static state.
 
-Scene A is the issue's reproduction (scale 1, port at x node 4). Scene B pins
-the realized-width case found in review: scale 1.05 with the port at x node 8,
-next to the traced cells, so the report must read the realized mesh.
+Scene A is the issue's reproduction (scale 1, port at x node 4, 3.3 mm =
+1.0+0.8+0.6+0.9 mm). Scene B pins the realized-width case found in review:
+scale 1.05 with the port at x node 8 (8.2 mm =
+1.0+0.8+0.6+0.9+1.2+1.4+1.2+1.1 mm, the traced window's upper edge), next to
+the traced cells, so the report must read the realized mesh. The port scenes
+run 600 steps, the smallest admitted of {300, 600, 1200} with the default
+RingdownSpec.
+
+The probe-mode rows drive the same cavity with a soft source and complete
+two identification probes (``probe_freqs``) instead of a port, under
+``jax.grad`` and ``jax.jvp``: on the uniform lane with a traced permittivity
+scale, and on the graded lane with the x cells of scene B traced. They run
+the shortest records the probe-channel unit tests use (600 uniform, 1000
+graded steps). The ez probe sits inside traced x cell 7.
 """
 from dataclasses import fields, is_dataclass
+from functools import lru_cache
 import warnings
 
 import jax
@@ -22,10 +34,12 @@ DY = np.array([1., 1.4, .8, .6, .8, .9, 1., 1.1, 1.2, 1.2, 1.]) * MM
 DZ = np.array([.8, .6, 1.4, 1.4, .8]) * MM
 DT = .9 / (299792458. * np.sqrt(3 / (.6 * MM)**2))
 FREQS = np.linspace(10e9, 16e9, 7)
-N_STEPS = 600  # Smallest admitted of {300, 600, 1200}; default RingdownSpec.
-PORT_X_A = 3.3 * MM  # x node 4: 1.0+0.8+0.6+0.9 mm
-PORT_X_B = 8.2 * MM  # x node 8: 1.0+0.8+0.6+0.9+1.2+1.4+1.2+1.1 mm, the window's upper edge
+N_STEPS = 600
+PORT_X_A = 3.3 * MM
+PORT_X_B = 8.2 * MM
 SCALE_B = 1.05
+PROBES = (((8 * MM, 7 * MM, 3 * MM), 'ez'), ((3 * MM, 7 * MM, 3 * MM), 'hy'))
+PROBE_STEPS = {'uniform': 600, 'graded': 1000}
 
 
 def _realized_dx(scale):
@@ -44,20 +58,30 @@ def _realized_dx(scale):
     return w
 
 
-def _forward(scale=None, dx=DX, port_x=PORT_X_A):
+def _graded(scale, dx):
+    """Graded-mesh keywords; with ``scale``, x cells 6 and 7 are traced."""
     nominal = None
     if scale is not None:
         dx = jnp.asarray(DX, dtype=jnp.float32)
         dx = dx.at[6].set(DX[6] * scale).at[7].set(float(DX[6] + DX[7]) - DX[6] * scale)
         nominal = {'x': NominalProfile(DX, traced_cells=(6, 8))}
+    return dict(dx_profile=dx, dy_profile=DY, dz_profile=DZ, dt=float(DT),
+                dt_min_cell=.6*MM, nominal_profiles=nominal)
+
+
+def _cavity(**grid):
+    sim = Simulation(freq_max=20e9, domain=(12*MM, 11*MM, 5*MM), dx=MM,
+                     boundary='pec', **grid)
+    sim.add_material('fill', eps_r=2.2,
+                     sigma=2*np.pi*12.5e9*8.854187817e-12*2.2/300)
+    sim.add(Box((0, 0, 0), (12*MM, 11*MM, 5*MM)), material='fill')
+    return sim
+
+
+def _forward(scale=None, dx=DX, port_x=PORT_X_A):
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        sim = Simulation(freq_max=20e9, domain=(12*MM, 11*MM, 5*MM), dx=MM,
-                         boundary='pec', dx_profile=dx, dy_profile=DY, dz_profile=DZ,
-                         dt=float(DT), dt_min_cell=.6*MM, nominal_profiles=nominal)
-        sim.add_material('fill', eps_r=2.2,
-                         sigma=2*np.pi*12.5e9*8.854187817e-12*2.2/300)
-        sim.add(Box((0, 0, 0), (12*MM, 11*MM, 5*MM)), material='fill')
+        sim = _cavity(**_graded(scale, dx))
         sim.add_port(position=(port_x, 3.8*MM, .8*MM), component='ez',
                      impedance=50., extent=.6*MM,
                      waveform=GaussianPulse(f0=13e9, bandwidth=.8, cutoff=4.5))
@@ -118,17 +142,19 @@ def _assert_static_state(result):
 
 @pytest.fixture(scope='module')
 def eager():
-    # The realized widths at scale 1 as a concrete float32 profile, no
-    # nominal_profiles: the report reads the realized mesh (Addendum 3), and
-    # cell 7 at scale 1 may sit one float32 ulp from the declared width.
+    """The realized widths at scale 1 as a concrete float32 profile, no
+    nominal_profiles: the report reads the realized mesh, and cell 7 at
+    scale 1 may sit one float32 ulp from the declared width."""
     return _forward(dx=_realized_dx(1.0))
 
 
 def _transform(kind, scale_value, port_x):
+    """The result a transform returns; ``jacfwd`` returns the ring-down result
+    alone, since a whole ForwardResult has a separate string-leaf limitation
+    under jacfwd."""
     def objective(scale):
         result = _forward(scale, port_x=port_x)
         value = jnp.sum(jnp.abs(result.ringdown.s_params)**2)
-        # Whole-ForwardResult jacfwd has a separate string-leaf limitation.
         return value, result.ringdown if kind == 'jacfwd' else result
 
     scale = jnp.float32(scale_value)
@@ -150,8 +176,8 @@ def transformed(request):
 
 @pytest.fixture(scope='module')
 def eager_b():
-    # The realized float32 widths at SCALE_B as a concrete profile, no
-    # nominal_profiles: the concrete run of scene B's design step.
+    """The realized float32 widths at SCALE_B as a concrete profile, no
+    nominal_profiles: the concrete run of scene B's design step."""
     return _forward(dx=_realized_dx(SCALE_B), port_x=PORT_X_B)
 
 
@@ -161,9 +187,9 @@ def transformed_b(request):
 
 
 def test_no_tracer_in_forward_result_static_state(transformed):
+    """Expectations come directly from the declared cells, without rfx helpers."""
     _assert_static_state(transformed)
     rd = getattr(transformed, 'ringdown', transformed)
-    # Expectations come directly from the declared cells, without rfx helpers.
     padded = np.concatenate((DX, DX[-1:])).astype(np.float32)
     np.testing.assert_array_equal(rd._ctx.grid.dx_arr, padded)
     expected_e = np.concatenate((1/padded[:1], 2/(padded[:-1] + padded[1:])))
@@ -211,14 +237,14 @@ def _assert_swapped_report_identical(transformed, eager):
 
 
 def test_scene_b_no_tracer_in_static_state(transformed_b):
+    """The result carries the realized x cells of this design step as a
+    child; the static template stays on the declared nominal widths."""
     _assert_static_state(transformed_b)
     rd = transformed_b.ringdown
     realized = _realized_dx(SCALE_B)
-    # the result carries the realized x cells of this design step as a child
     assert len(rd._cells) == 1
     np.testing.assert_array_equal(np.asarray(rd._cells[0]),
                                   np.concatenate((realized, realized[-1:])))
-    # the static template stays on the declared nominal widths
     np.testing.assert_array_equal(rd._ctx.grid.dx_arr,
                                   np.concatenate((DX, DX[-1:])).astype(np.float32))
 
@@ -235,3 +261,78 @@ def test_scene_b_w0_passes(transformed_b):
     assert report is not None
     (w0,) = [w for w in report.witnesses if w.name == 'W0']
     assert w0.ok, f'W0 failed on the realized mesh: value={w0.value!r}, bar={w0.bar!r}, note={w0.note!r}'
+
+
+def _probe_forward(lane, scale=None, dx=DX):
+    """The cavity driven by a soft source, its two probes completed."""
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        sim = _cavity(**(_graded(scale, dx) if lane == 'graded' else {}))
+        sim.add_source((2*MM, 2*MM, MM), 'ez', amplitude_kind='current',
+                       waveform=GaussianPulse(f0=13e9, bandwidth=.8, cutoff=4.5))
+        kw = {}
+        if lane == 'uniform':
+            eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+            kw['eps_override'] = eps if scale is None else eps * scale
+        return sim.forward(n_steps=PROBE_STEPS[lane], skip_preflight=True,
+                           ringdown=RingdownSpec(identification_probes=PROBES,
+                                                 probe_freqs=tuple(FREQS)), **kw)
+
+
+@lru_cache(maxsize=None)
+def _probe_eager(lane):
+    """The concrete run: graded on scene B's realized float32 x widths."""
+    if lane == 'graded':
+        return _probe_forward(lane, dx=_realized_dx(SCALE_B))
+    return _probe_forward(lane)
+
+
+def _probe_transform(kind, lane):
+    def objective(scale):
+        result = _probe_forward(lane, scale)
+        return jnp.sum(jnp.abs(result.ringdown.probe_spectra)**2), result
+
+    scale = jnp.float32(SCALE_B if lane == 'graded' else 1)
+    if kind == 'grad':
+        return jax.grad(objective, has_aux=True)(scale)[1]
+    return jax.jvp(objective, (scale,), (jnp.ones_like(scale),), has_aux=True)[2]
+
+
+@pytest.fixture(scope='module', params=[
+    ('uniform', 'grad'), pytest.param(('uniform', 'jvp'), marks=pytest.mark.slow),
+    ('graded', 'grad'), ('graded', 'jvp')],
+    ids=['uniform-grad', 'uniform-jvp', 'graded-grad', 'graded-jvp'])
+def probe_transformed(request):
+    lane, kind = request.param
+    return lane, _probe_transform(kind, lane)
+
+
+def test_probe_no_tracer_in_static_state(probe_transformed):
+    """Graded: the realized x cells are a child and the static template keeps
+    the declared nominal widths; uniform: nothing is traced in the mesh."""
+    lane, result = probe_transformed
+    _assert_static_state(result)
+    rd = result.ringdown
+    if lane == 'uniform':
+        assert rd._cells == ()
+        return
+    realized = _realized_dx(SCALE_B)
+    assert len(rd._cells) == 1
+    np.testing.assert_array_equal(np.asarray(rd._cells[0]),
+                                  np.concatenate((realized, realized[-1:])))
+    np.testing.assert_array_equal(rd._ctx.grid.dx_arr,
+                                  np.concatenate((DX, DX[-1:])).astype(np.float32))
+    assert rd._ctx.plan.grid is rd._ctx.grid
+
+
+def test_probe_report_with_eager_context_is_identical(probe_transformed):
+    lane, result = probe_transformed
+    _assert_swapped_report_identical(result, _probe_eager(lane))
+
+
+def test_probe_report_completes_after_transform(probe_transformed):
+    _lane, result = probe_transformed
+    report = result.ringdown.report
+    assert report is not None and report.completed, report and report.failure
+    (traced,) = [w for w in report.witnesses if w.name == 'traced']
+    assert traced.judged and traced.ok, traced

@@ -23,6 +23,10 @@ def report_context(plan, result, bins):
     of those axes to the result as the child ``cells``; after the transform
     they are the realized widths of that design step, and the report
     rebuilds the realized grid and metas from them.
+
+    ``host_nominal_grid`` supplies the nominal positions and widths only; the
+    inverse metrics of each traced axis are rebuilt here from those widths,
+    since the ones it keeps belong to the realized mesh.
     """
     import jax
     from rfx.core.jax_utils import is_tracer
@@ -37,8 +41,6 @@ def report_context(plan, result, bins):
             from rfx.model.graded_grid import host_nominal_grid, _profile_to_inv_arrays
             nominal = host_nominal_grid(grid)
             fields = {}
-            # host_nominal_grid supplies positions and widths; its inverse
-            # metrics still belong to the realized mesh, so rebuild those too.
             for axis, store in zip("xyz", ("dx_arr", "dy_arr", "dz")):
                 if is_tracer(getattr(grid, store)):
                     traced_axes += ((axis, store),)
@@ -72,7 +74,14 @@ def _replace_traced_slots(metas, rebuilt, traced):
 
 
 class _ForwardReportContext:
-    """What the lazy report of a ``forward(ringdown=...)`` needs besides arrays."""
+    """What the lazy report of a ``forward(ringdown=...)`` needs besides arrays.
+
+    All of it is static host data. ``step`` is the solver's own dt
+    (``ForwardResult.dt``). ``traced_axes`` holds the ``(axis, store)`` pair of
+    each axis whose cells were traced, in the order of the result's ``_cells``
+    child; ``ports`` and ``meta_traced`` are the port dicts and the per-leaf
+    traced flags of the metas, to rebuild those leaves on the realized mesh.
+    """
 
     def __init__(self, plan, metas, grid, bins, step=None, *, traced_axes=(), ports=(),
                  meta_traced=None):
@@ -80,17 +89,18 @@ class _ForwardReportContext:
         self.metas = tuple(metas)
         self.grid = grid
         self.bins = np.asarray(bins, dtype=np.float64)
-        self.step = step            # the solver's own dt (ForwardResult.dt)
+        self.step = step
         self.solver_step_traced = grid.dt is None
-        # static: (axis, store) of each axis whose cells were traced, in the
-        # order of the result's ``_cells`` child; the port dicts and the
-        # per-leaf traced flags of the metas, to rebuild them on the realized mesh
         self.traced_axes = tuple(traced_axes)
         self.ports = tuple(ports)
         self.meta_traced = meta_traced
 
     def _realized(self, res):
-        """The template grid and metas with the traced cells set to ``res._cells``."""
+        """The template grid and metas with the traced cells set to ``res._cells``.
+
+        Each traced axis's inverse metrics are rebuilt as the grid builder
+        builds them, from the axis's padded widths.
+        """
         import jax.numpy as jnp
         from rfx.model.graded_grid import _profile_to_inv_arrays
 
@@ -108,7 +118,6 @@ class _ForwardReportContext:
             fields[store] = jnp.asarray(widths, dtype=dtype)
             if exact_of[store] in template._fields:
                 fields[exact_of[store]] = np.asarray(widths, dtype=np.float64)
-            # as the grid builder calls it, on the axis's padded widths
             fields[f"inv_d{axis}"], fields[f"inv_d{axis}_h"] = _profile_to_inv_arrays(
                 widths, periodic=axis in template.periodic_axes)
         grid = template._replace(**fields)
@@ -120,6 +129,16 @@ class _ForwardReportContext:
         return grid, tuple(metas)
 
     def report(self, res) -> RingdownReport:
+        """The report of ``res``, read on the mesh its run realized.
+
+        With traced axes, the run's accumulators and channels were made on the
+        realized mesh of that design step, so they are read with that mesh's
+        grid and port weights, through a copy of the plan; the stored plan
+        keeps the template grid. On the uniform lane the plain S goes into
+        ``run()``'s container for the lane's single wire port
+        (``rfx/runners/uniform.py``): (1, 1, nf) complex64, whatever the
+        accumulator dtype (complex128 under x64).
+        """
         from dataclasses import replace
         from types import SimpleNamespace
 
@@ -132,17 +151,15 @@ class _ForwardReportContext:
                 "are available.")
         plan, grid, metas = self.plan, self.grid, self.metas
         if self.traced_axes:
-            # the run's accumulators were made on the realized mesh of this
-            # design step; read them with that mesh's grid and port weights
             import copy
             grid, metas = self._realized(res)
-            plan = copy.copy(plan)      # the stored plan keeps the template grid
+            plan = copy.copy(plan)
             plan.grid = grid
+        if plan.probe_mode:
+            from rfx.ringdown._probe_channels import forward_probe_report
+            return forward_probe_report(SimpleNamespace(plan=plan, grid=grid, step=self.step), res)
         s_plain = np.asarray(res._s_plain)
         if plan.lane == "uniform":
-            # run()'s container for the uniform lane's single wire port
-            # (rfx/runners/uniform.py): (1, 1, nf) complex64, whatever the
-            # accumulator dtype (complex128 under x64)
             s_plain = s_plain.reshape(1, 1, -1).astype(np.complex64)
         result_like = SimpleNamespace(
             wire_port_sparams=tuple(zip(metas, res._accs)), s_params=s_plain,

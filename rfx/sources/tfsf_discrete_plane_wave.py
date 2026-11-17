@@ -93,6 +93,9 @@ class PlaneWaveConfig:
     # Preserve the requested angles for lane admission after realization.
     theta_deg: float = 0.0
     phi_deg: float = 0.0
+    absorber_nodes: int = 0
+    line_damping: tuple = ()
+    _zero_absorber: bool = False
 
     def __getattr__(self, name):
         if name in {a + side for a in "xyz" for side in ("_lo", "_hi")}:
@@ -199,8 +202,9 @@ def validate_run(entry, until_decay, decay_max_steps, under_transform):
 def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                     f0=5e9, bandwidth=.5, amplitude=1., polarization="ez", direction="+x",
                     theta_deg=0., phi_deg=0., direction_tol_deg=.1, max_component=100,
-                    waveform="differentiated_gaussian", n_steps=None):
-    """Build the line with N*max(abs(m))+2 untouched nodes beyond every read."""
+                    waveform="differentiated_gaussian", n_steps=None, _zero_absorber=False,
+                    _absorber_nodes=None):
+    """Bound every read by a clean margin and a matched graded lossy layer."""
     from rfx.sources.sources import CustomWaveform
     from rfx.sources.tfsf import AUX_N_MARGIN_1D, AUX_SRC_OFFSET_1D
     require_step_bound(n_steps)
@@ -242,7 +246,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     if windows:
         lo = min(lo, *(int(w.nodes.min()) for w in windows))
         hi = max(hi, *(int(w.nodes.max()) for w in windows))
-    padding = int(n_steps) * radius + 2
+    absorber_nodes = 64 * math.ceil(norm) if _absorber_nodes is None else _absorber_nodes
+    padding = 2 * radius + 2 + absorber_nodes
     origin, n_nodes = lo - padding, hi - lo + 1 + 2 * padding
     def translate(tables):
         return tuple(t._replace(source_index=(t.source_index - origin).astype(np.int32)) for t in tables)
@@ -261,6 +266,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     one, zero = jnp.asarray(1., dtype), jnp.asarray(0., dtype)
     ca, cb = e_update_coeffs(one, zero, dt)
     ch = dt / (one * MU_0)
+    line_damping = _line_damping(
+        n_nodes, absorber_nodes, fractions, dx / norm, dt, _zero_absorber)
     cfg = PlaneWaveConfig(tuple(map(int, m)), info, shape, bounds, origin, n_nodes,
                           int(n_steps), tuple(fractions), tuple(projections),
                           translate(tables_e), translate(tables_h),
@@ -269,13 +276,35 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                           "custom" if custom is not None else waveform, custom,
                           tuple(w._replace(nodes=(w.nodes - origin).astype(np.int32))
                                 for w in windows), sigma, q1,
-                          theta_deg=theta_deg, phi_deg=phi_deg)
+                          theta_deg=theta_deg, phi_deg=phi_deg,
+                          absorber_nodes=absorber_nodes, line_damping=line_damping,
+                          _zero_absorber=_zero_absorber)
     fields = [jnp.zeros(n_nodes, dtype) for _ in range(6)]
     return cfg, FDTDState(*fields, jnp.asarray(0, jnp.int32))
 
 
+def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False):
+    """Matched exponential loss at each component's own position."""
+    # Interfaces are at index L and n_nodes-L. Integral sigma*eta dz = ln(1e4).
+    depth = length * spacing
+    sigma_max = 4 * math.log(1e4) / (math.sqrt(MU_0 / EPS_0) * depth)
+    n = np.arange(length)
+    damping = []
+    for fraction in fractions:
+        rho = np.concatenate(((length - n - fraction) / length,
+                              (n + fraction) / length))
+        sigma = sigma_max * rho ** 3
+        if zero_loss:
+            sigma = np.zeros_like(sigma)
+        factors = np.exp(-sigma * dt / EPS_0)
+        field = np.ones(n_nodes, np.float32)
+        field[:length], field[-length:] = factors[:length], factors[length:]
+        damping.append(jnp.asarray(field, jnp.float32))
+    return tuple(damping)
+
+
 def _line_shift(array, shift):
-    """Read n+shift; zero extension outside the record's domain of dependence."""
+    """Read n+shift; zero extension beyond the lossy termination."""
     if shift > 0:
         return jnp.concatenate((array[shift:], jnp.zeros(shift, array.dtype)))
     if shift < 0:
@@ -298,6 +327,9 @@ def update_line_h(cfg, state, dx, dt):
                 - line_difference(cfg, state, target, second, b) / dx)
         name = COMPONENTS[target]
         changes[name] = getattr(state, name) - cfg.ch * curl
+        if cfg.absorber_nodes:
+            field = changes[name]
+            changes[name] = field * cfg.line_damping[target]
     return tree_util.tree_map(lax.stop_gradient, state._replace(**changes))
 
 
@@ -321,7 +353,7 @@ def update_line_e(cfg, state, dx, dt, t=None):
                 field = field.at[jnp.asarray(window.nodes, jnp.int32)].add(value)
             else:
                 field = field.at[cfg.source_nodes[target]].add(value)
-        changes[name] = field
+        changes[name] = field * cfg.line_damping[target] if cfg.absorber_nodes else field
     return tree_util.tree_map(lax.stop_gradient, state._replace(**changes, step=state.step + 1))
 
 

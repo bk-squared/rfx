@@ -332,7 +332,8 @@ def test_source_edge_tuple_readers():
     materials = init_materials(grid.shape)
     spec = ([pole], [mask])
     realized = with_components(materials, grid, periodic=(False,) * 3, lorentz_spec=spec)
-    local = materials._replace(components=EdgePoles(None, spec, grid))
+    local = materials._replace(components=EdgePoles(
+        None, spec, grid, field_dtype=materials.eps_r.dtype))
     for component in ('ex', 'ey', 'ez'):
         got = e_update_coefficient_at(realized, (6, 6, 6), component, grid.dt)
         cut = e_update_coefficient_at(local, (6, 6, 6), component, grid.dt)
@@ -426,7 +427,7 @@ def test_exterior_increment_convention(graded, scene_name, vary_delta):
     coeffs, _ = init(pole, grid, mask)
     assert isinstance(coeffs.damping, tuple) == vary_delta
     fractions = pole_component_weights(mask, high_wall=unpadded_high_walls(grid),
-                                       cell_sizes=electric_cell_sizes(grid))
+                                       cell_sizes=electric_cell_sizes(grid), field_dtype=np.float32)
     exterior = ~np.asarray(pole_reach(fractions))
     assert np.any(exterior)
     counts = []
