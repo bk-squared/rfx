@@ -239,7 +239,11 @@ def _pole_first_map(mesh):
 
 
 def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
-    """Judge only addressable owned cells, without halos or alignment padding."""
+    """Judge only addressable owned cells, without halos or alignment padding.
+
+    Shard readback caches device wrappers on its source, so a concrete array is
+    read from a temporary copy and the caller's materials keep no such cache.
+    """
     from rfx.model.pole_stability import _concrete, refuse_subluminal_cells
     for rank, (lo, hi) in enumerate(layout.owned):
         if lo == hi or mesh.devices.flat[rank].process_index != jax.process_index():
@@ -257,8 +261,6 @@ def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
                 stop = start + layout.nx_local
                 offset = layout.ghost_width
             if isinstance(value, jax.Array) and not isinstance(value, jax.core.Tracer):
-                # Shard readback caches device wrappers on its source. Keep
-                # that cache on a temporary copy, not the caller's materials.
                 with jax.ensure_compile_time_eval():
                     value = value.copy()
                 for shard in value.addressable_shards:

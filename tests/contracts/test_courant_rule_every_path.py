@@ -124,6 +124,8 @@ def test_declared_cells_refused(path, eps, mu, pole, monkeypatch):
 
 @pytest.mark.parametrize('path', ['distributed_uniform', 'distributed_graded'])
 def test_rank1_only_cells_refused(path, monkeypatch):
+    """Expected bounds and counts use global grid nodes and widths over the
+    ownership that the realized distributed setup supplies."""
     from rfx.stepping import slab_setup
     captured: list = []
     original = slab_setup.refuse_slab_cells
@@ -141,8 +143,6 @@ def test_rank1_only_cells_refused(path, monkeypatch):
         with pytest.raises(ValueError, match='cell Courant limit') as error:
             invoke(sim, path, entry)
         grid, owned = captured[-1]
-        # Read actual ownership supplied by the realized distributed setup,
-        # then use global grid nodes/widths for all expected bounds and counts.
         first, stop = owned[1]
         assert lo[0] >= grid.node_of(0, first + 1) - 1e-12
         assert hi[0] <= grid.node_of(0, stop - 1) + grid.cells(0)[stop - 1] + 1e-12
@@ -169,9 +169,9 @@ def graded_neighbour_scene(*, interior=False):
 
 
 def test_graded_neighbour_cells_refused():
-    # dt=.99*(1 mm)/(c*sqrt(3)); first 2 mm cell has a 1.4 mm
-    # predecessor on each axis. dt²B_near=.99²/1.4²=.5000510204081633;
-    # dt²B_own=.99²/2²=.245025. Epsilon .4 lies strictly between them.
+    """dt=.99*(1 mm)/(c*sqrt(3)); the first 2 mm cell has a 1.4 mm
+    predecessor on each axis. dt²B_near=.99²/1.4²=.5000510204081633;
+    dt²B_own=.99²/2²=.245025. Epsilon .4 lies strictly between them."""
     neighbour_load, own_load = .5000510204081633, .245025
     assert own_load < .4 < neighbour_load
     messages = []
@@ -208,16 +208,16 @@ def test_boundary_refused(path, eps):
 @pytest.mark.parametrize('path,kind', [('uniform', 'eps'), ('graded', 'eps'), ('uniform', 'mu'),
                                       ('uniform', 'box'), ('graded', 'box')])
 def test_forward_override_refused(path, kind):
+    """A design box cannot contain a source, so the box case moves the source
+    outside the box; design-box coordinates include both endpoint nodes."""
     sim = scene(path, 2.)
     grid = grid_of(sim, path)
     override = jnp.full(grid.shape, 1.)
     region = tuple(slice(grid.index_of(a, LO[a]), grid.index_of(a, HI[a])) for a in range(3))
     override = override.at[region].set(.5)
     if kind == 'box':
-        # Design boxes cannot contain a source: move this source outside the box.
         sim._ports.clear()
         sim.add_source((.001, .001, .001), 'ez')
-        # Design-box coordinates include both endpoint nodes.
         kw = dict(design_box=(LO, tuple(v - H for v in HI)), design_eps_override=override[region])
     else:
         kw = {('eps_override' if kind == 'eps' else 'mu_r_override'): override}
@@ -347,6 +347,7 @@ def test_multidevice_traced_gap(path):
 
 
 def test_drude_mu_changes_pole_limit():
+    """The Drude pole is fixed from these numbers, not fitted or predicted."""
     from rfx.materials.lorentz import LorentzPole
     sim = scene(eps=2., mu=.6)
     grid = sim._build_grid()
@@ -355,7 +356,6 @@ def test_drude_mu_changes_pole_limit():
     wp2 = 3 / step**2
     assert (wp2 + 4*b) * step**2 <= 8
     assert (wp2 + 4*b/.6) * step**2 > 8
-    # A fixed Drude pole from these numbers, not a fitted or predicted pole.
     sim.add_material('body', eps_r=2., mu_r=.6, lorentz_poles=[LorentzPole(0., 0., wp2)])
     with pytest.raises(ValueError, match='Lorentz/Drude poles') as error:
         invoke(sim, 'uniform')
@@ -461,8 +461,10 @@ def test_subgrid_refusal(location, eps, monkeypatch):
 
 
 def test_conformal_floor_refusal():
-    # Copy test_cut_cell_floor.test_uniform_modes_use_realized_pin_and_raw_edges,
-    # its 3d / q=.5 row, preserving geometry, mesh, pin, source and four steps.
+    """Copy test_cut_cell_floor.test_uniform_modes_use_realized_pin_and_raw_edges,
+    its 3d / q=.5 row, preserving geometry, mesh, pin, source and four steps.
+    The nearest box corner is more than 2 cells from the sphere; the boundary
+    gap is 2 cells."""
     from rfx import Sphere
     ordinary = .001 / (C * np.sqrt(3.)) * .99
     sim = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec', mode='3d',
@@ -470,7 +472,6 @@ def test_conformal_floor_refusal():
     sim.add(Sphere((.0061, .0058, .0057), .0023), material='pec')
     sim.add_source((.003, .004, .003), 'ez', amplitude_kind='field')
     lo, hi = (.002,) * 3, (.003,) * 3
-    # Nearest box corner is >2 cells from the sphere; boundary gap is 2 cells.
     assert np.linalg.norm(np.array((.0061, .0058, .0057)) - hi) - .0023 > 2 * H
     sim.add_material('low', eps_r=.99)
     sim.add(Box(lo, hi), material='low')
@@ -544,12 +545,12 @@ def test_public_sweep_traced_values_unreachable():
 
 
 def test_run_bar_detects_unstable_uniform_0975(monkeypatch):
-    # Normally refused. Removing the setup rule must expose measured growth,
-    # so this also checks the observer against a physically unstable control.
+    """Normally refused. Removing the setup rule must expose measured growth,
+    so this also checks the observer against a physically unstable control.
+    An even periodic lattice includes the bulk Nyquist mode exactly."""
     import rfx
     from rfx.grid import Grid
     from rfx._internal._uniform_specs import SourceSpec
-    # An even periodic lattice includes the bulk Nyquist mode exactly.
     grid = Grid(freq_max=10e9, domain=(.008,)*3, dx=H, cpml_layers=0, periodic_axes='xyz')
     materials = MaterialArrays(jnp.full(grid.shape, .975), jnp.zeros(grid.shape), jnp.ones(grid.shape))
     source = SourceSpec(3, 4, 4, 'ez', jnp.zeros(400).at[0].set(1.))

@@ -154,7 +154,8 @@ def _cells(grid, axis):
 
 
 def _host_checks_unavailable():
-    import rfx.backend  # the two refusals of rfx._traced_check.require_host_callbacks
+    """Mirror the two refusals of ``rfx._traced_check.require_host_callbacks``."""
+    import rfx.backend
     backend = rfx.backend.backend_class()
     if not backend.host_callbacks or backend.name == "cpu":
         return not backend.host_callbacks
@@ -175,6 +176,11 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
     ``x_range`` selects owned global rows when materials contain just one slab.
     ``conservative`` is either the fine-grid budget for coarse subgrid cells or
     ``'conformal'`` for the cut-cell floor's unmeasured material margin.
+    The largest stable step comes from the tightest failing cell, because a
+    union's smallest epsilon and smallest width may belong to different cells.
+    Traced values are not judged out of program, which keeps multi-device
+    ``jit(grad)`` running until checks can run there, nor where no host callback
+    can run, which keeps those compiled runs running.
     """
     import jax
     from rfx._traced_check import traced_check
@@ -231,8 +237,6 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
         if not count:
             return
         low = float(np.min(product[failed]))
-        # The tightest cell owns the allowed step; a union's smallest epsilon
-        # and smallest width may belong to different cells.
         stable = float(np.sqrt(np.min(product[failed] / local[failed])))
         bounds: list[str] = []
         for axis in range(product.ndim):
@@ -257,9 +261,9 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
             check(*jax.tree.unflatten(tree, member))
         return
     if not in_program and any(_is_abstract(v) for v in leaves):
-        return  # Preserve multi-device jit(grad) until checks can run there.
+        return
     if any(_is_abstract(v) for v in leaves) and _host_checks_unavailable():
-        return  # Preserve compiled runs where no host callback can run.
+        return
     traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
 
 
@@ -489,6 +493,8 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
 
     Out of program (multi-device) the members of an eager ``jax.vmap`` are judged
     one by one; any other traced value is refused: it cannot be judged there.
+    Cells whose step is above their Courant limit without any pole are left to
+    ``refuse_subluminal_cells`` at step setup.
     """
     from rfx._traced_check import traced_check
 
@@ -508,7 +514,7 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
             if not (np.all(np.isfinite([eps, low, high, step])) and np.all(np.isfinite(pole_values)) and eps > 0):
                 return   # invalid cells are reported by the checks that own them
             if step * step * budget > eps * (1.0 + ROOT_TOLERANCE):
-                return   # refuse_subluminal_cells at step setup owns these cells, not the pole judge.
+                return   # the step is above the Courant limit of these cells without any pole: not the poles' doing
             growth = max(largest_growth(eps, s, pole_values, step, 4.0 * step * step * budget, debye=debye)
                          for s in (low, high))
             if growth <= 1.0 + ROOT_TOLERANCE:
