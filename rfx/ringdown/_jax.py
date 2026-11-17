@@ -263,10 +263,10 @@ def _first_order_only_jvp(primals, tangents):
     Yw_dot = tangents[0]
     warnings.warn(
         "a second derivative reached the ring-down completion of forward(ringdown=...): "
-        "the completion moves its poles by a first-order step, so any second-order form of "
-        "an objective that reads a completed output (ringdown.s_params, s_params_long, "
-        "poles, probe_spectra) is NaN. First derivatives, and every derivative of an "
-        "objective that reads no completed output, are exact.",
+        "the completion moves its poles by a first-order step, so a second derivative of a "
+        "completed output (ringdown.s_params, s_params_long, poles, probe_spectra) is NaN. "
+        "First derivatives, and every derivative of an objective that reads no completed "
+        "output, are exact.",
         RingdownSecondDerivativeWarning, stacklevel=2)
     return w, jnp.nan * jnp.sum(Yw_dot, axis=0)
 
@@ -280,6 +280,8 @@ def _pole_step(Yw, A, w, mask_c):
     least-squares solution against ``(Yw - Yw) w``, which is zero unless the
     data are not finite. The first derivative is the least-squares solution
     against ``dYw w``; a second derivative is NaN (:func:`_first_order_only`).
+    The rule computes its value by calling this function again, so the value
+    keeps its first derivative under a second differentiation.
     """
     M, C = int(Yw.shape[0]), int(Yw.shape[1])
     return lstsq_masked(A, ((Yw - Yw) * w[None, :]).reshape(M * C, 1), mask_c)[:, 0]
@@ -291,9 +293,8 @@ def _pole_step_jvp(primals, tangents):
     Yw_dot = tangents[0]
     M, C = int(Yw.shape[0]), int(Yw.shape[1])
     g = _first_order_only(Yw, w)
-    Q, R, norms = _qr_masked(A, mask_c)
-    ds = _solve_qr(Q, R, norms, mask_c, ((Yw - Yw) * w[None, :]).reshape(M * C, 1))[:, 0]
-    ds_dot = _solve_qr(Q, R, norms, mask_c, (Yw_dot * g[None, :]).reshape(M * C, 1))[:, 0]
+    ds = _pole_step(Yw, A, w, mask_c)
+    ds_dot = lstsq_masked(A, (Yw_dot * g[None, :]).reshape(M * C, 1), mask_c)[:, 0]
     return ds, ds_dot
 
 
@@ -312,15 +313,16 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     derivative. ``mutation`` exists only for the unit tests' revived-defect
     checks (:data:`MUTATIONS`).
 
-    Derivatives. First derivatives are exact. Every derivative of an
-    objective that reads no completed output is exact. The poles move by a
-    first-order step (:func:`_pole_step`), so any second-order form
+    Derivatives. First derivatives are exact, and so is every derivative of
+    an objective that reads no completed output. The poles move by a
+    first-order step (:func:`_pole_step`), so an entry of a second-order form
     (``jax.hessian``, or ``jax.grad``, ``jax.jvp``, ``jax.jacfwd``,
-    ``jax.jacrev`` nested) of an objective that reads a completed output
-    returns NaN, including the mixed entries of a joint Hessian. The warning
-    :class:`rfx.errors.RingdownSecondDerivativeWarning` shows whenever a
-    second differentiation reaches the identification window, also when the
-    objective reads no completed output.
+    ``jax.jacrev`` nested) that needs the completed spectrum's second
+    derivative is NaN. An entry of a joint second-order form that needs only
+    its first derivative is exact or NaN, never another finite number.
+    The warning :class:`rfx.errors.RingdownSecondDerivativeWarning` shows
+    whenever a second differentiation reaches the identification window,
+    also when the objective reads no completed output.
     """
     from rfx.measurement.ringdown_tail_jax import plain_dft, tail_dft
     import jax
