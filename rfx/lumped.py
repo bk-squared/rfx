@@ -278,9 +278,32 @@ def edge_update_denominator(materials, cell, component, dt,
     in the inverse form, never from a re-inverted permittivity. A frozen
     edge (``inv = 0``) has no finite ``D0``; an element there is refused
     before the first step, and its host value is ``inf`` until then.
+
+    Under UPML (``components.source_upml``) the step's E coefficient is
+    formed from cell-owned operands, never the edge mean, and ``D0`` reads
+    them through :func:`rfx.model.materials.upml_operands_at`, the reader
+    the drive coefficient uses. With no tensor ``D0 = 1/Cb``, ``Cb`` formed
+    in UPML's float32 arithmetic (:func:`rfx.model.materials.upml_update_cb`),
+    so the element and the step agree to the rounding of one division; on an
+    eps 1|4 corner edge the edge mean is 1.75 and the owner cell 4.0, so
+    reading the mean scaled the element's D0 by 1.75/4.0. With a tensor the
+    float32 diagonal and the cell-owned conductivity enter
+    ``eps/dt + sigma/2`` as before.
     """
-    from rfx.model.materials import e_update_material_at, tensor_operand_at
+    from rfx.model.materials import (
+        e_update_material_at, tensor_operand_at, upml_operands_at, upml_update_cb)
     operand = tensor_operand_at(materials, cell, component)
+    if getattr(getattr(materials, "components", None), "source_upml", False):
+        eps_r, sigma = upml_operands_at(materials, cell, component)
+        if operand is None:
+            cb = upml_update_cb(eps_r, sigma, dt)
+            if as_float and not is_tracer(cb):
+                return 1.0 / float(cb)
+            return 1.0 / cb
+        if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
+            return _denominator_si(float(eps_r), float(sigma), dt)
+        return si_value_eps_r_grad(_denominator_si, _denominator_eps_r,
+                                   eps_r, sigma, dt)
     if operand is not None and operand[0] == "inv":
         axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
         inv = operand[1]
