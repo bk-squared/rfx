@@ -24,11 +24,6 @@ from importlib import metadata
 from rfx._runtime_floor import MIN_PYTHON, check
 from rfx.backend import backend_class
 
-# ---------------------------------------------------------------------------
-# Report primitives
-# ---------------------------------------------------------------------------
-
-# Status levels. CRITICAL governs the exit code; WARN/INFO never do.
 PASS = "PASS"
 WARN = "WARN"
 FAIL = "FAIL"
@@ -45,7 +40,6 @@ class _Report:
     def record(self, status: str, label: str, detail: str, *, critical: bool) -> None:
         if status == FAIL and critical:
             self.critical_failures += 1
-        # Right-pad the status so the labels line up in the printed report.
         self.lines.append(f"  [{status:<4}] {label}: {detail}")
 
     def __str__(self) -> str:
@@ -60,11 +54,6 @@ def _version_of(dist: str) -> str:
     except (ImportError, OSError):
         return "?"
 
-
-# ---------------------------------------------------------------------------
-# Individual checks. Each is wrapped so one failure never aborts the rest:
-# a check that raises is reported as a FAIL line, not a traceback.
-# ---------------------------------------------------------------------------
 
 def _check_python(report: _Report) -> None:
     v = sys.version_info
@@ -93,7 +82,7 @@ def _check_rfx_import(report: _Report) -> None:
             critical=True,
         )
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
+    except Exception as exc:  # noqa: BLE001
         report.record(
             FAIL,
             "import rfx",
@@ -117,7 +106,7 @@ def _check_jax(report: _Report) -> None:
             critical=True,
         )
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
+    except Exception as exc:  # noqa: BLE001
         report.record(
             FAIL,
             "jax / jaxlib",
@@ -126,8 +115,6 @@ def _check_jax(report: _Report) -> None:
         )
         return
 
-    # Backend / devices. A GPU backend is reported as PASS; CPU-only is a WARN
-    # (large 3D runs will be slow) but never a failure.
     try:
         devices = jax.devices()
         platforms = sorted({d.platform for d in devices})
@@ -148,7 +135,7 @@ def _check_jax(report: _Report) -> None:
                 critical=False,
             )
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
+    except Exception as exc:  # noqa: BLE001
         report.record(
             WARN,
             "jax backend",
@@ -156,8 +143,6 @@ def _check_jax(report: _Report) -> None:
             critical=False,
         )
 
-    # x64 precision. rfx's S-parameter DFT accumulators run at reduced
-    # precision when x64 is disabled — a real rfx caveat, so WARN if off.
     try:
         x64 = bool(jax.config.read("jax_enable_x64"))
         if x64:
@@ -172,13 +157,11 @@ def _check_jax(report: _Report) -> None:
                 critical=False,
             )
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
+    except Exception as exc:  # noqa: BLE001
         report.record(WARN, "jax x64", f"could not read config: {exc!r}", critical=False)
 
 
 def _check_core_deps(report: _Report) -> None:
-    # (import name, distribution name). All are hard rfx dependencies, so a
-    # missing one is CRITICAL.
     core = [
         ("numpy", "numpy"),
         ("scipy", "scipy"),
@@ -195,7 +178,7 @@ def _check_core_deps(report: _Report) -> None:
                 critical=True,
             )
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in report.lines
+        except Exception as exc:  # noqa: BLE001
             report.record(
                 FAIL,
                 f"core dep {import_name}",
@@ -205,8 +188,6 @@ def _check_core_deps(report: _Report) -> None:
 
 
 def _check_optional_extras(report: _Report) -> None:
-    # Optional extras: report presence only, never fail. These back the
-    # [optimization] / [dashboard] / [visualization] extras.
     optional = [
         ("optax", "optax", "optional example optimizers; topology_optimize needs no optax"),
         ("streamlit", "streamlit", "dashboard UI"),
@@ -223,7 +204,7 @@ def _check_optional_extras(report: _Report) -> None:
                 critical=False,
             )
         except (TimeoutError,): raise
-        except Exception:  # noqa: BLE001 - recorded in report.lines
+        except Exception:  # noqa: BLE001
             report.record(
                 INFO,
                 f"optional {dist_name}",
@@ -245,8 +226,6 @@ def _check_smoke(report: _Report) -> None:
         from rfx import Simulation
         from rfx.sources.sources import GaussianPulse
 
-        # ~10-cell-per-axis box (dx = 2 mm over a 20 mm domain). PEC boundary
-        # keeps it cheap — no CPML profiles to build.
         sim = Simulation(
             freq_max=10e9,
             domain=(0.02, 0.02, 0.02),
@@ -286,7 +265,7 @@ def _check_smoke(report: _Report) -> None:
                 critical=True,
             )
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in report.lines
+    except Exception as exc:  # noqa: BLE001
         report.record(
             FAIL,
             "FDTD smoke run",
@@ -295,14 +274,8 @@ def _check_smoke(report: _Report) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main(argv: list[str] | None = None) -> int:
     """Run all diagnostics and return 0 iff every critical check passed."""
-    # argv is accepted for the console-script / test contract; there are no
-    # options to parse yet, so it is intentionally unused.
     del argv
 
     report = _Report()
@@ -310,9 +283,6 @@ def main(argv: list[str] | None = None) -> int:
     print("rfx environment diagnostics")
     print("=" * 60)
 
-    # Order matters: import rfx and core deps before the smoke run so a
-    # missing dependency is reported as its own clean FAIL line rather than
-    # surfacing only as a smoke-run traceback.
     _check_python(report)
     _check_rfx_import(report)
     _check_jax(report)
