@@ -42,9 +42,8 @@ def _patch_sim():
 def test_visualize_structure_returns_plotly_figure():
     sim = _patch_sim()
     fig = visualize_structure(sim)
-    # Must have one trace per geometry box + source scatter + CPML wireframe.
-    # Geometry = 3 (pec/fr4/pec), source scatter = 1, CPML = 1 → at least 5.
-    assert len(fig.data) >= 5
+    GEOMETRY_SOURCE_CPML_TRACE_COUNT = 5
+    assert len(fig.data) >= GEOMETRY_SOURCE_CPML_TRACE_COUNT
     names = {tr.name for tr in fig.data}
     assert "pec" in names and "fr4" in names
     assert any("domain" in n or "CPML" in n for n in names)
@@ -63,7 +62,7 @@ def test_visualize_structure_respects_toggles():
 def test_visualize_farfield_requires_ntff_data():
     sim = _patch_sim()
 
-    class _R:  # minimal result stub
+    class _R:
         ntff_data = None
         ntff_box = None
         grid = None

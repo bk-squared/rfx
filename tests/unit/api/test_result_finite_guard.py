@@ -76,7 +76,6 @@ def test_assert_finite_is_tracer_safe_under_jax_grad():
 
     def f(x):
         r = Result(state=None, time_series=x, s_params=None, freqs=None)
-        # Even though x carries non-finite-looking magnitude, tracing must skip.
         r.assert_finite()
         return jnp.sum(x)
 
@@ -88,11 +87,14 @@ def test_optimize_nan_gradient_warns_and_returns_last_good():
     """The optimizer NaN/Inf-gradient guard must (1) warn, (2) stop early, and
     (3) return the last FINITE design — not the divergence-causing one. Here a
     NaN objective makes the gradient NaN at iteration 0, so the loop breaks
-    before any update and the returned design is the (finite) initial latent."""
+    before any update and the returned design is the (finite) initial latent.
+
+    The domain lengths are whole multiples of dx, the lengths the grid solves.
+    """
     from rfx.api import Simulation
     from rfx.optimize import optimize, DesignRegion, OptimizeResult
 
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
     region = DesignRegion(
@@ -103,9 +105,9 @@ def test_optimize_nan_gradient_warns_and_returns_last_good():
     with pytest.warns(UserWarning, match="non-finite"):
         result = optimize(
             sim, region,
-            lambda r: jnp.nan * jnp.sum(r.time_series),  # NaN loss => NaN grad
+            lambda r: jnp.nan * jnp.sum(r.time_series),
             n_iters=3, lr=0.01, verbose=False,
         )
     assert isinstance(result, OptimizeResult)
-    assert len(result.loss_history) == 0          # broke at iteration 0
-    assert np.all(np.isfinite(np.asarray(result.eps_design)))  # last-good is finite
+    assert len(result.loss_history) == 0
+    assert np.all(np.isfinite(np.asarray(result.eps_design)))

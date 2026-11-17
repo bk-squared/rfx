@@ -4,6 +4,7 @@ Since #1944 the absorber scalar was replaced by a ``str`` subclass carrying its
 face expansion. h5py refuses a ``str`` subclass, so ``save_simulation_dataset``
 failed after the solve for every CPML/UPML simulation, the default included,
 and ``rfx run`` on the shipped YAML example exited 1. v1.8.0 wrote the file.
+A caller’s own str subclass, including a numpy string read from a table, is a scalar too.
 """
 from __future__ import annotations
 
@@ -31,7 +32,6 @@ _FORMS = {
     "cpml": {"boundary": "cpml"},
     "upml": {"boundary": "upml"},
     "pec": {"boundary": "pec"},
-    # A caller's own str subclass (a numpy string read from a table) is a scalar too.
     "numpy str": {"boundary": np.str_("cpml")},
     "spec": {"boundary": BoundarySpec(x=Boundary(lo="cpml", hi="pec"), y="cpml", z="cpml")},
 }

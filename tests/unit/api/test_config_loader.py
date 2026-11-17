@@ -5,6 +5,7 @@ config must match one built by calling the builder API directly with the
 same parameters (same domain, grid shape, material/port/probe counts, and
 material values). Construction equivalence is fast and deterministic; a full
 FDTD run is gated behind ``@pytest.mark.slow``.
+The ground and signal trace are foil, so they are declared as sheets on the two substrate faces.
 """
 
 from __future__ import annotations
@@ -24,17 +25,6 @@ from rfx.config import (
 )
 from rfx.config._waveforms import WAVEFORM_REGISTRY
 
-# A small microstrip-thru config (mirrors examples/config/microstrip_thru.yaml
-# but smaller / shorter so construction is instant).
-#
-# Ownership: the ground and the signal trace are FOIL, so they are
-# declared as sheets — zero-thickness Boxes on the two substrate faces. They
-# used to be one cell thick, which the contract reads as filled slabs with a
-# wall on each bounding plane, shortening the substrate cavity by a node plane
-# at each face. A zero-extent axis on a PEC Box IS the sheet declaration, so
-# the entries stay in ``geometry`` and the config schema needs no new field for
-# this spelling; ``thin_conductors:`` (tested at the bottom of this file) is
-# the other spelling, for a lossy or an explicitly-named sheet.
 _CFG = {
     "frequency": {"freq_max": 12e9},
     "domain": {"x": 0.020, "y": 0.012, "z": 0.006},
@@ -94,9 +84,6 @@ def _build_direct(*, snap="strict") -> Simulation:
     return sim
 
 
-# --------------------------------------------------------------------------
-# Construction equivalence — the primary gate.
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("snap", ["strict", "declared"])
@@ -129,32 +116,27 @@ def test_dict_vs_direct_equivalence():
     sim_cfg = simulation_from_dict(_CFG)
     sim_dir = _build_direct()
 
-    # Top-level scalars
     assert sim_cfg._freq_max == sim_dir._freq_max
     assert sim_cfg._domain == sim_dir._domain
     assert sim_cfg._boundary == sim_dir._boundary
     assert sim_cfg._cpml_layers == sim_dir._cpml_layers
     assert sim_cfg._dx == sim_dir._dx
 
-    # Counts
     assert set(sim_cfg._materials) == set(sim_dir._materials)
     assert len(sim_cfg._geometry) == len(sim_dir._geometry)
     assert len(sim_cfg._ports) == len(sim_dir._ports)
     assert len(sim_cfg._probes) == len(sim_dir._probes)
 
-    # Material values match
     for name in sim_dir._materials:
         m_cfg, m_dir = sim_cfg._materials[name], sim_dir._materials[name]
         assert m_cfg.eps_r == m_dir.eps_r
         assert m_cfg.sigma == m_dir.sigma
         assert m_cfg.mu_r == m_dir.mu_r
 
-    # Geometry bounding boxes + material names match in order
     for g_cfg, g_dir in zip(sim_cfg._geometry, sim_dir._geometry):
         assert g_cfg.material_name == g_dir.material_name
         assert g_cfg.shape.bounding_box() == g_dir.shape.bounding_box()
 
-    # Port positions / components / impedance / excite match in order
     for p_cfg, p_dir in zip(sim_cfg._ports, sim_dir._ports):
         assert p_cfg.position == p_dir.position
         assert p_cfg.component == p_dir.component
@@ -162,11 +144,8 @@ def test_dict_vs_direct_equivalence():
         assert p_cfg.extent == p_dir.extent
         assert p_cfg.excite == p_dir.excite
 
-    # Grid shape is identical
     assert sim_cfg._build_grid().shape == sim_dir._build_grid().shape
 
-    # ... and so is the REALIZED conductor: both foils are sheets
-    # on the two substrate faces, neither owns a cell, on either spelling.
     for sim, who in ((sim_cfg, "from the config"), (sim_dir, "direct")):
         assert realized(sim).pec_mask is None, (
             f"{who}: foil declared as a sheet owns no cell")
@@ -204,13 +183,11 @@ def _radius_builds(tmp_path, radius):
 
 def test_config_radius_declaration_matches_direct(tmp_path):
     configured, direct = _radius_builds(tmp_path, 1.0e-4)
-    # add_port appends this frozen _PortEntry, including radius, to _ports.
     assert configured._ports == direct._ports
 
 
 def test_config_radius_bound_matches_direct(tmp_path):
     configured, direct = _radius_builds(tmp_path, 1.25e-4)
-    # forward stamps wire ports before stepping; the clamped mutation runs one step.
     for sim in (configured, direct):
         grid = sim._build_grid()
         assert max(grid.shape) <= 24
@@ -256,9 +233,6 @@ def test_example_yaml_loads():
     assert len(sim._probes) == 1
 
 
-# --------------------------------------------------------------------------
-# execution block -> run kwargs
-# --------------------------------------------------------------------------
 
 def test_execution_to_run_kwargs():
     rk = execution_to_run_kwargs(_CFG["execution"])
@@ -274,12 +248,9 @@ def test_execution_to_run_kwargs():
 
 def test_execution_partial_freq_sweep_errors():
     with pytest.raises(KeyError):
-        execution_to_run_kwargs({"s_param_freq_start": 1e9})  # missing end / n
+        execution_to_run_kwargs({"s_param_freq_start": 1e9})
 
 
-# --------------------------------------------------------------------------
-# Sub-builders + loud failure on unsupported / malformed config.
-# --------------------------------------------------------------------------
 
 def test_waveform_registry_and_builder():
     assert set(WAVEFORM_REGISTRY) == {"gaussian_pulse", "modulated_gaussian"}
@@ -305,7 +276,6 @@ def test_waveform_gaussian_pulse_accepts_cutoff():
     )
     assert isinstance(wf, GaussianPulse)
     assert wf.cutoff == 4.5
-    # Default stays at the byte-identical historical value.
     wf_default = waveform_from_config(
         {"type": "gaussian_pulse", "f0": 2.2e9, "bandwidth": 1.2}
     )
@@ -324,28 +294,28 @@ def test_shape_box_and_unsupported():
 
 def test_unknown_top_level_key_raises():
     bad = dict(_CFG)
-    bad["boundry"] = "cpml"  # typo
+    bad["boundry"] = "cpml"
     with pytest.raises(KeyError):
         simulation_from_dict(bad)
 
 
 def test_frequency_unknown_key_raises():
     bad = dict(_CFG)
-    bad["frequency"] = {"freq_max": 12e9, "freq_min": 1e9}  # freq_min not accepted
+    bad["frequency"] = {"freq_max": 12e9, "freq_min": 1e9}
     with pytest.raises(KeyError):
         simulation_from_dict(bad)
 
 
 def test_domain_unknown_key_raises():
     bad = dict(_CFG)
-    bad["domain"] = {"x": 0.020, "y": 0.012, "z": 0.006, "w": 0.001}  # typo axis
+    bad["domain"] = {"x": 0.020, "y": 0.012, "z": 0.006, "w": 0.001}
     with pytest.raises(KeyError):
         simulation_from_dict(bad)
 
 
 def test_domain_missing_axis_raises():
     bad = dict(_CFG)
-    bad["domain"] = {"x": 0.020, "z": 0.006}  # missing 'y'
+    bad["domain"] = {"x": 0.020, "z": 0.006}
     with pytest.raises(KeyError):
         simulation_from_dict(bad)
 
@@ -399,14 +369,10 @@ def test_soft_source_without_amplitude_kind_means_current():
     assert sim._ports[0].amplitude_kind == "current"
 
 
-# --------------------------------------------------------------------------
-# Full run — slow, opt-in. Confirms YAML run == direct-build run.
-# --------------------------------------------------------------------------
 
 @pytest.mark.slow
 def test_full_run_matches_direct():
     run_kwargs = execution_to_run_kwargs(_CFG["execution"])
-    # trace x/y solved +4.375%/+35% off; this tests config/direct run parity.
     sim_cfg = simulation_from_dict({**_CFG, "snap": "declared"})
     sim_dir = _build_direct(snap="declared")
     res_cfg = sim_cfg.run(**run_kwargs)
@@ -418,9 +384,6 @@ def test_full_run_matches_direct():
     )
 
 
-# --------------------------------------------------------------------------
-# thin_conductors — the YAML spelling of a sheet declaration
-# --------------------------------------------------------------------------
 
 def test_thin_conductor_entry_declares_a_sheet():
     """A zero-thickness Box under ``thin_conductors:`` becomes a sheet.

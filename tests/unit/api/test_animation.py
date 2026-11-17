@@ -2,6 +2,8 @@
 
 Validates GIF creation from both 3D and 2D snapshot data,
 custom parameters, error handling, and dict-based input.
+
+The fixture domain lengths are whole multiples of dx, the lengths the grid solves.
 """
 
 import os
@@ -15,9 +17,6 @@ matplotlib.use("Agg")
 from rfx import Simulation, SnapshotSpec
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def sim_result_3d():
@@ -26,7 +25,7 @@ def sim_result_3d():
         freq_max=10e9,
         domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
-    )  # solved length
+    )
     sim.add_probe((0.01, 0.01, 0.01), "ez")
     snap = SnapshotSpec(components=("ez",))
     result = sim.run(n_steps=20, snapshot=snap)
@@ -40,7 +39,7 @@ def sim_result_2d():
         freq_max=10e9,
         domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
-    )  # solved length
+    )
     sim.add_probe((0.01, 0.01, 0.01), "ez")
     snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=5)
     result = sim.run(n_steps=20, snapshot=snap)
@@ -65,9 +64,6 @@ def fake_snapshots_2d():
     }
 
 
-# ---------------------------------------------------------------------------
-# GIF export from real simulations
-# ---------------------------------------------------------------------------
 
 class TestGifExport:
 
@@ -101,9 +97,6 @@ class TestGifExport:
         assert os.path.exists(result_path)
 
 
-# ---------------------------------------------------------------------------
-# Custom parameters
-# ---------------------------------------------------------------------------
 
 class TestCustomParams:
 
@@ -148,9 +141,6 @@ class TestCustomParams:
         assert os.path.exists(result_path)
 
 
-# ---------------------------------------------------------------------------
-# Slice axis selection (3D data)
-# ---------------------------------------------------------------------------
 
 class TestSliceAxis:
 
@@ -177,9 +167,6 @@ class TestSliceAxis:
         assert os.path.exists(result_path)
 
 
-# ---------------------------------------------------------------------------
-# Dict-based input
-# ---------------------------------------------------------------------------
 
 class TestDictInput:
 
@@ -192,9 +179,6 @@ class TestDictInput:
         assert os.path.exists(result_path)
 
 
-# ---------------------------------------------------------------------------
-# Error handling
-# ---------------------------------------------------------------------------
 
 class TestErrors:
 
