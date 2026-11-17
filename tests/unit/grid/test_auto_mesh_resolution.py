@@ -19,7 +19,8 @@ from rfx.nonuniform import NonUniformGrid
 
 
 def _documented_model(variant="plate"):
-    # materials-geometry.mdx's first Simulation and 1 mm PEC plate block.
+    """The model is the first Simulation and the 1 mm PEC plate block of
+    materials-geometry.mdx."""
     sim = Simulation(snap="declared", freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
     sim.add(Box((0.005, 0.005, 0.005), (0.045, 0.045, 0.0066)), material="fr4")
     sim.add(Box((0.005, 0.005, 0.004), (0.045, 0.045, 0.005)), material="pec")
@@ -75,7 +76,7 @@ def test_documentation_legality_matches_execution_assembly(monkeypatch, variant,
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_documented_plate_completes_real_one_step_solve(entry):
-    # A fresh declaration also proves callers need not preflight beforehand.
+    """A fresh declaration also proves callers need not preflight beforehand."""
     sim = _documented_model()
     result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
     assert isinstance(result.grid, NonUniformGrid)
@@ -138,6 +139,7 @@ def test_geometry_added_after_preview_recomputes_the_mesh():
 
 
 def test_declared_mesh_remains_available_before_and_after_resolution(monkeypatch):
+    """The returned mapping is a snapshot, not writable Simulation state."""
     sim = _documented_model()
     declared = sim._declared_mesh
     assert declared["_dx"] is None
@@ -154,7 +156,6 @@ def test_declared_mesh_remains_available_before_and_after_resolution(monkeypatch
     assert resolved["_dz_profile"] is not None
     assert resolved["_dx"] is not None
     assert sim._declared_mesh == declared
-    # The returned mapping is a snapshot, not writable Simulation state.
     declared["_dx"] = .001
     assert sim._declared_mesh["_dx"] is None
 
@@ -164,8 +165,9 @@ def test_declared_mesh_remains_available_before_and_after_resolution(monkeypatch
 def test_first_forward_under_jit_grad_resolves_static_mesh_on_host(
     monkeypatch, nonuniform, skip_preflight,
 ):
-    # Only the independent reference is resolved before tracing. The actual
-    # forward's first mesh read occurs inside the jit(grad(...)) invocation.
+    """Only the independent reference is resolved before tracing; the actual forward's
+    first mesh read occurs inside the jit(grad(...)) invocation. The microamp source
+    keeps reverse-mode intermediates within float32 range."""
     def model():
         sim = _small_static_model()
         if nonuniform:
@@ -174,7 +176,6 @@ def test_first_forward_under_jit_grad_resolves_static_mesh_on_host(
 
     shape = model()._build_realized_grid().shape
     sim = model()
-    # Microamp source keeps reverse-mode intermediates within float32 range.
     sim.add_source((0.004, 0.004, 0.004), "ez", waveform=lambda t: 1e-6 * jnp.ones_like(t),
                    amplitude_kind="current")
     sim.add_probe((0.004, 0.004, 0.004), "ez")
@@ -245,7 +246,10 @@ def test_jit_keeps_static_nonuniform_subcell_refusal():
 
 
 def test_msl_s_matrix_reuses_auto_mesh_across_drives(monkeypatch):
-    """Two real drive scans retain the base's plan without new mesh warnings."""
+    """Two real drive scans retain the base's plan without new mesh warnings.
+
+    The base plans its mesh during port registration, before this warning capture.
+    """
     from rfx.api._mesh import _MeshMixin
 
     plans = []
@@ -273,5 +277,4 @@ def test_msl_s_matrix_reuses_auto_mesh_across_drives(monkeypatch):
     auto_warnings = [w for w in caught if issubclass(w.category, AutoMeshWarning)]
     assert result.S.shape == (2, 2, 16)
     assert len(plans) == 1
-    # Base 3299c0b6d plans during port registration, before this capture.
     assert len(auto_warnings) == 0

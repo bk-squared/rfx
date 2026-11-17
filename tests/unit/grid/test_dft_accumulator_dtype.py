@@ -13,6 +13,9 @@ venv: JAX 0.10.2); the fallback below is the same scoped-flip-with-restore
 shim tests/_x64_compat.py provides, applied inline here (folded pre-
 existing fix, discovered while landing #579's own tests/_x64_compat usage
 — see the #579 PR body).
+
+On older JAX (before about 0.4.31) ``enable_x64`` comes from the tests/_x64_compat.py
+shim.
 """
 import jax.numpy as jnp
 import numpy as np
@@ -22,7 +25,7 @@ from rfx.probes.probes import init_dft_probe, init_dft_plane_probe
 
 try:
     from jax import enable_x64
-except ImportError:  # older JAX (< ~0.4.31) -- see tests/_x64_compat.py
+except ImportError:
     from tests._x64_compat import enable_x64
 
 
@@ -53,7 +56,6 @@ def test_accumulators_follow_x64_when_enabled():
         pl = init_dft_plane_probe(axis=2, index=5, component="ez", freqs=freqs, grid_shape=g.shape)
         assert p.accumulator.dtype == jnp.complex128
         assert pl.accumulator.dtype == jnp.complex128
-    # and back to the default outside the scope
     g2 = _grid()
     p2 = init_dft_probe(g2, (0.005, 0.005, 0.005), "ez",
                         jnp.asarray([5e9], dtype=jnp.float32))

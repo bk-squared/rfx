@@ -132,7 +132,11 @@ def test_order4_fenced_dispersive():
 
 def test_order4_cfl_derated():
     """The timestep used for order=4 is ~0.857x the order=2 dt (the (2,4) CFL
-    bound). Inspect the dt resolved inside ``_build_step_setup`` directly."""
+    bound). Inspect the dt resolved inside ``_build_step_setup`` directly.
+
+    The model has no conductor (``pec_mask=None`` in ``common``); the test is about the
+    stencil-order CFL derating, not conductor realization.
+    """
     from rfx.grid import Grid
     from rfx.core.yee import init_materials
     from rfx.simulation import _ORDER4_CFL_FACTOR
@@ -150,8 +154,6 @@ def test_order4_cfl_derated():
         wire_port_sparams=[], lumped_port_sparams=[], lumped_rlc=[],
         kerr_chi3=None, field_dtype=None, mag_sources=[],
     )
-    # No conductor at all (pec_mask=None in ``common``); this test is about
-    # the stencil-order CFL derating, not conductor realization.
     setup2 = _build_step_setup(grid, mats, stencil_order=2, **common)
     setup4 = _build_step_setup(grid, mats, stencil_order=4, **common)
 

@@ -23,7 +23,7 @@ from rfx import Simulation, SnapshotSpec
 from rfx.io import save_simulation_dataset
 
 _A, _B, _C = 0.020, 0.020, 0.005
-_F_TM110 = 299792458.0 / 2 * math.sqrt(1 / _A ** 2 + 1 / _B ** 2)   # 10.5993 GHz
+_F_TM110 = 299792458.0 / 2 * math.sqrt(1 / _A ** 2 + 1 / _B ** 2)
 _N_STEPS = 2000
 
 
@@ -68,9 +68,10 @@ def cavity_runs():
 
 
 def test_result_dt_is_the_step_the_scan_took(cavity_runs):
+    """The (2,4) derating is documented on ``Simulation(stencil_order=...)`` as about
+    0.857x."""
     r2, r4 = cavity_runs[2][1], cavity_runs[4][1]
     assert r2.dt == r2.grid.dt
-    # (2,4) derating, documented on Simulation(stencil_order=...) as ~0.857x.
     assert r4.dt == pytest.approx(0.857 * r4.grid.dt, rel=1e-12, abs=0.0), (
         f"stencil_order=4 Result.dt={r4.dt:.6e} s, grid.dt={r4.grid.dt:.6e} s: "
         f"the Result must report the derated step the scan advanced by")
@@ -92,12 +93,12 @@ def test_snapshot_times_use_the_step_the_scan_took(cavity_runs, order):
 
 @pytest.mark.parametrize("order", [2, 4])
 def test_cavity_resonance_is_read_at_the_right_frequency(cavity_runs, order):
+    """The same record is also read by FFT with ``Result.dt``, as a user would read it."""
     res = cavity_runs[order][1]
     modes = res.find_resonances(freq_range=(5e9, 13e9))
     assert modes, f"order {order}: Harminv found no mode in 5-13 GHz"
     strongest = max(modes, key=lambda m: m.amplitude)
     _assert_tm110(strongest.freq, f"order {order} find_resonances")
-    # The same record by FFT with Result.dt, as a user would read it.
     _assert_tm110(_fft_peak(res.time_series, res.dt), f"order {order} FFT")
 
 
