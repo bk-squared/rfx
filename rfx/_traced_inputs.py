@@ -82,7 +82,7 @@ def _refuse(owner, parameter, evidence):
     )
 
 
-_BY_OWNER = {}
+_BY_OWNER: dict[str, dict[str, tuple[str, str]]] = {}
 for _owner, _parameter, _state, _evidence in ROWS:
     _BY_OWNER.setdefault(_owner, {})[_parameter] = (_state, _evidence)
 
