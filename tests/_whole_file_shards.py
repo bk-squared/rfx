@@ -30,11 +30,9 @@ def keep_whole(items, snapshot):
 
 @pytest.hookimpl(trylast=True)
 def pytest_collection_modifyitems(config, items):
+    """The snapshot follows -m/--deselect filtering and precedes the split."""
     if not getattr(config.option, "splits", None):
         return
-    # Root conftest imports this hook before pytest_configure registers the
-    # split plugin. Pluggy calls later-registered trylast hooks last, so this
-    # snapshot follows -m/--deselect filtering and precedes the split.
     config.stash[_SNAPSHOTS] = {
         module: tuple(item for item in items
                       if item.nodeid.split("::", 1)[0] == module)

@@ -54,7 +54,7 @@ def capture_operands(build, radius):
             if event == 'return':
                 for key in ('midpoint', 'mid_bulk', 'pad', 'periodic'):
                     assembly[key] = frame.f_locals[key]
-                assembly['weights'] = None  # the bar's grid is uniform
+                assembly['weights'] = None
             return trace
         return None
 
@@ -214,7 +214,6 @@ class D:
 
     def __truediv__(self, other):
         b = as_d(other)
-        # lax.py:5096: g/y; (-g)*x*integer_pow(y,-2), then standard_jvp add.
         lhs = None if self.d is None else self.d / b.p
         rhs = None if b.d is None else (-b.d) * self.p * (B(1) / (b.p * b.p))
         return D(self.p / b.p, tangent_add(lhs, rhs))
@@ -359,18 +358,14 @@ def spectral_clip(tensor, lo, hi, w, v, pe, *, outcome=None, cluster=None):
                           inside[..., :, None].astype(float))
     def outer_contract(value):
         return av @ value @ avt if cluster is None else cluster_contract(cluster, value)
-    # Reconstruction arithmetic; sensitivity and orthogonality are added once.
     bv, bw = B(v), B(w)
     clipped = bwhere(below, lo.p[..., None], bwhere(above, hi.p[..., None], bw))
     reconstructed = (bv[..., :, None, :] * bv[..., None, :, :]
                      * clipped[..., None, None, :]).sum_axis(-1)
     e = reconstructed.e + outer_contract(np.abs(analytic_L) * pe)
     e[4] += (4 * P_EIGH * UNIT * np.max(np.abs(c), axis=-1))[..., None, None]
-    # Clipped bound uncertainty already propagates through reconstructed.e.
     result = B(reconstructed.v, e)
     dt = tangent(tensor)
-    # In the custom JVP, V,w,lo,hi start without propagated primal errors.
-    # E1/E3/E4 roundings and tangent-input errors propagate through its code.
     bf = bwhere(below, B(lo.p.v)[..., None], bwhere(above, B(hi.p.v)[..., None], bw))
     bgap = bw[..., :, None] - bw[..., None, :]
     bd = bwhere(separated, bf[..., :, None] - bf[..., None, :], B(0)) / bwhere(separated, bgap, B(1))
@@ -469,7 +464,6 @@ def recompute_triplet(primal, dots, active, near=False):
     clipped, L, inside, gap, tol = spectral_clip(tensor, lo, hi, w, v, pe)
     final = dwhere(clip[..., None, None], clipped, tensor)
     final = dwhere(guard[..., None, None], x['fallback'], final)
-    # Cofactors by 2x2 minors, including singular matrices, rather than det*inv.
     cofactor = np.empty_like(pi.p.v)
     for i in range(3):
         for j in range(3):
@@ -499,7 +493,6 @@ def recompute_triplet(primal, dots, active, near=False):
     diagonal_delta = np.diagonal(final.p.delta, axis1=-2, axis2=-1)
     diag_near = np.all(np.abs(diagonal - diagonal[..., :1]) <= diagonal_delta + diagonal_delta[..., :1], axis=-1)
     isotropic = np.all(final.p.v == final.p.v[..., :1, :1] * np.eye(3), axis=(-2, -1))
-    # M1-only bulk gate: clip/inside choices cannot change at a bulk triplet.
     clip_near &= ~bulk_any
     cases = dict(singular=singular | (np.abs(determinant) <= determinant_delta),
                  inverse_validity=EPS * kappa > 1e-3,
@@ -545,7 +538,6 @@ def tied_clusters(w, v, near_p):
         projectors.append(projector)
         sizes.append(len(members))
         amplitudes.append(np.sqrt(np.maximum(np.diag(projector), 0)))
-    # For singleton clusters this is exactly |v_a|, without a new rounding site.
     outer = np.einsum('ai,bl->abil', amplitudes, amplitudes)
     return dict(connected=connected, projectors=projectors, sizes=sizes, outer=outer,
                 threshold=threshold)
@@ -635,7 +627,6 @@ def near_triplet_bounds(final, stages, near_stages, cases, fallback):
         for flags in product((False, True), repeat=len(choices)):
             state, separated = default_state.copy(), default_sep.copy()
             use_clip, use_guard = bool(stages['clip'][index]), False
-            # Apply lower then upper, matching clip's maximum then minimum.
             for flag, (kind, i, j) in zip(flags, choices):
                 if kind == 'eigen':
                     if flag:
@@ -685,7 +676,6 @@ def near_triplet_bounds(final, stages, near_stages, cases, fallback):
                         G[j, k] += amount
         for i, j in PAIRS:
             if (eigen_near[i] and eigen_near[j]) or (cluster['connected'][i, j] and (eigen_near[i] or eigen_near[j])):
-                # Shared pairs and cluster ties replace, rather than add, per-k terms.
                 G[i, j] = G[j, i] = h_abs[i, j]
         for i, j in separated_choices:
             amount = abs(exact_divided[i, j] - tie[i]) * h_abs[i, j]
@@ -732,8 +722,6 @@ def rounding_bound(capture):
         final, near_details = near_triplet_bounds(final, stages, near_stages, near_cases, fallback)
         strict_triplets.append((stages['determinant'] == 0) & touched)
         iso_near.append(near_cases['isotropy_near'] & touched)
-        # Every A36 test uses the M4' near run, including M1 input roundings.
-        # Exact float64 decisions are unchanged between these two runs.
         mask = np.zeros(touched.shape, dtype=bool)
         for name, selected in near_cases.items():
             cases.setdefault(name, []).append(selected & touched)
@@ -783,7 +771,6 @@ def rounding_bound(capture):
     leaves = []
     for p, d in zip(other, dother):
         if p.dtype.kind == 'f':
-            # R10 for xi, midpoint/pad entries and other solver-unreached values.
             bp, bd = B(p).rounded(), B(d).rounded()
             leaves.append(D(bp, bd))
         else:

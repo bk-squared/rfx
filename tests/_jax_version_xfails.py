@@ -18,7 +18,6 @@ import pytest
 _CURL = "tests/contracts/test_absorber_curl_coefficients.py::test_step_uses_owner_curl_coefficient"
 _CURL_PATHS = "tests/contracts/test_absorber_curl_coefficients_paths.py::test_distributed_face_uses_owner_coefficient"
 
-# issue: (first jax (major, minor) that fails, reason, node ids)
 JAX_XFAILS = {
     2125: (
         (0, 11),
