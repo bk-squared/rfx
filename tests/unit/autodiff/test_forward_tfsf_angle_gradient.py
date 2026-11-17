@@ -111,10 +111,10 @@ def gradient(pol="ez", n=N2, compiled=False):
 
 @pytest.mark.slow
 def test_override_reproduces_declared_slab_transmission():
+    """|T| of the declared 25 mm eps_r=4 slab at 30 deg, h=2 mm, 3148 steps, against its reference."""
     assert not jax.config.jax_enable_x64, "Transmission finite differences use the default complex64 DFT"
     facts = functions()[4]
     value = float(transmission(jnp.asarray(declared("ez", 30.)), facts["dt"]))
-    # |T| of the declared 25 mm eps_r=4 slab at 30 deg, h=2 mm, 3148 steps.
     emit("declared_slab_transmission", shape=facts["shape"], n=N2, value=value, reference=.759503228792,
          difference=value-.759503228792)
     assert abs(value-.759503228792) <= 1e-5, "Declared slab transmission differs from the reference"

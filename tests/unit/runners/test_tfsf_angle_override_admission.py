@@ -68,7 +68,7 @@ def test_override_refusals_are_named(row, skip, no_scan):
 
 
 def test_traced_override_beyond_90_degrees_is_refused():
-    # Exercise the compiled range check so its exception names the angle override.
+    """The compiled range check's exception names the angle override."""
     sim, _ = scene()
     fn = jax.jit(lambda angle: sim.forward(n_steps=10, tfsf_angle_override=angle,
                                           skip_preflight=False).time_series)
@@ -103,9 +103,9 @@ def test_run_has_no_angle_override():
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("kind", ["normal", "bloch", "methodB"])
 def test_multidevice_dispatch_refuses_open_plane_waves(kind, graded, no_scan):
+    """Open plane waves are unsupported on both multi-device mesh types."""
     sim, _ = scene(theta=0. if kind == "normal" else 30., boundary="cpml",
                    graded="x" if graded else None, method="methodB" if kind == "methodB" else "bloch")
-    # Open plane waves are unsupported on both multi-device mesh types.
     with pytest.raises(RfxUnsupported) as caught:
         sim._dispatch_plan(mode="forward", n_steps=10, num_periods=1,
                            distributed=True, emit_time_series=True)
@@ -115,7 +115,7 @@ def test_multidevice_dispatch_refuses_open_plane_waves(kind, graded, no_scan):
 
 
 def test_normal_closed_box_runs_on_two_devices():
-    # A normal-incidence closed box with an interior sheet supports two devices.
+    """A normal-incidence closed box with an interior sheet supports two devices."""
     from tests.unit.runners.test_distributed_admission_refusals import test_closed_box_late_sheet_inside_runs
     test_closed_box_late_sheet_inside_runs("forward", 2)
     emit("normal_closed_box_two_devices", devices=2, admitted=True)

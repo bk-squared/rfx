@@ -48,10 +48,10 @@ def test_angle_derivative_matches_redeclaration(pol):
 
 @pytest.mark.parametrize("pol", ["ez", "ey"])
 def test_slab_transmission_and_derivative_converge_to_airy(pol):
+    """Each mesh reads a settled pulse record of about 6.9 ns."""
     values, derivatives = [], []
     for h in (.002, .001, .0005):
         _, facts = scene(pol, h=h, thickness=.024)
-        # Use a settled pulse record of approximately 6.9 ns on each mesh.
         n = int(math.ceil(12e-9/facts["dt"])/1.75)
         _, fn, _, compiled, _ = functions(pol, n, h, .024)
         value = float(compiled(jnp.float32(30)))

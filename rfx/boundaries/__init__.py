@@ -30,8 +30,8 @@ from rfx.boundaries.spec import (  # noqa: F401
 
 def admit_tfsf_angle_override(sim, lane, override):
     """Admit the angle operand after lane selection without importing model at startup."""
-    from rfx.boundaries.tfsf import admit_tfsf_angle_override as admit
-    return admit(sim, lane, override)
+    from rfx.boundaries import tfsf
+    return tfsf.admit_tfsf_angle_override(sim, lane, override)
 
 
 # The layer entries the five large files may call (scripts/ci/check_layer_structure.py rule I).
