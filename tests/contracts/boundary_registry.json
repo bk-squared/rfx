@@ -342,6 +342,11 @@
       "count": 6
     },
     {
+      "file": "rfx/differentiable_material_fit.py",
+      "function": "differentiable_material_fit",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/fidelity.py",
       "function": "_max_run_length",
       "kind": "roll/diff"

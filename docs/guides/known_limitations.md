@@ -276,20 +276,6 @@ Under `jax.grad` the unoccupied cells still pass a zero cotangent through the ca
 A concrete run is not affected.
 Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
 
-### `fit_debye` with a free ε∞ can return ε∞ = 0.5 and poles far outside the data's band.
-
-Tracker: #2771
-
-With ε∞ free, `fit_debye` fits ε∞ with a lower bound of 0.5 and each relaxation time within wide bounds (1 fs to 1 ms).
-On a table whose ε′ and tan δ are constant over the band, as a datasheet gives them, many pole placements fit almost
-equally well, and nothing keeps the poles inside the data's span or ε∞ at 1 or above. Such a fit can end with ε∞ on its
-0.5 bound and poles near 1 THz and below 1 MHz, while its `fit_error` reads below 1 %. Inside the band the fitted
-permittivity is close to the data. The fault is ε∞ below 1: a material built from the fit grows without bound at rfx's
-default time step (next entry). Check that `fit.eps_inf` is at least 1 and that every pole's `1 / (2 * pi * tau)` lies
-in the data's band. For a datasheet value, a fit that places the relaxation frequencies log-spaced over the band and
-solves only ε∞ (at least 1) and each Δε (at least 0) by bounded linear least squares runs stably and stays within 0.12
-dB in |S11| of the free fit inside the band; `fit_debye` has no such mode, so this fit is written by hand.
-
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
 Tracker: #2441

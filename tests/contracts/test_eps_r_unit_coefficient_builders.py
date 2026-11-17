@@ -144,6 +144,8 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         _HOST + " (unit-voltage electrostatic energy; no traced coefficient)",
     ("rfx/sources/msl_port.py", "compute_msl_mode_profile._cap_per_metre"): _HOST,
     ("rfx/sources/tfsf_discrete_plane_wave.py", "_tables"): _VACUUM,
+    ("rfx/sources/tfsf_discrete_plane_wave.py", "_line_damping"):
+        _C0 + "; the closed-box line's lossy ends are host float64 factors, no traced permittivity",
     ("rfx/stepping/tfsf.py", "apply_tfsf_e"): _VACUUM,
     ("rfx/sources/tfsf.py", "update_tfsf_1d_e"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/stepping/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",
@@ -174,7 +176,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 51  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate).
+ALLOWLIST_CEILING = 52  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate); _line_damping (#2732).
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
