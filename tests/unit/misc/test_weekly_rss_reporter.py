@@ -171,7 +171,7 @@ def test_reporter_flags_nodeid_when_rss_high_water_crosses_threshold():
 
 
 # ---------------------------------------------------------------------------
-# issue #545 step 3: the live sampler (background thread).
+# the live sampler (background thread).
 
 
 @pytest.mark.skipif(
@@ -327,7 +327,7 @@ def test_reporter_updates_live_sampler_current_nodeid_during_test():
 
 
 # ---------------------------------------------------------------------------
-# THE property (PR #592 review, CRITICAL): does an [rss-live] line actually
+# THE property: does an [rss-live] line actually
 # survive a real SIGKILL, observed from OUTSIDE pytest's own capture layer?
 # The tests above bind the sampler's output STRING via capfd; none of them
 # prove DELIVERY through pytest's real stderr capture machinery. Only a

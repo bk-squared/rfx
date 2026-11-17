@@ -15,7 +15,7 @@ from rfx.ntff_sweep import ntff_sweep
 
 
 def _small_sim(freqs):
-    # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
+    # the profile once solved 4.1 mm under a 10 mm declaration, so
     # the box top lay outside the solved column; it now spans 10.1 mm.
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17, dtype=np.float64)
     sim = Simulation(
