@@ -879,3 +879,8 @@ field. Results: record kept with the project; shortened arms of the energy, sing
 - Before using a result outside a listed range, repeat mesh/time convergence and
   compare against an analytic or independent solver reference suitable for that
   configuration.
+
+| Path | Cell time-step restriction |
+|---|---|
+| Subgridded | ε·μr < 1 is refused conservatively where it is below the fine-grid threshold (0.9801 at the default step), including coarse cells; the refusal says “conservative on this path” for coarse cells. |
+| Conformal `cut_cell_floor` | ε·μr < 1 is refused, conservatively; the refusal says “conservative on this path”. |

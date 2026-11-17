@@ -112,6 +112,8 @@ def _build_vmap_scan_fn(
         """
         from rfx.model.materials import with_components
         materials = with_components(materials, grid, periodic=periodic)
+        from rfx.model.pole_stability import refuse_subluminal_cells
+        refuse_subluminal_cells(materials, grid, dt, periodic=periodic)
         fdtd = init_state(grid.shape)
         drives = drive_layout(src_meta + list(j_src_meta), fdtd.ex.dtype)
 

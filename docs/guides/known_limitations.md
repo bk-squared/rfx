@@ -276,38 +276,6 @@ Under `jax.grad` the unoccupied cells still pass a zero cotangent through the ca
 A concrete run is not affected.
 Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
 
-### A material with permittivity below 0.98 grows without bound at the default time step, and nothing refuses it.
-
-Tracker: #2772
-
-A Yee cell of relative permittivity ε (μr 1) is stable only for a time step up to √ε times the vacuum Courant limit,
-because its fastest waves travel at c/√ε, faster than light for ε below 1. In a Debye material the pole terms vanish at
-the grid's Nyquist frequency, so the cell sees ε∞ there. No check refuses a step above a cell's own limit: the default
-step is 0.99 of the vacuum limit, and the pole stability check skips a cell whose step is above that cell's limit
-without its poles. A material with `eps_r` below 0.98 (0.99²), or a Debye material with ε∞ below 0.98 (such as a
-`fit_debye` result before 2.3), therefore grows until the fields are non-finite at the default step when it fills cells that set
-the step (every cell on a uniform mesh); this was measured at 0.5 on the uniform and the graded mesh. Between 0.98 and 1
-the default step stays inside the cell's limit. Nothing refuses the run; it ends with an `AccuracyWarning` about
-non-finite values.
-
-Two material fits reach this entry, measured with a 12.3 × 11.5 × 10.8 mm box of the fitted material on 1 mm cells in
-an open domain (uniform mesh, and a graded mesh with five 0.8 mm cells in x), at the default step:
-- On a table with ε′ 4.4 and tan δ 0.02 constant over 1–40 GHz, `fit_debye` with a free ε∞ returned ε∞ 0.5 before
-  2.3 (it now keeps ε∞ at 1 or above). `run()` admits the 2-pole fit on both meshes; the fields grow by a factor of 1.04 per step and become
-  non-finite at step 2025 (uniform) and 2008 (graded).
-- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returns ε∞ 0.1, its
-  lower bound, with 2 and with 3 resonances. `run()` admits both fits on both meshes; the fields grow by a factor of
-  100 to 140 per step and become non-finite at step 22.
-
-In both cases preflight reports only advisories, and the run ends with the `AccuracyWarning` about non-finite values.
-Before building a material from a fit, check `fit.eps_inf`: below 0.98, the material is outside the default step's
-stable range. The 2-pole `fit_debye` result above ran 17143 steps without growth at 0.61 of the vacuum Courant limit
-of the smallest cell, on a graded board with a pinned `dt=`. No step was measured for the `fit_lorentz` result.
-
-Keep `eps_r` and ε∞ at 1 or above. On a graded mesh, a pinned `dt=` below √ε times the vacuum Courant
-limit, with ε the smallest permittivity, is inside the stable range: at 0.6 of the limit a material with ε 0.5 ran
-without growth.
-
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
 Tracker: #2441
@@ -1167,6 +1135,12 @@ its simulation time predates the current decay check. It is re-measured after
 2.0, with the MSL notch filter's, on a redesigned record length and mesh ladder
 (decided 2026-10-04, recorded on
 [#1471](https://github.com/bk-squared/rfx/issues/1471)).
+
+### Traced material values on several devices, a backend without host callbacks or a GPU process without a CPU backend (`JAX_PLATFORMS=cuda`) bypass the cell time-step limit.
+
+Tracker: #2755
+
+A `jax.jit`-traced ε or μr on several devices, or on a backend without host callbacks (including MPS on Apple silicon), or in a GPU process without a CPU backend (`JAX_PLATFORMS=cuda`), is not judged against the cell time-step limit. Below ε·μr = 0.98, such a run goes non-finite with no named refusal ([#2755](https://github.com/bk-squared/rfx/issues/2755)). Concrete values and eager `jax.grad` / `jax.jvp` primals and `jax.vmap` members are still judged on the host.
 
 ---
 

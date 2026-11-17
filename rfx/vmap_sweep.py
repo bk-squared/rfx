@@ -864,6 +864,7 @@ def vmap_material_sweep(
             if pe.is_soft_source and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
+        from rfx.model.pole_stability import refuse_subluminal_cells
         native = "cb" if sim._boundary == "cpml" else "raw"
         for batch_idx in range(len(param_values)):
             mats = MaterialArrays(
@@ -872,6 +873,7 @@ def vmap_material_sweep(
                 mu_r=batched_materials.mu_r[batch_idx],
                 sigma_film=jax.tree.map(lambda a: a[batch_idx], batched_materials.sigma_film),
             )
+            refuse_subluminal_cells(mats, grid, periodic=source_periodic)
             waveforms = [uniform_source_table(
                 grid, field_index(grid, pe.position, pe.component), pe.component,
                 pe.waveform, n_steps, mats, pe.amplitude_kind,

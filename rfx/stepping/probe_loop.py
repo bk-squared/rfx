@@ -19,6 +19,9 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
     from rfx.sources.sources import _wire_port_live_cells
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
+    from rfx.model.pole_stability import refuse_subluminal_cells
+    refuse_subluminal_cells(materials, grid, grid.dt)
+
     port = ports[driven]
     if wire:
         cells, live, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
