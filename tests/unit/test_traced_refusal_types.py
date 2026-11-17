@@ -402,7 +402,7 @@ def test_forward_refuses_a_shape_dimension_gradient():
                  "shapes onto grid cells, so the result is a step function of that dimension and "
                  "its gradient would be zero almost everywhere. Differentiate a material value "
                  "through eps_override, or use a design region (design_box / design_eps_override) "
-                 "for shape optimisation. jax.jit and jax.vmap over a Sphere or Cylinder dimension "
+                 "for shape optimisation. jax.jit and jax.vmap over a dielectric Sphere or Cylinder dimension "
                  "are supported (with subpixel_smoothing only in a closed PEC domain).")
 
 
