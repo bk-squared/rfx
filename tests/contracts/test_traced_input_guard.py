@@ -267,5 +267,4 @@ def test_forward_invalid_binding_falls_through_to_type_error():
     with pytest.raises(TypeError) as caught:
         sim.forward(1)
     assert not isinstance(caught.value, TracedStaticInput)
-    # Python's own call error, not Signature.bind's "too many positional arguments".
     assert "takes 1 positional argument but 2 were given" in str(caught.value)
