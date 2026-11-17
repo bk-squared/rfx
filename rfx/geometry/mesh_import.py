@@ -19,6 +19,9 @@ Discipline notes:
 - Watertightness is validated at load with a HARD error: a leaky/non-manifold mesh
   gives an inconsistent inside/outside test and would silently produce a wrong
   occupancy mask.
+
+A sample exactly on an axis-aligned face of a watertight mesh resolves by the half-open ``[lo, hi)`` convention of ``Box``:
+inside on a lower face, outside on an upper face.
 """
 from __future__ import annotations
 
@@ -28,59 +31,6 @@ import jax.numpy as jnp
 from rfx.geometry.csg import _grid_coords
 
 
-# --------------------------------------------------------------------------- #
-# deterministic point-in-mesh containment.
-#
-# ``trimesh.ray.ray_util.contains_points`` (what ``mesh.contains`` calls) is
-# NONDETERMINISTIC near mesh surfaces, and the boundary-fitted meshers put
-# rasterization sample points exactly there (a conductor sheet registered at
-# its mid-plane node lands cell centres on its lateral faces). Two defects in
-# that function, both measured here (trimesh
-# 5.0.0, ray engine ray_triangle):
-#
-# 1. Its forward-hit cull is ``distance > -1e-6`` in MESH UNITS (metres for
-#    rfx), so any ray origin within ~1 um of a face counts that face in BOTH
-#    the forward and the backward parity. The two parities then disagree
-#    ("broken") and the point is re-decided along a direction drawn from an
-#    OS-ENTROPY-SEEDED RNG — a per-call coin flip. Measured: a mid-plane
-#    sample 1 ulp off a sheet's lateral face flipped inside/outside across 40
-#    fresh calls (states 0,1,1,0,1,0,...); 18/121 mid-plane samples of a
-#    17 um sheet reached the RNG branch. The same flip measured as a 1-cell PEC-count spread on an
-# imported board.
-# 2. The 1 um slack is ABSOLUTE, so the coin-flip shell extends ~0.5 um into
-#    the solid: a point 0.2 um strictly INSIDE a face returned
-#    True,False,False,... over 8 repeated calls. Sub-micron grids would
-#    flicker whole planes. No sub-nanometre origin nudge can escape a 1 um
-#    slack (measured: nudges 1e-12..1e-8 m all left the parity broken), which
-#    is why the parity DECISION is replaced rather than only the sample
-#    coordinate perturbed.
-#
-# Replacement (deterministic BY CONSTRUCTION — no RNG anywhere on the path):
-# cast the same two rays trimesh casts (one fixed direction, forward and
-# backward) but from an origin nudged a fixed sub-nanometre step along the
-# ray direction, and count crossings with a STRICT own-computed ``t > 0``
-# instead of the 1 um slack. The nudge puts the origin ``~1e-12 m`` off any
-# face the sample sits on, 3+ orders above double-precision intersection
-# noise (~1e-16 m at metre coordinate scale) and 6 orders below a 1 um cell,
-# so the own-face hit lands at ``t = -eps`` (forward ray) / ``t = +eps``
-# (backward ray) and both parities count it identically and correctly.
-#
-# Boundary convention (documented per the ask): the nudge direction has
-# a strictly POSITIVE component on every axis, so a sample exactly on an
-# axis-aligned face resolves INSIDE on a lo face and OUTSIDE on a hi face —
-# exactly ``Box``'s half-open ``[lo, hi)`` volume convention (``csg.py``).
-# Chosen over double-sample-and-vote because OR-voting realizes closed
-# ``[lo, hi]`` and AND-voting open ``(lo, hi)``, both inconsistent with the
-# primitive, and voting doubles the ray casts. The component RATIOS are
-# irrational (1, sqrt2/2, sqrt3/3), so no rationally-specified oblique face
-# plane can contain the ray direction exactly (a ray inside the face plane
-# yields no crossing and would leave the tie).
-#
-# If forward and backward parity still disagree (pathologies: a ray grazing
-# a triangulation edge counts both triangles; a face near-parallel to the
-# ray), the point is re-decided once along a SECOND fixed direction from a
-# re-nudged origin, and that forward parity is final — an arbitrary but
-# FIXED rule, unlike trimesh's RNG.
 _TIE_BREAK_EPS_M = 1e-12
 _D1 = np.array([1.0, np.sqrt(2.0) / 2.0, np.sqrt(3.0) / 3.0])
 _D1 = _D1 / np.linalg.norm(_D1)
@@ -119,7 +69,7 @@ def _contains_deterministic(intersector, pts):
 def _require_trimesh():
     try:
         import trimesh  # noqa: F401
-    except ImportError as exc:  # pragma: no cover - exercised only without the extra
+    except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "MeshShape requires the optional 'cad' dependency (trimesh). "
             "Install it with:  pip install 'rfx-fdtd[cad]'"
@@ -142,7 +92,7 @@ class MeshShape:
     """
 
     def __init__(self, mesh, *, validate: bool = True):
-        _require_trimesh()  # ensure trimesh is importable even on the direct path
+        _require_trimesh()
         self._is_watertight = bool(getattr(mesh, "is_watertight", False))
         if validate and not self._is_watertight:
             raise ValueError(
@@ -152,8 +102,8 @@ class MeshShape:
                 "trimesh.repair) before import."
             )
         self._mesh = mesh
-        self._mask_cache: dict = {}   # coord-signature -> occupancy mask (see mask_on_coords)
-        self._ray = None              # lazy RayMeshIntersector (see _intersector)
+        self._mask_cache: dict = {}
+        self._ray = None
 
     def _intersector(self):
         """Pinned double-precision ray engine (built once, reused).
@@ -168,7 +118,6 @@ class MeshShape:
             self._ray = ray_triangle.RayMeshIntersector(self._mesh)
         return self._ray
 
-    # ------------------------------------------------------------------ #
     @classmethod
     def from_file(cls, path: str, *, scale: float, translate=(0.0, 0.0, 0.0)) -> "MeshShape":
         """Load a mesh/CAD file and return a validated ``MeshShape``.
@@ -205,8 +154,6 @@ class MeshShape:
                     "in your CAD tool and import that."
                 ) from exc
         loaded = trimesh.load(path)
-        # STEP/assemblies load as a Scene of one-or-more solids; concatenate WITH node transforms
-        # (force='mesh' mis-handles cascadio's transforms and can flatten the part).
         if isinstance(loaded, trimesh.Scene):
             if len(loaded.geometry) == 0:
                 raise ValueError(f"{path!r} loaded no geometry.")
@@ -216,14 +163,11 @@ class MeshShape:
             mesh = loaded
         if getattr(mesh, "faces", None) is None or len(mesh.faces) == 0:
             raise ValueError(f"{path!r} loaded no triangle faces — not a usable mesh.")
-        # CAD tessellations (esp. STEP) leave coincident-but-unmerged vertices at face seams,
-        # read as non-watertight; welding them recovers a sealed solid. Idempotent on clean STL.
         mesh.merge_vertices()
         mesh.apply_scale(float(scale))
         mesh.apply_translation(np.asarray(translate, dtype=np.float64))
         return cls(mesh)
 
-    # ------------------------------------------------------------------ #
     def bounding_box(self):
         lo, hi = np.asarray(self._mesh.bounds, dtype=np.float64)
         return (tuple(float(v) for v in lo), tuple(float(v) for v in hi))
@@ -259,9 +203,6 @@ class MeshShape:
         y = np.asarray(y, dtype=np.float64).ravel()
         z = np.asarray(z, dtype=np.float64).ravel()
 
-        # Cache the occupancy by coordinate CONTENT: containment is the
-        # expensive step and otherwise reruns on every material build — the S-parameter paths
-        # rebuild materials repeatedly, so a large imported part would be re-contained each time.
         key = (x.tobytes(), y.tobytes(), z.tobytes())
         cached = self._mask_cache.get(key)
         if cached is not None:
@@ -270,22 +211,12 @@ class MeshShape:
         nx, ny, nz = x.size, y.size, z.size
         out = np.zeros((nx, ny, nz), dtype=bool)
 
-        # widen the trivially-outside cull by the tie-break step so a
-        # sample within the +-eps tie band of a bounding-box face reaches the
-        # ray test (a sample 1 ulp below the lo face must resolve INSIDE per
-        # the half-open convention; the raw cull dropped it before the
-        # tie-break could see it — caught by the pin test's shifted plane).
         eps = _TIE_BREAK_EPS_M
         (lox, loy, loz), (hix, hiy, hiz) = self.bounding_box()
         ix = np.where((x >= lox - eps) & (x <= hix + eps))[0]
         iy = np.where((y >= loy - eps) & (y <= hiy + eps))[0]
         iz = np.where((z >= loz - eps) & (z <= hiz + eps))[0]
         if ix.size and iy.size and iz.size:
-            # NOT ``self._mesh.contains`` — that path re-decides any
-            # near-surface point along an OS-entropy-random ray direction
-            # (nondeterministic; see the module block above). The cache key
-            # and the bbox window use the caller's coordinates unchanged;
-            # only the ray-cast origin carries the tie-break nudge.
             if self._is_watertight:
                 from rfx.geometry._mesh_scanline import scanline_mask
                 inside = scanline_mask(

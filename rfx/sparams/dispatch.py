@@ -72,22 +72,13 @@ if TYPE_CHECKING:  # pragma: no cover
     from rfx.api import Simulation  # noqa: F401
 
 
-# The lumped/wire family has no ``compute_*`` method at all: its S-parameters
-# come back as ``Result.s_params`` from the run lane. ``s_matrix_lane()``
-# returns this string for that row so the table stays total; it is not a
-# method name and ``compute_s_matrix()`` refuses to call ``run()`` for the
-# caller (different return type, and ``n_steps`` has no default there).
 RUN_LANE = "run(compute_s_params=True)"
 
-# The two methods a single ``add_coaxial_port()`` registration can mean. See the
-# module docstring: their registration footprints are identical.
 COAXIAL_ONE_PORT_LANES = (
     "compute_coaxial_line_reflection",
     "compute_coaxial_two_port",
 )
 
-# Every method name ``s_matrix_lane()`` can return, for validating
-# ``method=``.
 _SELECTABLE_LANES = (
     "compute_waveguide_s_matrix",
     "compute_msl_s_matrix",
@@ -179,7 +170,6 @@ def _resolve_lane(self) -> str:
     if not any(c.values()):
         raise ValueError(_no_ports_message())
 
-    # --- the six determinate rows ---------------------------------------
     if c["waveguide"] and _only("waveguide"):
         return "compute_waveguide_s_matrix"
 
@@ -211,7 +201,6 @@ def _resolve_lane(self) -> str:
             "or call the method directly."
         )
 
-    # --- everything else -------------------------------------------------
     raise NotImplementedError(_no_lane_message(c))
 
 
@@ -351,9 +340,6 @@ def s_matrix_lane(self, *, method: str | None = None, lane: str | None = None) -
         )
 
     if method in COAXIAL_ONE_PORT_LANES:
-        # The ambiguous row: _resolve_lane() raises rather than choose, so
-        # the override has to be applied before it, not after. Still fenced
-        # -- the registration must actually BE the ambiguous one.
         c = _port_census(self)
         if c["coaxial"] == 1 and not any(
             v for k, v in c.items() if k != "coaxial"
@@ -470,15 +456,6 @@ def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None
             "no default that this dispatcher could honestly supply."
         )
 
-    # Dispatched by explicit ``self.<method>(...)`` calls, not getattr: the
-    # emission-classification gate
-    # (tests/unit/preflight/test_preflight_advisory_emission_contract.py
-    # ::test_emission_classification_matches_measured_reachability) walks
-    # ``self.foo(...)`` calls through the AST to measure whether an entry
-    # point reaches preflight. A getattr indirection would hide this method's
-    # real reachability from that gate and let it be classified
-    # DIAGNOSTIC_ONLY on a technicality -- the "silently widening what counts
-    # as diagnostic-only" failure that gate exists to stop.
     if chosen == "compute_waveguide_s_matrix":
         return self.compute_waveguide_s_matrix(**kwargs)
     if chosen == "compute_msl_s_matrix":
@@ -492,25 +469,11 @@ def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None
     if chosen == "compute_mixed_s_matrix":
         return self.compute_mixed_s_matrix(**kwargs)
 
-    raise AssertionError(  # pragma: no cover -- guards a typo in the table
+    raise AssertionError(  # pragma: no cover
         f"s_matrix_lane() returned {chosen!r}, which compute_s_matrix() has "
         "no branch for. The two tables have drifted."
     )
 
 
-# ---------------------------------------------------------------------------
-# ``__qualname__`` convention.
-#
-# These two are NEW methods rather than moved ones, but they are bound into
-# ``_SparamMixin``'s class body the same way the moved calculators are, and
-# ``rfx/api/__init__.py`` rewrites exactly ``_SparamMixin.<name>`` ->
-# ``Simulation.<name>`` at class-composition time, SKIPPING any function whose
-# qualname does not match that pattern. A module-level ``def`` gets the bare
-# name, so without these two lines ``Simulation.compute_s_matrix.__qualname__``
-# would read ``compute_s_matrix`` and the class-name-leak gate
-# ``tests/unit/autodiff/test_design_mask_removed.py
-# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` -- plus this
-# dispatcher's own qualname test -- would see an unrewritten name.
-# ---------------------------------------------------------------------------
 compute_s_matrix.__qualname__ = "_SparamMixin.compute_s_matrix"
 s_matrix_lane.__qualname__ = "_SparamMixin.s_matrix_lane"

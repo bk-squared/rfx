@@ -10,7 +10,6 @@ def run_reflection_record(grid, materials, n_steps, *, spec, conductors, cpml_ax
     from rfx.sources.coaxial_port import coaxial_line_plane_voltage
 
     dz = float(grid.dx)
-    # Match the two-port witness: an annular point at the ladder's middle plane.
     witness_probes = [ProbeSpec(
         i=int(round((center_xy[0] + 0.5 * (a + b)) / dz)) + int(grid.pad_x_lo),
         j=int(round(center_xy[1] / dz)) + int(grid.pad_y_lo),
