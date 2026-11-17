@@ -112,6 +112,17 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
                 raise ValueError(
                     f"periodic axis {'xyz'[axis]!r}: fill bounds [{a}, {b}] m "
                     f"must lie inside [-L, 2L] for traced bounds; L={length} m")
+            # Traced bounds get only the images -1, 0 and 1. A shape centred
+            # outside the base period can leave its copy across the opposite
+            # seam unread by the smoothing samples there.
+            middle = 0.5 * (float(a) + float(b))
+            if middle < -tol or middle > length + tol:
+                raise ValueError(
+                    f"periodic axis {'xyz'[axis]!r}: traced fill bounds [{a}, {b}] m "
+                    f"have their midpoint m={middle} m outside [0, L]; L={length} m. "
+                    "Shift the shape by a whole period so its midpoint lies in [0, L]. "
+                    "This also refuses some declarations that read correctly, for "
+                    "example [-9.77, 0.1] mm with L = 10 mm; the same shift admits them.")
         traced_check("periodic geometry", "fill bounds", validate, lo, hi, ordered=True)
         return (-1, 0, 1)
     lo, hi = float(lo) - padding, float(hi) + padding

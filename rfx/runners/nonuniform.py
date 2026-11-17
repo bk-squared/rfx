@@ -606,6 +606,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                  or any(p.is_port and p.extent is not None for p in sim._ports)
                  or graded_lumped_default_s(sim)))
     if scan:
+        from rfx.runners._admission import refuse_foreign_s_drives
+        refuse_foreign_s_drives(sim)
         # The main record keeps its port records at the scan's bins; its S is not formed.
         from rfx.measurement.monitors import default_frequency_grid
         compute_s_params = True
@@ -1001,7 +1003,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
     materials = field_poles(materials, source_grid, debye_spec, lorentz_spec, field_dtype)
     sources = sources.resolve(materials)
 

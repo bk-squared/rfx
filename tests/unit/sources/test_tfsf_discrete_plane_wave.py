@@ -100,14 +100,17 @@ def test_d3_requires_record_bound(bound):
 
 
 @pytest.mark.parametrize('angles', DIRECTIONS)
-def test_d3_domain_of_dependence(angles):
+def test_d3_clean_margin(angles):
     cfg, _ = line(*angles)
     reads = np.concatenate([t.source_index for t in cfg.tables_e + cfg.tables_h]
                            + [np.array(cfg.source_nodes)]
                            + [w.nodes for w in cfg.source_windows])
-    padding = cfg.n_steps * max(map(abs, cfg.m)) + 2
-    assert reads.min() >= padding
-    assert cfg.n_nodes - 1 - reads.max() >= padding
+    g = 2 * max(map(abs, cfg.m)) + 2
+    length = 64 * int(np.ceil(np.sqrt(sum(v * v for v in cfg.m))))
+    assert cfg.absorber_nodes == length
+    assert reads.min() - length >= g
+    assert cfg.n_nodes - length - 1 - reads.max() >= g
+    assert cfg.n_nodes == reads.max() - reads.min() + 1 + 2 * (g + length)
 
 
 def dense_curl(fields, forward):
@@ -213,7 +216,7 @@ def test_d4_shell_and_stencil_vacuum(axis, side, offset):
 
 
 def resized_line(cfg, state, factor):
-    """Keep launch/tables fixed in physical p; change only the end distance."""
+    """Restore the historical padded lossless line for the origin-only check."""
     reads = np.concatenate([t.source_index + cfg.origin for t in cfg.tables_e + cfg.tables_h]
                            + [np.array(cfg.source_nodes) + cfg.origin]
                            + [w.nodes + cfg.origin for w in cfg.source_windows])
@@ -223,7 +226,7 @@ def resized_line(cfg, state, factor):
     shift = cfg.origin - origin
     def tables(old):
         return tuple(t._replace(source_index=t.source_index + np.int32(shift)) for t in old)
-    resized = replace(cfg, origin=origin, n_nodes=count,
+    resized = replace(cfg, origin=origin, n_nodes=count, absorber_nodes=0,
         source_nodes=tuple(n + shift for n in cfg.source_nodes),
         source_windows=tuple(w._replace(nodes=w.nodes + np.int32(shift)) for w in cfg.source_windows),
         tables_e=tables(cfg.tables_e), tables_h=tables(cfg.tables_h))
@@ -245,6 +248,7 @@ def center_record(cfg, state, n_steps):
 @pytest.mark.parametrize('pol', ('s', 'p'))
 def test_d3b_bound_vs_twice_bound(angles, pol):
     cfg, state = line(*angles, pol)
+    cfg, state = resized_line(cfg, state, 1)
     twice, zero = resized_line(cfg, state, 2)
     np.testing.assert_array_equal(center_record(cfg, state, 300).view(np.uint32),
                                   center_record(twice, zero, 300).view(np.uint32))

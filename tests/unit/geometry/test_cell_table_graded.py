@@ -172,7 +172,7 @@ def test_wrapper_keeps_uniform_refusal(monkeypatch, axis):
         pytest.fail('wrapper called table before refusing unequal cells')
     monkeypatch.setattr(conformal_cells, 'build_cell_table', fail)
     with pytest.raises(NotImplementedError) as caught:
-        compute_conformal_fractions(grid, [Sphere((.006,) * 3, .002)])
+        compute_conformal_fractions(grid, [Sphere((.006,) * 3, .002)], field_dtype=np.float32)
     assert type(caught.value) is NotImplementedError
     assert str(caught.value) == 'conformal PEC SC clamp requires uniform cells'
 
@@ -262,7 +262,7 @@ def test_graded_sheet_refusal_without_declared_domain():
 
 def test_empty_wrapper_still_returns_open_owners():
     grid = _graded(_geometric_profiles())
-    for arrays in compute_conformal_fractions(grid, [], clamp=False):
+    for arrays in compute_conformal_fractions(grid, [], clamp=False, field_dtype=np.float32):
         assert all(np.all(a == 1.) and a.shape == grid.shape for a in arrays)
 
 
