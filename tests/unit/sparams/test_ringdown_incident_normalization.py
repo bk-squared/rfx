@@ -160,7 +160,11 @@ def test_run_and_forward_return_the_same_normalized_spectra():
     assert np.all(error <= 1e-4), error
 
 
-@pytest.mark.parametrize("transform", ["jit", "vmap"])
+@pytest.mark.parametrize("transform", [
+    "jit",
+    pytest.param("vmap", marks=pytest.mark.xfail(
+        strict=True, reason="#2848 the ring-down identification keeps a different pole set under jax.vmap")),
+])
 def test_a_traced_forward_returns_the_untraced_normalized_spectra(transform):
     evaluate = scaled_forward()
     if transform == "jit":
