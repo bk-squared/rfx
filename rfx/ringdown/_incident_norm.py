@@ -11,7 +11,8 @@ e_hat at x_c after the E update of step n, over the run's N steps. The stamp
 (n + 1) dt is the E channel's own, so the quotient carries no clock offset.
 The line is the one the source-off check replays, built by
 :func:`plane_wave_line`; the sum is formed in numpy float64 from its float32
-record on the host, before the run. No gradient flows into I_c.
+record on the host, before the run. No gradient flows into I_c. A bin where
+|I_c(f)| is below ``RHO_LIMIT`` of its bound dt sum_n |i_c(n)| is refused.
 
 Only transverse E channels (ey, ez) are divided, at normal incidence along x.
 I_c is the incident E along e_hat for both: an ey and an ez channel on the
@@ -22,7 +23,6 @@ box the quotient of an ez channel is cos phi and that of an ey channel
 """
 import numpy as np
 
-#: Below this fraction of its bound dt sum |i_c(n)|, a bin of I_c is not divided by.
 RHO_LIMIT = 1.0e-4
 
 
