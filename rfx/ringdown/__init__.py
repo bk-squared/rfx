@@ -822,23 +822,6 @@ class _NotCompleted(Exception):
         self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
-def _require_source_off_rows(entries, rows, caller, probe_mode=False):
-    """Refuse the first drive whose off time cannot be judged on the host."""
-    from rfx._traced_refusal import TracedStructureRefusal
-
-    from rfx.ringdown._plane_wave import drive_label
-    for pe, row in zip(entries, rows, strict=True):
-        if row is None:
-            label = drive_label(pe)
-            raise TracedStructureRefusal(
-                f"{caller}(ringdown=...): the {label} cannot be judged for its off time inside the "
-                "identification window: its waveform samples or the time step are traced "
-                "(a waveform parameter, or a graded mesh without dt=, under jax.grad, "
-                "jax.jvp, jax.vmap or jax.jit). Declare that waveform with concrete values "
-                + ("(a completed probe spectrum is linear in the drive: scale it outside the call)"
-                   if probe_mode else "(S does not depend on the drive's amplitude)") + ", or pin dt=.")
-
-
 class RingdownRun:
     """One ``run(..., ringdown=spec)``: probes in, run, probes out, complete.
 
@@ -895,7 +878,8 @@ class RingdownRun:
         the main window refuses.
         """
         from rfx.measurement.record_end import source_end_step
-        from rfx.ringdown._plane_wave import drive_label, plane_wave_entries, still_on_message
+        from rfx.ringdown._plane_wave import (_require_source_off_rows, drive_label, plane_wave_entries,
+                                              still_on_message)
         from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports
@@ -1768,6 +1752,7 @@ class RingdownStop:
         evaluated at every check.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.ringdown._plane_wave import _require_source_off_rows
         from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports
