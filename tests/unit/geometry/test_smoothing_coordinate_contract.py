@@ -89,7 +89,6 @@ from rfx.runners.nonuniform import build_nonuniform_grid
 cfg = json.loads(sys.argv[1]); out = sys.argv[2]
 res = {"x64": np.array(bool(jax.config.jax_enable_x64)),
        "rfx_file": np.array(rfx.__file__)}
-# CONTRACT: these standalone comparisons retain float32 under both x64 flags.
 # --- uniform smoothed eps on the boundary-voxel fixture
 grid = Grid(**cfg["uniform"])
 def put(prefix, arrs):
@@ -164,7 +163,10 @@ np.savez(out, **res)
 
 
 def _measure_under_flag(flag: int, tmp_path: Path):
-    """Run the worker with ``JAX_ENABLE_X64=flag`` and return its arrays."""
+    """Run the worker with ``JAX_ENABLE_X64=flag`` and return its arrays.
+
+    The worker's standalone comparisons keep float32 under both x64 flags.
+    """
     cfg = dict(uniform=UNIFORM_FIXTURE, lo=BOX_LO, hi=BOX_HI, eps=BOX_EPS,
                sphere=SPHERE, cylinder=CYLINDER,
                pec_sphere=PEC_SPHERE, pec_cylinder=PEC_CYLINDER, pec_box=PEC_BOX,
