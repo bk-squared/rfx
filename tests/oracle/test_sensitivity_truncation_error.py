@@ -123,12 +123,10 @@ def test_jit_grad_invalid_elements_are_zero():
     batched = np.asarray(jax.jit(jax.vmap(grad))(x, d)).T
     values = np.asarray(jax.jit(sensitivity_truncation_error)(x, d))
 
-    # Independent closed-form derivatives, evaluated in float64 for the oracle.
     xv, dv = np.asarray(x)[valid].astype(np.float64), np.asarray(d)[valid].astype(np.float64)
     h = np.sqrt((1 + xv)**2 + (dv * xv)**2)
     expected = np.stack((np.exp(-xv) * (((1 + xv) + dv**2 * xv) / h - h),
                          np.exp(-xv) * dv * xv**2 / h), axis=1)
-    # |actual - expected| <= 4 * ULP_float32(max(|expected|, 1e-30)).
     tolerance = 4 * np.spacing(np.maximum(np.abs(expected), 1e-30).astype(np.float32))
     assert np.all(np.isnan(values[~valid]))
     for mode, actual in (("scalar jit", scalar), ("vmapped jit", batched)):

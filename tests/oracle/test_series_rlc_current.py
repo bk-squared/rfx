@@ -20,6 +20,7 @@ source with an absolute-Hz value in the FRACTIONAL `bandwidth` slot (a sub-dt
 spike, #386), so its "dominant peak" was a grid artefact, not f0. The gate
 below instead exercises the production ADE (`rfx.lumped._update_series`)
 directly and measures the current it produces.
+Every domain length written as ``4 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 
 from typing import NamedTuple
@@ -76,13 +77,11 @@ def _series_rlc_current_spectrum(R, L, C, *, dx=0.5e-3, n=40000, pad=8):
     spec = LumpedRLCSpec(R=R, L=L, C=C, topology="series",
                          position=(0.005, 0.005, 0.005), component="ez")
     mats = setup_rlc_materials(grid, spec, vac)
-    # Relocate the element to cell (0,0,0) so the driven state is a 1-cell
-    # array (cheap lax.scan); coefficients (dt, dx, gamma, ...) are unchanged.
     meta = build_rlc_meta(grid, spec, mats)._replace(i=0, j=0, k=0, D0=1e30)
     dt = meta.dt
 
     drive = np.zeros(n, dtype=np.float32)
-    drive[3] = 1.0  # single-sample impulse -> flat broadband voltage
+    drive[3] = 1.0
 
     def step(carry, e_in):
         st, rlc = carry
@@ -140,13 +139,10 @@ def _q_from_minus3db(freqs, spec_mag):
 
 
 class TestSeriesRLCCurrent:
-    # (R, L, C, expected f0 GHz, expected Q) — f0 and Q are the analytic
-    # targets; the current oracle must land on both. The 3rd case moves f0
-    # (via L,C) so the gate tracks 1/(2*pi*sqrt(LC)), not a fixed number.
     @pytest.mark.parametrize("R,L,C", [
-        (50.0, 10e-9, 1e-12),   # f0 ~ 1.592 GHz, Q = 2
-        (20.0, 10e-9, 1e-12),   # f0 ~ 1.592 GHz, Q = 5
-        (25.0, 2.5e-9, 1e-12),  # f0 ~ 3.183 GHz, Q = 2
+        (50.0, 10e-9, 1e-12),
+        (20.0, 10e-9, 1e-12),
+        (25.0, 2.5e-9, 1e-12),
     ])
     def test_series_rlc_current_peaks_at_f0(self, R, L, C):
         """Series-RLC current peaks at f0 = 1/(2*pi*sqrt(LC)), Q = (1/R)sqrt(L/C).
@@ -180,7 +176,7 @@ class TestSeriesRLCCurrent:
         f0 = 1 / (2 * np.pi * np.sqrt(L * C))
         responses = {}
         for topo in ["series", "parallel"]:
-            sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+            sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
             sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                            waveform=GaussianPulse(f0=f0, bandwidth=0.8))
             sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",
@@ -198,7 +194,7 @@ class TestSeriesRLCCurrent:
         R, C = 50.0, 1e-12
         responses = {}
         for label, c_val in [("r_only", 0.0), ("rc", C)]:
-            sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+            sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
             sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                            waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
             if c_val > 0:
@@ -210,7 +206,6 @@ class TestSeriesRLCCurrent:
             sim.add_probe(position=(0.005, 0.005, 0.005), component="ez")
             result = sim.run(n_steps=1000)
             responses[label] = np.array(result.time_series).ravel()
-        # The RC series should differ from pure R
         assert not np.allclose(responses["r_only"], responses["rc"], atol=1e-10), \
             "Series RC should differ from pure R"
 
@@ -222,7 +217,7 @@ class TestSeriesRLCCurrent:
 
     def test_series_rlc_runs_all_components(self):
         """Series RLC with all three components should complete without error."""
-        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                        waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",

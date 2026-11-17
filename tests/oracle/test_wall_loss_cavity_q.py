@@ -10,7 +10,7 @@ from rfx.ringdown import identify
 
 
 def target_q(pair):
-    # Independent SI closed form for TE101, E0=1; Rs is frozen at f0=8 GHz.
+    """The independent TE101 closed form uses SI units with E0=1."""
     mu0 = 1.25663706212e-6
     eps0 = 8.8541878128e-12
     a, b, d, ell = .030, .012, .024, 1
@@ -28,6 +28,7 @@ def target_q(pair):
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 @pytest.mark.parametrize("pair", ["x", "y", "z"])
 def test_wall_pair_cavity_q(pair, graded):
+    """No paired baseline is supplied in the short oracle: alpha_0 = 0."""
     started = time.monotonic()
     kwargs = {"dy_profile": np.array([.00075, .00075] + [.001] * 9 + [.00075, .00075])} if graded else {}
     sim = Simulation(freq_max=10e9, domain=(.030, .012, .024), dx=.001 if graded else .0015,
@@ -41,7 +42,6 @@ def test_wall_pair_cavity_q(pair, graded):
     series = np.asarray(result.time_series)
     model = identify(series, dt, int(np.ceil(2e-9/dt)), len(series), freq_max=10e9)
     pole = model.s[np.argmin(np.abs(model.s.imag/(2*np.pi)-7.998e9))]
-    # No paired baseline is supplied in this short oracle: alpha_0 = 0.
     q = pole.imag / (-2*pole.real)
     target = target_q(pair)
     error = q / target - 1

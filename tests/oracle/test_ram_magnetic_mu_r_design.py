@@ -42,6 +42,7 @@ is checked by running the module rather than argued: VESSL run 369367259193
 ``docs/design_notes/931_migration/T6-RECOMPUTE.md``. If the |Gamma| envelope or
 either AD-vs-FD leg moves, the far face at ``xpec`` is what moved it and this
 row becomes a re-measure.
+The analytic magnetic TMM layers are ordered front-to-back.
 """
 from __future__ import annotations
 
@@ -72,15 +73,12 @@ BAND = np.linspace(6e9, 10e9, 21)
 EPS_R, SIGMA, MU_R = 4.0, 1.4, 2.0
 
 
-# --------------------------------------------------------------------------- #
-# Analytic magnetic TMM oracle (e^{+jwt}). Layers FRONT-to-BACK; PEC backing.
-#   n = sqrt(eps_c*mu_c),  eta = ETA0*sqrt(mu_c/eps_c)
-# --------------------------------------------------------------------------- #
 def _eps_c(eps_r, sigma, freq):
     return eps_r - 1j * sigma / (2.0 * np.pi * freq * EPS0)
 
 
 def _tmm_mag(freqs, layers, backing="pec", method="impedance"):
+    """The analytic magnetic TMM uses the e^{+jwt} convention."""
     z_load = 0.0 if backing == "pec" else ETA0
     freqs = np.atleast_1d(np.asarray(freqs, float))
     out = np.empty(freqs.shape, complex)
@@ -117,29 +115,21 @@ def _tmm_die(freqs, er, sig, d):
         n = np.sqrt(ec)
         eta = ETA0 / n
         t = np.tan(k0 * n * d)
-        z = eta * (1j * eta * t) / (eta)  # z_load=0
+        z = eta * (1j * eta * t) / (eta)
         out.append((z - ETA0) / (z + ETA0))
     return np.array(out)
 
 
-# --------------------------------------------------------------------------- #
-# FAST — oracle limits + channel exposure.
-# --------------------------------------------------------------------------- #
 def test_magnetic_tmm_oracle_limits():
     band = np.linspace(6e9, 14e9, 41)
-    # mu_r=1 reduces to the dielectric oracle
     g_mag = _tmm_mag(band, [(4.0, 1.4, 1.0 + 0j, 4.5e-3)])
     g_die = _tmm_die(band, 4.0, 1.4, 4.5e-3)
     assert np.max(np.abs(g_mag - g_die)) < 1e-12
-    # two formulations agree for a magnetic-lossy stack
     lay = [(9.0, 2.0, 3.0 - 1.5j, 2.0e-3), (2.0, 0.5, 1.5 - 0.3j, 1.5e-3)]
     assert np.max(np.abs(_tmm_mag(band, lay, method="impedance")
                         - _tmm_mag(band, lay, method="transfer"))) < 1e-9
-    # passivity
     assert np.max(np.abs(_tmm_mag(band, lay))) < 1.0 + 1e-9
 
-    # PHYSICAL WITNESS: a magnetic layer (mu'=eps'=4, impedance-matched) nulls at a
-    # THINNER thickness than the dielectric-only (mu=1) design.
     ds = np.linspace(0.5e-3, 8e-3, 800)
     d_die = ds[int(np.argmin([abs(_tmm_mag([F0], [(4.0, 3.0, 1.0 + 0j, d)])[0]) for d in ds]))]
     d_mag = ds[int(np.argmin([abs(_tmm_mag([F0], [(4.0, 3.0, 4.0 - 1.0j, d)])[0]) for d in ds]))]
@@ -152,9 +142,6 @@ def test_forward_exposes_mu_r_override():
     assert "mu_r_override" in inspect.signature(Simulation.forward).parameters
 
 
-# --------------------------------------------------------------------------- #
-# SLOW — FDTD magnetic reflection vs the magnetic TMM oracle.
-# --------------------------------------------------------------------------- #
 def _build():
     grid = Grid(freq_max=16e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.010, 0.00075))[0]
@@ -217,12 +204,13 @@ def test_mu_r_channel_is_live(mag_run):
     assert rel > 1e-3, f"mu_r_override is a no-op (series change {rel:.2e})"
 
 
-# highmem: measured +3.3 GB RSS high-water delta.
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_mu_r_gradient_ad_vs_fd(mag_run):
     """Autodiff SELF-CONSISTENCY (not physics): jax.grad w.r.t. mu_r matches a FD
-    step of the same forward. Physical validation is test_mu_r_gradient_vs_analytic_tmm."""
+    step of the same forward. Physical validation is test_mu_r_gradient_vs_analytic_tmm.
+    An earlier run measured a +3.3 GB RSS high-water delta.
+    """
     sim, shape, xi, xb, xpec = (mag_run[k] for k in ("sim", "shape", "xi", "xb", "xpec"))
     dists, dt, ns, inc = (mag_run[k] for k in ("dists", "dt", "ns", "inc"))
     m = np.zeros(shape, bool); m[xb:xpec, :, :] = True
