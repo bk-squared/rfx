@@ -129,10 +129,9 @@ def test_t6_plain_jit_vmap():
     assert np.all(channel_error(compiled.probe_spectra, np.asarray(plain[0].probe_spectra)) <= 1e-4)
     for i in range(2):
         assert np.all(channel_error(batched.probe_spectra[i], np.asarray(plain[i].probe_spectra)) <= 1e-4)
-    # Existing leaf positions are retained; the probe children are last.
     children, ctx = compiled.tree_flatten()
     assert children[0] is None and children[1] is None
-    assert children[-2] is compiled.probe_spectra and children[-1] is compiled.probe_spectra_long
+    assert children[14] is compiled.probe_spectra and children[15] is compiled.probe_spectra_long
     rebuilt = rd.RingdownForwardResult.tree_unflatten(ctx, children)
     assert np.array_equal(np.asarray(rebuilt.probe_spectra), np.asarray(compiled.probe_spectra))
 
