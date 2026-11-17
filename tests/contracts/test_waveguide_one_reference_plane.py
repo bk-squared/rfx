@@ -119,9 +119,7 @@ def test_c4_graded_matches_low_level(record_property):
 
 
 def test_d1b_graded_forward_crossing_refuses_like_run():
-    # forward() returns the declared waveguide records and S, so
-    # it resolves the same planes as run() and refuses the same crossing port
-    # with the same message (equal requests give equal results).
+    """forward() returns the declared waveguide records and S, so it resolves the same planes as run()."""
     messages = {}
     for entry, call in (("run", lambda s: s.run(n_steps=16, compute_s_params=False)),
                         ("forward", lambda s: s.forward(n_steps=16))):
@@ -136,6 +134,7 @@ def test_d1b_graded_forward_crossing_refuses_like_run():
     (False, 2, False), (True, 1, True),
 ], ids=["multimode", "graded"])
 def test_calculator_measured_planes(graded, n_modes, normalize, record_property):
+    """A reflected wave makes a wrong extraction shift observable after normalization."""
     sim = _port_sim(graded=graded, preset="measured")
     sim._waveguide_ports = [replace(sim._waveguide_ports[0], x_position=5.2 * DX,
                                    n_modes=n_modes)]
@@ -145,7 +144,6 @@ def test_calculator_measured_planes(graded, n_modes, normalize, record_property)
         ref_offset=3, probe_offset=10, n_modes=n_modes, calibration_preset="measured",
     )
     if graded:
-        # A reflected wave makes a wrong extraction shift observable after normalization.
         sim.add_material("slab", eps_r=4.0)
         sim.add(Box((18 * DX, 0, 0), (22 * DX, 12 * DX, 6 * DX)), material="slab")
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()

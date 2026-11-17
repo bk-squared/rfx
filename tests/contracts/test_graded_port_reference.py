@@ -29,7 +29,7 @@ def test_constant_profile_reference_identity(kind):
     a, b = uniform.sparam_time_records[0], graded.sparam_time_records[0]
     assert a['V_ref'].dtype == b['V_ref'].dtype == np.float32
     assert np.any(np.asarray(b['V_ref']) != 0)
-    assert not np.array_equal(b['V_ref'], b['V'])  # A driven pre/post swap must be visible.
+    assert not np.array_equal(b['V_ref'], b['V'])
     np.testing.assert_array_equal(a['V_ref'], b['V_ref'])
     assert np.asarray(a['V_ref']).tobytes() == np.asarray(b['V_ref']).tobytes()
     ga = (graded.wire_port_sparams if kind == 'wire' else graded.lumped_port_sparams)[0][1]
