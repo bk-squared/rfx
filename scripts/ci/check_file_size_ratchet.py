@@ -13,8 +13,9 @@ follow the byte rule. A file that does not parse fails the check.
 A base baseline in the old unit "code-lines" starts the unit change: every
 bound is the base number minus the docstring lines counted at the base, so no
 file gains room (unit_change). A head baseline must carry the new unit. In
-either case an entry the head removes while its file exists is refused unless
-the cap then governing the file is not above the base entry.
+either case an entry the head removes while its file exists, or while the file
+continues unlisted as its package form or -M90% rename target, is refused
+unless the cap then governing the file is not above the base entry.
 
 BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
 check the working tree, including uncommitted edits. An absent baseline at
@@ -140,7 +141,29 @@ def base_docstring_lines(repo: Path, base: str) -> dict[str, int]:
     return counts
 
 
-def unit_change(repo: Path, base: str, previous: dict, current: dict,
+def package_source(path: str) -> str | None:
+    """Return ``<stem>.py`` for a package form ``<stem>/__init__.py``, else None."""
+    return path.removesuffix("/__init__.py") + ".py" if path.endswith("/__init__.py") else None
+
+
+def renamed(repo: Path, base: str, head: str) -> dict[str, str]:
+    """Map each head path to its base path for the renames git finds at -M90% under rfx/."""
+    revisions = (base, head) if head else (base,)
+    changes = git(
+        repo, "diff", "-M90%", "--name-status", "--diff-filter=R", "-z",
+        *revisions, "--", "rfx/",
+    ).split(b"\0")
+    return {changes[index + 2].decode(): changes[index + 1].decode()
+            for index in range(0, len(changes) - 1, 3)}
+
+
+def successors(source: str, paths, renames: dict[str, str]) -> list[str]:
+    """List the head paths that continue ``source``: its package form or its rename target."""
+    return sorted(path for path in paths
+                  if package_source(path) == source or renames.get(path) == source)
+
+
+def unit_change(repo: Path, base: str, head: str, previous: dict, current: dict,
                 counts: dict[str, int]) -> list[str]:
     """Check a head baseline in UNIT against a base baseline in OLD_UNIT.
 
@@ -154,6 +177,9 @@ def unit_change(repo: Path, base: str, previous: dict, current: dict,
       Rename and package-split inheritance does not apply.
     - T4: an entry the head removes needs its file absent at the head, or a head
       cap at most its base value minus d(P).
+    - An entry the head removes whose file is absent at the head but continues
+      there as an unlisted package form or -M90% rename target needs a head cap
+      at most its base value minus d(P); a listed one falls under T3.
     """
     docs = base_docstring_lines(repo, base)
     failures = []
@@ -206,6 +232,17 @@ def unit_change(repo: Path, base: str, previous: dict, current: dict,
                 f"cap {cap} must be at most {old - d} ({old} minus {d} docstring lines at the "
                 "base) to govern it, so keep the entry."
             )
+    gone = previous["files"].keys() - counts.keys() - current["files"].keys()
+    renames = renamed(repo, base, head) if gone else {}
+    for path in sorted(gone):
+        old, d = previous["files"][path], docs.get(path, 0)
+        for target in successors(path, counts, renames):
+            if target not in current["files"] and cap > old - d:
+                failures.append(
+                    f"{path}: delisting moves the file to {target}, which gets the cap of {cap} "
+                    f"instead of the baseline {old - d} ({old} minus {d} docstring lines at the "
+                    f"base); keep {path} listed at most {old - d}."
+                )
     return failures
 
 
@@ -279,18 +316,11 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
             previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
             transition = "counts" not in previous
             if previous.get("counts") == OLD_UNIT:
-                failures.extend(unit_change(repo, base, previous, current, counts))
+                failures.extend(unit_change(repo, base, head, previous, current, counts))
             else:
                 gone = previous["files"].keys() - set(paths) - current["files"].keys()
-                renames = {}
-                if gone and not transition and current["files"].keys() - previous["files"].keys():
-                    revisions = (base, head) if head else (base,)
-                    changes = git(
-                        repo, "diff", "-M90%", "--name-status", "--diff-filter=R", "-z",
-                        *revisions, "--", "rfx/",
-                    ).split(b"\0")
-                    for index in range(0, len(changes) - 1, 3):
-                        renames[changes[index + 2].decode()] = changes[index + 1].decode()
+                delisted = sorted(gone)
+                renames = renamed(repo, base, head) if gone and not transition else {}
                 if current["cap"] > previous["cap"]:
                     failures.append(
                         f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
@@ -299,8 +329,7 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
                 for path, value in current["files"].items():
                     old = previous["files"].get(path, previous["cap"] if transition else None)
                     if old is None and path in paths:
-                        source = (path.removesuffix("/__init__.py") + ".py"
-                                  if path.endswith("/__init__.py") else None)
+                        source = package_source(path)
                         if source not in gone:
                             source = renames.get(path)
                         if source in gone:
@@ -318,6 +347,15 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
                             f"instead of its baseline {previous['files'][path]}; keep the entry, "
                             "or delete the file."
                         )
+                for path in delisted:
+                    old = previous["files"][path]
+                    for target in successors(path, paths, renames):
+                        if target not in current["files"] and old < current["cap"]:
+                            failures.append(
+                                f"{path}: delisting moves the file to {target}, which gets the cap "
+                                f"of {current['cap']} instead of the baseline {old}; list {target} "
+                                f"at most {old}."
+                            )
     if transition:
         for path in sorted(current["files"].keys() - set(paths)):
             failures.append(f"{path}: transition baseline entry has no source file")

@@ -48,7 +48,8 @@ def mock_base(monkeypatch, cap=2, files=None, legacy=False):
     previous = json.dumps(previous).encode()
 
     def git(repo, *args):
-        if args == ("ls-tree", "base", "--", gate.PENDING):
+        if args in (("ls-tree", "base", "--", gate.PENDING),
+                    ("diff", "-M90%", "--name-status", "--diff-filter=R", "-z", "base", "--", "rfx/")):
             return b""
         assert args in (("ls-tree", "base", "--", gate.BASELINE),
                         ("show", f"base:{gate.BASELINE}"))
@@ -496,6 +497,9 @@ NEW_UNIT_BOUND = "with docstrings not counted it must be at most"
      "rfx/a.py: entry removed while the file exists; with docstrings not counted the cap 15 "
      "must be at most 6 (10 minus 4 docstring lines at the base) to govern it, so keep the entry."),
     ("delisted-deleted", 0, ""),
+    ("delisted-to-package", 1,
+     "rfx/a.py: delisting moves the file to rfx/a/__init__.py, which gets the cap of 15 instead "
+     "of the baseline 6 (10 minus 4 docstring lines at the base); keep rfx/a.py listed at most 6."),
 ])
 def test_unit_change_bounds_come_from_the_base(tree, capsys, case, expected, message):
     """Base in code-lines: a.py listed at 10 with 4 docstring lines, cap 20, unlisted b.py
@@ -531,10 +535,56 @@ def test_unit_change_bounds_come_from_the_base(tree, capsys, case, expected, mes
         files["rfx/b.py"] = 15
     elif case.startswith("delisted"):
         del files["rfx/a.py"]
-        if case == "delisted-deleted":
+        if case in ("delisted-deleted", "delisted-to-package"):
             (tree / "rfx/a.py").unlink()
+        if case == "delisted-to-package":
+            (tree / "rfx/a").mkdir()
+            (tree / "rfx/a/__init__.py").write_bytes(A_HEAD)
     (tree / gate.BASELINE).write_text(json.dumps({"counts": gate.UNIT, "cap": cap, "files": files}))
     code, err = run(tree, capsys, "--base", base)
     assert code == expected, err
     assert message in err
     assert "split the file" not in err
+
+
+@pytest.mark.parametrize("case,expected,message", [
+    ("package-unlisted", 1,
+     "rfx/a.py: delisting moves the file to rfx/a/__init__.py, which gets the cap of 20 instead "
+     "of the baseline 10; list rfx/a/__init__.py at most 10.\n"),
+    ("package-listed", 0, ""),
+    ("rename-unlisted", 1,
+     "rfx/a.py: delisting moves the file to rfx/b.py, which gets the cap of 20 instead of the "
+     "baseline 10; list rfx/b.py at most 10.\n"),
+    ("rename-listed", 0, ""),
+])
+def test_delisted_file_moved_to_an_unlisted_path_fails(tree, capsys, case, expected, message):
+    """Base lists a.py at 10 under cap 20. The head deletes a.py and continues it as its
+    package form or as an unchanged rename, listing nothing or the new path at 10."""
+    original = b"".join(f"line_{i:02d} = {i}\n".encode() for i in range(10))
+    (tree / "rfx/a.py").write_bytes(original)
+    (tree / gate.BASELINE).write_text(json.dumps({
+        "counts": gate.UNIT, "cap": 20, "files": {"rfx/a.py": 10},
+    }))
+    gate.git(tree, "init", "-q", "--template=")
+    gate.git(tree, "config", "user.name", "Ratchet tests")
+    gate.git(tree, "config", "user.email", "tests@example.invalid")
+    gate.git(tree, "config", "commit.gpgsign", "false")
+    gate.git(tree, "config", "core.hooksPath", "/dev/null")
+    gate.git(tree, "add", ".")
+    gate.git(tree, "commit", "-qm", "Base baseline")
+    base = gate.git(tree, "rev-parse", "HEAD").decode().strip()
+
+    (tree / "rfx/a.py").unlink()
+    if case.startswith("package"):
+        target = "rfx/a/__init__.py"
+        (tree / "rfx/a").mkdir()
+        (tree / target).write_bytes(b"".join(f"new_{i:02d} = {i}\n".encode() for i in range(8)))
+    else:
+        target = "rfx/b.py"
+        (tree / target).write_bytes(original)
+    files = {target: 10} if case.endswith("-listed") else {}
+    (tree / gate.BASELINE).write_text(json.dumps({"counts": gate.UNIT, "cap": 20, "files": files}))
+    gate.git(tree, "add", "--all")
+    code, err = run(tree, capsys, "--base", base)
+    assert code == expected, err
+    assert err.endswith(message)
