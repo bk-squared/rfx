@@ -32,6 +32,8 @@ Key concepts
   0 or 1 (binary), controlled by sharpness parameter beta.
 - **Beta continuation**: Gradually increasing beta during optimization
   starts with a smooth (convex-ish) landscape and ends with near-binary.
+
+Standalone calls of the public helpers keep float32; run callers pass dtype.
 """
 
 from __future__ import annotations
@@ -115,7 +117,6 @@ class TopologyMaterialFields:
     sigma: jnp.ndarray
     pec_occupancy: jnp.ndarray | None = None
 
-# CONTRACT: standalone public helpers retain float32; run callers pass dtype.
 def apply_density_filter(rho: jnp.ndarray, radius_cells: float, *, dtype=jnp.float32) -> jnp.ndarray:
     """Cone-shaped density filter for minimum feature size control.
 
@@ -232,7 +233,7 @@ def density_to_material_fields(
     *,
     pec_bg: bool = False,
     pec_fg: bool = False,
-    dtype=jnp.float32,  # CONTRACT: outside a run the public default stays float32.
+    dtype=jnp.float32,
 ) -> TopologyMaterialFields:
     """Convert density to differentiable material fields.
 
@@ -240,6 +241,8 @@ def density_to_material_fields(
     When one side of the interpolation is PEC, it instead keeps the
     non-conducting material properties and emits a relaxed conductor
     occupancy field for the solver-level PEC operator.
+
+    Outside a run the public default ``dtype`` stays float32.
     """
     rho_f = rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
@@ -275,8 +278,10 @@ def density_to_eps(
     sigma_bg: float = 0.0,
     sigma_fg: float = 0.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Backward-compatible density -> (eps, sigma) helper."""
-    # CONTRACT: this public convenience helper has no run and retains float32 filtering.
+    """Backward-compatible density -> (eps, sigma) helper.
+
+    This public convenience helper has no run and keeps float32 filtering.
+    """
     fields = density_to_material_fields(
         rho,
         eps_bg,

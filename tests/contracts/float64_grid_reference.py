@@ -38,7 +38,10 @@ def assert_scaled(actual, expected, count):
 
 
 def check_profile(profile, quantity, *, dt, width, n, high, magnetic):
-    """Polynomial grading; revised realized-input exponential and recursion."""
+    """Polynomial grading; revised realized-input exponential and recursion.
+
+    The 13 u allowance for exp is an estimate for XLA exp, not a measured error.
+    """
     i = np.arange(n, dtype=np.float64)
     offset = (-.5 if high else .5) if magnetic else 0.
     rho = 1-i/max(n-1, 1)
@@ -56,7 +59,6 @@ def check_profile(profile, quantity, *, dt, width, n, high, magnetic):
                               for q in ('sigma', 'kappa', 'alpha', 'b'))
     if quantity == 'b':
         argument = -(sigma/kappa+alpha)*np.float64(dt)/EPS0
-        # 13 u is the design's estimate for XLA exp, not a measured error.
         count = int(np.ceil(4*np.max(np.abs(argument))))+13+1
         assert_spacings(actual, np.exp(argument), count)
     else:
@@ -67,7 +69,10 @@ def check_profile(profile, quantity, *, dt, width, n, high, magnetic):
 
 
 def gradient_reference(profile, a, b, *, lo=8, hi=8):
-    """Analytic derivative, including the leading E and zero trailing H."""
+    """Analytic derivative, including the leading E and zero trailing H.
+
+    Pad and appended-cell copies accumulate into the respective endpoint.
+    """
     w = padded(profile, lo, hi)
     grad = np.zeros_like(w)
     grad[0] = -a[0]/w[0]**2
@@ -75,7 +80,6 @@ def gradient_reference(profile, a, b, *, lo=8, hi=8):
     grad[:-1] += dual
     grad[1:] += dual
     grad[:-1] -= b[:-1]/w[:-1]**2
-    # Pad and appended-cell copies accumulate into the respective endpoint.
     mapping = np.pad(np.arange(len(profile)), (lo, hi+1), mode='edge')
     result = np.zeros(len(profile), dtype=np.float64)
     np.add.at(result, mapping, grad)

@@ -24,6 +24,7 @@ from rfx.preflight import sources
 
 
 def invoke(site, x):
+    """The graded fixed-cells site is a backend-admission fixture on the float32 store."""
     if site == "periodic interval":
         _periodic.interval_coordinates(
             SimpleNamespace(periodic_axes="x", domain=(1.0,) * 3), 0, x, 2.0
@@ -37,7 +38,6 @@ def invoke(site, x):
     elif site == "graded floor":
         graded_grid._assert_declared_floor_at_runtime(x, 1.0, "y", 0.1, 0.2)
     elif site == "graded fixed cells":
-        # CONTRACT: this backend-admission fixture uses the float32 store.
         graded_grid._assert_traced_cells_match_nominal(
             x, np.ones(2), (0, 1), "y", dtype=jnp.float32)
     elif site == "graded node index":

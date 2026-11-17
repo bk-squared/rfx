@@ -21,6 +21,9 @@ the production S-matrix path.
 
 The math is intentionally numpy-only: extraction runs once per port,
 post-simulation, on small per-frequency arrays.
+
+Standalone calls of ``make_msl_port_sources`` keep float32 sampling; run
+callers pass their dtype.
 """
 
 from __future__ import annotations
@@ -1088,7 +1091,6 @@ class _ScaledWaveform:
         return self.base(t) * self.scale
 
 
-# CONTRACT: standalone calls keep float32 sampling; run callers pass their dtype.
 def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
                           *, mode_profile: dict | None = None, dtype=jnp.float32):
     """Drive w volts through this port's own stamped load.

@@ -1780,6 +1780,10 @@ def compute_inv_eps_tensor_diag(
     the perpendicular direction). Dielectric shapes route through the
     existing Kottke isotropic Eq. (1) form.
 
+    The dielectric inverse is rounded once to the run coefficient precision
+    on either backend. The host path widens it for the PEC arithmetic, which
+    keeps the float32 image for float32 and mixed runs.
+
     Parameters
     ----------
     grid : Grid
@@ -1838,9 +1842,6 @@ def compute_inv_eps_tensor_diag(
         eps = tuple(xp.full(tuple(grid.shape), background_eps, dtype=acc_dtype)
                     for _ in range(3))
 
-    # Round once to the run coefficient precision on either backend. The
-    # host path widens for the subsequent PEC arithmetic, retaining the
-    # existing float32 image for float32 and mixed runs.
     inv = [(1.0 / e).astype(jnp.promote_types(jnp.float32, dtype)) for e in eps]
     if host:
         inv = [a.astype(np.float64) for a in inv]
@@ -1896,7 +1897,7 @@ def kottke_inv_eps_from_occupancy(
     *,
     aniso_inv_eps_baseline: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
     background_eps: float = 1.0,
-    dtype=jnp.float32,  # CONTRACT: standalone calls retain float32.
+    dtype=jnp.float32,
     periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Inverse-permittivity tensor from a continuous-fill PEC occupancy.
@@ -1912,6 +1913,8 @@ def kottke_inv_eps_from_occupancy(
     continuation in between -- it still shifts a resonance (measured -3.6 %
     on a cavity's TM110 with a slab edge at a cell centre). Feed the result
     to ``update_e_aniso_inv``.
+
+    Standalone calls keep the float32 default ``dtype``.
 
     Parameters
     ----------

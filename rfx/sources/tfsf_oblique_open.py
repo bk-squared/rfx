@@ -65,6 +65,9 @@ class MethodBConfig(NamedTuple):
     Box indices are plain Python ``int`` (compile-time slice bounds); projection
     scalars are Python ``float`` baked at trace time; the CPML profiles
     and the 24 gather-table arrays are ``jnp`` (built once at init).
+
+    Each gather triple is (base int32, w0 and w1 in the coefficient dtype);
+    base is clipped to [0, n_aux-2] so base+1 is always in range.
     """
     # --- static TFSF box indices (Python int -> compile-time slice bounds) ---
     # Total-field region is INCLUSIVE: x in [x_lo, x_hi], y in [y_lo, y_hi] —
@@ -106,8 +109,6 @@ class MethodBConfig(NamedTuple):
     # --- 8 precomputed face-projection gather tables (jnp, static geometry) ---
     #   naming <face>_<read>: read=e -> gather e1d (H-correction);
     #                         read=h -> gather h1d half-node (E-correction).
-    #   each triple (base:int32, w0/w1:coefficient dtype); base clipped to
-    #   [0, n_aux-2] so base+1 is always in range.
     xlo_e_base: jnp.ndarray; xlo_e_w0: jnp.ndarray; xlo_e_w1: jnp.ndarray
     xhi_e_base: jnp.ndarray; xhi_e_w0: jnp.ndarray; xhi_e_w1: jnp.ndarray
     ylo_e_base: jnp.ndarray; ylo_e_w0: jnp.ndarray; ylo_e_w1: jnp.ndarray
@@ -196,6 +197,8 @@ def init_tfsf_methodB(
     Source timing follows ``pulse_timing`` for the declared Gaussian pulse.
     ``compute_rcs`` normalizes absolute sigma by the measured auxiliary
     spectrum, including the angle-dependent launch response.
+
+    Auxiliary absorber profiles take the run dtype with a float32 floor.
     """
     from rfx.sources.tfsf import pulse_timing
     if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
@@ -254,7 +257,6 @@ def init_tfsf_methodB(
     # Keep the existing sigma_max = 0.8*4/(eta*d_aux), expressed through
     # the shared grading law. H samples lie half a cell from the E nodes.
     profile_options = dict(R_asymptotic=np.exp(-1.6 * n_cpml_1d))
-    # Auxiliary profiles take the run dtype with a float32 floor.
     electric = _cpml_profile(n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), **profile_options)
     magnetic_lo = _cpml_profile(
         n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), sample_offset=0.5, **profile_options)

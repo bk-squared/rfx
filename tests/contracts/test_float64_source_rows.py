@@ -39,6 +39,8 @@ def realized():
 
 @pytest.mark.parametrize('label', ['pin', 'decay'])
 def test_e1_empty_tables(realized, label):
+    """The two empty electric builders use the same run carrier even when no
+    source declaration calls for a column."""
     rows = realized(label)
     tables = [local['mag_src_waveforms'] for name in ('run', 'run_until_decay')
               for local, _ in rows[name] if 'mag_src_waveforms' in local]
@@ -46,8 +48,6 @@ def test_e1_empty_tables(realized, label):
     for table in tables:
         assert table.shape[-1] == 0
         assert table.dtype == jnp.float64
-    # The two empty electric builders use the same run carrier even when no
-    # source declaration calls for a column.
     from rfx.model.source_coefficients import drive_table, drive_columns
     assert drive_table([], (), 2, dtype=jnp.float64).dtype == jnp.float64
     actual = drive_columns((jnp.ones((2,)*3, jnp.float64),)*3,
@@ -83,7 +83,6 @@ def test_e2_auxiliary_profiles(realized, label):
         expected = np.divide(sig*(np.asarray(actual.b)-1), denom,
                              out=np.zeros_like(sig), where=denom > 1e-30)
         assert_value(actual.c, expected, 8)
-    # The configuration must retain the profile's precision at its store.
     assert cfg.b_cpml.dtype == cfg.c_cpml.dtype == jnp.float64
 
 
@@ -226,6 +225,7 @@ def test_e12_methodb_interpolation(realized):
 
 @pytest.mark.parametrize('label', ['pin', 'floquet', 'port'])
 def test_e14_public_time_axes(realized, label):
+    """Port rows read the samples before the already-qualified Cb scaling."""
     rows = realized(label)
     calls = rows['port_drive_waveform' if label == 'port' else 'uniform_source_table']
     assert calls
@@ -235,7 +235,6 @@ def test_e14_public_time_axes(realized, label):
         times = np.arange(local['n_steps'], dtype=np.float64)*local['grid'].dt
         assert_value(local['times'], times, 0)
         reference = gaussian(times, waveform)
-        # Port rows read the samples before the already-qualified Cb scaling.
         assert_value(local['samples'] if label == 'port' else actual, reference, 307)
 
 

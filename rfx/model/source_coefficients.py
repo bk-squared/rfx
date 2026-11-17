@@ -1,4 +1,8 @@
-"""Run-specific source coefficient selection and absorber admission."""
+"""Run-specific source coefficient selection and absorber admission.
+
+Standalone calls of ``make_current_source`` keep float32 sampling; run
+callers pass their dtype.
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -129,13 +133,16 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
 
 def uniform_source_table(grid, cell, component, waveform, n_steps, materials,
                          kind=None, *, native="raw", periodic=(False,) * 3, dtype=None):
-    """Uniform and sweep adapters share samples, edge reads and product order."""
+    """Uniform and sweep adapters share samples, edge reads and product order.
+
+    ``dtype=None`` takes the materials' dtype, because the frozen
+    ``simulation.make_source``, ``make_j_source``, ``make_port_source`` and
+    ``make_wire_port_sources`` callers omit it.
+    """
     import jax
     import jax.numpy as jnp
     from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
     from rfx.sources._sampling import concrete_waveform_eval
-    # CONTRACT: frozen simulation.make_source/make_j_source and
-    # make_port_source/make_wire_port_sources omit dtype; materials carry it.
     if dtype is None:
         dtype = materials.eps_r.dtype if materials is not None else jnp.float32
     with concrete_waveform_eval(waveform, grid.dt):
@@ -244,7 +251,6 @@ def current_source_volume(grid, position_ijk, component):
     return dx_local * dy_local * dz_local, grid_traced
 
 
-# CONTRACT: standalone calls keep float32 sampling; run callers pass their dtype.
 def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], component: str,
                         waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None, *, dtype: DTypeLike = jnp.float32) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
     """Create a properly normalized current source for non-uniform grid.

@@ -129,7 +129,6 @@ def test_t_window():
 
 
 def test_noop_cpml():
-    # G-x, with concrete y widths as in the invariant declaration.
     with enable_x64():
         grid = make_nonuniform_grid((.04, .03), Z, .5e-3, PAD,
                                    dx_profile=X, dtype=jnp.float64)

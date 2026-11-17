@@ -34,7 +34,10 @@ def require_host_callbacks(feature, check_name):
 
 
 def _callback_transport(check, operands):
-    """Preserve traced bits and x64 scope on host callback worker threads."""
+    """Preserve traced bits and x64 scope on host callback worker threads.
+
+    Checks observe primals, so their integer transport has no tangent.
+    """
     x64_enabled = jax.config.jax_enable_x64
     cpu_device = host_cpu_device()
     leaves, structure = jax.tree.flatten(operands)
@@ -49,7 +52,6 @@ def _callback_transport(check, operands):
         if not wide:
             transported.append(leaf)
             continue
-        # Checks observe primals; their integer transport has no tangent.
         array = jax.lax.stop_gradient(array)
         if dtype == np.dtype('complex128'):
             transported.append(tuple(jax.lax.bitcast_convert_type(part, jnp.uint32)

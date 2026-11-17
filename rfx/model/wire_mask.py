@@ -8,6 +8,7 @@ from rfx.core.jax_utils import is_tracer
 
 
 def polyline_tube_mask(points, radius, x, y, z):
+    """Traced coordinates carry the run dtype, with a float32 floor."""
     r2_thresh = radius ** 2
     pts = np.array(points, dtype=np.float64)
 
@@ -44,7 +45,6 @@ def polyline_tube_mask(points, radius, x, y, z):
             mask_np |= dist2 <= r2_thresh
         return jnp.asarray(mask_np)
 
-    # Traced coordinates carry the run dtype, with the existing float32 floor.
     # Pre-compute segment data as JAX arrays: (n_valid, 3) and (n_valid,)
     dtype = jnp.result_type(jnp.float32, x.dtype, y.dtype, z.dtype)
     A_j = jnp.array(A, dtype=dtype)

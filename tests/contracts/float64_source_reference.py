@@ -80,11 +80,11 @@ def noisy_or(occupancy):
 
 
 def wire_distance(points, coords, *, mutated=False):
+    """The mutation narrows segment data only; coordinates remain float64."""
     points = np.asarray(points, dtype=np.float64)
     a, d = points[:-1], np.diff(points, axis=0)
     lengths = np.sum(d**2, axis=1)
     if mutated:
-        # The mutation narrows segment data ONLY; coordinates remain float64.
         a, d, lengths = (v.astype(np.float32).astype(np.float64) for v in (a, d, lengths))
     x, y, z = (np.asarray(v, dtype=np.float64).reshape(
         tuple(len(v) if b == axis else 1 for b in range(3))) for axis, v in enumerate(coords))

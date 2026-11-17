@@ -195,6 +195,9 @@ def init_tfsf_2d(
     TEz mode (ey polarization): 2D grid in xz-plane, periodic in z.
     CFS-CPML on x boundaries only.
 
+    The auxiliary absorber profiles are float32 because run admission refuses
+    float64 oblique Bloch.
+
     Parameters
     ----------
     nz : int | None
@@ -273,7 +276,6 @@ def init_tfsf_2d(
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    # CONTRACT: float64 oblique Bloch is refused by runners/_admission.py.
     prof = _cpml_profile(n_cpml_2d, dt, dx, dtype=jnp.float32, **profile_options)
     magnetic_lo = _cpml_profile(
         n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=0.5, **profile_options)

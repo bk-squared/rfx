@@ -40,9 +40,11 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     port/RLC stamps; do not reconstruct permittivity. JAX operations retain
     material and mesh derivatives. ``n_steps=None, time=t`` selects the
     eager single-step application instead of a precomputed waveform.
+
+    ``dtype=None`` takes the materials' dtype, because the frozen
+    ``simulation.make_source``, ``make_j_source``, ``make_port_source`` and
+    ``make_wire_port_sources`` callers omit it.
     """
-    # CONTRACT: frozen simulation.make_source/make_j_source and
-    # make_port_source/make_wire_port_sources omit dtype; materials carry it.
     if dtype is None:
         dtype = materials.eps_r.dtype if materials is not None else jnp.float32
     cb = e_update_coefficient_at(materials, cell, component, grid.dt, **electric_grid_kwargs(grid))

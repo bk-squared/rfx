@@ -277,6 +277,8 @@ def init_tfsf(
 ) -> tuple:
     """Initialize TFSF source.
 
+    Auxiliary absorber profiles take the run dtype with a float32 floor.
+
     Parameters
     ----------
     nx : int
@@ -517,7 +519,6 @@ def init_tfsf(
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC_1D if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    # Auxiliary profiles take the run dtype with a float32 floor.
     _prof = _cpml_profile(n_cpml_1d, dt, float(primal_widths[0]), dtype=jnp.promote_types(jnp.float32, dtype), **profile_options)
     _prof_hi = _cpml_profile(n_cpml_1d, dt, float(primal_widths[-1]), dtype=jnp.promote_types(jnp.float32, dtype), **profile_options)
     magnetic_lo = _cpml_profile(
@@ -541,7 +542,7 @@ def init_tfsf(
 
     direction_sign = 1.0 if direction == "+x" else -1.0
 
-    fdtype = jnp.promote_types(jnp.result_type(float), dtype)  # float32 normally, float64 with x64
+    fdtype = jnp.promote_types(jnp.result_type(float), dtype)
 
     config = TFSFConfig(
         x_lo=x_lo,

@@ -125,6 +125,11 @@ def _cpml_profile(
 ) -> CPMLParams:
     """Compute graded CPML profile using polynomial grading.
 
+    Traced dt or dx (mesh as a design variable) stays in-trace and computes in
+    the coefficient dtype. A concrete grid computes in float64 numpy and casts
+    to the coefficient dtype at the CPMLParams boundary, so CPMLParams stays a
+    constant pytree under JIT.
+
     Parameters
     ----------
     n_layers : int
@@ -155,11 +160,6 @@ def _cpml_profile(
         target is below the floating-point range.
     """
 
-    # Stay in-trace when dt/dx are JAX tracers (mesh-as-design-variable
-    # path); fall back to numpy for the standard concrete-grid case so
-    # CPMLParams stays a constant pytree under JIT.  The concrete path
-    # uses float64 intermediate computation, cast to the coefficient dtype
-    # at the CPMLParams boundary. The traced path computes in that dtype.
     traced = is_tracer(dt) or is_tracer(dx) or is_tracer(sigma_max)
     xp = jnp if traced else np
     work_dtype = dtype if traced else np.float64
