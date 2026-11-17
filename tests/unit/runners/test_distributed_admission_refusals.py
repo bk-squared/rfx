@@ -338,18 +338,33 @@ def test_lumped_rlc_pmc_face_is_refused(entry, mesh):
 @pytest.mark.parametrize("entry", ("run", "forward"))
 @pytest.mark.parametrize("overlap", ("domain_face", "conductor_edge"))
 def test_lumped_rlc_pec_overlap_is_refused(entry, overlap):
+    from rfx.errors import RfxRefusal
+
     sim = _build()
     point = (0., .006, .006)
     if overlap == "conductor_edge":
         sim.add(Box((.008, .004, .004), (.010, .008, .008)), material="pec")
         point = (.008, .004, .006)
     sim.add_lumped_rlc(point, "ez", R=50., L=1e-9, C=1e-12, topology="series")
-    with pytest.raises(NotImplementedError, match="on a PEC face or realized PEC edge"):
+    if overlap == "domain_face":
+        message = (
+            "lumped_rlc[0] at (0.0, 0.006, 0.006) (ez), grid index (0, 6, 6): "
+            "its own E edge is PEC, so the declared PEC wall face(s) x_lo short the "
+            "element and it would have no effect. Move it at least one cell inside "
+            "the domain, off the wall.")
+    else:
+        message = (
+            "lumped_rlc[0] at (0.008, 0.004, 0.006) (ez), grid index (8, 4, 6): "
+            "its own E edge is PEC, so the conductor shorts the element and it would "
+            "have no effect. Realized conductor provenance (assembly): geometry[0]. "
+            "Cut a gap in the conductor at the element, or move the element off it.")
+    with pytest.raises(RfxRefusal) as caught:
         kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
         if entry == "run":
             sim.run(**kwargs, compute_s_params=False)
         else:
             sim.forward(**kwargs, distributed=True, checkpoint=False)
+    assert str(caught.value) == message
 
 
 @pytest.mark.parametrize("entry", ENTRIES)

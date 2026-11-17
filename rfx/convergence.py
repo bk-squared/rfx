@@ -362,15 +362,19 @@ def quick_convergence(
 ) -> ConvergenceResult:
     """Run a convergence study on an existing Simulation with dx scaling.
 
-    Creates copies of *sim* at different cell sizes by scaling the base dx
-    and re-running.  This is a convenience wrapper around
-    ``convergence_study`` for quick checks.
+    Carries every declaration of *sim*, scaling its built dx and any dt pin.
+    Cell counts, including CPML layers and port/probe offsets, remain counts;
+    their physical size scales with dx. At factors other than one, resolved
+    profiles (including inferred profiles), nominal profiles, dt_min_cell,
+    node-pinned sheets, node-index DFT crops and frozen meshes are refused.
+    Use ``convergence_study`` with a factory that builds each rung, or an
+    explicit uniform dx without mesh pins/profiles and metric conductors.
 
     Parameters
     ----------
     sim : rfx.api.Simulation
-        A fully configured simulation.  Its ``_dx`` (or auto-computed dx)
-        is used as the reference cell size scaled by each factor.
+        A fully configured simulation. Its realized grid's dx is the reference
+        cell size scaled by each factor.
     metric : str or callable
         ``"resonance"`` extracts the first resonance frequency.
         ``"peak_field"`` extracts the peak probe amplitude.
@@ -389,37 +393,23 @@ def quick_convergence(
     -------
     ConvergenceResult
     """
-    # A node-pinned conductor is declared by node INDEX, so its physical
-    # size is whatever the cells between those nodes add up to. Halving dx
-    # therefore halves the patch instead of resolving it: every rung of the
-    # sweep is a different antenna, and the "convergence" measured is the
-    # structure shrinking. Refused rather than run, for the same reason the
-    # PMC note inside sim_factory records — this factory clones what `sim`
-    # declared, and a declaration whose metres depend on dx cannot be cloned
-    # across a dx sweep without the caller re-declaring it.
+    from rfx._declarations import declaration_at_dx
+
     resolve_field_dtype(sim._precision)
-    if getattr(sim, "_pinned_sheets", None):
-        raise ValueError(
-            f"quick_convergence: this simulation carries "
-            f"{len(sim._pinned_sheets)} node-pinned sheet(s) "
-            "(add_pinned_sheet). Their size is set by NODE INDEX, so it "
-            "scales with dx: at dx/2 the conductor is half as long, and the "
-            "sweep would compare different structures rather than one "
-            "structure at several resolutions. Declare the conductor in "
-            "metres with add_thin_conductor for a convergence study, or "
-            "build one Simulation per dx with the node ranges recomputed "
-            "for that mesh.")
     if dx_factors is None:
         dx_factors = [2.0, 1.5, 1.0, 0.75]
 
-    # Resolve the base dx from the simulation
-    base_dx = getattr(sim, "_dx", None)
-    if base_dx is None:
-        # Auto-compute the default dx the same way Simulation would
-        C0 = 299792458.0
-        lam_min = C0 / sim._freq_max
-        base_dx = lam_min / 20.0  # standard Yee rule of thumb
-    dx_values = [base_dx * f for f in dx_factors]
+    base = declaration_at_dx(sim, caller="quick_convergence")
+    base_dx = float(base._build_realized_grid().dx)
+    # Admit every requested declaration before any rung runs. Grid-builder
+    # refusals remain at each rung's grid build, as in convergence_study.
+    variants = {}
+    dx_values = []
+    for factor in dx_factors:
+        variant = declaration_at_dx(sim, factor, caller="quick_convergence", _base_dx=base_dx)
+        dx = base_dx * float(factor)
+        dx_values.append(dx)
+        variants[dx] = variant
 
     # Build the metric callable
     if isinstance(metric, str):
@@ -441,49 +431,11 @@ def quick_convergence(
     else:
         metric_fn = metric
 
-    # Build a sim_factory that clones the configuration with a new dx
     def sim_factory(dx):
-        from rfx.api import Simulation
-        from rfx.boundaries.serialization import constructor_boundary
-        new_sim = Simulation(
-            freq_max=sim._freq_max,
-            snap=sim._snap,
-            domain=sim._domain,
-            # grep sweep: clone the normalized BoundarySpec, not
-            # the collapsed `_boundary` string. `_boundary` is
-            # `spec.absorber_type or "pec"`, so every per-face detail — PEC /
-            # PMC / periodic faces and per-face thickness — was dropped and
-            # each refinement step silently ran a UNIFORM absorber on all six
-            # faces. `_boundary_spec` is the legacy scalar's normalized form
-            # too (`_build_spec_from_legacy`), so scalar-constructed
-            # simulations clone exactly as before.
-            #
-            # B3b centers the magnetic image on the realized E-node face.
-            # No half-cell compensation of the declared extent is needed;
-            # ordinary mesh quantization still applies at each resolution.
-            boundary=constructor_boundary(sim),
-            cpml_layers=sim._cpml_layers,
-            dx=dx,
-            mode=sim._mode,
-            dz_profile=sim._dz_profile,
-            precision=sim._precision,
-        )
-        # Copy registered items
-        new_sim._materials = dict(sim._materials)
-        new_sim._geometry = list(sim._geometry)
-        new_sim._ports = list(sim._ports)
-        new_sim._probes = list(sim._probes)
-        new_sim._thin_conductors = list(sim._thin_conductors)
-        new_sim._wall_losses = list(getattr(sim, "_wall_losses", ()))
-        new_sim._ntff = sim._ntff
-        new_sim._tfsf = sim._tfsf
-        new_sim._dft_planes = list(sim._dft_planes)
-        new_sim._waveguide_ports = list(sim._waveguide_ports)
-        new_sim._periodic_axes = sim._periodic_axes
-        new_sim._refinement = sim._refinement
-        new_sim._lumped_rlc = list(sim._lumped_rlc)
-        new_sim._floquet_ports = list(sim._floquet_ports)
-        return new_sim
+        if dx not in variants:
+            variants[dx] = declaration_at_dx(
+                sim, dx / base_dx, caller="quick_convergence", _base_dx=base_dx)
+        return variants[dx]
 
     return convergence_study(
         sim_factory=sim_factory,

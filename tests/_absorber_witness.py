@@ -265,7 +265,7 @@ def tfsf_oblique_auxiliary_reflection(n_layers=30, *, polarization="ez", directi
         return state, state.ez_2d[sample_indices, 0]
 
     # The record window starts 3 tau before the pulse peak, as in
-    # tests/_aux_absorber_reflection.py::measure_aux_reflection_2d (#1831): one rectangular FFT of
+    # tests/_aux_absorber_reflection.py::measure_aux_reflection_2d: one rectangular FFT of
     # the whole record reads the pulse's position in the window.
     n0 = int(round((float(cfg.src_t0) - 3.0 * float(cfg.src_tau)) / dt))
     record = np.asarray(jax.lax.scan(step, state, jnp.arange(n0 + steps) * dt)[1])[n0:]
