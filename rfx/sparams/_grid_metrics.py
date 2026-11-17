@@ -45,6 +45,8 @@ def _calculator_source_plane(grid, port):
     This is an internal one-cell descriptor, not a declared coordinate.
     Preserve its float64 half-to-even arithmetic independently of the
     declared-coordinate tie rule.
+
+    The returned index assumes a uniform z axis, which the coax calculators require.
     """
     direction = 1 if port.face == "bottom" else -1
     centre = port.position[2] + direction * port.pin_length / 2.0

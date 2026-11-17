@@ -469,8 +469,8 @@ def _estimate_beta(
         be returned silently pinned at ``0.974·rail``).  Pure edge
         conditions — no tunable threshold.
 
-    On the normalized probe vector, a parabola second difference ``denom``
-    of at most 1e-20 means the squared-residual curve is flat to noise.
+    On the normalized probe vector, a parabola second difference with
+    ``|denom|`` at most 1e-20 means the squared-residual curve is flat to noise.
     """
     beta0 = jnp.real(beta0)
     lo = beta0 * (1.0 - _BETA_SCAN_FRAC)
