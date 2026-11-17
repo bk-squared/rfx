@@ -214,7 +214,6 @@ def test_run_checks_kottke_surfaces_after_fractional_edges_are_released(trace_ki
         pass
 
     def capture(*args, **kwargs):
-        # The runner attaches the inverse to the realization the step reads.
         assert args[1].components.tensor.inv_eps is not None
         raise Captured
 

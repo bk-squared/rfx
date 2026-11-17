@@ -48,7 +48,7 @@ def test_s_scan_steps_run_operands(monkeypatch):
     operands = []
 
     def captured(grid, materials, *args, **kwargs):
-        tensor = materials.components.tensor  # the runner attaches the step's operands
+        tensor = materials.components.tensor
         values = (materials.components.mu_update, tensor.eps, tensor.conformal_weights)
         operands.append(jax.tree.map(lambda a: np.asarray(a).copy(), values))
         return original(grid, materials, *args, **kwargs)
@@ -143,7 +143,7 @@ def test_operands_match_run_bytes(monkeypatch, scene_name):
 
     def captured(grid, materials, *args, **kwargs):
         assert len(fractions) == len(operands) + 1
-        tensor = materials.components.tensor  # the runner attaches the step's operands
+        tensor = materials.components.tensor
         operands.append((materials.components.mu_update, tensor.eps, tensor.conformal_weights))
         return original(grid, materials, *args, **kwargs)
 

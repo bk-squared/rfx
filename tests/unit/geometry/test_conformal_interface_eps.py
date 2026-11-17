@@ -49,7 +49,6 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
     original = simulation.run
 
     def capture(grid, materials, n_steps, **kwargs):
-        # The runner attaches the step's operands to the realization.
         tensor = materials.components.tensor
         inverse = tensor.inv_eps if tensor is not None else None
         seen["inverse"] = None if inverse is None else np.asarray(inverse)

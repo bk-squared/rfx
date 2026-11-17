@@ -310,9 +310,6 @@ def _build_step_setup(
     from rfx.model.materials import with_components
     from rfx.model.tensor_operands import TensorOperands, step_tensor
     from rfx.geometry.rasterize_grid import unpadded_high_walls
-    # The runners attach their operands before building drives; a direct
-    # low-level caller passes them as arguments. Judged before
-    # restrict_node_pec replaces the wrapper below.
     materials = with_components(materials, grid, periodic=periodic,
         high_wall=unpadded_high_walls(grid), tensor=step_tensor(materials,
         TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth)))

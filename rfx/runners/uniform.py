@@ -273,7 +273,6 @@ def run_uniform(
     # this port's own clearing) is in hand.  Feed the S-param specs below.
     wire_port_live_cells = []
     wire_port_excites = []
-    # Every E edge a current drive is built on, for the frozen-edge refusal.
     frozen_drive_requests = []
     for _port_index, pe in enumerate(sim._ports):
         if pe.is_soft_source:
@@ -598,9 +597,6 @@ def run_uniform(
         field_dtype=field_dtype if field_dtype is not None else jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
-    # Attach the finished operands once, before any drive table or RLC
-    # metadata is built: the drives, the elements and the step then read
-    # one operand set (the step setup takes the attached one).
     from rfx.model.tensor_operands import attach_run_tensor
     materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps, conformal_weights)
     run_tensor = materials.components.tensor
@@ -754,7 +750,6 @@ def run_uniform(
             current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
-            # The tensor operands travel attached to ``materials``.
             subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
@@ -792,7 +787,6 @@ def run_uniform(
             current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
-            # The tensor operands travel attached to ``materials``.
             subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,

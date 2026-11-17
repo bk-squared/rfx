@@ -104,7 +104,6 @@ def test_opt_in_reaches_stepper(monkeypatch):
     def capture(grid, materials, n_steps, **kwargs):
         # Independently average the four production cells incident to each edge.
         widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
-        # The runner attaches the operand to the realization the step reads.
         assert kwargs.get("aniso_eps") is None
         for component, actual in enumerate(materials.components.tensor.eps):
             ref = np.asarray(materials.eps_r, dtype=np.float64).copy()

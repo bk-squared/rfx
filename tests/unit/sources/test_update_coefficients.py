@@ -96,7 +96,6 @@ def test_source_first_e_update(case):
     if case == "debye":
         beta = float(jnp.sum(c.debye.coefficients[1][2], axis=0)[idx])
     cb = dt / (EPS * eps + beta + sig * dt / 2)
-    # The runner attaches the step's tensor operands to the realization.
     if case == "smooth":
         cb = dt / (EPS * float(c.tensor.eps[2][idx]) + sig * dt / 2)
     if case == "inverse":

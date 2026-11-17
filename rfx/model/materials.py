@@ -746,23 +746,16 @@ def e_update_coefficient_at(materials, cell, component, dt,
         terms = c.at(cell, dt)
         if terms[0] is not None or terms[1] is not None:
             return _ade_cb(eps, sigma, dt, axis, *terms)
-        # Plain graded drives use the shared current-source formula.
         return _plain_drive_cb(eps, sigma, dt, host)
     operand = None if c is None else tensor_operand_at(materials, cell, component)
     if c is not None and c.source_upml:
-        # Admission excludes pads. There sigma_perp=0; UPML still uses its
-        # cell-owned E conductivity, even at an interior material interface,
-        # and its permittivity is the float32 tensor diagonal when a tensor
-        # is attached, else the cell-owned one.
         from rfx.boundaries.upml import _upml_e_coeffs_si, _upml_e_coeffs_eps_r
         from rfx.core.yee import si_value_eps_r_grad
         return si_value_eps_r_grad(
             _upml_e_coeffs_si, _upml_e_coeffs_eps_r, jnp.float32(0),
             operand[1] if operand is not None else c.upml_eps[axis][tuple(cell)],
             c.upml_sigma[axis][tuple(cell)].astype(jnp.float32), jnp.float32(dt))[1]
-    if operand is not None and operand[0] == "inv":
-        # The Stage-2 step's coefficient, by the same function and wrapper
-        # (update_e_aniso_inv), also on the occupancy lane's inverse.
+    if c is not None and operand is not None and operand[0] == "inv":
         from rfx.core.yee import (si_value_eps_r_grad, _e_update_coeffs_inv_si,
                                   _ca_cb_inv_eps_r_units)
         return si_value_eps_r_grad(
@@ -778,8 +771,6 @@ def e_update_coefficient_at(materials, cell, component, dt,
         if c.lorentz is not None:
             lt_terms = jax.tree.map(lambda value: value[pole_cell], c.lorentz.coefficients)
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
-    # A tensor edge takes the update's own form on every lane: the graded
-    # step forms that coefficient bit-equal to the uniform one.
     return _plain_drive_cb(eps, sigma, dt, host and operand is None)
 
 

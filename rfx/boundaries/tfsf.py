@@ -89,6 +89,8 @@ def without_attached_tensor(materials):
     and conformal_weights masks, as before it was attached to the model.
     """
     components = getattr(materials, "components", None)
+    if components is None:
+        return materials
     if getattr(components, "tensor", None) is None:
         return materials
     from dataclasses import replace

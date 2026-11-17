@@ -262,7 +262,6 @@ def _forward_from_materials(
             return pe.excite
         return _sparam_port_idx == _sparam_drive_idx
 
-    # Every E edge a current drive is built on, for the frozen-edge refusal.
     frozen_drive_requests = []
     for _port_index, pe in enumerate(self._ports):
         if pe.is_soft_source:
@@ -624,19 +623,15 @@ def _forward_from_materials(
     # this branch — the two would double-correct at sigmoid edges.
     pec_occupancy_for_run, aniso_inv_eps_run, _occupancy_tensor = _occupancy.select_occupancy_operator(
         self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
-    # The run's operand set: only the occupancy operator is smooth (the flag
-    # reads the declared Kottke inverse before the copy below); the Kottke
-    # tensor keeps run()'s fenced PEC edges and replaces the occupancy one.
     _inv_eps_smooth = aniso_inv_eps is None and aniso_inv_eps_run is not None
     if aniso_inv_eps is not None:
         aniso_inv_eps_run = aniso_inv_eps
-    # Attach the run's set once, before any drive table or RLC metadata is
-    # built; the step setup takes the attached set.
     from rfx.model.tensor_operands import attach_run_tensor
     materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps_run,
                                   conformal_weights, _inv_eps_smooth)
     from rfx.model.source_admission import refuse_frozen_drive_edges
-    refuse_frozen_drive_edges(materials.components.tensor, frozen_drive_requests)
+    _run_tensor = getattr(materials.components, "tensor", None)
+    refuse_frozen_drive_edges(_run_tensor, frozen_drive_requests)
     from rfx.model.source_coefficients import resolve_run_sources, drive_materials
     sources = resolve_run_sources(sources, materials, self, grid)
 
@@ -676,8 +671,7 @@ def _forward_from_materials(
         validate_realized_vacuum_boundary(
             self, grid, materials, tfsf_run[0], pec_edge_masks=pec_edge_masks_local,
             debye_spec=debye_spec, lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3,
-            aniso_inv_eps=(materials.components.tensor.inv_eps
-                           if materials.components.tensor is not None else None),
+            aniso_inv_eps=(_run_tensor.inv_eps if _run_tensor is not None else None),
             sheet_ctx=sheet_impedance,
             extra_masks=(pec_occupancy_local,), design_regions=(design_box, design_occupancy),
             rlc_indices=(_grid_metric.field_index(grid, spec.position, spec.component)
@@ -739,8 +733,6 @@ def _forward_from_materials(
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
         pec_occupancy=pec_occupancy_for_run,
-        # The tensor operands and their smooth flag travel attached to
-        # ``materials`` (above).
         subpixel_smoothing=tensor_smoothing,
         port_record_specs=ordered_specs(port_record_specs),
         lumped_port_sparams=lumped_port_sparam_specs or None,

@@ -87,7 +87,6 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
     def capture(grid, materials, n_steps, **kwargs):
         cell = (nu_core.position_to_index(grid, LOAD) if lane.startswith("nu")
                 else grid.position_to_index(LOAD))
-        # The runners attach the step's operands to the realization.
         tensor = getattr(materials.components, "tensor", None)
         eps = tensor.eps if tensor is not None else None
         inverse = tensor.inv_eps if tensor is not None else None

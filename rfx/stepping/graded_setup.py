@@ -331,10 +331,6 @@ def _build_nu_scan(
     from rfx.model.materials import kernel_materials, with_components
     from rfx.model.tensor_operands import TensorOperands, step_tensor
     from rfx.geometry.rasterize_grid import unpadded_high_walls
-    # The graded runner attaches any operand (a SmoothedEps or a plain
-    # diagonal tuple) before building drives; a direct caller passes it as
-    # an argument. A tuple attaches with no node smoothing, so the step's
-    # arithmetic is the one it had when the tuple went to the step raw.
     tensor = step_tensor(materials, TensorOperands.of(aniso_eps))
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
                                 high_wall=unpadded_high_walls(grid), tensor=tensor)

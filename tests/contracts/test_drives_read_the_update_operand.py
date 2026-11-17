@@ -44,16 +44,12 @@ from tests.unit.runners.test_realized_port_drives import (
 
 AXES = ('ex', 'ey', 'ez')
 
-# The graded x profile of test_realized_port_drives.py::
-# test_main_paths_build_drives_and_rlc_after_realization (a 0.9 mm / 1.1 mm pair
-# inside 1 mm cells, 12 mm in total, the domain's x length).
 _GRADED_X_PROFILE = np.array([.001] * 4 + [.0009, .0011] + [.001] * 6)
 
 
 @pytest.fixture(autouse=True)
 def _clear_eager_frequency_grid():
     yield
-    # A frequency grid first built under disable_jit rounds differently and is cached for the process.
     from rfx.measurement.monitors import _eager_frequency_grid
     _eager_frequency_grid.cache_clear()
 
@@ -243,8 +239,6 @@ def _measure(make_scene, entry, branch, kind, *, lane='uniform', change=None, ex
     def table(samples, kind=None, *, native='raw', coefficient=None, volume=1.0):
         out = original_table(samples, kind, native=native, coefficient=coefficient, volume=volume)
         if kind == 'current' and native in ('raw', 'cb_over_dv'):
-            # Unit samples: the stored increment is Cb/dV; times the code's own dV it
-            # is the Cb the builder received (dV is not the quantity judged).
             axis, edge = seen['soft_edges'][sum(c['kind'] == 'soft' for c in seen['calls'])]
             seen['calls'].append(dict(kind='soft', axis=axis, edge=edge,
                                       value=float(np.asarray(out)[0]) * float(volume),
@@ -318,7 +312,6 @@ def _measure(make_scene, entry, branch, kind, *, lane='uniform', change=None, ex
         patch.setattr(upml_module, 'apply_upml_e', upml_e)
         with pytest.raises(_O2ReferenceCaptured):
             getattr(sim, entry)(**_entry_options(branch, entry, extra))
-    # A graded row is judged on the graded kernel, never on a uniform fallback.
     assert ('kernel_eps' in seen) == (lane == 'graded'), (lane, sorted(seen))
     call = seen['call']
     axis, edge = call['axis'], call['edge']
@@ -336,7 +329,6 @@ def _measure(make_scene, entry, branch, kind, *, lane='uniform', change=None, ex
 def _judge_row(make_scene, entry, branch, kind, *, lane='uniform', extra=None):
     """Value, kernel self-check and follows step of one row (relative 1e-6 each)."""
     row = _measure(make_scene, entry, branch, kind, lane=lane, extra=extra)
-    # Kernel self-check: the step's own increment for a unit curl is the operand's Cb.
     np.testing.assert_allclose(row['increment'], row['step_cb'], rtol=_O2_RTOL, atol=0.,
                                err_msg=f'kernel self-check {row}')
     np.testing.assert_allclose(row['value'], row['ref'], rtol=_O2_RTOL, atol=0.,
@@ -355,7 +347,6 @@ def _judge_row(make_scene, entry, branch, kind, *, lane='uniform', extra=None):
           file=sys.stderr)
 
 
-# --- uniform: the soft current source on O2's tensor edges ---------------------------
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
 @pytest.mark.parametrize('branch', ('smooth', 'full', 'kottke'))
@@ -382,7 +373,6 @@ def test_soft_current_source_on_a_conformal_pec_edge_is_refused(entry):
         getattr(sim, entry)(**_entry_options('conformal', entry))
 
 
-# --- uniform Kottke: drives and RLC on the Stage-2 inverse ---------------------------
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
 @pytest.mark.parametrize('operator,kind', (('lumped', 'port'), ('wire', 'port'),
@@ -400,7 +390,6 @@ def test_kottke_drives_read_the_inverse_operand(entry, operator, kind):
     _judge_row(lambda: _scene(operator, 'kottke'), entry, 'kottke', kind)
 
 
-# --- uniform UPML with Stage-1 smoothing ---------------------------------------------
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
 @pytest.mark.parametrize('operator,kind', (('lumped', 'port'), ('soft', 'soft'), ('rlc', 'rlc')))
@@ -417,7 +406,6 @@ def test_upml_drives_read_the_upml_coefficient(entry, operator, kind):
     _judge_row(lambda: _scene(operator, 'upml', upml=True), entry, 'upml', kind)
 
 
-# --- graded lane ----------------------------------------------------------------------
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
 @pytest.mark.parametrize('branch', ('smooth', 'full'))
@@ -448,7 +436,6 @@ def test_graded_conformal_and_kottke_are_refused(entry, branch, name):
         getattr(sim, entry)(**_entry_options(branch, entry))
 
 
-# --- refusal and occupancy rows -------------------------------------------------------
 
 _RADIUS_REFUSAL = (
     'wire-port radius material records are not implemented on uniform Yee with '
@@ -487,7 +474,6 @@ def test_occupancy_lane_soft_source_reads_the_occupancy_inverse():
                extra=dict(pec_occupancy_override=occupancy))
 
 
-# --- the frozen-edge drive refusal ----------------------------------------------------
 
 _FROZEN = (r"{entity} at \(.*0\.006.*\) \(ez\), grid index \(6, 6, 6\): "
            r"the smoothed inverse permittivity freezes this E edge \(inv < 1e-9\), so the "
@@ -518,7 +504,6 @@ def test_drive_on_a_kottke_frozen_edge_is_refused(entry, kind):
         getattr(sim, entry)(**_entry_options('kottke', entry))
 
 
-# --- gradient rows (READ-4a items 1-3) -------------------------------------------------
 
 def _b2_scene(eps_r, *, precision=None):
     """B2's closed box: 12 mm PEC box, dx 1 mm, an eps_r slab from x = 6.3 mm."""
@@ -657,7 +642,6 @@ def test_drive_gradient_follows_the_step_operand(branch, kind):
     np.testing.assert_allclose(d_drive, d_step, rtol=_O2_RTOL, atol=0.)
 
 
-# --- B2: the discrete energy balance in a closed lossless box -------------------------
 
 def _pulse_numpy(t):
     """The declared GaussianPulse(f0=5 GHz, bandwidth=0.8), evaluated without rfx."""
@@ -797,12 +781,12 @@ def _b2_record(kind, edge_name):
     for a in range(3):
         np.testing.assert_array_equal(saved['pairs'][a][2], saved['eps_B'][a])
         np.testing.assert_array_equal(saved['pairs'][a][3], saved['sigma'][a])
-    eps_eff = dt * (1 + ca) / (2 * cb)          # eps0*eps_eff of each E edge
+    eps_eff = dt * (1 + ca) / (2 * cb)
     sigma_eff = (1 - ca) / cb
     ch = saved['ch']
     E = np.stack([saved['E'][n] for n in range(401)])
     H = np.stack([saved['H'][n] for n in range(401)])
-    active_h = ch != 0                          # ch == 0: high-face H ghost storage
+    active_h = ch != 0
     assert np.all(H[:, ~active_h] == 0)
     mu_eff = np.zeros_like(ch)
     np.divide(dt, ch, out=mu_eff, where=active_h)
@@ -811,8 +795,6 @@ def _b2_record(kind, edge_name):
     ebar = .5 * (E[1:400] + E[:399])
     times = np.arange(399, dtype=np.float32).astype(np.float64) * dt
     w = _pulse_numpy(times)
-    # J = -table/Cb: lumped -sigma_port*unit_field*w (sigma_port = d/(R*A), unit_field = 1/d),
-    # soft -w/dV.
     J = -(dx / (50. * dx * dx)) * (1. / dx) * w if kind == 'lumped' else -w / dv
     q = dt * J * ebar[(slice(None), 2, *source_edge)] * dv
     res = np.diff(W) + q + dt * dv * np.sum(sigma_eff * ebar ** 2, axis=(1, 2, 3, 4))
@@ -878,5 +860,4 @@ def test_drive_energy_balance_in_a_closed_box():
         row = results['rlc', name]
         assert abs(row['k_p'] - 1) <= 1e-6, row
         assert row['leftover'] <= 1e-6, row
-    # The drive-edge RLC run's source sits on the soft control's edge ez(3,6,6).
     assert abs(results['rlc', 'drive']['k_q'] - results['soft', 'control']['k_hat']) <= 1e-6
