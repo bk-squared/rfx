@@ -49,9 +49,6 @@ def test_wr90_declared_rounds_walls(guide):
 
 
 def test_declared_wall_warning_is_coded_once_per_axis_per_simulation():
-    """A new Simulation owns a separate warning history; preflight keeps the code while its
-    internal validators build the same grid repeatedly. A changed domain tuple warns
-    again; restoring a tuple that already warned does not."""
     sim = model(.0015, snap='declared')
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -179,10 +176,7 @@ def test_periodic_and_wall_fit_share_one_search():
 def test_simulation_entry_refuses_wr90_before_stepping(entry, explicit_ranges, mesh, monkeypatch):
     """Every drive entry must reach the common wall judgement before stepping.
 
-    Both step factories and scan execution are guarded; all builders and admission
-    checks stay real. A registration-time exception lies outside the raises block.
-    Uniform guide allocation leaves the transverse absorber faces at depth 0. The
-    expected cell size is 22.86 mm / 15 cells = 1.524 mm.
+    The expected cell size is 22.86 mm / 15 cells = 1.524 mm.
     """
     import jax
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan

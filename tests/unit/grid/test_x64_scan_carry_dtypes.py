@@ -77,9 +77,6 @@ def test_dt_is_a_numpy_float64_scalar():
     ever becomes a plain Python float (weakly typed), the mechanism recorded
     in this module's docstring no longer applies and the fix should be
     re-derived rather than trusted.
-
-    Under x64 a numpy float64 scalar promotes a complex64 array and a Python float
-    (weakly typed) does not; that asymmetry is the whole defect.
     """
     grid = Grid(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3)
     assert isinstance(grid.dt, np.floating), (
@@ -392,8 +389,6 @@ def test_ade_allocation_sites_honour_the_policy():
 
     ``rfx/materials/lorentz.py`` carried the pin issue #656 was filed on;
     ``rfx/materials/debye.py`` carried the identical one two files over.
-
-    float16 fields must not give a float16 recursive accumulator.
     """
     mats = init_materials((4, 4, 4))
     dt = 1e-12

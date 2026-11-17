@@ -125,9 +125,6 @@ def test_a_large_domain_keeps_dust_but_not_a_real_overhang() -> None:
     """Three ULP of dust snaps; a declared 0.001-cell overhang still grows.
 
     #1138 uses the larger of the node band and the arithmetic ULP budget.
-
-    An absolute round to nine digits agrees with the snap on the dust and disagrees on
-    the real overhang.
     """
     dust = _ratio(1000000, 3)
     assert cells_spanning(dust * DX, DX) == 1000000

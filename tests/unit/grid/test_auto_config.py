@@ -1,9 +1,7 @@
 """Tests for auto_configure: source auto-selection, memory estimation.
 
 ``ThinConductor`` is the sheet declaration type: a footprint, a normal implied by the
-flat box, and a physical thickness that never enters the mesh. ``is_pec`` and
-``sheet_resistance`` are properties of the declaration. The assembler makes a PEC one a
-SheetSpec on one node plane that owns no cell.
+flat box, and a physical thickness that never enters the mesh.
 """
 
 import numpy as np
@@ -74,9 +72,8 @@ def test_auto_configure_memory_estimate():
 def test_auto_configure_memory_budget_coarsens_dx():
     """When max_memory_mb is tight, dx should increase to fit budget.
 
-    A real dielectric box makes the domain large enough for coarsening to matter. The
-    memory estimate is approximate and includes a factor of about 10 for AD overhead, so
-    the bounded estimate may exceed the budget by up to 20 %.
+    The memory estimate is approximate and includes a factor of about 10 for AD
+    overhead, so the bounded estimate may exceed the budget by up to 20 %.
     """
     from rfx.geometry.csg import Box
     geometry = [(Box((0, 0, 0), (0.1, 0.1, 0.05)), "dielectric")]
@@ -166,10 +163,9 @@ def test_smooth_grading_preserves_boundary_values():
 def test_simulation_auto_mesh_sets_dx():
     """When dx=None and geometry exists, run() should auto-set dx from features.
 
-    The declaration ``sim.__dict__['_dx']`` stays automatic (None); reading ``sim._dx``
-    exposes the resolved value. Auto mesh accounts for the material eps_r, so dx is
-    finer than a simple lambda/20: for FR4 (eps_r = 4.4) at 5 GHz, lambda_min_medium =
-    60 mm / 2.1 ≈ 28.6 mm and dx ≈ 28.6 mm / 20 ≈ 1.4 mm (rounded).
+    Auto mesh accounts for the material eps_r, so dx is finer than a simple lambda/20:
+    for FR4 (eps_r = 4.4) at 5 GHz, lambda_min_medium = 60 mm / 2.1 ≈ 28.6 mm and
+    dx ≈ 28.6 mm / 20 ≈ 1.4 mm (rounded).
     """
     import warnings
     from rfx import Simulation, Box, GaussianPulse
@@ -215,8 +211,7 @@ def test_dz_profile_grading_warning():
 def test_thirds_rule_splits_boundary_cells():
     """Thirds rule should split cells at material interfaces into 1/3+2/3 pairs.
 
-    Boundary index 2 lies between cell 1 and cell 2 of the five uniform cells. Each of
-    those two cells splits in two, so the count is 5 - 2 + 4 = 7.
+    Boundary index 2 lies between cell 1 and cell 2 of the five uniform cells.
     """
     from rfx.auto_config import apply_thirds_rule
     import numpy as np
@@ -265,10 +260,6 @@ def test_make_dz_profile_applies_thirds_rule():
     first-contact steps. Ratio discipline is asserted on the free (air)
     run; the block is asserted to keep the declared interface on a cell
     edge instead.
-
-    The single dielectric layer spans z = 0 to 1.6 mm (eps_r 4.4) in a 10 mm domain. The
-    first air cell after the block edge is the first-contact step (exempt), so the
-    ratios are checked strictly inside the air run.
     """
     from rfx.auto_config import _make_dz_profile
     import numpy as np
@@ -342,8 +333,7 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
     Geometry: dx = 2 mm, substrate ``[0, 0.002)``, trace on the substrate
     top face z = 0.002 = node plane k = 1.
 
-    The 35 µm trace is thinner than dx. The sheet owns no cells, and its -3 % size error
-    blocks run().
+    The sheet owns no cells, and its -3 % size error blocks run().
     """
     import warnings
     import pytest
@@ -412,11 +402,7 @@ def test_auto_mesh_thin_conductor_only_configures_dx():
 
 def test_auto_mesh_trigger_fires_thin_only_end_to_end():
     """#371 Bug 2(a) at the real trigger (_execute.py:2354): reaching run() with a
-    thin-only sim and no dx= must auto-configure via _auto_configure_mesh.
-
-    The same zero-thickness declaration reaches the run as one sheet on a real node
-    plane.
-    """
+    thin-only sim and no dx= must auto-configure via _auto_configure_mesh."""
     import warnings
     from rfx.api import Simulation
     from rfx.sources.sources import GaussianPulse
@@ -442,10 +428,8 @@ def test_auto_configure_waveform_default_byte_identical():
     """waveform=None (and a cutoff=3 waveform at the internal f_center /
     bw=0.8) reproduce the historical 6*tau n_steps exactly.
 
-    The default n_steps estimate takes t_source = 6*tau, the cutoff=3 Gaussian envelope.
     The float identity 2.0*(3.0*tau) == 6*tau holds bitwise, and the byte identity rests
-    on it. A cutoff=3 waveform at the same f_center and bandwidth has t0 = 3*tau of the
-    same tau, hence identical n_steps.
+    on it.
     """
     import math
     from rfx import GaussianPulse

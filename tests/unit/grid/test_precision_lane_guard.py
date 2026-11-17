@@ -3,20 +3,8 @@
 Distributed and subgridded precision refusals keep their existing messages.
 Uniform mixed and float64 CPML coverage remains unchanged.
 
-Every domain length written as ``7 * (c / 5 GHz / 20)`` is a solved length, a whole
-number of cells of dx = c / 5 GHz / 20.
-
-``precision='mixed'`` with CPML works through ``forward()``: the CPML psi_* arrays are
-accumulation state allocated at ``promote_types(field_dtype, float32)``, so they never
-sit below float32. The CPML tests below cover the two cases that must keep working: a
-plain scalar ``boundary='cpml'``, and a per-face BoundarySpec carrying only one cpml
-face.
-
-``precision='mixed'`` with CPML is correct but raises the absorber's residual floor
-(about -76 dB to about -59.5 dB on the fixture in
-tests/unit/grid/test_mixed_precision.py); the precision= docstring in
-rfx/api/__init__.py says so. These tests pin reachability, not absorber quality:
-tests/unit/grid/test_mixed_precision.py owns the numeric assertions.
+Every domain length here is a whole number of cells of dx, so the solved domain equals
+the declared one.
 """
 
 from __future__ import annotations
@@ -189,9 +177,6 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_works():
 
 
 def test_forward_float64_cpml_works():
-    """x64 is scoped: flipping jax_enable_x64 process-globally in a test leaks to every
-    test scheduled after this one in the same pytest-split worker. The test uses the
-    scoped context ``jax.enable_x64``."""
     try:
         from jax import enable_x64
     except ImportError:

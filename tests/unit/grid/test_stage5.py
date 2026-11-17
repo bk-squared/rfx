@@ -267,8 +267,8 @@ def test_api_2d_tmz():
 def test_api_snapshot():
     """High-level API should support snapshot parameter.
 
-    The domain length is a solved length, a whole number of cells: 14 cells of dx = c /
-    10 GHz / 20.
+    Every domain length here is a whole number of cells of dx, so the solved domain
+    equals the declared one.
     """
     sim = Simulation(
         freq_max=10e9,

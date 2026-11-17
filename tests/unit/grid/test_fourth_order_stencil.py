@@ -66,11 +66,8 @@ def test_update_order2_state_byte_identical():
     faithful side of it. ``np.array_equal`` is unchanged: this is still a
     BYTE gate, now against arithmetic that cannot drift with the compiler.
 
-    The E update reference has sigma = 0, so ca = 1 and cb = dt/eps. ey's curl_y spans
-    axis 0 (via bwd(hz, 0)), so asserting .ex and .ey covers all three difference axes.
-    The coefficient expression is the kernel's own, in numpy: eps_r is float32 and
-    dt/EPS_0 are weak Python floats, so every step is float32, exactly as ``update_e``
-    computes it. In the H update reference hy's curl_y spans axis 0 (via fwd(ez, 0)).
+    ey's curl_y spans axis 0 (via bwd(hz, 0)), so asserting .ex and .ey covers all three
+    difference axes.
     """
     st, mats = _rand_state_mats()
     dt, dx, per = 1e-13, 1e-3, (False, True, False)
@@ -139,10 +136,7 @@ def test_stencil_convergence_order():
 
 
 def test_order4_is_more_accurate_at_coarse_mesh():
-    """The whole point: order=4 at a COARSE mesh beats order=2 at a finer one.
-
-    16 points is 3x coarser than 48, and order=4 there is still more accurate.
-    """
+    """The whole point: order=4 at a COARSE mesh beats order=2 at a finer one."""
     def deriv_err(order, n):
         x = np.linspace(0, 1, n, endpoint=False)
         h = 1.0 / n

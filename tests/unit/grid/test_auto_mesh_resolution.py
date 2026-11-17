@@ -19,8 +19,6 @@ from rfx.nonuniform import NonUniformGrid
 
 
 def _documented_model(variant="plate"):
-    """The model is the first Simulation and the 1 mm PEC plate block of
-    materials-geometry.mdx."""
     sim = Simulation(snap="declared", freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
     sim.add(Box((0.005, 0.005, 0.005), (0.045, 0.045, 0.0066)), material="fr4")
     sim.add(Box((0.005, 0.005, 0.004), (0.045, 0.045, 0.005)), material="pec")
@@ -139,7 +137,6 @@ def test_geometry_added_after_preview_recomputes_the_mesh():
 
 
 def test_declared_mesh_remains_available_before_and_after_resolution(monkeypatch):
-    """``sim._declared_mesh`` returns a snapshot, not writable Simulation state."""
     sim = _documented_model()
     declared = sim._declared_mesh
     assert declared["_dx"] is None
@@ -165,9 +162,7 @@ def test_declared_mesh_remains_available_before_and_after_resolution(monkeypatch
 def test_first_forward_under_jit_grad_resolves_static_mesh_on_host(
     monkeypatch, nonuniform, skip_preflight,
 ):
-    """Only the independent reference is resolved before tracing; the actual forward's
-    first mesh read occurs inside the jit(grad(...)) invocation. The microamp source
-    keeps reverse-mode intermediates within float32 range."""
+    """The microamp source keeps reverse-mode intermediates within float32 range."""
     def model():
         sim = _small_static_model()
         if nonuniform:

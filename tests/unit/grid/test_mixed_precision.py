@@ -17,8 +17,8 @@ definition is "tests that need GPU — too slow on CPU or GPU-specific".
 Measured on CPU (``JAX_PLATFORMS=cpu``): the original 13 tests ran in 6.5 s
 wall, slowest single test 1.27 s.
 
-Every domain length written as ``7 * (c / 5 GHz / 20)`` is a solved length, a whole
-number of cells of dx = c / 5 GHz / 20.
+Every domain length here is a whole number of cells of dx, so the solved domain equals
+the declared one.
 """
 
 import warnings
@@ -62,7 +62,6 @@ class TestInitState:
 
 class TestYeeUpdateMixedPrecision:
     def test_update_h_preserves_dtype(self):
-        """A nonzero E field makes the H update nonzero."""
         from rfx.stepping.yee import update_h
         state = init_state((10, 10, 10), field_dtype=jnp.float16)
         materials = init_materials((10, 10, 10))
@@ -212,12 +211,7 @@ class TestCPMLPsiDtype:
 
     The psi_* arrays are accumulation state (a recursive convolution integrated over
     every timestep), so they are allocated at ``promote_types(field_dtype, float32)``
-    and never below float32. At float16 under ``precision='mixed'`` they would meet CPML
-    coefficients pinned at float32: ``psi = b*psi + c*curl`` then promotes float16 to
-    float32 and the lax.scan carry output stops matching its own input (TypeError). This
-    is promote_types, not a flat float32 pin: psi follows field_dtype for a reason (the
-    oblique Bloch path needs a complex carry), and a flat float32 pin would fix float16
-    by breaking complex64.
+    and never below float32.
     """
 
     @pytest.mark.parametrize("field_dtype,expected", [
@@ -226,8 +220,7 @@ class TestCPMLPsiDtype:
         (jnp.complex64, jnp.complex64),
     ])
     def test_psi_dtype_is_promoted_to_at_least_float32(self, field_dtype, expected):
-        """The float32 row is unchanged (bit-identical). The complex64 row is the oblique
-        Bloch carry, which must survive."""
+        """The complex64 row is the oblique Bloch carry, which must survive."""
         _, st = init_cpml(_cpml_grid(), field_dtype=field_dtype)
         actual = {getattr(st, f).dtype for f in st._fields}
         assert actual == {jnp.dtype(expected)}, (

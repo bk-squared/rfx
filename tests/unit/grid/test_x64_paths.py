@@ -1,8 +1,7 @@
 """Public API x64 carry census: small models and explicit lane refusals.
 
-``REFUSALS`` holds observed product refusal messages as literal text; the expected
-values do not use solver helpers. ``SLOW_ROWS`` are the rows measured above 5 s in
-either Mac census; include them explicitly with ``-o addopts=`` when validating.
+``SLOW_ROWS`` are the rows measured above 5 s in either Mac census; include them
+explicitly with ``-o addopts=`` when validating.
 """
 import re
 import pytest
@@ -23,8 +22,6 @@ FEATURES = ('run', 'forward', 'grad', 'rlc', 'debye', 'lorentz', 'drude', 'ntff'
 
 
 def exercise(path, feature):
-    """The graded z is 14 mm. Every allocated axis has at most 23 nodes, and so does the
-    fine slab."""
     graded = 'graded' in path and path != 'subgridded'
     multi = path.startswith('multi')
     tfsf = feature in ('normal_open', 'closed_box', 'oblique_open', 'oblique_bloch')
