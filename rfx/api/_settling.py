@@ -68,4 +68,5 @@ def settling_source_end(self, result, records=None):
         records = [p for i, p in enumerate(self._probes[:count]) if i not in internal]
     return injection_end(
         series.shape[0], dt, records=tuple(records), grid=grid, sim=self,
-        waveguide_ports=getattr(result, "waveguide_ports", None))
+        waveguide_ports=getattr(result, "waveguide_ports", None),
+        tfsf_angle_deg=getattr(result, "tfsf_angle_deg", None))
