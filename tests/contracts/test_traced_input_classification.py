@@ -28,8 +28,6 @@ pytestmark = pytest.mark.source_scan
 ROOT = Path(__file__).resolve().parents[2]
 INVENTORY = json.loads((ROOT / "docs/guides/api_symbol_inventory.json").read_text())
 
-# Protocol implementations, nested field types, and the explicit design examples
-# which are not root exports. Kept independently of the implementation registry.
 VALUE_CLASSES = {
     name: getattr(rfx, name) for name in (
         "Box", "OrientedBox", "Cylinder", "Sphere", "PolylineWire", "CurvedPatch",
@@ -64,7 +62,6 @@ def _annotation(fn, parameter):
     try:
         value = typing.get_type_hints(original).get(parameter.name, inspect.Parameter.empty)
     except (NameError, TypeError):
-        # Result-only forward references must not hide parameter annotations.
         value = parameter.annotation
     module = sys.modules.get(fn.__module__)
     if module is None:
@@ -134,7 +131,6 @@ def test_t1_every_parameter_and_value_field_has_exactly_one_state():
     for name in ("__init__", *INVENTORY["simulation_methods"]):
         fn = getattr(Simulation, name)
         visit("Simulation." + name, fn, _parameters(fn, drop_first=True))
-    # The free-function parameter types do not enlarge declaration constructors.
     assert annotation_classes <= set(VALUE_CLASSES), annotation_classes - set(VALUE_CLASSES)
     for name in EXPORTED_FUNCTIONS:
         fn = getattr(rfx, name)
@@ -210,8 +206,6 @@ def test_t7_dispatch_reaches_delegate_admission(monkeypatch):
         jax.make_jaxpr(lambda t: sim.compute_s_matrix(method="compute_msl_s_matrix", n_steps=t))(1.0)
 
 
-# Literal input cells and literal expected method/parameter names, independent of
-# the guard's message builder. The coverage assertion catches a missing cell.
 STATIC_CASES = (
     ('Simulation.add_tfsf_source', 'margin', 'scalar', 'Simulation.add_tfsf_source(margin='),
     ('Simulation.add_tfsf_source', 'direction_tol_deg', 'scalar', 'Simulation.add_tfsf_source(direction_tol_deg='),
