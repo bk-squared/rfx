@@ -100,7 +100,9 @@ def make_uniform_step(
     point, or before them when slab invariants are present. The slab E
     exchange follows the PEC mask and sources because a neighbour's next H
     update reads the completed seam plane. The returned callable retains the
-    simulation runner's signature.
+    simulation runner's signature. Under a pad, attached hooks receive the
+    padded state and must address physical cells only, as the adjoint's plane
+    hooks do.
     """
     from rfx.boundaries import pec as pec_walls
     from rfx.core import drives as core_drives
@@ -120,8 +122,8 @@ def make_uniform_step(
     slab = 'owns_x' in invariants
     pad_plan = getattr(ctx, "pad_plan", None)
     pad_frame = {} if pad_plan is None else dict(frame=pad_plan.frame)
-    if pad_plan is not None and (slab or hooks):
-        raise NotImplementedError("vector padding: a slab step or attached hooks not padded yet")
+    if pad_plan is not None and slab:
+        raise NotImplementedError("vector padding: a slab step not padded yet")
     from rfx.stepping.vector_pad import physical_state
     view = ((lambda st: st) if pad_plan is None else
             (lambda st: physical_state(st, pad_plan)))

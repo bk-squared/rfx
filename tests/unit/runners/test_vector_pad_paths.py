@@ -78,7 +78,7 @@ FACE_DOMAIN = (22e-3, 20e-3, 18e-3)
 FACE_LO, FACE_HI = (10e-3, 8e-3, 12e-3), (14e-3, 12e-3, 18e-3)
 
 
-def _design_scene(face=False):
+def _design_scene(face=False, component='ez'):
     domain, box = (FACE_DOMAIN, (FACE_LO, FACE_HI)) if face else (DESIGN_DOMAIN, (BOX_LO, BOX_HI))
     boundary = BoundarySpec(x='cpml', y='cpml', z=Boundary('pec', 'pmc')) if face else 'cpml'
     sim = Simulation(freq_max=16e9, domain=domain, dx=2e-3, boundary=boundary, cpml_layers=5)
@@ -86,7 +86,7 @@ def _design_scene(face=False):
                    waveform=GaussianPulse(f0=8e9, bandwidth=.8, cutoff=6))
     grid = sim._build_grid()
     ix = grid.position_to_index((18e-3, 12e-3, 14e-3 if face else 6e-3))
-    sim.add_dft_plane_probe(axis='x', coordinate=18e-3, component='ey' if face else 'ez',
+    sim.add_dft_plane_probe(axis='x', coordinate=18e-3, component='ey' if face else component,
                             freqs=jnp.asarray([6.4e9, 8.4e9]), name='out',
                             region=(ix[1], ix[1] + 2, ix[2], ix[2] + 3))
     lo, hi = grid.position_to_index(box[0]), grid.position_to_index(box[1])
@@ -97,8 +97,8 @@ def _design_scene(face=False):
     return sim, eps, box
 
 
-def _design_records(mode, gradient, n_steps, face=False):
-    sim, eps, box = _design_scene(face)
+def _design_records(mode, gradient, n_steps, face=False, component='ez'):
+    sim, eps, box = _design_scene(face, component)
 
     def loss(e):
         result = sim.forward(design_box=box, design_eps_override=e, n_steps=n_steps,
@@ -126,6 +126,23 @@ def test_design_box_objective_and_gradient_padded(target, gradient):
         return ref, got
 
     judge(('design', gradient, target), label, records, ADJOINT_STEPS)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('target', TARGETS)
+def test_design_box_h_plane_objective_adjoint_padded(target):
+    """The adjoint scan with a magnetic DFT plane: the backward run's AFTER_H hook writes H in the padded state."""
+    gradient = 'adjoint'
+    label = f'design box H plane {gradient}/{target}'
+
+    def records(n):
+        ref, ref_plans = _design_records('off', gradient, n, component='hy')
+        got, plans = _design_records(target, gradient, n, component='hy')
+        assert ref_plans and not any(p.active for p in ref_plans)
+        assert_padded(plans, f'{label} N={n}')
+        return ref, got
+
+    judge(('design_h', gradient, target), label, records, ADJOINT_STEPS)
     jax.clear_caches()
 
 
