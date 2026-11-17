@@ -367,3 +367,191 @@ def test_multiple_matches_emit_one_line_per_comment(tmp_path, git_env):
     assert result.returncode == 1, result.stdout + result.stderr
     assert len(result.stdout.splitlines()) == 3
     assert result.stdout.splitlines()[-1] == summary(repo, git_env, base, 2, 2)
+
+
+FULL_BAN = (
+    "a name, an assertion, a test, the docstring, or a dated record; under rfx/, tests/, examples/ and scripts/"
+    " a comment may only be a tool directive (noqa, type:, pragma:, fmt:, isort:, ruff:, mypy:, pyright:, pylint:)"
+)
+PROSE = "# scale the offset by the cell size"
+
+
+def add_file(repo, env, path, content):
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    git(repo, env, "add", "--all")
+
+
+@pytest.mark.parametrize("path", [
+    "rfx/a.py", "tests/a.py", "examples/a.py", "scripts/a.py", "rfx/tests/nested.py",
+])
+def test_prose_comment_is_refused_in_full_ban_directories(tmp_path, git_env, path):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, path, f"value = 0\nother = 1\n{PROSE}\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stderr == ""
+    assert result.stdout.splitlines() == [
+        f"{path}:3: comment: {PROSE}  -> {FULL_BAN}",
+        summary(repo, git_env, base, 1, 3),
+    ]
+
+
+@pytest.mark.parametrize("path", [
+    "docs/a.py", "a.py", "validation/a.py", "rfxlib/a.py", "Rfx/a.py", "src/tests/a.py",
+])
+def test_prose_comment_passes_outside_full_ban_directories(tmp_path, git_env, path):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, path, f"value = 0\nother = 1\n{PROSE}\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [summary(repo, git_env, base, 0, 3)]
+
+
+def test_existing_prose_comment_on_unchanged_line_is_not_reported(tmp_path, git_env):
+    repo, _ = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "rfx/a.py", "# an old prose comment\nvalue = 0\n")
+    base = commit(repo, git_env)
+    (repo / "rfx/a.py").write_text(
+        "# an old prose comment\nvalue = 0\nother = 1\n# a new prose comment\n", encoding="utf-8")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"rfx/a.py:4: comment: # a new prose comment  -> {FULL_BAN}",
+        summary(repo, git_env, base, 1, 2),
+    ]
+
+
+@pytest.mark.parametrize("line", [
+    "# noqa", "# noqa: E402", "# noqa: BLE001", "# noqa: E402,F401", "# noqa: E402, F401", "# noqa: E402 F401",
+    "#noqa", "#  noqa: E501", "# noqa:E501", "# NOQA: E402",
+    "# flake8: noqa",
+    "# type: ignore", "# type: ignore[attr-defined]", "# type: ignore[arg-type, union-attr]",
+    "# type:ignore", "# type: ignore[ a , b ]",
+    "# pragma: no cover", "# pragma: no branch",
+    "# fmt: off", "# fmt: on", "# fmt: skip", "# fmt:off",
+    "# isort: skip_file", "# isort: skip", "# isort: off", "# isort: on", "# isort: split",
+    "# ruff: noqa", "# ruff: noqa: E402", "# ruff: noqa: E402, F401", "# ruff: isort: skip_file",
+    "# mypy: ignore-errors", "# mypy: disable-error-code=attr-defined,arg-type",
+    '# mypy: disable-error-code="attr-defined"', "# mypy: strict, warn-unused-ignores=True",
+    '# mypy: disable-error-code="a#b"',
+    "# pyright: basic", "# pyright: standard", "# pyright: strict",
+    "# pyright: ignore", "# pyright: ignore[reportPrivateUsage]",
+    "# pyright: reportPrivateUsage=false",
+    "# pyright: reportPrivateUsage=false, reportMissingImports=none",
+    '# pyright: reportUnusedImport="warning"',
+    "# pylint: disable=unused-import", "# pylint: enable=too-many-locals,invalid-name",
+    "# pylint: disable-next=broad-except", "# pylint: skip-file",
+    "# type: ignore[attr-defined]  # noqa: E501", "# noqa: E402 # pragma: no cover",
+    "import os  # noqa: F401", "value = 1  # type: ignore[assignment]  ",
+])
+def test_tool_directives_pass_in_full_ban_directories(tmp_path, git_env, line):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "rfx/a.py", f"value = 0\nother = 1\n{line}\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [summary(repo, git_env, base, 0, 3)]
+
+
+@pytest.mark.parametrize("comment", [
+    "#", "#:", "# %%", "# ---- setup ----", "# ==========", "# value = compute(1)",
+    "# noqa: E501 long URL", "# noqa E501", "# noqa: e501",
+    "# type: this is a note", "# type: List[int]", "# type: (int) -> str", "# type: not checked",
+    "# pragma: no cover - reason", "# mypy: ignore-errors because", "# pylint: disable=x  why",
+    "# noqa: E402,F401  (re-export)", "# noqa: E501#type: ignore",
+])
+def test_comments_other_than_directives_are_refused(tmp_path, git_env, comment):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "rfx/a.py", f"value = 0\nother = 1\n{comment}\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"rfx/a.py:3: comment: {comment}  -> {FULL_BAN}",
+        summary(repo, git_env, base, 1, 3),
+    ]
+
+
+@pytest.mark.parametrize("content,added", [
+    ("#!/usr/bin/env python3\nvalue = 0\n", 2),
+    ("#!/usr/bin/env python3\n# coding: utf-8\nvalue = 0\n", 3),
+    ("# -*- coding: utf-8 -*-\nvalue = 0\n", 2),
+    ("value = 0\n# vim: set fileencoding=utf-8 :\n", 2),
+])
+def test_shebang_and_coding_lines_pass_on_their_lines(tmp_path, git_env, content, added):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "scripts/run.py", content)
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [summary(repo, git_env, base, 0, added)]
+
+
+@pytest.mark.parametrize("comment", [
+    "#!/usr/bin/env python3", "# coding: utf-8", "# -*- coding: utf-8 -*-",
+])
+def test_shebang_and_coding_lines_are_refused_from_line_three(tmp_path, git_env, comment):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "scripts/run.py", f"value = 0\nother = 1\n{comment}\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"scripts/run.py:3: comment: {comment}  -> {FULL_BAN}",
+        summary(repo, git_env, base, 1, 3),
+    ]
+
+
+def test_trailing_comment_on_changed_code_line_is_refused(tmp_path, git_env):
+    repo, _ = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "tests/t.py", "".join(f"x{i} = {i}\n" for i in range(20)))
+    base = commit(repo, git_env)
+    path = repo / "tests/t.py"
+    path.write_text(path.read_text().replace("x5 = 5", "x5 = 6  # tuned by hand"), encoding="utf-8")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"tests/t.py:6: comment: # tuned by hand  -> {FULL_BAN}",
+        summary(repo, git_env, base, 1, 1),
+    ]
+
+
+def test_full_ban_comment_matching_a_narrow_rule_names_that_rule(tmp_path, git_env):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "rfx/a.py", "value = 0\nother = 1\n# see #1234\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        "rfx/a.py:3: issue number: # see #1234"
+        "  -> the PR body or the issue; a strict-xfail reason (a string) may carry it; " + GUIDANCE,
+        summary(repo, git_env, base, 1, 3),
+    ]
+
+
+def test_directive_is_final_in_full_ban_directories(tmp_path, git_env):
+    directive = '# mypy: always-true="2026-11-17"'
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "rfx/a.py", f"value = 0\nother = 1\n{directive}\n")
+    add_file(repo, git_env, "docs/a.py", f"value = 0\nother = 1\n{directive}\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"docs/a.py:3: date: {directive}  -> a dated record, or git history; " + GUIDANCE,
+        summary(repo, git_env, base, 1, 6),
+    ]
+
+
+def test_file_moved_into_full_ban_directory_judges_only_edited_lines(tmp_path, git_env):
+    repo, _ = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "docs/m.py", "# an old prose comment\n" + "".join(f"x{i} = {i}\n" for i in range(20)))
+    base = commit(repo, git_env)
+    git(repo, git_env, "mv", "docs/m.py", "rfx/m.py")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [summary(repo, git_env, base, 0, 0)]
+    path = repo / "rfx/m.py"
+    path.write_text(path.read_text().replace("x5 = 5", "x5 = 5  # tuned by hand"), encoding="utf-8")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"rfx/m.py:7: comment: # tuned by hand  -> {FULL_BAN}",
+        summary(repo, git_env, base, 1, 1),
+    ]

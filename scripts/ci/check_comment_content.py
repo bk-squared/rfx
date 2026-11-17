@@ -1,4 +1,13 @@
-"""Check the content of Python comments on added working-tree lines."""
+"""Check the content of Python comments on added working-tree lines.
+
+Under rfx/, tests/, examples/ and scripts/ an added comment may only be a tool
+directive: noqa, flake8: noqa, type: ignore, pragma: no cover|branch, fmt:,
+isort:, ruff:, mypy:, pyright: or pylint:, several of them chained with ``#``,
+plus a shebang on line 1 and a PEP 263 coding line on line 1 or 2. Anything else,
+including text after a directive, is refused there. Every other Python path is
+checked against the narrow rules: no date, issue number, predeclaration, move
+note, run id or quoted Korean text.
+"""
 
 from __future__ import annotations
 
@@ -29,6 +38,35 @@ RULES = (
 )
 GUIDANCE = "a comment says what the code does, not where it came from"
 HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+FULL_BAN_PREFIXES = ("rfx/", "tests/", "examples/", "scripts/")
+FULL_BAN_DESTINATION = (
+    "a name, an assertion, a test, the docstring, or a dated record; under rfx/, tests/, examples/ and scripts/"
+    " a comment may only be a tool directive (noqa, type:, pragma:, fmt:, isort:, ruff:, mypy:, pyright:, pylint:)"
+)
+_CODE = r"[A-Z]+[0-9]+"
+_CODES = rf"{_CODE}(?:[,\s]+{_CODE})*"
+_NAME = r"[A-Za-z][\w-]*"
+_BRACKET = rf"\[\s*{_NAME}(?:\s*,\s*{_NAME})*\s*\]"
+_NOQA = r"(?i:noqa)"
+_MYPY_OPTION = rf'{_NAME}(?:\s*=\s*(?:"[^"]*"|[\w,-]+))?'
+_PYRIGHT_SETTING = rf'{_NAME}\s*=\s*(?:true|false|none|error|warning|information|"[^"]*")'
+DIRECTIVES = (
+    rf"{_NOQA}(?:\s*:\s*{_CODES})?",
+    rf"flake8\s*:\s*{_NOQA}",
+    rf"type\s*:\s*ignore(?:{_BRACKET})?",
+    r"pragma\s*:\s*no\s+(?:cover|branch)",
+    r"fmt\s*:\s*(?:off|on|skip)",
+    r"isort\s*:\s*(?:skip_file|skip|off|on|split)",
+    rf"ruff\s*:\s*{_NOQA}(?:\s*:\s*{_CODES})?",
+    r"ruff\s*:\s*isort\s*:\s*skip_file",
+    rf"mypy\s*:\s*{_MYPY_OPTION}(?:\s*,\s*{_MYPY_OPTION})*",
+    rf"pyright\s*:\s*(?:basic|standard|strict|ignore(?:{_BRACKET})?"
+    rf"|{_PYRIGHT_SETTING}(?:\s*,\s*{_PYRIGHT_SETTING})*)",
+    rf"pylint\s*:\s*(?:skip-file|(?:disable-next|disable|enable)\s*=\s*{_NAME}(?:\s*,\s*{_NAME})*)",
+)
+_DIRECTIVE = "(?:" + "|".join(DIRECTIVES) + ")"
+DIRECTIVE_TOKEN = re.compile(rf"#\s*{_DIRECTIVE}(?:\s+#\s*{_DIRECTIVE})*\s*")
+CODING_LINE = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
 
 
 class CheckError(Exception):
@@ -107,23 +145,55 @@ def added_lines(root: Path, base: str) -> dict[str, set[int]]:
     return changed
 
 
+def in_full_ban(path: str) -> bool:
+    """Whether a repository-relative path, in exact case, lies where a comment may only be a tool directive."""
+    return path.startswith(FULL_BAN_PREFIXES)
+
+
+def is_directive(token: str, line: int) -> bool:
+    """Whether a whole comment token is tool directives and nothing else.
+
+    A shebang counts on line 1 and a PEP 263 coding declaration, found by
+    Python's own search, on line 1 or 2. Otherwise the token must be ``#`` and
+    one or more directives, each later one after whitespace and another ``#``,
+    with only whitespace after the last; a ``#`` inside a double-quoted value
+    belongs to that value.
+    """
+    if line == 1 and token.startswith("#!"):
+        return True
+    if line <= 2 and CODING_LINE.search(token):
+        return True
+    return DIRECTIVE_TOKEN.fullmatch(token) is not None
+
+
+def narrow_refusal(path: str, line: int, token: str) -> str | None:
+    """The diagnostic of the first narrow rule the comment token matches, or None."""
+    for rule, pattern, destination in RULES:
+        if pattern.search(token):
+            return f"{path}:{line}: {rule}: {token}  -> {destination}; {GUIDANCE}"
+    return None
+
+
 def check_comments(root: Path, changed: dict[str, set[int]]) -> list[str]:
     refused = []
     for path, lines in changed.items():
+        full_ban = in_full_ban(path)
         try:
             with (root / path).open("rb") as source:
                 for token in tokenize.tokenize(source.readline):
                     if token.type == tokenize.ERRORTOKEN and not token.string.isspace():
                         raise CheckError(f"{path}: cannot tokenize {token.string!r} at line {token.start[0]}")
-                    if token.type != tokenize.COMMENT or token.start[0] not in lines:
+                    line = token.start[0]
+                    if token.type != tokenize.COMMENT or line not in lines:
                         continue
-                    for rule, pattern, destination in RULES:
-                        if pattern.search(token.string):
+                    if full_ban:
+                        if not is_directive(token.string, line):
                             refused.append(
-                                f"{path}:{token.start[0]}: {rule}: {token.string}"
-                                f"  -> {destination}; {GUIDANCE}"
+                                narrow_refusal(path, line, token.string)
+                                or f"{path}:{line}: comment: {token.string}  -> {FULL_BAN_DESTINATION}"
                             )
-                            break
+                    elif diagnostic := narrow_refusal(path, line, token.string):
+                        refused.append(diagnostic)
         except (OSError, SyntaxError, tokenize.TokenError, UnicodeError) as exc:
             raise CheckError(f"{path}: cannot tokenize: {exc}") from exc
     return refused
