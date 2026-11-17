@@ -33,15 +33,18 @@ def require_host_callbacks(feature, check_name):
 
 
 def _host_with_concrete_leaves(check, leaves, tree):
-    """Split leaves: tracers go through the callback, the rest stay as given.
+    """Split leaves: JAX arrays go through the callback, the rest stay as given.
 
-    Returns the host function and the staged leaves. The host function puts
-    each staged value back at its position and hands every concrete leaf to
-    ``check`` as the same object the caller passed, so a traced call sees the
-    concrete operands an eager call sees. The closure holds no tracer.
+    Returns the host function and the staged leaves. Tracers and concrete
+    ``jax.Array`` leaves are staged: a device array keeps its dtype and values
+    through the callback, and a host function that read device memory from
+    inside a running program could deadlock on GPU. Every other leaf (Python
+    scalars, NumPy arrays, None, other objects) reaches ``check`` as the same
+    object the caller passed, so a traced call sees the concrete operands an
+    eager call sees. The closure holds no tracer and no device array.
     """
     positions = tuple(i for i, value in enumerate(leaves)
-                      if isinstance(value, jax.core.Tracer))
+                      if isinstance(value, (jax.core.Tracer, jax.Array)))
     held = [_STAGED if i in positions else value for i, value in enumerate(leaves)]
     staged = [leaves[i] for i in positions]
 
@@ -60,8 +63,9 @@ def traced_check(feature, check_name, check, *operands, ordered=False,
 
     Inspect pytree leaves: records can contain arrays nested in dictionaries
     or material tuples. ``result_shape`` retains an IO token's data dependency.
-    Only tracer leaves pass through the callback; concrete leaves reach the
-    host function unchanged, with their own types and dtypes.
+    Only tracer and ``jax.Array`` leaves pass through the callback; Python
+    scalars and NumPy arrays reach the host function unchanged, with their
+    own types and dtypes.
     """
     leaves, tree = jax.tree.flatten(operands)
     if not any(isinstance(value, jax.core.Tracer) for value in leaves):
