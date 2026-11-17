@@ -26,6 +26,7 @@ Three things are locked here.
 
 Cheap and offline: the advisory is exercised at the helper level on synthetic
 S-matrices, no FDTD.
+Reciprocity cannot be a preflight check because preflight validates input fidelity before the solve, while reciprocity is measured on the extracted S-matrix.
 """
 from __future__ import annotations
 
@@ -46,15 +47,8 @@ from tests._gate_policy import ENVELOPE_GATE_MULTIPLIER, gate_from_envelope
 _REPO = Path(__file__).resolve().parents[3]
 _FIXTURE = _REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 
-# The quantum used in the derivation. quantum=1000 -> three decimals, the
-# coarsest quantum that still resolves an envelope of order 7e-3 (quantum=100
-# rounds to 0.02, 2.9x the measured worst case). Asserted below, not assumed.
 _DERIVATION_QUANTUM = 1000.0
 
-# A PEC short transmits nothing, so its S21/S12 are zero to float32 denormal
-# noise and its reciprocity deviation is 0 by construction -- a vacuous
-# witness, excluded from the envelope. See WAVEGUIDE_RECIPROCITY_ADVISORY_TOL's
-# docstring for the full include/exclude argument.
 _VACUOUS_TRANSMISSION_DUT = "pec_short"
 
 
@@ -63,6 +57,7 @@ def _measured_envelope():
 
     Claims rung only (the fixture names it), both normalize lanes, every DUT
     that actually transmits. Returns ``(envelope, contributing_cells)``.
+    A PEC short transmits nothing, so its reciprocity deviation is a vacuous witness excluded from the envelope.
     """
     fixture = json.loads(_FIXTURE.read_text())
     claims_rung = fixture["physics_gates"]["claims_rung"]
@@ -109,13 +104,10 @@ def _advisories(recorded):
             if "reciprocity ADVISORY" in str(w.message)]
 
 
-# --- 1. the tolerance is derived from the measured envelope -----------------
-
 def test_advisory_tolerance_is_derived_from_the_measured_chain_battery_envelope():
+    """The derivation uses quantum=1000, the coarsest quantum that still resolves an envelope of order 7e-3."""
     envelope, contributing = _measured_envelope()
 
-    # The cells that go into the envelope, named, so a silent change to the
-    # selection shows up as a diff here and not only as a moved number.
     assert sorted((d, ln) for d, ln, _ in contributing) == [
         ("slab", "false"), ("slab", "flux"),
         ("thru", "false"), ("thru", "flux"),
@@ -137,8 +129,6 @@ def test_advisory_tolerance_is_derived_from_the_measured_chain_battery_envelope(
         "the code emits is exactly what this test exists to stop."
     )
 
-    # The quantum choice is part of the derivation, so state it as a check:
-    # the next coarser quantum would be 2.9x the envelope.
     assert gate_from_envelope(envelope, quantum=100.0) == 0.02
     assert derived / envelope == pytest.approx(1.575, abs=0.01)
 
@@ -170,8 +160,6 @@ def test_the_under_resolved_ladder_rungs_are_the_ones_the_advisory_catches():
     assert firing == ["slab|coarse|false", "slab|mid|false"], firing
 
 
-# --- 2. it fires, and the run completes -------------------------------------
-
 def test_non_reciprocal_smatrix_fires_the_advisory_and_the_call_completes():
     """Cheap refute: a 2-port violating reciprocity by more than the new
     tolerance must produce the advisory AND return normally."""
@@ -183,7 +171,7 @@ def test_non_reciprocal_smatrix_fires_the_advisory_and_the_call_completes():
             passivity_tol=2.0,
             check_reciprocity=True,
         )
-    assert out is None  # returned normally, nothing raised
+    assert out is None
     messages = _advisories(recorded)
     assert len(messages) == 1, [str(w.message) for w in recorded]
     assert "warn-only" in messages[0]
@@ -210,11 +198,10 @@ def test_advisory_does_not_raise_even_under_strict():
 def test_advisory_still_emitted_alongside_a_passivity_failure():
     """The two guards are independent: a result that is both non-passive and
     non-reciprocal must report both, and still not raise without ``strict``."""
-    # The measure is per-bin RELATIVE (|S21-S12| / max|S|), so with an
-    # over-unity |S11| = 8.94 (the canonical detour value) the asymmetry has
-    # to be scaled by that max|S| to clear the same relative tolerance.
     s = _two_port(5.0 * WAVEGUIDE_RECIPROCITY_ADVISORY_TOL * 8.94)
     s[0, 0, :] = 8.94
+    assert np.all(np.abs(s[1, 0] - s[0, 1]) / np.max(np.abs(s), axis=(0, 1)) > WAVEGUIDE_RECIPROCITY_ADVISORY_TOL), (
+        "Synthetic asymmetry must clear the relative reciprocity tolerance.")
     with pytest.warns(UserWarning) as recorded:
         _warn_if_nonpassive_smatrix(
             _result(s),
@@ -227,12 +214,10 @@ def test_advisory_still_emitted_alongside_a_passivity_failure():
     assert any("passivity" in m for m in messages), messages
 
 
-# --- 3. it stays quiet where it should --------------------------------------
-
 def test_reciprocal_smatrix_does_not_fire_the_advisory():
     """The other half of the refute: a reciprocal case must stay silent."""
     with warnings.catch_warnings():
-        warnings.simplefilter("error")  # any warning => test failure
+        warnings.simplefilter("error")
         _warn_if_nonpassive_smatrix(
             _result(_two_port(0.0)),
             extractor="compute_waveguide_s_matrix",
@@ -308,25 +293,3 @@ def test_advisory_measure_matches_the_battery_measure_bit_for_bit():
         fired = bool(_advisories(recorded))
         assert fired == expect_fire, (
             c["dut"], c["rung"], c["lane"], replayed, fired, expect_fire)
-
-
-# --- 4. the emission surface that actually moved ----------------------------
-
-# Frozen. ``rfx/api/_sparams.py``'s shared extractor guard
-# ``_warn_if_nonpassive_smatrix`` is the ONE place the non-MSL extractors
-# surface a bad result, and it went from 2 advisory emission sites to 3 when
-# the warn-only reciprocity advisory landed (the third is the ``_w.warn`` that
-# emits _reciprocity_advisory_message).
-#
-# This freeze is the sibling of the ``_FROZEN_TOTAL_SITES`` freeze in
-# ``tests/unit/preflight/test_preflight_advisory_emission_contract.py``, for the surface
-# that one cannot see: that contract's AST walk covers
-# ``rfx/api/_preflight.py`` only, and a runtime advisory raised by
-# ``warnings.warn`` in ``_sparams.py`` is invisible to it (the same boundary
-# already recorded there for the coax<->MSL realized-ladder warn). Reciprocity
-# CANNOT be a preflight check: preflight runs before the solve and validates
-# input fidelity, while reciprocity is measured on the extracted S-matrix.
-#
-# The raise-site count is frozen too, and it is the load-bearing half: exactly
-# ONE raise may exist in this guard, the passivity ``strict`` raise. Warn-only
-# means the reciprocity path must never add a second.

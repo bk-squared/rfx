@@ -16,7 +16,7 @@ from tests.unit.autodiff.test_coax_two_port_ad import _build_small_two_port_sim
 
 
 def _section(h, *, small=False):
-    # The main fixture has exactly the declared SMA grid and stamped mask.
+    """The main fixture has the declared SMA grid and stamped mask."""
     scale = 0.25 if small else 1.0
     sim = Simulation(freq_max=10e9, domain=(0.008 * scale, 0.008 * scale,
                                           8 * h if small else 0.060), dx=h)
@@ -35,9 +35,7 @@ def _section(h, *, small=False):
 
 
 def _jacobi_energy_impedance(grid, port, k, cells):
-    # Read the realized conductor edges, but do not call the source's Laplace
-    # solver or any impedance/energy helper. Connected metal nodes are fixed
-    # at 1 V (pin) or 0 V (shell); iterate every free potential by Jacobi.
+    """Stored electrostatic energy is per metre because h cancels for square edge areas."""
     mx, my, _ = [np.asarray(m)[:, :, k] for m in realized_pec_edge_masks(cells)]
     metal = mx | my
     metal[1:] |= mx[:-1]
@@ -67,7 +65,6 @@ def _jacobi_energy_impedance(grid, port, k, cells):
             break
     else:
         pytest.fail("independent Jacobi potential did not converge")
-    # Stored electrostatic energy per metre; h cancels for square edge areas.
     energy = 0.5 * 8.8541878128e-12 * 2.1 * (
         np.square(np.diff(phi, axis=0)).sum()
         + np.square(np.diff(phi, axis=1)).sum())
@@ -81,8 +78,6 @@ def _capture_independent_source_impedances(monkeypatch):
     references = []
 
     def capture(**kwargs):
-        # Solve on the exact realized mask and plane passed to the source;
-        # neither reference reads its profile, its Z, or the returned result.
         port = kwargs["port"]
         built = _jacobi_energy_impedance(
             kwargs["grid"], port, kwargs["plane_axial_index"],
@@ -118,9 +113,6 @@ def test_small_coax_refinement_approaches_closed_form():
 
 
 def test_two_port_returned_s11_uses_reported_built_impedance(monkeypatch):
-    # Canonical small 8x8x12 mm AD fixture. Like the canonical two-port wiring
-    # test, replace time stepping/voltage assembly with a known native line;
-    # the real stamps, source solves, reference transform and result execute.
     import rfx.simulation as runner
     import rfx.sources.coaxial_port as source
     import rfx.sparams.coax as lane

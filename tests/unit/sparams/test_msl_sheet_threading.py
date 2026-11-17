@@ -83,6 +83,7 @@ measured raw-passive, no projection warning).
 
 Heavy tests are ``@pytest.mark.slow`` (weekly lane); the fast lane keeps
 the threading witness and the NU smoke.
+The drift-lock values are centred between the two platforms because the Mac pin alone put x86 rs1 at −4.17e-07, outside 4e-7.
 """
 
 import sys
@@ -98,39 +99,34 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.simulation import _suggest_checkpoint_segments
 from tests._msl_probe0 import line_s
 
-# --------------------------------------------------------------------------
-# Fixture geometry (mirrors test_msl_port_integration.py, L_LINE shortened)
-# --------------------------------------------------------------------------
 
-EPS_R = 3.66          # RO4350B
-H_SUB = 254e-6        # substrate thickness (m)
-W_TRACE = 600e-6      # trace width (m)
-L_LINE = 8e-3         # thru-line length (m)
-PORT_MARGIN = 2e-3    # feed -> domain edge clearance (m)
-# ON-LATTICE board: h_sub / dx = 3 exactly, so the foil sheet
-# lands on the laminate face. The fixture ran at dx = 80 um
-# (h_sub/dx = 3.175); there the substrate realizes four cells and a sheet
-# declared at 254 um snaps to 240 um, buried in the dielectric.
+RO4350B_RELATIVE_PERMITTIVITY = 3.66
+EPS_R = RO4350B_RELATIVE_PERMITTIVITY
+SUBSTRATE_THICKNESS_M = 254e-6
+H_SUB = SUBSTRATE_THICKNESS_M
+TRACE_WIDTH_M = 600e-6
+W_TRACE = TRACE_WIDTH_M
+THRU_LINE_LENGTH_M = 8e-3
+L_LINE = THRU_LINE_LENGTH_M
+FEED_TO_DOMAIN_EDGE_M = 2e-3
+PORT_MARGIN = FEED_TO_DOMAIN_EDGE_M
 DX = H_SUB / 3
 F_MAX = 5e9
 LX = L_LINE + 2 * PORT_MARGIN
 LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)
 LZ = H_SUB + 1.5e-3
-SHEET_F0 = 3.5e9              # band-centre for Rs0 (in the gate band)
-SHEET_Z = H_SUB + 3.5 * DX    # 2 cells above the 1-cell trace, in air
-SHEET_X = (4.5e-3, 7.5e-3)    # clear of feeds; probe 0 clears it by ONE cell (see docstring)
+SHEET_RESISTANCE_REFERENCE_HZ = 3.5e9
+SHEET_F0 = SHEET_RESISTANCE_REFERENCE_HZ
+SHEET_Z = H_SUB + 3.5 * DX
+SHEET_X = (4.5e-3, 7.5e-3)
 SHEET_HALF_W = 0.7e-3
 
-#: The full-settle frequency grid.
 FREQS = np.linspace(0.5e9, 5e9, 16)
-#: Quasi-TEM gate band at dx=80um (same window as the integration gate).
 GATE = (FREQS >= 3.0e9) & (FREQS <= 4.5e9)
 
 MU_0 = 4e-7 * np.pi
 
 
-#: O2 gate: measured max complex deviation 3.07e-6 (see test docstring),
-#: gate ~30x above it and still ~1e-2 of the smallest physics signal here.
 GATE_O2 = 1e-4
 
 
@@ -144,9 +140,10 @@ def build_msl_thru(sheet=None, dz_profile=None):
 
     ``dz_profile`` switches the z axis to the non-uniform lane (the domain
     z extent is then ``sum(dz_profile)``).
+    Declared snapping accepts the trace y +8.656% and PEC witness x/y −2.069%/−5.052% offsets for sheet threading.
     """
+    assert H_SUB / DX == 3, "The board cell size must put the laminate face at node 3"
     if dz_profile is None:
-        # Trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests sheet threading.
         sim = Simulation(snap="declared",
             freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
             boundary=BoundarySpec(x="cpml", y="cpml",
@@ -154,7 +151,6 @@ def build_msl_thru(sheet=None, dz_profile=None):
         )
     else:
         lz = float(np.sum(dz_profile))
-        # Trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests NU sheet threading.
         sim = Simulation(snap="declared",
             freq_max=F_MAX, domain=(LX, LY, lz), dx=DX,
             dz_profile=list(dz_profile), cpml_layers=8,
@@ -164,11 +160,6 @@ def build_msl_thru(sheet=None, dz_profile=None):
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (LX, LY, H_SUB)), material="ro4350b")
     y_c = LY / 2.0
-    # The trace: 35 um foil -> a SHEET on the laminate face,
-    # declared by a zero-thickness Box. This file is where the repo's two
-    # sheet spellings meet -- this one, and the floating add_thin_conductor
-    # sheet below -- and under the contract they are one thing: a
-    # footprint on one node plane that owns no cell.
     sim.add(Box((0.0, y_c - W_TRACE / 2, H_SUB),
                 (LX, y_c + W_TRACE / 2, H_SUB)), material="pec")
     if sheet is not None:
@@ -179,7 +170,7 @@ def build_msl_thru(sheet=None, dz_profile=None):
             if sheet[0] == "f0":
                 sim.add_thin_conductor(box, sigma_bulk=sheet[1],
                                        surface_impedance_f0=SHEET_F0)
-            else:  # "pec": legacy sigma>=1e6 routing -> PEC mask sheet
+            else:
                 sim.add_thin_conductor(box, sigma_bulk=5.8e7)
     for x, d in ((PORT_MARGIN, "+x"), (PORT_MARGIN + L_LINE, "-x")):
         sim.add_msl_port(position=(x, y_c, 0.0), width=W_TRACE,
@@ -187,9 +178,6 @@ def build_msl_thru(sheet=None, dz_profile=None):
     return sim
 
 
-# --------------------------------------------------------------------------
-# Settled-run cache: each tag is ONE ~2.5-3 min CPU run, shared across tests
-# --------------------------------------------------------------------------
 
 _CACHE: dict = {}
 
@@ -221,9 +209,6 @@ def _settled(tag):
     return _CACHE[tag]
 
 
-# --------------------------------------------------------------------------
-# Fast threading witness (uniform run() dispatch) — fast lane
-# --------------------------------------------------------------------------
 
 def test_threading_witness_sheet_changes_s():
     """Completing is not the property — DIFFERING from sheet-free is.
@@ -261,9 +246,6 @@ def test_threading_witness_sheet_changes_s():
         f"appears to have simulated a sheet-FREE model (#369 class)")
 
 
-# --------------------------------------------------------------------------
-# O2 — Rs0 -> 0 reproduces the PEC-sheet realization of the same mask
-# --------------------------------------------------------------------------
 
 @pytest.mark.slow
 def test_o2_rs_to_zero_matches_pec_sheet():
@@ -294,7 +276,6 @@ def test_o2_rs_to_zero_matches_pec_sheet():
           f"(mag {dev_mag:.3e})")
     print("[O2] |S11| pec:", np.abs(s_pec[0, 0]).round(5))
     print("[O2] |S11| f0 :", np.abs(s_tiny[0, 0]).round(5))
-    # Negative control: the PEC-limit pair must NOT equal the sheet-free run
     s_off = np.asarray(_settled("off")[0].S)
     rel_off = float(np.abs(s_tiny - s_off).max() / np.abs(s_off).max())
     print(f"[O2] control: max rel |S_f0 - S_off| = {rel_off:.3e}")
@@ -305,9 +286,6 @@ def test_o2_rs_to_zero_matches_pec_sheet():
         f"to the PEC footprint on the MSL lane")
 
 
-# --------------------------------------------------------------------------
-# O3 — loss monotonic (low-Rs branch); f0-vs-PEC dispersion static
-# --------------------------------------------------------------------------
 
 @pytest.mark.slow
 def test_o3_loss_monotonic_dispersion_static_passive():
@@ -383,9 +361,6 @@ def test_o3_loss_monotonic_dispersion_static_passive():
     off_s21 = float(np.mean(np.abs(np.asarray(_settled('off')[0].S)[1, 0, GATE])))
     print(f"[O3] mean|S21|(gate): off={off_s21:.6f} " +
           " ".join(f"{t}={s21[t]:.6f}" for t in ladder + ["rs25"]))
-    # The ladder's own assertion is test_o3_loss_ladder_strictly_decreasing below,
-    # split out so the quarantine does not silence passivity or dispersion.
-    # Fixed-footprint dispersion gate: f0(Rs->0) vs PEC realization
     beta_f0 = np.real(np.asarray(_settled("rs_tiny")[0].beta))
     beta_pec = np.real(np.asarray(_settled("pec")[0].beta))
     df = np.abs(FREQS * (beta_f0 - beta_pec) / beta_pec)
@@ -426,31 +401,6 @@ def test_o3_loss_ladder_strictly_decreasing():
             f"{s21[a]:.6f} -> {s21[b]:.6f}")
 
 
-#: Drift lock. Captured on Mac CPU,
-#: Python 3.11 / JAX 0.10.2, float32.
-#: Re-pin history:
-#: - after the port source rescale: 0.9992086291313171 /
-#:   0.9964331388473511 / 0.9962416887283325.
-#: - PR (one DFT kernel and one time stamp for every spectrum) changed
-#:   how the DFT phase is formed, so the microstrip plane spectra round differently.
-#:   Measured on the capture machine: on the commit before that PR's merge,
-#:   all three values equal the previous pins exactly; on the merge they read
-#:   0 / -2.384e-07 / +4.768e-07 from them (0, 4 and 8 float32 steps). The 5 ohm/sq value
-#:   was also bisected over the 87 commits on main from the one that introduced the
-#:   previous pin: one first-moved commit, and the
-#:   same reading on every later commit tried. Far inside that PR's declared bar (1e-4 of
-#:   the peak); its gate did not run this slow-marked lock.
-#:   What the weekly lane saw (GitHub-hosted runner): the
-#:   1 ohm/sq value at -4.77e-07 from the previous pin - this machine's -2.384e-07 move
-#:   plus an x86-versus-Mac offset of the same size on the new tree (below). The test
-#:   stopped there, so that runner's 5 ohm/sq reading was not taken.
-#: - default pulse onset fix; Mac CPU.
-#:   Old values 0.9992086291313171 / 0.996432900428772 / 0.9962421655654907
-#:   (moved -6.557e-06 / -7.749e-07 / -5.007e-06).
-#: - centred between the two platforms, tolerance unchanged:
-#:   Mac CPU 0.9992020726203918 / 0.9964321255683899 / 0.9962371587753296, x86 (Ryzen 9 5950X)
-#:   0.999201774597168 / 0.9964317083358765 / 0.9962371587753296; the Mac
-#:   pin alone put x86 rs1 at -4.17e-07, outside 4e-7.
 O3_MEAN_S21 = {"rs_tiny": 0.9992019236087799,
                "rs1": 0.9964319169521332, "rs5": 0.9962371587753296}
 O3_DRIFT_TOL = 4e-7
@@ -486,11 +436,10 @@ def test_o3_mean_s21_drift_lock(record_property):
 
     Every value is recorded as soon as it is read and all are judged afterwards, so one
     run shows the whole ladder on the machine that ran it.
+    The in-band mean |S21| is locked at the line’s analytic impedance (47.89 ohm).
     """
     got = {}
     for tag, want in O3_MEAN_S21.items():
-        # Locked at the line's analytic impedance (47.89 ohm); S is referred
-        # to the declared impedance= (50 ohm), which alone lowers this mean by 2e-3.
         got[tag] = float(np.mean(np.abs(np.asarray(line_s(_settled(tag)[0]))[1, 0, GATE])))
         record_property(f"o3_mean_s21_{tag}", got[tag])
         print(f"[O3 drift] {tag}: mean|S21|(gate) = {got[tag]!r} (locked {want!r}, "
@@ -502,9 +451,6 @@ def test_o3_mean_s21_drift_lock(record_property):
         f"(the measured run-to-run spread): {moved}; all readings: {got}")
 
 
-# --------------------------------------------------------------------------
-# NU smoke — pins the run_nonuniform_path dispatch
-# --------------------------------------------------------------------------
 
 def test_nu_smoke_sheet_applies_on_dz_profile_lane():
     """Same fixture on the graded-mesh lane (uniform dz_profile — the
@@ -538,9 +484,6 @@ def test_nu_smoke_sheet_applies_on_dz_profile_lane():
         f"to have dropped the sheet ctx")
 
 
-# --------------------------------------------------------------------------
-# AD smoke — pins the forward() (eps_override) dispatch
-# --------------------------------------------------------------------------
 
 @pytest.mark.slow
 def test_ad_smoke_eps_override_grad_finite_with_sheet():
@@ -552,12 +495,10 @@ def test_ad_smoke_eps_override_grad_finite_with_sheet():
 
     ``enforce_passivity=False`` explicitly: mode-independent raw reduction
     (PR #468 defect class — do not rely on the is_tracer default branch).
+    Keep exactly the three-period DFT record because padding would change the observable.
     """
     sim = build_msl_thru(sheet=_SHEETS["rs5"])
     grid = sim._build_realized_grid()
-    # Checkpoint divisibility belongs to the realized timestep budget, not
-    # the board's old dx. Keep exactly the three-period DFT record: padding
-    # would change the observable and is deliberately refused by run().
     num_periods = 3
     n_steps = grid.num_timesteps(num_periods=num_periods)
     checkpoint_segments = _suggest_checkpoint_segments(n_steps)
@@ -599,6 +540,7 @@ def test_probe0_clears_the_sheet():
     against physical probe coordinates is the wrong comparison: the grid
     carries CPML pads that physical coordinates exclude, and Box
     rasterization is node-based, so the two differ by cells.
+    Both the lossy f0 sheet and the PEC trace need collectors because the PEC trace owns no cell.
     """
     from rfx.api._sparams import _resolve_msl_auto_offsets
     from rfx.sources.msl_port import msl_port_from_entry, msl_probe_x_coords_n
@@ -606,12 +548,6 @@ def test_probe0_clears_the_sheet():
     sim = build_msl_thru(sheet=("f0", _sigma_bulk_for_rs0(1.0)))
     grid = sim._build_grid()
 
-    # Two collectors, because this board carries two KINDS of sheet and the
-    # assembler keeps them apart: ``sheet_specs`` takes
-    # the lossy f0 thin conductor this fixture is about, ``pec_sheets``
-    # takes the PEC trace, which owns no cell and is dropped with a warning
-    # if nobody asks for it. Passing only the first is what makes the
-    # sheets-dropped UserWarning fire on a test that has no reason to see it.
     specs: list = []
     pec_sheets: list = []
     sim._assemble_materials(grid, sheet_specs=specs, pec_sheets=pec_sheets)
