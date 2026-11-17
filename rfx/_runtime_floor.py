@@ -1,6 +1,6 @@
 """Runtime contract for source/PYTHONPATH installs as well as pip.
 
-``JAX_TESTED_BELOW`` is the install cap and the runtime warning bound because the CPU time step runs 2.3-3x slower from jaxlib 0.11.2 on.
+``JAX_TESTED_BELOW`` is the install cap and the runtime warning bound.
 """
 
 import re

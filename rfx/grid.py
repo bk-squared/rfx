@@ -216,8 +216,8 @@ class Grid:
         periodic_axes: str = "",
         boundary_depths: tuple | None = None,
     ):
-        """Along a non-periodic axis, N interior cells carry N + 1 nodes, so walls on the first
-        and last of them span exactly ``N * dx``."""
+        """In 3D, along a non-periodic axis, N interior cells carry N + 1 nodes, so walls on the
+        first and last of them span exactly ``N * dx``."""
         if mode not in ("3d", "2d_tmz", "2d_tez"):
             raise ValueError(f"mode must be '3d', '2d_tmz', or '2d_tez', got {mode!r}")
         invalid_axes = sorted(set(cpml_axes) - set("xyz"))

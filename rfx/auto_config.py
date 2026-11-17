@@ -85,7 +85,8 @@ def _auto_memory_mb(cells: int, cpml_layers: int) -> float:
 class FeatureInfo(NamedTuple):
     """Geometry feature summary for auto-configuration.
 
-    Lengths and coordinates are in metres.
+    ``estimated_Q`` holds the largest ``sigma / eps_r`` over the geometry's materials with
+    ``0 < sigma <`` the PEC threshold and ``eps_r > 1``, not a quality factor.
     """
     min_thickness: float
     max_extent: float
@@ -394,8 +395,6 @@ def auto_configure(
     Returns
     -------
     SimConfig with all derived parameters.
-
-    ``FeatureInfo.estimated_Q`` holds the largest ``sigma / eps_r`` over the non-PEC materials with ``sigma > 0`` and ``eps_r > 1``, not a quality factor.
     """
     if materials is None:
         materials = {}

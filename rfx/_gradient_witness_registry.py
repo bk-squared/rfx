@@ -3,7 +3,8 @@
 In probe mode the same forms compare gradients of probe_spectra and
 probe_spectra_long; the port-mode rule strings are kept for compatibility.
 
-``GRADIENT_WITNESS_BAR`` bounds the largest difference of the two gradients relative to the largest gradient magnitude."""
+``GRADIENT_WITNESS_BAR`` bounds each leaf's largest difference of the two gradients relative to that leaf's
+largest magnitude, per frequency bin when ``bin_axis`` is given."""
 
 GRADIENT_WITNESS_BAR = 1.0e-2
 

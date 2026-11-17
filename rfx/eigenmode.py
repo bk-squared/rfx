@@ -22,7 +22,7 @@ from scipy.sparse.linalg import ArpackError, eigsh
 from rfx.model.waveguide_modes import _te_mode_profiles, _tm_mode_profiles
 from rfx.sources.waveguide_port import cutoff_frequency, C0_LOCAL
 
-TRIVIAL_TE_MODE_MAX_EIGENVALUE = 1e-6
+_TRIVIAL_TE_MODE_MAX_EIGENVALUE = 1e-6
 
 
 class WaveguideMode(NamedTuple):
@@ -464,7 +464,7 @@ def _numerical_modes(a: float, b: float, dx: float,
                 f"k={n_te_req}: {exc}"
             ) from exc
 
-        valid_mask = te_vals > TRIVIAL_TE_MODE_MAX_EIGENVALUE
+        valid_mask = te_vals > _TRIVIAL_TE_MODE_MAX_EIGENVALUE
         te_vals = te_vals[valid_mask]
         te_vecs = te_vecs[:, valid_mask]
 
