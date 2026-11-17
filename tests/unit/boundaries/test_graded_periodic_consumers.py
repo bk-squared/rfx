@@ -76,7 +76,6 @@ def test_periodic_profile_must_span_declared_period(entry):
               boundary=BoundarySpec(x="pec", y="pec", z="periodic"))
     with pytest.raises(ValueError, match=r"Declared domain z = 0.012 m differs"):
         Simulation(**kw, dz_profile=np.full(10, .001))
-    # Kept with snap="declared", the period check still refuses at the run.
     with pytest.warns(DeclaredZWarning):
         sim = Simulation(**kw, dz_profile=np.full(10, .001), snap="declared")
     with pytest.raises(ValueError, match=r"declared period 0.012 m.*realized period 0.01 m"):

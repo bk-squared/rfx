@@ -60,16 +60,16 @@ def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     interior, so the direct wave cancels until a boundary reflection returns.
 
     Returns ``reflection_db = 20*log10(max|ts_cpml - ts_ref| / peak_ref)``.
+
+    Domain lengths written as cells_spanning(..., dx_auto) * dx_auto are whole numbers of cells of dx_auto, so those solved lengths equal the declared lengths.
     """
     pulse = GaussianPulse(f0=f0, bandwidth=0.5)
 
-    # dt is set by freq_max; probe it from a throwaway grid to size the ref.
-    dx_auto = C0 / freq_max / 20.0  # main's solved lengths below
+    dx_auto = C0 / freq_max / 20.0
     dt_probe = Grid(freq_max=freq_max, domain=(cells_spanning(0.02, dx_auto) * dx_auto,) * 3,
                     cpml_layers=0).dt
-    ref_extent = cells_spanning(1.15 * n_steps * dt_probe * C0, dx_auto) * dx_auto  # echo step ~1.15*n_steps
+    ref_extent = cells_spanning(1.15 * n_steps * dt_probe * C0, dx_auto) * dx_auto
 
-    # --- clean free-space reference (PEC walls too far to echo in-window) ---
     grid_ref = Grid(freq_max=freq_max, domain=(ref_extent,) * 3, cpml_layers=0)
     state = init_state(grid_ref.shape)
     materials = init_materials(grid_ref.shape)
@@ -85,7 +85,6 @@ def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
         state = state._replace(ez=ez)
         ts_ref[n] = float(state.ez[probe])
 
-    # --- CPML domain (small; waves hit the CPML boundary) ---
     grid_c = Grid(freq_max=freq_max, domain=(cpml_domain,) * 3,
                   cpml_layers=n_layers)
     state = init_state(grid_c.shape)
@@ -110,9 +109,9 @@ def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
 
 
 def test_cpml_energy_decay():
-    """EM energy in a CPML-terminated domain should decay after source stops."""
-    # Use a domain large enough that the interior (26 cells) is well separated
-    # from the CPML so standing-wave trapping doesn't mask absorption.
+    """EM energy in a CPML-terminated domain should decay after source stops.
+    The interior (26 cells) is well separated from the CPML so standing-wave trapping doesn't mask absorption.
+    """
     grid = Grid(freq_max=3e9, domain=(0.12, 0.12, 0.12), cpml_layers=15)
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
@@ -131,10 +130,10 @@ def test_cpml_energy_decay():
             + 0.5 * MU_0 * (s.hx**2 + s.hy**2 + s.hz**2).sum()
         )
 
-    # Drive over the whole pulse, to t0 + 4.5*tau: a drive cut earlier leaves
-    # the cut pulse's time integral as a static field no absorber removes
-    # (issue 1668).
     n_src = int(np.ceil((pulse.t0 + 4.5 * pulse.tau) / dt)) + 1
+    assert (n_src - 1) * dt >= pulse.t0 + 4.5 * pulse.tau, (
+        "The drive must reach t0 + 4.5*tau; a cut pulse leaves a static field no absorber removes"
+    )
     for n in range(n_src):
         t = n * dt
         state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
@@ -146,7 +145,6 @@ def test_cpml_energy_decay():
 
     energy_after_source = em_energy(state)
 
-    # Run 500 more steps — energy should decay as waves are absorbed
     for _ in range(500):
         state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cpml_state = apply_cpml_h(state, cpml_params, cpml_state, grid)
@@ -160,7 +158,6 @@ def test_cpml_energy_decay():
     print(f"Energy after CPML absorption: {energy_final:.4e}")
     print(f"Energy decay: {ratio_db:.1f} dB")
 
-    # Energy should drop significantly (at least 20 dB)
     assert ratio_db < -20, f"CPML energy decay {ratio_db:.1f} dB is insufficient (need < -20 dB)"
 
 
@@ -221,13 +218,9 @@ def test_cpml_reflection_gate_discriminates_layer_degradation():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("f0,n_layers,gate_db", [
-    # gate_db = measured clean floor + margin (n_steps=250).
-    # Degraded 2-layer floors (caught by these gates): 1GHz -38.8, 5GHz -77.3.
-    (1e9, 8, -50.0),   # clean floor -56.3 dB (was contaminated -49.7)
-    (5e9, 8, -75.0),   # clean floor -92.8 dB (was contaminated -65.4)
-    (1e9, 4, -40.0),   # clean floor -45.7 dB (min-viable config: this leg is a
-                       # clean-reference RE-PIN of the old -40, only 5.7 dB margin;
-                       # the two 8-layer legs above are the strengthened ones)
+    (1e9, 8, -50.0),
+    (5e9, 8, -75.0),
+    (1e9, 4, -40.0),
 ])
 def test_cpml_reflectivity_regression(f0, n_layers, gate_db):
     """Cross-frequency regression against CLEAN per-config reflection envelopes.
