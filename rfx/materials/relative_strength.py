@@ -5,6 +5,8 @@ from typing import Any, cast
 import jax
 import numpy as np
 
+from rfx.errors import RfxRefusal
+
 
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, eq=False)
@@ -28,7 +30,7 @@ class RelativeStrength:
     def __post_init__(self):
         if (not isinstance(self.reference, (float, np.floating))
                 or not np.isfinite(self.reference) or self.reference <= 0):
-            raise ValueError("RelativeStrength reference must be a positive finite Python/numpy float")
+            raise RfxRefusal("RelativeStrength reference must be a positive finite Python/numpy float")
 
     @property
     def si(self):

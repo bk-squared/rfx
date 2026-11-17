@@ -619,7 +619,7 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
             "OrientedBox is a volume; axis-aligned sheet conversion is not implemented")
 
     if _is_traced_coords(coords):
-        raise ValueError(
+        raise RfxRefusal(
             f"sheet {name!r}: a sheet's plane is a static integer, and this "
             "mesh is a JAX tracer (mesh-as-design-variable), so the nearest "
             "node plane cannot be resolved. Pin the mesh, or declare the "

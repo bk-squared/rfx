@@ -2,7 +2,7 @@
 from __future__ import annotations
 from rfx._traced_inputs import admit_traced_inputs
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxRefusal
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -178,7 +178,7 @@ def source_scalar(name, value):
     """Incident-source scalars are fixed inputs, including under forward AD."""
     from rfx.core.jax_utils import is_tracer
     if is_tracer(value):
-        raise ValueError(f"{name}: differentiating with respect to the incident source is not supported")
+        raise RfxRefusal(f"{name}: differentiating with respect to the incident source is not supported")
     return float(value)
 
 

@@ -22,7 +22,7 @@ from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 from rfx.sparams._coax_status import coax_extraction_status
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx._internal._precision import resolve_field_dtype
 from rfx.preflight.realization import release_inspection
 
@@ -192,7 +192,7 @@ def compute_coaxial_line_reflection(
     if any(declared_mesh[name] is not None for name in (
         "_dx_profile", "_dy_profile", "_dz_profile"
     )):
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_line_reflection() supports only a uniform Yee "
             "grid; dx_profile, dy_profile, and dz_profile are not supported."
         )
@@ -202,7 +202,7 @@ def compute_coaxial_line_reflection(
             "refinement; remove add_refinement() from this simulation."
         )
     if self._geometry or self._thin_conductors:
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_line_reflection() constructs the complete line "
             "geometry; registered geometry and thin conductors are not "
             "supported. Use the documented Simulation, port, and method "
@@ -244,7 +244,7 @@ def compute_coaxial_line_reflection(
     if isinstance(probe_count, bool) or not isinstance(
         probe_count, (int, np.integer)
     ):
-        raise ValueError("probe_count must be an integer of at least 3.")
+        raise RfxRefusal("probe_count must be an integer of at least 3.")
     requested_probe_count = int(probe_count)
     if requested_probe_count < 3:
         raise ValueError("probe_count must be at least 3.")
@@ -658,7 +658,7 @@ def compute_coaxial_two_port(
     if any(declared_mesh[name] is not None for name in (
         "_dx_profile", "_dy_profile", "_dz_profile"
     )):
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_two_port() supports only a uniform Yee "
             "grid; dx_profile, dy_profile, and dz_profile are not "
             "supported."
