@@ -139,12 +139,14 @@ def current_moment_owner(grid, monitor, *, channels_only=False):
 
 
 def current_moment_channels(m, coef):
-    """Yield channels in component/block/weight order without cell objects."""
+    """Yield channels in component/block/weight order without cell objects.
+
+    Within each block, cells keep np.ndindex's row-major order.
+    """
     inverse = tuple(np.asarray(a) for a in (m.inv_dx_e, m.inv_dy_e, m.inv_dz_e))
     starts = (m.i_lo, m.j_lo, m.k_lo)
     curls = (((5, 1), (4, 2)), ((3, 2), (5, 0)), ((4, 0), (3, 1)))
     segments = np.asarray(m.seg).ravel()
-    # Stable grouping preserves np.ndindex's row-major order within each block.
     order = np.argsort(segments, kind='stable')
     boundaries = np.searchsorted(segments[order], np.arange(m.n_blocks+1))
     for c, weights in enumerate((m.w_ex, m.w_ey, m.w_ez)):

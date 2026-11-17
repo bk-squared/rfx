@@ -76,7 +76,6 @@ class NodeArrays:
             if column.ndim != 1 or len(column) != len(self.component):
                 raise ValueError('node columns must be one-dimensional and equally sized')
             object.__setattr__(self, name, column)
-        # Build the normal key once; a streamed check then hashes only its new channel.
         self.content_key()
 
     def __len__(self):
@@ -131,7 +130,7 @@ class NodeArrays:
         return self.content_key(weights=weights) == other.content_key(weights=weights)
 
     def __hash__(self):
-        # Tuple interoperability is equality-only; tuples use Python's Node hash.
+        """Hash the content key; an equal Node tuple keeps Python's own tuple hash."""
         return hash(self.content_key())
 
     def __repr__(self):

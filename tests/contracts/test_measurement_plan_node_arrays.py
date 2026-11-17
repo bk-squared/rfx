@@ -17,7 +17,7 @@ FREQS = np.array([0.8e9, 1e9], np.float32)
 
 
 def a1_scene(moment):
-    # A 33 x 33 x 20-cell moment slab in 8-cell blocks on a graded mesh.
+    """Return a scene with a 33 x 33 x 20-cell moment slab in 8-cell blocks on a graded mesh."""
     dz = np.full(44, DX)
     dz[34:36] = (.9*DX, 1.1*DX)
     sim = Simulation(freq_max=2e9, domain=(56*DX, 56*DX, 44*DX), dx=DX,
@@ -78,6 +78,7 @@ def test_four_owner_kinds_use_node_arrays(mesh):
 
 
 def test_key_normal_form_and_sequence():
+    """The accumulator check's key excludes area; the monitor check's key does not."""
     expected = (Node('ex', 2, 3, 4, float(np.float32(.1)), 2.),
                 Node('hz', -1, 5, 6, -2., 3.))
     arrays = NodeArrays(np.array([0, 5]), np.array([2, -1]), np.array([3, 5]),
@@ -97,7 +98,6 @@ def test_key_normal_form_and_sequence():
         _ = arrays[2]
     with pytest.raises(ValueError):
         arrays.i[0] = 0
-    # The accumulator check deliberately excludes area; the monitor check does not.
     other = replace(arrays, area=np.array([4., 3.]))
     assert arrays != other
     assert arrays.content_key(area=False) == other.content_key(area=False)
@@ -123,7 +123,6 @@ def test_a1_held_memory(capsys):
             cells = 0
         return held, elapsed, cells
 
-    # Warm imports and geometry/JAX caches equally before measuring retained plans.
     for moment in (False, True):
         sim = a1_scene(moment)
         grid = sim._build_realized_grid()
