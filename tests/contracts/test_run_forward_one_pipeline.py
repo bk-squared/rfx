@@ -4,6 +4,8 @@ The literal exceptions are progress toward zero at 2.0, not tolerances.
 No solver helper supplies an expected value: the other fresh entry does.
 """
 import json
+import os
+import subprocess
 import sys
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -29,6 +31,112 @@ KNOWN_DIRECTIONS = {}
 # source fires in every port drive.
 EQUAL_S_REFUSAL_ROWS = tuple(('P-wire', path, 'a') for path in (
     'uniform', 'graded', 'multi-device-uniform', 'multi-device-graded'))
+
+S_REQUEST_REFUSAL_ROWS = (
+    ('soft', 'ValueError'),
+    ('plane-soft', 'ValueError'),
+    ('msl-only', 'ValueError'),
+    ('msl', 'NotImplementedError'),
+    ('floquet', 'NotImplementedError'),
+)
+
+
+@pytest.mark.parametrize('declaration,error_type', S_REQUEST_REFUSAL_ROWS)
+def test_explicit_s_request_shared_refusal(monkeypatch, declaration, error_type):
+    import jax
+    from tests.contracts.run_forward_census import S_REQUEST_BUILDERS
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('unsupported S request reached stepping')
+
+    monkeypatch.setattr(jax.lax, 'scan', forbidden)
+    monkeypatch.setattr(jax.lax, 'while_loop', forbidden)
+    builder = S_REQUEST_BUILDERS[declaration]
+    pair = {
+        'run': run_l2(builder, 'run', 'uniform', n_steps=1,
+                      entry_options={'compute_s_params': True}),
+        'forward': run_l2(builder, 'forward', 'uniform', n_steps=1,
+                          entry_options={'port_s11_freqs': np.array([10e9])}),
+    }
+    assert both_refused(declaration, 'uniform', pair), pair
+    assert pair['run']['type'] == error_type
+    run_text = pair['run']['message'].removeprefix('run(compute_s_params=True)')
+    forward_text = pair['forward']['message'].removeprefix('forward(port_s11_freqs=...)')
+    assert run_text == forward_text
+
+
+def _s_request_device_pair(declaration, compute_s_params):
+    import jax
+    from contextlib import ExitStack
+    from unittest.mock import patch
+    from tests.contracts.run_forward_census import S_REQUEST_BUILDERS
+
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2
+
+    def builder(path):
+        if declaration != 'msl':
+            return S_REQUEST_BUILDERS[declaration](path)
+        from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_msl
+        sim, y_c = _base_sim()
+        sim.add_port(position=(2e-3, y_c, 0.0), component='ez', impedance=50.0)
+        _add_msl(sim, y_c)
+        return sim
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('unsupported S request reached stepping')
+
+    with ExitStack() as stack:
+        if compute_s_params:
+            stack.enter_context(patch.object(jax.lax, 'scan', forbidden))
+            stack.enter_context(patch.object(jax.lax, 'while_loop', forbidden))
+        pair = {
+            name: run_l2(builder, 'run', 'uniform', n_steps=3,
+                         entry_options={'compute_s_params': compute_s_params, **options})
+            for name, options in (('single', {}), ('multi', {'devices': devices}))
+        }
+    for record in pair.values():
+        if record['outcome'] == 'admitted':
+            assert record.pop('result') is not None
+    return pair
+
+
+@pytest.mark.parametrize('declaration,compute_s_params,error_type', [
+    ('soft', True, 'ValueError'), ('plane-soft', True, 'ValueError'),
+    ('msl', True, 'NotImplementedError'), ('floquet', True, 'NotImplementedError'),
+    ('soft-plane', True, 'ValueError'),
+    ('plane-soft', False, None), ('soft-plane', False, None),
+])
+def test_multi_device_s_request_shared_refusal(declaration, compute_s_params, error_type, tmp_path):
+    """Run admission agrees across device counts with and without an S request."""
+    root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ, PYTHONPATH=str(root), JAX_PLATFORMS='cpu',
+               PYTHONDONTWRITEBYTECODE='1', JAX_ENABLE_X64='false',
+               XLA_FLAGS='--xla_force_host_platform_device_count=2')
+    output = tmp_path / 'admission.json'
+    script = (
+        'import json, sys; from pathlib import Path; '
+        'from tests.contracts.test_run_forward_one_pipeline import _s_request_device_pair; '
+        'Path(sys.argv[2]).write_text(json.dumps('
+        '_s_request_device_pair(sys.argv[1], json.loads(sys.argv[3]))))'
+    )
+    child = subprocess.run([sys.executable, '-c', script, declaration, str(output),
+                            json.dumps(compute_s_params)],
+                           cwd=root, env=env, capture_output=True, text=True, timeout=90)
+    assert child.returncode == 0, child.stdout + child.stderr
+    pair = json.loads(output.read_text())
+    print(json.dumps({'declaration': declaration, 'compute_s_params': compute_s_params,
+                      **pair}, sort_keys=True), file=sys.stderr)
+    single, multi = pair['single'], pair['multi']
+    if not compute_s_params:
+        assert single['outcome'] == multi['outcome'] == 'admitted', pair
+        return
+    assert single['outcome'] == multi['outcome'] == 'raised', pair
+    assert single['type'] == multi['type'] == error_type, pair
+    assert raised_in_rfx(single) and raised_in_rfx(multi), pair
+    assert same_raising_line(single, multi), pair
+    assert single['message'] == multi['message'], pair
+
 
 ASSEMBLY_ROWS = (
     ('C-conformal', 'uniform'),
@@ -321,6 +429,12 @@ ADMISSION_ROWS = (
 BOTH_REFUSE_ROWS = tuple((declaration, path)
                          for declaration in ('C-conformal', 'P-conformal')
                          for path in ('graded', 'multi-device-graded', 'multi-device-uniform')) + (
+    ('PW-port-first', 'uniform'),
+    ('PW-port-last', 'uniform'),
+    ('PW-slab-soft-first', 'uniform'),
+    ('PW-slab-soft-last', 'uniform'),
+    ('WG-soft-first', 'uniform'),
+    ('WG-soft-last', 'uniform'),
     ('P-waveguide2', 'uniform'),
     ('P-waveguide2', 'graded'),
     ('C-full-tensor', 'multi-device-uniform'),
@@ -622,6 +736,9 @@ def test_admission(declaration, path, direction):
 
 # These rows refuse at declaration, before either entry can be called.
 DECLARATION_REFUSAL_ROWS = {
+    ('PW-port-first', 'uniform'): 'A TF/SF plane wave is not supported together with a lumped or wire port',
+    ('PW-port-last', 'uniform'): 'A TF/SF plane wave is not supported together with a lumped or wire port',
+    ('WG-soft-first', 'uniform'): 'a lumped or wire port, or a soft source (add_source)',
     ('PW-closed', 'graded'): 'closed_box TFSF require a uniform',
     ('PW-closed', 'multi-device-graded'): 'closed_box TFSF require a uniform',
     ('P-floquet', 'graded'): 'Floquet ports do not support non-uniform z mesh',
@@ -841,3 +958,43 @@ def test_default_port_probes_equal_requests():
     for a, b in zip(forward_owners, run_owners, strict=True):
         assert [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in a.channels] == \
             [[(n.component, n.i, n.j, n.k, n.weight) for n in c.nodes] for c in b.channels]
+
+
+@pytest.mark.parametrize('declaration', ['PW-closed-soft-first', 'PW-closed-soft-last'])
+def test_plane_wave_soft_source_equal_fields(declaration):
+    pair = equal_request_pair(declaration, 'uniform', 'b', n_steps=150)
+    assert all(record['outcome'] == 'admitted' for record in pair.values()), pair
+    a, b = [np.asarray(pair[entry]['result'].time_series) for entry in ('run', 'forward')]
+    assert a.shape == b.shape == (150, 1) and a.dtype == b.dtype
+    assert np.isfinite(a).all() and np.max(np.abs(a)) > 0
+    assert a.tobytes() == b.tobytes()
+
+
+@pytest.mark.parametrize('declaration', ['PW-port-first', 'PW-port-last'])
+def test_plane_wave_port_orders_share_refusal(declaration):
+    reference = run_l2(BUILDERS['PW-port-first'], 'run', 'uniform', n_steps=1)['construction']
+    actual = run_l2(BUILDERS[declaration], 'run', 'uniform', n_steps=1)['construction']
+    assert actual['type'] == reference['type'] == 'RfxRefusal'
+    assert same_raising_line(reference, actual)
+    assert actual['message'] == reference['message']
+
+
+@pytest.mark.parametrize('declaration', ['WG-soft-first', 'WG-soft-last'])
+@pytest.mark.parametrize('entry', ['run', 'forward', 'compute_waveguide_s_matrix'])
+def test_waveguide_soft_source_refused_before_step(monkeypatch, declaration, entry):
+    import jax
+    from tests.contracts.run_forward_census import exception_record
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('mixed waveguide drives reached stepping')
+
+    monkeypatch.setattr(jax.lax, 'scan', forbidden)
+    monkeypatch.setattr(jax.lax, 'while_loop', forbidden)
+    with pytest.raises(ValueError) as caught:
+        sim = BUILDERS[declaration]('uniform')
+        options = {'compute_s_params': False} if entry == 'run' else {}
+        getattr(sim, entry)(n_steps=1, **options)
+    record = exception_record(caught.value)
+    assert raised_in_rfx(record)
+    assert record['type'] == ('RfxUnsupported' if declaration == 'WG-soft-last' and entry != 'compute_waveguide_s_matrix' else 'ValueError')
+    assert 'a lumped or wire port, or a soft source (add_source)' in record['message']
