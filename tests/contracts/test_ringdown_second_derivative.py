@@ -192,6 +192,7 @@ def staged(compute):
 
 def cases(staging):
     """The plain-step references every row compares with, each form under ``staging``."""
+    _record()
     batch = jnp.asarray([0.0, 1.0e-3, -2.0e-3])
     out = {("first", f): functools.partial(first_order, f, completed_objective,
                                            completed_vector, _p0(), batch)
@@ -285,6 +286,7 @@ def test_staged_completed_second_derivative_is_nan(form, plain):
 
 
 def test_the_warning_filter_turns_a_completed_hessian_into_an_exception():
+    _record()
     with enable_x64(), warnings.catch_warnings():
         warnings.filterwarnings("error", category=RingdownSecondDerivativeWarning)
         with pytest.raises(RingdownSecondDerivativeWarning):
