@@ -191,8 +191,7 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_works():
 def test_forward_float64_cpml_works():
     """x64 is scoped: flipping jax_enable_x64 process-globally in a test leaks to every
     test scheduled after this one in the same pytest-split worker. The test uses the
-    version-robust scoped context, ``jax.enable_x64``, with the ``tests/_x64_compat.py``
-    shim where JAX does not provide it (older JAX, before about 0.4.31)."""
+    scoped context ``jax.enable_x64``."""
     try:
         from jax import enable_x64
     except ImportError:

@@ -93,7 +93,7 @@ def test_snapshot_times_use_the_step_the_scan_took(cavity_runs, order):
 
 @pytest.mark.parametrize("order", [2, 4])
 def test_cavity_resonance_is_read_at_the_right_frequency(cavity_runs, order):
-    """The same record is also read by FFT with ``Result.dt``, as a user would read it."""
+    """The cavity record is read by Harminv and by FFT with ``Result.dt``, as a user would read it."""
     res = cavity_runs[order][1]
     modes = res.find_resonances(freq_range=(5e9, 13e9))
     assert modes, f"order {order}: Harminv found no mode in 5-13 GHz"

@@ -76,7 +76,7 @@ def test_documentation_legality_matches_execution_assembly(monkeypatch, variant,
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_documented_plate_completes_real_one_step_solve(entry):
-    """A fresh declaration also proves callers need not preflight beforehand."""
+    """A freshly declared model solves one step with preflight skipped, so callers need not preflight beforehand."""
     sim = _documented_model()
     result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
     assert isinstance(result.grid, NonUniformGrid)
@@ -139,7 +139,7 @@ def test_geometry_added_after_preview_recomputes_the_mesh():
 
 
 def test_declared_mesh_remains_available_before_and_after_resolution(monkeypatch):
-    """The returned mapping is a snapshot, not writable Simulation state."""
+    """``sim._declared_mesh`` returns a snapshot, not writable Simulation state."""
     sim = _documented_model()
     declared = sim._declared_mesh
     assert declared["_dx"] is None

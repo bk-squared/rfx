@@ -13,9 +13,6 @@ venv: JAX 0.10.2); the fallback below is the same scoped-flip-with-restore
 shim tests/_x64_compat.py provides, applied inline here (folded pre-
 existing fix, discovered while landing #579's own tests/_x64_compat usage
 — see the #579 PR body).
-
-On older JAX (before about 0.4.31) ``enable_x64`` comes from the tests/_x64_compat.py
-shim.
 """
 import jax.numpy as jnp
 import numpy as np
