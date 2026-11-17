@@ -9,3 +9,4 @@
   parameters, a traced shape dimension under `jax.grad`, a traced `OrientedBox` or wire-port radius,
   `rlc_values_override` off the uniform forward lane, `gradient='adjoint'` limits, and closed-box or
   `CustomWaveform` TF/SF under a transform. Catch `rfx.errors.RfxError` to handle every rfx refusal at once.
+- `add_msl_port` with a traced `dx` raises `TracedStructureRefusal` (an `RfxUnsupported`) instead of a raw JAX tracer error.
