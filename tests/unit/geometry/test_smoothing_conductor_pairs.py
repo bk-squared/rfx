@@ -33,18 +33,15 @@ def test_conductor_leaves_dielectric_edges_unchanged(graded, boundary, metal):
     reference, conductor = scene(False), scene(True)
     grid = conductor._build_realized_grid()
     smooth = compute_smoothed_eps_nonuniform if graded else compute_smoothed_eps
-    # Independent reference: the no-conductor declaration, without the pair builder.
     expected = smooth(grid, [(entry.shape, 4.) for entry in reference._geometry],
                       background_eps=1.)
     if boundary == "cpml":
-        # Fill the pads independently of the continuation code under test.
         expected = smooth(grid, [(Box((-width, -width, -length),
                                      (2 * width, 2 * width, 2 * length)), 4.)],
                           background_eps=1.)
     pairs, findings = smoothed_shape_pairs(conductor, grid)
     actual = smooth(grid, pairs, background_eps=1.)
     assert findings == []
-    # The public record previews the same realized Yee PEC edges as the runners.
     masks = conductor.realized_geometry().edge_masks
     assert len(masks) == 3 and any(mask.any() for mask in masks)
     for component, got, want, mask in zip("xyz", actual, expected, masks):

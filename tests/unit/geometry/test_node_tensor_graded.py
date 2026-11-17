@@ -44,7 +44,6 @@ def test_w0_metrics_and_weights(periodic):
             assert actual.dtype == np.float64
             np.testing.assert_array_equal(actual, reference)
         dual = (minus + plus) / 2
-        # Solver metrics are stored in float32, independently of geometry.
         inverse = getattr(grid, f'inv_d{name}')
         np.testing.assert_array_equal(inverse, (1 / dual).astype(np.float32))
     duals = [(m + p) / 2 for m, p in expected]
@@ -65,10 +64,6 @@ def test_w0_metrics_and_weights(periodic):
     assert maximum <= 1e-15
 
 
-# Main's uniform NodeTensor leaves on this scene (Mac, main 01216a729, whose leaves'
-# SHA-256 the branch matched bit for bit there): (sum, max |value|) per leaf in
-# tree order, and the three edge diagonals' sums. A bit hash does not hold
-# across platforms (the eigensolve and inverse round differently on Linux).
 MAIN_NODE_LEAVES = (
     (681.202942282, 1.0), (681.016578823, 1.0), (681.016576231, 1.0),
     (-0.099418484, 0.105664045), (0.036361065, 0.118183427), (-0.068163625, 0.124520838),
@@ -79,6 +74,7 @@ MAIN_DIAGONAL_SUMS = (884.308642, 883.174998, 881.296438)
 
 
 def test_w1_uniform_builder_is_main():
+    """A bit hash does not hold across platforms because the eigensolve and inverse round differently on Linux."""
     assert Path(rfx.__file__).resolve().is_relative_to(Path(__file__).resolve().parents[3])
     grid = Grid(domain=(.008,) * 3, dx=.001, freq_max=10e9, cpml_axes='')
     eps = compute_node_tensor_eps(grid, [(Sphere((.0041, .0038, .0043), .0023), 4.)])
@@ -176,8 +172,6 @@ def weighted_operator():
         grid = graded_grid(profiles)
         eps = compute_node_tensor_eps(
             grid, [(Sphere((.0031, .0034, .0027), .00165), 4.)], field_dtype=jnp.float64)
-    # Assemble from the published diagonal/couplings, never off_diagonal,
-    # coefficients, node_metrics or a solver material-volume helper.
     sizes = [np.r_[p, p[-1]] for p in profiles]
     dual = [(np.r_[p[0], p[:-1]] + p) / 2 for p in sizes]
     active = np.stack(eps.nodes.active)
@@ -319,6 +313,7 @@ def test_design_box_full_tensor_shared_refusal():
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_graded_tfsf_keeps_oblique_refusal(entry):
+    """The uniform tensor update cannot apply the oblique Bloch phase."""
     messages = []
     for graded in (False, True):
         mesh = {'dz_profile': np.full(12, .001)} if graded else {}
@@ -332,7 +327,6 @@ def test_graded_tfsf_keeps_oblique_refusal(entry):
                 getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
             messages.append(str(info.value))
         else:
-            # The uniform tensor update cannot apply the oblique Bloch phase.
             from rfx.errors import RfxUnsupported
             with pytest.raises(RfxUnsupported, match="subpixel_smoothing='full_tensor'.*does not apply the Bloch phase") as info:
                 getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')

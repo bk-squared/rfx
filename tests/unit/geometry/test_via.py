@@ -60,7 +60,6 @@ class TestViaShapes:
             layers=[(0, 0.8e-3), (0.8e-3, 1.6e-3)],
         )
         shapes = via.to_shapes()
-        # 1 conductor + 3 pads (z=0, z=0.8e-3, z=1.6e-3)
         assert len(shapes) == 4
         for shape, mat in shapes:
             assert isinstance(shape, Box)
@@ -105,7 +104,6 @@ class TestViaShapes:
             pad_radius=r_pad,
             layers=[(0, 1e-3)],
         )
-        # First pad is shapes[1]
         pad = via.to_shapes()[1][0]
         assert pad.corner_lo[0] == pytest.approx(x - r_pad)
         assert pad.corner_hi[0] == pytest.approx(x + r_pad)
@@ -130,7 +128,7 @@ class TestViaShapes:
             layers=[(0, 1e-3)],
         )
         shapes = via.to_shapes()
-        for shape, _ in shapes[1:]:  # skip conductor
+        for shape, _ in shapes[1:]:
             assert shape.corner_lo[2] == shape.corner_hi[2]
 
     def test_single_layer(self):
@@ -142,7 +140,7 @@ class TestViaShapes:
             layers=[(0, 1e-3)],
         )
         shapes = via.to_shapes()
-        assert len(shapes) == 3  # 1 conductor + 2 pads
+        assert len(shapes) == 3
 
     def test_three_layers(self):
         """Via with three layers: 1 conductor + 4 unique boundary pads."""
@@ -153,8 +151,7 @@ class TestViaShapes:
             layers=[(0, 0.5e-3), (0.5e-3, 1.0e-3), (1.0e-3, 1.5e-3)],
         )
         shapes = via.to_shapes()
-        # z boundaries: 0, 0.5e-3, 1.0e-3, 1.5e-3 → 4 unique
-        assert len(shapes) == 5  # 1 conductor + 4 pads
+        assert len(shapes) == 5
 
     def test_shared_boundary_deduplication(self):
         """Adjacent layers sharing a z-boundary produce only one pad there."""
@@ -165,10 +162,9 @@ class TestViaShapes:
             layers=[(0, 1e-3), (1e-3, 2e-3)],
         )
         shapes = via_two.to_shapes()
-        # Boundaries: 0, 1e-3, 2e-3 → 3 pads (not 4)
         pad_zs = [s.corner_lo[2] for s, _ in shapes[1:]]
         assert len(pad_zs) == 3
-        assert len(set(pad_zs)) == 3  # all unique
+        assert len(set(pad_zs)) == 3
 
     def test_custom_material_propagates(self):
         """All shapes should carry the specified material."""

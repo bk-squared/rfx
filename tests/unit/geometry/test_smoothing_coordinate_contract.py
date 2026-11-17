@@ -22,6 +22,7 @@ is exercised separately below.
 Both flags are exercised from any pytest session by running the measurement
 in a subprocess with ``JAX_ENABLE_X64`` set (x64 scoped per process, never
 flipped at module level).
+NU shapes on the graded fixture are in units of NU_D.
 """
 
 import json
@@ -40,38 +41,23 @@ from tests._gate_policy import gate_from_envelope
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Auditor's boundary-voxel fixture: Grid + one Box whose
-# faces sit off-node so every interface voxel carries a partial fill.
 UNIFORM_FIXTURE = dict(freq_max=1.0e9, domain=(7.0e-3, 5.0e-3, 3.0e-3),
                        dx=2.54e-4, cpml_layers=2)
 BOX_LO = (1.3e-3, 1.1e-3, 0.7e-3)
 BOX_HI = (4.7e-3, 3.9e-3, 2.3e-3)
 BOX_EPS = 4.0
 
-# Graded fixture the #833 audit measured the NU centres on: WR-90-class
-# dz profile 20xD | 10xD/2 | 20xD, D = 0.3048 mm, all-CPML, cpml_layers=8.
 NU_D = 0.3048e-3
 NU_DZ = np.concatenate([np.full(20, NU_D), np.full(10, NU_D / 2), np.full(20, NU_D)])
 NU_GRADING_ADVISORY = "dz_profile has max adjacent cell ratio 2.000"
 
-# Sphere / Cylinder siblings on the same grid (all three SDF families), and
-# two PEC bodies for the ``compute_inv_eps_tensor_diag`` PEC-limit branch.
 SPHERE = dict(center=(3.5e-3, 2.5e-3, 1.5e-3), radius=1.1e-3)
 CYLINDER = dict(center=(3.5e-3, 2.5e-3, 1.5e-3), radius=1.3e-3, height=1.7e-3, axis="z")
 PEC_SPHERE = dict(center=(1.2e-3, 1.0e-3, 0.8e-3), radius=0.55e-3)
 PEC_CYLINDER = dict(center=(5.8e-3, 4.0e-3, 2.1e-3), radius=0.45e-3, height=1.1e-3, axis="y")
-# A mask-only PEC body for the staircase-fallback / traced-mask cases.
 PEC_BOX = dict(lo=(1.0e-3, 0.8e-3, 0.5e-3), hi=(2.0e-3, 1.6e-3, 1.1e-3))
-# Measured envelope of the TRACED (jax.numpy) path against the concrete host
-# path, x64=0, Sphere fixture above: max rel 4.79e-06 (80 f32 ulps) — this is
-# the earlier float32 arithmetic the traced fallback deliberately keeps. Gate
-# = envelope x ENVELOPE_GATE_MULTIPLIER rounded up to 1e-7 (tests/_gate_policy).
 TRACED_PATH_ENVELOPE_REL = 4.79e-06
 TRACED_PATH_GATE_REL = gate_from_envelope(TRACED_PATH_ENVELOPE_REL, quantum=1e7)
-# NU shapes on the graded fixture, in units of D; the Box has 12 voxels
-# exactly 0.2 D inside BOTH its x-lo and z-hi faces (rx == rz in exact
-# arithmetic), where the pre-fix float32 path resolved the nearest-face
-# selection differently per flag (eps 2.105 vs 3.100).
 NU_BOX = dict(lo=(2.3, 1.7, 5.6), hi=(20.4, 13.3, 17.2))
 NU_SPHERE = dict(center=(15.0, 10.0, 12.0), radius=5.3)
 NU_CYLINDER = dict(center=(15.0, 10.0, 12.0), radius=6.1, height=9.7, axis="z")
@@ -190,15 +176,11 @@ def both_flags(tmp_path_factory):
 
 
 def test_smoothing_uses_shared_uniform_node_spine():
+    """The smoothing path may use the active JAX storage precision, but it must consume the same host-built node values as the binary rasterizer."""
     grid = Grid(**UNIFORM_FIXTURE)
     expected = coords_from_uniform_grid(grid)
     actual = _yee_coords(grid)
 
-    # The smoothing path may use the active JAX storage precision, but it
-    # must consume the same host-built node values as the binary rasterizer.
-    # This certifies "correctly rounded f32 of the spine" at x64=0 — NOT that
-    # the sampled positions are flag-independent (they are not; see the
-    # drift pin below).
     for got, want in zip(actual, (expected.x, expected.y, expected.z)):
         got_array = np.asarray(got)
         np.testing.assert_array_equal(got_array, np.asarray(want, dtype=got_array.dtype))
@@ -220,8 +202,6 @@ def test_nu_smoothing_centres_come_from_the_f64_spine(both_flags, flag):
     """
     data = both_flags[flag]
     assert tuple(int(n) for n in data["nu_shape"]) == (47, 37, 67), data["nu_shape"]
-    # Preflight-class output is part of the result: the only warning this
-    # fixture may raise is the known grading advisory (ratio 2.0 > 1.4).
     for msg in data["nu_warnings"].tolist():
         assert NU_GRADING_ADVISORY in msg, msg
     for name in "xyz":
@@ -237,13 +217,6 @@ def test_nu_smoothing_centres_come_from_the_f64_spine(both_flags, flag):
                 err_msg=f"axis {name}, x64=0: not the f32 rounding of the exact centre")
 
 
-# (case prefix, expected dtype at x64=1 or None). ``compute_smoothed_eps*``
-# return the active default float dtype once SDF arithmetic reached the
-# output; the dielectric inverse is float32 by contract. ``inv_box_pec`` pins
-# NO x64=1 dtype: the PEC-limit branch's output dtype at x64=1 is the subject
-# of the pre-existing ``test_compute_inv_eps_tensor_diag_returns_float32``
-# (red on main at x64=1) and this lock asserts VALUES only there, so the two
-# tests cannot encode contradictory dtype contracts.
 INVARIANCE_CASES = [
     ("u_box", "float64"), ("u_sphere", "float64"), ("u_cylinder", "float64"),
     ("inv_box", "float32"), ("inv_box_pec", None),
@@ -270,6 +243,7 @@ def test_smoothed_eps_is_x64_invariant(both_flags, case, dtype_x64):
     some part of the chain runs in the active JAX precision again. The
     x64=1 output dtype is asserted only where it is settled (``dtype_x64``
     not None); ``inv_box_pec`` leaves it to the pre-existing float32 test.
+    The fixture must actually exercise interface voxels, or the lock is vacuous.
     """
     lo, hi = both_flags[0], both_flags[1]
     for k in ("ex", "ey", "ez"):
@@ -277,9 +251,6 @@ def test_smoothed_eps_is_x64_invariant(both_flags, case, dtype_x64):
         if dtype_x64 is not None:
             assert str(hi[f"{case}_{k}_dtype"]) == dtype_x64, (case, k)
         a, b = lo[f"{case}_{k}"], hi[f"{case}_{k}"]
-        # The fixture must actually exercise interface voxels, or the lock is
-        # vacuous: a value strictly between background and bulk (or, for the
-        # inverse, strictly between their reciprocals / above zero for PEC).
         partial = (b != b.min()) & (b != b.max())
         assert int(partial.sum()) > 0, f"{case}/{k}: no interface voxel in the fixture"
         np.testing.assert_array_equal(

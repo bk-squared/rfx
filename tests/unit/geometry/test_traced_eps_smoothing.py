@@ -61,10 +61,9 @@ def _grid_and_index():
     grid = sim._build_grid()
     coords = coords_from_uniform_grid(grid)
     node = lambda axis, value: int(np.argmin(np.abs(np.asarray(axis) - value)))
-    # The A|B face is x = 6.3 mm. Ex at x = 6.5 mm (cell 6.0..7.0 mm), Ey at x = 6.0 mm;
-    # transverse position 6 mm, more than 2 mm from every other face.
     i, j, k = node(coords.x, .006), node(coords.y, .006), node(coords.z, .006)
     assert abs(float(coords.x[i]) - .006) < 1e-9
+    assert all(min(float(coords.y[j]) - body.corner_lo[1], body.corner_hi[1] - float(coords.y[j]), float(coords.z[k]) - body.corner_lo[2], body.corner_hi[2] - float(coords.z[k])) > .002 for body in (BOX_A, BOX_B)), "the interface sample must stay more than two millimetres from every transverse face"
     return grid, (i, j, k)
 
 
@@ -97,8 +96,10 @@ def test_concrete_key_is_the_value():
     assert smoothing.medium_key(4.0) == 4.0 and type(smoothing.medium_key(4.0)) is float
     assert smoothing.medium_key(4) == 4.0 and smoothing.medium_key(np.float64(2.5)) == 2.5
     grid, (i, j, k) = _grid_and_index()
-    other_four = float.fromhex("0x1p2")  # an equal value, a second object
-    ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, 4.0), (BOX_B, other_four)], 1.0)
+    CONCRETE_PERMITTIVITY = 4.0
+    other_four = float.fromhex("0x1p2")
+    assert other_four == CONCRETE_PERMITTIVITY and other_four is not CONCRETE_PERMITTIVITY, "equal concrete permittivities must be distinct objects to test value grouping"
+    ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, CONCRETE_PERMITTIVITY), (BOX_B, other_four)], 1.0)
     assert float(ex[i, j, k]) == 4.0 and float(ey[i, j, k]) == 4.0
 
 

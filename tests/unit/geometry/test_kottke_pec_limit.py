@@ -27,9 +27,6 @@ from rfx.grid import Grid
 from rfx.geometry.csg import Box
 
 
-# -----------------------------------------------------------------------------
-# Direct unit tests on _kottke_inv_eps_diag
-# -----------------------------------------------------------------------------
 
 
 def test_pec_half_space_y_normal_f05():
@@ -168,9 +165,6 @@ def test_pec_branch_no_nan_at_f0_with_inf_eps_inside():
     assert np.isfinite(float(inv_zz))
 
 
-# -----------------------------------------------------------------------------
-# Integration: compute_inv_eps_tensor_diag on WR-90 PEC half-space
-# -----------------------------------------------------------------------------
 
 
 def test_compute_inv_eps_tensor_diag_wr90_perpendicular_boundary_cell():
@@ -207,15 +201,12 @@ def test_compute_inv_eps_tensor_diag_wr90_perpendicular_boundary_cell():
     i_mid = grid.shape[0] // 2
     k_mid = grid.shape[2] // 2
 
-    # Perpendicular boundary cell at Ey(j=22, y=22.5mm).
     inv_yy_perp_boundary = float(inv_yy[i_mid, 22, k_mid])
     assert inv_yy_perp_boundary == pytest.approx(0.86, abs=0.05), (
         f"expected inv_yy ≈ 0.86 at Ey(j=22) perpendicular boundary; "
         f"got {inv_yy_perp_boundary:.4f}"
     )
 
-    # Tangential at the same logical row: Ex(j=23) is inside-PEC region
-    # (sdf=−0.14, f=0.64), but n̂=ŷ so n_x²=0 → inv_xx = inv_par = 0.
     inv_xx_tangential = float(inv_xx[i_mid, 23, k_mid])
     assert inv_xx_tangential == pytest.approx(0.0, abs=1e-5), (
         f"expected inv_xx ≈ 0 (Ex tangential to PEC); "
@@ -227,13 +218,11 @@ def test_compute_inv_eps_tensor_diag_wr90_perpendicular_boundary_cell():
         f"got {inv_zz_tangential:.4f}"
     )
 
-    # Fully-PEC region: Ey(j=23, y=23.5mm) is inside the half-space.
     inv_yy_fully_pec = float(inv_yy[i_mid, 23, k_mid])
     assert inv_yy_fully_pec == pytest.approx(0.0, abs=1e-5), (
         f"expected inv_yy ≈ 0 inside PEC; got {inv_yy_fully_pec:.4f}"
     )
 
-    # Pure-vacuum interior: Ex(j=10, y=10mm) is far from the wall.
     inv_xx_vacuum = float(inv_xx[i_mid, 10, k_mid])
     assert inv_xx_vacuum == pytest.approx(1.0, abs=1e-5), (
         f"expected inv_xx ≈ 1/ε_out=1 in vacuum; got {inv_xx_vacuum:.4f}"
@@ -274,9 +263,6 @@ def test_compute_inv_eps_tensor_diag_no_pec_matches_smoothed_eps_inverse():
                                 rtol=1e-6, atol=1e-9)
 
 
-# -----------------------------------------------------------------------------
-# Hardening tests
-# -----------------------------------------------------------------------------
 
 
 def test_two_non_overlapping_pec_walls_per_component_min_correct():
@@ -314,58 +300,25 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
     inv_yy_np = np.asarray(inv_yy)
     inv_zz_np = np.asarray(inv_zz)
 
-    # Interior cell, well within bulk vacuum region.
     i_mid = grid.shape[0] // 2
     assert inv_xx_np[i_mid, 5, 5] == pytest.approx(1.0, abs=1e-5)
     assert inv_yy_np[i_mid, 5, 5] == pytest.approx(1.0, abs=1e-5)
     assert inv_zz_np[i_mid, 5, 5] == pytest.approx(1.0, abs=1e-5)
 
-    # y_hi perpendicular boundary at Ey(j=22, k=5).
-    # Ey is at (i, j+0.5, k) → (·, 22.5mm, 5mm). The y-wall is the
-    # closer wall (0.36mm from Ey, vs 5.16mm to z-wall). Expected:
-    #   pec_y: sdf=+0.36, f=0.14, inv_perp=(1−0.14)/1=0.86,
-    #          n_y=±1 → inv_yy = 1·0.86 + 0·0 = 0.86.
-    #   pec_z: sdf=+5.16 ≫ dx/2 → f=0 → inv_yy = 1 (vacuum).
-    #   min(0.86, 1) = 0.86 ✓
     assert inv_yy_np[i_mid, 22, 5] == pytest.approx(0.86, abs=0.05), (
         f"y_hi perpendicular boundary cell expected 0.86, got "
         f"{inv_yy_np[i_mid, 22, 5]:.4f}"
     )
 
-    # z_hi perpendicular boundary at Ez(j=5, k=10).
-    # Ez is at (i, j, k+0.5) → (·, 5mm, 10.5mm). The z-wall is closer
-    # (0.34mm from Ez, vs 17.86mm to y-wall). This Ez cell is ~84% inside the
-    # PEC (sdf=−0.34, f=0.84 > 0.5). POST-60939e0 ("1-cell PEC dilation via
-    # neighbor-max" + Heaviside projection): a cell whose own occupancy exceeds
-    # 0.5 is projected to FULL PEC → inv_zz = 0 (hard mirror), not the
-    # pre-projection subpixel (1−0.84)=0.16.
-    # The reference it was matched against was the earlier binary
-    # apply_pec_mask rule; #931 §1.8 fences this subpixel path OUT of the
-    # lattice ownership contract, so 0.0 is unchanged and the "AD-smooth
-    # analogue of the binary rule" claim is scope-limited to that
-    # superseded rule. The VESSL witness |s21| 0.27 -> 0.77 stands as
-    # recorded. The y_hi cell above (only ~14% PEC,
-    # < 0.5) stays subpixel (0.86).
     assert inv_zz_np[i_mid, 5, 10] == pytest.approx(0.0, abs=1e-2), (
         f"z_hi boundary cell (~84% PEC) expected ~0 (post-60939e0 Heaviside); "
         f"got {inv_zz_np[i_mid, 5, 10]:.4f}"
     )
 
-    # Tangential at Ex(j=23, k=5): inside y-wall, far from z-wall.
-    # pec_y: sdf=−0.14 (inside), f=0.64, n_y=±1 → inv_xx = 0·inv_perp
-    #        + 1·inv_par = 0 (tangential).
-    # pec_z: f=0 → inv_xx = 1 (vacuum).
-    # min(0, 1) = 0 ✓
     assert inv_xx_np[i_mid, 23, 5] == pytest.approx(0.0, abs=1e-5)
 
-    # Tangential at Ex(j=5, k=10): far from y-wall, near z-wall.
-    # pec_y: f=0 → inv_xx = 1.
-    # pec_z: sdf=+0.16 (outside), f=0.34, n_z=±1 → inv_xx = 0·inv_perp
-    #        + 1·inv_par = 0 (tangential).
-    # min(1, 0) = 0 ✓
     assert inv_xx_np[i_mid, 5, 10] == pytest.approx(0.0, abs=1e-5)
 
-    # Deep inside both PECs (j=24, k=11): all inv components = 0.
     assert inv_xx_np[i_mid, 24, 11] == pytest.approx(0.0, abs=1e-5)
     assert inv_yy_np[i_mid, 24, 11] == pytest.approx(0.0, abs=1e-5)
     assert inv_zz_np[i_mid, 24, 11] == pytest.approx(0.0, abs=1e-5)
@@ -388,13 +341,11 @@ def test_kottke_inv_eps_diag_jit_compatible():
                      jnp.array(1.0, dtype=jnp.float32),
                      jnp.array(0.0, dtype=jnp.float32))
 
-    # PEC branch under JIT.
     inv_xx, inv_yy, inv_zz = fn_jit(
         f, jnp.inf, eps_outside, n_x, n_y, n_z, is_pec=True,
     )
     assert float(inv_yy) == pytest.approx(0.5, abs=1e-6)
 
-    # Dielectric branch under JIT (different static path).
     inv_xx, inv_yy, inv_zz = fn_jit(
         f, jnp.array(4.0), eps_outside, n_x, n_y, n_z, is_pec=False,
     )
@@ -421,18 +372,14 @@ def test_kottke_inv_eps_diag_pec_float32_precision_sweep(f_val):
         f, jnp.inf, eps_outside, n_x, n_y, n_z, is_pec=True,
     )
 
-    # Finiteness across the sweep.
     assert np.isfinite(float(inv_xx))
     assert np.isfinite(float(inv_yy))
     assert np.isfinite(float(inv_zz))
 
-    # Tangential components stay at 0 (n_y=1 puts perp on y axis).
     assert float(inv_xx) == pytest.approx(0.0, abs=1e-6)
     assert float(inv_zz) == pytest.approx(0.0, abs=1e-6)
 
-    # Perpendicular component matches (1-f)/ε_out within float32 tol.
     expected = (1.0 - f_val) / 1.0
-    # float32 ULP at f≈1 is ~1e-7; allow 5 ULP for chained ops.
     assert float(inv_yy) == pytest.approx(expected, abs=5e-6)
 
 
@@ -455,7 +402,6 @@ def test_kottke_inv_eps_diag_pec_monotone_in_fill_fraction():
         )
         inv_yy_vals.append(float(inv_yy))
     inv_yy_arr = np.array(inv_yy_vals)
-    # Monotone non-increasing.
     diffs = np.diff(inv_yy_arr)
     assert np.all(diffs <= 1e-6), (
         f"inv_yy not monotone non-increasing in f: diffs={diffs}"

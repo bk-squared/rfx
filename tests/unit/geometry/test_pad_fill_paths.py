@@ -20,8 +20,6 @@ def _graded_rig(monkeypatch):
         widths = np.full(math.ceil(length / DX), DX)
         widths[3:5] = (.9 * DX, 1.1 * DX)
         profiles[f'd{axis}_profile'] = widths
-    # Restore one excess grid cell, equivalent to the uniform plain-ceil bug,
-    # without declaring that excess cell as part of the physical domain.
     oversized = profiles['dx_profile'].copy()
     profiles['dx_profile'] = oversized[:-1]
     sim = Simulation(freq_max=10e9, domain=domain, dx=DX,
@@ -90,9 +88,9 @@ def test_audits_report_same_shortfall(monkeypatch, graded):
 @pytest.mark.parametrize('distributed', [False, True])
 @pytest.mark.parametrize('method', ['run', 'forward'])
 def test_exact_face_runs(graded, distributed, method):
+    """The exact-face Box's documented half-open one-node gap is repaired."""
     if method == 'forward' and distributed and not graded:
         pytest.skip('Uniform distributed forward is not implemented by the API')
-    # Small exact domain; the documented half-open one-node gap is repaired.
     profiles = {}
     if graded:
         for axis, n in zip('xyz', (12, 8, 8)):
