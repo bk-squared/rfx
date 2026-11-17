@@ -201,7 +201,7 @@ def test_port_bins(kind, path, ringdown):
         assert ('add_waveguide_port(...) uses compute_waveguide_s_matrix()' if kind == 'waveguide'
                 else 'MSL ports use compute_msl_s_matrix()') in str(eager[1])
     elif path == 'multi-graded':
-        # Graded multi-device ports run the one-device step per slab (#1402 step 2).
+        # Graded multi-device ports run the one-device step per slab.
         _equal(eager, actual)
         _equal(_evaluate(lambda: _call(sim, 'graded', False, REQUEST)), eager)
     elif path == 'multi-uniform' and actual[2]:

@@ -82,7 +82,7 @@ def test_b_graded_current_run_under_user_jit():
     assert actual.shape == expected.shape and actual.dtype == expected.dtype
     peak = np.max(np.abs(expected), axis=0)
     assert np.all(peak > 0)
-    # #2241 amendment 2: identical source tables still permit the standing
+    # Identical source tables still permit the standing
     # cross-trace rounding bars for the compiled time step and record sum.
     # Each probe uses its own peak, including the smaller magnetic trace.
     per_step_error = np.abs(actual - expected)
