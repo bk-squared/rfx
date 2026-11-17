@@ -63,7 +63,7 @@ def _build_msl_sim() -> Simulation:
     ly = _MSL_W_TRACE + 2 * (2 * _MSL_H_SUB + 8 * _MSL_DX)
     lz = _MSL_H_SUB + 0.5e-3  # thin air layer above substrate
 
-    # #1138: thin_conductor[0] y solved +8.656 % off; this test checks msl s matrix ad end to end.
+    # thin_conductor[0] y solved +8.656 % off; this test checks msl s matrix ad end to end.
     sim = Simulation(snap="declared",
         freq_max=_MSL_F_MAX,
         domain=(lx, ly, lz),
@@ -83,7 +83,7 @@ def _build_msl_sim() -> Simulation:
     trace_y_hi = y_centre + _MSL_W_TRACE / 2.0
     # The legacy thickness-bearing sheet declaration landed at 320 um,
     # while the MSL port declared 254 um. Draw the foil on the declared
-    # laminate face and resolve that interval with three cells (#729).
+    # laminate face and resolve that interval with three cells.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         sim.add_thin_conductor(
@@ -128,7 +128,7 @@ def _build_wg_sim(*, n_ports: int = 2) -> Simulation:
     """Tiny 2-port WR-90 sim (minimal domain, CPU-fast, above-cutoff freqs)."""
     sim = Simulation(
         freq_max=12e9,
-        domain=(_WR90_LX, 0.024, 0.012),  # main's solved length; #1887
+        domain=(_WR90_LX, 0.024, 0.012),  # main's solved length
         dx=_WR90_DX,
         boundary=BoundarySpec(x="cpml", y="pec", z="pec"),
         cpml_layers=8,
@@ -157,10 +157,8 @@ def _build_wg_sim(*, n_ports: int = 2) -> Simulation:
 # Tests
 # ---------------------------------------------------------------------------
 
-# MSL AD over thousands of steps: the un-checkpointed reverse tape OOMs even a 48 GB A6000
-# (VESSL run 369367241162). Segmented checkpointing caps the peak to a few GB,
-# so this runs on the CPU CI again (was @pytest.mark.gpu in #119 before checkpointing;
-# #123). ~4 min on the shard.
+# MSL AD over thousands of steps: the un-checkpointed reverse tape OOMs even a 48 GB A6000. Segmented checkpointing caps the peak to a few GB,
+# so this runs on the CPU CI again. ~4 min on the shard.
 def test_msl_s_matrix_ad_end_to_end():
     """G-AD-WIRE M1: jax.grad flows end-to-end through compute_msl_s_matrix.
 
@@ -228,7 +226,7 @@ def test_msl_s_matrix_ad_end_to_end():
     g_ad = float(g)
     print(f"\n[G-AD-WIRE MSL] loss={float(loss_val):.6e}  |S|_max={s_max:.4f}")
     print(f"  AD grad = {g_ad:.6e}")
-    # FD cross-check: verified offline (2026-05-25):
+    # FD cross-check: verified offline:
     #   AD=-4.137e-02, FD=-4.941e-02 (h=1e-3), rel_err=16.3%, sign agrees.
     # These are historical values on the old fixture. A short record does
     # NOT excuse AD/FD mismatch: both differentiate the same finite-record
