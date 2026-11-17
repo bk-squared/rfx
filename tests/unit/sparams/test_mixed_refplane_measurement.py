@@ -76,21 +76,6 @@ def _load_driver():
 
 m = _load_driver()
 
-# ===========================================================================
-# T3 — F1 evaluator, every declared side reachable on planted data
-# ===========================================================================
-
-# ===========================================================================
-# T3 — F2 evaluator, both sides + the two non-discriminating outcomes
-# ===========================================================================
-
-# ===========================================================================
-# T3 — F3 evaluator
-# ===========================================================================
-
-# ===========================================================================
-# T3b — the normalization identity, pure NumPy (fail-first against ÷4)
-# ===========================================================================
 
 def test_b_msl_equals_out_over_sqrt_zc_on_a_single_travelling_wave():
     """``refplane_split``'s 0.5 and ``_b_msl``'s 2 already cancel.
@@ -107,10 +92,6 @@ def test_b_msl_equals_out_over_sqrt_zc_on_a_single_travelling_wave():
     v_minus = np.array([1.0 + 0.5j, -0.3 + 2.0j, 4.0 - 1.0j])
     v = v_minus
     i = -v_minus / z
-    # outboard_sign = +1 (a "-x" port pushes its planes toward +x), so the
-    # OUTGOING wave at the plane is w_plus = 0.5*(v + z*i)... which is zero
-    # for a purely -x-travelling wave. Use the -x-outboard orientation, where
-    # `outgoing` is w_minus = 0.5*(v - z*i) = V-.
     out, inc = refplane_split(v, i, z, outboard_sign=-1)
     np.testing.assert_allclose(out, v_minus, rtol=0, atol=1e-12)
 
@@ -121,7 +102,6 @@ def test_b_msl_equals_out_over_sqrt_zc_on_a_single_travelling_wave():
     correct = np.abs(out) / np.sqrt(z)
     np.testing.assert_allclose(np.abs(b_msl), correct, rtol=1e-12)
 
-    # The ÷4-in-power form is wrong by exactly 2 in amplitude.
     wrong = np.abs(out) / (2.0 * np.sqrt(z))
     ratio = np.abs(b_msl) / wrong
     np.testing.assert_allclose(ratio, np.full_like(ratio, 2.0), rtol=1e-12)
@@ -135,17 +115,9 @@ def test_refplane_split_half_is_already_inside():
     v = np.array([2.0 + 0.0j])
     i = np.array([0.0 + 0.0j])
     out, inc = refplane_split(v, i, 50.0, outboard_sign=+1)
-    assert out[0] == pytest.approx(1.0)      # 0.5 * v, not v
+    assert out[0] == pytest.approx(1.0)
     assert inc[0] == pytest.approx(1.0)
 
-
-# ===========================================================================
-# Report-only guards
-# ===========================================================================
-
-# ===========================================================================
-# T1 / T2 — plumbing guards on the real mixed lane (num_periods = 4)
-# ===========================================================================
 
 def _measurement_fixture(direction, n_probes):
     lx, ly, lz = m._DOMAIN
@@ -170,12 +142,12 @@ def _measurement_fixture(direction, n_probes):
 
 
 def _run_mixed(direction: str, n_probes: int, num_periods: float = 4.0):
-    """One instrumented two-drive call; returns the result or raises."""
+    """One instrumented two-drive call; returns the result or raises.
+    Preserve the diagnostic fixture's off-grid trace and measured ladders."""
     import contextlib
     import io
 
     sim = _measurement_fixture(direction, n_probes)
-    # Preserve the diagnostic fixture's off-grid trace and measured ladders.
     with m.refplane_instrumentation(m._REFPLANE_N):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -216,14 +188,14 @@ def test_t2_crossing_guard_walks_msl_probe_ladders_n_probes_5_trips():
     msg = str(ei.value)
     assert "reach past another port" in msg
     assert "MSL de-embedding probe" in msg
-    assert "0.00344" in msg          # the offending rung, named
+    assert "0.00344" in msg
 
 
 @pytest.mark.slow
 def test_t2_crossing_guard_silent_at_n_probes_3():
     """The declared deviation: ladder 4.72 / 4.40 / 4.08 mm, all outboard of
-    the 2N plane. Must run clean — and must actually register the planes."""
-    # Keep the measured ladder on its declared off-grid board.
+    the 2N plane. Must run clean — and must actually register the planes.
+    Keep the measured ladder on its declared off-grid board."""
     sim = _measurement_fixture(m._FEED_DIRECTION, m._N_PROBES)
     import contextlib
     import io
@@ -235,18 +207,12 @@ def test_t2_crossing_guard_silent_at_n_probes_3():
                     freqs=np.linspace(1e9, 4e9, 5), num_periods=4.0,
                     skip_preflight=True)
     assert result is not None
-    # B1 positive control: planes on BOTH drives, and the MSL-driven run
-    # carries NO lw source.
     assert len(cap.positive_control) == 2
     assert all(pc["n_refplane_specs"] == 2 for pc in cap.positive_control)
     assert [pc["lw_excite_flags"] for pc in cap.positive_control] == \
         [[True], [False]]
     assert cap.positive_control[1]["drive_idx"] == m._NO_LW_DRIVE_SENTINEL
 
-
-# ===========================================================================
-# T2b — the crossing guard walks the RESOLVED ladder, not the registration
-# ===========================================================================
 
 def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
                        n_probe_spacing):
@@ -256,6 +222,7 @@ def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
     lets ``_resolve_msl_auto_offsets`` re-derive it at driver time; on this
     5.5 mm feed the solve FLOORS the spacing at 2 cells for ``freq_max`` =
     5 GHz (λ_g/4 clearance exceeds the feed) and WIDENS it for 20 GHz.
+    With h_sub/dx = 254/80 = 3.175, the sheet lands on node 3 = 240 um, 14 um below the face it is drawn on.
     """
     from rfx import Box, Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -271,12 +238,6 @@ def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
     sim.add_material("sub", eps_r=m._EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, m._H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face. The driver
-    # script this fixture borrows its constants from still runs the
-    # bisecting mesh (h_sub/dx = 254/80 = 3.175), so the sheet lands on
-    # node 3 = 240 um, 14 um below the face it is drawn on; the contract
-    # reports that offset rather than absorbing it. Redrawing the driver
-    # on-lattice belongs with the driver (scripts/diagnostics), not here.
     sim.add(Box((0.0, y_c - m._W_TRACE / 2, m._H_SUB),
                 (lx, y_c + m._W_TRACE / 2, m._H_SUB)), material="pec")
     sim.add_port(position=(m._X_FEED, y_c, 0.0), component="ez",
@@ -339,7 +300,6 @@ def test_t2b_guard_trips_when_only_the_resolved_ladder_crosses():
     grid, reg, res = _registered_and_resolved(sim)
     zone = _plane_zone(grid, sim)
     reg_idx, res_idx = _ladder_indices(grid, reg), _ladder_indices(grid, res)
-    # Premise, stated in indices so a resolver change is loud here first.
     assert res.n_probe_spacing > reg.n_probe_spacing
     assert not _crosses(reg_idx, zone), (reg_idx, zone)
     assert _crosses(res_idx, zone), (res_idx, zone)
@@ -357,12 +317,9 @@ def test_t2b_guard_trips_when_only_the_resolved_ladder_crosses():
     msg = str(ei.value)
     assert "reach past another port" in msg
     assert "MSL de-embedding probe" in msg
-    # The rung it names is a RESOLVED rung inside the zone, and no
-    # registration rung is inside the zone at all.
     named = int(msg.split("(index ")[1].split(")")[0])
     assert named in res_idx and _crosses([named], zone)
     assert named not in reg_idx
-    # The driver restored the registration on the way out.
     assert sim._msl_ports[0].n_probe_spacing == reg.n_probe_spacing
 
 
@@ -381,15 +338,12 @@ def test_t2b_guard_silent_when_only_the_registration_ladder_crosses():
     assert _crosses(reg_idx, zone), (reg_idx, zone)
     assert not _crosses(res_idx, zone), (res_idx, zone)
 
-    # The guard alone, on the registered entries: must not raise.
     from rfx.api._execute import _refplane_reject_msl_ladder_in_plane_zone
     i_port, i_far = zone
     _refplane_reject_msl_ladder_in_plane_zone(
         sim, grid, sim._ports[0], line_axis=0, outboard_sign=+1,
         i_port=i_port, i_far=i_far)
 
-    # And the whole mixed lane, with a 4-step record so the guard is the
-    # only thing that could stop it: must build and run.
     import contextlib
     import io
     with m.refplane_instrumentation(m._REFPLANE_N) as cap:
@@ -469,7 +423,6 @@ def test_mixed_s_matrix_auto_ladder_matches_explicit_spacing(tmp_path):
     assert a.dtype == b.dtype and a.tobytes() == b.tobytes(), (
         f"auto vs explicit resolved ladder is not bitwise equal: max_abs_difference={delta}")
     assert np.max(np.abs(a)) > 0, "finite mixed S must be nonzero"
-    # A53: discriminate the run's ladder record, not its one-plane S.
     assert clearances["auto"] == clearances["explicit"], (
         f"auto vs explicit probe clearance: {clearances['auto']} != {clearances['explicit']}; bar=exact")
     assert clearances["auto"] != clearances["registration"], (
@@ -478,6 +431,7 @@ def test_mixed_s_matrix_auto_ladder_matches_explicit_spacing(tmp_path):
 
 
 def _build_msl_thru(n_probes):
+    """With h_sub/dx = 254/80 = 3.175, the sheet lands on node 3 = 240 um, 14 um below the face it is drawn on."""
     from rfx import Box, Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
     from rfx.sources.sources import GaussianPulse
@@ -492,12 +446,6 @@ def _build_msl_thru(n_probes):
     sim.add_material("sub", eps_r=m._EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, m._H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face. The driver
-    # script this fixture borrows its constants from still runs the
-    # bisecting mesh (h_sub/dx = 254/80 = 3.175), so the sheet lands on
-    # node 3 = 240 um, 14 um below the face it is drawn on; the contract
-    # reports that offset rather than absorbing it. Redrawing the driver
-    # on-lattice belongs with the driver (scripts/diagnostics), not here.
     sim.add(Box((0.0, y_c - m._W_TRACE / 2, m._H_SUB),
                 (lx, y_c + m._W_TRACE / 2, m._H_SUB)), material="pec")
     pulse = GaussianPulse(f0=2.5e9, bandwidth=0.5)
@@ -528,8 +476,6 @@ def test_msl_three_probe_dump_replays_returned_s_and_records_five(tmp_path):
     _ladder_measurement("msl/dump", "n_probes_per_port", loaded.metadata["n_probes_per_port"], [3, 3])
     assert loaded.metadata["n_probes_per_port"] == [3, 3]
     replay = np.asarray(replay_smatrix_from_port_vi_dump(loaded).s_params)
-    # A47: independently refer the dump's line-reference power waves to the
-    # returned S's declared references, using the per-bin closed form.
     z = np.asarray(loaded.port_impedances)
     z_prime = np.asarray(result.reference_impedances)
     _ladder_measurement("msl/references", "dump_ohms", z.tolist(), "public dump reference")
@@ -547,8 +493,6 @@ def test_msl_three_probe_dump_replays_returned_s_and_records_five(tmp_path):
     error = difference / peak if peak > 0 else float("nan")
     _ladder_measurement("msl/replay", "max_abs_difference", difference, 1e-5 * peak)
     _ladder_measurement("msl/replay", "relative_S_error", error, 1e-5)
-    # Keep the spec's returned-S target, including its declared references.
-    # The dump's own production_smatrix is not a substitute for that target.
     assert np.all(np.isfinite(expected)) and peak > 0, "returned MSL S must be finite and nonzero"
     assert np.all(np.isfinite(replay)) and error <= 1e-5, (
         f"dump replay vs returned S: relative_error={error:.9g}, bar=1e-5, "
