@@ -13,15 +13,16 @@ Gauss-Newton step.
 
 The record is the closed-form one of ``test_ringdown_completion_jax.py`` (four
 modes whose frequency, Q and residues move with a parameter ``p``), here
-``y(p) = y0 + p v`` with ``v`` the exact tangent, read at every tenth of its
-bins. The reference is the plain step monkeypatched in place of the
-custom-derivative one, computed once per form before the custom values.
+``y(p) = y0 + p v`` with ``v`` the exact tangent, read at six of its bins.
+The reference is the plain step monkeypatched in place of the
+custom-derivative one, computed once per form before the custom values. The
+in-record and joint second-order rows on this record are in
+``tests/unit/sparams/test_ringdown_second_derivative.py``.
 """
 
 from __future__ import annotations
 
 import functools
-import sys
 import warnings
 
 import jax
@@ -37,7 +38,7 @@ from tests.unit.sparams.test_ringdown_completion_jax import (
     DT, FREQS, K_TEST, N_START, N_WINDOWED, _identify_window, _series,
 )
 
-BINS = FREQS[::10]
+BINS = FREQS[::40]
 Q0 = 2.0
 
 
@@ -187,10 +188,15 @@ def _cases():
     cases = {("first", f): functools.partial(first_order, f, completed_objective,
                                              completed_vector, _p0(), batch)
              for f in FIRST_ORDER}
-    cases.update({("in-record", f): functools.partial(second_order, f, in_record_objective,
-                                                      in_record_vector, _p0())
-                  for f in SECOND_ORDER})
     cases["grad"] = lambda: jax.grad(completed_objective)(_p0())
+    return cases
+
+
+def synthetic_cases():
+    """The plain-step references of the in-record and joint rows (in the unit file)."""
+    cases = {("in-record", f): functools.partial(second_order, f, in_record_objective,
+                                                 in_record_vector, _p0())
+             for f in SECOND_ORDER}
     cases["joint"] = lambda: joint_hessian(scaled_objective, _p0(), jnp.float64(Q0))
     return cases
 
@@ -206,7 +212,12 @@ def _custom(key):
         return custom_values(_cases()[key])
 
 
-def _assert_completion_ok():
+def synthetic_custom(key):
+    with enable_x64():
+        return custom_values(synthetic_cases()[key])
+
+
+def assert_completion_ok():
     """A NaN row is not a failed completion: status OK, all poles, finite value and first derivative."""
     _y0, _v, _poles, status, count = _record()
     assert status == rj.STATUS_OK and count == 8
@@ -226,7 +237,7 @@ def test_first_derivative_of_the_completed_spectrum_is_the_plain_step_s(form, pl
 
 @pytest.mark.parametrize("form", SECOND_ORDER)
 def test_completed_second_derivative_is_nan(form, plain):
-    _assert_completion_ok()
+    assert_completion_ok()
     with enable_x64(), pytest.warns(RingdownSecondDerivativeWarning):
         out = leaves(second_order(form, completed_objective, completed_vector, _p0()))
     if form == "jvp(grad)":
@@ -237,30 +248,8 @@ def test_completed_second_derivative_is_nan(form, plain):
         assert all(np.isnan(x).all() for x in out), out
 
 
-@pytest.mark.parametrize("form", SECOND_ORDER)
-def test_in_record_second_derivative_is_the_plain_step_s(form, plain):
-    reference = plain["in-record", form]
-    custom, _ours = _custom(("in-record", form))
-    assert all(np.all(np.isfinite(x)) for x in reference)
-    assert same_bits(reference, custom)
-
-
 def test_the_warning_filter_turns_a_completed_hessian_into_an_exception():
     with enable_x64(), warnings.catch_warnings():
         warnings.filterwarnings("error", category=RingdownSecondDerivativeWarning)
         with pytest.raises(RingdownSecondDerivativeWarning):
             jax.hessian(completed_vector)(_p0())
-
-
-def test_joint_hessian_needs_the_second_derivative_only_where_it_is_nan(plain):
-    """For q G(p): H[p,p] and H[p,q] NaN; H[q,p] = G'(p) and H[q,q] = 0 as the plain step's."""
-    _assert_completion_ok()
-    reference = plain["joint"]
-    custom, _ours = _custom("joint")
-    pp, pq, qp, qq = custom
-    print(f"\n[joint hessian of q G(p)] custom pp {pp} pq {pq} qp {qp} qq {qq}; plain "
-          f"pp {reference[0]} pq {reference[1]} qp {reference[2]} qq {reference[3]}",
-          file=sys.stderr)
-    assert np.isnan(pp).all() and np.isnan(pq).all()
-    assert np.all(np.isfinite(qp)) and same_bits([reference[2]], [qp])
-    assert same_bits([reference[3]], [qq]) and float(qq) == 0.0

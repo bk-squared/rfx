@@ -11,7 +11,8 @@ second derivative is bit for bit what the plain Gauss-Newton step gives, through
 the time-step scan, its checkpointing and the host identification callback.
 The probe-channel completion (the same box driven by a current source, two
 field probes) is checked the same way. Records of 600 steps, every tenth bin
-of 8-18 GHz.
+of 8-18 GHz. The in-record and joint second-order rows on the closed-form
+record of ``tests/contracts/test_ringdown_second_derivative.py`` are here too.
 """
 
 from __future__ import annotations
@@ -27,9 +28,10 @@ import pytest
 
 from rfx.errors import RingdownSecondDerivativeWarning
 from rfx.ringdown import RingdownSpec, _jax as rj, gradient_witness
+from tests._x64_compat import enable_x64
 from tests.contracts.test_ringdown_second_derivative import (
-    FIRST_ORDER, SECOND_ORDER, custom_values, first_order, joint_hessian, leaves,
-    plain_references, same_bits, second_order,
+    FIRST_ORDER, SECOND_ORDER, assert_completion_ok, custom_values, first_order, joint_hessian,
+    leaves, plain_references, same_bits, second_order, synthetic_cases, synthetic_custom,
 )
 from tests.unit.sparams import test_ringdown_probe_channels as probe_scene
 from tests.unit.sparams.test_ringdown_run import FREQS, _box
@@ -42,13 +44,13 @@ Q0 = 2.0
 @functools.lru_cache(maxsize=None)
 def _port_scene():
     sim = _box("uniform")
-    return sim, jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+    return sim, np.full(tuple(sim._build_grid().shape), 2.2, np.float32)
 
 
 @functools.lru_cache(maxsize=None)
 def _probe_scene():
     sim = probe_scene.box()
-    return sim, jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+    return sim, np.full(tuple(sim._build_grid().shape), 2.2, np.float32)
 
 
 def run(p, checkpoint=None):
@@ -257,3 +259,30 @@ def test_probe_in_record_second_derivative_is_the_plain_step_s(plain):
     custom, _ours = _custom("probe in-record grad(grad)")
     assert all(np.all(np.isfinite(x)) for x in reference)
     assert same_bits(reference, custom)
+
+
+@pytest.fixture(scope="module")
+def synthetic_plain():
+    with enable_x64():
+        return plain_references(synthetic_cases())
+
+
+@pytest.mark.parametrize("form", SECOND_ORDER)
+def test_synthetic_in_record_second_derivative_is_the_plain_step_s(form, synthetic_plain):
+    reference = synthetic_plain["in-record", form]
+    custom, _ours = synthetic_custom(("in-record", form))
+    assert all(np.all(np.isfinite(x)) for x in reference)
+    assert same_bits(reference, custom)
+
+
+def test_synthetic_joint_hessian_needs_the_second_derivative_only_where_it_is_nan(synthetic_plain):
+    """For q G(p): H[p,p] and H[p,q] NaN; H[q,p] = G'(p) and H[q,q] = 0 as the plain step's."""
+    assert_completion_ok()
+    reference = synthetic_plain["joint"]
+    pp, pq, qp, qq = synthetic_custom("joint")[0]
+    print(f"\n[synthetic joint hessian of q G(p)] custom pp {pp} pq {pq} qp {qp} qq {qq}; plain "
+          f"pp {reference[0]} pq {reference[1]} qp {reference[2]} qq {reference[3]}",
+          file=sys.stderr)
+    assert np.isnan(pp).all() and np.isnan(pq).all()
+    assert np.all(np.isfinite(qp)) and same_bits([reference[2]], [qp])
+    assert same_bits([reference[3]], [qq]) and float(qq) == 0.0
