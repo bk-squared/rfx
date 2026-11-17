@@ -233,7 +233,8 @@ def scaled_forward():
     return spectra, sim
 
 
-@pytest.mark.parametrize("transform", [pytest.param("grad", marks=pytest.mark.slow), "jit"])
+@pytest.mark.slow
+@pytest.mark.parametrize("transform", ["grad", "jit"])
 def test_a_traced_forward_reads_the_plane_wave_at_the_untraced_level(transform):
     spectra, sim = scaled_forward()
 

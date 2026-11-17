@@ -2,4 +2,5 @@
 
 - `run(ringdown=)` and `forward(ringdown=)` with `RingdownSpec(identification_probes=..., probe_freqs=...)` now accept a closed-box TF/SF plane wave along +x or −x (`ez`, `ey`, or `s`/`p` at theta 0) driven by the differentiated Gaussian. Before, every plane wave was refused.
 - The source-off check judges the plane wave by the values its box faces read from the incident line, E and H each by its own peak, replayed alone for the record length; the plane wave's row must stay at or below `source_off_tol` (1e-6) over the identification window, as a soft source's does. On a 2.5 mm mesh at 0.6 GHz the pulse leaves the faces after 863 steps, and a 2,000-step record reads 1.7e-7 over its main window.
+- `forward(ringdown=)` under `jax.grad` or `jax.jit` replays the line while the program is traced and reports the same level as the untraced call.
 - Still refused, each with its reason: the open slab, port mode, a continuous wave, the modulated Gaussian and custom waveforms, oblique and y- or z-directed incidence, and a plane wave beside a soft source.
