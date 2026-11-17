@@ -409,7 +409,6 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
         return assembly if prepare else PreflightReport()
     if assembly is not None:
         conductors = assembly.realized()
-    # Entry names are independent of whether these checks consume the overrides.
     traced_entry = dict(zip(
         ("eps_override", "sigma_override", "mu_r_override"), tfsf_material_overrides))
     # A validator bug must propagate, rather than become an advisory.

@@ -73,11 +73,11 @@ def emitting_sites():
 
 
 def test_code_completeness():
+    """Traced advisory skips add one model code; every existing code keeps its class."""
     sites = emitting_sites()
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    # Traced advisory skips add one model code; existing codes keep their class.
     assert len(CODE_SCOPE) == 103
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
         'object': 74, 'place': 2, 'model': 25, 'mixed': 2}

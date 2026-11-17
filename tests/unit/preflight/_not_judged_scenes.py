@@ -22,6 +22,4 @@ def build_scene(name):
 
 
 def issue_rows(report):
-    # All public issue fields, in emission order. No implementation helper from
-    # _not_judged participates in either the baseline or the comparison.
     return [issue.to_dict() for issue in report]

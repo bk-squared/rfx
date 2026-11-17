@@ -17,7 +17,6 @@ from rfx.core.jax_utils import is_tracer
 from rfx.errors import RfxError
 
 
-# Phase-1 Table 2, including declaration containers created after __init__.
 CONTAINER_METHODS = {
     "_domain": "Simulation",
     "_nominal_profiles": "Simulation",
@@ -43,7 +42,7 @@ CONTAINER_METHODS = {
     "_tfsf": "add_tfsf_source",
     "_wall_losses": "add_wall_loss",
     "_dft_plane_regions": "add_dft_plane_probe",
-    "_boundary_scalar_spec": "Simulation",  # boundary= scalar and its expanded face spec.
+    "_boundary_scalar_spec": "Simulation",
 }
 CONSTRUCTOR_PARAMETERS = {
     "_freq_max": "freq_max",
@@ -91,7 +90,7 @@ def _has_tracer(value, ancestors=frozenset()):
     elif isinstance(value, (list, tuple)):
         children = value
     else:
-        return False  # Arrays are leaves, never traversed or converted.
+        return False
     return any(_has_tracer(child, ancestors) for child in children)
 
 
@@ -146,7 +145,6 @@ class _Scope:
     seen: set = field(default_factory=set)
 
 
-# Snapshot and mutable set belong to this invocation, including nested checks.
 _scope: ContextVar[_Scope | None] = ContextVar("preflight_not_judged_scope", default=None)
 _check = ContextVar("preflight_not_judged_check", default=None)
 _report = ContextVar("preflight_not_judged_report", default=None)

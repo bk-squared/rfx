@@ -66,8 +66,6 @@ def test_p1_cylinder_center_graded(transform):
         sim.add_material("dielectric", eps_r=4.)
         sim.add(Cylinder((.006, .006, center), radius=.0021, height=.0072),
                 material="dielectric")
-        # subpixel_smoothing=True is a forward option, not a preflight option.
-        # Stop at preflight: traced z bounds reach _local_cell on the graded axis.
         reports.append(sim.preflight())
         return center * center
 
@@ -139,7 +137,6 @@ def test_p3_key_error_propagates(monkeypatch):
 @pytest.mark.parametrize("scene", SCENES)
 def test_p4_concrete_issues_frozen_on_main(scene):
     path = Path(__file__).with_name("data") / "not_judged_p4_frozen.json"
-    # The frozen main artifact must exist for this comparison.
     frozen = json.loads(path.read_text())
     assert frozen["base_commit"] == "084b5032b7d014f12b65b4b947cf61a840970bf4"
     actual = json.loads(json.dumps(issue_rows(build_scene(scene).preflight())))
@@ -147,10 +144,6 @@ def test_p4_concrete_issues_frozen_on_main(scene):
 
 
 def test_p5_forward_override_reaches_advisory(monkeypatch):
-    # An opt-in scalar-override advisory exercises the public extra-check API.
-    # Native waveguide checks deliberately use drawn geometry for traced
-    # overrides; TF/SF already reports its own unjudged-invariance warning.
-    # Stop at the gate, after real forward -> auto_preflight, before dispatch.
     class PreflightFinished(Exception):
         pass
 
@@ -187,15 +180,10 @@ def test_p5_forward_override_reaches_advisory(monkeypatch):
 
 
 def _assert_container_table(table):
-    # Derive coverage independently from constructor source AND a real instance.
-    # Annotations catch optional containers whose default is None. Destructured
-    # assignments such as domain, self._nominal_profiles are seen by ast.walk.
     tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation.__init__)))
     sim = build_scene("vacuum_without_source")
     required = {name for name, value in vars(sim).items()
                 if isinstance(value, (list, dict, tuple))}
-    # This unannotated optional dict is assigned by admit_graded_profiles;
-    # the default scene receives None, so its type is not observable there.
     required.add("_nominal_profiles")
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign) and isinstance(node.value, (ast.List, ast.Dict, ast.Tuple)):
