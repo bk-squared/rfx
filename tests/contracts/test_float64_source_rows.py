@@ -193,6 +193,8 @@ def test_e18_line_damping(realized):
         exponent = -sigma_max*rho**3*cfg.dt/EPS0
         expected = np.ones(cfg.n_nodes)
         expected[:length], expected[-length:] = np.exp(exponent[:length]), np.exp(exponent[length:])
+        assert cfg.line_damping[i].dtype == state.ex.dtype == jnp.float64
+        assert_value(cfg.line_damping[i], expected, np.ceil(4*np.max(np.abs(exponent)))+14, scale=expected)
 
 
 def test_e10_e11_delayed_window_launch(realized):
