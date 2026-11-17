@@ -549,9 +549,6 @@ def _openems_version(log_text: str) -> dict:
 
 
 def _timesteps_executed(log_text: str):
-    """In an earlier container log, the last progress line said 2146 while the run was
-    capped at 3000, because openEMS prints one only every few seconds.
-    """
     hits = [int(m.group(1)) for m in _TIMESTEP_RE.finditer(log_text)]
     return max(hits) if hits else None
 

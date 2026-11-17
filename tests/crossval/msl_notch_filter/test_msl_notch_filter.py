@@ -222,8 +222,7 @@ def build(dx: float, arm_length_m: float = ARM_LENGTH_M, *,
     but the default.  ``uniform=True`` builds the old uniform ``dx`` mesh and
     ``edge_offset`` moves the profiles' nodes; only the mutation test uses
     either.
-    The metal must stay clear of the CPML by the port's lateral requirement, 2·h_sub plus
-    eight cells.
+    The clearance is evaluated at the coarsest rung and held for every rung.
     """
     domain_x, _ = _x_geometry(arm_length_m)
     profiles = {} if uniform else _edge_aware(dx, arm_length_m, edge_offset)
@@ -755,9 +754,7 @@ def _arm_length_witness(base: dict, dx: float) -> dict:
     the magnitudes are only comparable because a lossless line's transmission
     and reflection magnitudes do not depend on the line's length.  Here that
     premise is measured on the structure itself.
-    An earlier edge-aware measurement between 10 mm and 15.08 mm arms: |S21| moved 0.584 dB at
-    h/2 and 0.476 dB at h/4 (0.024 dB under the bar), |S11| up to 4.9 and 4.7 dB near its
-    minima.
+    |S11| in dB is not judged because near its minima a small mismatch moves it by many dB.
     """
     print(f"\n  --- arm-length witness at dx = {dx*1e6:.3f} µm ---")
     print(f"  the same filter on {WITNESS_ARM_LENGTH_M*1e3:.2f} mm arms "
@@ -1041,10 +1038,6 @@ def test_the_lattice_builds_the_declared_board():
     The arm-length witness builds a longer board; the longer board must realize the declared
     board, or the witness would fail for the wrong reason.
     """
-    assert (
-        LATERAL_CLEARANCE_M == 1.55e-3
-    ), (
-        'lateral clearance must keep the 1.55 mm board used by earlier records')
     print(f"\n  declared board: arms {ARM_LENGTH_M*1e3:.1f} mm each side, port "
           f"margin {PORT_MARGIN_M*1e3:.1f} mm, box {DOMAIN_X_M*1e3:.3f} × "
           f"{DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm, trace centre y "

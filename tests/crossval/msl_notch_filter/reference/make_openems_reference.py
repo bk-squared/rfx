@@ -429,8 +429,9 @@ def _dry_run(stage: str, fine_factor: float) -> int:
 
 
 def _self_check(fine_factor: float) -> int:
-    """The checks read the builder's own source because comparing a plan value with the
-    constant the plan computed it from is a tautology.
+    """The port-plane, trace-centre-line and substrate-z-recipe checks read the builder's
+    own source because comparing a plan value with the constant the plan computed it
+    from is a tautology.
     """
     failures = []
     notes = []
