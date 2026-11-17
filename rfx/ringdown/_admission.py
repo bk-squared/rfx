@@ -1,5 +1,7 @@
 """Admission for ring-down completion requests."""
 
+import numpy as np
+
 from rfx.errors import RfxRefusal, RfxUnsupported
 from rfx.ringdown import RingdownSpec
 
@@ -14,6 +16,10 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
     if not isinstance(spec, RingdownSpec):
         raise TypeError(
             f"ringdown= takes a rfx.ringdown.RingdownSpec, got {type(spec).__name__}")
+    if spec.probe_normalization is not None and spec.probe_freqs is None:
+        raise RfxRefusal(
+            f"{caller}(ringdown=...): probe_normalization applies to completed probe "
+            "channels (probe_freqs=); this request completes port S-parameters.")
     if devices is not None and len(devices) > 1:
         raise RfxUnsupported(
             f"{caller}(ringdown=...) is not supported on the distributed lane "
@@ -57,6 +63,10 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
                 "offered in this version; run them as two calls")
         if not spec.identification_probes:
             raise RfxRefusal("probe_freqs completes the identification probes; none is declared")
+        if spec.probe_normalization is not None and getattr(sim, "_tfsf", None) is None:
+            raise RfxRefusal(
+                f"{caller}(ringdown=...): the incident normalization divides by the plane wave's "
+                "incident spectrum; this model has no plane wave.")
         if (getattr(sim, "_tfsf", None) is None
                 and not any(pe.is_soft_source and pe.waveform is not None for pe in sim._ports)):
             raise RfxRefusal("nothing drives the model")
@@ -141,6 +151,54 @@ def _refuse_plane_wave(sim, spec, caller: str) -> None:
         raise RfxUnsupported(
             f"{head}: the source-off check of a TF/SF plane wave together with a soft "
             "source is not measured; complete a model driven by the plane wave alone.")
+
+
+def refuse_incident_channels(caller: str, keys, bounds) -> None:
+    """Raise for an identification channel the incident spectrum cannot divide.
+
+    ``keys`` are the realized ``(component, (i, j, k))`` channels; ``bounds``
+    maps each axis to the inclusive node bounds of the total-field box (on x,
+    the incident line's slab). Only ey and ez are divided, by the incident E
+    at their x plane; a channel outside the box holds no incident field.
+    """
+    head = f"{caller}(ringdown=...)"
+    for component, index in keys:
+        if component not in ("ey", "ez"):
+            raise RfxUnsupported(
+                f"{head}: the incident normalization divides transverse E channels (ey, ez) "
+                f"by the incident E; {component} at cell {tuple(index)} is not one.")
+    for component, index in keys:
+        if not all(bounds[a][0] <= int(i) <= bounds[a][1] for a, i in zip("xyz", index)):
+            raise RfxUnsupported(
+                f"{head}: {component} at cell {tuple(index)} lies outside the total-field box "
+                f"(nodes {dict(bounds)}), where the incident field is not present.")
+
+
+def refuse_incident_bins(caller: str, keys, records, bins, dt):
+    """Return the incident divisor (nf, P) complex128, or raise for a record or bin it cannot form.
+
+    ``records`` hold the incident E per step at each channel's plane. A
+    traced record is refused before any host conversion. A bin where
+    |I_c(f)| is below ``RHO_LIMIT`` of its bound dt sum |i_c(n)| is refused.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.ringdown._incident_norm import RHO_LIMIT, incident_divisors
+
+    head = f"{caller}(ringdown=...)"
+    if is_tracer(dt) or any(is_tracer(r) for r in records):
+        raise RfxUnsupported(
+            f"{head}: the incident normalization forms its divisor on the host from the plane "
+            "wave's line, which is traced here.")
+    divisor, bound = incident_divisors(records, bins, float(dt))
+    rho = np.abs(divisor) / np.where(bound > 0, bound, 1.0)[None, :]
+    if np.any(rho < RHO_LIMIT):
+        k, c = (int(v) for v in np.argwhere(rho < RHO_LIMIT)[0])
+        component, index = keys[c]
+        raise RfxUnsupported(
+            f"{head}: the incident spectrum at {float(np.asarray(bins)[k]):.6g} Hz is "
+            f"{float(rho[k, c]):.1e} of its bound at {component} cell {tuple(index)}; the "
+            "normalized value there is not formed.")
+    return divisor
 
 
 def refuse_run_lane(lane: str, n_wire_ports: int) -> None:
