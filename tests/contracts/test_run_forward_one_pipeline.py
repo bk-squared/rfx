@@ -1,4 +1,4 @@
-"""run() and forward() are one pipeline: the leader's C1–C5 contract.
+"""run() and forward() are one pipeline: the C1–C5 contract.
 
 The literal exceptions are progress toward zero at 2.0, not tolerances.
 No solver helper supplies an expected value: the other fresh entry does.
@@ -116,6 +116,8 @@ ASSEMBLY_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-waveguide2-one-driven', 'uniform'),
+    ('P-waveguide2-one-driven', 'graded'),
     ('P-wire', 'graded'),
     ('P-wire', 'uniform'),
     ('P-wire-driven', 'graded'),
@@ -246,6 +248,8 @@ FIELD_ROWS = (
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
     ('P-waveguide', 'uniform'),
+    ('P-waveguide2-one-driven', 'uniform'),
+    ('P-waveguide2-one-driven', 'graded'),
     ('P-wire', 'graded'),
     ('P-wire', 'multi-device-graded'),
     ('P-wire', 'multi-device-uniform'),
@@ -376,8 +380,8 @@ def directions(declaration):
     return ('a', 'b') if declaration in PORTED else (None,)
 
 
-# Both entries refuse, but from two guards, not one check both call
-# (rfx-core-desk 2026-10-27). MSL and coaxial port refusals now share one
+# Both entries refuse, but from two guards, not one check both call.
+# MSL and coaxial port refusals now share one
 # check; RLC is admitted and compared in the tables above.
 TWO_GUARD_REFUSALS = {
 }
@@ -543,6 +547,19 @@ def check_fields(declaration, path, direction=None):
         pair = {entry: run_l2(BUILDERS[declaration], entry, path,
                               entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
     ids = outcomes(declaration, path, 'L2', pair, direction)
+    if declaration == 'P-waveguide2-one-driven':
+        ran = pair['run']['result'].waveguide_sparams
+        fwd = pair['forward']['result'].waveguide_sparams
+        assert ran.keys() == fwd.keys()
+        for name in ran:
+            assert ran[name].driven_port == fwd[name].driven_port == next(iter(ran))
+            for field in ('s11', 's21', 's_driven'):
+                a, b = np.asarray(getattr(ran[name], field)), np.asarray(getattr(fwd[name], field))
+                np.testing.assert_array_equal(np.isnan(a), np.isnan(b))
+                np.testing.assert_array_equal(a[np.isfinite(a)], b[np.isfinite(b)])
+                assert a.tobytes() == b.tobytes()
+                if field == 's_driven':
+                    assert np.isfinite(a).all()
     values = {entry: observables(value['result']) for entry, value in pair.items()}
     if port_s:
         # S was checked above on its measured column, with the cross-trace bar.
@@ -562,7 +579,7 @@ def check_fields(declaration, path, direction=None):
     classify(declaration, path, 'L2', differences, ids)
 
 
-ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-conformal', 'P-conformal') or row in (
+ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-conformal', 'P-conformal', 'P-waveguide2-one-driven') or row in (
     ('R-rlc', 'multi-device-graded'), ('R-rlc', 'multi-device-uniform'),
     ('PW-closed', 'multi-device-uniform'),
     ('C-full-tensor', 'graded'),
@@ -612,8 +629,8 @@ DECLARATION_REFUSAL_ROWS = {
 }
 
 MESSAGE_COMPARISON_ROWS = {
-    ('P-waveguide2', 'uniform'): 'One run() or forward() record supports a single waveguide port',
-    ('P-waveguide2', 'graded'): 'One run() or forward() record supports a single waveguide port',
+    ('P-waveguide2', 'uniform'): 'One run() or forward() record supports at most one driven waveguide port',
+    ('P-waveguide2', 'graded'): 'One run() or forward() record supports at most one driven waveguide port',
     ('C-full-tensor', 'multi-device-uniform'): 'is supported on a single-device Yee mesh only',
     ('C-full-tensor', 'multi-device-graded'): 'is supported on a single-device Yee mesh only',
     ('P-floquet', 'graded'): DECLARATION_REFUSAL_ROWS['P-floquet', 'graded'],
@@ -636,7 +653,7 @@ def raised_in_rfx(record):
 
 def same_raising_line(run, forward):
     # One refusal both entries call raises from one line; two guards with
-    # the same text do not (rfx-core-desk 2026-10-27).
+    # the same text do not.
     return (Path(run['raising_site'].rsplit(':', 1)[0]).resolve(),
             run['raising_site'].rsplit(':', 1)[1]) == (
         Path(forward['raising_site'].rsplit(':', 1)[0]).resolve(),

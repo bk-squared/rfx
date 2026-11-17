@@ -1,8 +1,6 @@
 """Tier-1 reproduction battery for the 2026-05-16 rfx code review.
 
-Each test makes one CRITICAL finding from
-``docs/research_notes/2026-05-16_rfx_review_and_refactor_roadmap.md``
-(Part A) executable, so the finding is either *confirmed* (the test
+Each test makes one CRITICAL finding executable, so the finding is either *confirmed* (the test
 reproduces the defect) or *refuted* (the test passes and the finding
 was overstated).
 
@@ -13,8 +11,7 @@ Convention:
 - A factual-but-not-defect finding ⇒ a plain characterization test
   that documents the actual behavior.
 
-Confirmed items here are candidates for promotion to
-``docs/agent-memory/rfx-known-issues.md`` once a fix lands."""
+"""
 
 from __future__ import annotations
 

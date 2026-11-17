@@ -3,8 +3,8 @@
 Issue #1038 moves duplicated helpers out of ``distributed.py`` /
 ``distributed_v2.py`` / ``distributed_nu.py`` into the existing shared
 ``rfx/runners/_distributed_common.py``, one leg at a time. Every leg is PURE
-CODE MOTION, and ``docs/agent-memory/development_methodology.md`` §2.2 gates a
-code-motion refactor on BIT IDENTITY -- ``np.array_equal`` on the raw arrays,
+CODE MOTION, and the code-motion rule gates a
+refactor on BIT IDENTITY before and after -- ``np.array_equal`` on the raw arrays,
 never a tolerance -- not on "the physics still looks right".
 
 This module is that gate. It drives each runner end to end on the smallest
@@ -1219,7 +1219,7 @@ def test_the_package_no_longer_exports_run_distributed():
     assert v1.run_distributed is not v2.run_distributed, (
         "rfx.runners.distributed.run_distributed and "
         "rfx.runners.distributed_v2.run_distributed collapsed to one object. "
-        "PI decision 2026-09-15 is that v1 is NOT merged into v2 -- they are "
+        "v1 is NOT merged into v2 -- they are "
         "not bit-identical and they disagree on the odd-nx rule.")
     assert v1.run_distributed.__module__ == "rfx.runners.distributed"
     assert v2.run_distributed.__module__ == "rfx.runners.distributed_v2"

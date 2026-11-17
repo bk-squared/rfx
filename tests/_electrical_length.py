@@ -1,4 +1,4 @@
-"""A line's electrical length: the v2 accuracy bar's phase item (PI 2026-09-24).
+"""A line's electrical length: the v2 accuracy bar's phase item.
 
 A lossless line between two reference planes transmits with
 ``S21 = exp(-j beta L)``. Its phase falls as the frequency rises, by ``2 pi``

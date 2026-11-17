@@ -31,7 +31,7 @@ from rfx.api._port_kind import PortKind
 from rfx.geometry.csg import Shape
 from rfx.sources.sources import GaussianPulse
 from rfx.materials.debye import DebyePole
-from rfx.materials.lorentz import LorentzPole
+from rfx.materials.lorentz import LorentzPole, LorentzPoleMap
 
 
 # ---------------------------------------------------------------------------
@@ -1057,7 +1057,7 @@ class MaterialSpec:
     sigma: float = 0.0
     mu_r: float = 1.0
     debye_poles: list[DebyePole] | None = None
-    lorentz_poles: list[LorentzPole] | None = None
+    lorentz_poles: list[LorentzPole | LorentzPoleMap] | None = None
     chi3: float = 0.0  # Third-order Kerr susceptibility (m^2/V^2)
 
 
@@ -1186,20 +1186,7 @@ class _FloquetPortEntry:
     amplitude: float
 
 
-class WaveguideSParamResult(NamedTuple):
-    """High-level calibrated waveguide S-parameter data."""
-    freqs: np.ndarray
-    s11: np.ndarray
-    s21: np.ndarray
-    calibration_preset: str
-    source_plane: float
-    measured_reference_plane: float
-    measured_probe_plane: float
-    reference_plane: float
-    probe_plane: float
-
-
-from rfx.api._waveguide_result import WaveguideSMatrixResult
+from rfx.api._waveguide_result import WaveguideSMatrixResult, WaveguideSParamResult
 
 class CoaxialLineReflectionResult(NamedTuple):
     """One-port reflection from the validated coaxial transmission-line method.

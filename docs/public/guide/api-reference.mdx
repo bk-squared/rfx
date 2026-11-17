@@ -27,6 +27,7 @@ result = sim.run(n_steps=...)                                 # solve -> Result
 |---|---|---|
 | `Simulation(freq_max, domain, *, dx, boundary, cpml_layers, dz_profile, ...)` | domain, mesh, boundaries | [Simulation](/rfx/api/simulation/#constructor) |
 | `add_material(name, *, eps_r, sigma, mu_r, debye_poles, lorentz_poles)` | a named material | [Geometry & Materials](/rfx/api/geometry-materials/#materials) |
+| `LorentzPoleMap(omega_0, delta, kappa)`, `drude_pole_map(omega_p, gamma)`, `lorentz_pole_map(delta_eps, omega_0, delta)` | one pole with scalar or callable strength and damping; callables receive X, Y, Z in metres at realized cell centres on uniform and graded meshes | [Generated reference](/rfx/api/generated/) |
 | `add(shape, *, material)` | fill a `Box`, `Sphere`, `Cylinder`, `PolylineWire`, `Via`, `MeshShape`... | [Geometry & Materials](/rfx/api/geometry-materials/#placing-shapes) |
 | `add_thin_conductor(shape, *, surface_impedance_f0=None)` | a copper sheet | [Geometry & Materials](/rfx/api/geometry-materials/#metal-sheets) |
 | `add_wall_loss(*, sigma_bulk, f0, shape=None, faces=None)` | conductor loss on opaque PEC walls | [Support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md) |

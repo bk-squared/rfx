@@ -6,7 +6,7 @@ edited into §5. One attempt per arm (R2). Lane: nu-mesh. Tracker: #810 (the
 graded-mesh S-parameter question) and #928 (the case).
 **Tree:** branch `nu/msl-notch-graded` on top of `crossval/msl-notch-filter`
 (PR #1177, the case this arm extends); main 12da9104 is contained.
-**Written by** the NU lane leader on 2026-09-22 after
+**Written** on 2026-09-22 after
 reading the case, the MSL port's graded-mesh paths, the band-profile builder,
 the edge-offset builder and the ledger entries named below, and after one
 build-only feasibility run on CPU (§2).
@@ -41,12 +41,12 @@ asked for.
 | reference | openEMS 0.37.0 running its own `MSL_NotchFilter.py` on 50 mm arms; judged stage `stage_b_fine`: notch **3.67436 GHz**; band 2–7 GHz | `reference/openems_tutorial.json`, `reference/PROVENANCE.md` |
 | bar (v2) | notch within 1 %; \|S21\| within 2 dB where both curves are above −20 dB; mesh statement: last two rungs within 1 % | the case's `FREQ_BAR`, `MAG_BAR_DB`, `DEEP_NULL_DB`, `LADDER_AGREEMENT` |
 | witnesses on rfx's record | ring-down ≤ −40 dB per driven run; passivity excess ≤ 0.01 | the case's `SETTLING_DB`, `PASSIVITY_EXCESS_BAR` |
-| uniform ladder (for the cost and cross-ladder comparison) | h/2, h/4, h/6 → 3.8813, 3.8034, 3.7537 GHz; 0.79 / 4.59 / 13.8 M cells; 24 / 132 / 661 s; extrapolated limit 3.67 GHz | ledger `rfx-known-issues.md` 2026-09-22 entry; PR #1177 body |
+| uniform ladder (for the cost and cross-ladder comparison) | h/2, h/4, h/6 → 3.8813, 3.8034, 3.7537 GHz; 0.79 / 4.59 / 13.8 M cells; 24 / 132 / 661 s; extrapolated limit 3.67 GHz | recorded 2026-09-22 entry; PR #1177 body |
 | edge rule | a PEC sheet's in-plane edge is solved 0.35 cell beyond its last node (0.31–0.37 for a strip over ground) | `rfx/mesh_edges.py` docstring, `EDGE_OFFSET` |
 | MSL port on a graded mesh | `mode="laplace"` only; per-cell sizes read at the trace's first width cell and the substrate's first normal cell, uniform inside the port box assumed; probe planes must be set explicitly when the propagation axis is graded | `rfx/sparams/msl.py:280-296`, `rfx/sources/msl_port.py:755-830`, preflight text of §2 |
 | prior art | a graded transition adjacent to the substrate SPLITS the microstrip mode (cv05, 2026-07-16): the fine band must contain the whole substrate with no transition next to it | ledger history 2026-07-16; #1083 results note §8 |
 
-## 2. What the leader verified on this tree (FACT) and what is not yet measured (ASSUMPTION)
+## 2. What was verified on this tree (FACT) and what is not yet measured (ASSUMPTION)
 
 FACT — a build-only run (no time step) of the board below on the current
 tree, `scratchpad/notch/graded_feasibility.py`, CPU, jax 0.10.2:
@@ -228,9 +228,9 @@ passes on CPU; `scripts/ci/local.sh` green.
 
 ## 10. Who does what
 
-Implementation: one Opus instance from this note alone. The leader reads the
-JSON, the figure and the preflight text, and writes the Results section and
-every sentence that interprets a number. Review: a separate Opus instance,
+Implementation: one Opus instance from this note alone. The Results section and
+every sentence that interprets a number are written after the JSON, the figure
+and the preflight text are read. Review: a separate Opus instance,
 fresh eyes, one round; P1/P2 fixes back to the same reviewer. Documentation
 mismatches go to #1171.
 
@@ -438,7 +438,7 @@ Both sides of the two cost ratios are grid cells and wall seconds measured by th
 
 The GPU model is not recorded for A_on, A_off, B_off, C_off, A_off_longarms: those arms ran before the instrument read `device_kind`, and their blocks are left as they were measured rather than back-filled.
 
-### Conclusions (leader, after reading the record, the eight figures, R.0 and A.1)
+### Conclusions (after reading the record, the eight figures, R.0 and A.1)
 
 **The physics.** On a mesh that is fine only across the metal edges and through
 the substrate, the stub notch converges from above along the substrate-cell

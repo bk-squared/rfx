@@ -5,7 +5,7 @@ boundaries, a mesh and observers. Several paths step it in time, and each one
 reads only part of the declaration. An input a path does not read is solved as
 if it had not been declared, and nothing in the result says so: a Kerr block
 comes back linear, a microstrip port launches nothing, a periodic wall is
-solved as a metal one. The PI's rule (2026-09-24) is that a physics input a
+solved as a metal one. A physics input a
 path does not implement is refused before the first step. This table records,
 for every attribute and every path, which of these holds:
 
@@ -32,7 +32,8 @@ not production support; earlier production-envelope refusals remain refused.
 Where the cells are checked
 ---------------------------
 * ``tests/contracts/test_path_disposition.py``: every attribute of a fresh
-  ``Simulation`` has a row, every row has a cell on every column, the lane
+  ``Simulation`` and every registered declaration has a row or a reason in
+  ``PENDING_ROWS``, every row has a cell on every column, the lane
   columns are the lanes ``_dispatch_plan`` returns plus the declared kernel
   routes, and every function in ``rfx/`` that reaches a time-stepping kernel
   or steps fields is registered.
@@ -85,6 +86,14 @@ Not ``Simulation`` paths, because they take a ``Grid``: ``rfx.run``,
 from __future__ import annotations
 
 from typing import NamedTuple
+
+# Lazy declarations whose rows require product changes to lane admission.
+PENDING_ROWS = {
+    "_wall_losses": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+    "_dft_plane_regions": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+}
 
 CARRIES = "carries"
 REFUSES = "refuses"
@@ -982,7 +991,7 @@ def executable(attr: str) -> bool:
 
 # Calculator cells are independent of the production admission lists.
 # Each entry below records the assembly/scan inspected for that calculator.
-# Observers retain their existing behaviour (leader decision, RESUME1).
+# Observers retain their existing behaviour.
 CALCULATOR_CELLS = {
     ('_freq_max', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),

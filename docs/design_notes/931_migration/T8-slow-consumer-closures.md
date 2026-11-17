@@ -9,7 +9,7 @@ The scope covers repairs to nine tests and numerical attribution of two
 others. The historical MSL and V173A locks are unchanged:
 those two tests, their fixtures and their baselines are unchanged.
 
-No `docs/agent-memory/` directory exists in this worktree. The read-first
+The read-first
 substitutes are the normative
 [`#931 contract`](../20260906_plan_realign_lattice_ownership.md),
 [`T7 stop and evidence`](T7-slow-interaction-stop.md), and the review at

@@ -628,8 +628,7 @@ def test_waveguide_reference_plane_device_overlap_skips_a_shape_with_no_bbox():
 # instance of the #500 interior-frame bug. The reference position is the
 # exterior-frame domain edge (_absorber_boundary_for_axis) PLUS an
 # EXPLICIT, separately-calibrated buffer (cpml_thick_{lo,hi} = n_cpml*dx)
-# — docs/agent-memory/rfx-known-issues.md "Status 2026-05-04 (CALIBRATED,
-# OpenEMS-class)": with LY = W + 6*dx at dx=80um/cpml_layers=8 "the trace
+# (CALIBRATED, OpenEMS-class): with LY = W + 6*dx at dx=80um/cpml_layers=8 "the trace
 # ended up INSIDE the CPML overlap region (negative clearance)" and Z0
 # drifted UP with refinement instead of converging to Hammerstad's
 # 47.89 Ohm; the fix requires LY >= W + 2*(2*h_sub + 8*dx). An earlier
@@ -663,7 +662,7 @@ def _msl_x_clearance_sim(dx: float, port_x: float, cpml_layers: int = 8) -> Simu
 
 
 def _msl_y_clearance_sim(dx: float, ly: float, cpml_layers: int = 8) -> Simulation:
-    """Mirrors docs/agent-memory/rfx-known-issues.md's 2026-05-04 mesh-conv
+    """Mirrors the 2026-05-04 mesh-conv
     fixture (LY parametrized, port_x fixed comfortably clear of x-CPML)."""
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,

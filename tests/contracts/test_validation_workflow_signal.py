@@ -39,8 +39,7 @@ reddening anything:
 
 The notifier tests parse ``validation.yml`` so reformatting cannot fool them.
 A separate contract scans every workflow for forbidden VESSL dependencies.
-GPU and monthly full-ladder checks now run from the merge train's Mac runner
-in agent-rules.
+GPU and monthly full-ladder checks now run from the merge train's Mac runner.
 """
 
 from __future__ import annotations

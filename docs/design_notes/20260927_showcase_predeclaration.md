@@ -1,7 +1,7 @@
 # Pre-declaration: showcase results from the current code (issue 1332, first batch)
 
 **Status: PRE-DECLARATION. Written and pushed before any job of this batch was submitted.**
-Nothing below comes from a run of this batch. The thresholds are the lane leader's, set in the
+Nothing below comes from a run of this batch. The thresholds are set in the
 brief for issue 1332 on 2026-09-27; this note copies them. It defines no threshold of its own.
 
 Four results, each with a check that does not use the gradient to check itself:
@@ -199,15 +199,15 @@ unchanged pytest ladder in its own job: `scripts/vessl_showcase_ladder_<case>.ya
 - It does not converge the sensitivity map with the mesh. The map is at one rung, h/4.
 - It runs no external solver.
 - It adds no page under `docs/public/`; the site pages are a later PR.
-- Interpretation of any number is the lane leader's, after the records are read. Records and PR
-  carry facts and a "Conclusion: (leader)" placeholder.
+- Interpretation of any number follows reading the records. Records and PR
+  carry facts and a "Conclusion: (to be written)" placeholder.
 
-## Amendment 1: the lane leader's answers of 2026-09-27
+## Amendment 1: answers of 2026-09-27
 
-The lane leader answered the three open questions on 2026-09-27. The answers arrived after the first
+The three open questions were answered on 2026-09-27. The answers arrived after the first
 patch and AR runs had finished: patch 369367265539 and AR 369367265547, both archived as the first
 runs. This amendment was committed before the reruns it governs were submitted. Its one new
-threshold, 0.05 for the record-length witness, is the leader's. It is the value the public
+threshold, 0.05 for the record-length witness, is the value the public
 Gradient Behavior page uses with `gradient_record_length_witness`, and it was not taken from
 any run.
 

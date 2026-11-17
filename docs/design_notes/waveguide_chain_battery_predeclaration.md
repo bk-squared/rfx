@@ -36,20 +36,19 @@ construction, import `rfx/probes/refplane.py` into the waveguide path, or use
 
 ## 1. Memory (R1)
 
-Line numbers are those of `docs/agent-memory/rfx-known-issues.md` in the primary checkout
-on 2026-09-02; the plan's numbers (in parentheses) drifted by a few lines since its base.
+The entries below were read on 2026-09-02.
 
-- **`:3096-3112` (plan `:3093-3099`)** — "End-to-end AD through `compute_*_s_matrix` —
+- **Waveguide end-to-end AD** — "End-to-end AD through `compute_*_s_matrix` —
   RESOLVED 2026-05-25 … public-API `jax.grad` flows, FD↔AD rel_err 2.0e-4." *Consistent*:
   the battery adds objectives and fixtures on top of a working tape; it re-implements no
   assembly. Expected order for leg (a) below is taken from this number.
-- **`:3397-3408` (plan `:3384-3395`)** — "The two-run diagonal formula
+- **Two-run diagonal formula** — "The two-run diagonal formula
   `S11 = (b_dev − b_ref)/a_ref` does NOT cancel Yee dispersion for reflection … ±10–20 %
   |S11| error with `normalize=True`." *Consistent*: lanes are `normalize=False` and
   `normalize="flux"` only. Consequence recorded in §5(b): the complex-S21 invariance pinned at
   `tests/unit/sparams/test_waveguide_twoport_contract_v1.py:276` is a two-run cancellation of that lane and
   is **not** the expectation here.
-- **`:4106-4125` (plan `:4093-4112`)** and **`:4120`** — "The offset is a time-convention
+- **Time-convention conjugation** (two entries) — "The offset is a time-convention
   conjugation … `S21_meep ≈ conj(S21_rfx)` … Do not de-embed by the fitted slope/intercept;
   conjugate the Meep data." *Consistent*: the only phase referee in this battery is the
   analytic Airy oracle in rfx's own `exp(+jωt)` convention (`airy_slab`,
@@ -57,14 +56,14 @@ on 2026-09-02; the plan's numbers (in parentheses) drifted by a few lines since 
   reference planes with `exp(−2jβd)` / `exp(−jβ(d_L+d_R))`
   (`build_waveguide_band_broad_e5_phase_envelope.py:47-50`, `:134-137`). No external phase
   data enters; if one ever does, it is conjugated first.
-- **`:4315`** — "Do-not-repeat: never anchor a drive-side wave at the port cell." *Consistent*:
+- **Port-cell anchoring** — "Do-not-repeat: never anchor a drive-side wave at the port cell." *Consistent*:
   probe planes sit 25.40 mm (10 / 20 / 40 cells) inward of each port plane at every rung.
-- **`:3718-3726` (plan `:3705-3716`)** — "The `aperture_dA` DROP-weight workaround in
+- **Aperture DROP weight** — "The `aperture_dA` DROP-weight workaround in
   `init_waveguide_port` (zero out the boundary cell) trades a ∑aperture_dA mesh-convergence
   regression for clean PEC-short |S11| / reciprocity." *Consistent*: the dx ladder declares the
   staircase envelope of the current extractor; it does not reopen the weight. A ladder result
   is never a reason to change the weight.
-- **`:3525` (plan `:3512`)** — "Production `compute_waveguide_s_matrix` on PEC-short geometry
+- **PEC-short spread** — "Production `compute_waveguide_s_matrix` on PEC-short geometry
   returns spread 0.0004 at R=1 — Meep-class." *Consistent*: the magnitude floor 0.005 in the
   ladder gate is 12× that spread.
 - **`project_issue527_f32_comparator`** (auto-memory) — "The load-bearing change is not f64 —
@@ -259,7 +258,7 @@ witness `max_f |S11| > 0.20` on both DUTs (the form at `:266`). By the Airy orac
   (`tests/unit/autodiff/test_sparam_ad_end_to_end.py:298`, `tests/unit/autodiff/test_waveguide_flux_ad.py:84`).
 - Forward identity alongside (contract criterion 1): S under the θ = 0 traced override equals
   the untraced call to `rtol=1e-5, atol=1e-7` (`tests/unit/autodiff/test_waveguide_flux_ad.py:104`).
-- **Expected order**: rel ≈ 1e-3 (ledger 2.0e-4 at `:3110`). **Corrected 2026-09-08**:
+- **Expected order**: rel ≈ 1e-3 (recorded 2.0e-4). **Corrected 2026-09-08**:
   PEC-short |S11|² under a lossless eps θ has a physically zero derivative (|S11| = 1 for any
   lossless window). This does NOT predict an ULP-floor skip: a finite-record discrete
   extractor can resolve a small nonzero residual accurately. Remove this objective
@@ -316,8 +315,8 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
 `fine_delta = |S(1.27) − S(0.635)|`, phases wrapped.
 
 - **Gate**: `fine_delta ≤ coarse_delta + floor`, floor **0.005** for magnitudes
-  (`tests/oracle/test_waveguide_port_validation_battery.py:474`; 12× the 0.0004 PEC-short spread at
-  ledger `:3525`) and **1°** for phases. Stated limitation, from the contract: this is a
+  (`tests/oracle/test_waveguide_port_validation_battery.py:474`; 12× the recorded 0.0004 PEC-short
+  spread) and **1°** for phases. Stated limitation, from the contract: this is a
   non-increase test — a lane stuck at a wrong value passes it.
 - **Witness (i), report-first**: monotonicity of the three-point sequence and the
   successive-delta ratio `fine_delta / coarse_delta`, written per observable and bin.
@@ -380,13 +379,13 @@ Observables, every bin evaluated, worst bin reported: slab |S11|, |S21|, ∠S21;
 
 | leg | expected | source of the expectation |
 |---|---|---|
-| (a) rel(AD, FD) | ~1e-3 | ledger `:3110`, 2.0e-4 |
+| (a) rel(AD, FD) | ~1e-3 | recorded entry, 2.0e-4 |
 | (a) PEC-short \|S11\|² under eps θ | FD span under floor → skip | \|S11\| = 1 for any lossless window |
 | (b) \|S\| under the shift | unchanged to rounding | unit-modulus factor |
 | (b) ∠S11, ∠S22, ∠S21 | table in §5(b) | shift algebra at `waveguide_port.py:1681-1682` |
 | (b) magnitude-gradient change | ~1e-6 against the 1e-2 bar | rounding only |
 | (c) ratio fine/coarse delta | 0.25–0.5 where asymptotic; coarse slab rung may be outside | Yee second order; interface/staircase first order |
-| (d) PEC-short \|S11\| | 0.99–1.03 with ≈ 0.0004 spread | `battery:541-554`, ledger `:3525` |
+| (d) PEC-short \|S11\| | 0.99–1.03 with ≈ 0.0004 spread | `battery:541-554`, recorded entry |
 | (d) slab vs Airy | ≤ 0.05, ≤ 15°; E5 envelopes measured 0.0114 / 11.99° worst | `envelope.py:28-33`, `phase_envelope.py:95-99` |
 | §6 column power, reciprocity | ≈ 1.0005, ≈ 0.0005 | `battery:304-307`, `:338-340` |
 
@@ -420,7 +419,7 @@ gate does not bind.
 
 ---
 
-R3: memory=rfx-known-issues.md:3096-3112,:3397-3408,:4106-4125,:4315,:3718-3726,:3525 + project_issue527_f32_comparator | R2-attempts=0 (no measurement in this lane) | falsifier=tests/unit/geometry/test_waveguide_chain_battery_geometry.py — 15 checks pass in 4.7 s CPU; a face moved off the 2.54 mm lattice or a rung not dividing a goes red before any physics runs
+R3: memory=recorded chain-battery entries + project_issue527_f32_comparator | R2-attempts=0 (no measurement in this lane) | falsifier=tests/unit/geometry/test_waveguide_chain_battery_geometry.py — 15 checks pass in 4.7 s CPU; a face moved off the 2.54 mm lattice or a rung not dividing a goes red before any physics runs
 
 ---
 

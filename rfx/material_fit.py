@@ -18,10 +18,12 @@ complex permittivity.
 from __future__ import annotations
 
 from typing import NamedTuple
+import warnings
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import lsq_linear, minimize
 
+from rfx.errors import AccuracyWarning
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 
@@ -163,17 +165,39 @@ def _debye_model(freqs: np.ndarray, eps_inf: float,
     return eps
 
 
+_EPS_INF_FLOOR = 1.0
+
+
+def _warn_fit_bounds(eps_inf, *, free_eps_inf=True, flags=(), suggest_placed=False):
+    """Report all active fit bounds once, sharing the permittivity floor."""
+    messages = list(flags)
+    if free_eps_inf and eps_inf - _EPS_INF_FLOOR <= 1e-6:
+        messages.insert(0, f"eps_inf={eps_inf:g} is at the floor {_EPS_INF_FLOOR:g}")
+    elif not free_eps_inf and eps_inf < _EPS_INF_FLOOR:
+        messages.append(
+            f"fixed eps_inf={eps_inf:g} is below {_EPS_INF_FLOOR:g}; this model needs "
+            "a time step at most sqrt(eps_inf) of the vacuum Courant limit")
+    if messages:
+        if suggest_placed:
+            messages.append('Consider tau="placed" for a fit with placed relaxation times')
+        warnings.warn("; ".join(messages), AccuracyWarning, stacklevel=3)
+
+
 def fit_debye(
     freqs: np.ndarray,
     eps_measured: np.ndarray,
     n_poles: int = 1,
     *,
     eps_inf: float | None = None,
+    tau: str = "free",
 ) -> DebyeFitResult:
     """Fit Debye relaxation model to measured permittivity data.
 
-    Uses ``scipy.optimize.minimize`` (L-BFGS-B) to find optimal Debye pole
-    parameters that minimize the relative RMS error.
+    The real and imaginary residuals are each divided by their table RMS;
+    loss below 1e-6 of the real RMS uses the real RMS instead.
+    A free ``eps_inf`` is bounded below at 1. Relaxation times lie between
+    1/(2*pi*f_hi) and 1/(2*pi*f_lo), with f_lo = max(min(freqs), 1 Hz)
+    and f_hi = max(freqs).
 
     Model:
         eps(f) = eps_inf + sum_k delta_eps_k / (1 + j*2*pi*f*tau_k)
@@ -189,14 +213,29 @@ def fit_debye(
     eps_inf : float or None
         If provided, fix the high-frequency permittivity. If None, it is
         included as a free parameter (initialized from the highest-frequency
-        measurement).
+        measurement), with a lower bound of 1. A fixed value below 1 is
+        retained with an AccuracyWarning about the required time step.
+    tau : {"free", "placed"}
+        "free" (default) optimizes relaxation times with L-BFGS-B.
+        "placed" uses log-spaced times including both span ends (the
+        geometric centre for one pole) and bounded linear least squares
+        for eps_inf and nonnegative pole strengths.
 
     Returns
     -------
     DebyeFitResult
         Named tuple with ``eps_inf``, ``poles`` (list of DebyePole), and
-        ``fit_error`` (relative RMS).
+        ``fit_error`` (RMS complex residual divided by RMS measured magnitude).
+
+    Notes
+    -----
+    For constant eps' 1.1 and tan delta 0.1 over 1–40 GHz, neither mode
+    fits within 10% over 2–20 GHz: at n_poles 3 and 4 the default's worst
+    tan delta error is 13.1% and eps' error 15.6%, with eps_inf at 1;
+    "placed" gives worst tan delta errors of 15.0% and 14.7%, respectively.
     """
+    if not isinstance(tau, str) or tau not in ("free", "placed"):
+        raise ValueError('tau must be "free" or "placed"')
     freqs = np.asarray(freqs, dtype=np.float64)
     eps_measured = np.asarray(eps_measured, dtype=np.complex128)
 
@@ -204,6 +243,37 @@ def fit_debye(
     norm = np.sqrt(np.mean(np.abs(eps_measured) ** 2))
     if norm == 0:
         norm = 1.0
+
+    w_re = float(np.sqrt(np.mean(eps_measured.real ** 2)))
+    rms_im = float(np.sqrt(np.mean(eps_measured.imag ** 2)))
+    w_im = rms_im if rms_im > 1e-6 * w_re else w_re
+    tau_lo = 1.0 / (2 * np.pi * freqs.max())
+    tau_hi = 1.0 / (2 * np.pi * max(freqs.min(), 1.0))
+
+    if tau == "placed":
+        taus = (np.geomspace(tau_lo, tau_hi, n_poles) if n_poles > 1
+                else np.array([np.sqrt(tau_lo * tau_hi)]))
+        design = 1 / (1 + 2j * np.pi * freqs[:, None] * taus[None, :])
+        if eps_inf is None:
+            design = np.column_stack([np.ones(len(freqs)), design])
+            target = eps_measured
+            lower = np.r_[_EPS_INF_FLOOR, np.zeros(n_poles)]
+        else:
+            target = eps_measured - eps_inf
+            lower = np.zeros(n_poles)
+        solution = lsq_linear(
+            np.vstack([design.real / w_re, design.imag / w_im]),
+            np.r_[target.real / w_re, target.imag / w_im],
+            bounds=(lower, np.inf), method="bvls")
+        ei = float(solution.x[0]) if eps_inf is None else float(eps_inf)
+        strengths = solution.x[1:] if eps_inf is None else solution.x
+        poles = [DebyePole(float(d), float(t)) for d, t in zip(strengths, taus)]
+        flags = [f"pole {k + 1} delta_eps=0; fewer poles fit this table as well"
+                 for k, d in enumerate(strengths) if d == 0]
+        _warn_fit_bounds(ei, free_eps_inf=eps_inf is None, flags=flags)
+        fitted = _debye_model(freqs, ei, [(p.delta_eps, p.tau) for p in poles])
+        error = float(np.sqrt(np.mean(np.abs(fitted - eps_measured) ** 2)) / norm)
+        return DebyeFitResult(ei, poles, error)
 
     # Initial guesses
     fit_eps_inf = eps_inf is None
@@ -234,14 +304,14 @@ def fit_debye(
 
     if fit_eps_inf:
         x0.append(eps_inf_init)
-        bounds.append((0.5, None))
+        bounds.append((_EPS_INF_FLOOR, None))
 
     for k in range(n_poles):
         de_init = delta_eps_total / n_poles
         x0.append(np.log10(max(de_init, 1e-6)))
         bounds.append((np.log10(1e-6), np.log10(1e4)))
         x0.append(np.log10(tau_guesses[k]))
-        bounds.append((np.log10(1e-15), np.log10(1e-3)))
+        bounds.append((np.log10(tau_lo), np.log10(tau_hi)))
 
     x0 = np.array(x0)
 
@@ -265,13 +335,20 @@ def fit_debye(
         ei, poles_list = _unpack(x)
         eps_model = _debye_model(freqs, ei, poles_list)
         residual = eps_model - eps_measured
-        return float(np.sqrt(np.mean(np.abs(residual) ** 2)) / norm)
+        return float(np.sqrt(np.mean((residual.real / w_re) ** 2
+                                     + (residual.imag / w_im) ** 2)))
 
     result = minimize(_objective, x0, method="L-BFGS-B", bounds=bounds,
                       options={"maxiter": 5000, "ftol": 1e-14})
 
     ei_opt, poles_opt = _unpack(result.x)
     debye_poles = [DebyePole(delta_eps=de, tau=tau) for de, tau in poles_opt]
+
+    flags = [f"pole {k + 1} delta_eps={p.delta_eps:g} is at its floor; "
+             "fewer poles fit this table as well"
+             for k, p in enumerate(debye_poles) if p.delta_eps / 1e-6 - 1 <= 1e-6]
+    _warn_fit_bounds(ei_opt, free_eps_inf=fit_eps_inf, flags=flags,
+                     suggest_placed=True)
 
     # Final error
     eps_fitted = _debye_model(freqs, ei_opt, poles_opt)
@@ -482,6 +559,8 @@ def eval_lorentz(freqs: np.ndarray, eps_inf: float,
     -------
     eps_complex : (N,) complex array
     """
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(poles, "material_fit.eval_lorentz")
     # Straight from the pole fields: eps = eps_inf + sum kappa / (w0^2 - w^2 + 2j*delta*w).
     # For w0 > 0 this is the Lorentz form (kappa = delta_eps * w0^2). It used to
     # go through delta_eps = kappa / w0^2 and set delta_eps = 0 when w0 == 0, so a

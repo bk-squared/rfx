@@ -19,7 +19,7 @@ not implemented`` (#1354), and 0.10.2 ran the solve uncompiled.
 One tiny model per host-read class (wire port, MSL port, graded lumped port,
 NTFF box with a far-field loss), on the uniform and graded lanes, under
 ``jax.jit(jax.value_and_grad)`` with a design input and ``jax.jit`` with no
-traced input. Each must trace and agree with the plain call under the PI's
+traced input. Each must trace and agree with the plain call under the
 cross-trace rule: the per-step probe record within 9 float32 ULP at its peak,
 quantities summed over the record (objective, gradient, far field, S) within
 1e-4 of their peak. The time-stepping scan must appear in the jaxpr of a
@@ -50,8 +50,8 @@ from rfx import Box, GaussianPulse, Simulation
 MM = 1e-3
 N_STEPS = 40
 N_STEPS_OPEN = 120           # the open (CPML) boards: long enough to show drift
-MAX_ULP_AT_PEAK = 9          # per-step quantities (PI 2026-09-23)
-MAX_REL_SUMMED = 1.0e-4      # quantities summed over the record (PI 2026-09-25)
+MAX_ULP_AT_PEAK = 9          # per-step quantities
+MAX_REL_SUMMED = 1.0e-4      # quantities summed over the record
 # Graded z: 0.5 mm cells through the ground and the substrate (z 0-3 mm),
 # then a 1.25x growth into the air.
 DZ = np.concatenate([np.full(6, 0.5), 0.5 * 1.25 ** np.arange(1, 6)]) * MM

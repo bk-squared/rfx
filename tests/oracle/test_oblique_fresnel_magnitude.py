@@ -9,7 +9,6 @@ many π across the plateau).
 Validated vs analytic oblique Fresnel ``fresnel_r_te(θ,εr)``: |Γ| err 7.2% / 3.9% @ θ=30°/45°
 (εr=4); d|Γ|/dε AD==FD. 60° is CPML-contaminated (memory) so it is NOT gated. PHASE (complex
 Γ) is a documented open follow-up (needs the exact discrete k_x de-embed).
-Harness: docs/research_notes/experiments/i404_oblique_20260720/oblique_gamma_validate.py
 """
 import numpy as np
 import jax

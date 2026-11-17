@@ -133,8 +133,7 @@ automatic estimator fails the two healthy-record stationarity checks.
 
 The three adjudication reports this note quotes are committed under
 `tests/fixtures/harminv_record_support/`, so a reader who clones the repo can
-open them. The rest of that run's preprocessing-only reports stay local and are
-mirrored at `docs/research-archive/rfx/research_notes/` in the workspace repo;
+open them. The rest of that run's preprocessing-only reports stay local;
 final reports are `*-joint.json`, with `*-joint-adjudication.json` produced by
 `scripts/diagnostics/harminv_cavity_adjudication.py`. Replay reuses baseline
 results only after matching source hashes and the full input metadata.

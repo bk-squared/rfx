@@ -338,10 +338,10 @@ class _PreflightMixin:
             or s_param_freqs is not None
             or s_param_n_steps is not None
         )
-        from rfx.runners._admission import resolve_plain_source_s_request
+        from rfx.runners._admission import default_run_forms_s, resolve_plain_source_s_request
         compute_s_params = resolve_plain_source_s_request(
             self, compute_s_params, requested=requested, devices=devices)
-        if not requested:
+        if not (requested or (compute_s_params is None and default_run_forms_s(self, devices=devices))):
             return compute_s_params
 
         port_entries = self._port_sparameter_entries()

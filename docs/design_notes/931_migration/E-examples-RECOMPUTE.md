@@ -26,7 +26,7 @@ cd <a directory that is NOT inside a git checkout>
 vessl run create -f <case>.yaml        # retried 3x on Bad Gateway
 ```
 
-Outputs land in `/root/workspace/claude-workspace/rfx/runs/issue931-post-<case>-<ts>/`,
+Outputs land in `<workspace>/rfx/runs/issue931-post-<case>-<ts>/`,
 with the latest path echoed to `issue931-post-<case>.latest`. Each job harvests
 every file the run wrote into its staged checkout under `produced/`.
 

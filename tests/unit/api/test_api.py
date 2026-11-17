@@ -295,7 +295,7 @@ def test_waveguide_port_rejects_unsupported_configuration():
     )
     sim_multi.add_waveguide_port(0.01, direction="+x")
     sim_multi.add_waveguide_port(0.09, direction="-x")
-    with pytest.raises(ValueError, match="One run\\(\\) or forward\\(\\) record supports a single waveguide port"):
+    with pytest.raises(ValueError, match="One run\\(\\) or forward\\(\\) record supports at most one driven waveguide port"):
         sim_multi.run(n_steps=40, compute_s_params=False)
 
 
@@ -572,8 +572,7 @@ def test_waveguide_two_port_y_normal_s_matrix_through_api():
         "coupling magnitude (>0.15) + reciprocity (<0.2) with NO passivity check, "
         "so normalize='flux' would FALSE-GREEN it on a non-physical |S|>1 result "
         "— it must stay skipped until a real de-embed lands (probe-plane / "
-        "mode-filter / larger port-to-junction separation). See "
-        "docs/research_notes/2026-04-22_waveguide_port_validation_session.md. "
+        "mode-filter / larger port-to-junction separation). "
         "#931: the three walls are VOLUMES and stay drawn as they are, but "
         "each now realizes a wall on BOTH of its bounding node planes, so the "
         "junction apertures are one cell narrower than they were; whoever "

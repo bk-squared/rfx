@@ -1027,8 +1027,8 @@ class _ExecuteMixin:
         Parameters
         ----------
         subpixel_smoothing : bool or str
-            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
-            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            False: staircase (the default); True: diagonal only, first order on curved interfaces (an eps-38 cylinder about 1 % high at 0.5 mm).
+            "full_tensor": full anisotropic averaging, second order on uniform and graded one-device meshes; refusals (UPML, conformal PEC, traced eps_r, ...): support matrix.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC inverse tensor.
         gradient : {"autodiff", "adjoint"}
             Opt-in settled-spectrum reciprocity design eps adjoint.
@@ -1457,7 +1457,7 @@ class _ExecuteMixin:
             )
 
         refuse_coaxial_port(self, "forward")
-        if port_s11_freqs is not None or ringdown is not None:
+        if port_s11_freqs is not None or (ringdown is not None and ringdown.probe_freqs is None):
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
@@ -1509,7 +1509,7 @@ class _ExecuteMixin:
             refuse_forward_lane(plan.lane, sum(
                 1 for p in self._ports
                 if float(p.impedance) > 0.0 and p.extent is not None),
-                port_s11_freqs=port_s11_freqs)
+                port_s11_freqs=port_s11_freqs, spec=ringdown)
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
         # loudly rather than silently returning a zero gradient on a lane that
@@ -1627,7 +1627,7 @@ class _ExecuteMixin:
                 from rfx.ringdown import RingdownForward, host_bins
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32)).run(_nu_fwd_call)
+                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32, caller="forward", argument="port_s11_freqs")).run(_nu_fwd_call)
             result = _conductors.with_sheet_layout_reports(result, pinned_sheet_layout)
             if _nu_design_spec is not None:
                 result = result._replace(
@@ -1867,8 +1867,8 @@ class _ExecuteMixin:
         snapshot : SnapshotSpec or None
             Field snapshot schedule and selection; None disables snapshots.
         subpixel_smoothing : bool or str
-            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
-            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            False: staircase (the default); True: diagonal only, first order on curved interfaces (an eps-38 cylinder about 1 % high at 0.5 mm).
+            "full_tensor": full anisotropic averaging, second order on uniform and graded one-device meshes; refusals (UPML, conformal PEC, traced eps_r, ...): support matrix.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC occupancy rule.
         skip_preflight : bool
             Skip advisories only; realization refusals and runtime admission still apply.

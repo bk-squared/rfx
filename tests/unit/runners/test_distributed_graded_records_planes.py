@@ -19,7 +19,7 @@ def test_planes(boundary, n_devices, entry):
     one, many = pair(sim, n_devices, entry)
     values = {key: measure(many.dft_planes[key].accumulator, p.accumulator)
               for key, p in one.dft_planes.items()}
-    # CPML wrapped step: compile-form rounding, operands byte-equal (rfx-archive DESIGN.md 4g amendment 1).
+    # CPML wrapped step: compile-form rounding, operands byte-equal.
     with_bars(values, 'relative_peak' if boundary == 'cpml' else 'array_equal')
     record('planes', dict(boundary=boundary, devices=n_devices, entry=entry, shape=grid.shape), values)
     assert max(row['peak'] for row in values.values()) > 0

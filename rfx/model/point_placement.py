@@ -22,6 +22,8 @@ def admit_axis(position, *, axis, lo, hi, cell_lo, cell_hi, pad_lo, pad_hi,
     if pad == 0:
         return  # Preserve the existing periodic / out-of-grid handling.
     depth = (lo - pos) / cell_lo if side == "lo" else (pos - hi) / cell_hi
+    if lo <= pos <= hi:
+        return
     tol_lo = node_tie_tol(pos, cell_lo)
     tol_hi = node_tie_tol(pos, cell_hi)
     outside = (not math.isfinite(pos) or
@@ -41,36 +43,50 @@ def admit_axis(position, *, axis, lo, hi, cell_lo, cell_hi, pad_lo, pad_hi,
     raise RfxRefusal(f"{label} at {pos:g} m is {where}. {remedy}")
 
 
-def admit_point(grid, position, *, allow_in_absorber=False, label="Point"):
-    """Use the same full-grid bounds on uniform, graded and nominal meshes."""
+def admit_point(grid, position, *, allow_in_absorber=False, label="Point",
+                bounds_cache=None):
+    """Use full-grid bounds; an optional cache belongs to one placement pass."""
     from rfx.model.graded_grid import NonUniformGrid, host_nominal_grid
-    if isinstance(grid, NonUniformGrid):
-        grid = host_nominal_grid(grid)
+    if bounds_cache is not None and "grid" in bounds_cache:
+        grid = bounds_cache["grid"]
+    else:
+        if isinstance(grid, NonUniformGrid):
+            grid = host_nominal_grid(grid)
+        if bounds_cache is not None:
+            bounds_cache["grid"] = grid
     for a, coordinate in enumerate(position):
         if grid.shape[a] == 1:
             continue
         axis = "xyz"[a]
-        pad_lo = getattr(grid, f"pad_{axis}_lo")
-        pad_hi = getattr(grid, f"pad_{axis}_hi")
-        last = grid.shape[a] - pad_hi - 1
-        # Periodic endpoints identify the seam; retain that domain endpoint.
-        hi = (float(grid.domain[a]) if axis in getattr(grid, "periodic_axes", "")
-              else float(grid.node_of(a, last)))
-        cells = grid.cells(a)
+        if bounds_cache is not None and a in bounds_cache:
+            pad_lo, pad_hi, last, hi, cell_lo, cell_hi = bounds_cache[a]
+        else:
+            pad_lo = getattr(grid, f"pad_{axis}_lo")
+            pad_hi = getattr(grid, f"pad_{axis}_hi")
+            last = grid.shape[a] - pad_hi - 1
+            # Periodic endpoints identify the seam; retain that domain endpoint.
+            hi = (float(grid.domain[a]) if axis in getattr(grid, "periodic_axes", "")
+                  else float(grid.node_of(a, last)))
+            cells = grid.cells(a)
+            cell_lo = float(cells[pad_lo])
+            cell_hi = float(cells[max(0, last - 1)])
+            if bounds_cache is not None:
+                bounds_cache[a] = pad_lo, pad_hi, last, hi, cell_lo, cell_hi
         admit_axis(coordinate, axis=axis, lo=0., hi=hi,
-                   cell_lo=float(cells[pad_lo]), cell_hi=float(cells[max(0, last - 1)]),
+                   cell_lo=cell_lo, cell_hi=cell_hi,
                    pad_lo=pad_lo, pad_hi=pad_hi,
                    allow_in_absorber=allow_in_absorber, label=label)
 
 
 def admit_simulation_points(sim, grid):
     """Only add_probe/add_source/add_port entries, never plane objects."""
+    bounds_cache = {}
     for kind, entries in (("Probe", sim._probes), ("Source/port", sim._ports)):
         for i, entry in enumerate(entries):
             if kind == "Probe" and i in getattr(sim, "_internal_probe_indices", ()):
                 continue
             options = dict(allow_in_absorber=getattr(entry, "allow_in_absorber", False),
-                           label=f"{kind}[{i}]")
+                           label=f"{kind}[{i}]", bounds_cache=bounds_cache)
             admit_point(grid, entry.position, **options)
             if getattr(entry, "extent", None) is not None:
                 end = list(entry.position)

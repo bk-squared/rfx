@@ -253,7 +253,7 @@ literal `(a)` or `(b)` so a later audit can tell which was claimed:
 
 ```
 Review: skipped — (a) <easily reverted pure docs/comment change>
-Review: skipped — (b) <the PI instructed the skip>
+Review: skipped — (b) <the maintainer instructed the skip>
 ```
 
 The separator before the verdict may be an em dash, an en dash or a plain
@@ -334,7 +334,7 @@ before a release. Record pass/fail
 counts in tracked release notes or a committed validation artifact suitable
 for the claim.
 
-**Before a release**, the `crossval-ladder` kind in the merge train Mac runner (agent-rules `_configs/scripts/merge_train_weekly_gpu.py`: the `crossval_ladder` cases this suite excludes, monthly and on request on remi `gpu-24gb`; results to `rfx-lead`, records in `bk-workspace/.localci/weekly-gpu/`) must be green on the commit being released.
+**Before a release**, the `crossval-ladder` kind in the merge train's runner (the `crossval_ladder` cases this suite excludes, monthly and on request on remi `gpu-24gb`; results to the maintainers, records in the lab's CI record folder) must be green on the commit being released.
 
 One-off investigation YAMLs live in `scripts/archive/`. Do not resurrect them — write a
 new YAML off the gpu_suite template.

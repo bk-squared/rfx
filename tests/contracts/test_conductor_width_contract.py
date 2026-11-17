@@ -256,7 +256,7 @@ def test_graded_periodic_declaration_keeps_grid_axis_width(span):
     axis = sim.realized_geometry().entities[0].axes[1]
     expected = (span[1]-span[0])*1e-3
     if span == (5, 10):
-        # DESIGN.md D:c1d171 / D:8ea1e2: |Z_s| = 1.885 ohm/sq < 3.767 ohm/sq.
+        # |Z_s| = 1.885 ohm/sq < 3.767 ohm/sq.
         # The rule reports the solved span: nodes + 0.35 cell per free edge.
         grid = sim._build_nonuniform_grid()
         nodes = np.r_[0., np.cumsum(np.asarray(grid.cells(1), dtype=float))]

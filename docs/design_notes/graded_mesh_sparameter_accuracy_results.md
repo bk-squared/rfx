@@ -426,7 +426,7 @@ band.
    where the graded axis carries the mode and the effects are expected to be
    small.
 
-**Prior art the next attempt must read first.** `rfx-known-issues.md`, entry
+**Prior art the next attempt must read first.** The recorded entry
 dated 2026-07-16 (cv05 demotion, #325 / PR #378): the #325 "fix" that
 re-registered the substrate to 6 fine cells is a **FIRED STOP** — *"the graded
 fine↔coarse transition SPLITS the mode"*, and *"a correct build needs a

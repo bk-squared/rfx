@@ -10,7 +10,7 @@ from tests.unit.sparams.test_coaxial_line_settling import _run
 def test_short_line_voltage_null_at_1650_steps():
     # 1650 steps: the matched feed sheet keeps the line's permittivity, so the
     # short line rings down more slowly; at 1500 steps settling read -41.5 dB,
-    # at 1650 it reads -59.1 dB (record 20261107-coax-oneport-floor).
+    # at 1650 it reads -59.1 dB.
     result = _run(1650, termination='short')
     assert result.settling_db <= -40., result.settling_db
     assert result.settling_witness['status'] == 'pass'

@@ -106,7 +106,7 @@ def test_the_stable_step_from_the_message_makes_the_graded_model_run():
 def test_a_lorentz_pole_and_a_second_pole_are_judged_together():
     dt = _default_step()
     lorentz = lorentz_pole(1.0, 0.5 / dt, 0.01 / dt)
-    # measured on this box (rfx-archive records/20261010-pole-stability-limit): bounded at 0.97 of 1.97, non-finite at 1.03
+    # measured on this box: bounded at 0.97 of 1.97, non-finite at 1.03
     assert np.all(np.isfinite(_run(_box(0.85 * 1.95, eps_inf=2.0, extra=(lorentz,)))))
     with pytest.raises(ValueError, match="unstable at this model's time step"):
         _run(_box(1.15 * 1.97, eps_inf=2.0, extra=(lorentz,)), n_steps=5)

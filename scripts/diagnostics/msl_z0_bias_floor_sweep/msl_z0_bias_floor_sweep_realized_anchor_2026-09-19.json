@@ -2,7 +2,7 @@
  "note": "Issue #752 six-point RE-SOLVE on main (2026-09-19). NEW artifact: the pre-declared msl_z0_bias_floor_sweep.json, its as-run verdict block and msl_z0_bias_floor_sweep_realized_anchor.json are untouched and their sha256 was re-checked after this run. Every row here is freshly solved AND freshly measured on the board that same build realized, so z0_measured_ohm and z0_hj_realized_board_ohm come from one geometry -- which is what the frozen pair could no longer offer after #802/#834 moved three of the six realized trace widths. Known contributors NOT modelled here, both recorded after the run: the conductor is a one-cell PEC volume, which #931 realizes with walls on both faces (the same trace declared zero-thickness reads 4.27 percentage points differently at aligned h_sub/3), and hammerstad_jensen_z0_eps_eff is a simplified quasi-static formula, not the complete Hammerstad-Jensen 1980 model (docs/guides/msl_geometry_diagnostics.md). Neither has an error budget here, so a deviation below is not attributable to the extractor.",
  "provenance": {
   "commit": "15c1d32547512e6a52803220d8563b50aba3b36f",
-  "rfx_file": "/root/workspace/bk-workspace/rfx-wt-752/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "jax_version": "0.10.2",
   "jax_enable_x64": "0",
   "jax_platforms": "cpu",

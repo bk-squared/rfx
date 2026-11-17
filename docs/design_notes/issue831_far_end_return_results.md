@@ -128,8 +128,8 @@ configuration is not currently failing its own gates.
 Two things the sweep settles that were open in the plan:
 
 - **It is not UPML-specific.** CPML tracks UPML within 0.01 at every depth, so
-  `docs/agent-memory/rfx-known-issues.md:1989` (UPML's indirectly-attenuated
-  parallel component) does not carry this.
+  UPML's indirectly-attenuated
+  parallel component does not carry this.
 - **Section 0.1 of the plan was half right and is corrected here.** It argued
   that cv01's net-flux observable is blind to a standing wave, so an "opposite
   sign" between #1027 and #831 need not imply a rig bug. That reasoning stands,
@@ -250,7 +250,7 @@ alone and sets `subpixel_smoothing=False`, which routes the update through
 
 ### 3.3 What this vindicates
 
-`docs/agent-memory/rfx-known-issues.md:4158` — `|b1/a1|` 11.7 % / 4.2 % / 1.8 %
+The recorded `|b1/a1|` — 11.7 % / 4.2 % / 1.8 %
 at 10 / 20 / 40 CPML layers on the hollow WR-90 guide, deeper absorber better —
 was the entry #831's trend contradicted. It is **not** contradicted: with the
 facet removed, cv03's dielectric guide behaves the same way, better with depth.

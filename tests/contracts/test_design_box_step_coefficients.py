@@ -55,7 +55,7 @@ def test_design_box_value_and_gradients_match_whole_grid(design_sigma):
         assert np.isfinite(expected) and float(expected) > 0, 'reference objective must be live'
         comparisons = [('value', np.asarray(actual), np.asarray(expected))]
         comparisons += list(zip(('eps-gradient', 'sigma-gradient'), map(np.asarray, gradients), map(np.asarray, references)))
-        # rfx-archive rfx/records/20261109-test-convert/DESIGN.md A12: lossy background.
+        # Lossy background.
         # Measured: the two AD paths differ by 1e-10 to 1e-9 in the loss-term derivative.
         for name, got, ref in comparisons:
             norm = float(np.linalg.norm(ref))

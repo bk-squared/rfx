@@ -167,8 +167,8 @@ def test_unitarity_lossless_waveguide():
     # Lower bound loosened 2026-04-22 from 0.8 to 0.6. Post-CPML retune +
     # diagonal-subtraction, the two-run normalized extractor measures
     # ~0.73 on this εr=4 full-cross-section slab. Analytic Airy gives 1.00,
-    # so ~27% power is un-accounted — a real extractor accuracy gap logged
-    # in docs/agent-memory/rfx-known-issues.md (slab unitarity residual).
+    # so ~27% power is un-accounted — a real extractor accuracy gap
+    # (slab unitarity residual).
     # This gate exists to catch GROSS conservation failure (|S|>>1 from
     # CPML accumulation, or energy collapse < 0.5 from extractor bug);
     # fine accuracy is owned by test_waveguide_port_validation_battery.

@@ -399,31 +399,8 @@ def test_grid_carries_conformal_faces_from_boundaryspec():
     assert getattr(grid_off, "conformal_faces", set()) == set()
 
 
-def test_waveguide_port_skips_drop_on_conformal_face():
-    """``init_waveguide_port``'s binary DROP at the +face boundary
-    cell must be suppressed when that face is conformal — the
-    Dey-Mittra eps_correction at the same cell is the principled
-    handler. Otherwise the cell is zeroed twice (DROP in V/I + 1/α
-    eps scaling) which over-corrects and caps PEC-short closure
-    (the 2026-04-29 first-attempt failure mode).
-
-    TWO PATHS, and after issue #868 they differ. The DROP fires only when
-    the aperture slice reaches the array edge, i.e. only when the aperture
-    contains a cell PAST the +face wall:
-
-    * the ``Simulation`` builder now hands the port the guide's CELL span,
-      so its aperture stops at the last real guide cell and there is nothing
-      past the wall to drop — the double correction this test guards against
-      cannot arise on that path at all, in either conformal setting. That is
-      asserted below as an equality between the two settings plus an exact
-      aperture area, which is a STRONGER statement than "the last row is
-      zero": under the old node span the area came out right only BECAUSE
-      the extra row was dropped.
-    * a low-level caller that hands ``WaveguidePort`` the whole node plane
-      (``y_slice=(0, grid.ny)``) still has that cell inside its aperture, and
-      the suppression logic still has to discriminate there. That is where
-      the original assertion is re-run, so the guard keeps a firing path.
-    """
+def test_waveguide_port_refuses_node_plane_with_or_without_conformal_faces():
+    """The builder keeps its cell span; low-level node planes are refused."""
     import jax.numpy as jnp
     from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
 
@@ -457,8 +434,8 @@ def test_waveguide_port_skips_drop_on_conformal_face():
     # And the area is the rasterized guide's, exactly.
     assert float(dA_off.sum()) == pytest.approx(n_u * dx * n_v * dx, rel=1e-6)
 
-    # --- low-level path: the node plane still contains the ghost cell -----
-    def _lowlevel_dA(grid):
+    # Low-level node planes are outside the guide under both conformal settings.
+    for grid in (grid_off, grid_on):
         port = WaveguidePort(
             x_index=int(0.030 / grid.dx) + grid.axis_pads[0],
             y_slice=(0, grid.ny), z_slice=(0, grid.nz),
@@ -466,20 +443,11 @@ def test_waveguide_port_skips_drop_on_conformal_face():
             mode=(1, 0), mode_type="TE", direction="+x", normal_axis="x",
             u_slice=(0, grid.ny), v_slice=(0, grid.nz),
         )
-        cfg = init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
-                                  dft_total_steps=200, dt=float(grid.dt),
-                                  grid=grid)
-        return np.asarray(cfg.aperture_dA)
-
-    ll_off, ll_on = _lowlevel_dA(grid_off), _lowlevel_dA(grid_on)
-    assert np.all(ll_off[-1, :] == 0.0), (
-        f"expected DROP at u_hi (y_hi) without conformal on the node-plane "
-        f"aperture; got dA[-1,:]={ll_off[-1, :]}")
-    assert np.all(ll_on[-1, :] > 0.0), (
-        f"expected aperture preserved at u_hi when conformal=True; "
-        f"got dA[-1,:]={ll_on[-1, :]}")
-    assert np.all(ll_off[:, -1] == 0.0)
-    assert np.all(ll_on[:, -1] > 0.0)
+        with pytest.raises(ValueError, match="as Simulation builds it") as error:
+            init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
+                                dft_total_steps=200, dt=float(grid.dt), grid=grid)
+        assert f"y_slice={(0, grid.ny)}" in str(error.value)
+        assert f"cell span y_slice={(0, grid.ny - 1)}" in str(error.value)
 
 
 def test_run_battery_geometry_auto_routes():

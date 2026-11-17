@@ -94,7 +94,7 @@ WHAT THIS SCRIPT REFUSES TO DO
   diagonal — is NOT a falsifier on this run and is deliberately absent from
   ``FALSIFIERS``; it is carried as a prediction only, in
   ``_F4_PREDICTION_NOT_A_FALSIFIER`` (reviewer non-blocking item: relabel).
-  The PI's sequencing decision on #776/#778 + the parked #683 flip is
+  The sequencing decision on #776/#778 + the parked #683 flip is
   undecided; see §10 of the predeclaration.
 * It never compares ``result.S``. Only ``S_raw`` is comparator-eligible
   (``enforce_passivity=True`` makes the shipped matrix a joint SVD
@@ -306,7 +306,7 @@ def _assert_no_lw_diagonal_pin(payload: dict) -> None:
     """Fail loudly if the artifact ever grows an lw-diagonal comparison.
 
     The lw diagonal may be RECORDED (it is, per bin, raw) but never compared,
-    asserted, or bounded — the PI's sequencing decision on #776/#778 + the
+    asserted, or bounded — the sequencing decision on #776/#778 + the
     parked #683 flip is undecided. Any key that pairs the lw diagonal with a
     verdict / expectation / tolerance is a pin, and this refuses it.
     """
@@ -333,7 +333,7 @@ def _assert_no_lw_diagonal_pin(payload: dict) -> None:
         raise RuntimeError(
             "report-only: the artifact pairs the lw diagonal with a "
             f"verdict/expectation at {bad} — that is a pin, and §10 of the "
-            "predeclaration forbids it until the PI sequencing decision."
+            "predeclaration forbids it until a sequencing decision."
         )
 
 

@@ -1588,7 +1588,7 @@ R2: attempt 1 on "what does GL1's window omit". The adjacent attempt — carryin
 the exact second-order term `(δ_scat + δ_round)²` — is recorded FALSIFIED in the
 cv26 close note §10.4 (58 → 54, 110 → 109) and was not retried.
 
-R3: `memory=rfx-known-issues.md comparator-bug case ledger (13/13) + cv26 close
+R3: `memory=comparator-bug case ledger (13/13) + cv26 close
 note §10.4–§10.5 | R2-attempts=1 | falsifier=cv22's and cv23's
 lattice_witness.json rebuilt byte-identical between origin/main's comparator and
 this one (PASS, 260748 and 784777 bytes)`.

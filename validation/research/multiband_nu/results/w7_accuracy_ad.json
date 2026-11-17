@@ -1,7 +1,7 @@
 {
  "runs": [
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
    "git_dirty": false,
    "argv": [
@@ -18,7 +18,7 @@
    "selfcheck_only": true
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
    "git_dirty": true,
    "argv": [
@@ -38,7 +38,7 @@
    "selfcheck_only": false
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
    "git_dirty": true,
    "argv": [
@@ -60,7 +60,7 @@
    "selfcheck_only": false
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
    "git_dirty": true,
    "argv": [
@@ -82,7 +82,7 @@
    "selfcheck_only": false
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
    "git_dirty": true,
    "argv": [
@@ -104,7 +104,7 @@
    "selfcheck_only": false
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
    "git_dirty": false,
    "argv": [
@@ -122,7 +122,7 @@
    "selfcheck_only": false
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "15a59c330d466fc53022e83171b66baf3c7b8273",
    "git_dirty": false,
    "argv": [
@@ -140,7 +140,7 @@
    "selfcheck_only": false
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
    "git_dirty": false,
    "git_modified_tracked": [],
@@ -159,7 +159,7 @@
    "selfcheck_only": true
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
    "git_dirty": false,
    "git_modified_tracked": [
@@ -181,7 +181,7 @@
    "selfcheck_only": false
   },
   {
-   "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+   "rfx_file": "rfx/__init__.py",
    "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
    "git_dirty": false,
    "git_modified_tracked": [
@@ -378,7 +378,7 @@
     "g3_pass": true,
     "wallclock_run_s": 0.860633134841919,
     "wallclock_s": 0.9387750625610352,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -586,7 +586,7 @@
     "g3_pass": true,
     "wallclock_run_s": 0.8116288185119629,
     "wallclock_s": 0.8806571960449219,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -748,7 +748,7 @@
     "g3_pass": true,
     "wallclock_run_s": 0.5829110145568848,
     "wallclock_s": 0.6623978614807129,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -932,7 +932,7 @@
     "g3_pass": true,
     "wallclock_run_s": 0.5794398784637451,
     "wallclock_s": 0.6476211547851562,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -1164,7 +1164,7 @@
     "g3_pass": true,
     "wallclock_run_s": 2.1687748432159424,
     "wallclock_s": 2.2534098625183105,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -1420,7 +1420,7 @@
     "g3_pass": true,
     "wallclock_run_s": 1.9417550563812256,
     "wallclock_s": 2.0248019695281982,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -1694,7 +1694,7 @@
     "g3_pass": true,
     "wallclock_run_s": 6.673479080200195,
     "wallclock_s": 6.757626295089722,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -1990,7 +1990,7 @@
     "g3_pass": true,
     "wallclock_run_s": 6.03933310508728,
     "wallclock_s": 6.117239713668823,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -2216,7 +2216,7 @@
     "g3_pass": true,
     "wallclock_run_s": 4.5969178676605225,
     "wallclock_s": 4.681556940078735,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -2464,7 +2464,7 @@
     "g3_pass": true,
     "wallclock_run_s": 4.632227659225464,
     "wallclock_s": 4.711062908172607,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -2712,7 +2712,7 @@
     "g3_pass": true,
     "wallclock_run_s": 7.178820848464966,
     "wallclock_s": 7.276763916015625,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -2984,7 +2984,7 @@
     "g3_pass": true,
     "wallclock_run_s": 6.499235153198242,
     "wallclock_s": 6.5870561599731445,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -3434,7 +3434,7 @@
     "g3_pass": true,
     "wallclock_run_s": 87.77736401557922,
     "wallclock_s": 87.88332891464233,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -3908,7 +3908,7 @@
     "g3_pass": true,
     "wallclock_run_s": 88.13539910316467,
     "wallclock_s": 88.25268292427063,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -4264,7 +4264,7 @@
     "g3_pass": true,
     "wallclock_run_s": 58.429114818573,
     "wallclock_s": 58.53839111328125,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -4642,7 +4642,7 @@
     "g3_pass": true,
     "wallclock_run_s": 56.438507080078125,
     "wallclock_s": 56.54945993423462,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -5008,7 +5008,7 @@
     "g3_pass": true,
     "wallclock_run_s": 72.76506328582764,
     "wallclock_s": 72.87869501113892,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -5398,7 +5398,7 @@
     "g3_pass": true,
     "wallclock_run_s": 75.6440360546112,
     "wallclock_s": 75.75300478935242,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "5fdfced97fbec0ec95ba1f010c665ec5b6282599",
     "git_dirty": true,
     "argv": [
@@ -5965,7 +5965,7 @@
     ],
     "wallclock_run_s": 1.4686851501464844,
     "wallclock_s": 1.477186679840088,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -6173,7 +6173,7 @@
     ],
     "wallclock_run_s": 1.8954532146453857,
     "wallclock_s": 1.9058611392974854,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -6377,7 +6377,7 @@
     ],
     "wallclock_run_s": 1.12040114402771,
     "wallclock_s": 1.1288650035858154,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -6581,7 +6581,7 @@
     ],
     "wallclock_run_s": 1.510789155960083,
     "wallclock_s": 1.5222609043121338,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -6742,7 +6742,7 @@
     ],
     "wallclock_run_s": 0.827185869216919,
     "wallclock_s": 0.8572769165039062,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -6903,7 +6903,7 @@
     ],
     "wallclock_run_s": 0.9437811374664307,
     "wallclock_s": 0.982069730758667,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -7111,7 +7111,7 @@
     ],
     "wallclock_run_s": 2.7447240352630615,
     "wallclock_s": 3.1332709789276123,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -7324,7 +7324,7 @@
     ],
     "wallclock_run_s": 4.9316980838775635,
     "wallclock_s": 4.983245849609375,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -7533,7 +7533,7 @@
     ],
     "wallclock_run_s": 2.317152976989746,
     "wallclock_s": 2.5847208499908447,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -7742,7 +7742,7 @@
     ],
     "wallclock_run_s": 4.333745956420898,
     "wallclock_s": 4.387001037597656,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -7908,7 +7908,7 @@
     ],
     "wallclock_run_s": 1.6821939945220947,
     "wallclock_s": 2.1087629795074463,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -8074,7 +8074,7 @@
     ],
     "wallclock_run_s": 3.104691982269287,
     "wallclock_s": 4.8746490478515625,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -8561,7 +8561,7 @@
     ],
     "wallclock_run_s": 1.7357890605926514,
     "wallclock_s": 1.7496638298034668,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -8831,7 +8831,7 @@
     ],
     "wallclock_run_s": 2.3198680877685547,
     "wallclock_s": 2.3379099369049072,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -9067,7 +9067,7 @@
     ],
     "wallclock_run_s": 1.1406478881835938,
     "wallclock_s": 1.1801090240478516,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -9303,7 +9303,7 @@
     ],
     "wallclock_run_s": 1.3593189716339111,
     "wallclock_s": 1.4401090145111084,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "4c5f64766d98bf6a6147c51585bdd596e060829c",
     "git_dirty": true,
     "argv": [
@@ -9573,7 +9573,7 @@
     ],
     "wallclock_run_s": 3.5047342777252197,
     "wallclock_s": 3.782721996307373,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -9848,7 +9848,7 @@
     ],
     "wallclock_run_s": 6.824243068695068,
     "wallclock_s": 6.883347988128662,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -10089,7 +10089,7 @@
     ],
     "wallclock_run_s": 2.290742874145508,
     "wallclock_s": 2.775374174118042,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -10330,7 +10330,7 @@
     ],
     "wallclock_run_s": 4.253648042678833,
     "wallclock_s": 6.0344321727752686,
-    "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
     "git_dirty": false,
     "git_modified_tracked": [
@@ -13039,7 +13039,7 @@
   "all_pass": true,
   "failed": [],
   "wallclock_s": 7.495862007141113,
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
   "git_dirty": false,
   "git_modified_tracked": [
@@ -13372,7 +13372,7 @@
    "wallclock_s": 1.0736031532287598
   },
   "wallclock_s": 2.034634828567505,
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "15a59c330d466fc53022e83171b66baf3c7b8273",
   "git_dirty": true,
   "argv": [
@@ -13402,7 +13402,7 @@
   "finite": true,
   "fired": false,
   "wallclock_s": 1.2300779819488525,
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "15a59c330d466fc53022e83171b66baf3c7b8273",
   "git_dirty": true,
   "argv": [
@@ -14152,7 +14152,7 @@
   "dt": 4.766437173827409e-13,
   "fired": true,
   "wallclock_s": 6.967613220214844,
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "15a59c330d466fc53022e83171b66baf3c7b8273",
   "git_dirty": true,
   "argv": [
@@ -14540,7 +14540,7 @@
   "n_failed": 0,
   "fired": false,
   "wallclock_s": 31.9459810256958,
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "15a59c330d466fc53022e83171b66baf3c7b8273",
   "git_dirty": true,
   "argv": [
@@ -19316,7 +19316,7 @@
   "inconclusive_axes": [],
   "fired": false,
   "wallclock_s": 26.77582311630249,
-  "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-accuracy/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "git_sha": "ca8290c1b94ace54bbae72e3227ebe2d351ef34a",
   "git_dirty": false,
   "git_modified_tracked": [

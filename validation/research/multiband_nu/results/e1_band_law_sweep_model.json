@@ -1,5 +1,5 @@
 {
- "rfx_file": "/Users/byungkwankim/Documents/rfx-nu-exp1/rfx/__init__.py",
+ "rfx_file": "rfx/__init__.py",
  "argv": [
   "--sweep",
   "--fine-cells-per-lambda",

@@ -31,7 +31,7 @@ in kind, not only in number. They must go, not be re-tuned:
 3. **"the ~2.65% / 6.48% agreement"** as a thing to preserve — the openEMS leg
    has always modelled both conductors as 2-D PEC at z = 0 and z = h_sub, i.e.
    a 1.5 mm cavity. The two tools have never solved the same cavity. They do
-   now, for the first time. Per `rfx-known-issues.md` (2026-08-28 A/B verdict)
+   now, for the first time. Per the recorded 2026-08-28 A/B verdict
    exactness of the cavity and agreement with the external reference point in
    opposite directions, so the number is expected to move and moving is not a
    regression.
@@ -58,7 +58,7 @@ and including "...omits the thirds-rule + reproduce-gate.") with:
 > at z = 0 and z = h_sub, so the two tools now solve the same 1.5 mm cavity for
 > the first time; the pre-#931 rfx-vs-openEMS figures are therefore a comparison
 > between two different cavities and are NOT a baseline this case preserves
-> (rfx-known-issues.md, 2026-08-28 A/B verdict: exactness of the cavity and
+> (recorded 2026-08-28 A/B verdict: exactness of the cavity and
 > agreement with the external reference point in opposite directions). The
 > realized in-plane patch is 28 x 37 mm from a 29.5 x 38.0 mm declaration — the
 > faces sit half a 1 mm cell off the lattice, which is mesh resolution, reported

@@ -1,7 +1,7 @@
 """Built-in point excitations leave no static field after the pulse (issue 1668).
 
-Setup and metric: records/20261109-test-convert/measurements/static_residual_probe2.py,
-CPML 16, record 1x. A13 excludes TFSF, Floquet and waveguide excitations: their
+Setup and metric: CPML 16, record 1x.
+A13 excludes TFSF, Floquet and waveguide excitations: their
 measured tails still depend on the record length or absorber in this box.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ import pytest
 
 from rfx import Simulation
 
-# records/20261109-test-convert/DESIGN.md, A13 (2026-11-09): the measured
+# A13 (2026-11-09): the measured
 # corrected floor 8.49e-8, times 1.5 and rounded up at quantum=1e7. A11
 # requires a fixed bar so a broken waveform cannot raise its own threshold.
 R_MAX = 2e-7
