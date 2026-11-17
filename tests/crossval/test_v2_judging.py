@@ -40,10 +40,9 @@ def _labels(n: int) -> list[str]:
     return [f"rung {i}" for i in range(n)]
 
 
-# ------------------------------------------------------------ mesh statement
 @pytest.mark.parametrize("reversal, flat, verdict", [
-    (0.00099, [False, True], CONVERGED),               # just inside 0.1 %
-    (0.00101, [False, False], NOT_SHOWN_TO_CONVERGE),  # just outside it
+    (0.00099, [False, True], CONVERGED),
+    (0.00101, [False, False], NOT_SHOWN_TO_CONVERGE),
 ])
 def test_a_reversal_within_the_flat_step_does_not_break_the_trend(reversal, flat, verdict):
     """A ladder falling by 0.5 % and then rising by ``reversal``: a rise of
@@ -66,8 +65,6 @@ def test_a_real_reversal_is_not_shown_to_converge():
     print(f"\n  {m['verdict']} -- {m['reason']}")
     assert m["flat"] == [False, False, False]
     assert m["monotone"] is False
-    # the last two rungs are 0.399 % apart, inside the 1 % bar: the reversal
-    # alone is what refuses the ladder
     assert m["last_two_pct"] == pytest.approx(0.3988, abs=1e-3)
     assert m["verdict"] == NOT_SHOWN_TO_CONVERGE
     assert "reverses" in m["reason"]
@@ -76,9 +73,7 @@ def test_a_real_reversal_is_not_shown_to_converge():
 @pytest.mark.parametrize("name, f_ghz, flat", [
     ("rising", (2.300, 2.330, 2.345), [False, False]),
     ("falling", (3.800, 3.770, 3.755), [False, False]),
-    # the RT5880 patch antenna: rising, the last step 0.0955 % (flat)
     ("patch", (2.337070, 2.356146, 2.358396), [False, True]),
-    # the MSL notch filter: +0.018 % (flat), then -0.298 %
     ("notch", (3.68600, 3.68666, 3.67568), [True, False]),
 ])
 def test_monotone_ladders_converge(name, f_ghz, flat):
@@ -101,7 +96,6 @@ def test_last_two_rungs_a_percent_apart_are_not_shown_to_converge():
     assert "last two rungs" in m["reason"]
 
 
-# -------------------------------------- the mesh statement for another bar
 OHM = ("Ω", 1.0, 3)
 
 
@@ -148,9 +142,9 @@ def test_a_resistance_ladder_takes_its_own_last_two_bar():
     assert freq["verdict"] == NOT_SHOWN_TO_CONVERGE and "bar 1 %" in freq["reason"]
 
 
-# ---------------------------------------------------------- aligned magnitude
-REF_F = np.linspace(1e6, 7e9, 1601)          # the openEMS record's grid
-OUR_F = np.linspace(0.7e9, 7e9, 4001)        # fine, so interpolation adds ~nothing
+REF_F = np.linspace(1e6, 7e9, 1601)
+FINE_INTERPOLATION_GRID_POINTS = 4001
+OUR_F = np.linspace(0.7e9, 7e9, FINE_INTERPOLATION_GRID_POINTS)
 BAND = (2e9, 7e9)
 F_NOTCH = 3.6 * GHZ
 
@@ -244,9 +238,9 @@ def test_the_floor_is_applied_to_the_aligned_rfx_curve_not_the_unaligned_one():
     ref_f = np.arange(3.40e9, 3.90e9 + 1, 1e6)
     our_f = np.arange(3.30e9, 4.00e9 + 1, 0.5e6)
     ref_db = notch_db(ref_f, f0_ref)
-    our_db = notch_db(our_f * scale, f0_ref)          # identical after alignment
+    our_db = notch_db(our_f * scale, f0_ref)
     skirt = np.abs(our_f * scale - (f0_ref - 33e6)) <= 1.5e6
-    our_db[skirt] -= 3.0                               # the shape error
+    our_db[skirt] -= 3.0
     c = aligned_magnitude(ref_f, ref_db, our_f, our_db, f0_ref, f0_our,
                           (ref_f[0], ref_f[-1]))
     err_bins = np.abs(ref_f - (f0_ref - 33e6)) <= 1.5e6
@@ -257,13 +251,11 @@ def test_the_floor_is_applied_to_the_aligned_rfx_curve_not_the_unaligned_one():
           f"{worst_unaligned_rfx:.1f} dB")
     assert c["max_abs_delta_db"] == pytest.approx(3.0, abs=0.05)
     assert c["max_abs_delta_db"] > MAG_BAR_DB
-    # the premise: on rfx's unaligned axis every error bin is below the floor
     assert worst_unaligned_rfx < DEEP_NULL_DB
 
 
-# ------------------------------------------- resonance and input resistance
-PATCH_F = np.linspace(1.6e9, 3.4e9, 901)        # the RT5880 record's grid, 2 MHz
-PATCH_BAND = (1.9325e9, 2.8987e9)               # 0.8-1.2 x its TL-model TM010
+PATCH_F = np.linspace(1.6e9, 3.4e9, 901)
+PATCH_BAND = (1.9325e9, 2.8987e9)
 
 
 def _zin(f, f0, r0, q, x_series):
@@ -299,8 +291,6 @@ def test_the_re_max_does_not_move_with_the_probe_reactance():
     assert eb["f0_hz"] == pytest.approx(f0, rel=1e-5)
     assert ea["r_ohm"] == pytest.approx(r0, rel=1e-4)
     assert eb["x_ohm"] - ea["x_ohm"] == pytest.approx(7.5, abs=0.05)
-    # the premise: the |S11| minimum is 3 % away from f0 and moves with the
-    # probe (by one 2 MHz bin here)
     assert abs(dip_a - f0) / f0 > 0.03
     assert dip_b - dip_a == pytest.approx(2e6)
 
@@ -341,7 +331,7 @@ def test_f0_and_r_are_read_each_on_its_own_curve():
     assert c["rel"] < 1e-3
     assert c["passed"] is True
     assert c["x_ours_ohm"] - c["x_ref_ohm"] == pytest.approx(7.5, abs=0.2)
-    assert abs(wrong - 75.7) / 75.7 > 0.10       # the premise of the test
+    assert abs(wrong - 75.7) / 75.7 > 0.10
 
 
 @pytest.mark.parametrize("ratio, passed", [(1.019, True), (1.021, False),
@@ -370,8 +360,7 @@ def test_a_peak_on_the_window_edge_is_refused():
         input_resistance(PATCH_F, ref, PATCH_F, ours, PATCH_BAND)
 
 
-# ---------------------------------------------------- level crossing (R-c)
-SHEEN_F = np.linspace(0.5e9, 20e9, 801)         # the Sheen record's grid, 24.375 MHz
+SHEEN_F = np.linspace(0.5e9, 20e9, 801)
 F_CORNER = 5.5717e9
 
 
@@ -397,7 +386,7 @@ def test_the_tolerance_is_the_magnitude_bar_over_the_reference_slope():
     assert ok["slope_db_per_ghz"] == pytest.approx(-12.0, rel=1e-9)
     assert ok["tol_hz"] == pytest.approx(MAG_BAR_DB / 12.0 * 1e9, rel=1e-9)
     assert ok["tol_pct"] == pytest.approx(100 * (MAG_BAR_DB / 12.0 * 1e9) / F_CORNER, rel=1e-9)
-    assert ok["tol_pct"] > 100 * FREQ_BAR          # the rule is not the 1 % bar
+    assert ok["tol_pct"] > 100 * FREQ_BAR
     assert ok["passed"] is True
     assert bad["passed"] is False
 
@@ -444,7 +433,6 @@ def test_the_slope_is_a_five_bin_fit_not_one_bin():
 
 @pytest.mark.parametrize("name, ref_db", [
     ("flat", np.full(SHEEN_F.size, -3.0)),
-    # an extremum: the local line is flat, the curvature is the whole shape
     ("extremum", _falling_db(SHEEN_F, 0.0, curvature=-40.0)),
 ])
 def test_a_flat_reference_is_refused(name, ref_db):

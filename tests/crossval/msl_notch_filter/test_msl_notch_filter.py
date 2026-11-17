@@ -82,6 +82,8 @@ diagnostic, not the case's verdict.  Unset, the full ladder runs.
 
 The two fast tests carry no mark: they build the structure and read the
 reference files, and never step the FDTD.
+An earlier measurement at dx = 127 µm: 20 periods of freq_max understated the notch depth by
+1.11 dB; 40 and 80 periods agreed to 0.0005 dB in |S21| over the band.
 """
 
 from __future__ import annotations
@@ -112,10 +114,6 @@ from tests.crossval._v2_judging import (
     mesh_statement,
 )
 
-# ---------------------------------------------------------------- geometry
-# Every length in metres, every frequency in hertz.  Substrate, trace and stub
-# are the numbers both references were made with (their `meta` blocks carry the
-# same values); the box and the arms are rfx's own — see the module docstring.
 EPS_R_SUBSTRATE = 3.66
 SUBSTRATE_THICKNESS_M = 254e-6
 TRACE_WIDTH_M = 600e-6
@@ -124,31 +122,15 @@ PORT_IMPEDANCE_OHM = 50.0
 FREQ_MAX_HZ = 7e9
 CPML_LAYERS = 8
 
-# dx = h_sub / n keeps the substrate top on a node plane.
 LADDER_M = (
-    SUBSTRATE_THICKNESS_M / 2,   # 127 µm
-    SUBSTRATE_THICKNESS_M / 4,   # 63.5 µm
-    SUBSTRATE_THICKNESS_M / 6,   # 42.33 µm
+    SUBSTRATE_THICKNESS_M / 2,
+    SUBSTRATE_THICKNESS_M / 4,
+    SUBSTRATE_THICKNESS_M / 6,
 )
 DX_COARSEST_M = LADDER_M[0]
 
-# --- along the line ------------------------------------------------------
-# ARM_LENGTH_M is the port plane to the stub centre, each side.  It is set by
-# what the MSL port needs downstream of the feed: the deepest probe of the
-# three-probe extractor sits a quarter guided wavelength back at the lowest
-# frequency it serves, 4.79 mm on this substrate, and it must be clear of the
-# stub.  PORT_MARGIN_M is the port plane to the x face, set by the upstream
-# probe offset max(λ/4π, 5·h) = 1.8 mm.
 ARM_LENGTH_M = 10e-3
 PORT_MARGIN_M = 2e-3
-# The same filter on longer arms; only the arm-length witness builds it.  The
-# arm grows by 5.08 mm rather than 5 mm because lengthening the arm moves the
-# stub with it: 5.08 mm is a whole number of coarsest cells (40 × 127 µm, and
-# so also 80 × 63.5 µm and 120 × 42.33 µm), which leaves the stub at the same
-# place inside a cell and the longer board realizes the SAME filter.  A 5 mm
-# move puts the stub's 600 µm footprint on five node columns instead of four
-# at the coarsest rung, and the witness would then be measuring a stub that
-# got wider, not an arm that got longer.
 WITNESS_ARM_LENGTH_M = 15.08e-3
 assert abs((WITNESS_ARM_LENGTH_M - ARM_LENGTH_M) / DX_COARSEST_M
            - round((WITNESS_ARM_LENGTH_M - ARM_LENGTH_M) / DX_COARSEST_M)) < 1e-9
@@ -163,90 +145,32 @@ def _x_geometry(arm_length_m: float) -> tuple[float, float]:
     return 2.0 * (arm_length_m + PORT_MARGIN_M), arm_length_m + PORT_MARGIN_M
 
 
-DOMAIN_X_M, STUB_CENTRE_X_M = _x_geometry(ARM_LENGTH_M)   # 24.0 mm, 12.0 mm
+DOMAIN_X_M, STUB_CENTRE_X_M = _x_geometry(ARM_LENGTH_M)
 
-# --- across the line -----------------------------------------------------
-# The metal must stay clear of the CPML by the port's lateral requirement,
-# 2·h_sub plus eight cells.  "Eight cells" is a physical length only once a
-# cell size is named, so it is evaluated at the COARSEST rung and HELD for
-# every rung: the board a finer rung solves is then the same board, not a
-# smaller one.
-LATERAL_CLEARANCE_MIN_M = 2.0 * SUBSTRATE_THICKNESS_M + 8.0 * DX_COARSEST_M  # 1.524 mm
-# That minimum is exactly twelve coarsest cells, and every finer rung's cell
-# size divides it too, so putting the line's near edge there puts it exactly on
-# a node line at all three rungs while the stub's edge (11.7 mm) falls inside a
-# cell.  A 600 µm footprint then realizes five node rows for the line and four
-# node columns for the stub at 127 µm — a 635 µm line beside a 508 µm stub,
-# which is not the board either reference solved, and `assert_realized` refuses
-# it (measured: rows 5/10/15 against columns 4/9/14 down the ladder).  The
-# clearance is a MINIMUM, so it is rounded up to the next 50 µm; that puts the
-# line's edge inside a cell at every rung and both footprints realize the same
-# width.  The edge-aware profiles now place the nodes at every metal edge
-# themselves, so this rounding no longer sets the realized width; the board
-# keeps 1.55 mm so it stays the board every earlier record solved.
+LATERAL_CLEARANCE_MIN_M = 2.0 * SUBSTRATE_THICKNESS_M + 8.0 * DX_COARSEST_M
 LATERAL_CLEARANCE_M = 1.55e-3
 assert LATERAL_CLEARANCE_M >= LATERAL_CLEARANCE_MIN_M
-TRACE_CENTRE_Y_M = LATERAL_CLEARANCE_M + TRACE_WIDTH_M / 2.0             # 1.850 mm
+TRACE_CENTRE_Y_M = LATERAL_CLEARANCE_M + TRACE_WIDTH_M / 2.0
 DOMAIN_Y_M = (TRACE_WIDTH_M + 2.0 * LATERAL_CLEARANCE_M
-              + STUB_LENGTH_M + 2.0 * LATERAL_CLEARANCE_M)               # 18.800 mm
-DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3                              # 1.754 mm
+              + STUB_LENGTH_M + 2.0 * LATERAL_CLEARANCE_M)
+DOMAIN_Z_M = SUBSTRATE_THICKNESS_M + 1.5e-3
 
-# Record length in periods of freq_max. The notch is a transmission
-# zero: the far port's in-record signal there is about 53 dB below the drive,
-# so a small ring-down tail is a large fraction of it, and the record must ring
-# down at the notch bin first (measured: the worst bin is the notch bin, in the
-# far port's record; the poles were not identified). The per-bin ring-down
-# witness at dx = 127 µm, worst over both drives, and |S21| at the notch bin
-# 3.6842 GHz:
-#   20 periods  −17.4 dB (fails −40 dB)  |S21| −52.80 dB
-#   40 periods  −87.8 dB                 |S21| −53.91 dB
-#   80 periods  −105.8 dB (the witness's identification floor)  |S21| −53.91 dB
-# 20 periods understated the notch depth by 1.11 dB; 40 and 80 agree to
-# 0.0005 dB in |S21| over the band. The 20 periods of the retired script had
-# passed the old end-level witness (−65 dB at this rung), which
-# is not a record-length witness for a resonance.
 NUM_PERIODS = 40.0
-# Frequency points of rfx's sweep (DFT bins; they cost nothing in time steps).
-# 400 over 0.7–7 GHz is a 15.8 MHz bin, under half the 1 % frequency bar at
-# the notch (36.7 MHz), so the three-point parabola's grid-phase spread stays
-# well inside the bar; at 100 points the bin (63.6 MHz) was wider than the
-# bar and the record's own curve, resampled that way, moved by up to 0.30 %.
 N_FREQS = 400
-# The band both references cover; the notch is searched inside it, never over
-# rfx's wider sweep.
 REFERENCE_BAND_HZ = (2.0e9, 7.0e9)
 
-# ------------------------------------------------------------ thresholds
-# The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB), the
-# mesh statement (LADDER_AGREEMENT 1 %, FLAT_STEP 0.1 %) and the deep-null
-# level (DEEP_NULL_DB −20 dB) are imported from tests/crossval/_v2_judging.py,
-# with the rules that use them.
-# Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
-# rules): a record that has not rung down to −40 dB is truncation-suspect, and
-# a passive structure cannot scatter more power than it receives, so a raw
-# extraction more than one percent above the passive bound is a measurement
-# artefact — the rung stops instead of being compared.  Measured on this
-# board: settling in the NUM_PERIODS note above; passivity excess 0.0008 …
-# 0.0022 over the 40-period ladder (remi job ci-1912-ladder-40p-wkcls).
 SETTLING_DB = -40.0
 PASSIVITY_EXCESS_BAR = 0.01
-# The solved trace width, stub width and stub length, read from the grid, must
-# each be within 1 % of the drawn size on every rung, the tolerance of the
-# preflight's own sheet-size check.  Solved = node span
-# plus EDGE_OFFSET of the adjacent cell at each free edge.
 SOLVED_SIZE_TOL = 0.01
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REFERENCE_DIR = Path(__file__).resolve().parent / "reference"
 _PALACE_JSON = _REFERENCE_DIR / "palace_fem.json"
 _OPENEMS_JSON = _REFERENCE_DIR / "openems_tutorial.json"
-# The rung of the openEMS record this case is judged against, and the rung that
-# is its own mesh statement.
 OPENEMS_JUDGED_STAGE = "stage_b_fine"
 OPENEMS_COARSE_STAGE = "stage_b_coarse"
 
 
-# ------------------------------------------------------------------ build
 def _board(arm_length_m: float = ARM_LENGTH_M) -> tuple[Box, Box, Box]:
     """``(substrate, trace, stub)`` as drawn, for arms of ``arm_length_m``."""
     domain_x, stub_centre_x = _x_geometry(arm_length_m)
@@ -298,6 +222,8 @@ def build(dx: float, arm_length_m: float = ARM_LENGTH_M, *,
     but the default.  ``uniform=True`` builds the old uniform ``dx`` mesh and
     ``edge_offset`` moves the profiles' nodes; only the mutation test uses
     either.
+    The metal must stay clear of the CPML by the port's lateral requirement, 2·h_sub plus
+    eight cells.
     """
     domain_x, _ = _x_geometry(arm_length_m)
     profiles = {} if uniform else _edge_aware(dx, arm_length_m, edge_offset)
@@ -395,7 +321,6 @@ def _build_short_stub(dx: float, cells_short: int, lift_cells: int = 0) -> Simul
     return sim
 
 
-# -------------------------------------------------------- realized metal
 def realized_geometry(sim: Simulation) -> dict:
     """What the lattice built, read from the product's own realization owner.
 
@@ -411,6 +336,7 @@ def realized_geometry(sim: Simulation) -> dict:
     sheet-size check reads, on any cell profile.  The stub length is measured
     from the main line's far node row to the open end; its solved length adds
     the offset at the open end only (the other end is the joint).
+    Ey[i, j, k] spans node row j -> j+1 on column i.
     """
     from rfx.boundaries.pec import realized_wall_planes
 
@@ -458,14 +384,6 @@ def realized_geometry(sim: Simulation) -> dict:
     if stub_cols.size == 0:
         return out
     i0, i1 = int(stub_cols.min()), int(stub_cols.max())
-    # ``Ey[i, j, k]`` spans node row j -> j+1 on column i.  Counted from the
-    # main line's far row upward, the stub's transverse edges must START at
-    # that row (the T is joined — measured: the lattice does realize the edge
-    # j1 -> j1+1 when the stub Box begins at the trace's edge) and run without
-    # a gap to the open end.  A stub drawn clear of the line realizes its
-    # first edge higher up, and a stub that also keeps its open end in place
-    # has the same length by the old measure — so the joint is checked, not
-    # only the length.
     above = np.flatnonzero(my[i0:i1 + 1, j1:, k].any(axis=0)) + j1
     first_j, last_j = int(above.min()), int(above.max())
     open_j = last_j + 1
@@ -495,6 +413,8 @@ def assert_realized(sim: Simulation, dx: float) -> dict:
 
     Runs before every rung, with no time step.  Raises with the measured
     numbers; the caller prints the dict either way.
+    The stub's length sets the notch frequency; the line and stub widths set the line and stub
+    impedances.
     """
     g = realized_geometry(sim)
 
@@ -523,10 +443,6 @@ def assert_realized(sim: Simulation, dx: float) -> dict:
             f"{g['trace_rows'][1]}"
             + ("" if g["stub_contiguous"] else ", and its edges are not contiguous")
             + ". A floating strip beside a through line is not a shunt stub.")
-    # The solved sizes, each within SOLVED_SIZE_TOL of the drawing: the stub's
-    # length sets the notch frequency, the two widths set the line and stub
-    # impedances.  On the uniform ladder the widths failed this at every rung
-    # (470, 552, 580 µm for 600 µm) and the notch did not converge.
     for key, declared, what in (
             ("stub_length_solved_m", STUB_LENGTH_M, "stub length"),
             ("trace_width_solved_m", TRACE_WIDTH_M, "trace width"),
@@ -567,7 +483,6 @@ def _print_realized(g: dict, dx: float) -> None:
     print(f"    MSL ports {g['n_ports']}")
 
 
-# ------------------------------------------------- reference impedance
 def _to_reference(S, z_from, z_to) -> np.ndarray:
     """Power-wave S (real references) from z_from to z_to through the impedance
     matrix, written out here on purpose: the product's
@@ -587,9 +502,12 @@ def _to_reference(S, z_from, z_to) -> np.ndarray:
     return out
 
 
-# ------------------------------------------------------------------- solve
 def run_rung(dx: float, arm_length_m: float = ARM_LENGTH_M) -> dict:
-    """Preflight, solve, and hand back the curve with its two witnesses."""
+    """Preflight, solve, and hand back the curve with its two witnesses.
+
+    The port's S is at its declared impedance (50 ohm, as Palace's lumped ports); the openEMS
+    tutorial's CalcPort passes no ref_impedance and so references its line impedance.
+    """
     sim = build(dx, arm_length_m)
     g = assert_realized(sim, dx)
     print(f"  arms {arm_length_m*1e3:.2f} mm each side, box x "
@@ -609,9 +527,6 @@ def run_rung(dx: float, arm_length_m: float = ARM_LENGTH_M) -> dict:
 
     freqs = np.asarray(res.freqs, dtype=float)
     s = np.asarray(res.S)
-    # The port's S is at its declared impedance (50 ohm, as Palace's lumped
-    # ports); the openEMS tutorial's CalcPort passes no ref_impedance and so
-    # references its line impedance: that comparison reads S at the line Z0.
     s_line = _to_reference(s, res.reference_impedances, res.line_impedances)
     settling = (np.asarray(res.settling_db, dtype=float)
                 if res.settling_db is not None else None)
@@ -658,7 +573,6 @@ def run_rung(dx: float, arm_length_m: float = ARM_LENGTH_M) -> dict:
     return out
 
 
-# --------------------------------------------------------------- estimator
 def _load_refined_extremum():
     """The repository's one notch estimator, ``refined_extremum`` in
     ``validation/crossval/comparators/spectral_features.py`` (the module that
@@ -725,7 +639,6 @@ def notch_frequency(freqs, s21_mag, lo=None, hi=None) -> dict:
     }
 
 
-# ------------------------------------------------------------- references
 def _load(path: Path) -> dict:
     with path.open() as fh:
         return json.load(fh)
@@ -822,7 +735,6 @@ def _print_comparison(c: dict) -> None:
               f"{bool(c['aligned_compared'][i])}")
 
 
-# ------------------------------------------------------------------ ladder
 def _rungs() -> tuple[float, ...]:
     raw = os.environ.get("RFX_MSL_NOTCH_RUNGS", "").strip()
     if not raw:
@@ -830,23 +742,7 @@ def _rungs() -> tuple[float, ...]:
     return tuple(float(v) for v in raw.split(",") if v.strip())
 
 
-ARM_WITNESS_BAR_DB = 0.5   # see `_arm_length_witness`; applies to |S21|
-# The bar is a quarter of the 2 dB magnitude bar,
-# so an arm-length dependence that passes it cannot by itself consume the
-# comparison's budget. The witness runs on the first two rungs of the ladder
-# and is JUDGED on the second (h/4); the coarsest rung is reported as the
-# trend. Measured on the edge-aware ladder (remi job
-# ports-notch-edge-ladder-x8km9): the trace is solved at its
-# drawn 600 µm on both rungs, a 47.1 Ω line at h/2 and 47.7 Ω at h/4 (fitted
-# Z0) against the 50 Ω port reference. The quasi-static closed form
-# (Hammerstad–Jensen, zero thickness) gives 47.7 Ω for this line, so the
-# mismatch is the line's own and does not shrink with the mesh. It makes the
-# interference between the port reflections and the stub's depend on the arm
-# length: between 10 mm and 15.08 mm arms |S21| moved 0.584 dB at h/2 and
-# 0.476 dB at h/4 (0.024 dB under the bar), |S11| up to 4.9 and 4.7 dB near
-# its minima. On the uniform ladder (strips 508 and
-# 571.5 µm, 57.8 and 51.6 Ω) |S21| moved 1.196 and 0.471 dB. |S11| in dB is
-# not judged: near its minima a small mismatch moves it by many dB.
+ARM_WITNESS_BAR_DB = 0.5
 ARM_WITNESS_RUNGS = 2
 
 
@@ -859,6 +755,9 @@ def _arm_length_witness(base: dict, dx: float) -> dict:
     the magnitudes are only comparable because a lossless line's transmission
     and reflection magnitudes do not depend on the line's length.  Here that
     premise is measured on the structure itself.
+    An earlier edge-aware measurement between 10 mm and 15.08 mm arms: |S21| moved 0.584 dB at
+    h/2 and 0.476 dB at h/4 (0.024 dB under the bar), |S11| up to 4.9 and 4.7 dB near its
+    minima.
     """
     print(f"\n  --- arm-length witness at dx = {dx*1e6:.3f} µm ---")
     print(f"  the same filter on {WITNESS_ARM_LENGTH_M*1e3:.2f} mm arms "
@@ -918,7 +817,11 @@ def _arm_length_witness(base: dict, dx: float) -> dict:
 
 
 def _assert_arm_length_witness(out: dict) -> None:
-    """The witness's verdict on |S21|, held back until the block is printed."""
+    """The witness's verdict on |S21|, held back until the block is printed.
+
+    The arm-length bar is a quarter of the 2 dB magnitude bar, so an arm-length dependence
+    that passes it cannot by itself consume the comparison's budget.
+    """
     assert out["max_abs_delta_s21_db"] <= ARM_WITNESS_BAR_DB, (
         f"at dx = {out['dx_m']*1e6:.2f} µm, lengthening each arm from "
         f"{ARM_LENGTH_M*1e3:.0f} mm to {WITNESS_ARM_LENGTH_M*1e3:.2f} mm moved "
@@ -968,9 +871,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         for f, a, b in zip(r["freqs_hz"], s21_db, s11_db):
             print(f"    {f/1e9:8.5f} {a:10.3f} {b:10.3f}")
         results.append(r)
-        # The premise the comparison rests on — the arms this board carries do
-        # not set its magnitudes — measured on the first two rungs: the
-        # coarsest is the trend, the second is judged (see ARM_WITNESS_RUNGS).
         if len(results) <= ARM_WITNESS_RUNGS:
             arm_witnesses.append(_arm_length_witness(r, dx))
 
@@ -979,7 +879,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
     judged_stage = openems[OPENEMS_JUDGED_STAGE]
     coarse_stage = openems[OPENEMS_COARSE_STAGE]
 
-    # ---- (b) mesh statement: the notch must settle along the ladder --------
     notches = [r["notch"]["f"] for r in results]
     mesh_stmt = mesh_statement(notches, [f"{r['dx_m']*1e6:.2f}µm" for r in results])
     print("\n  mesh statement — notch frequency along the rfx ladder:")
@@ -995,8 +894,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
             + f" (flat when within {FLAT_STEP*100:.1f} %); monotone "
             f"{mesh_stmt['monotone']} -> {mesh_stmt['verdict']}")
 
-    # The reference's own mesh statement, read off its record: the tutorial's
-    # own mesh, then the same structure at finer cell sizes.
     ref_coarse_f = coarse_stage["notch"]["refined_f_ghz"]
     ref_fine_f = judged_stage["notch"]["refined_f_ghz"]
     print("\n  the openEMS record's own mesh statement:")
@@ -1012,15 +909,8 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
     print(f"    coarse ({OPENEMS_COARSE_STAGE}) -> fine ({OPENEMS_JUDGED_STAGE}): "
           f"{100.0*(ref_fine_f-ref_coarse_f)/ref_coarse_f:+.3f} %")
 
-    # A partial ladder shows no convergence trend, so it states no verdict:
-    # the distances below are still printed — they are the diagnostic the
-    # env override exists for — and the test skips at the end instead of
-    # passing or failing.
     partial = len(rungs) < len(LADDER_M)
 
-    # ---- (c) the comparison: finest rung against the openEMS fine rung -----
-    # Every distance and the figure are printed BEFORE any verdict, so a run
-    # that fails the mesh statement still leaves the whole curve in the log.
     finest = results[-1]
     print("\n  openEMS tutorial (judged)")
     fine = _compare(
@@ -1036,7 +926,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         finest, coarse_stage["freqs_ghz"], coarse_stage["s21_mag"], key="s21_line")
     _print_comparison(ref_coarse)
 
-    # ---- (d) Palace: reported, never judged -------------------------------
     print("\n  Palace FEM (reported, not judged — it does not conserve power)")
     for mesh, lc in (("mid", 0.085), ("coarse", 0.12)):
         rec = palace[mesh]
@@ -1053,7 +942,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
                           palace["coarse"]["s21_mag"])
     _print_comparison(pal_coarse)
 
-    # ---- (e) the figure ---------------------------------------------------
     fig_path = _write_figure(results, palace, openems, tmp_path)
     print(f"\n  figure: {fig_path}")
     for w in arm_witnesses:
@@ -1065,11 +953,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
               + ("JUDGED against " if judged else "trend, not judged; bar ")
               + f"{ARM_WITNESS_BAR_DB} dB on |S21|")
 
-    # ---- the premise before the comparison ---------------------------------
-    # Judged on the second witnessed rung whether or not the rest of the
-    # ladder ran: if the magnitudes on this board depend on its arm length,
-    # comparing them with a record taken on other arms says nothing. A ladder
-    # restricted to one rung leaves the witness reported, not judged.
     if len(arm_witnesses) >= ARM_WITNESS_RUNGS:
         _assert_arm_length_witness(arm_witnesses[-1])
 
@@ -1081,16 +964,7 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
             "no convergence trend, so the distances above are a diagnostic "
             "and this run states no verdict.")
 
-    # ---- (b) the mesh statement comes first: without it nothing is judged --
-    # Not shown to converge — a step larger than FLAT_STEP against the trend
-    # or the last two rungs LADDER_AGREEMENT or more apart
-    # — states the numbers and xfails; it is not a failure.
-    # Every witness above has already hard-failed a bad rung.
     if mesh_stmt["verdict"] != CONVERGED:
-        # The current solve supplies the notch ladder to mesh_statement above.
-        # This branch is taken only when that ladder is not converged; a
-        # converged ladder proceeds to the reference comparison below.
-        # Ring-down, passivity and arm-length witnesses have already run.
         pytest.xfail(
             "known limitation: the edge-aware mesh "
             f"is not shown to converge — {mesh_stmt['reason']}. The finest rung "
@@ -1104,8 +978,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         f"record's {fine['ref_notch_ghz']:.4f} GHz (bar {FREQ_BAR*100:.0f} %); "
         f"rfx reads {fine['our_notch_ghz']:.4f} GHz on the "
         f"{finest['dx_m']*1e6:.2f} µm mesh.")
-    # The magnitude, judged with the notch offset the frequency bar has just
-    # judged taken out: rfx's axis scaled by f_ref / f_rfx.
     assert fine["aligned_max_abs_delta_db"] <= MAG_BAR_DB, (
         f"|S21| differs from the openEMS tutorial record by up to "
         f"{fine['aligned_max_abs_delta_db']:.3f} dB at "
@@ -1136,9 +1008,6 @@ def _write_figure(results, palace, openems, tmp_path) -> Path:
         ax.plot(np.asarray(r["freqs_hz"]) / 1e9, r["s21_db"],
                 label=f"rfx dx {r['dx_m']*1e6:.2f} µm "
                       f"({r['arm_length_m']*1e3:.0f} mm arms)")
-    # Coarse first, JUDGED on top: the two rungs agree to within a line width
-    # over most of the band, and the one being judged against must be the one
-    # the eye reads there.
     ax.plot(openems[OPENEMS_COARSE_STAGE]["freqs_ghz"],
             _db(openems[OPENEMS_COARSE_STAGE]["s21_mag"]), "-", lw=2.4,
             alpha=0.45, color="tab:green",
@@ -1165,10 +1034,17 @@ def _write_figure(results, palace, openems, tmp_path) -> Path:
     return path
 
 
-# -------------------------------------------------------------- fast tests
 def test_the_lattice_builds_the_declared_board():
     """Build-time only: the board realizes as declared, and the defects
-    ``assert_realized`` exists for are refused."""
+    ``assert_realized`` exists for are refused.
+
+    The arm-length witness builds a longer board; the longer board must realize the declared
+    board, or the witness would fail for the wrong reason.
+    """
+    assert (
+        LATERAL_CLEARANCE_M == 1.55e-3
+    ), (
+        'lateral clearance must keep the 1.55 mm board used by earlier records')
     print(f"\n  declared board: arms {ARM_LENGTH_M*1e3:.1f} mm each side, port "
           f"margin {PORT_MARGIN_M*1e3:.1f} mm, box {DOMAIN_X_M*1e3:.3f} × "
           f"{DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm, trace centre y "
@@ -1178,8 +1054,6 @@ def test_the_lattice_builds_the_declared_board():
         g = assert_realized(build(dx), dx)
         _print_realized(g, dx)
 
-    # The arm-length witness builds a longer board; it must realize too, or the
-    # witness would fail for the wrong reason.
     dx = SUBSTRATE_THICKNESS_M / 2
     g = assert_realized(build(dx, WITNESS_ARM_LENGTH_M), dx)
     print(f"  witness board, arms {WITNESS_ARM_LENGTH_M*1e3:.2f} mm, box x "
@@ -1192,8 +1066,6 @@ def test_the_lattice_builds_the_declared_board():
         print(f"  uniform mesh at {dx_u*1e6:.2f} µm: {uniform.value}")
         assert "solved trace width" in str(uniform.value)
 
-    # Nodes ON the drawn edges are not the remedy: each edge is then solved
-    # EDGE_OFFSET of a cell beyond the drawing, about +0.7 cell of width.
     with pytest.raises(AssertionError) as on_edge:
         assert_realized(build(dx, edge_offset=0.0), dx)
     print(f"  profile nodes on the drawn edges: {on_edge.value}")
@@ -1209,10 +1081,6 @@ def test_the_lattice_builds_the_declared_board():
     print(f"  trace drawn as a one-cell volume: {volume.value}")
     assert "sheet" in str(volume.value)
 
-    # The stub lifted three cells clear of the line AND shortened by the same
-    # three cells: the open end does not move, so the length measured from the
-    # line's far row is the shipped one and only the joint can tell the two
-    # boards apart.
     with pytest.raises(AssertionError) as floating:
         assert_realized(_build_short_stub(dx, 3, lift_cells=3), dx)
     print(f"  stub lifted three cells, open end unmoved: {floating.value}")
@@ -1226,11 +1094,13 @@ def test_the_reference_files_are_what_the_provenance_says():
     Those numbers were computed from the records' own arrays with the same
     log-parabolic vertex rule by their producers, so this is a regression pin
     of the estimator on frozen values (to 1 kHz), not an independent check of
-    it and not of rfx."""
+    it and not of rfx.
+
+    A passive board cannot scatter more power than it receives.
+    """
     palace = _load(_PALACE_JSON)
     openems = _load(_OPENEMS_JSON)
 
-    # --- the openEMS tutorial record ------------------------------------
     assert openems["meta"]["tool"] == "openEMS"
     solved = ("stage_a", "stage_b_mid", "stage_b_fine")
     for name in solved + (OPENEMS_COARSE_STAGE,):
@@ -1242,9 +1112,6 @@ def test_the_reference_files_are_what_the_provenance_says():
         assert rec["freqs_ghz"][-1] == pytest.approx(7.0)
         assert tuple(rec["witness_band_ghz"]) == (2.0, 7.0)
 
-    # The sentence the magnitudes-only comparison rests on, and the mesh rungs
-    # PROVENANCE.md tabulates (substrate cells 4 / 6 / 8, half the cell size
-    # per rung pair), read from the record itself.
     comparability = openems["meta"]["comparability"].lower()
     assert "phase" in comparability and "magnitude" in comparability
     stages = openems["meta"]["stages"]
@@ -1254,16 +1121,10 @@ def test_the_reference_files_are_what_the_provenance_says():
     assert res[2] == pytest.approx(res[0] / 2.0, rel=1e-6)
     assert res[1] == pytest.approx(res[0] / 2.0 ** 0.5, rel=1e-6)
 
-    # ``stage_b_coarse`` is not a second solve: the record says it carries
-    # stage_a's arrays because the rung IS the tutorial's own mesh.
     assert "reused_from" in openems["meta"]["stages"][OPENEMS_COARSE_STAGE]
     for key in ("freqs_ghz", "s11_mag", "s21_mag"):
         assert openems[OPENEMS_COARSE_STAGE][key] == openems["stage_a"][key]
 
-    # A passive board cannot scatter more power than it receives.  The witness
-    # the record defines is over the band it serves: below 2 GHz both port
-    # voltages sit at the numerical floor and their ratio is not an
-    # S-parameter the structure produced (``meta.passivity_witness``).
     tol = openems["meta"]["passivity_tol"]
     assert tol == 1.05
     for name in solved:
@@ -1279,8 +1140,6 @@ def test_the_reference_files_are_what_the_provenance_says():
             float(band[in_band].max()), abs=1e-9)
         assert rec["max_energy_sum_band"] <= tol
 
-    # The Stage A gate is the tutorial reproduction: the notch the maker
-    # measured, reproduced here from the record's own arrays.
     for name in solved:
         rec = openems[name]
         got = notch_frequency(np.asarray(rec["freqs_ghz"], float) * 1e9,
@@ -1297,7 +1156,6 @@ def test_the_reference_files_are_what_the_provenance_says():
     assert openems["stage_a"]["notch"]["refined_f_ghz"] * 1e9 == pytest.approx(
         gate["measured_f_notch_hz"], abs=1e3)
 
-    # --- the Palace FEM record -------------------------------------------
     assert palace["meta"]["solver"] == "palace"
     assert len(palace["coarse"]["freqs_ghz"]) == 101 == len(palace["coarse"]["s21_mag"])
     assert palace["coarse"]["freqs_ghz"][0] == pytest.approx(2.0)
