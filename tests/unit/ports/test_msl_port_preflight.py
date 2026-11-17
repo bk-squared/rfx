@@ -45,7 +45,7 @@ def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3,
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, ly, H_SUB)), material="ro4350b")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3). The meshes
+    # 35 um foil -> a SHEET on the laminate face. The meshes
     # in this file are DELIBERATELY off-lattice: the substrate-resolution
     # and mixed-cell advisories are what it tests, and a sheet declared at
     # H_SUB on a bisecting mesh lands on the nearest node, which is the
@@ -151,7 +151,7 @@ def test_substrate_walk_starts_at_the_ports_own_ground_plane():
     dx = 80e-6
     z_gnd = 10 * dx                       # 800um: ground plane above the floor
     ly = W_TRACE + 8 * H_SUB
-    # The substrate is unresolved on purpose; under strict, run() would refuse this cavity (#1800).
+    # The substrate is unresolved on purpose; under strict, run() would refuse this cavity.
     sim = Simulation(
         freq_max=5e9, domain=(LX, ly, z_gnd + H_SUB + 1.5e-3), dx=dx,
         cpml_layers=8, snap="declared",
@@ -213,7 +213,7 @@ def test_mixed_cell_warning_fires_at_dx_80():
 
 
 # ---------------------------------------------------------------------------
-# #752: historical Z0 claims are retired. Current messages describe a
+# Historical Z0 claims are retired. Current messages describe a
 # validated conductor gap and a separate material-column extent. Refinement
 # and alignment recommendations do not establish a Z0 accuracy percentage.
 # ---------------------------------------------------------------------------
@@ -312,7 +312,7 @@ def test_strict_mode_raises_on_bad_geometry():
 
 
 # ---------------------------------------------------------------------------
-# Reflector clearance check (Y2 finding 2026-05-06): the 3-probe Z₀
+# Reflector clearance check: the 3-probe Z₀
 # extractor in compute_msl_s_matrix sits in a standing-wave region when
 # a strong reflector (open λ/4 stub etc.) is too close to the V₃ probe.
 # ---------------------------------------------------------------------------
@@ -339,7 +339,7 @@ def _build_sim_with_stub(*, dx: float, l_line_mm: float, l_stub_mm: float = 8.63
     trace_y_lo = y_trace - W_TRACE / 2
     trace_y_hi = y_trace + W_TRACE / 2
     # Through-trace and branch stub: both foil, both SHEETS on the same
-    # laminate face (#931 §1.3). Declared on ONE plane their footprints are
+    # laminate face. Declared on ONE plane their footprints are
     # UNIONED before the edge rule is applied, so the T is galvanically
     # continuous -- per-sheet application would leave the shared edge live,
     # a slit. Asserted in test_open_stub_is_galvanically_joined_to_the_trace.
@@ -438,11 +438,10 @@ def test_reflector_clearance_silent_without_reflector():
 # domain_x=11.36mm (= 142 cells), CPML 8 layers, msl_0 at x=2.40mm '+x',
 # msl_1 at x=6.40mm '-x', n_probe_offset=31, n_probe_spacing=12, n_probes=5.
 # On that geometry msl_0's probes land at 4.88/5.84/6.80/7.76/8.72mm and
-# msl_1's at 3.92/2.96/2.00/1.04/0.08mm (issue body) -- msl_1's deepest
+# msl_1's at 3.92/2.96/2.00/1.04/0.08mm -- msl_1's deepest
 # probe (0.08mm) is within the 2-cell/0.16mm proximity margin of the x=0
-# domain edge (NOT literally "inside the CPML" under the #500/#542
-# exterior-padding frame this fix routes through -- the issue's own
-# "x < 0.64mm" framing used the pre-#500 interior intuition), and both
+# domain edge (NOT literally "inside the CPML" under the
+# exterior-padding frame this fix routes through), and both
 # ports' probe spans cross the OTHER port's feed plane (msl_0's span
 # [2.40, 8.72]mm contains msl_1's 6.40mm feed; msl_1's span [0.08, 6.40]mm
 # contains msl_0's 2.40mm feed).
@@ -550,13 +549,13 @@ def test_issue510_feed_crossing_falsifier_separated_ports_silences_it():
 
 
 # ---------------------------------------------------------------------------
-# Issue #510 review round (PR #551 adversarial review, 3 BLOCKING findings):
+# 3 BLOCKING findings:
 #
 # BLOCKING 1: the advertised compliant n_probe_offset interval's upper
 # endpoint was computed by ALGEBRAIC INVERSION of the two absorber
 # predicates (float division then int() truncation). Float64 arithmetic put
 # the endpoint on the wrong side of an FP knife edge whenever the true
-# boundary landed within about one ULP of an exact dx multiple -- reviewer's
+# boundary landed within about one ULP of an exact dx multiple -- a
 # brute-force sweep found ~12k (dx, spacing, feed, domain) combinations
 # where the ADVERTISED endpoint itself still tripped the very warning it
 # claimed to clear. Fixed by msl_absorber_compliant_offset_max: walk
@@ -780,7 +779,7 @@ def test_issue510_feed_crossing_names_lumped_port_cleanly():
 
 
 # ---------------------------------------------------------------------------
-# Issue #752 / PR #766 pre-merge review, blockers B1 and B2.
+# Blockers B1 and B2.
 #
 # B1: check 2b's snap suggestions were derived from ``int(h_sub / dx)`` on
 #     the SCALAR dx while its ``frac`` came from the run grid. Any run whose
