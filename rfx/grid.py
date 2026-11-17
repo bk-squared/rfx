@@ -1,4 +1,7 @@
-"""Simulation grid: domain definition, auto-resolution, index helpers."""
+"""Simulation grid: domain definition, auto-resolution, index helpers.
+
+``C0`` is the speed of light in vacuum in m/s.
+"""
 
 from __future__ import annotations
 
@@ -18,17 +21,11 @@ from rfx._internal._grid_metric import (
     normalize_axis as _normalize_axis,
 )
 
-# Speed of light in vacuum (m/s)
 C0 = 299_792_458.0
 
-#: Arithmetic-dust budget in machine epsilons of ``length/dx``.
-#: ``cells_spanning`` keeps this as a floor under the shared NODE_TIE_REL
-#: band: at very large ratios the ULP budget exceeds 1e-9 of one cell.
 CELL_COUNT_ULP_BUDGET = 8
 
-# Adopt a common spacing only within this fraction of the planner request.
 PERIODIC_AUTO_MIN_FRACTION = 0.75
-# Search farther only to suggest an explicit spacing, never to adopt it.
 PERIODIC_COMMON_SEARCH_REFINEMENT = 16
 
 
@@ -76,7 +73,6 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                              for n in range(max(1, int(np.ceil(length / dx))),
                                             int(np.floor(length / minimum)) + 1)}, reverse=True)
         fitting = next((candidate for candidate in candidates if fits(candidate)), None)
-        # The wall-axes clause is written only when a wall axis exists.
         wall_names = ''.join(walls)
         if fitting is not None and fitting >= PERIODIC_AUTO_MIN_FRACTION * dx:
             walls_fit = f" and wall axes {wall_names!r} are within 1 %" if walls else ""
@@ -135,12 +131,6 @@ def cells_spanning(length: float, dx: float, *,
         cells = int(nearest)
     else:
         cells = int(np.ceil(ratio))
-    # A POSITIVE length always needs a cell. Zero is
-    # the one integer the dust band can reach from above while the length is
-    # still real: for 0 < r <= NODE_TIE_REL the nearest integer is 0, and snapping
-    # there would return fewer cells than the declared length needs, where
-    # every other snap returns one fewer cell than a ratio that did not need
-    # it. ``ceil`` gave 1 and so does this.
     if ratio > 0.0 and cells < 1:
         return 1
     return cells
@@ -226,6 +216,8 @@ class Grid:
         periodic_axes: str = "",
         boundary_depths: tuple | None = None,
     ):
+        """Along a non-periodic axis, N interior cells carry N + 1 nodes, so walls on the first
+        and last of them span exactly ``N * dx``."""
         if mode not in ("3d", "2d_tmz", "2d_tez"):
             raise ValueError(f"mode must be '3d', '2d_tmz', or '2d_tez', got {mode!r}")
         invalid_axes = sorted(set(cpml_axes) - set("xyz"))
@@ -238,12 +230,6 @@ class Grid:
         self.kappa_max = kappa_max
         self.pec_faces = pec_faces or set()
         self.pmc_faces = pmc_faces or set()
-        # Stage 1 conformal PEC: face labels whose enclosing axis is
-        # declared ``Boundary(conformal=True)``. ``init_waveguide_port``
-        # consults this set to skip the binary +face DROP on the modal
-        # V/I aperture — the Dey-Mittra eps_correction at the boundary
-        # cell is the principled handler when a conformal Box is in
-        # ``pec_shapes``.
         self.conformal_faces = conformal_faces or set()
         self.cpml_axes = "".join(axis for axis in "xyz" if axis in cpml_axes)
         self.mode = mode
@@ -254,7 +240,6 @@ class Grid:
         self.periodic_axes = "".join(a for a in "xyz" if a in periodic_axes and not (a == "z" and self.is_2d))
         self.cpml_axes = "".join(a for a in self.cpml_axes if a not in self.periodic_axes)
 
-        # Auto-resolution: λ_min / 20
         lambda_min = C0 / freq_max
         requested_dx = dx if dx is not None else lambda_min / 20.0
         self.boundary_depths = boundary_depths if boundary_depths is not None else resolve_face_depths(
@@ -272,57 +257,33 @@ class Grid:
         if self.is_2d:
             self.cpml_axes = self.cpml_axes.replace("z", "")
 
-        # Legacy view retains declared depths, including scalar defaults on walls.
         self.face_layers = {record.name: record.declared for record in self.boundary_depths}
         for record in self.boundary_depths:
             setattr(self, f"pad_{record.name}", record.realized)
 
-        # Legacy scalar ``pad_{axis}`` kept for callers that use it as
-        # "nominal CPML thickness on this axis". When lo / hi differ
-        # (asymmetric reflector + absorber composition) ``pad_{axis}``
-        # reports the max of the two — callers that need a specific
-        # side must use the per-face attributes.
         self.pad_x = max(self.pad_x_lo, self.pad_x_hi)
         self.pad_y = max(self.pad_y_lo, self.pad_y_hi)
         self.pad_z = max(self.pad_z_lo, self.pad_z_hi)
-        # ``axis_pads`` carries the LEADING (``lo``) pad per axis, i.e.
-        # the same number that callers subtract from array indices to
-        # recover user-domain coordinates (``(idx - axis_pads[ax]) * dx``).
-        # In the legacy symmetric layout this happened to equal
-        # ``pad_{axis}``; under per-face allocation the two are different
-        # whenever one face is PMC/PEC/periodic. Existing callers that
-        # treated ``axis_pads`` as a coordinate offset continue to work
-        # automatically for asymmetric configurations.
         self.axis_pads = (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)
-        # Six-tuple of per-face pads; preferred over ``axis_pads`` for
-        # new code that needs both sides (shape math, exterior fill).
         self.face_pads = (
             self.pad_x_lo, self.pad_x_hi,
             self.pad_y_lo, self.pad_y_hi,
             self.pad_z_lo, self.pad_z_hi,
         )
 
-        # Grid dimensions (including CPML padding)
-        # +1 fence-post correction: N cells need N+1 nodes so that
-        # PEC walls at index 0 and index N span exactly N*dx.
-        #
-        # ``cells_spanning`` rather than a bare ``ceil``: a declared
-        # length is an arithmetic expression, and one ULP of float dust in
-        # ``domain/dx`` used to buy a whole cell that no declared Box reaches.
         self.nx = (realized_cells(domain[0], self.dx, kinds["x"]) + ("x" not in self.periodic_axes)
                    + self.pad_x_lo + self.pad_x_hi)
         self.ny = (realized_cells(domain[1], self.dx, kinds["y"]) + ("y" not in self.periodic_axes)
                    + self.pad_y_lo + self.pad_y_hi)
 
         if self.is_2d:
-            self.nz = 1  # single cell in z, use periodic z BC
+            self.nz = 1
         else:
             self.nz = (realized_cells(domain[2], self.dx, kinds["z"]) + ("z" not in self.periodic_axes)
                        + self.pad_z_lo + self.pad_z_hi)
 
         self.shape = (self.nx, self.ny, self.nz)
 
-        # Interior region (excluding CPML)
         if self.is_2d:
             self.interior = (
                 slice(self.pad_x_lo, self.nx - self.pad_x_hi),
@@ -361,7 +322,6 @@ class Grid:
         if allow_in_absorber is not None:
             from rfx.model.point_placement import admit_point
             admit_point(self, pos, allow_in_absorber=allow_in_absorber)
-        # Preserve this API's input-dtype division, including half-node ties.
         i = self._rounded_index(0, pos[0] / self.dx)
         j = self._rounded_index(1, pos[1] / self.dx)
         k = 0 if self.is_2d else self._rounded_index(2, pos[2] / self.dx)
@@ -379,7 +339,6 @@ class Grid:
         idx = nearest_uniform_index(ratio) + self.axis_pads[axis]
         if wrap and _axis_name(axis) in self.periodic_axes:
             if ratio < -0.5 or ratio >= self.shape[axis] + 0.5:
-                # Let each public API issue its historical out-of-grid message.
                 return idx
             return idx % self.shape[axis]
         return idx
@@ -409,22 +368,6 @@ class Grid:
                     "position lies inside the simulation domain.")
             indices.append(idx)
         return tuple(indices)
-
-    # ------------------------------------------------------------------
-    # Grid metric interface (step 0a, design note
-    # docs/design_notes/20260922_nu_grid_core_predeclaration.md decision 2).
-    #
-    # THE CONVENTION -- index origin, the primal/dual rule, the end entries
-    # of the two inverse-metric arrays, and which consumer is entitled to
-    # which metric -- is written once, in ``rfx/_internal/_grid_metric.py``. Read that
-    # module before adding a formula at a call site; decision 3 is that a
-    # consumer needing a third quantity adds a named accessor here instead.
-    #
-    # ``NonUniformGrid`` carries the same seven methods with the same meaning,
-    # so a consumer can hold either class and never branch on its type. On
-    # THIS class every axis is constant by construction, so every array is
-    # ``np.full(n, dx)`` and primal == dual bit-exactly.
-    # ------------------------------------------------------------------
 
     def _axis_extent(self, axis) -> tuple[int, int]:
         """``(n, pad_lo)`` for a normalized axis index."""

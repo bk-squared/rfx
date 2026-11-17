@@ -1,4 +1,7 @@
-"""Runtime contract for source/PYTHONPATH installs as well as pip."""
+"""Runtime contract for source/PYTHONPATH installs as well as pip.
+
+``JAX_TESTED_BELOW`` is the install cap and the runtime warning bound because the CPU time step runs 2.3-3x slower from jaxlib 0.11.2 on.
+"""
 
 import re
 import warnings
@@ -7,8 +10,6 @@ from rfx.errors import ConfigurationWarning
 
 MIN_PYTHON = (3, 11)
 MIN_JAX = "0.10.2"
-# Install cap and runtime warning: from jaxlib 0.11.2 the CPU time step runs 2.3-3x slower; import
-# does not refuse newer jax.
 JAX_TESTED_BELOW = "0.11.2"
 JAX_BELOW = JAX_TESTED_BELOW
 
