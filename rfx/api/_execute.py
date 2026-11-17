@@ -1515,7 +1515,7 @@ class _ExecuteMixin:
         # loudly rather than silently returning a zero gradient on a lane that
         # does not iterate self._lumped_rlc in forward().
         if rlc_values_override is not None and plan.lane != "fwd_uniform":
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 "forward(rlc_values_override=...) is only supported on the "
                 f"uniform single-device forward lane, not {plan.lane!r}. "
                 "Lumped RLC component-value gradients require the uniform mesh "

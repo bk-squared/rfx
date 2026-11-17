@@ -2,7 +2,7 @@
 from __future__ import annotations
 from rfx._traced_inputs import admit_traced_inputs
 
-from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -192,7 +192,7 @@ def validate_run(entry, until_decay, decay_max_steps, under_transform):
     if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
         return
     if under_transform():
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "CustomWaveform and closed_box TFSF cannot be passed through run() "
             "under external JAX transformations; differentiate forward() instead.")
 
