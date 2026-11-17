@@ -715,3 +715,31 @@ def test_token_refused_by_both_checks_is_printed_once(tmp_path, git_env):
         summary(repo, git_env, base, 1, 1),
         "swept: 1 refused in 1 files (1 entries)",
     ]
+
+
+@pytest.mark.parametrize("entry,content,first", [
+    ("rfx/missing/", "value = 0\n",
+     "rfx/missing/: swept entry matches no file; name the file's new path or remove the entry"),
+    ("rfx/a.py", "# an old prose comment\nvalue = 0\n",
+     "rfx/a.py:1: swept: # an old prose comment  -> a name, an assertion, a test, the docstring, or a dated record; "
+     "rfx/a.py is swept, so every comment in it may only be a tool directive"),
+])
+def test_main_without_swept_option_reads_swept_prefixes(tmp_path, git_env, monkeypatch, capsys, entry, content, first):
+    repo, base = swept_repo(tmp_path, git_env, {"rfx/a.py": content})
+    files = 0 if entry.endswith("/") else 1
+    checker = load_checker()
+    monkeypatch.setattr(checker, "SWEPT_PREFIXES", (entry,))
+    for key in list(os.environ):
+        if key.startswith("GIT_") or key in {"BASE_SHA", "GITHUB_EVENT_NAME"}:
+            monkeypatch.delenv(key)
+    for key, value in git_env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.chdir(repo)
+    status = checker.main(["--base", base])
+    out = capsys.readouterr().out
+    assert status == 1, out
+    assert out.splitlines() == [
+        first,
+        summary(repo, git_env, base, 0, 0),
+        f"swept: 1 refused in {files} files (1 entries)",
+    ]
