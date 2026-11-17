@@ -456,9 +456,17 @@ most of the difference; removing them recovered only 0.043 ms per step, for a re
 
 Tracker: #2486
 
-Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none. Since the multi-device setup boundary, two cases hold more than before, measured on a 25 x 13 x 13-cell box split over two (three) CPU devices:
-- Debye and Lorentz materials (Drude takes the Lorentz route; not measured): each pole coefficient is one more whole-domain float32 constant. A Debye box on the uniform mesh holds 13 (263,640 bytes at two devices, 290,004 at three) instead of a permittivity and a mask array (25,350 / 27,885 bytes); a Lorentz box, which was refused under a caller's jit before, now runs and holds 11 (223,080 / 245,388 bytes).
-- Graded meshes: each material array is held with its x ghost cells, 20,280 bytes at two devices and 22,308 at three instead of 16,900 (+20 % / +32 %), for permittivity (one array, also with a lumped port) and a lossy thin film (two arrays).
+Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts some of its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none.
+
+Each such array costs every device the same number of bytes:
+
+    bytes per array = n_devices × (⌈nx / n_devices⌉ + 2) × ny × nz × 4
+
+where nx is the cell count along x, the axis the run splits; the 2 counts one ghost row on each side of a device's slab, and each cell holds 4 bytes (float32). This cost does not fall as devices are added. The number of such arrays a model holds, measured on a 25 × 13 × 13-cell box:
+- a material with one Debye pole: 13 arrays; with one Lorentz or Drude pole: 11 (Drude takes the Lorentz route; not measured). Materials with more poles: not measured.
+- a graded mesh: each material array, that is the permittivity (also with a lumped port), or the two arrays of a lossy thin film.
+
+Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,640 bytes on each of two devices, and 13 × 22,308 = 290,004 bytes on each of three. By the formula, a model of 10⁸ cells with one Debye pole holds about 13 × 0.4 GB ≈ 5.2 GB on every device, whatever the device count.
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
 
 ### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
