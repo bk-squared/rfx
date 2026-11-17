@@ -1,13 +1,10 @@
 """Shared run/forward lane admission, before execution or sharding."""
 from __future__ import annotations
-from rfx._warning_origin import user_stacklevel
 
-from rfx.errors import AccuracyWarning
 import functools
 import jax.numpy as jnp
 
 from typing import NamedTuple
-import numpy as np
 
 from rfx.runners._admission import guard_shape_tangents
 from rfx.preflight.realization import release_inspection
@@ -164,6 +161,9 @@ def _dispatch_plan(
     # with more than one device.
     multi_device = (distributed if mode == "forward"
                     else devices is not None and len(devices) > 1)
+    if multi_device and is_nonuniform:
+        from rfx.model.graded_admission import admit_distributed_grading
+        admit_distributed_grading((self._dx_profile, self._dy_profile, self._dz_profile))
     if not multi_device and not is_nonuniform and self._refinement is None:
         from rfx.runners._smoothing_admission import warn_kottke_pec_volume
         warn_kottke_pec_volume(self, subpixel_smoothing)
@@ -254,35 +254,6 @@ def _dispatch_plan(
 
     # mode == "run"
     distributed_run = multi_device
-
-    # Distributed graded meshes share forward's NU runner and staging.
-    if distributed_run and is_nonuniform:
-        import warnings as _wmod
-        # Grading ratio check (shared single dt) across provided profiles.
-        _max_ratio = 1.0
-        for _prof in (
-            self._dx_profile, self._dy_profile, self._dz_profile
-        ):
-            if _prof is not None and len(_prof) > 0:
-                _pa = np.asarray(_prof, dtype=np.float64)
-                if float(_pa.min()) > 0.0:
-                    _max_ratio = max(
-                        _max_ratio,
-                        float(_pa.max()) / float(_pa.min()),
-                    )
-        if _max_ratio > 5.0:
-            raise ValueError(
-                "Distributed + non-uniform requires grading ratio "
-                "<= 5:1 for shared-dt stability; got "
-                f"{_max_ratio:.2f}:1."
-            )
-        if _max_ratio > 3.0:
-            _wmod.warn(
-                f"Distributed + non-uniform grading ratio {_max_ratio:.2f}"
-                ":1 exceeds the 3:1 stability caution threshold. "
-                "Monitor for numerical dispersion / late-time drift.", AccuracyWarning,
-                stacklevel=user_stacklevel(),
-            )
 
     # ---- Distributed multi-device lane ----
     if distributed_run:

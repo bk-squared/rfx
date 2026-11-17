@@ -37,12 +37,18 @@ CHILD_TIMEOUT = 600
 REGION_FILES = ('rfx/stepping/slab*.py', 'rfx/stepping/uniform_slab_ports.py',
                 'rfx/model/distributed_ports.py', 'rfx/runners/_distributed_*.py',
                 'rfx/runners/distributed_nu.py', 'rfx/runners/distributed_v2.py')
-CONTEXT_CALLS = ('ensure_compile_time_eval', 'declaration_setup', 'compile_time_switch')
+CONTEXT_CALLS = ('ensure_compile_time_eval', 'declaration_setup', 'compile_time_switch',
+                 'eval_context')
+VACUUM_POLE_SITE = ('rfx/stepping/slab.py', '_vacuum_dispersion_values', 'eval_context')
 ALLOWED_CONTEXT_SITES = {
     ('rfx/stepping/slab_setup.py', '_custom_rules_evaluate_concretely', 'ensure_compile_time_eval'):
         'the probe asks whether a custom_jvp rule returns a concrete value under '
         'ensure_compile_time_eval (it does not inside jax.vmap); the question needs the context',
+    VACUUM_POLE_SITE:
+        'the vacuum pole coefficients are lru-cached Python floats formed from dt; the guard '
+        '`if not isinstance(dt, float): raise` before the eval_context block refuses a traced dt',
 }
+GUARDED_SITES = {VACUUM_POLE_SITE: ('dt', 'float')}
 
 TRACED_RECORD_NOT_JUDGED = ('settling_witness.*_per_bin', 'settling_witness.pole_contributions.*')
 TRACED_RECORD_NOT_JUDGED_REASON = ('a traced record is not judged, and the run says so in an '
@@ -95,6 +101,38 @@ def _context_calls(path):
     return found
 
 
+def _function_node(path, name):
+    tree = ast.parse(path.read_text(), filename=str(path))
+    matches = [node for node in ast.walk(tree)
+               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name]
+    assert len(matches) == 1, f'{path}: expected one function {name}, found {len(matches)}'
+    return matches[0]
+
+
+def _is_type_guard(node, argument, type_name):
+    if not isinstance(node, ast.If):
+        return False
+    calls_isinstance = any(
+        isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+        and call.func.id == 'isinstance' and len(call.args) == 2
+        and isinstance(call.args[0], ast.Name) and call.args[0].id == argument
+        and isinstance(call.args[1], ast.Name) and call.args[1].id == type_name
+        for call in ast.walk(node.test))
+    return calls_isinstance and len(node.body) == 1 and isinstance(node.body[0], ast.Raise)
+
+
+def _guard_precedes_context(path, function, kind, argument, type_name):
+    body = _function_node(path, function).body
+    opens = [index for index, statement in enumerate(body)
+             if isinstance(statement, ast.With) and any(
+                 isinstance(item.context_expr, ast.Call)
+                 and isinstance(item.context_expr.func, ast.Attribute)
+                 and item.context_expr.func.attr == kind for item in statement.items)]
+    if len(opens) != 1:
+        return False
+    return any(_is_type_guard(statement, argument, type_name) for statement in body[:opens[0]])
+
+
 def test_no_setup_context_outside_the_region():
     files = sorted({p for pattern in REGION_FILES for p in ROOT.glob(pattern)})
     named = {p.relative_to(ROOT).as_posix() for p in files}
@@ -112,6 +150,11 @@ def test_no_setup_context_outside_the_region():
     for site, reason in ALLOWED_CONTEXT_SITES.items():
         assert len(sites.get(site, ())) == 1, (
             f'allowed site {site} ({reason}) is expected exactly once, found {sites.get(site)}')
+    for (rel, function, kind), (argument, type_name) in GUARDED_SITES.items():
+        assert _guard_precedes_context(ROOT / rel, function, kind, argument, type_name), (
+            f'allowed site {(rel, function, kind)} lost its guard: the function must refuse a '
+            f'{argument} that is not {type_name} with `if not isinstance({argument}, {type_name}): '
+            f'raise ...` before its {kind} block')
 
 
 def scene(kind, mesh, count):

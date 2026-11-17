@@ -343,6 +343,10 @@ def _vacuum_dispersion_values(kind, n_poles, dt):
     from rfx.core.yee import MaterialArrays
     from rfx.materials.debye import DebyePole, init_debye
     from rfx.materials.lorentz import LorentzPole, init_lorentz
+    if not isinstance(dt, float):
+        raise TypeError(
+            "the vacuum pole coefficients of a multi-device slab need a concrete "
+            f"Python float time step, got {type(dt).__name__}")
     with jax.core.eval_context():
         one = jnp.ones((1, 1, 1))
         vacuum = MaterialArrays(eps_r=one, sigma=jnp.zeros((1, 1, 1)), mu_r=one)

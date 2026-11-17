@@ -128,8 +128,6 @@ def execute_from_materials(
             "eps_r": eps_override, "sigma": sigma_override, "pec_mask": pec_mask_override,
             "pec_occupancy": pec_occupancy_override})
 
-    # ---- V3 §M4 distributed-specific preflight (5 checks).  Skipped
-    # entirely when the caller requested skip_preflight=True. ----
     if not skip_preflight:
         # Check 1 — device count.
         if n_devices < 2:
@@ -138,27 +136,6 @@ def execute_from_materials(
                 f"devices; found {n_devices} (devices={devices!r}). "
                 "Use distributed=False on a single device, or pass an "
                 "explicit devices list with len>=2."
-            )
-
-        # Check 2 — grading ratio (hard error at >5).  Use the same
-        # max-over-all-axes definition as Simulation.run().
-        _max_ratio = 1.0
-        for _prof in (
-            self._dx_profile, self._dy_profile, self._dz_profile,
-        ):
-            if _prof is not None and len(_prof) > 0:
-                _pa = np.asarray(_prof, dtype=np.float64)
-                if float(_pa.min()) > 0.0:
-                    _max_ratio = max(
-                        _max_ratio,
-                        float(_pa.max()) / float(_pa.min()),
-                    )
-        if _max_ratio > 5.0:
-            raise ValueError(
-                f"grading_ratio={_max_ratio:.2f} exceeds 5.0; "
-                "distributed NU forward requires grading_ratio <= 5.0 "
-                "for shared-dt stability and x-face CPML calibration. "
-                "Reduce the cell-size variation or omit distributed=True."
             )
 
         # Check 3 — ghost width vs local slab.  Mirror

@@ -93,11 +93,6 @@ def run_after_admission(
     self._check_stencil_order_supported(distributed=_distributed_run)
 
     # ---- W6.3 unified lane dispatch: one place decides + rejects ----
-    # _dispatch_plan computes the is_nonuniform/_nu_profile boolean, runs
-    # the distributed upml ValueErrors + the distributed+NU grading
-    # guardrail, selects the lane, and resolves n_steps for the
-    # NU/distributed lanes (the uniform/subgridded lanes resolve it
-    # below from the grid they build and reuse).
     plan = self._dispatch_plan(
         mode="run", subpixel_smoothing=subpixel_smoothing,
         diagnostics=_diagnostics,

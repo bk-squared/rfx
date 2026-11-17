@@ -14,6 +14,7 @@ import warnings
 from collections.abc import Mapping
 from typing import NamedTuple
 
+import jax
 import numpy as np
 
 from rfx._traced_refusal import TracedStructureRefusal
@@ -24,16 +25,61 @@ _AXES = ("x", "y", "z")
 NOMINAL_SUM_RTOL = 1e-9
 
 
+TRACED_DISTRIBUTED_MESH_REFUSAL = (
+    "A graded multi-device solve with traced mesh metrics cannot build "
+    "its host-owned slabs. Use a concrete mesh and time step built "
+    "outside jit/vmap/grad.")
+DISTRIBUTED_GRADING_LIMIT = 5.0
+DISTRIBUTED_GRADING_CAUTION = 3.0
+
+
 def concrete_distributed_x_cells(grid):
     """Admit host-owned slab metrics before any NumPy conversion or stepping."""
     names = ("dx_arr", "dy_arr", "dz", "inv_dx", "inv_dx_h", "inv_dy",
              "inv_dy_h", "inv_dz", "inv_dz_h", "dt")
     if any(is_tracer(getattr(grid, name, None)) for name in names):
-        raise TracedStructureRefusal(
-            "A graded multi-device solve with traced mesh metrics cannot build "
-            "its host-owned slabs. Use a concrete mesh and time step built "
-            "outside jit/vmap/grad.")
+        raise TracedStructureRefusal(TRACED_DISTRIBUTED_MESH_REFUSAL)
     return np.asarray(grid.dx_arr, dtype=np.float64)
+
+
+def admit_distributed_grading(profiles):
+    """Admit the declared cell-size profiles of a graded multi-device solve.
+
+    ``profiles`` is ``(dx_profile, dy_profile, dz_profile)``. A profile that
+    holds a JAX tracer is refused with :class:`TracedStructureRefusal` before
+    any host read. Otherwise the grading ratio is the largest max/min over the
+    given non-empty profiles with a positive minimum (1.0 when none): above
+    :data:`DISTRIBUTED_GRADING_LIMIT` it raises ``ValueError``, above
+    :data:`DISTRIBUTED_GRADING_CAUTION` it warns with ``AccuracyWarning``.
+    ``forward(distributed=True)`` and ``run(devices=...)`` both call it, with
+    or without preflight. Returns the ratio.
+    """
+    if any(is_tracer(leaf) for profile in profiles
+           for leaf in jax.tree_util.tree_leaves(profile)):
+        raise TracedStructureRefusal(TRACED_DISTRIBUTED_MESH_REFUSAL)
+    ratio = 1.0
+    for profile in profiles:
+        if profile is not None and len(profile) > 0:
+            cells = np.asarray(profile, dtype=np.float64)
+            if float(cells.min()) > 0.0:
+                ratio = max(ratio, float(cells.max()) / float(cells.min()))
+    if ratio > DISTRIBUTED_GRADING_LIMIT:
+        raise ValueError(
+            f"grading_ratio={ratio:.2f} exceeds {DISTRIBUTED_GRADING_LIMIT}; "
+            "a graded multi-device solve (forward(distributed=True) or "
+            "run(devices=...)) requires a max/min cell ratio <= "
+            f"{DISTRIBUTED_GRADING_LIMIT} for its shared time step and x-face "
+            "CPML calibration. Reduce the cell-size variation or run on one "
+            "device.")
+    if ratio > DISTRIBUTED_GRADING_CAUTION:
+        from rfx._warning_origin import user_stacklevel
+        warnings.warn(
+            f"Distributed + non-uniform grading ratio {ratio:.2f}"
+            ":1 exceeds the 3:1 stability caution threshold. "
+            "Monitor for numerical dispersion / late-time drift.", AccuracyWarning,
+            stacklevel=user_stacklevel(),
+        )
+    return ratio
 
 
 class NominalProfile(NamedTuple):
