@@ -146,6 +146,7 @@ def identify_modes(lines: list[dict], modes: list[dict], band_hz=BAND_HZ,
     clustered across channels within ``CLUSTER_REL``; each cluster falls in at
     most one Voronoi window. Returns per-mode measured frequency (amplitude-
     weighted cluster mean), the cluster count in the band, and the orphans.
+    CLUSTER_REL is below (142.7 MHz / 7.0 GHz) / 4 = 0.51 %, a quarter of the closest declared mode pair's relative separation.
     """
     floor = AMP_FLOOR_REL if amp_floor_rel is None else amp_floor_rel
     keep = []
@@ -333,7 +334,8 @@ from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 
 def estimator_floor() -> float:
-    """W_est: the lattice-vs-measurement floor from the committed anchors."""
+    """W_est: the lattice-vs-measurement floor from the committed anchors.
+    ANCHOR_QUOTE_RESOLUTION is half of 1e-4 % = 1e-6, the precision to which both anchor data are quoted."""
     res = anchor_residuals()
     worst = max(max(v["residual"], ANCHOR_QUOTE_RESOLUTION) for v in res.values())
     return gate_from_envelope(worst, quantum=1e6)

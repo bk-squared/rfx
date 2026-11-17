@@ -157,8 +157,7 @@ def cases(graded=False):
 
 
 def captured_cases(graded=False):
-    """Every warning site, including failed inspection dependencies, on both grids.
-    The physical open tail is large enough to be resonant."""
+    """Every warning site, including failed inspection dependencies, on both grids."""
     import warnings
     from unittest.mock import patch
     import rfx.preflight.msl as msl
