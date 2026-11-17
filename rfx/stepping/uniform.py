@@ -109,6 +109,10 @@ def make_uniform_step(
     dt = ctx.dt
     dx = ctx.dx
     periodic = ctx.periodic
+    from rfx.core.jax_utils import is_tracer
+    bloch_args = (dict(bloch=None, bloch_operand=ctx.bloch)
+                  if ctx.bloch is not None and any(is_tracer(p) for p in ctx.bloch)
+                  else dict(bloch=ctx.bloch))
     grid = ctx.grid
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     high_wall = unpadded_high_walls(grid)
@@ -170,7 +174,7 @@ def make_uniform_step(
                 frame.st = ctx.apply_upml_h(frame.st, ctx.upml_coeffs, periodic=periodic)
             else:
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
-                    high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch,
+                    high_wall=high_wall, stencil_order=ctx.stencil_order, **bloch_args,
                     magnetic_factors=invariants["magnetic_factors"],
                     h_row_factors=invariants["h_row_factors"])
 
@@ -259,7 +263,7 @@ def make_uniform_step(
                     aniso_eps=aniso_eps,
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,
-                    bloch=ctx.bloch,
+                    **bloch_args,
                     boundary=ctx.curl_boundary,
                     **face_args,
                 )
