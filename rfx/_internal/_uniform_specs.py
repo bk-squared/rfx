@@ -473,9 +473,6 @@ class _StepContext:
     apply_kerr_ade: Callable | None = None
     update_rlc_elements: Callable | None = None
 
-    # ---- vector padding (rfx.stepping.vector_pad) ----
-    # The PadPlan whose padded arrays this step advances; None (default)
-    # steps the physical arrays, unchanged.
     pad_plan: Any = None
 
     @property

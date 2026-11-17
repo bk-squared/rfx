@@ -934,7 +934,6 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
             ctx.grid, ctx.waveguide_meta, measurement=measurement,
             dtype=dtype or ctx.waveguide_meta[0].v_probe_t.dtype)
     if ctx.pad_plan is not None:
-        # Every operand above is built physical; the step reads it padded.
         from rfx.stepping.vector_pad import pad_invariants
         invariants = pad_invariants(invariants, ctx.pad_plan)
     return invariants

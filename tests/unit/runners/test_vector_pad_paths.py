@@ -25,7 +25,6 @@ from tests.unit.runners.test_vector_pad import (
 
 ADJOINT_STEPS = 160
 SWEEP_STEPS = 60
-#: Cases measured not bitwise on the CPU (cluster CPU image); judged by bar (ii).
 NOT_BITWISE = {
     ('design', 'adjoint', 'aligned'), ('design', 'adjoint', 'odd'),
     ('design', 'autodiff', 'aligned'), ('design', 'autodiff', 'odd'),
@@ -73,12 +72,8 @@ def judge(case, label, records, n_steps):
     assert_bitwise(ref, got, label)
 
 
-#: Shape (22, 21, 18) with 5 CPML cells: 'aligned' pads z, 'odd' pads x and z.
 DESIGN_DOMAIN = (22e-3, 20e-3, 14e-3)
 BOX_LO, BOX_HI = (10e-3, 8e-3, 6e-3), (14e-3, 12e-3, 10e-3)
-#: The box against the PMC high z face, on the last physical z cell. z has no
-#: absorber and 10 cells: 'aligned' pads z to 12, 'odd' pads z to 11 (and x).
-#: At that row the box's E update reads the magnetic image of H.
 FACE_DOMAIN = (22e-3, 20e-3, 18e-3)
 FACE_LO, FACE_HI = (10e-3, 8e-3, 12e-3), (14e-3, 12e-3, 18e-3)
 
@@ -96,7 +91,6 @@ def _design_scene(face=False):
                             region=(ix[1], ix[1] + 2, ix[2], ix[2] + 3))
     lo, hi = grid.position_to_index(box[0]), grid.position_to_index(box[1])
     if face:
-        # Realized, not declared: the box ends on the last physical z cell.
         assert hi[2] == grid.shape[2] - 1, (hi, tuple(grid.shape))
     shape = tuple(hi[d] - lo[d] + 1 for d in range(3))
     eps = jnp.asarray(2.0 + 2.0 * np.random.default_rng(1).random(shape), jnp.float32)
@@ -161,7 +155,6 @@ SWEEP_EPS = (1.5, 2.2, 3.0)
 
 
 def _sweep_scene(boundary, eps_r=2.2):
-    # x is 0.0123 m: with 4 CPML cells the extents hold an even axis for 'odd'.
     sim = Simulation(freq_max=10e9, domain=(.0123, .0071, .0052), dx=.001,
                      boundary=boundary if boundary == 'cpml' else _walls(),
                      cpml_layers=4 if boundary == 'cpml' else 0, snap='declared')
@@ -215,6 +208,7 @@ def _expected_padded(shape, target):
 
 @pytest.mark.parametrize('target', TARGETS)
 def test_memory_planner_estimates_padded_extents(target):
+    """The six float32 field arrays of the scan carry take the padded extents; the reported grid stays physical."""
     sim = _planner_scene()
     shape = tuple(sim._build_grid().shape)
     padded = _expected_padded(shape, target)
@@ -223,14 +217,11 @@ def test_memory_planner_estimates_padded_extents(target):
     with vector_pad.force_pad(target):
         estimate = sim.estimate_ad_memory(n_steps=40)
         accounting = sim._ad_memory_static_accounting()
-    # The six float32 field arrays of the scan carry; the rest of the carry
-    # (the step counter) does not depend on the extents.
     rest = unpadded.carry_bytes - 6 * math.prod(shape) * 4
     assert 0 <= rest < 64, (unpadded.carry_bytes, shape)
     assert estimate.carry_bytes == 6 * math.prod(padded) * 4 + rest, (estimate.carry_bytes, shape, padded)
     assert accounting['cells'] == math.prod(padded)
     assert accounting['field_bytes'] == 6 * math.prod(padded) * 4
-    # The reported grid stays the physical one.
     assert (accounting['nx'], accounting['ny'], accounting['nz']) == shape
     jax.clear_caches()
 

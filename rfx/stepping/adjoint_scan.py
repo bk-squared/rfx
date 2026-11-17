@@ -73,8 +73,6 @@ def design_adjoint_scan(ctx, initial, xs):
     ab = (ctx.design_box.ca, ctx.design_box.cb)
     base = replace(ctx, design_box=ctx.design_box._replace(ca=None, cb=None))
     invariants = core_step_invariants(base)
-    # Padded (rfx.stepping.vector_pad), the step reads the padded kernel context;
-    # monitor slots, design windows and the residual read physical cells only.
     step_base = base if ctx.pad_plan is None else invariants["ctx"]
     nf = len(freqs)
     cdtype = jnp.complex128 if dtype == jnp.float64 else jnp.complex64

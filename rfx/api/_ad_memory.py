@@ -141,8 +141,6 @@ class _AdMemoryMixin:
             ny = _nx(self._domain[1], self._dy_profile)
             nz = _nx(self._domain[2], self._dz_profile)
             grid_source = "estimated_from_domain"
-        # The step's arrays: padded extents whenever the step will pad
-        # (rfx.stepping.vector_pad: a forced target, or the gate table's row).
         from rfx.stepping.vector_pad import planned_extents
         allocated = planned_extents((nx, ny, nz), self._periodic_flags(),
                                     two_d=bool(getattr(_grid, "is_2d", False)), graded=is_nonuniform)

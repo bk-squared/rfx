@@ -19,7 +19,6 @@ class HighPadFrame(dict):
     high_pad = True
 
 
-# Static through jit: its rows are Python ints that slice arrays, never leaves.
 jax.tree_util.register_pytree_node(
     HighPadFrame, lambda f: ((), tuple(sorted(f.items()))), lambda rows, _: HighPadFrame(rows))
 
@@ -65,8 +64,6 @@ def apply_framed_faces(state, faces, frame, owned, normal_ghost_faces=()):
                     old = fields[key][edge]
                     new = jnp.where(owner, jnp.zeros_like(old), old)
                 fields[key] = fields[key].at[edge].set(new)
-    # Only a high-padded array's ghost rows move with the frame; the x-slab
-    # framed path keeps its historical writes (owned rows, no normal ghost).
     for face in (normal_ghost_faces if getattr(frame, "high_pad", False) else ()):
         letter, side = face.split("_")
         if side != "hi":

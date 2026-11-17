@@ -21,8 +21,6 @@ from rfx.errors import RfxUnsupported
 from rfx.stepping import vector_pad
 from tests.unit.runners.test_vector_pad import PULSE, TARGETS, _walls
 
-#: A z profile with four cell sizes; the PEC box has nz = 6, which a uniform
-#: grid would pad on both targets (aligned to 8, odd to 7).
 DZ = 1e-3 * np.array([1.1, .8, .6, .8, 1.])
 
 
@@ -41,7 +39,6 @@ def _forward(sim):
     return sim.forward(n_steps=8, eps_override=jnp.ones(shape, jnp.float32), skip_preflight=True)
 
 
-#: Each lane and whether its scene is open (the graded decay stop needs an absorber).
 LANES = {
     'run': (False, lambda sim: sim.run(n_steps=8, skip_preflight=True, compute_s_params=False)),
     'until_decay': (True, lambda sim: sim.run(n_steps=8, until_decay=1e-3, decay_check_interval=4,
@@ -76,7 +73,6 @@ def test_memory_planners_estimate_a_graded_grid_at_its_own_extents(target, monke
     from rfx.auto_config import SimConfig, _auto_memory_mb
     sim = _graded()
     shape = tuple(sim._build_nonuniform_grid().shape)
-    # A uniform grid of this shape would be padded on this target.
     assert vector_pad.plan_pad(shape, target=target, periodic_axes=(False,) * 3).padded != shape
     with vector_pad.force_pad(target):
         accounting = sim._ad_memory_static_accounting()
@@ -89,7 +85,6 @@ def test_memory_planners_estimate_a_graded_grid_at_its_own_extents(target, monke
     with vector_pad.force_pad(target):
         assert config.estimated_memory_mb == _auto_memory_mb(math.prod(config_shape), 4)
 
-    # The gate table's row does not pad a graded grid either.
     monkeypatch.setattr(vector_pad, '_MEASURED_GAIN', {vector_pad._device_kind(): target})
     assert sim._ad_memory_static_accounting()['cells'] == math.prod(shape)
     assert config.estimated_memory_mb == _auto_memory_mb(math.prod(config_shape), 4)

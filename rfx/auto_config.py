@@ -302,7 +302,6 @@ class SimConfig:
         float
             Estimated memory in megabytes.
         """
-        # The step's arrays: padded extents whenever the step will pad (rfx.stepping.vector_pad).
         from rfx.stepping.vector_pad import planned_extents
         nx, ny, nz = planned_extents(self.grid_shape, graded=self.dz_profile is not None)
         return _auto_memory_mb(nx * ny * nz, self.cpml_layers)

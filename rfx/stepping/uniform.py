@@ -118,9 +118,6 @@ def make_uniform_step(
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     high_wall = unpadded_high_walls(grid)
     slab = 'owns_x' in invariants
-    # A high-padded step (rfx.stepping.vector_pad) passes each padded axis's
-    # physical rows to every site that reads an array end, and its
-    # observers read the physical cells only.
     pad_plan = getattr(ctx, "pad_plan", None)
     pad_frame = {} if pad_plan is None else dict(frame=pad_plan.frame)
     if pad_plan is not None and (slab or hooks):

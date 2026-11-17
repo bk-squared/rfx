@@ -140,8 +140,6 @@ def _build_vmap_scan_fn(
             apply_cpml_h=apply_cpml_h if use_cpml else None,
             apply_cpml_e=apply_cpml_e if use_cpml else None,
         )
-        # Vector padding, by the stepping layer, after this lane's own init_state:
-        # the carry is padded here; the step pads its operands and reads physical cells.
         import dataclasses
         from rfx.stepping import vector_pad
         pad = vector_pad.uniform_plan(grid, periodic, path="vmap material sweep",

@@ -8,7 +8,9 @@ listed in ``NOT_BITWISE``, stays within the bars below. For every scene and
 both targets, one padded step from an unpadded state stays within nine last
 bits of the field, and every operand the padded step reads equals the unpadded
 operand on the physical cells. Paths this stage does not pad refuse a forced
-pad; ``"auto"`` pads nothing until a measured gain is entered for the device.
+pad. ``"auto"`` applies the gate table's one measured row, ``"aligned_slow"``
+on compute capability 8.6 with jax 0.10.2, and pads nothing on every other
+device kind.
 """
 
 import dataclasses
@@ -69,7 +71,6 @@ def scene(name):
     elif name == 'kerr':
         sim = Simulation(freq_max=10e9, domain=(.0113, .0071, .0052), dx=.001,
                          boundary=_walls(), cpml_layers=0, snap='declared')
-        # chi3 |E|^2 reaches about 1e-2 at the field this source drives (1e8 V/m).
         sim.add_material('kerr', eps_r=2., chi3=1e-18)
         sim.add(Box((.006, .002, .001), (.008, .004, .003)), material='kerr')
     elif name == 'mixed':
@@ -140,38 +141,19 @@ def run_record(sim, target, **extra):
     return out, plans
 
 
-#: Cases measured not bitwise on the CPU (jax 24.10 image): each first difference is one
-#: to three float32 ULP. Estimate: XLA CPU code generation changes with the array extent.
-#: The measured witness that the pad does not leak is the seeded-pad equality below
-#: (pad contents up to 1e30 give the zero-pad bytes). Every other case stays bitwise.
 NOT_BITWISE = {
     ('run', 'vacuum', 'odd'), ('run', 'pec_pmc_slab', 'odd'), ('run', 'lorentz', 'odd'),
     ('forward', 'cpml_port', 'aligned'), ('forward', 'cpml_port', 'odd'),
     ('forward', 'lorentz', 'aligned'), ('forward', 'lorentz', 'odd'),
     ('vmap', 'vacuum', 'odd'), ('one_axis', 'vacuum', (0, 1, 0)),
-    # Kerr (stage 2): measured not bitwise on the CPU for either target in stage 1.
     ('run', 'kerr', 'aligned'), ('run', 'kerr', 'odd'),
-    # Mixed Debye + Lorentz (stage 2): measured not bitwise on the CPU for either target.
     ('run', 'mixed', 'aligned'), ('run', 'mixed', 'odd'),
 }
 
 
-# Bars, as the design's section 11 states them (desk ruling of 2026-11-16).
-#: One step from one state: padded and unpadded each take one step from the same
-#: unpadded state; per family (E: ex, ey, ez; H: hx, hy, hz) |difference| on the
-#: physical cells at most this times the family's peak |field| over the unpadded
-#: record, the cells a source or port drive writes left out of the peak. The probe
-#: output is judged on its own array's peak over the record.
 ONE_STEP_BAR = 9 * 2.0 ** -23
-#: What a result reads (probe series, end state, snapshots, S11, DFT planes, flux,
-#: the objective value, jvp, grad): |difference| at most this of one fixed scale,
-#: the family peak over the unpadded record (source-driven cells left out) for a
-#: field read, the quantity's own largest magnitude for a record quantity.
 RECORD_BAR = 1e-4
-#: Both hold at N, 2N and 4N steps.
 LENGTHS = (N_STEPS, 2 * N_STEPS, 4 * N_STEPS)
-#: Evidence only, not asserted: the accumulated law (one last bit times S(n), the
-#: running sum to n of the family's largest |field|), printed beside the bars.
 STEP_BAR = 1.2e-7
 
 
@@ -407,9 +389,10 @@ def test_vmap_over_forward_padded_bitwise_or_within_bars(target):
 @pytest.mark.parametrize('target', TARGETS)
 @pytest.mark.parametrize('name', ('vacuum', 'cpml_port', 'kerr'))
 def test_pad_contents_do_not_reach_physical_cells(name, target):
-    """Fill every pad cell of the fields and psi with large random values."""
-    # Kerr squares the field in every cell: (1e30)^2 overflows float32, and the pad's
-    # 0 * inf would be NaN by arithmetic, not by a leak. Its seed is 1e10.
+    """Fill every pad cell of the fields and psi with large random values.
+
+    The Kerr seed is 1e10, because Kerr squares the field in every cell and a 1e30 seed would overflow float32.
+    """
     ref, _ = run_record(scene(name), target)
     with vector_pad.seed_pad(12345, magnitude=1e10 if name == 'kerr' else 1e30):
         got, plans = run_record(scene(name), target)
@@ -467,12 +450,65 @@ def test_plan_targets():
     assert not plan.active
 
 
-def test_auto_pads_nothing_until_measured():
-    assert vector_pad._MEASURED_GAIN == {}
+def test_plan_aligned_slow():
+    none = (False, False, False)
+    plan = vector_pad.plan_pad((364, 365, 113), target='aligned_slow', periodic_axes=none)
+    assert plan.pad == (0, 0, 3)
+    assert plan.padded == (364, 365, 116)
+    for shape in ((365, 365, 113), (366, 365, 113), (364, 365, 112)):
+        plan = vector_pad.plan_pad(shape, target='aligned_slow', periodic_axes=none)
+        assert plan.pad == (0, 0, 0), shape
+        assert plan.padded == shape
+    plan = vector_pad.plan_pad((364, 365, 29), target='aligned_slow', periodic_axes=none)
+    assert plan.pad == (0, 0, 3)
+    plan = vector_pad.plan_pad((364, 365, 113), target='aligned_slow', periodic_axes=(False, False, True))
+    assert plan.pad == (0, 0, 0)
+    plan = vector_pad.plan_pad((364, 365, 113), target='aligned_slow', periodic_axes=none, two_d=True)
+    assert plan.pad == (0, 0, 0)
+
+
+def test_auto_pads_nothing_until_measured(monkeypatch):
+    """Off the gate table's one row (here the CPU), ``"auto"`` pads nothing."""
+    assert vector_pad._MEASURED_GAIN == {('8.6', '0.10.2'): 'aligned_slow'}
     assert vector_pad.requested_target() == 'auto'
+    monkeypatch.setattr(vector_pad, '_device_kind', lambda: ('cpu', '0.10.2'))
     with vector_pad.record_plans() as plans:
         scene('vacuum').run(n_steps=4, skip_preflight=True, compute_s_params=False)
     assert plans and all(p.pad == (0, 0, 0) and p.target == 'off' for p in plans)
+
+
+@pytest.mark.parametrize('kind, expected', [
+    (('8.6', '0.10.2'), 'aligned_slow'),
+    (('8.9', '0.10.2'), 'off'),
+    (('cpu', '0.10.2'), 'off'),
+    (('8.6', '0.11.1'), 'off'),
+])
+def test_resolve_target_follows_the_gate_table(kind, expected, monkeypatch):
+    monkeypatch.setattr(vector_pad, '_device_kind', lambda: kind)
+    assert vector_pad.resolve_target() == expected
+    with vector_pad.force_pad('odd'):
+        assert vector_pad.resolve_target() == 'odd'
+
+
+def _slow_class_scene():
+    """A PEC box of (12, 11, 9) cells: the cell count is a multiple of 4 and nz is not."""
+    sim = Simulation(freq_max=16e9, domain=(22e-3, 20e-3, 16e-3), dx=2e-3, boundary=_walls(),
+                     cpml_layers=0)
+    sim.add_source((4e-3, 10e-3, 8e-3), 'ez', amplitude_kind='current', waveform=PULSE)
+    sim.add_probe((18e-3, 12e-3, 6e-3), 'ez')
+    return sim
+
+
+def test_forced_aligned_slow_pads_a_slow_class_grid():
+    sim = _slow_class_scene()
+    assert tuple(sim._build_grid().shape) == (12, 11, 9)
+    with vector_pad.force_pad('aligned_slow'), vector_pad.record_plans() as plans:
+        sim.run(n_steps=4, skip_preflight=True, compute_s_params=False)
+    assert len(plans) == 1, plans
+    assert plans[0].pad == (0, 0, 3)
+    assert plans[0].padded == (12, 11, 12)
+    assert plans[0].target == 'aligned_slow'
+    jax.clear_caches()
 
 
 def _subgridded():
@@ -507,6 +543,15 @@ REFUSALS = {
 def test_unpadded_paths_refuse_a_forced_pad(path):
     call, words = REFUSALS[path]
     with vector_pad.force_pad('aligned'), pytest.raises(NotImplementedError, match='vector padding') as info:
+        call()
+    assert words in str(info.value)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('path', sorted(REFUSALS))
+def test_unpadded_paths_refuse_a_forced_aligned_slow(path):
+    call, words = REFUSALS[path]
+    with vector_pad.force_pad('aligned_slow'), pytest.raises(NotImplementedError, match='vector padding') as info:
         call()
     assert words in str(info.value)
     jax.clear_caches()

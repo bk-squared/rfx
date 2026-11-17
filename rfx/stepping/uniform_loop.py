@@ -337,8 +337,6 @@ def run(
     use_fast_he = False
     _fast_coeffs = None
 
-    # Vector padding: resolved once from the assembled operands; the carry is
-    # padded before the scan and unpadded before anything leaves it.
     from rfx.stepping import vector_pad
     _pad = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
         _ctx, stencil_order=stencil_order, field_dtype=carry_init["fdtd"].ex.dtype))
@@ -982,7 +980,6 @@ def run_until_decay(
     carry = _setup.carry_init
     init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
-    # Vector padding, as in run(); the host reads between chunks see physical cells.
     from rfx.stepping import vector_pad
     _pad = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
         _setup.ctx_kwargs, stencil_order=stencil_order, field_dtype=carry["fdtd"].ex.dtype))
@@ -1045,7 +1042,7 @@ def run_until_decay(
         pad_plan=_pad,
     )
     # The per-cell arrays are an argument of the jitted step, not constants
-    # compiled into it (split_loop_invariants); padded, they have the padded shape.
+    # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
     _inv_args, _inv_rebuild = split_loop_invariants(
         core_step_invariants(_step_ctx) if measurement is None else

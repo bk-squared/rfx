@@ -13,12 +13,17 @@ update factor (``h_row_factors``) is 0 on every non-periodic high face. The
 pad factors are 0 too, so a pad that starts at zero stays at zero and a
 physical cell next to it reads the 0 that the zero-extending shift supplies.
 
-Targets: ``"aligned"`` pads z to ``4 * ceil(nz / 4)``; ``"odd"`` pads by one
-cell every axis whose length is even. No pad on a periodic (or Bloch) axis,
-nor on z of a 2-D grid. ``"auto"`` applies the target the gate table holds
-for the device; the table is empty until the step rates are measured, so
-``"auto"`` pads nothing today. :func:`force_pad` is the internal override for
-tests; it is not a ``run()`` or ``forward()`` argument.
+Targets: ``"aligned"`` pads z to ``4 * ceil(nz / 4)``; ``"aligned_slow"``
+pads z the same way, but only when the cell count ``nx * ny * nz`` is a
+multiple of 4 and ``nz`` is not, and is no pad on every other grid;
+``"odd"`` pads by one cell every axis whose length is even. No pad on a
+periodic (or Bloch) axis, nor on z of a 2-D grid. ``"auto"`` applies the
+target the gate table holds for the device kind and jax version. The table
+holds one row, chosen from measured step rates: compute capability 8.6 (the
+RTX A6000 class, which also covers the RTX 3090) on jax 0.10.2 gets
+``"aligned_slow"``. Every other device kind and jax version is unpadded under
+``"auto"``. :func:`force_pad` is the internal override for tests; it is not a
+``run()`` or ``forward()`` argument.
 """
 from __future__ import annotations
 
@@ -31,12 +36,9 @@ import numpy as np
 
 from rfx.boundaries._face_frame import HighPadFrame
 
-TARGETS = ("off", "aligned", "odd")
+TARGETS = ("off", "aligned", "aligned_slow", "odd")
 
-#: (device kind, jax version) -> target. Filled only from a measured step
-#: rate under the declared choosing rule, never from an estimate. Empty: every
-#: device kind is unpadded under ``"auto"``.
-_MEASURED_GAIN: dict = {}
+_MEASURED_GAIN: dict = {("8.6", "0.10.2"): "aligned_slow"}
 
 _REQUESTED = contextvars.ContextVar("rfx_vector_pad_target", default="auto")
 _RECORDER = contextvars.ContextVar("rfx_vector_pad_recorder", default=None)
@@ -87,6 +89,8 @@ def plan_pad(shape, *, target, periodic_axes, two_d=False) -> PadPlan:
             continue
         if target == "aligned" and axis == 2:
             pad[axis] = (-n) % 4
+        elif target == "aligned_slow" and axis == 2 and (shape[0] * shape[1] * n) % 4 == 0:
+            pad[axis] = (-n) % 4
         elif target == "odd" and n % 2 == 0:
             pad[axis] = 1
     pad = tuple(pad)
@@ -132,7 +136,7 @@ def force_pad(target):
     """Internal override: pad every uniform run traced inside with ``target``.
 
     Read when a run is set up (trace time). Paths this stage does not pad
-    refuse a forced ``"aligned"`` or ``"odd"``.
+    refuse a forced ``"aligned"``, ``"aligned_slow"`` or ``"odd"``.
     """
     if target not in TARGETS:
         raise ValueError(f"force_pad target must be one of {TARGETS}, got {target!r}")
@@ -170,7 +174,7 @@ def seed_pad(seed, magnitude=1e30):
 
 def refuse_if_forced(path):
     """A path this stage does not pad refuses a forced pad; it never ignores it."""
-    if _REQUESTED.get() in ("aligned", "odd"):
+    if _REQUESTED.get() in ("aligned", "aligned_slow", "odd"):
         from rfx.errors import RfxUnsupported
         raise RfxUnsupported(f"vector padding: {path} not padded yet")
 
@@ -215,8 +219,6 @@ def uniform_plan(grid, periodic, *, unsupported=(), path="uniform") -> PadPlan:
         recorder.append(plan)
     return plan
 
-
-# ---- pad helpers -------------------------------------------------------
 
 def _module(arr):
     import jax.numpy as jnp
@@ -364,7 +366,6 @@ def unpad_pole_tree(tree, plan):
     return jax.tree_util.tree_map(lambda leaf: leaf[(Ellipsis, *sl)], tree)
 
 
-#: Carry entries that hold no per-cell array (accumulators, records, scalars).
 _CARRY_PASS = frozenset({
     "ntff", "current_moments", "dft_planes", "flux_monitors", "waveguide_port_accs",
     "wire_sparam_accs", "lumped_sparam_accs", "wire_refplane_accs", "rlc_states",
@@ -439,7 +440,6 @@ def _pad_factors(factors, plan):
     return tuple(pad_axis_vector(f, a, plan, 0.0) for a, f in enumerate(factors))
 
 
-#: Invariants read on the physical view of the state (index tables).
 _INVARIANT_PASS = frozenset({"probe_table", "port_table", "waveguide_table"})
 
 
@@ -473,7 +473,6 @@ def pad_invariants(invariants, plan):
 
 def pad_context(ctx, plan):
     """The step context with its per-cell operands padded and the plan attached."""
-    # A design box (bounds and window-shaped Ca, Cb) lies on physical cells: it passes.
     for name in ("fast_coeffs", "upml_coeffs", "tfsf_cfg", "design_occupancy",
                  "sheet_impedance", "bloch"):
         if getattr(ctx, name) is not None:
