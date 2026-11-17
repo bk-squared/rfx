@@ -303,7 +303,7 @@ def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False, *, d
         factors = np.exp(-sigma * dt / EPS_0)
         field = np.ones(n_nodes, np.float64)
         field[:length], field[-length:] = factors[:length], factors[length:]
-        damping.append(jnp.asarray(field, dtype))
+        damping.append(jnp.asarray(field, jnp.float32))
     return tuple(damping)
 
 
