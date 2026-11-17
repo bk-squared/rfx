@@ -45,15 +45,17 @@ def plane_wave_line(plan):
 
 
 def incident_divisors(records, bins, dt):
-    """``(I, bound)``: I_c(f) for every record column, (nf, P) complex128, and dt sum |i_c(n)|, (P,)."""
+    """``(I, bound)``: I_c(f) for every record column, (nf, P) complex128, and dt sum |i_c(n)|, (P,).
+
+    The float64 record DFT of :func:`rfx.measurement.ringdown_tail.plain_dft`
+    times the E channel's unit stamp (:func:`rfx.measurement.dft.host_stamp`).
+    """
+    from rfx.measurement.dft import host_stamp
+    from rfx.measurement.ringdown_tail import plain_dft
+
     rows = np.stack([np.asarray(r, dtype=np.float64) for r in records], axis=1)
-    freqs = np.asarray(bins, dtype=np.float64)
-    out = np.zeros((freqs.size, rows.shape[1]), dtype=np.complex128)
-    for lo in range(0, rows.shape[0], 4096):
-        hi = min(lo + 4096, rows.shape[0])
-        t = (np.arange(lo, hi, dtype=np.float64) + 1.0) * dt
-        out += dt * (np.exp(-2j * np.pi * freqs[:, None] * t[None, :]) @ rows[lo:hi])
-    return out, dt * np.sum(np.abs(rows), axis=0)
+    stamp = host_stamp(bins, dt, ["E"] * rows.shape[1])
+    return plain_dft(rows, dt, bins) * stamp, dt * np.sum(np.abs(rows), axis=0)
 
 
 def incident_normalization(plan):
