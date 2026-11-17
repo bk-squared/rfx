@@ -225,7 +225,7 @@ def _declared_stop(w, n_end, *, interval, thr, min_steps, consecutive=2):
 @pytest.mark.parametrize("mesh", ["uniform", "graded", "uniform-upml", "graded-periodic"])
 def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
                                                               record_property):
-    """The bar uses the largest post-drive reference W_ref because the drive-time peak of W is the source cell's near field and would make the bar exceed thr*ref."""
+    """The absolute bar of 9 float32 ULP of the largest post-drive reference W_ref accompanies rtol=1e-4 because the graded-periodic arm64 error measured earlier was 1.26e-4 relative at W_ref/1.5e4 but 1.1e-5 absolute, below one float32 ULP of W_ref."""
     from rfx.runners import nonuniform as nu_runner
 
     cap, thr, min_steps = 600, 1e-3, 100

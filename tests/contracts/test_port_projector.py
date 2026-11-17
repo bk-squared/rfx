@@ -136,7 +136,6 @@ def test_owner_weights_match_runner_metrics_bitwise(mesh, comp):
 def test_live_edges_and_whole_gap_are_used():
     grid = grid_case('uniform')
     live = ((2, 2, 1), (2, 2, 2), (2, 2, 3))
-    assert (2, 2, 0) not in live, "The realized live span must exclude PEC edge zero"
     o = owner(grid, 'uniform', 'ez', live, CurlBoundary())
     state = SimpleNamespace(**{c: jnp.zeros(grid.shape) for c in ('ex','ey','ez','hx','hy','hz')})
     state.ez = state.ez.at[2,2,0].set(1000).at[2,2,1].set(3).at[2,2,2].set(5).at[2,2,3].set(11)
