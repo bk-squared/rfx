@@ -75,8 +75,8 @@ from rfx.probes.refplane import (
 )
 
 C0 = 299792458.0
+SYNTHETIC_SLOW_WAVE_RATIO = 1.055
 
-# --- canonical thru fixture constants (byte-exact battery geometry) ---
 _DX = 0.5e-3
 _DOMAIN = (0.032, 0.020, 0.010)
 _H = 1.0e-3
@@ -89,32 +89,16 @@ _N_STEPS = 4000
 
 
 def _build_thru(reference_plane_cells: int | None = None, *, snap="declared") -> Simulation:
-    """The committed battery thru, optionally opted into the plane path."""
-    # trace x/y solved +2.059%/+7% off; this locks reference-plane port waves.
+    """The committed battery thru, optionally opted into the plane path.
+
+    S from one record needs isolated drives.
+    """
     sim = Simulation(snap=snap,
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    # The microstrip TRACE is a FOIL: a footprint on one node plane with
-    # its normal E live, declared as a sheet (lattice ownership contract
-    # #931 §1.3). It used to be a one-cell PEC Box, which the contract
-    # reads as a VOLUME — walls on both bounding z planes and the interior
-    # shorted, i.e. a 0.5 mm thick slab of copper on a 1 mm substrate.
-    # Nothing about this line ever meant that.
-    #
-    # What moves and what does not, measured on this grid before the
-    # change (dx = 0.5 mm, all four in-plane faces on node lines):
-    #   plane  z = 1.0 mm, node k=2, unchanged — the zero-thickness foil
-    #          declares that exact node plane, with no snapping offset;
-    #   width  the footprint is now sampled CLOSED on the two in-plane
-    #          axes, so the drawn 5.0 mm strip realizes 5.0 mm (11 nodes,
-    #          10 edges). The old half-open rule dropped the hi row and
-    #          realized 4.5 mm — a -10% width the line constants below were
-    #          measured through. Zc therefore FALLS and beta rises; the
-    #          bands are re-derived from a fresh measurement (RECOMPUTE.md),
-    #          never re-centred by hand.
     sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
             (_X2 + _DX, _Y_MID + _W / 2, _H)),
@@ -126,7 +110,6 @@ def _build_thru(reference_plane_cells: int | None = None, *, snap="declared") ->
         kw["reference_plane_cells"] = reference_plane_cells
     sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="-x", **kw)
-    # one driven port: S from one record needs isolated drives
     sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="+x", excite=False, **kw)
     return sim
@@ -150,7 +133,10 @@ def test_the_thru_trace_realizes_the_drawn_foil():
 
 
 def _assert_thru_trace_realization(sim):
-    """Pin the foil itself, independently of conditional preflight notices."""
+    """Pin the foil itself, independently of conditional preflight notices.
+
+    Ey edges across the strip are counted by ny.
+    """
     from rfx.boundaries.pec import realized_wall_planes
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
     from tests._realized_geometry import realized
@@ -167,15 +153,12 @@ def _assert_thru_trace_realization(sim):
     assert abs(z_realized - _H) < 1e-12, (
         f"trace plane {z_realized} differs from declared height {_H}")
     occ = np.argwhere(np.asarray(sheet.footprint))
-    ny = int(occ[:, 1].max() - occ[:, 1].min())     # Ey edges across the strip
+    ny = int(occ[:, 1].max() - occ[:, 1].min())
     nx = int(occ[:, 0].max() - occ[:, 0].min())
     assert abs(ny * _DX - _W) < 1e-12, (ny, ny * _DX, _W)
     assert abs(nx * _DX - ((_X2 + _DX) - (_X1 - _DX))) < 1e-12, nx
 
 
-# ===========================================================================
-# FAST — extraction math on synthetic two-wave line phasors
-# ===========================================================================
 
 def _synthetic_line(freqs, zc_true, beta, dt):
     """Helpers for a clean two-wave uniform line in DFT phasor convention.
@@ -205,19 +188,22 @@ def _synthetic_line(freqs, zc_true, beta, dt):
 
 def test_zc_beta_split_deembed_recover_synthetic_line():
     """Two-plane Zc / measured beta / split / de-embed are exact on a
-    clean two-wave line (the algebra the scan accumulators feed)."""
+    clean two-wave line (the algebra the scan accumulators feed).
+
+    Outgoing is the forward (+x) wave at the plane; incoming is backward.
+    """
     freqs = _FREQS
     w = 2 * np.pi * freqs
     dt = 9.6e-13
     dx = _DX
     zc_true = 48.3
-    beta_true = 1.055 * w / C0     # slow-wave class, per Phase 0
+    beta_true = SYNTHETIC_SLOW_WAVE_RATIO * w / C0
     n = 3
     d = n * dx
     field, raw = _synthetic_line(freqs, zc_true, beta_true, dt)
 
     f0 = (1.0 + 0.3j) * np.ones_like(w, dtype=np.complex128)
-    g0 = 0.18 * np.exp(1j * 0.4) * f0          # backward (load reflection)
+    g0 = 0.18 * np.exp(1j * 0.4) * f0
 
     v1, i1 = field(d, f0, g0)
     v2, i2 = field(2 * d, f0, g0)
@@ -233,7 +219,6 @@ def test_zc_beta_split_deembed_recover_synthetic_line():
 
     out1, in1 = refplane_split(v1, i1c, zc, outboard_sign=+1)
     out2, _ = refplane_split(v2, i2c, zc, outboard_sign=+1)
-    # outgoing = the forward (+x) wave at the plane; incoming = backward
     assert np.max(np.abs(out1 - f0 * np.exp(-1j * beta_true * d))) < 1e-9
     assert np.max(np.abs(in1 - g0 * np.exp(+1j * beta_true * d))) < 1e-9
 
@@ -241,19 +226,21 @@ def test_zc_beta_split_deembed_recover_synthetic_line():
     assert np.max(np.abs(beta / beta_true - 1)) < 1e-12, (
         f"measured beta wrong: {beta / beta_true}")
 
-    # phase-only de-embed back to the port plane (x=0)
     a_port = out1 * np.exp(+1j * beta * d)
     assert np.max(np.abs(a_port - f0)) < 1e-9
 
 
 def _two_port_synthetic(gamma_load, zc_true=48.3, beta_true=None):
-    """Full synthetic 2-port plane dataset (drive 0 + mirrored drive 1)."""
+    """Full synthetic 2-port plane dataset (drive 0 + mirrored drive 1).
+
+    I(+x) flips sign under the mirror x -> L - x.
+    """
     freqs = _FREQS
     w = 2 * np.pi * freqs
     dt = 9.6e-13
     dx = _DX
     if beta_true is None:
-        beta_true = 1.055 * w / C0
+        beta_true = SYNTHETIC_SLOW_WAVE_RATIO * w / C0
     n = 3
     d = n * dx
     L = _L
@@ -274,12 +261,10 @@ def _two_port_synthetic(gamma_load, zc_true=48.3, beta_true=None):
         plane_im[j, p, slot] = im
         plane_ip[j, p, slot] = ip
 
-    # drive 0: port0 (x=0, outboard +x) planes at d/2d; port1 at L-d/L-2d
     fill(0, 0, 0, d, +1)
     fill(0, 0, 1, 2 * d, +1)
     fill(0, 1, 0, L - d, +1)
     fill(0, 1, 1, L - 2 * d, +1)
-    # drive 1: mirror x -> L - x; I(+x) flips sign under the mirror
     fill(1, 1, 0, d, -1)
     fill(1, 1, 1, 2 * d, -1)
     fill(1, 0, 0, L - d, -1)
@@ -303,7 +288,10 @@ def _two_port_synthetic(gamma_load, zc_true=48.3, beta_true=None):
 def test_decompose_refplane_two_port_synthetic_matched():
     """Full wrapper on a matched synthetic thru: diagonals equal zero;
     S21 = S12 = exp(-j beta L) at complex64
-    rounding; measured Zc/beta recovered."""
+    rounding; measured Zc/beta recovered.
+
+    At the receive plane the port-incoming wave carries power.
+    """
     s = _two_port_synthetic(gamma_load=0.0)
     S, diag = decompose_wire_s_matrix_with_reference_planes(
         s["v_all"], s["i_all"], s["z0"], s["counts"],
@@ -314,7 +302,6 @@ def test_decompose_refplane_two_port_synthetic_matched():
         freqs=s["freqs"], dt=s["dt"], dx=s["dx"],
         return_line_diagnostics=True,
     )
-    # closed-form thru S_jj = 0.
     assert np.max(np.abs(S[0, 0])) < 1e-6
     assert np.max(np.abs(S[1, 1])) < 1e-6
     for p in (0, 1):
@@ -323,10 +310,6 @@ def test_decompose_refplane_two_port_synthetic_matched():
     expect = np.exp(-1j * s["beta_true"] * s["L"])
     assert np.max(np.abs(S[1, 0] - expect)) < 1e-6
     assert np.max(np.abs(S[0, 1] - expect)) < 1e-6
-    # R5 wave-pair diagnostics (Phase-0 falsifier F2 surface): the
-    # at-plane pairs are exposed and the zero-free-parameter conservation
-    # identity (|out|^2 - |inc|^2)/Re(Zc) is plane-invariant (exact on the
-    # synthetic lossless line; matched load => incoming ~ 0 at the drive).
     d = s["n"] * s["dx"]
     out00, in00 = diag["plane_waves"][(0, 0, 0)]
     assert np.max(np.abs(in00)) < 1e-12
@@ -335,8 +318,6 @@ def test_decompose_refplane_two_port_synthetic_matched():
     p_net_0 = (np.abs(out00) ** 2 - np.abs(in00) ** 2) / diag["zc"][0].real
     out10, in10 = diag["plane_waves"][(0, 1, 0)]
     p_net_1 = (np.abs(in10) ** 2 - np.abs(out10) ** 2) / diag["zc"][1].real
-    # power flows drive -> load: at the receive plane the port-incoming
-    # wave carries it, and on the lossless line the two planes agree.
     assert np.max(np.abs(p_net_1 / p_net_0 - 1)) < 1e-9
 
 
@@ -390,9 +371,6 @@ def test_decompose_refplane_requires_both_ports_opted():
     assert S.tobytes() == S_legacy.tobytes()
 
 
-# ===========================================================================
-# FAST — add_port opt-in validation
-# ===========================================================================
 
 def _base_sim():
     return Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
@@ -433,24 +411,13 @@ def test_nonuniform_lane_guard_fails_loudly():
     sim = _build_thru(reference_plane_cells=3)
     with pytest.raises(NotImplementedError, match="uniform single-device"):
         sim._reject_refplane_ports_off_uniform_lane("non-uniform mesh", None)
-    # explicit compute_s_params=False is allowed (no S-matrix requested)
     sim._reject_refplane_ports_off_uniform_lane("non-uniform mesh", False)
-    # and a sim without the opt-in is never blocked
     _build_thru()._reject_refplane_ports_off_uniform_lane(
         "non-uniform mesh", None)
 
 
-# ===========================================================================
-# FAST — plumbing contract on the canonical thru (tiny FDTD)
-# ===========================================================================
 
 def _raw_drive(sim, n_steps=8, drive_idx=0):
-    # The trace is a SHEET, and a sheet owns no cell, so it is
-    # not in ``pec_mask``. This helper must collect it and hand it on, or
-    # the reference-plane machinery scans a bare cell mask, finds no metal
-    # on a perfectly healthy board and raises. ``_assemble_materials``
-    # warns when a caller drops a classified sheet; that warning was this
-    # helper's, not the library's.
     grid = sim._build_grid()
     pec_sheets: list = []
     pec_wires: list = []
@@ -476,6 +443,7 @@ def test_refplane_registers_two_planes_per_port_with_phase0_geometry():
     sampled CLOSED, so the drawn 5.0 mm strip realizes y 23..33 where the
     old half-open rule stopped at 32, and the loop leg half a cell outside
     the bbox follows it).
+    The gap line integral spans the 2 live cells, exactly the 2-cell integral that measured Zc = 47.9-48.6 ohm.
     """
     raw = _raw_drive(_build_thru(reference_plane_cells=3))
     rp = raw["wire_refplane"]
@@ -484,6 +452,7 @@ def test_refplane_registers_two_planes_per_port_with_phase0_geometry():
     by_key = {(s.port_index, s.plane_slot): s for s, _ in rp}
     assert set(by_key) == {(0, 0), (0, 1), (1, 0), (1, 1)}
 
+    PADDED_Y_10MM_INDEX = 28
     expected_plane_index = {(0, 0): 27, (0, 1): 30, (1, 0): 53, (1, 1): 50}
     for key, spec in by_key.items():
         assert spec.plane_index == expected_plane_index[key], (
@@ -491,20 +460,8 @@ def test_refplane_registers_two_planes_per_port_with_phase0_geometry():
         assert spec.line_axis == 0 and spec.comp_axis == 2
         assert spec.outboard_sign == (+1 if key[0] == 0 else -1)
         assert spec.n_cells_outboard == (3 if key[1] == 0 else 6)
-        # GAP-trimmed V cells: the port extent is 3 cells (k=0,1,2) but
-        # k=2 lies inside the PEC trace at the plane column and its Ez
-        # edge is NOT mask-zeroed (measured |ez2/ez0| ~ 0.21) — the gap
-        # line integral spans the 2 live cells, exactly the Phase-0
-        # 2-cell integral that measured Zc = 47.9-48.6 ohm.
         assert (spec.e_lo, spec.e_hi) == (0, 2)
-        assert spec.third_index == 28                # y = 10mm (padded)
-        # the trace footprint is sampled CLOSED, so the drawn
-        # 5.0 mm strip realizes y-nodes 23..33 where the old half-open
-        # rule stopped at 32. The whole Ampere loop follows it — the leg
-        # half a cell OUTSIDE the bbox moves 33 -> 34 and the integration
-        # span 34 -> 35. Measured, not predicted: the first re-derivation
-        # here assumed u_span was already padded far enough and it was
-        # not.
+        assert spec.third_index == PADDED_Y_10MM_INDEX
         assert (spec.u_lo_leg, spec.u_hi_leg) == (22, 34)
         assert (spec.v_lo_leg, spec.v_hi_leg) == (1, 3)
         assert (spec.u_span_lo, spec.u_span_hi) == (23, 35)
@@ -525,7 +482,10 @@ def test_default_path_registers_no_planes():
 
 def test_refplane_crossing_guard_rejects_planes_past_other_port():
     """N large enough to reach past the far port must fail loudly."""
-    sim = _build_thru(reference_plane_cells=17)   # 2N=34 cells > 32-cell line
+    CROSSING_PLANE_CELLS = 17
+    assert 2 * CROSSING_PLANE_CELLS * _DX > _L, (
+        "crossing plane setup must reach past the far port")
+    sim = _build_thru(reference_plane_cells=CROSSING_PLANE_CELLS)
     with pytest.raises(ValueError, match="reach past another port"):
         _raw_drive(sim)
 
@@ -540,15 +500,12 @@ def test_refplane_requires_pec_trace_at_plane():
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    # Same foil sheet as ``_build_thru`` — see the comment
-    # there for what the closed footprint moved and what it did not.
     sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
             (_X2 + _DX, _Y_MID + _W / 2, _H)),
         sigma_bulk=5.8e7,
     )
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
-    # direction "+x" on port 1: outboard becomes -x, off the trace end
     sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="+x",
                  reference_plane_cells=5)
@@ -616,9 +573,6 @@ def test_driver_vi_dump_with_planes_fails_loudly():
             sim, _FREQS, n_steps=64, return_vi_dump=True)
 
 
-# ===========================================================================
-# FAST — extraction-time witnesses (Zc reality warning + beta wrap guard)
-# ===========================================================================
 
 def _decompose(s, **kw):
     return decompose_wire_s_matrix_with_reference_planes(
@@ -686,9 +640,6 @@ def test_beta_guard_rejects_nonpositive_beta():
         _decompose(s)
 
 
-# ===========================================================================
-# FAST — preflight placement advisories
-# ===========================================================================
 
 def test_preflight_near_field_advisory_below_n10():
     report = _build_thru(reference_plane_cells=3).preflight()
@@ -702,15 +653,12 @@ def test_preflight_near_field_advisory_below_n10():
 def test_preflight_partial_optin_advisory():
     """Opting in only ONE of two wire ports leaves the off-diagonals on
     the legacy path silently — preflight must say so."""
-    # trace x/y solved +2.059%/+7% off; this checks partial reference-plane advice.
     sim = Simulation(snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    # Same foil sheet as ``_build_thru`` — see the comment
-    # there for what the closed footprint moved and what it did not.
     sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
             (_X2 + _DX, _Y_MID + _W / 2, _H)),
@@ -741,9 +689,6 @@ def test_preflight_silent_without_optin():
     assert not report.by_code("refplane_partial_optin")
 
 
-# ===========================================================================
-# FAST — non-uniform lane end-to-end (finding 7: grading profile + run())
-# ===========================================================================
 
 def test_nonuniform_lane_end_to_end_raises():
     """A real graded dz_profile routed through run(compute_s_params=True)
@@ -751,15 +696,12 @@ def test_nonuniform_lane_end_to_end_raises():
     off-diagonals (end-to-end witness for the unit-level guard above)."""
     dz = np.concatenate([np.full(10, 0.4e-3), np.full(12, 0.5e-3)])
     assert abs(float(np.sum(dz)) - _DOMAIN[2]) < 1e-12
-    # trace x/y solved +2.059%/+7% off; this checks NU reference-plane admission.
     sim = Simulation(snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX, dz_profile=dz,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    # Same foil sheet as ``_build_thru`` — see the comment
-    # there for what the closed footprint moved and what it did not.
     sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
             (_X2 + _DX, _Y_MID + _W / 2, _H)),
@@ -769,7 +711,6 @@ def test_nonuniform_lane_end_to_end_raises():
     sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="-x",
                  reference_plane_cells=3)
-    # one driven port: S from one record needs isolated drives
     sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="+x",
                  reference_plane_cells=3, excite=False)
@@ -778,124 +719,37 @@ def test_nonuniform_lane_end_to_end_raises():
                 skip_preflight=True)
 
 
-# ===========================================================================
-# SLOW physics battery (opt-in: -m slow_physics) — plane path on the thru
-# ===========================================================================
-#
-# Fixture choice N=10: both planes (10 and 20 cells outboard, x=13/18 mm
-# from port 1 and 19/14 mm from port 2) sit >= 10 cells from every port —
-# the Phase-0 pre-registration rule for the two-plane Zc/beta measurement.
-# The rejected first candidate N=3 (planes 3/6 cells) was measured
-# near-field contaminated (R2 stop -> placement conformed to the Phase-0
-# clean zone; one redesign, evidence-anchored). Earlier (gap-trimmed
-# V) N=3 battery numbers: beta/(w/c) 1.16-1.20 (vs mid-line
-# 1.046-1.059), Zc 52.0-53.1 ohm with Im/Re to 8.2%, |S21| closed-box
-# referee residual -3.1% at 7 GHz, row energy to 1.019.  (The pre-trim
-# driver had measured beta 1.21-1.25 / Im/Re 9.2% / resid -6.8% at the
-# same placement — same class, same verdict.)
 _REFPLANE_N = 10
 
-# Phase-0 closed-box flux referee |S21| = sqrt(P_abs/P_launch), measured (leak-free 6-face boxes).
 _REFEREE_S21 = np.array([1.0066, 1.0052, 1.0033, 1.0007, 0.99775,
                          0.99441, 0.99093, 0.98751, 0.98431])
 
-# Measured plane-path values (THIS implementation, gap-trimmed V, N=10,
-# 4000 steps):
-#   |S21| = 0.98251..0.99840; |S21|/referee - 1 = -0.82%..-0.18% per bin
-#   reciprocity rel <= 0.38%; Zc Re 47.94..48.62 ohm (both ports),
-#   Im/Re <= 1.2%; beta/(w/c) = 1.0465..1.0589;
-# RE-MEASURED, same config, the
-# trace declared a FOIL and realizing the drawn 5.0 mm instead of 4.5:
-#   |S21| = 0.98179..0.99846; |S21|/referee = 0.99192..0.99744 (still the
-#   Phase-0 arch class); Zc Re 46.5691..47.0366 (port 0) and
-#   46.6389..46.9445 (port 1), Im/Re <= 1.06%; beta/(w/c) =
-#   1.01115..1.02432 (port 0). Five of the six physics legs pass on the
-#   UNCHANGED gates — only the beta band moved, below.
-#   |arg(S21) + beta_meas*L| <= 8.4e-4 rad; max singular value of the
-#   mixed matrix 1.0663 max (was 1.0299 —
-#   see the SV gate note); |S11|^2+|S21|^2 <= 0.99995.
-# Gates carry margin over these measured values and are labelled with
-# their referee anchors. They are referee-consistency + regression gates
-# on the canonical thru, NOT external cross-solver validation.
-_S21_REFEREE_RESID_BAND = (-0.025, 0.010)   # Phase-0 arch class <= 2.5%
-_S21_LEGACY_BAND_HI = 0.85                  # committed legacy lock band hi
+_S21_REFEREE_RESID_BAND = (-0.025, 0.010)
+_S21_LEGACY_BAND_HI = 0.85
 _RECIP_REL_MAX = 0.02
-_ZC_RE_BAND = (46.0, 50.5)     # measured 47.9-48.6; Phase-0 mid-line
-                               # 47.85-48.63; Phase-0 pair-dependence
-                               # spread across plane pairs 44.5-51.0
-_ZC_IM_OVER_RE_MAX = 0.03      # measured <= 0.012
-# RE-DERIVED, and the
-# pre-declaration it answers was WRONG about the direction: it said beta
-# would RISE above the old band because the strip got wider. It fell.
-#
-# The reason was already written in this file before the run. The paragraph
-# below attributes the slow-wave excess to the FINITE-THICKNESS trace and
-# its non-TEM fringing, and rules out discretization with a dx/2 check
-# (excess 0.0781 -> 0.0756, ratio 0.97). The contract removes the finite
-# thickness — the trace is a foil, one node plane with its normal E live —
-# so the named cause is mostly gone and the excess falls with it:
-#     mean excess over the vacuum limit   0.0527  ->  0.0201   (x0.38)
-# The width change (4.5 -> 5.0 mm) pulls the same way on Zc, which fell
-# 47.94-48.62 -> 46.57-47.04 and stayed INSIDE its unchanged band. Two
-# constants moved in the directions one redraw predicts; only one of them
-# left its band.
-#
-# The band, by this module's own margin rule (the retired band sat 0.0165
-# below the measured min and 0.0211 above the measured max):
-#   floor   1.01115 - 0.0165 = 0.9947, which is BELOW the vacuum limit. An
-#           air line over ground cannot carry a wave faster than c, so the
-#           floor is set at the physical limit 1.00 — TIGHTER than the rule
-#           would give, and a statement rather than a fitted number.
-#   ceiling 1.02432 + 0.0211 = 1.0454, rounded up to the 0.01 grid -> 1.05.
-#   width   0.05, IDENTICAL to the retired band's.
-# Port 1's beta was not reached (port 0's assertion failed
-# first). PRE-DECLARED: port 1 lands
-# inside [1.00, 1.05] as port 0 does, and within 0.005 of it — the two Zc
-# arrays agree to 0.3 ohm, so a port asymmetry that large would be a
-# separate finding.
-_BETA_OVER_WC_BAND = (1.00, 1.05)   # measured 1.01115-1.02432 (port
-# 0). Retired band (1.03, 1.08), measured 1.0465-1.0589
-# on the 0.5 mm-thick trace. Mechanism
-# check (one dx/2 rerun at fixed physical geometry and
-# identical physical plane locations on a shortened 12 mm line): the
-# slow-wave excess is dx-STABLE — 0.0781 (dx=0.5mm) -> 0.0756 (dx=0.25mm),
-# ratio 0.97, nowhere near the halving a staircase/dispersion owner
-# would show. The beta/(w/c) = 1.05-1.08 slow wave is PHYSICAL for this
-# open air-line-over-ground geometry (finite-thickness trace, non-TEM
-# fringing), not a discretization artefact. (Measured Zc showed mild dx
-# sensitivity, 48.5 -> 47.0 ohm at dx/2; beta did not.)
-_PHASE_DEEMBED_MAX_RAD = 0.02  # measured <= 8.4e-4 (~24x margin)
-# The mixed matrix pairs the
-# byte-frozen legacy DIAGONAL (which #318 shrank to the feed-post
-# V-shape, max|Sii| ~= 0.089, from the pre-#318 dead-cell 0.13) with the
-# plane-referenced OFF-diagonal (~0.99). The smaller diagonal re-phases
-# against the ~0.99 off-diagonals, so the top singular value of the
-# 2x2 rose to a measured 1.0663 max (was 1.0299 pre-#318). Gate 1.08
-# (~1.3% margin) — this is a flux-ACCOUNTING envelope (see label on the
-# test), NOT a passivity certification; the >1 excursion is the mixed
-# legacy/plane calibration + finite-DFT budget, not validated gain.
-# The genuine passivity witnesses BOTH pass strictly and improved under
-# #318, so this permissive gate is not masking a real regression:
-# _ENERGY_ROW_MAX (|S11|^2+|S21|^2 = 0.99995 < 1) and the battery
-# singular-value gate (0.633 < 0.85). Stable at dx/2.
+_ZC_RE_BAND = (46.0, 50.5)
+_ZC_IM_OVER_RE_MAX = 0.03
+_BETA_OVER_WC_BAND = (1.00, 1.05)
+_PHASE_DEEMBED_MAX_RAD = 0.02
 _MIXED_SV_MAX = 1.08
-_ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 0.99995 (
-                               # was <= 1.0003) — dropped as the diagonal
-                               # reflection shrank; gate kept unchanged
+_ENERGY_ROW_MAX = 1.02
 
 
 @pytest.fixture(scope="module")
 def refplane_thru():
     """Opted thru through the production driver (~2.5 min);
-    quotes preflight verbatim; returns (S complex128, diagnostics)."""
+    quotes preflight verbatim; returns (S complex128, diagnostics).
+
+    The numerical lock depends on the realized foil, not an advisory census.
+    """
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    assert min(_REFPLANE_N, _L / _DX - 2 * _REFPLANE_N) >= 10, (
+        "reference planes need ten cells from every port for clean line constants")
     sim = _build_thru(reference_plane_cells=_REFPLANE_N)
     report = sim.preflight()
     issues = [str(i) for i in report]
     for msg in issues:
         print(f"\n[refplane thru] preflight (verbatim): {msg}")
-    # Exact-plane sheets are intentionally silent. The
-    # numerical lock depends on the realized foil, not an advisory census.
     errors = [str(i) for i in report if i.severity == "error"]
     assert not errors, errors
     _assert_thru_trace_realization(sim)
@@ -911,9 +765,6 @@ def refplane_thru():
         print(f"[refplane thru] Zc1={diag['zc'][1]}")
         w = 2 * np.pi * _FREQS
         print(f"[refplane thru] beta0/(w/c)={diag['beta'][0] / (w / C0)}")
-        # Port 1 too: the band re-derivation had only port 0 to read
-        # because port 0's assertion failed first, and a two-port fixture
-        # should print both before anything asserts.
         print(f"[refplane thru] beta1/(w/c)={diag['beta'][1] / (w / C0)}")
     return S, diag
 
