@@ -17,8 +17,8 @@ definition is "tests that need GPU — too slow on CPU or GPU-specific".
 Measured on CPU (``JAX_PLATFORMS=cpu``): the original 13 tests ran in 6.5 s
 wall, slowest single test 1.27 s.
 
-Every domain length here is a whole number of cells of dx, so the solved domain equals
-the declared one.
+Every domain length written as ``N * (c / 5 GHz / 20)`` is a whole number of cells of dx, so the
+solved domain equals the declared one.
 """
 
 import warnings

@@ -3,8 +3,8 @@
 Distributed and subgridded precision refusals keep their existing messages.
 Uniform mixed and float64 CPML coverage remains unchanged.
 
-Every domain length here is a whole number of cells of dx, so the solved domain equals
-the declared one.
+Every domain length written as ``N * (c / 5 GHz / 20)`` is a whole number of cells of dx, so the
+solved domain equals the declared one.
 """
 
 from __future__ import annotations
