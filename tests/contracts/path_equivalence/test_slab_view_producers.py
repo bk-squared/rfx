@@ -40,6 +40,7 @@ from rfx.model.occupancy import build_edge_keep, publish_occupancy, with_edge_ke
 from rfx.stepping.slab_view import slab_views
 from rfx.model.source_coefficients import drive_columns as _slab_drive_columns
 from tests._multi_device_scene import host_devices
+from tests._stated_plan import stated_plan
 
 PERIODIC = (False, False, False)
 DEVICES = (2, 3)
@@ -900,6 +901,7 @@ def test_cut_drives_without_sources_keeps_rank_shards(n_devices):
     layout = Slab(grid.nx, n_devices)
     material = stage_forward_materials(_cells(scene).materials, layout, mesh, uniform=True)
     setup = build_setup(grid, material, layout, mesh, n_steps, [], [ProbeSpec(4, 2, 2, 'ez')],
+                        measurement=stated_plan(grid, [ProbeSpec(4, 2, 2, 'ez')], n_steps=n_steps),
                         pec_mask=stage_pec(None, (), (), grid, layout, mesh))
     result, _ = finish(setup.invariants, setup.carry_init, layout, mesh,
                        waveforms=setup.src_waveforms, dt=grid.dt)
