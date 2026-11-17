@@ -56,7 +56,9 @@ float64 and cast.
 from __future__ import annotations
 
 import inspect
+import warnings
 
+import jax
 import numpy as np
 
 #: The inert padding pole, per step (``s = log(0.5) / dt``). Its basis column
@@ -238,6 +240,63 @@ def lstsq_masked(A, b, mask):
     return _solve_qr(Q, R, norms, mask, b)
 
 
+@jax.custom_jvp
+def _first_order_only(Yw, w):
+    """``w``, unchanged; a second derivative through it is NaN, with a warning.
+
+    The rule of :func:`_pole_step` passes the channel weights through here.
+    Its JVP rule runs only when the record ``Yw`` carries a derivative inside
+    that rule, that is, when a second differentiation reaches the
+    identification window. It then emits
+    :class:`rfx.errors.RingdownSecondDerivativeWarning` while tracing and
+    returns a NaN tangent linear in the record's tangent, so the NaN survives
+    transposition and reaches only what reads the pole step's derivative.
+    """
+    return w
+
+
+@_first_order_only.defjvp
+def _first_order_only_jvp(primals, tangents):
+    import jax.numpy as jnp
+    from rfx.errors import RingdownSecondDerivativeWarning
+    _Yw, w = primals
+    Yw_dot = tangents[0]
+    warnings.warn(
+        "a second derivative reached the ring-down completion of forward(ringdown=...): "
+        "the completion moves its poles by a first-order step, so any second-order form of "
+        "an objective that reads a completed output (ringdown.s_params, s_params_long, "
+        "poles, probe_spectra) is NaN. First derivatives, and every derivative of an "
+        "objective that reads no completed output, are exact.",
+        RingdownSecondDerivativeWarning, stacklevel=2)
+    return w, jnp.nan * jnp.sum(Yw_dot, axis=0)
+
+
+@jax.custom_jvp
+def _pole_step(Yw, A, w, mask_c):
+    """The frozen Gauss-Newton pole step: zero in value, ``Dmat dYw`` in derivative.
+
+    ``Yw (M, C)`` is the complex window, ``A (M*C, K)`` the frozen weighted
+    Jacobian and ``w (C,)`` the frozen channel weights. The value is the
+    least-squares solution against ``(Yw - Yw) w``, which is zero unless the
+    data are not finite. The first derivative is the least-squares solution
+    against ``dYw w``; a second derivative is NaN (:func:`_first_order_only`).
+    """
+    M, C = int(Yw.shape[0]), int(Yw.shape[1])
+    return lstsq_masked(A, ((Yw - Yw) * w[None, :]).reshape(M * C, 1), mask_c)[:, 0]
+
+
+@_pole_step.defjvp
+def _pole_step_jvp(primals, tangents):
+    Yw, A, w, mask_c = primals
+    Yw_dot = tangents[0]
+    M, C = int(Yw.shape[0]), int(Yw.shape[1])
+    g = _first_order_only(Yw, w)
+    Q, R, norms = _qr_masked(A, mask_c)
+    ds = _solve_qr(Q, R, norms, mask_c, ((Yw - Yw) * w[None, :]).reshape(M * C, 1))[:, 0]
+    ds_dot = _solve_qr(Q, R, norms, mask_c, (Yw_dot * g[None, :]).reshape(M * C, 1))[:, 0]
+    return ds, ds_dot
+
+
 # ---------------------------------------------------------------------------
 # The completion map
 # ---------------------------------------------------------------------------
@@ -252,6 +311,16 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     the caller already has it. See the module docstring for the value and the
     derivative. ``mutation`` exists only for the unit tests' revived-defect
     checks (:data:`MUTATIONS`).
+
+    Derivatives. First derivatives are exact. Every derivative of an
+    objective that reads no completed output is exact. The poles move by a
+    first-order step (:func:`_pole_step`), so any second-order form
+    (``jax.hessian``, or ``jax.grad``, ``jax.jvp``, ``jax.jacfwd``,
+    ``jax.jacrev`` nested) of an objective that reads a completed output
+    returns NaN, including the mixed entries of a joint Hessian. The warning
+    :class:`rfx.errors.RingdownSecondDerivativeWarning` shows whenever a
+    second differentiation reaches the identification window, also when the
+    objective reads no completed output.
     """
     from rfx.measurement.ringdown_tail_jax import plain_dft, tail_dft
     import jax
@@ -292,8 +361,7 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
                             jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D, precision=HIGHEST),
                             precision=HIGHEST)
         A = jax.lax.stop_gradient(PD.reshape(M * C, K))
-        dyw = ((Yw - jax.lax.stop_gradient(Yw)) * w[None, :]).reshape(M * C, 1)
-        ds = lstsq_masked(A, dyw, mask_c)[:, 0]
+        ds = _pole_step(Yw, A, w, mask_c)
     s = s0 + ds
 
     # residues re-fitted differentiably at s(y); in value, the fit at s0

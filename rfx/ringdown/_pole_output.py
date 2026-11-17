@@ -64,6 +64,17 @@ class RingdownForwardResult:
     implicit derivative, residues re-fitted). When the host identification
     fails on a window, that array is NaN and the report names the failure.
 
+    First derivatives are exact. Every derivative of an objective that reads
+    no completed output (``ForwardResult.s_params`` alone, for example) is
+    exact. Any second-order form (``jax.hessian``, or ``jax.grad``,
+    ``jax.jvp``, ``jax.jacfwd``, ``jax.jacrev`` nested) of an objective that
+    reads a completed output returns NaN, including the mixed entries of a
+    joint Hessian: the poles move by a first-order step. The warning
+    :class:`rfx.errors.RingdownSecondDerivativeWarning` shows whenever a
+    second differentiation reaches the identification window, also when the
+    objective reads no completed output; turn it into an exception with
+    ``warnings.filterwarnings("error", category=RingdownSecondDerivativeWarning)``.
+
     ``report`` is a :class:`RingdownReport` computed on the host the first time
     it is read, from a CONCRETE result (the float64 completion, W0, W1, WE and
     the rest, as ``run()``'s, plus ``traced``: the traced value against the
