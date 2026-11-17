@@ -27,7 +27,7 @@ def tree(tmp_path, monkeypatch):
 
 def write_tree(tree, files=None, count=3, cap=2):
     (tree / gate.BASELINE).write_text(json.dumps({
-        "counts": "code-lines", "cap": cap, "files": {"rfx/nested/a.py": 3} if files is None else files,
+        "counts": gate.UNIT, "cap": cap, "files": {"rfx/nested/a.py": 3} if files is None else files,
     }))
     (tree / "rfx/nested/a.py").write_bytes(b"x\n" * count + b"unterminated")
 
@@ -41,7 +41,7 @@ def run(tree, capsys, *args):
 
 def mock_base(monkeypatch, cap=2, files=None, legacy=False):
     previous = {
-        "counts": "code-lines", "cap": cap, "files": {"rfx/nested/a.py": 3} if files is None else files,
+        "counts": gate.UNIT, "cap": cap, "files": {"rfx/nested/a.py": 3} if files is None else files,
     }
     if legacy:
         del previous["counts"]
@@ -101,15 +101,23 @@ def test_lowering_passes(tree, capsys, monkeypatch):
     assert run(tree, capsys, "--base", "base") == (0, "")
 
 
-@pytest.mark.parametrize("count,expected", [(2, 0), (3, 1), (None, 0)])
-def test_removal_requires_deletion_or_count_within_cap(
-    tree, capsys, monkeypatch, count, expected,
+@pytest.mark.parametrize("cap,count,expected,message", [
+    (4, 2, 1, "rfx/nested/a.py: delisting gives the file the cap of 4 instead of its baseline 3; "
+              "keep the entry, or delete the file.\n"),
+    (3, 3, 0, ""),
+    (2, 2, 0, ""),
+    (2, 3, 1, "rfx/nested/a.py: baseline 2, count 3; split the file rather than raise the number.\n"),
+    (4, None, 0, ""),
+], ids=["base-below-cap", "base-at-cap", "base-above-cap", "count-above-cap", "deleted"])
+def test_removal_requires_deletion_or_base_entry_at_or_above_cap(
+    tree, capsys, monkeypatch, cap, count, expected, message,
 ):
-    mock_base(monkeypatch)
-    write_tree(tree, files={}, count=count or 0)
+    """Base lists a.py at 3 under cap 5; the head removes the entry."""
+    mock_base(monkeypatch, cap=5)
+    write_tree(tree, files={}, count=count or 0, cap=cap)
     if count is None:
         (tree / "rfx/nested/a.py").unlink()
-    assert run(tree, capsys, "--base", "base")[0] == expected
+    assert run(tree, capsys, "--base", "base") == (expected, message)
 
 
 def test_lower_count_prints_notice(tree, capsys):
@@ -143,8 +151,8 @@ def test_head_and_base_environment_select_snapshots(tree, capsys, monkeypatch):
         ("ls-tree", "base", "--", gate.PENDING): b"",
         ("ls-tree", "head", "--", gate.PENDING): b"",
         ("ls-tree", "base", "--", gate.BASELINE): b"present",
-        ("show", f"base:{gate.BASELINE}"): json.dumps({"counts": "code-lines", "cap": 2, "files": {}}).encode(),
-        ("show", f"head:{gate.BASELINE}"): json.dumps({"counts": "code-lines", "cap": 2, "files": {}}).encode(),
+        ("show", f"base:{gate.BASELINE}"): json.dumps({"counts": gate.UNIT, "cap": 2, "files": {}}).encode(),
+        ("show", f"head:{gate.BASELINE}"): json.dumps({"counts": gate.UNIT, "cap": 2, "files": {}}).encode(),
         ("ls-tree", "-r", "--name-only", "-z", "head", "--", "rfx/"): b"rfx/a.py\0",
         ("show", "head:rfx/a.py"): b"x\nx\nx\n",
     }
@@ -296,7 +304,7 @@ def test_transition_rejects_missing_listed_source(tree, capsys, monkeypatch):
     assert "split the file" not in err
 
 
-@pytest.mark.parametrize("counts", [None, "newline-bytes", 1])
+@pytest.mark.parametrize("counts", [None, "newline-bytes", 1, "code-lines"])
 def test_invalid_count_mode_fails(tree, capsys, counts):
     write_tree(tree)
     path = tree / gate.BASELINE
@@ -328,7 +336,7 @@ def test_current_legacy_baseline_fails(tree, capsys):
 ])
 def test_moved_entry_inherits_only_its_old_cap(tree, capsys, head, case, expected, message):
     write_tree(tree, files={"rfx/nested/a.py": 20}, count=20)
-    original = b"".join(f"old_{i:02d} = {i:02d}\n".encode() for i in range(20))
+    original = b"".join(f"old_{i:02d} = {i}\n".encode() for i in range(20))
     source = tree / "rfx/nested/a.py"
     source.write_bytes(original)
     gate.git(tree, "init", "-q", "--template=")
@@ -363,7 +371,7 @@ def test_moved_entry_inherits_only_its_old_cap(tree, capsys, head, case, expecte
         (tree / "rfx/nested/b.py").write_bytes(original)
         files["rfx/nested/b.py"] = 20
     (tree / gate.BASELINE).write_text(json.dumps({
-        "counts": "code-lines", "cap": 2, "files": files,
+        "counts": gate.UNIT, "cap": 2, "files": files,
     }))
     gate.git(tree, "add", ".")
     if head:
@@ -373,3 +381,160 @@ def test_moved_entry_inherits_only_its_old_cap(tree, capsys, head, case, expecte
     code, err = run(tree, capsys, "--base", base, "--head", head)
     assert code == expected
     assert err == (message + "; split the file rather than raise the number.\n" if message else "")
+
+
+OWNERS = (
+    b'"""Module\n'
+    b'docstring."""\n'
+    b"class A:\n"
+    b'    """Class docstring."""\n'
+    b"    def method(self):\n"
+    b'        """Method\n'
+    b'        docstring."""\n'
+    b"        return 1\n"
+    b"def f():\n"
+    b'    """Def docstring."""\n'
+    b"    def inner():\n"
+    b'        """Nested def docstring."""\n'
+    b"    return inner\n"
+    b"async def g():\n"
+    b'    """Async def docstring."""\n'
+    b"if True:\n"
+    b"    class B:\n"
+    b"        def m(self):\n"
+    b'            """Method of a class inside an if."""\n'
+    b"            pass\n"
+)
+
+
+@pytest.mark.parametrize("ending", [b"\n", b"\r\n", b"\r"], ids=["lf", "crlf", "cr"])
+def test_ratchet_lines_leaves_out_docstrings_of_every_owner(ending):
+    """Eleven code lines remain: every docstring, nested or not, is left out."""
+    source = OWNERS.replace(b"\n", ending)
+    assert gate.code_lines(source) == 20
+    assert gate.ratchet_lines(source, "p.py") == 11
+
+
+def test_ratchet_lines_counts_strings_that_are_not_docstrings():
+    """A bytes literal, an f-string, an assigned string and a second string statement count."""
+    source = (
+        b'"""Module."""\n'
+        b"def a():\n"
+        b'    b"""bytes"""\n'
+        b"def b():\n"
+        b'    f"""f-string"""\n'
+        b"def c():\n"
+        b'    s = """assigned"""\n'
+        b"def d():\n"
+        b"    pass\n"
+        b'    """second"""\n'
+    )
+    assert gate.ratchet_lines(source, "p.py") == 9
+
+
+@pytest.mark.parametrize("source,expected", [
+    (b'def f(): """d"""\n', 1),
+    (b'"""d"""; x = 1\n', 1),
+    (b'"""d"""  # note\n', 0),
+    (b'def f():\n    """d\n    e"""; x = 1\n', 2),
+    (b'\xef\xbb\xbf"""d"""\n', 0),
+    (b"# coding: latin-1\ndef f():\n    \"\xe9\xe9\xe9\xe9\"  # n\n", 1),
+], ids=["after-def", "before-statement", "trailing-comment", "multiline-before-statement",
+        "bom", "latin-1-cookie"])
+def test_ratchet_lines_shared_first_and_last_lines(source, expected):
+    """A docstring line shared with code counts; a trailing comment does not keep it."""
+    assert gate.ratchet_lines(source, "p.py") == expected
+
+
+def test_docstring_line_starting_with_hash_is_left_out_once():
+    """code_lines skips the "# heading" line, so the docstring holds 2 counted lines, not 3."""
+    source = b'"""Title.\n# heading\n"""\n'
+    assert gate.code_lines(source) == 2
+    assert gate.ratchet_lines(source, "p.py") == 0
+    assert gate.docstring_code_lines(source, "p.py") == 2
+
+
+def test_form_feed_inside_docstring_keeps_line_numbers():
+    """A form feed is no line terminator for ast or code_lines, so the count does not move."""
+    plain = b'def f():\n    """Title.\n\n    body text\n    """\n    return 1\n'
+    feed = b'def f():\n    """Title.\n\x0c\n    body\x0c text\n    """\n    return 1\n'
+    assert gate.ratchet_lines(plain, "p.py") == 2
+    assert gate.ratchet_lines(feed, "p.py") == 2
+
+
+def test_unparsable_file_fails_with_its_path(tree, capsys):
+    write_tree(tree)
+    (tree / "rfx/nested/a.py").write_bytes(b"def (\n")
+    code, err = run(tree, capsys)
+    assert code == 1
+    assert "rfx/nested/a.py: does not parse, so its docstrings cannot be found" in err
+
+
+A_BASE = b'def a():\n    """A.\n    one\n    two\n    """\n    return 1\n'
+B_BASE = b'def b():\n    """B.\n    1\n    2\n    3\n    """\n    return 2\n'
+C_BASE = b'def c():\n    """C.\n    """\n    return 3\n'
+A_HEAD = b'def a():\n    """A."""\n    return 1\n'
+B_HEAD = b'def b():\n    """B."""\n    return 2\n' + b"".join(b"x%d = %d\n" % (i, i) for i in range(4))
+NEW_UNIT_BOUND = "with docstrings not counted it must be at most"
+
+
+@pytest.mark.parametrize("case,expected,message", [
+    ("listed-at-bound", 0, ""),
+    ("listed-above-bound", 1,
+     f"rfx/a.py: baseline 7; {NEW_UNIT_BOUND} 6 (10 minus 4 docstring lines at the base)."),
+    ("cap-at-bound", 0, ""),
+    ("cap-above-bound", 1,
+     f"{gate.BASELINE}: cap 16; it must be at most 15 (20 minus 5, the docstring lines of "
+     "rfx/b.py at the base)."),
+    ("new-at-bound", 0, ""),
+    ("new-above-bound", 1,
+     f"rfx/b.py: baseline 16; {NEW_UNIT_BOUND} 15 (cap 20 minus 5 docstring lines at the base)."),
+    ("new-absent-at-base", 1, "rfx/e.py: new entry 8, but the file is absent at the base"),
+    ("new-within-cap", 1,
+     "rfx/b.py: new entry 15, but its count 6 is within the cap 15; leave it unlisted."),
+    ("delisted-present", 1,
+     "rfx/a.py: entry removed while the file exists; with docstrings not counted the cap 15 "
+     "must be at most 6 (10 minus 4 docstring lines at the base) to govern it, so keep the entry."),
+    ("delisted-deleted", 0, ""),
+])
+def test_unit_change_bounds_come_from_the_base(tree, capsys, case, expected, message):
+    """Base in code-lines: a.py listed at 10 with 4 docstring lines, cap 20, unlisted b.py
+    with 5 and c.py with 2. The head drops docstring lines from a.py and b.py, so a bound
+    read at the head would be looser than 6 (a.py), 15 (cap) and 15 (b.py)."""
+    for name, data in (("a", A_BASE), ("b", B_BASE), ("c", C_BASE)):
+        (tree / f"rfx/{name}.py").write_bytes(data)
+    (tree / gate.BASELINE).write_text(json.dumps({
+        "counts": "code-lines", "cap": 20, "files": {"rfx/a.py": 10},
+    }))
+    gate.git(tree, "init", "-q", "--template=")
+    gate.git(tree, "config", "user.name", "Ratchet tests")
+    gate.git(tree, "config", "user.email", "tests@example.invalid")
+    gate.git(tree, "config", "commit.gpgsign", "false")
+    gate.git(tree, "config", "core.hooksPath", "/dev/null")
+    gate.git(tree, "add", ".")
+    gate.git(tree, "commit", "-qm", "Base in code-lines")
+    base = gate.git(tree, "rev-parse", "HEAD").decode().strip()
+
+    (tree / "rfx/a.py").write_bytes(A_HEAD)
+    (tree / "rfx/b.py").write_bytes(B_HEAD)
+    files, cap = {"rfx/a.py": 6}, 15
+    if case == "listed-above-bound":
+        files["rfx/a.py"] = 7
+    elif case == "cap-above-bound":
+        cap = 16
+    elif case in ("new-at-bound", "new-above-bound"):
+        files["rfx/b.py"], cap = (15 if case == "new-at-bound" else 16), 3
+    elif case == "new-absent-at-base":
+        (tree / "rfx/e.py").write_bytes(b"".join(b"e%d = %d\n" % (i, i) for i in range(8)))
+        files["rfx/e.py"], cap = 8, 6
+    elif case == "new-within-cap":
+        files["rfx/b.py"] = 15
+    elif case.startswith("delisted"):
+        del files["rfx/a.py"]
+        if case == "delisted-deleted":
+            (tree / "rfx/a.py").unlink()
+    (tree / gate.BASELINE).write_text(json.dumps({"counts": gate.UNIT, "cap": cap, "files": files}))
+    code, err = run(tree, capsys, "--base", base)
+    assert code == expected, err
+    assert message in err
+    assert "split the file" not in err
