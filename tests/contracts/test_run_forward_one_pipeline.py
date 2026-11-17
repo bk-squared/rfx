@@ -142,6 +142,10 @@ def test_multi_device_s_request_shared_refusal(declaration, compute_s_params, er
 
 
 ASSEMBLY_ROWS = (
+    ('B-cpml', 'multi-device-uniform'),
+    ('P-lumped', 'multi-device-uniform'),
+    ('P-wire-driven', 'multi-device-uniform'),
+    ('P-wire', 'multi-device-uniform'),
     ('C-conformal', 'uniform'),
     ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
