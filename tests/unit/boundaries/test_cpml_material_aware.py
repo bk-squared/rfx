@@ -42,10 +42,6 @@ file are kept verbatim; only the module-level helper names carry a section
 prefix so the six fixtures can coexist.
 """
 
-import os
-# Must be set before importing jax so we get >=2 host CPU devices.
-os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
-
 import numpy as np
 import jax
 import jax.numpy as jnp
