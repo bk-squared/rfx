@@ -41,7 +41,7 @@ def field_poles(materials, grid, debye_spec, lorentz_spec, field_dtype):
     from rfx.model.materials import _realize_poles, electric_cell_sizes, unpadded_high_walls
     poles = {name: _realize_poles(spec, materials.components.periodic, kind, grid,
              materials.eps_r.shape, high_wall=unpadded_high_walls(grid),
-             cell_sizes=electric_cell_sizes(grid))
+             cell_sizes=electric_cell_sizes(grid), field_dtype=field_dtype)
              for name, spec, kind in (('debye', debye_spec, 'Debye'),
                                       ('lorentz', lorentz_spec, 'Lorentz'))}
     return materials._replace(components=replace(materials.components, **poles))

@@ -500,7 +500,10 @@ def run_uniform(
         )
 
     if sim._waveguide_ports:
-        from rfx.preflight.waveguide import resolve_waveguide_port_freqs
+        from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs, resolve_waveguide_port_freqs
+
+        if len(sim._waveguide_ports) > 1:
+            resolve_shared_waveguide_port_freqs(sim, route="uniform run()")
 
         cpml_axes = grid.cpml_axes
         pec_axes = None
@@ -573,7 +576,8 @@ def run_uniform(
     materials = with_components(materials, grid,
         high_wall=unpadded_high_walls(grid),
         periodic=_simulation.resolve_periodic(grid, periodic),
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
     from rfx.model.source_coefficients import resolve_run_sources
     sources = resolve_run_sources(sources, materials, sim, grid,
         tensor=aniso_eps is not None or conformal_weights is not None)
@@ -785,7 +789,8 @@ def run_uniform(
     # S-parameters: use JIT-integrated DFT for wire ports (fast),
     # fall back to Python loop for lumped ports
     if compute_s_params is None:
-        compute_s_params = len(lumped_ports) > 0 or len(wire_ports) > 0
+        from rfx.runners._admission import default_run_forms_s
+        compute_s_params = default_run_forms_s(sim)
 
     # (2,4) stencil fence: the lumped/wire S-parameter extractors below run a
     # SEPARATE eager FDTD pass (extract_s_matrix_wire /
