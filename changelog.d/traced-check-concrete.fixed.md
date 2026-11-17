@@ -8,5 +8,4 @@ stable step that differed from the plain call's in the eighth digit, and a cell
 within about 2.4e-7 of a limit could be judged differently. Python scalars and
 NumPy arrays now reach the check unchanged, while traced values and JAX arrays
 still pass through the callback; the cell time-step refusal of a traced call
-prints the plain call's message. A periodic-axis box with one traced bound and
-one Python-float bound, which failed inside the check, is now admitted.
+prints the plain call's message.
