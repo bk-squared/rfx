@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 from tests._closed_box_plane_wave import (F0, declare, level, line, pulse_end, recorded_maxima,
-                                          same_level, scene_k, windows)
+                                          same_level, slotted_box, windows)
 from rfx import GaussianPulse, ringdown as rd
 from rfx.errors import RfxUnsupported
 from rfx.ringdown._admission import refuse_forward_request, refuse_run_request
@@ -128,9 +128,10 @@ def test_a_line_that_cannot_be_formed_is_refused_by_the_plane_wave_label(entry, 
 
 
 @lru_cache(maxsize=None)
-def completed(entry, n):
+def completed(entry, n, checkpoint=False):
     """``entry`` on the slotted box for ``n`` steps, with the source-off rows the check returned."""
-    sim, probes, _ = scene_k()
+    sim, probes, _ = slotted_box()
+    options = {"checkpoint": True} if checkpoint else {}
     seen = []
     original = rd.RingdownRun._check_sources_off
 
@@ -140,13 +141,14 @@ def completed(entry, n):
         return rows
 
     with patch.object(rd.RingdownRun, "_check_sources_off", capture):
-        result = getattr(sim, entry)(n_steps=n, ringdown=probe_spec(probes), skip_preflight=True)
+        result = getattr(sim, entry)(n_steps=n, ringdown=probe_spec(probes), skip_preflight=True,
+                                     **options)
     return result, seen[-1]
 
 
 def own_row(n):
     """The main-window maximum of r formed here from the line replay, as the check is told to form it."""
-    sim, _, _ = scene_k()
+    sim, _, _ = slotted_box()
     cfg, state, grid = line(sim, n)
     i_h, i_e = face_read_maxima(cfg, state, grid.dx, grid.dt)
     r = level(np.asarray(i_h), np.asarray(i_e))
@@ -166,7 +168,7 @@ def test_the_plane_wave_row_is_its_face_read_level_over_the_main_window(n):
 
 def test_the_replayed_level_agrees_with_the_record_at_the_check_length():
     n = 4000
-    sim, _, _ = scene_k()
+    sim, _, _ = slotted_box()
     cfg, state, grid = line(sim, n)
     got_h, got_e = (np.asarray(v) for v in face_read_maxima(cfg, state, grid.dx, grid.dt))
     rec_h, rec_e, _ = recorded_maxima(sim, n)
@@ -177,7 +179,7 @@ def test_the_replayed_level_agrees_with_the_record_at_the_check_length():
 
 
 def test_a_main_window_holding_the_pulse_refuses():
-    message = refusal(lambda: scene_k()[0], probe_spec(scene_k()[1]), ValueError, n=1000)
+    message = refusal(lambda: slotted_box()[0], probe_spec(slotted_box()[1]), ValueError, n=1000)
     assert "the values the TF/SF box faces read from its incident line reach" in message
     assert "(E and H operands each by its own peak)" in message
 
@@ -191,9 +193,13 @@ def test_an_early_window_holding_the_pulse_is_not_formed():
     assert report.witness("W2").judged
 
 
-def test_run_and_forward_read_the_same_rows_and_spectra():
+@pytest.mark.parametrize("face_record", [False, True], ids=["carried line", "face record"])
+def test_run_and_forward_read_the_same_rows_and_spectra(face_record):
+    from rfx.api._ad_memory_model import face_record_pays
+    cfg, _, _ = line(slotted_box()[0], 4000, line_steps="forward")
+    assert face_record_pays(cfg, 4000, checkpoint=face_record) is face_record
     run, run_rows = completed("run", 4000)
-    fwd, fwd_rows = completed("forward", 4000)
+    fwd, fwd_rows = completed("forward", 4000, checkpoint=face_record)
     assert fwd_rows == run_rows
     a = np.asarray(fwd.ringdown.probe_spectra)
     b = np.asarray(run.ringdown.probe_spectra)

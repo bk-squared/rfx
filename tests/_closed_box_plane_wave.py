@@ -95,7 +95,7 @@ def same_level(a, b):
     return a[2] != "off" or 0.5 <= a[1] / b[1] <= 2.0
 
 
-def scene_k(z_fraction=0.62):
+def slotted_box(z_fraction=0.62):
     """The reference plane wave on a lossy slotted PEC box.
 
     The walls' outer faces lie 2 cells inside the TF/SF faces; the walls are
