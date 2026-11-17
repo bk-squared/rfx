@@ -78,7 +78,7 @@ def _build_sim(
     waveform
         Source pulse shape. Default ``modulated_gaussian`` for clean
         bandpass excitation.
-    Finalize before placing a body from node coordinates because the new feature can refine the mesh.
+    Finalize before placing a body from node coordinates because adding the body invalidates the unfrozen mesh selection and can refine it.
     """
     RIGHT_PORT_CLEARANCE_CELLS = 4
     freqs = np.asarray(freqs_hz, dtype=float)
@@ -175,7 +175,7 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
 
 
 def test_matched_load_s11_empty_waveguide():
-    """Single-run wave decomposition is the correct tool for a reflection/absorber-quality gate because two-run subtraction cancels ALL reflection (real included) on an empty guide."""
+    """The 0.05 gate and 0.08 witness threshold separate the 10-layer reflection measured earlier as at most 0.0135 over 4.5–8 GHz from the 4-layer reflection measured earlier at 0.119."""
     freqs = np.linspace(4.5e9, 8.0e9, 10)
     sim = _build_sim(freqs, solved_domain=True, cpml_layers=10, waveform="modulated_gaussian")
     s, sim_freqs, port_idx = _s_matrix(sim, num_periods=40, normalize=False)

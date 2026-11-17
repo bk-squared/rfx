@@ -53,7 +53,6 @@ Two teeth, split by what the evidence supports:
   - A second route that does not use the patch pole fit agrees within 0.8 %:
     the record's five undamped 12 mm box TM_mn0 tones (17.7-51.4 GHz) are
     removed, then the unwindowed width is read.
-The mode-frequency pin went from 24.753 to 25.399 GHz.
 """
 
 import warnings

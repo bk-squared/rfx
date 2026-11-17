@@ -31,9 +31,7 @@ EPS_R = 4.0
 
 
 def _synth(gamma_true, kx, idx, iface, f0=F0, n_periods=6, spp=24):
-    """Complex Bloch-envelope two-run series carrying a planted Γ and phase ramp e^{-j k_x x}.
-    The analytic envelope P is proportional to e^{-j2πf0t}.
-    """
+    """Complex Bloch-envelope two-run series carrying a planted Γ and phase ramp e^{-j k_x x}."""
     dt = 1.0 / (f0 * spp)
     n = n_periods * spp
     env = np.exp(-1j * 2 * np.pi * f0 * np.arange(n) * dt)
@@ -76,6 +74,7 @@ def test_oblique_phase_recovers_planted_complex_gamma():
 
 
 def _build(theta):
+    """The 223-step delay corresponds to 2 tau at f0 = 5 GHz, bandwidth = 0.15 and dt = 3.81 ps."""
     grid = Grid(freq_max=10e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.06, 0.003))[0]
     xe = grid.position_to_index((X_SLAB_END, 0.06, 0.003))[0]

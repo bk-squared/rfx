@@ -69,7 +69,6 @@ _F0_ANALYTIC = _C0 / (4.0 * _L_CAVITY)
 def _run_cavity(z_lo_token: str) -> tuple[np.ndarray, np.ndarray, float]:
     """Return (freqs, |E(f)|, dt) for the probe spectrum of a
     z-axis cavity with ``z_hi='pec'`` and ``z_lo=z_lo_token``.
-    The Hann window reduces sidelobes while the cavity rings.
     """
     spec = BoundarySpec(
         x="periodic", y="periodic",

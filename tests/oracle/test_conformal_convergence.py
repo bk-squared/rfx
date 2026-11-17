@@ -242,7 +242,7 @@ class TestConformalConvergence:
     @pytest.mark.gpu
     def test_conformal_stability_long_run(self):
         """Conformal PEC cavity should be stable for many timesteps.
-        The domain lengths written as cells_spanning(L, dx) * dx are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
+        Placement uses the declared lengths while the grid uses cells_spanning(L, dx) * dx.
         """
         radius = 0.012
         height = 0.04

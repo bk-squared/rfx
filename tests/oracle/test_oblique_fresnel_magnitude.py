@@ -29,6 +29,7 @@ EPS_R = 4.0
 
 
 def _build(theta):
+    """The 223-step delay corresponds to 2 tau at f0 = 5 GHz, bandwidth = 0.15 and dt = 3.81 ps."""
     grid = Grid(freq_max=10e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.06, 0.003))[0]
     xe = grid.position_to_index((X_SLAB_END, 0.06, 0.003))[0]
@@ -115,9 +116,7 @@ def test_oblique_reflection_magnitude_differentiable():
 
 def test_oblique_magnitude_kernel_sign_and_shape_guard():
     """FAST synthetic contract: +j kernel on a complex envelope recovers a planted |Γ|; a
-    -j kernel would average the incident to noise. Also the shape guard fires.
-    The analytic envelope P is proportional to e^{-j2πf0t}.
-    """
+    -j kernel would average the incident to noise. Also the shape guard fires."""
     ns, nprobe, dt = 400, 6, 1.0 / (F0 * 20)
     t = np.arange(ns) * dt
     env = np.exp(-1j * 2 * np.pi * F0 * t)

@@ -137,7 +137,7 @@ def test_unitarity_lossless_waveguide():
 
     Total scattered power approximately equals incident power when all
     materials are lossless (sigma=0).
-    The unitarity gate exists to catch GROSS conservation failure (|S|>>1 from CPML accumulation, or energy collapse < 0.5 from extractor bug).
+    The 0.6 lower bound leaves margin below the ~0.73 measured earlier on the εr=4 full-cross-section slab with the two-run normalized extractor.
     """
     freqs = np.linspace(4.5e9, 8.0e9, 20)
     obstacle = [((0.04, 0.0, 0.0), (0.06, 0.04, 0.02), 4.0)]

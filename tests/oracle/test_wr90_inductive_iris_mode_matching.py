@@ -43,7 +43,7 @@ one configuration: ``gate_from_envelope(measured, quantum=100)``.  It pins a
 measured envelope on the coarse mesh; it is not an accuracy claim, and the
 per-frequency curve is printed with every run so the number is never read
 without it.
-At half the CPML depth, the residual ripple is absorber-limited rather than discretization-limited.
+The 45.7 mm CPML depth is 0.75 * lambda_g at the 8.2 GHz band edge.
 """
 from __future__ import annotations
 
