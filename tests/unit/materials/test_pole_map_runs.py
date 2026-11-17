@@ -184,10 +184,7 @@ def test_p1_fields(monkeypatch, graded, callables):
     pytest.param(False, 'float32', id='uniform-float32'),
     pytest.param(True, 'float32', id='graded-float32'),
     pytest.param(False, 'float64', id='uniform-float64'),
-    pytest.param(True, 'float64', id='graded-float64', marks=pytest.mark.xfail(
-        strict=True, raises=AssertionError,
-        reason="rfx#2613: the scalar reference's edge fractions are float32 in a float64 run; "
-               "the map is judged at coefficient level by test_c2_graded_float64_coefficients")),
+    pytest.param(True, 'float64', id='graded-float64'),
 ])
 @pytest.mark.parametrize('pin', ['P2a', 'P2b'])
 def test_p2_staircase(monkeypatch, graded, pin, precision, request):
@@ -201,8 +198,7 @@ def test_p2_staircase(monkeypatch, graded, pin, precision, request):
             strict=True, raises=AssertionError,
             reason=("cannot judge P2a in float32 on x86_64: scalar control 0.1201 graded > 0.1 "
                     "(0.0721 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
-                    "no live judge on x86_64 "
-                    "until #2613 PR B lifts the float64 twin's xfail") if graded else
+                    "judged by P2a-graded-float64 (1e-9 bar)") if graded else
                    ("cannot judge P2a in float32 on x86_64: scalar control 0.1179 uniform > 0.1 "
                     "(0.0796 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
                     "judged by "

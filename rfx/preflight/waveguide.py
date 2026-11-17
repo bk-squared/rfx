@@ -405,6 +405,7 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
     from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.model.overrides import apply_material_overrides
     from rfx.model.pole_stability import courant_budget
+    from rfx._internal._precision import resolve_field_dtype
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.nonuniform import NonUniformGrid
     call_values = getattr(sim, "_waveguide_call_overrides", (None, None, None))
@@ -423,6 +424,8 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
                  if pec is not None or pec_sheets or pec_wires else None)
         _, debye, lorentz = sim._init_dispersion(
             materials, grid.dt, ds, ls, budget=courant_budget(grid),
+            # Keep the existing ambient ADE state dtype for lower-precision runs.
+            field_dtype=resolve_field_dtype(sim._precision) if sim._precision == "float64" else None,
             periodic=sim._periodic_flags(), grid=grid)
         overrides = {}
         for name, value in (("eps_override", eps_override), ("sigma_override", sigma_override), ("mu_r_override", mu_r_override)):

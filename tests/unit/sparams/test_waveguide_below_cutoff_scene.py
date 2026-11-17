@@ -124,6 +124,7 @@ def test_e2_wr90_cpu(monkeypatch):
           f"NaNs={np.isnan(s).sum()}; unchanged=True")
 
 
+@pytest.mark.slow
 def test_e4_wr90_gradient(monkeypatch):
     waves = capture_unmasked(monkeypatch)
     sim = scene(False)
