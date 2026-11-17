@@ -23,6 +23,8 @@ from typing import Any, NamedTuple
 import jax
 import numpy as np
 
+from rfx.model.line_streams import _merge_stream, _own_stream
+
 
 class _LinePieces(NamedTuple):
     lo: Any
@@ -230,25 +232,9 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
             merge_code = xp.where(background == eps, 0, code)
         values = xp.where(inside, eps, values)
         codes = xp.where(inside, merge_code, codes)
-    # Stream through positive pieces. Empty sort slots cannot split a run.
-    start, end, value, code = low[0], low[0], values[0], codes[0]
-    merged_lo, merged_hi, merged_eps = [], [], []
-    for i in range(low.shape[0]):
-        positive = high[i] > low[i]
-        change = positive & (end > start) & (codes[i] != code)
-        merged_lo.append(start)
-        merged_hi.append(xp.where(change, end, start))
-        merged_eps.append(value)
-        new = positive & ((end == start) | change)
-        start = xp.where(new, low[i], start)
-        value = xp.where(new, values[i], value)
-        code = xp.where(new, codes[i], code)
-        end = xp.where(positive, high[i], end)
-    merged_lo.append(start)
-    merged_hi.append(end)
-    merged_eps.append(value)
+    merged_lo, merged_hi, merged_eps = _merge_stream(xp, low, high, values, codes)
     own = _own_runs(xp, own_lines, length, reach, broadcast.shape) if own_lines else None
-    return _LinePieces(xp.stack(merged_lo), xp.stack(merged_hi), xp.stack(merged_eps), face, own)
+    return _LinePieces(merged_lo, merged_hi, merged_eps, face, own)
 
 
 def _planar_line(xp, shape, points, normal, reach, lo, hi):
@@ -286,24 +272,7 @@ def _own_runs(xp, lines, length, reach, shape):
     lo, hi = xp.where(valid, lo, far), xp.where(valid, hi, far)
     order = xp.argsort(lo, axis=0)
     lo, hi, flat = (xp.take_along_axis(a, order, axis=0) for a in (lo, hi, flat))
-    thin = xp.zeros(shape, dtype=bool)
-    inside = xp.zeros(shape, dtype=lo.dtype)
-    previous = xp.broadcast_to(-half, shape)
-    gaps = []
-    start, end, planar = lo[0], hi[0], flat[0]
-    for i in range(1, lo.shape[0] + 1):
-        last = i == lo.shape[0]
-        new = True if last else lo[i] > end
-        thin = thin | (new & planar & (start > -half) & (end < half))
-        held = xp.maximum(xp.minimum(end, half) - xp.maximum(start, -half), 0)
-        inside = inside + xp.where(new, held, 0)
-        gaps.append((xp.maximum(previous, -half), xp.where(new, xp.minimum(start, half), -half)))
-        previous = xp.where(new, end, previous)
-        if not last:
-            start = xp.where(new, lo[i], start)
-            planar = xp.where(new, flat[i], planar & flat[i])
-            end = xp.where(new, hi[i], xp.maximum(end, hi[i]))
-    gaps.append((xp.maximum(previous, -half), xp.broadcast_to(half, shape)))
+    thin, inside, gaps = _own_stream(xp, lo, hi, flat, half, shape)
     return _OwnRuns(thin, inside / length, gaps)
 
 
