@@ -901,13 +901,19 @@ def _validate_cfg_assembly(self, _w) -> None:
         ctx.realized(defer_warnings=True)
     if ctx._realized is not None and ctx._assembly_exception is None:
         from rfx.model.pad_fill import check_pad_fill
-        from rfx.model.source_admission import refuse_dead_soft_sources
+        from rfx.model.source_admission import conductor_operator, refuse_dead_soft_sources, refuse_shorted_lumped_rlc
         try:
             # These solve-mode gates read the audit product without assembling
             # again. Preserve solve order: pad fill precedes source admission.
             root = ctx._realized
             check_pad_fill(self, root.grid, root.geometry_masks)
             refuse_dead_soft_sources(self, root)
+            conformal = getattr(self, '_conformal_run_call', None)
+            if conformal is None:
+                conformal = bool(self._boundary_spec.conformal_faces())
+            operator = getattr(self, '_conductor_operator_call', None)
+            refuse_shorted_lumped_rlc(self, root, operator=(operator or
+                conductor_operator(conformal=conformal)))
         except ctx._NARROW_EXCS as exc:
             ctx._assembly_exception = exc
     exc = ctx._assembly_exception
