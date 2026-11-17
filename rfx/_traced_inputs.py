@@ -37,7 +37,6 @@ def _children(value, value_rows=None):
     if value_rows and type(value) in value_rows:
         return tuple(getattr(value, name) for name in value_rows[type(value)]
                      if hasattr(value, name))
-    # Flatten only one level: a registered pytree cannot bypass the depth cap.
     root = True
 
     def only_root(item):
@@ -83,7 +82,6 @@ def _refuse(owner, parameter, evidence):
     )
 
 
-# Data is indexed once; no callable is replaced and no input is retained.
 _BY_OWNER = {}
 for _owner, _parameter, _state, _evidence in ROWS:
     _BY_OWNER.setdefault(_owner, {})[_parameter] = (_state, _evidence)

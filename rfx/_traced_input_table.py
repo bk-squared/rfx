@@ -648,7 +648,6 @@ ROWS = (
 )
 
 
-# Parameter names for report-only defaults; T1 checks these with inspect.
 DEFAULT_PARAMETERS = {
     'Simulation.ad_memory_compiled_certificate': ('compiled', 'n_steps', 'available_memory_gb', 'target_fraction', 'checkpoint_every', 'checkpoint_segments', 'n_warmup', 'design_box', 'design', 'checkpoint', 'distributed', 'precision', 'input_signature', 'static_signature', 'compiled_object_id', 'runner_or_objective', 'preflight', 'scope_context'),
     'Simulation.ad_memory_preflight': ('n_steps', 'available_memory_gb', 'target_fraction', 'n_warmup', 'design_box', 'design', 'checkpoint', 'distributed', 'cotangents', 'safety_factor', 'include_mesh_report', 'check_ntff', 'check_resolution', 'residual_fun', 'residual_args', 'residual_kwargs', 'residual_top_n', 'residual_workflow', 'residual_context'),
