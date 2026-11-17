@@ -93,7 +93,7 @@ def test_source_delay_cancels_from_complex_response(monkeypatch):
     times = np.arange(STEPS) * float(grid.dt)
     spectra = []
     for t0 in (cfg.src_t0, cfg.src_t0 + delay):
-        # #1839: each finite charge-free DG uses its own cutoff t0/tau.
+        # each finite charge-free DG uses its own cutoff t0/tau.
         c, u = t0 / cfg.src_tau, times / cfg.src_tau
         arg = (times - t0) / cfg.src_tau
         bare = -2.0 * arg * np.exp(-arg**2)
