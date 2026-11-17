@@ -92,10 +92,14 @@ def traced_smoothing(lo, hi, *, periodic=True):
 
 
 def test_traced_negative_box_sdf_keeps_negative_image_and_gradient():
-    lo, hi = np.float32(-.9 * L), np.float32(-.2 * L)
+    """A traced Box across the low seam uses its negative periodic image and has a correct gradient.
+
+    A Box centred outside [0, L] is refused.
+    """
+    lo, hi = np.float32(-.3 * L), np.float32(.4 * L)
     traced = jax.jit(traced_smoothing)(lo, hi)
-    # Independent translated drawing entirely in the base period.
-    reference = traced_smoothing(float(lo) + L, float(hi) + L)
+    # Concrete bounds form an independent image range for the same declaration.
+    reference = traced_smoothing(float(lo), float(hi))
     for a, b in zip(traced, reference):
         np.testing.assert_allclose(a, b, rtol=0, atol=32 * np.finfo(np.float32).eps * 3.7)
     def total(a):
@@ -105,6 +109,10 @@ def test_traced_negative_box_sdf_keeps_negative_image_and_gradient():
     difference = float((total(lo + h) - total(lo - h)) / (2 * h))
     assert abs(grad) > 1.
     np.testing.assert_allclose(grad, difference, rtol=.01, atol=0)
+
+    with pytest.raises(Exception, match=r"midpoint.*outside \[0, L\]"):
+        values = jax.jit(traced_smoothing)(np.float32(-.9 * L), np.float32(-.2 * L))
+        jax.block_until_ready(values)
 
 
 @pytest.mark.parametrize('outside', ['low', 'high'])

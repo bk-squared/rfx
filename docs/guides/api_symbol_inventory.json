@@ -1053,7 +1053,8 @@
         "freqs",
         "eps_measured",
         "n_poles",
-        "eps_inf"
+        "eps_inf",
+        "tau"
       ]
     },
     "fit_lorentz": {
