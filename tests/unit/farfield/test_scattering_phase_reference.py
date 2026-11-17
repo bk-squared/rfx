@@ -39,7 +39,7 @@ def _reference(grid):
 
 @pytest.mark.parametrize("polarization", ["ey", "ez"])
 def test_incident_phase_matches_actual_3d_e_clock_and_position(polarization):
-    """Probe samples are post-update E fields, so a common DFT step error is large despite identical |E| and RCS."""
+    """Probe samples are the post-update E field, not samples at n*dt."""
     grid, vacuum = _rig()
     cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8,
                            f0=F0, polarization=polarization, tfsf_margin=3)

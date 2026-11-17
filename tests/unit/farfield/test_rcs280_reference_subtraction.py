@@ -76,7 +76,11 @@ def test_corrected_pattern_shape_matches_exact_mie(fx):
 
 
 def test_corrected_pattern_magnitude_matches_exact_mie(fx):
-    """Small mean distance and clean backscatter of the corrected bistatic vs exact Mie."""
+    """Small mean distance and clean backscatter of the corrected bistatic vs exact Mie.
+
+    The 2 dB limits come from the accuracy bar's magnitude line: power and magnitude
+    within 2 dB.
+    """
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
     assert np.abs(corr - mie).mean() <= PATTERN_MEAN_BAR

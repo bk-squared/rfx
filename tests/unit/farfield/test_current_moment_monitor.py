@@ -647,8 +647,8 @@ def test_equality_with_the_plane_route(kind, loaded):
     loaded run adds a lossy dielectric block, so polarization and loss
     current and the edge-averaged material faces enter both sides.
 
-    The phase sets the float32 floor: both sides form exp(-j w t) from a float32 time,
-    whose last bit is worth eps32 * w * t.
+    The equality bar comes from ten times the worst difference measured earlier
+    (5.3e-06 on the uniform fixture and 2.2e-06 on the graded fixture).
     """
     case = _reference(kind, loaded)
     _edges, blocks = _reference_blocks(kind, loaded)

@@ -100,7 +100,6 @@ def _make_directional_ff(n_theta=181, n_phi=181):
 
 def test_gain_isotropic():
     """Isotropic pattern should give gain = 1 (0 dBi) everywhere.
-    Numerical integration on a finite grid requires tolerance.
     """
     ff = _make_isotropic_ff()
     G = antenna_gain(ff)
@@ -118,7 +117,6 @@ def test_gain_isotropic():
 
 def test_gain_dipole_peak():
     """Short dipole peak gain should be ~1.76 dBi.
-    The theoretical peak is 1.76 dBi, or 1.5 linear.
     """
     ff = _make_dipole_ff()
     G = antenna_gain(ff)
@@ -188,7 +186,6 @@ def test_beamwidth_symmetric():
 
 def test_beamwidth_narrow():
     """Directional pattern should have narrow beamwidth.
-    The cos^4(theta) pattern gives a relatively narrow HPBW.
     """
     ff = _make_directional_ff(n_theta=361)
     hpbw = half_power_beamwidth(ff, plane="E")
@@ -201,7 +198,6 @@ def test_beamwidth_narrow():
 
 def test_front_to_back_directional():
     """Directional pattern should have positive F/B ratio.
-    A cos^4 forward field and 0.01 backward field give a large front-to-back ratio.
     """
     ff = _make_directional_ff()
     fb = front_to_back_ratio(ff)
