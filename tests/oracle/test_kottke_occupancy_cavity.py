@@ -39,7 +39,8 @@ def test_binary_pec_slab_leaves_tm110_at_the_analytic_frequency(monkeypatch):
     sim.add_probe((17.5e-3, 15.5e-3, 19.5e-3), "ez")
     shape = tuple(sim.forward(n_steps=2, skip_preflight=True).grid.shape)
     occ = np.zeros(shape, np.float32)
-    occ[:, :, :6] = 1.0                                   # slab from z = 0 to 6 mm, edge on a cell boundary
+    SLAB_HEIGHT_CELLS = 6
+    occ[:, :, :SLAB_HEIGHT_CELLS] = 1.0
     r = sim.forward(pec_occupancy_override=jnp.asarray(occ), n_steps=STEPS,
                     skip_preflight=True, checkpoint=False)
     assert calls, "the tensor lane did not run; this oracle would be judging the plain lane"

@@ -43,6 +43,7 @@ one configuration: ``gate_from_envelope(measured, quantum=100)``.  It pins a
 measured envelope on the coarse mesh; it is not an accuracy claim, and the
 per-frequency curve is printed with every run so the number is never read
 without it.
+At half the CPML depth, the residual ripple is absorber-limited rather than discretization-limited.
 """
 from __future__ import annotations
 
@@ -63,24 +64,16 @@ from tests._wr90_iris_mode_matching import (A_WR90, C0, MU0, _gamma, _redheffer,
 
 B_WR90 = 10.16e-3
 T_IRIS = 1.524e-3
-#: 0.15 GHz spacing resolves the residual ripple of the extraction.
-FREQS = np.linspace(8.2e9, 12.4e9, 29)
-#: 0.75 * lambda_g at the 8.2 GHz band edge: at half that depth the residual
-#: ripple is absorber-limited rather than discretization-limited.
+RIPPLE_RESOLVING_FREQUENCY_SAMPLES = 29
+FREQS = np.linspace(8.2e9, 12.4e9, RIPPLE_RESOLVING_FREQUENCY_SAMPLES)
 CPML_DEPTH = 45.7e-3
-#: dx = a/30 = 0.762 mm. a is an exact multiple, so the guide width, the
-#: aperture (16 cells) and the iris thickness (2 cells) are all grid-exact.
 COARSE_CELLS = 30
-D_APERTURES = (18.288e-3, 12.192e-3, 7.62e-3)   # 24 / 16 / 10 coarse cells
-D_ARM = 12.192e-3            # the FDTD arm's aperture
-GLEN_M = 0.20                # guide length
-IRIS_FRAC = 0.50             # iris at mid-guide
+D_APERTURES = (18.288e-3, 12.192e-3, 7.62e-3)
+D_ARM = 12.192e-3
+GLEN_M = 0.20
+IRIS_FRAC = 0.50
 NUM_PERIODS = 100.0
 
-#: Measured on this configuration (d = 12.192 mm, dx = a/30, flux
-#: normalization, 29 frequencies) — see the per-frequency table the FDTD arm
-#: prints.  The gate is the shared repository rule applied to it; changing
-#: either needs a re-measurement, not an edit.
 MEASURED_MAX_GAP_ABS = 0.02456
 GATE_ABS = gate_from_envelope(MEASURED_MAX_GAP_ABS, quantum=100)
 
@@ -105,9 +98,6 @@ def oracle_s11(d_phys, t_phys=T_IRIS, freqs=FREQS, *, a=A_WR90):
                      for f in freqs])
 
 
-# --------------------------------------------------------------------------- #
-# FAST TIER — the oracle's own witnesses, no solve.
-# --------------------------------------------------------------------------- #
 def test_oracle_self_witnesses():
     """Unitarity, mode-count convergence, Marcuvitz, and the two limits.
 
@@ -118,11 +108,11 @@ def test_oracle_self_witnesses():
     w = validate_oracle()
     print("\n[oracle self-witnesses]",
           {k: float(f"{v:.3e}") for k, v in w.items()})
-    assert w["unitarity_dev"] < 1e-9            # lossless: |S11|^2 + |S21|^2 = 1
-    assert w["mode_convergence"] < 1e-3         # n_a 40 -> 80
-    assert w["marcuvitz_max_rel"] < 0.15        # leading-order closed form
-    assert w["open_limit_s11"] < 1e-6           # d -> a: no obstacle
-    assert w["deep_limit_s11"] > 0.999          # d = a/5.7, t = 6 mm: a short
+    assert w["unitarity_dev"] < 1e-9
+    assert w["mode_convergence"] < 1e-3
+    assert w["marcuvitz_max_rel"] < 0.15
+    assert w["open_limit_s11"] < 1e-6
+    assert w["deep_limit_s11"] > 0.999
 
 
 def test_oracle_is_reciprocal_and_symmetric():
@@ -168,9 +158,6 @@ def test_thin_iris_limit_follows_the_marcuvitz_closed_form():
     assert max(r[3] for r in rows) < 0.15
 
 
-# --------------------------------------------------------------------------- #
-# The realized iris — read back from the product, before any solve.
-# --------------------------------------------------------------------------- #
 def _wall_runs(planes):
     """Contiguous runs of realized wall planes, as ``(first, last)`` pairs.
 
@@ -187,7 +174,9 @@ def _wall_runs(planes):
 
 def _build_iris(d_phys, cells, *, glen=GLEN_M, iris_frac=IRIS_FRAC,
                 t_cells=None):
-    """One two-port iris run, drawn in physical absolute coordinates."""
+    """One two-port iris run, drawn in physical absolute coordinates.
+    The domain lengths written as glen_c * dx and int(np.ceil(B_WR90 / dx)) * dx are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
+    """
     dx = A_WR90 / cells
     d_c = int(round(d_phys / dx))
     t_c = int(round(T_IRIS / dx)) if t_cells is None else int(t_cells)
@@ -198,17 +187,16 @@ def _build_iris(d_phys, cells, *, glen=GLEN_M, iris_frac=IRIS_FRAC,
     iris_lo = int(round(glen_c * iris_frac)) - t_c // 2
     sim = Simulation(
         freq_max=float(FREQS[-1]) * 1.1,
-        domain=(glen_c * dx, A_WR90, int(np.ceil(B_WR90 / dx)) * dx), dx=dx,  # solved length
+        domain=(glen_c * dx, A_WR90, int(np.ceil(B_WR90 / dx)) * dx), dx=dx,
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
         cpml_layers=int(np.ceil(CPML_DEPTH / dx)))
-    big = 1.0   # fins are drawn PAST the guide walls; the rasterizer clips
-    # Every face sits on a node plane: a PEC volume is sampled at cell
-    # centres, so a node-plane face selects whole cells.
+    big = 1.0
+    assert big > max(A_WR90, B_WR90), "The fin extent must pass the guide walls for rasterizer clipping."
     x_lo, x_hi = iris_lo * dx, (iris_lo + t_c) * dx
-    fin_hi_y = fin_c * dx                 # lower fin's inner wall
-    fin_lo_y = (cells - fin_c) * dx       # upper fin's inner wall
+    fin_hi_y = fin_c * dx
+    fin_lo_y = (cells - fin_c) * dx
     sim.add(Box((x_lo, -big, -big), (x_hi, fin_hi_y, big)), material="pec")
     sim.add(Box((x_lo, fin_lo_y, -big), (x_hi, big, big)), material="pec")
     for x, direction, name in ((p1 * dx, "+x", "P1"), (p2 * dx, "-x", "P2")):
@@ -267,9 +255,6 @@ def assert_realized_iris(sim, geo):
             "aperture_wall_planes": [int(y_wall_lo), int(y_wall_hi)]}
 
 
-# --------------------------------------------------------------------------- #
-# SLOW TIER — one FDTD run against the oracle.
-# --------------------------------------------------------------------------- #
 def test_a_split_aperture_is_refused_before_any_solve():
     """Negative arm of the realized-iris check: a third PEC strip drawn across
     the middle of the aperture (the parasitic wall-slot class - the aperture is
@@ -285,7 +270,9 @@ def test_a_split_aperture_is_refused_before_any_solve():
 
 
 def test_coarse_mesh_s11_tracks_the_mode_matching_oracle():
-    """|S11|(f) of the 12.192 mm iris on dx = a/30, against the oracle."""
+    """|S11|(f) of the 12.192 mm iris on dx = a/30, against the oracle.
+    An |S| above one on a lossless obstacle is an extraction fault.
+    """
     sim, geo = _build_iris(D_ARM, COARSE_CELLS)
     print(f"\n[geometry] dx = {geo['dx']*1e3:.4f} mm, aperture {geo['d_c']} "
           f"cells, thickness {geo['t_c']} cells, fins {geo['fin_c']} cells")
@@ -311,9 +298,6 @@ def test_coarse_mesh_s11_tracks_the_mode_matching_oracle():
     gap = np.abs(s11 - orc)
     gap_db = 20.0 * np.log10(s11 / orc)
 
-    # The extractor's own passivity / finiteness self-check is part of this
-    # record; the x64 dtype-truncation notices this build emits on every
-    # astype are counted but not reprinted 27 times.
     notable = [w for w in caught if "jax_enable_x64" not in str(w.message)]
     print(f"[run] {wall:.1f} s, max column power "
           f"{float(np.max(s11**2 + s21**2)):.4f}, "
@@ -328,8 +312,6 @@ def test_coarse_mesh_s11_tracks_the_mode_matching_oracle():
           f"mean {float(gap.mean()):.5f}; max |gap(dB)| "
           f"{float(np.max(np.abs(gap_db))):.3f} dB; gate {GATE_ABS}")
 
-    # Passivity first: an |S| above one on a lossless obstacle is an
-    # extraction fault, and no accuracy statement survives it.
     assert float(np.max(s11 ** 2 + s21 ** 2)) <= 1.02, "column power > 1.02"
     assert float(gap.max()) <= GATE_ABS, (
         f"max |S11 - oracle| = {gap.max():.5f} exceeds the gate {GATE_ABS} "

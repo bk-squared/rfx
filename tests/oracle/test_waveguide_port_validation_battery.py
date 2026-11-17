@@ -22,6 +22,7 @@ Industry anchors (handoff 2026-04-21):
 
 Tighten thresholds when extractor quality improves; a failure here
 marks a physics regression.
+The domain lengths written as ``n_y * dx`` and ``n_z * dx`` are whole numbers of cells of dx, so those solved lengths equal the declared ones.
 """
 
 from __future__ import annotations
@@ -40,21 +41,11 @@ from tests._realized_geometry import (
 from tests._realized_pec import assert_walls_at, realize
 
 
-# =============================================================================
-# Canonical geometry
-# =============================================================================
-#
-# Rectangular waveguide, 40 mm x 20 mm cross-section. TE10 cutoff at
-# c / (2 * 0.04) = 3.75 GHz. Matches the geometry used by the existing
-# conservation-laws tests so thresholds are directly comparable.
-
 DOMAIN = (0.12, 0.04, 0.02)
 PORT_LEFT_X = 0.01
 PORT_RIGHT_X = 0.09
 F_CUTOFF_HZ = 3.75e9
-TARGET_CPML_M = 0.030  # 30 mm physical CPML absorber target
-#: whole cells of the PEC short (a Box is a volume; a sub-cell
-#: extent is refused, and this module does not pin dx).
+TARGET_CPML_M = 0.030
 SHORT_CELLS = 2
 
 
@@ -87,7 +78,9 @@ def _build_sim(
     waveform
         Source pulse shape. Default ``modulated_gaussian`` for clean
         bandpass excitation.
+    Finalize before placing a body from node coordinates because the new feature can refine the mesh.
     """
+    RIGHT_PORT_CLEARANCE_CELLS = 4
     freqs = np.asarray(freqs_hz, dtype=float)
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
@@ -97,7 +90,7 @@ def _build_sim(
         dx = (0.75e-3 if obstacles else 299792458.0 / max(float(freqs[-1]), f0) / 20.0) if dx is None else dx
         n_y = int(np.ceil(DOMAIN[1] / dx))
         n_z = int(np.ceil(DOMAIN[2] / dx))
-        domain = (DOMAIN[0], n_y * dx, n_z * dx)  # solved length
+        domain = (DOMAIN[0], n_y * dx, n_z * dx)
     sim_kwargs = dict(
         freq_max=max(float(freqs[-1]), f0),
         domain=domain,
@@ -117,33 +110,9 @@ def _build_sim(
         sim.add(Box(lo, hi), material=name)
 
     if pec_short_x is not None:
-        # Full-cross-section PEC short, drawn as a VOLUME on the node line
-        # (lattice ownership contract §1.2/§1.5).
-        #
-        # It used to be a hard-coded 0.002 m against a cell this module
-        # never pins: with dx=None the Simulation picks lambda_min/20 =
-        # c/7e9/20 = 2.1414 mm, so the "2 mm — a few cells" comment
-        # described a body 0.93 of ONE cell thick. The old sheet rule
-        # realized any non-empty cell set as at least one wall, so the
-        # sub-cell body passed silently; the contract refuses it (a Box is
-        # a volume, and nothing is inferred from raster thickness).
-        #
-        # Drawn from the nearest node for SHORT_CELLS whole cells it is a
-        # solid short with walls on BOTH drawn planes. The incident wave
-        # meets the LEADING plane, which is what every gate here measures,
-        # so the redraw moves the reflector by at most half a cell.
-        #
-        # Its CROSS-SECTION is drawn to the REALIZED guide walls, read off
-        # the grid, not to DOMAIN. With dx = None the mesh is 2.1414 mm and
-        # ceil(20 / 2.1414) = 10 cells make the guide 21.41 mm tall; a plug
-        # drawn to z = 20 mm rounds its top face to the nearest node
-        # at 19.27 mm and leaves a 2.14 mm vacuum slot under
-        # the top wall — a parallel-plate line for Ez straight past the
-        # "short". That slot, not the lane, was the 0.9670 this test read
-        # after the redraw (adjudicated on the WR-90 waveguide-port case's
-        # identical set-up).
-        # Finalize before placing a body from node coordinates: an ordinary
-        # preview is invalidated by add(), and the new feature can refine it.
+        assert isinstance(SHORT_CELLS, int) and SHORT_CELLS >= 1, (
+            'The PEC short needs whole cells because a sub-cell Box volume is refused.'
+        )
         grid = sim.freeze_mesh()
         d = float(grid.dx)
         k_lo = int(round(pec_short_x / d))
@@ -154,12 +123,11 @@ def _build_sim(
             Box((x_lo, 0.0, 0.0), (x_hi, y_wall, z_wall)),
             material="pec",
         )
-        # What the fixture declares, for the build-time realization check.
         sim._pec_short_faces_m = (x_lo, x_hi)
-        # the right port stands 4 cells behind the short's far face,
-        # so its 3-cell reflection plane is in front of the short; at
-        # PORT_RIGHT_X it read the far side. |S11| is bit-identical.
-        right_x = (k_lo + SHORT_CELLS + 4) * d
+        assert RIGHT_PORT_CLEARANCE_CELLS > 3, (
+            "The three-cell reflection offset must leave the right-port plane on the port side of the short's far face."
+        )
+        right_x = (k_lo + SHORT_CELLS + RIGHT_PORT_CLEARANCE_CELLS) * d
     else:
         right_x = PORT_RIGHT_X
 
@@ -198,10 +166,6 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
     )
     s = np.asarray(result.s_params)
     port_idx = {name: idx for idx, name in enumerate(result.port_names)}
-    # Multi-mode dispatch (n_modes>1) renames ports to
-    # "<name>_mode<k>_<TE/TM><mn>". Add a short alias mapping plain
-    # "left"/"right" → the dominant-mode index so test code that uses
-    # port_idx["left"] keeps working.
     for name in list(port_idx):
         if "_mode0_" in name:
             short = name.split("_mode0_", 1)[0]
@@ -210,45 +174,9 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
     return s, freqs, port_idx
 
 
-# =============================================================================
-# Test 1 — Matched-load |S11| reflection at the CPML termination (BINDING)
-# =============================================================================
-#
-# An empty lossless guide terminated by CPML on both ends: the CPML *is*
-# the matched load. We measure the SINGLE-RUN (``normalize=False``)
-# reflection coefficient |S11| off that termination — the incident modal
-# power that fails to be absorbed and returns to the driven port. A good
-# matched load reflects ~0; a degraded absorber reflects more.
-#
-# why NOT ``normalize=True`` here: with ``normalize=True`` on
-# an empty guide the device run *is* the reference run, so
-# ``S11 = (b_dev - b_ref)/a_inc`` is identically ZERO by construction and
-# no PML/extractor regression that touches both runs equally can move it
-# (probe: cpml_layers 10 and 4 BOTH give max|S11| = 0.000000).
-# The earlier gate (``normalize=True``, threshold 0.02) was therefore
-# VACUOUS — a determinism/plumbing tripwire mislabeled "the single
-# most-telling diagnostic for extractor + PML quality". Switching to the
-# single-run ``normalize=False`` reflection is a STRENGTHENING, not a
-# loosening: it is the correct tool for an absorber-quality claim and it
-# moves with the boundary. This test carries that crippled-CPML falsifier
-# inline, mirroring the phase-gate's in-test perturbation witness.
-#
-# This is the direct waveguide-lane PML-reflection witness. The PEC-short |S11|=1 gate (Test 7) binds the
-# extractor on TOTAL reflection; this binds the ABSORBER on near-zero
-# reflection — complementary, and neither is an identity.
-#
-# With the magnetic CPML profile at the Yee half cell the 10-layer load reflects at most
-# 0.0135 over 4.5–8 GHz (0.156 earlier; 0.119 with the integer-node profile
-# on today's tree) and 4 layers reflect 0.119, so the earlier 13–16 %
-# floor was the absorber, not the source plane. Gate 0.05; the 4-layer witness must
-# clear 0.08.
-
 def test_matched_load_s11_empty_waveguide():
+    """Single-run wave decomposition is the correct tool for a reflection/absorber-quality gate because two-run subtraction cancels ALL reflection (real included) on an empty guide."""
     freqs = np.linspace(4.5e9, 8.0e9, 10)
-    # normalize=False: single-run wave decomposition (OpenEMS convention),
-    # the correct tool for a reflection/absorber-quality gate. The two-run
-    # normalize=True subtraction cancels ALL reflection (real included) on
-    # an empty guide, which is why the earlier gate could not fail.
     sim = _build_sim(freqs, solved_domain=True, cpml_layers=10, waveform="modulated_gaussian")
     s, sim_freqs, port_idx = _s_matrix(sim, num_periods=40, normalize=False)
 
@@ -268,18 +196,11 @@ def test_matched_load_s11_empty_waveguide():
         "CPML termination is not absorbing as well as the validated "
         "envelope, or the single-run extractor regressed."
     )
-    # Absorbed-power witness: the matched load must absorb >=95% of the
-    # incident modal power at every frequency.
     assert min_absorbed > 0.95, (
         f"Matched load absorbs only {min_absorbed:.4f} of incident power "
         "(<0.95) — degraded CPML absorber."
     )
 
-    # In-test discrimination falsifier: the SAME geometry with
-    # a crippled 4-layer CPML must FAIL the 0.05 gate, proving this gate
-    # observes real absorber quality and is not vacuous. A regression that
-    # re-vacuumed the gate (e.g. reverting to normalize=True) would let the
-    # crippled run pass and trip this witness.
     sim_bad = _build_sim(freqs, solved_domain=True, cpml_layers=4, waveform="modulated_gaussian")
     s_bad, _, idx_bad = _s_matrix(sim_bad, num_periods=40, normalize=False)
     bad_refl = float(max(
@@ -295,31 +216,8 @@ def test_matched_load_s11_empty_waveguide():
     )
 
 
-# =============================================================================
-# Test 2 — Passivity / energy conservation on a reflecting DUT (BINDING)
-# =============================================================================
-#
-# Energy cannot be created: for a lossless two-port the column power
-# ``sum_i |S_ij|^2`` must stay <= 1. The earlier version
-# measured this on an EMPTY guide with ``normalize=True``, where the
-# device run *is* the reference run, so S11=0 and S21=1 exactly and the
-# column power is 1.0000 by construction (probe: identical at
-# cpml_layers 10 and 4). No energy-injection bug that affects both runs
-# equally could trip it.
-#
-# Fix: put a real reflecting DUT in the guide (eps_r=4 box) so
-# device != reference, and read the ENERGY (flux) extractor
-# (``normalize='flux'``) whose |S11| and |S21| are two INDEPENDENT power
-# measurements. Their sum is a genuine conservation check. Measured max
-# column power 1.0005; a non-passive (energy-injection)
-# extractor bug pushes it above the gate.
-#
-# ``normalize=True`` is deliberately NOT used here: its diagonal |S11| on
-# a reflector carries a documented +-10-20% inflation (column power ~1.21
-# on this same obstacle) that is an extraction limitation, not physics —
-# the flux path is the honest tool for a passivity-magnitude claim.
-
 def test_tight_passivity_reflecting_dut():
+    """The flux path is the tool for a passivity-magnitude claim because its |S11| and |S21| are two INDEPENDENT power measurements."""
     freqs = np.linspace(4.5e9, 8.0e9, 10)
     obstacles = [((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)]
     sim = _build_sim(freqs, solved_domain=True, obstacles=obstacles, waveform="modulated_gaussian")
@@ -334,9 +232,6 @@ def test_tight_passivity_reflecting_dut():
     print(f"[passivity] |S21| = {np.array2string(s21, precision=3)}")
     print(f"[passivity] max column |S|^2 = {max_power:.4f} (gate 1.02; measured 1.0005)")
 
-    # Non-vacuity witness: the obstacle must actually reflect
-    # AND attenuate (device != reference), else this degenerates into the
-    # old empty-guide identity. Measured max|S11|~0.73, min|S21|~0.69.
     assert s11.max() > 0.30, (
         f"DUT not reflecting (max|S11|={s11.max():.4f}<=0.30) — the passivity "
         "gate would be vacuous; check the eps_r=4 obstacle was built."
@@ -345,27 +240,19 @@ def test_tight_passivity_reflecting_dut():
         f"DUT not attenuating (min|S21|={s21.min():.4f}>=0.95) — transmission "
         "should drop below unity behind an eps_r=4 step."
     )
-    # Binding energy-conservation gate: measured 1.0005; 1.02 catches a 2%
-    # energy-injection regression on a real reflecting DUT.
     assert max_power < 1.02, (
         f"Reflecting-DUT column power {max_power:.4f} exceeds 1.02 — "
         "non-passive extractor (energy injection) on a lossless obstacle."
     )
 
 
-# =============================================================================
-# Test 3 — Reciprocity on a symmetric obstacle
-# =============================================================================
-#
-# Lorentz reciprocity on a geometrically symmetric obstacle — this is
-# the case where two-run normalization can fully cancel obstacle-CPML
-# multi-bounce asymmetry. A tight threshold should be achievable.
-
 def test_reciprocity_symmetric_obstacle():
+    """Two-run normalization on a symmetric obstacle measured 0.0005 mean reciprocity error in an earlier run."""
     freqs = np.linspace(4.5e9, 8.0e9, 10)
-    # Symmetric about domain midpoint (0.06 m), fills full y-cross-section
-    # and is centered.
     obstacles = [((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)]
+    assert np.isclose(obstacles[0][0][0] + obstacles[0][1][0], DOMAIN[0]), (
+        'The reciprocity obstacle must be symmetric about the domain midpoint.'
+    )
     sim = _build_sim(freqs, solved_domain=True, obstacles=obstacles, waveform="modulated_gaussian")
     s, _, port_idx = _s_matrix(sim, num_periods=40, normalize=True)
 
@@ -378,27 +265,14 @@ def test_reciprocity_symmetric_obstacle():
     print(f"\n[reciprocity-sym] mean |S21-S12|/max = {mean_err:.4f}")
     print("[reciprocity-sym] gate 0.05")
 
-    # Gate ratcheted from 0.05 to 0.01. Two-run normalization
-    # on a symmetric obstacle currently measures 0.0005 mean reciprocity
-    # error — the full 0.05 headroom was from the pre-consistency era.
     assert mean_err < 0.01, (
         f"Reciprocity on symmetric obstacle worse than gate: "
         f"{mean_err:.4f} (0.01). Possible extractor regression."
     )
 
 
-# =============================================================================
-# Test 4 — Reciprocity converges with run length on symmetric obstacle
-# =============================================================================
-#
-# A correct extractor should improve monotonically as num_periods grows
-# — more DFT samples cancel transient multi-bounce better. If the error
-# flatlines or grows with longer runs, the extractor has a structural
-# multi-bounce bug (Stage-3 hypothesis for the asymmetric-obstacle
-# failure). This test exists so such a regression is caught early.
-
 def test_reciprocity_converges_with_num_periods():
-    freqs = np.array([6.0e9])  # single frequency, fast
+    freqs = np.array([6.0e9])
     obstacles = [((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)]
     errors = []
     for num_periods in (40, 80):
@@ -411,13 +285,6 @@ def test_reciprocity_converges_with_num_periods():
         errors.append(float(rel_err))
         print(f"[reciprocity-conv] num_periods={num_periods:3d}: rel_err = {rel_err:.4f}")
 
-    # Monotonic non-increase with num_periods. The previous revision of
-    # this test added an ``or errors[1] < 0.02`` escape hatch which made
-    # the assertion tautological for the current extractor state (≈1e-4
-    # error floor) — the convergence property it was supposed to guard
-    # could never fire. The gate is now strictly monotonic: any future
-    # regression that reintroduces CPML-accumulation (the symptom that
-    # motivated this test) will show non-monotonic behaviour and trip.
     improved = errors[1] <= errors[0] + 1e-3
     assert improved, (
         f"Reciprocity error did not improve with longer run: "
@@ -425,23 +292,9 @@ def test_reciprocity_converges_with_num_periods():
     )
 
 
-# =============================================================================
-# Test 5 — Asymmetric-obstacle reciprocity (known gap, ratcheted lock)
-# =============================================================================
-#
-# Stage-3 diagnosis: Lorentz reciprocity holds in theory for the
-# projected TE10 S-matrix regardless of geometric asymmetry (modal
-# orthogonality on uniform cross-section). The extractor currently
-# shows ~0.22 reciprocity error on the existing asymmetric test, which
-# points at multi-bounce contamination not cancelled by two-run
-# normalization in geometrically asymmetric DUTs.
-#
-# This test LOCKS the current achievable upper bound. When the
-# extractor is improved to <0.05, tighten the gate.
-
 def test_reciprocity_asymmetric_obstacle_known_gap():
+    """0.10 keeps headroom for frequency-dependent reciprocity residuals while catching genuine regressions."""
     freqs = np.linspace(4.5e9, 8.0e9, 10)
-    # Half y-cross-section, off-center in x: the legacy test's geometry.
     obstacles = [((0.03, 0.0, 0.0), (0.05, 0.02, 0.02), 6.0)]
     sim = _build_sim(freqs, solved_domain=True, obstacles=obstacles, waveform="modulated_gaussian")
     s, _, port_idx = _s_matrix(sim, num_periods=40, normalize=True)
@@ -454,48 +307,23 @@ def test_reciprocity_asymmetric_obstacle_known_gap():
     print(f"\n[reciprocity-asym-lock] mean |S21-S12|/max = {mean_err:.4f}")
     print("[reciprocity-asym-lock] gate 0.30 (known extractor gap ~0.22)")
 
-    # Post fixes the
-    # asymmetric-obstacle case measures ~0.06 — the old 0.30 gate
-    # tolerated the 0.22 regime that no longer reflects current extractor
-    # state. 0.10 keeps headroom for frequency-dependent reciprocity
-    # residuals while catching genuine regressions.
     assert mean_err < 0.10, (
         f"Asymmetric-obstacle reciprocity regression: {mean_err:.4f} > 0.10. "
         "Current-state upper bound was ~0.06. Investigate extractor."
     )
 
 
-# =============================================================================
-# Test 6 — Mesh convergence of |S21| with properly scaled CPML
-# =============================================================================
-#
-# Fixes the design bug in test_mesh_convergence_s21: cpml_layers is
-# proportional to 1/dx so the physical CPML thickness is constant
-# across resolutions.
-#
-# Assertions:
-# (a) monotone: |S21(2mm)-S21(1.5mm)| <= |S21(3mm)-S21(2mm)|
-# (b) absolute: fine-mesh change < 0.10
-#
-# The actual root cause was
-# `Box.mask_on_coords` closed-closed semantics — the εr=4
-# obstacle was being painted with N+1 cells per axis at each dx, and the
-# uneven cell-count rounding across {3, 2, 1.5} mm produced the
-# 0.0370/0.0547 non-monotone |S21| jitter. Half-open Box semantics
-# (`coords < hi` instead of `<=`) lands the obstacle on N cells consistently
-# across the ladder; |S21| now refines monotonically (coarse_delta 0.021,
-# fine_delta 0.003 at dx ∈ {3, 2, 1.5} mm). Subpixel PEC at staircase walls
-# remains an architectural gap
-# but it does NOT manifest in this test once obstacle painting is correct.
 def test_mesh_convergence_s21_scaled_cpml():
     freq = 6.0e9
     obstacles = [((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)]
 
-    # Skip the coarsest resolution that has the worst staircasing.
     resolutions = [0.003, 0.002, 0.0015]
     s21_values: list[float] = []
     for dx in resolutions:
-        layers = max(8, int(round(TARGET_CPML_M / dx)))  # [10, 15, 20]
+        layers = max(8, int(round(TARGET_CPML_M / dx)))
+        assert np.isclose(layers * dx, TARGET_CPML_M), (
+            'The mesh ladder needs constant physical CPML thickness across resolutions.'
+        )
         sim = _build_sim(
             [freq],
             solved_domain=True,
@@ -522,23 +350,6 @@ def test_mesh_convergence_s21_scaled_cpml():
     )
 
 
-# =============================================================================
-# Test 7 — PEC-short |S11| magnitude
-# =============================================================================
-#
-# Total-reflection termination: |S11| = 1 at every frequency for a
-# lossless short. With PEC ~15 mm from the downstream CPML and num_periods
-# chosen so the single round-trip settles within the DFT window, the
-# normalized extractor (diagonal-subtraction patch) recovers |S11| close
-# to 1 without needing early-time DFT gating. An early DFT gate
-# (num_periods_dft << num_periods) here would cut off the reflected
-# wave before it returns to the driven port — useful only for strong
-# resonators, not for a one-bounce short.
-#
-# Measured earlier: mean |S11| ~ 0.93, per-freq range [0.78, 1.06].
-# The remaining ~7 % departure from unity is extractor/mode-projection
-# error. Tighten when P3 (discrete-eigenmode profile) lands.
-
 def test_pec_short_s11_magnitude():
     """PEC-short min |S11| ≥ 0.99 (Meep-class strict closure).
 
@@ -549,6 +360,7 @@ def test_pec_short_s11_magnitude():
     reflectors that make it the wrong tool for this gate. Two-run
     normalization remains the correct tool for long-distance
     transmission gates where Yee numerical dispersion accumulates.
+    The max gate allows the earlier measured small (~2.5%) over-unity residual at the lowest frequency closest to cutoff (5.0 GHz at f/fc=1.33).
     """
     freqs = np.linspace(5.0e9, 7.0e9, 6)
     sim = _build_sim(
@@ -556,63 +368,13 @@ def test_pec_short_s11_magnitude():
         pec_short_x=0.085,
         waveform="modulated_gaussian",
     )
-    # After the redraw this test read min |S11| = 0.9670 and was left
-    # RED with the gate untouched (migration rule 3). Adjudicated
-    # on the WR-90 waveguide-port case's identical set-up (per-bin dumps
-    # + port time records, both checkouts): NEITHER of the
-    # two suspects — the thicker reflector, or the lane's switch from the
-    # sigma = 1e10 cell fill to the realized PEC edges (stage C)
-    # — was it. The plug was drawn to DOMAIN[2] = 20 mm on a 2.1414 mm
-    # auto mesh whose guide is 21.41 mm tall, so its top face rounded to
-    # 19.27 mm and a one-cell vacuum slot ran along the top broad wall;
-    # cv11's 1 mm slot of the same origin transmitted |S21| 0.22-0.33 past
-    # the "short" and closing it returned |S11| to [0.9980, 1.0019], equal
-    # to the pre-change baseline to four decimals, with the lane's far
-    # face and the window both shown not to matter. `_build_sim` now draws
-    # the plug to the grid's realized walls, and the check below refuses a
-    # front wall that is not the whole cross-section, which is what would
-    # have caught this at build time.
-    #
-    # MEASURED after that redraw (this module run whole,
-    # 9 passed): |S11| range [0.99822, 1.02670], mean 1.00376 — the gate is
-    # green at its untouched 0.99 and the earlier baseline is back. The
-    # thickness separation ran in the same job
-    # (`scripts/vessl_931/pec_short_thickness_sweep.py`, SHORT_CELLS = 1, 2, 4) and
-    # is now FLAT to five decimals: min|S11| 0.99822 at every thickness,
-    # spread 0.00000, the six per-bin values identical arm to arm. That is
-    # the physics the sweep was written to test — everything past a total
-    # reflector's leading face is dark, so |S11| cannot depend on how many
-    # cells sit behind it — and it only became true once the leak along the
-    # top broad wall was closed. Before the fix the same sweep read 0.95721
-    # / 0.96705 / 0.97607: the thicker the plug, the longer
-    # the slot, the less it leaked.
-    #
-    # Build-time realization check, no solve: it fails before the
-    # 40-period run if the geometry ever drifts off the node line again.
-    #
-    # The short is a VOLUME SHORT_CELLS cells thick, so it realizes a
-    # tangential wall on EVERY node plane it touches — the two drawn faces
-    # AND the interior plane between the two occupied cells, which is
-    # shared by both and therefore carries PEC tangential edges too. The
-    # claim "drawn == realized" is about the SPAN: the first and last
-    # realized planes are the drawn faces, and the planes between them are
-    # contiguous (a solid short, no gap). Asserting only two planes would
-    # be asserting a one-cell body.
     faces = [node_index(realized(sim).grid, 0, x)
              for x in sim._pec_short_faces_m]
     assert_wall_planes(
         sim, 0, expected_planes=list(range(faces[0], faces[1] + 1)),
         what="PEC short")
-    # ... and each drawn face is a wall across the WHOLE cross-section
-    # (footprint=None): a plug that stops one row short of a guide wall is
-    # a slotted iris, and a footprint taken from the plug's own cells would
-    # not notice the row it is missing.
     assert_walls_at(realize(sim), 0, list(sim._pec_short_faces_m),
                     what="PEC short (full cross-section)")
-    # Full-window DFT: the single PEC->CPML round trip fits inside
-    # num_periods=40 and there is no resonator to build up late-time.
-    # The post-scan rect full-record DFT is finite-energy on the
-    # transient so no gating is needed.
     s, _, port_idx = _s_matrix(
         sim,
         num_periods=40,
@@ -627,20 +389,11 @@ def test_pec_short_s11_magnitude():
     print(f"\n[pec-short] |S11| per freq: {np.array2string(s11, precision=4)}")
     print(f"[pec-short] range [{min_s11:.4f}, {max_s11:.4f}]  mean {mean_s11:.4f}; ideal 1.00")
 
-    # Meep-class strict closure. Earlier baseline (PROD half-
-    # weight) was min=0.78, mean=0.93; the DROP-weight fix took it to
-    # min ≥ 0.99 by removing the spurious-Ez ghost-cell contribution
-    # that apply_pec_faces does not zero (Ez is "normal" at the z_hi
-    # PEC face by staircase convention).
     assert min_s11 >= 0.99, (
         f"PEC-short min |S11|={min_s11:.4f} below 0.99 Meep-class gate. "
         "Regression vs DROP-weight baseline — ghost-cell contamination "
         "may have crept back into the modal V/I integral."
     )
-    # Max gate relaxed to 1.03 to allow the small (~2.5%) over-unity
-    # residual at the lowest freq closest to cutoff (5.0 GHz at f/fc=1.33);
-    # other freqs land within ±0.001 of unity. Tighten when the discrete-
-    # Yee Z_TE residual at near-cutoff is tracked down.
     assert max_s11 < 1.03, (
         f"PEC-short max |S11|={max_s11:.4f} above 1.03 — non-passive "
         "reflector (energy injection bug) or near-cutoff residual blew up."
@@ -651,39 +404,8 @@ def test_pec_short_s11_magnitude():
     )
 
 
-# =============================================================================
-# Test 8 — Early-time source directionality (phantom-diagnosis regression lock)
-# =============================================================================
-#
-# Measures raw source backward-leakage via time-domain probes on either
-# side of the port, gated to an *early-time window* that excludes the
-# right-CPML round-trip reflection:
-# five prior sessions chased a max|Ez|-over-full-window metric that was
-# dominated by the CPML round-trip, not by real source directionality.
-# The real directionality of the current source (as of commit 15c6a13,
-# 2026-04-21) is 0.67%.
-#
-# This test locks that baseline. A regression here means either
-#   (a) the source injector lost its one-sided property (physics bug), or
-#   (b) the CPML leak reaches the upstream probe inside the gate, which
-#       means the left CPML has regressed.
-# Both deserve a hard failure.
-
 def test_source_directionality_early_time():
-    # Bespoke geometry: needs enough source-to-CPML distance so the
-    # early-time window covers the source-pulse peak before any CPML
-    # round-trip reflection can reach the probes.
-    #
-    # Waveguide side walls (y, z) are PEC — the physical boundary for a
-    # rectangular guide — so point probes on the cross-section axis are
-    # not attenuated by CPML. CPML is applied only on the propagation
-    # axis (x), where the source radiates.
-    #
-    # For fcen=10 GHz, modulated_gaussian peak @ t0=5*tau=1 ns with
-    # bandwidth=0.5; v_g(10 GHz, fc=3.75 GHz) ~ 2.78e8 m/s; round-trip
-    # path (source -> nearest x-CPML edge and back to the upstream probe
-    # ~40 mm upstream) is ~1.51 ns — leaves a clean early window past
-    # the source peak.
+    """The 2.5% gate tolerates pulse-shape and mode-mismatch jitter."""
     domain = (0.50, 0.04, 0.02)
     dx = 0.002
     f_cutoff = F_CUTOFF_HZ
@@ -691,8 +413,9 @@ def test_source_directionality_early_time():
     freqs = np.linspace(8.0e9, 12.0e9, 8)
     bandwidth = 0.5
 
-    port_x = domain[0] / 2.0                 # 0.25 m, free region midpoint
-    probe_offset = 0.040                     # 40 mm ~= λ at 10 GHz
+    port_x = domain[0] / 2.0
+    PROBE_OFFSET_M = 0.040
+    probe_offset = PROBE_OFFSET_M
     y_c = domain[1] / 2
     z_c = domain[2] / 2
 
@@ -718,14 +441,9 @@ def test_source_directionality_early_time():
         waveform="modulated_gaussian",
         name="source",
     )
-    # Probes at symmetric offsets; physical coord snapped by api.
-    sim.add_probe((port_x - probe_offset, y_c, z_c), "ez")  # probe 0: backward
-    sim.add_probe((port_x + probe_offset, y_c, z_c), "ez")  # probe 1: forward
+    sim.add_probe((port_x - probe_offset, y_c, z_c), "ez")
+    sim.add_probe((port_x + probe_offset, y_c, z_c), "ez")
 
-    # Run long enough to capture source peak + first CPML round-trip.
-    # We only ASSERT on the early window, but seeing post-early-window
-    # CPML-reflection energy in the diagnostic print is useful to
-    # validate the travel-time model (and catches a too-narrow gate).
     num_periods_total = 24.0
     grid_est = sim._build_grid()
     n_steps = int(grid_est.num_timesteps(num_periods=num_periods_total))
@@ -734,34 +452,33 @@ def test_source_directionality_early_time():
     dt = float(result.dt)
     times = np.arange(n_steps) * dt
 
-    # Travel-time gate: source -> nearer CPML edge and back -> the upstream
-    # probe. Geometry is x-symmetric, so the nearer edge is the same on both
-    # sides.
     cpml_thickness_m = 10 * float(result.grid.dx)
     dist_source_to_right_cpml = domain[0] - port_x - cpml_thickness_m
     dist_source_to_left_cpml = port_x - cpml_thickness_m
     nearest_cpml_m = min(dist_source_to_right_cpml, dist_source_to_left_cpml)
     v_g = 2.998e8 * np.sqrt(max(1.0 - (f_cutoff / f0) ** 2, 1e-6))
     round_trip_s = 2 * nearest_cpml_m / v_g
-    # Allow two cycles of headroom before the reflection reaches the probe.
+    REFLECTION_HEADROOM_CYCLES = 2.0
     cycle_s = 1.0 / f0
-    early_t_s = round_trip_s - 2.0 * cycle_s
-    # If the geometry is too tight to produce a clean early window, skip with
-    # explicit failure rather than silently relaxing the gate.
+    early_t_s = round_trip_s - REFLECTION_HEADROOM_CYCLES * cycle_s
+    assert 5.0 / (f0 * bandwidth) + probe_offset / v_g < early_t_s < (2 * nearest_cpml_m - probe_offset) / v_g, (
+        'Early-time headroom must retain the source-pulse peak and exclude the first CPML echo.'
+    )
     assert early_t_s > 3.0 * cycle_s, (
         f"Early-time window too short for clean measurement: "
         f"{early_t_s * 1e9:.2f} ns < 3 cycles. Geometry needs to be larger."
     )
 
     early_mask = times < early_t_s
-    time_series = np.asarray(result.time_series)  # shape (n_steps, 2)
-    max_backward = float(np.max(np.abs(time_series[early_mask, 0])))
-    max_forward = float(np.max(np.abs(time_series[early_mask, 1])))
+    BACKWARD_PROBE_INDEX = 0
+    FORWARD_PROBE_INDEX = 1
+    time_series = np.asarray(result.time_series)
+    max_backward = float(np.max(np.abs(time_series[early_mask, BACKWARD_PROBE_INDEX])))
+    max_forward = float(np.max(np.abs(time_series[early_mask, FORWARD_PROBE_INDEX])))
     directionality = max_backward / max(max_forward, 1e-30)
 
-    # Full-window metric for diagnostic only — this is the misleading one.
-    max_bwd_full = float(np.max(np.abs(time_series[:, 0])))
-    max_fwd_full = float(np.max(np.abs(time_series[:, 1])))
+    max_bwd_full = float(np.max(np.abs(time_series[:, BACKWARD_PROBE_INDEX])))
+    max_fwd_full = float(np.max(np.abs(time_series[:, FORWARD_PROBE_INDEX])))
     dir_full = max_bwd_full / max(max_fwd_full, 1e-30)
 
     print(f"\n[source-dir] v_g(f0={f0/1e9:.2f}GHz) = {v_g:.3e} m/s")
@@ -774,10 +491,6 @@ def test_source_directionality_early_time():
     print(f"[source-dir] full-window  bwd/fwd = {dir_full*100:.3f}% "
           f"(if != early-time, CPML round-trip is entering the gate)")
 
-    # Lock at 2.5% — ~2x the current-geometry baseline (~1.2%).
-    # This gate catches a real physics regression while tolerating pulse-
-    # shape and mode-mismatch jitter. Tighten after the P1 Lorentz overlap
-    # landing once the projected baseline is re-measured.
     assert directionality < 0.025, (
         f"Early-time source directionality regressed: "
         f"{directionality*100:.3f}% > 2.5% gate. "
@@ -787,41 +500,27 @@ def test_source_directionality_early_time():
     )
 
 
-# =============================================================================
-# Test 9 — Below-cutoff frequency does not produce NaN in Z_mode
-# =============================================================================
-#
-# Regression lock: `_compute_mode_impedance` formerly returned `jnp.inf`
-# for below-cutoff frequencies; `inf × complex(r, 0)` yields a NaN in the
-# imaginary component on most NumPy/JAX implementations, which propagated
-# through the V/I decomposition into NaN S-parameters. The current
-# sentinel (1e30 for TE, 0 for TM) keeps downstream arithmetic defined.
-# This test is pure algebra — no FDTD run — so it's cheap to leave on.
-
 def test_below_cutoff_z_mode_no_nan():
     from rfx.model.waveguide_modes import _compute_mode_impedance
     from rfx.measurement.waveguide_s import _extract_global_waves
 
-    # WR-90-like f_cutoff = 13.12 GHz (TE20 cutoff); probe a frequency
-    # below that to exercise the evanescent branch.
     freqs = np.array([5.0e9, 10.0e9, 15.0e9])
-    f_cutoff = 13.12e9
+    WR90_TE20_CUTOFF_HZ = 13.12e9
+    f_cutoff = WR90_TE20_CUTOFF_HZ
     dx, dt = 1.0e-3, 1.5e-12
 
+    assert np.any(freqs < f_cutoff), (
+        'The impedance input needs a frequency below cutoff to exercise the evanescent branch.'
+    )
     z = np.asarray(_compute_mode_impedance(freqs, f_cutoff, "TE", dt=dt, dx=dx, medium=PortMedium()))
     assert not np.any(np.isnan(z)), f"NaN in Z_mode below cutoff: {z}"
     assert not np.any(np.isinf(z)), (
         "inf in Z_mode below cutoff regresses the nan-cascade fix (2026-04-22)."
     )
 
-    # TM likewise should give a finite (zero) value below cutoff.
     z_tm = np.asarray(_compute_mode_impedance(freqs, f_cutoff, "TM", dt=dt, dx=dx, medium=PortMedium()))
     assert not np.any(np.isnan(z_tm)), f"NaN in TM Z_mode below cutoff: {z_tm}"
 
-    # Cascade check: the original failure mode was NaN S-parameters in
-    # the V/I decomposition `(V ± Z·I) / 2` when Z was ±∞. Build a
-    # minimal cfg-like namespace and confirm `_extract_global_waves`
-    # returns finite forward/backward even with below-cutoff freqs.
     class _MinCfg:
         def __init__(self, freqs_hz, f_cutoff_hz, mode_type):
             self.freqs = jnp.asarray(freqs_hz)

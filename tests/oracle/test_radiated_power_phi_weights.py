@@ -27,13 +27,11 @@ _ALL_PHI = _EVEN_PHI + [pytest.param(np.array([0.0, 1.0, 2.0, 5.0]), id="uneven-
 
 
 def _z_dipole(theta, phi):
-    # U = sin^2(theta).
     e_theta = np.sin(theta)[None, :, None] * np.ones((1, 1, len(phi)), complex)
     return FarFieldResult(e_theta, np.zeros_like(e_theta), theta, phi, np.array([3e9]))
 
 
 def _x_dipole(theta, phi):
-    # U = cos^2(theta) cos^2(phi) + sin^2(phi) = 1 - sin^2(theta) cos^2(phi).
     e_theta = (np.cos(theta)[:, None] * np.cos(phi)[None, :])[None].astype(complex)
     e_phi = np.broadcast_to(-np.sin(phi)[None, None, :], e_theta.shape).astype(complex)
     return FarFieldResult(e_theta, e_phi, theta, phi, np.array([3e9]))
@@ -41,35 +39,29 @@ def _x_dipole(theta, phi):
 
 @pytest.mark.parametrize("phi", _ALL_PHI)
 def test_z_dipole_directivity(phi):
-    # The theta rule's error on 181 samples is h^4/80 relative (5e-9 dB); the
-    # phi weights sum to 2*pi, so phi adds rounding only.
+    """The theta rule's error on 181 samples is h^4/80 relative (5e-9 dB)."""
     d = directivity(_z_dipole(THETA, phi))[0]
     assert abs(d - D_DIPOLE_DBI) <= 1e-6, d
 
 
 @pytest.mark.parametrize("phi", _EVEN_PHI)
 def test_x_dipole_directivity(phi):
-    # The theta rule's error is led by the h^2/6 term of the 2*pi*sin(theta)
-    # part, 1.7e-4 dB on 181 samples.
+    """The theta rule's error is led by the h^2/6 term of the 2*pi*sin(theta) part, 1.7e-4 dB on 181 samples."""
     d = directivity(_x_dipole(THETA, phi))[0]
     assert abs(d - D_DIPOLE_DBI) <= 1e-3, d
 
 
 @pytest.mark.parametrize("phi", _ALL_PHI)
 def test_phi_weight_sum_through_public_path(phi):
-    # theta = pi/2 has sin = 1 and an np.gradient cell of exactly 0.25, so an
-    # intensity of 4 there (0 elsewhere) makes each summand the phi weight.
     theta = np.array([0.0, np.pi / 2 - 0.25, np.pi / 2, np.pi / 2 + 0.25, np.pi])
     intensity = np.zeros((1, len(theta), len(phi)))
     intensity[0, 2, :] = 4.0
+    assert np.sin(theta[2]) * np.gradient(theta)[2] * intensity[0, 2, 0] == 1.0, "The equatorial intensity must make each summand equal its phi weight."
     total = integrate_radiated_power(intensity, theta, phi)[0]
     assert abs(total - 2 * np.pi) <= 8 * np.spacing(2 * np.pi), total - 2 * np.pi
 
 
 def _test_periodic_weights(phi):
-    # Periodic trapezoid weights on the unique samples; with a seam repeat,
-    # half the first interval and half the interval up to phi[0] + 2*pi.
-    # Formed here in float64.
     seam = phi[-1] - phi[0] >= 2 * np.pi - 1e-9
     u = phi[:-1] if seam else phi
     m = len(u)
@@ -158,8 +150,7 @@ def test_r3_both_paths_read_the_one_weight_function(monkeypatch):
 
 
 def _float32_built_seam_grid(n):
-    # Built in float32 and carried in float64, as compute_far_field stores
-    # it: the last sample is float32(2*pi), 1.7e-7 past 2*pi.
+    """The seam grid is built in float32 and carried in float64, as compute_far_field stores it."""
     phi = np.asarray(jnp.linspace(0, 2 * jnp.pi, n), dtype=np.float64)
     assert phi.dtype == np.float64 and 0 < phi[-1] - 2 * np.pi < 1e-6
     return phi
@@ -194,9 +185,8 @@ _PHI24 = np.linspace(0, 2 * np.pi, 24, endpoint=False)
 
 @pytest.mark.parametrize("jax_trapezoid", [False, True], ids=["numpy", "jax"])
 def test_theta_stopping_short_of_poles_is_accepted(jax_trapezoid):
-    # 0.01 rad short of each pole, inside the 0.02 rad pole tolerance on both
-    # paths (refused by the earlier half-step rule).
-    theta = np.linspace(0.01, np.pi - 0.01, 1801)
+    ACCEPTED_POLE_SHORTFALL_RAD = 0.01
+    theta = np.linspace(ACCEPTED_POLE_SHORTFALL_RAD, np.pi - ACCEPTED_POLE_SHORTFALL_RAD, 1801)
     u = (np.sin(theta)[:, None] ** 2 * np.ones((1, len(_PHI24))))[None]
     if jax_trapezoid:
         u = jnp.asarray(u, jnp.float32)
@@ -206,17 +196,16 @@ def test_theta_stopping_short_of_poles_is_accepted(jax_trapezoid):
 
 @pytest.mark.parametrize("jax_trapezoid", [False, True], ids=["numpy", "jax"])
 def test_theta_uncovered_beyond_tolerance_is_refused(jax_trapezoid):
-    # Uncovered polar angle beyond the end sample's own cell = 0.05 rad.
-    # NumPy cell edge: theta[0] - h/2; trapezoid cell edge: theta[0].
+    UNCOVERED_POLAR_ANGLE_RAD = 0.05
     n = 1801
     if jax_trapezoid:
-        a = 0.05
+        a = UNCOVERED_POLAR_ANGLE_RAD
     else:
-        a = (0.05 + np.pi / (2 * (n - 1))) / (1 + 1 / (n - 1))
+        a = (UNCOVERED_POLAR_ANGLE_RAD + np.pi / (2 * (n - 1))) / (1 + 1 / (n - 1))
     theta = np.linspace(a, np.pi - a, n)
     if not jax_trapezoid:
         h = theta[1] - theta[0]
-        assert abs(theta[0] - h / 2 - 0.05) < 1e-12
+        assert abs(theta[0] - h / 2 - UNCOVERED_POLAR_ANGLE_RAD) < 1e-12
     u = (np.sin(theta)[:, None] ** 2 * np.ones((1, len(_PHI24))))[None]
     if jax_trapezoid:
         u = jnp.asarray(u, jnp.float32)
