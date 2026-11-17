@@ -72,7 +72,10 @@ def compute_lumped_wire_s_matrix_via_scan(
     """Full lumped/wire N-port S-matrix via the production scan.
 
     Drives each sparam-eligible lumped/wire port in turn through the
-    production JIT scan, then applies the shared pure decomposers.
+    production JIT scan, then applies the shared pure decomposers. The
+    record-end reader classifies each port record as wire or lumped from its
+    metadata, because the uniform mixed scan can hold lumped specs in the wire
+    list.
 
     Parameters
     ----------
@@ -371,7 +374,6 @@ def compute_lumped_wire_s_matrix_via_scan(
             end = injection_end(n_steps, grid.dt, records=receivers, grid=grid, sim=driven_sim)
             from rfx.measurement.record_readers import port_s_reader, realized_port_metadata
             time_records = raw.get("sparam_time_records", ())
-            # The uniform mixed scan can hold lumped specs in the wire list.
             pairs = []
             for family in ('wire', 'lumped'):
                 for meta, _ in raw.get(family) or ():

@@ -982,14 +982,17 @@ _RECORD_END_FILES = (
     'measurement/waveguide_s.py', 'sparams/waveguide.py', 'sparams/_common.py',
     'sparams/_settling_warning.py', 'sparams/_msl_stages.py',
     'sparams/_mixed_stages.py', 'sparams/_coax_oneport_record.py', 'sparams/coax.py',
-    # The S calculators' shared helpers moved from sparams/_common.py into these two.
     'measurement/sparam_assembly.py', 'measurement/sparam_advisories.py',
 )
 
 
 def test_s4_record_end_comparisons_have_one_owner():
-    # This source-name check misses comparisons on other names. Ring-down,
-    # gradients, decay and coverage (S5-S7) are not yet covered.
+    """Record-end bar comparisons in the S calculators live in one owner.
+
+    The check reads comparisons by source name only and misses comparisons on
+    other names. Ring-down, gradient, decay and coverage comparisons are not
+    covered.
+    """
     violations = []
     for name in _RECORD_END_FILES:
         source = (REPO / 'rfx' / name).read_text()
@@ -1056,12 +1059,16 @@ def test_s4_envelope_only_without_frequency_reads():
 
 
 def _s4_closed_record(n, dt, poles, residues, bins, kind='E', factor=1.):
+    """Return samples, in-record DFT and closed-form tail of a sum of poles.
+
+    The tail uses the whole-record origin:
+    tail = dt exp(-iwNdt) sum c z**N/(1-z exp(-iwdt)).
+    """
     z = np.exp(poles * dt)
     q = z[None, :] * np.exp(-2j * np.pi * bins[:, None] * dt)
     samples = np.exp(np.arange(n)[:, None] * poles[None, :] * dt) @ residues
     stamp = factor * np.exp(-2j * np.pi * bins * dt * (1. if kind == 'E' else .5))
     inside = stamp * dt * ((1 - q**n) / (1 - q) @ residues)
-    # Whole-record origin: tail = dt exp(-iwNdt) sum c z**N/(1-z exp(-iwdt)).
     tail = stamp * dt * np.exp(-2j * np.pi * bins * n * dt) * (
         z[None, :]**n / (1 - q) @ residues)
     return samples.astype(np.complex128), inside, tail
@@ -1092,14 +1099,13 @@ def test_s4_reader_closed_pole_tail(frame):
         from rfx.model.waveguide_modes import PortMedium
         cfg = SimpleNamespace(freqs=bins, f_cutoff=0., mode_type='TE', medium=PortMedium(),
                               dt=dt, dx=0., direction='+x')
-        # Zero cutoff is a TEM-like modal impedance, sqrt(mu0/eps0).
         from rfx.core.yee import MU_0, EPS_0
-        z = np.sqrt(MU_0 / EPS_0)
+        zero_cutoff_impedance = np.sqrt(MU_0 / EPS_0)
         reader = waveguide_s_reader([cfg], 0)
         records = tuple(arrays.items())
         groups, labels = {name: name.split('_')[0] for name in arrays}, None
-        operands = ({'port0/v_ref_t': .5, 'port0/i_ref_t': -.5*z},
-                    {'port0/v_ref_t': .5, 'port0/i_ref_t': .5*z})
+        operands = ({'port0/v_ref_t': .5, 'port0/i_ref_t': -.5*zero_cutoff_impedance},
+                    {'port0/v_ref_t': .5, 'port0/i_ref_t': .5*zero_cutoff_impedance})
     else:
         kind = 'lumped' if frame == 'lumped' else 'wire'
         record = PortTimeRecord('p', kind, tuple(arrays), np.column_stack(list(arrays.values())))
@@ -1130,7 +1136,13 @@ def test_s4_reader_closed_pole_tail(frame):
 
 @pytest.mark.parametrize('whole_port', [True, False], ids=['whole-port', 'legacy-per-cell'])
 def test_s4_two_port_closed_pole_tail(whole_port):
-    """Off-diagonal S uses the receive impedance and the drive's incident wave."""
+    """Off-diagonal S uses the receive impedance and the drive's incident wave.
+
+    The expected operands are written by hand: the receive port has Z=80 and
+    four live cells, the drive port Z=50 and three live cells, and V_ref has
+    the legacy sign. Neither numerator nor denominator is built from the
+    reader's returned weights.
+    """
     from rfx.measurement.record_readers import port_s_reader
     from rfx.measurement.port_time import PortTimeRecord
     from rfx.sparams._tail_witness import port_record_witness
@@ -1151,9 +1163,6 @@ def test_s4_two_port_closed_pole_tail(whole_port):
             samples.append(signal)
             spectra[port, name], tails[port, name] = spectrum, tail
         records.append(PortTimeRecord(port, 'wire', tuple(channels), np.column_stack(samples)))
-    # By hand: receive Z=80, four live cells; drive Z=50, three live cells.
-    # V_ref has the legacy sign. Neither numerator nor denominator is built
-    # from the reader's returned weights.
     operands = (({('receive', 'V_port'): 1., ('receive', 'I'): -80.},
                  {('drive', 'V_port'): 1., ('drive', 'I'): 50.}) if whole_port else
                 ({('receive', 'V'): 1., ('receive', 'I'): -80./4},
@@ -1169,7 +1178,11 @@ def test_s4_two_port_closed_pole_tail(whole_port):
 
 
 def test_s4_zero_receive_port_is_undetermined():
-    """No received field cannot distinguish isolation from a wave yet to arrive."""
+    """No received field cannot distinguish isolation from a wave yet to arrive.
+
+    The expected S11 error is written by hand from b = V_port - 50 I and
+    a = V_port + 50 I.
+    """
     from rfx.measurement.record_readers import port_s_reader
     from rfx.measurement.port_time import PortTimeRecord
     from rfx.sparams._tail_witness import port_record_witness
@@ -1185,7 +1198,6 @@ def test_s4_zero_receive_port_is_undetermined():
             n, dt, poles, np.array(values), bins, 'H' if name == 'I' else 'E')
         samples.append(signal)
     drive = PortTimeRecord('drive', 'wire', tuple(residues), np.column_stack(samples))
-    # S11 by hand: b = V_port - 50 I, a = V_port + 50 I.
     expected = sum((abs(tails['V_port']) + 50*abs(tails['I'])) /
                    abs(spectra['V_port'] + sign*50*spectra['I']) for sign in (-1, 1))
     no_field = ('no field recorded at the receiving port over the whole record; '
@@ -1249,6 +1261,12 @@ def test_s4_dropped_channel_tail_decides_verdict():
 
 
 def test_s4_deep_null_fails():
+    """A reflection 1e-3 below the incident wave fails the record-end bar.
+
+    The record solves b_stamped/a_stamped=1e-3, including E at (n+1)dt and
+    H at (n+1/2)dt. With A=sum(d) and B=.1*delta*d[0], the two waves are
+    ((E-H)A+(E+H)B)/2 and ((E+H)A+(E-H)B)/2.
+    """
     from rfx.measurement.record_readers import port_s_reader
     from rfx.measurement.port_time import PortTimeRecord
     from rfx.sparams._tail_witness import port_record_witness
@@ -1257,9 +1275,6 @@ def test_s4_deep_null_fails():
     poles = -np.log(200)/(n*dt) + 2j*np.pi*np.array([9e9, 12e9])
     q = np.exp((poles - 2j*np.pi*bins[0])*dt)
     d = dt*(1-q**n)/(1-q)
-    # Solve b_stamped/a_stamped=1e-3, including E at (n+1)dt and
-    # H at (n+1/2)dt. With A=sum(d), B=.1*delta*d[0], the two
-    # waves are ((E-H)A+(E+H)B)/2 and ((E+H)A+(E-H)B)/2.
     e, h = np.exp(-2j*np.pi*bins[0]*dt*np.array([1., .5]))
     ratio = 1e-3
     delta = sum(d)*(ratio*(e+h)-(e-h))/((e+h)-ratio*(e-h)) / (.1*d[0])

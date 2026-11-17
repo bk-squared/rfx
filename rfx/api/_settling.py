@@ -28,7 +28,7 @@ def run_settling_witness(self, result):
     if prior:
         prior_bins = np.asarray(getattr(result, "freqs", None), dtype=float).reshape(-1)
         if len(prior['share_per_bin']) != bins.size:
-            aligned = {}
+            aligned: dict = {}
             for key in ('share_per_bin', 'error_per_bin', 'drive_share_per_bin',
                         'record_end_error_per_bin', 'kappa_per_bin', 'record_end_floor_per_bin'):
                 if key not in ('share_per_bin', 'error_per_bin') and not len(prior.get(key, ())):

@@ -79,7 +79,8 @@ def test_witness_probes_produce_no_probe_advisories_and_no_332():
 def test_user_probe_advisories_and_332_still_fire():
     """User probes keep their placement advisory during the same MSL run.
     The truncated record emits the S settling-witness warning. Its DFT
-    planes exclude the run from the envelope advisory.
+    planes exclude the run from the envelope advisory. The interior probe
+    above the trace sees real signal and a hot tail at num_periods=2.
 
     Issue #500 / review finding H1: on this fixture (dx=2e-4, cpml_layers=8
     -> pad=8) the second probe sits at x=200um = node 9, one cell inside
@@ -94,8 +95,6 @@ def test_user_probe_advisories_and_332_still_fire():
     two regressions that surfaced the removed proximity coverage as
     load-bearing (see _validate_cfg_absorber_placement's docstring)."""
     sim = _thru()
-    # interior probe above the trace: sees real signal -> hot tail at
-    # num_periods=2. DFT planes select the per-bin witness, not #332.
     sim.add_probe(position=(0.006, 0.004, 0.0012), component="ez")
     # one cell inside the domain (node 9 of pad=8) -> absorber_proximity
     sim.add_probe(position=(0.0002, 0.004, 0.0012), component="ez")

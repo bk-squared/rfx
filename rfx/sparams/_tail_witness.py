@@ -1,4 +1,8 @@
-"""Per-read-bin pole-tail witness for recorded values."""
+"""Per-read-bin pole-tail witness for recorded values.
+
+The record-end rules live in ``rfx.measurement.record_end``; the private
+names imported here stay importable from this module.
+"""
 
 import numpy as np
 from functools import partial
@@ -11,7 +15,6 @@ from rfx.measurement.record_end import (IdentificationOps, TailShareWitness,
 
 _IDENTIFICATION = IdentificationOps(
     identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole)
-# Retain the private compatibility import without moving any rule out of measurement.
 _pole_contributions = partial(_record_pole_contributions, identification=_IDENTIFICATION)
 
 

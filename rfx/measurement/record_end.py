@@ -366,18 +366,22 @@ from dataclasses import dataclass
 from typing import Callable, NamedTuple
 from rfx.measurement.ringdown_resolution import in_window_shares, pole_classes
 
-# A record is skipped only when both its peak and its end-of-record level are
-# at the rounding level of its cell. A weak record still ringing above that
-# level is scored.
 _ROUNDING_ONLY_EPS_MULTIPLE = 2e4
-# measured rounding records' peaks up to about 1.2e3 eps of the co-located
-# same-kind peak; 2.4e3 is twice that. Their last-10 % levels on the box
-# are 120 and 235 eps.
 _ROUNDING_TAIL_EPS_MULTIPLE = 2.4e3
+_MINUS_40_DB_AMPLITUDE = 1e-2
 
 
 def _rounding_only_records(records, groups):
-    """Name finite records below the rounding margin of their co-located group."""
+    """Name finite records below the rounding margin of their co-located group.
+
+    A record is skipped only when both its peak and its end-of-record level are
+    at the rounding level of its cell; a weak record still ringing above that
+    level is scored. Measured rounding records' peaks reach about 1.2e3 eps of
+    the co-located same-kind peak, and ``_ROUNDING_TAIL_EPS_MULTIPLE`` (2.4e3)
+    is twice that; their last-10 % levels on the box are 120 and 235 eps.
+    Under float16 (precision='mixed') the margin reaches the peak itself and
+    separates nothing, so those records are always scored.
+    """
     from rfx.core.jax_utils import is_tracer
 
     peaks = []
@@ -398,8 +402,6 @@ def _rounding_only_records(records, groups):
         if not np.issubdtype(dtype, np.floating):
             continue
         threshold = _ROUNDING_ONLY_EPS_MULTIPLE * float(np.finfo(dtype).eps)
-        # float16 (precision='mixed'): the margin reaches the peak itself,
-        # so it separates nothing; those records are scored as before.
         if threshold < 1. and peak < threshold * largest[group]:
             end = np.atleast_1d(y)
             end = end[-((len(end) + 9) // 10):]
@@ -517,6 +519,11 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
     a rounding margin; ungrouped records are never skipped.
     ``scale_groups`` gives a same-quantity key, or one key per input column;
     a missing key or None keeps that column's own level.
+    A column is dropped from a bin when its in-record DFT is below
+    ``_MINUS_40_DB_AMPLITUDE`` of its group's largest: the -40 dB amplitude
+    bar itself, not a tuned null cutoff. A null does not resolve an
+    undetermined growing-pole verdict, even when the null's bound alone caused
+    that verdict.
     sensitivities are judged by a separate witness
     """
     from dataclasses import replace
@@ -642,8 +649,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
                     columns_by_key.setdefault(key, []).append(col)
             for columns in columns_by_key.values():
                 group_scale[:, columns] = raw_dft[:, columns].max(axis=1)[:, None]
-            # 1e-2 is the -40 dB amplitude bar itself, not a tuned null cutoff.
-            dropped = raw_dft < 1e-2 * group_scale
+            dropped = raw_dft < _MINUS_40_DB_AMPLITUDE * group_scale
             kept_count += np.sum(~dropped, axis=1)
             for k in range(len(bins)):
                 dropped_names[k].extend(channel_names[c] for c in np.flatnonzero(dropped[k]))
@@ -670,8 +676,6 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
                     reasons.append(f"{label}: no kept poles identified")
                 growth = judge_growing_poles(model, n, bins, window_denom,
                                              horizon_denominator=horizon_denom)
-                # A null does not resolve a formerly undetermined growing-pole
-                # verdict, even when its bound alone caused that verdict.
                 growth_status = (judge_growing_poles(model, n, bins, horizon_denom)
                                  if np.any(dropped) else growth)
                 if not growth_status.ok:
@@ -778,6 +782,9 @@ def record_end_error(records, dt, source_end, freqs, *, identification: Identifi
     operand maps column names to weights. Identification and its channel
     diagnostics retain the original denominators, independently of the reader.
     Returned tails use the whole-record plain DFT origin, including exp(-iwNdt).
+    A reader aligns each tail with the reader's transform of a unit impulse at
+    slot zero, which carries the kernel's sampling-time factor without a second
+    copy of its E/H phase formula.
     Identification operations are required; measurement imports no implementation.
     """
     from rfx.core.jax_utils import is_tracer
@@ -785,7 +792,8 @@ def record_end_error(records, dt, source_end, freqs, *, identification: Identifi
     from rfx.measurement.dft import transform
 
     records = tuple(records)
-    tails, windows = {}, {}
+    tails: dict[str, tuple] = {}
+    windows: dict[int, tuple] = {}
     result = _channel_tail_witness(
         records, dt, source_end, freqs, identification=identification, freq_max=freq_max,
         rounding_groups=rounding_groups if reader is None else None,
@@ -825,8 +833,6 @@ def record_end_error(records, dt, source_end, freqs, *, identification: Identifi
     for name, y in columns.items():
         kind, factor = reader['sampling'].get(name, ('E', 1.))
         spectra[name] = factor * np.asarray(transform(y, bins, dt, kind))
-        # A unit impulse at slot zero reads the kernel's sampling-time factor;
-        # import the transform rather than duplicating its E/H phase formula.
         stamp = factor * np.asarray(transform(np.ones(1, dtype=y.dtype), bins, dt, kind)) / dt
         pair = tails.get(name, (np.zeros(bins.size, complex),) * 2)
         aligned_tails[name] = tuple(stamp * t for t in pair)
@@ -877,7 +883,7 @@ def record_end_error(records, dt, source_end, freqs, *, identification: Identifi
         return result._replace(status='undetermined', db=float('nan'), reason='no S reader entries')
     error = np.maximum.reduce(list(errors.values()))
     worst = int(np.argmax(error))
-    status = max(statuses.values(), key={'pass': 0, 'fail': 1, 'undetermined': 2}.get)
+    status = max(statuses.values(), key=('pass', 'fail', 'undetermined').index)
     db = (float('nan') if status == 'undetermined' else
           float(20 * np.log10(max(error[worst], np.finfo(float).tiny))))
     return result._replace(
