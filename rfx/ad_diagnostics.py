@@ -20,9 +20,6 @@ import jax.ad_checkpoint as ad_checkpoint
 
 
 _AVAL_RE = re.compile(r"^(?P<dtype>[A-Za-z][A-Za-z0-9]*)(?:\[(?P<shape>[^\]]*)\])?$")
-# Split the leading abstract-value token from the source text. Anchored on the
-# aval grammar so an internal shape space (e.g. ``f32[3, 4]`` in a future JAX)
-# still yields a clean aval + source instead of corrupting both.
 _AVAL_LEAD_RE = re.compile(
     r"^(?P<aval>[A-Za-z][A-Za-z0-9]*(?:\[[^\]]*\])?)\s+(?P<source>.*)$"
 )
