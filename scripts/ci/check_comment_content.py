@@ -30,7 +30,7 @@ RULES = (
      "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
     ("predeclaration", re.compile(r"predeclar", re.I), "the predeclaration file"),
     ("move note", re.compile(r"\bmoved from\b", re.I), "git history (git log --follow)"),
-    ("run id", re.compile(r"(?<!\d)(?<!\d\.)\d{10,}(?!\d)(?!\.\d)"), "the measurement record"),
+    ("run id", re.compile(r"(?<![\d.])\d{10,}(?!\d)(?!\.\d)"), "the measurement record"),
     ("quoted Korean", re.compile(
         r"[\"'“”‘’「」『』][^\"'“”‘’「」『』]*[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]"
         r"[^\"'“”‘’「」『』]*[\"'“”‘’「」『』]"
@@ -48,8 +48,9 @@ _CODES = rf"{_CODE}(?:[,\s]+{_CODE})*"
 _NAME = r"[A-Za-z][\w-]*"
 _BRACKET = rf"\[\s*{_NAME}(?:\s*,\s*{_NAME})*\s*\]"
 _NOQA = r"(?i:noqa)"
-_MYPY_OPTION = rf'{_NAME}(?:\s*=\s*(?:"[^"]*"|[\w,-]+))?'
-_PYRIGHT_SETTING = rf'{_NAME}\s*=\s*(?:true|false|none|error|warning|information|"[^"]*")'
+_QUOTED_NAMES = rf'"\s*{_NAME}(?:\s*,\s*{_NAME})*\s*"'
+_MYPY_OPTION = rf"{_NAME}(?:\s*=\s*(?:{_QUOTED_NAMES}|[\w,-]+))?"
+_PYRIGHT_SETTING = rf"{_NAME}\s*=\s*(?:true|false|none|error|warning|information)"
 DIRECTIVES = (
     rf"{_NOQA}(?:\s*:\s*{_CODES})?",
     rf"flake8\s*:\s*{_NOQA}",
@@ -150,20 +151,23 @@ def in_full_ban(path: str) -> bool:
     return path.startswith(FULL_BAN_PREFIXES)
 
 
-def is_directive(token: str, line: int) -> bool:
+def is_directive(token: tokenize.TokenInfo) -> bool:
     """Whether a whole comment token is tool directives and nothing else.
 
-    A shebang counts on line 1 and a PEP 263 coding declaration, found by
-    Python's own search, on line 1 or 2. Otherwise the token must be ``#`` and
-    one or more directives, each later one after whitespace and another ``#``,
-    with only whitespace after the last; a ``#`` inside a double-quoted value
-    belongs to that value.
+    A shebang counts at column 0 of line 1. A PEP 263 coding declaration counts
+    on line 1 or 2 when the comment is the whole physical line and Python's own
+    search hits it. Otherwise the token must be ``#`` and one or more
+    directives, each later one after whitespace and another ``#``, with only
+    whitespace after the last; a quoted mypy value is a comma-separated list of
+    names.
     """
-    if line == 1 and token.startswith("#!"):
+    line, column = token.start
+    if line == 1 and column == 0 and token.string.startswith("#!"):
         return True
-    if line <= 2 and CODING_LINE.search(token):
+    whole_line = not token.line[:column].strip(" \t\f")
+    if line <= 2 and whole_line and CODING_LINE.search(token.string):
         return True
-    return DIRECTIVE_TOKEN.fullmatch(token) is not None
+    return DIRECTIVE_TOKEN.fullmatch(token.string) is not None
 
 
 def narrow_refusal(path: str, line: int, token: str) -> str | None:
@@ -187,7 +191,7 @@ def check_comments(root: Path, changed: dict[str, set[int]]) -> list[str]:
                     if token.type != tokenize.COMMENT or line not in lines:
                         continue
                     if full_ban:
-                        if not is_directive(token.string, line):
+                        if not is_directive(token):
                             refused.append(
                                 narrow_refusal(path, line, token.string)
                                 or f"{path}:{line}: comment: {token.string}  -> {FULL_BAN_DESTINATION}"

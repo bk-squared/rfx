@@ -126,7 +126,7 @@ def test_refused_comment_rules(tmp_path, git_env, comment, rule, destination):
     "# preview", "# 299792458 m/s", "# step 3", "# Compute the offset",
     "# case #1", "# colour #1f77b4",
     "# step #12", "# &#123;", "# .s2fix-review/main", "# review the offset", "# ReViEWed",
-    "# eps0 = 8.8541878128e-12 F/m", "# pi = 3.14159265358979", "# mu0 = 1.25663706212e-6",
+    "# dt=.5000510204081633", "# eps0 = 8.8541878128e-12 F/m", "# pi = 3.14159265358979", "# mu0 = 1.25663706212e-6",
     "# \uaddc\uce59", '# "offset" \uaddc\uce59', "# 2026-13-17", "# 20260017",
     'value = "#123 review PREDECLARE moved from 2026-11-17 1234567890"',
     '"""#123 review \uaddc\uce59"""', 'value = f"#123 {1}"',
@@ -435,12 +435,11 @@ def test_existing_prose_comment_on_unchanged_line_is_not_reported(tmp_path, git_
     "# ruff: noqa", "# ruff: noqa: E402", "# ruff: noqa: E402, F401", "# ruff: isort: skip_file",
     "# mypy: ignore-errors", "# mypy: disable-error-code=attr-defined,arg-type",
     '# mypy: disable-error-code="attr-defined"', "# mypy: strict, warn-unused-ignores=True",
-    '# mypy: disable-error-code="a#b"',
+    '# mypy: disable-error-code="attr-defined, misc"',
     "# pyright: basic", "# pyright: standard", "# pyright: strict",
     "# pyright: ignore", "# pyright: ignore[reportPrivateUsage]",
     "# pyright: reportPrivateUsage=false",
     "# pyright: reportPrivateUsage=false, reportMissingImports=none",
-    '# pyright: reportUnusedImport="warning"',
     "# pylint: disable=unused-import", "# pylint: enable=too-many-locals,invalid-name",
     "# pylint: disable-next=broad-except", "# pylint: skip-file",
     "# type: ignore[attr-defined]  # noqa: E501", "# noqa: E402 # pragma: no cover",
@@ -460,6 +459,8 @@ def test_tool_directives_pass_in_full_ban_directories(tmp_path, git_env, line):
     "# type: this is a note", "# type: List[int]", "# type: (int) -> str", "# type: not checked",
     "# pragma: no cover - reason", "# mypy: ignore-errors because", "# pylint: disable=x  why",
     "# noqa: E402,F401  (re-export)", "# noqa: E501#type: ignore",
+    '# mypy: note="scale the offset by the cell size"', '# pyright: reportX="tuned by hand"',
+    "# Type: ignore", "# PRAGMA: no cover", "# fmt: OFF",
 ])
 def test_comments_other_than_directives_are_refused(tmp_path, git_env, comment):
     repo, base = make_repo(tmp_path, git_env)
@@ -500,6 +501,21 @@ def test_shebang_and_coding_lines_are_refused_from_line_three(tmp_path, git_env,
     ]
 
 
+@pytest.mark.parametrize("line,comment", [
+    ("value = 0  #! scale the offset", "#! scale the offset"),
+    ("x = 1  # coding: utf-8 then prose", "# coding: utf-8 then prose"),
+])
+def test_trailing_shebang_or_coding_comment_on_line_one_is_refused(tmp_path, git_env, line, comment):
+    repo, base = make_repo(tmp_path, git_env)
+    add_file(repo, git_env, "rfx/a.py", f"{line}\nother = 1\n")
+    result = check(repo, git_env, "--base", base)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        f"rfx/a.py:1: comment: {comment}  -> {FULL_BAN}",
+        summary(repo, git_env, base, 1, 2),
+    ]
+
+
 def test_trailing_comment_on_changed_code_line_is_refused(tmp_path, git_env):
     repo, _ = make_repo(tmp_path, git_env)
     add_file(repo, git_env, "tests/t.py", "".join(f"x{i} = {i}\n" for i in range(20)))
@@ -527,15 +543,15 @@ def test_full_ban_comment_matching_a_narrow_rule_names_that_rule(tmp_path, git_e
 
 
 def test_directive_is_final_in_full_ban_directories(tmp_path, git_env):
-    directive = '# mypy: always-true="2026-11-17"'
+    directive = "# noqa: A1234567890"
     repo, base = make_repo(tmp_path, git_env)
     add_file(repo, git_env, "rfx/a.py", f"value = 0\nother = 1\n{directive}\n")
-    add_file(repo, git_env, "docs/a.py", f"value = 0\nother = 1\n{directive}\n")
+    add_file(repo, git_env, "mod.py", f"value = 0\nother = 1\n{directive}\n")
     result = check(repo, git_env, "--base", base)
     assert result.returncode == 1, result.stdout + result.stderr
     assert result.stdout.splitlines() == [
-        f"docs/a.py:3: date: {directive}  -> a dated record, or git history; " + GUIDANCE,
-        summary(repo, git_env, base, 1, 6),
+        f"mod.py:3: run id: {directive}  -> the measurement record; " + GUIDANCE,
+        summary(repo, git_env, base, 1, 5),
     ]
 
 
