@@ -113,7 +113,6 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
         uniform = bool(np.all(cells == cells[0]))
         width = float(np.min(cells))
         periodic = 'xyz'[axis] in getattr(grid, 'periodic_axes', '')
-        # Non-periodic stores end in a node-provider duplicate, not a physical cell.
         end_width = float(cells[-1 if periodic or len(cells) == 1 else -2])
         nodes = _axis_node_positions(cells, getattr(grid, f'pad_{"xyz"[axis]}_lo'))
         line = np.concatenate(([nodes[0] - float(cells[0])], nodes, [nodes[-1] + end_width]))
@@ -122,7 +121,7 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
         lattice.append((admission_line, None, uniform))
         sample_lines.append(line)
         if axis == 2 and getattr(grid, 'is_2d', False):
-            line = np.full_like(line, nodes[0])  # The collapsed lane repeats its physical slice.
+            line = np.full_like(line, nodes[0])
             sample_lines[-1] = line
             lattice[-1] = (None, None, uniform)
         elif periodic:
@@ -132,7 +131,6 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
             lattice[-1] = (admission_line, float(grid.domain[axis]), uniform)
             line = np.mod(line, float(grid.domain[axis]))
             if not uniform:
-                # Copy wrapped physical nodes to avoid seam roundoff in the halos.
                 line[0] = line[-3]
                 line[-2:] = line[1:3]
         lines.append(line)
@@ -148,11 +146,11 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
     for index, shape in enumerate(pec_shapes):
         fn = _get_sdf_fn(shape)
         if fn is None and isinstance(shape, PolylineWire) and float(shape.radius) < 0.5 * min(widths):
-            continue  # A sub-cell filament reaches the step through its own wire edges.
+            continue
         sheet = shape.declared if isinstance(shape, _ContinuedSheetShape) else shape
         if isinstance(sheet, Box) and min(h - lo for lo, h in zip(sheet.corner_lo, sheet.corner_hi)) <= 0:
             _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this zero-thickness sheet')
-            continue  # A zero-thickness Box on the node lattice is exact through its own edge masks.
+            continue
         if isinstance(sheet, Box) and getattr(grid, 'is_2d', False) and any(
                 abs(z - lines[2][0]) <= tol for z in (sheet.corner_lo[2], sheet.corner_hi[2])):
             raise RfxUnsupported(
@@ -178,7 +176,6 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
     base = sdf[:-1, :-1, :-1]
 
     def union_at(half_axes):
-        # Average before wrapping: the midpoint of a periodic seam is local.
         sample = []
         for a, line in enumerate(sample_lines):
             values = (line[:-1] + line[1:]) / 2 if a in half_axes else line[:-1]

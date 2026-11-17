@@ -138,13 +138,13 @@ def _classify(grid, shapes, masks, z0):
     from rfx.geometry.csg import declared_bounds
 
     boxes: list = []
-    blockers: list = []  # (lo, hi) bounds, or None for a shape without bounds
+    blockers: list = []
     planar_2d = getattr(grid, 'is_2d', False)
     for shape, eps in shapes:
         if is_exact_box(shape) and not (
                 planar_2d and not float(shape.corner_lo[2]) <= z0 <= float(shape.corner_hi[2])):
             for lo, hi in _images(grid, shape, (shape.corner_lo, shape.corner_hi)):
-                if planar_2d:  # one z plane: the box is invariant along z
+                if planar_2d:
                     lo, hi = (lo[0], lo[1], -np.inf), (hi[0], hi[1], np.inf)
                 boxes.append((lo, hi, float(eps)))
             continue
@@ -207,7 +207,7 @@ def _support_values(lines, widths, nodes, boxes, background_eps):
     point = [lines[a][index[a]] for a in range(3)]
     minus = [widths[a][0][index[a]] for a in range(3)]
     plus = [widths[a][1][index[a]] for a in range(3)]
-    lo_all = np.asarray([b[0] for b in boxes], dtype=np.float64)    # (M, 3)
+    lo_all = np.asarray([b[0] for b in boxes], dtype=np.float64)
     hi_all = np.asarray([b[1] for b in boxes], dtype=np.float64)
     eps_all = np.asarray([b[2] for b in boxes], dtype=np.float64)
     out = []
@@ -219,7 +219,6 @@ def _support_values(lines, widths, nodes, boxes, background_eps):
             stop = {a: point[a] + plus[a] if sign == 0 else point[a]}
             for t in (b, c):
                 start[t], stop[t] = point[t] - minus[t] / 2, point[t] + plus[t] / 2
-            # Gather: boxes whose closed extent meets the closed support, in declared order.
             meets = np.ones((len(nodes), len(boxes)), dtype=bool)
             for t in range(3):
                 meets &= (lo_all[None, :, t] <= stop[t][:, None]) & (hi_all[None, :, t] >= start[t][:, None])
@@ -234,7 +233,7 @@ def _support_values(lines, widths, nodes, boxes, background_eps):
             k = max(most, 1)
             slots = np.argsort(~meets, axis=1, kind='stable')[:, :k]
             valid = np.arange(k)[None, :] < count[:, None]
-            lo = lo_all[slots]                                        # (N, k, 3)
+            lo = lo_all[slots]
             hi = hi_all[slots]
             eps = eps_all[slots]
             cuts = {t: _breaks(start[t], stop[t], lo[..., t], hi[..., t], valid) for t in range(3)}
@@ -257,7 +256,7 @@ def _support_values(lines, widths, nodes, boxes, background_eps):
                         mid_c = (cuts[c][:, m + 1] + cuts[c][:, m]) / 2
                         inside = in_b & (lo[..., c] < mid_c[:, None]) & (mid_c[:, None] < hi[..., c])
                         medium = np.full(len(nodes), float(background_eps))
-                        for slot in range(k):  # later declared wins
+                        for slot in range(k):
                             medium = np.where(inside[:, slot], eps[:, slot], medium)
                         area = (width_b / span[b]) * (width_c / span[c])
                         mean = mean + area * medium

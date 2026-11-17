@@ -40,22 +40,26 @@ from rfx.measurement.phasors import exp_j
 @dataclass(frozen=True)
 class MSLWaveProbeSet:
     """Indices into ``ForwardResult.time_series`` for a single port's
-    4-probe set (3 Ez + 1 Hy)."""
+    4-probe set (3 Ez + 1 Hy).
+
+    ``delta`` is the physical spacing between probes 1 and 2, which equals
+    the spacing between probes 2 and 3.
+    """
     ez1_col: int
     ez2_col: int
     ez3_col: int
     hy1_col: int
-    delta: float                # spacing between probes 1 and 2 (= 2 ↔ 3)
+    delta: float
 
 
 def register_msl_wave_probes(
     sim,
     *,
     feed_x: float,
-    direction: str,                 # "+x" or "-x"
+    direction: str,
     y_centre: float,
-    z_ez: float,                    # physical z of Ez probes (substrate mid)
-    z_hy: float,                    # physical z of Hy probes (trace top)
+    z_ez: float,
+    z_hy: float,
     n_offset_cells: int = 5,
     n_spacing_cells: int = 3,
 ) -> MSLWaveProbeSet:
@@ -72,6 +76,9 @@ def register_msl_wave_probes(
         Carries the integer column indices into ``ForwardResult.time_series``
         for ``ez1``, ``ez2``, ``ez3`` and ``hy1``, plus the physical
         spacing ``delta`` between adjacent probes.
+
+    ``z_ez`` is the physical z of the Ez probes at the substrate middle and
+    ``z_hy`` is the physical z of the Hy probe at the trace top.
     """
     if direction not in ("+x", "-x"):
         raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
@@ -84,7 +91,6 @@ def register_msl_wave_probes(
     x3 = x2 + sign * n_spacing_cells * dx
     delta = float(abs(x2 - x1))
 
-    # Snapshot existing probe count → returned columns are appended.
     base = len(sim._probes)
     sim.add_probe(position=(x1, y_centre, z_ez), component="ez")
     sim.add_probe(position=(x2, y_centre, z_ez), component="ez")
@@ -133,16 +139,12 @@ def _solve_q_jvp(primals, tangents):
     v1, v2, v3 = primals
     dv1, dv2, dv3 = tangents
     q = _solve_q(v1, v2, v3)
-    # c = (v1 + v3) / (v2 + eps);  dc applied via product/quotient rule
     inv_v2 = 1.0 / (v2 + _Q_EPS)
     dc = (dv1 + dv3) * inv_v2 - (v1 + v3) * dv2 * inv_v2 ** 2
     dq_dc = q * q / (q * q - 1.0 + _Q_EPS)
     return q, dq_dc * dc
 
 
-# ---------------------------------------------------------------------------
-# Plane lane — plane-integrated V/I, mirrors compute_msl_s_matrix
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class MSLPlaneProbeSet:
@@ -154,25 +156,26 @@ class MSLPlaneProbeSet:
     for the rasterized trace node) so :func:`_v_from_plane` /
     :func:`_i_from_plane` can hand them straight to the production
     primitives instead of re-deriving V/I locally.
+
+    ``k_hi`` is an exclusive bound, while ``k_lo`` and the spans ``j_lo`` to
+    ``j_hi`` and ``k_trace_lo`` to ``k_trace_hi`` are inclusive.
     """
     ez1_name: str
     ez2_name: str
     ez3_name: str
     hy_name: str
     hz_name: str
-    j_centre: int        # V integration: trace-width index (msl_modal_voltage)
-    k_lo: int             # V integration: ground-level normal index (inclusive)
-    k_hi: int             # V integration: rasterized trace's bottom node (EXCLUSIVE)
+    j_centre: int
+    k_lo: int
+    k_hi: int
     j_lo: int
-    j_hi: int              # I integration: trace-conductor width span (inclusive)
+    j_hi: int
     k_trace_lo: int
-    k_trace_hi: int         # I integration: trace-conductor normal span (inclusive)
-    dz_arr: jnp.ndarray      # full substrate-normal per-cell profile (V + I)
-    dy_arr: jnp.ndarray      # full trace-width per-cell profile (I)
-    direction: str            # port propagation direction ("+x" / "-x")
-    delta: float                # adjacent-probe spacing (for diagnostics)
-    # Append defaults so existing constructors remain valid. Extraction
-    # refuses legacy metadata instead of silently retaining staggered I.
+    k_trace_hi: int
+    dz_arr: jnp.ndarray
+    dy_arr: jnp.ndarray
+    direction: str
+    delta: float
     hy_left_name: str | None = None
     hz_left_name: str | None = None
     h_weights: tuple[float, float] | None = None
@@ -222,6 +225,9 @@ def register_msl_plane_probes(
     Returns
     -------
     MSLPlaneProbeSet
+
+    The H-plane registration coordinates name array indices, and the
+    stencil weights account for H's physical half-cell offset.
     """
     import numpy as np
     from rfx.sources.msl_port import (
@@ -234,14 +240,6 @@ def register_msl_plane_probes(
 
     pe = sim._msl_ports[port_index]
 
-    # this helper is the retained 3-probe geometry primitive
-    # (diagnostic only — the production S-matrix path is
-    # compute_msl_s_matrix). Its cross-section bookkeeping below reads
-    # (y, z) as (width, normal) and registers x-normal plane probes with
-    # a fixed (ez, hy, hz) component set, all of which are x-frame. Rather
-    # than generalise an off-production path without its own evidence, a
-    # non-x port is refused here — the alternative would be returning an
-    # x-flavoured answer for a y-directed port.
     if pe.direction not in ("+x", "-x"):
         raise NotImplementedError(
             f"register_msl_plane_probes supports direction '+x'/'-x' only, "
@@ -251,14 +249,6 @@ def register_msl_plane_probes(
             f"handles every supported direction."
         )
 
-    # required-change 1: sim._build_grid() ALWAYS returns the
-    # uniform Grid — it never threads sim._dx_profile/_dy_profile/
-    # _dz_profile into Grid(...) — so on a non-uniform mesh this path has
-    # no way to build the SAME NonUniformGrid compute_msl_s_matrix's
-    # non-uniform branch uses (build_nonuniform_grid(...) +
-    # _assemble_materials_nu(grid)). Silently running the uniform-only PEC
-    # search below on such a sim would anchor V on the wrong node without
-    # any warning. Refuse loudly instead.
     _is_nonuniform = (
         getattr(sim, "_dx_profile", None) is not None
         or getattr(sim, "_dy_profile", None) is not None
@@ -287,22 +277,14 @@ def register_msl_plane_probes(
     )
     h_stencil = msl_h_plane_stencil(grid, mp, pxs[0])
 
-    # Cross-section index metadata, identical to compute_msl_s_matrix's
-    # per-port meta (rfx/api/_sparams.py:2961-2980).
     span = msl_cross_section_span(grid, mp, require_contiguous_width=True)
     j_centre = span["w_centre"]
-    j_lo, j_hi = span["w_lo"], span["w_hi"]     # trace-conductor width span
-    k_lo = span["n_lo"]                          # ground plane proxy
+    j_lo, j_hi = span["w_lo"], span["w_hi"]
+    k_lo = span["n_lo"]
 
     dy_arr = np.asarray(grid.cells('y'), dtype=float)
     dz_arr = np.asarray(grid.cells('z'), dtype=float)
 
-    # Trace search — IDENTICAL to compute_msl_s_matrix's trace_k_per_port
-    # (rfx/api/_sparams.py): walk UP the substrate-normal axis from the
-    # substrate top, at the feed column and trace centre, and find the
-    # realized PEC WALL PLANES. The V span
-    # (ground wall plane -> trace plane) and the Ampere loop legs
-    # anchor on the same realized planes.
     k_trace_lo, k_trace_hi = _realized_trace_planes(sim, grid, span, j_centre)
     if k_trace_lo is None:
         raise RuntimeError(
@@ -316,9 +298,6 @@ def register_msl_plane_probes(
 
     delta = float(abs(pxs[1] - pxs[0]))
 
-    # Register 3 Ez planes and two bracketing planes for each H component.
-    # The accumulators are filled inside the JIT scan body
-    # and surfaced through ``ForwardResult.dft_planes[name]``.
     ez_names = [f"{name_prefix}_ez{q+1}" for q in range(3)]
     hy_name = f"{name_prefix}_hy"
     hz_name = f"{name_prefix}_hz"
@@ -329,9 +308,6 @@ def register_msl_plane_probes(
             axis="x", coordinate=float(pxs[q]),
             component="ez", freqs=freqs, name=ez_names[q],
         )
-    # Preserve the original five names and their registration order;
-    # append the two new left H planes. Coordinates name array indices,
-    # while the stencil accounts for H's physical half-cell offset.
     for coordinate, names in (
         (h_stencil["registration_coordinates"][1], (hy_name, hz_name)),
         (h_stencil["registration_coordinates"][0], (hy_left_name, hz_left_name)),
@@ -416,7 +392,7 @@ def _v_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
     it cannot re-drift from production.
     """
     from rfx.api._sparams import msl_modal_voltage
-    plane = fr.dft_planes[plane_name].accumulator     # (n_freqs, ny, nz)
+    plane = fr.dft_planes[plane_name].accumulator
     return msl_modal_voltage(
         plane, j_centre=p.j_centre, k_lo=p.k_lo, k_hi=p.k_hi,
         dz_arr=p.dz_arr, dtype=plane.dtype,
@@ -461,50 +437,9 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
 
 
 
-# ---------------------------------------------------------------------------
-# Fix C — N-probe least-squares wave decomposition
-# ---------------------------------------------------------------------------
-#
-# The 3-probe quadratic ``q + 1/q = (V1 + V3)/V2`` becomes singular as
-# ``β·Δ → 0`` (the q→1 degeneracy): the discriminant ``coeff² − 4 → 0`` so
-# root selection is noise-dominated and the extracted ``|q|`` drifts above
-# 1 (non-physical for a passive line).
-#
-# The N-probe extractor below removes that singularity entirely.  Per
-# frequency it fits
-#
-#     V_n = α · exp(−jβ·x_n) + γ · exp(+jβ·x_n)
-#
-# over all N ≥ 3 voltage probes at known positions ``x_n``.  Two stages:
-#
-#   (a) Estimate β ROBUSTLY from the whole probe array.  β enters the
-#       model non-linearly, so we scan a small window of trial β values
-#       centred on the analytic Hammerstad-Jensen guess
-#       ``β₀ = ω·√ε_eff/c`` and, for each trial, solve the *linear*
-#       (α, γ) least-squares problem and score it by the residual.  The
-#       residual is a smooth function of β, so a quadratic-refinement
-#       step around the best grid node gives a sub-grid β.  Anchoring
-#       the scan on the analytic guess is what makes this robust — a
-#       single probe pair (the 3-probe approach) cannot do it.
-#
-#   (b) With β fixed, ``V_n = α·e^{−jβx_n} + γ·e^{+jβx_n}`` is LINEAR in
-#       ``(α, γ)``.  The over-determined N×2 system is solved by
-#       ``jnp.linalg.lstsq`` (SVD-based, JVP rule built into JAX).  No
-#       quadratic, no branch cut, no q→1 singularity.
-#
-# Differentiability: ``jnp.linalg.lstsq`` / ``jnp.linalg.svd`` carry JVP
-# rules in JAX, so ``jax.grad`` flows natively through the whole
-# extractor — no hand-written ``custom_jvp`` is needed.  The β scan uses
-# a fixed Python-int grid size (static) and ``jax.lax`` reductions, so
-# it is JIT- and grad-safe.
 
 
-# Module-level β-scan grid resolution.  Static (Python int) so the scan
-# stays JIT-shape-stable and grad-safe.
 _BETA_SCAN_NODES = 41
-# Scan half-width as a fraction of the analytic β₀ guess.  ±35 % brackets
-# the Hammerstad-Jensen ε_eff uncertainty (~0.5 %) plus FDTD numerical
-# dispersion and any moderate substrate-εr mismatch with wide margin.
 _BETA_SCAN_FRAC = 0.35
 
 
@@ -533,28 +468,15 @@ def _estimate_beta(
         mismatch large enough to push the true β outside ±35% used to
         be returned silently pinned at ``0.974·rail``).  Pure edge
         conditions — no tunable threshold.
+
+    On the normalized probe vector, a parabola second difference ``denom``
+    of at most 1e-20 means the squared-residual curve is flat to noise.
     """
     beta0 = jnp.real(beta0)
     lo = beta0 * (1.0 - _BETA_SCAN_FRAC)
     hi = beta0 * (1.0 + _BETA_SCAN_FRAC)
     grid = jnp.linspace(lo, hi, _BETA_SCAN_NODES)
 
-    # Scale-normalize the probe vector for the β estimate.  β is
-    # scale-invariant, but the residuals below scale with ‖v‖: on the
-    # Kottke density-PEC path the plane-integrated V can be ~1e-14,
-    # which makes the residual curve
-    # numerically flat in float32 and collapses the parabolic
-    # second-difference `denom` to ~1e-21 — far below the 1e-20 guard
-    # the threshold was designed around.  Normalizing restores the
-    # threshold's meaning.  (α/γ/Z0 keep absolute scale — the final
-    # lstsq in `extract_msl_nprobe` runs on the RAW v.)
-    # Since the refinement runs on the SQUARED residual the second difference
-    # is ~2*r_mid times smaller than it was on the norm (measured on a 3-plane,
-    # 150 um array: 4.0e-6 -> 1.3e-11). After the normalization above r_mid
-    # cannot fall below the float32 floor (~1e-7), so `denom` only reaches
-    # 1e-20 when the residual curve is flat to noise -- which is when the
-    # guard should fire -- and the clip to [-1, 1] bounds what a
-    # noise-dominated `frac` can do to one grid step.
     v_scale = jnp.max(jnp.abs(v))
     v_n = v / jnp.where(v_scale > 0.0, v_scale, 1.0)
 
@@ -564,27 +486,10 @@ def _estimate_beta(
 
     resids = jax.vmap(_resid)(grid)
     k_raw = jnp.argmin(resids)
-    # Clamp so the 3-point parabolic stencil stays in range.
     k = jnp.clip(k_raw, 1, _BETA_SCAN_NODES - 2)
     b_lo, b_mid, _ = grid[k - 1], grid[k], grid[k + 1]
-    # Refine on the SQUARED residual. ``_lstsq_alpha_gamma`` returns the L2
-    # norm, which is V-shaped at its minimum (it reaches ~0 at the true beta
-    # and turns), so a parabola through three norm samples lands off the
-    # vertex: measured on synthetic two-wave data as a bias of -0.165 % ...
-    # +0.143 % oscillating with a period of exactly one scan node. The square
-    # is locally parabolic, and the same three samples then give 0.016 %
-    # (scripts/diagnostics/msl_beta_fit_synthetic_accuracy.py). The argmin is
-    # unchanged -- squaring is monotone on r >= 0 -- so the rail detector
-    # below sees exactly what it saw before.
     r_lo, r_mid, r_hi = (resids[k - 1] ** 2, resids[k] ** 2,
                          resids[k + 1] ** 2)
-    # Parabolic vertex offset (in grid-step units), clamped to [-1, 1].
-    # Double-where idiom: the single-where form computed `num / denom`
-    # in the untaken branch, and when catastrophic cancellation drives
-    # denom to ~0 the untaken branch's backward pass produces inf/nan
-    # that `0 * nan = nan` leaks through the mask (the exact trap class
-    # the _solve_q custom-JVP comment above documents).  `safe_denom` keeps the untaken branch finite in both
-    # the primal and the cotangent.
     denom = (r_lo - 2.0 * r_mid + r_hi)
     num = 0.5 * (r_lo - r_hi)
     ok = jnp.abs(denom) > 1e-20
@@ -593,11 +498,6 @@ def _estimate_beta(
     frac = jnp.clip(frac, -1.0, 1.0)
     step = b_mid - b_lo
     beta = (b_mid + frac * step).astype(jnp.complex64)
-    # Rail detection.  The raw (pre-clip) argmin at an edge
-    # node means the residual keeps improving up to the window limit —
-    # the optimum was never bracketed.  The half-step clause catches the
-    # refine clipping onto the limit from the first/last interior node.
-    # NB: compare against the RAW argmin, not the [1, N-2]-clipped k.
     half = 0.5 * (grid[1] - grid[0])
     beta_r = jnp.real(beta)
     railed = (
@@ -671,7 +571,6 @@ def extract_msl_nprobe(
     if v.ndim == 1:
         v = v[None, :]
     x = jnp.asarray(x, dtype=jnp.float32)
-    # Reference the model at probe 0 so α/γ are probe-0 amplitudes.
     x = x - x[0]
     i1 = jnp.asarray(i1, dtype=jnp.complex64)
     beta0 = jnp.asarray(beta0)
