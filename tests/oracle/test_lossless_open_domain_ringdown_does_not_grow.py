@@ -93,8 +93,7 @@ step, red through both halves of the predicate (VESSL 369367262982).  The eight-
 the continuation read -44.82 dB and -1.992e-04 per step (VESSL 369367262981).
 
 WHAT THE MUTATION DOES NOW, AND WHAT IT DID (measured 2026-09-20, VESSL 369367262373, rtx4090,
-float32, this file's ``__main__`` run unchanged at two commits; logs
-``bk-workspace/.1141-ringdown/20260920T163029Z/``).  Until #1136 the falsifier required GROWTH,
+float32, this file's ``__main__`` run unchanged at two commits).  Until #1136 the falsifier required GROWTH,
 a positive rate on every probe.  #1136 (#1070) sizes the grid from the declared length: this
 fixture's x ratio is ``232.00000000000003`` and ``ceil`` had bought a 233rd cell, which no Box
 filled and which the CPML pad extension replicated as a vacuum column through the x-hi pad.

@@ -42,6 +42,6 @@ code with entry products collected directly from that run. Contracts capture
 runner arguments and compare their PEC edges/ranges/counts, including stale
 preflight controls on uniform and nonuniform lanes.
 
-Parts B/C will build reader/user geometry operations on this API. PI decisions:
+Parts B/C will build reader/user geometry operations on this API. Decisions:
 public Result record (2026-09-24); part 3 defaults to snap and an error above 1%
 residual (2026-10-02). Those future operations are not implemented here.

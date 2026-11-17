@@ -5,7 +5,7 @@
 #
 # docs/agent/ pages are sanitized public exports of internal agent guidance, and
 # shipped code (docstrings, comments, runtime messages) is read by the same
-# public-clone reader. Neither has docs/agent-memory/, docs/research_notes/,
+# public-clone reader. Neither has the local notes directory, the measurement notes
 # CLAUDE.md, AGENTS.md or .claude/ to point at.
 #
 # AGENTS.md joined the list on 2026-09-19: it is gitignored like CLAUDE.md, so a

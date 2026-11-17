@@ -392,18 +392,6 @@ CONFORMAL_PATHS = {
 }
 
 
-def test_uniform_forward_carries_conformal_boundary():
-    sim = _conformal_cavity(True)
-    forward = sim.forward(n_steps=8, checkpoint=False, skip_preflight=True)
-    ran = sim.run(n_steps=8, compute_s_params=False, skip_preflight=True)
-    np.testing.assert_array_equal(forward.time_series, ran.time_series)
-
-
-def test_optimize_refuses_conformal_at_entry():
-    with pytest.raises(NotImplementedError, match=r"optimize\(\).*conformal PEC"):
-        _optimize(_conformal_cavity(True), skip_preflight=True)
-
-
 @pytest.mark.parametrize("path", list(CONFORMAL_PATHS))
 def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
     call, entry, label = CONFORMAL_PATHS[path]

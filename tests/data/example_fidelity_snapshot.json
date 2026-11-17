@@ -1,5 +1,5 @@
 {
-  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). Nothing here time-steps: this pins build-time EMISSION only, so it is not evidence about any example's output numbers. The #729-site-1 defect (domain realized_extent_um/n_cells read NODE counts, one cell too long) was FIXED by PR #734 (a5a72280) and this snapshot was re-captured after that fix, so domain extents here are usable again (cv11 reads 23000/11000 um, matching #722). Re-captured 2026-09-02 after the report started reading the rasterizer's exact float64 node line (#833 item 2): realized_um / cell_um / face_residual_um on non-uniform lanes moved by the float32 cell-size widening (<= 0.011 um), 108 on-node residuals went to 0.0, 12 one-cell bodies stopped reading sub_cell, and 6 'inside-absorber' rows on domain-filling bodies (convergence_floor fixture; hi face read 27000.0002 um against a 27000.0 um domain) went away; no n_cells or preflight row moved.",
+  "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). Nothing here time-steps: this pins build-time EMISSION only, so it is not evidence about any example's output numbers. The #729-site-1 defect (domain realized_extent_um/n_cells read NODE counts, one cell too long) was FIXED by PR #734 (a5a72280) and this snapshot was re-captured after that fix, so domain extents here are usable again (cv11 reads 23000/11000 um, matching #722). Re-captured 2026-09-02 after the report started reading the rasterizer's exact float64 node line (#833 item 2): realized_um / cell_um / face_residual_um on non-uniform lanes moved by the float32 cell-size widening (<= 0.011 um), 108 on-node residuals went to 0.0, 12 one-cell bodies stopped reading sub_cell, and 6 'inside-absorber' rows on domain-filling bodies (convergence_floor fixture; hi face read 27000.0002 um against a 27000.0 um domain) went away; no n_cells or preflight row moved. Re-captured 2026-11-13: the wire-port-without-radius advisory gains five numeric tokens; no other change.",
   "variants": {
     "examples/inverse_design/differentiable_s11_design.py::build_simulation::default": {
       "fidelity": {
@@ -5243,7 +5243,12 @@
             4.36,
             0.2,
             0.2,
-            200.0
+            200.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -5946,7 +5951,12 @@
             0.871,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -6219,7 +6229,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -6468,7 +6483,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -6833,7 +6853,12 @@
             15.7,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -8822,7 +8847,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -9071,7 +9101,12 @@
             1.74,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"
@@ -9330,7 +9365,12 @@
             4.36,
             0.2,
             0.2,
-            100.0
+            100.0,
+            0.2,
+            0.027,
+            11.0,
+            21.0,
+            0.5
           ],
           "severity": "warning",
           "source": "preflight_wire_port_radius"

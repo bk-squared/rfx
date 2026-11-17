@@ -1,7 +1,7 @@
 # Retire the short as an obligatory advisory trigger
 
-Decision, 2026-09-09. This supersedes only T11's short disposition. The PI
-explicitly authorized changing its acceptance contract while preserving #931,
+Decision, 2026-09-09. This supersedes only T11's short disposition. Its acceptance
+contract changes while preserving #931,
 production code, and the separate MSL item.
 
 ## Property and derivation

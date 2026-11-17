@@ -98,44 +98,44 @@ contracts remain frozen. No other numerical lane or old STOP is promoted.
 The section above says no GPU run had been made from this branch. That is now
 superseded: the two-arm witness ran as VESSL run 369367260765
 (`cpml-stagger-witness-r1`) on cluster remilab-c0, preset `gpu-rtx4090`, image
-`nvcr.io/nvidia/jax:24.10-py3`, 2026-09-14 01:02-01:03 KST, job exit 0. The
-receipts are archived under `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/` at 5e86eb5:
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/manifest.json` at 5e86eb5 lists every archived file with its SHA256, `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/launch.json` at 5e86eb5 and
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/environment.json` at 5e86eb5 carry the run provenance (jax 0.4.33.dev20241023+e3c6d6430,
-Python 3.10.12, one NVIDIA GeForce RTX 4090, float32), `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/run.yaml` at 5e86eb5 is the
-submitted spec, and the full job log is
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/369367260765-cpml-stagger-witness-completed.log.gz` at 5e86eb5.
+`nvcr.io/nvidia/jax:24.10-py3`, 2026-09-14 01:02-01:03 KST, job exit 0.
+
+
+The run environment was jax 0.4.33.dev20241023+e3c6d6430,
+Python 3.10.12, one NVIDIA GeForce RTX 4090, float32.
+
+
 
 Both arms ran inside one job, on one GPU, against one comparator. The GREEN
 tree's `scripts/diagnostics/cpml_dipole_waveform_witness.py` was copied into the
 RED tree before either arm ran, so the only difference between the arms is the
 three CPML solver files; the two identical digests
-(c48933f56f26a5057f90365dd151f6cfe91b79b6f432d420a0b9b5fc82279834) are in
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/comparator.sha256` at 5e86eb5. The arms are RED = fa3929136159e0a644783b56012b21c1bce21340
+(c48933f56f26a5057f90365dd151f6cfe91b79b6f432d420a0b9b5fc82279834) match.
+The arms are RED = fa3929136159e0a644783b56012b21c1bce21340
 (main, pre-fix) and GREEN = 47a586b136c7a2cf68595f6058bd3e456354d013 (this
-branch); `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/commits.txt` at 5e86eb5 holds both. Tolerances were predeclared and
+branch). Tolerances were predeclared and
 fixed, not fitted: full
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`full_tolerance = 0.05`),
+(`full_tolerance = 0.05`),
 late
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`late_tolerance = 0.01`),
+(`late_tolerance = 0.01`),
 source
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`source_tolerance = 1e-05`).
+(`source_tolerance = 1e-05`).
 
 Full-window peak-relative residual per channel, read out of the archived
 receipts rather than retyped from the job log:
 
 | channel | RED (fa392913, main) | GREEN (47a586b1, this branch) |
 | --- | --- | --- |
-| `middle_ez` | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_witness.json` at 5e86eb5 (`channels.middle_ez.full_relative_max = 0.0391754`) | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`channels.middle_ez.full_relative_max = 0.00430682`) |
-| `middle_hy` | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_witness.json` at 5e86eb5 (`channels.middle_hy.full_relative_max = 0.037326776`) | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`channels.middle_hy.full_relative_max = 0.00148394`) |
-| `far_ez` | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_witness.json` at 5e86eb5 (`channels.far_ez.full_relative_max = 0.0404082`) | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`channels.far_ez.full_relative_max = 0.0004422755`) |
-| `far_hy` | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_witness.json` at 5e86eb5 (`channels.far_hy.full_relative_max = 0.13937570731810509`) FAIL | `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`channels.far_hy.full_relative_max = 0.0003881940106090643`) PASS |
+| `middle_ez` | (`channels.middle_ez.full_relative_max = 0.0391754`) | (`channels.middle_ez.full_relative_max = 0.00430682`) |
+| `middle_hy` | (`channels.middle_hy.full_relative_max = 0.037326776`) | (`channels.middle_hy.full_relative_max = 0.00148394`) |
+| `far_ez` | (`channels.far_ez.full_relative_max = 0.0404082`) | (`channels.far_ez.full_relative_max = 0.0004422755`) |
+| `far_hy` | (`channels.far_hy.full_relative_max = 0.13937570731810509`) FAIL | (`channels.far_hy.full_relative_max = 0.0003881940106090643`) PASS |
 
 RED's failure is far-Hy in the full window only: its three other channels pass
 the 5% requirement, its source check passes
-(`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_witness.json` at 5e86eb5 (`source_relative_peak_error = 6.5534537e-07`),
+(`source_relative_peak_error = 6.5534537e-07`),
 the same value GREEN reports), and its late window passes on all four channels
-(`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_witness.json` at 5e86eb5 (`channels.far_hy.late_relative_max = 0.00125`)).
+(`channels.far_hy.late_relative_max = 0.00125`).
 So the arms are separated by one channel, not by a broken run, and that
 separation is **consistent with** the operator-placement argument rather than
 predicted by it: far-Hy falls 359x with the bulk and source code unchanged
@@ -144,9 +144,9 @@ establishes that E and transverse H must be sampled half a cell apart; it does
 not on its own say which observation channel a violation shows up in, so this
 is corroboration, not a channel-level prediction the run confirmed. GREEN passes every full and late
 requirement; its worst late channel is
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.json` at 5e86eb5 (`channels.far_ez.late_relative_max = 0.000174`).
-The witness verdicts as printed per arm are in `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/summary.txt` at 5e86eb5,
-`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_witness.log` at 5e86eb5 and `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_witness.log` at 5e86eb5.
+(`channels.far_ez.late_relative_max = 0.000174`).
+
+
 
 This reproduces the research-branch numbers on different hardware. The pod's
 Experiment 68 (pre-fix, A6000) reported far-Hy 0.13938; RED here gives
@@ -155,11 +155,11 @@ Experiment 68 (pre-fix, A6000) reported far-Hy 0.13938; RED here gives
 Experiment 68/69 receipts in the header above are therefore not the only GPU
 evidence for this fix any more, and the residual is not a property of one GPU.
 
-GREEN's lane tests were re-run on the GPU in the same job: 14 passed
-(`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/green_lane_tests.log` at 5e86eb5). RED's lane-test log is a collection error,
+GREEN's lane tests were re-run on the GPU in the same job: 14 passed.
+RED's lane-test log is a collection error,
 not a result -- the two test files do not exist on main -- so the witness
-residual, not a test count, is what separates the arms
-(`bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/artifacts/red_lane_tests.log` at 5e86eb5).
+residual, not a test count, is what separates the arms.
+
 
 Scope, unchanged from the witness spec's own declaration: a PASS here is a
 bounded total-waveform observation only. It does not separate bulk, source-cell
@@ -172,7 +172,7 @@ float32. The fixed 5%/1% requirements and the native/distributed contracts
 remain frozen; no other numerical lane or old STOP is promoted by this run.
 
 The two raw trace arrays are deliberately NOT committed. They are recorded by
-digest in `bk-squared/rfx-archive` `rfx/records/20260924-1012-cpml-half-cell/gpu-369367260765/manifest.json` at 5e86eb5 under `not_committed`: red_trace.npy sha256
+digest: red_trace.npy sha256
 8390e4cef6a2d01269eadb60d55cd61ae5ac9ecc7a6c8a1ca370440ec60c43bb, green_trace.npy
 sha256 d179ac30d0c2ba91f8ae54a84546cedbd48d52d61f17307e28be291c344fe283 (110720
 bytes each). Every scalar **this GPU-witness section** cites lives in the two
@@ -181,7 +181,7 @@ series the traces hold. That claim is scoped to this section only: the Evidence
 section above is the ported research-lane record and has no receipt in this
 bundle, as its own disclaimer says.
 The originals are retained on remilab-fs at
-`personal-workspaces/claude-workspace/rfx/runs/cpml-stagger-20260913T160213Z/`.
+`<workspace>/rfx/runs/cpml-stagger-20260913T160213Z/`.
 
 ## Pre-existing limitation (out of scope)
 

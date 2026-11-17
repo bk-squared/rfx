@@ -19,7 +19,7 @@
   "ringdown_tail_to_peak": 0.768401026725769,
   "sha": "949e1845b84b26826d4e5309363bea4c2ffa5920",
   "harness_sha256": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
-  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "rfx_import": "rfx/__init__.py",
   "jax_version": "0.6.2",
   "backend": "cpu",
   "x64": false,

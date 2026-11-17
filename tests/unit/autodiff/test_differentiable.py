@@ -44,8 +44,7 @@ def test_gradient_matches_finite_diff():
 
     # Central FD at cells between source and probe. Its float32 rounding error is about
     # eps*|J|/h (eps = 2**-24, J ~ 8.7e-4): 0.54 % of the smallest tested gradient
-    # (~9.5e-6) at h = 1e-3, 5.4 % at h = 1e-4, i.e. on the 5 % bar (#2071; rfx-archive
-    # records/20261027-gpu-fd-comparator-2071).
+    # (~9.5e-6) at h = 1e-3, 5.4 % at h = 1e-4, i.e. on the 5 % bar (#2071).
     h = 1e-3
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
     test_cells = [

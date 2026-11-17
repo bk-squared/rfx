@@ -606,6 +606,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                  or any(p.is_port and p.extent is not None for p in sim._ports)
                  or graded_lumped_default_s(sim)))
     if scan:
+        from rfx.runners._admission import refuse_foreign_s_drives
+        refuse_foreign_s_drives(sim)
         # The main record keeps its port records at the scan's bins; its S is not formed.
         from rfx.measurement.monitors import default_frequency_grid
         compute_s_params = True
@@ -628,7 +630,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             compute_s_params = False
 
     # every single-device non-uniform solve (run AND forward) enters here
-    from rfx.sources.tfsf import _refuse_extended_tfsf
+    from rfx.sources.tfsf import _refuse_extended_tfsf, is_oblique
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
     sim._require_mode_the_nonuniform_lane_solves()
     # compute_waveguide_s_matrix's graded branch reaches this lane without
@@ -1001,7 +1003,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
     materials = field_poles(materials, source_grid, debye_spec, lorentz_spec, field_dtype)
     sources = sources.resolve(materials)
 
@@ -1060,7 +1062,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     tfsf_pair = None
     if sim._tfsf is not None:
         entry = sim._tfsf
-        if abs(entry.angle_deg) > 0.01:
+        if is_oblique(entry.angle_deg):
             raise ValueError(
                 "TFSF oblique incidence (angle_deg != 0) is not yet "
                 "supported on nonuniform z mesh — the 2D auxiliary grid "
@@ -1146,7 +1148,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     admit(
         sim,
         lane,
-        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params},
+        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params,
+                  "subpixel_smoothing": subpixel_smoothing},
         diagnostics=diagnostics,
     )
 

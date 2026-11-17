@@ -153,7 +153,9 @@ layer. Extend the dielectric to the sheet plane; preflight flags the slot.
 places a PEC sheet by interior node indices (not counting the absorber) instead of coordinates. It stays on the
 same nodes when the mesh itself is a design variable and its spacings move,
 which is what it is for. It is PEC only, and like every sheet it takes no
-`eps_r` other than 1.
+`eps_r` other than 1. Its indices are Python ints: a traced index is refused
+when declared, because the sheet moves by whole nodes. To move it continuously,
+keep the index fixed and trace the cell widths around it.
 
 On a graded mesh, `forward(pinned_sheet_layout=...)` switches a pinned sheet's
 metal edge by edge without compiling the solve again: one entry per
@@ -341,6 +343,7 @@ The solver paths refuse what they do not implement:
 | conformal PEC (`conformal_pec=True`, or a `Boundary(..., conformal=True)` face) | graded mesh, multi-device, subgridded; `optimize()`; the calculators `compute_mixed_s_matrix`, `topology_optimize` and `differentiable_material_fit`, and the [fast path of `vmap_material_sweep`](/rfx/design/sweeps/#material-values-in-one-batched-run) | a uniform mesh on one device with `run()` or `forward()`, or a finer mesh near the curved metal |
 | an `OrientedBox` with `conformal_pec=True` (also when a conformal boundary face turns it on), with `subpixel_smoothing`, or in `add_thin_conductor` | all | leave `conformal_pec` and smoothing off, so the rotated body is staircased; or draw it axis-aligned as a `Box` |
 | `eps_r` other than 1, or traced, on a PEC or surface-impedance sheet (`add_thin_conductor`) or a pinned sheet (`add_pinned_sheet`) | all | refused when declared: leave `eps_r` at 1 and declare the dielectric around the sheet |
+| a traced `normal_axis`, `plane_index`, `i_range` or `j_range` in `add_pinned_sheet` | all | refused when declared: pass Python ints, and trace the cell widths around a fixed index to move the sheet |
 | a lossy film (`sigma_bulk < 1e6`) with `eps_r` other than 1, normal to a 2-D model's invariant axis, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | all | the message names which |
 | a lossy film that is not a `Box` and spans more than one cell layer, misses its drawn area by more than 1 % in equivalent length, or cannot state its area | every mesh | refine the in-plane mesh or draw a `Box`; `snap="declared"` accepts the declared geometry |
 

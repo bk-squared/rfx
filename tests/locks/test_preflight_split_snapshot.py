@@ -4,8 +4,8 @@
 Issue #980 Phase 3 breaks the 9 376-line ``rfx/api/_preflight.py`` into an
 ``rfx/preflight/`` package a leg at a time, on the recipe the
 ``rfx/api/_sparams.py`` -> ``rfx/sparams/`` split just finished. Every leg is
-PURE CODE MOTION, and ``docs/agent-memory/development_methodology.md`` §2.2
-gates a code-motion refactor on an identity witness, not on "the checks still
+PURE CODE MOTION, and the code-motion rule requires bit-identical results
+before and after, witnessed by identity, not by "the checks still
 look right".
 
 This module is that witness for preflight.
@@ -97,6 +97,12 @@ reaches: the two remaining ``precision_*`` guards,
 ``campaign_statics_unavailable`` (leg 2), ``mesh_import_underresolved``
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
+
+SNAPSHOT CHANGE, 2026-11-13 (the wire-port-without-radius advisory names the declared port's contour storage).
+Written before the regeneration. wire_port_microstrip, wire_port_dead_extent, refplane_near_field,
+refplane_partial_optin, wire_port_end_gap, wire_port_dead_cell_nu: that advisory gains five numeric tokens (0.20,
+0.027, 11 and 21 from S11 and S21, 0.5) from the added sentence; codes, counts, severity, order and every other
+number are unchanged.
 
 SNAPSHOT CHANGE, 2026-11-05 (one realization verdict). Written before the regeneration.
 congruence_off_lattice: +2 realization error; PEC boxes x 1.0–4.5 mm and 6.02–9.52 mm on 1 mm cells are solved 3 and 4 cells against 3.5 drawn (−14.3 %, +14.3 %): the off-lattice pair this scene exists to show; strict refuses metal.

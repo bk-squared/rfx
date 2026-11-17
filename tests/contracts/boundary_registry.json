@@ -342,6 +342,11 @@
       "count": 6
     },
     {
+      "file": "rfx/differentiable_material_fit.py",
+      "function": "differentiable_material_fit",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/fidelity.py",
       "function": "_max_run_length",
       "kind": "roll/diff"
@@ -404,6 +409,16 @@
     {
       "file": "rfx/geometry/triplet_tensor.py",
       "function": "fractions",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/_radiated_power.py",
+      "function": "_phi_weights",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/_radiated_power.py",
+      "function": "integrate_radiated_power",
       "kind": "roll/diff"
     },
     {

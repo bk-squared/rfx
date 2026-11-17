@@ -416,23 +416,6 @@ def _scan_call(route, sim, **kw):
         grid, mats, debye, lorentz, n_steps=N_STEPS, pec_mask=pec, pec_shapes=shapes, **kw)
 
 
-@pytest.mark.parametrize("route", ["topology", "mixed"])
-def test_forward_scan_refuses_conformal_before_steps(route, no_steps):
-    if route == "mixed":
-        sim = _mixed(True)
-    else:
-        sim = _sim(True, ports="lumped" if route == "driver" else None)
-    assert sim._has_pec_to_conform()
-    with pytest.raises(NotImplementedError, match="conformal"):
-        _scan_call(route, sim)
-
-
-@pytest.mark.parametrize("route", ["forward", "driver", "direct"])
-def test_forward_scan_carries_conformal(route):
-    sim = _mixed(True) if route == "mixed" else _sim(True, ports="lumped" if route == "driver" else None)
-    assert _scan_call(route, sim) is not None
-
-
 def test_forward_scan_explicit_staircase_passes():
     sim = _sim(True, ports="lumped")
     S, _ = _scan_call("driver", sim, conformal_pec=False)

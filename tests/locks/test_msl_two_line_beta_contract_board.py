@@ -21,9 +21,7 @@ beta under test never enters beta_2L.
 
 Measured on branch ports/msl-plane (Mac CPU, 2026-10-13): beta_KJ/beta_2L - 1
 = -1.226 % ... -0.220 % (outside 1 % at 2.0, 3.5 and 4.9 GHz); doubling the
-absorber moved beta_2L by at most 0.033 %. Record: bk-squared/rfx-archive
-``rfx/plans/20261005-s2-measurement-plan/MSL-PLANE.md``, decision records 11
-and 12 (the bar 1.35e-2 is the measured 1.226 % plus about 10 % margin, set by the ports editor: decision record 16).
+absorber moved beta_2L by at most 0.033 %. The bar 1.35e-2 is the measured 1.226 % plus about 10 % margin.
 The shift's phase error on this board is at most 1.9e-2 rad over 2-18 GHz
 (decision record 15). Moving
 probe 0 on ONE line is not this measurement: within 5 substrate heights of
@@ -33,7 +31,7 @@ from __future__ import annotations
 
 LOCK_PROVENANCE = {
     "fixture": "none",
-    "generator": "this module's two-line measurement (rfx-archive rfx/records/20261012-msl-plane-measure/m4; bar from MSL-PLANE.md decision record 16)",
+    "generator": "this module's two-line measurement",
     "commit": "a1cad87",
     "date": "2026-10-13",
     "run_id": "local",

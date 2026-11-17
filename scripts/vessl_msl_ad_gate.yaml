@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   XLA_PYTHON_CLIENT_PREALLOCATE: "false"
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -14,15 +15,16 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -euo pipefail
-  cd /root/workspace/byungkwan-workspace/research/rfx
-  git config --global --add safe.directory /root/workspace/byungkwan-workspace/research/rfx || true
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
+  cd /root/workspace/$RFX_WORKSPACE/research/rfx
+  git config --global --add safe.directory /root/workspace/$RFX_WORKSPACE/research/rfx || true
   echo "=== rfx #529 MSL-FD-TIGHT gate on its own lane ==="
   echo "=== provenance ==="
   git rev-parse HEAD || true
   git status --short || true
   echo "=== install runtime dependencies (repo path, no editable install) ==="
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
-  export RFX_REPO_ROOT="/root/workspace/byungkwan-workspace/research/rfx"
+  export RFX_REPO_ROOT="/root/workspace/$RFX_WORKSPACE/research/rfx"
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
   python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
   echo "=== pytest: the gate, its comparator-floor falsifier, and the dtype lock ==="

@@ -770,6 +770,10 @@ def run_subgridded_path(
     warn_experimental()
     from rfx.current_moments import refuse_current_moment_monitor
     refuse_current_moment_monitor(sim, "subgridded lane")
+    if compute_s_params is True or s_param_freqs is not None or s_param_n_steps is not None:
+        from rfx.runners._admission import refuse_plain_sources_s_matrix, refuse_foreign_s_drives
+        refuse_plain_sources_s_matrix(sim)
+        refuse_foreign_s_drives(sim)
     main_result = _run_subgridded_once(
         sim,
         grid_coarse,

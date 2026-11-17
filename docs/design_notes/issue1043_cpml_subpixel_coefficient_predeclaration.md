@@ -125,7 +125,7 @@ and it will be tabulated rather than hidden.
 
 ## 5. R1 memory citations
 
-- `docs/agent-memory/rfx-known-issues.md` (~:2465-2468, "Added 2026-06-21"):
+- Recorded 2026-06-21:
   "The eager extractor called `apply_cpml_h/e` WITHOUT `materials=` ->
   free-space eps_0 CPML inside a dielectric -> exponential divergence -> all-NaN
   `s11`." **Consistent with H1**: that is the H1 sign condition with `eps_b = 1`,

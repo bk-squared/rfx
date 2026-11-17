@@ -48,7 +48,7 @@ PRE-DECLARED READING (unchanged from the original run):
   taken from another run. Any arm whose settling witness ends above -40 dB is
   not read, and any arm with no TM010-parity pole is not read.
 
-RECORDED VERDICT (2026-08-30). Source: docs/agent-memory/rfx-known-issues.md,
+RECORDED VERDICT (2026-08-30). Source: the recorded findings,
 "Added 2026-08-30", section 1 plus the same-day tip-fixed follow-up (the
 agent-memory file is local to the primary checkout); artifact root
 scripts/diagnostics/_artifacts/patch_close_20260830/ (local, not committed).

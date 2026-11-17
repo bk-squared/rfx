@@ -99,7 +99,7 @@ full baseline S trace, arm certificates and scalar samples are in the local
 short record is not settled (centre S11 = 0.0315401 + 0.0613617j), and provides
 no relative-accuracy or PEC magnitude conclusion. No VESSL job was launched.
 
-The updated full-record live oracle test was not run. The PI must still launch
+The updated full-record live oracle test was not run. The remaining step is to launch
 and adjudicate the re-measurement, including the retained complex eps legs,
 unchanged sigma leg, ULP resolution and unchanged 0.05 relative gate. No new
 result is pinned by this commit. Local validation logs remain in `.validation-931/`

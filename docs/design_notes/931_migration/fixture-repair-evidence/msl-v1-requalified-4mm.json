@@ -5,8 +5,9 @@
   "golden_written": false,
   "reason": "Compare probe-0 S at x=5 and 9 mm against its 4 mm electrical length; the former comparator used the 10 mm feed separation.",
   "input_report": {
-    "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/msl-final-base/result.json",
-    "sha256": "51e5d2ea7d0c0feabefcf517635c087171b1bc4e772ef31e351483d8c650a1ce"
+    "pin_note": "Pinned bytes are now the cleaned copy (public-text cleanup, 2026-11-12); the original bytes are in git at 647262587 under the same path.",
+    "path": "<workspace>/research/rfx-931-fastlane-reds/outputs/931-fixture-repair/msl-final-base/result.json",
+    "sha256": "db67e1a2f8a72f03ac8ba3f4d0afff3120829e0290c540ea96df91dd030d72b7"
   },
   "original_capture": {
     "run_name": "local-931-msl-repaired-base-20260908",
@@ -17,7 +18,7 @@
       "tests/_msl_fixture_qualification.py": "217a5bc79bc288a64dc967ad4740c2b4a431588f83628bab029aeff7c2078361",
       "scripts/capture_msl_e2e_golden.py": "b778793c51b2e3f811db0f3eb7f6ecf1bd12ba1bae51a4062df77cfc7f8d77f2"
     },
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "preflight": [
       {
         "message": "all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",

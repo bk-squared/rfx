@@ -217,13 +217,14 @@ def realize(model: BoundaryModel, grid) -> Realization:
 
 def collect_requirements(sim, *, rcs: bool = False) -> tuple[Requirement, ...]:
     """Collect TFSF, waveguide, Floquet and optional RCS requirements."""
+    from rfx.sources.tfsf import is_oblique
     requirements = []
     tfsf = sim._tfsf
     if tfsf is not None:
         requirements.append(Requirement("TFSF", ("x_lo", "x_hi"), (Kind.ABSORBER,)))
         electric_axis = tfsf.polarization[-1]
         magnetic_axis = "y" if electric_axis == "z" else "z"
-        oblique = tfsf.angle_deg != 0
+        oblique = is_oblique(tfsf.angle_deg)
         for axis, wall in ((electric_axis, Kind.PEC), (magnetic_axis, Kind.PMC)):
             if getattr(tfsf, "closed_box", False):
                 kinds = (Kind.ABSORBER,)

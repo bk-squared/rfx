@@ -489,7 +489,7 @@ def test_reciprocity_asymmetric_obstacle_known_gap():
 # (`coords < hi` instead of `<=`) lands the obstacle on N cells consistently
 # across the ladder; |S21| now refines monotonically (coarse_delta 0.021,
 # fine_delta 0.003 at dx ∈ {3, 2, 1.5} mm). Subpixel PEC at staircase walls
-# remains an architectural gap (see docs/agent-memory/rfx-known-issues.md)
+# remains an architectural gap
 # but it does NOT manifest in this test once obstacle painting is correct.
 def test_mesh_convergence_s21_scaled_cpml():
     freq = 6.0e9
@@ -662,8 +662,7 @@ def test_pec_short_s11_magnitude():
 #
 # Measures raw source backward-leakage via time-domain probes on either
 # side of the port, gated to an *early-time window* that excludes the
-# right-CPML round-trip reflection. See
-# docs/research_notes/2026-04-21_waveguide_port_phantom_diagnosis.md:
+# right-CPML round-trip reflection:
 # five prior sessions chased a max|Ez|-over-full-window metric that was
 # dominated by the CPML round-trip, not by real source directionality.
 # The real directionality of the current source (as of commit 15c6a13,

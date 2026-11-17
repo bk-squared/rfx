@@ -14,7 +14,6 @@ Three gates (ground truths):
     CONVERGES to AD as h→0. σ(ε) sits near a backscatter maximum here (strongly curved), so
     a single large-h FD is unreliable (ch07 doctrine: step-sweep, not single-h).
 
-Harness: docs/research_notes/experiments/i404_oblique_20260720/rcs_jax_validate.py
 """
 import numpy as np
 import jax

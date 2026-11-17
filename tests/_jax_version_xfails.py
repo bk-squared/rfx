@@ -4,6 +4,9 @@ The weekly Python 3.12 / newest-jax job (validation.yml, ``latest-jax``) install
 Its first run (jax 0.11.2, run 40468718500) found three causes: #2114 is fixed by #2108 and #2115 by #2117, so
 neither is listed; the 4 tests of #2116 stay under #2125, the open slowdown issue. Its third run (jax 0.12.0.1,
 run 40632569850) found two more: #2166 (exact and cross-trace bars) and #2167 (a two-device mirror case).
+Its run of 2026-11-15 (jax 0.12.0.1, run 43656352138) passed test_the_fallback_probe_record_equals_the_plain_call:
+since #2685 the jitted probe record equals the plain call bit for bit (31.5 ULP before it), so it leaves #2166's
+list; the four float32 bit-reference tests added by #2538 differ from their stored bits on jax 0.12 and join it.
 Each listed node id gets ``xfail(strict=True, reason="#N ...")`` on the entry's jax version or later and nothing on
 older jax, where these tests pass. The fix for an issue deletes that issue's entry: a fixed test still listed turns
 red (XPASS strict).
@@ -30,13 +33,16 @@ JAX_XFAILS = {
     2166: (
         (0, 12),
         "on jax 0.12 the CPML curl-coefficient owner check is one float32 step off, cross-trace checks reach 13-72 ULP "
-        "and 2-device DFT planes are not bit-equal to one device",
+        "and 2-device DFT planes are not bit-equal to one device; float32 bit references stored under the install cap differ",
         (
             *(f"{_CURL}[{mesh}-{medium}]" for mesh in ("uniform", "graded")
               for medium in ("plain", "dielectric", "lorentz")),
             *(f"{_CURL_PATHS}[{face}-distributed_{mesh}-{medium}]" for face in ("x_lo", "y_lo")
               for mesh in ("uniform", "graded") for medium in ("plain", "dielectric", "lorentz")),
-            "tests/unit/autodiff/test_forward_jit_contract.py::test_the_fallback_probe_record_equals_the_plain_call",
+            "tests/contracts/test_uniform_cpml_precision.py::test_uniform_cpml_float32_bitwise_original[run]",
+            "tests/contracts/test_uniform_cpml_precision.py::test_uniform_cpml_float32_bitwise_original[forward]",
+            "tests/contracts/test_graded_precision_coefficients.py::test_float32_bitwise_original[run]",
+            "tests/contracts/test_graded_precision_coefficients.py::test_float32_bitwise_original[forward]",
             "tests/unit/autodiff/test_observables_dft_field.py::test_run_distributed_dft_planes_match_native",
             "tests/contracts/test_padded_writeback_cpu_cross_trace.py::test_padded_writeback_cpu_plain_vs_jit[120]",
             "tests/contracts/test_padded_writeback_cpu_cross_trace.py::test_padded_writeback_cpu_plain_vs_jit[240]",

@@ -3,9 +3,10 @@ description: "20261004 pre-declaration and Amendment 1; one stage of the printab
 tags: [rfx, showcase, issue-1359, autodiff]
 resources:
   cluster: remilab-c0
-  # preset: FILL_BEFORE_SUBMIT  # leader's Resource choice record
+  # preset: FILL_BEFORE_SUBMIT  # Resource choice record
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   XLA_PYTHON_CLIENT_PREALLOCATE: "false"
   JAX_ENABLE_X64: "0"
@@ -19,13 +20,14 @@ env:
   RFX_DESIGN_ITERATES: ""
   RFX_DESIGN_Y_UNIFORM: ""
 mount:
-  /root/workspace/byungkwan-workspace/rfx-showcase-runs/: volume://remilab-fs/rfx-showcase-runs
+  /root/workspace/rfx-showcase-runs/: volume://remilab-fs/rfx-showcase-runs
 run: |-
   set -eu
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
   # Clone the public repository from GitHub; never fetch into the NFS reference
   # clones (only the sync job updates them). Records go to an NFS path outside
-  # every git clone; the leader copies them into rfx-archive from the Mac.
-  runs=/root/workspace/byungkwan-workspace/rfx-showcase-runs
+  # every git clone; they are copied into the record repository from the Mac.
+  runs=/root/workspace/rfx-showcase-runs
   test "$RFX_SHOWfilter_REF" != "FILL_BEFORE_SUBMIT"
   src=$(mktemp -d /tmp/rfx-showcase-filter.XXXXXX)
   git clone -q https://github.com/bk-squared/rfx.git "$src"

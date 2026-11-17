@@ -386,8 +386,7 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
     gates only that the assembly is differentiable; it deliberately does NOT
     assert physical S/Z0 (the data isn't physical). The real physics-sanity gate
     (forward S in [0, ~1.2] + finite-difference cross-check) belongs on the REAL
-    end-to-end path and is a required acceptance criterion of G-AD-WIRE
-    (docs/research_notes/2026-05-24_next_goals_and_miss_audit.md). Real-path
+    end-to-end path and is a required acceptance criterion of G-AD-WIRE. Real-path
     passivity is already gated by test_msl_thru_line_passive_gate.
 
     REBUILT (issue #515, 2026-08-04; CORRECTED 2026-08-04 per adversarial
@@ -551,8 +550,6 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     three-point fits with a free order, which pass through all three rungs by
     construction (zero residual) and so carry no check of their own. The difference
     between the two trees' S shrinks from 0.0114 to 0.0084 to 0.0067 on that ladder.
-    Records: bk-squared/rfx-archive
-    rfx/records/20260927-1292-locked-results/ (R4).
 
     Captured with scripts/capture_msl_e2e_golden.py --write-golden on VESSL CPU (run
     369367265506; JAX 0.6.2, numpy 2.2.6, float32 fields): base 1292-msl-base-
@@ -577,11 +574,9 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     The measured frequency vector is identical on all three records, and
     actual sampled voltage planes remain 5 and 9 mm. Import the base S
     after these checks; retain rtol=.005/atol=.002 below. Current provenance
-    is tests/fixtures/msl_s_matrix_golden.json; the prior golden and full
-    manifest are preserved under docs/research_notes/issue726/collocation/
-    pre-collocation-golden/. The earlier migration records below are history.
+    is tests/fixtures/msl_s_matrix_golden.json. The earlier migration records below are history.
 
-    FIXTURE REPAIRED 2026-09-08 (#931): retain the PI-authorized 254 um
+    FIXTURE REPAIRED 2026-09-08 (#931): retain the 254 um
     substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
     dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
     substrate, declare the foil at its actual interface, and hold domain/absorber thickness fixed under refinement.
@@ -660,7 +655,7 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     2e-3 - 1.2e-4; the next deliberate re-baseline should quote this number
     as its starting point.
 
-    PLANE (rfx-archive MSL-PLANE.md, decision record 14). The committed golden
+    PLANE. The committed golden
     and ``qualify_result``'s line oracle (``REFERENCE_PLANES_M`` = 5 and 9 mm)
     are probe-0-plane quantities. ``compute_msl_s_matrix`` now reports S at the
     declared feed planes, so this test compares the live S with the feed-plane

@@ -10,5 +10,5 @@ pytestmark = pytest.mark.distributed
 
 @pytest.mark.parametrize("kind", ["debye", "lorentz"])
 def test_cpml_dispersive_pr_snapshots(kind, monkeypatch):
-    """Use law C/bar S for accumulated pole rounding (rfx-archive records/20261017-item5-dispersive)."""
+    """Use law C/bar S for accumulated pole rounding."""
     snapshot_parity(kind, PR_PREFIXES, monkeypatch, entry='snapshot_pr', scene_builder=_debye_box)

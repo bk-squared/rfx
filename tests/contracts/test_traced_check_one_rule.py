@@ -130,7 +130,8 @@ def no_callbacks(monkeypatch):
 def _check_operands(site, *, invalid):
     if site == "material zero cells":
         return (np.full((2, 2, 2), not invalid),
-                *(np.ones(2),) * 3, *(np.array([0.5, 1.5]),) * 3)
+                *(np.ones(2),) * 3, *(np.array([0.5, 1.5]),) * 3,
+                *(0.0,) * 3, *(0.25,) * 3)
     x = float(invalid)
     if site == "periodic interval":
         return (-x, 2.0 if invalid else 0.5)
@@ -146,7 +147,7 @@ def _check_operands(site, *, invalid):
     if site == "graded node index":
         return (np.int32(invalid), not invalid)
     if site == "pole stability":
-        return (1.0, 0.0, 0.0, 1.0 if invalid else 0.1, 0.0, 1, 0.0, 0.0, 9.0)
+        return (1.0, 0.0, 0.0, 1.0 if invalid else 0.1, 0.0, 1, (), 0.0, 0.0, 9.0)
     if site == "sheet film overlap":
         return (np.array([invalid]),)
     if site in ("TFSF box", "TFSF slab"):

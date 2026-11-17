@@ -32,8 +32,7 @@ bit and a failed or over-budget identification comes back as a status with an
 empty mask; without x64 the map runs in complex64 and stays finite.
 
 Moved from the research lane's E3' map
-(``validation/research/fdtd_acc/e3_completion_jax.py`` and its tests, rfx-archive
-``20260924_acc_E3_reverse_mode_completion_results.md``), with the lane's own
+(``validation/research/fdtd_acc/e3_completion_jax.py`` and its tests), with the lane's own
 identification replaced by ``rfx.ringdown.identify``.
 """
 

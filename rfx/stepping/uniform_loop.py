@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
+
 from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
@@ -78,6 +80,7 @@ def run(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
+    subpixel_smoothing: object = False,
     pec_mask: object | None = None,
     pec_sheets: object = (),
     pec_wires: object = (),
@@ -120,6 +123,9 @@ def run(
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
         all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     periodic : (bool, bool, bool) or None
         Per-axis periodic boundary flags. If None, defaults to
         ``(False, False, False)`` in 3D and ``(False, False, True)``
@@ -257,6 +263,7 @@ def run(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     wire_refplane_sparams = wire_refplane_sparams or []
@@ -288,6 +295,7 @@ def run(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        subpixel_smoothing=subpixel_smoothing,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -324,7 +332,7 @@ def run(
     use_waveguide_ports = len(waveguide_ports) > 0
 
     # The GPU H+E fast lane measured slower for closed boxes; use the
-    # standard lane (rfx-archive rfx/records/20261026-fast-lane-sweep/).
+    # standard lane.
     _ctx = _setup.ctx_kwargs
     use_fast_he = False
     _fast_coeffs = None
@@ -758,6 +766,7 @@ def run_until_decay(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
+    subpixel_smoothing: object = False,
     pec_mask: object | None = None,
     pec_sheets: object = (),
     pec_wires: object = (),
@@ -829,6 +838,12 @@ def run_until_decay(
     monitor_position : tuple or None
         Legacy monitor position (x, y, z); does not affect the stop.
         Non-default values warn of deprecation.
+    pec_axes : axes string or None
+        Axes on which to enforce PEC after each update. If None, uses
+        all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     checkpoint_segments : int or None
         **Not supported** (a host-driven early stop); a non-None value
         raises ``NotImplementedError``.
@@ -907,6 +922,7 @@ def run_until_decay(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     lumped_rlc = lumped_rlc or []
@@ -934,6 +950,7 @@ def run_until_decay(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        subpixel_smoothing=subpixel_smoothing,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,

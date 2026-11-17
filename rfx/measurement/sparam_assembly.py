@@ -581,8 +581,8 @@ def _assemble_coaxial_two_port_from_voltages(
     as one. The sibling lane copied THIS lane's constant onto the opposite
     geometry and inverted its whole S-matrix.
 
-    The lane is **validated with scope** in ``docs/guides/sparameter_support_matrix.md``. Production edits to this
-    lane need the PI's approval. The geometry-based fixtures in
+    The lane is **validated with scope** in ``docs/guides/sparameter_support_matrix.md``.
+    The geometry-based fixtures in
     ``tests/_wave_convention.py::_plant_ladder_voltages_physical`` pin the constant above independently of the
     extractor's own labels; the wrong-convention mirror asserts the exact ``inv(S_true)`` signature.
 
@@ -766,8 +766,8 @@ def _ladder_split_witness(planes_m, v_by_drive, ref_m):
     reads ``gamma_dev`` 0.11-0.34 on every run of this family -- the already
     known 1 mm-span alpha-identification limit -- so a bar tight enough
     to catch the MSL ladder would refuse the coax ladder for a different
-    defect. Gating is deliberately deferred (the PI sequencing puts the
-    standoff rule and this witness BEFORE any ``msl_fit_residual_max``).
+    defect. Gating is deliberately deferred: the standoff rule and this
+    witness precede any ``msl_fit_residual_max``.
     """
     from rfx.sources.coaxial_port import coaxial_line_reflection_from_plane_voltages
 

@@ -1,9 +1,8 @@
 """The coax termination adds radial conductance and preserves its host fill.
 
 Root cause: writing vacuum at the sheet removed a shunt capacitance and
-artificially lowered the matched reflection floor. See rfx-archive record
-``rfx/records/20261107-coax-oneport-floor/PREDECLARE-load-fill.md`` and its
-2026-11-10 14:25 KST addendum. The edge ownership remains that of #1373.
+artificially lowered the matched reflection floor.
+The edge ownership remains that of #1373.
 """
 from __future__ import annotations
 

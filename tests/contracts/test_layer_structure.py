@@ -398,7 +398,6 @@ def git_snapshot(repo, *args):
 
 
 def test_initial_adoption_and_head_environment_use_git_sources(synthetic, monkeypatch, capsys):
-    # Throwaway repositories under tmp_path are explicitly allowed by the leader.
     git_snapshot(synthetic, "init", "-q")
     (synthetic / gate.BASELINE).unlink()
     git_snapshot(synthetic, "add", ".")
@@ -735,7 +734,7 @@ def test_outside_report_blocks_and_count_order(synthetic, capsys):
     gate.report(gate.count(gate.Sources(synthetic)))
     output = capsys.readouterr().out
     five, outside = output.split("\noutside the layer packages — may only fall, not a 2.0 condition "
-                                 "(PI to decide how far 2.0 reaches)\n")
+                                 "(how far 2.0 reaches is not decided)\n")
     assert five.startswith("2.0 condition — five files\n")
     outside, reverse = outside.split("\nreverse imports from layers to callers — may only fall\n")
     assert reverse == "reverse totals: R=0\n"
@@ -1224,7 +1223,7 @@ def test_reverse_report_order_and_totals(synthetic, capsys):
 
 
 # A layer import of a name a five file defines itself is layer code living in a five file; the unit rules read
-# syntax and miss a scalar formula, a metric choice or a record type (rfx-core-desk L:e06a77).
+# syntax and miss a scalar formula, a metric choice or a record type.
 FIVE_DEFINITION = "{path} R: imports {entry}, which the five file defines; move the definition into its layer"
 
 

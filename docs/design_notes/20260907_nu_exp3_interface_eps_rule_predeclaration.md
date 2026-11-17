@@ -17,7 +17,7 @@ re-derived), plus a bit-identity contract on the default path.
 and `origin/main d990e18c`). E2 (`exp/nu-experiments-e2`, worktree
 `rfx-nu-exp2`) is read, cited, and not modified.
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Every JSON the instrument writes records `rfx.__file__`, `git_sha`,
 `git_dirty`, `argv` and `started_utc` (the W6/W7/E2 convention).
@@ -232,9 +232,9 @@ the replay test; none is computed by hand.
 ## 4. Declared commands, outputs, tests
 
 ```
-cd /Users/byungkwankim/Documents/rfx-nu-exp3
-export PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp3
-PY=/Users/byungkwankim/Documents/rfx/.venv/bin/python
+cd <workspace>/Documents/rfx-nu-exp3
+export PYTHONPATH=<workspace>/Documents/rfx-nu-exp3
+PY=<workspace>/Documents/rfx/.venv/bin/python
 $PY -c "import rfx; print(rfx.__file__)"          # must be this tree
 # E3-B(a): batteries, before (fea9f078) and after, counts recorded in Results
 $PY -m pytest tests/unit/nonuniform tests/unit/geometry tests/unit/materials tests/oracle \
@@ -309,7 +309,7 @@ and is NOT touched here.
 ### Resume correction declared before the production patch (2026-09-10)
 
 The previous STOP below is retained as historical evidence, but its absolute-green
-interpretation is superseded by the lead's clarification. E3-B is a DELTA gate:
+interpretation is superseded by the clarification. E3-B is a DELTA gate:
 **the after-patch failure SET must equal the before-patch failure SET, and every
 pinned value in the passing set must be unchanged.** No frozen window above
 Results is edited. The baseline carries these four pre-existing failures:
@@ -319,14 +319,14 @@ Results is edited. The baseline carries these four pre-existing failures:
 - `tests/oracle/test_leontovich_alpha_oracle.py::test_o3_model_fits_measured_field`
 - `tests/oracle/test_leontovich_alpha_oracle.py::test_alpha_oracle_o3`
 
-The lead verified the middle two on `origin/main d990e18c` by running exactly
+The middle two were verified on `origin/main d990e18c` by running exactly
 those two tests in the main checkout (selector command: `pytest
 tests/oracle/test_leontovich_alpha_oracle.py -k "test_alpha_envelope_regression_lock
 or test_o3_model_fits_measured_field"`): **"2 failed, 11 deselected"**.
 Both are `@pytest.mark.slow_physics`; the normal battery's
-`-m "not gpu and not slow and not slow_physics"` excludes them. The lead's
+`-m "not gpu and not slow and not slow_physics"` excludes them. The
 sibling-branch CPU battery under that marker set was 6140 passed / 0 failed.
-This is lead-provided evidence, not a new run in another checkout.
+This is reported evidence, not a new run in another checkout.
 AD3 attempt 1 was FIRED and its replay intentionally remains red, as recorded in
 `docs/design_notes/20260907_nu_band_accuracy_ad_predeclaration.md`.
 The fourth failure is the baseline's O3 model-fit trust assertion; no independent
@@ -344,9 +344,9 @@ unit was attempted. The frozen declaration above is unchanged.
 
 Baseline provenance: branch `exp/nu-experiments-e3`, git SHA
 `4129591bb7cef863adf0f8249c788d31c9b4337c`, CPU only (`JAX_PLATFORMS=cpu`),
-`rfx.__file__ = /Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py`.
+`rfx.__file__ = rfx/__init__.py`.
 Every Python invocation used the requested venv interpreter with
-`PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp3`. `git diff
+`PYTHONPATH=<workspace>/Documents/rfx-nu-exp3`. `git diff
 fea9f078 4129591b` contains only this predeclaration, so the tested
 production source is exactly the declared baseline source.
 
@@ -453,7 +453,7 @@ No A1 ladder unit has yet been attempted.
 
 Production/tests commit: `7b846c0b716c5e2e72e9e7f6c0722987a042cebb`.
 Every selfcheck and ladder row records this SHA, `git_dirty=False`, and
-`rfx_file=/Users/byungkwankim/Documents/rfx-nu-exp3/rfx/__init__.py`.
+`rfx_file=rfx/__init__.py`.
 The requested PYTHONPATH/interpreter and `JAX_PLATFORMS=cpu` were used.
 Six units, one attempt each, no `--force`, no smoke, no retuning.
 
@@ -518,9 +518,9 @@ replay were not changed, and the ladder was never restarted. Once all six
 rows existed, all 27 E3 tests passed and the identical full battery was
 started again. Its completed comparison is appended below when available.
 
-### Separate main-branch finding for the lead to file
+### Separate main-branch finding to file
 
-Lead-verified on `origin/main d990e18c`: the two selected tests produced
+Verified on `origin/main d990e18c`: the two selected tests produced
 "2 failed, 11 deselected". The measured quantities in this worktree's
 unpatched baseline were:
 
@@ -535,7 +535,7 @@ Both tests are `slow_physics` only (not `slow`); the normal battery
 The E3 baseline marker set includes them. This report does not claim to
 have rerun main, and no other checkout was modified. The related baseline
 `test_alpha_oracle_o3` also fails its model-fit trust check at the same RMS.
-No upstream issue or message was posted; this is the finding for the lead.
+No upstream issue or message was posted; this is the finding.
 
 ### Completed E3-B delta comparison — HELD (2026-09-10)
 
@@ -543,7 +543,7 @@ The after battery finished with the **identical argv and marker set** as
 its baseline, including all four known-red tests (no deselections by name):
 
 ```sh
-JAX_PLATFORMS=cpu PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp3 /Users/byungkwankim/Documents/rfx/.venv/bin/python -m pytest tests/unit/nonuniform tests/unit/geometry tests/unit/materials tests/oracle -q -o addopts="" -m "not gpu and not slow" -p no:cacheprovider
+JAX_PLATFORMS=cpu PYTHONPATH=<workspace>/Documents/rfx-nu-exp3 <workspace>/Documents/rfx/.venv/bin/python -m pytest tests/unit/nonuniform tests/unit/geometry tests/unit/materials tests/oracle -q -o addopts="" -m "not gpu and not slow" -p no:cacheprovider
 ```
 
 Verbatim before summary:

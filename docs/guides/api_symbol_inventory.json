@@ -130,6 +130,9 @@
     "LorentzPole": {
       "kind": "class"
     },
+    "LorentzPoleMap": {
+      "kind": "class"
+    },
     "LumpedRLCSpec": {
       "kind": "class"
     },
@@ -791,6 +794,14 @@
         "density"
       ]
     },
+    "drude_pole_map": {
+      "kind": "function",
+      "params": [
+        "omega_p",
+        "gamma",
+        "density"
+      ]
+    },
     "edge_is_pec": {
       "kind": "function",
       "params": [
@@ -1041,7 +1052,8 @@
         "freqs",
         "eps_measured",
         "n_poles",
-        "eps_inf"
+        "eps_inf",
+        "tau"
       ]
     },
     "fit_lorentz": {
@@ -1287,6 +1299,15 @@
       ]
     },
     "lorentz_pole": {
+      "kind": "function",
+      "params": [
+        "delta_eps",
+        "omega_0",
+        "delta",
+        "relative"
+      ]
+    },
+    "lorentz_pole_map": {
       "kind": "function",
       "params": [
         "delta_eps",
@@ -1853,6 +1874,7 @@
         "aniso_eps",
         "aniso_inv_eps",
         "aniso_inv_eps_smooth",
+        "subpixel_smoothing",
         "pec_mask",
         "pec_sheets",
         "pec_wires",
@@ -1974,6 +1996,7 @@
         "aniso_eps",
         "aniso_inv_eps",
         "aniso_inv_eps_smooth",
+        "subpixel_smoothing",
         "pec_mask",
         "pec_sheets",
         "pec_wires",

@@ -21,7 +21,7 @@ CLEARANCE = 4*DX
 FREQS = np.array([6e9, 8e9, 10e9])
 
 
-def build_instrument_junction():
+def build_instrument_junction(*, mode="laplace"):
     sim = Simulation(snap="declared", freq_max=16e9, domain=DOMAIN, dx=DX,
                      cpml_layers=8, boundary="cpml")
     sim.add_material("sub", eps_r=3.66)
@@ -40,7 +40,8 @@ def build_instrument_junction():
     sim.add_coaxial_port(position=(JUNCTION_X, Y_C, GROUND), face="bottom",
                          pin_radius=2*DX, outer_radius=6*DX, impedance=50.)
     sim.add_msl_port(position=(FEED_X, Y_C, GROUND), width=6*DX,
-                     height=HEIGHT, direction="-x", impedance=50., eps_r_sub=3.66)
+                     height=HEIGHT, direction="-x", impedance=50., eps_r_sub=3.66,
+                     mode=mode)
     return sim
 
 

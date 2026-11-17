@@ -11,7 +11,7 @@ exemption was the defect: the returned ``S`` was one function on the channel a
 user reads and another on the channel a gradient takes, wherever any bin was
 non-passive.
 
-The default is now ``enforce_passivity=False`` (PI, 2026-09-21 — the contract
+The default is now ``enforce_passivity=False`` (the contract
 is ``docs/design_notes/chain_closure_contract.md``), so both channels return
 the raw extraction. These tests pin that identity.
 """

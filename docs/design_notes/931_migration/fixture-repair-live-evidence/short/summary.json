@@ -15,7 +15,7 @@
         "--arm",
         "current",
         "--output-dir",
-        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse"
+        "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/coarse"
       ],
       "status": "complete",
       "timeout_s": 21600,
@@ -30,7 +30,7 @@
         "--arm",
         "current",
         "--output-dir",
-        "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine",
+        "<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/fine",
         "--fine"
       ],
       "status": "complete",
@@ -53,7 +53,7 @@
         "-rA",
         "--timeout=7200",
         "--timeout-method=thread",
-        "--junitxml=/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/junit.xml",
+        "--junitxml=<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-fixture-repair-short-20260909T015010Z-b36fc46cdf21-101/junit.xml",
         "tests/contracts/test_pec_short_advisory_geometry.py",
         "tests/unit/sparams/test_sparam_passivity_guard.py"
       ],

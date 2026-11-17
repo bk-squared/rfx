@@ -1,6 +1,6 @@
 {
   "source": "949e1845b84b26826d4e5309363bea4c2ffa5920",
-  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "rfx_import": "rfx/__init__.py",
   "predeclared_falsifier": "Diagnostic only: isolate #931 volume-edge realization, without fixture tuning.\n\nRun from this worktree: PYTHONPATH=$PWD JAX_PLATFORMS=cpu python\nscripts/diagnostics/slow_931_farfield_attribution.py\n\nPredeclared falsifier: if restoring ONLY the historical volume-edge map does\nnot bring this unchanged uniform/graded comparison back below 5%, volume-edge\nownership alone does not explain crossing the envelope. This is not a rollback\nproposal or a newly qualified physical baseline. Four sequential 600-step runs.\nHistorical map is copied from a3e4dba4^:rfx/boundaries/pec.py tangential_edge_masks.\nAll patching is process-local, restored after each counterfactual.\n\nFixture repair qualification: --fixture repaired --operators current uses\nidentical 250 um radiator/source lattices and grades only the NTFF shoulders.\nIts predeclared falsifier is local-cell error >= 5% OR >= scalar-cell error/2;\neither miss remains a finding, with no envelope change or profile sweep.\nUse --steps 1200 as an independently named duration-convergence witness.\n",
   "fixture": "repaired",
   "steps": 600,

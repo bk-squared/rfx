@@ -1,7 +1,7 @@
 """tests/_prose_reads.py -- a test that reads prose is a documentation check.
 
-Required checks compare numbers with a tolerance, never text (PI, 2026-09-24),
-and a documentation mismatch never holds a merge (PI, 2026-09-22). So a test
+Required checks compare numbers with a tolerance, never text,
+and a documentation mismatch never holds a merge. So a test
 that reads a note, a guide or a README carries the ``docs_consistency``
 marker: pyproject's default addopts and the required gates in pr-tests.yml
 deselect it, and the non-required docs-consistency workflow runs it. Four of
@@ -192,7 +192,7 @@ def _no_prose_read_outside_docs_consistency(request):
         pytest.fail(
             f"this test reads prose ({', '.join(sorted(set(read)))}) but is not "
             f"marked `{MARKER}`. Required checks compare numbers, not text, and "
-            "a documentation mismatch never holds a merge (PI, 2026-09-22/24). "
+            "a documentation mismatch never holds a merge. "
             f"Mark it @pytest.mark.{MARKER} (the whole module if it reads the "
             "file at import) so the docs-consistency workflow runs it instead; "
             "if it pins a number, read the number from its record, not from a note; "

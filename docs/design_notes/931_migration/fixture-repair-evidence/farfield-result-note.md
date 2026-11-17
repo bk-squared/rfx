@@ -1,6 +1,6 @@
 # Graded farfield fixture repair: hold the radiator lattice fixed
 
-> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are kept with the project, outside this repository. Historical paths below refer to those records; reproduction commands that read them need the archived files.
 
 Named run: **local-931-fixture-repair-farfield-600**, 2026-09-08, CPU,
 `JAX_PLATFORMS=cpu PYTHONPATH=$PWD`. Source HEAD was
@@ -23,7 +23,7 @@ quantity no longer isolates its stated property. T8 established that the
 old graded fixture changed the conductor stencil, source cell volume and
 physical acquisition window as well as NTFF integration. Its old passing
 2.1381% power metric already hid about 19% angular-shape disagreement.
-The PI authorized physical fixture repair; the new comparison therefore
+The physical fixture repair comparison therefore
 holds those local quantities fixed rather than changing the 5% envelope.
 
 The domain remains 22 x 22 x 22 mm, with a 1.5 mm PEC cube bounded by

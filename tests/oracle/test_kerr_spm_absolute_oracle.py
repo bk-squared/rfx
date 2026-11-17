@@ -21,8 +21,7 @@ Validation (this session, CPU): the shipped D-based operator (#448) gives ratio 
 χ³∈{0.05,0.1,0.2,0.3} (mean 0.955±0.03), domain-invariant (0.60 m→0.925, 0.45 m→0.965), while the
 pre-#448 increment operator gives 0.33 — so a gate at ratio∈[0.8,1.2] validates the D-based operator
 and rejects the increment one. The residual ~5% is Yee numerical dispersion (the χ³=0 baseline kx0
-itself sits +0.13% above the continuum k0). Harness:
-docs/research_notes/experiments/kerr_cw_spm_absolute.py
+itself sits +0.13% above the continuum k0).
 """
 import numpy as np
 import pytest

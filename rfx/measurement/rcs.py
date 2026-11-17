@@ -12,7 +12,7 @@ from rfx.grid import Grid
 from rfx.rcs import RCSResult
 from rfx.rcs import ScatteringResponse
 from rfx.stepping import run_uniform_loop as run
-from rfx.sources.tfsf import init_tfsf
+from rfx.sources.tfsf import init_tfsf, is_oblique
 from rfx.measurement.incident import measure_normal_incident_spectrum
 import jax.numpy as jnp
 import numpy as np
@@ -83,8 +83,7 @@ def compute_rcs(
         h_eff^2); the oblique path's hardcoded 2-cell midplane box means
         h_eff = 2*dx, so scale by ``(L_z/h_eff)^2`` for a physical strip
         height ``L_z``. The always-on gate-grid test locks Delta within
-        0.03 dB of +0.0833/+0.1583 dB at 20/40 deg (rfx-archive
-        rfx/records/20261031-oblique-rcs-level-1991).
+        0.03 dB of +0.0833/+0.1583 dB at 20/40 deg.
         Requires ``polarization='ez'`` and a uniform
         grid; other combos raise ``NotImplementedError``.
     phi_inc : float
@@ -222,7 +221,7 @@ def compute_rcs(
     # x-y-plane observation; span-doubling ratio 4.000 measured). Kept fenced
     # for combos Method B does not support: non-ez polarization and
     # non-uniform / distributed grids.
-    _oblique = abs(float(theta_inc)) > 1e-6
+    _oblique = is_oblique(float(theta_inc))
     reference_index = None
     reference_position = None
     if phase_reference is not None:

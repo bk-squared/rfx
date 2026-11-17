@@ -299,7 +299,7 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
     assert len(installs) == 2, installs
     assert shlex.split(installs[0], comments=True) == ["pip", "install", "-e", ".[dev]"], installs[0]
-    # The pair goes in over pyproject's cap with its own dependencies (acceleration D:996c06), then pip check.
+    # The pair goes in over pyproject's cap with its own dependencies, then pip check.
     over, *check = installs[1].strip().splitlines()
     over = shlex.split(over)
     assert over[:3] == ["pip", "install", "-U"] and "--no-deps" not in over, installs[1]
@@ -541,7 +541,7 @@ def test_a_skipped_job_says_why_in_its_log(job: str) -> None:
 #: it: otherwise marking one test `slow` quietly removes it from a gate that is
 #: still reported green, and nobody finds out. The explicit `-m` puts back the
 #: CPU-safety half and the documentation half -- a documentation mismatch never
-#: holds a merge (PI, 2026-09-22), so `docs_consistency` tests run only in the
+#: holds a merge, so `docs_consistency` tests run only in the
 #: non-required docs-consistency workflow -- and `--strict-markers` makes a
 #: marker typo an error instead of a no-op.
 GATE_PYTEST_FLAGS = ('-o addopts=""', '-m "not gpu and not docs_consistency"',
@@ -729,7 +729,7 @@ def test_the_data_budget_runs_once_on_both_branches() -> None:
     A PR that adds records under docs/ or scripts/ is a not-code diff, so a
     step gated on the code branch would never see the case it exists for. It
     lives in an existing required job because a new check context binds only
-    once the PI adds it to the ruleset.
+    once it is added to the ruleset.
     """
     steps = _data_budget_steps("guards-and-preflight")
     assert len(steps) == 1, [s.get("name") for s in steps]

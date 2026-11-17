@@ -1,7 +1,6 @@
 """Forward path must carry DFT plane-probe accumulators on `ForwardResult`.
 
-Issue: gap #4 in `docs/agent-memory/rfx-known-issues.md`
-("Differentiable MSL inverse-design infrastructure gaps", 2026-05-05).
+Issue: differentiable MSL inverse-design infrastructure gap #4.
 The scan body in `rfx/simulation.py` already accumulates `SimResult.dft_planes`
 (line ~1253), but `_forward_from_materials` was repackaging into
 `ForwardResult` without carrying the field — so `forward(...)` callers
