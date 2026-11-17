@@ -79,6 +79,13 @@ realization refusals still apply. Both also refuse inputs their solver path
 does not implement whether or not advisories run
 ([Refused inputs](/rfx/check/refusals/)).
 
+Explicit `run(compute_s_params=True)` and `forward(port_s11_freqs=...)`
+requests require an impedance `add_port`. A soft source, including one beside
+a closed TF/SF box, does not provide a port response. Both calls refuse missing
+impedance ports and mixtures with MSL, waveguide, Floquet, TF/SF or coaxial
+families through the same admission rules; use each family's documented
+calculator where available. Forward also reports MSL near-field probe details.
+
 Where the two calls still differ:
 
 - `forward()` has no `until_decay`, `snapshot=`, `report_every` or

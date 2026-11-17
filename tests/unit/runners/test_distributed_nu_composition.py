@@ -201,7 +201,7 @@ def test_forward_distributed_refuses_tfsf_on_nu_path():
 
     from rfx import Simulation
 
-    # TFSF requires boundary='cpml' and no lumped point sources/ports, so build
+    # The slab plane wave requires boundary='cpml' and transverse invariance, so build
     # a NU sim with CPML and only the probe (no add_source).
     sim = _make_nu_sim_small(boundary="cpml", add_source=False)
     sim.add_tfsf_source(

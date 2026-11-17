@@ -1006,7 +1006,7 @@ def test_tfsf_requires_supported_configuration():
         dx=0.001,
     )
     sim_ports.add_tfsf_source()
-    with pytest.raises(ValueError, match="Lumped ports|lumped ports"):
+    with pytest.raises(ValueError, match="a lumped or wire port"):
         sim_ports.add_port((0.01, 0.003, 0.003), "ez")
 
     with pytest.raises(ValueError, match="polarization"):
