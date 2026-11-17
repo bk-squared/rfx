@@ -116,7 +116,8 @@ def _complete_probe(plan, result, Y, dt, ref_hz, witnesses):
                             f"(largest {g_max:.3g} at {g_f / 1e9:.4g} GHz, reported, not judged)"),
         rd.RingdownWitness("source_off", src_ratio, float(spec.source_off_tol),
                             src_ratio <= spec.source_off_tol,
-                            "largest source waveform over the window, as a fraction of its peak"),
+                            "largest drive level over the window as a fraction of its peak "
+                            "(a waveform; for a plane wave its face-read level)"),
     ]
     amp = np.asarray(model.amplitude, dtype=np.float64)
     alpha = -model.s.real

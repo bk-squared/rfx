@@ -23,7 +23,12 @@ MSL and point waveforms, the Floquet table its runner builds, a driven
 waveguide port's ``e_inc_table`` (never the analytic ``v_inc_t``; its H
 companion does not set the end, its beyond-record part is
 ``drive_tail_share``'s), coaxial E and H tables, and TF/SF's waveform plus
-its launch-to-box reach.
+its launch-to-box reach. Ring-down's source-off check reads a closed-box
+plane wave instead by the level its faces read from the incident line
+(``plane_wave_face_level``), because it asks whether the box still injects
+inside the identification windows, while the record-end judgement keeps the
+waveform plus its launch-to-box reach, because it asks whether the drive's
+response can reach the record end.
 """
 from __future__ import annotations
 
@@ -60,6 +65,30 @@ def drive_tail_share(drives, dt, n_record, freqs) -> np.ndarray:
         ratio[(denominator == 0) & (numerator != 0)] = np.inf
         share = np.maximum(share, ratio)
     return share
+
+
+def plane_wave_face_level(i_h, i_e) -> np.ndarray:
+    """The two-scale face-read level ``r(n)`` of a closed-box plane wave, on the host.
+
+    ``r(n) = max(I_E(n) / P_E, I_H(n) / P_H)``: each kind's per-step maxima
+    (from ``rfx.stepping.incident_line.face_read_maxima``) divided by its own
+    peak ``P_k = max_n I_k(n)``, in float64, the peak cast from the input's
+    dtype. A kind with no operand (an empty array) or a zero peak is left out;
+    with both left out ``r`` is zero. ``r`` enters :func:`source_end_step` as a
+    precomputed table, whose peak is 1 when a kind is kept.
+    """
+    terms = []
+    for raw in (i_e, i_h):
+        values = np.asarray(raw)
+        if values.size == 0:
+            continue
+        peak = np.float64(np.max(values))
+        if peak == 0.0:
+            continue
+        terms.append(values.astype(np.float64) / peak)
+    if not terms:
+        return np.zeros(max(np.size(i_h), np.size(i_e)), dtype=np.float64)
+    return terms[0] if len(terms) == 1 else np.maximum(terms[0], terms[1])
 
 
 def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
