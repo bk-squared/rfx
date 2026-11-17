@@ -95,6 +95,7 @@ def test_random_fields_match_today(mesh, comp, case):
 
 
 def test_combine_time_axis_jit_vmap_and_gradient():
+    """The extra gather permutes all terms once for the sorted reduction."""
     grid = grid_case('uniform')
     table = sample_table((owner(grid, 'uniform', 'ez', ((2, 2, 1), (2, 2, 2)), CurlBoundary()),), dtype=np.float32)
     state = SimpleNamespace(**{c: jnp.arange(np.prod(grid.shape), dtype=jnp.float32).reshape(grid.shape)
@@ -109,7 +110,6 @@ def test_combine_time_axis_jit_vmap_and_gradient():
         SimpleNamespace(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz), table))(
             *(getattr(state, c) for c in ('ex','ey','ez','hx','hy','hz')))
     names = [e.primitive.name for e in jaxpr.jaxpr.eqns]
-    # The extra gather permutes all terms once for the sorted reduction.
     assert names.count('gather') == len(table.components)+1
     assert names.count('scatter-add') == 1
 
@@ -135,8 +135,8 @@ def test_owner_weights_match_runner_metrics_bitwise(mesh, comp):
 
 def test_live_edges_and_whole_gap_are_used():
     grid = grid_case('uniform')
-    # Realized PEC edge 0 is absent, even though it was in the declared span.
     live = ((2, 2, 1), (2, 2, 2), (2, 2, 3))
+    assert (2, 2, 0) not in live, "The realized live span must exclude PEC edge zero"
     o = owner(grid, 'uniform', 'ez', live, CurlBoundary())
     state = SimpleNamespace(**{c: jnp.zeros(grid.shape) for c in ('ex','ey','ez','hx','hy','hz')})
     state.ez = state.ez.at[2,2,0].set(1000).at[2,2,1].set(3).at[2,2,2].set(5).at[2,2,3].set(11)

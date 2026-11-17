@@ -60,11 +60,8 @@ def _independent_msl_column(raw, n_live):
 
 
 def test_returned_entries_and_witnesses(measured):
+    """The oracle is the documented b/a of the raw probe-0 phasors at the line Z0."""
     kind, channel, result, raw, _, _ = measured
-    # The oracle is the documented b/a of the raw probe-0 phasors, so S is read
-    # at the MSL port's probe-0 plane (#1694 refers it to the feed plane).
-    # The oracle forms the MSL waves at the line Z0; S is referred to the
-    # declared impedance, so it is brought back to line_impedances.
     s = np.asarray(probe0_s(result, line_s(result, np.asarray(result.S))))
     assert np.isnan(s[:, 0]).all()
     assert np.isnan(result.s21_power_witness[:, 0]).all()
@@ -84,8 +81,6 @@ def test_returned_entries_and_witnesses(measured):
             assert np.isnan(s_wave[0, 1]).all()
         else:
             np.testing.assert_allclose(s_wave[0, 1], expected[0], rtol=1e-6, atol=1e-7)
-        # Flux magnitudes use recorded flux, not the per-cell b/a magnitude.
-        # The fixture faces -x, so its incident net flux is minus the +x plane.
         run = raw['drive_plan'].index(('msl', 0))
         net = np.maximum(-raw['plane_msl_flux'][run, 0], 0.0)
         incident_power = net / np.maximum(1 - np.abs(expected[1])**2, 0.05)
@@ -164,8 +159,8 @@ def test_partial_checks_only_exempt_the_refused_positions():
 
 @pytest.mark.parametrize('wire_mode', [False, True])
 def test_every_driven_column_is_refused(wire_mode):
+    """Independently chosen Z=4 phasors give a=1, passive b=1, MSL reflection=0."""
     from rfx.sparams._common import _assemble_mixed_power_wave_s, _mixed_flux_magnitude_override
-    # Independently chosen Z=4 phasors give a=1, passive b=1, MSL reflection=0.
     v = np.full((3, 2, 2), 2.0 + 0j)
     current = np.full_like(v, -0.5)
     for k in range(2):
@@ -208,8 +203,6 @@ def test_flux_refusal_does_not_change_other_nan_diagonals():
     box = np.array([[[1.0]], [[-1.0]]])
     plane = np.array([[[1.0]], [[-1.0]]])
     args = (s, box, plane, [('lw', 0), ('msl', 0)], [-1], 1)
-    # Unrefused NaN normalizations retain main's fallback; the separate
-    # finiteness check must still warn or raise on the unexpected diagonal.
     legacy, _, _ = _mixed_flux_magnitude_override(*args)
     np.testing.assert_array_equal(np.asarray(legacy)[[0, 1], [1, 0]], 0.0)
     refused, _, _ = _mixed_flux_magnitude_override(*args, refused_columns=(0,))

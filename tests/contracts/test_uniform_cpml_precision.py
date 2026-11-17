@@ -35,9 +35,6 @@ def solve(entry, precision):
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
 def test_uniform_cpml_float32_bitwise_original(entry):
-    # Generated from git archive 95e66c479: uniform B1 dielectric CPML box,
-    # explicit float32, 36 steps, checkpoint=False. Store only final fields
-    # and probe series, viewed as uint32, for both entry points.
     reference = Path(__file__).with_name('uniform_cpml_float32_95e66c479.npz')
     try:
         with jax.enable_x64(False), warnings.catch_warnings(), np.load(reference) as expected:

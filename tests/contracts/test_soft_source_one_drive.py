@@ -18,8 +18,6 @@ from rfx.sources.port_drive import soft_source
 
 NATIVES = ('raw', 'cb')
 DV = 1e-12
-# Cb = dt/eps for 100 permittivities, dt of a 1 mm cell; Cb/dV under jit differs
-# from eager Cb/dV for about a third of them.
 CBS = (np.float32(1.9e-12) / (np.float32(8.854e-12) *
                               np.linspace(1.0, 5.95, 100, dtype=np.float32)))
 
@@ -59,8 +57,6 @@ def test_current_drive_is_the_same_under_jit_and_vmap(native):
 
 @pytest.mark.parametrize('kind', ('current', None))
 def test_graded_drive_is_the_uniform_product(kind):
-    # The graded single-device table and the multi-device slabs form the
-    # uniform product (1/dV)*(Cb*w) with Cb and dV kept apart.
     w = _samples()
     cb = np.float32(0.0216839)
     got = np.asarray(source_table(w, kind, native='cb_over_dv', coefficient=cb, volume=DV))
@@ -102,11 +98,10 @@ def test_graded_current_coefficient_is_bit_equal_under_jit(record_property):
     assert plain.dtype == traced.dtype == np.float32
     different = np.count_nonzero(plain.view(np.uint32) != traced.view(np.uint32))
     record_property('different_of_200', int(different))
-    assert different == 0  # E1: all 200 scalars must be bit-equal.
+    assert different == 0
 
 
 def _graded_current_scene():
-    # Scene G, written out from measure_stage1b.py; no measurement helper import.
     sim = Simulation(freq_max=10e9, domain=(.016, .016, .012), dx=.001,
                      boundary='pec',
                      dz_profile=np.array([.00125] * 4 + [.00075] * 4 + [.001] * 4))
@@ -119,6 +114,7 @@ def _graded_current_scene():
 @pytest.mark.parametrize('eps_r,sigma', [(2.65, 0), (5.3, 0), (3.25, .02), (3.7, .02)])
 @pytest.mark.parametrize('n_steps', [60, 120, 240])
 def test_graded_current_forward_stays_within_nine_ulp(eps_r, sigma, n_steps, record_property):
+    """The expected measurement is zero despite the cross-trace acceptance bar of 9 ULP."""
     sim, grid = _graded_current_scene()
     eps = jnp.full(grid.shape, eps_r, jnp.float32)
 
@@ -131,8 +127,6 @@ def test_graded_current_forward_stays_within_nine_ulp(eps_r, sigma, n_steps, rec
     plain = np.asarray(probe(eps))
     compiled = np.asarray(jax.jit(probe)(eps))
     assert plain.dtype == compiled.dtype == np.float32
-    # E2: max record difference / float32 spacing at the plain record's peak.
-    # The expected measurement is zero; the cross-trace acceptance bar is 9 ULP.
     difference = np.max(np.abs(compiled.astype(np.float64) - plain.astype(np.float64)))
     peak = np.float32(np.max(np.abs(plain)))
     assert np.isfinite(peak) and peak > 0
@@ -156,4 +150,4 @@ def test_graded_current_forward_has_finite_gradients(record_property):
     for name, values in [('plain', plain), ('jit', compiled)]:
         nonfinite = int(np.count_nonzero(~np.isfinite(values)))
         record_property(name + '_nonfinite', nonfinite)
-        assert nonfinite == 0  # E4: no non-finite gradient entries on either trace.
+        assert nonfinite == 0

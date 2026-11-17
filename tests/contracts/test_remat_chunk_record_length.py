@@ -19,9 +19,9 @@ QUANTITIES = ('probe', 's11', 'dft', 'flux', 'flux_dfts', 'E', 'H')
 @pytest.mark.parametrize('lengths', CHUNKS + NESTED_CHUNKS)
 @pytest.mark.parametrize('n', [1, 23, 60, 97, 118])
 def test_nested_record_has_exactly_the_requested_steps(lengths, n):
+    """A clock and cumulative measurement expose even zero-valued padding."""
     from rfx.stepping.remat import segmented_scan
     xs = jnp.arange(n, dtype=jnp.float32) + 1
-    # A clock and cumulative measurement expose even zero-valued padding.
     def step(carry, x):
         clock, total = carry
         return (clock + 1, total + x), (clock, total)
@@ -32,7 +32,6 @@ def test_nested_record_has_exactly_the_requested_steps(lengths, n):
 
 
 def _scene(*, distributed=False):
-    # Issue-1683 scene, retained at its original size and source duration.
     dx = 1e-3
     profile = np.full(24, dx)
     profile[10:14] = 0.5e-3
@@ -101,6 +100,7 @@ def records(request):
 @pytest.mark.parametrize('chunk', CHUNKS + NESTED_CHUNKS)
 @pytest.mark.parametrize('quantity', QUANTITIES)
 def test_forward_record_length(records, chunk, quantity, record_property):
+    """Checkpointed and uncheckpointed records execute the same steps in the same order, so the difference bar is zero."""
     lane, values = records
     if lane == 'distributed' and isinstance(chunk, tuple):
         pytest.skip('graded multi-device explicitly refuses checkpoint_every tuples')
@@ -118,7 +118,6 @@ def test_forward_record_length(records, chunk, quantity, record_property):
                        peak=peak, difference=delta, peak_ulps=delta/ulp)
     record_property('measurement', json.dumps(measurement))
     print(json.dumps(measurement))
-    # Declared before the run: the same steps in the same order, so bitwise.
     bar = 0.0
     assert delta <= bar, measurement
 
