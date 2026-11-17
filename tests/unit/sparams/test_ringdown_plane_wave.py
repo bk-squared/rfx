@@ -14,6 +14,7 @@ still holds the pulse refuses.
 """
 from functools import lru_cache
 import re
+import sys
 from unittest.mock import patch
 
 import jax
@@ -22,7 +23,8 @@ import numpy as np
 import pytest
 
 from tests._closed_box_plane_wave import (F0, declare, level, line, pulse_end, recorded_maxima,
-                                          same_level, slotted_box, windows)
+                                          same_level, slotted_box, window_class, window_starts,
+                                          windows)
 from rfx import GaussianPulse, ringdown as rd
 from rfx.errors import RfxUnsupported
 from rfx.ringdown._admission import refuse_forward_request, refuse_run_request
@@ -81,9 +83,16 @@ def test_a_continuous_wave_is_refused():
     (CustomWaveform(lambda t: jnp.exp(-((t - 2e-9) / 4e-10) ** 2)), "a CustomWaveform"),
 ], ids=["modulated", "custom"])
 def test_another_waveform_is_refused_by_name(waveform, name):
-    message = refusal(lambda: declare({"waveform": waveform}), probe_spec(), RfxUnsupported)
-    assert ("the source-off level of a closed-box plane wave is measured for the "
-            f"differentiated Gaussian only; this plane wave is driven by {name}") in message
+    sim = declare({"waveform": waveform})
+    reason = ("the source-off level of a closed-box plane wave is measured for the "
+              f"differentiated Gaussian only; this plane wave is driven by {name}.")
+    checks = {"run": lambda: refuse_run_request(sim, probe_spec(), devices=None, until_decay=None,
+                                                compute_s_params=None),
+              "forward": lambda: refuse_forward_request(sim, probe_spec(), distributed=False,
+                                                        emit_time_series=True)}
+    for caller, check in checks.items():
+        with pytest.raises(RfxUnsupported, match=re.escape(f"{caller}(ringdown=...): {reason}")):
+            check()
 
 
 def test_oblique_incidence_is_refused():
@@ -127,11 +136,8 @@ def test_a_line_that_cannot_be_formed_is_refused_by_the_plane_wave_label(entry, 
         getattr(declare(), entry)(n_steps=400, ringdown=probe_spec(), skip_preflight=True)
 
 
-@lru_cache(maxsize=None)
-def completed(entry, n, checkpoint=False):
-    """``entry`` on the slotted box for ``n`` steps, with the source-off rows the check returned."""
-    sim, probes, _ = slotted_box()
-    options = {"checkpoint": True} if checkpoint else {}
+def checked(call):
+    """``call()``'s value and the source-off rows the check returned inside it, under any transform."""
     seen = []
     original = rd.RingdownRun._check_sources_off
 
@@ -141,9 +147,17 @@ def completed(entry, n, checkpoint=False):
         return rows
 
     with patch.object(rd.RingdownRun, "_check_sources_off", capture):
-        result = getattr(sim, entry)(n_steps=n, ringdown=probe_spec(probes), skip_preflight=True,
-                                     **options)
-    return result, seen[-1]
+        value = call()
+    return value, seen[-1]
+
+
+@lru_cache(maxsize=None)
+def completed(entry, n, checkpoint=False):
+    """``entry`` on the slotted box for ``n`` steps, with the source-off rows the check returned."""
+    sim, probes, _ = slotted_box()
+    options = {"checkpoint": True} if checkpoint else {}
+    return checked(lambda: getattr(sim, entry)(n_steps=n, ringdown=probe_spec(probes),
+                                               skip_preflight=True, **options))
 
 
 def own_row(n):
@@ -205,3 +219,35 @@ def test_run_and_forward_read_the_same_rows_and_spectra(face_record):
     b = np.asarray(run.ringdown.probe_spectra)
     error = np.max(np.abs(a - b), axis=0) / np.max(np.abs(b), axis=0)
     assert np.all(error <= 1e-3), error
+
+
+@lru_cache(maxsize=None)
+def scaled_forward():
+    """``forward`` on the slotted box at 4,000 steps with its realized permittivity scaled."""
+    sim, probes, _ = slotted_box()
+    eps = jnp.asarray(np.asarray(sim.realized_geometry().materials.eps_r), jnp.float32)
+
+    def spectra(scale):
+        return sim.forward(n_steps=4000, ringdown=probe_spec(probes), skip_preflight=True,
+                           eps_override=eps * scale).ringdown.probe_spectra
+    return spectra, sim
+
+
+@pytest.mark.parametrize("transform", [pytest.param("grad", marks=pytest.mark.slow), "jit"])
+def test_a_traced_forward_reads_the_plane_wave_at_the_untraced_level(transform):
+    spectra, sim = scaled_forward()
+
+    def loss(scale):
+        return jnp.sum(jnp.abs(spectra(scale)) ** 2)
+
+    call = {"grad": lambda: jax.grad(loss)(jnp.float32(1.0)),
+            "jit": lambda: jax.jit(spectra)(jnp.float32(1.0))}[transform]
+    value, (rows, _) = checked(call)
+    _, (plain, _) = checked(lambda: spectra(jnp.float32(1.0)))
+    assert np.all(np.isfinite(np.asarray(value)))
+    n_end = pulse_end(level(*recorded_maxima(sim, 4000)[:2]))
+    start = window_starts(4000)["admission"]
+    traced, untraced = ((start, r[0][1], window_class(start, r[0][1], n_end)) for r in (rows, plain))
+    print(f"{transform}: traced row {rows}, untraced row {plain}, bit-equal {rows == plain}",
+          file=sys.stderr)
+    assert rows[0][0] == plain[0][0] == PLANE_WAVE_LABEL and same_level(traced, untraced), (rows, plain)
