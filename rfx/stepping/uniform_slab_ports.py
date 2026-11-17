@@ -23,10 +23,10 @@ class UniformPortPlan:
     """Canonical port tables and result metadata shared by both slab loops."""
 
     def __init__(self, grid, entries, specs, boundary, dtype, freqs):
+        """The attached plan's owners and table arrive by use_plan_tables."""
         from rfx._internal._uniform_specs import WirePortSParamSpec, LumpedPortSParamSpec
         self.specs = tuple(specs)
         self.dt = grid.dt
-        # The attached plan's owners and table arrive by use_plan_tables.
         self.owners = self.table = None
         self.metadata = []
         if freqs is not None:
@@ -61,8 +61,8 @@ class UniformSlabPorts(UniformPortPlan):
 
     def __init__(self, grid, entries, specs, boundary, layout, mesh, n_steps,
                  dtype, freqs, *, measurement, record_vref=True):
+        """Record ports only; every probe owner of the plan is skipped."""
         super().__init__(grid, entries, specs, boundary, dtype, freqs)
-        # This loop records ports only; every probe owner of the plan is skipped.
         n_probes = sum(o.kind in ('probe', 'identification') for o in measurement.owners)
         tables = plan_tables(measurement, n_probes=n_probes, port_specs=self.specs, dtype=dtype)
         self.use_plan_tables(tables['port_owners'], tables['port_table'])

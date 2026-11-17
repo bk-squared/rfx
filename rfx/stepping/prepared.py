@@ -31,11 +31,13 @@ def release_dense(product):
 
 
 def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
-    """Step with the product taken by the runner, using its final operands."""
+    """Step with the product taken by the runner, using its final operands.
+
+    One-device and wrapped slab steps sample from the attached plan; the
+    subgridded plan carries no channels (its runner owns sampling).
+    """
     args = list(args)
     layout = _operand_layout
-    # One-device and wrapped slab steps sample from the attached plan; the
-    # subgridded plan carries no channels (its runner owns sampling).
     plan = getattr(getattr(product, "_prepared_solve", None), "measurement", None)
     attached = plan is not None and plan.path != "run_subgridded"
     if attached and layout in ("grid", "wrapped_uniform_slab", "graded_slab"):
