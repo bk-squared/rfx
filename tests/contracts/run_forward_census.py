@@ -188,6 +188,40 @@ def build_p_msl(path):
     return sim
 
 
+def build_p_msl_s(path):
+    # Copied from tests/contracts/run_forward_census.py:174-188; only source=False added.
+    # Layout: tests/unit/preflight/test_line_stub.py:278-289, strip starts at
+    # the port plane and reaches the domain end, over substrate and ground.
+    # Relative to base: x domain 30 -> 40 mm; substrate/ground added; strip
+    # x=6..40 mm, y=10..14 mm, z=3 mm. Base probe retained; no source.
+    sim = base_scene(path, source=False, domain=(.040, .020, .012))
+    sim.add_material('sub', eps_r=2.2)
+    sim.add(Box((0., 0., 0.), (.040, .020, .003)), material='sub')
+    sim.add(Box((0., 0., 0.), (.040, .020, 0.)), material='pec')
+    trace_z = sum(v * .001 for v in PROFILE[:3]) if path in ('graded', 'multi-device-graded') else 3 * .001
+    sim.add(Box((.006, (10 - .35) * .001, trace_z), (.040, (14 + .35) * .001, trace_z)), material='pec')
+    sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
+                     direction='+x', impedance=50., eps_r_sub=2.2,
+                     n_probe_offset=3, n_probe_spacing=2, n_probes=3)
+    return sim
+
+
+def msl_noop_eps_override(sim, path):
+    import jax.numpy as jnp
+
+    if path == 'uniform':
+        # tests/unit/autodiff/test_msl_forward_identity.py:146-155.
+        grid = sim._build_grid()
+        materials = sim._assemble_materials(
+            grid, sheet_specs=[], pec_sheets=[], pec_wires=[])[0]
+    else:
+        # The graded lane's grid: rfx/runners/nonuniform.py:712.
+        grid = sim._build_nonuniform_grid()
+        materials = sim._assemble_materials_nu(
+            grid, sheet_specs=[], pec_sheets=[], pec_wires=[])[0]
+    return jnp.asarray(materials.eps_r)
+
+
 def build_p_waveguide(path):
     # Replaces boundary with y/z PEC; full aperture (default ranges).
     return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
