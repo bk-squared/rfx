@@ -99,7 +99,7 @@ class _StaticKey:
         return isinstance(other, _StaticKey) and self.key == other.key
 
     def __reduce__(self):
-        # Identity keys must refer to the restored object after copying.
+        """Rebuild from the value, so a copied identity key refers to the restored object."""
         return type(self), (self.value,)
 
 
