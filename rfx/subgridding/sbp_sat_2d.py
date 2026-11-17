@@ -269,8 +269,6 @@ def compute_energy_2d(state: SubgridState2D, config: SubgridConfig2D) -> float:
 
     Coarse energy is computed excluding the fine region, then fine energy
     is added separately.
-
-    The coarse sum covers the full coarse domain, overlap included.
     """
     dx_c2 = config.dx_c ** 2
     dx_f2 = config.dx_f ** 2

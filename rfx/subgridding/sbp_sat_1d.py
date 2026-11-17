@@ -241,8 +241,7 @@ def step_subgrid_1d(
     not cause instability.
 
     The shared node sits between ``h_c[-1]`` (left, coarse) and ``h_f[0]``
-    (right, fine), and its update is
-    ``E_shared += (dt / eps0) * (h_f[0] - h_c[-1]) / (dx_c/2 + dx_f/2)``.
+    (right, fine).
     """
     dt = config.dt
     dx_c, dx_f = config.dx_c, config.dx_f
