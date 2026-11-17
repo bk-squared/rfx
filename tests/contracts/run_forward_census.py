@@ -123,6 +123,33 @@ def build_pw_closed(path):
     return base_scene(path, source=False).add_tfsf_source(closed_box=True)
 
 
+def build_plane_wave_companion(path, *, first=False, port=False, closed_box=True):
+    sim = base_scene(path, source=False)
+
+    def companion():
+        if port:
+            sim.add_port(SOURCE, 'ez', impedance=50.)
+        else:
+            sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+
+    if first:
+        companion()
+    sim.add_tfsf_source(closed_box=closed_box)
+    if not first:
+        companion()
+    return sim
+
+
+def build_waveguide_soft_source(path, *, first=False):
+    sim = base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec'))
+    if first:
+        sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+    sim.add_waveguide_port(.006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
+    if not first:
+        sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+    return sim
+
+
 def build_p_lumped(path):
     return base_scene(path, source=False).add_port(SOURCE, 'ez', impedance=50.)
 
@@ -339,6 +366,14 @@ BUILDERS = {
     'B-asym': build_b_asym, 'B-closed': build_b_closed,
     'S-field': build_s_field, 'S-polarized': build_s_polarized,
     'PW-A': build_pw_a, 'PW-B': build_pw_b, 'PW-oblique': build_pw_oblique,
+    'PW-closed-soft-last': build_plane_wave_companion,
+    'PW-closed-soft-first': partial(build_plane_wave_companion, first=True),
+    'PW-port-last': partial(build_plane_wave_companion, port=True),
+    'PW-port-first': partial(build_plane_wave_companion, port=True, first=True),
+    'PW-slab-soft-last': partial(build_plane_wave_companion, closed_box=False),
+    'PW-slab-soft-first': partial(build_plane_wave_companion, closed_box=False, first=True),
+    'WG-soft-last': build_waveguide_soft_source,
+    'WG-soft-first': partial(build_waveguide_soft_source, first=True),
     'PW-closed': build_pw_closed, 'P-lumped': build_p_lumped,
     'P-lumped2': build_p_lumped2, 'P-wire': build_p_wire,
     'P-wire-driven': build_p_wire_driven,
@@ -935,3 +970,35 @@ def port_s_pair(declaration, path, *, n_steps=150):
         assert np.isnan(actual[:, column]).all()
     return {'run': {'outcome': 'admitted', 'result': run},
             'forward': {'outcome': 'admitted', 'result': forward}}
+
+
+def build_s_request_declaration(path, *, kind):
+    """Explicit S declarations, independently of fields-only companion scenes."""
+    if kind == 'soft':
+        return BUILDERS['S-field'](path)
+    if kind == 'plane-soft':
+        sim = base_scene(path, source=False)
+        sim.add_tfsf_source(closed_box=True)
+        sim.add_source(SOURCE, 'ez')
+        return sim
+    if kind == 'soft-plane':
+        sim = base_scene(path, source=False)
+        sim.add_source(SOURCE, 'ez')
+        sim.add_tfsf_source(closed_box=True)
+        return sim
+    if kind in ('msl', 'msl-only'):
+        from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
+        sim, y_c = _base_sim()
+        if kind == 'msl':
+            _add_feed(sim, y_c)
+        _add_msl(sim, y_c)
+        return sim
+    assert kind == 'floquet'
+    sim = base_scene(path, source=False, boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'))
+    sim.add_floquet_port(.003, freqs=np.array([10e9]), f0=10e9)
+    sim.add_port(SOURCE, 'ez', impedance=50.)
+    return sim
+
+
+S_REQUEST_BUILDERS = {kind: partial(build_s_request_declaration, kind=kind)
+                      for kind in ('soft', 'plane-soft', 'soft-plane', 'msl-only', 'msl', 'floquet')}

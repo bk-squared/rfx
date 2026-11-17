@@ -202,7 +202,7 @@ def test_library_probes_are_not_listed_as_the_users():
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_tfsf_box_is_the_one_the_run_injects(graded, monkeypatch):
-    # TFSF refuses soft sources and lumped ports, so it gets its own scene.
+    # The slab plane wave requires transverse invariance, so it gets its own scene.
     from rfx.sources.tfsf import tfsf_injection_planes
     kw = dict(dz_profile=DZ) if graded else {}
     sim = Simulation(freq_max=10e9, domain=(0.016, 0.012, 0.0 if graded else 0.012),
