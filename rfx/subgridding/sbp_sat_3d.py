@@ -51,9 +51,7 @@ C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 class SubgridConfig3D(NamedTuple):
     """Configuration for 3D SBP-SAT subgridding.
 
-    The coarse grid covers the full domain.  ``fi_lo`` to ``fk_hi`` give the
-    fine region in coarse indices.  ``dt`` is the global time step of both
-    grids, limited by the fine-grid CFL.  ``tau`` scales the SAT penalty.
+    ``fi_lo`` to ``fk_hi`` give the fine region in coarse indices.
     """
     nx_c: int
     ny_c: int
@@ -108,11 +106,6 @@ def init_subgrid_3d(
     tau : float
         SAT penalty coefficient (default 0.5). Higher values give
         stronger coupling but more dissipation.
-
-    Notes
-    -----
-    ``dt`` is ``courant`` times the 3D CFL limit of the fine grid,
-    ``dx_f / (c0 * sqrt(3))``.
     """
     nx_c, ny_c, nz_c = shape_c
     fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi = fine_region
@@ -215,13 +208,6 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
     where alpha = tau * min(dx_other/dx_self, 1.0) for stability.
 
     The penalty follows the energy analysis of Cheng et al., IEEE TAP 2025.
-    Energy conservation requires ``alpha_c + alpha_f = 1`` (total penalty
-    equals the full correction) and ``alpha_c * dx_c = alpha_f * dx_f`` (SBP
-    norm symmetry).  Solving gives ``alpha_f = ratio / (ratio + 1)`` and
-    ``alpha_c = 1 / (ratio + 1)``; for ``ratio = 3``, ``alpha_f = 0.75`` and
-    ``alpha_c = 0.25``, which sum to 1.0.  ``config.tau`` scales both:
-    ``tau = 1.0`` is energy-conservative, ``tau < 1.0`` dissipative but
-    stable, and ``tau > 1.0`` unstable.
     """
     ex_c, ey_c, ez_c = state_c_fields[:3]
     ex_f, ey_f, ez_f = state_f_fields[:3]
@@ -382,12 +368,6 @@ def step_subgrid_3d(
         Materials for coarse/fine grids. None = vacuum.
     pec_mask_c, pec_mask_f : array or None
         Boolean PEC masks for coarse/fine grids.
-
-    Notes
-    -----
-    Neither H nor E has a fine-to-coarse overlay injection: overlay
-    injection was tested and causes instability through a coarse curl
-    inconsistency at the injection boundary.
     """
     from rfx.sources.wire_radius import require_radius_update
     for mats in (mats_c, mats_f):

@@ -133,10 +133,6 @@ def _shared_node_update_2d(ez_c, ez_f, hx_c, hy_c, hx_f, hy_f, config):
     At the interface, the curl uses H from the appropriate grid:
     - H inside the coarse region → coarse H
     - H inside the fine region → fine H (downsampled to coarse spacing)
-
-    On the left interface the coarse Ez at ``i = fi_lo`` is shared with the
-    fine Ez at row ``0``, and the coarse Hy just outside it is
-    ``hy_c[fi-1, fj:fj+nj]``.
     """
     dt = config.dt
     _dx_c, _dx_f = config.dx_c, config.dx_f
@@ -204,10 +200,6 @@ def step_subgrid_2d(
     Uses shared-node interface coupling (same approach as 1D) for
     energy conservation. The interface Ez nodes are updated using
     H from both grids weighted by the combined SBP norm.
-
-    After both grids are updated, the interface Ez is synchronised to the
-    SBP-norm weighted average ``(w_c * ez_c + w_f * ez_f) / p_shared`` with
-    ``w_c = dx_c/2`` and ``w_f = dx_f/2``.
     """
     dt = config.dt
     dx_c, dx_f = config.dx_c, config.dx_f
@@ -278,8 +270,7 @@ def compute_energy_2d(state: SubgridState2D, config: SubgridConfig2D) -> float:
     Coarse energy is computed excluding the fine region, then fine energy
     is added separately.
 
-    The coarse sum covers the full coarse domain, overlap included; the
-    overlap is taken as a small correction.
+    The coarse sum covers the full coarse domain, overlap included.
     """
     dx_c2 = config.dx_c ** 2
     dx_f2 = config.dx_f ** 2

@@ -3,11 +3,6 @@
 Production runs are refused: this lane is unstable and unverified.
 The remaining checks describe experimental configurations, not evidence of
 physics support. Research/off are explicit diagnostic opt-ins.
-
-``validate_subgrid`` reaches ``Simulation`` by a class-body import, so its
-``__qualname__`` is set to ``Simulation.validate_subgrid`` explicitly: a
-module-level ``def`` gets the bare name, and a ``TypeError`` would otherwise
-not name ``Simulation.validate_subgrid()``.
 """
 
 from __future__ import annotations
@@ -141,14 +136,7 @@ def overlap_fine_extent(coarse_extent: int, ratio: int) -> int:
 
 
 def build_subgrid_region(sim, grid) -> SubgridRegion | None:
-    """Return the runner's coarse/fine index mapping, or ``None``.
-
-    The fine-grid extent uses the node-aligned convention
-    ``(hi - lo - 1) * ratio + 1`` shared with the overlap runner in
-    ``rfx.runners.subgridded`` via ``overlap_fine_extent``.  The cell-extent
-    ``(hi - lo) * ratio`` form over-reports the fine shape by ``ratio - 1``
-    nodes per axis relative to the fine grid the runner builds.
-    """
+    """Return the runner's coarse/fine index mapping, or ``None``."""
     ref = getattr(sim, "_refinement", None)
     if ref is None:
         return None
@@ -207,9 +195,7 @@ def build_stage2_disjoint_region(sim, grid) -> SubgridRegion:
 
     The Stage-2 disjoint runner contract (``build_disjoint_runner_contract``)
     defaults to the cell-extent convention ``(hi - lo) * ratio``, and this
-    region matches that default.  This intentionally differs from the
-    node-aligned overlap convention: each topology's region matches its own
-    runner.
+    region matches that default.
     """
     ratio = int(sim._refinement["ratio"])
     z_lo, z_hi = sim._refinement["z_range"]
@@ -396,7 +382,6 @@ def _material_transition_clearance_violations(
 
 
 def _position_inside_fine(pos, sim, region: SubgridRegion) -> bool:
-    """Judge by physical extents rather than only by rounded indices."""
     z_lo, z_hi = sim._refinement["z_range"]
     tol = 0.5 * region.dx_f
     xy_margin = sim._refinement.get("xy_margin")
@@ -457,8 +442,6 @@ def _guarded_boundary_production_allowed(
     is also allowed when the refined slab touches a PEC z face, the opposite z
     face may be absorbing, and x/y are closed PEC faces.  This avoids claiming
     fine-grid CPML support on faces touched by the refined region.
-
-    Fine x/y faces have no fine-grid CPML implementation.
     """
     if physical_boundary is None or xy_margin is not None:
         return False
@@ -581,20 +564,8 @@ def validate_subgrid_setup(
     refuse it.  This lane realizes volumes only, so their presence is an
     error here, in the same words the runner uses.
 
-    The sheet and wire check runs before the region is built, because it
-    does not depend on one.  Artificial z interfaces can use the
-    material-weighted SAT only for a static material load that is continuous
-    across the interface; a true material discontinuity at an artificial
-    coarse/fine interface remains fail-closed until the material-jump
-    waveform gate passes.  The PEC interface check reads ``pec_mask`` as a
-    cell mask, because the question is which cells at the coarse/fine
-    interface carry metal, not which E edges are shorted.  NTFF accumulation
-    occurs on the fine-grid surface and is permitted in the same guarded
-    full-x/y one-sided boundary envelope as the time-domain public path,
-    including the narrow closed-face/opposite-z CPML lane.  This is a finite
-    public-path claim only; external open-boundary radiation accuracy
-    remains a separate crossval gate.  Opting in permits diagnostics, not a
-    physics-support claim.
+    The PEC interface check reads ``pec_mask`` as a cell mask, not as a mask
+    of shorted E edges.
     """
     issues: list[SubgridValidationIssue] = []
     ref = getattr(sim, "_refinement", None)
@@ -1151,11 +1122,6 @@ def validate_subgrid(self, *, mode: str | None = None) -> SubgridValidationRepor
         Every mode reports the subgridded lane as unsupported because it is
         unstable and unverified. Experimental envelope checks remain
         available for research diagnostics; opting in does not confer support.
-
-        Sheets and wires own no cell, so a validator handed only ``pec_mask``
-        cannot see them, and this lane cannot realize them
-        (``run(solver='subgridded')`` refuses); they are collected and passed
-        so the report refuses the same models the runner does.
         """
     self._require_uniform_mesh("validate_subgrid")
     if self._refinement is None:

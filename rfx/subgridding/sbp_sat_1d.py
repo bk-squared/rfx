@@ -127,12 +127,7 @@ def build_interpolation_f2c(n_fine: int, n_coarse: int, ratio: int) -> np.ndarra
 class SubgridConfig1D(NamedTuple):
     """Configuration for 1D SBP-SAT subgridded domain.
 
-    ``n_c`` and ``n_f`` count the E-nodes of the coarse and fine grids.
-    ``dx_c`` and ``dx_f`` are the coarse and fine cell sizes.  ``dt`` is the
-    fine-grid time step.  ``ratio`` is the grid ratio ``dx_c / dx_f``.
-    ``tau`` is the semi-discrete SAT penalty parameter.  ``p_c`` and ``p_f``
-    are the SBP norms of the coarse grid, shape ``(n_c,)``, and of the fine
-    grid, shape ``(n_f,)``.
+    ``n_c`` and ``n_f`` count E-nodes, and ``dt`` is the fine-grid time step.
     """
     n_c: int
     n_f: int
@@ -151,9 +146,8 @@ class SubgridState1D(NamedTuple):
     The interface is between e_c[-1] and e_f[0].  These represent the
     same physical point and are kept synchronised (``e_c[-1] == e_f[0]``).
 
-    ``e_c`` and ``e_f`` hold Ez on the coarse grid, shape ``(n_c,)``, and on
-    the fine grid, shape ``(n_f,)``; ``h_c`` and ``h_f`` hold Hy, shapes
-    ``(n_c-1,)`` and ``(n_f-1,)``.
+    ``h_c`` and ``h_f`` hold Hy, one entry shorter than ``e_c`` and ``e_f``,
+    which hold Ez.
     """
     e_c: jnp.ndarray
     h_c: jnp.ndarray
@@ -246,17 +240,9 @@ def step_subgrid_1d(
     (zeroth-order hold) introduces an O(dt_c) splitting error which does
     not cause instability.
 
-    The combined norm ``dx_c/2 + dx_f/2`` is the total volume of the shared
-    E-node, a half cell on each side.  The shared node sits between
-    ``h_c[-1]`` (left, coarse) and ``h_f[0]`` (right, fine), and its update
-    is the Yee update generalised to the combined cell,
-    ``E_shared += (dt / eps0) * (h_f[0] - h_c[-1]) / P_shared``.  The outer
-    ends are PEC: ``e_f[-1]`` is set to zero after each fine E update and
-    ``e_c[0]`` after the coarse E update.  The coarse H update reads the
-    shared node ``e_c[-1]`` as updated during the fine sub-steps.
-    ``_update_e_1d`` changes only indices ``1:-1``, so the coarse E update
-    leaves ``e_c[-1]`` untouched and ``e_c[-1] == e_f[0]`` still holds after
-    the step.
+    The shared node sits between ``h_c[-1]`` (left, coarse) and ``h_f[0]``
+    (right, fine), and its update is
+    ``E_shared += (dt / eps0) * (h_f[0] - h_c[-1]) / (dx_c/2 + dx_f/2)``.
     """
     dt = config.dt
     dx_c, dx_f = config.dx_c, config.dx_f
@@ -298,9 +284,6 @@ def compute_energy(state: SubgridState1D, config: SubgridConfig1D) -> float:
     To avoid double-counting the shared interface node, we use the
     SBP norm weights: the shared node gets ``dx_c/2 + dx_f/2`` total
     weight, split between the two grids.
-
-    The E energy weights interior nodes by ``dx_c`` or ``dx_f`` and boundary
-    nodes by ``dx_c/2`` or ``dx_f/2``.
     """
     energy_e_c = float(jnp.sum(state.e_c ** 2 * config.p_c)) * EPS_0
     energy_h_c = float(jnp.sum(state.h_c ** 2)) * MU_0 * config.dx_c

@@ -18,9 +18,6 @@ This is still a standalone research prototype, not a promoted
 ``Simulation.add_refinement`` support lane.  It provides physical
 evidence for the conservative disjoint topology before any public API
 integration.
-
-This research topology accepts vacuum fields only, with no material input,
-so ``_VACUUM_MU``, ``C0`` and ``Z0`` are vacuum values.
 """
 
 from __future__ import annotations
@@ -295,11 +292,7 @@ def step_disjoint_topology_3d(
     This function intentionally has no interface coupling yet.
 
     The fine block's six faces are artificial coarse/fine interfaces, not
-    physical PEC walls.  Leaving them un-zeroed lets the SAT terms carry
-    tangential fields across the interface instead of first clamping them to
-    a conductor boundary.  The prototype still uses zero-padded curl stencils
-    at those faces until the paper-derived interface closure replaces this
-    slice.
+    physical PEC walls.
     """
     state = zero_coarse_hole(state, config)
     ex_c, ey_c, ez_c, hx_c, hy_c, hz_c = _yee_step(
