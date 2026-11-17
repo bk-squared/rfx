@@ -3,9 +3,12 @@
 import json
 from pathlib import Path
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
+import rfx.sparams._tail_witness as tail_witness
 from rfx.sparams._tail_witness import tail_share_witness
 
 DT = .4
@@ -91,12 +94,11 @@ def test_frozen_record(name, bins, fmax):
 
 
 def test_identification_exception_is_reported(monkeypatch):
-    import rfx.ringdown
-
     def raises(*args, **kwargs):
         raise np.linalg.LinAlgError('test pencil failure')
 
-    monkeypatch.setattr(rfx.ringdown, 'identify', raises)
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=raises))
     result = witness(modes(300))
     assert result.status == 'undetermined'
     assert 'test pencil failure' in result.reason
@@ -253,7 +255,8 @@ def test_second_window_uses_shorter_window_when_source_ends_after_quarter(monkey
         windows.append((start, stop))
         return original(series, dt, start, stop, **kwargs)
 
-    monkeypatch.setattr(rd, 'identify', capture)
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=capture))
     witness(modes(1000), source_end=350)
     assert windows == [(500, 1000), (500, 950)]
 
@@ -292,7 +295,6 @@ def test_two_modes_still_ring_at_both_own_bins():
 
 
 def test_no_kept_poles_has_explicit_reason(monkeypatch):
-    from dataclasses import replace
     import rfx.ringdown as rd
 
     original = rd.identify
@@ -301,7 +303,8 @@ def test_no_kept_poles_has_explicit_reason(monkeypatch):
         model = original(*args, **kwargs)
         return replace(model, s=model.s[:0], c=model.c[:0], s_growing=np.array([]))
 
-    monkeypatch.setattr(rd, 'identify', empty)
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=empty))
     result = witness(modes(1000))
     assert result.status == 'undetermined'
     assert 'no kept poles identified' in result.reason
@@ -353,7 +356,10 @@ def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout
     if family == 'wire':
         ports = dict(s_params=np.zeros((1, 1, 1), np.complex64),
                      sparam_read_ids=SReadPorts(('port:0:mode:0',)),
-                     sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None]),))
+                     sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V_port', 'I'),
+                    np.column_stack([port, port/100.]), ('ez', 0, 0, 0)),),
+                     wire_port_sparams=((SimpleNamespace(impedance=50., live_cells=((0, 0, 0),),
+                         component='ez', mid_i=0, mid_j=0, mid_k=0, excite=True), None),))
     else:
         incident = np.zeros(len(t))
         incident[0] = 1.
