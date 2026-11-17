@@ -519,7 +519,6 @@ def fit_lorentz(
         return float(np.sqrt(np.mean((residual.real / w_re) ** 2
                                      + (residual.imag / w_im) ** 2)))
 
-    # Shift the log-spaced comb across the full measured span.
     starts = max(1, int(np.ceil(np.log(f_max / f_min) / (2 * np.log(1.1)))))
     results = []
     for k in range(starts):
@@ -532,7 +531,6 @@ def fit_lorentz(
                        options={"maxiter": 5000, "ftol": 1e-14})
         results.append(res)
 
-    # Keep the first start when objectives tie within 1e-12 relative.
     best = 0
     for i in range(1, len(results)):
         a, b = results[i].fun, results[best].fun
