@@ -15,9 +15,12 @@ from rfx.preflight._common import (
     PreflightErrorWarning, PreflightIssue, PreflightReport, PreflightWarning,
 )
 from rfx.model.conductors import prepare_solve
+from rfx.preflight._not_judged import (
+    judge_or_report, preflight_scope, reporting_to,
+)
 
 
-def _preflight_impl(
+def _preflight_impl_body(
     self,
     *,
     strict: bool = False,
@@ -29,6 +32,7 @@ def _preflight_impl(
     _conductors=None,
     _tfsf_material_overrides=(),
     _conformal_run=None,
+    _traced_entry=None,
     _conductor_operator=None,
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
@@ -121,18 +125,21 @@ def _preflight_impl(
                 source=cast(str | None, getattr(overlap_error, "source"))))
         try:
             from rfx.model.thin_conductors import warn_dc_films
-            warn_dc_films(self, warnings)
+            judge_or_report("warn_dc_films", lambda: warn_dc_films(self, warnings), issues)
             if check_resolution:
-                self._validate_mesh_quality()
-            self._validate_simulation_config()
+                judge_or_report("_validate_mesh_quality", self._validate_mesh_quality, issues)
+            judge_or_report("_validate_simulation_config", self._validate_simulation_config, issues)
             from rfx.boundaries.tfsf import report
-            report(self, issues, root=_conductors, material_overrides=_tfsf_material_overrides)
+            judge_or_report(
+                "report", lambda: report(self, issues, root=_conductors,
+                    material_overrides=_tfsf_material_overrides), issues)
             from rfx.model.pad_fill import report_pad_fill
-            report_pad_fill(self, issues)
+            judge_or_report("report_pad_fill", lambda: report_pad_fill(self, issues), issues)
             if check_ntff:
-                self._validate_ntff_inverse_design(
-                    include_pec_overlap_error=(check_ntff != "advisory"),
-                )
+                judge_or_report(
+                    "_validate_ntff_inverse_design", lambda: self._validate_ntff_inverse_design(
+                        include_pec_overlap_error=(check_ntff != "advisory")),
+                    issues)
         except ValueError as e:
             # Collect (do NOT fail-on-first): the aggregated raise at the
             # end escalates every finding at once under strict.
@@ -264,7 +271,8 @@ def _preflight_impl(
             issues[:] = [issue for issue in issues if issue.code not in assembly_codes]
 
     from rfx.preflight._subjects import resolve_findings
-    resolve_findings(issues)
+    with reporting_to(issues):
+        resolve_findings(issues)
     if strict and len(issues):   # PreflightReport refuses bool()
         # Aggregate-then-raise: escalate ALL findings at once. Preserves the
         # historical "strict escalates any issue to ValueError" contract,
@@ -295,6 +303,33 @@ def _preflight_impl(
             print(f"  [FLUX REGION] {flux_region_message(record)}")
 
     return issues
+
+
+def _preflight_impl(
+    self,
+    *,
+    strict: bool = False,
+    check_ntff: bool | str = True,
+    check_resolution: bool = True,
+    check_ad_memory: bool = False,
+    n_steps_for_memory: int | None = None,
+    available_memory_gb: float | None = None,
+    _conductors=None,
+    _tfsf_material_overrides=(),
+    _conformal_run=None,
+    _traced_entry=None,
+    _conductor_operator=None,
+) -> "PreflightReport":
+    """Scope traced-input names and reporting to this preflight call."""
+    with preflight_scope(self, {} if _traced_entry is None else _traced_entry):
+        return _preflight_impl_body(
+            self, strict=strict, check_ntff=check_ntff,
+            check_resolution=check_resolution, check_ad_memory=check_ad_memory,
+            n_steps_for_memory=n_steps_for_memory, available_memory_gb=available_memory_gb,
+            _conductors=_conductors, _tfsf_material_overrides=_tfsf_material_overrides,
+            _conformal_run=_conformal_run, _traced_entry=_traced_entry,
+            _conductor_operator=_conductor_operator,
+        )
 
 
 # Restored so rfx/api/__init__.py rewrites it to "Simulation._preflight_impl" like every other moved preflight body.
@@ -382,6 +417,8 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
         return assembly if prepare else PreflightReport()
     if assembly is not None:
         conductors = assembly.realized()
+    traced_entry = dict(zip(
+        ("eps_override", "sigma_override", "mu_r_override"), tfsf_material_overrides))
     from rfx.model.source_admission import conductor_operator
     smoothing, resolved_conformal = realization_options or (False, conformal)
     if resolved_conformal is None:
@@ -391,10 +428,12 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     if (getattr(sim, "_tfsf", None) is not None or sim._waveguide_ports) and any(v is not None for v in tfsf_material_overrides):
         issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
             _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides,
-            _conformal_run=conformal, _conductor_operator=operator)
+            _conformal_run=conformal, _traced_entry=traced_entry,
+            _conductor_operator=operator)
     else:
         issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                                     _conductors=conductors, _conformal_run=conformal, _conductor_operator=operator)
+                                     _conductors=conductors, _conformal_run=conformal,
+                                     _traced_entry=traced_entry, _conductor_operator=operator)
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     if assembly is not None:

@@ -64,6 +64,8 @@ edge here reds most of the corpus rather than one line of one report.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import is_tracer_error, not_judged
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -100,7 +102,9 @@ def _shape_bounds(shape):
         blo = np.asarray(blo, dtype=np.float64)
         bhi = np.asarray(bhi, dtype=np.float64)
     except (TypeError, ValueError, AttributeError, IndexError,
-            NotImplementedError):
+            NotImplementedError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_campaign_statics")
         return None
     if blo.shape != (3,) or bhi.shape != (3,):
         return None
@@ -293,7 +297,9 @@ class _EntryRealization:
                 edges = _realized_edges_np(None, [sp], (), ctx.periodic, shape)
             else:
                 return None
-        except (ValueError, TypeError, IndexError):
+        except (ValueError, TypeError, IndexError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_cfg_campaign_statics")
             return None
         return int(sum(int(m.sum()) for m in edges))
 
@@ -504,11 +510,14 @@ class _CampaignStaticsContext:
                 return lo, hi
             try:
                 blo, bhi = sheet_bounds(shape)
-            except self._NARROW_EXCS:
+            except self._NARROW_EXCS as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_campaign_statics")
                 return None, None
             if blo is None or bhi is None:
                 return None, None
             if any(is_tracer(v) for v in jax.tree_util.tree_leaves((blo, bhi))):
+                not_judged(None, "_validate_cfg_campaign_statics")
                 return None, None  # Assembly owns the traced-shape refusal.
             blo = np.asarray(blo, dtype=np.float64)
             bhi = np.asarray(bhi, dtype=np.float64)
@@ -634,7 +643,9 @@ class _CampaignStaticsContext:
                 sheet = sheet_spec_from_shape(
                     solved, self.coords, self.cell_sizes, name=f'thin_conductor[{i}]',
                     lane=self.lane or '', refuse_thick=True, grid=self.grid)
-            except self._NARROW_EXCS:
+            except self._NARROW_EXCS as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_campaign_statics")
                 continue  # Assembly owns structural refusals.
             out.append(_EntryRealization(
                 label='add_thin_conductor(surface_impedance_f0=...)',
