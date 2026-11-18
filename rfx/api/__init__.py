@@ -106,6 +106,7 @@ from rfx.sources.tfsf_discrete_plane_wave import _bloch_cutoff_level_db  # noqa:
 
 
 from rfx.api._validators import (  # noqa: E402
+    _admit_declaration,
     _require_integral_param,
     _require_positive_finite_scalar,
     _positive_divisors,
@@ -746,8 +747,7 @@ class Simulation(
             (0.18 % amplitude) is a solver defect independent
             of this parameter.
         """
-        if component not in ("ex", "ey", "ez"):
-            raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        _admit_declaration("Simulation.add_source", locals())
         from rfx.api._source_semantics import (
             resolve_amplitude_kind, legacy_kind_description)
         resolved_kind = resolve_amplitude_kind(amplitude_kind)
@@ -800,6 +800,7 @@ class Simulation(
             ``'current'`` and warns once per simulation; pass the kind explicitly
             to silence the warning.
         """
+        _admit_declaration("Simulation.add_polarized_source", locals())
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
@@ -903,6 +904,7 @@ class Simulation(
         impedance : float — port impedance (default 50 ohm)
         waveform : excitation pulse (default GaussianPulse at freq_max/2)
         """
+        _admit_declaration("Simulation.add_coaxial_port", locals())
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
         from rfx.geometry.port_termination import resolve_terminates
@@ -1188,6 +1190,7 @@ class Simulation(
             1.2%) and closed the closed-box referee within 0.9% at all
             bins.
         """
+        _admit_declaration("Simulation.add_port", locals())
         from rfx.runners._admission import refuse_plane_wave_with_port
         refuse_plane_wave_with_port(self, adding="port")
         if component not in ("ex", "ey", "ez"):
@@ -1523,8 +1526,7 @@ class Simulation(
         the full series ADE current tracker.  To ensure the series ADE
         path is used, specify at least two non-zero components.
         """
-        if component not in ("ex", "ey", "ez"):
-            raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        _admit_declaration("Simulation.add_lumped_rlc", locals())
         if topology not in ("series", "parallel"):
             raise ValueError(f"topology must be 'series' or 'parallel', got {topology!r}")
         if R < 0 or L < 0 or C < 0:
@@ -1856,8 +1858,7 @@ class Simulation(
         name : str or None
             Optional name for the port. Auto-generated if None.
         """
-        if axis not in ("x", "y", "z"):
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+        _admit_declaration("Simulation.add_floquet_port", locals())
         if polarization not in ("te", "tm"):
             raise ValueError(f"polarization must be 'te' or 'tm', got {polarization!r}")
         if scan_theta < 0 or scan_theta >= 90:
@@ -1924,8 +1925,7 @@ class Simulation(
         component: str = "ez", *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a point field probe."""
-        if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            raise ValueError(f"component must be a field name, got {component!r}")
+        _admit_declaration("Simulation.add_probe", locals())
         self._probes.append(_ProbeEntry(position=position, component=component, allow_in_absorber=allow_in_absorber))
         return self
 
@@ -1938,6 +1938,7 @@ class Simulation(
         Records Ex, Ey, Ez, Hx, Hy, Hz; allow_in_absorber opts into pad positions.
         Results accessible via result.time_series columns [0..5].
         """
+        _admit_declaration("Simulation.add_vector_probe", locals())
         for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
             self._probes.append(_ProbeEntry(position=position, component=comp, allow_in_absorber=allow_in_absorber))
         return self
@@ -1982,6 +1983,7 @@ class Simulation(
         name : str or None
             Optional result key.
         """
+        _admit_declaration("Simulation.add_dft_plane_probe", locals())
         from rfx.measurement import register_plane
         return register_plane(self, axis, coordinate, component, freqs, n_freqs, name, region)
 
@@ -2029,8 +2031,7 @@ class Simulation(
         name : str or None
             Result key. Default: ``flux_{axis}_{idx}``.
         """
-        if axis not in ("x", "y", "z"):
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+        _admit_declaration("Simulation.add_flux_monitor", locals())
         self._validate_declared_plane_coordinate(axis, coordinate)
         from rfx.probes.flux_region import validate_flux_region_inputs
         validate_flux_region_inputs(size, center)
@@ -2076,6 +2077,7 @@ class Simulation(
         n_freqs : int
             Number of frequencies if freqs is None.
         """
+        _admit_declaration("Simulation.add_ntff_box", locals())
         from rfx.measurement import default_frequency_grid
         freqs = default_frequency_grid(self._freq_max, n_freqs) if freqs is None else freqs
         self._ntff = (corner_lo, corner_hi, freqs)
@@ -2145,10 +2147,7 @@ class Simulation(
         signs and time stamps so the mutation harness can measure what the
         declared checks catch; those never reach a user's declaration.
         """
-        if not float(block_size) > 0.0:
-            raise ValueError(
-                f"add_current_moment_monitor(block_size={block_size}): the "
-                "block side must be positive.")
+        _admit_declaration("Simulation.add_current_moment_monitor", locals())
         if int(order) != 2:
             raise ValueError(
                 f"add_current_moment_monitor(order={order}): only order=2 is "

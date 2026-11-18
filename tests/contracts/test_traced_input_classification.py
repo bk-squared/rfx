@@ -3,6 +3,7 @@
 import ast
 import builtins
 from collections import Counter
+from copy import deepcopy
 from dataclasses import fields, is_dataclass
 import importlib
 import inspect
@@ -154,8 +155,8 @@ def test_t1_every_parameter_and_value_field_has_exactly_one_state():
         assert names == tuple(p.name for p in _parameters(fn, drop_first=True))
     counts = Counter(rows.get((o, p), rows.get((o, "*")))[0].split(":", 1)[0] for o, p in covered)
     assert len(covered) == 635
-    assert counts["static"] == 59
-    assert counts["undecided"] == 486
+    assert counts["static"] == 82
+    assert counts["undecided"] == 463
     assert state_counts() == {state: counts[state] for state in (
         "traceable", "value_only", "static", "undecided", "no_number", "forwards")}
 
@@ -184,7 +185,15 @@ def test_t2_evidence_exists():
     for owner, parameter, state, evidence in ROWS:
         if state == "static":
             assert re.match(r"S[123]:", evidence), (owner, parameter)
-            assert re.search(r"(?:MESH|SHAPE|MATERIAL|WAVE)-\d+", evidence), (owner, parameter)
+            symbols = re.findall(r"(rfx/[\w/]+\.py)::([\w.]+)", evidence)
+            assert re.search(r"(?:MESH|SHAPE|MATERIAL|WAVE)-\d+", evidence) or symbols, (owner, parameter)
+            for path, symbol in symbols:
+                scope = ast.parse((ROOT / path).read_text())
+                for name in symbol.split("."):
+                    matches = [node for node in scope.body if isinstance(
+                        node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name]
+                    assert len(matches) == 1, (path, symbol)
+                    scope = matches[0]
         elif state == "undecided":
             assert evidence.startswith("step 2 decides") or evidence == "static in the follow-up PR (A3-7)", (owner, parameter)
         elif state in {"traceable", "value_only"}:
@@ -207,6 +216,29 @@ def test_t7_dispatch_reaches_delegate_admission(monkeypatch):
 
 
 STATIC_CASES = (
+    ('Simulation.add_coaxial_port', 'position', 'tuple', 'Simulation.add_coaxial_port(position='),
+    ('Simulation.add_current_moment_monitor', 'corner_lo', 'tuple', 'Simulation.add_current_moment_monitor(corner_lo='),
+    ('Simulation.add_current_moment_monitor', 'corner_hi', 'tuple', 'Simulation.add_current_moment_monitor(corner_hi='),
+    ('Simulation.add_current_moment_monitor', 'block_size', 'scalar', 'Simulation.add_current_moment_monitor(block_size='),
+    ('Simulation.add_dft_plane_probe', 'coordinate', 'scalar', 'Simulation.add_dft_plane_probe(coordinate='),
+    ('Simulation.add_dft_plane_probe', 'n_freqs', 'scalar', 'Simulation.add_dft_plane_probe(n_freqs='),
+    ('Simulation.add_dft_plane_probe', 'region', 'region', 'Simulation.add_dft_plane_probe(region='),
+    ('Simulation.add_floquet_port', 'position', 'scalar', 'Simulation.add_floquet_port(position='),
+    ('Simulation.add_floquet_port', 'n_freqs', 'scalar', 'Simulation.add_floquet_port(n_freqs='),
+    ('Simulation.add_flux_monitor', 'coordinate', 'scalar', 'Simulation.add_flux_monitor(coordinate='),
+    ('Simulation.add_flux_monitor', 'n_freqs', 'scalar', 'Simulation.add_flux_monitor(n_freqs='),
+    ('Simulation.add_flux_monitor', 'size', 'pair', 'Simulation.add_flux_monitor(size='),
+    ('Simulation.add_flux_monitor', 'center', 'pair', 'Simulation.add_flux_monitor(center='),
+    ('Simulation.add_lumped_rlc', 'position', 'tuple', 'Simulation.add_lumped_rlc(position='),
+    ('Simulation.add_ntff_box', 'corner_lo', 'tuple', 'Simulation.add_ntff_box(corner_lo='),
+    ('Simulation.add_ntff_box', 'corner_hi', 'tuple', 'Simulation.add_ntff_box(corner_hi='),
+    ('Simulation.add_ntff_box', 'n_freqs', 'scalar', 'Simulation.add_ntff_box(n_freqs='),
+    ('Simulation.add_polarized_source', 'position', 'tuple', 'Simulation.add_polarized_source(position='),
+    ('Simulation.add_port', 'position', 'tuple', 'Simulation.add_port(position='),
+    ('Simulation.add_port', 'reference_plane_cells', 'scalar', 'Simulation.add_port(reference_plane_cells='),
+    ('Simulation.add_probe', 'position', 'tuple', 'Simulation.add_probe(position='),
+    ('Simulation.add_source', 'position', 'tuple', 'Simulation.add_source(position='),
+    ('Simulation.add_vector_probe', 'position', 'tuple', 'Simulation.add_vector_probe(position='),
     ('Simulation.add_tfsf_source', 'margin', 'scalar', 'Simulation.add_tfsf_source(margin='),
     ('Simulation.add_tfsf_source', 'direction_tol_deg', 'scalar', 'Simulation.add_tfsf_source(direction_tol_deg='),
     ('Simulation.add_tfsf_source', 'max_component', 'scalar', 'Simulation.add_tfsf_source(max_component='),
@@ -285,17 +317,20 @@ def _sentinel_arguments(callable_, parameter, value):
 @pytest.mark.parametrize("transform", ["make_jaxpr", "vmap", "grad", "jvp"])
 def test_t3_static_refuses_before_body(owner, parameter, shape, message, transform):
     sim = object.__new__(Simulation)
-    declarations = ("_geometry", "_ports", "_probes", "_thin_conductors", "_pinned_sheets",
-                    "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports",
-                    "_flux_monitors", "_dft_planes", "_lumped_rlc", "_wall_losses")
-    for name in declarations:
-        setattr(sim, name, [])
-    sim._materials = {}
-    original_lists = {name: getattr(sim, name) for name in declarations}
+    sim._ports = []
+    sim._materials = {"existing": [1.0]}
+    original_objects = vars(sim).copy()
+    original_contents = deepcopy(vars(sim))
     target = getattr(sim, owner.split(".")[1]) if owner.startswith("Simulation.") else VALUE_CLASSES[owner]
 
     def call(t):
-        value = ((t, 0.0, 0.0), (1.0, 1.0, 1.0)) if shape == "corners" else (t, 0.0, 0.0) if shape == "tuple" else t
+        value = {
+            "corners": ((t, 0.0, 0.0), (1.0, 1.0, 1.0)),
+            "tuple": (t, 0.0, 0.0),
+            "pair": (t, 0.0),
+            "region": (t, 0, 1, 1),
+            "scalar": t,
+        }[shape]
         target(**_sentinel_arguments(target, parameter, value))
         return t * 0
 
@@ -311,11 +346,10 @@ def test_t3_static_refuses_before_body(owner, parameter, shape, message, transfo
     assert isinstance(caught.value, RfxError)
     assert message in str(caught.value)
     assert "pass a Python number" in str(caught.value)
-    for name in declarations:
-        assert getattr(sim, name) is original_lists[name]
-        assert getattr(sim, name) == []
-    assert sim._materials == {}
-    assert not hasattr(sim, "_traced_inputs")
+    assert vars(sim).keys() == original_objects.keys()
+    for name, value in original_objects.items():
+        assert vars(sim)[name] is value
+    assert vars(sim) == original_contents
 
 
 def test_t3_value_field_inside_a_method_argument():
