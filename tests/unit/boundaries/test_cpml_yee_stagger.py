@@ -61,7 +61,7 @@ def test_one_sample_faces_retain_legacy_coefficient_convention(budget: int) -> N
 
 
 # --------------------------------------------------------------------------
-# Falsifiers for the mirror tests above (independent review, 2026-09-14).
+# Falsifiers for the mirror tests above.
 #
 # The mirror tests discriminate STAGGERING but not absorber ORIENTATION: an
 # in-memory swap of the lo/hi magnetic pair reverses the grading and still

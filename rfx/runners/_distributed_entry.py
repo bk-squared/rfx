@@ -213,6 +213,12 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
             _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
     _res = self._attach_run_settling_witness(
         _res, n_steps=n_steps, num_periods=num_periods, context=entry)
+    import jax
+    from rfx._diagnostic_transport import result_with_diagnostics
+    from rfx.runners._distributed_advisory import split_axis_advisory
+    # Like other post-dispatch advisory records, retain this with skip_preflight.
+    n_devices = len(jax.devices() if devices is None else devices)
+    _res = result_with_diagnostics(_res, split_axis_advisory(_res.grid, n_devices, plan.lane))
     _warn_if_nonfinite_result(_res, context=entry)
     from rfx.current_moments import require_accumulated_current_moments
     require_accumulated_current_moments(self, _res, entry)
@@ -308,12 +314,12 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         dft_time_records=result.dft_time_records,
         current_moment_data=result.current_moment_data,
         current_moment_monitor=result.current_moment_monitor)
-    packed = sim._attach_run_settling_witness(
-        packed, n_steps=plan.n_steps, num_periods=num_periods, context="forward")
     ports = [pe for pe in sim._ports if pe.is_port]
     if port_s11_freqs is not None and ports:
         from rfx.runners._uniform_forward_result import pack_port_result
         packed = pack_port_result(packed)
+    packed = sim._attach_run_settling_witness(
+        packed, n_steps=plan.n_steps, num_periods=num_periods, context="forward")
     warn_if_singular_value_exceeds_one(packed.s_params, packed.freqs, extractor="forward(distributed)")
     return packed
 

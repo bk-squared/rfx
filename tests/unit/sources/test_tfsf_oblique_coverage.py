@@ -32,8 +32,8 @@ from rfx.stepping.tfsf_2d import (
 from rfx.core.yee import init_state, init_materials
 from rfx.stepping.yee import update_h, update_e
 
-# Oblique leakage needs a narrowband source + long run (#404 Phase-B); marked slow.
-# The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when 1700 was set; the
+# Oblique leakage needs a narrowband source + long run; marked slow.
+# The Bloch pulse peaks at 5 tau, 2 tau later than when 1700 was set; the
 # 509 steps (2 tau at f0 5 GHz, bw 0.15, dt 1.667 ps) keep the snapshot 3.7 tau after the peak.
 _OBLIQUE_BW = 0.15
 _OBLIQUE_STEPS = 1700 + 509

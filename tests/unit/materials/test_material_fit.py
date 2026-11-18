@@ -298,7 +298,7 @@ def test_fit_debye_fixed_eps_inf():
 
 
 # ---------------------------------------------------------------------------
-# Robustness tests — noise, overfitting, outliers (GitHub issue #1)
+# Robustness tests — noise, overfitting, outliers
 # ---------------------------------------------------------------------------
 
 class TestDebyeNoiseRobustness:

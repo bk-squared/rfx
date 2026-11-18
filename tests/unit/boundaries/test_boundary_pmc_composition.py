@@ -6,11 +6,7 @@ zero normal flux follows from H interpolated onto the declared PMC plane.
 
 from __future__ import annotations
 
-import os
-
-os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
-
-import jax  # noqa: E402
+import jax
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 

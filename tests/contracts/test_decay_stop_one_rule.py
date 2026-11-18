@@ -260,7 +260,7 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
             # W is a float32 sum whose leapfrog H^(n-1/2).H^(n+1/2) cross term
             # cancels as W decays, so its relative rounding grows as W falls:
             # graded-periodic on arm64 measured 1.26e-4 relative at W_ref/1.5e4
-            # after #1882's drive change (5.6e-5 before), 1.1e-5 absolute, below
+            # after the drive change (5.6e-5 before), 1.1e-5 absolute, below
             # one float32 ULP of W_ref.
             checks = returned["decay_checks"]
             assert [c for c, _, _ in checks] == [c for c, _, _ in rows]

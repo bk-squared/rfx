@@ -141,15 +141,14 @@ MATRIX_MD_PATH = Path("docs/guides/support_matrix.md")
 # Section map: json `primitive` -> .md "## " section header
 # ---------------------------------------------------------------------------
 
-# Lanes this parity gate actively checks -- the ones this week's drift
-# actually hit (issue #554): MSL (ad_evidence), coax two-port, coax-MSL
+# Lanes this parity gate actively checks -- the ones drift actually hit: MSL (ad_evidence), coax two-port, coax-MSL
 # transition, wire/patch, and the waveguide near-cutoff group-delay figures
 # (NU broad-E4/E5 lives in the same "## Rectangular-waveguide port" section).
 # Issue #586 extended the map to the 3 remaining genuinely mappable lanes
 # (lumped, Floquet, mixed lumped/wire+MSL); mapping them immediately exposed
 # live numeric drift in the Floquet and mixed sections (json numeric_metrics
 # tokens absent from the .md), fixed doc-side from the json in the same
-# change -- the #584 experience repeating on first contact.
+# change.
 LANE_SECTION_MAP: dict[str, str] = {
     "add_port(extent=None)": "### Lumped port",
     "add_port(extent=...)": "### Wire port",
@@ -167,11 +166,10 @@ LANE_SECTION_MAP: dict[str, str] = {
 # Adding a primitive to the json's port_families without adding it to EITHER
 # this dict or LANE_SECTION_MAP fails
 # test_lane_map_is_complete_in_both_directions loudly rather than silently
-# escaping the parity gate. Issue #586 promoted the 3 genuinely mappable
-# lanes (lumped, floquet, mixed) into LANE_SECTION_MAP; the remaining 3 are
+# escaping the parity gate. The remaining 3 are
 # "not_a_port" families whose numeric_metrics field HOLDS a value --
 # ``["not an S-parameter calculation"]`` -- but that value carries no numeric
-# token to check (the #584-corrected reason: the key exists, its content is
+# token to check (the key exists, its content is
 # non-numeric), which is why they stay deferred rather than mapped.
 UNMAPPED_LANES_TODO: dict[str, str] = {
     "add_source(...) / add_polarized_source(...)":
@@ -183,13 +181,12 @@ UNMAPPED_LANES_TODO: dict[str, str] = {
 }
 
 # Lanes explicitly exempt from the "numeric_metrics must extract at least one
-# token" floor in test_json_numeric_claims_appear_in_markdown (PR #584
-# review, L4). The floor is live on the other 6 mapped lanes. Add a
+# token" floor in test_json_numeric_claims_appear_in_markdown. The floor is live on the other 6 mapped lanes. Add a
 # primitive here only with a comment naming why
 # its numeric_metrics is genuinely number-free (not merely emptied by a
-# careless edit, which is exactly the silent-vacuous-pass class L4 closes).
+# careless edit, which is the silent-vacuous-pass class this floor closes).
 NUMBER_FREE_LANES: frozenset[str] = frozenset({
-    # #1171 (2026-10-12): the JSON was trimmed to numbers with an in-repo
+    # The JSON was trimmed to numbers with an in-repo
     # witness. The thresholds in Floquet's tests bound synthetic inputs, and
     # those in the transition's tests bound a different fixture, not the
     # result the matrix describes; both families state their status in words.
@@ -197,16 +194,14 @@ NUMBER_FREE_LANES: frozenset[str] = frozenset({
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)",
 })
 
-# Per-lane, hand-identified .md status anchors for test_status_token_polarity_agrees
-# (PR #584 review, M1). Each anchor is a literal substring that must appear
+# Per-lane, hand-identified .md status anchors for test_status_token_polarity_agrees. Each anchor is a literal substring that must appear
 # in exactly one whitespace-normalized paragraph/bullet block of the mapped
 # .md section; that block (not the whole section) is what gets scanned for
 # STATUS_TOKENS. Most lanes need only one anchor (the section states its own
 # status once). The coaxial-port lane needs two: its one .md section and one
 # json entry bundle TWO sub-APIs with independently evolving status
-# (compute_coaxial_line_reflection and compute_coaxial_two_port; the
-# former compute_coaxial_s_matrix was removed, #1212) -- see the module docstring for why scanning only one of
-# the two, or the whole section, both failed review.
+# (compute_coaxial_line_reflection and compute_coaxial_two_port) -- see the module docstring for why scanning only one of
+# the two, or the whole section, both failed.
 #
 # Anchors are deliberately chosen to NOT themselves contain any STATUS_TOKENS
 # word: an anchor is a stable, unique PREFIX of its designated block, so
@@ -214,7 +209,7 @@ NUMBER_FREE_LANES: frozenset[str] = frozenset({
 # check targets) changes the block's content without breaking the anchor
 # lookup that finds the block in the first place. Anchoring on text that
 # itself contains "experimental" was tried first and produced a confusing
-# failure mode on review: flipping that exact word made the anchor stop
+# failure mode: flipping that exact word made the anchor stop
 # matching at all (an "anchor not found" error) instead of exercising the
 # intended status-token disagreement path.
 LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
@@ -255,8 +250,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
     ),
 }
 
-# Per-lane, hand-identified json ``known_limits`` anchors (PR #588 review
-# fix, P1 -- BLOCKING). For a primitive listed here, each anchor below must
+# Per-lane, hand-identified json ``known_limits`` anchors. For a primitive listed here, each anchor below must
 # match EXACTLY ONE entry of that primitive's json ``known_limits`` list
 # (same "exactly one" discipline ``_lane_status_blocks_md`` already applies
 # to the .md side), IN THE SAME ORDER as ``LANE_STATUS_ANCHORS_MD[primitive]``
@@ -267,8 +261,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
 # whole-entry ``_lane_status_text_json`` behavior (unchanged, still correct
 # for a lane with only one status-bearing sub-API).
 #
-# Why this exists: the whole-entry text is exactly what PR #588's own
-# promotion prose defeated, proven by mutation on review. The coaxial-port
+# Why this exists: the whole-entry text is exactly what promotion prose defeated, proven by mutation. The coaxial-port
 # json entry's ``support_status``/``validation_status`` mentions
 # "experimental" (for the still-deprecated ``compute_coaxial_s_matrix``)
 # regardless of what ``compute_coaxial_two_port``'s own status is, so
@@ -278,10 +271,9 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
 # flipping the .md status back with the json left untouched, BOTH stayed
 # green (19 passed) because the combined string could not distinguish
 # either sub-API's own claim from the other's. A control mutation on the
-# PRE-#588 single-sub-API prose (removing "experimental" from the old
+# earlier single-sub-API prose (removing "experimental" from the old
 # one-sub-API paragraph) correctly reds, proving the check was live before
-# this bundling defeated it -- the #584-M1 text-gaming class, recurring one
-# level down. Splitting the json side into its own per-anchor bullet
+# this bundling defeated it. Splitting the json side into its own per-anchor bullet
 # (mirroring what the .md side already does) restores real discrimination:
 # each sub-API's own bullet only contains ITS OWN status word, so flipping
 # either carrier's own text now changes ONLY that anchor's own polarity.
@@ -304,13 +296,13 @@ LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
 }
 
 # ---------------------------------------------------------------------------
-# "## API summary" table (issue #586 item 2)
+# "## API summary" table
 # ---------------------------------------------------------------------------
 
 # The summary table is one row per (primitive, calculation API) pair with its
-# own status cell -- a second, previously ungated in-file copy of the same
+# own status cell -- a second in-file copy of the same
 # per-lane status claims the section prose carries (see the module docstring
-# for the demonstrated #584 drift case this closes). Each mapped primitive
+# for the demonstrated drift case this closes). Each mapped primitive
 # lists here one row key per LANE_STATUS_ANCHORS_MD anchor, PAIRED 1:1 IN THE
 # SAME ORDER: row key i's status cell is token-compared against md anchor i's
 # designated block. A row key is a substring matched against
@@ -321,7 +313,7 @@ LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
 # coverage grows the same incremental way LANE_SECTION_MAP does.
 #
 # Pairing is per-row, not per-lane-union, for the same reason the json side
-# went per-anchor (PR #588 review, P1): the coax lane's three rows carry two
+# went per-anchor: the coax lane's three rows carry two
 # independently evolving sub-API statuses, and a union over them would be
 # constant-True for either token regardless of which sub-API's own cell
 # changed.
@@ -366,11 +358,9 @@ API_SUMMARY_ROW_ANCHORS: dict[str, tuple[str, ...]] = {
 # notation, bare percentages, and long (>=4 digit) bare integers (run IDs,
 # dates). Short bare integers ("2 ports", "3 probes") are deliberately
 # excluded: common enough across unrelated sentences to add noise without
-# adding drift-detection value (issue #554's "small, high-value token set"
-# instruction).
+# adding drift-detection value.
 #
-# The signed and unsigned forms are SEPARATE alternatives (PR #584 review,
-# L1): a single shared `(?<!\d)` lookbehind on an optional leading '-' still
+# The signed and unsigned forms are SEPARATE alternatives: a single shared `(?<!\d)` lookbehind on an optional leading '-' still
 # let a double-hyphen range like "3.0--4.5" (this doc's en-dash substitute,
 # used throughout) mint a phantom "-4.5" token, because the lookbehind only
 # checked the character immediately before the '-' itself (the OTHER '-'),
@@ -390,8 +380,7 @@ _NUMERIC_TOKEN_RE = re.compile(
 )
 
 # Run-ID extraction is scoped to the literal "VESSL" keyword rather than any
-# bare long integer, and specifically to digits immediately following it
-# (PR #584 review, L2): the original design free-scanned `\d{6,}` in a
+# bare long integer, and specifically to digits immediately following it: the original design free-scanned `\d{6,}` in a
 # 60-character window after each "VESSL" occurrence, which mined a phantom
 # run ID ("000110") out of the fractional digits of the UNRELATED decimal
 # "0.000110" a few words later in the same sentence. Anchoring to
@@ -402,8 +391,7 @@ _VESSL_RUN_ID_RE = re.compile(r"VESSL\s+(?:run\s+)?(\d{6,}(?:/\d{6,})*)")
 
 # Status tokens checked for presence-polarity agreement. Verified against
 # live content before landing this gate (see module docstring for why
-# "pending" was tried and dropped). "validated with scope" added in PR #588
-# review fix (P1): a lane's promotion to this new state must itself be
+# "pending" was tried and dropped). "validated with scope": a lane's promotion to this new state must itself be
 # checked for carrier agreement, not just the retired "experimental" token
 # it replaces -- without this, a carrier that silently reverted the NEW
 # status word would go undetected (the reverse of what "experimental"

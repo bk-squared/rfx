@@ -111,7 +111,7 @@ def _build_thru(dx: float) -> Simulation:
     sim.add_material("sub", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (lx, ly, H_SUB)), material="sub")
     y_c = ly / 2
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
+    # 35 um foil -> a SHEET on the laminate face.
     sim.add(
         Box((0, y_c - W_TRACE / 2, H_SUB), (lx, y_c + W_TRACE / 2, H_SUB)),
         material="pec",

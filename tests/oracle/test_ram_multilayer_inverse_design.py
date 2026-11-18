@@ -424,8 +424,7 @@ def test_realized_tmm_comparison_rejects_a_layer_half_a_cell_thick():
     assert abs(old["null_err"]) > NULL_BAR, old
 
 
-# highmem (issue #545): the [sigma-1.0] case was the test killed in shard 3
-# (weekly run 31103127491) -- its own footprint is UNMEASURED in CI, since
+# highmem: the [sigma-1.0] case was the test killed in shard 3 -- its own footprint is UNMEASURED in CI, since
 # the [rss] post-test hook never fired for it (the process died first). The
 # process was already at 14,854 MB *entering* it -- that number belongs to
 # the PRECEDING mu_r highmem test, not this one. The eps case shares the

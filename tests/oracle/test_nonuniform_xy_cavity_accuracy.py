@@ -191,7 +191,7 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
 
     # Anti-vacuity: the mesh must be GENUINELY graded on both in-plane axes, else
     # this silently becomes a uniform-mesh check (covered elsewhere) with zero
-    # dx_profile/dy_profile coverage — the exact vacuity #403 flags.
+    # dx_profile/dy_profile coverage.
     assert ratio_x > 2.0 and ratio_y > 2.0, (
         f"mesh not genuinely graded in-plane (max/min ratio x={ratio_x:.2f} "
         f"y={ratio_y:.2f}; need >2) — the test would be a vacuous uniform check"
@@ -215,7 +215,7 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
           f"(2nd-nearest delta {d_second/1e9:.3f} GHz, sep ratio {d_second/d_near:.1f}x)")
 
     # The gate is DERIVED, not chosen: measured envelope x the repo-wide
-    # envelope multiplier, quantized up by the shared helper (#528/#539), in
+    # envelope multiplier, quantized up by the shared helper, in
     # percent units. Envelope = 0.0282 % measured at this test's own
     # configuration; gate_from_envelope(0.0282, quantum=100) = 0.05 %.
     #
@@ -233,15 +233,15 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     #     dx = 0.5 mm, grading 4:1  ->  0.0458   (fixed n_steps = shorter record)
     #     dx = 2.0 mm, grading 4:1  ->  0.0868
     #
-    # Domain-SIZE sensitivity, measured by the #573 reviewer at fixed dx and
+    # Domain-SIZE sensitivity, measured at fixed dx and
     # fixed 4:1 grading while sweeping cavity size (xy, percent error):
     #
     #     0.0489 / 0.0390 / 0.0282 / 0.0139 / 0.0203
     #
     # The residual tracks f0, so the gate binds the dispersion floor rather than
-    # a fixture artifact — but the worst case is 97.8% of the gate ON THE #573
-    # REVIEWER'S (unrecorded) size grid; the committed producer's documented
-    # grid (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py, #596)
+    # a fixture artifact — but the worst case is 97.8% of the gate ON THE
+    # (unrecorded) size grid; the committed producer's documented
+    # grid (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py)
     # measures its smallest-cavity point ABOVE this gate (0.0613% vs 0.05%) —
     # direct evidence that the "do NOT re-parameterize without re-deriving"
     # warning covers cavity SIZE as well as dx.
@@ -271,7 +271,7 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     _FALSIFIER = 0.005
     # And the gate must reject the REAL historical regression, not only a
     # synthetic perturbation: the residual this configuration measured while the
-    # #562 extent defect was live was 2.43 %, which the new gate rejects
+    # extent defect was live was 2.43 %, which the new gate rejects
     # by 49x. The old gate accepted it.
     assert 0.0243 > GATE, (
         "the derived gate would NOT have caught the #562-era residual "
@@ -286,12 +286,11 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
             f"does NOT exceed the {GATE*100:.3f}% gate — the gate would not catch it"
         )
 
-    # The ANALYTIC accuracy gate (the coverage #403 flags as missing): the x&y
+    # The ANALYTIC accuracy gate: the x&y
     # graded NU mesh reproduces the closed-form in-plane-dependent TM110 to within
     # the measured tolerance. (The grading-faithful finding is 0.0282% graded vs
     # 0.0084% ungraded at identical extents — factor 3.35x, grading DOMINANT, as
-    # measured at :48-50; the 2.43% == 2.47% pair it used to
-    # cite was the #562-era baseline both legs shared.)
+    # measured at :48-50.)
     assert err < GATE, (
         f"NU in-plane-graded TM110 error {err*100:.4f}% >= {GATE*100:.3f}% — the "
         f"non-uniform x/y grid does not reproduce the closed-form cavity resonance "
