@@ -338,6 +338,13 @@ def run(
     use_fast_he = False
     _fast_coeffs = None
 
+    from rfx.stepping import vector_pad
+    plan = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
+        _ctx, stencil_order=stencil_order, field_dtype=carry_init["fdtd"].ex.dtype))
+    _pad = plan if plan.active else None
+    if _pad is not None:
+        carry_init = vector_pad.pad_carry(carry_init, _pad)
+
     # ---- run()-specific: snapshot setup ----
     # ``interval`` is honoured. interval == 1 returns a frame every step
     # (the frame is an extra per-step output of the step body). interval > 1
@@ -347,7 +354,7 @@ def run(
     if use_snapshot:
         snap_interval = validate_snapshot_spec(snapshot)
         snap_components = tuple(snapshot.components)
-        _take_snapshot = snapshot_extractor(snapshot)
+        _take_snapshot = vector_pad.physical_reader(snapshot_extractor(snapshot), _pad)
     else:
         snap_interval = 1
         snap_components = ()
@@ -387,6 +394,7 @@ def run(
         monitor_component="ez",
         mon_idx=None,
         snapshot_extractor=_take_snapshot if snap_in_body else None,
+        pad_plan=_pad,
     )
     # An attached plan supplies the probe and port tables (direct callers keep theirs).
     admission_kwargs = ({} if lumped_rlc_admission is None else
@@ -641,6 +649,9 @@ def run(
         outputs = jax.tree_util.tree_map(
             lambda a: a.reshape(a.shape[0] * a.shape[1], *a.shape[2:]),
             seg_outputs)
+
+    if _pad is not None:
+        final_carry = vector_pad.unpad_carry(final_carry, _pad)
 
     if use_snapshot:
         time_series = outputs[0]
@@ -974,6 +985,12 @@ def run_until_decay(
     carry = _setup.carry_init
     init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
+    from rfx.stepping import vector_pad
+    plan = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
+        _setup.ctx_kwargs, stencil_order=stencil_order, field_dtype=carry["fdtd"].ex.dtype))
+    _pad = plan if plan.active else None
+    if _pad is not None:
+        carry = vector_pad.pad_carry(carry, _pad)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -1027,6 +1044,7 @@ def run_until_decay(
         monitor_component=monitor_component,
         mon_idx=mon_idx,
         snapshot_extractor=None,
+        pad_plan=_pad,
     )
     # The per-cell arrays are an argument of the jitted step, not constants
     # compiled into it (split_loop_invariants).
@@ -1037,7 +1055,7 @@ def run_until_decay(
         core_step_invariants(_step_ctx, **admission_kwargs) if measurement is None else
         core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype,
                              **admission_kwargs),
-        tuple(grid.shape))
+        tuple(grid.shape if _pad is None else _pad.padded))
 
     @jax.jit
     def _single_step(carry_in, step_idx, src_vals, mag_src_vals, inv_args):
@@ -1052,7 +1070,7 @@ def run_until_decay(
     # carries a bounded frame buffer, not a full field history.
     if snapshot is not None:
         snap_interval = validate_snapshot_spec(snapshot)
-        _take_snapshot = snapshot_extractor(snapshot)
+        _take_snapshot = vector_pad.physical_reader(snapshot_extractor(snapshot), _pad)
         snap_shapes = jax.eval_shape(_take_snapshot, carry["fdtd"])
         snap_chunks = []
 
@@ -1208,7 +1226,8 @@ def run_until_decay(
 
         if use_flux_stop:
             stopped = stop_rule.check(
-                actual_steps, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
+                actual_steps, lambda: vector_pad.physical_reader(
+                    lambda st: radiated_power(st, _bl, grid.shape), _pad)(carry["fdtd"]))
         else:
             stopped = stop_rule.check(actual_steps, lambda: energy(carry, actual_steps))
         if stopped is not None:
@@ -1221,6 +1240,9 @@ def run_until_decay(
         # report_every steps and never show where it actually stopped.
         jax.block_until_ready(carry["fdtd"])
         _reporter.report(actual_steps)
+
+    if _pad is not None:
+        carry = vector_pad.unpad_carry(carry, _pad)
 
     # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
     decay_stop = finish_decay(
