@@ -82,7 +82,7 @@ def ntff_sweep(sim, freqs, *, batch_size: int | None = None,
         batch_size = len(freqs)
 
     corner_lo, corner_hi, orig_freqs = sim._ntff
-    run_kwargs = run_kwargs or {}
+    run_kwargs = {"compute_s_params": False, **(run_kwargs or {})}
 
     batches: list[np.ndarray] = [
         freqs[i:i + batch_size] for i in range(0, len(freqs), batch_size)

@@ -14,6 +14,7 @@ import jax
 
 import jax.numpy as jnp
 
+from rfx._internal._precision import resolve_field_dtype
 from rfx.model.tensor_operands import TensorOperands
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import (
@@ -150,16 +151,18 @@ def assemble_cells(
         pec_mask is a boolean array (True at PEC cells) or None.
         pec_shapes is a list of Shape objects that are PEC.
         boundary_pec_shapes is a list of PEC shapes from boundary conditions.
-        kerr_chi3 is a float32 array of chi3 values or None.
+        kerr_chi3 has the run coefficient dtype, or is None.
 
-    Materials/poles retain declaration order and float32 initialization.
+    Materials/poles retain declaration order and the run coefficient dtype.
     Overrides and design boxes enter the cell stage in ``model.overrides``.
     """
+    # Coefficients keep the float32 floor for float16 field storage.
+    dtype = jnp.promote_types(resolve_field_dtype(sim._precision) or jnp.float32, jnp.float32)
     # Start with vacuum
-    eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
-    mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    chi3_arr = jnp.zeros(grid.shape, dtype=jnp.float32)
+    eps_r = jnp.ones(grid.shape, dtype=dtype)
+    sigma = jnp.zeros(grid.shape, dtype=dtype)
+    mu_r = jnp.ones(grid.shape, dtype=dtype)
+    chi3_arr = jnp.zeros(grid.shape, dtype=dtype)
     pec_mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
     pec_shapes = []
     has_kerr = False
@@ -596,7 +599,8 @@ class ComponentMaterials:
 from types import SimpleNamespace  # noqa: E402
 
 
-class EdgePoles(NamedTuple):
+@dataclass(frozen=True)
+class EdgePoles:
     """Pole specs for a lane that keeps no whole-domain realization (the
     distributed runners): carried in the ``components`` slot of the materials
     handed to the drive builders only. An edge's ADE terms are built from the
@@ -605,6 +609,7 @@ class EdgePoles(NamedTuple):
     debye_spec: object
     lorentz_spec: object
     grid: Any = None
+    field_dtype: object = field(kw_only=True)
 
     def at(self, cell, dt):
         lo = tuple(max(int(i) - 1, 0) for i in cell)
@@ -631,7 +636,7 @@ class EdgePoles(NamedTuple):
             terms = _realize_poles(cut, (False,) * 3, kind, SimpleNamespace(dt=dt), shape,
                                    high_wall=tuple(wall and w.stop == n for wall, w, n in
                                        zip(unpadded_high_walls(self.grid), window, self.grid.shape)),
-                                   cell_sizes=widths).coefficients
+                                   cell_sizes=widths, field_dtype=self.field_dtype).coefficients
             out.append(jax.tree.map(lambda value: value[local], terms))
         return out
 
@@ -751,15 +756,15 @@ def electric_grid_kwargs(grid):
     return dict(grid=grid)
 
 
-def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
+def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None, field_dtype):
     """Dual-volume pole occupancy, using the electric material rule."""
     if mask is None:
         return None
-    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic,
+    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.promote_types(field_dtype, jnp.float32)), periodic,
                                 high_wall=high_wall, cell_sizes=cell_sizes)
 
 
-def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None):
+def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None, field_dtype):
     if spec is None:
         return None
     from rfx.materials.pole_map import sample_spec, is_map, build_map_coeffs
@@ -772,7 +777,7 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=N
     else:
         masks = [masks] * len(poles)
     weights = tuple(pole_component_weights(_view_wall_cells(m, grid, view, high_wall), periodic,
-                    high_wall=high_wall, cell_sizes=cell_sizes) for m in masks)
+                    high_wall=high_wall, cell_sizes=cell_sizes, field_dtype=field_dtype) for m in masks)
     if grid is None:
         return ComponentDispersion(tuple(poles), None, weights, None)
     if any(is_map(p) for p in poles):
@@ -796,13 +801,16 @@ def _view_wall_cells(array, grid, view, high_wall):
     return jnp.take(array, rows, axis=0)
 
 
-def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid", high_wall=None):
+def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid", high_wall=None,
+                       field_dtype=jnp.float32):
     """Realize final cells once, using the existing E/pole and H rules.
 
     ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
     ``grid=None`` is the uniform-metric compatibility path for direct ADE
     callers. E materials and pole fractions use the same primal dual-volume
     weights; constant transverse axes retain the original arithmetic.
+    Pole weights take the run's field dtype, with a float32 coefficient floor.
+    Raw callers without a run retain the float32 default.
     """
     if high_wall is None:
         if grid is None:
@@ -875,15 +883,18 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
         eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
         _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape,
-                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view,
+                       field_dtype=field_dtype),
         _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
-                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view,
+                       field_dtype=field_dtype),
         materials, tuple(periodic), _component_grid_key(grid, view),
         pole_sets_judged=pole_sets_judged)
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
-                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None, high_wall=None):
+                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None, high_wall=None,
+                    field_dtype=jnp.float32):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
@@ -897,7 +908,7 @@ def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=
     else:
         components = realize_components(
             ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
-            high_wall=high_wall,
+            high_wall=high_wall, field_dtype=field_dtype,
             **({} if view is None else dict(view=view)),
             **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
         materials = materials._replace(components=components)

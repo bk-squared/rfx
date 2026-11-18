@@ -32,7 +32,7 @@ def _build_pec_cavity_with_dielectric():
     # Closed PEC cavity walls via geometry (not just simulation boundary).
     # The interior shell rasterises into pec_mask — exactly the path
     # that would silently get dropped without the fix.
-    # A 2 mm PEC slab on the z=0 face: a VOLUME (#931 §1.2), not foil.
+    # A 2 mm PEC slab on the z=0 face: a VOLUME, not foil.
     # It is one cell at dx = 2 mm and it realizes walls at z = 0 and
     # z = 2 mm with the Ez between them shorted, which is what lifts the
     # eps=4 filler's floor to 2 mm — the fixture's only physical content.

@@ -208,8 +208,7 @@ FREQ_MAX_HZ = 4.0e9
 # the absorber moves the resonance (the table below), so a fixed cell count
 # would put an absorber change into the mesh trend.
 #
-# MEASURED on the retired 40 × 50 mm board at h/4 (CPU, 2026-09-24; the table
-# is in this file at 0a92af49): with a 16-cell absorber the resonance kept
+# MEASURED on the retired 40 × 50 mm board at h/4 (CPU): with a 16-cell absorber the resonance kept
 # falling as air was added, up to 9·h, and had not levelled there; with 24
 # cells it fell too, and at every air gap a deeper absorber lowered it.  The
 # ladder's box is ``AIR_H`` = 0 with a 6·h (19.05 mm) absorber: at h/12 it is
@@ -315,7 +314,7 @@ def cpml_layers(dx: float) -> int:
 
 
 # --- the ladder -----------------------------------------------------------
-# dx = h_sub/n keeps both substrate faces on node planes (issue #723).
+# dx = h_sub/n keeps both substrate faces on node planes.
 #
 # THE RUNG CRITERION IS ONE BOARD.  Each edge is declared just outside a node
 # common to h/4, h/8 and h/12 and the probe on one (the constants above), and
@@ -350,9 +349,9 @@ MINUS10_DB = -10.0
 
 # --- the record length ----------------------------------------------------
 # ``num_periods`` is in periods of ``freq_max`` (0.25 ns here).  MEASURED on
-# the retired 40 × 50 mm board at h/4 (CPU, 2026-09-24; the table is in this
-# file at 0a92af49): 60 met the −40 dB rule with margin and moved the
-# resonance and its depth by nothing that matters against the doubled record.
+# the retired 40 × 50 mm board at h/4 (CPU): 60 met the −40 dB rule with margin
+# and moved the resonance and its depth by nothing that matters against the
+# doubled record.
 # The ring-down is set by the patch's radiation Q, a physical time, so the same
 # record length in nanoseconds serves every rung, and every run checks its own
 # settling against ``SETTLING_DB`` before it is compared.
@@ -362,7 +361,7 @@ NUM_PERIODS = 60.0
 # Ez inside the substrate, halfway up, under the patch near its +x radiating
 # edge where the TM010 field is strong, and 24 mm from the probe so it never
 # shares a cell with the drive (a source-dominated record measures the pulse
-# turning off, not the ring-down, #1090).  A node on every rung: 15 mm and
+# turning off, not the ring-down).  A node on every rung: 15 mm and
 # 5 mm snap to the nearest node, and h/2 is a whole number of cells on each.
 WITNESS_PROBE_OFFSET_M = (15.0e-3, 5.0e-3, H_SUB / 2)
 
@@ -393,7 +392,6 @@ OPENEMS_MESH_STATEMENT_STAGES = ("stage_b_coarse", "stage_b_mid")
 def _sim(dx: float, fr: Frame = FRAME) -> Simulation:
     """The box, the boundary and the lossy substrate material — shared by
     every builder."""
-    # #1138: coarse patch x/y solved +1.368%/+1.052%; this checks external S11.
     sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_HZ,
         domain=fr.domain,
@@ -829,7 +827,7 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
             "probe's offset from the patch centre is then not the declared one.")
     # Sizes alone do not make one board: the ground and the laminate must also
     # sit under the patch.  One cell of laminate at a board edge moved R(f0) by
-    # 1.37 % at h/4 (VESSL 369367264633), so a shifted ground or substrate is a
+    # 1.37 % at h/4, so a shifted ground or substrate is a
     # different antenna even when every span above holds.
     gx, gy = g["ground"]["centre_m"]
     if abs(gx - cx) > 1e-9 or abs(gy - cy) > 1e-9:

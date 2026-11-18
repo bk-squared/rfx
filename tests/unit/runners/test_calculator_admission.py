@@ -6,6 +6,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec
+from rfx.errors import RfxUnsupported
 from rfx.runners import _admission as A
 from tests.unit.runners.test_silent_routes import _sim, _mixed
 from tests.unit.sparams.test_waveguide_solver_precision import _guide
@@ -62,7 +63,7 @@ def declare_physics(sim, feature):
 
 
 # The 1 mm fixture's solved lengths, 13 x 14 x 13 cells, declared at
-# construction (#1887).
+# construction.
 SOLVED_1MM = (13 * .001, 14 * .001, 13 * .001)
 
 
@@ -98,7 +99,7 @@ def calculator_case(calculator, *, feature=None):
             lambda *args: sim, np.zeros((1, 1, 3), complex),
             np.array([2e9, 3e9, 4e9]), n_iterations=1, verbose=False)
     elif calculator == "mixed_s_matrix":
-        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))  # solved length; #1887
+        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))  # solved length
         call = lambda: sim.compute_mixed_s_matrix(
             n_steps=4, skip_preflight=True, magnitude_channel="wave")
     else:
@@ -275,8 +276,14 @@ def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator,
         return
     with pytest.raises(NotImplementedError) as caught:
         call()
-    assert "does not carry" in str(caught.value)
-    assert A.ROW_WORDS[row] in str(caught.value)
+    if calculator == "s_matrix_scan" and feature in ("coax", "scan_angle"):
+        assert type(caught.value) is RfxUnsupported
+        assert "Lumped/wire S scans require isolated port drives; foreign drives:" in str(caught.value)
+        assert ("coaxial port 0 at" if feature == "coax" else "Floquet floquet_0") in str(caught.value)
+        assert "run(compute_s_params=False)" in str(caught.value)
+    else:
+        assert "does not carry" in str(caught.value)
+        assert A.ROW_WORDS[row] in str(caught.value)
 
 
 EXTRA_SETTINGS = [

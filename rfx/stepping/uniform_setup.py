@@ -845,7 +845,8 @@ def _build_step_setup(
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,
-                   *, design_hook=None, hooks=None, measurement=None, dtype=None):
+                   *, design_hook=None, hooks=None, measurement=None, dtype=None,
+                   lumped_rlc_admission=None):
     """Compose the uniform step; retain the runner and adjoint call signatures.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` yielding
@@ -855,13 +856,17 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
     """
     from rfx.stepping.uniform import make_uniform_step
     if invariants is None:
-        invariants = (core_step_invariants(ctx) if measurement is None else
-                      core_step_invariants(ctx, measurement=measurement, dtype=dtype))
+        admission_kwargs = ({} if lumped_rlc_admission is None else
+                            {"lumped_rlc_admission": lumped_rlc_admission})
+        invariants = (core_step_invariants(ctx, **admission_kwargs) if measurement is None else
+                      core_step_invariants(ctx, measurement=measurement, dtype=dtype,
+                                           **admission_kwargs))
     return make_uniform_step(invariants["ctx"], invariants,
                              design_hook=design_hook, hooks=hooks)
 
 
-def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> dict:
+def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None,
+                         lumped_rlc_admission=None) -> dict:
     """What :func:`make_core_step`'s kernel reads besides its arguments.
 
     ``ctx`` itself plus arrays derived from it once, before the loop: the
@@ -883,6 +888,18 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
     conformal_zero_masks = None
     if ctx.use_conformal and not ctx.use_aniso_inv:
         conformal_zero_masks = tuple(w == 0.0 for w in tensor.conformal_weights)
+
+    if lumped_rlc_admission is not None and (ctx.use_conformal or
+            (ctx.use_aniso_inv and not ctx.aniso_inv_eps_smooth)):
+        from rfx.boundaries.pec import PEC_INV_THRESHOLD
+        from rfx.model.source_admission import refuse_shorted_lumped_rlc_applied
+        sim, conductors = lumped_rlc_admission
+        with jax.ensure_compile_time_eval():
+            frozen_masks = (tuple(inv < PEC_INV_THRESHOLD for inv in aniso_inv_eps)
+                            if ctx.use_aniso_inv else None)
+            refuse_shorted_lumped_rlc_applied(
+                sim, conductors, hard_edges=ctx.pec_edge_masks,
+                conformal_zero_masks=conformal_zero_masks, frozen_masks=frozen_masks)
 
     # ``apply_cpml_e`` builds its psi coefficient from a permittivity,
     # and it has to be the SAME one the Yee half of this timestep used, or the

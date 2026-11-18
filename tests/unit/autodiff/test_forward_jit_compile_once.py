@@ -196,7 +196,7 @@ def _probe_energy_loss(sim, checkpoint=False):
     return loss
 
 
-# The models that could not be traced under jax.jit before #1225:
+# The models that could not be traced under jax.jit earlier:
 # name -> (builder, objective(sim, checkpoint), design-box permittivity(sim)).
 BOARDS = {
     "graded wire port": (_board, _s11_loss, _box_eps),

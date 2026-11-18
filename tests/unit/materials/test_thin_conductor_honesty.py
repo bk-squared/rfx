@@ -61,7 +61,7 @@ def test_thickness_does_not_affect_a_metal_sheet():
         sheets: list = []
         pec_mask = sim._assemble_materials(sim._build_grid(),
                                            pec_sheets=sheets)[3]
-        # #931: a PEC thin conductor is a SheetSpec, never a pec_mask cell
+        # A PEC thin conductor is a SheetSpec, never a pec_mask cell
         assert pec_mask is None and len(sheets) == 1
         mask = np.asarray(sheets[0].footprint)
         assert mask.sum() > 0, f"sheet did not rasterise at t={thickness}"

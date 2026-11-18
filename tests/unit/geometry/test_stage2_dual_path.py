@@ -293,7 +293,7 @@ def test_pec_short_s11_with_kottke_pec_path():
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
     )
-    # #1913: 4 cells behind the short's far face (87 mm), so the port's 3-cell
+    # 4 cells behind the short's far face (87 mm), so the port's 3-cell
     # reflection plane is in front of it; |S11| is bit-identical to 90 mm.
     sim.add_waveguide_port(
         0.099, direction="-x", mode=(1, 0), mode_type="TE",
@@ -323,7 +323,7 @@ def test_nu_runner_hard_fails_on_kottke_pec():
     """
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.04, 27 * (299792458.0 / 10e9 / 20.0), 0.04), dx=299792458.0 / 10e9 / 20.0,  # solved length; #1887
+        domain=(0.04, 27 * (299792458.0 / 10e9 / 20.0), 0.04), dx=299792458.0 / 10e9 / 20.0,  # solved length
         dz_profile=[0.002] * 20,
         # No ``conformal=True`` here: on a non-uniform mesh that declaration
         # is refused on its own (conformal_pec) before kottke_pec is reached.

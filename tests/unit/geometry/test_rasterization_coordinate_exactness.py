@@ -96,13 +96,13 @@ _SHAPE_CASES = {
         np.array([[1., 2., 2.], [2., 1., -2.], [-2., 2., -1.]]) / 3),
     "box_volume_node_aligned": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
                                            (2.5e-3, 2.5e-3, 1.2e-3)),
-    # One cell thick on z. The name said "sheet" until #931; a one-cell PEC
+    # One cell thick on z. The name said "sheet" earlier; a one-cell PEC
     # Box is a VOLUME with a wall on both of its bounding node planes, and
     # the property this census exercises (the same node mask in both lanes
     # and at both x64 flags) never depended on the sheet reading.
     "box_one_cell_volume": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
                                        (2.5e-3, 2.5e-3, 0.5e-3)),
-    # A DECLARED sheet: zero extent on z (#931 §1.5). Its plane is stated,
+    # A DECLARED sheet: zero extent on z. Its plane is stated,
     # not inferred from a tie-break, so it belongs in the census beside the
     # volume it used to be confused with.
     "box_zero_thickness_sheet": lambda: Box((0.5e-3, 0.5e-3, 0.5e-3),

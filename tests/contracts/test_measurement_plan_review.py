@@ -64,7 +64,7 @@ def test_uniform_lumped_run_second_scan_availability():
         actual.update(kwargs, grid=grid)
         raise SetupCaptured
     # First prove run(compute_s_params=True) reaches the second-scan driver: a
-    # single lumped port keeps it when S asks for another record length (#1373 D5).
+    # single lumped port keeps it when S asks for another record length.
     with patch('rfx.simulation.run', return_value=SimpleNamespace(wire_port_sparams=None)), \
          patch('rfx.probes.sparam_driver.compute_lumped_wire_s_matrix_via_scan', side_effect=SetupCaptured) as driver:
         with pytest.raises(SetupCaptured):

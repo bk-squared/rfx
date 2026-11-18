@@ -69,7 +69,8 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
     ``drives`` contains ``(waveform_or_samples, distance_metres)`` pairs.
     Callables are sampled exactly like the runners: float32(n) * dt.
     Precomputed incident tables use the same threshold on their own peak.
-    Detail retains the sampled magnitudes for ringdown's window checks;
+    Detail has one row per drive (None when unavailable), retaining sampled
+    magnitudes for ringdown's window checks;
     those checks intentionally retain their configurable tolerance and no
     transit delay. An all-zero drive ends at step zero.
     """
@@ -79,7 +80,7 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
     from rfx.grid import C0
 
     if dt is None or is_tracer(dt) or not np.isfinite(dt) or dt <= 0:
-        return (None, []) if return_detail else None
+        return (None, [None for _ in drives]) if return_detail else None
     times = None
     rows = []
     end = 0
@@ -93,6 +94,7 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
         else:
             samples = waveform
         if samples is None or is_tracer(samples):
+            rows.append(None)
             available = False
             continue
         raw = np.asarray(samples)
@@ -101,6 +103,7 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
         # A recorded table may lack the scan's last step (the waveguide
         # port does not write it); it then speaks for the steps it holds.
         if w.ndim != 1 or not n_steps - 1 <= len(w) <= n_steps:
+            rows.append(None)
             available = False
             continue
         if not np.isfinite(w).all():
@@ -217,7 +220,7 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
             rows.append((name, "ok", value))
             end = max(end, value)
         else:
-            if (detail and detail[0][1] > 0 and detail[0][2] >= len(detail[0][0])
+            if (detail and detail[0] is not None and detail[0][1] > 0 and detail[0][2] >= len(detail[0][0])
                     and np.isfinite(detail[0][0]).all()):
                 kind, why = "still_on", STILL_ON.format(source=name)
             elif is_tracer(dt) or is_tracer(samples):

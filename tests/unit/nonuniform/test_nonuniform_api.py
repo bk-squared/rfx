@@ -25,7 +25,7 @@ class TestNonUniformGrid:
         grid = make_nonuniform_grid((0.05, 0.05), dz_profile, 0.5e-3, 12)
         assert grid.nx > 24  # domain + 2*cpml
         assert grid.ny > 24
-        # N cells are bounded by N+1 nodes (#562): profile + 2*cpml pads + 1
+        # N cells are bounded by N+1 nodes: profile + 2*cpml pads + 1
         assert grid.nz == len(dz_profile) + 24 + 1
         assert grid.dt > 0
         assert len(grid.inv_dz) == grid.nz
@@ -164,7 +164,7 @@ class TestSimulationNonUniform:
         """
         from rfx.measurement.farfield import compute_far_field
 
-        # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
+        # The profile once solved 4.1 mm under a 10 mm declaration, so
         # the box top lay outside the solved column; it now spans 10.1 mm.
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
         sim = Simulation(
@@ -218,7 +218,7 @@ class TestSimulationNonUniform:
         |DFT| magnitude at 200 steps must exceed the magnitude at 100
         steps. Also asserts the plane is finite and non-zero.
         """
-        # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
+        # The profile once solved 4.1 mm under a 10 mm declaration, so
         # the source and plane at 5 mm lay outside it; it now spans 10.1 mm.
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
 
@@ -451,7 +451,7 @@ class TestAutoConfigNonUniform:
 
     def test_thin_substrate_triggers_nonuniform(self):
         """Substrate thinner than 4*dx should trigger non-uniform z."""
-        # #931: both foils are drawn with ZERO extent in z, which IS the
+        # Both foils are drawn with ZERO extent in z, which IS the
         # sheet declaration (§1.5) — the ground on the substrate floor, the
         # patch on its top face. That spelling was already what this test
         # used; before the contract it realized nothing at all (a half-open

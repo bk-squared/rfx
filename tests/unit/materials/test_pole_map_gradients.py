@@ -13,6 +13,8 @@ from tests.unit.materials.test_pole_map_runs import capture_scan, assert_float64
 BINS = np.array([3.5e9, 4.5e9])
 KAPPA = (2 * np.pi * 3e9)**2
 GRADED_X = np.r_[.0005, np.linspace(.00025, .00075, 58), .0005]
+# Shortest record measured to keep all three preconditions and the 1e-6 bar at about two thirds of the memory.
+P9_RECORD_STEPS = 1000
 
 
 def parameters():
@@ -122,14 +124,14 @@ def test_p9_richardson(monkeypatch, graded):
         params = parameters()
         sim, _ = scene(params, graded, 'float64')
         try:
-            captured = capture_scan(sim, 2000, monkeypatch, forward=True)
+            captured = capture_scan(sim, P9_RECORD_STEPS, monkeypatch, forward=True)
         except NotImplementedError as error:
             assert graded and 'precision' in str(error), str(error)
             record('P9-graded-float64-refusal', dict(message=str(error)))
             raise
         assert_float64_scan(captured)
-        objective = lambda p: observable(p, 2000, graded, 'float64')
-        values, trace = observable(params, 2000, graded, 'float64', with_trace=True)
+        objective = lambda p: observable(p, P9_RECORD_STEPS, graded, 'float64')
+        values, trace = observable(params, P9_RECORD_STEPS, graded, 'float64', with_trace=True)
         ad = np.asarray([jax.grad(lambda p: objective(p)[k])(params)
                          for k in range(len(BINS))], float).T
         fd = []
@@ -151,7 +153,7 @@ def test_p9_richardson(monkeypatch, graded):
                control=control.tolist(), relative=error.tolist(), rounding=rounding.tolist(),
                rounding_ad=rounding_ad.tolist(),
                probe_peak_step=peak))
-        assert 0 < peak < 2000
+        assert 0 < peak < P9_RECORD_STEPS
         assert np.all(rounding >= 1e-5), f'cannot judge P9 rounding: {rounding}'
         assert np.all(control <= 1e-4), f'cannot judge P9 FD control: {control}'
         assert np.all(error <= 1e-6), error
@@ -181,6 +183,7 @@ def traced_map_coefficients(monkeypatch, graded, declaration):
         return tuple(arms)
     with monkeypatch.context() as patch:
         patch.setattr(lorentz, 'lorentz_e_coeffs', observe)
+        patch.setattr('rfx.model.dispersive_poles.lorentz_e_coeffs', observe)
         return jax.device_get(jax.jit(measure)(parameters()))
 
 

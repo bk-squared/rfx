@@ -223,7 +223,7 @@ def test_plot_smith_bad_arity_raises():
 
 
 # ---------------------------------------------------------------------------
-# Waveform-aware auto Harminv window (post-#392 review).
+# Waveform-aware auto Harminv window.
 #
 # ``find_resonances``'s auto ``source_decay_time`` hardcoded the cutoff=3
 # GaussianPulse envelope (2.0*3.0*tau). The refactor to

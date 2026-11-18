@@ -107,7 +107,7 @@ H_SUB = 254e-6        # substrate thickness (m)
 W_TRACE = 600e-6      # trace width (m)
 L_LINE = 8e-3         # thru-line length (m)
 PORT_MARGIN = 2e-3    # feed -> domain edge clearance (m)
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the foil sheet
+# ON-LATTICE board: h_sub / dx = 3 exactly, so the foil sheet
 # lands on the laminate face. The fixture ran at dx = 80 um
 # (h_sub/dx = 3.175); there the substrate realizes four cells and a sheet
 # declared at 254 um snaps to 240 um, buried in the dielectric.
@@ -146,7 +146,7 @@ def build_msl_thru(sheet=None, dz_profile=None):
     z extent is then ``sum(dz_profile)``).
     """
     if dz_profile is None:
-        # #1138: trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests sheet threading.
+        # Trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests sheet threading.
         sim = Simulation(snap="declared",
             freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
             boundary=BoundarySpec(x="cpml", y="cpml",
@@ -154,7 +154,7 @@ def build_msl_thru(sheet=None, dz_profile=None):
         )
     else:
         lz = float(np.sum(dz_profile))
-        # #1138: trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests NU sheet threading.
+        # Trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests NU sheet threading.
         sim = Simulation(snap="declared",
             freq_max=F_MAX, domain=(LX, LY, lz), dx=DX,
             dz_profile=list(dz_profile), cpml_layers=8,
@@ -164,7 +164,7 @@ def build_msl_thru(sheet=None, dz_profile=None):
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (LX, LY, H_SUB)), material="ro4350b")
     y_c = LY / 2.0
-    # The trace: 35 um foil -> a SHEET on the laminate face (#931 §1.3),
+    # The trace: 35 um foil -> a SHEET on the laminate face,
     # declared by a zero-thickness Box. This file is where the repo's two
     # sheet spellings meet -- this one, and the floating add_thin_conductor
     # sheet below -- and under the contract they are one thing: a
@@ -384,7 +384,7 @@ def test_o3_loss_monotonic_dispersion_static_passive():
     print(f"[O3] mean|S21|(gate): off={off_s21:.6f} " +
           " ".join(f"{t}={s21[t]:.6f}" for t in ladder + ["rs25"]))
     # The ladder's own assertion is test_o3_loss_ladder_strictly_decreasing below,
-    # split out so the #1292 quarantine does not silence passivity or dispersion.
+    # split out so the quarantine does not silence passivity or dispersion.
     # Fixed-footprint dispersion gate: f0(Rs->0) vs PEC realization
     beta_f0 = np.real(np.asarray(_settled("rs_tiny")[0].beta))
     beta_pec = np.real(np.asarray(_settled("pec")[0].beta))
@@ -426,30 +426,30 @@ def test_o3_loss_ladder_strictly_decreasing():
             f"{s21[a]:.6f} -> {s21[b]:.6f}")
 
 
-#: Drift lock (issues 1292/1266). Captured on main 4a42dbc9a, 2026-10-10, Mac CPU,
+#: Drift lock. Captured on Mac CPU,
 #: Python 3.11 / JAX 0.10.2, float32.
 #: Re-pin history:
-#: - 2026-10-03, 90f2603e, after the port source rescale: 0.9992086291313171 /
+#: - after the port source rescale: 0.9992086291313171 /
 #:   0.9964331388473511 / 0.9962416887283325.
-#: - 2026-10-10: PR 1527 (one DFT kernel and one time stamp for every spectrum) changed
+#: - PR (one DFT kernel and one time stamp for every spectrum) changed
 #:   how the DFT phase is formed, so the microstrip plane spectra round differently.
-#:   Measured on the capture machine: on 3ad40ce59, the commit before that PR's merge,
-#:   all three values equal the previous pins exactly; on the merge 2a3b68812 they read
+#:   Measured on the capture machine: on the commit before that PR's merge,
+#:   all three values equal the previous pins exactly; on the merge they read
 #:   0 / -2.384e-07 / +4.768e-07 from them (0, 4 and 8 float32 steps). The 5 ohm/sq value
 #:   was also bisected over the 87 commits on main from the one that introduced the
-#:   previous pin (292e39033) to 4a42dbc9a: one first-moved commit, 2a3b68812, and the
+#:   previous pin: one first-moved commit, and the
 #:   same reading on every later commit tried. Far inside that PR's declared bar (1e-4 of
 #:   the peak); its gate did not run this slow-marked lock.
-#:   What the weekly lane saw (GitHub-hosted runner, main 2d03240fb, 2026-10-09): the
+#:   What the weekly lane saw (GitHub-hosted runner): the
 #:   1 ohm/sq value at -4.77e-07 from the previous pin - this machine's -2.384e-07 move
 #:   plus an x86-versus-Mac offset of the same size on the new tree (below). The test
 #:   stopped there, so that runner's 5 ohm/sq reading was not taken.
-#: - re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); Mac CPU, a885f8d38.
+#: - default pulse onset fix; Mac CPU.
 #:   Old values 0.9992086291313171 / 0.996432900428772 / 0.9962421655654907
 #:   (moved -6.557e-06 / -7.749e-07 / -5.007e-06).
-#: - centred 2026-10-13 between the two platforms read at 34fc8c26c, tolerance unchanged:
-#:   Mac CPU 0.9992020726203918 / 0.9964321255683899 / 0.9962371587753296, x86 (Ryzen 9 5950X,
-#:   VESSL 369367270798) 0.999201774597168 / 0.9964317083358765 / 0.9962371587753296; the Mac
+#: - centred between the two platforms, tolerance unchanged:
+#:   Mac CPU 0.9992020726203918 / 0.9964321255683899 / 0.9962371587753296, x86 (Ryzen 9 5950X)
+#:   0.999201774597168 / 0.9964317083358765 / 0.9962371587753296; the Mac
 #:   pin alone put x86 rs1 at -4.17e-07, outside 4e-7.
 O3_MEAN_S21 = {"rs_tiny": 0.9992019236087799,
                "rs1": 0.9964319169521332, "rs5": 0.9962371587753296}
@@ -489,7 +489,7 @@ def test_o3_mean_s21_drift_lock(record_property):
     """
     got = {}
     for tag, want in O3_MEAN_S21.items():
-        # Locked at the line's analytic impedance (47.89 ohm); since #2014 S is referred
+        # Locked at the line's analytic impedance (47.89 ohm); S is referred
         # to the declared impedance= (50 ohm), which alone lowers this mean by 2e-3.
         got[tag] = float(np.mean(np.abs(np.asarray(line_s(_settled(tag)[0]))[1, 0, GATE])))
         record_property(f"o3_mean_s21_{tag}", got[tag])
@@ -607,7 +607,7 @@ def test_probe0_clears_the_sheet():
     grid = sim._build_grid()
 
     # Two collectors, because this board carries two KINDS of sheet and the
-    # assembler keeps them apart (#931 §1.3 + #677): ``sheet_specs`` takes
+    # assembler keeps them apart: ``sheet_specs`` takes
     # the lossy f0 thin conductor this fixture is about, ``pec_sheets``
     # takes the PEC trace, which owns no cell and is dropped with a warning
     # if nobody asks for it. Passing only the first is what makes the

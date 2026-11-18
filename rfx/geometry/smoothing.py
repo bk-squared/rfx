@@ -29,6 +29,7 @@ from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
 
+from functools import partial
 from typing import NamedTuple
 
 import jax
@@ -145,7 +146,7 @@ def _get_sdf_fn(shape: Shape):
 # Analytic normals per shape (outward-pointing)
 # ---------------------------------------------------------------------------
 
-def _normal_sphere(x, y, z, shape, xp=jnp):
+def _normal_sphere(x, y, z, shape, xp=jnp, *, tie=0.0):
     """Analytic outward normal for a sphere: radial direction."""
     cx, cy, cz = shape.center
     dx = x - cx
@@ -155,90 +156,102 @@ def _normal_sphere(x, y, z, shape, xp=jnp):
     return dx / r, dy / r, dz / r
 
 
-def _normal_box(x, y, z, shape, xp=jnp):
-    """Analytic outward normal for an axis-aligned box.
-
-    At each point the normal is determined by which face is nearest
-    (the axis with the smallest penetration distance).
-    """
+def _normal_box(x, y, z, shape, xp=jnp, *, tie=0.0):
+    """Nearest-face normal, bisecting all face distances within ``tie``."""
     lo = xp.array(shape.corner_lo)
     hi = xp.array(shape.corner_hi)
     center = (lo + hi) / 2.0
     half = (hi - lo) / 2.0
-
-    # Signed distance to each face pair (positive = outside that pair)
-    rx = xp.abs(x - center[0]) - half[0]
-    ry = xp.abs(y - center[1]) - half[1]
-    rz = xp.abs(z - center[2]) - half[2]
-
-    # The nearest face corresponds to the axis with the largest
-    # (least-negative inside, or least-positive outside) component.
-
-    # For interior points: nearest face = axis with *max* signed dist
-    # For exterior points: same logic (largest component dominates SDF)
-
-    # Use soft selection: pick the axis closest to the surface.
-    # For box interior, max_r < 0 and we want the axis where r is
-    # closest to zero (largest / least negative).
-    is_x = (rx >= ry) & (rx >= rz)
-    is_y = (ry > rx) & (ry >= rz)
-    # is_z = everything else
-
-    sign_x = xp.sign(x - center[0])
-    sign_y = xp.sign(y - center[1])
-    sign_z = xp.sign(z - center[2])
-
-    # Default to z-face normal
-    nx = xp.where(is_x, sign_x, 0.0)
-    ny = xp.where(is_y, sign_y, xp.where(is_x, 0.0, 0.0))
-    nz = xp.where(is_x | is_y, 0.0, sign_z)
-
-    # Ensure unit length (should already be 1 for pure axis normals,
-    # but guard against degenerate zero-sign cases)
-    mag = xp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
-    return nx / mag, ny / mag, nz / mag
+    delta = (x - center[0], y - center[1], z - center[2])
+    distances = tuple(xp.abs(d) - h for d, h in zip(delta, half))
+    top = xp.maximum(xp.maximum(distances[0], distances[1]), distances[2])
+    normals = tuple(xp.where((r >= top - tie) & (xp.abs(d) > tie), xp.sign(d), 0.0)
+                    for r, d in zip(distances, delta))
+    # Only one opposite pair defines a mirror-symmetric fallback axis.
+    opposite = tuple((r >= top - tie) & (xp.abs(d) <= tie)
+                     for r, d in zip(distances, delta))
+    single = sum(pair.astype(int) for pair in opposite) == 1
+    zero = sum(n * n for n in normals) == 0
+    normals = tuple(xp.where(zero & single & pair, 1.0, n)
+                    for n, pair in zip(normals, opposite))
+    mag = xp.sqrt(sum(n * n for n in normals) + 1e-30)
+    return tuple(n / mag for n in normals)
 
 
-def _normal_cylinder(x, y, z, shape, xp=jnp):
-    """Analytic outward normal for a cylinder.
+def _normal_cylinder(x, y, z, shape, xp=jnp, *, tie=0.0):
+    """Side/cap normal, with their normalized sum at a face-distance tie."""
+    axis = "xyz".index(shape.axis)
+    delta = tuple(p - c for p, c in zip((x, y, z), shape.center))
+    radial = [a for a in range(3) if a != axis]
+    r = xp.sqrt(sum(delta[a] ** 2 for a in radial) + 1e-30)
+    dh = xp.abs(delta[axis]) - shape.height / 2.0
+    dr = r - shape.radius
+    top = xp.maximum(dh, dr)
+    on_cap = dh >= top - tie
+    on_side = dr >= top - tie
+    normals = tuple(
+        xp.where(on_cap & (xp.abs(d) > tie), xp.sign(d), 0.0) if a == axis else
+        xp.where(on_side & (xp.abs(d) > tie), d / r, 0.0)
+        for a, d in enumerate(delta))
+    # Only the cap pair has an axis fallback; the radial axis stays undefined.
+    zero = sum(n * n for n in normals) == 0
+    normals = tuple(xp.where(zero & on_cap & (xp.abs(delta[axis]) <= tie), 1.0, n)
+                    if a == axis else n for a, n in enumerate(normals))
+    mag = xp.sqrt(sum(n * n for n in normals) + 1e-30)
+    return tuple(n / mag for n in normals)
 
-    The radial component dominates on the curved surface; the axial
-    component dominates on the caps.
+
+def _normal_tie(grid, *, max_image=1):
+    """Length tolerance, preferring concrete cells and domain declarations.
+
+    Missing domains use the realized node span, including padding. Traced
+    cells without a nominal profile remain in array arithmetic. Float32
+    epsilon applies on both paths; the cell cap can limit tie agreement.
     """
-    cx, cy, cz = shape.center
-    R = shape.radius
-    H2 = shape.height / 2.0
+    from rfx.core.jax_utils import is_tracer
+    from rfx.model.graded_admission import nominal_cells
 
-    if shape.axis == "z":
-        dx, dy = x - cx, y - cy
-        r = xp.sqrt(dx**2 + dy**2 + 1e-30)
-        dh = xp.abs(z - cz) - H2
-        dr = r - R
-        on_cap = dh > dr
-        nx = xp.where(on_cap, 0.0, dx / r)
-        ny = xp.where(on_cap, 0.0, dy / r)
-        nz = xp.where(on_cap, xp.sign(z - cz), 0.0)
-    elif shape.axis == "y":
-        dx, dz = x - cx, z - cz
-        r = xp.sqrt(dx**2 + dz**2 + 1e-30)
-        dh = xp.abs(y - cy) - H2
-        dr = r - R
-        on_cap = dh > dr
-        nx = xp.where(on_cap, 0.0, dx / r)
-        ny = xp.where(on_cap, xp.sign(y - cy), 0.0)
-        nz = xp.where(on_cap, 0.0, dz / r)
-    else:  # axis == "x"
-        dy, dz = y - cy, z - cz
-        r = xp.sqrt(dy**2 + dz**2 + 1e-30)
-        dh = xp.abs(x - cx) - H2
-        dr = r - R
-        on_cap = dh > dr
-        nx = xp.where(on_cap, xp.sign(x - cx), 0.0)
-        ny = xp.where(on_cap, 0.0, dy / r)
-        nz = xp.where(on_cap, 0.0, dz / r)
+    widths = []
+    for axis in range(3):
+        cells = grid.cells(axis)
+        if is_tracer(cells):
+            nominal = nominal_cells(grid, axis, padded=True)
+            if nominal is not None:
+                cells = nominal
+        widths.append(cells)
+    domain = getattr(grid, "domain", None)
+    xp = np if _host_path(*widths, *(domain or ())) else jnp
+    h_min = xp.min(xp.stack([xp.min(w) for w in widths]))
+    padded = []
+    for axis, (name, cells) in enumerate(zip("xyz", widths)):
+        if domain is None or axis >= len(domain):
+            # Nonperiodic cells end with a duplicate width for the bounding
+            # node. Sum only intervals between the first and last nodes;
+            # periodic axes retain every cell in their complete period.
+            physical = cells if name in getattr(grid, "periodic_axes", "") else cells[:-1]
+            padded.append(xp.sum(physical))
+        else:
+            padded.append(domain[axis]
+                          + int(getattr(grid, f"pad_{name}_lo", 0)) * cells[0]
+                          + int(getattr(grid, f"pad_{name}_hi", 0)) * cells[-1])
+    bound = (1 + max(1, max_image)) * xp.max(xp.stack(padded))
+    return xp.minimum(16 * np.finfo(np.float32).eps * bound, 1e-2 * h_min)
 
-    mag = xp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
-    return nx / mag, ny / mag, nz / mag
+
+def _grid_normal_fn(grid, shape):
+    """Bind a tolerance only for shapes whose normals select tied faces."""
+    from rfx._internal._periodic import _sdf_image_ranges
+    from rfx.geometry.csg import Box, Cylinder
+
+    declared = shape
+    while isinstance(declared, _ContinuedSheetShape):
+        declared = declared.declared
+    normal_fn = _get_normal_fn(shape)
+    if not isinstance(declared, (Box, Cylinder)):
+        return normal_fn
+    images = _sdf_image_ranges(grid, shape)
+    max_image = max((abs(k) for axis in images for k in axis), default=1)
+    return partial(normal_fn, tie=_normal_tie(grid, max_image=max_image))
 
 
 def _get_normal_fn(shape: Shape):
@@ -825,9 +838,9 @@ def _continued_sheet_sdf(x, y, z, shape, xp=jnp):
         *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp)
 
 
-def _continued_sheet_normal(x, y, z, shape, xp=jnp):
+def _continued_sheet_normal(x, y, z, shape, xp=jnp, *, tie=0.0):
     normals = list(_get_normal_fn(shape.declared)(
-        *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp))
+        *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp, tie=tie))
     outside = False
     for axis, side, face in shape.extensions:
         coord = (x, y, z)[axis]
@@ -1457,7 +1470,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                 from rfx._internal._periodic import periodic_sdf
                 s, (n_x, n_y, n_z), image = periodic_sdf(
                     grid, shape, (Xc, Yc, Zc), _get_sdf_fn(shape), xp=xp,
-                    normal_fn=_get_normal_fn(shape), return_image=True)
+                    normal_fn=_grid_normal_fn(grid, shape), return_image=True)
 
                 if sdf_union is None:
                     owner = host_owner(s)
@@ -1867,7 +1880,7 @@ def compute_inv_eps_tensor_diag(
             from rfx._internal._periodic import periodic_sdf
             sdf, (n_x, n_y, n_z) = periodic_sdf(
                 grid, pec_shape, (Xc, Yc, Zc), _get_sdf_fn(pec_shape), xp=xp,
-                normal_fn=_get_normal_fn(pec_shape))
+                normal_fn=_grid_normal_fn(grid, pec_shape))
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
             from rfx.model.realization_integrals import capture, host_owner

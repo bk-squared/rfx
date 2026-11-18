@@ -54,7 +54,7 @@ def test_forward_keeps_waveguide_witness_rows(path):
     ('P-waveguide', 'uniform'), ('P-waveguide', 'graded'),
     ('P-waveguide', 'multi-device-uniform'), ('P-lumped', 'multi-device-uniform'),
 ])
-@pytest.mark.parametrize('direction', ('a', 'b'))  # equal S requests (#1373)
+@pytest.mark.parametrize('direction', ('a', 'b'))  # equal S requests
 def test_d5_census_disposition(declaration, path, direction):
     if (declaration, path) == ('P-waveguide', 'multi-device-uniform'):
         check_refusal(declaration, path, direction)

@@ -120,7 +120,7 @@ def test_forward_records_cross_grad_and_vmap(graded):
 
 
 def test_uniform_single_lumped_s_scores_the_main_record():
-    # One excited lumped port: S comes from the main record (#1373 D5), so the
+    # One excited lumped port: S comes from the main record, so the
     # settling witness scores that record and no separate drive scan exists.
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')

@@ -16,7 +16,7 @@ from rfx.preflight.realization import release_inspection
 from rfx.model.thin_conductors import conductivity_envelope
 
 from rfx.sparams._waveguide_planes import resolve_reported_planes
-from rfx._declarations import declaration_variant
+from rfx._declarations import declaration_at_dx, declaration_variant, reset_device_declarations
 
 import jax
 import jax.numpy as jnp
@@ -332,11 +332,13 @@ def compute_waveguide_s_matrix(
     from rfx.boundaries.pmc import refuse_waveguide_pmc
     refuse_waveguide_pmc(self)
     from rfx.runners._admission import admit
-    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec})
+    admit(self, "waveguide_s_matrix", run_args={"conformal_pec": conformal_pec,
+                                              "subpixel_smoothing": subpixel_smoothing})
     if port_reference_sims is not None:
         for reference in port_reference_sims:
             refuse_waveguide_pmc(reference)
-            admit(reference, "waveguide_s_matrix")
+            admit(reference, "waveguide_s_matrix",
+                  run_args={"subpixel_smoothing": subpixel_smoothing})
 
     conformal_solve = None
     if conformal_pec:
@@ -459,6 +461,8 @@ def compute_waveguide_s_matrix(
     from rfx.model.pole_stability import courant_budget
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
+        # Keep the existing ambient ADE state dtype for lower-precision runs.
+        field_dtype=resolve_field_dtype(self._precision) if self._precision == "float64" else None,
         periodic=self._periodic_flags(), grid=grid)
 
     has_multimode, raw_cfgs, reference_medium = _waveguide_stages._prepare_waveguide_configs(
@@ -538,7 +542,7 @@ def compute_waveguide_s_matrix(
     ref_aniso_eps, ref_aniso_inv_eps, ref_conformal = form_reference_operands(
         grid, materials, subpixel_smoothing=subpixel_smoothing,
         conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes,
-        conformal_pec=conformal_pec,
+        conformal_pec=conformal_pec, dtype=resolve_field_dtype(self._precision) or jnp.float32,
         reference_eps=float(reference_medium.eps_r))
 
     from rfx.model.realization_table import finish_table
@@ -770,20 +774,9 @@ def _homogeneous_reference_materials(shape, medium):
 
 def _empty_waveguide_reference(self, medium=None):
     """Build a straight guide at the resolved port medium."""
-    # Construct from mesh/boundary configuration, never from device geometry.
-    # Vacuum retains empty geometry; a fill extends through both CPML pads.
-    # Only the mesh, boundary walls and modal ports
-    # are shared; material poles, sheets and lumped elements cannot leak in.
-    from rfx.boundaries.serialization import constructor_boundary
-    reference = type(self)(
-        freq_max=self._freq_max, domain=self._domain,
-        boundary=constructor_boundary(self), cpml_layers=self._cpml_layers,
-        cpml_kappa_max=self._cpml_kappa_max, dx=self._dx,
-        dx_profile=self._dx_profile, dy_profile=self._dy_profile,
-        dz_profile=self._dz_profile, dt=self._dt_pin,
-        dt_min_cell=self._dt_min_cell, precision=self._precision,
-        snap=self._snap, nominal_profiles=self._nominal_profiles,
-    )
+    reference = declaration_at_dx(
+        self, caller="the waveguide empty-guide reference", pin_resolved_mesh=True)
+    reset_device_declarations(reference)
 
     from rfx.model.waveguide_modes import PortMedium
     if medium is not None and medium != PortMedium():

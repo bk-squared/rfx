@@ -69,6 +69,12 @@ def _metal(sim, *, volume=False, thin=False, f0=False):
         sim.add(shape, material='pec')
 
 
+def _wire(sim):
+    graded = sim._dz_profile is not None and sim._dz_profile[3] != DX
+    top = 3.9 if graded else 4
+    sim.add(PolylineWire((point(5, 3, 1), point(5, 3, top)), radius=0), material='pec')
+
+
 # A row is deliberately explicit: extending admission cannot inherit a no-op.
 BUILDERS = {
     ('_freq_max', ''): ({}, _nothing),
@@ -94,7 +100,7 @@ BUILDERS = {
     ('_materials', 'kerr'): _material(eps_r=2.5, chi3=1e-3),
     ('_geometry', 'pec_volume'): ({}, lambda sim: _metal(sim, volume=True)),
     ('_geometry', 'pec_sheet'): ({}, _metal),
-    ('_geometry', 'pec_wire'): _add('add', PolylineWire((point(5, 3, 1), point(5, 3, 4)), radius=0), material='pec'),
+    ('_geometry', 'pec_wire'): ({}, _wire),
     # The graded profile has nodes at 3 and 3.9 DX (not 4): DC film edges sit on
     # nodes every lane shares, so the realized footprint equals the drawn one.
     ('_thin_conductors', 'lossy_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 5, 5)), sigma_bulk=1e3, thickness=DX/10),
@@ -160,7 +166,7 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
         kwargs['domain'] = point(14, 12, 12)
     if row == ('_tfsf', 'plane_wave'):
         # One request on both meshes: uniform refuses explicit non-periodic
-        # side faces (#1945), so the plane wave takes the shorthand.
+        # side faces, so the plane wave takes the shorthand.
         kwargs['boundary'] = 'cpml'
     nu = lane in ('run_nonuniform', 'run_distributed_nu', 'fwd_nonuniform', 'fwd_distributed_nu') or graded
     # Off-node absorbers remain intentional; reflecting axes use whole cells.
@@ -202,7 +208,7 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
         # Addendum 5b: same x slab and eps, invariant through transverse pads.
         sim.add(Box(point(3.2, -100, -100), point(6.4, 100, 100)), material='block')
     elif row[0] == '_waveguide_ports':
-        # Beyond the port's reference plane: its section must be vacuum (rfx#1994).
+        # Beyond the port's reference plane: its section must be vacuum.
         sim.add(Box(point(6.2, 2.1, 1.3), point(8.2, 4.3, 3.2)), material='block')
     elif row[0] == '_current_moments':
         # The block's z faces must stay inside the monitor's interior (from node 2):

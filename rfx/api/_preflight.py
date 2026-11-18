@@ -338,70 +338,14 @@ class _PreflightMixin:
             or s_param_freqs is not None
             or s_param_n_steps is not None
         )
-        from rfx.runners._admission import resolve_plain_source_s_request
+        from rfx.runners._admission import default_run_forms_s, resolve_plain_source_s_request
         compute_s_params = resolve_plain_source_s_request(
             self, compute_s_params, requested=requested, devices=devices)
-        if not requested:
+        if not (requested or (compute_s_params is None and default_run_forms_s(self, devices=devices))):
             return compute_s_params
 
-        port_entries = self._port_sparameter_entries()
-        source_only_entries = [pe for pe in self._ports if pe.is_soft_source]
-        messages: list[str] = []
-
-        if self._msl_ports:
-            messages.append(
-                "add_msl_port(...) uses compute_msl_s_matrix(); "
-                "run(compute_s_params=True) does not include MSL ports in "
-                "Result.s_params"
-            )
-        if self._waveguide_ports:
-            messages.append(
-                "add_waveguide_port(...) uses compute_waveguide_s_matrix() "
-                "for the full S-matrix; run() may return per-port "
-                "result.waveguide_sparams but not Result.s_params"
-            )
-        if self._floquet_ports:
-            messages.append(
-                "add_floquet_port(...) is experimental and has no "
-                "claims-bearing run(compute_s_params=True) S-matrix path"
-            )
-        if self._tfsf is not None:
-            messages.append(
-                "add_tfsf_source(...) is a plane-wave source, not a port"
-            )
-        if self._coaxial_ports:
-            messages.append(
-                "add_coaxial_port(...) is not wired into run(compute_s_params=True); "
-                "use Simulation.compute_coaxial_line_reflection(...) for a "
-                "one-port reflection or Simulation.compute_coaxial_two_port(...) "
-                "for a through line (for a single add_coaxial_port(), "
-                "compute_s_matrix(method=...) dispatches to either), or "
-                "add_port(extent=...) for the probe-feed S-parameter path"
-            )
-
-        if not port_entries:
-            if source_only_entries:
-                messages.append(
-                    "add_source(...) / add_polarized_source(...) are "
-                    "source-only observables and cannot populate "
-                    "Result.s_params"
-                )
-            detail = "; ".join(messages) if messages else (
-                "register at least one add_port(...) impedance port"
-            )
-            raise ValueError(
-                "run(compute_s_params=True) computes Result.s_params only "
-                f"for add_port(...) lumped or wire ports; {detail}."
-            )
-
-        if messages:
-            raise NotImplementedError(
-                "run(compute_s_params=True) has a single result schema for "
-                "add_port(...) lumped/wire ports. Mixed or specialized port "
-                "families must use their documented calculators: "
-                + "; ".join(messages)
-                + "."
-            )
+        from rfx.runners._admission import admit_s_request
+        port_entries = admit_s_request(self, "run(compute_s_params=True)")
 
         if devices is not None and len(devices) > 1:
             from rfx.model.distributed_ports import refuse_unsupported_distributed_features
@@ -437,12 +381,10 @@ class _PreflightMixin:
 
         # The port S11 is the port drive's own reflection only if nothing else
         # excites the model, as on run()'s S request.
-        from rfx.runners._admission import admit_forward_s_matrix
+        from rfx.runners._admission import admit_forward_s_matrix, admit_s_request
         admit_forward_s_matrix(self)
-        port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:
-            messages.append("MSL ports use compute_msl_s_matrix()")
             # Near-field guard: probe 0 must clear the source
             # FRINGING transient (~5·h_sub), which decays over a few substrate
             # thicknesses, not over λ. Inside it the V·I-split S11 of a high-Q
@@ -578,40 +520,7 @@ class _PreflightMixin:
                             f"S11 of a high-Q resonant load — "
                             + _remedy
                         )
-        if self._waveguide_ports:
-            messages.append("waveguide ports use compute_waveguide_s_matrix()")
-        if self._floquet_ports:
-            messages.append(
-                "Floquet ports are experimental and have no forward S11 path"
-            )
-        if self._tfsf is not None:
-            messages.append("TFSF is a plane-wave source, not a port")
-        if self._coaxial_ports:
-            messages.append(
-                "coaxial ports are not wired into forward(port_s11_freqs=...); "
-                "use Simulation.compute_coaxial_line_reflection(...) for a "
-                "one-port reflection or Simulation.compute_coaxial_two_port(...) "
-                "for a through line"
-            )
-        if not port_entries:
-            source_only = any(pe.is_soft_source for pe in self._ports)
-            if source_only:
-                messages.append("add_source(...) is not an impedance port")
-            detail = "; ".join(messages) if messages else (
-                "register add_port(...) first"
-            )
-            raise ValueError(
-                "forward(port_s11_freqs=...) computes S11 only for "
-                f"add_port(...) lumped or wire ports on the uniform "
-                f"single-device path; {detail}."
-            )
-        if messages:
-            raise NotImplementedError(
-                "forward(port_s11_freqs=...) cannot be combined with "
-                "specialized or non-port excitation families: "
-                + "; ".join(messages)
-                + "."
-            )
+        admit_s_request(self, "forward(port_s11_freqs=...)", details=messages)
 
     # ------------------------------------------------------------------
     # the three contiguous mesh-quality checks -- the
@@ -1057,7 +966,7 @@ class _PreflightMixin:
         if self._ports or self._tfsf:
             raise ValueError(
                 "compute_waveguide_s_matrix() is not supported together with "
-                "lumped ports or TFSF"
+                "a lumped or wire port, or a soft source (add_source) or TFSF"
             )
         if self._periodic_axes:
             raise ValueError(
