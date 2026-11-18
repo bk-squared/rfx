@@ -33,8 +33,8 @@ def report_context(plan, result, bins):
 
     grid = result.grid
     metas = tuple(meta for meta, _ in (result.wire_port_sparams or ()))
-    traced_axes = ()
-    ports = ()
+    traced_axes: tuple[tuple[str, str], ...] = ()
+    ports: tuple[dict, ...] = ()
     meta_traced = None
     with jax.ensure_compile_time_eval():
         if plan.lane == "graded":
