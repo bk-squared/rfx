@@ -121,7 +121,7 @@ def test_record_end_drive_dtype(label):
         def refuse(*args):
             pytest.fail(str(args))
         with observe() as rows:
-            _declared_drives(sim, 200, grid, False, drives, refuse)
+            _declared_drives(sim, 200, grid, False, drives, refuse, None)
         assert len(drives) == 1
         if label == 'floquet':
             assert type(grid.dt) is float
