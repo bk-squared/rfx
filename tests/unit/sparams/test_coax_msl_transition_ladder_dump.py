@@ -67,7 +67,7 @@ _NUMERIC_FIELDS = (
     "a_inc", "b_out", "settling_db", "line_impedances",
 )
 
-# Issue #823 ladder self-consistency witness: OPT-IN PAYLOADS carried by the
+# Ladder self-consistency witness: OPT-IN PAYLOADS carried by the
 # same ``return_ladder_voltages`` flag as the dump (a Python-loop refit over
 # the very arrays the dump exposes; None on a default call). Report-only
 # diagnostics -- see tests/unit/sparams/test_msl_ladder_standoff.py for what they measure.
@@ -234,12 +234,12 @@ def test_ladder_dump_schema_matches_the_documented_contract(_abc):
     assert np.all(np.diff(d["msl_ladder_i"]) > 0)
 
     # Reference planes / impedances agree with the result's own fields, and
-    # both reference planes sit OUTSIDE their ladder (the geometry the #589
+    # both reference planes sit OUTSIDE their ladder (the geometry the
     # wave-role question turns on): coax ref ABOVE, MSL ref BELOW.
     assert d["ref_coax_m"] == float(on.reference_planes[0])
     assert d["ref_msl_m"] == float(on.reference_planes[1])
     # The dump's z0_ref is the line impedances the assembler formed the waves
-    # at; since #2014 the result's z0_ref is the declared S reference.
+    # at; the result's z0_ref is the declared S reference.
     assert np.array_equal(d["z0_ref"], np.asarray(on.line_impedances))
     assert d["ref_coax_m"] > d["coax_ladder_z_m"].max()
     assert d["ref_msl_m"] < d["msl_ladder_x_m"].min()
@@ -270,7 +270,7 @@ def test_ladder_dump_round_trips_through_the_assembler(_abc):
         cond_warn=float(instrument_kwargs(N_STEPS).get("cond_warn", 1.0e3)),
     )
     # The assembler's S is at the line impedances; the producer then refers
-    # it to the declared z0_ref (#2014) with this same call.
+    # it to the declared z0_ref with this same call.
     s_params = renormalize_power_waves(s_params, on.line_impedances, on.z0_ref)
     for name, got in (
         ("s_params", s_params), ("cond_a", cond_a),

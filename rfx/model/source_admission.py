@@ -41,6 +41,83 @@ def refuse_dead_soft_sources(sim, conductors):
         raise RfxRefusal(message)
 
 
+class LumpedRLCInputs(list):
+    """Step metadata with its declaration admission context, used only in setup."""
+
+    def __init__(self, metas, sim, conductors):
+        super().__init__(metas or ())
+        self.admission = (sim, conductors)
+
+
+def conductor_operator(*, smoothing=False, conformal=False):
+    """Name the volume operator selected by an execution's existing options."""
+    return 'kottke_pec' if smoothing == 'kottke_pec' else 'conformal' if conformal else 'staircase'
+
+
+def refuse_shorted_lumped_rlc(sim, conductors, *, operator='staircase'):
+    """Judge hard declarations; defer tensor-operated volumes to step setup."""
+    if not getattr(sim, '_lumped_rlc', ()):
+        return
+    if operator != 'staircase':
+        from rfx.model.conductors import stepped_conductors
+        conductors = stepped_conductors(conductors, conformal_operands=True)
+    _refuse_shorted_lumped_rlc(sim, conductors, release_ports=True)
+
+
+def refuse_shorted_lumped_rlc_applied(sim, conductors, *, hard_edges,
+                                     conformal_zero_masks, frozen_masks):
+    """Judge the union actually zeroed by the step, after port releases."""
+    from dataclasses import replace
+    masks = [m for m in (hard_edges, conformal_zero_masks, frozen_masks) if m is not None]
+    if not masks:
+        return
+    edges = tuple(masks[0])
+    for other in masks[1:]:
+        edges = tuple(a | b for a, b in zip(edges, other))
+    _refuse_shorted_lumped_rlc(sim, replace(conductors, pec_edges=edges), release_ports=False)
+
+
+def _refuse_shorted_lumped_rlc(sim, conductors, *, release_ports):
+    """Use one resolver, warning and message for declaration and applied masks."""
+    if not getattr(sim, '_lumped_rlc', ()):
+        return
+    faces = declared_pec_faces(sim)
+    if conductors.pec_edges is None and not faces:
+        return
+    grid = conductors.grid
+    leaves = (tuple(grid.cells(a) for a in range(3)), conductors.pec_edges)
+    if any(is_tracer(leaf) for leaf in jax.tree.leaves(leaves)):
+        warnings.warn(
+            "Lumped RLC PEC admission check cannot run on a traced mesh or "
+            "traced conductor edges; no concrete realized edge classification "
+            "is available.", AccuracyWarning, stacklevel=user_stacklevel())
+        return
+    from rfx.model.conductors import lumped_port_stage
+    released = conductors
+    for index, port in enumerate(sim._ports if release_ports and conductors.pec_edges is not None else ()):
+        released = lumped_port_stage(released, port, f'port[{index}]')
+    walls = wall_edge_masks(grid.shape, faces)
+    for index, spec in enumerate(sim._lumped_rlc):
+        component = spec.component.lower()
+        axis = 'xyz'.index(component[1])
+        edge = tuple(int(v) for v in field_index(grid, spec.position, component))
+        prefix = (f"lumped_rlc[{index}] at {tuple(spec.position)} ({component}), "
+                  f"grid index {edge}: its own E edge is PEC, so ")
+        if bool(walls[axis][edge]):
+            owners = ', '.join(face for face in faces
+                              if wall_edge_masks(grid.shape, (face,))[axis][edge])
+            raise RfxRefusal(
+                prefix + f"the declared PEC wall face(s) {owners} short the element "
+                "and it would have no effect. Move it at least one cell inside "
+                "the domain, off the wall.")
+        if released.pec_edges is not None and bool(np.asarray(released.pec_edges[axis])[edge]):
+            owners = ', '.join(_owners(sim, conductors, component, edge))
+            raise RfxRefusal(
+                prefix + "the conductor shorts the element and it would have no effect. "
+                f"Realized conductor provenance (assembly): {owners}. Cut a gap in "
+                "the conductor at the element, or move the element off it.")
+
+
 def _dead_sources(sim, conductors):
     if not sim._ports:
         return

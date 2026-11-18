@@ -94,7 +94,8 @@ def sample_spec(spec, grid, shape):
 
 def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_sizes):
     """Use the shared builder after the declared strength-weighted edge rule."""
-    from rfx.materials.lorentz import LorentzPole, lorentz_pole_coeffs, pole_update_coeffs, pole_underflow_guard, _pole_underflow_check_enabled
+    from rfx.materials.lorentz import LorentzPole, lorentz_pole_coeffs, pole_update_coeffs, pole_underflow_guard
+    from rfx.model.dispersive_poles import _pole_underflow_check_enabled
     relative = isinstance(pole.kappa, RelativeStrength)
     value = pole.kappa.value if relative else pole.kappa
     si_tracer = not relative and pole.si_traced and value.dtype == jnp.float32

@@ -57,7 +57,7 @@ def _build_waveguide_sim(
             f"got dx = {dx * 1e3:.6g} mm")
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),
-        domain=(WAVEGUIDE_DOMAIN[0], n_y * dx, n_z * dx),  # solved length; #1887
+        domain=(WAVEGUIDE_DOMAIN[0], n_y * dx, n_z * dx),  # solved length
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=dx,
@@ -164,7 +164,7 @@ def test_unitarity_lossless_waveguide():
         print(f"  {port_name}: mean(sum |S_ij|^2) = {col_mean:.6f}")
     print(f"  Global mean column power: {mean_power:.6f}")
 
-    # Lower bound loosened 2026-04-22 from 0.8 to 0.6. Post-CPML retune +
+    # Lower bound loosened from 0.8 to 0.6. Post-CPML retune +
     # diagonal-subtraction, the two-run normalized extractor measures
     # ~0.73 on this εr=4 full-cross-section slab. Analytic Airy gives 1.00,
     # so ~27% power is un-accounted — a real extractor accuracy gap
@@ -211,7 +211,7 @@ def test_reciprocity_asymmetric_structure():
     print(f"  Mean relative difference: {mean_rel_diff:.6f}")
 
     # 5% gate — Meep-class. With mod_gaussian + discrete eigenmode the
-    # observed value on 2026-04-22 was 0.0414; 0.05 leaves ~20% margin.
+    # observed value was 0.0414; 0.05 leaves ~20% margin.
     assert mean_rel_diff < 0.05, (
         f"Reciprocity error too large: mean |S21-S12|/max = {mean_rel_diff:.6f} (limit 0.05)"
     )

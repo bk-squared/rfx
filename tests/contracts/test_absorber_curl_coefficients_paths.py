@@ -69,7 +69,7 @@ def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
 
     monkeypatch.setattr(module, 'apply_cpml_e', step)
     if 'graded' in lane:
-        # The wrapped graded step (plain CPML, #1402 item 5) imports the shared
+        # The wrapped graded step (plain CPML) imports the shared
         # kernel inside its E boundary stage; observe that call too.
         import rfx.boundaries.cpml as cpml
         monkeypatch.setattr(cpml, 'apply_cpml_e', step)

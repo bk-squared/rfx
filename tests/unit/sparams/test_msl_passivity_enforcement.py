@@ -169,20 +169,20 @@ def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
 # ---------------------------------------------------------------------------
 
 def _thru():
-    # #1138: geometry[2] y solved +11.67 % off; this test checks enforced result is strictly passive and loud.
+    # Geometry[2] y solved +11.67 % off; this test checks enforced result is strictly passive and loud.
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
     # A port voltage needs the conductor at its declared ground plane.
-    # The CPML domain face is not an implicit PEC electrode (#729).
+    # The CPML domain face is not an implicit PEC electrode.
     sim.add(Box((0., 0., 0.), (0.012, 0.008, 0.)), material="pec")
-    # 35 um foil: a SHEET (#931 §1.3), declared by a zero-thickness Box
+    # 35 um foil: a SHEET, declared by a zero-thickness Box
     # on the laminate top. h_sub / dx = 0.8 mm / 0.2 mm = 4, so the substrate face is a
     # node line and the sheet lands on it exactly. Drawn one cell thick
     # before the contract, it would now be a VOLUME — walls at BOTH z
     # faces and the Ez edge between them shorted.
-    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
+    # The strip spans the two port nodes (2 and 10 mm). Drawn across the whole
     # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
     # 1.5x of the 2-18 GHz read.
     sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")

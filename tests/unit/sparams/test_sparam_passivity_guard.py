@@ -135,7 +135,7 @@ def test_normalize_aware_tol_tolerates_documented_overshoot():
 
 
 # =============================================================================
-# Item #5 (LLM-naive-usage audit) — SOFT over-unity advisory in the
+# SOFT over-unity advisory in the
 # (documented-overshoot, extractor-broken] column-power gap.
 #
 # On the ``normalize=False`` waveguide path the passivity tol is loose (2.0 ->
@@ -297,7 +297,7 @@ def test_public_waveguide_advisory_policy(monkeypatch, normalize, strict,
         assert kwargs["return_settling"] is True
         return s, np.array([-80., -80.])
 
-    # #980 Phase 2 moved compute_waveguide_s_matrix verbatim into
+    # Phase 2 moved compute_waveguide_s_matrix verbatim into
     # rfx/sparams/waveguide.py, so the extractor it calls is a global of
     # THAT module now. Patch where the name is looked up -- patching
     # "rfx.api._sparams.<target>" still succeeds (the name is re-exported

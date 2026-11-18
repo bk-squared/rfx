@@ -9,6 +9,7 @@ import pytest
 from rfx.errors import AccuracyWarning
 from rfx import _traced_check, backend
 from rfx.materials import lorentz
+from rfx.model import dispersive_poles
 from rfx.materials.pole_map import SampledPoleMap, map_terms
 
 
@@ -45,13 +46,13 @@ def objective(site, small):
 
 def observe(monkeypatch, fn, value):
     calls = []
-    report = lorentz._report_pole_underflow
+    report = dispersive_poles._report_pole_underflow
 
     def spy(count):
         calls.append(int(count))
         report(count)
 
-    monkeypatch.setattr(lorentz, "_report_pole_underflow", spy)
+    monkeypatch.setattr(dispersive_poles, "_report_pole_underflow", spy)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", AccuracyWarning)
         result = jax.block_until_ready(fn(value))
