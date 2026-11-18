@@ -82,7 +82,7 @@ def test_refused_waveguide_reports_its_allocated_transverse_absorbers():
                      cpml_layers=16, boundary=BoundarySpec(x="cpml", y=transverse, z=transverse))
     sim.add_waveguide_port(0.010, direction="+x", f0=13.5e9, freqs=np.array([13.5e9]),
                            probe_offset=2, ref_offset=1)
-    # #1826: the explicit declaration allocates pads before guide admission refuses it.
+    # The explicit declaration allocates pads before guide admission refuses it.
     report = sim.preflight()
     assert not any(issue.severity == "error" for issue in report), report
     assert {"absorber_budget_exceeds_axis", "thin_absorber"} <= {issue.code for issue in report}

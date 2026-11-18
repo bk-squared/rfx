@@ -76,12 +76,12 @@ def test_kerr_intensity_dependent():
 
 
 # ---------------------------------------------------------------------------
-# Reactive Kerr tests (apply_kerr_ade — #437 increment-scaling ε_eff form)
+# Reactive Kerr tests (apply_kerr_ade — increment-scaling ε_eff form)
 #
 # apply_kerr_ade now implements the REACTIVE index change ε_eff = ε_r + χ³|E|²
 # (lossless) by scaling the E-UPDATE INCREMENT, not the whole field:
 #   E^{n+1} = E^n + (E_lin - E^n) / (1 + χ³·|E^n|²/ε_r)
-# The pre-#437 form E_lin/(1+factor) was a nonlinear ABSORBER (reduced |E|, zero
+# The earlier form E_lin/(1+factor) was a nonlinear ABSORBER (reduced |E|, zero
 # phase shift).
 # ---------------------------------------------------------------------------
 

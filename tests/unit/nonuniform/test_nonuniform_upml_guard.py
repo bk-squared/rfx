@@ -106,7 +106,7 @@ def test_uniform_lane_still_reaches_the_real_upml_kernel():
 
 
 # ---------------------------------------------------------------------------
-# The preflight advisory (#680 follow-up).
+# The preflight advisory.
 #
 # The lane guard above is the enforcement point, but ``sim.preflight()``
 # printed "All checks passed" and then ``run()`` refused — a preflight that

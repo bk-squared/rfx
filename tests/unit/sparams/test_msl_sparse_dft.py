@@ -171,7 +171,7 @@ def test_compute_msl_registers_sparse_regions(monkeypatch):
 #   test_cropped_extractor_reproduces_full_plane_s_end_to_end
 #       the VALUE class — that the two accumulator shapes are one
 #       computation. Gated on complex S against a derived
-#       two-shapes-one-program ulp budget (#876). It does NOT gate the
+#       two-shapes-one-program ulp budget. It does NOT gate the
 #       index class: the j/k off-by-one survives it (measured; see the
 #       derivation at the assertion).
 #
@@ -214,13 +214,13 @@ def _thru_sim(axis: str, lane: str):
         thi = (lat_c + _AG_W_TRACE / 2, _AG_L_PROP, _AG_H_SUB)
         p0, p1, d0, d1 = ((lat_c, _AG_PORT_MARGIN, 0.0),
                           (lat_c, _AG_PORT_MARGIN + _AG_L_LINE, 0.0), "+y", "-y")
-    # #1138: geometry[1] transverse x/y solved +8.656% off; this tests sparse/full-plane extraction parity.
+    # Geometry[1] transverse x/y solved +8.656% off; this tests sparse/full-plane extraction parity.
     sim = Simulation(snap="declared", freq_max=_AG_F_MAX, domain=domain, dx=_AG_DX, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")), **kw)
     sim.add_material("ro4350b", eps_r=_AG_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), sub), material="ro4350b")
-    # 35 um foil on the laminate face -> a SHEET (#931 §1.3): a
+    # 35 um foil on the laminate face -> a SHEET: a
     # zero-thickness Box at z = H_SUB, realized as ONE wall plane with the
     # normal Ez edge live. Drawn H_SUB -> H_SUB + DX it was a one-cell
     # VOLUME under §1.2 (walls at both faces, Ez between them shorted), i.e.
@@ -415,8 +415,8 @@ def test_cropped_extractor_selects_exactly_the_full_plane_indices(
     # zipping the longer list. Every assertion below is a paired comparison
     # between one cropped call and the corresponding full-plane one, so an
     # unequal count means the pairing is wrong and NOTHING below is
-    # meaningful. It caught a real defect in this test's own scaffolding
-    # during review: reading the pristine ``msl_loop_current`` off the
+    # meaningful. It caught a real defect in this test's own scaffolding:
+    # reading the pristine ``msl_loop_current`` off the
     # module inside ``_run_s`` chained the second solve's spy onto the
     # first's, and both runs' calls landed in the first ``loops`` list
     # (8 vs 4). A witness that dies here dies with and without the mutant,
@@ -495,7 +495,7 @@ def test_cropped_extractor_reproduces_full_plane_s_end_to_end(monkeypatch, lane,
 
     # ---------------------------------------------------------------
     # The bound is a COMPILED-PROGRAM IDENTITY budget, not a physics
-    # tolerance (#876). Both runs solve the same fields with the same
+    # tolerance. Both runs solve the same fields with the same
     # extractor; the only difference is the SHAPE of the DFT accumulator
     # — a cropped rectangle vs the full transverse plane — i.e. two
     # compiled programs for one computation.

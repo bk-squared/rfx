@@ -29,13 +29,12 @@ from tests.contracts.path_equivalence.comparison import compare
 def _pulse_for_60_steps(sim):
     # Fractional bandwidth 0.8 with tau = 60/15 steps: the 60-step record holds
     # the whole pulse (at f0 = 3 GHz the pulse would peak after step 83).
-    # Until 2026-10-12: bandwidth=3e9 (Hz), which drove nothing (issue 1668).
     tau = 4.0 * float(sim._build_grid().dt)
     return GaussianPulse(f0=1.0 / (np.pi * 0.8 * tau), bandwidth=0.8)
 
 
 def _pec_sim():
-    s = Simulation(freq_max=6e9, domain=(17 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0)), dx=(299792458.0 / 6e9 / 20.0), boundary="pec")  # solved length; #1887
+    s = Simulation(freq_max=6e9, domain=(17 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0)), dx=(299792458.0 / 6e9 / 20.0), boundary="pec")  # solved length
     s.add_source((0.02, 0.01, 0.01), "ez",
                  waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
@@ -87,7 +86,7 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     actual mask) must still be outer-jit-wrappable and match eager. `_pec_sim`
     has only a PEC *boundary* (separate grid path), which leaves ``pec_mask``
     empty — this exercises the non-trivial fallback branch."""
-    s = Simulation(freq_max=6e9, domain=(27 * 1.5e-3, 14 * 1.5e-3, 14 * 1.5e-3), dx=1.5e-3, boundary="pec")  # solved length; #1887
+    s = Simulation(freq_max=6e9, domain=(27 * 1.5e-3, 14 * 1.5e-3, 14 * 1.5e-3), dx=1.5e-3, boundary="pec")  # solved length
     s.add(Box((12 * 1.5e-3, 4 * 1.5e-3, 4 * 1.5e-3), (16 * 1.5e-3, 9 * 1.5e-3, 9 * 1.5e-3)), material="pec")
     s.add_source((0.008, 0.01, 0.01), "ez",
                  waveform=_pulse_for_60_steps(s))

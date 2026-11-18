@@ -174,7 +174,7 @@ def test_folded_resistor_on_the_surface_reads_its_value(incident):
 
 
 #: A lumped inductor is lossless: |Re Z_L| and |Im Z_L - w L| within 1 % of
-#: w L on every bin (#1245).
+#: w L on every bin.
 BAR_L = 0.01
 
 

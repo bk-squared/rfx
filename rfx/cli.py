@@ -80,7 +80,7 @@ def _cmd_plot(args) -> int:
                     f"needs the timestep. Re-run so the dataset stores config."
                 )
             fig = plot_time_series(ts, dt)
-        else:  # pragma: no cover - argparse choices guard this
+        else:  # pragma: no cover
             raise ValueError(f"unknown quantity {args.quantity!r}")
 
     out = args.out or f"{path.stem}_{args.quantity}.png"
@@ -163,7 +163,6 @@ def main(argv=None) -> int:
         RuntimeError,
         NotImplementedError,
     ) as exc:
-        # Fail loud with a clean one-line error rather than a traceback dump.
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

@@ -36,7 +36,7 @@ from rfx.sources.sources import GaussianPulse
 _EPS_R = 3.66
 _H_SUB = 254e-6
 _W_TRACE = 600e-6
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the foil sheet
+# ON-LATTICE board: h_sub / dx = 3 exactly, so the foil sheet
 # below lands on the laminate face. The fixture ran at dx = 80 um
 # (h_sub/dx = 3.175), where the substrate realizes four cells (320 um)
 # and a sheet declared at 254 um snaps down to 240 um, inside the
@@ -53,7 +53,7 @@ def _msl_sim_auto_eps():
     lx = _L_LINE + 2 * _MARGIN
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * _DX)
     lz = _H_SUB + 0.5e-3
-    # #1138: geometry[1] y solved +8.656 % off; this test checks explicit and auto eps build the same fixture.
+    # geometry[1] y solved +8.656 % off; this test checks explicit and auto eps build the same fixture.
     sim = Simulation(snap="declared",
         freq_max=5e9, domain=(lx, ly, lz), dx=_DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -74,15 +74,15 @@ def _msl_sim_auto_eps():
     # version placed them INSIDE the PEC trace (z=300 um within the
     # conductor span [254, 334] um) — preflight warned, the harness's
     # warning suppression hid it, and the muted signal collapsed the
-    # test's discriminating power (PR #486 review finding: it PASSED on
+    # test's discriminating power (it PASSED on
     # pre-fix main at rel_err 0.126).
     for x in (0.004, 0.005, 0.006):
         sim.add_probe(position=(x, y_c, _H_SUB + 2 * _DX), component="ez")
     return sim
 
 
-# highmem (issue #545): measured +8.1 GB RSS high-water delta in weekly
-# run 31103127491. No prior slow/slow_physics/gpu marker on this test —
+# highmem: measured +8.1 GB RSS high-water delta.
+# No prior slow/slow_physics/gpu marker on this test —
 # highmem is additive only (pyproject addopts filters "not slow and not
 # slow_physics", not highmem), so this test stays in the default fast lane
 # unchanged; highmem only pulls it out of the weekly 4-shard rotation.

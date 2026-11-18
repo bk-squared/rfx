@@ -593,7 +593,7 @@ def test_msl_mode_profile_uniform_regression_after_physical_span_correction():
 #
 # The element current has to become a current DENSITY through the node's DUAL
 # face, and the inductor's implicit self-coupling `gamma` has to use the same
-# area. Since #1245 the inductor is trapezoidal (it loads the node with
+# area. The inductor is trapezoidal (it loads the node with
 # I_avg = (I^{n+1} + I^n)/2):
 #
 #     E^{n+1} = e_std - (I^n/dual_area + (gamma/4)*(e_std + E^n)) / (D0 + gamma/4)
@@ -753,7 +753,7 @@ def test_nu_traced_rlc_meta_carries_the_same_fold_as_the_concrete_twin(
         meta = build_rlc_meta(grid, spec, setup_rlc_materials(grid, spec, m))
         return meta.dual_area, meta.gamma, meta.D0
 
-    # Concrete inputs keep run()'s float64 host arithmetic (#1373 D6): a
+    # Concrete inputs keep run()'s float64 host arithmetic: a
     # Python float, not a float32 array, on both entries.
     assert type(concrete.D0) is float
     dual_area, gamma, d0 = jax.jit(_traced)(_mats(grid))
@@ -804,7 +804,7 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
         return (float(getattr(state, component)[idx]),
                 float(rlc.inductor_current))
 
-    # The two PARALLEL pins moved with #1245 (the inductor is trapezoidal and
+    # The two PARALLEL pins moved (the inductor is trapezoidal and
     # solved with its edge field). Same witness as the series pins below: the
     # node capacitance D0*A*dt/d (stamps included) in parallel with L, driven
     # by D0*A*amp_n held over each step (matrix exponential, float64); at
@@ -812,13 +812,12 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
     # 6.3947e-07, +4.35 %; now 6.2640e-07, +2.22 % -- this harness node
     # rings at 120 GHz, 0.29 rad per step) and 6.4365e-04 A for R+L+C (old
     # 6.4156e-04, -0.32 %; now 6.4364e-04, -0.0016 %). The R here enters
-    # only D0 (the harness has no Yee update to apply sigma). (Closed-form
-    # script and numbers: the #1245 PR.)
+    # only D0 (the harness has no Yee update to apply sigma).
     assert drive("parallel", 0.0, 1e-9, 0.0, "ez") == (
         -0.2504979968070984, 6.264010607992532e-07)
     assert drive("parallel", 50.0, 1e-9, 1e-12, "ez") == (
         67.66089630126953, 0.0006436360999941826)
-    # The two SERIES pins moved with #1163 (the element is solved together
+    # The two SERIES pins moved (the element is solved together
     # with its edge field). This harness is one node with no curl, loaded by
     # the element: a node capacitance D0*A*dt/d driven by the per-step
     # increments amp_n. The ELEMENT CURRENT is the witness here: with the
@@ -832,7 +831,7 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
     # explicit coupling's R - d/(D0*A) = 50 - 215 ohm, a negative resistance.
     # Re-pinned again when D0 became eps/dt + sigma/2 of the edge (the old
     # series pin read 1/Cb in float32, 1e-7 apart): E moved 8e-5 relative,
-    # I 3e-7. (Closed-form script and numbers: the #1163 PR.)
+    # I 3e-7.
     assert drive("series", 50.0, 1e-9, 0.0, "ex") == (
         0.030034542083740234, 6.364606974784692e-07)
     assert drive("series", 50.0, 1e-9, 1e-12, "ey") == (

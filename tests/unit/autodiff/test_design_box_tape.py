@@ -605,7 +605,7 @@ def test_fence_anisotropic_and_bloch_paths():
                   sheet_impedance=None, cell_metas=())
     # The same arguments without a flag resolve cleanly. The resolved bounds
     # are the WRITE window, one cell past the declared box on the plus side of
-    # each axis since #1210 -- the design material reaches the E components on
+    # each axis -- the design material reaches the E components on
     # those edges, so the redo has to write them.
     assert resolve_design_box(spec, **common).bounds == (10, 14, 9, 13, 8, 12)
     ones = jnp.ones(grid.shape, jnp.float32)

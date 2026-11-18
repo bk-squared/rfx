@@ -393,7 +393,6 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     before = [(s11.copy(), s21.copy()) for s11, s21 in zip(reflections, transmissions)]
     sim = _waveguide_scene(path, frequencies)
     if case == "shared":
-        # #2449: two guide ports cannot return isolated S from one record.
         with pytest.raises(ValueError) as caught:
             getattr(sim, entry)(n_steps=1, skip_preflight=True)
         assert str(caught.value) == (
@@ -494,7 +493,7 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path, n_ports):
     monkeypatch.setattr(waveguide, "_extract_waveguide_sparams", capture)
     monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", check)
     if n_ports > 1:
-        # #2449: refusal also precedes S extraction in a traced forward call.
+        # Refusal also precedes S extraction in a traced forward call.
         with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
             jax.grad(loss)(eps)
         assert not extracted

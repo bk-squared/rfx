@@ -148,8 +148,8 @@ def _assert_on_the_surface(sim):
 #: The load edge sits on an eps 1 | 4 surface: its own permittivity is 2.5,
 #: its cell's is 4. A series element that reads D0 from its cell realizes a
 #: different resistance than the folded resistor on the same edge, whose
-#: conductance the Yee update applies with the edge's own coefficient (the
-#: #1163 review measured a series 100 ohm reading 160 ohm there). MEASURED
+#: conductance the Yee update applies with the edge's own coefficient
+#: (measured a series 100 ohm reading 160 ohm there). MEASURED
 #: with the edge D0: 1.8e-7 (100 ohm), 2.9e-7 (50 ohm), 2.5e-7 (folded 200 +
 #: series 100) of the peak; with the single-cell D0 restored: 1.0e-1, 6.5e-2,
 #: 4.0e-2. The stacked row also goes red (4.1e-2 in vacuum, 1.9e-2 on the

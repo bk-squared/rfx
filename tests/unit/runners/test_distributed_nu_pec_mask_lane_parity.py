@@ -115,8 +115,8 @@ def _distributed_nnz(gmask, n_devices=1):
         base = d * nx_local
         slabs[base + GHOST:base + GHOST + nx_per] = gmask[lo:hi]
         # ghost rows: interior seams carry the neighbour's PEC status; the
-        # two physical-boundary ghosts are the #689 zero pad (False since
-        # #931 — see shard_pec_mask_x_slab).
+        # two physical-boundary ghosts are the zero pad (False —
+        # see shard_pec_mask_x_slab).
         slabs[base] = gmask[lo - 1] if d > 0 else False
         slabs[base + nx_local - 1] = gmask[hi] if d < n_devices - 1 else False
     shape = (n_devices * nx_local, NY, NZ)

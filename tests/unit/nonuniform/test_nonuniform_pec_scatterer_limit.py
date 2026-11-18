@@ -83,7 +83,7 @@ _A, _B, _FMAX = 0.02286, 0.01016, 12e9
 _FREQS = jnp.linspace(8.2e9, 12.4e9, 5)
 _NP = 20
 # The guide walls and the fin faces are PEC planes the S-matrix preflight
-# holds to their drawn spacing (#1895): dx = a/18 = b/8 puts both guide
+# holds to their drawn spacing: dx = a/18 = b/8 puts both guide
 # walls on nodes, and each fin spans 5 cells of the 18 (55.6 % blocked).
 _DX = _A / 18
 _FIN = 5 * _DX
@@ -120,7 +120,7 @@ def _iris_sim(*, nonuniform: bool):
     sim.add_material("metal", eps_r=1.0, sigma=1e7)  # sigma > 1e6 -> PEC
     x_lo, x_hi = (nx // 2) * dx, (nx // 2 + 1) * dx
     fin = _FIN
-    # #931: the fins are a VOLUME (a metal block through the guide), and
+    # The fins are a VOLUME (a metal block through the guide), and
     # they are drawn ON node planes so drawn thickness == realized
     # thickness: one cell, walls at xc -/+ dx/2. The pre-#931 corners
     # (xc -/+ 1 mm at the then dx = 1.5 mm) sat mid-cell, so the realized fin was
@@ -151,7 +151,7 @@ def _iris_s11_max(*, nonuniform: bool) -> float:
         )
     s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
     # A passive iris cannot reflect more than it receives. The lower bounds
-    # below once accepted |S11|max 2.17 (2026-09-07, see the module
+    # below once accepted |S11|max 2.17 (see the module
     # docstring); 0.05 covers extraction noise (0.94 measured at most).
     assert np.all(s11 <= 1.0 + 0.05), (
         f"PEC iris |S11| per bin {np.round(s11, 3)} exceeds 1 on a passive "
