@@ -198,7 +198,7 @@ def test_layered_material_walk_uses_the_ports_lower_tie_ground(ground_node, dire
     sim.add(Box((0., 0., interface), (domain[0], domain[1], top)), material="second_layer")
     sim.add(Box(_point(direction, 0., 10 * U, top),
                 _point(direction, 32 * U, 14 * U, top)), material="pec")
-    # #931 ties select the lower node at BOTH parities. Banker's rounding
+    # Ties select the lower node at BOTH parities. Banker's rounding
     # incorrectly starts the material walk in the second layer at 5.5U.
     declared_ground = (ground_node + .5) * U
     _port(sim, direction, (8 if direction[0] == "+" else 24) * U,

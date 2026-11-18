@@ -200,17 +200,17 @@ from rfx import Box, Simulation
 from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.sources import GaussianPulse
 
-# --- issue #80 reproduction geometry (mirrors scripts/patch_edgefed_s11_validation.py) ---
+# --- reproduction geometry (mirrors scripts/patch_edgefed_s11_validation.py) ---
 EPS_R = 3.38
 H_SUB = 0.787e-3
 W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
-# #1512: port plane; feed covers its node with one local-cell drawing allowance.
+# port plane; feed covers its node with one local-cell drawing allowance.
 PORT_MARGIN = 5.0e-3
 DX = 0.197e-3
-# Board height SNAPPED TO THE NODE LINE (#931 §1.3 off-lattice interfaces): the
+# Board height SNAPPED TO THE NODE LINE: the
 # stack used to start at a bare 4 mm, which on this mesh sits 0.33 of a cell off
 # the node line, so a foil declared on a laminate face snapped to a node the
 # laminate's own half-open sampling did not start at. dx = 197 um is not an exact
@@ -225,10 +225,10 @@ DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
 
-PASSIVE_TOL = 1.05           # |S11| <= 1 + numerical slack (the #80 passivity fix)
+PASSIVE_TOL = 1.05           # |S11| <= 1 + numerical slack
 RES_BAND_GHZ = (7.4, 8.2)    # measured antiresonance neighbourhood on THIS board
-#                              (crossing 7.7620 GHz, VESSL 369367259226 on the
-#                              #931 redraw; SAME +-0.4 GHz half-width as the
+#                              (crossing 7.7620 GHz on the
+#                              redraw; SAME +-0.4 GHz half-width as the
 #                              8.8189 GHz band it replaces, re-centred on the
 #                              measured crossing and rounded to the 0.1 GHz DFT
 #                              bins. The pre-#931 band (8.4, 9.2) and the
@@ -239,7 +239,7 @@ RES_BAND_RE_ZIN_MIN_OHM = 500.0  # UNCHANGED threshold (in-band antiresonance Re
 #                              peak measured 4157 ohm; 4326 on the old board)
 
 # Realized patch raster this band was pinned on: 44 x 51 cells = 8.668 x 10.047 mm at
-# dx = 197 um ("Board S"). NOT the harminv companion's 43 x 51 at h/4 (issue #782).
+# dx = 197 um ("Board S"). NOT the harminv companion's 43 x 51 at h/4.
 RASTER_CELLS = (44, 51)
 
 
@@ -256,24 +256,23 @@ def _build_patch_sim() -> Simulation:
     witness has no data. Its slow ring-down tail is the settling the DFT-based
     S11 extraction depends on, and the test asserts that the probe is present.
     """
-    # #1138: feed/patch y solved -4.783%/-1.393% off; this locks S11 and passivity.
+    # feed/patch y solved -4.783%/-1.393% off; this locks S11 and passivity.
     sim = Simulation(snap="declared",
         freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
         dx=DX, cpml_layers=8, boundary="cpml",
     )
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
     # Ground, feed trace and patch are FOILS: zero-thickness sheets ON the two
-    # laminate faces (#931 §1.3, and amendment §6 "a foil sheet goes on the
-    # dielectric INTERFACE it bounds").
+    # laminate faces.
     #
     # The board used to reserve a CELL for each foil — the ground in
     # [4.000, 4.197] mm below a laminate that only started at 4.197, and the
     # trace a further cell ABOVE the laminate top. Under the old rule that cost
     # nothing visible, because rfx re-sampled a sheet's own cell material onto
-    # its live edge (#702). The contract deletes that re-sample: a sheet owns no
+    # its live edge. The contract deletes that re-sample: a sheet owns no
     # cell, so a reserved cell is a vacuum cell and it sits in series with the
-    # cavity. Measured on the un-redrawn board (VESSL 369367259174): walls at
-    # nodes 29 and 34 with preflight #703 reading sum(d/eps) 627.1 um mesh vs
+    # cavity. Measured on the un-redrawn board: walls at
+    # nodes 29 and 34 with preflight reading sum(d/eps) 627.1 um mesh vs
     # 429.8 um physical (+45.9 %), the Im(Zin) antiresonance at 9.3453 GHz
     # instead of 8.8189, and Re(Zin) NEGATIVE across most of the band.
     #
@@ -368,10 +367,9 @@ def test_the_board_realizes_three_foils_and_no_conductor_volume():
 
     # The cavity between the two foils is the laminate and nothing else. The
     # board used to reserve a vacuum cell for each foil and get its dielectric
-    # back through the #702 re-sample, which the contract deletes; a reserved
-    # cell is now what the drawing says it is. Measured before the redraw
-    # (VESSL 369367259174): five cells between the walls, one of them vacuum,
-    # preflight #703 reading +45.9 % on sum(d/eps).
+    # back through the re-sample, which the contract deletes; a reserved
+    # cell is now what the drawing says it is. Measured before the redraw: five cells between the walls, one of them vacuum,
+    # preflight reading +45.9 % on sum(d/eps).
     eps = sim._assemble_materials(rz.grid, pec_sheets=[], pec_wires=[])[0].eps_r
     col = np.asarray(eps)[np.asarray(eps).shape[0] // 2,
                           np.asarray(eps).shape[1] // 2, planes[0]:planes[1]]
@@ -468,7 +466,7 @@ def test_patch_edgefed_s11_passive_and_match():
         print(f"[PATCH-EDGEFED/118-TRACE] {f:7.3f} GHz  |S11|={a:.5f}  "
               f"Re(Zin)={zr:9.2f}  Im(Zin)={zi:9.2f}")
 
-    # --- (1) passivity: the issue #80 fix (was |S11|=1.44/8.94, now <= 1.05) ---
+    # --- (1) passivity ---
     assert g["max_s11"] <= PASSIVE_TOL, (
         f"non-passive patch: max|S11| = {g['max_s11']:.4f} > {PASSIVE_TOL}. "
         "DO NOT loosen — this guards the #116 n_probe_offset passivity fix."
@@ -476,8 +474,8 @@ def test_patch_edgefed_s11_passive_and_match():
 
     # --- (2) edge-fed signature: the patch is POORLY matched at its resonance, so the
     #         |S11| dip cannot be (and is not) the resonance. The physically robust
-    #         negation of the historical "dip near the Balanis value" mis-spec (#118),
-    #         now over the band measured on THIS board (#782). ---
+    #         negation of the historical "dip near the Balanis value" mis-spec,
+    #         now over the band measured on THIS board. ---
     assert g["band_min_s11"] > RES_BAND_S11_MIN, (
         f"min|S11| = {g['band_min_s11']:.4f} over the resonance band {RES_BAND_GHZ} GHz "
         f"is unexpectedly LOW (<= {RES_BAND_S11_MIN}). A directly edge-fed patch must be "

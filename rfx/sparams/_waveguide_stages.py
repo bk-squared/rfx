@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from rfx.errors import RfxRefusal
 
 
 def _admit_waveguide_options(
@@ -39,7 +38,7 @@ def _validate_waveguide_ports(
 ):
     if self._ports or self._tfsf:
         raise ValueError(
-            "compute_waveguide_s_matrix() is not supported together with lumped ports or TFSF"
+            "compute_waveguide_s_matrix() is not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
         )
     if self._periodic_axes:
         raise ValueError(
@@ -51,13 +50,6 @@ def _validate_waveguide_ports(
         )
 
     entries = list(self._waveguide_ports)
-    zero_amplitude_ports = [entry.name for entry in entries if entry.amplitude == 0.0]
-    if zero_amplitude_ports:
-        raise RfxRefusal(
-            f"Waveguide port(s) {', '.join(repr(name) for name in zero_amplitude_ports)} "
-            "have amplitude 0.0. The calculator drives each port in turn, "
-            "so every waveguide port needs a nonzero amplitude."
-        )
     if any(entry.probe_plane is not None for entry in entries):
         raise ValueError(
             "compute_waveguide_s_matrix() does not use per-port probe_plane; use reference_plane only or leave probe_plane unset"

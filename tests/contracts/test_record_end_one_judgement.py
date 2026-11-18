@@ -93,8 +93,7 @@ def _hand_tfsf_samples(cfg, grid, n):
     return np.asarray(cfg.src_amp * samples)
 
 
-# 40 mm graded x lines; the end cells equal dx (CPML rule). "-graded-wide" is the
-# separate review's case: 1 mm cells beside the box and 2 mm across it.
+# 40 mm graded x lines; the end cells equal dx (CPML rule). "-graded-wide" is 1 mm cells beside the box and 2 mm across it.
 GRADED_X = {"-graded": (.002, np.array([.002] * 5 + [.001] * 20 + [.002] * 5)),
             "-graded-wide": (.001, np.array([.001] * 10 + [.002] * 10 + [.001] * 10))}
 
@@ -111,7 +110,7 @@ def _s2b_tfsf(kind):
                "closed-oblique": {"closed_box": True, "theta_deg": 45., "polarization": "s"},
                "bloch": {"angle_deg": 20., "waveform": "modulated_gaussian", "bandwidth": .2},
                "methodB": {"angle_deg": 20., "method": "methodB"}}[kind]
-    # Use modulated Gaussian: the default pulse leaves a near-DC field (#1839).
+    # Use modulated Gaussian: the default pulse leaves a near-DC field.
     sim.add_tfsf_source(f0=5e9, **({"bandwidth": .8, "margin": 3,
                                   "waveform": "modulated_gaussian"} | options))
     return sim
@@ -525,7 +524,7 @@ def _scene(kind, graded):
         return sim
     sim = builders.build(ROWS[kind], "run_nonuniform" if graded else "run_uniform", graded=graded)
     if kind == "tfsf" and graded:
-        # A plane wave along x needs uniform x cells (#2078); y and z stay graded.
+        # A plane wave along x needs uniform x cells; y and z stay graded.
         sim._dx_profile = np.full_like(np.asarray(sim._dx_profile), builders.DX)
     # A pulse that ends inside the record (the builders' waveform never ends).
     sim._ports = [dataclasses.replace(p, waveform=PULSE) for p in sim._ports]

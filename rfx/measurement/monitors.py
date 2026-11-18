@@ -38,9 +38,12 @@ def _eager_frequency_grid(freq_max, n_freqs, x64):
     Reset the outer trace and its constant-folding switch while evaluating
     linspace, then publish the same concrete bins in every caller.
     Cache by precision as well as bounds/count; never cache a tracer.
+    Jit is forced on: under ``jax.disable_jit()`` linspace runs op by op and
+    its float32 bins differ by up to 1 ULP, which the cache would then serve
+    to every later call in the process.
     """
     from rfx.core.jax_utils import compile_time_switch
-    with jax.core.eval_context():
+    with jax.core.eval_context(), jax.disable_jit(False):
         switch = compile_time_switch()
         with switch(False) if switch is not None else nullcontext():
             start, stop = freq_max / 10, freq_max

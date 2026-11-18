@@ -45,7 +45,7 @@ def _box(pairs, dz_profile=None):
     return sim
 
 
-#: The review's case: 4 nH + 1 pF declared at x = 4.0 mm and 4 nH at
+#: 4 nH + 1 pF declared at x = 4.0 mm and 4 nH at
 #: x = 4.3 mm; on 1 mm cells both snap to the ez edge of cell (4, 4, 4).
 TWO_INDUCTORS = [((4e-3, 4e-3, 4e-3), "ez", dict(L=L4, C=1e-12, topology="parallel")),
                  ((4.3e-3, 4e-3, 4e-3), "ez", dict(L=L4, topology="parallel"))]

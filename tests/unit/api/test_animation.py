@@ -26,7 +26,7 @@ def sim_result_3d():
         freq_max=10e9,
         domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
-    )  # solved length; #1887
+    )  # solved length
     sim.add_probe((0.01, 0.01, 0.01), "ez")
     snap = SnapshotSpec(components=("ez",))
     result = sim.run(n_steps=20, snapshot=snap)
@@ -40,7 +40,7 @@ def sim_result_2d():
         freq_max=10e9,
         domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
-    )  # solved length; #1887
+    )  # solved length
     sim.add_probe((0.01, 0.01, 0.01), "ez")
     snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=5)
     result = sim.run(n_steps=20, snapshot=snap)

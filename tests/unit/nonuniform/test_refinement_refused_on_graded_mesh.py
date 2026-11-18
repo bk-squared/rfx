@@ -283,7 +283,7 @@ def _lumped_port_box(refine, eps_r=2.0):
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
     sim.add_probe((0.008, 0.006, 0.004), "ez")
     if refine:
-        # #1465: the sequential fallback exercises experimental subgridding.
+        # The sequential fallback exercises experimental subgridding.
         sim.add_refinement(z_range=(0.0, 0.008), ratio=2, validation="research")
     return sim
 
@@ -390,7 +390,7 @@ def test_uniform_waveguide_s_matrix_refuses():
         freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=8)  # solved length; #1887
+        cpml_layers=8)  # solved length
     for x_position, direction, name in ((0.012, "+x", "wg1"),
                                         (0.048, "-x", "wg2")):
         sim.add_waveguide_port(

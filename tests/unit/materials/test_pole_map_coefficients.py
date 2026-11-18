@@ -21,13 +21,15 @@ def _capture_c2(kind, monkeypatch):
     from functools import wraps
     import rfx.materials.lorentz as lorentz
     import rfx.materials.pole_map as pole_map
+    import rfx.model.dispersive_poles as dispersive_poles
     import rfx.model.materials as materials
     from tests.unit.materials.test_pole_map_runs import capture_scan, scene
 
     records = {name: [] for name in ('realize', 'map', 'electric')}
     locals_at_return = {}
     targets = [('realize', materials, '_realize_poles'), ('map', pole_map, 'map_terms'),
-               ('electric', lorentz, 'lorentz_e_coeffs')]
+               ('electric', lorentz, 'lorentz_e_coeffs'),
+               ('electric', dispersive_poles, 'lorentz_e_coeffs')]
     codes = {getattr(mod, attr).__code__ for _, mod, attr in targets}
     def profile(frame, event, arg):
         if event == 'return' and frame.f_code in codes:
@@ -195,6 +197,7 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
             observed_delta.append(np.asarray(delta))
         return pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype)
     monkeypatch.setattr(lorentz, 'pole_update_coeffs', observe)
+    monkeypatch.setattr('rfx.model.dispersive_poles.pole_update_coeffs', observe)
     coeffs, _ = init(pole, grid, mask)
     assert len(observed_delta) == 3
     assert isinstance(coeffs.damping, tuple) and isinstance(coeffs.restoring, tuple)
@@ -251,6 +254,7 @@ def test_p2c_lorentz_restoring_per_component(graded, monkeypatch):
             observed_delta.append(np.asarray(delta))
         return pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype)
     monkeypatch.setattr(lorentz, 'pole_update_coeffs', observe)
+    monkeypatch.setattr('rfx.model.dispersive_poles.pole_update_coeffs', observe)
     coeffs, _ = init(pole, grid, mask)
     assert len(observed_delta) == 3
     assert isinstance(coeffs.restoring, tuple) and len(coeffs.restoring) == 3

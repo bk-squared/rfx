@@ -1189,10 +1189,8 @@ class Simulation(
             1.2%) and closed the closed-box referee within 0.9% at all
             bins.
         """
-        if self._tfsf is not None:
-            raise ValueError(
-                "Lumped ports are not supported together with the TFSF plane-wave source"
-            )
+        from rfx.runners._admission import refuse_plane_wave_with_port
+        refuse_plane_wave_with_port(self, adding="port")
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         from rfx.sources.wire_radius import validate_radius
@@ -1651,7 +1649,7 @@ class Simulation(
         if self._periodic_axes:
             raise ValueError("Waveguide port is not supported with manual periodic-axis overrides")
         if self._ports:
-            raise ValueError("Waveguide port is not supported together with lumped ports")
+            raise ValueError("Waveguide port is not supported together with a lumped or wire port, or a soft source (add_source)")
         if self._tfsf is not None:
             raise ValueError("Waveguide port is not supported together with TFSF")
         if direction not in ("+x", "-x", "+y", "-y", "+z", "-z"):

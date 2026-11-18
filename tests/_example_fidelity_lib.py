@@ -53,7 +53,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_snapshot.json"
 ADVISORY_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_advisories.json"
 
-# Dispositions a pinned advisory row may carry (#737 item 1).
+# Dispositions a pinned advisory row may carry.
 #   intended    -- the example deliberately shows or tolerates the
 #                  condition; the reason cites the example's own
 #                  docstring/comment, or the physics.
@@ -161,7 +161,7 @@ def discover_scripts() -> list[str]:
 
 # --------------------------------------------------------------------------
 # AST predicates -- these are what make each bucket machine-checkable rather
-# than a trusted prose reason (2026-08-27 review, required change #4).
+# than a trusted prose reason.
 # --------------------------------------------------------------------------
 
 def _parse(relpath: str) -> ast.Module:
@@ -304,7 +304,7 @@ OPTIONAL_DEPENDENCIES: dict[str, frozenset[str]] = {
 
 def load_module(relpath: str) -> ModuleType:
     # Check at the point of execution, even if a caller did not run the
-    # classification tests first. cv01-cv05 must never execute here (#967).
+    # classification tests first. cv01-cv05 must never execute here.
     if not has_main_guard(relpath) or has_top_level_solve_call(
             relpath, skip_main_guard=True):
         raise UnsafeExampleExecution(
@@ -444,7 +444,7 @@ CLASSIFICATION: dict[str, Entry] = {
         "pytest battery over the portgrid.m1b_retry prototype -- no rfx "
         "Simulation is constructed by this script"),
 
-    # SPEC-01 multiband-NU witness package (#780). These are a witness
+    # SPEC-01 multiband-NU witness package. These are a witness
     # LIBRARY plus per-witness measurement drivers, not demo examples; the
     # thirteen below never construct a `Simulation` (AST-verified). Ten of
     # them drive the non-uniform kernels through
@@ -609,12 +609,8 @@ CLASSIFICATION: dict[str, Entry] = {
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
     # ---- audited: builder is separable from solve ----
-    # #737 item 2 (2026-09-16): build-only entry points on the pattern the
-    # Sheen low-pass filter and cv15 set, for the scripts the reopen comment
-    # listed as unreachable. Each
-    # builder is the one the script's own main path calls, so what the gate
-    # pins is the model that runs, not a copy of it. cad_mesh_import_demo
-    # joined them with #1271, below.
+    # Each builder is the one the script's own main path calls, so what the
+    # gate pins is the model that runs, not a copy of it.
     "examples/quickstart/hello_world.py": Entry(
         "audited",
         "`build_simulation()` returns Simulation with no solve call (split "
@@ -831,7 +827,7 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/tmtt_paper/waveguide_dielectric_taper.py": Entry(
         "audited", "`build_sim()` returns Simulation with no solve call",
         (Builder("build_sim", None, (_v("default"),)),)),
-    # ---- issue #786 attribution lane (validation/research/convergence_floor)
+    # ---- attribution lane (validation/research/convergence_floor)
     "validation/research/convergence_floor/fixture.py": Entry(
         "audited",
         "`build_sim(scale, dz_profile, ...)` returns the W4R P-C "
@@ -892,7 +888,7 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/convergence_floor/verdict.py": Entry(
         "no_simulation", "reads committed JSON only; no Simulation"),
 
-    # SPEC-01 multiband-NU W4 fixtures (#780) -- the only two scripts in
+    # SPEC-01 multiband-NU W4 fixtures -- the only two scripts in
     # that package that construct a `Simulation` (P-C, the microstrip-class
     # multi-band resonator; preflight is deliberately ON there). Both
     # expose `build_sim(scale, dz_profile)` with no solve call, so the gate
@@ -981,7 +977,7 @@ def iter_audited_variants():
 
 # --------------------------------------------------------------------------
 # Digests -- keyed by entity IDENTITY (material + declared bounds) and axis
-# LETTER, never by list position (2026-08-27 review, required change #2):
+# LETTER, never by list position:
 # inserting one new entity anywhere in a script's geometry list must not
 # relabel every entity after it in the diff.
 # --------------------------------------------------------------------------
@@ -995,7 +991,7 @@ def _entity_key(item: dict, seen: dict[str, int]) -> str:
     lo, hi = item.get("declared_lo"), item.get("declared_hi")
     if lo is not None and hi is not None:
         # The prefix names the DECLARATION ROUTE, not the realization class:
-        # under the lattice ownership contract (#931) a sheet can be declared
+        # under the lattice ownership contract a sheet can be declared
         # either as a zero-thickness Box through ``add()`` (entity name
         # "geometry[i]") or through ``add_thin_conductor`` (entity name
         # "thin_conductor[i]"), and the two realize identically. Migrating a

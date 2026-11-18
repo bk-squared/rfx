@@ -159,7 +159,7 @@ def test_port_current_equals_the_update_e_curl_times_dx_squared(component, idx):
 
 
 # ---------------------------------------------------------------------------
-# The two axis kinds where the wrap is LOAD-BEARING (#689)
+# The two axis kinds where the wrap is LOAD-BEARING
 # ---------------------------------------------------------------------------
 
 def test_bwd_h_keeps_the_wrap_on_a_length_one_axis():

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
 
 from typing import TYPE_CHECKING
@@ -628,7 +630,7 @@ def extract_waveguide_s_matrix(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -819,7 +821,7 @@ def extract_waveguide_s_matrix_flux(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1155,7 +1157,7 @@ def extract_waveguide_s_params_normalized(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1367,7 +1369,7 @@ def extract_multimode_s_matrix(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1383,7 +1385,7 @@ def extract_multimode_s_matrix(
             for idx, cfg in enumerate(flat_cfgs)
         ]
         # Set the driven mode amplitude to the original first-mode amplitude
-        orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+        orig_amp = calculator_drive(True, amplitude=flat_cfgs[0].src_amp)
         driven_cfgs[drive_flat_idx] = driven_cfgs[drive_flat_idx]._replace(
             src_amp=orig_amp,
         )
@@ -1556,7 +1558,7 @@ def extract_multimode_s_matrix_flux(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1571,7 +1573,7 @@ def extract_multimode_s_matrix_flux(
         pec_axes=pec_axes,
         periodic=periodic,
     )
-    orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+    orig_amp = calculator_drive(True, amplitude=flat_cfgs[0].src_amp)
 
     for drive_flat_idx in range(n_total):
         # --- Reference run (empty guide, channel drive_flat_idx driven) ---

@@ -20,6 +20,8 @@ eager loops are untouched (their removal is Stage 3).
 
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.errors import RfxUnsupported
 
 from rfx._internal._precision import resolve_field_dtype
@@ -309,7 +311,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             from rfx.runners.nonuniform import run_nonuniform_path
             from rfx.sources.sources import GaussianPulse
             drive = copy(sim)
-            drive._ports = [replace(pe, excite=(pe is eligible[j]), waveform=(
+            drive._ports = [replace(pe, excite=calculator_drive(pe is eligible[j], excite=pe.excite), waveform=(
                 pe.waveform if pe.waveform is not None or pe is not eligible[j]
                 else GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)))
                 if pe.is_port else pe for pe in sim._ports]
@@ -349,7 +351,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             from copy import copy
             from dataclasses import replace
             driven_sim = copy(sim)
-            driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
+            driven_sim._ports = [replace(pe, excite=calculator_drive(pe is eligible[j], excite=pe.excite))
                                  if pe.is_port else pe for pe in sim._ports]
             receivers_by_id = {f"port:{i}:mode:0": pe for i, pe in zip(eligible_ids, eligible)}
             plane_counts = {}
@@ -570,7 +572,8 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
     """S-driver adapter over the same in-loop main-record sampler as run()."""
     from rfx.runners.distributed_v2 import run_distributed
     result = run_distributed(sim, n_steps=n_steps, devices=devices,
-                             _source_port_indices=None if drive is None else (drive,),
+                             _source_port_indices=None if drive is None else tuple(
+                                 i for i in range(len(ports)) if calculator_drive(i == drive)),
                              s_param_freqs=freqs, compute_s_params=True)
     return {"lumped": result.lumped_port_sparams, "wire": result.wire_port_sparams,
             "sparam_time_records": result.sparam_time_records, "dt": result.dt}

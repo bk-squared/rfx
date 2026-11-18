@@ -77,7 +77,7 @@ def test_literal_verdict(label, rates, frequencies, residues, decimation, expect
 
 
 def test_t3_reviewers_identified_probe():
-    # The reviewer's saved test_real_identify construction, including RNG seed.
+    # The saved test_real_identify construction, including RNG seed.
     n = np.arange(N)
     y = (np.exp(-5e-7*n)*np.cos(2*np.pi*10e9*n*DT)
          + 0.5*np.exp(-2e-4*n)*np.cos(2*np.pi*9e9*n*DT)

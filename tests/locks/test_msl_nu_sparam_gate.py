@@ -59,11 +59,11 @@ from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.sources import GaussianPulse
 from rfx.runners.nonuniform import assemble_materials_nu
 
-# Band + floors are IMPORTED, not restated (issue #782 same-class fix): the retired
+# Band + floors are IMPORTED, not restated: the retired
 # (9.0, 9.42) band died with #702, and this file's own hand-maintained copy is how it
 # missed the re-pin the uniform gate got. Single source = the uniform gate; its
 # constants were measured on Board S (this file declares the identical geometry, and
-# since #834 the uniform-valued dz_profile raster is lane-identical — the #834
+# the uniform-valued dz_profile raster is lane-identical — the
 # contract suite pins mask equality — so the band transfers to the NU build).
 from tests.locks.test_patch_edgefed_s11_passivity import (
     PASSIVE_TOL,
@@ -82,7 +82,7 @@ W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
-# #1512: port plane; feed covers its node with one local-cell drawing allowance.
+# port plane; feed covers its node with one local-cell drawing allowance.
 PORT_MARGIN = 5.0e-3
 DX = 0.197e-3
 DOM_X = 29.747e-3
@@ -90,7 +90,7 @@ DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
 
-# PASSIVE_TOL / RES_BAND_* imported above — see the #782 same-class note.
+# PASSIVE_TOL / RES_BAND_* imported above.
 
 
 def _build_patch_sim_nu() -> Simulation:
@@ -104,7 +104,7 @@ def _build_patch_sim_nu() -> Simulation:
     probe that witness has no data.
     """
     nz = int(round(DOM_Z / DX))
-    # #1138: feed/patch y solved -4.783%/-1.393% off; this locks NU S-parameter extraction.
+    # feed/patch y solved -4.783%/-1.393% off; this locks NU S-parameter extraction.
     sim = Simulation(snap="declared",
         freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
         dx=DX, cpml_layers=8, boundary="cpml",
@@ -112,15 +112,15 @@ def _build_patch_sim_nu() -> Simulation:
     )
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
     # Board S geometry, duplicated verbatim on the NU lane by design (the
-    # #782 single-source fix imports the BAND from the uniform module, not
+    # single-source fix imports the BAND from the uniform module, not
     # the builder). Foils are zero-thickness sheets on the two laminate
-    # faces (#931 §1.3, §6) here for the same reason and with the same
+    # faces here for the same reason and with the same
     # consequence as in the uniform twin — including the redraw: the board
-    # used to reserve a vacuum CELL for each foil, which the deleted #702
+    # used to reserve a vacuum CELL for each foil, which the deleted
     # re-sample used to hide, and the cavity carried it in series. The z
     # origin comes from the uniform module so the two lanes cannot drift;
     # the two must keep realizing the identical raster, which is what the
-    # #834 contract suite pins.
+    # contract suite pins.
     sim.add_thin_conductor(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_LO)),
                            sigma_bulk=5.8e7)
     sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
@@ -177,11 +177,11 @@ def test_the_nu_board_realizes_the_same_foils_and_cavity_as_the_uniform_twin():
         f"the NU cavity carries a cell that is not the laminate: "
         f"{[round(float(v), 3) for v in col]} — the #702 slot geometry.")
 
-    # ... and it is the SAME BOARD the uniform twin realizes (#834 parity).
+    # ... and it is the SAME BOARD the uniform twin realizes.
     #
     # Compared in METRES, not in array indices: the two lanes do not agree on
     # the y array length on this domain (uniform 110, NU 109 — a pre-existing
-    # lane sizing difference, not a #931 one), so an elementwise mask compare
+    # lane sizing difference), so an elementwise mask compare
     # is ill-posed. What the band depends on is the realized rectangle and the
     # realized plane, and those are lane-independent quantities.
     from tests.locks.test_patch_edgefed_s11_passivity import _build_patch_sim
@@ -239,7 +239,7 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     sim.preflight()
 
     freqs = np.linspace(6e9, 14e9, 81)
-    # #402 record length: this file solved at num_periods=200, but the
+    # record length: this file solved at num_periods=200, but the
     # imported Board-S band was measured at 280 with the settling witness
     # SILENT — and 200 measured -36.2 dB (under-settled, above the -40 dB
     # bar) on the identical geometry (uniform N_SUB=2 ladder: 120 -> -23.8,
@@ -279,7 +279,7 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
         print(f"[NU-MSL-TRACE] {f:7.3f} GHz  |S11|={a:.5f}  "
               f"Re(Zin)={zr:9.2f}  Im(Zin)={zi:9.2f}")
 
-    # --- (1) passivity (the #80 fix must hold on the NU lane too) ---
+    # --- (1) passivity ---
     assert s11_max <= PASSIVE_TOL, (
         f"non-passive NU patch: max|S11| = {s11_max:.4f} > {PASSIVE_TOL}. "
         "The NU MSL runner does not reproduce the validated passive patch S11."
@@ -294,7 +294,7 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     )
 
     # --- (2b) liveness: the resonance the band names is THERE on the NU lane too.
-    #          Liveness only — discrimination of the #702 retirement is (2c). ---
+    #          Liveness only — discrimination of the retirement is (2c). ---
     assert g["band_crossings_ghz"], (
         f"no Im(Zin)=0 crossing inside the resonance band {RES_BAND_GHZ} GHz on the "
         f"NU lane — the band would be gating a dead spectral region (the #782 "

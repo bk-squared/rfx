@@ -44,9 +44,9 @@ def _build_and_run():
     )
     # Internal full-transverse PEC short -> strong reflection -> standing wave
     # between the source and the short. A short is a WALL, so it stays a
-    # VOLUME (#931 §1.2): one cell thick, drawn node to node, it realizes
+    # VOLUME: one cell thick, drawn node to node, it realizes
     # electric walls on BOTH bounding planes (x = 72 dx and 73 dx) with the
-    # normal Ex between them shorted. Pre-#931 only the near plane was a wall,
+    # normal Ex between them shorted. Earlier only the near plane was a wall,
     # so the reflection point moved by one cell and the standing-wave pattern
     # with it. The gates here compare two monitors on the SAME run, so they do
     # not read that; the SWR witness is a > 2.0 floor, not a pin.

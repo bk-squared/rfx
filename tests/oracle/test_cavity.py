@@ -136,7 +136,7 @@ def test_pec_cavity_resonance(cavity_params):
     # noise. The old 0.5% "gate" passed only by luck: the true 2.08 GHz peak
     # rounded up into the 2.1244 GHz bin (0.22%). 2.5% = measured 1.91% + margin;
     # because harminv resolves <0.05% this now actually binds — a regression past
-    # ~2.5% fails, which the argmax gate never could (issue #396).
+    # ~2.5% fails, which the argmax gate never could.
     assert error < 0.025, (
         f"PEC cavity TM110 resonance error {error*100:.3f}% exceeds the "
         f"resolution-honest 2.5% discretization envelope "
@@ -146,7 +146,7 @@ def test_pec_cavity_resonance(cavity_params):
 
 def test_pec_zeros_boundary():
     """PEC should zero tangential E at boundaries."""
-    grid = Grid(freq_max=3e9, domain=(11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=3e9, domain=(11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length
     state = init_state(grid.shape)
 
     # Set non-zero fields
@@ -167,7 +167,7 @@ def test_pec_zeros_boundary():
 
 def test_energy_conservation_pec():
     """In a lossless PEC cavity, total EM energy should be approximately conserved."""
-    grid = Grid(freq_max=3e9, domain=(11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=3e9, domain=(11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0), 11 * (C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 
