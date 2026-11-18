@@ -589,6 +589,7 @@ ROWS = (
     ('RingdownSpec', 'source_off_tol', 'static', 'S1: WAVE-41; rfx/ringdown/__init__.py:246-260 host window, decimation or witness control'),
     ('RingdownSpec', 'identification_probes', 'undecided', 'step 2 decides; annotation admits a number'),
     ('RingdownSpec', 'probe_freqs', 'undecided', 'step 2 decides; host_bins refuses a traced value by name (tests/unit/sparams/test_ringdown_probe_channels.py::test_t3_bins_hashable_and_traced_by_name)'),
+    ('RingdownSpec', 'probe_normalization', 'undecided', 'step 2 decides; a choice string that RingdownSpec.__post_init__ refuses unless None or "incident"'),
     ('SnapshotSpec', 'interval', 'undecided', 'step 2 decides; rules did not decide; rfx/_internal/_uniform_specs.py:301'),
     ('SnapshotSpec', 'components', 'undecided', 'step 2 decides; annotation admits a number'),
     ('SnapshotSpec', 'slice_axis', 'undecided', 'step 2 decides; rules did not decide; rfx/_internal/_uniform_specs.py:303'),

@@ -122,9 +122,9 @@ from rfx.ringdown._pencil import (
 import inspect
 import math
 import warnings
-from dataclasses import dataclass, replace as _dc_replace
+from dataclasses import dataclass, field, replace as _dc_replace
 from importlib import import_module
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -203,6 +203,11 @@ class RingdownSpec:
         Positive concrete frequency bins for completing the identification probes
         without ports. Spectra use each field kind's physical DFT clock. WE and
         W2 use each channel's peak over these bins as their relative scale.
+    probe_normalization : {"incident", None}
+        With "incident" (closed-box plane wave at normal incidence, ey and ez
+        channels), each completed channel and every witness operand is divided
+        by the incident E spectrum at the channel's x plane
+        (:mod:`rfx.ringdown._incident_norm`), so the error is judged on that scale.
     window_start : float
         Start of the identification window as a fraction of the record; the
         window is ``[window_start * T, T]``. The source must be off there
@@ -240,9 +245,12 @@ class RingdownSpec:
     source_off_tol: float = 1.0e-6
     identification_probes: tuple = ()
     probe_freqs: tuple | None = None
+    probe_normalization: str | None = None
 
     def __post_init__(self):
         admit_traced_inputs("RingdownSpec", locals())
+        if self.probe_normalization not in (None, "incident"):
+            raise ValueError(f"RingdownSpec.probe_normalization must be 'incident' or None, got {self.probe_normalization!r}")
         if self.probe_freqs is not None:
             bins = host_bins(self.probe_freqs, np.float64, caller="RingdownSpec", argument="probe_freqs")
             if bins.ndim != 1 or not bins.size or not np.all(np.isfinite(bins) & (bins > 0)):
@@ -310,7 +318,8 @@ class RingdownReport:
     entry and one column per extra channel: |residue| / window RMS. This
     includes any TM pole the user identifies by frequency; no mode type or
     observability threshold is inferred. These channels have no W0-style
-    accumulator witness; the shares are information only.
+    accumulator witness; the shares are information only. With an incident
+    normalization, ``incident_spectra`` holds the (nf, P) divisor.
 
     ``tail_share`` takes its maximum over the identification-probe channels
     as well as the port channels when ``identification_probes`` is set.
@@ -349,6 +358,8 @@ class RingdownReport:
     # Information only: no W0-style witness, and no TM-mode classification.
     identification_channels: tuple = ()
     identification_amplitude_shares: tuple = ()
+    probe_normalization: str | None = None
+    incident_spectra: np.ndarray | None = field(default=None, compare=False)
 
     @property
     def completed(self) -> bool:
@@ -826,23 +837,6 @@ class _NotCompleted(Exception):
         self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
-def _require_source_off_rows(entries, rows, caller, probe_mode=False):
-    """Refuse the first drive whose off time cannot be judged on the host."""
-    from rfx._traced_refusal import TracedStructureRefusal
-
-    from rfx.ringdown._plane_wave import drive_label
-    for pe, row in zip(entries, rows, strict=True):
-        if row is None:
-            label = drive_label(pe)
-            raise TracedStructureRefusal(
-                f"{caller}(ringdown=...): the {label} cannot be judged for its off time inside the "
-                "identification window: its waveform samples or the time step are traced "
-                "(a waveform parameter, or a graded mesh without dt=, under jax.grad, "
-                "jax.jvp, jax.vmap or jax.jit). Declare that waveform with concrete values "
-                + ("(a completed probe spectrum is linear in the drive: scale it outside the call)"
-                   if probe_mode else "(S does not depend on the drive's amplitude)") + ", or pin dt=.")
-
-
 class RingdownRun:
     """One ``run(..., ringdown=spec)``: probes in, run, probes out, complete.
 
@@ -887,6 +881,7 @@ class RingdownRun:
         self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
         self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes(warn_identification=warn_identification)
+        self.incident_spectra = import_module("rfx.ringdown._incident_norm").incident_normalization(self)
 
     # -- before the run ------------------------------------------------------
 
@@ -899,7 +894,8 @@ class RingdownRun:
         the main window refuses.
         """
         from rfx.measurement.record_end import source_end_step
-        from rfx.ringdown._plane_wave import drive_label, plane_wave_entries, still_on_message
+        from rfx.ringdown._plane_wave import (_require_source_off_rows, drive_label, plane_wave_entries,
+                                              still_on_message)
         from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports
@@ -1057,7 +1053,7 @@ class RingdownRun:
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
                                                             dtype=np.float64))))
-        base = dict(n_record=self.n_steps, dt=dt,
+        base: dict[str, Any] = dict(n_record=self.n_steps, dt=dt,
                     window_steps=(self.n_start, self.n_steps),
                     window_s=(self.n_start * dt, self.n_steps * dt),
                     short_window_steps=(self.n_start, self.n_split),
@@ -1772,6 +1768,7 @@ class RingdownStop:
         evaluated at every check.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.ringdown._plane_wave import _require_source_off_rows
         from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports

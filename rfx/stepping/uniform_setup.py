@@ -308,11 +308,11 @@ def _build_step_setup(
 
     # ---- boundary configuration ----
     from rfx.model.materials import with_components
-    from rfx.model.tensor_operands import TensorOperands
+    from rfx.model.tensor_operands import TensorOperands, step_tensor
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     materials = with_components(materials, grid, periodic=periodic,
-        high_wall=unpadded_high_walls(grid), tensor=
-        TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
+        high_wall=unpadded_high_walls(grid), tensor=step_tensor(materials,
+        TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth)))
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
     conformal_weights = tensor.conformal_weights if tensor else None
@@ -950,4 +950,7 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None,
         invariants['waveguide_table'] = compile_waveguide_table(
             ctx.grid, ctx.waveguide_meta, measurement=measurement,
             dtype=dtype or ctx.waveguide_meta[0].v_probe_t.dtype)
+    if ctx.pad_plan is not None:
+        from rfx.stepping.vector_pad import pad_invariants
+        invariants = pad_invariants(invariants, ctx.pad_plan)
     return invariants

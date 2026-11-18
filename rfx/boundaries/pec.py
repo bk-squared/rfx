@@ -126,8 +126,9 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_gh
 
     Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
     the extra Ez high-z ghost cleanup below is excluded from that set.
-    ``frame`` maps axes to static (lo, hi) rows; only x may differ from
-    (0, n). ``owned`` selects each named face's write on its row only;
+    ``frame`` maps axes to static (lo, hi) rows: a shard's x rows, or the
+    physical rows of a high-padded array on any axis (the wall and the
+    normal ghost then sit at ``hi - 1``). ``owned`` selects each named face's write on its row only;
     ``owned=None`` means the caller owns every named face (one device).
 
     Parameters
@@ -142,7 +143,7 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_gh
 
     normal_ghost_faces = normal_ghost_faces or ()
     if needs_face_frame(state.ex.shape, faces, frame, owned):
-        return apply_framed_faces(state, faces, frame, owned)
+        return apply_framed_faces(state, faces, frame, owned, normal_ghost_faces)
     if not faces and not normal_ghost_faces:
         return state
     ex, ey, ez = state.ex, state.ey, state.ez
