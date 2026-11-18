@@ -73,14 +73,14 @@ def emitting_sites():
 
 
 def test_code_completeness():
+    """Traced advisory skips add one model code; every existing code keeps its class."""
     sites = emitting_sites()
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    # Retained outcomes add declared_z; the f0 sheet-backed gap warning and the located pad refusal each add an object code; existing codes keep their class.
-    assert len(CODE_SCOPE) == 102
+    assert len(CODE_SCOPE) == 103
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 74, 'place': 2, 'model': 24, 'mixed': 2}
+        'object': 74, 'place': 2, 'model': 25, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -411,10 +411,14 @@ def test_traced_mesh_path(monkeypatch):
 
     jax.grad(evaluate)(0.)
     assert len(reports) == 1
-    issues = reports[0].by_code('unresolved_pulse')
-    assert issues
-    assert {issue.subjects for issue in issues} == {('port[0]',)}
-    assert all(issue.region is None for issue in issues)
+    for code, scope, subjects in (
+        ('unresolved_pulse', 'object', ('port[0]',)),
+        ('not_judged_traced', 'model', ()),
+    ):
+        issues = reports[0].by_code(code)
+        assert issues, code
+        assert {(issue.scope, issue.subjects, issue.region) for issue in issues} == {
+            (scope, subjects, None)}
     REACHED.update(issue.code for issue in reports[0])
 
 

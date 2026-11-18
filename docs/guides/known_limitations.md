@@ -267,15 +267,6 @@ Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a con
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
 
-### A traced pole-map profile that is undefined outside its material gives a NaN gradient.
-
-Tracker: #2650
-
-A `LorentzPoleMap` (or `drude_pole_map`, `lorentz_pole_map`) callable is evaluated at every cell centre, and only the occupied cells' values are kept.
-Under `jax.grad` the unoccupied cells still pass a zero cotangent through the callable's derivative, so a profile whose value or derivative is not finite there (a square root of a negative number, a division by zero) gives a NaN gradient while the objective is finite.
-A concrete run is not affected.
-Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
-
 ### A material with permittivity below 0.98 grows without bound at the default time step, and nothing refuses it.
 
 Tracker: #2772
@@ -451,6 +442,29 @@ On two RTX A6000 GPUs a 236³-cell (13 M) closed PEC box driven by a TF/SF plane
 1.801 ms before the shared multi-device time step (medians of three processes). The same box with CPML is 3.4 %
 slower (3.293 to 3.405 ms per step). Field values are unchanged. Two whole-field copies before the PEC wall write take
 most of the difference; removing them recovered only 0.043 ms per step, for a reason not yet measured.
+
+### A small Debye, Lorentz or Drude region makes every time step update the dispersion state on the whole grid.
+
+Tracker: #1825
+
+The polarization state of a dispersive material is held and updated on every cell of the grid, not only where the
+material is. On the graded path a 16³-cell Debye block in a 160³-cell box (padding included) adds 23.1 ms per step,
+69 % of the 33.7 ms bare step; Lorentz and Drude add 5.4 and 6.6 ms. The added time grows with the box, not with the
+block: a Debye block adds 2.1 / 6.4 / 23.1 ms at 72³ / 104³ / 160³ cells (uniform path: 1.7 / 4.1 / 21.0 ms). Field
+values are unchanged. A gradient run also saves this state at each checkpoint: from the array shapes (not measured as
+memory), 12 bytes per grid cell per checkpoint for a one-pole Debye material and 24 for Lorentz or Drude.
+What to do: budget step time and gradient memory for the whole grid as soon as a model has any dispersive region.
+
+### Each lumped RLC element adds its own block to the compiled time step, so compile time grows with the number of elements.
+
+Tracker: #1946
+
+The time per step and the field values do not depend on the number of elements; the compile does. On a 40 x 40 x 49-cell
+box run for 200 steps on CPU, a repeat `run()` on the same `Simulation` took 0.72 / 2.91 / 10.78 s with 0 / 100 / 400
+series R+C loads, and the first `run()` 4.4 / 6.9 / 17.1 s; the growth is linear in the count (log-log slope 0.93 over
+50 to 400 loads). `run()` compiles again on every call.
+What to do: with many elements, call the solve inside one `jax.jit` (for example around `value_and_grad` of the
+objective) so that the compile is paid once.
 
 ### Under a caller's `jax.jit`, a multi-device run holds more whole-domain setup arrays on every device for dispersive materials and graded meshes
 
@@ -873,8 +887,15 @@ and the status stayed "pass"; the same version read -80.2 dB on one host and -79
 steps the two versions' shares agree within 15 % and 8 %. At the −40 dB rule (a share of 1e-2), if the main window
 crosses it and the check window does not, the status is "undetermined" with `settling_db` nan, not the opposite
 verdict.
+The same rounding-level choice of poles reaches a gradient taken through the completion. For a weakly coupled
+resonance (a lossy PEC box, eps_r 2.2, Q about 5000, its TM110 resonance at 12.425 GHz seen through a short corner wire
+port), dS11/d ln(eps_r) with the poles identified from the port alone was 2.1 % off on one machine, and up to 6.8 % at
+another source scale, while the gradient check (the same gradient through the completion from [T/4, T] against
+[T/2, T], 1 % per bin) read 0.27 % and passed. With `RingdownSpec(identification_probes=...)` the error was 0.18 to
+0.20 % on every run, and the check read it at 0.94 to 0.99 of its size.
 What to do: do not read a `settling_db` difference between versions or hosts as a change of the field; read
-`settling_witness["error_per_bin"]` beside it, or compare at a longer record.
+`settling_witness["error_per_bin"]` beside it, or compare at a longer record. For a gradient at a weakly coupled resonance, pass
+`identification_probes`.
 
 ### With an automatic mesh, `vmap_material_sweep`'s sequential fallback runs every swept value for the first value's step count.
 

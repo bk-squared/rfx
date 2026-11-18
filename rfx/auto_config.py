@@ -33,33 +33,14 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
-from rfx.core.yee import EPS_0  # canonical 8.854187817e-12 (Stage 3.5b)
+from rfx.core.yee import EPS_0
 
 if TYPE_CHECKING:
     from rfx.api import Simulation
 
 C0 = 299792458.0
+_NTFF_FREQS_ESTIMATE = 10
 
-
-# ---------------------------------------------------------------------------
-# Auto-config planning heuristic — ONE shape rule, ONE byte rule
-#
-# Both halves of the memory budget go through these: the DECISION half
-# (``auto_configure``'s ``max_memory_mb`` coarsening loop, which picks dx)
-# and the REPORTING half (``SimConfig.grid_shape`` /
-# ``SimConfig.estimated_memory_mb``, which is what the user reads and what
-# the documented postcondition ``estimated_memory_mb <= max_memory_mb`` is
-# written against).
-#
-# They used to be two hand-written copies that disagreed twice over: the
-# loop counted z as ``ceil(domain_z/dx)`` while the property counted the
-# ``dz_profile``, and the loop's byte formula omitted the property's NTFF
-# and dispersion terms. So the loop stopped coarsening at a number the
-# property never reproduced, and the postcondition failed on boards that
-# need a non-uniform z. Measured on a 40x30mm FR4 board with a 0.508 mm
-# substrate and a 35 um trace, budget 500 MB: the loop accepted
-# dx = 4.0 mm, and the config it returned reported 653.1 MB.
-# ---------------------------------------------------------------------------
 
 def _auto_grid_shape(domain, dx, cpml_layers, dz_profile=None):
     """Planning grid shape ``(nx, ny, nz)`` including boundary pads.
@@ -96,25 +77,25 @@ def _auto_memory_mb(cells: int, cpml_layers: int) -> float:
     cells = int(cells)
     base_bytes = cells * 12 * 4
     cpml_bytes = int(cells * 0.15 * 24 * 4) if cpml_layers > 0 else 0
-    ntff_bytes = int(6 * (cells ** 0.67) * 10 * 4 * 8)   # ~10 freqs estimate
+    ntff_bytes = int(6 * (cells ** 0.67) * _NTFF_FREQS_ESTIMATE * 4 * 8)
     disp_bytes = cells * 4 * 4
     return (base_bytes + cpml_bytes + ntff_bytes + disp_bytes) * 10 / 1e6
 
 
-# ---------------------------------------------------------------------------
-# Feature analysis
-# ---------------------------------------------------------------------------
-
 class FeatureInfo(NamedTuple):
-    """Geometry feature summary for auto-configuration."""
-    min_thickness: float      # thinnest dimension (metres)
-    max_extent: float         # largest dimension (metres)
-    bbox: tuple               # ((x_lo, y_lo, z_lo), (x_hi, y_hi, z_hi))
-    max_eps_r: float          # highest relative permittivity
-    has_pec: bool             # any PEC geometry present
-    estimated_Q: float        # estimated cavity Q from material loss
-    z_features: list = []     # list of (z_lo, z_hi, eps_r) for z-grading
-    z_sheet_planes: list = []  # declared z planes of PEC sheets
+    """Geometry feature summary for auto-configuration.
+
+    ``estimated_Q`` holds the largest ``sigma / eps_r`` over the geometry's materials with
+    ``0 < sigma <`` the PEC threshold and ``eps_r > 1``, not a quality factor.
+    """
+    min_thickness: float
+    max_extent: float
+    bbox: tuple
+    max_eps_r: float
+    has_pec: bool
+    estimated_Q: float
+    z_features: list = []
+    z_sheet_planes: list = []
 
 
 def _sheet_z_plane(shape) -> float | None:
@@ -164,8 +145,8 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
     max_eps_r = 1.0
     has_pec = False
     max_loss_tangent = 0.0
-    z_features = []  # (z_lo, z_hi, eps_r) for non-uniform z detection
-    z_sheet_planes = []  # declared z planes of PEC sheets
+    z_features = []
+    z_sheet_planes = []
 
     for shape, mat_name in geometry:
         mat = materials.get(mat_name, {})
@@ -179,7 +160,6 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
             if sigma > 0 and eps_r > 1:
                 max_loss_tangent = max(max_loss_tangent, sigma / eps_r)
 
-        # Use bounding_box() if available (all shapes), fall back to corner_lo/hi
         if hasattr(shape, "bounding_box"):
             try:
                 c1, c2 = shape.bounding_box()
@@ -198,7 +178,6 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
         all_corners_lo.append(c1)
         all_corners_hi.append(c2)
 
-        # Track z-extent for non-uniform mesh detection
         z_lo, z_hi = min(c1[2], c2[2]), max(c1[2], c2[2])
         z_thickness = z_hi - z_lo
         if z_thickness > 1e-12 and sigma < pec_threshold:
@@ -213,7 +192,6 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
         if plane is not None:
             z_sheet_planes.append(plane)
 
-    # Bounding box of all geometry
     if all_corners_lo:
         bbox_lo = tuple(min(c[i] for c in all_corners_lo) for i in range(3))
         bbox_hi = tuple(max(c[i] for c in all_corners_hi) for i in range(3))
@@ -238,10 +216,6 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
     )
 
 
-# ---------------------------------------------------------------------------
-# Auto-configuration
-# ---------------------------------------------------------------------------
-
 @dataclass
 class SimConfig:
     """Auto-derived simulation configuration."""
@@ -253,8 +227,8 @@ class SimConfig:
     margin: float
     dt: float
     accuracy: str
-    source_type: str = "j_source"   # "j_source" or "raw"
-    source_info: str = ""           # Human-readable explanation
+    source_type: str = "j_source"
+    source_info: str = ""
     warnings: list[str] = field(default_factory=list)
     dz_profile: np.ndarray | None = None
     boundary: str = "cpml"
@@ -433,7 +407,6 @@ def auto_configure(
     lambda_max = C0 / f_min
     f_center = (f_min + f_max) / 2
 
-    # Accuracy presets
     presets = {
         "draft":    {"cpw": 10, "cpf": 2, "margin_frac": 0.15, "pml_frac": 0.10},
         "standard": {"cpw": 20, "cpf": 4, "margin_frac": 0.25, "pml_frac": 0.20},
@@ -443,12 +416,10 @@ def auto_configure(
         raise ValueError(f"accuracy must be 'draft', 'standard', or 'high', got {accuracy!r}")
     preset = presets[accuracy]
 
-    # Analyze geometry
     features = analyze_features(geometry, materials,
                                 thin_conductors=thin_conductors)
     warnings = []
 
-    # Detect empty geometry — use wavelength-only sizing to avoid oversized grids
     _empty_geometry = len(geometry) == 0
 
     if _empty_geometry:
@@ -463,14 +434,10 @@ def auto_configure(
             "margins. Add geometry for accurate auto-configuration."
         )
 
-    # 1. Cell size
-    # λ_min in highest-eps medium
     lambda_min_medium = lambda_min / math.sqrt(features.max_eps_r)
     dx_wavelength = lambda_min_medium / preset["cpw"]
 
     if _empty_geometry:
-        # No features to resolve — use coarser wavelength-only sizing
-        # (lambda_min/10 regardless of accuracy) to keep the grid small.
         dx = _round_dx(lambda_min / 10)
     else:
         dx_feature = features.min_thickness / preset["cpf"] if features.min_thickness > 0 else dx_wavelength
@@ -479,12 +446,8 @@ def auto_configure(
     if dx_override is not None:
         dx = dx_override
     else:
-        # Round to nice value
         dx = _round_dx(dx)
 
-    # Check feature resolution — auto non-uniform z when thin z-features exist
-    # Compare against wavelength-based dx (not the feature-refined dx) to detect
-    # cases where non-uniform z saves computation vs. globally finer mesh.
     needs_nonuniform_z = False
     if features.z_features:
         dx_wave_rounded = _round_dx(dx_wavelength)
@@ -492,7 +455,6 @@ def auto_configure(
             z_thick = z_hi - z_lo
             if z_thick > 0 and z_thick / dx_wave_rounded < 4:
                 needs_nonuniform_z = True
-                # Use coarser wavelength-based dx for xy (non-uniform z handles thin features)
                 if dx_override is None:
                     dx = dx_wave_rounded
                 break
@@ -503,9 +465,7 @@ def auto_configure(
             f"{features.min_thickness/dx:.1f} cells — consider finer dx or subgridding"
         )
 
-    # 2. Domain margins
     if _empty_geometry:
-        # Minimal margin — just enough for a small placeholder domain.
         margin = lambda_min * 0.1
     else:
         margin = lambda_max * preset["margin_frac"]
@@ -528,32 +488,17 @@ def auto_configure(
     sheet_planes = [z + offset[2] for z in features.z_sheet_planes
                     if 0 <= z + offset[2] <= domain[2]]
 
-    # 3. CPML layers — evidence-based from reflectivity sweep.
-    # 56-run sweep (7 layers × 4 freqs × 2 kappa): ALL achieve < -40 dB.
-    # Standard CPML (kappa_max=1.0) >= CFS-CPML (kappa_max=5.0).
-    # Sweet spot at 8 layers for 1 GHz (-49.7 dB); 4 layers sufficient everywhere.
-    # Conservative floor per accuracy tier plus pml_frac * lambda_max scaling.
-    min_cpml_thickness = preset["pml_frac"] * lambda_max  # 0.10/0.20/0.40
+    min_cpml_thickness = preset["pml_frac"] * lambda_max
     min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
     cpml_cells = {"draft": 6, "standard": 8, "high": 12}[accuracy]
     cpml_layers = max(min_cpml_cells, cpml_cells)
 
-    # 3b. Memory budget — coarsen dx until estimated memory fits.
-    # The physical domain extent is fixed (bbox + margins); only the
-    # cell count changes as dx grows.  The 8*dx floor prevents
-    # degenerate tiny grids but is re-applied each iteration.
     if max_memory_mb is not None and dx_override is None:
-        for _ in range(20):  # safety limit on iterations
+        for _ in range(20):
             _domain = (tuple(max(d, 8 * dx) for d in phys_extent)
                        if declared_domain is None else declared_domain)
             _cpml_cells_now = int(np.ceil(min_cpml_thickness / dx))
             _cpml = max(_cpml_cells_now, cpml_cells)
-            # measure the candidate against the grid this config
-            # will actually build, with the byte rule the returned
-            # SimConfig reports. Counting z as ceil(domain_z/dx) and
-            # dropping the NTFF/dispersion terms made the loop stop at a
-            # number ``estimated_memory_mb`` never reproduced, so the
-            # documented postcondition failed on non-uniform-z boards.
             _dz_prof = (_make_dz_profile(
                             z_features, _domain[2], dx,
                             sheet_planes=sheet_planes)
@@ -562,21 +507,16 @@ def auto_configure(
             _cells = _nx * _ny * _nz
             _est_mb = _auto_memory_mb(_cells, _cpml)
             if _est_mb <= max_memory_mb:
-                # Accept this dx and update domain/cpml to match
                 domain = _domain
                 cpml_layers = _cpml
                 break
-            # Coarsen dx.  _round_dx rounds DOWN, so we must ensure
-            # the rounded result is strictly larger than the old dx.
             old_dx = dx
             dx = _round_dx(dx * 1.5)
             if dx <= old_dx:
                 dx = _round_dx(dx * 2.0)
             if dx <= old_dx:
-                # Force a jump to the next power-of-ten tier
                 dx = old_dx * 2.0
         else:
-            # Loop exhausted — apply final values and warn
             domain = _domain
             cpml_layers = _cpml
             warnings.append(
@@ -585,7 +525,6 @@ def auto_configure(
                 f"Consider reducing domain size or using mixed precision."
             )
 
-    # 4. Non-uniform z profile
     dz_profile = None
     if needs_nonuniform_z:
         dz_profile = _make_dz_profile(z_features, domain[2], dx,
@@ -595,7 +534,6 @@ def auto_configure(
             f"dz={np.min(dz_profile)*1e3:.3f}–{np.max(dz_profile)*1e3:.3f} mm"
         )
 
-    # 4b. Timestep
     if dz_profile is not None:
         dz_min = float(np.min(dz_profile))
         dt = 0.99 / (C0 * math.sqrt(1/dx**2 + 1/dx**2 + 1/dz_min**2))
@@ -605,24 +543,15 @@ def auto_configure(
     if dz_profile is None and dt_override is not None:
         dt = float(dt_override)
 
-    # 5. Number of steps
-    # Source time: the pulse completes at t0 + cutoff*tau = 2*t0
-    # (= 6*tau for the historical cutoff=3 Gaussian envelope; the
-    # waveform's own t0, when provided, makes this cutoff-aware —
-    # e.g. 9*tau at cutoff=4.5). Default 2.0*(3.0*tau) is bitwise-
-    # identical to the historical 6*tau (doubling is exact).
-    bw = 0.8  # default bandwidth
+    bw = 0.8
     tau = 1.0 / (f_center * bw * math.pi)
     t_source = 2.0 * float(getattr(waveform, "t0", 3.0 * tau))
 
-    # Ring-down time: Q / (pi * f_min)
-    # Compute Q from stored sigma/eps_r ratio + frequency:
-    # tan_d = (sigma/eps_r) / (2*pi*f_center*eps_0), Q ≈ 1/tan_d
     if features.estimated_Q > 0:
         tan_d = features.estimated_Q / (2 * math.pi * f_center * EPS_0)
         Q_est = min(1.0 / tan_d if tan_d > 0 else 1000.0, 1000.0)
     else:
-        Q_est = 1000.0  # no loss → high Q, cap at 1000
+        Q_est = 1000.0
     t_ringdown = Q_est / (math.pi * f_min)
 
     t_total = t_source + t_ringdown
@@ -631,13 +560,11 @@ def auto_configure(
     if n_steps_override is not None:
         n_steps = n_steps_override
 
-    # Sanity cap
     n_steps = min(n_steps, 100000)
     if n_steps > 50000:
         warnings.append(f"Estimated {n_steps} steps (high Q={Q_est:.0f}). Consider reducing freq_range or using decay-based stopping.")
         n_steps = min(n_steps, 500000)
 
-    # Source auto-selection based on boundary type
     if boundary == "pec":
         source_type = "raw"
         source_info = "PEC boundary: raw E-field source (no Cb normalization needed)"
@@ -711,23 +638,13 @@ def simulation_auto(
     return cls(**sim_kwargs)
 
 
-# ---------------------------------------------------------------------------
-# ``simulation_auto`` above was ``Simulation.auto``, a classmethod defined in
-# ``Simulation``'s body in rfx/api/__init__.py (2.0 declaration rule: that file's
-# Simulation methods only record declarations; deriving a configuration belongs
-# here, beside ``auto_configure``). It returns to ``Simulation`` as
-# ``auto = classmethod(simulation_auto)``, so its pre-move ``__qualname__`` and
-# ``__name__`` are restored explicitly: a module-level ``def`` gets its own bare
-# name, a TypeError would otherwise stop naming ``Simulation.auto()``, and pickle
-# finds a bound classmethod on its class by ``__name__``.
-# ---------------------------------------------------------------------------
 simulation_auto.__qualname__ = "Simulation.auto"
 simulation_auto.__name__ = "auto"
 
 
-# A cut this close to an existing mesh line is that line: splitting
-# there would make a sliver cell whose only effect is to collapse dt.
 _CUT_MERGE_FRACTION = 0.25
+_FEATURE_CELL_QUOTIENT_TOL = 1e-9
+_MIN_THIRDS_SUBCELL_M = 1e-7
 
 
 def _uniform_run(length: float, dx: float, cuts=()) -> list[float]:
@@ -753,9 +670,9 @@ def _uniform_run(length: float, dx: float, cuts=()) -> list[float]:
     for c in sorted(cuts):
         c = float(c)
         if c <= tol or c >= length - tol:
-            continue                      # merges into a run end
+            continue
         if c - edges[-1] <= tol:
-            continue                      # merges into the cut before it
+            continue
         edges.append(c)
     edges.append(float(length))
     cells: list[float] = []
@@ -803,8 +720,6 @@ def _make_dz_profile(
         a free (air) run splits it so the plane is a mesh line; one that
         falls on a dielectric interface is already one.
     """
-    # ``sheet_pts`` are the declared PEC-sheet planes; the
-    # branch's own ``planes`` below are the feature-boundary node planes.
     sheet_pts = sorted(float(z) for z in (sheet_planes or ()))
     if not z_features:
         n = max(1, int(round(domain_z / dx)))
@@ -812,18 +727,6 @@ def _make_dz_profile(
             return np.full(n, domain_z / n)
         return np.asarray(_uniform_run(domain_z, dx, sheet_pts), dtype=float)
 
-    # Partition the column into sub-intervals at every feature boundary.
-    # Feature z-ranges are bounding boxes of every
-    # non-PEC shape, so they can overlap (a dielectric sphere inside a
-    # substrate) or touch; the old loop assumed disjoint features with air
-    # gaps wider than dx/2, silently DROPPED any narrower gap from the
-    # column (measured: two 0.8 mm cores 50 um apart at dx 0.2 mm gave a
-    # 3.95 mm column for a 4.0 mm domain, interfaces off by up to 50 um)
-    # and EXTENDED the column by an overlap. Every distinct boundary is now
-    # a node plane, every covered sub-interval a block, every uncovered one
-    # an air run of whatever width, and the column sums to domain_z. For a
-    # stack of disjoint features with gaps wider than dx/2 the cells and
-    # boundary indices are the same as before.
     node_tol = 1e-12
     for z_lo, z_hi, _eps in z_features:
         if z_lo < -node_tol or z_hi > domain_z + node_tol:
@@ -845,72 +748,45 @@ def _make_dz_profile(
                    for z_lo, z_hi, _e in z_features)
 
     cells = []
-    boundary_indices = []  # cell indices at material interfaces
-    # realized feature bounds in cumulative-cell coordinates. The
-    # thirds rule preserves the cell sum on each side of every boundary it
-    # splits, so these coordinates remain cell edges after
-    # ``apply_thirds_rule`` and can be mapped back to index ranges there.
+    boundary_indices = []
     feature_bounds = []
-    block_meta = []  # (thickness, n_feat, dz_feat, lo_index, hi_index)
+    block_meta = []
     running = 0.0
 
     for lo, hi in zip(planes[:-1], planes[1:]):
         span = hi - lo
         if not _covered(lo, hi):
-            # Air run: coarse dx cells (the band engine re-realizes the
-            # run from its length; these cells only feed the thirds rule),
-            # cut at every declared sheet plane inside the run
-            # so the plane is a mesh line. With no sheet plane in the run
-            # ``_uniform_run`` reproduces ``round(span / dx)`` equal cells.
             cells.extend(_uniform_run(span, dx, [p - lo for p in sheet_pts]))
             running += span
             continue
 
-        # Mark the air-to-dielectric boundary
         b_lo = len(cells)
         boundary_indices.append(b_lo)
 
-        # Feature cells: snap exactly. The ceil carries a 1e-9 relative
-        # tolerance on the float quotient:
-        # ``2.2e-3 - 1.4e-3`` evaluates to ``8.000000000000002e-4``, which
-        # gave one 0.8 mm core 5 cells while its identical neighbours got 4.
         thickness = span
         n_feat = max(min_cells_per_feature,
-                     int(np.ceil(thickness / dx - 1e-9)))
+                     int(np.ceil(thickness / dx - _FEATURE_CELL_QUOTIENT_TOL)))
         dz_feat = thickness / n_feat
         cells.extend([dz_feat] * n_feat)
 
-        # Mark the dielectric-to-air boundary
         b_hi = len(cells)
         boundary_indices.append(b_hi)
         feature_bounds.append((running, running + thickness))
         block_meta.append((thickness, n_feat, dz_feat, b_lo, b_hi))
         running += thickness
 
-    # Which boundaries will the thirds rule actually split? Same guard as
-    # ``apply_thirds_rule`` (index 0 / len skipped, sub-micron thirds
-    # skipped), read on the pre-thirds array — the rule walks indices in
-    # reverse and each split touches only the two cells at its own index,
-    # so the cells it reads at a boundary are these. A block the seam rule
-    # later refines is re-split with the same flags and arithmetic.
     pre = list(cells)
 
     def _will_split(idx: int) -> bool:
         if idx <= 0 or idx >= len(pre):
             return False
-        return min(pre[idx - 1], pre[idx]) / 3 >= 1e-7
+        return min(pre[idx - 1], pre[idx]) / 3 >= _MIN_THIRDS_SUBCELL_M
 
     split_flags = [(_will_split(b_lo), _will_split(b_hi))
                    for (_t, _n, _d, b_lo, b_hi) in block_meta]
 
-    # P3: Apply thirds rule at material interfaces
     cells = apply_thirds_rule(cells, boundary_indices)
 
-    # Band-profile engine: smooth while (a) preserving every feature
-    # block's cells bit-identically unless the seam rule must refine it,
-    # (b) realizing every declared interface on a cell edge and the total
-    # column exactly, and (c) holding every adjacent ratio outside a
-    # thirds split at <= 1.3, block-to-block seams included.
     return _band_smooth_post_thirds(
         cells, feature_bounds, block_meta, split_flags, dx,
         min_cells_per_feature, max_ratio=1.3)
@@ -1005,22 +881,16 @@ def apply_thirds_rule(
     if not boundary_indices:
         return np.array(cells)
 
-    # Sort boundaries in reverse order so index shifts don't affect later splits
     for idx in sorted(set(boundary_indices), reverse=True):
         if idx <= 0 or idx >= len(cells):
             continue
-        # Cell below boundary (conductor side): split into [2/3, 1/3]
         dz_below = cells[idx - 1]
-        # Cell above boundary (dielectric side): split into [1/3, 2/3]
         dz_above = cells[idx]
 
-        # Only split if cells are large enough (> 2× minimum reasonable size)
         min_cell = min(dz_below, dz_above) / 3
-        if min_cell < 1e-7:  # sub-micron is too fine
+        if min_cell < _MIN_THIRDS_SUBCELL_M:
             continue
 
-        # Replace cell[idx-1] with [2/3 * dz_below, 1/3 * dz_below]
-        # Replace cell[idx]   with [1/3 * dz_above, 2/3 * dz_above]
         new_cells = (
             cells[:idx - 1]
             + [dz_below * 2 / 3, dz_below / 3]
@@ -1068,7 +938,6 @@ def smooth_grading(
     if n <= 1:
         return np.array(cells)
 
-    # Normalise preserve_regions into a set of protected input indices.
     protected: set[int] = set()
     regions = sorted(preserve_regions or [])
     for lo, hi in regions:
@@ -1084,11 +953,6 @@ def smooth_grading(
     for i in range(1, n):
         prev = smoothed[-1]
         target = cells[i]
-        # Skip smoothing only when BOTH adjacent cells are inside a
-        # preserved block (inside the block, cells must stay exact).
-        # At the boundary of a block (one side protected, the other
-        # free) we DO insert transitions so the neighbouring coarse
-        # region steps down to the fine block.
         both_inside = (i - 1) in protected and i in protected
         if (not both_inside) and prev > 0 and target > 0:
             while target / prev > max_ratio + 1e-12:
@@ -1107,7 +971,6 @@ def _round_dx(dx: float) -> float:
     exp = math.floor(math.log10(dx))
     mantissa = dx / (10 ** exp)
     nice = [1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 7.5, 10.0]
-    # Pick the largest nice value <= mantissa
     candidates = [n for n in nice if n <= mantissa + 1e-9]
     best = candidates[-1] if candidates else nice[0]
     return best * (10 ** exp)
