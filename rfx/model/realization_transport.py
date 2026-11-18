@@ -1,6 +1,7 @@
 """Static JAX metadata for host realization records."""
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Any
 import struct
 import weakref
 
@@ -78,7 +79,7 @@ class _StaticKey:
         import numpy as np
         self.value = value
         if isinstance(value, np.ndarray):
-            key = (value.dtype, value.shape, value.tobytes())
+            key: tuple = (value.dtype, value.shape, value.tobytes())
         elif isinstance(value, np.generic):
             key = (type(value), value.dtype, value.tobytes())
         elif type(value) in (str, bool, int):
@@ -105,7 +106,7 @@ class _StaticKey:
 
 @dataclass(frozen=True)
 class _FieldMetadata:
-    definition: object
+    definition: Any
     dynamic: tuple
     static: tuple
     shapes: tuple
