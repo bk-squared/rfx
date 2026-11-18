@@ -399,6 +399,7 @@ ROWS = (
     ('Simulation.forward', 'port_s11_freqs', 'traceable', 'jit/vmap, concrete mesh, skip_preflight=True: tests/unit/autodiff/test_measurement_traced_inputs.py::test_jit_and_vmap_over_port_bins_equal_the_concrete_bins'),
     ('Simulation.forward', 'rlc_values_override', 'undecided', 'step 2 decides; rules did not decide; rfx/api/_execute.py:989'),
     ('Simulation.forward', 'ringdown', 'undecided', 'step 2 decides; rules did not decide; rfx/api/_execute.py:989'),
+    ('Simulation.forward', 'tfsf_angle_override', 'traceable', 'grad, uniform mesh, oblique Bloch plane wave: tests/unit/autodiff/test_forward_tfsf_angle_gradient.py::test_transmission_angle_gradient_matches_jitted_gradient'),
     ('Simulation.forward', '_removed_kwargs', 'no_number', 'VAR_KEYWORD exception: rfx/api/_removed_kwargs.py:4 removed keyword rejection'),
     ('Simulation.mesh_intelligence_report', '*', 'undecided', 'step 2 decides; report-only default'),
     ('Simulation.plan_ad_memory', '*', 'undecided', 'step 2 decides; report-only default'),

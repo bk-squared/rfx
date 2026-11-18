@@ -154,7 +154,7 @@ def test_t1_every_parameter_and_value_field_has_exactly_one_state():
         fn = getattr(Simulation, owner.split(".")[1])
         assert names == tuple(p.name for p in _parameters(fn, drop_first=True))
     counts = Counter(rows.get((o, p), rows.get((o, "*")))[0].split(":", 1)[0] for o, p in covered)
-    assert len(covered) == 635
+    assert len(covered) == 636
     assert counts["static"] == 82
     assert counts["undecided"] == 464
     assert state_counts() == {state: counts[state] for state in (

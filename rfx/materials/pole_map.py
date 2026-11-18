@@ -1,7 +1,6 @@
 """Realization and edge reduction of spatial Lorentz pole declarations."""
 from dataclasses import dataclass, field
 from typing import Any
-import os
 
 import jax
 import jax.numpy as jnp
@@ -110,6 +109,7 @@ def sample_spec(spec, grid, shape):
 def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_sizes):
     """Use the shared builder after the declared strength-weighted edge rule."""
     from rfx.materials.lorentz import LorentzPole, lorentz_pole_coeffs, pole_update_coeffs, pole_underflow_guard
+    from rfx.model.dispersive_poles import _pole_underflow_check_enabled
     relative = isinstance(pole.kappa, RelativeStrength)
     value = pole.kappa.value if relative else pole.kappa
     si_tracer = not relative and pole.si_traced and value.dtype == jnp.float32
@@ -142,7 +142,7 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
             if constant_delta:
                 ds = float(active_d[0]) if active_d.size else 0.
     k = xp.where(ks > 0, kappa / xp.where(ks > 0, ks, 1.), 0.)
-    if si_tracer and os.environ.get("RFX_POLE_UNDERFLOW_CHECK") == "1":
+    if si_tracer and _pole_underflow_check_enabled():
         k = pole_underflow_guard(k, (ks,), scalar=False)
     strength = RelativeStrength(pole.kappa.reference, ks) if relative else (RelativeStrength(1.0, ks) if si_tracer else ks)
     # Concrete products are rounded before entering the edge-mean program.
