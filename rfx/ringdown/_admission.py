@@ -41,14 +41,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
             f"{caller}(ringdown=...) is not supported with periodic axes: rfx refuses "
             "wire-port S-parameters there.")
     if getattr(sim, "_tfsf", None) is not None:
-        wf = getattr(sim._tfsf, "waveform", "")
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) is not supported with a TFSF plane wave"
-            + (" driven by a continuous wave, which never turns off"
-               if wf == "continuous_wave" else
-               ": the total-field boundary keeps injecting while the auxiliary "
-               "line still carries the pulse, so the injection waveform alone "
-               "does not say when the source is off") + ".")
+        _refuse_plane_wave(sim, spec, caller)
     if any(float(getattr(m, "chi3", 0.0) or 0.0) != 0.0
            for m in getattr(sim, "_materials", {}).values()):
         raise RfxUnsupported(
@@ -64,7 +57,8 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
                 "offered in this version; run them as two calls")
         if not spec.identification_probes:
             raise RfxRefusal("probe_freqs completes the identification probes; none is declared")
-        if not any(pe.is_soft_source and pe.waveform is not None for pe in sim._ports):
+        if (getattr(sim, "_tfsf", None) is None
+                and not any(pe.is_soft_source and pe.waveform is not None for pe in sim._ports)):
             raise RfxRefusal("nothing drives the model")
         return
     for attr, what in (("_msl_ports", "microstrip (add_msl_port)"),
@@ -98,6 +92,55 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
             f"{caller}(ringdown=...) needs a driven wire port: with every port passive "
             "run() reports a per-cell diagnostic, not a scattering parameter.")
 
+
+
+def _refuse_plane_wave(sim, spec, caller: str) -> None:
+    """The TF/SF plane-wave rows: the drives whose source-off level is measured.
+
+    Admitted: a closed box in probe mode, driven by the differentiated
+    Gaussian, at a realized normal direction (+-1, 0, 0), with no soft source
+    beside it. Every other plane wave is refused by name.
+    """
+    from rfx.sources.sources import CustomWaveform
+    from rfx.sources.tfsf_discrete_plane_wave import rational_direction
+
+    entry = sim._tfsf
+    head = f"{caller}(ringdown=...)"
+    if not entry.closed_box:
+        raise RfxUnsupported(
+            f"{head}: the source-off level is measured for the closed-box plane wave "
+            "(closed_box=True) only.")
+    if spec.probe_freqs is None:
+        raise RfxUnsupported(
+            f"{head} completes wire-port S-parameters; a TF/SF plane wave drives this "
+            "model, and no wire port can be declared with it. Complete field probes "
+            "instead (RingdownSpec(probe_freqs=...)).")
+    waveform = entry.waveform
+    if isinstance(waveform, str) and waveform == "continuous_wave":
+        raise RfxUnsupported(
+            f"{head} is not supported with a TFSF plane wave driven by a continuous "
+            "wave, which never turns off.")
+    if isinstance(waveform, CustomWaveform) or waveform != "differentiated_gaussian":
+        name = "a CustomWaveform" if isinstance(waveform, CustomWaveform) else repr(waveform)
+        raise RfxUnsupported(
+            f"{head}: the source-off level of a closed-box plane wave is measured for "
+            f"the differentiated Gaussian only; this plane wave is driven by {name}.")
+    m = tuple(int(v) for v in rational_direction(
+        float(entry.theta_deg), float(entry.phi_deg), entry.direction,
+        float(entry.direction_tol_deg), int(entry.max_component))[0])
+    if m not in ((1, 0, 0), (-1, 0, 0)):
+        axes = [axis for axis, v in zip("xyz", m) if v]
+        if len(axes) == 1:
+            raise RfxUnsupported(
+                f"{head}: source-off not measured for closed-box incidence along "
+                f"{axes[0]}: its incident line is launched like an oblique one.")
+        raise RfxUnsupported(
+            f"{head}: source-off not measured for oblique closed-box incidence "
+            f"(realized direction {m}).")
+    if any(pe.is_soft_source for pe in sim._ports):
+        raise RfxUnsupported(
+            f"{head}: the source-off check of a TF/SF plane wave together with a soft "
+            "source is not measured; complete a model driven by the plane wave alone.")
 
 
 def refuse_run_lane(lane: str, n_wire_ports: int) -> None:

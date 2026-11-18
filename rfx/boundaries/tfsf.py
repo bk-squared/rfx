@@ -78,7 +78,23 @@ def validate_realized_vacuum_boundary(
             window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
                            for d in range(3))
             nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
-    sim._validate_tfsf_vacuum_boundary(materials, cfg, nonvacuum_masks=tuple(nonvacuum))
+    sim._validate_tfsf_vacuum_boundary(without_attached_tensor(materials), cfg,
+                                       nonvacuum_masks=tuple(nonvacuum))
+
+
+def without_attached_tensor(materials):
+    """The materials view the vacuum-boundary check walks: no attached tensor.
+
+    The tensor reaches that check as the caller's aniso_eps, aniso_inv_eps
+    and conformal_weights masks, as before it was attached to the model.
+    """
+    components = getattr(materials, "components", None)
+    if components is None:
+        return materials
+    if getattr(components, "tensor", None) is None:
+        return materials
+    from dataclasses import replace
+    return materials._replace(components=replace(components, tensor=None))
 
 
 def validate_source_boundary(sim, *, closed_box):

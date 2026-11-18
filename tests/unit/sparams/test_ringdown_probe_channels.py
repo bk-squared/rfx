@@ -167,7 +167,7 @@ def admission_model():
     ("empty", "none is declared", RfxRefusal),
     ("no_drive", "nothing drives the model", RfxRefusal),
     ("no_waveform", "nothing drives the model", RfxRefusal),
-    ("tfsf", "TFSF plane wave", RfxUnsupported),
+    ("tfsf", "measured for the closed-box plane wave", RfxUnsupported),
     ("distributed", "distributed lane", RfxUnsupported),
     ("subgrid", "subgridded lane", RfxUnsupported),
     ("periodic", "periodic axes", RfxUnsupported),
@@ -189,7 +189,7 @@ def test_t3_admission_rows(row, words, error):
     elif row == "no_waveform":
         sim._ports[0].waveform = None
     elif row == "tfsf":
-        sim._tfsf = SimpleNamespace(waveform="gaussian")
+        sim._tfsf = SimpleNamespace(waveform="gaussian", closed_box=False)
     elif row == "distributed":
         kw["devices"] = [0, 1]
     elif row == "subgrid":

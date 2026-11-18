@@ -393,9 +393,28 @@ def _refuse_pad_edge(grid, cell, label, component=None):
             "Move the source/port edge into the interior.")
 
 
-def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
-    """Resolve after all stamps; preserve tensor branches pending their audit."""
-    upml = sim._boundary == "upml" and grid.cpml_layers > 0
+def upml_active(sim, grid):
+    """Whether the run's E update is the UPML one on the whole grid."""
+    return sim._boundary == "upml" and grid.cpml_layers > 0
+
+
+def drive_materials(materials, sim, grid):
+    """The materials a drive or element reads its edge coefficient from.
+
+    Under UPML the step's E coefficient is the UPML form on every edge, so
+    the readers take that branch (``source_upml``), with the attached
+    tensor's float32 diagonal when there is one. Elsewhere the materials
+    are returned unchanged.
+    """
+    if not upml_active(sim, grid):
+        return materials
+    return materials._replace(components=replace(
+        materials.components, source_upml=True))
+
+
+def resolve_run_sources(queue, materials, sim, grid):
+    """Resolve after all stamps and after the run's tensor operands are attached."""
+    upml = upml_active(sim, grid)
     undriven = set()
     if upml:
         from rfx.sources.sources import _wire_port_cells, wire_port_from_entry
@@ -423,9 +442,7 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
             position["xyz".index(port.axis)] = port.position
             _refuse_pad_edge(grid, grid.position_to_index(tuple(position)),
                              f"floquet_port[{n}]")
-        materials = materials._replace(components=replace(
-            materials.components, source_upml=not tensor))
-    sources = queue.resolve(materials)
+    sources = queue.resolve(drive_materials(materials, sim, grid))
     if upml:
         for source in sources:
             cell = (int(source.i), int(source.j), int(source.k))
