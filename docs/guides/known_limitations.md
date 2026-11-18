@@ -822,6 +822,22 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
+### A long identification window can be refused at stage 2, the original-rate residue fit, above the memory bound.
+
+Tracker: #2874
+
+`run(ringdown=...)` and `forward(ringdown=...)` identify poles in two stages:
+- stage 1, the pencil, runs on the decimated record;
+- stage 2 fits the residues at the original sample rate and needs `1.71 × 16 × 5 × n_win × r` bytes, where `n_win` is the window length in samples and `r` the kept rank.
+
+When that exceeds `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` (4 GiB by default), the window is refused by name with `IdentificationMemoryRefused`. The message names the stage, the dimensions, the memory needed and the bound. For example, n_win = 80,000 at r = 600 needs 6.1 GiB. No number is returned for that window.
+
+What to do:
+- raise `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` when the device has the memory;
+- or shorten the identification window.
+
+#2874 plans a streamed stage-2 fit, whose memory scales with `r²`.
+
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 
 Tracker: #1514
