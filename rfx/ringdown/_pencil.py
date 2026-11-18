@@ -145,8 +145,6 @@ def _identification_plan(n_window, dt, freq_max, n_channels):
     capacity = min(rd.HARMINV_MAX_MODES + 1, columns, n_window - columns)
     target = int(1.0 / dt / (4.0 * freq_max))
     trim = 2 * _FIR_HALF_OUTPUT_SAMPLES
-    # Every full plan keeps at most ceil(n_window / q) - trim samples.
-    # Skip effective factors that cannot even retain capacity samples.
     target = min(target, (n_window - 1) // (max(_MIN_PENCIL_SAMPLES, capacity) + trim - 1))
     for q in range(target, 1, -1):
         factors = tuple(_decimation_factors(q))
