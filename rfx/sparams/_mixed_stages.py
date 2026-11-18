@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 import numpy as np
 
 from rfx.errors import AccuracyWarning
@@ -426,13 +428,13 @@ def _prepare_mixed_drive(
     # the runner; the driven MSL port mirrors the
     # compute_msl_s_matrix default.
     run_ports = [
-        _dc.replace(pe, excite=(fam == "lw" and k == loc))
+        _dc.replace(pe, excite=calculator_drive(fam == "lw" and k == loc, excite=pe.excite))
         for k, pe in enumerate(self._ports)
     ]
     # Use the resolved ladder that the material/probe setup describes.
     run_msl = []
     for k, pe in enumerate(entries):
-        driven = fam == "msl" and k == loc
+        driven = calculator_drive(fam == "msl" and k == loc, excite=pe.excite)
         wf = (
             (pe.waveform if pe.waveform is not None else
              GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8))
