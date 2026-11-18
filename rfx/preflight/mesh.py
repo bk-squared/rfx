@@ -76,6 +76,8 @@ instead of leaving two different functions sharing one name.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import current_check, is_tracer_error, not_judged
+
 from rfx.preflight._subjects import finding_subjects, runway_region
 
 import math
@@ -144,6 +146,7 @@ def _warn_small_curved_body(self, entry, cache, is_pec) -> None:
     from rfx.geometry.curved_body_size import body_size_threshold, is_below_size
     shape = entry.shape
     if is_tracer(shape.radius) or any(is_tracer(v) for v in shape.center):
+        not_judged(None, "_validate_mesh_quality")
         return
     if is_pec:
         return
@@ -190,6 +193,7 @@ def _validate_mesh_quality(self) -> None:
         p is not None and is_tracer(p)
         for p in (self._dx_profile, self._dy_profile, self._dz_profile)
     ):
+        not_judged(None, "_validate_mesh_quality")
         return
 
     dx = self._dx
@@ -228,7 +232,9 @@ def _validate_mesh_quality(self) -> None:
                         f"(finer dx / subpixel smoothing) or thicken the feature.",
                         **finding_subjects(self, objects=(entry,)),
                         code="mesh_import_underresolved", source="_validate_mesh_quality"))
-            except (ValueError, AttributeError, TypeError):
+            except (ValueError, AttributeError, TypeError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_mesh_quality")
                 pass
 
         # Get bounding box dimensions
@@ -236,7 +242,9 @@ def _validate_mesh_quality(self) -> None:
             try:
                 c1, c2 = shape.bounding_box()
                 dims = [abs(c2[i] - c1[i]) for i in range(3)]
-            except (NotImplementedError, TypeError):
+            except (NotImplementedError, TypeError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_mesh_quality")
                 continue
         else:
             continue
@@ -438,7 +446,9 @@ def _validate_mesh_quality(self) -> None:
                                 ),
                                 stacklevel=3,
                             )
-                except (NotImplementedError, TypeError, AttributeError):
+                except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+                    if is_tracer_error(_traced_exc):
+                        not_judged(None, "_validate_mesh_quality")
                     continue
 
     # Physics-based numerical dispersion check (Taflove Ch. 4).
@@ -470,6 +480,7 @@ def _check_numerical_dispersion(self) -> None:
         p is not None and is_tracer(p)
         for p in (self._dx_profile, self._dy_profile, self._dz_profile)
     ):
+        not_judged(None, "_validate_mesh_quality")
         return
 
     dx_nom = self._dx or (C0 / self._freq_max / 20.0)
@@ -538,6 +549,7 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
     if all(p is None for p in profiles):
         return
     if any(p is not None and is_tracer(p) for p in profiles):
+        not_judged(None, "_validate_mesh_quality")
         # Tracer profiles can't be host-scanned for edge / ratio
         # checks. The warning is advisory only; correctness is
         # preserved downstream.
@@ -594,6 +606,8 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
 def _validate_cfg_graded_box_rasterization(self, _w) -> None:
     """Warn when a Box misses the fine cells implied by its z-span."""
     if self._dz_profile is None or is_tracer(self._dz_profile):
+        if is_tracer(self._dz_profile):
+            not_judged(None, "_validate_cfg_graded_box_rasterization")
         return
 
     dz = np.asarray(self._dz_profile, dtype=np.float64)
@@ -712,6 +726,8 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                              ("y", self._dy_profile),
                              ("z", self._dz_profile)):
         if profile is None or is_tracer(profile) or len(profile) < 2:
+            if is_tracer(profile):
+                not_judged(None, "_validate_cfg_multiband_grading")
             continue
         p = np.asarray(profile, dtype=float)
         ratios = p[1:] / p[:-1]
@@ -826,6 +842,8 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         return
     profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
     if all(p is None or is_tracer(p) for p in profiles):
+        if any(is_tracer(p) for p in profiles):
+            not_judged(None, "_validate_cfg_thin_conductor_graded_node")
         return
 
     for i, tc in enumerate(tcs):
@@ -833,11 +851,14 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         if lo is None or hi is None:
             continue
         if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            not_judged(None, "_validate_cfg_thin_conductor_graded_node")
             continue  # Assembly reports shapes whose bounds cannot be judged.
         extents = [float(hi[a]) - float(lo[a]) for a in range(3)]
         n_axis = min(range(3), key=lambda a: extents[a])
         prof = profiles[n_axis]
         if prof is None or is_tracer(prof):
+            if is_tracer(prof):
+                not_judged(None, "_validate_cfg_thin_conductor_graded_node")
             continue
         d = np.asarray(prof, dtype=np.float64)
         if d.size < 2:
@@ -938,6 +959,8 @@ def _graded_node_report(self, axis: int, coord: float):
 
     prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]
     if prof is None or is_tracer(prof):
+        if is_tracer(prof):
+            not_judged(None, current_check("_graded_node_report"))
         return None
     d = np.asarray(prof, dtype=np.float64)
     if d.size < 2:
@@ -1109,6 +1132,8 @@ def _validate_cfg_nonuniform_limitations(
             _tfsf_ax = self._tfsf.direction[-1]
             _tfsf_prof = {"x": self._dx_profile, "y": self._dy_profile,
                           "z": self._dz_profile}[_tfsf_ax]
+            if self._tfsf.closed_box and is_tracer(_tfsf_prof):
+                not_judged(None, "_validate_cfg_nonuniform_limitations")
             if (self._tfsf.closed_box
                     and _tfsf_prof is not None and not is_tracer(_tfsf_prof)
                     and not is_one_cell_size(_tfsf_prof)):
@@ -1144,6 +1169,8 @@ def _validate_cfg_nonuniform_limitations(
         # thickness it actually allocates.
         _realized_depths = self._preflight_face_layers()
         _z_layers = max(_realized_depths["z_lo"], _realized_depths["z_hi"])
+        if self._boundary == "cpml" and _z_layers > 0 and is_tracer(self._dz_profile):
+            not_judged(None, "_validate_cfg_nonuniform_limitations")
         if (self._boundary == "cpml"
                 and _z_layers > 0
                 and not is_tracer(self._dz_profile)):
