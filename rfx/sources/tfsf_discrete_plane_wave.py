@@ -1,5 +1,6 @@
 """Exact rational plane waves on the uniform three-dimensional Yee lattice."""
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx._internal._precision import resolve_coefficient_dtype
 
@@ -647,6 +648,7 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
+    admit_traced_inputs("Simulation.add_tfsf_source", locals())
     from rfx.runners._admission import refuse_plane_wave_with_port
     refuse_plane_wave_with_port(self, adding="plane_wave")
     from rfx.core.jax_utils import is_tracer
