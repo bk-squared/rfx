@@ -17,7 +17,7 @@ def _guide():
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=8, **kw)  # solved length; #1887
+        cpml_layers=8, **kw)  # solved length
     sim.add_waveguide_port(0.012, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=np.linspace(8.2e9, 12.4e9, 3), f0=10.3e9,
                            bandwidth=0.5, name="wg1")

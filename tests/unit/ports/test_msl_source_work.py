@@ -67,7 +67,7 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         # A centre-voltage-preserving perturbation orthogonal to the shaped
         # Ez profile exercises the extra positive loss; the transverse E set
         # here must NOT be loaded -- the port's conductivity sits on the Ez
-        # (substrate-normal) edges only (#1236).
+        # (substrate-normal) edges only.
         fringe = np.array([.1, -.2, 0., 0.]) if shaped else np.array([.1, -.1, 0., 0.])
         values = np.stack((np.full(4, .3), np.full(4, -.2), profile_e + fringe))
         for name, value in zip(("ex", "ey", "ez"), values):
@@ -92,7 +92,7 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         old_values = np.stack([np.asarray(getattr(old, name))[indices]
                                for name in ("ex", "ey", "ez")]).astype(float)
         # Midpoint work identity is derived from the field equation, not the
-        # source builder's Cb. The load dissipates on Ez only (#1236); Ex and
+        # source builder's Cb. The load dissipates on Ez only; Ex and
         # Ey store and give back nothing here (H = 0, no loss on their edges).
         mid = (old_values + new) / 2
         storage_rate = volume * np.sum(2.25 * EPS_0 * (new**2 - old_values**2)) / (2 * grid.dt)

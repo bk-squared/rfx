@@ -29,7 +29,7 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     if feature == "conformal":
         boundary = BoundarySpec(x=Boundary(lo="pec", hi="pec", conformal=True),
                                 y="pec", z="pec")
-    # Routing is tested on the same on-node walls in both lanes (#1887).
+    # Routing is tested on the same on-node walls in both lanes.
     spec = normalize_boundary(boundary)
     domain = tuple(float(np.ceil(v / 1e-3)) * 1e-3
                    if all(getattr(getattr(spec, a), side) in ("pec", "pmc")
@@ -38,7 +38,7 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     kwargs = {}
     if mesh == "graded":
         # Exact declared length, genuinely graded, distinct transverse lengths.
-        # A plane wave grades a transverse axis: along x it is refused (#2078).
+        # A plane wave grades a transverse axis: along x it is refused.
         axis = 1 if feature == "tfsf" else 0
         n = round(domain[axis] / 1e-3)
         length = 12e-3 if wall == "periodic" else domain[axis]
@@ -46,11 +46,11 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
         interior *= (length - 2e-3) / interior.sum()
         kwargs[f"d{'xy'[axis]}_profile"] = np.r_[1e-3, interior, 1e-3]
     if solved_domain:
-        domain = (13 * 1e-3, 10 * 1e-3, 8 * 1e-3)  # solved length; #1887
+        domain = (13 * 1e-3, 10 * 1e-3, 8 * 1e-3)  # solved length
     sim = Simulation(freq_max=20e9, domain=domain, dx=1e-3, mode=mode,
                      boundary=boundary, cpml_layers=3, **kwargs)
     if wall == "periodic":
-        # Explicit periodic dx requires a commensurate length (#1221 B2).
+        # Explicit periodic dx requires a commensurate length.
         sim = Simulation(freq_max=20e9, domain=(12e-3, domain[1], domain[2]),
                          dx=1e-3, mode=mode, boundary=BoundarySpec(x="periodic", y="pec", z="pec"), cpml_layers=0, **kwargs)
     pulse = GaussianPulse(f0=12e9, bandwidth=1.2)

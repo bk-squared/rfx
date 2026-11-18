@@ -41,7 +41,7 @@ FC_TE10_NUMERICAL = 3.476e9
 _DX = C0 / max(float(FREQS[-1]), F0) / 20.0
 _LAMBDA_G_LOW = (C0 / float(FREQS[0])) / np.sqrt(
     1.0 - (FC_TE10_NUMERICAL / float(FREQS[0])) ** 2)
-# DERIVED, not chosen: ceil(0.75 * lambda_g / dx), the pattern case 18 and #576
+# DERIVED, not chosen: ceil(0.75 * lambda_g / dx), the pattern case 18
 # established. 0.75 rather than the 0.50 floor because #494 measured that 0.50
 # still leaves roughly half the ripple — reproduced here, see below. Comes out
 # at 42 cells = 78.7 mm = 0.750 lambda_g at the 4.5 GHz band edge.
@@ -53,12 +53,12 @@ def _build_twoport_sim(*, kind: str, left_ref=None, right_ref=None):
     n_y, n_z = (54, 27) if kind == "dielectric" else (22, 11)
     sim = Simulation(
         freq_max=max(float(FREQS[-1]), F0),
-        domain=(DOMAIN[0], n_y * dx, n_z * dx) if dx is not None else DOMAIN, dx=dx,  # solved length; #1887
+        domain=(DOMAIN[0], n_y * dx, n_z * dx) if dx is not None else DOMAIN, dx=dx,  # solved length
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=CPML_LAYERS,
     )
     if kind == "pec_short":
-        # A metal BLOCK, i.e. a volume (#931 §1.2): sigma = 1e10 is above
+        # A metal BLOCK, i.e. a volume: sigma = 1e10 is above
         # the PEC promotion threshold, so this entry is classified exactly
         # like material="pec" and realizes tangential walls on both drawn
         # x faces with the Ex between them shorted. Before the contract
@@ -176,7 +176,7 @@ def test_normalized_twoport_dielectric_binds_reciprocity_and_transmission():
         f"mean|S21|={np.mean(s21):.3f} outside the reflecting-DUT band "
         "(0.5, 0.98) — an eps_r=4 step must attenuate but still transmit"
     )
-    # Passivity on the MAX (#496). A lossless slab cannot exceed unity column
+    # Passivity on the MAX. A lossless slab cannot exceed unity column
     # power at ANY frequency; averaging hides a localized violation, which is
     # exactly what the old mean-only gate did. Measured 1.0128 at 0.75 lambda_g;
     # 1.05 leaves margin for the float32 + normalize=True envelope without
@@ -206,7 +206,7 @@ def test_normalized_twoport_pec_short_is_strongly_reflective():
 
     # A lossless PEC short is a TOTAL reflector: |S11| sits AT unity, it does not
     # sit above it. The old upper bound of 1.05 admitted a measured 1.0252 —
-    # unphysical, and 94% of that excess was the thin far-port absorber (#496).
+    # unphysical, and 94% of that excess was the thin far-port absorber.
     # At 0.75 lambda_g it measures 0.9998, so the band can be the physical one.
     mean_s11 = float(np.mean(np.abs(s[0, 0, :])))
     assert 0.98 < mean_s11 < 1.005, (

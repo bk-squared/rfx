@@ -133,7 +133,6 @@ SCENES = {
     'absorber_probe_proximity': {'absorber_proximity': [('probe[0]',), ('port[0]',)]},
     'dispersive_pole_at_face': {'dispersive_pole_at_absorber_face': [('geometry[0]',)]},
     'geometry_in_cpml': {'geometry_in_absorber': [('geometry[0]',)], 'lossless_q': [('geometry[0]',)]},
-    # S2 snapshot predeclarations: test_preflight_split_snapshot.py:110-113.
     'guards_box_alumina': {'lossless_q': [('geometry[0]',)], 'realization': [('geometry[0]',)]},
     'guards_lossless_q': {'lossless_q': [('geometry[0]',)], 'realization': [('geometry[0]',)]},
     'guards_no_sources': {},
@@ -163,20 +162,17 @@ SCENES = {
         'thin_conductor_leontovich_band_offset': [('thin_conductor[0]', 'port[0]')],
         'sheet_effective_size': [('thin_conductor[0]',)]},
     'sheet_congruence_off_lattice': {
-        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:103.
         'realization': [('thin_conductor[0]',), ('thin_conductor[1]',)],
         'sheet_plane_realized': [('thin_conductor[0]', 'thin_conductor[1]')],
         'congruent_conductor_rasterization_parity': [('thin_conductor[0]', 'thin_conductor[1]')]},
     'conformal_fine_dx': {'port_aperture_snap': [('waveguide_port[0]',), ('waveguide_port[0]',)],
                          'port_freqs_below_cutoff': [('waveguide_port[0]',)]},
-    # S2 snapshot predeclaration: test_preflight_split_snapshot.py:119.
     'waveguide_nu_declared_geometry': {'port_evanescent': [('waveguide_port[0]',), ('waveguide_port[1]',)],
                                       'port_aperture_snap': [('waveguide_port[0]',)]},
     'ntff_absorber_overlap': {'absorber_overlap': [('ntff',)]},
     'floating_port': {'floating_port': [('geometry[0]', 'port[0]')],
                       'lossless_q': [('geometry[0]',)]},
     'off_lattice_edges': {'mesh_resolution': [('geometry[0]',)] * 2,
-                          # S2 snapshot predeclaration: test_preflight_split_snapshot.py:106.
                           'realization': [('geometry[0]',)],
                           'off_lattice_design_edges': [('geometry[0]',)]},
     'refplane_near_field': {'refplane_near_field': [('port[0]', 'port[1]')],
@@ -193,7 +189,6 @@ SCENES = {
         'msl_port_conductor_planes': [('geometry[0]', 'msl_port[0]')],
         'msl_port_geometry': [('msl_port[0]',), ('msl_port[0]',)]},
     'ntff_pec_overlap_full': {
-        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:115.
         'realization': [('geometry[0]',)],
         'ntff_pec_overlap': [('geometry[0]', 'ntff')],
         'port_in_pec': [('geometry[0]', 'port[0]'), ('geometry[0]', 'probe[0]')],
@@ -201,7 +196,6 @@ SCENES = {
         'port_conductor_continues': [('geometry[0]', 'port[0]')]},
     'pec_boundary_open': {'ntff_near_field': [('geometry[0]', 'ntff')]},
     'guards_msl_sheet_probe': {
-        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:112.
         'realization': [('geometry[0]',), ('geometry[1]',)],
         'absorber_proximity': [('port[0]',)], 'body_flush_on_absorber': [('geometry[0]',)],
         'lossless_q': [('geometry[0]',)], 'off_lattice_design_edges': [('geometry[1]',)],

@@ -23,13 +23,12 @@ from rfx.runners._distributed_common import (
 )
 from rfx.core.yee import init_state, init_materials
 
-# Historical note (#623, same class as #622's test_distributed_nu_kernel.py
-# fix): this file carried a module-wide ``pytestmark = pytest.mark.gpu``
+# Historical note: this file carried a module-wide ``pytestmark = pytest.mark.gpu``
 # from creation. Every CPU lane deselects ``gpu`` (pyproject addopts) and
 # a single-GPU pod exposes only 1 CUDA device (the host-device-count
 # sentinel only creates *virtual* devices on the CPU backend), so the
 # marker meant this file's whole 2-/4-device equivalence family ran in NO
-# lane at all — the #623 pad_x displacement went undetected for that reason.
+# lane at all — the pad_x displacement went undetected for that reason.
 # The module-level
 # ``os.environ["XLA_FLAGS"] = ...`` line above was ALSO dead in practice
 # even before this fix: pytest always imports conftest.py (which sets 2
@@ -40,16 +39,15 @@ from rfx.core.yee import init_state, init_materials
 # shards. The marker is removed so this family runs in the same
 # fast-suite/weekly CPU shards as the sibling
 # ``test_distributed_nu_kernel.py`` / ``test_distributed_nu_composition.py``
-# files. Measured (2026-08-11, this fix, 2-device conftest default):
+# files. Measured (this fix, 2-device conftest default):
 # 33/33 passed, 65-68 s wall, 1.74 GiB peak RSS — comparable to (and
-# below) the NU kernel file's precedent (62-66 s, 1.93 GiB) that #622
-# already accepted into the fast lane, and well under the ``highmem``
+# below) the NU kernel file's precedent (62-66 s, 1.93 GiB) and well under the ``highmem``
 # marker's 3-24 GB band (pyproject.toml).
 #
 # Multi-device tests remain device-count-ADAPTIVE: they shard across
 # however many JAX devices are available (up to 4, `_N_MULTI`) instead of
 # hardcoding 4, and SKIP when <2 devices are present (`requires_multidevice`).
-# Issue #162: a single-GPU pod has jax.device_count() == 1 (the sentinel
+# A single-GPU pod has jax.device_count() == 1 (the sentinel
 # does not add virtual devices when a GPU backend is present) — the
 # multi-device classes skip cleanly there rather than failing on a
 # brittle `len(devices) == 4` assert, while staying correct for any
@@ -129,7 +127,7 @@ class TestSplitGather:
 
         slabs = _split_state(state, 4, ghost=1)
         # Gathered field by field: the whole-state gather was the pmap
-        # runner's own helper and went with it (#1296).
+        # runner's own helper and went with it.
         np.testing.assert_allclose(
             gather_array_x(slabs.ex, ghost=1), state.ex, atol=1e-6)
         np.testing.assert_allclose(
@@ -151,7 +149,7 @@ class TestDistributedRunner:
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -184,7 +182,7 @@ class TestDistributedRunner:
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.015, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -203,7 +201,7 @@ class TestDistributedRunner:
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         # Source at center
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         # Two symmetric probes along x
@@ -233,7 +231,7 @@ class TestDistributedRunner:
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.025, 0.01, 0.01), component="ez")
 
@@ -258,7 +256,7 @@ class TestDistributedRunner:
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.015, 0.01, 0.01), component="ez")
 
         devices = jax.devices()[:_N_MULTI]
@@ -273,7 +271,7 @@ class TestDistributedRunner:
             freq_max=3e9,
             domain=(9 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.02, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.02, 0.01, 0.01), component="ez")
 
@@ -494,8 +492,8 @@ class TestDistributedCPML:
         # separate pre-run sim._build_grid() call, which can silently
         # diverge from what the run actually used — e.g. a dielectric
         # fixture's resolution can depend on material-aware refinement
-        # that resolves lazily, only visible post-run; #623 review).
-        # The #622 lesson stands: a fixture whose realized dimensions
+        # that resolves lazily, only visible post-run).
+        # The lesson stands: a fixture whose realized dimensions
         # make the pad path unreachable silently stops testing the thing.
         nx = int(result_single.grid.shape[0])
         pad_x = 0 if nx % n_devices == 0 else n_devices - (nx % n_devices)
@@ -522,7 +520,7 @@ class TestDistributedLumpedPort:
             freq_max=5e9,
             domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -545,7 +543,7 @@ class TestDistributedLumpedPort:
             freq_max=5e9,
             domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -565,7 +563,7 @@ class TestDistributedLumpedPort:
             freq_max=5e9,
             domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -595,7 +593,7 @@ class TestDistributedDebye:
             freq_max=5e9,
             domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -617,7 +615,7 @@ class TestDistributedDebye:
             freq_max=5e9,
             domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -636,7 +634,7 @@ class TestDistributedDebye:
             freq_max=5e9,
             domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -759,7 +757,7 @@ class TestExchangeInterval:
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -790,7 +788,7 @@ class TestExchangeInterval:
     def _assert_refused(monkeypatch, entry, interval):
         from rfx.runners import distributed_v2
 
-        sim = Simulation(freq_max=3e9, domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=3e9, domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0), boundary="pec")  # solved length
 
         def unexpected_work(*args, **kwargs):
             pytest.fail("exchange_interval must be checked before preflight or grid setup")
@@ -830,7 +828,7 @@ class TestExchangeInterval:
         ratios = {}
         # n_steps=1000 is load-bearing: the K=2 last-50/first-50 ratio is
         # 0.48 / 0.65 / 0.89 / 53 / 1.0e6 at 200 / 300 / 500 / 1000 / 2000
-        # steps (review measurement, 2026-09-22), so the > 3 bound is crossed
+        # steps (measurement), so the > 3 bound is crossed
         # only near 600 steps. Trimming the run for CI time turns this test
         # red for the wrong reason.
         for interval in (1, 2):

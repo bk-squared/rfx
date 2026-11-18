@@ -450,7 +450,7 @@ class TestAPIMultiMode:
 
 
 # ---------------------------------------------------------------------------
-# Near-cutoff robustness and degenerate-mode handling (GitHub issue #1)
+# Near-cutoff robustness and degenerate-mode handling
 # ---------------------------------------------------------------------------
 
 
