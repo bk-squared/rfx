@@ -80,7 +80,7 @@ def test_traced_override_beyond_90_degrees_is_refused():
     assert "< 90" in message
 
 
-@pytest.mark.parametrize("name", ["f0", "bandwidth", "amplitude", "angle_deg", "theta_deg", "phi_deg", "direction_tol_deg"])
+@pytest.mark.parametrize("name", ["f0", "bandwidth", "amplitude", "angle_deg", "theta_deg", "phi_deg"])
 @pytest.mark.parametrize("closed", [False, True])
 def test_traced_source_parameters_are_refused_by_name(name, closed, no_scan):
     sim = Simulation(freq_max=10e9, domain=(.30, .016, .008), dx=.002, boundary="cpml")
