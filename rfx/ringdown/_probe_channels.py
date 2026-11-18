@@ -10,6 +10,7 @@ from rfx import ringdown as rd
 from rfx._warning_origin import user_stacklevel
 from rfx.errors import AccuracyWarning
 from rfx.ringdown._geometry import _user_geometry
+from rfx.ringdown._incident_norm import normalized
 
 
 RELATIVE_RULE = "max_c max_f |X_A,c - X_B,c| / max_f |X_main,c| over probe_freqs"
@@ -51,8 +52,10 @@ def _not_formed(name, reason):
 def _error_witnesses(plan, Y, dt, ref_hz, plain, w2, state):
     spec = plan.spec
     tol = float(spec.witness_tol)
-    w2_value = relative_difference(w2.spectra, w2.spectra_short, w2.spectra)
-    rule = RELATIVE_RULE
+    main = normalized(plan, w2.spectra)
+    w2_value = relative_difference(main, normalized(plan, w2.spectra_short), main)
+    rule = RELATIVE_RULE + ("" if plan.spec.probe_normalization is None
+                            else "; every operand normalized by the incident spectrum")
     if plan.source_ratio_long > spec.source_off_tol:
         why = (f"a source reaches {plan.source_ratio_long:.3e} of its peak in "
                f"[{0.5 * spec.window_start:g} T, T], above source_off_tol = {spec.source_off_tol:.1e}")
@@ -66,7 +69,7 @@ def _error_witnesses(plan, Y, dt, ref_hz, plain, w2, state):
             Y, dt, plan.bins, plan.n_steps, spec.window_start,
             freq_max=ref_hz, guard=spec.guard, sv_rel=spec.sv_rel,
             unit_tol=spec.unit_tol, observable=None, plain=plain, spectra=w2.spectra)
-        value = relative_difference(w2.spectra, we.spectra_long, w2.spectra)
+        value = relative_difference(main, normalized(plan, we.spectra_long), main)
         note = ""
         state.update(long_rank=we.model_long.rank, long_n_kept=int(we.model_long.s.size))
     except TimeoutError:
@@ -116,7 +119,8 @@ def _complete_probe(plan, result, Y, dt, ref_hz, witnesses):
                             f"(largest {g_max:.3g} at {g_f / 1e9:.4g} GHz, reported, not judged)"),
         rd.RingdownWitness("source_off", src_ratio, float(spec.source_off_tol),
                             src_ratio <= spec.source_off_tol,
-                            "largest source waveform over the window, as a fraction of its peak"),
+                            "largest drive level over the window as a fraction of its peak "
+                            "(a waveform; for a plane wave its face-read level)"),
     ]
     amp = np.asarray(model.amplitude, dtype=np.float64)
     alpha = -model.s.real
@@ -139,10 +143,11 @@ def _complete_probe(plan, result, Y, dt, ref_hz, witnesses):
         short_n_kept=int(w2.model_short.s.size), long_rank=state.get("long_rank"),
         long_n_kept=state.get("long_n_kept"), poles=model.poles(),
         growing_pole_rule=rd.GROWING_POLE_RULE,
-        tail_share=relative_difference(w2.spectra, plain, w2.spectra),
+        tail_share=relative_difference(normalized(plan, w2.spectra), normalized(plan, plain),
+                                       normalized(plan, w2.spectra)),
         slowest_decay_over_window=slowest, discarded_growth_max=g_max,
         discarded_growth_f_hz=g_f)
-    return w2.spectra * probe_stamp(plan, dt), extra
+    return normalized(plan, w2.spectra * probe_stamp(plan, dt)), extra
 
 
 def host_probe_report(plan, result, ts_all, n_user):
@@ -152,7 +157,9 @@ def host_probe_report(plan, result, ts_all, n_user):
     base = dict(n_record=plan.n_steps, dt=dt, window_steps=(plan.n_start, plan.n_steps),
                 window_s=(plan.n_start * dt, plan.n_steps * dt),
                 short_window_steps=(plan.n_start, plan.n_split),
-                long_window_steps=(plan.n_long, plan.n_steps), freq_max_hz=ref_hz)
+                long_window_steps=(plan.n_long, plan.n_steps), freq_max_hz=ref_hz,
+                probe_normalization=plan.spec.probe_normalization,
+                incident_spectra=getattr(plan, "incident_spectra", None))
     no_acc = "no port accumulator; a probe channel is the recorded field itself"
     witnesses = [_not_formed("W0", no_acc), _not_formed("W1", no_acc),
                  _not_formed("passivity", "a field spectrum has no passivity bound")]
@@ -213,16 +220,15 @@ def forward_probe_report(ctx, res):
 def traced_probe_completion(plan, result, channels):
     """Complete the raw probe columns; failures poison values and derivatives."""
     import jax.numpy as jnp
-    from rfx.core.jax_utils import is_tracer
     from rfx.ringdown import _jax as rj
+    from rfx.ringdown._forward_context import report_context
     from rfx.measurement.ringdown_resolution import completion_poles
     from rfx.measurement.ringdown_tail_jax import plain_dft
 
     bins = plan.bins
     rdt, cdt = rj.working_dtypes()
-    step = getattr(result, "dt", None)
-    ctx = rd._ForwardReportContext(plan, (), result.grid, bins,
-                                   None if is_tracer(step) else step)
+    ctx = report_context(plan, result, bins)
+    cells = tuple(getattr(result.grid, store) for _axis, store in ctx.traced_axes)
     consistency = jnp.asarray(jnp.nan, dtype=jnp.real(channels).dtype)
     try:
         plan._check_solver_step(result)
@@ -236,7 +242,7 @@ def traced_probe_completion(plan, result, channels):
             jnp.full(2, rj.STATUS_PRECONDITION, jnp.int32), consistency,
             jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx,
             poles=pole_nan, poles_long=pole_nan, pole_mask=mask, pole_mask_long=mask,
-            probe_spectra=spectra, probe_spectra_long=spectra)
+            probe_spectra=spectra, probe_spectra_long=spectra, cells=cells)
     Y = channels[:, np.asarray(plan._identification_columns())].astype(rdt)
     dt, n, spec = float(result.grid.dt), plan.n_steps, plan.spec
     ref_hz = probe_reference(plan)
@@ -258,7 +264,7 @@ def traced_probe_completion(plan, result, channels):
         spectra, aux = rj.completion(Y, dt, bins, n0, s0, mask.astype(rdt),
                                      tail_arg, plain=plain, return_aux=True)
         factor = jnp.where(st == rj.STATUS_OK, 1.0, jnp.nan).astype(rdt)
-        out.append(spectra * stamp * factor)
+        out.append(normalized(plan, spectra * stamp * factor, cdt))
         poles.append(aux["s"] * factor)
         masks.append(mask)
         status.append(st)
@@ -268,4 +274,4 @@ def traced_probe_completion(plan, result, channels):
         None, None, jnp.asarray(bins, dtype=rdt), channels, (), None,
         jnp.stack(status), consistency, jnp.stack(counts), jnp.asarray(budgets), ctx,
         poles=poles[0], poles_long=poles[1], pole_mask=masks[0], pole_mask_long=masks[1],
-        probe_spectra=out[0], probe_spectra_long=out[1])
+        probe_spectra=out[0], probe_spectra_long=out[1], cells=cells)

@@ -1377,8 +1377,8 @@ class _ExecuteMixin:
             records on the concrete result using the run() diagnostic and
             underflow floor. They are host diagnostics, unavailable during
             tracing, and can be read on concrete records outside the jitted
-            objective. Other result fields keep their existing JIT
-            restrictions, including the host Grid object. Absent
+            objective. A whole result can be returned under JIT;
+            host data stays as computed during the trace. Absent
             records yield None rather than a passing value. Use
             ``settling_verdict(result.settling_db)`` for the shared -40 dB bar.
 

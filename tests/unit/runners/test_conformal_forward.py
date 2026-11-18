@@ -48,7 +48,8 @@ def test_s_scan_steps_run_operands(monkeypatch):
     operands = []
 
     def captured(grid, materials, *args, **kwargs):
-        values = (materials.components.mu_update, kwargs['aniso_eps'], kwargs['conformal_weights'])
+        tensor = materials.components.tensor
+        values = (materials.components.mu_update, tensor.eps, tensor.conformal_weights)
         operands.append(jax.tree.map(lambda a: np.asarray(a).copy(), values))
         return original(grid, materials, *args, **kwargs)
 
@@ -142,7 +143,8 @@ def test_operands_match_run_bytes(monkeypatch, scene_name):
 
     def captured(grid, materials, *args, **kwargs):
         assert len(fractions) == len(operands) + 1
-        operands.append((materials.components.mu_update, kwargs['aniso_eps'], kwargs['conformal_weights']))
+        tensor = materials.components.tensor
+        operands.append((materials.components.mu_update, tensor.eps, tensor.conformal_weights))
         return original(grid, materials, *args, **kwargs)
 
     monkeypatch.setattr(conformal_rules, 'conformal_fractions_from_table', formed)

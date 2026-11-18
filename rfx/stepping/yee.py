@@ -105,7 +105,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
                  periodic: tuple = (False, False, False),
                  stencil_order: int = 2,
                  bloch: tuple | None = None,
-                 inv_d: tuple | None = None, *, boundary=None) -> FDTDState:
+                 inv_d: tuple | None = None, *, boundary=None, frame=None) -> FDTDState:
     """Redo the E update inside one index box with its own Ca/Cb.
 
     ``prev`` is the state BEFORE the grid-wide E update of this timestep. It
@@ -169,7 +169,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
         curl_x, curl_y, curl_z = curl_h(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
             prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch,
-            boundary=boundary)
+            boundary=boundary, frame=frame)
     else:
         curl_x, curl_y, curl_z = curl_h_nu(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),

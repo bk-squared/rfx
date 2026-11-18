@@ -10,7 +10,6 @@ from rfx import ringdown as rd
 from rfx.ringdown._pencil import _check_run_identification_memory, _identification_plan
 
 
-# Positive-frequency poles; the real record also contains their conjugates.
 TRUE_POLES = -1.0 / np.array([30e-9, 45e-9, 25e-9]) + 2j * np.pi * np.array([180e6, 310e6, 470e6])
 
 
@@ -21,7 +20,6 @@ def _record():
 
 
 def _stage1_bytes(kept, channels):
-    # Independent transcription of the stage-1 allocation bound.
     columns = max(4, min(int(kept * 0.33), kept - 2))
     rows = kept - columns
     rank = min(rows, columns * channels)
@@ -120,7 +118,6 @@ def test_configured_memory_bound_preserves_default_when_no_fallback(monkeypatch,
 def test_refused_window_at_decimation_guard_has_no_fallback(monkeypatch):
     dt, freq_max, samples = 0.125, 1.0, 1400
     assert 1.0 / dt == 8 * freq_max
-    # A q=2 plan would fit, but equality does not permit decimation.
     bound = (_stage1_bytes(680, 1) + _stage1_bytes(samples, 1)) / 2
     monkeypatch.setattr(rd, "IDENTIFY_MEMORY_BOUND_BYTES", bound)
     assert rd.decimation_plan(samples, dt, freq_max) == ((), samples)
