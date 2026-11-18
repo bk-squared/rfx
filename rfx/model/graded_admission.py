@@ -338,7 +338,7 @@ def nominal_cells(grid, axis, padded: bool = False):
     widths = np.asarray(widths, dtype=np.float64)
     if not padded:
         return widths
-    return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi)),
+    return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi, dtype=np.float64)),
                       dtype=np.float64)
 
 
@@ -367,7 +367,7 @@ def host_cells(grid, axis, *, store=False):
     """Host widths in the precision previously read by a metric consumer.
 
     By default this is the concrete float64 spine (``grid.cells``);
-    ``store=True`` preserves the solver's float32 widths (``dx_arr``,
+    ``store=True`` preserves the solver's stored widths (``dx_arr``,
     ``dy_arr``, ``dz``). A traced axis with a declared deformation window
     returns its padded nominal widths in that same precision; consumers
     refuse reads within the window, and waveguide admission checks its
@@ -381,7 +381,7 @@ def host_cells(grid, axis, *, store=False):
         widths = nominal_cells(grid, axis, padded=True)
         if widths is None or traced_cell_mask(grid, axis) is None:
             return stored if store else grid.cells(axis)
-        return np.asarray(widths, dtype=np.float32 if store else np.float64)
+        return np.asarray(widths, dtype=getattr(stored, "dtype", np.float64) if store else np.float64)
     if store and stored is not None and not np.isscalar(stored):
         return np.asarray(stored)
     return np.asarray(grid.cells(axis), dtype=np.float64)

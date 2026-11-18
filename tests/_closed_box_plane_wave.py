@@ -14,6 +14,7 @@ import math
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx._internal._precision import resolve_coefficient_dtype
 from rfx.sources.tfsf import tfsf_from_declaration
 from rfx.sources.tfsf_discrete_plane_wave import box_bounds
 from rfx.stepping.incident_line import record_face_values
@@ -39,7 +40,8 @@ def line(sim, n, *, line_steps="run"):
     """The line the runner builds for ``n`` steps (``line_steps`` n on run, None on forward)."""
     grid = sim._build_grid()
     cfg, state = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n,
-                                       line_steps=n if line_steps == "run" else None)
+                                       line_steps=n if line_steps == "run" else None,
+                                       dtype=resolve_coefficient_dtype(sim._precision))
     return cfg, state, grid
 
 

@@ -364,7 +364,8 @@
       "kind": "function",
       "params": [
         "rho",
-        "radius_cells"
+        "radius_cells",
+        "dtype"
       ]
     },
     "apply_projection": {
@@ -1336,7 +1337,8 @@
         "waveform_fn",
         "n_steps",
         "materials",
-        "amplitude_kind"
+        "amplitude_kind",
+        "dtype"
       ]
     },
     "make_nonuniform_grid": {
@@ -1346,6 +1348,7 @@
         "dz_profile",
         "dx",
         "cpml_layers",
+        "dtype",
         "dx_profile",
         "dy_profile",
         "pec_faces",

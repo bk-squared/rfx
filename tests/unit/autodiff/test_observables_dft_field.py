@@ -165,7 +165,7 @@ def _geometry_objective(sim, functional, *, eps_bg=1.0, eps_fg=4.0):
 
     def objective(rho_scalar):
         rho = jnp.reshape(rho_scalar, (1, 1, 1))
-        fields = density_to_material_fields(rho, eps_bg, eps_fg)
+        fields = density_to_material_fields(rho, eps_bg, eps_fg, dtype='float32')
         eps = eps_base.at[i, j, k].set(fields.eps[0, 0, 0])
         result = sim.forward(
             eps_override=eps, n_steps=_N_STEPS, checkpoint=False,
