@@ -16,7 +16,6 @@ they do not run at import time.
 """
 
 from __future__ import annotations
-from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.measurement.calculator_drive import calculator_drive
 
@@ -25,7 +24,6 @@ from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 from rfx.sparams._coax_status import coax_extraction_status
 
 from rfx.errors import AccuracyWarning
-from rfx._internal._precision import resolve_field_dtype
 from rfx.preflight.realization import release_inspection
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
@@ -59,7 +57,7 @@ from rfx.sparams._port_reference import (coax_two_port_line_waves,
     renormalize_power_waves, warn_line_reference_mismatch)
 
 
-from rfx.sparams._coax_admission import _require_absorption_on_every_axis
+from rfx.sparams._coax_admission import _require_absorption_on_every_axis, admit_coax_entry
 from rfx.sparams.coax_geometry import _coax_pec_edge_masks
 
 
@@ -149,8 +147,7 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
-    admit_traced_inputs("Simulation.compute_coaxial_line_reflection", locals())
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coaxial_line_reflection", locals())
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
@@ -616,8 +613,7 @@ def compute_coaxial_two_port(
     this sim still raise, because this method builds its own probes.
     """
 
-    admit_traced_inputs("Simulation.compute_coaxial_two_port", locals())
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coaxial_two_port", locals())
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_two_port() requires boundary='cpml' "
@@ -1206,8 +1202,7 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with built coax / analytic MSL normalization; this is
     not a traceable or validated cross-family extraction.
     """
-    admit_traced_inputs("Simulation.compute_coax_msl_transition", locals())
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coax_msl_transition", locals())
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,
