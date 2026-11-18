@@ -18,7 +18,7 @@ from rfx.stepping.yee import update_h, update_e
 # Oblique leakage runs need a narrowband source (bw<=0.15: off-f0 content carries
 # the wrong single-f0 k_y and breaks TFSF cancellation) which in turn needs a long
 # run (~1700 steps) for the pulse to fully develop — hence @pytest.mark.slow. See
-# The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when 1700 was set; the
+# The Bloch pulse peaks at 5 tau, 2 tau later than when 1700 was set; the
 # 509 steps (2 tau at f0 5 GHz, bw 0.15, dt 1.667 ps) keep the snapshot 3.7 tau after the peak.
 _OBLIQUE_BW = 0.15
 _OBLIQUE_STEPS = 1700 + 509
@@ -74,7 +74,7 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
     materials = init_materials((nx, ny, nz))
     periodic = (False, True, True)
     is_2d = is_tfsf_2d(cfg)
-    # #404 Phase-B: oblique 3D grid carries the complex Bloch envelope P.
+    # Oblique 3D grid carries the complex Bloch envelope P.
     if is_2d:
         sim_state = init_state((nx, ny, nz), field_dtype=jnp.complex64)
         bloch = bloch_phase_tuple(cfg, dx)
@@ -136,7 +136,7 @@ class TestObliqueTFSF:
         assert isinstance(cfg, TFSF2DConfig)
         assert cfg.n2y == 60, "2D grid y should match 3D ny (periodic)"
 
-        # + 153 steps = 2 tau (f0 5 GHz, bw 0.5, dt 1.667 ps): the Bloch pulse peaks at 5 tau since #1831.
+        # + 153 steps = 2 tau (f0 5 GHz, bw 0.5, dt 1.667 ps): the Bloch pulse peaks at 5 tau.
         for step in range(200 + 153):
             t = step * dt
             state = update_tfsf_2d_h(cfg, state, dx, dt)

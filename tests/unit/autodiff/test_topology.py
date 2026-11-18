@@ -311,7 +311,7 @@ def test_apply_pec_occupancy_matches_the_binary_volume_rule():
     np.testing.assert_allclose(np.array(hard.ez), np.array(soft.ez))
     # ... and the two REALIZATIONS are different objects, which is what the
     # old name blurred: the volume shorts its normal edge, a declared sheet
-    # on the same plane leaves it live (#931 §1.3).
+    # on the same plane leaves it live.
     from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
     fp = jnp.zeros((5, 5, 5), dtype=jnp.bool_).at[2, :, :].set(True)
     sheet = realized_pec_edge_masks(
@@ -591,7 +591,7 @@ def test_pec_foreground_gradient_is_finite_and_nonzero():
     from rfx.api import Simulation
     from rfx.core.yee import MaterialArrays
 
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
     sim.add_source((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 

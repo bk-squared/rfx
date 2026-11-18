@@ -29,7 +29,7 @@ from rfx.stepping.tfsf_2d import (
 
 _DOMAIN = (0.6, 0.12, 0.006)
 _DX = 0.002
-# The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when the oblique step
+# The Bloch pulse peaks at 5 tau, 2 tau later than when the oblique step
 # counts below were set: 223 steps = 2 tau at f0 5 GHz, bw 0.15, dt 3.81 ps.
 _BLOCH_DELAY_STEPS = 223
 

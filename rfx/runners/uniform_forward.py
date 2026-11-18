@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from rfx._internal._precision import resolve_coefficient_dtype
+from rfx.measurement.calculator_drive import calculator_drive
 
 from rfx.errors import RfxUnsupported
 
@@ -262,7 +263,7 @@ def _forward_from_materials(
     def _excite_this_port(pe) -> bool:
         if _sparam_drive_idx is None:
             return pe.excite
-        return _sparam_port_idx == _sparam_drive_idx
+        return calculator_drive(_sparam_port_idx == _sparam_drive_idx, excite=pe.excite)
 
     for _port_index, pe in enumerate(self._ports):
         if pe.is_soft_source:

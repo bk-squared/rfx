@@ -129,7 +129,7 @@ def _fixture_sim(kind: str, **tc_kwargs):
 
 def _digests(sim):
     specs = []
-    # #931: a PEC sheet owns no cell, so it is in NEITHER the material
+    # A PEC sheet owns no cell, so it is in NEITHER the material
     # arrays nor pec_mask — digesting only those would compare two models
     # while ignoring the one object under test. Collect the sheets and
     # digest their realization too.
@@ -166,14 +166,14 @@ def test_default_off_identity_and_negative_control_o6():
         # default path emits no NEW warnings: identical warning sets with
         # the kwarg absent vs default-passed, and the f0-mode add-time
         # warning ("Leontovich surface-resistance sheet with Rs0 = ...")
-        # never fires. (The #504 PEC warning legitimately MENTIONS the
+        # never fires. (The PEC warning legitimately MENTIONS the
         # escape hatch — that is contract-mandated wording, not a new
         # warning event.)
         assert warns_absent == warns_default
         for w in warns_absent:
             assert "Leontovich surface-resistance sheet" not in w, w
 
-        # NEGATIVE CONTROL (#677 retarget): the harness must be able to
+        # NEGATIVE CONTROL: the harness must be able to
         # move. f0 set on the same fixture now leaves the assembled ARRAYS
         # alone (sigma digest UNCHANGED for the pec fixture, whose sheet
         # was previously in pec_mask, and sheet-free for the dc fixture)
@@ -242,7 +242,7 @@ def test_vmap_parity_o7():
         assert np.array_equal(np.asarray(batched.sigma[idx]),
                               np.asarray(serial.sigma)), (
             f"sigma mismatch at eps_r={eps_val}")
-        # #677: the arrays are sheet-free on BOTH builds; the sheet lives
+        # The arrays are sheet-free on BOTH builds; the sheet lives
         # on the serial build's emitted spec
         assert float(np.asarray(serial.sigma).max()) == 0.0
         assert len(specs) == 1
@@ -397,7 +397,7 @@ def _masks_for_fixtures():
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
     out.append(("uniform-box", Box((0.005, 0.005, 0.001),
                                    (0.015, 0.015, 0.001)).mask(grid)))
-    # a closed sheet footprint as the contract samples it (#931 §1.3)
+    # a closed sheet footprint as the contract samples it
     from rfx.materials.thin_conductor import ThinConductor
     specs_c: list = []
     apply_thin_conductor(grid, ThinConductor(
@@ -605,7 +605,7 @@ def test_sheet_probe_record_survives_gpu_backend_query(monkeypatch):
 
 
 def test_g9_distributed_runners_refuse():
-    # The pmap runner's half of this test went with that runner (#1296).
+    # The pmap runner's half of this test went with that runner.
     from rfx.runners.distributed_v2 import run_distributed as run_v2
 
     sim = _sheet_sim(boundary="pec")
@@ -747,7 +747,7 @@ def _wr90(n_modes=1, *, solved_domain=False):
         freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3) if solved_domain else (0.06, 0.02286, 0.01016), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=6, snap="declared")  # solved length; #1887
+        cpml_layers=6, snap="declared")  # solved length
     _sheet(sim, Box((0.02, 0.0, 0.005), (0.04, 0.02286, 0.005)))
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
@@ -822,7 +822,7 @@ def test_the_mixed_board_trace_realizes_on_the_substrate_top_plane():
     # assertions above CANNOT see: they resolve `expected_m` to the nearest
     # node and compare INDICES, so at the old dx = 80 um they both pass while
     # node 3 sits at 240 um — the sheet 14 um inside the substrate. Measured
-    # both ways 2026-09-07: dx = 80 um -> plane 3 at 240.000 um;
+    # both ways: dx = 80 um -> plane 3 at 240.000 um;
     # dx = h_sub/3 -> plane 3 at 254.000 um. This line is the difference.
     z = np.asarray(coords_from_uniform_grid(rz.grid).z, dtype=float)
     assert abs(float(z[k]) - h_sub) < 1e-9, (
@@ -863,7 +863,7 @@ def _fence(entry, *, where, match):
 def test_fence_subgridded_run():
     def go():
         sim = _cube()
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement((8e-3, 12e-3), ratio=2, validation="research")
         sim.run(n_steps=4, skip_preflight=True)
     _fence(go, where=("_execute.py", "run"),
@@ -1149,8 +1149,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
      "MSL junction S-parameter"):
         (__name__, "test_fence_msl_junction_mixed_s_matrix"),
-    # #980 Phase 2 moved compute_coax_msl_transition (and this call site with
-    # it) verbatim from rfx/api/_sparams.py to rfx/sparams/coax.py.
     ("rfx/sparams/coax.py", "compute_coax_msl_transition", "coax-MSL transition"):
         ("tests.unit.ports.test_msl_realized_port_contract",
          "test_direct_transition_cannot_silently_drop_lossy_sheets"),
@@ -1356,7 +1354,7 @@ def test_gap_between_stacked_films_rings_instead_of_being_clamped():
 # ---------------------------------------------------------------------------
 # The veto's exception: a LENGTH-1 axis is not a normal direction.
 #
-# The #690 veto above zeroes component ``c`` wherever no covering sheet has
+# The veto above zeroes component ``c`` wherever no covering sheet has
 # ``c`` tangential. On a 2-D grid (nz == 1) ``sheet_normal_axis`` calls every
 # flat patch z-normal, because z IS its thinnest bounding-box axis — there is
 # no other z extent available. The veto then zeroed ``mask_ez``, and in
@@ -1364,7 +1362,7 @@ def test_gap_between_stacked_films_rings_instead_of_being_clamped():
 # bit-identically inert: an f0 copper patch behaved exactly like vacuum.
 #
 # The realization rule already keeps the wrap on a length-1 axis for
-# exactly this reason (#689) — the veto ran after it and threw the result
+# exactly this reason — the veto ran after it and threw the result
 # away. Measured on the fixture below (20x20x1, dx = 1 mm, 6x6-cell copper
 # patch, 400 steps):
 #
@@ -1607,7 +1605,7 @@ class BoundsOnlyShape:
 U_DX = 1e-3
 U_DOMAIN = (0.02, 0.02, 0.003)
 U_Z = 1e-3
-U_FOOT = ((5e-3, 5e-3), (15e-3, 15e-3))          # [lo, hi] in x and y (#931: closed)
+U_FOOT = ((5e-3, 5e-3), (15e-3, 15e-3))          # [lo, hi] in x and y (closed)
 U_HOLE = ((8e-3, 8e-3), (12e-3, 12e-3))
 
 # NU fixture: dz = [0.5 mm]x8 + [1.5 mm]x8, sheet ON the 4.0 mm step node
@@ -1630,7 +1628,7 @@ def _uniform_sigma(shape, **kw):
     mats, _, _, pec_mask, *_ = sim._assemble_materials(
         grid, sheet_specs=specs)
     if kw.get("surface_impedance_f0") is not None:
-        # #677: the f0 sheet is emitted as a SheetImpedanceSpec instead of
+        # The f0 sheet is emitted as a SheetImpedanceSpec instead of
         # a materials.sigma fold; sigma_sheet is the SAME per-node realized
         # quantity every assertion in this module was written against, so
         # the helpers return it in f0 mode (and assert the arrays stayed
@@ -1930,7 +1928,7 @@ def test_design_ir_records_a_registered_nonbox_sheet_and_refuses_the_rest():
     specs_b = []
     mats_b = back._assemble_materials(
         back._build_grid(), sheet_specs=specs_b)[0]
-    # #677: the round-tripped sim emits the identical sheet spec (arrays
+    # The round-tripped sim emits the identical sheet spec (arrays
     # stay sheet-free on both sides)
     assert float(np.asarray(mats_b.sigma).max()) == 0.0
     assert len(specs_b) == 1
@@ -1947,7 +1945,7 @@ def test_design_ir_records_a_registered_nonbox_sheet_and_refuses_the_rest():
 
 
 # ---------------------------------------------------------------------------
-# The real CAD path: MeshShape (issue #358) carrying a surface-impedance sheet
+# The real CAD path: MeshShape carrying a surface-impedance sheet
 # ---------------------------------------------------------------------------
 
 def _mesh_slab(x0, x1, y0, y1, z0, z1, extra=()):
@@ -2014,7 +2012,7 @@ def test_mesh_shape_patterned_sheet_leaves_its_clearance_hole_alone():
 
 
 # ---------------------------------------------------------------------------
-# The #671 transition-node FDTD oracle, re-run with a NON-Box sheet
+# The transition-node FDTD oracle, re-run with a NON-Box sheet
 # ---------------------------------------------------------------------------
 
 def _guide_planar_sheet(zs):
@@ -2099,7 +2097,7 @@ def test_occupancy_guard_does_not_break_the_traced_mesh_path():
         sim._dz_profile = base * scale
         specs = []
         assemble_materials_nu(sim, _nu_grid(sim), sheet_specs=specs)
-        # #677: the sheet quantity (and its mesh derivative) lives on the
+        # The sheet quantity (and its mesh derivative) lives on the
         # emitted spec now; the occupancy guard must still skip the traced
         # mask instead of raising ConcretizationTypeError.
         return jnp.sum(specs[0].sigma_sheet)
@@ -2145,7 +2143,7 @@ def test_vmap_batched_build_folds_a_nonbox_sheet_identically():
             grid, sheet_specs=specs)
         assert np.array_equal(np.asarray(batched.sigma[idx]),
                               np.asarray(serial.sigma))
-        # #677: both builds are sheet-free in sigma; the non-Box sheet
+        # Both builds are sheet-free in sigma; the non-Box sheet
         # lands on the emitted spec exactly as on the serial build (the
         # sweep itself takes the sequential fallback which applies it).
         assert float(np.asarray(serial.sigma).max()) == 0.0

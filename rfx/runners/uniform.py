@@ -207,10 +207,8 @@ def run_uniform(
     pec_axes = None
     tfsf = None
 
-    if sim._tfsf is not None and sim._ports:
-        raise ValueError(
-            "TFSF plane-wave source is not supported together with lumped ports"
-        )
+    from rfx.runners._admission import refuse_plane_wave_with_port
+    refuse_plane_wave_with_port(sim)
     from rfx.runners._admission import refuse_mixed_waveguide_sources
     refuse_mixed_waveguide_sources(sim)
     if sim._waveguide_ports:

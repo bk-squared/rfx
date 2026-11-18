@@ -1,6 +1,5 @@
 """Concrete source samples agree across plain and user-jitted entry points."""
 
-import sys
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -69,9 +68,6 @@ def test_a_port_table_under_user_jit():
     assert_same_bits(jax.jit(table)(), expected)
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=True,
-                   reason="#2241 compiled graded step differs under a user jit on macOS CPU "
-                          "(loop inputs identical; Linux x86 CPU bit-identical)")
 def test_b_graded_current_run_under_user_jit():
     sim = scene()
     pulse = sim._ports[0].waveform
@@ -86,7 +82,7 @@ def test_b_graded_current_run_under_user_jit():
     assert actual.shape == expected.shape and actual.dtype == expected.dtype
     peak = np.max(np.abs(expected), axis=0)
     assert np.all(peak > 0)
-    # #2241 amendment 2: identical source tables still permit the standing
+    # Identical source tables still permit the standing
     # cross-trace rounding bars for the compiled time step and record sum.
     # Each probe uses its own peak, including the smaller magnetic trace.
     per_step_error = np.abs(actual - expected)

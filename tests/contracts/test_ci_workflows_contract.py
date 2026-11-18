@@ -322,11 +322,11 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
     assert len(records) == 1 and "if" not in records[0]
     for package in ("jax", "jaxlib", "numpy"):
         assert f"{package}.__version__" in records[0]["run"]
-    # Each shard records its CPU model and AVX-512 support (#2166: outcomes changed between runners).
+    # Each shard records its CPU model and AVX-512 support (outcomes changed between runners).
     cpu = [s for s in steps if s.get("name", "") == "Record the runner CPU"]
     assert len(cpu) == 1 and "if" not in cpu[0], cpu
     assert "model name" in cpu[0]["run"] and "avx512f" in cpu[0]["run"], cpu[0]["run"]
-    # Every process runs XLA capped at AVX2, set before pytest (#2166: outcomes changed with the runner's CPU).
+    # Every process runs XLA capped at AVX2, set before pytest (outcomes changed with the runner's CPU).
     cap = [i for i, s in enumerate(steps) if s.get("name", "").startswith("Cap XLA's CPU instruction set at AVX2")]
     assert len(cap) == 1 and "if" not in steps[cap[0]], cap
     cap_run = steps[cap[0]]["run"]

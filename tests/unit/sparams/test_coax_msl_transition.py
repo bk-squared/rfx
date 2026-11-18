@@ -143,14 +143,14 @@ def _plant_ab_power_wave(s_true, gamma_t, n_f):
     return a, b
 
 
-# NOTE (#822): this file's ``_voltages_from_ab`` was DELETED here, not
+# NOTE: this file's ``_voltages_from_ab`` was DELETED here, not
 # moved. It planted V(axis) by inverting the extractor's own extrapolation
 # -- it asked ``load_below`` which exponential branch the extractor would
 # call ``forward_amp`` and planted the incident wave onto whichever branch
 # the assembler's constant would read as incident. Helper and assembler
 # therefore encoded the SAME constant, so the pair stayed green for
 # whatever constant was chosen, including the backwards one that shipped
-# (#822: S_code = inv(S_true) behind a green planted test). Planting now
+# (S_code = inv(S_true) behind a green planted test). Planting now
 # comes from ``tests/_wave_convention.py::plant_ladder_voltages_physical``,
 # which takes GEOMETRY (``dut_sign``) and never a label.
 
@@ -258,7 +258,7 @@ def test_planted_voltages_recover_known_s_matrix_with_unequal_z0():
     noise-free synthetic field.
     """
     fx = _build_planted_fixture(_Z0_COAX, _Z0_MSL)
-    # Growth-tolerant unpack (issue #823 enumeration C4): the assembler's
+    # Growth-tolerant unpack: the assembler's
     # return tuple GAINS the two disjoint-half witness arrays
     # (ladder_split_gamma_dev, ladder_split_reflection_decades) after the
     # eight this test reads, so a fixed 8-name unpack here would break on a
@@ -314,7 +314,7 @@ def test_unequal_z0_normalization_is_required_off_diagonal_only():
                 fx["x_msl_planes_m"], fx["v_msl_by_drive"][drive_idx, :, fi],
                 reference_plane_m=fx["ref_msl_m"],
             )
-            # #822: a = forward_amp on THIS lane. The extractor already
+            # a = forward_amp on THIS lane. The extractor already
             # resolved which branch travels toward the reference plane; on
             # the coax<->MSL lane both reference planes sit AT the junction,
             # on the DUT side of their probes, so that branch IS the
@@ -583,10 +583,6 @@ def test_predeclaration_has_required_fields():
 # edge" documented in rfx/geometry/csg.py's Box docstring (every boundary
 # in this fixture happened to land exactly on a node plane -- the
 # docstring's own worked recipe, cell-midpoint corners, is what fixed it).
-# Neither fix changed the fixture's PHYSICAL dimensions or the intended
-# junction topology; both are the kind of bug a green construction check
-# would have caught before spending any FDTD time, and are recorded here
-# only because they were found by actually running it, not by review.
 #
 # THE DECLARED RESULT: the fixture runs, is internally self-consistent
 # (finite, deterministic, settles below -40 dB), but the RECIPROCITY
@@ -594,8 +590,7 @@ def test_predeclaration_has_required_fields():
 # three measured frequencies), with raw cond_a in the 1e3-1e7 range at
 # every bin.
 #
-# ATTRIBUTION (CORRECTED after PR #581 adversarial review, findings B2/B3
-# -- the ORIGINAL attribution in this comment, "near-degenerate two-drive
+# ATTRIBUTION (CORRECTED -- the ORIGINAL attribution in this comment, "near-degenerate two-drive
 # amplification from strong junction reflection", was WRONG and is
 # preserved only in PREDECLARATION["post_review_correction"] above as the
 # historical record of what was first written and why it did not survive
@@ -617,7 +612,7 @@ def test_predeclaration_has_required_fields():
 # constructions (coax TEM plane source vs MSL Ez injection), not
 # evidence of near-degenerate DIRECTIONS.
 #
-# B3: the PREDECLARED extraction-class failure mode (not junction
+# B3: the extraction-class failure mode (not junction
 # physics) is positively supported, not ruled out, by this fixture's own
 # numbers. The MSL probe ladder spans only 1.000 mm = 0.34%-3.37% of the
 # guided wavelength across the 3 measured frequencies (locked in by
@@ -632,7 +627,7 @@ def test_predeclaration_has_required_fields():
 # 4.5/36.2/2881.3 rad/m with Re(gamma) = 5619/5964/139 rad/m -- a decay
 # length near 1 cell, i.e. not a propagating/decaying wave at all. Two of
 # this array's own fit_residual values (0.0313, 0.0348) already cross the
-# PREDECLARED "large = fit unreliable" line, and |S22| = 0.00000 at bins
+# "large = fit unreliable" line, and |S22| = 0.00000 at bins
 # 0-1 is a b/a ratio of 1e-8 to 1e-11 -- below float32 relative precision,
 # a degenerate split, which directly CONTRADICTS the via-reflector story
 # (that story demands |S22| -> 1, a real near-total reflection, not a
@@ -640,9 +635,9 @@ def test_predeclaration_has_required_fields():
 # first_fixture_diagnostic (below) locks this comparison in as an
 # assertion, not just prose.
 #
-# HONEST STATEMENT (per review): degeneracy is observed. Whether the
+# HONEST STATEMENT: degeneracy is observed. Whether the
 # junction's own physical reflection or the MSL wave-extraction's own
-# instrument-scoping limit (the PREDECLARED failure class) is the
+# instrument-scoping limit (the failure class) is the
 # dominant cause is UNRESOLVED by this one fixture alone -- but the
 # discriminant above POSITIVELY SUPPORTS the extraction-class
 # explanation and does not support the junction-reflection story, so
@@ -651,8 +646,7 @@ def test_predeclaration_has_required_fields():
 # attempt (a longer MSL probe ladder, >= 0.25 lambda_g at the lowest
 # measured frequency -- NOT run in this PR).
 #
-# A NAMED THIRD candidate mechanism, not ruled out either (issue #581
-# review B4): preflight's own x-CPML clearance warning on this fixture
+# A NAMED THIRD candidate mechanism, not ruled out either: preflight's own x-CPML clearance warning on this fixture
 # ("distance to nearest x-CPML = 200um < recommended 600um... Source-side
 # CPML reflection may inflate |S11|") means the MSL port's own near-field
 # measurement sits close enough to its absorbing boundary that CPML
@@ -825,10 +819,10 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
         f"indices {z_stub_lo + np.where(~span)[0]}"
     )
 
-    # Issue #589: the ground under the coax dielectric is SOLID in attempt 1
+    # The ground under the coax dielectric is SOLID in attempt 1
     # (the declared clearance disk never carved it) -- the pin column above
     # is continuous through PEC ground, i.e. shorted. Pinned as history.
-    # #931: read on the REALIZED node plane, and the answer is the same
+    # Read on the REALIZED node plane, and the answer is the same
     # 36/36 the cell mask gave before the contract -- attempt 1 is the short
     # it always was.
     annulus = _lattice_ring_mask(grid, i0, j0, PIN_R_CELLS, CLEAR_R_CELLS)
@@ -842,10 +836,9 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
 
 
 # Pinned from gate_from_envelope(0.9928, quantum=100) = 1.49, computed ONCE
-# from the max|S| measured when this test was last written/reviewed (issue
-# #581 review B5): a gate computed LIVE from the value it bounds
+# from the max|S| measured: a gate computed LIVE from the value it bounds
 # (``gate_from_envelope(max_abs_s)``) can never fail by construction, so it
-# is frozen here as a literal instead, and capped at the PREDECLARED 1.10
+# is frozen here as a literal instead, and capped at the 1.10
 # passivity floor (1.49 alone is ~40% above that floor and would provide no
 # real protection).
 PINNED_MEASURED_GATE = 1.49
@@ -919,7 +912,7 @@ def test_coax_msl_transition_first_fixture_diagnostic():
     )
 
     # Amplitude falsifier: pinned literal (see PINNED_MEASURED_GATE above),
-    # capped at the predeclared 1.10 passivity floor -- this fixture's own
+    # capped at the 1.10 passivity floor -- this fixture's own
     # diagonal peaks near 1 (strong coax-side reflection) but must not
     # cross the passivity-violation floor by more than extraction noise.
     # strict_passivity=True above additionally makes the hard
@@ -935,7 +928,7 @@ def test_coax_msl_transition_first_fixture_diagnostic():
         "the change."
     )
 
-    # Degeneracy witness -- CORRECTED (issue #581 review B2): raw cond_a
+    # Degeneracy witness: raw cond_a
     # stays large (scale-mismatch artifact, see module comment), but the
     # column-EQUILIBRATED cond_a -- the one that actually discriminates
     # geometric near-parallelism on a mixed-family lane -- stays near 1,
@@ -1191,7 +1184,7 @@ PREDECLARATION_ATTEMPT2 = {
         "below."
     ),
     "status": "RUN",
-    # RETRACTED (issue #585 adversarial review, finding B1) -- preserved
+    # RETRACTED -- preserved
     # here as the historical record of what was first written, exactly
     # like PREDECLARATION["post_review_correction"] above preserves
     # attempt 1's own retracted attribution. Do not repeat this pattern:
@@ -1225,8 +1218,7 @@ PREDECLARATION_ATTEMPT2 = {
         "scaling-invariant and is the productive open question."
     ),
     "measured": {
-        # Filled once, from BOTH calibration checkpoints (issue #585
-        # review finding M2: disclose the refuting numbers too, not only
+        # Filled once, from BOTH calibration checkpoints (disclose the refuting numbers too, not only
         # the confirming ones). Kept as a static literal (fill-contract
         # pattern, matches REPRODUCE_GATE_RECORD elsewhere in this repo)
         # rather than a runtime side-effect written by the test --
@@ -1236,8 +1228,7 @@ PREDECLARATION_ATTEMPT2 = {
         # these same numbers from a fresh FDTD run; it does not read this
         # dict.
         #
-        # Run-length invariance test (issue #585 review finding B2/B4 --
-        # the repo's own discriminator for "is this a settled physical
+        # Run-length invariance test (the repo's own discriminator for "is this a settled physical
         # quantity or still an evolving transient", applied to the two
         # checkpoints 20000 -> 45000 steps):
         "n_steps_checkpoints": [20000, 45000],
@@ -1273,14 +1264,12 @@ PREDECLARATION_ATTEMPT2 = {
             "run (predeclared UNRUN, see SETTLED_RUN_RECORD) is needed "
             "before any claim on reciprocity/|S22| can be made."
         ),
-        # RESOLVED, VESSL 369367252283 (2026-08-06): the settled run this
+        # RESOLVED: the settled run this
         # 'verdict' string above calls for has now run and cleared -40 dB.
         # The two checkpoint numbers above are UNCHANGED (kept as the
         # historical record of what run-length invariance looked like
         # before settling) -- this key only points forward to where the
-        # settled read lives, per the same additive pattern
-        # PREDECLARATION["post_review_correction"] uses elsewhere in this
-        # file. See SETTLED_RUN_RECORD["measured"]["verdict"] for the full
+        # settled read lives. See SETTLED_RUN_RECORD["measured"]["verdict"] for the full
         # settled-run verdict (gamma-vs-beta CONFIRMED; passivity
         # ATTRIBUTED to truncation; reciprocity now MEASURED at 91.4% worst
         # deviation, not adjudicated between physical/instrument causes;
@@ -1298,13 +1287,7 @@ PREDECLARATION_ATTEMPT2 = {
 
 SETTLED_RUN_RECORD = {
     # Fill-contract pattern (mirrors the repository's REPRODUCE_GATE_RECORD
-    # convention): UNRUN <=> no numbers, no log path. This is the settled-run predeclaration issue #585
-    # review requires (finding B2/B4 + restructure item (c)): the local
-    # runtime available to this session cannot reach the -40 dB rule at
-    # attempt 2's domain size (extrapolated ~60 min locally from the two
-    # measured checkpoints, 20000 -> -12.3/-10.7 dB and 45000 -> -19.7/
-    # -17.9 dB) -- a VESSL run is the named next step, NOT attempted in
-    # this PR.
+    # convention): UNRUN <=> no numbers, no log path.
     "leg": "issue #489 leg 4, attempt 2 -- the settled-run follow-up",
     "purpose": (
         "Resolve reciprocity/|S22|/max|S| from UNMEASURED-at-this-"
@@ -1514,10 +1497,10 @@ PROBE_COUNT_2 = 9
 # N_STEPS_2 was calibrated, same as attempt 1's own 1500->8000 step
 # calibration (construction/instrument calibration, not a new R2 physics
 # attempt -- the settling_db witness is what governs, not a guess): the
-# predeclared estimate of 20000 (2.5x attempt 1's 8000, scaled by the LX
+# estimate of 20000 (2.5x attempt 1's 8000, scaled by the LX
 # ratio) measured only -12.3/-10.7 dB settling, well short of the -40 dB
 # rule, even though the gamma-vs-beta discriminant it produced already
-# landed inside the predeclared [0.8, 1.3] band at all 3 bins (ratios
+# landed inside the [0.8, 1.3] band at all 3 bins (ratios
 # 1.085/0.826/0.976) -- encouraging, but not reportable without adequate
 # settling per R5. Raised to 45000 (~2.25x more).
 N_STEPS_2 = 45000
@@ -1626,21 +1609,20 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
 #   JUNCTION_X 1.0 -> 3.0 mm (junction to -x CPML inner edge: 10 -> 30 cells)
 #   LX        12.5 -> 14.5 mm and FEED_X 11.0 -> 13.0 mm -- both move WITH
 #             the junction, so the MSL ladder/feed geometry relative to the
-#             junction and the +x CPML clearance (1.5 mm) are unchanged
-#             (review item 8).
+#             junction and the +x CPML clearance (1.5 mm) are unchanged.
 #   dx, cpml_layers=8, z-stack, FREQ_MAX_2, ladder recipe: unchanged.
 # Cell count 163*85*56 padded (743,820 interior-equivalent per the design's
 # arithmetic) vs attempt 2's 142*51*56 -- ~1.9x, so the same n_steps costs
 # ~1.9x the GPU time; ring-down may be SLOWER (bigger substrate slab): a
 # settling_db > -40 dB at 135000 steps makes B's numbers truncated and
 # UNPINNABLE (report, do not pin; name a 2x-length rerun instead), and
-# _warn_if_ringdown_truncated (#662) will say so verbatim in the run log.
+# _warn_if_ringdown_truncated will say so verbatim in the run log.
 #
 # KNIFE-EDGE NOTE (why the trace box below is placed by half-cells): attempt
 # 2 declares the trace as Box(y = Y_C -/+ W_TRACE/2) = 1.4/2.0 mm, both
 # exactly on node planes -- the rfx/geometry/csg.py Box docstring's
 # "knife edge". Measured on the committed fixture (_assemble_materials,
-# pure NumPy) BEFORE the #802 exact-coordinate fix -- the pre-2026-09-01
+# pure NumPy) BEFORE the exact-coordinate fix -- the earlier
 # f32 realization; the re-pin note below the constants records the
 # current one: the realized pec_mask trace occupied y nodes 14..20
 # INCLUSIVE at the trace z-layer (7 node rows; both edge nodes included by
@@ -1656,7 +1638,7 @@ def test_attempt2_junction_geometry_is_byte_identical_to_attempt1():
 # realizes EXACTLY attempt 2's own node set after the offset. The MSL
 # port's registered width stays W_TRACE (600 um) in both fixtures. That
 # attempt 2's declared 600 um trace realized as 7 electric-wall node rows
-# on the pre-#802 f32 rasterization (6 rows since the #802 re-pin) was
+# on the earlier f32 rasterization (6 rows since the re-pin) was
 # itself a declared-vs-realized fidelity observation on the COMMITTED
 # fixture (reported via --preflight's fidelity_report in the driver), not
 # something this variant changes.
@@ -1672,7 +1654,7 @@ WIDE_X_OFFSET_CELLS = int(round((JUNCTION_X_2W - JUNCTION_X) / DX))  # 20
 WIDE_Y_OFFSET_CELLS = int(round((Y_C_2W - Y_C) / DX))                # 17
 # Attempt 2's REALIZED trace node set (measured, see KNIFE-EDGE NOTE):
 # y nodes [Y_C_NODE - 3, Y_C_NODE + 3] inclusive, x nodes >= JUNCTION_X_NODE + 1.
-# Re-pinned at the exact-coordinate fix (#802): attempt 2's declared
+# At the exact-coordinate fix: attempt 2's declared
 # trace Box (x from JUNCTION_X, y = Y_C -/+ W_TRACE/2, all on node
 # planes) now realizes per the exact half-open convention — x INCLUDES
 # the junction node (lo face on-lattice captures its node) and y spans
@@ -1853,7 +1835,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     assert m2.eps_r_sub == mw.eps_r_sub == EPS_SUB
     assert m2.direction == mw.direction == "-x"
     assert m2.position[2] == mw.position[2] == N_SUB_LO * DX
-    # Feed-to-junction offset unchanged (review item 8).
+    # Feed-to-junction offset unchanged.
     assert np.isclose(mw.position[0] - JUNCTION_X_2W, m2.position[0] - JUNCTION_X)
     # +x CPML clearance unchanged: LX - FEED_X.
     assert np.isclose(LX_2W - FEED_X_2W, LX_2 - FEED_X_2)
@@ -1877,7 +1859,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     # clearance/pin Cylinders put CLEAR_R (= 4 dx) and PIN_R (= 2 dx)
     # exactly on node radii, and the f64 rounding of (x-cx)^2 + (y-cy)^2
     # resolves differently at (3.0, 3.4) mm than at (1.0, 1.7) mm.
-    # Measured at the exact-coordinate fix (#802, 2026-09-01): 2 eps_r
+    # Measured at the exact-coordinate fix: 2 eps_r
     # cells, both at r = CLEAR_R on the junction centre column (the
     # clearance cylinder's z-layers). Under the old float32 comparisons
     # the two centres happened to round the same way; exact float64 makes
@@ -1900,7 +1882,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
                 f"differs at r={r_nodes:.4f} dx -- NOT a knife-edge "
                 "radius; the wide fixture is geometrically different"
             )
-    # #931 §1.9: compare the REALIZED in-plane PEC nodes, not the primal cell
+    # Compare the REALIZED in-plane PEC nodes, not the primal cell
     # mask — the cell layer and the node plane a conductor is drawn at are
     # different indices under the contract.  The diff below is the same
     # either way (measured: 62 cell diffs, all at z node 28, and the same
@@ -1913,7 +1895,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     b = nodew[sw]
     # Same knife-radius rule as the materials above: the pin Cylinder puts
     # PIN_R (= 2 dx) exactly on a node radius, so its shell cells are the
-    # r^2-comparison knife edge (measured at #802: 37 pec cells, all at
+    # r^2-comparison knife edge (measured earlier: 37 pec cells, all at
     # r = PIN_R). Everything off the declared knife radii must stay
     # byte-identical — a diff elsewhere means the wide fixture is
     # geometrically different, which is what this test exists to catch.
@@ -1935,9 +1917,8 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
               yc_node + _TRACE_Y_HI_OFFSET_NODES + 1)
     )
     jx_node = int(round(JUNCTION_X / DX))
-    # Since #802 the trace box's lo face captures the junction node, so the
-    # junction x-column carries the trace rows too (pre-#802 it carried
-    # only the pin and the trace started one node further along +x).
+    # The trace box's lo face captures the junction node, so the
+    # junction x-column carries the trace rows too.
     assert np.nonzero(a[jx_node, :, pz + N_TRACE])[0].tolist() == trace_rows.tolist()
 
     # Method-side coax stub: same z indices compute_coax_msl_transition uses.
@@ -1982,7 +1963,7 @@ def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
                 f"(x,y,z)=({ix},{iy},{_iz}), r={r_nodes:.4f} dx -- NOT a "
                 "knife-edge radius; the wide stub is geometrically different"
             )
-    # n_diff_total is documented (26 knife-edge cells on 2026-08-30, see the
+    # n_diff_total is documented (26 knife-edge cells, see the
     # docstring), deliberately NOT pinned: 0 would be an improvement, not a bug.
     del n_diff_total
 
@@ -2001,11 +1982,10 @@ def test_attempt2_wide_kwargs_differ_from_attempt2_only_in_junction_x():
 
 
 # ---------------------------------------------------------------------------
-# Issue #589 driver VERDICT LOGIC (pure functions of the report-only driver
+# Driver VERDICT LOGIC (pure functions of the report-only driver
 # scripts/diagnostics/coax_msl_transition_settled_run.py). The driver imports
 # this module for the fixture builders, so it is loaded lazily by path here.
-# These tests pin the driver's verdict strings to the predeclared falsifiers
-# (#589 design A3 / review required change 2 + 4); they add no gate on any
+# These tests pin the driver's verdict strings to the falsifiers; they add no gate on any
 # measured number.
 # ---------------------------------------------------------------------------
 def _load_settled_run_driver():
@@ -2035,7 +2015,7 @@ def test_589_a3_falsified_requires_both_drives_and_both_residuals():
     assert v.startswith("(b)-ON-LADDER FALSIFIED"), v
     assert "BOTH drives" in v and "recurrence" in v, v
 
-    # Reviewer's 200-step smoke shape: msl/coax fit 0.593 while msl/msl is
+    # 200-step smoke shape: msl/coax fit 0.593 while msl/msl is
     # clean -- the plan's 'all bins/both drives' condition is NOT met.
     fit = clean.copy()
     fit[1, 0, :] = [0.593, 0.626, 0.784]
@@ -2179,7 +2159,7 @@ def test_589_a0_precision_mismatch_is_not_comparable_and_applies_f64_rule(tmp_pa
     assert f64["magnitude_max_delta"] > 1.0e-2
     assert a0["tier"].startswith("NOT COMPARABLE"), a0["tier"]
 
-    # The tracked 369367252283-class record (no ext_589, no precision key) is
+    # The tracked record (no ext_589, no precision key) is
     # documented f32: an f64 run against it is NOT COMPARABLE, the 2x rule is
     # declared not computable, the |S22|/col_power budget check still runs.
     tracked_like = tmp_path / "tracked_like.json"
@@ -2378,8 +2358,7 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     )
 
     # cond_a_equilibrated: stable near 1 at both checkpoints -- confirms
-    # NOT geometric near-degeneracy (issue #581 review finding B2's own
-    # correction, still holding).
+    # NOT geometric near-degeneracy.
     assert np.all(np.asarray(result.cond_a_equilibrated) < 1.5), (
         f"cond_a_equilibrated {result.cond_a_equilibrated} rose above the "
         "near-unity floor stable at both checkpoints -- the two drives "
@@ -2387,7 +2366,7 @@ def test_coax_msl_transition_attempt2_instrument_verification():
         "re-derive the attribution."
     )
 
-    # gamma-vs-beta (predeclared band [0.8, 1.3]): the ONE discriminant
+    # gamma-vs-beta (band [0.8, 1.3]): the ONE discriminant
     # that passes the run-length invariance test -- asserted as a real,
     # confirmed-provisional pass.
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
@@ -2431,7 +2410,7 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     )
 
     # --- UNMEASURED at this settling: recorded, NOT gated -----------------
-    # (issue #585 review findings B2/B4/M2: both checkpoints disclosed;
+    # (Both checkpoints disclosed;
     # no pass/fail bound asserted on a value known to still be moving.)
     pair, worst_dev = _mixed_reciprocity_deviation(result.s_params)
     s22_abs = np.abs(result.s_params[1, 1, :])
@@ -2439,8 +2418,7 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     # Sanity only (finite, not NaN/inf) -- explicitly NOT a physics gate.
     assert np.isfinite(worst_dev) and np.all(np.isfinite(s22_abs)) and np.isfinite(max_abs_s)
 
-    # --- Passivity guard: proves the honest gate still fires (issue #585
-    # review finding B3 -- no silent gate removal). Exercises the SAME
+    # --- Passivity guard: proves the honest gate still fires. Exercises the SAME
     # shared guard function compute_coax_msl_transition's own
     # strict_passivity=True would invoke, directly on this run's already-
     # obtained result -- equivalent verification without a second ~20-
@@ -2453,8 +2431,7 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     # epilogue (also used by compute_waveguide_s_matrix and
     # compute_coaxial_two_port), which is the one call site that actually
     # invokes this guard function in production; calling it directly here
-    # is a faithful stand-in, not a different code path (issue #585
-    # final-verify, nit n2).
+    # is a faithful stand-in, not a different code path.
     from rfx.api._sparams import _warn_if_nonpassive_smatrix
     with pytest.raises(ValueError, match="UNRELIABLE"):
         _warn_if_nonpassive_smatrix(
@@ -2463,10 +2440,9 @@ def test_coax_msl_transition_attempt2_instrument_verification():
 
 
 # ---------------------------------------------------------------------------
-# Part 5 -- #589 flux-adjudication instrument: the extra_flux_monitors= opt-in.
+# Part 5 -- flux-adjudication instrument: the extra_flux_monitors= opt-in.
 #
-# The issue #589 pre-declaration (2026-08-07 comment) commits this PR to ONE
-# witness before any adjudication run is interpreted: the S output must be
+# The S output must be
 # BIT-IDENTICAL with and without monitors attached (the opt-in is an
 # energy-witness channel, not an extractor change), and the registered-
 # monitor guard must stay intact. The fast tests below pin the guard and the
@@ -2642,10 +2618,10 @@ def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
 
 
 # ---------------------------------------------------------------------------
-# Issue #589 attempt 3 -- the ground plane WITH a REALIZED clearance hole.
+# Attempt 3 -- the ground plane WITH a REALIZED clearance hole.
 #
 # ROOT CAUSE (verified on main by direct inspection of
-# sim._assemble_materials, 2026-08-30): attempts 1 and 2 declare the
+# sim._assemble_materials): attempts 1 and 2 declare the
 # clearance as ``sim.add(Cylinder(radius=CLEAR_R), material="ptfe")`` AFTER
 # the full-plane ground Box. rfx/api/_compile.py::_assemble_materials is
 # PEC-OR-only (``pec_mask = pec_mask | mask``); a dielectric entity only
@@ -2655,7 +2631,7 @@ def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
 # mm -- the PTFE wrote eps only). compute_coax_msl_transition stamps its
 # coax stub only up to z_stub_hi = z_junction_idx - 1 (node 24), so pin AND
 # shell meet a solid PEC plane at node 25: the launch is a SHORT. That is
-# what the settled runs measured (VESSL 369367257263: S00 = (-0.9928,
+# what the settled runs measured (S00 = (-0.9928,
 # -0.0048) at 6 GHz, |S10| = -90 dB; wide domain |S00| -> 0.9999). The one
 # structural test of the era (test_pin_axis_pec_connectivity_is_continuous,
 # now test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_
@@ -2667,7 +2643,7 @@ def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
 # tile the ground plane EXCEPT the integer-lattice disk di^2+dj^2 <= 16
 # (CLEAR_R_CELLS = 4) around the pin axis -- the SAME 0.4 mm clearance
 # attempt 2 predeclared ("clearance disk (radius = pin + 2 cells)"). Every
-# inner face is on a cell midpoint (_half_cell_box, #802) and the two outer
+# inner face is on a cell midpoint (_half_cell_box) and the two outer
 # x-slab faces are attempt 2's own 0.0 / LX_2; 1-cell-wide row boxes take
 # csg's thin branch (nearest node), so nothing is a knife edge. The PTFE
 # Cylinder, substrate Box, trace Box, pin Cylinder, both ports, domain,
@@ -2681,10 +2657,10 @@ def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
 #   r <= 0.2 mm   PEC  (pin footprint, 11 cells, attempt 2's own asymmetry)
 #   0.2 < r <= 0.4 OPEN (36 cells, eps 2.1 after the method's stamp)
 #   0.4 < r <= 0.5 PEC  (ground lip over the coax dielectric, 32/32 -- part
-#                        of the predeclared 0.4 mm clearance, NOT a defect)
+#                        of the 0.4 mm clearance, NOT a defect)
 #   0.5 < r <= 0.6 PEC  (ground under the stamped shell: 32/32 contact)
 #
-# Test taxonomy (design review blocker 1): the tests below are split into
+# Test taxonomy: the tests below are split into
 # DISCRIMINATING tests -- FAIL on the committed attempt 2, PASS on attempt
 # 3 (annulus open; post-stamp junction open; xor == hole; window == disk)
 # -- and PRESERVATION INVARIANTS that pass on attempt 2 AND attempt 3 (pin
@@ -2696,7 +2672,7 @@ def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
 # which asserts the SAME helper assertions FAIL on attempt 2.
 # ---------------------------------------------------------------------------
 PIN_R_CELLS = int(round(PIN_R / DX))          # 2
-CLEAR_R_CELLS = int(round(CLEAR_R / DX))      # 4  (= PIN_R_CELLS + 2, as predeclared)
+CLEAR_R_CELLS = int(round(CLEAR_R / DX))      # 4  (= PIN_R_CELLS + 2)
 # 5 cells = 500 um. This WAS where stamp_coaxial_line put the wall's inner
 # face, back when shell_thickness = min(dz, (b-a)/2) = dz made it one cell
 # inside b. The wall's inner face is now b itself with the thickness fixed in
@@ -2710,14 +2686,14 @@ HOLE_CELLS_3 = 49        # |{(di, dj): di^2 + dj^2 <= 16}|
 ANNULUS_CELLS_3 = 36     # |{4 < di^2 + dj^2 <= 16}|  -- PIN_R < r <= CLEAR_R on the lattice
 LIP_CELLS_3 = 32         # |{16 < di^2 + dj^2 <= 25}| -- CLEAR_R < r <= shell_inner
 SHELL_CELLS_3 = 32       # |{25 < di^2 + dj^2 <= 36}| -- shell_inner < r <= OUTER_R
-PIN_FOOTPRINT_CELLS_2 = 11   # attempt 2's REALIZED pin Cylinder footprint at node 25 (knife edge, #802)
+PIN_FOOTPRINT_CELLS_2 = 11   # attempt 2's REALIZED pin Cylinder footprint at node 25 (knife edge)
 TRACE_NODE_ROWS_2 = 6        # attempt 2's REALIZED trace width in CELLS on exact node coordinates (= the declared 600 um); see below
-# #931: the constant above is a CELL count and its old name said "node rows".
+# The constant above is a CELL count and its old name said "node rows".
 # Under the contract the two are different quantities and both are asserted:
 # the trace Box's y span [Y_C - 300 um, Y_C + 300 um] is nodes 14..20, so the
 # realized footprint is a CLOSED run of 7 NODES with 6 CELLS between them, and
 # the realized width is (7 - 1) x DX = 600 um -- exactly the declared width.
-# The pre-#931 cell scan saw the 6 cells; the realization channel sees the 7
+# The earlier cell scan saw the 6 cells; the realization channel sees the 7
 # nodes that bound them. NOT a gate change: the width in metres is unchanged,
 # and it is now asserted in metres instead of being inferred from a count.
 TRACE_NODE_ROWS_2_REALIZED = TRACE_NODE_ROWS_2 + 1   # 7 closed node rows
@@ -2732,8 +2708,7 @@ HOLE_XOR_CELLS_3 = HOLE_CELLS_3 - PIN_FOOTPRINT_CELLS_2   # 38
 #   * TRACE_NODE_ROWS_2: 7 -> 6. The trace Box's y span [Y_C - 300 um,
 #     Y_C + 300 um] = nodes [14, 20] exactly; the documented half-open
 #     ``lo <= y < hi`` on exact coordinates gives nodes 14..19 = 6 rows =
-#     the declared 600 um. The 7th row was the float32-included hi node
-#     (the #802 class #834 fixed). Hammerstad-Jensen Z0 of the realized
+#     the declared 600 um. The 7th row was the float32-included hi node. Hammerstad-Jensen Z0 of the realized
 #     trace is therefore the declared-width 53.11 ohm, not the 48.27 ohm
 #     PREDECLARATION_ATTEMPT3 quotes for the 700 um the runs realized.
 #   * PIN_FOOTPRINT_CELLS_2 stays 11, but the two knife-edge cells at
@@ -2751,8 +2726,7 @@ HOLE_XOR_CELLS_3 = HOLE_CELLS_3 - PIN_FOOTPRINT_CELLS_2   # 38
 #     node-aligned x and y faces: ground sheet 4410 -> 4250 cells,
 #     substrate 13230 -> 12750, trace 805 -> 690.
 #   * Attempt 2's ground sheet is a one-node PEC sheet, so its own-cell
-#     eps_r is RESAMPLED half a cell up, at z = 25.5 dx (#702,
-#     rfx/geometry/rasterize_grid.py::resample_sheet_node_materials) --
+#     eps_r is RESAMPLED half a cell up, at z = 25.5 dx (rfx/geometry/rasterize_grid.py::resample_sheet_node_materials) --
 #     which is exactly the substrate Box's lower face
 #     (_half_cell_box_z(26, 28) -> 25.5 dx). Exact coordinates put that
 #     point inside the substrate (half-open includes lo) -> 3.66 across the
@@ -2765,7 +2739,7 @@ HOLE_XOR_CELLS_3 = HOLE_CELLS_3 - PIN_FOOTPRINT_CELLS_2   # 38
 # Consequence for the archived runs: the current tree realizes the same
 # declared attempt-3 fixture differently in 315 pec_mask cells (planes
 # 24..30) and 7244 eps_r cells (planes 24..25, mostly the sheet resample),
-# so those runs are records of the pre-#834 realization and are not
+# so those runs are records of the earlier realization and are not
 # bit-reproducible from this tree. The shell-contact (32/32), ground-lip
 # (32/32), annulus (0/36) and first-ring (0/16) counts are unchanged.
 
@@ -3003,11 +2977,11 @@ _JUNCTION_FIXTURES = {
 
 
 # ---------------------------------------------------------------------------
-# #931 R6 -- reading the junction's REALIZATION instead of its cell mask.
+# Reading the junction's REALIZATION instead of its cell mask.
 #
 # Every witness below used to ask ``pec_mask[:, :, k]`` "is this node metal on
 # node-plane k".  That question was answerable from the cell mask only while
-# the pre-#931 rule happened to put a one-cell body's occupancy on the same
+# the earlier rule happened to put a one-cell body's occupancy on the same
 # index as the node plane it was drawn at.  Under the lattice ownership
 # contract the two indices are DIFFERENT things and the fixture's own
 # ``_half_cell_box_z(n, n)`` recipe makes the gap visible: a Box drawn
@@ -3413,7 +3387,7 @@ def test_attempt2_junction_is_shorted_by_registered_ground():
 
 
 # ---- PRESERVATION INVARIANTS: pass on attempt 2 AND attempt 3 ---------------
-# Each certifies nothing about the launch alone (design review blocker 1);
+# Each certifies nothing about the launch alone;
 # its discriminating partner is named in the docstring.
 @pytest.mark.parametrize("fixture", sorted(_JUNCTION_FIXTURES))
 def test_junction_pin_axis_is_pec_continuous_stub_to_trace(fixture):
@@ -3499,7 +3473,7 @@ def test_junction_coax_shell_contacts_ground(fixture):
         f"{radius[shell].min()*1e6:.0f}-{radius[shell].max()*1e6:.0f} um against "
         f"a declared outer radius of {OUTER_R*1e6:.0f} um.")
 
-    # The predeclared 0.4 mm clearance still leaves a one-cell ground lip over
+    # The 0.4 mm clearance still leaves a one-cell ground lip over
     # the coax dielectric; that ring is geometric and unchanged.
     lip = _lattice_ring_mask(grid, i0, j0, CLEAR_R_CELLS, SHELL_INNER_CELLS)
     assert int(lip.sum()) == LIP_CELLS_3
@@ -3558,7 +3532,7 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
 
 
 # ---------------------------------------------------------------------------
-# Attempt-3 flux box (issue #589 witness W4) -- opt-in monitors only.
+# Attempt-3 flux box -- opt-in monitors only.
 # ---------------------------------------------------------------------------
 # Six faces of ONE lossless control volume around the junction, plus one
 # full-plane comparator. The volume is
@@ -3580,18 +3554,15 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
 # so the residual of that identity measures only radiation leaving through the
 # CPML-facing faces plus discretization, NOT dissipation.
 #
-# All six faces are PATCHES with consistent extents (adversarial-review item:
-# the first draft mixed full planes with patches and gave the side faces a
+# All six faces are PATCHES with consistent extents (the first draft mixed full planes with patches and gave the side faces a
 # z-span that did not meet the top face, so its "closure residual" was not a
 # closed surface at all). ``msl_x20_full`` is the SAME plane taken full-domain,
 # reported next to the patch as the total +x power (guided + radiated + the
 # part flowing outside the box footprint); it is NOT part of the closure sum.
 #
-# RELATION TO THE STANDING #589 FLUX PREDECLARATION -- READ THIS FIRST.
-# This is the SECOND flux instrument on issue #589 and it does NOT supersede
-# the first. scripts/diagnostics/coax_msl_flux_adjudication.py (merged in
-# #597/#599) implements, verbatim, the face table pre-declared on #589 in the
-# comment of 2026-08-07 ("PRE-DECLARATION -- item 2 adjudication attempt"):
+# RELATION TO THE STANDING FLUX PREDECLARATION -- READ THIS FIRST.
+# This is the SECOND flux instrument and it does NOT supersede
+# the first. scripts/diagnostics/coax_msl_flux_adjudication.py implements, verbatim, the face table:
 # xp x=2.2, xm x=0.3, yp y=3.1, ym y=0.3, zt z=3.4, zb z=0.9 mm on the
 # ATTEMPT-2 fixture, with explicit outward signs, C1/C2 control runs that GATE
 # interpretation of the target (rc=2 if a control fails), +-2-cell face-SHIFT
@@ -3603,22 +3574,22 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
 # and z faces differ outright. W4's numbers are therefore NOT directly
 # comparable to that instrument's.
 #
-# Why attempt 3 cannot simply reuse the predeclared table:
-#   * The predeclared box was built for ATTEMPT 2, where the ground plane is
+# Why attempt 3 cannot simply reuse the table:
+#   * The box was built for ATTEMPT 2, where the ground plane is
 #     solid (the clearance hole is a SHORT). On attempt 3 the hole is OPEN, so
 #     the coax-shell interior is on the power path and the box must have a
-#     face INSIDE the coax; the predeclared zb (z = 0.9 mm) is a below-ground
+#     face INSIDE the coax; the zb (z = 0.9 mm) is a below-ground
 #     plane spanning x [0.3, 2.2], y [0.3, 3.1] mm, i.e. the whole footprint,
 #     not a coax cross-section.
 #   * W4's job here is to compare that face to the coax LADDER's own pencil
 #     amplitudes, which are referred to ref_coax_m = 2.5 mm. The bottom face
 #     must therefore sit ABOVE the highest coax probe (k = 27, z = 1.9 mm) and
-#     BELOW the reference plane; the predeclared zb = 0.9 mm sits at the
+#     BELOW the reference plane; the zb = 0.9 mm sits at the
 #     BOTTOM of the ladder and would enclose the probes it is compared with.
 #   * The remaining coordinates (x 0.5/2.0, y 0.3/3.1, top 3.6 mm) are a
 #     tighter box chosen so that all six faces are PATCHES of one closed
 #     volume that meet at the top face; the y-face COORDINATES coincide with
-#     the predeclared ym/yp (their footprints do not), the x and z faces do
+#     the ym/yp (their footprints do not), the x and z faces do
 #     not. That tightening is this instrument's choice, NOT something attempt
 #     3 forces.
 #
@@ -3631,7 +3602,7 @@ def test_attempt3_builder_entity_inventory_and_kwargs():
 #     edge is absorber-fringe contaminated. With no shift witness, a settled
 #     closure residual here CANNOT be separated from face placement.
 #   * NO below-ground shell-tightness strips. This box ASSUMES the coax-shell
-#     tightness that the predeclared instrument MEASURES; if that assumption
+#     tightness that the instrument MEASURES; if that assumption
 #     is in doubt, the strip witness lives in coax_msl_flux_adjudication.py,
 #     not here.
 FLUX_BOX_X_3 = (0.5e-3, 2.0e-3)     # x faces: xlo_x05 (-x face), msl_x20 (+x face)
@@ -3704,10 +3675,10 @@ def _attempt3_scratch_flux_entries():
 
 
 # ---------------------------------------------------------------------------
-# ATTEMPT 3B (issue #823) -- attempt 3's GEOMETRY with a COMPLIANT MSL probe
+# ATTEMPT 3B -- attempt 3's GEOMETRY with a COMPLIANT MSL probe
 # ladder. Instrument change only; the junction is not touched.
 #
-# WHY A NEW LADDER. The settled attempt-3 witness run (VESSL 369367257533)
+# WHY A NEW LADDER. The settled attempt-3 witness run
 # measured that the MSL-side matrix-pencil fit is dominated by probes sitting
 # in the MSL port's own near field: the production ladder
 # (msl_probe_count=9, msl_probe_start_cells=4, msl_probe_spacing_cells=10)
@@ -3721,7 +3692,7 @@ def _attempt3_scratch_flux_entries():
 #
 # THE RULE THIS FIXTURE OBEYS is NOT a new number. ``add_msl_port`` already
 # floors its AUTO probe offset at ``max(3, _lam_cells, int(round(5*height/dx)))``
-# -- the issue-#80 Fix B "source fringing transient (~5*h_sub)" constant, with
+# -- the "source fringing transient (~5*h_sub)" constant, with
 # a matching advisory in ``_preflight._validate_forward_s11_path``.
 # ``compute_coax_msl_transition`` bypasses it entirely (``msl_probe_start_cells``
 # defaults to the COAX side's ``probe_start_cells`` and never consults h_sub),
@@ -3752,7 +3723,7 @@ def _attempt3_scratch_flux_entries():
 # first higher-order microstrip mode scales with (W + 2h), so a very wide
 # trace could need more standoff than 5*h. Not decided here.
 # ---------------------------------------------------------------------------
-MSL_STANDOFF_H_SUB_MULTIPLE = 5.0   # the issue-#80 Fix B constant, reused
+MSL_STANDOFF_H_SUB_MULTIPLE = 5.0   # the constant, reused
 PROBE_COUNT_3B = 8
 PROBE_START_3B = 15
 PROBE_SPACING_3B = 10               # UNCHANGED from attempt 2 / attempt 3
@@ -4041,7 +4012,7 @@ def test_attempt3b_predeclaration_is_committed_unrun_and_self_consistent():
     missing_tests = {n for n in names if n not in globals()}
     assert not missing_tests, missing_tests
     # The earlier records are UNTOUCHED by this one: their statuses are
-    # pinned here as they stand today (2026-09-01), so a later edit that
+    # pinned here as they stand today, so a later edit that
     # "harmonises" attempt 3b's arrival by re-opening or re-filling any of
     # them trips THIS test instead of passing silently. Filling them is the
     # record-half PR's job, not attempt 3b's.
@@ -4215,7 +4186,7 @@ def test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder():
 
 
 # ---------------------------------------------------------------------------
-# Part 6 -- this cross-family lane refuses a non-passive S by default (#838).
+# Part 6 -- this cross-family lane refuses a non-passive S by default.
 #
 # Port/S-parameter work stops at pure single-family
 # ports, so this lane's MSL-side power over-read is not going to be attributed
@@ -4339,8 +4310,7 @@ def _finalize_call_in_transition_source():
 # The assembler is the thinnest seam that leaves the whole tail real -- the
 # result construction, the ring-down warning and the real
 # _finalize_sparam_result(..., strict=strict_passivity). Patch it where the
-# lane LOOKS THE NAME UP (rfx.sparams.coax's own global, per the #980 Phase 2
-# move), the same reason test_sparam_passivity_guard.py gives for patching
+# lane LOOKS THE NAME UP (rfx.sparams.coax's own global), the same reason test_sparam_passivity_guard.py gives for patching
 # "rfx.sparams.waveguide.<target>" rather than the re-export.
 #
 # n_steps=1 is the floor: a grid build and one step, ~30 s on a loaded pod,

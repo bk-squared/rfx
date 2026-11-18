@@ -62,7 +62,7 @@ _DX = 1.0e-3
 _NX, _NY, _NZ = 30, 20, 20
 _PLANE = "probe_plane"
 _FREQS = jnp.asarray([5.0e9])
-# Physical positions (engineering principle #1: physical absolute
+# Physical positions (physical absolute
 # coordinates, not raw cell-relative indices) — converted to grid indices
 # via Grid.position_to_index() once the actual (CPML-padded) grid.shape is
 # known, since it is larger than (_NX, _NY, _NZ).
@@ -75,7 +75,7 @@ _FD_H = 0.02
 # beta_eff = beta / stop_gradient(max(vals)) internally), so beta below is
 # DIMENSIONLESS -- it no longer needs hand-matching to this sim's raw
 # max|field|^2 (~5e-10 to 5.4e-10 on both legs). The original footgun this
-# fixture caught (#619): at the OLD unscaled beta=1.0, with
+# fixture caught: at the OLD unscaled beta=1.0, with
 # count = n_freqs*n1*n2 = 1*31*31 = 961 elements on the single registered
 # plane, log(count)/beta ~ 6.87 totally dominated the objective (it sat at
 # ~100.000002% of log(961)) -- both AD and FD differentiated rounding
@@ -294,7 +294,7 @@ def test_field_softmax_geometry_leg_ad_matches_fd():
 
 
 # ---------------------------------------------------------------------------
-# (1b) Issue #619 regression: the DEFAULT beta must be safe at ANY field
+# (1b) The DEFAULT beta must be safe at ANY field
 # magnitude, not merely at values a caller happened to hand-tune against.
 # Synthetic fixtures (no FDTD -- fast), same _fake_result pattern as (3).
 # ---------------------------------------------------------------------------

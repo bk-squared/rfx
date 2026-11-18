@@ -195,7 +195,7 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     spacings = [0.75e-3] * 8 + [1.5e-3] * 8
 
     # The old diagnostic assumed the cell value was read at the node. Since
-    # the E-edge mean (#1210), the solver realizes sum(sigma_edge * dual) over
+    # the E-edge mean, the solver realizes sum(sigma_edge * dual) over
     # node planes. On main this was 2.5% off sigma*t between 0.9h|1.1h cells
     # while that diagnostic passed.
     # matched node (deep in the coarse region): primal == dual, unchanged
@@ -396,7 +396,7 @@ def _run_nu_guide(name, sheet_shape=None, tag="box"):
     alpha, resid = _fit_alpha(xs, np.abs(acc[0, i0:i1 + 1, j]))
     ts = np.abs(np.asarray(result.time_series)[:, 0])
     tail = ts[int(0.95 * len(ts)):].max()
-    # sheet-node geometry actually realized. #677: the sheets live on the
+    # sheet-node geometry actually realized. The sheets live on the
     # emitted specs (sigma_sheet = (1/Rs0)/dual per node), not in
     # materials.sigma — assert the arrays are sheet-free (absorber only,
     # <= 2 S/m) and read the realized nodes off the specs.

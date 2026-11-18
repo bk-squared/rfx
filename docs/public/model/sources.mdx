@@ -146,11 +146,16 @@ edge the grid realizes as metal. Every excited drive's pulse, sampled at the
 time step, must exceed 10⁻⁶ of its amplitude somewhere. The solver path then
 checks that it implements the source (below).
 
+A closed-box plane wave can share a model with a soft source (`add_source`)
+in either declaration order. A soft source adds a field without loading its cell.
+For fields only, use `run(compute_s_params=False)` or `forward()`.
+A soft source beside a slab plane wave still breaks transverse invariance.
+
 ## Inputs rfx refuses
 
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
-| a plane wave added after a port or a point source (the message names lumped ports); a port added after a plane wave | all | refused | drive the port alone, or use a probe for the response |
+| a plane wave with a lumped or wire port (`add_port`), in either declaration order | all | refused | drive the port alone, or use a probe for the response |
 | a plane wave with `boundary="upml"`, or in a closed (all-metal) domain | all | refused | `boundary="cpml"` |
 | `waveform="continuous_wave"` at an angle | all | refused | a pulse waveform |
 | an explicit `waveform="differentiated_gaussian"` at an angle with `method="bloch"`, in Python or in a saved interop document | all | refused | `"modulated_gaussian"` or no `waveform`; for one scatterer in an open domain, `method="methodB"` takes the differentiated Gaussian |

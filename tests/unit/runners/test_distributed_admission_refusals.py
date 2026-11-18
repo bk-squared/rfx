@@ -109,11 +109,11 @@ def test_two_device_pole_override_is_judged_eagerly_and_refused_under_outer_jit(
     assert np.all(np.isfinite(eager))
 
     # An eager vmap carries concrete members: each is judged, so one unstable
-    # member refuses the batch with its stable step (#1934).
+    # member refuses the batch with its stable step.
     with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
         jax.vmap(forward)(jnp.stack([stable, unstable]))
 
-    # #1934: a jit-traced value cannot be judged on two devices, so it is
+    # A jit-traced value cannot be judged on two devices, so it is
     # refused by name whatever its value (it ran unjudged before).
     compiled = jax.jit(forward)
     for eps in (stable, unstable):
@@ -516,6 +516,10 @@ def test_graded_passive_port_is_carried(entry):
     one = evaluate(sim, entry, 32)
     multi = evaluate(sim, entry, 32, devices)
     assert len(multi.sparam_time_records) == 2
+    if entry == 'forward':
+        witness = multi.settling_witness
+        assert any(row.get('reader_frame') == 'whole-port'
+                   for row in witness.get('runs', (witness,))), witness
     for a, b in zip(one.sparam_time_records, multi.sparam_time_records):
         np.testing.assert_array_equal(a.samples, b.samples)
 

@@ -108,7 +108,7 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     if kind == "msl":
         sim.add(Box(((2 - .35) * .001, (2 - .35) * .001, .003),
                     ((10 + .35) * .001, (9 + .35) * .001, .003)), material="pec")
-        # #1512: the strip starts at the port's grid node. Drawn from 2 mm it left a 3 mm
+        # The strip starts at the port's grid node. Drawn from 2 mm it left a 3 mm
         # open stub whose effective quarter wave (11.9 GHz) is within 1.5x of 0..8 GHz.
         from rfx.preflight.line_port_coverage import port_node_coordinate
         node = port_node_coordinate(sim, (.005, .005, .003))
@@ -173,7 +173,7 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
 
 import sys
 
-# #1961: references use stored operands, independently of every consumer helper.
+# References use stored operands, independently of every consumer helper.
 # The public smooth, full-tensor and conformal paths all step with tensor.eps;
 # the inverse-tensor kernel is outside this table.
 def _o2_operands(materials, branch, axis):

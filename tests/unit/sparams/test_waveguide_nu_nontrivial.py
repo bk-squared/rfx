@@ -422,7 +422,7 @@ def test_nu_nontrivial_slab_verdict():
     # NU reflection magnitude + power-conservation/reciprocity (the ROBUST
     # shared NU-vs-uniform invariants) are now a REAL passing gate in
     # test_nu_nontrivial_matches_uniform below (flipped from strict-xfail
-    # 2026-06-24 once the noise-floor symptom was shown to be num_periods=2
+    # once the noise-floor symptom was shown to be num_periods=2
     # undersettling, not a bug). This np=2 normalize=True case stays a
     # regression witness for the injection-not-noise-floor + passivity gates.
 

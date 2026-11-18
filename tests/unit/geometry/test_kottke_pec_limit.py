@@ -275,7 +275,7 @@ def test_compute_inv_eps_tensor_diag_no_pec_matches_smoothed_eps_inverse():
 
 
 # -----------------------------------------------------------------------------
-# Post-review hardening tests (HIGH/MEDIUM findings from 2026-05-01 PR review)
+# Hardening tests
 # -----------------------------------------------------------------------------
 
 
@@ -339,15 +339,13 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
     # neighbor-max" + Heaviside projection): a cell whose own occupancy exceeds
     # 0.5 is projected to FULL PEC → inv_zz = 0 (hard mirror), not the
     # pre-projection subpixel (1−0.84)=0.16.
-    # The reference it was matched against was the pre-#931 binary
+    # The reference it was matched against was the earlier binary
     # apply_pec_mask rule; #931 §1.8 fences this subpixel path OUT of the
     # lattice ownership contract, so 0.0 is unchanged and the "AD-smooth
     # analogue of the binary rule" claim is scope-limited to that
     # superseded rule. The VESSL witness |s21| 0.27 -> 0.77 stands as
     # recorded. The y_hi cell above (only ~14% PEC,
-    # < 0.5) stays subpixel (0.86). The 0.16 was stale — same root cause as the
-    # test_kottke_inv_eps_from_occupancy re-bless (PR #115). (Was sharding-masked on CI
-    # until #115 fixed the sibling and this shard surfaced.)
+    # < 0.5) stays subpixel (0.86).
     assert inv_zz_np[i_mid, 5, 10] == pytest.approx(0.0, abs=1e-2), (
         f"z_hi boundary cell (~84% PEC) expected ~0 (post-60939e0 Heaviside); "
         f"got {inv_zz_np[i_mid, 5, 10]:.4f}"

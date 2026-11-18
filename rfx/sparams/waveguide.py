@@ -7,6 +7,7 @@ variants. The caller retains its declared port and observer containers.
 from __future__ import annotations
 
 from rfx._internal._precision import resolve_coefficient_dtype
+from rfx.measurement.calculator_drive import calculator_drive
 
 from rfx.sparams import _waveguide_stages
 
@@ -936,7 +937,7 @@ def _compute_waveguide_s_matrix_nu(
         run_entries = [
             _dc_replace(
                 e,
-                amplitude=(e.amplitude if idx == drive_idx else 0.0),
+                amplitude=calculator_drive(idx == drive_idx, amplitude=e.amplitude),
             )
             for idx, e in enumerate(original_entries)
         ]

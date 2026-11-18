@@ -283,7 +283,7 @@ def test_make_dz_profile_applies_thirds_rule():
     z_features = [(0, 1.6e-3, 4.4)]
     profile = _make_dz_profile(z_features, domain_z=10e-3, dx=2e-3)
 
-    # #763: the declared interface z=1.6mm lies on a realized cell edge and
+    # The declared interface z=1.6mm lies on a realized cell edge and
     # the realized column equals the declared column.
     edges = np.concatenate([[0.0], np.cumsum(profile)])
     assert np.min(np.abs(edges - 1.6e-3)) <= 1e-12
@@ -309,7 +309,7 @@ def test_make_dz_profile_applies_thirds_rule():
 # ---------------------------------------------------------------------------
 # P4: Thin PEC sheet
 #
-# #931: ``ThinConductor`` IS the sheet declaration type (design note §1.3) —
+# ``ThinConductor`` IS the sheet declaration type (design note §1.3) —
 # a footprint, a normal implied by the flat box, and a physical thickness
 # that never enters the mesh. ``is_pec`` and ``sheet_resistance`` are
 # properties of the DECLARATION and do not move under the contract; what
@@ -398,7 +398,7 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        # #1138: the sheet still owns no cells; its -3% size error blocks run.
+        # The sheet still owns no cells; its -3% size error blocks run.
         assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
         with pytest.raises(ValueError, match="conductor sheet dimension"):
             sim.run(n_steps=10)
@@ -457,7 +457,7 @@ def test_auto_mesh_trigger_fires_thin_only_end_to_end():
         sim.run(n_steps=5, skip_preflight=True)
     assert sim._dx is not None, "run() trigger must auto-configure a thin-only sim"
 
-    # #931: the same zero-thickness declaration must reach the run as ONE
+    # The same zero-thickness declaration must reach the run as ONE
     # sheet on a real node plane (the pre-contract spelling realized no
     # node at all — see the sibling test above).
     assert_sheet_planes(sim, 2, [0.001], what="run()-trigger thin-only sheet")
@@ -465,7 +465,7 @@ def test_auto_mesh_trigger_fires_thin_only_end_to_end():
 
 
 # ---------------------------------------------------------------------------
-# Waveform-aware source-time window (post-#392 review): the n_steps
+# Waveform-aware source-time window: the n_steps
 # estimate hardcoded t_source = 6*tau (the cutoff=3 Gaussian envelope).
 # ---------------------------------------------------------------------------
 

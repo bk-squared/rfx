@@ -217,7 +217,7 @@ def test_ntff_far_field():
     theta, phi = jnp.array([0.3, 1.2]), jnp.array([0.0, 0.7])
 
     # The box comes from a concrete run: forward()'s own box carries traced
-    # frequencies under jit (#1364's other half), so the transform is lowered
+    # frequencies under jit, so the transform is lowered
     # over the accumulated data with the box held fixed.
     fr = sim.forward(n_steps=10, skip_preflight=True)
 

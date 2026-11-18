@@ -131,7 +131,7 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
         launched = measure_normal_incident_spectrum(cfg, st, n_steps, FREQS, grid.dt)
 
         t = np.arange(n_steps) * dt
-        # The TF/SF line launches GaussianPulse's charge-free DG (#1839).
+        # The TF/SF line launches GaussianPulse's charge-free DG.
         waveform = cfg.src_amp * _charge_free_dg(t, cfg.src_tau, cfg.src_t0)
         s = C0 * dt / dx
         k_grid = 2.0 / dx * np.arcsin(np.sin(np.pi * FREQS * dt) / s)

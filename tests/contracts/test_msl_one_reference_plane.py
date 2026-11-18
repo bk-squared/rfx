@@ -129,7 +129,7 @@ def test_feed_plane_s_is_d_times_probe0_s_times_d(tmp_path):
     expected = d[:, None, :] * s0 * d[None, :, :]
     scale = float(np.max(np.abs(s0)))
     # s0 is formed at the line Z0 the dump records; the result's S is referred
-    # to the declared 50 ohm (#2014), so the shift is checked on S brought back.
+    # to the declared 50 ohm, so the shift is checked on S brought back.
     s_line = line_s(res, np.asarray(res.S))
     # The shift must be present and must not be the probe-0 matrix itself.
     assert np.max(np.abs(s_line - s0)) > 1e-2 * scale
@@ -194,7 +194,7 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     from tests.unit.sparams.test_mixed_port_sparam import _EPS_R as er_m
     from tests.unit.sparams.test_mixed_port_sparam import _H_SUB, _W_TRACE, _DX as dx_m
     # gamma0 is formed at the line Z0; the result's S is referred to the
-    # declared impedance (#2014), so S and S_wave are brought back there.
+    # declared impedance, so S and S_wave are brought back there.
     s = line_s(mixed, np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw))
     v0 = np.asarray(diag["v0_msl"])[1, 0]
     i0 = np.asarray(diag["i_msl"])[1, 0]

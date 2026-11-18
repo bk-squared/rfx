@@ -102,7 +102,7 @@ def test_dt_is_a_numpy_float64_scalar():
 @pytest.mark.parametrize("field_dtype,expected", [
     (jnp.float16, jnp.complex64),     # mixed precision -> float32 FLOOR
     (jnp.float32, jnp.complex64),     # default -> unchanged
-    (jnp.complex64, jnp.complex64),   # oblique Bloch (#404) -> stays COMPLEX
+    (jnp.complex64, jnp.complex64),   # oblique Bloch -> stays COMPLEX
 ])
 def test_ntff_accum_dtype_promotes_never_pins(field_dtype, expected):
     """Holds identically with x64 off and on."""
@@ -297,7 +297,7 @@ def test_enable_x64_context_restores_the_flag():
 
 
 # ---------------------------------------------------------------------------
-# Issue #656 — the dispersion ADE carry (the family member #646 missed)
+# The dispersion ADE carry
 # ---------------------------------------------------------------------------
 
 def _dispersive_sim(kind, precision="float32", n=None):

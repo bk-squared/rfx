@@ -241,8 +241,7 @@ def mirrored_intervals(graded, case):
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('case', range(2))
 def test_k7_dc_film_mirrored(graded, case):
-    # A drawn gap stays open on either side of a node (#1624); on main the
-    # node-sampled film closed case 1's half-cell gap below the node.
+    # A drawn gap stays open on either side of a node.
     values = _film_rows(graded, mirrored_intervals(graded, case), (8, 9, 10))
     assert values[0] > 0. and values[2] > 0.
     assert values[1] == 0.

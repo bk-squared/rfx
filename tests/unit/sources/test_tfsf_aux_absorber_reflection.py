@@ -82,24 +82,24 @@ SHIPPED_2D = {"aux_n_cpml": 30, "aux_cpml_order": 4, "aux_cpml_kappa_max": 7.0,
 # it means editing a shared, reviewer-visible object rather than a local literal (#528).
 FAST_MEASURED = {
     # 6.4413e-06 -> 3.7855e-07;
-    # #1234: the auxiliary H profile at the Yee half cell.
-    # The 0-degree reading is the instrument's floor, not the absorber (measured 2026-10-11,
-    # Apple silicon, CPU, main 63a8f79b4): it is of the order of the fit residual (3.36e-07
+    # the auxiliary H profile at the Yee half cell.
+    # The 0-degree reading is the instrument's floor, not the absorber (measured,
+    # Apple silicon, CPU): it is of the order of the fit residual (3.36e-07
     # against 2.98e-07), it does not follow the absorber depth from 200 down to 50 cells
     # (3.3e-07 .. 3.9e-07), and it moves with the rounding path -- 3.7855e-07 as pinned,
-    # 3.3575e-07 on Apple silicon at the pinning commit dce96837e and at main alike (the
+    # 3.3575e-07 on Apple silicon at the pinning commit and at main alike (the
     # code did not drift), 3.71e-07 with x64 enabled, 4.12e-07 with a longer record, 4.68e-07
-    # with Bloch at t0 = 5 tau (#1831; 100 and 50 cells then read 2.6e-07). A real
+    # with Bloch at t0 = 5 tau (100 and 50 cells then read 2.6e-07). A real
     # reflection shows: 30 cells read 1.5e-06, R_asymptotic 1e-6 reads 6.6e-07. So this
     # row ("floor") is held to its bar only and is not reproduced to 5 %.
     0.0:  {"max": 3.7855e-07, "quantum": 1e7, "floor": True},
     # 7.8540e-05 -> 7.5787e-05;
-    # #1234: the auxiliary H profile at the Yee half cell.
+    # the auxiliary H profile at the Yee half cell.
     30.0: {"max": 7.5787e-05, "quantum": 1e6},
     # 7.5086e-05 -> 7.0387e-05;
-    # #1234: the auxiliary H profile at the Yee half cell.
+    # the auxiliary H profile at the Yee half cell.
     45.0: {"max": 7.0387e-05, "quantum": 1e6},
-    # 60 deg is an upper bound, not a lock (#1845). At f0 this rig reads its own floor, which sits above
+    # 60 deg is an upper bound, not a lock. At f0 this rig reads its own floor, which sits above
     # the auxiliary absorber's reflection: the f0-bin |B/A| falls about as 1/record length (1.71e-05 /
     # 1.08e-05 / 8.06e-06 at 2500 / 3750 / 5000 steps), and cutting the absorber from 200 to 30 cells moves
     # nothing (1.71e-05 -> 1.76e-05). The band maximum (3.25e-04 here) sits at band-edge bins, where the
@@ -114,16 +114,16 @@ FAST_MEASURED = {
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
 FULL_MEASURED = {
     # 5.1338e-05 -> 3.4447e-05;
-    # #1234: the auxiliary H profile at the Yee half cell.
+    # the auxiliary H profile at the Yee half cell.
     60.0: {"max": 3.4447e-05, "quantum": 1e6},
     # 1.2186e-04 -> 5.1014e-05;
-    # #1234: the auxiliary H profile at the Yee half cell.
+    # the auxiliary H profile at the Yee half cell.
     70.0: {"max": 5.1014e-05, "quantum": 1e5},
 }
 
 # The 1-D path on cv04's own rig and band, now at 20 cells.
 # 9.430e-06 -> 6.3843e-06;
-# #1234: the auxiliary H profile at the Yee half cell.
+# the auxiliary H profile at the Yee half cell.
 CV04_ECHO_MEASURED = 6.3843e-06
 CV04_ECHO_QUANTUM = 1e8
 
@@ -240,9 +240,9 @@ LEAK_BAR = 1.0e-3
 GRAZE_RIG = {"nx": 400, "n_steps": 40000, "n_samp": 96}
 DOMAIN_MEASURED = {
     # 1.2462e-04 -> 4.9831e-05;
-    # #1234: the auxiliary H profile at the Yee half cell.
+    # the auxiliary H profile at the Yee half cell.
     70.0: {"max": 4.9831e-05, "quantum": 1e6, "inside": True},
-    # 80 deg is an upper bound, not a lock (#1845). With the shipped absorber the f0 bin reads the rig's own
+    # 80 deg is an upper bound, not a lock. With the shipped absorber the f0 bin reads the rig's own
     # floor: the f0-bin |B/A| reads 1.03e-06 / 1.11e-06 / 1.26e-06 at 40000 / 60000 / 80000 steps, cutting
     # the absorber from 200 to 30 cells moves nothing (1.11e-06), and a target reflection of 1e-40 instead
     # of 1e-28 moves it 4 %. A uniformly worse absorber (higher target reflection) shows at f0 before the band maximum does. Target
@@ -255,7 +255,7 @@ DOMAIN_MEASURED = {
     80.0: {"f0_bound": 2.0 * max(1.0305e-06, 1.1146e-06, 1.2552e-06),
            "f0_floor": 0.5 * min(1.0305e-06, 1.1146e-06, 1.2552e-06), "inside": True},
     # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.
-    # #1234: the auxiliary H profile at the Yee half cell.
+    # the auxiliary H profile at the Yee half cell.
     82.0: {"max": 4.3980e-04, "quantum": 1e5, "inside": True},
 }
 

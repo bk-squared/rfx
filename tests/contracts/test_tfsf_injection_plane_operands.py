@@ -255,7 +255,7 @@ def test_off_plane_controls(obj):
     ('series_RL', 18.5, False),
 ])
 def test_normal_component_half_cell_admission(entry, kind, x, smoothing):
-    # Review scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
+    # Scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
     # positions give faces +0.5/+0.6/+1.2/+1.5 cells from x_lo and Ex edges
     # at x_lo+1/2 and x_hi+1/2; no slicing/placement helper sets these values.
     sim = scene(interior=True)
