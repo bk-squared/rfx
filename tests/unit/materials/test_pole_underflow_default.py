@@ -23,8 +23,11 @@ def default_check(monkeypatch):
 
 
 def objective(site, small):
-    # One scalar entry or eight occupied map cells. The squared coefficient
-    # makes the incoming cotangent depend on kappa in every vmap lane.
+    """One scalar entry or eight occupied map cells.
+
+    The squared coefficient makes the incoming cotangent depend on kappa in
+    every vmap lane.
+    """
     scale = 1e-7 if small else 1.
 
     def evaluate(kappa, lane_scale=scale):
@@ -72,15 +75,18 @@ def test_default_jaxpr(monkeypatch, site, setting, enabled):
 
 @pytest.mark.parametrize("setting", [None, "0", "1", "other"])
 def test_no_callback_backend(monkeypatch, setting):
-    # Reuse test_each_owner_refuses_traced_operands' simulated MPS capability
-    # for both the default decision and traced-check admission.
+    """A backend without host callbacks: the default is off and an explicit 1 refuses.
+
+    The simulated MPS capability of ``test_each_owner_refuses_traced_operands``
+    serves both the default decision and the traced-check admission. The
+    scalar scene isolates the SI guard from map normalization's separate
+    RelativeStrength admission when a jaxpr is staged.
+    """
     no_callbacks = backend.backend_class("mps")
     monkeypatch.setattr(backend, "backend_class", lambda: no_callbacks)
     monkeypatch.setattr(_traced_check, "backend_class", lambda: no_callbacks)
     if setting is not None:
         monkeypatch.setenv("RFX_POLE_UNDERFLOW_CHECK", setting)
-    # The scalar scene isolates the SI guard from map normalization's
-    # separate RelativeStrength admission when staging a jaxpr.
     grad = jax.grad(objective("scalar", True))
     value = jnp.float32(3e20)
     if setting == "1":
