@@ -1,6 +1,8 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.errors import RfxUnsupported
 
 from rfx.api._spec import ForwardResult
@@ -260,7 +262,7 @@ def _forward_from_materials(
     def _excite_this_port(pe) -> bool:
         if _sparam_drive_idx is None:
             return pe.excite
-        return _sparam_port_idx == _sparam_drive_idx
+        return calculator_drive(_sparam_port_idx == _sparam_drive_idx, excite=pe.excite)
 
     for _port_index, pe in enumerate(self._ports):
         if pe.is_soft_source:
