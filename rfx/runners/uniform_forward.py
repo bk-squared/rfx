@@ -264,11 +264,16 @@ def _forward_from_materials(
             return pe.excite
         return calculator_drive(_sparam_port_idx == _sparam_drive_idx, excite=pe.excite)
 
+    frozen_drive_requests = []
     for _port_index, pe in enumerate(self._ports):
         if pe.is_soft_source:
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, n_steps,
                               field_dtype=self._resolve_field_dtype())
+            if pe.amplitude_kind != "field":
+                frozen_drive_requests.append((
+                    f"Soft source _ports[{_port_index}]", pe.position, pe.component,
+                    (_grid_metric.field_index(grid, pe.position, pe.component),)))
             continue
 
         # Sparam-eligible lumped/wire port — advance the multi-drive index.
@@ -309,6 +314,9 @@ def _forward_from_materials(
                 sources.defer(make_wire_port_sources,
                     grid, wp, n_steps=n_steps,
                     pec_edge_masks=pec_edge_masks_local)
+                frozen_drive_requests.append((
+                    f"Wire port _ports[{_port_index}]", pe.position, pe.component,
+                    tuple(wp._drive_stamps)))
             wp_cells = _wire_port_cells(grid, wp)
             # Clear PEC mask/occupancy at LIVE wire cells only.
             # Dead extent cells stay PEC: clearing them would punch a
@@ -434,6 +442,9 @@ def _forward_from_materials(
         materials = setup_lumped_port(grid, lp, materials)
         if _drive_this_port:
             sources.defer(make_port_source, grid, lp, n_steps=n_steps)
+            frozen_drive_requests.append((
+                f"Lumped port _ports[{_port_index}]", pe.position, pe.component,
+                tuple(lp._drive_stamps)))
         idx = _grid_metric.field_index(grid, pe.position, pe.component)
         conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
         # Register a JIT-integrated S-param accumulator for this
@@ -531,6 +542,9 @@ def _forward_from_materials(
             materials = setup_msl_port(grid, mp, materials,
                                        mode_profile=mode_profile)
             if pe.excite and pe.waveform is not None:
+                frozen_drive_requests.append((
+                    f"msl_port[{_msl_port_index}]", pe.position, "ez",
+                    tuple(mp._drive_stamps)))
                 sources.defer(make_msl_port_sources,
                     grid, mp, n_steps=n_steps,
                     mode_profile=mode_profile,
@@ -609,20 +623,25 @@ def _forward_from_materials(
     # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
     # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
     # this branch — the two would double-correct at sigmoid edges.
-    pec_occupancy_for_run, aniso_inv_eps_run, occupancy_tensor = _occupancy.select_occupancy_operator(
+    pec_occupancy_for_run, aniso_inv_eps_run, _occupancy_tensor = _occupancy.select_occupancy_operator(
         self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
-    from rfx.model.source_coefficients import resolve_run_sources
-    sources = resolve_run_sources(sources, materials, self, grid,
-        tensor=occupancy_tensor or aniso_eps is not None or aniso_inv_eps is not None or conformal_weights is not None)
+    _inv_eps_smooth = aniso_inv_eps is None and aniso_inv_eps_run is not None
+    if aniso_inv_eps is not None:
+        aniso_inv_eps_run = aniso_inv_eps
+    from rfx.model.tensor_operands import attach_run_tensor
+    materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps_run,
+                                  conformal_weights, _inv_eps_smooth)
+    from rfx.model.source_admission import refuse_frozen_drive_edges
+    _run_tensor = getattr(materials.components, "tensor", None)
+    refuse_frozen_drive_edges(_run_tensor, frozen_drive_requests)
+    from rfx.model.source_coefficients import resolve_run_sources, drive_materials
+    sources = resolve_run_sources(sources, materials, self, grid)
 
     # Floquet ports — inject soft source, same as run_uniform.py:274-327
     if self._floquet_ports:
         from rfx.floquet import floquet_port_source
         for fpe in self._floquet_ports:
             sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
-
-    if aniso_inv_eps is not None:
-        aniso_inv_eps_run = aniso_inv_eps
 
     # Build the RLC metas now that all material folding (RLC + ports)
     # is complete — build_rlc_meta reads the final eps/sigma at each
@@ -638,7 +657,7 @@ def _forward_from_materials(
         for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
             _v = _rlc_ov.get(_rlc_idx, {})
             rlc_metas.append(build_rlc_meta(
-                grid, _rlc_spec, materials,
+                grid, _rlc_spec, drive_materials(materials, self, grid),
                 r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                 periodic=_rlc_periodic,
             ))
@@ -654,7 +673,8 @@ def _forward_from_materials(
         validate_realized_vacuum_boundary(
             self, grid, materials, tfsf_run[0], pec_edge_masks=pec_edge_masks_local,
             debye_spec=debye_spec, lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3,
-            aniso_inv_eps=aniso_inv_eps_run, sheet_ctx=sheet_impedance,
+            aniso_inv_eps=(_run_tensor.inv_eps if _run_tensor is not None else None),
+            sheet_ctx=sheet_impedance,
             extra_masks=(pec_occupancy_local,), design_regions=(design_box, design_occupancy),
             rlc_indices=(_grid_metric.field_index(grid, spec.position, spec.component)
                          for spec in self._lumped_rlc))
@@ -715,13 +735,7 @@ def _forward_from_materials(
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
         pec_occupancy=pec_occupancy_for_run,
-        conformal_weights=conformal_weights,
-        aniso_eps=aniso_eps,
-        aniso_inv_eps=aniso_inv_eps_run,
         subpixel_smoothing=tensor_smoothing,
-        # Only the occupancy operator is smooth; the Kottke tensor keeps
-        # run()'s fenced PEC edges.
-        aniso_inv_eps_smooth=(aniso_inv_eps is None and aniso_inv_eps_run is not None),
         port_record_specs=ordered_specs(port_record_specs),
         lumped_port_sparams=lumped_port_sparam_specs or None,
         wire_port_sparams=wire_port_sparam_specs or None,
