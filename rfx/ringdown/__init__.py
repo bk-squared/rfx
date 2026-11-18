@@ -90,6 +90,7 @@ report in ``Result.ringdown.stop``.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported; from rfx._warning_origin import user_stacklevel  # noqa: E702
 
@@ -247,6 +248,7 @@ class RingdownSpec:
     probe_normalization: str | None = None
 
     def __post_init__(self):
+        admit_traced_inputs("RingdownSpec", locals())
         if self.probe_normalization not in (None, "incident"):
             raise ValueError(f"RingdownSpec.probe_normalization must be 'incident' or None, got {self.probe_normalization!r}")
         if self.probe_freqs is not None:
