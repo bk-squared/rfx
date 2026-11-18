@@ -174,7 +174,7 @@ def _sim_with_msl_port(*, dx: float = 80e-6, n_probe_offset=None) -> Simulation:
     sim.add_material("ro4350b", eps_r=_EPS_R)
     sim.add(Box((0, 0, 0), (_LX, ly, _H_SUB)), material="ro4350b")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
+    # 35 um foil -> a SHEET on the laminate face.
     sim.add(Box((0, y_c - _W_TRACE / 2, _H_SUB),
                 (_LX, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     sim.add_msl_port(position=(4e-3, y_c, 0), width=_W_TRACE, height=_H_SUB,

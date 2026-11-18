@@ -13,7 +13,7 @@ VACUUM_MESSAGE = (
     "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x "
     "boundaries; non-vacuum material found at x_lo-1"
 )
-# The refusal names the operand the step would apply on the plane (#1676).
+# The refusal names the operand the step would apply on the plane.
 PERMITTIVITY_MESSAGE = VACUUM_MESSAGE + ": permittivity (materials.eps_r)"
 DESIGN_BOX_MESSAGE = VACUUM_MESSAGE + ": caller-supplied non-vacuum mask (nonvacuum_masks.0)"
 TRACED_MESSAGE = (
@@ -97,7 +97,7 @@ def test_graded_design_box_vacuum_planes(crossing):
         assert str(caught.value) == DESIGN_BOX_MESSAGE
     else:
         # The vacuum rule admits an interior box; the plane wave's invariance
-        # admission then refuses the finite box, as on the uniform mesh (#1794).
+        # admission then refuses the finite box, as on the uniform mesh.
         with pytest.raises(ValueError) as caught:
             sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
         assert str(caught.value) == (

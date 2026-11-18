@@ -97,7 +97,7 @@ W_TRACE = 600e-6      # trace width, metres
 L_LINE = 10e-3        # thru-line length
 PORT_MARGIN = 2e-3    # feed → domain edge clearance
 
-# ON-LATTICE board (#931 §1.3): dx = h_sub/3, so the laminate face IS a
+# ON-LATTICE board: dx = h_sub/3, so the laminate face IS a
 # node line and the foil sheet lands on it. The fixture ran at dx = 80 µm
 # (254/80 = 3.175): there the substrate realizes FOUR cells and the strip
 # sat at z = 320 µm over a 254 µm dielectric plus a 66 µm air gap — the
@@ -115,7 +115,7 @@ LX = L_LINE + 2 * PORT_MARGIN
 # of cell-counted clearance: microstrip fringing extends ~2·h_sub
 # laterally, and a CPML lateral wall closer than that systematically
 # inflates Z0 (and makes Z0 mesh-divergent under refinement). Verified
-# 2026-05-04 fixed-LY mesh-conv sweep: with this LY, Z0 lands within
+# fixed-LY mesh-conv sweep: with this LY, Z0 lands within
 # 2-9% of Hammerstad analytic across dx=40-80µm; with the previous
 # LY=W+6·dx the box shrank with mesh and Z0 drifted 54→60Ω.
 LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)   # W + (2·h_sub + 8·dx) each side
@@ -126,14 +126,14 @@ LZ = H_SUB + 1.5e-3      # substrate + 1.5 mm air above
 GATE_F_LO = 3.0e9
 GATE_F_HI = 4.5e9
 
-# Issue #610 (single-source, no second copy of the gate): hoisted out of
+# Single-source, no second copy of the gate: hoisted out of
 # test_msl_thru_line_z0_length_invariance_and_positive_sign to module scope so
 # tests/locks/test_msl_z0_platform_datums.py can import and re-derive the SAME gate
 # instead of restating 0.007 as a fresh literal in a second file. Values and
 # derivation are UNCHANGED — see that test's docstring for the arithmetic and
 # tests/fixtures/msl_z0_length_invariance/platform_datums.json for the
-# cross-platform datum ledger.
-MEASURED_SPREAD_ENVELOPE = 0.004607   # {8,10,12} mm legs, 2026-08-09
+# cross-platform datum.
+MEASURED_SPREAD_ENVELOPE = 0.004607   # {8,10,12} mm legs
 LEG_S11_BOUND = 0.15                  # per-leg mean|S11| bound, any leg length
 
 
@@ -188,7 +188,7 @@ def test_msl_thru_line_passive_gate():
     h_sub/4 (84.7 / 63.5 µm), which preflight already recommends.
     """
 
-    # #1138: trace y solved +8.656% off; this tests the passive MSL gate.
+    # Trace y solved +8.656% off; this tests the passive MSL gate.
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(LX, LY, LZ),
@@ -208,13 +208,13 @@ def test_msl_thru_line_passive_gate():
         material="ro4350b",
     )
 
-    # --- PEC trace strip: a SHEET on the laminate face (#931 §1.3) ---
+    # --- PEC trace strip: a SHEET on the laminate face ---
     # A microstrip quasi-TEM mode requires a metal trace above the
     # substrate. Without the trace, the Ez source excites a TM substrate
     # mode (Z0 >> 50 Ω). 35 µm copper is foil, so it is declared as a
     # zero-thickness Box at z = H_SUB and realized as ONE wall plane with
-    # the normal Ez left live. The one-cell-thick spelling this fixture
-    # used to carry is a VOLUME under the contract: walls at H_SUB and
+    # the normal Ez left live. The one-cell-thick spelling
+    # is a VOLUME under the contract: walls at H_SUB and
     # H_SUB + dx with the Ez between them shorted, i.e. 85 µm of solid
     # metal.
     y_centre = LY / 2.0
@@ -277,7 +277,7 @@ def test_msl_thru_line_passive_gate():
     nz_sub = int(round(H_SUB / DX))
     print(f"[MSL thru] dx = {DX*1e6:.0f} µm, nz_sub ≈ {nz_sub}")
 
-    # --- reflection gate (laplace mode; measured 0.0203 on the #931
+    # --- reflection gate (laplace mode; measured 0.0203 on the
     #     on-lattice sheet board, 0.1160 on the pre-#931 bisecting mesh) ---
     assert mean_s11 < 0.15, (
         f"|S11| = {mean_s11:.4f} ≥ 0.15 — excessive reflection at source plane"
@@ -300,7 +300,7 @@ def test_msl_thru_line_passive_gate():
 
 def test_msl_thru_line_eigenmode_request_is_refused():
     """The S-matrix entry point refuses the removed eigenmode source."""
-    # #1138: trace y solved +8.656% off; this tests the eigenmode source gate.
+    # Trace y solved +8.656% off; this tests the eigenmode source gate.
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(LX, LY, LZ),
@@ -356,7 +356,7 @@ def _run_msl_thru(l_line: float):
     length-invariance test can sweep it. ``LY``/``LZ`` are length-independent.
     """
     lx = l_line + 2 * PORT_MARGIN
-    # #1138: trace y solved +8.656% off; this tests Z0 length invariance.
+    # Trace y solved +8.656% off; this tests Z0 length invariance.
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(lx, LY, LZ),
@@ -556,7 +556,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     platform/BLAS is diagnosed against the ledger, never fixed by loosening.
     @slow: three full FDTD thru-line runs.
     """
-    # Legs {8, 10, 12} mm (L = 6 mm removed 2026-08-09, issue #518 — short-line
+    # Legs {8, 10, 12} mm (L = 6 mm removed — short-line
     # N-probe fit conditioning; see docstring). Largest domain is now
     # L + 2*PORT_MARGIN = 16 mm (the validated single-length gate's domain is
     # 14 mm); the set spans a 50% length range — still enough to expose any
@@ -581,7 +581,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
         print(f"[MSL z0-len L={l_line*1e3:.0f}mm] mean|S11|={np.mean(s11):.4f} "
               f"mean|S21|={np.mean(s21):.4f}")
 
-        # (1) #140 LOCK: positive Re(Z0) on BOTH ports, every band bin.
+        # (1) LOCK: positive Re(Z0) on BOTH ports, every band bin.
         assert np.all(z0_p0.real > 0), f"+x port Re(Z0) not all positive at L={l_line}"
         assert np.all(z0_p1.real > 0), (
             f"-x port Re(Z0) not all positive at L={l_line} — issue #140 sign regression"
@@ -609,7 +609,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
         mean_abs_z0_per_length.append(m0)
 
     # (5) |Z0| length-invariance: per-unit-length property -> agree across lengths.
-    # Bound derived from the fresh 2026-08-09 measured envelope through the
+    # Bound derived from the measured envelope through the
     # shared gate policy (see docstring for the per-leg numbers + arithmetic).
     spread_tol = gate_from_envelope(MEASURED_SPREAD_ENVELOPE, quantum=1000)
     assert spread_tol == 0.007, (

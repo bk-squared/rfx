@@ -112,7 +112,6 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
         raise RfxUnsupported(f"gradient='adjoint' does not support {reason}")
 
 
-# Lazy compatibility exports avoid a cycle with the moved implementation.
 _LAZY_EXPORTS = {
     "_plane_slice": "rfx.stepping.adjoint_scan",
     "design_adjoint_scan": "rfx.stepping.adjoint_scan",

@@ -295,8 +295,8 @@ an open domain (uniform mesh, and a graded mesh with five 0.8 mm cells in x), at
 - On a table with ε′ 4.4 and tan δ 0.02 constant over 1–40 GHz, `fit_debye` with a free ε∞ returned ε∞ 0.5 before
   2.3 (it now keeps ε∞ at 1 or above). `run()` admits the 2-pole fit on both meshes; the fields grow by a factor of 1.04 per step and become
   non-finite at step 2025 (uniform) and 2008 (graded).
-- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returns ε∞ 0.1, its
-  lower bound, with 2 and with 3 resonances. `run()` admits both fits on both meshes; the fields grow by a factor of
+- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returned ε∞ 0.1, its
+  lower bound, with 2 and with 3 resonances before 2.3 (it now keeps ε∞ at 1 or above). `run()` admits both fits on both meshes; the fields grow by a factor of
   100 to 140 per step and become non-finite at step 22.
 
 In both cases preflight reports only advisories, and the run ends with the `AccuracyWarning` about non-finite values.
@@ -426,11 +426,11 @@ the share of nearly tangent cells: the faces off by more than 0.1 of a face were
 16x. The largest deviation does not shrink. Judge a body with edges, or a curved body, by a mesh series of at least
 three refinements. Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); record kept with the project.
 
-### `run()` inside a user `jax.jit` does not always reproduce plain `run()`
+### Inside a user `jax.jit`, `run()` refuses a single port's S-parameters on a uniform mesh, `until_decay` and `report_every`, and a multi-device closed-box plane wave is refused
 
-Tracker: #2241
+Tracker: none — accepted limitation (refused at default: tests/contracts/test_user_jit_drive_and_probe.py::test_refused_under_user_jit)
 
-On one device, a fixed-step `run()` inside a user `jax.jit` now gives the same bits as plain `run()` on Linux CPU for a point current source on uniform and graded meshes and for a lumped or wire port on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). `run(devices=...)` and `forward(distributed=True)` on a uniform mesh with a lumped or wire port now stay within the cross-trace bar of the plain call on Linux CPU (9 float32 ULP of each probe's peak per step, 1e-4 of the peak summed over the record; they differed by up to 432 float32 ULP of a probe's own peak per step over 192 steps before the multi-device setup boundary). One case still differs: `forward()` with a traced `eps_override` and a lumped port (33.5). Under a user `jax.jit`, `run()` refuses its port S-parameters (use `forward(port_s11_freqs=...)` or a plain call) and a multi-device closed-box plane wave (use a plain call); `until_decay` and `report_every` need a plain call. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. With a traced `eps_override` and a lumped port, call `forward()` without an enclosing `jax.jit`.
+On one device, a fixed-step `run()` inside a user `jax.jit` stays within the cross-trace bar of plain `run()` on Linux CPU (9 float32 ULP of the probe peak per step, 1e-4 of the peak summed over the record) for a point current source and for a lumped or wire port, on uniform and graded meshes. The same holds for `forward()` with a traced `eps_override` and a point source or a lumped port, and for `run(devices=...)` and `forward(distributed=True)` with a point source or a lumped or wire port, on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Four requests are refused under a user `jax.jit`: on a uniform mesh, `run()`'s S-parameters of a single lumped or wire port (use `forward(port_s11_freqs=...)` or a plain `run()`); a closed-box plane wave on several devices; `until_decay`; and `report_every` (`test_host_control_keeps_its_user_jit_behavior`). Call these without an enclosing `jax.jit`.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
@@ -456,9 +456,17 @@ most of the difference; removing them recovered only 0.043 ms per step, for a re
 
 Tracker: #2486
 
-Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none. Since the multi-device setup boundary, two cases hold more than before, measured on a 25 x 13 x 13-cell box split over two (three) CPU devices:
-- Debye and Lorentz materials (Drude takes the Lorentz route; not measured): each pole coefficient is one more whole-domain float32 constant. A Debye box on the uniform mesh holds 13 (263,640 bytes at two devices, 290,004 at three) instead of a permittivity and a mask array (25,350 / 27,885 bytes); a Lorentz box, which was refused under a caller's jit before, now runs and holds 11 (223,080 / 245,388 bytes).
-- Graded meshes: each material array is held with its x ghost cells, 20,280 bytes at two devices and 22,308 at three instead of 16,900 (+20 % / +32 %), for permittivity (one array, also with a lumped port) and a lossy thin film (two arrays).
+Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts some of its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none.
+
+Each such array costs every device the same number of bytes:
+
+    bytes per array = n_devices × (⌈nx / n_devices⌉ + 2) × ny × nz × 4
+
+where nx is the cell count along x, the axis the run splits; the 2 counts one ghost row on each side of a device's slab, and each cell holds 4 bytes (float32). This cost does not fall as devices are added. The number of such arrays a model holds, measured on a 25 × 13 × 13-cell box:
+- a material with one Debye pole: 13 arrays; with one Lorentz or Drude pole: 11 (Drude takes the Lorentz route; not measured). Materials with more poles: not measured.
+- a graded mesh: each material array, that is the permittivity (also with a lumped port), or the two arrays of a lossy thin film.
+
+Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,640 bytes on each of two devices, and 13 × 22,308 = 290,004 bytes on each of three. By the formula, a model of 10⁸ cells with one Debye pole holds about 13 × 0.4 GB ≈ 5.2 GB on every device, whatever the device count.
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
 
 ### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record

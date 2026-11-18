@@ -52,7 +52,7 @@ from rfx.core.yee import init_state
 _FREQ = 5.0e9
 _CUBE = (0.02, 0.02, 0.02)
 _DOMAIN_DX = 299792458.0 / _FREQ / 20.0
-_SOLVED_CUBE = (7 * _DOMAIN_DX,) * 3  # solved length; #1887
+_SOLVED_CUBE = (7 * _DOMAIN_DX,) * 3  # solved length
 _CENTRE = (0.01, 0.01, 0.008)
 _PROBE = (0.007, 0.007, 0.006)
 
@@ -297,7 +297,7 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     so these unused profiles no longer absorb inside the x/y physical domain.
     This is a runner contract change, not a change to init_cpml's allocation.
     """
-    grid = Grid(freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.02),  # main's solved length; #1887
+    grid = Grid(freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.02),  # main's solved length
                 cpml_axes="z", cpml_layers=8)
     assert grid.cpml_axes == "z"
     assert (grid.pad_x_lo, grid.pad_x_hi) == (0, 0)
@@ -309,7 +309,7 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     with pytest.raises(ValueError, match="cpml_axes='xyz'.*cpml_axes='z'"):
         run(grid, init_materials(grid.shape), 1, boundary="cpml", cpml_axes="xyz")
 
-    # 1. the pre-#876 depth: min(cpml_layers, extent), NOT max(pad_lo, pad_hi)
+    # 1. the depth: min(cpml_layers, extent), NOT max(pad_lo, pad_hi)
     assert _axis_buffer_depths(grid, 8) == (8, 8, 8)
 
     params, state = init_cpml(grid)
@@ -340,7 +340,7 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     # allocates nothing because both its faces are PEC still clamps to the
     # single no-op layer — and there "pad 0" really does mean "no absorber",
     # because ``init_cpml`` gives a PEC face ``_cpml_noop_profile``. That is
-    # the #876 behaviour this file exists for.
+    # the behaviour this file exists for.
     pec_closed = _cube_sim(16, hi_thickness=4)._build_grid()
     assert pec_closed.cpml_axes == "xyz"
     assert {"x_lo", "x_hi", "y_lo", "y_hi"} <= set(pec_closed.pec_faces)
@@ -619,7 +619,7 @@ def test_preflight_thickness_follows_the_allocated_per_face_layers():
     """
     budget, thickness = 16, 2
     sim = Simulation(
-        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length; #1887
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length
         boundary=BoundarySpec(
             x="pec", y="pec",
             z=Boundary(lo="pec", hi="cpml", hi_thickness=thickness)),
@@ -634,7 +634,7 @@ def test_preflight_thickness_is_the_budget_without_an_override():
     """Sibling of the test above: no override, no change from before."""
     budget = 16
     sim = Simulation(
-        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length; #1887
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length
         boundary=BoundarySpec(x="pec", y="pec",
                               z=Boundary(lo="pec", hi="cpml")),
     )
@@ -647,7 +647,7 @@ def test_preflight_thickness_is_the_budget_without_an_override():
 def test_preflight_thickness_is_zero_on_every_reflector_face():
     """PEC / PMC / periodic faces allocate nothing, on either side."""
     sim = Simulation(
-        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=8,  # solved length; #1887
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=8,  # solved length
         boundary=BoundarySpec(x="pmc", y="pec",
                               z=Boundary(lo="pec", hi="cpml")),
     )

@@ -634,6 +634,8 @@ def add_tfsf_source(
         ``polarization='ez'`` and a single-device uniform grid.
     """
     admit_traced_inputs("Simulation.add_tfsf_source", locals())
+    from rfx.runners._admission import refuse_plane_wave_with_port
+    refuse_plane_wave_with_port(self, adding="plane_wave")
     from rfx.sources.tfsf import is_oblique, resolve_waveform
     if closed_box:
         validate_declaration(self, theta_deg, phi_deg, direction_tol_deg,
@@ -656,10 +658,6 @@ def add_tfsf_source(
             "TFSF plane-wave source conflicts with periodic-axis overrides "
             f"{self._periodic_axes!r}; this source permits declared periodic "
             f"axes only in {transverse!r}")
-    if self._ports:
-        raise ValueError(
-            "TFSF plane-wave source is not supported together with lumped ports"
-        )
     if f0 is not None and f0 <= 0:
         raise ValueError(f"f0 must be positive when provided, got {f0}")
     if bandwidth <= 0:

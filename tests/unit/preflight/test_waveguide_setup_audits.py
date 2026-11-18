@@ -326,7 +326,7 @@ def test_preflight_sparameters_waveguide_carries_the_audits():
 
 
 # ---------------------------------------------------------------------------
-# strict=True escalates errors only (review of the item-2 PR)
+# strict=True escalates errors only
 # ---------------------------------------------------------------------------
 
 def test_strict_does_not_raise_on_a_healthy_two_port_guide():

@@ -168,6 +168,14 @@ def _debye_model(freqs: np.ndarray, eps_inf: float,
 _EPS_INF_FLOOR = 1.0
 
 
+def _fit_weights(eps_measured):
+    """Scale each part by its table RMS, falling back for negligible loss."""
+    w_re = float(np.sqrt(np.mean(eps_measured.real ** 2)))
+    rms_im = float(np.sqrt(np.mean(eps_measured.imag ** 2)))
+    w_im = rms_im if rms_im > 1e-6 * w_re else w_re
+    return w_re, w_im
+
+
 def _warn_fit_bounds(eps_inf, *, free_eps_inf=True, flags=(), suggest_placed=False):
     """Report all active fit bounds once, sharing the permittivity floor."""
     messages = list(flags)
@@ -244,9 +252,7 @@ def fit_debye(
     if norm == 0:
         norm = 1.0
 
-    w_re = float(np.sqrt(np.mean(eps_measured.real ** 2)))
-    rms_im = float(np.sqrt(np.mean(eps_measured.imag ** 2)))
-    w_im = rms_im if rms_im > 1e-6 * w_re else w_re
+    w_re, w_im = _fit_weights(eps_measured)
     tau_lo = 1.0 / (2 * np.pi * freqs.max())
     tau_hi = 1.0 / (2 * np.pi * max(freqs.min(), 1.0))
 
@@ -394,7 +400,14 @@ def fit_lorentz(
     """Fit Lorentz oscillator model to measured permittivity data.
 
     Uses ``scipy.optimize.minimize`` (L-BFGS-B) to find optimal Lorentz
-    pole parameters.
+    pole parameters. Real and imaginary residuals are divided by their table
+    RMS; loss below 1e-6 of the real RMS uses the real RMS instead.
+    With f_lo = max(min(freqs), 1 Hz) and f_hi = max(freqs), resonances
+    lie in [2*pi*f_lo, 2*pi*f_hi], damping in [0.001*2*pi*f_lo,
+    10*2*pi*f_hi], and pole strengths in [1e-4, 1e4].
+    A comb of log-spaced resonances covers the span with
+    max(1, ceil(ln(f_hi/f_lo)/(2*ln(1.1)))) starts; the lowest objective
+    wins, with relative ties within 1e-12 retaining the first start.
 
     Model:
         eps(f) = eps_inf + sum_k delta_eps_k * omega_k^2 /
@@ -410,13 +423,28 @@ def fit_lorentz(
         Number of Lorentz poles to fit.
     eps_inf : float or None
         If provided, fix the high-frequency permittivity. If None, it is
-        included as a free parameter.
+        included as a free parameter bounded below at 1. A fixed value
+        below 1 is retained with an AccuracyWarning about the time step.
 
     Returns
     -------
     LorentzFitResult
         Named tuple with ``eps_inf``, ``poles`` (list of LorentzPole), and
-        ``fit_error`` (relative RMS).
+        ``fit_error`` (RMS complex residual divided by RMS measured magnitude).
+
+    Raises
+    ------
+    ValueError
+        If the table has no frequency span after clipping f_lo to 1 Hz.
+
+    Notes
+    -----
+    For constant eps' 1.1 and tan delta 0.1 over 1–40 GHz, the worst
+    errors over 2–20 GHz at n_poles 2 and 3 are 13.6% and 14.6% in
+    tan delta, and 12.8% and 11.6% in eps', with eps_inf at 1.
+    A resonance above the table is held at its top frequency: on a
+    1–10 GHz table of a 15 GHz resonance, the worst errors over the
+    table are 25% in eps' and 46% in tan delta.
     """
     freqs = np.asarray(freqs, dtype=np.float64)
     eps_measured = np.asarray(eps_measured, dtype=np.complex128)
@@ -434,7 +462,9 @@ def fit_lorentz(
 
     # Initial guesses: resonances spread across the frequency band
     f_min = max(freqs.min(), 1.0)
-    f_max = max(freqs.max(), f_min * 10)
+    f_max = freqs.max()
+    if f_max <= f_min:
+        raise ValueError("frequency span must have f_hi > f_lo after the 1 Hz clip")
     omega_min = 2 * np.pi * f_min
     omega_max = 2 * np.pi * f_max
     omega_guesses = np.logspace(
@@ -447,7 +477,7 @@ def fit_lorentz(
 
     if fit_eps_inf:
         x0.append(eps_inf_init)
-        bounds.append((0.1, None))
+        bounds.append((_EPS_INF_FLOOR, None))
 
     for k in range(n_poles):
         # Initial delta_eps
@@ -455,7 +485,7 @@ def fit_lorentz(
         bounds.append((np.log10(1e-4), np.log10(1e4)))
         # Initial omega_0
         x0.append(np.log10(omega_guesses[k]))
-        bounds.append((np.log10(omega_min * 0.1), np.log10(omega_max * 10)))
+        bounds.append((np.log10(omega_min), np.log10(omega_max)))
         # Initial gamma (damping ~ 10% of omega_0)
         x0.append(np.log10(omega_guesses[k] * 0.1))
         bounds.append((np.log10(omega_min * 0.001), np.log10(omega_max * 10)))
@@ -480,29 +510,33 @@ def fit_lorentz(
             poles_list.append((de, w0, gam))
         return ei, poles_list
 
+    w_re, w_im = _fit_weights(eps_measured)
+
     def _objective(x):
         ei, poles_list = _unpack(x)
         eps_model = _lorentz_model(freqs, ei, poles_list)
         residual = eps_model - eps_measured
-        return float(np.sqrt(np.mean(np.abs(residual) ** 2)) / norm)
+        return float(np.sqrt(np.mean((residual.real / w_re) ** 2
+                                     + (residual.imag / w_im) ** 2)))
 
-    # Run multiple restarts to find better optima
-    best_result = None
-    best_cost = np.inf
-
-    for trial in range(3):
-        if trial == 0:
-            x_init = x0.copy()
-        else:
-            # Perturbed initial guess
-            rng = np.random.RandomState(42 + trial)
-            x_init = x0 + rng.randn(len(x0)) * 0.3
-
+    starts = max(1, int(np.ceil(np.log(f_max / f_min) / (2 * np.log(1.1)))))
+    results = []
+    for k in range(starts):
+        x_init = x0.copy()
+        for j in range(n_poles):
+            w0 = omega_min * (omega_max / omega_min) ** ((j + (k + 0.5) / starts) / n_poles)
+            idx = int(fit_eps_inf) + 3 * j
+            x_init[idx:idx + 3] = [np.log10(1.0), np.log10(w0), np.log10(w0 * 0.1)]
         res = minimize(_objective, x_init, method="L-BFGS-B", bounds=bounds,
                        options={"maxiter": 5000, "ftol": 1e-14})
-        if res.fun < best_cost:
-            best_cost = res.fun
-            best_result = res
+        results.append(res)
+
+    best = 0
+    for i in range(1, len(results)):
+        a, b = results[i].fun, results[best].fun
+        if a < b and abs(a - b) > 1e-12 * max(abs(a), abs(b)):
+            best = i
+    best_result = results[best]
 
     ei_opt, poles_opt = _unpack(best_result.x)
 
@@ -513,6 +547,11 @@ def fit_lorentz(
         LorentzPole(omega_0=w0, delta=gam / 2.0, kappa=de * w0 ** 2)
         for de, w0, gam in poles_opt
     ]
+
+    flags = [f"pole {k + 1} delta_eps={de:g} is at its floor; "
+             "fewer poles fit this table as well"
+             for k, (de, _, _) in enumerate(poles_opt) if de / 1e-4 - 1 <= 1e-6]
+    _warn_fit_bounds(ei_opt, free_eps_inf=fit_eps_inf, flags=flags)
 
     # Final error
     eps_fitted = _lorentz_model(freqs, ei_opt, poles_opt)

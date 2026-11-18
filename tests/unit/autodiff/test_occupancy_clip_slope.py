@@ -81,7 +81,7 @@ def test_t2_binary_ad_matches_one_sided_fd(binary_derivatives, cell):
     ratio = ad / fd
     print(f"T2 mesh={mesh} cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")
     # 5e-2 is the comparator's own noise: the float32
-    # second-order one-sided FD scatters 0.964-1.015 of AD over 8 readings (#1926 body), measured before the bar; the defect
+    # second-order one-sided FD scatters 0.964-1.015 of AD over 8 readings, measured before the bar; the defect
     # it guards is a factor 0.5, ten times outside. The exact check is the helper slope test.
     assert abs(ratio - 1.0) <= 5e-2, (
         f"mesh={mesh} cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")

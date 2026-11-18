@@ -54,7 +54,7 @@ _ROOT_CONFTEST = '''
 '''
 
 _PLANTED = {
-    # The pre-#1262 shape: a note's text against what a script prints.
+    # The earlier shape: a note's text against what a script prints.
     "test_note_equals_tables.py": '''
         from pathlib import Path
         NOTE = Path({note!r})

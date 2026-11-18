@@ -64,7 +64,7 @@ def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     pulse = GaussianPulse(f0=f0, bandwidth=0.5)
 
     # dt is set by freq_max; probe it from a throwaway grid to size the ref.
-    dx_auto = C0 / freq_max / 20.0  # main's solved lengths below; #1887
+    dx_auto = C0 / freq_max / 20.0  # main's solved lengths below
     dt_probe = Grid(freq_max=freq_max, domain=(cells_spanning(0.02, dx_auto) * dx_auto,) * 3,
                     cpml_layers=0).dt
     ref_extent = cells_spanning(1.15 * n_steps * dt_probe * C0, dx_auto) * dx_auto  # echo step ~1.15*n_steps
@@ -221,7 +221,7 @@ def test_cpml_reflection_gate_discriminates_layer_degradation():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("f0,n_layers,gate_db", [
-    # gate_db = measured clean floor + margin (2026-07-20, n_steps=250).
+    # gate_db = measured clean floor + margin (n_steps=250).
     # Degraded 2-layer floors (caught by these gates): 1GHz -38.8, 5GHz -77.3.
     (1e9, 8, -50.0),   # clean floor -56.3 dB (was contaminated -49.7)
     (5e9, 8, -75.0),   # clean floor -92.8 dB (was contaminated -65.4)

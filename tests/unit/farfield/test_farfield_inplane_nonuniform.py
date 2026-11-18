@@ -57,7 +57,7 @@ def _sim(dx_profile=None, dy_profile=None):
     sim = Simulation(freq_max=40e9, domain=(22e-3, 22e-3, 22e-3), dx=250e-6,
                      boundary="cpml", cpml_layers=6, **kw)
     # A buildable 1.5 mm solid PEC cube: six 250 um cells per axis on BOTH
-    # meshes, with faces on nodes and seven tangential wall planes (#931).
+    # meshes, with faces on nodes and seven tangential wall planes.
     # The former graded profile halved the cube/source spacing; its relative
     # power gate mixed NTFF integration with a different radiator stencil.
     sim.add(Box((10.25e-3, 10.25e-3, 10.25e-3),

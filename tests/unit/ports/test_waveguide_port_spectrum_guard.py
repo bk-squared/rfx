@@ -32,7 +32,7 @@ FC_TE10 = 3e8 / (2 * A_WR90)  # ~6.56 GHz
 
 
 def _build(lx, dx, freqs, *, f0=None, x1=0.024, x2=None):
-    sim = Simulation(freq_max=12e9, domain=(lx, 0.024, 0.012), dx=dx,  # main's solved length at dx = 2 mm; #1887
+    sim = Simulation(freq_max=12e9, domain=(lx, 0.024, 0.012), dx=dx,  # main's solved length at dx = 2 mm
                      boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
     kw = {} if f0 is None else {"f0": f0}
     sim.add_waveguide_port(x_position=x1, y_range=(0.0, 0.024),
@@ -97,7 +97,7 @@ def _build_two_slab_toy(freqs):
     grid = sim._build_grid()
     eps = jnp.ones(grid.shape, dtype=jnp.float32)
     # Overrides address the padded solver array. Omitting pad_x_lo moved
-    # the first slab onto the vacuum-mode source at x=24 mm (#940).
+    # the first slab onto the vacuum-mode source at x=24 mm.
     i = grid.pad_x_lo + int(round(0.056 / grid.dx))
     eps = eps.at[i:i + 2].set(4.0)
     i = grid.pad_x_lo + int(round(0.040 / grid.dx))
@@ -155,7 +155,6 @@ def test_issue150_two_slab_toy_run_length_invariant_and_passive():
         out[n] = (np.asarray(res.s_params),
                   float(rep.metrics["max_column_power"]))
 
-    # Primary (#150 signature): column power must NOT grow with run length.
     growth = out[4800][1] / out[2400][1]
     assert growth < 1.10, (
         f"column power GREW with n_steps: {out[2400][1]:.3f} -> "
