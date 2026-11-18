@@ -923,7 +923,7 @@ from rfx.model.realization_transport import with_forward_geometry
 
 @with_forward_geometry
 class ForwardResult(NamedTuple):
-    """Minimal differentiable simulation result.
+    """Minimal differentiable simulation result (JAX transforms: docs/public/api/results.mdx).
 
     ``realized_geometry`` carries host metadata from the prepared kernel assembly.
     ``settling_db`` and ``settling_witness`` score concrete user probes; read them on the returned
@@ -1032,8 +1032,8 @@ class ForwardResult(NamedTuple):
 
         None means absent, including during tracing. This is a diagnostic,
         not a differentiable objective. A returned JIT result can be scored
-        once its time series is concrete. Other result fields retain their
-        existing JIT restrictions (for example the host Grid object).
+        once its arrays are concrete and retain their original shapes; select
+        one element of a vmapped result (docs/public/api/results.mdx).
         Use ``settling_verdict`` to judge the diagnostic.
         """
         from rfx.sparams._record_selection import forward_settling_witness

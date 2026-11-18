@@ -124,26 +124,33 @@ def face_windows(shape, depths, frame, periodic, grid):
     A face whose realized pad is zero (PEC, PMC, periodic, 2-D z) gets depth 0
     on every frame. Full frames keep the axis depth on CPML faces; framed faces
     use their realized depth. Psi retains the single-device axis depth; rows
-    outside a face's window must not be read or written.
+    outside a face's window must not be read or written. A high-pad frame
+    (``HighPadFrame``: the array holds pad cells past ``hi``) differs from
+    the allocated axis only by that pad, so it keeps the full frame's depth
+    and whole psi, with the high window ending at ``hi``.
     """
+    high_pad = getattr(frame, "high_pad", False)
     frame = tuple((frame or {}).get(axis, (0, size)) for axis, size in zip("xyz", shape))
     windows, psi_windows, face_depths = {}, {}, {}
     from rfx.boundaries.axes import absorbing_face_depths
     realized = absorbing_face_depths(grid)
     for axis, (size, depth, (lo, hi)) in enumerate(zip(shape, depths, frame)):
         full = (lo, hi) == (0, size)
+        padded = high_pad and lo == 0 and hi < size
         if periodic[axis] and not full:
             raise ValueError(f"periodic {'xyz'[axis]} axis requires a full CPML frame")
         for side in ("lo", "hi"):
             face = f"{'xyz'[axis]}_{side}"
             d = min(depth, realized[face])
-            if full and d:
+            if (full or padded) and d:
                 # A CPML face keeps its axis-depth window (identity rows beyond
                 # its own layers); only a face not declared CPML drops out.
                 d = depth
             sl = [slice(None)] * 3
             psi_sl = [slice(None)] * 3
-            if full and d == depth:
+            if padded and d == depth:
+                sl[axis] = slice(0, depth) if side == "lo" else slice(hi - depth, hi)
+            elif full and d == depth:
                 sl[axis] = slice(None, depth) if side == "lo" else slice(-depth, None)
             else:
                 sl[axis] = slice(lo, lo + d) if side == "lo" else slice(hi - d, hi)

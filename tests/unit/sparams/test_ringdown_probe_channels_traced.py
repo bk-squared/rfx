@@ -140,6 +140,7 @@ def test_t3_traced_source_off_message():
     """Physical anchor: raw field amplitude is linear in the source, unlike normalized port S."""
     from rfx._traced_refusal import TracedStructureRefusal
     from types import SimpleNamespace
+    from rfx.ringdown._plane_wave import _require_source_off_rows
     entry = SimpleNamespace(is_soft_source=True, position=(.002, .002, .001), component="ez")
     with pytest.raises(TracedStructureRefusal, match="completed probe spectrum is linear in the drive: scale it outside the call"):
-        rd._require_source_off_rows([entry], [None], "forward", probe_mode=True)
+        _require_source_off_rows([entry], [None], "forward", probe_mode=True)
