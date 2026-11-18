@@ -123,7 +123,7 @@ import math
 import warnings
 from dataclasses import dataclass, field, replace as _dc_replace
 from importlib import import_module
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -1051,7 +1051,7 @@ class RingdownRun:
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
                                                             dtype=np.float64))))
-        base = dict(n_record=self.n_steps, dt=dt,
+        base: dict[str, Any] = dict(n_record=self.n_steps, dt=dt,
                     window_steps=(self.n_start, self.n_steps),
                     window_s=(self.n_start * dt, self.n_steps * dt),
                     short_window_steps=(self.n_start, self.n_split),
