@@ -108,7 +108,6 @@ def test_smoothed_off_grid_oblique_slab_adds_no_transmission_error():
         _, vacuum = smoothed_off_grid_record(theta0, False)
         band = abs(vacuum) >= .1*np.max(abs(vacuum))
         f = freqs[band]
-        # Both source polarizations are TE; transverse wavenumber is fixed at f0.
         k0 = 2*np.pi*f/np.float64(299792458.)
         kt = 2*np.pi*F0/np.float64(299792458.)*np.sin(np.deg2rad(theta0))
         kx0, kx1 = np.sqrt(k0*k0-kt*kt), np.sqrt(4*k0*k0-kt*kt)

@@ -332,7 +332,6 @@ def test_graded_tfsf_keeps_oblique_refusal(entry):
                 getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
             messages.append(str(info.value))
         else:
-            # The off-diagonal node coupling cannot apply the oblique Bloch phase.
             from rfx.errors import RfxUnsupported
             with pytest.raises(RfxUnsupported, match="off-diagonal node coupling.*does not apply the Bloch phase") as info:
                 getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')

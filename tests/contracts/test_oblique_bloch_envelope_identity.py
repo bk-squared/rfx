@@ -70,7 +70,6 @@ def test_electric_envelope_identity(branch, pol, axis, m, phase_kind):
         if name in options:
             coeffs, carry = options[name]
             physical_options[name] = coeffs, jax.tree.map(lambda a: a*mapping, carry)
-    # The reference calls the same material branch on physical fields with no phase.
     expected = _update_e_with_optional_dispersion(physical, material, dt, dx, bloch=None, **physical_options)
     if phase_kind == "concrete":
         actual = _update_e_with_optional_dispersion(state, material, dt, dx, bloch=phase, **options)

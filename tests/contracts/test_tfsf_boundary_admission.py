@@ -444,7 +444,6 @@ def test_small_angle_has_normal_incidence_admission(scene, graded, polarization,
 @pytest.mark.parametrize("smoothing", [True, "full_tensor"])
 @pytest.mark.parametrize("polarization", ["ez", "ey"])
 def test_oblique_invariant_slab_smoothing_admission(entry, skip, smoothing, polarization):
-    # Diagonal smoothing reaches the scan; node coupling is refused before it.
     from rfx.errors import RfxUnsupported
     sim = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)
     sim.add_material("slab", eps_r=4.)
