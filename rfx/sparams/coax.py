@@ -16,6 +16,7 @@ they do not run at import time.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.measurement.calculator_drive import calculator_drive
 
@@ -148,6 +149,7 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
+    admit_traced_inputs("Simulation.compute_coaxial_line_reflection", locals())
     resolve_field_dtype(self._precision)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
@@ -614,6 +616,7 @@ def compute_coaxial_two_port(
     this sim still raise, because this method builds its own probes.
     """
 
+    admit_traced_inputs("Simulation.compute_coaxial_two_port", locals())
     resolve_field_dtype(self._precision)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
@@ -1203,6 +1206,7 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with built coax / analytic MSL normalization; this is
     not a traceable or validated cross-family extraction.
     """
+    admit_traced_inputs("Simulation.compute_coax_msl_transition", locals())
     resolve_field_dtype(self._precision)
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,

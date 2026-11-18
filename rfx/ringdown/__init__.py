@@ -90,6 +90,7 @@ report in ``Result.ringdown.stop``.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported; from rfx._warning_origin import user_stacklevel  # noqa: E702
 
@@ -241,6 +242,7 @@ class RingdownSpec:
     probe_freqs: tuple | None = None
 
     def __post_init__(self):
+        admit_traced_inputs("RingdownSpec", locals())
         if self.probe_freqs is not None:
             bins = host_bins(self.probe_freqs, np.float64, caller="RingdownSpec", argument="probe_freqs")
             if bins.ndim != 1 or not bins.size or not np.all(np.isfinite(bins) & (bins > 0)):
