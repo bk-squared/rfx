@@ -828,10 +828,10 @@ def _require_source_off_rows(entries, rows, caller, probe_mode=False):
     """Refuse the first drive whose off time cannot be judged on the host."""
     from rfx._traced_refusal import TracedStructureRefusal
 
+    from rfx.ringdown._plane_wave import drive_label
     for pe, row in zip(entries, rows, strict=True):
         if row is None:
-            kind = "source" if pe.is_soft_source else "wire port"
-            label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
+            label = drive_label(pe)
             raise TracedStructureRefusal(
                 f"{caller}(ringdown=...): the {label} cannot be judged for its off time inside the "
                 "identification window: its waveform samples or the time step are traced "
@@ -897,11 +897,12 @@ class RingdownRun:
         the main window refuses.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.ringdown._plane_wave import drive_label, plane_wave_entries, still_on_message
         from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports
                    if (pe.is_soft_source or bool(pe.excite))
-                   and pe.waveform is not None]
+                   and pe.waveform is not None] + plane_wave_entries(self)
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in entries], self.n_steps, field_time_step(self.dt, self.sim._precision),
             tolerance=self.spec.source_off_tol, return_detail=True)
@@ -910,16 +911,10 @@ class RingdownRun:
         ratio_long = 0.0
         for pe, (w, peak, _) in zip(entries, samples, strict=True):
             ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
-            kind = "source" if pe.is_soft_source else "wire port"
-            label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
+            label = drive_label(pe)
             if not ratio <= float(self.spec.source_off_tol):
-                raise ValueError(
-                    f"{self.caller}(ringdown=...): the {label} is still on inside the "
-                    f"identification window [{self.n_start * float(self.dt):.4g}, "
-                    f"{self.n_steps * float(self.dt):.4g}] s: its waveform there "
-                    f"reaches {ratio:.3e} of its peak, above source_off_tol = "
-                    f"{self.spec.source_off_tol:.1e}. The window must hold free "
-                    "ringing only; use a longer record or a later window_start.")
+                raise ValueError(still_on_message(pe, self.caller, ratio, self.spec.source_off_tol, (
+                    self.n_start * float(self.dt), self.n_steps * float(self.dt))))
             rows.append((label, ratio))
             if peak != 0.0:
                 ratio_long = max(ratio_long, float(np.max(w[self.n_long:]) / peak))
