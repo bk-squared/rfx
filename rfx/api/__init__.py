@@ -303,7 +303,6 @@ class Simulation(
         nominal_profiles: dict | None = None,
         precision: str = "float32",
         solver: str = "yee",
-        adi_cfl_factor: float | None = None,
         stencil_order: int = 2,
         interface_eps: str = "sampled",
         snap: str = "strict",
@@ -349,7 +348,7 @@ class Simulation(
                 f"precision must be 'float32', 'mixed', or 'float64', got {precision!r}"
             )
         from rfx.model import admit_solver
-        admit_solver(solver, adi_cfl_factor)
+        admit_solver(solver)
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
         from rfx.model import admit_graded_profiles

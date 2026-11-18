@@ -258,7 +258,7 @@ from rfx.convergence import (
 #
 # Excluded categories (still importable by explicit attribute access):
 #   - per-step Yee/port kernels: init_*/update_*/inject_*/apply_waveguide_port_*,
-#   - low-level state/bookkeeping classes: ADIState2D/3D, RLCState, RLCCellMeta,
+#   - low-level state/bookkeeping classes: RLCState, RLCCellMeta,
 #     Coaxial*PlaneVI, CoaxialPlaneSourceSpec, FloquetDFTAccumulator,
 #     PortVIDump/PortDumpMetadata/PortSMatrixObservable/PortReplayComparison,
 #     SubgridValidationIssue/Report, BATCH_MANIFEST_SCHEMA
@@ -384,16 +384,3 @@ __all__ = [
 ]
 
 from rfx.fidelity import fidelity_report  # noqa: E402,F401
-
-
-_REMOVED_ADI_NAMES = {
-    "ADIState2D", "ADIState3D", "thomas_solve", "adi_step_2d",
-    "run_adi_2d", "adi_step_3d", "run_adi_3d",
-}
-
-
-def __getattr__(name):
-    if name in _REMOVED_ADI_NAMES:
-        from rfx.model.solver_admission import ADI_REMOVED
-        raise AttributeError(f"{name}: {ADI_REMOVED}")
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

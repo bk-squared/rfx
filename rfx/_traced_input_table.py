@@ -110,7 +110,6 @@ ROWS = (
     ('Simulation.__init__', 'nominal_profiles', 'undecided', 'step 2 decides; rules did not decide; rfx/api/__init__.py:288'),
     ('Simulation.__init__', 'precision', 'no_number', 'annotation str; rfx/api/__init__.py:288'),
     ('Simulation.__init__', 'solver', 'no_number', 'annotation str; rfx/api/__init__.py:288'),
-    ('Simulation.__init__', 'adi_cfl_factor', 'undecided', 'step 2 decides; rules did not decide; rfx/api/__init__.py:288'),
     ('Simulation.__init__', 'stencil_order', 'undecided', 'step 2 decides; rules did not decide; rfx/api/__init__.py:288'),
     ('Simulation.__init__', 'interface_eps', 'no_number', 'annotation str; rfx/api/__init__.py:288'),
     ('Simulation.__init__', 'snap', 'no_number', 'annotation str; rfx/api/__init__.py:288'),
