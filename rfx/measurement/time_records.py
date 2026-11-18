@@ -16,8 +16,18 @@ def from_owners(records, owners, n_steps=None):
     records, owners = tuple(records), tuple(owners)
     assert len(records) == len(owners), 'port record count differs from owner count'
     return tuple(PortTimeRecord(owner.id, owner.kind,
-                               tuple(c.name for c in owner.channels), samples[:n_steps])
+                               tuple(c.name for c in owner.channels), samples[:n_steps],
+                               _port_identity(owner))
                  for owner, samples in zip(owners, records))
+
+
+def _port_identity(owner):
+    """Match realized accumulator specs by the midpoint V observation node."""
+    channel = next((c for c in owner.channels if c.name == 'V'), None)
+    if channel is None or not channel.nodes:
+        return None
+    node = channel.nodes[0]
+    return (node.component, node.i, node.j, node.k)
 
 
 def uniform_records(carry, ctx, n_steps=None):
