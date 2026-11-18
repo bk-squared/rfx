@@ -173,7 +173,7 @@ def test_traced_mask_pattern_cap(n_poles, transform):
         jax.block_until_ready(result)
 
     if n_poles == 9 and transform in ("jit", "vmap"):
-        with pytest.raises(ValueError, match=r"cannot judge: 9 poles give 2\^9 patterns"):
+        with pytest.raises(ValueError, match=r"9 distinct poles, with cell occupancy traced"):
             call()
     else:
         call()
