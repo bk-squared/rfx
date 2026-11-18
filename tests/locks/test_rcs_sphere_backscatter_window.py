@@ -51,7 +51,6 @@ LOCK_PROVENANCE = {
 }
 
 FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "rcs_sphere_mie"
-# (ka, lower signed difference in dB, upper signed difference in dB)
 WINDOWS = (
     (0.75, 0.80, 1.54),
     (0.80, 0.74, 1.45),
@@ -117,7 +116,6 @@ def test_monostatic_backscatter_window(sphere_backscatter, index):
     grid_back_dbsm = float(result.rcs_dbsm[index, 0, -1])
     delta_db = mono_dbsm - float(mie_dbsm[index])
 
-    # R5 breadcrumb precedes the assertions so failing bins are measured too.
     print(
         f"\nRCS sphere lock: ka={ka:.2f} | rfx {mono_dbsm:+.6f} dBsm | "
         f"Mie {mie_dbsm[index]:+.6f} dBsm | delta {delta_db:+.6f} dB | "

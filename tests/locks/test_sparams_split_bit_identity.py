@@ -148,9 +148,9 @@ _MSL_FREQS = jnp.linspace(2e9, 18e9, 16)
 
 
 def _msl_result():
-    # #1138: the 1.2 mm trace is solved as 1.34 mm (+11.67 %); this A/B lock
+    # the 1.2 mm trace is solved as 1.34 mm (+11.67 %); this A/B lock
     # checks bit identity across a code move, not sheet size.
-    # #1512: the strip spans the port nodes (2 and 10 mm), as _thru() of
+    # the strip spans the port nodes (2 and 10 mm), as _thru() of
     # test_msl_passivity_enforcement.py; drawn across the domain it left 2 mm
     # open stubs (quarter wave near 23.8 GHz) that the line-stub preflight refuses.
     sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),

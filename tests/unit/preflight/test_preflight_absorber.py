@@ -130,7 +130,7 @@ def test_nonuniform_grid_pads_absorber_exterior_to_requested_domain():
     ng = make_nonuniform_grid((0.03, 0.03), dz_profile, 0.5e-3, cpml_layers=cpml_layers)
 
     assert (ng.pad_z_lo, ng.pad_z_hi) == (cpml_layers, cpml_layers)
-    # N cells are bounded by N+1 nodes (#562) — the outermost node is the
+    # N cells are bounded by N+1 nodes — the outermost node is the
     # absorber's outer face, which is why the interior extent below is exact.
     assert ng.nz == len(dz_profile) + ng.pad_z_lo + ng.pad_z_hi + 1
 
@@ -139,7 +139,7 @@ def test_nonuniform_grid_pads_absorber_exterior_to_requested_domain():
     # Node pad_z_lo is user z=0 (mirrors Grid's node pad_x_lo convention).
     # The LAST node is edges[nz-1], not edges[-1]: the cell array carries one
     # trailing duplicate whose only job is to bound the last real cell with a
-    # node (#562), and whose own H term the stencil zeroes — it is not physical
+    # node, and whose own H term the stencil zeroes — it is not physical
     # extent, so extents must be read from the node positions, never from
     # sum(dz).
     z_node0 = edges[0] - edges[ng.pad_z_lo]
@@ -190,7 +190,7 @@ def test_last_interior_node_reads_as_overlap_not_proximity_h1_conservatism():
     ct_hi = cpml_layers * dx
     g = Grid(freq_max=10e9, domain=(domain_extent, 0.01, 0.01), dx=dx,
              cpml_layers=cpml_layers)
-    # Issue #510 review (non-blocking #7): derive the true last interior
+    # Derive the true last interior
     # node from rfx.grid.Grid's OWN reported sizing (like the rest of
     # this file's ground-truth tests do), not a hand-transcribed number.
     # nx = ceil(domain/dx) + 1 + pad_lo + pad_hi, so
@@ -215,8 +215,8 @@ def test_last_interior_node_reads_as_overlap_not_proximity_h1_conservatism():
 # --------------------------------------------------------------------- #
 
 def _absorber_placement_sim(z_probe: float) -> Simulation:
-    # Issue #500 repro-2 domain: cpml_thickness (16mm) exceeds the whole
-    # 10.16mm z-extent, so the pre-#500 interior-frame check flagged
+    # Domain: cpml_thickness (16mm) exceeds the whole
+    # 10.16mm z-extent, so the earlier interior-frame check flagged
     # EVERY z position, including the domain centre.
     sim = Simulation(freq_max=10e9, domain=(50e-3, 22.86e-3, 10.16e-3),
                      dx=1e-3, cpml_layers=16, boundary="cpml")
@@ -327,7 +327,7 @@ def test_ntff_absorber_overlap_fires_when_corner_crosses_domain_edge():
 
 
 # --------------------------------------------------------------------- #
-# 4b. Issue #1030 — the deleted NTFF minimum-steps hint.
+# 4b. The deleted NTFF minimum-steps hint.
 #
 # ``_validate_cfg_ntff_min_steps`` sat next to the overlap check above and
 # emitted NOTHING: it computed ``int(10 / min(ntff_freqs) / (dx / (C0 *
@@ -403,7 +403,7 @@ def test_ntff_min_steps_check_is_gone_from_the_api_and_the_registry():
 # --------------------------------------------------------------------- #
 # 5. Consumer 4 — _validate_cfg_waveguide_reference_plane.
 #
-# This is the exact check issue #500 repro-1 documents. Its absorber-
+# Its absorber-
 # overlap branch is now provably UNREACHABLE through the public API: the
 # hard bounds check immediately above it (`effective < 0 or
 # effective > domain_ext`) already raises PreflightConfigError for any
@@ -472,8 +472,7 @@ def test_waveguide_reference_plane_silent_at_mixin_level_near_edge():
 
 
 # --------------------------------------------------------------------- #
-# 5b. The SAME check's third emission site — the device-overlap advisory
-#     (issue #1024).
+# 5b. The SAME check's third emission site — the device-overlap advisory.
 #
 # Sites 1 and 2 above are the shadowed raise and the algebraically dead
 # absorber branch. Site 3 is the one that was supposed to speak on a real
@@ -624,18 +623,14 @@ def test_waveguide_reference_plane_device_overlap_skips_a_shape_with_no_bbox():
 # 6. Consumer 5 — _check_msl_port_geometry (checks 1 & 3: distance to
 #    the nearest absorbing/reflecting boundary).
 #
-# Review finding MH2: unlike consumers 1-4, this one is NOT a plain
-# instance of the #500 interior-frame bug. The reference position is the
+# Unlike consumers 1-4, this one is NOT a plain
+# instance of the interior-frame bug. The reference position is the
 # exterior-frame domain edge (_absorber_boundary_for_axis) PLUS an
 # EXPLICIT, separately-calibrated buffer (cpml_thick_{lo,hi} = n_cpml*dx)
 # (CALIBRATED, OpenEMS-class): with LY = W + 6*dx at dx=80um/cpml_layers=8 "the trace
 # ended up INSIDE the CPML overlap region (negative clearance)" and Z0
 # drifted UP with refinement instead of converging to Hammerstad's
-# 47.89 Ohm; the fix requires LY >= W + 2*(2*h_sub + 8*dx). An earlier
-# pass of this PR dropped the buffer entirely (treating this consumer as
-# the same bug class as the other four), which silently re-admitted that
-# exact negative-clearance configuration — verified below against the
-# ledger's own numbers.
+# 47.89 Ohm; the fix requires LY >= W + 2*(2*h_sub + 8*dx).
 # --------------------------------------------------------------------- #
 
 _EPS_R = 3.66
@@ -648,7 +643,7 @@ def _msl_x_clearance_sim(dx: float, port_x: float, cpml_layers: int = 8) -> Simu
     ly = _W_TRACE + 8 * _H_SUB
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,
-        snap="declared",  # Preserve the ledger's off-node clearance geometry.
+        snap="declared",  # Preserve the off-node clearance geometry.
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
     )
     sim.add_material("ro4350b", eps_r=_EPS_R)
@@ -666,7 +661,7 @@ def _msl_y_clearance_sim(dx: float, ly: float, cpml_layers: int = 8) -> Simulati
     fixture (LY parametrized, port_x fixed comfortably clear of x-CPML)."""
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,
-        snap="declared",  # Preserve the ledger's off-node clearance geometry.
+        snap="declared",  # Preserve the off-node clearance geometry.
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
     )
     sim.add_material("ro4350b", eps_r=_EPS_R)
@@ -1058,7 +1053,7 @@ def test_debye_touching_face_warns():
     # wording is the truthful one and must stay
     assert "the pad stays background" in str(issue)
     assert "drawn PAST the domain" not in str(issue)
-    # the resonance-risk (#636 divergence-sharp) clause must NOT claim
+    # the resonance-risk (divergence-sharp) clause must NOT claim
     # this family is in the divergence class
     assert "divergence-risk class" not in str(issue)
 
@@ -1110,7 +1105,7 @@ def test_two_touching_entries_aggregate_into_one_finding():
 
 
 # ---------------------------------------------------------------------------
-# 4. Dielectric ending AT an absorber seam in an un-continuable shape (#1043)
+# 4. Dielectric ending AT an absorber seam in an un-continuable shape
 #
 # The complement of section 2. That one reports geometry standing INSIDE the
 # absorber; this one reports geometry ABSENT from it under the feature that
@@ -1119,7 +1114,7 @@ def test_two_touching_entries_aggregate_into_one_finding():
 # material arrays, the smoothed lane by continuing the SHAPE. A shape with no
 # continuation across the reached face (a sphere's tangency, a cylinder reached
 # across its axis, an imported mesh) gets neither on the smoothed lane and is
-# solved with vacuum in its own pad: the end facet #831 measured as |B/A| 0.53
+# solved with vacuum in its own pad: the end facet measured as |B/A| 0.53
 # on a straight guide, worsening with absorber depth.
 #
 # Silent where nothing is lost or another check already speaks: a Box and an
@@ -1297,7 +1292,7 @@ def test_a_shape_continued_on_one_axis_is_still_NAMED_on_another():
 
 
 # ---------------------------------------------------------------------------
-# 5. A conductor at an absorber face that has few layers -- #801.
+# 5. A conductor at an absorber face that has few layers.
 #
 # The advisory fires on a CONJUNCTION, and the tests below are built from the
 # arms that were actually measured on the isolated-patch rig rather than from
@@ -1442,7 +1437,7 @@ def test_the_conjunction_is_load_bearing(monkeypatch):
 
 
 # --------------------------------------------------------------------- #
-# Every absorbing kind (#1961): the check keyed on boundary == "cpml" and
+# Every absorbing kind: the check keyed on boundary == "cpml" and
 # said nothing for the same box drawn into a UPML pad.
 # --------------------------------------------------------------------- #
 

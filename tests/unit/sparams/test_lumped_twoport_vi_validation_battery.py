@@ -230,7 +230,7 @@ _THRU_FREQS_HZ = np.linspace(3e9, 7e9, 9)   # in-band of f0=5 GHz, bw=0.8
 # Retain the independent dead-channel floor as a basic liveness check.
 _THRU_S11_ALIVE_MIN = 0.02
 
-# RE-PINNED 2026-08-29 for issue #770 (whole-port off-diagonal frame;
+# (Whole-port off-diagonal frame;
 # measured provenance validation/research/issue770_offdiag_adjudication.py
 # --battery-provenance, this exact fixture, shipped driver path):
 # |S21| = 0.9341..0.9954 across 3-7 GHz — the frame the pre-declared
@@ -239,12 +239,12 @@ _THRU_S11_ALIVE_MIN = 0.02
 # per-bin power closure |S11|^2+|S21|^2 = 0.956-0.991 vs the measured
 # 0.2-4.0% flux closure gap; the historical per-cell 0.546-0.610 class
 # measured a net-through fraction 0.31-0.37 and was REFUTED as physics —
-# it was always labeled a regression lock, per the #313 ledger entry).
+# it was always labeled a regression lock).
 # Band edges are PHYSICS-derived, not envelope-tuned: lower 0.90 from the
 # external-anchor closure window (net-through fraction >= 0.90 with the
-# measured diagonal — the F-A2 window of the #770 pre-declaration);
+# measured diagonal);
 # upper 1.0 = the physical passivity bound, TIGHTENED from 1.0 + 1e-3 by
-# item B2 (2026-09-04): the +1e-3 headroom existed only to admit the
+# item B2: the +1e-3 headroom existed only to admit the
 # systematic over-unity excess that _THRU_MAX_SINGULAR_VALUE also carried
 # ("1.0032 at 3 GHz -> 0.9874 at 7 GHz, mechanism unidentified"). B2
 # identifies that excess as the uncorrected Yee half-step on the H-derived
@@ -252,11 +252,11 @@ _THRU_S11_ALIVE_MIN = 0.02
 # physical bound (measured max 0.9954 at 3 GHz, unchanged in magnitude —
 # the correction is a per-frequency PHASE advance, so |S21| barely moves
 # while the singular value drops below 1). A collapse back to the per-cell
-# 0.55-0.61 class or to the pre-#308 near-null fails the lower edge loudly.
+# 0.55-0.61 class or to the earlier near-null fails the lower edge loudly.
 _THRU_S21_BAND = (0.90, 1.0)
 
 # Measured signed per-bin phase deviation arg(S21) - (-2*pi*f*L/c),
-# wrapped: -0.8125..-0.3516 rad (issue #770 whole-port off-diagonal
+# wrapped: -0.8125..-0.3516 rad (whole-port off-diagonal
 # re-measure 2026-08-29, --battery-provenance; post-#318 per-cell it was
 # -0.6268..-0.3482, post-#308 -0.7549..-0.3353 — the frame change kept
 # the same sign and the same smooth delay-like class, band edges now at
@@ -265,10 +265,10 @@ _THRU_S21_BAND = (0.90, 1.0)
 # edges well inside (-pi, pi) so wrapped values stay comparable).
 # HONESTY LABEL: the deviation VALUES are a regression lock, but the
 # overall SIGN is physics-anchored by the DC witness: the low-f
-# falsifier measured S21(DC) -> +1 under this sign (#770 whole-port
+# falsifier measured S21(DC) -> +1 under this sign (whole-port
 # re-measure: dev -0.058 rad at 0.5 GHz, tracking the analytic delay;
 # the #308-era per-cell channel measured -0.049); the first-cut sign
-# measured -1 and was amended in the #308 PR, and the #770 whole-port
+# measured -1 and was amended, and the whole-port
 # receive sign was re-pinned by the same witness class (flipped channel
 # at +3.08/+3.03 rad). The deviation is a smooth feed-post group-delay
 # excess, physical, not a convention artefact. Signed on purpose:
@@ -279,9 +279,9 @@ _THRU_PHASE_DEV_BAND_RAD = (-1.1, -0.1)
 
 # Measured reciprocity max|S21 - S12| = 1.1233e-4 (rel 1.21e-4) on the
 # whole-port frame AFTER the item B2 half-step current correction
-# (2026-09-04; pre-B2 whole-port 2.6678e-4 / rel 2.78e-4, itself 28x
+# (pre-B2 whole-port 2.6678e-4 / rel 2.78e-4, itself 28x
 # better than the per-cell 7.53e-3).
-# NOT EVIDENCE FOR B2 (corrected 2026-09-05): for a geometrically
+# NOT EVIDENCE FOR B2: for a geometrically
 # symmetric two-port both drive runs are mirror images, so S21 = S12 up
 # to grid asymmetry regardless of any COMMON rotation of the port
 # current. The 2.4x move is an incidental shift of a noise-level
@@ -297,7 +297,7 @@ _THRU_RECIP_ABS_MAX = 1.5e-2
 _THRU_RECIP_REL_MAX = 0.10
 
 # Measured passivity: max singular value over the 9 per-freq 2x2 slices
-# = 1.003227 (issue #770 whole-port re-measure 2026-08-29; per-bin
+# = 1.003227 (whole-port re-measure; per-bin
 # 1.0032..0.9874, largest at 3 GHz where |S21| = 0.9954). The matrix is
 # now NEAR-UNITARY — the physical singular value is ~1 and the 0.32%
 # excess is SYSTEMATIC and monotone in frequency (1.0032 at 3 GHz ->
@@ -319,7 +319,7 @@ _THRU_RECIP_REL_MAX = 0.10
 # issue in the PR body).
 _THRU_MAX_SINGULAR_VALUE = 1.01
 
-# PHYSICAL passivity bound (item B2, 2026-09-04). A passive scattering
+# PHYSICAL passivity bound (item B2). A passive scattering
 # matrix has every singular value <= 1 exactly (energy conservation) — a
 # board-independent, derived bound, not a fitted envelope. The pre-B2
 # extractor read a SYSTEMATIC over-unity (sv_max 1.003227) because the
@@ -339,15 +339,14 @@ _XCHK_F0_HZ = 5e9
 _XCHK_FREQS_HZ = np.array([1.0, 2.5, 4.0, 5.5, 7.0, 8.5, 10.0]) * 1e9
 # Measured max complex |S_run - S_fwd| = 4.27e-7 over ALL 7 bins (CPML,
 # well-conditioned) — but that is SINGLE-MACHINE provenance at float32
-# ulp scale. Gate 5e-5 (~100x measured; review finding, the v173a
-# cross-machine-float lesson) — still 40x tighter than the committed
+# ulp scale. Gate 5e-5 (~100x measured) — still 40x tighter than the committed
 # magnitude-only atol-2e-3 gate it complements, and still fails on any
 # pure-phase divergence that gate cannot see.
 _XCHK_COMPLEX_DELTA_MAX = 5.0e-5
 
 # Algebraic-identity lock (no FDTD): extract_lumped_s11 vs the decompose
 # diagonals on synthetic well-conditioned V/I. The formulas are
-# algebraically identical (PR #258 finding: divergence is float32
+# algebraically identical (divergence is float32
 # conditioning, not formula); in complex64 they may differ only by
 # rounding order. Gate 1e-5 relative (float32 eps ~1.2e-7, x ~100 margin).
 _IDENTITY_REL_MAX = 1.0e-5
@@ -366,7 +365,7 @@ def _build_thru(pulse: "GaussianPulse | None" = None) -> Simulation:
     run(compute_s_params=True) routes through the PR #258 production scan
     driver, the extraction path under test.
     """
-    # #1138: trace x/y solved +2.059%/+7% off; this tests two-port V/I extraction.
+    # Trace x/y solved +2.059%/+7% off; this tests two-port V/I extraction.
     sim = Simulation(snap="declared",
         freq_max=_THRU_FREQ_MAX_HZ,
         domain=_THRU_DOMAIN_M,
@@ -375,8 +374,7 @@ def _build_thru(pulse: "GaussianPulse | None" = None) -> Simulation:
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=_THRU_CPML_LAYERS,
     )
-    # The trace is FOIL, so under the lattice ownership contract (#931
-    # §1.3) it is a SHEET: a zero-thickness Box on the z = 1.0 mm plane,
+    # The trace is FOIL, so under the lattice ownership contract it is a SHEET: a zero-thickness Box on the z = 1.0 mm plane,
     # realized as ONE wall plane with the normal Ez edge through it live.
     # Drawn _THRU_H_M -> _THRU_H_M + _THRU_DX_M it was a VOLUME under §1.2
     # — walls at 1.0 AND 1.5 mm with the Ez between them shorted — i.e. a
@@ -455,7 +453,7 @@ def crosscheck():
     for msg in issues:
         print(f"\n[crosscheck] preflight (verbatim): {msg}")
     # Measured baseline: this fixture preflights CLEAN. Gate on
-    # error-severity only (review finding): a future advisory-only
+    # error-severity only: a future advisory-only
     # validator flagging this vanilla fixture should be PRINTED verbatim
     # above, not fail the whole cross-check module fixture.
     errors = [str(i) for i in issues
@@ -472,7 +470,7 @@ def crosscheck():
 
 # ===========================================================================
 # Geometry contract (no solve): the trace this battery measures is the
-# trace it declares (#931)
+# trace it declares
 # ===========================================================================
 def test_thru_trace_is_one_realized_sheet_plane():
     """Build-time record of what the ownership contract changed here.
@@ -746,7 +744,7 @@ def test_thru_s11_floor(thru_smatrix):
     assert np.all(np.diff(s22) > 0), s22
     assert 0.2 < s11[-1] < 0.35, s11[-1]
     assert 0.2 < s22[-1] < 0.35, s22[-1]
-    # Two-sided liveness (review finding): a dead diagonal reads ~0 and
+    # Two-sided liveness: a dead diagonal reads ~0 and
     # would pass an upper bound.
     assert s11.max() > _THRU_S11_ALIVE_MIN and s22.max() > _THRU_S11_ALIVE_MIN, (
         f"thru diagonal channel reads dead: max|S11|={s11.max():.4f}, "
@@ -778,7 +776,7 @@ def test_thru_s21_band_locks_shipped_decomposer_envelope(thru_smatrix):
     """
     s21 = np.abs(thru_smatrix[1, 0])
     lo, hi = _THRU_S21_BAND
-    # Per-bin lower edge (review finding): max() would let 8/9 dead bins
+    # Per-bin lower edge: max() would let 8/9 dead bins
     # slip through. Measured per-bin min 0.9341 (7 GHz).
     assert s21.min() > lo, (
         f"|S21| collapsed below the physical band: per-bin min "
@@ -921,9 +919,9 @@ def test_thru_passivity_singular_values(thru_smatrix):
 
 # ===========================================================================
 # DC-limit sign anchor (slow_physics) — the committed form of the low-f
-# falsifier that pinned the receive sign (issue #308 amendment round)
+# falsifier that pinned the receive sign
 # ===========================================================================
-# Measured (issue #770 whole-port frame re-measure 2026-08-29,
+# Measured (whole-port frame re-measure,
 # --battery-provenance): wrapped dev arg(S21) - (-2*pi*f*L/c) = -0.0575
 # rad @ 0.5 GHz, -0.1152 rad @ 1.0 GHz with |S21| = 0.9999/0.9997 — the
 # DC thru limit S21 -> +1 now holds in MAGNITUDE too (per-cell

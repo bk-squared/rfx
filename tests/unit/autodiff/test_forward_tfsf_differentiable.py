@@ -61,20 +61,19 @@ def test_forward_tfsf_normal_gradient_matches_fd():
     assert rel < 0.05, f"grad {g:.4f} vs FD {fd:.4f} rel_err {rel*100:.1f}% > 5%"
 
 
-# highmem (issue #545): the default-checkpoint footprint of this test was
+# highmem: the default-checkpoint footprint of this test was
 # ~24 GB (23.78 GB / 23,964 MB on two independent local measurements;
 # ~1.5x the ~16 GB runner-class ceiling), which is why it was the test the
 # weekly lane kept killing at exit 143 -- serialization into its own job
-# (PR #592) removed the accumulated baseline but not this test's own
-# demand, and run 31139278303 confirmed the predicted kill WITH the live
+# removed the accumulated baseline but not this test's own
+# demand, and the run confirmed the predicted kill WITH the live
 # sampler attributing it (VmHWM 14,866 MB at death). RESOLVED by an
-# explicit checkpoint_segments=8 (issue #545 residual, measured
-# 2026-08-07, same harness both configs): peak RSS 24,065 MB -> 3,955 MB
+# explicit checkpoint_segments=8 (measured,
+# same harness both configs): peak RSS 24,065 MB -> 3,955 MB
 # (6.1x), gradient 2.468510 -> 2.468503 (3e-6 relative -- the recompute
 # reordering, not a numerics change), wall 96 s -> 38 s locally. 8 divides
 # n_steps=1400 (175-step segments); non-divisors are rejected fail-loud by
-# the runner. The highmem marker stays (additive-only per PR #592's
-# design; ~4 GB still warrants serial-lane placement).
+# the runner. The highmem marker stays (~4 GB still warrants serial-lane placement).
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_forward_tfsf_oblique_differentiable():

@@ -198,7 +198,7 @@ def _build_iris(d_phys, cells, *, glen=GLEN_M, iris_frac=IRIS_FRAC,
     iris_lo = int(round(glen_c * iris_frac)) - t_c // 2
     sim = Simulation(
         freq_max=float(FREQS[-1]) * 1.1,
-        domain=(glen_c * dx, A_WR90, int(np.ceil(B_WR90 / dx)) * dx), dx=dx,  # solved length; #1887
+        domain=(glen_c * dx, A_WR90, int(np.ceil(B_WR90 / dx)) * dx), dx=dx,  # solved length
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),

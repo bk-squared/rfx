@@ -67,13 +67,6 @@ DOMAIN_SIZE = 0.10       # m, cubic
 # (re-measured 2026-09-21 with the second-order NTFF rule of #1159, which moved
 # every rung by -0.28 to -0.37 dB; with the first-order rule the ladder read
 # -24.8826 -25.1685 -25.2076 -25.1971 -25.1815, steps 0.286 0.039 0.011 0.016)
-# Past 24 the value only wanders inside a ~0.02 dB floor. Repeating the ladder at
-# R_asymptotic = 1e-8 lands within 0.002 dB of it at 24, so depth is the lever
-# here too and the target stays at the repo default (that repeat was made with
-# the first-order rule and was not redone). Converged monostatic -25.49 dBsm,
-# 0.102 dB from the exact Mie series in that historical run; -25.21 dBsm
-# and 0.185 dB before #1159. The current comparison is the per-bin window in
-# tests/locks/test_rcs_sphere_backscatter_window.py.
 #
 # Cost: the grid grows 58^3 -> 90^3 (the absorber is added outside the domain,
 # the interior is unchanged).
@@ -141,7 +134,6 @@ def main():
     grid, ka, dx, phi_obs, result, wall = run_rfx()
     pi_a2 = np.pi * RADIUS ** 2
 
-    # Shipped monostatic extraction (compared across six bins by the lock)
     mono_dbsm = float(result.monostatic_rcs[0])
     rfx_back_over = float(10.0 ** (mono_dbsm / 10.0) / pi_a2)
 

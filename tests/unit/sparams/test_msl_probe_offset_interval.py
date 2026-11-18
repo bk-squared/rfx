@@ -30,7 +30,7 @@ from tests._line_stub_geometry import trim_resonant_trace
 from rfx.grid import Grid
 from rfx.api._sparams import _resolve_msl_auto_offsets
 
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 4 exactly. The Sheen-1990
+# ON-LATTICE board: h_sub / dx = 4 exactly. The Sheen-1990
 # LPF leg ran at dx = 200 um (h_sub/dx = 3.97); the foils below are
 # sheets now, and a sheet belongs ON the laminate face, not near it.
 # Every number this file pins (offset_min 20, spacing 2, offset_max 33,
@@ -46,7 +46,7 @@ H_SUB = 0.000794
 
 def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006,
                              **port_kw):
-    # #1138: geometry[2] x solved -2.447 % (default) / -4.262 % (short feed), y -3.753 % off the domain-clipped drawing; this test checks driver applies the solve end to end.
+    # Geometry[2] x solved -2.447 % (default) / -4.262 % (short feed), y -3.753 % off the domain-clipped drawing; this test checks driver applies the solve end to end.
     sim = Simulation(snap="declared", freq_max=20e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
@@ -74,7 +74,7 @@ def test_auto_offset_moves_to_interval_midpoint_with_reflector():
     docstring), not the contaminated lower edge 20."""
     sim = _sim_with_feed_and_patch()
     (pe,) = sim._msl_ports
-    assert pe.n_probe_offset == 20  # stored lower edge (pre-#469 default)
+    assert pe.n_probe_offset == 20  # stored lower edge
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         (resolved,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports),
@@ -160,7 +160,7 @@ def test_driver_applies_the_solve_end_to_end():
 
 
 # ---------------------------------------------------------------------------
-# Issue #686 — the bail-out is about the PROPAGATION axis, not "any axis".
+# The bail-out is about the PROPAGATION axis, not "any axis".
 #
 # The pre-#686 gate was ``getattr(grid, "dz", None) is not None``: it fired on
 # every NonUniformGrid. Its stated reason ("cell-counted intervals are
@@ -172,7 +172,7 @@ def test_driver_applies_the_solve_end_to_end():
 # these tests used '+x' throughout — including both halves of the
 # anti-permutation test — and an implementation that ignored the port's axis
 # entirely (``(dx_arr, dy_arr, dz)[axis]`` -> ``[0]``, i.e. "always read dx")
-# passed the whole file unchanged while re-instating the exact #686 defect for
+# passed the whole file unchanged while re-instating the exact defect for
 # '+y'/'-y' ports. A direction-blind axis gate cannot be gated by
 # direction-blind fixtures.
 # ---------------------------------------------------------------------------
@@ -309,8 +309,8 @@ def test_graded_width_axis_does_not_block_the_solve(direction):
     assert not _skips(caught)
 
 
-#: What a graded propagation axis resolves to on the ``_profiles`` board
-#: (#810). The graded profile has 101 cells, 25.0 mm (25 of DX, 50 of 1.5 DX,
+#: What a graded propagation axis resolves to on the ``_profiles`` board.
+#: The graded profile has 101 cells, 25.0 mm (25 of DX, 50 of 1.5 DX,
 #: 26 of DX), while ``_pw`` mirrors a '-' port about the 20 mm board length,
 #: so a '+' feed (2.5 mm) sits in the leading DX zone and a '-' feed
 #: (17.5 mm) inside the 1.5 DX zone. '+': the 20-cell offset counted in DX
@@ -391,7 +391,7 @@ def test_traced_profile_is_reported_as_unevaluable(direction):
 
 
 # ---------------------------------------------------------------------------
-# Issue #681: auto probe-SPACING widening (span solve)
+# Auto probe-SPACING widening (span solve)
 # ---------------------------------------------------------------------------
 #
 # A ~0.1 lambda_g probe span leaves the N-probe beta fit noise-fragile
@@ -399,7 +399,7 @@ def test_traced_profile_is_reported_as_unevaluable(direction):
 # error 5.5% at a 0.10 lambda_g span vs 0.81% at 0.30 lambda_g). For
 # AUTO-spacing ports _resolve_msl_auto_offsets widens the spacing toward
 # lambda_g(f_max)/4 per probe step, capped by half the reflector interval
-# (the other half stays with the #469 midpoint rule) and by the absorber
+# (the other half stays with the midpoint rule) and by the absorber
 # clearance. Hand arithmetic for the open-thru geometry below (dx=200um,
 # eps_eff_HJ(w=2.413mm, h=0.794mm, eps_r=2.2) = 1.8697):
 #   lambda_g(20 GHz) = c/(20e9*sqrt(1.8697)) = 10.96 mm
@@ -410,7 +410,7 @@ def test_traced_profile_is_reported_as_unevaluable(direction):
 #   spacing = min(14, 51//4) = 12, span = 48 cells = 9.6 mm = 0.88 lambda_g
 #   (the Sheen REFLECTOR geometry stays byte-identical: budget
 #    21//2 = 10 cells -> spacing max(2, 10//4) = 2 = the registration
-#    default, offset midpoint 26 -- covered by the #469 tests above.)
+#    default, offset midpoint 26 -- covered by the tests above.)
 
 
 def _open_thru_sim():
@@ -500,7 +500,7 @@ def test_graded_propagation_axis_keeps_registration_spacing():
 
 
 # ---------------------------------------------------------------------------
-# Issue #810: on a graded propagation axis the automatic offset and spacing
+# On a graded propagation axis the automatic offset and spacing
 # are LENGTHS counted in the runway's own cells.
 #
 # A 254 um RO4350-like board (eps_r 3.66) whose feed runway is refined to
@@ -641,7 +641,7 @@ def test_auto_ladder_is_counted_in_the_runway_cell(direction, f_max,
     steps = np.diff([source] + ladder)
     assert np.allclose(np.abs(steps[1:]), r.n_probe_spacing * _RW_FINE,
                        rtol=1e-9, atol=0)
-    # the #469/#681 solves still do not run on a graded axis, and it says so
+    # The solves still do not run on a graded axis, and it says so
     (msg,) = skips
     assert f"propagation axis {direction[1]} is GRADED" in msg
     assert "counted in this port's own runway cell" in msg
@@ -752,7 +752,7 @@ def _y_runway_board(direction, **port_kw):
     sim.add_msl_port(position=(lx / 2, feed, 0.0), width=2 * _RW_H,
                      height=_RW_H, direction=direction, impedance=50.0,
                      name="p1", **port_kw)
-    trim_resonant_trace(sim, 1)  # #1512: only the resonant runway endpoints.
+    trim_resonant_trace(sim, 1)  # Only the resonant runway endpoints.
     return sim
 
 
@@ -783,7 +783,7 @@ def test_a_uniform_runway_finer_than_dx_counts_in_its_own_cell(direction):
     assert sim._msl_ports[0].n_probe_offset == 5          # counted in dx
     r, grid, _ = _resolve_on_its_grid(sim)
     assert r.n_probe_offset == 10
-    # The #681 absorber budget counts from the recounted offset and binds
+    # The absorber budget counts from the recounted offset and binds
     # here: 17 cells per step. Counted from the stored 5 it would give 18
     # and put the deepest probe 0.41 mm past the absorber clearance.
     assert r.n_probe_spacing == 17

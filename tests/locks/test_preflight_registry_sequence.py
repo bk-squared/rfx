@@ -68,17 +68,17 @@ LOCK_PROVENANCE = {
     # "generator".
     #
     # The SHA below is the leg-7 tip as it stood when this lock was written,
-    # and it is the weak half of this provenance: the #980 leg stack is
+    # and it is the weak half of this provenance: the leg stack is
     # rebased before it merges, so the sha gets rewritten. It already did
     # once during this leg (b5387c46 -> f59d7c97), and `git diff --quiet`
     # between the two returned 0 -- identical trees, hashes only. The durable
     # reference is therefore the BRANCH in "generator", or after the stack
     # lands, the parent of this leg's first commit. Re-deriving from any of
     # them gives the same 37 rows; the tuple below is now 35, being those 37
-    # less the three deleted checks (#1047 ``_validate_cfg_conformal_fine_dx``,
-    # #1030 ``_validate_cfg_ntff_min_steps``, #1163
+    # less the three deleted checks (``_validate_cfg_conformal_fine_dx``,
+    # ``_validate_cfg_ntff_min_steps``,
     # ``_validate_cfg_tfsf_with_lumped_rlc``, all commented in place) plus the
-    # one appended after them (#1043 stage B).
+    # one appended after them.
     "fixture": "none",
     "generator": (
         "ast walk of _PreflightMixin._validate_simulation_config in "
@@ -104,8 +104,8 @@ _REPO = _HERE.parents[2]
 
 #: The checks ``_validate_simulation_config`` calls, in body order, with the
 #: CONTEXT FIELD each positional argument became. 37 rows at the leg-7 tip;
-#: 35 now -- three deleted (#1047, #1030, #1163) and left commented in place,
-#: one appended (#1043 stage B). See the module docstring for how this was
+#: 35 now -- three deleted and left commented in place,
+#: one appended. See the module docstring for how this was
 #: derived and for why the argument lists are pinned here rather than left to
 #: the report snapshots.
 _CALL_SEQUENCE_AT_LEG7_TIP = (("_validate_cfg_assembly", ("warn",)), ("_validate_cfg_precision_x64", ("warn",)), ("_validate_cfg_pec_faces_with_finite_pec", ("warn",)), ("_validate_cfg_upml_refinement", ()), ("_validate_cfg_upml_nonuniform_lane", ("warn",)), ("_validate_cfg_floquet_nonuniform", ()), ("_validate_cfg_absorber_placement",
@@ -117,7 +117,6 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (("_validate_cfg_assembly", ("warn",)), ("_validate
      ("warn", "cpml_thick_lo", "cpml_thick_hi")), ("_validate_cfg_refplane_placement", ("warn",)), ("_validate_cfg_absorber_budget_vs_grid", ("warn", "dx")), ("_validate_cfg_campaign_statics", ("warn",)), ("_check_waveguide_port_evanescent", ()), ("_check_msl_port_geometry", ("dx", "cpml_thick_lo", "cpml_thick_hi")), ("_check_coaxial_port_junction_aperture", ()), ("_validate_cfg_dielectric_at_absorber_seam", ("warn",)), ("_validate_cfg_conductor_in_thin_absorber",
      ("warn", "dx", "absorber_label")), ("_validate_cfg_port_conductor_continues", ("warn",)), ("_validate_cfg_half_node_split", ("warn",)), ("_validate_cfg_thin_absorber", ("warn", "dx")), ("_validate_cfg_waveguide_port_span", ("warn",)))
 
-# Sequence addition beside the f0 validity check: new check f0_sheet_backed_gap, #2429.
 #: Just the names, in order -- the runtime view of the tuple above.
 _CALL_NAMES_AT_LEG7_TIP = tuple(n for n, _ in _CALL_SEQUENCE_AT_LEG7_TIP)
 

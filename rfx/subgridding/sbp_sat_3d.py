@@ -49,40 +49,37 @@ C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 
 
 class SubgridConfig3D(NamedTuple):
-    """Configuration for 3D SBP-SAT subgridding."""
-    # Coarse grid (full domain)
+    """Configuration for 3D SBP-SAT subgridding.
+
+    ``fi_lo`` to ``fk_hi`` give the fine region in coarse indices.
+    """
     nx_c: int
     ny_c: int
     nz_c: int
     dx_c: float
-    # Fine region (in coarse indices)
     fi_lo: int
     fi_hi: int
     fj_lo: int
     fj_hi: int
     fk_lo: int
     fk_hi: int
-    # Fine grid
     nx_f: int
     ny_f: int
     nz_f: int
     dx_f: float
-    # Shared
-    dt: float       # global timestep (limited by fine grid CFL)
+    dt: float
     ratio: int
-    tau: float      # SAT penalty
+    tau: float
 
 
 class SubgridState3D(NamedTuple):
     """State for 3D subgridded domain."""
-    # Coarse
     ex_c: jnp.ndarray
     ey_c: jnp.ndarray
     ez_c: jnp.ndarray
     hx_c: jnp.ndarray
     hy_c: jnp.ndarray
     hz_c: jnp.ndarray
-    # Fine
     ex_f: jnp.ndarray
     ey_f: jnp.ndarray
     ez_f: jnp.ndarray
@@ -113,7 +110,7 @@ def init_subgrid_3d(
     nx_c, ny_c, nz_c = shape_c
     fi_lo, fi_hi, fj_lo, fj_hi, fk_lo, fk_hi = fine_region
     dx_f = dx_c / ratio
-    dt = courant * dx_f / (C0 * np.sqrt(3))  # 3D CFL
+    dt = courant * dx_f / (C0 * np.sqrt(3))
 
     nx_f = (fi_hi - fi_lo) * ratio
     ny_f = (fj_hi - fj_lo) * ratio
@@ -209,6 +206,8 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
 
     SAT penalty: E += alpha * (E_other - E_self)
     where alpha = tau * min(dx_other/dx_self, 1.0) for stability.
+
+    The penalty follows the energy analysis of Cheng et al., IEEE TAP 2025.
     """
     ex_c, ey_c, ez_c = state_c_fields[:3]
     ex_f, ey_f, ez_f = state_f_fields[:3]
@@ -219,20 +218,7 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
     nj = config.fj_hi - fj
     nk = config.fk_hi - fk
 
-    # SBP-SAT penalty from Cheng et al. 2025 energy analysis.
-    # The additive correction is: E += alpha * (E_other - E_self).
-    #
-    # Energy conservation requires:
-    #   alpha_c + alpha_f = 1        (total penalty = full correction)
-    #   alpha_c * dx_c = alpha_f * dx_f  (SBP norm symmetry)
-    #
-    # Solving: alpha_f = ratio / (ratio + 1)
-    #          alpha_c = 1 / (ratio + 1)
-    #
-    # For ratio=3: alpha_f=0.75, alpha_c=0.25 (sums to 1.0)
-    # config.tau scales both (tau=1.0 = energy-conservative,
-    # tau<1.0 = dissipative but stable, tau>1.0 = unstable)
-    tau = config.tau  # default 1.0 (energy-conservative)
+    tau = config.tau
 
     alpha_f = tau * ratio / (ratio + 1.0)
     alpha_c = tau * 1.0 / (ratio + 1.0)
@@ -245,47 +231,40 @@ def _shared_node_coupling_3d(state_c_fields, state_f_fields, config):
         ef_ds = _downsample_2d(ef_face, nj_ds, nk_ds, ratio)
         ec_us = _upsample_2d(ec_face, ny_up, nz_up, ratio)
 
-        # Additive penalty (not replacement)
         ec_arr = ec_arr.at[c_slice].add(alpha_c * (ef_ds - ec_face))
         ef_arr = ef_arr.at[f_slice].add(alpha_f * (ec_us - ef_face))
         return ec_arr, ef_arr
 
-    # === x-lo face (i = fi_lo): tangential = Ey, Ez ===
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
         c_sl = (fi, slice(fj, fj+nj), slice(fk, fk+nk))
         f_sl = (0, slice(None), slice(None))
         ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
         ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
 
-    # === x-hi face ===
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
         c_sl = (config.fi_hi - 1, slice(fj, fj+nj), slice(fk, fk+nk))
         f_sl = (-1, slice(None), slice(None))
         ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
         ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
 
-    # === y-lo face (j = fj_lo): tangential = Ex, Ez ===
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
         c_sl = (slice(fi, fi+ni), fj, slice(fk, fk+nk))
         f_sl = (slice(None), 0, slice(None))
         ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
         ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
 
-    # === y-hi face ===
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
         c_sl = (slice(fi, fi+ni), config.fj_hi - 1, slice(fk, fk+nk))
         f_sl = (slice(None), -1, slice(None))
         ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
         ez_c, ez_f = _sat_couple(ez_c, ez_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
 
-    # === z-lo face (k = fk_lo): tangential = Ex, Ey ===
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
         c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), fk)
         f_sl = (slice(None), slice(None), 0)
         ex_c, ex_f = _sat_couple(ex_c, ex_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
         ey_c, ey_f = _sat_couple(ey_c, ey_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
 
-    # === z-hi face ===
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
         c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), config.fk_hi - 1)
         f_sl = (slice(None), slice(None), -1)
@@ -329,42 +308,36 @@ def _shared_node_coupling_h_3d(state_c_fields, state_f_fields, config):
         hf_arr = hf_arr.at[f_slice].add(alpha_f * (hc_us - hf_face))
         return hc_arr, hf_arr
 
-    # x-lo face: tangential H = Hy, Hz
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
         c_sl = (fi, slice(fj, fj+nj), slice(fk, fk+nk))
         f_sl = (0, slice(None), slice(None))
         hy_c, hy_f = _sat_couple_h(hy_c, hy_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
         hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
 
-    # x-hi face
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
         c_sl = (config.fi_hi - 1, slice(fj, fj+nj), slice(fk, fk+nk))
         f_sl = (-1, slice(None), slice(None))
         hy_c, hy_f = _sat_couple_h(hy_c, hy_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
         hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, nj, nk, config.ny_f, config.nz_f)
 
-    # y-lo face: tangential H = Hx, Hz
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
         c_sl = (slice(fi, fi+ni), fj, slice(fk, fk+nk))
         f_sl = (slice(None), 0, slice(None))
         hx_c, hx_f = _sat_couple_h(hx_c, hx_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
         hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
 
-    # y-hi face
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
         c_sl = (slice(fi, fi+ni), config.fj_hi - 1, slice(fk, fk+nk))
         f_sl = (slice(None), -1, slice(None))
         hx_c, hx_f = _sat_couple_h(hx_c, hx_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
         hz_c, hz_f = _sat_couple_h(hz_c, hz_f, c_sl, f_sl, ni, nk, config.nx_f, config.nz_f)
 
-    # z-lo face: tangential H = Hx, Hy
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
         c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), fk)
         f_sl = (slice(None), slice(None), 0)
         hx_c, hx_f = _sat_couple_h(hx_c, hx_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
         hy_c, hy_f = _sat_couple_h(hy_c, hy_f, c_sl, f_sl, ni, nj, config.nx_f, config.ny_f)
 
-    # z-hi face
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
         c_sl = (slice(fi, fi+ni), slice(fj, fj+nj), config.fk_hi - 1)
         f_sl = (slice(None), slice(None), -1)
@@ -402,7 +375,6 @@ def step_subgrid_3d(
             require_radius_update(mats, lane="subgridded reference step", unsupported=True)
     dt = config.dt
 
-    # === Step 1: H update (Faraday) on both grids ===
     hx_c, hy_c, hz_c = _update_h_only(
         state.ex_c, state.ey_c, state.ez_c,
         state.hx_c, state.hy_c, state.hz_c,
@@ -413,16 +385,9 @@ def step_subgrid_3d(
         state.hx_f, state.hy_f, state.hz_f,
         dt, config.dx_f, mats=mats_f, high_wall=high_wall_f)
 
-    # === Step 2: SAT_H coupling (tangential H on all 6 faces) ===
     (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f) = _shared_node_coupling_h_3d(
         (hx_c, hy_c, hz_c), (hx_f, hy_f, hz_f), config)
 
-    # Note: fine→coarse overlay injection was tested but causes instability
-    # (coarse curl inconsistency at injection boundary). SAT-only coupling
-    # with correct energy accounting (excluding fine region from coarse)
-    # provides stable energy-conservative behavior.
-
-    # === Step 3: E update (Ampere) on both grids using coupled H ===
     ex_c, ey_c, ez_c = _update_e_only(
         state.ex_c, state.ey_c, state.ez_c,
         hx_c, hy_c, hz_c,
@@ -435,11 +400,8 @@ def step_subgrid_3d(
         dt, config.dx_f, mats=mats_f, pec_mask=pec_mask_f,
         boundary_pec=False, high_wall=high_wall_f)
 
-    # === Step 4: SAT_E coupling (tangential E on all 6 faces) ===
     (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f) = _shared_node_coupling_3d(
         (ex_c, ey_c, ez_c), (ex_f, ey_f, ez_f), config)
-
-    # No E overlay injection — same reason as H above.
 
     return SubgridState3D(
         ex_c=ex_c, ey_c=ey_c, ez_c=ez_c,
@@ -464,7 +426,6 @@ def compute_energy_3d(state: SubgridState3D, config: SubgridConfig3D) -> float:
     nj = config.fj_hi - fj
     nk = config.fk_hi - fk
 
-    # Mask: exclude fine region from coarse energy
     mask = jnp.ones(state.ex_c.shape, dtype=jnp.bool_)
     mask = mask.at[fi:fi+ni, fj:fj+nj, fk:fk+nk].set(False)
 

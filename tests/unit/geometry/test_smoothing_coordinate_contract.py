@@ -40,7 +40,7 @@ from tests._gate_policy import gate_from_envelope
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Auditor's boundary-voxel fixture (#833, 2026-09-16): Grid + one Box whose
+# Auditor's boundary-voxel fixture: Grid + one Box whose
 # faces sit off-node so every interface voxel carries a partial fill.
 UNIFORM_FIXTURE = dict(freq_max=1.0e9, domain=(7.0e-3, 5.0e-3, 3.0e-3),
                        dx=2.54e-4, cpml_layers=2)
@@ -64,7 +64,7 @@ PEC_CYLINDER = dict(center=(5.8e-3, 4.0e-3, 2.1e-3), radius=0.45e-3, height=1.1e
 PEC_BOX = dict(lo=(1.0e-3, 0.8e-3, 0.5e-3), hi=(2.0e-3, 1.6e-3, 1.1e-3))
 # Measured envelope of the TRACED (jax.numpy) path against the concrete host
 # path, x64=0, Sphere fixture above: max rel 4.79e-06 (80 f32 ulps) — this is
-# the pre-#833 float32 arithmetic the traced fallback deliberately keeps. Gate
+# the earlier float32 arithmetic the traced fallback deliberately keeps. Gate
 # = envelope x ENVELOPE_GATE_MULTIPLIER rounded up to 1e-7 (tests/_gate_policy).
 TRACED_PATH_ENVELOPE_REL = 4.79e-06
 TRACED_PATH_GATE_REL = gate_from_envelope(TRACED_PATH_ENVELOPE_REL, quantum=1e7)

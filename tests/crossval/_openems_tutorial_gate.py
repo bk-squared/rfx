@@ -121,7 +121,7 @@ import numpy as np
 
 # ---------------------------------------------------------------------------
 # Constants -- the tutorial's own, copied from validation/crossval/
-# 20_msl_phase_referee.py's Stage A block (script removed in #1232).
+# 20_msl_phase_referee.py's Stage A block.
 # ---------------------------------------------------------------------------
 _C0 = 2.998e8  # m/s -- matches the coax/notch precedent's own constant
 
@@ -159,9 +159,7 @@ REPRODUCE_GATE_RECORD = {
         "fetched_via": "gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py",
     },
     # The reproduction ran in the MSL thru-line phase case's script, whose port
-    # this module copies byte for byte. That case was removed on 2026-09-23;
-    # its run log moved beside the MSL notch filter's reference, and its
-    # result JSON is readable at rfx commit b25df603.
+    # this module copies byte for byte.
     "port_in_this_repository": (
         "tests/crossval/_openems_tutorial_gate.py (the run itself used "
         "validation/crossval/20_msl_phase_referee.py, removed 2026-09-23)"
@@ -183,7 +181,7 @@ REPRODUCE_GATE_RECORD = {
 }
 
 # STAGE_A_GATE -- copied, with its justification, from the port's own
-# REPRODUCE_GATE_RECORD["gate"] (validation/crossval/20_msl_phase_referee.py, removed in #1232):
+# REPRODUCE_GATE_RECORD["gate"]:
 #
 #   One-sided-low-biased band: measurements showed
 #   openEMS reading ~7% LOW vs the fringing-free analytic on a DIFFERENT (not
@@ -251,8 +249,7 @@ def _import_openems():
 # ---------------------------------------------------------------------------
 _BAD_STDOUT_PATTERNS = ("Unused primitive", "not on the mesh", "unused excitation")
 
-# Truncation patterns (D3/TRUNCATION PATTERNS fix, run-1 forensics, review
-# 2026-08-04): openEMS's own excitation-pulse-clipping warnings. Checked ONLY
+# Truncation patterns: openEMS's own excitation-pulse-clipping warnings. Checked ONLY
 # via ``check_truncation=True`` (real-run scans), NEVER for smoke scans --
 # the smoke runs in THIS script are deliberately tiny (NrTS=200,
 # EndCriteria=0.0/"-infdB", see ``_build_stage_a_notch_tutorial``/
@@ -269,8 +266,7 @@ _TRUNCATION_STDOUT_PATTERNS = (
     "max. number of timesteps is smaller than three times the excitation",
 )
 
-# Benign, narrowly-scoped exception (GUARD CHANNEL-GAP FIX, run-1 forensics,
-# 2026-08-04): CSXCAD's "Unused primitive (type: Box) detected in property:
+# Benign, narrowly-scoped exception: CSXCAD's "Unused primitive (type: Box) detected in property:
 # ..." warning fires for port0_metal/port1_metal on EVERY real Stage B run,
 # for a structural reason, not a defect -- Stage B's M3 topology fix (module
 # docstring "Port topology") gives the thru line's own trace box (property
@@ -672,8 +668,7 @@ _PROGRESS_LINE_RE = re.compile(
 
 
 # The solver's setup banner. These patterns are matched against the REAL
-# container log (run 369367263401, persisted as
-# stage_b_coarse_real_openems_stdout.log), not written from openEMS's source:
+# container log (stage_b_coarse_real_openems_stdout.log), not written from openEMS's source:
 #
 #   Timestep (s)\t\t: 0.00
 #   FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz
@@ -1185,8 +1180,7 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
 
         # Inside the guarded block on purpose: a container that reports no
         # openEMS version refuses the record, but the arrays measured above
-        # still reach the evidence file instead of a bare traceback (review,
-        # 2026-09-22).
+        # still reach the evidence file instead of a bare traceback.
         openems_info = _openems_version(real_log)
 
         record.update(features_fn(freqs_ghz, s11, s21))
@@ -1250,7 +1244,7 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
 
     # WHICH step count. ``timesteps_executed`` is the largest number on a
     # PROGRESS line, and openEMS prints one only every few seconds -- on the real
-    # container log (run 369367263401) the last one says 2146 while the run was
+    # container log the last one says 2146 while the run was
     # capped at 3000. For a run stopped at its cap the record really is the cap
     # long, so the declared maximum is used and the field says so. A run that
     # ended on its own end criterion stopped where the last progress line is, so

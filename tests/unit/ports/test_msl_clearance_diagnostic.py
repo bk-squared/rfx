@@ -222,8 +222,8 @@ def test_preflight_and_result_use_the_resolved_auto_ladder(monkeypatch, directio
 
     # ONE patch, TWO readers, and the assertions below check them
     # separately: sim.preflight() reaches the helper from
-    # _check_msl_port_geometry, which lives in rfx/preflight/msl.py since
-    # #980 Phase 3 leg 1 and therefore looks the name up in THAT module's
+    # _check_msl_port_geometry, which lives in rfx/preflight/msl.py
+    # and therefore looks the name up in THAT module's
     # globals; sim.compute_msl_s_matrix() reaches it from
     # rfx/sparams/msl.py, whose function-local import was pointed at the
     # same module for exactly this reason. Patching the rfx.api._preflight
@@ -297,14 +297,14 @@ def test_mixed_result_contains_only_msl_records_in_registration_order(monkeypatc
 
 
 # --------------------------------------------------------------------------
-# #726: the two honesty messages about this condition must say ONE thing.
+# The two honesty messages about this condition must say ONE thing.
 #
-# They used to contradict each other on the same run. The extractor's Z0
+# The extractor's Z0
 # guard said "The V·I-split S11/S21 are unaffected"; preflight said the same
 # condition would make a physical |S11|→1 "read as -5 to -10 dB instead of
 # 0 dB". Which was true decided whether a whole class of results was
-# readable, and the answer came from a measurement (VESSL 369367260508,
-# cv06b fixed-source, only the p1 observation offset varied): the fitted
+# readable, and the answer came from a measurement
+# (cv06b fixed-source, only the p1 observation offset varied): the fitted
 # β railed on 51/51 bins against 0/51 for the control, and raw S11 at the
 # notch bin moved by 0.009 dB.
 #
@@ -454,9 +454,9 @@ def test_the_msl_routing_lane_reports_the_condition_it_used_to_hide(front, expec
 
 
 # --------------------------------------------------------------------------
-# #726 review P1b: the Z0 guard has more than one cause, and the clearance
+# The Z0 guard has more than one cause, and the clearance
 # story is the WRONG advice on a port whose clearance is satisfied -- its
-# common trigger is coarse-mesh staircase bias (#752), where "lengthen the
+# common trigger is coarse-mesh staircase bias, where "lengthen the
 # feed" does nothing. The appended text follows the port's own record.
 # --------------------------------------------------------------------------
 

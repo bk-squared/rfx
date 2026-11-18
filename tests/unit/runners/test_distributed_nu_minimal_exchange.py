@@ -36,7 +36,7 @@ from rfx.materials.lorentz import lorentz_pole
 from rfx.nonuniform import position_to_index
 from rfx.stepping import slab_graded_legacy_loop as runner
 # These are frozen test-local copies, independent of production exchange and
-# sampling helpers. Share #1222's oracle rather than freezing a second version.
+# sampling helpers. Share the oracle rather than freezing a second version.
 from tests.unit.runners.test_distributed_minimal_exchange import (
     _FIELDS, _full_e, _full_h, _full_sample, _poison,
 )
@@ -375,7 +375,7 @@ def _child(mode, *args, devices=2):
     print(run.stdout)
 
 
-# The local-design case differs only in staging, which #1247's fast tests pin.
+# The local-design case differs only in staging, which fast tests pin.
 @pytest.mark.parametrize("sharded", [pytest.param(False, marks=pytest.mark.slow), True])
 def test_trace_and_design_gradients_match_full_exchange(monkeypatch, sharded):
     _parity(monkeypatch, sharded)

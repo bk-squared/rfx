@@ -61,7 +61,7 @@ def _s11_objective(deps):
     return jnp.real(s) - jnp.imag(s)
 
 
-# Mac recheck, 2026-11-10: 1500 steps, h=0.0025, float32 fields/AD,
+# Mac recheck: 1500 steps, h=0.0025, float32 fields/AD,
 # scoped float64 DFT/extraction FD, using the objective above.
 # Main d5ab4dc13: AD=+0.438289314508, FD=+0.438295000801,
 # relative AD/FD gap=1.29736641346e-5.
@@ -69,7 +69,7 @@ def _s11_objective(deps):
 # FD=+0.419255136573, relative gap=3.16302941701e-5.
 # FD changed by -0.019039864228; the unchanged 5e-4 gate passes.
 # The longer-record/h-window envelope below is historical, not remeasured.
-# Historical CPU calibration, 2026-10-01, JAX 0.10.2. Float32 fields and AD;
+# Historical CPU calibration, JAX 0.10.2. Float32 fields and AD;
 # scoped float64 DFT/extraction FD (not float64 FDTD).
 # Full converged h-window at every record length:
 # h          FD: 1500 steps     2250 steps       3000 steps
@@ -93,7 +93,7 @@ def _s11_objective(deps):
 _FD_H = 0.0025
 _FD_REL_ENVELOPE = 0.00018212009579344417
 _RECORD_REL_ENVELOPE = 0.00026901868972665496
-# A6000 run 369367266495: AD=0.4383687377, FD=0.4383535180, gap=0.003472%; CPU envelope still sets the 0.05% bar.
+# A6000: AD=0.4383687377, FD=0.4383535180, gap=0.003472%; CPU envelope still sets the 0.05% bar.
 _REL_ERR_THRESHOLD = gate_from_envelope(
     max(_FD_REL_ENVELOPE, _RECORD_REL_ENVELOPE), quantum=10000,
 )

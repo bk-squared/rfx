@@ -7,7 +7,7 @@ import pytest
 from rfx import Simulation
 
 
-MESSAGE = "Waveguide ports are not supported together with lumped ports or TFSF"
+MESSAGE = "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
 PATHS = ("uniform-run", "uniform-forward", "graded-run", "graded-forward")
 
 

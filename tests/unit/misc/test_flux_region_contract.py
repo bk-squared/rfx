@@ -41,8 +41,7 @@ def test_oversized_uniform_region_excludes_cpml_and_bounding_node(axis):
 @pytest.mark.parametrize("center", [(-.001, .010), (.021, .010)])
 def test_partial_uniform_clamp_is_warned_even_below_half_a_cell(center):
     sim = _sim()
-    # Tiny endpoint overflows used to be labelled indistinguishable from
-    # snapping on the NU lane. The physical request identifies the clamp.
+    # The physical request identifies the clamp.
     c = (.0009 if center[0] < 0 else .0191, center[1])
     sim.add_flux_monitor(axis="x", coordinate=.010, size=(.002, .004), center=c)
     with pytest.warns(UserWarning, match="CLAMPED"):
