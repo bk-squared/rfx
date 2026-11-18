@@ -98,6 +98,10 @@ def _build_patch_sim_nu() -> Simulation:
 
     dz_profile = full(nz, DX) drives the NU constructor + NU runner with uniform
     cell sizes, so any failure is the NU MSL path, not a grading effect.
+
+    One cavity Ez point probe, at the uniform builder's position, feeds the
+    record-end witness of the internal compute_msl_s_matrix run; without a
+    probe that witness has no data.
     """
     nz = int(round(DOM_Z / DX))
     # feed/patch y solved -4.783%/-1.393% off; this locks NU S-parameter extraction.
@@ -134,11 +138,6 @@ def _build_patch_sim_nu() -> Simulation:
         width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
-    # settling witness (parity with the uniform gate's builder): the
-    # ring-down witness evaluates a POINT-PROBE time series, so the
-    # internal compute_msl_s_matrix run needs at least one probe or the
-    # witness has no data and can never fire. Same cavity Ez probe, same
-    # position, as tests/locks/test_patch_edgefed_s11_passivity.py.
     x_patch0 = PORT_MARGIN + L_MSL
     sim.add_probe(
         position=(x_patch0 + 0.7 * L, Y_C - 0.2 * W, Z_SUB_LO + H_SUB * 0.5),
@@ -231,11 +230,8 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     exactly like the validated uniform lane. Gates the full fenced NU MSL build."""
     sim = _build_patch_sim_nu()
 
-    # guard: the settling assertion below is only meaningful if a point
-    # probe exists to feed the #332 witness. Without it, #332 has no series,
-    # never fires, and `assert not _trunc` becomes silently always-green.
     assert getattr(sim, "_probes", None), (
-        "settling-witness probe missing — #332 ring-down witness cannot "
+        "settling-witness probe missing — record-end witness cannot "
         "evaluate; the settling assertion would be vacuous (issue #402)"
     )
 
@@ -254,18 +250,9 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
         warnings.simplefilter("always")
         res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs),
                                        num_periods=280.0)
-    _trunc = [
-        str(w.message) for w in _settling
-        if "ring-down truncated" in str(w.message)
-    ]
-    print("\n[NU-MSL-GATE] framework #332 ring-down energy witness: "
-          f"{_trunc if _trunc else 'no truncation advisory — domain drained below -40 dB of peak'}")
-    assert not _trunc, (
-        "ring-down NOT settled at the gated num_periods — the DFT-extracted "
-        f"|S11| may carry truncation error (issue #402; #332 witness fired): "
-        f"{_trunc}. Raise num_periods; do NOT trust the |S11| envelope from "
-        "a truncated record."
-    )
+    assert res.settling_witness
+    assert all(row['status'] == 'pass' for row in res.settling_witness), res.settling_witness
+
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
     # Pins are probe-0-plane quantities (see the uniform twin): undo the shift.

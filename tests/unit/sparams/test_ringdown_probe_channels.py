@@ -167,7 +167,7 @@ def admission_model():
     ("empty", "none is declared", RfxRefusal),
     ("no_drive", "nothing drives the model", RfxRefusal),
     ("no_waveform", "nothing drives the model", RfxRefusal),
-    ("tfsf", "TFSF plane wave", RfxUnsupported),
+    ("tfsf", "measured for the closed-box plane wave", RfxUnsupported),
     ("distributed", "distributed lane", RfxUnsupported),
     ("subgrid", "subgridded lane", RfxUnsupported),
     ("periodic", "periodic axes", RfxUnsupported),
@@ -189,7 +189,7 @@ def test_t3_admission_rows(row, words, error):
     elif row == "no_waveform":
         sim._ports[0].waveform = None
     elif row == "tfsf":
-        sim._tfsf = SimpleNamespace(waveform="gaussian")
+        sim._tfsf = SimpleNamespace(waveform="gaussian", closed_box=False)
     elif row == "distributed":
         kw["devices"] = [0, 1]
     elif row == "subgrid":
@@ -304,7 +304,7 @@ def test_probe_bins_above_freq_max_use_one_reference(monkeypatch):
     """Physical anchor: decimation must retain modes at every requested spectral bin."""
     import importlib
 
-    _pencil = importlib.import_module("rfx.ringdown._pencil")  # the module; rd._pencil is a function
+    _pencil = importlib.import_module("rfx.ringdown._pencil")
 
     seen = []
     original = _pencil.decimation_plan
@@ -313,7 +313,6 @@ def test_probe_bins_above_freq_max_use_one_reference(monkeypatch):
         seen.append(float(freq_max))
         return original(n, dt, freq_max)
 
-    # Patch the name where the identification plan looks it up.
     monkeypatch.setattr(_pencil, "decimation_plan", capture)
     request = spec(probe_freqs=(8e9, 18e9, 20.000000123e9))
     result = box().forward(n_steps=600, ringdown=request, skip_preflight=True).ringdown

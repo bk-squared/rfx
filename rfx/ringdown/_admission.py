@@ -1,5 +1,7 @@
 """Admission for ring-down completion requests."""
 
+import numpy as np
+
 from rfx.errors import RfxRefusal, RfxUnsupported
 from rfx.ringdown import RingdownSpec
 
@@ -14,6 +16,10 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
     if not isinstance(spec, RingdownSpec):
         raise TypeError(
             f"ringdown= takes a rfx.ringdown.RingdownSpec, got {type(spec).__name__}")
+    if spec.probe_normalization is not None and spec.probe_freqs is None:
+        raise RfxRefusal(
+            f"{caller}(ringdown=...): probe_normalization applies to completed probe "
+            "channels (probe_freqs=); this request completes port S-parameters.")
     if devices is not None and len(devices) > 1:
         raise RfxUnsupported(
             f"{caller}(ringdown=...) is not supported on the distributed lane "
@@ -41,14 +47,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
             f"{caller}(ringdown=...) is not supported with periodic axes: rfx refuses "
             "wire-port S-parameters there.")
     if getattr(sim, "_tfsf", None) is not None:
-        wf = getattr(sim._tfsf, "waveform", "")
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) is not supported with a TFSF plane wave"
-            + (" driven by a continuous wave, which never turns off"
-               if wf == "continuous_wave" else
-               ": the total-field boundary keeps injecting while the auxiliary "
-               "line still carries the pulse, so the injection waveform alone "
-               "does not say when the source is off") + ".")
+        _refuse_plane_wave(sim, spec, caller)
     if any(float(getattr(m, "chi3", 0.0) or 0.0) != 0.0
            for m in getattr(sim, "_materials", {}).values()):
         raise RfxUnsupported(
@@ -64,7 +63,12 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
                 "offered in this version; run them as two calls")
         if not spec.identification_probes:
             raise RfxRefusal("probe_freqs completes the identification probes; none is declared")
-        if not any(pe.is_soft_source and pe.waveform is not None for pe in sim._ports):
+        if spec.probe_normalization is not None and getattr(sim, "_tfsf", None) is None:
+            raise RfxRefusal(
+                f"{caller}(ringdown=...): the incident normalization divides by the plane wave's "
+                "incident spectrum; this model has no plane wave.")
+        if (getattr(sim, "_tfsf", None) is None
+                and not any(pe.is_soft_source and pe.waveform is not None for pe in sim._ports)):
             raise RfxRefusal("nothing drives the model")
         return
     for attr, what in (("_msl_ports", "microstrip (add_msl_port)"),
@@ -98,6 +102,103 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
             f"{caller}(ringdown=...) needs a driven wire port: with every port passive "
             "run() reports a per-cell diagnostic, not a scattering parameter.")
 
+
+
+def _refuse_plane_wave(sim, spec, caller: str) -> None:
+    """The TF/SF plane-wave rows: the drives whose source-off level is measured.
+
+    Admitted: a closed box in probe mode, driven by the differentiated
+    Gaussian, at a realized normal direction (+-1, 0, 0), with no soft source
+    beside it. Every other plane wave is refused by name.
+    """
+    from rfx.sources.sources import CustomWaveform
+    from rfx.sources.tfsf_discrete_plane_wave import rational_direction
+
+    entry = sim._tfsf
+    head = f"{caller}(ringdown=...)"
+    if not entry.closed_box:
+        raise RfxUnsupported(
+            f"{head}: the source-off level is measured for the closed-box plane wave "
+            "(closed_box=True) only.")
+    if spec.probe_freqs is None:
+        raise RfxUnsupported(
+            f"{head} completes wire-port S-parameters; a TF/SF plane wave drives this "
+            "model, and no wire port can be declared with it. Complete field probes "
+            "instead (RingdownSpec(probe_freqs=...)).")
+    waveform = entry.waveform
+    if isinstance(waveform, str) and waveform == "continuous_wave":
+        raise RfxUnsupported(
+            f"{head} is not supported with a TFSF plane wave driven by a continuous "
+            "wave, which never turns off.")
+    if isinstance(waveform, CustomWaveform) or waveform != "differentiated_gaussian":
+        name = "a CustomWaveform" if isinstance(waveform, CustomWaveform) else repr(waveform)
+        raise RfxUnsupported(
+            f"{head}: the source-off level of a closed-box plane wave is measured for "
+            f"the differentiated Gaussian only; this plane wave is driven by {name}.")
+    m = tuple(int(v) for v in rational_direction(
+        float(entry.theta_deg), float(entry.phi_deg), entry.direction,
+        float(entry.direction_tol_deg), int(entry.max_component))[0])
+    if m not in ((1, 0, 0), (-1, 0, 0)):
+        axes = [axis for axis, v in zip("xyz", m) if v]
+        if len(axes) == 1:
+            raise RfxUnsupported(
+                f"{head}: source-off not measured for closed-box incidence along "
+                f"{axes[0]}: its incident line is launched like an oblique one.")
+        raise RfxUnsupported(
+            f"{head}: source-off not measured for oblique closed-box incidence "
+            f"(realized direction {m}).")
+    if any(pe.is_soft_source for pe in sim._ports):
+        raise RfxUnsupported(
+            f"{head}: the source-off check of a TF/SF plane wave together with a soft "
+            "source is not measured; complete a model driven by the plane wave alone.")
+
+
+def refuse_incident_channels(caller: str, keys, bounds) -> None:
+    """Raise for an identification channel the incident spectrum cannot divide.
+
+    ``keys`` are the realized ``(component, (i, j, k))`` channels; ``bounds``
+    maps each axis to the inclusive node bounds of the total-field box (on x,
+    the incident line's slab). Only ey and ez are divided, by the incident E
+    at their x plane; a channel outside the box holds no incident field.
+    """
+    head = f"{caller}(ringdown=...)"
+    for component, index in keys:
+        if component not in ("ey", "ez"):
+            raise RfxUnsupported(
+                f"{head}: the incident normalization divides transverse E channels (ey, ez) "
+                f"by the incident E; {component} at cell {tuple(index)} is not one.")
+    for component, index in keys:
+        if not all(bounds[a][0] <= int(i) <= bounds[a][1] for a, i in zip("xyz", index)):
+            raise RfxUnsupported(
+                f"{head}: {component} at cell {tuple(index)} lies outside the total-field box "
+                f"(nodes {dict(bounds)}), where the incident field is not present.")
+
+
+def refuse_incident_bins(caller: str, keys, records, bins, dt):
+    """Return the incident divisor (nf, P) complex128, or raise for a record or bin it cannot form.
+
+    ``records`` hold the incident E per step at each channel's plane. A
+    traced record is refused before any host conversion. A bin where
+    |I_c(f)| is below ``RHO_LIMIT`` of its bound dt sum |i_c(n)| is refused.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.ringdown._incident_norm import RHO_LIMIT, incident_divisors
+
+    head = f"{caller}(ringdown=...)"
+    if is_tracer(dt) or any(is_tracer(r) for r in records):
+        raise RfxUnsupported(
+            f"{head}: the incident normalization forms its divisor on the host from the plane "
+            "wave's line, which is traced here.")
+    divisor, bound = incident_divisors(records, bins, float(dt))
+    rho = np.abs(divisor) / np.where(bound > 0, bound, 1.0)[None, :]
+    if np.any(rho < RHO_LIMIT):
+        k, c = (int(v) for v in np.argwhere(rho < RHO_LIMIT)[0])
+        component, index = keys[c]
+        raise RfxUnsupported(
+            f"{head}: the incident spectrum at {float(np.asarray(bins)[k]):.6g} Hz is "
+            f"{float(rho[k, c]):.1e} of its bound at {component} cell {tuple(index)}; the "
+            "normalized value there is not formed.")
+    return divisor
 
 
 def refuse_run_lane(lane: str, n_wire_ports: int) -> None:

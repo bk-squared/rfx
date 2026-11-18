@@ -37,6 +37,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
                         checkpoint=False, snapshot=None, until_decay=None,
                         report_every=None, _forward_port_s11=False):
     """Use the run entry's admission, execution and S-matrix path."""
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed non-uniform" if plan.lane.endswith("_nu") else "distributed uniform")
     entry = "forward" if _forward_port_s11 else "run"
     lane = f"distributed multi-device {entry}()"
     # ---- Distributed multi-device lane ----
@@ -258,6 +260,8 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
                         checkpoint, emit_time_series, n_warmup,
                         design_box_holds_ports, subpixel_smoothing=False, **overrides):
     """Admit the fixed-model forward request, execute once, and pack observables."""
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed non-uniform" if plan.lane.endswith("_nu") else "distributed uniform")
     import jax
     from rfx.api._forward_result import pack_nu_forward_result
     from rfx.model.realization_reference import forget_kernel
@@ -314,12 +318,12 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         dft_time_records=result.dft_time_records,
         current_moment_data=result.current_moment_data,
         current_moment_monitor=result.current_moment_monitor)
-    packed = sim._attach_run_settling_witness(
-        packed, n_steps=plan.n_steps, num_periods=num_periods, context="forward")
     ports = [pe for pe in sim._ports if pe.is_port]
     if port_s11_freqs is not None and ports:
         from rfx.runners._uniform_forward_result import pack_port_result
         packed = pack_port_result(packed)
+    packed = sim._attach_run_settling_witness(
+        packed, n_steps=plan.n_steps, num_periods=num_periods, context="forward")
     warn_if_singular_value_exceeds_one(packed.s_params, packed.freqs, extractor="forward(distributed)")
     return packed
 
