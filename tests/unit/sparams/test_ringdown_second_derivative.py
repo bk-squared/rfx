@@ -13,6 +13,9 @@ The probe-channel completion (the same box driven by a current source, two
 field probes) is checked the same way. Records of 600 steps, every tenth bin
 of 8-18 GHz. The in-record and joint second-order rows on the closed-form
 record of ``tests/contracts/test_ringdown_second_derivative.py`` are here too.
+The forward-level and probe-channel rows run in the weekly lane (slow); the
+synthetic rows and tests/contracts/test_ringdown_second_derivative.py run
+before merge.
 """
 
 from __future__ import annotations
@@ -179,6 +182,7 @@ def _constructs(fn, *args):
     return sorted(n for n in names if any(k in n for k in keep))
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("form", FIRST_ORDER)
 def test_first_derivative_of_the_completed_s_is_the_plain_step_s(form, plain):
     custom, ours = _custom(("first", form))
@@ -187,6 +191,7 @@ def test_first_derivative_of_the_completed_s_is_the_plain_step_s(form, plain):
     assert not ours, [str(w.message) for w in ours]
 
 
+@pytest.mark.slow
 def test_the_gradient_witness_reads_the_plain_step_s_gradients(plain):
     custom, ours = _custom("gradient_witness")
     assert all(np.all(np.isfinite(x)) for x in custom)
@@ -194,6 +199,7 @@ def test_the_gradient_witness_reads_the_plain_step_s_gradients(plain):
     assert not ours, [str(w.message) for w in ours]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("form", SECOND_ORDER)
 def test_in_record_second_derivative_is_the_plain_step_s(form, plain):
     reference = plain["in-record", form]
@@ -202,6 +208,7 @@ def test_in_record_second_derivative_is_the_plain_step_s(form, plain):
     assert same_bits(reference, custom)
 
 
+@pytest.mark.slow
 def test_in_record_second_derivative_without_checkpoint_is_the_plain_step_s(plain):
     reference = plain["in-record grad(grad) without checkpoint"]
     custom, _ours = _custom("in-record grad(grad) without checkpoint")
@@ -209,6 +216,7 @@ def test_in_record_second_derivative_without_checkpoint_is_the_plain_step_s(plai
     assert same_bits(reference, custom)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("form", ["hessian", "grad(grad)"])
 def test_completed_second_derivative_is_nan(form):
     _assert_completion_ok(run(_p0()), completed_vector)
@@ -220,6 +228,7 @@ def test_completed_second_derivative_is_nan(form):
     assert all(np.isnan(x).all() for x in out), out
 
 
+@pytest.mark.slow
 def test_the_warning_filter_turns_a_completed_hessian_into_an_exception():
     with warnings.catch_warnings():
         warnings.filterwarnings("error", category=RingdownSecondDerivativeWarning)
@@ -227,6 +236,7 @@ def test_the_warning_filter_turns_a_completed_hessian_into_an_exception():
             jax.hessian(completed_vector)(_p0())
 
 
+@pytest.mark.slow
 def test_joint_hessian_needs_the_second_derivative_only_where_it_is_nan(plain):
     """For q G(p): H[p,p] and H[p,q] NaN; H[q,p] = G'(p) and H[q,q] = 0 as the plain step's."""
     _assert_completion_ok(run(_p0()), completed_vector)
@@ -240,6 +250,7 @@ def test_joint_hessian_needs_the_second_derivative_only_where_it_is_nan(plain):
     assert same_bits([reference[3]], [qq]) and float(qq) == 0.0
 
 
+@pytest.mark.slow
 def test_probe_first_derivative_is_the_plain_step_s(plain):
     custom, ours = _custom("probe jit(grad)")
     assert all(np.all(np.isfinite(x)) for x in custom)
@@ -247,6 +258,7 @@ def test_probe_first_derivative_is_the_plain_step_s(plain):
     assert not ours, [str(w.message) for w in ours]
 
 
+@pytest.mark.slow
 def test_probe_completed_hessian_is_nan():
     _assert_completion_ok(probe_run(_p0()), probe_vector)
     with pytest.warns(RingdownSecondDerivativeWarning):
@@ -254,6 +266,7 @@ def test_probe_completed_hessian_is_nan():
     assert all(np.isnan(x).all() for x in out), out
 
 
+@pytest.mark.slow
 def test_probe_in_record_second_derivative_is_the_plain_step_s(plain):
     reference = plain["probe in-record grad(grad)"]
     custom, _ours = _custom("probe in-record grad(grad)")
