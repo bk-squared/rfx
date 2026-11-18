@@ -828,10 +828,10 @@ def _require_source_off_rows(entries, rows, caller, probe_mode=False):
     """Refuse the first drive whose off time cannot be judged on the host."""
     from rfx._traced_refusal import TracedStructureRefusal
 
+    from rfx.ringdown._plane_wave import drive_label
     for pe, row in zip(entries, rows, strict=True):
         if row is None:
-            kind = "source" if pe.is_soft_source else "wire port"
-            label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
+            label = drive_label(pe)
             raise TracedStructureRefusal(
                 f"{caller}(ringdown=...): the {label} cannot be judged for its off time inside the "
                 "identification window: its waveform samples or the time step are traced "
@@ -897,11 +897,12 @@ class RingdownRun:
         the main window refuses.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.ringdown._plane_wave import drive_label, plane_wave_entries, still_on_message
         from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports
                    if (pe.is_soft_source or bool(pe.excite))
-                   and pe.waveform is not None]
+                   and pe.waveform is not None] + plane_wave_entries(self)
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in entries], self.n_steps, field_time_step(self.dt, self.sim._precision),
             tolerance=self.spec.source_off_tol, return_detail=True)
@@ -910,16 +911,10 @@ class RingdownRun:
         ratio_long = 0.0
         for pe, (w, peak, _) in zip(entries, samples, strict=True):
             ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
-            kind = "source" if pe.is_soft_source else "wire port"
-            label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
+            label = drive_label(pe)
             if not ratio <= float(self.spec.source_off_tol):
-                raise ValueError(
-                    f"{self.caller}(ringdown=...): the {label} is still on inside the "
-                    f"identification window [{self.n_start * float(self.dt):.4g}, "
-                    f"{self.n_steps * float(self.dt):.4g}] s: its waveform there "
-                    f"reaches {ratio:.3e} of its peak, above source_off_tol = "
-                    f"{self.spec.source_off_tol:.1e}. The window must hold free "
-                    "ringing only; use a longer record or a later window_start.")
+                raise ValueError(still_on_message(pe, self.caller, ratio, self.spec.source_off_tol, (
+                    self.n_start * float(self.dt), self.n_steps * float(self.dt))))
             rows.append((label, ratio))
             if peak != 0.0:
                 ratio_long = max(ratio_long, float(np.max(w[self.n_long:]) / peak))
@@ -2137,69 +2132,7 @@ def _status_reason(code: int, consistency=None, *, kept_count, pole_budget) -> s
     return f"status {code}"
 
 
-class _ForwardReportContext:
-    """What the lazy report of a ``forward(ringdown=...)`` needs besides arrays."""
-
-    def __init__(self, plan, metas, grid, bins, step=None):
-        self.plan = plan
-        self.metas = tuple(metas)
-        self.grid = grid
-        self.bins = np.asarray(bins, dtype=np.float64)
-        self.step = step            # the solver's own dt (ForwardResult.dt)
-
-    def report(self, res) -> RingdownReport:
-        from dataclasses import replace
-        from types import SimpleNamespace
-
-        plan = self.plan
-        if plan.probe_mode:
-            from rfx.ringdown._probe_channels import forward_probe_report
-            return forward_probe_report(self, res)
-        s_plain = np.asarray(res._s_plain)
-        if plan.lane == "uniform":
-            # run()'s container for the uniform lane's single wire port
-            # (rfx/runners/uniform.py): (1, 1, nf) complex64, whatever the
-            # accumulator dtype (complex128 under x64)
-            s_plain = s_plain.reshape(1, 1, -1).astype(np.complex64)
-        result_like = SimpleNamespace(
-            wire_port_sparams=tuple(zip(self.metas, res._accs)), s_params=s_plain,
-            grid=self.grid, freqs=self.bins, dt=self.step)
-        S_host, report, nc = plan._host_report(result_like, np.asarray(res._channels), 0)
-        from rfx.measurement.port_s import observed_port_s
-        pairs = tuple(zip(self.metas, res._accs))
-        S_traced = np.asarray(observed_port_s(res.s_params, pairs)).astype(np.complex128)
-        c_now = np.asarray(res._consistency)
-        status = np.asarray(res._status).ravel()
-        nan_note = ""
-        if not np.all(np.isfinite(S_traced)):
-            nan_note = "the traced completion is NaN: " + "; ".join(
-                f"{w}: {_status_reason(code, c_now, kept_count=count, pole_budget=budget)}"
-                for w, code, count, budget in zip(
-                    ("[window_start T, T]", "[window_start/2 T, T]"), status,
-                    np.asarray(res._pole_counts), np.asarray(res._pole_budgets))
-                if int(code) != 0) if np.any(status != 0) else "the traced completion is NaN"
-        tol = float(plan.spec.witness_tol)
-        rule = ("max |S| difference between the traced completion (the one jax.grad "
-                "differentiates, in the working precision) and the float64 completion "
-                "run(ringdown=...) gives of the same record")
-        if nc is not None:
-            w = RingdownWitness("traced", math.nan, tol, False, rule,
-                                (nan_note + "; " if nan_note else "") + "no float64 "
-                                f"completion to compare: {nc.name} failed on the host",
-                                judged=False)
-        else:
-            S_ref = np.asarray(observed_port_s(S_host, pairs)).astype(np.complex128)
-            d = float(np.max(np.abs(S_traced - S_ref)))
-            w = RingdownWitness("traced", d, tol, d <= tol, rule, nan_note)
-        c = float(c_now)
-        wc = RingdownWitness(
-            "consistency", c, math.nan if CONSISTENCY_BAR is None else CONSISTENCY_BAR,
-            True if CONSISTENCY_BAR is None else c <= CONSISTENCY_BAR,
-            "max over the port channels, inside the traced program, of |tail-free "
-            "DFT of the rebuilt V_port or I - the run's own accumulator| / its peak",
-            "information (not applied)" if CONSISTENCY_BAR is None else "",
-            judged=CONSISTENCY_BAR is not None)
-        return replace(report, witnesses=report.witnesses + (w, wc))
+from rfx.ringdown._forward_context import _ForwardReportContext, report_context
 
 
 
@@ -2257,14 +2190,11 @@ class RingdownForward(RingdownRun):
         from rfx.ringdown import _jax as rj
         from rfx.core.dft_utils import half_step_current_phase
 
-        metas = tuple(meta for meta, _accs in (result.wire_port_sparams or ()))
         accs = tuple(tuple(a) for _meta, a in (result.wire_port_sparams or ()))
         bins = (self.bins if self.bins is not None
                 else np.asarray(result.freqs, dtype=np.float64))
-        from rfx.core.jax_utils import is_tracer
-        step = getattr(result, "dt", None)
-        ctx = _ForwardReportContext(self, metas, result.grid, bins,
-                                    None if is_tracer(step) else step)
+        ctx = report_context(self, result, bins)
+        cells = tuple(getattr(result.grid, store) for _axis, store in ctx.traced_axes)
         status_fail = jnp.asarray([rj.STATUS_PRECONDITION, rj.STATUS_PRECONDITION],
                                   dtype=jnp.int32)
         try:
@@ -2283,17 +2213,17 @@ class RingdownForward(RingdownRun):
                                          jnp.asarray(jnp.nan, dtype=_rdt_nan(result)),
                                          jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx,
                                          poles=pole_nan, poles_long=pole_nan,
-                                         pole_mask=empty_mask, pole_mask_long=empty_mask)
+                                         pole_mask=empty_mask, pole_mask_long=empty_mask,
+                                         cells=cells)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
         host_pms = pms
         if self.lane == "graded":
-            from rfx.model.graded_grid import host_nominal_grid
-            nominal = host_nominal_grid(result.grid)
-            if nominal is not result.grid:
+            if ctx.grid is not result.grid:
                 # A traced mesh: the host identification sizes the port's V/I on the
                 # nominal mesh, a different combination of the same recorded samples and
                 # so of the same poles (each column is RMS-normalised); S stays traced.
-                host_pms = [pm._replace(accs=None) for pm in self._read_metas_checked(result, nominal)]
+                host_result = result._replace(wire_port_sparams=tuple(zip(ctx.metas, accs)))
+                host_pms = [pm._replace(accs=None) for pm in self._read_metas_checked(host_result, ctx.grid)]
         acc_dtype = jnp.result_type(accs[0][3])
         used = sorted({j for e_cols, h_cells in layouts for j in e_cols}
                       | {j for e_cols, h_cells in layouts for _h, _l, j in h_cells}
@@ -2387,7 +2317,8 @@ class RingdownForward(RingdownRun):
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,
                                      poles=poles[0], poles_long=poles[1],
-                                     pole_mask=masks[0], pole_mask_long=masks[1])
+                                     pole_mask=masks[0], pole_mask_long=masks[1],
+                                     cells=cells)
 
 
 # Lazy compatibility exports avoid a cycle with the moved implementation.

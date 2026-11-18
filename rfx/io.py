@@ -44,7 +44,6 @@ import numpy as np
 
 from rfx.measurement.phasors import exp_j
 
-# Maximum number of S-parameter pairs per line for N>=3 ports (Touchstone v1).
 _MAX_PAIRS_PER_LINE = 4
 
 
@@ -164,10 +163,8 @@ def _pair_indices(n_ports: int, *, layout: str,
         )
 
     if layout in ("legacy-rfx", "legacy", "column-major"):
-        # Historical rfx layout: S11, S21, ..., SN1, S12, ...
         return [(i, j) for j in range(n_ports) for i in range(n_ports)]
     if layout in ("standard", "touchstone", "row-major"):
-        # Touchstone 2.0 full matrix layout for 3+ ports: rows of S.
         return [(i, j) for i in range(n_ports) for j in range(n_ports)]
     raise ValueError("layout must be 'legacy-rfx' or 'standard'")
 
@@ -312,7 +309,6 @@ def write_touchstone(
     option_z0 = uniform_z0 if uniform_z0 is not None else float(refs[0])
 
     with open(filepath, "w") as f:
-        # Comments
         f.write("! rfx Touchstone export\n")
         f.write(f"! rfx layout: {layout}\n")
         f.write(f"! {n_ports}-port, {n_freqs} frequencies\n")
@@ -323,7 +319,6 @@ def write_touchstone(
         if version == "2.0":
             f.write("[Version] 2.0\n")
 
-        # Option line
         f.write(f"# {freq_unit} S {fmt} R {option_z0:.12g}\n")
 
         if version == "2.0":
@@ -340,7 +335,6 @@ def write_touchstone(
                 f.write("[End Information]\n")
             f.write("[Network Data]\n")
 
-        # Data — layout depends on port count
         for fi in range(n_freqs):
             freq_scaled = freqs[fi] / scale
 
@@ -353,13 +347,11 @@ def write_touchstone(
             )
 
             if n_ports <= 2:
-                # 1-port and 2-port: everything on one line
                 tokens = [f"{freq_scaled:.9e}"]
                 for p1, p2 in pairs:
                     tokens.extend([p1, p2])
                 f.write(" ".join(tokens) + "\n")
             else:
-                # Start each matrix row on a new line, with at most four pairs.
                 for row_start in range(0, len(pairs), n_ports):
                     for start in range(row_start, row_start + n_ports, _MAX_PAIRS_PER_LINE):
                         chunk = pairs[start:min(start + _MAX_PAIRS_PER_LINE, row_start + n_ports)]
@@ -417,17 +409,17 @@ def read_touchstone_full(filepath: str | Path, *,
     ``layout="auto"`` detects legacy column-major order for unmarked rfx
     v1 exports with 3+ ports. Marked exports and external files use standard
     order. Two-port and v2 files are unaffected; explicit layouts override.
+
+    A file without an option line is read as RI data, while an option line
+    without a format token means MA.
     """
     filepath = Path(filepath)
 
-    # Infer port count from extension
     ext_n_ports = _infer_touchstone_port_count(filepath)
     n_ports = ext_n_ports
 
     freq_unit = "GHz"
-    freq_scale = 1e9  # default GHz
-    # Preserve old no-option-line rfx behavior as RI, but Touchstone option
-    # lines default to MA when the format token is omitted.
+    freq_scale = 1e9
     fmt = "RI"
     z0 = 50.0
     version = "1.0"
@@ -524,7 +516,6 @@ def read_touchstone_full(filepath: str | Path, *,
                     raise ValueError(f"Unsupported Touchstone keyword [{key}]")
                 continue
 
-            # Strip inline comments: "1.0 0.5 0.3 ! my comment"
             line = stripped
             if "!" in line:
                 line = line[:line.index("!")]
@@ -544,9 +535,6 @@ def read_touchstone_full(filepath: str | Path, *,
                 continue
 
             if line.startswith("#"):
-                # Parse option line.  Touchstone option-line defaults are:
-                # GHz, S, MA, R 50.  Existing no-option-line files keep the
-                # historical RI fallback initialized above.
                 freq_unit = "GHz"
                 freq_scale = 1e9
                 parameter = "S"
@@ -580,20 +568,14 @@ def read_touchstone_full(filepath: str | Path, *,
             "or provide [Number of Ports] metadata"
         )
 
-    # Number of value pairs expected per frequency point
-    n_pairs = n_ports * n_ports  # one complex pair per S-parameter
-    n_values_expected = 1 + 2 * n_pairs  # freq + 2 floats per pair
+    n_pairs = n_ports * n_ports
+    n_values_expected = 1 + 2 * n_pairs
 
-    # Merge raw lines into logical frequency-point blocks.
-    # For 1- and 2-port files every raw line is a complete block.
-    # For 3+ port files, continuation lines lack a frequency column
-    # and must be merged with the preceding frequency line.
     all_values: list[float] = []
     for line in raw_data_lines:
         vals = [_parse_touchstone_float(x) for x in line.split()]
         all_values.extend(vals)
 
-    # Each frequency point contributes exactly n_values_expected floats
     if len(all_values) % n_values_expected != 0:
         raise ValueError(
             f"Data length {len(all_values)} is not a multiple of "
@@ -608,7 +590,6 @@ def read_touchstone_full(filepath: str | Path, *,
             f"{declared_n_freqs} points, but parsed {n_freqs}"
         )
 
-    # Parse into structured arrays
     freqs_list: list[float] = []
     s_data: list[list[complex]] = []
 
@@ -632,11 +613,8 @@ def read_touchstone_full(filepath: str | Path, *,
         marked = [c.split(":", 1)[1].strip().lower() for c in comments
                   if c.lower().startswith("rfx layout:")]
         if marked:
-            # The marker the writer emits names the layout it used.
             resolved_layout = "legacy-rfx" if marked[-1] == "legacy-rfx" else "standard"
         else:
-            # An unmarked rfx v1 export with 3+ ports predates the marker
-            # and was written column-major.
             legacy_export = (
                 version == "1.0" and n_ports >= 3
                 and "rfx Touchstone export" in comments
@@ -741,10 +719,6 @@ def network_quality_metrics(
     }
 
 
-# =========================================================================
-# Result export (HDF5)
-# =========================================================================
-
 def save_optimization_result(path: str | Path, result: OptimizeResult | TopologyResult, metadata: Mapping[str, object] | None = None, *,
                              include_latent: bool = True,
                              include_density: bool = True,
@@ -831,7 +805,6 @@ def save_far_field(path: str | Path, ff_result: FarFieldResult, metadata: Mappin
         f.create_dataset("phi", data=np.asarray(ff_result.phi))
         f.create_dataset("freqs", data=np.asarray(ff_result.freqs))
 
-        # Derived: directivity
         E_th = np.asarray(ff_result.E_theta)
         E_ph = np.asarray(ff_result.E_phi)
         power = np.abs(E_th) ** 2 + np.abs(E_ph) ** 2
@@ -864,7 +837,7 @@ def export_radiation_pattern(path: str | Path, ff_result: FarFieldResult, freq_i
     from rfx.antenna import antenna_gain_dB
 
     path = Path(path)
-    E_th = np.asarray(ff_result.E_theta[freq_idx])  # (n_theta, n_phi)
+    E_th = np.asarray(ff_result.E_theta[freq_idx])
     E_ph = np.asarray(ff_result.E_phi[freq_idx])
     theta = np.asarray(ff_result.theta)
     phi = np.asarray(ff_result.phi)
@@ -884,10 +857,6 @@ def export_radiation_pattern(path: str | Path, ff_result: FarFieldResult, freq_i
     header = "theta_deg,phi_deg,E_theta_mag,E_theta_phase_deg,E_phi_mag,E_phi_phase_deg,gain_dBi"
     np.savetxt(path, rows, delimiter=",", header=header, comments="", fmt="%.6e")
 
-
-# =========================================================================
-# Geometry export (JSON)
-# =========================================================================
 
 def export_geometry_json(path: str | Path, sim: Simulation) -> None:
     """Export a lightweight geometry *index* as JSON (bounding boxes only).
@@ -949,10 +918,6 @@ def export_geometry_json(path: str | Path, sim: Simulation) -> None:
         json.dump(geo, f, indent=2, default=str)
 
 
-# =========================================================================
-# Experiment report
-# =========================================================================
-
 def save_experiment_report(path: str | Path, sim: Simulation, result: Result | OptimizeResult | TopologyResult, extra: Mapping[str, object] | None = None) -> None:
     """Save standardized experiment metadata as JSON.
 
@@ -988,19 +953,16 @@ def save_experiment_report(path: str | Path, sim: Simulation, result: Result | O
         "grid": {
             "shape": list(grid.shape) if grid else None,
             "dx": float(grid.dx) if grid else None,
-            # float(grid.dt): host-boundary — metadata written at save time, never inside a trace.
             "dt": float(grid.dt) if grid else None,
         } if grid else None,
         "result_type": type(result).__name__,
     }
 
-    # Loss history from optimization results
     if hasattr(result, "loss_history"):
         report["loss_history"] = [float(x) for x in result.loss_history]
     elif hasattr(result, "history"):
         report["loss_history"] = [float(x) for x in result.history]
 
-    # Time series stats
     if hasattr(result, "time_series") and result.time_series is not None:
         ts = np.asarray(result.time_series)
         report["time_series"] = {
@@ -1015,10 +977,6 @@ def save_experiment_report(path: str | Path, sim: Simulation, result: Result | O
     with open(path, "w") as f:
         json.dump(report, f, indent=2, default=str)
 
-
-# =========================================================================
-# Surrogate/ML training data export
-# =========================================================================
 
 def save_simulation_dataset(path: str | Path, sim: Simulation, result: Result, *,
                             include_fields: bool = False,
@@ -1045,6 +1003,9 @@ def save_simulation_dataset(path: str | Path, sim: Simulation, result: Result, *
         Save S-parameters and frequencies (default True).
     include_config : bool
         Save simulation config as input metadata (default True).
+
+    The ``dt`` attribute of the ``input`` group is the time step the solver took,
+    which ``stencil_order=4`` derates below ``grid.dt``.
     """
     from rfx.model.wall_loss import refuse_wall_loss
     refuse_wall_loss(sim, "save_simulation_dataset")
@@ -1052,7 +1013,6 @@ def save_simulation_dataset(path: str | Path, sim: Simulation, result: Result, *
 
     path = Path(path)
     with h5py.File(path, "w") as f:
-        # Input group: simulation config
         if include_config:
             inp = f.create_group("input")
             inp.attrs["freq_max"] = sim._freq_max
@@ -1063,13 +1023,9 @@ def save_simulation_dataset(path: str | Path, sim: Simulation, result: Result, *
             if hasattr(result, "grid") and result.grid is not None:
                 grid = result.grid
                 inp.attrs["grid_shape"] = grid.shape
-                # The step the solver took, the spacing of the time series
-                # written below: stencil_order=4 derates it below grid.dt.
-                # float(): host-boundary -- HDF5 metadata, never inside a trace.
                 dt = getattr(result, "dt", None)
                 inp.attrs["dt"] = float(grid.dt if dt is None else dt)
 
-        # Output group
         out = f.create_group("output")
 
         if include_time_series:
@@ -1114,7 +1070,6 @@ def save_optimization_trajectory(path, history_callback_data):
         losses = [d["loss"] for d in history_callback_data]
         f.create_dataset("losses", data=np.array(losses))
 
-        # Save designs at each iteration (compressed)
         for i, d in enumerate(history_callback_data):
             g = f.create_group(f"iter_{i:04d}")
             g.attrs["loss"] = d["loss"]
