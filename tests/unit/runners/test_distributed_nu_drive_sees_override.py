@@ -324,7 +324,7 @@ def _frozen_drive():
                     mesh, drives, dt, ranks=ranks, grid=grid, **film)
 
     def frozen_columns(eps, sigma, *args, **kwargs):
-        # The per-slab drive table (rfx #1402 item 4) reads the edge here.
+        # The per-slab drive table reads the edge here.
         return columns(jax.lax.stop_gradient(eps), jax.lax.stop_gradient(sigma), *args, **kwargs)
 
     with pytest.MonkeyPatch.context() as patch:
@@ -394,7 +394,7 @@ def test_raising_eps_r_by_override_changes_the_slab_not_the_drive(form):
 
 
 # --------------------------------------------------------------------------
-# c. the distributed lane against the single-device lane (#1280)
+# c. the distributed lane against the single-device lane
 # --------------------------------------------------------------------------
 
 @functools.lru_cache(maxsize=None)
@@ -432,7 +432,7 @@ def _lane(lane, form=None, mutated=False, warmup=0, checkpoint=None):
 
 # (0, None): the plain run. (40, 30): 40 warm-up steps with their own drive
 # table, and segmented remat; deleting the warm-up table's scaling moved the
-# record 1.0096 and the gradient -12.3 % (#1279 review), unseen before.
+# record 1.0096 and the gradient -12.3 %, unseen before.
 @pytest.mark.parametrize("warmup,checkpoint", [(0, None), (40, 30)])
 @pytest.mark.parametrize("form", ["local", "sharded"])
 def test_the_distributed_lane_drives_the_overridden_source_as_the_single_device_lane(

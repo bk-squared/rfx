@@ -63,7 +63,7 @@ def _base():
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
     # The port's own feed trace (contains the feed plane -> excluded).
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
+    # 35 um foil -> a SHEET on the laminate face.
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
                 (0.012466, Y_C + W_TRACE / 2, H_SUB)), material="pec")
     return sim
@@ -160,7 +160,7 @@ class _NoBBox:
     def mask(self, grid):                     # pragma: no cover - unused
         raise NotImplementedError
 
-    # #931: the ownership classifier reaches a non-Box shape through
+    # The ownership classifier reaches a non-Box shape through
     # ``mask_on_coords`` (rasterize_grid.pec_volume_cell_mask), so the double
     # has to refuse there too — refusing only ``mask`` let the classifier
     # raise AttributeError instead of the refusal this fixture is about.
@@ -214,7 +214,7 @@ def test_the_measured_board_shape_warns_now():
     sim = _base()
     sim.add_material("metal", eps_r=1.0, sigma=5.8e7)
     # Junction placed deliberately close to the probe ladder. Foil, so a
-    # SHEET on the laminate face (#931 §1.3) — sigma = 5.8e7 promotes it
+    # SHEET on the laminate face — sigma = 5.8e7 promotes it
     # to PEC, and a zero-extent axis is a sheet declaration whatever name
     # the conductor carries.
     sim.add(Box((0.0088, 0.003, H_SUB), (0.0110, 0.02332, H_SUB)),
@@ -228,7 +228,7 @@ def test_the_measured_board_shape_warns_now():
     hits = [m for m in msgs
             if "from a strong reflector" in m and "metal" in m]
     assert hits, msgs
-    # #726: proximity is a layout diagnostic, and what it costs is now a
+    # Proximity is a layout diagnostic, and what it costs is now a
     # MEASURED statement rather than a predicted error in dB. The row carries
     # the measurement and its witness, says what to gate on, and states
     # neither of the two retired claims outside the sentence retracting them.

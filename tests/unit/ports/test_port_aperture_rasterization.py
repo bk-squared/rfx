@@ -53,13 +53,13 @@ from tests._realized_geometry import assert_wall_planes
 _A_WR90 = 22.86e-3
 _B_WR90 = 10.16e-3
 
-# cpml_layers is a budget SHARED across all six faces (issue #647) even
+# cpml_layers is a budget SHARED across all six faces even
 # though only x is an absorbing axis here (y/z are PEC) -- a value sized
 # for the x extent can still exceed the y/z axes' own cell counts and
 # fire an unrelated `absorber_budget_exceeds_axis` finding. Kept small
 # enough (4) to clear the smallest y/z axis this file builds (WR-90 b at
 # dx=2mm -> 7 interior cells) so every fixture here is preflight-clean on
-# everything except the #738 surface under test.
+# everything except the surface under test.
 _CPML_LAYERS = 4
 
 
@@ -182,7 +182,7 @@ def test_dividing_declared_width_stays_silent():
 
 # --------------------------------------------------------------------------
 # 2. Sub-aperture ports: the guide is the walls, not the domain.
-#    (Issue #738 review, blocking items 1-3. Each of the three asserts
+#    (Each of the three asserts
 #    below was verified to fail against the domain-extent version of
 #    _port_transverse_spans.)
 # --------------------------------------------------------------------------
@@ -197,7 +197,7 @@ def test_sub_aperture_port_does_not_fire_a_snap_finding():
         f"40 mm declared / 2 mm cells / 40 mm rasterized: nothing snapped. "
         f"codes={codes!r}"
     )
-    # The '#729 site 2' note describes the ``value_range is None`` branch.
+    # The note describes the ``value_range is None`` branch.
     # This port declares y_range AND z_range; the first version of this
     # fix keyed the note on ``declared == aperture`` and printed it here.
     texts = [str(i) for i in _issues(sim)]
@@ -314,7 +314,7 @@ def test_aperture_can_snap_above_the_declared_width():
 
 
 # --------------------------------------------------------------------------
-# 2b. #1101: the advisory must name the cutoff's REAL source, per profile.
+# 2b. The advisory must name the cutoff's REAL source, per profile.
 #
 # The message used to say "the solve builds its mode template and cutoff
 # from <the width _range_to_slice reports>" on every port. That is true on
@@ -330,7 +330,7 @@ def test_aperture_can_snap_above_the_declared_width():
 # ``_build_waveguide_port_config`` call these tests use as the oracle. The
 # oracle is the BUILT config, not a formula re-derived here: a formula
 # copied into a test drifts with the builder in the same direction as the
-# message would, which is exactly the tautology #1101 was.
+# message would, which is exactly the tautology.
 # --------------------------------------------------------------------------
 
 _SNAP_DX = 1e-3
@@ -462,7 +462,7 @@ def test_the_discrete_row_names_the_mode_and_who_picks_the_eigenvalue():
 
 
 # --------------------------------------------------------------------------
-# 2c. #1101 review P1: the discrete mode solve is a DENSE eigh of an
+# 2c. The discrete mode solve is a DENSE eigh of an
 #     (nu*nv, nu*nv) matrix, so preflight must not run it on a large
 #     aperture. Measured on this pod, two-port WR-90 preflight(strict=False):
 #     0.07 s at dx = 1 mm (230 cells), 0.39 s at 0.5 mm (920), 4.79 s at
@@ -538,7 +538,7 @@ def test_the_analytic_profile_is_not_subject_to_the_budget():
 
 
 # --------------------------------------------------------------------------
-# 2d. #1101 review P4: both "could not read it" strings must be reachable.
+# 2d. Both "could not read it" strings must be reachable.
 # --------------------------------------------------------------------------
 
 def test_a_builder_failure_falls_back_to_the_analytic_realized_value(monkeypatch):
@@ -588,7 +588,7 @@ def test_a_port_with_one_unrasterizable_axis_asserts_nothing_about_the_cutoff():
 
 
 # --------------------------------------------------------------------------
-# 2e. #1101 review P5: the (u, v) axis mapping, on all three launch normals.
+# 2e. The (u, v) axis mapping, on all three launch normals.
 #
 # ``_build_waveguide_port_config`` assigns ``WaveguidePort.a`` to the u axis
 # and ``.b`` to the v axis, per launch normal: x-normal -> (y, z), y-normal ->
@@ -640,7 +640,7 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
 
 
 # --------------------------------------------------------------------------
-# 2g. #1101 re-review N1: a multimode port, on both sides of the budget.
+# 2g. A multimode port, on both sides of the budget.
 #
 # ``init_multimode_waveguide_port`` IGNORES ``port.mode`` and enumerates modes
 # by cutoff, so without a built config there is no mode to name and no
@@ -725,7 +725,7 @@ def test_a_multimode_build_failure_is_not_reported_as_a_budget_decline(monkeypat
 
 
 # --------------------------------------------------------------------------
-# 2f. #1101 review: no cubic-cell assumption (repo engineering principle 2).
+# 2f. No cubic-cell assumption (repo engineering principle 2).
 #
 # A transverse span is ``cells * that axis' own cell size``, never
 # ``cells * dx``. The uniform ``Grid`` carries only ``dx``, so on every grid
@@ -739,7 +739,7 @@ def test_a_multimode_build_failure_is_not_reported_as_a_budget_decline(monkeypat
 # What is deliberately NOT made axis-aware here: ``_range_to_slice``'s index
 # math. ``_build_waveguide_port_config`` calls it with ``grid.dx`` on every
 # axis, and preflight mirroring the builder is the whole point of this check.
-# That cubic assumption lives in the builder and is out of #1101's scope.
+# That cubic assumption lives in the builder and is out of scope.
 # --------------------------------------------------------------------------
 
 class _AnisotropicGridProxy:
@@ -874,7 +874,7 @@ _CASES = [
     ("exact_dx2_explicit", 2e-3, (0.10, 0.020, 0.010),
      (0.0, 0.020), (0.0, 0.010)),
     ("battery_dx3_default", 3e-3, (0.10, 0.040, 0.020), None, None),
-    # Sub-aperture (reviewer-required): an explicit range NARROWER than
+    # Sub-aperture: an explicit range NARROWER than
     # the domain. This is a committed pattern
     # (tests/unit/sparams/test_waveguide_port_reference_sims.py, tests/unit/api/test_api.py,
     # tests/unit/runners/test_distributed.py) and it was the table's blind spot -- the
@@ -882,7 +882,7 @@ _CASES = [
     # file's ports with declared == aperture.
     ("sub_aperture_dx2", 2e-3, (0.10, 0.040, 0.020),
      (0.010, 0.030), (0.0, 0.020)),
-    # Round-up case (reviewer-required): _range_to_slice's explicit
+    # Round-up case: _range_to_slice's explicit
     # branch ROUNDS range endpoints to the nearest cell, so an aperture
     # can snap ABOVE the declared width too, not only below it (as every
     # other SNAP case above does). domain y is intentionally larger than

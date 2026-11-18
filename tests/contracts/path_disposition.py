@@ -93,6 +93,8 @@ PENDING_ROWS = {
         "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
     "_dft_plane_regions": (
         "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+    "_time_recorded_dft_planes": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
 }
 
 CARRIES = "carries"
@@ -206,9 +208,9 @@ def admission(what, lane, before):
 
 
 # A 2-D mode on a graded mesh: _dispatch_plan's own check refuses it on every
-# graded lane and names the remedy, a thin 3-D box. Until #1355 a 2d_tmz model
+# graded lane and names the remedy, a thin 3-D box. Earlier a 2d_tmz model
 # one cell thick between PEC walls ran there as that 3-D box, whose record
-# differs from run_uniform's 2-D solve by 0.34 of the probe peak (#1340).
+# differs from run_uniform's 2-D solve by 0.34 of the probe peak.
 GRADED_2D = refuses("a 2-D mode is refused on the graded lanes, naming the thin 3-D box "
                     "(mode='3d') as the remedy (#1340)",
                     raises="Build the 2-D problem as a thin 3-D box")
@@ -768,7 +770,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces: " + GUARDED_LID_NOTE),
 
-        # #1235: the distributed absorber takes every face's profile from init_cpml, so the PEC wall
+        # The distributed absorber takes every face's profile from init_cpml, so the PEC wall
         # carries no absorber backing (test_realized_boundary.py pec-zlo--distributed departures gone).
         run_distributed=carries(),
         fwd_uniform=carries(),
@@ -1716,7 +1718,7 @@ PLAIN_SOURCE_S_REQUEST = {
 }
 
 
-# #2032 Part A: radius carrier routes, checked by the radius contract.
+# Radius carrier routes, checked by the radius contract.
 WIRE_RADIUS_PATHS = {
     "run_distributed": carries("global stamp, uniform slab realization"),
     "fwd_distributed": carries("admits as run_distributed; same uniform step"),

@@ -222,7 +222,7 @@ def test_nondivisor_checkpoint_raises_value_error():
 
 
 # ---------------------------------------------------------------------------
-# 4. NU mesh + checkpoint_segments is now SUPPORTED (issue #73; was a fence)
+# 4. NU mesh + checkpoint_segments is now SUPPORTED
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow

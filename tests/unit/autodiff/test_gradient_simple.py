@@ -100,7 +100,7 @@ def test_gradient_finite_difference_match():
     # Nonzero-signal precondition: a dead tape (g_ad=0) or an insensitive
     # fixture (g_fd=0) must FAIL here, not silently skip the comparison.
     # Mirrors the guard at tests/unit/autodiff/test_waveguide_flux_ad.py:82. Measured
-    # values on this fixture are |g_ad|,|g_fd| ~ 1.2e-6 (baseline 2026-07-20),
+    # values on this fixture are |g_ad|,|g_fd| ~ 1.2e-6,
     # so 1e-10 is a dead-tape floor, not a physics threshold.
     assert abs(g_fd) > 1e-10, (
         f"FD slope {g_fd:.3e} is ~zero — fixture has no eps sensitivity; "
@@ -114,8 +114,7 @@ def test_gradient_finite_difference_match():
     rel_err = abs(g_ad_val - g_fd) / abs(g_fd)
     print(f"Relative error: {rel_err:.2%}")
     # Tightened 0.50 -> 0.05: executed-path AD-vs-FD agreement on this real
-    # (float32, PEC-cavity, eps-perturbation) geometry measures ~0.03%
-    # (baseline 2026-07-20). 5% matches the suite's float32 AD-FD envelope
+    # (float32, PEC-cavity, eps-perturbation) geometry measures ~0.03%. 5% matches the suite's float32 AD-FD envelope
     # (test_waveguide_flux_ad.py:83, test_sparam_ad_end_to_end.py:304) with
     # >100x margin over the measured value, while catching a real
     # tape/coefficient regression. The old 50% band was ~1600x above the

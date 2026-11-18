@@ -93,7 +93,6 @@ def test_out_of_window_beta_is_pinned_and_flagged():
         f"fixture no longer pins: β={b_fit:.2f}, rail={rail_hi:.2f}"
     )
 
-    # The fix: the pin is no longer silent.
     railed = np.asarray(res["beta_railed"], dtype=bool)
     assert railed.shape == (1,)
     assert bool(railed[0]), "out-of-window β must set beta_railed"

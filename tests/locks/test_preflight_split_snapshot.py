@@ -409,7 +409,7 @@ LOCK_PROVENANCE = {
         # "fixture" is a list of EXISTING paths (test_lock_provenance_gate.py checks each).
         # tests/unit/subgrid/test_subgrid_validation.py used to be listed here: its five-line
         # builder is now retyped in _subgrid_unsupported_feature_sim() below, because that file
-        # was removed under #1127 (in git history at a6d6fce1).
+        # was removed.
         "tests/data/preflight_split_snapshot"
     ),
     "generator": (
@@ -426,7 +426,6 @@ LOCK_PROVENANCE = {
 
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
-# #1512 adds stub findings: instrument 14→15, x-clearance 10→11, y-clearance 9→10, junction-short 12→14; existing values unchanged.
 # wire_port_no_radius appends ONE advisory, after every existing one, to the six fixtures with a radius-less wire port (add_port extent=, radius=None): wire_port_microstrip, wire_port_dead_extent, wire_port_end_gap, wire_port_dead_cell_nu, refplane_near_field, refplane_partial_optin; existing values unchanged.
 _SNAPSHOT_DIR = _REPO / "tests" / "data" / "preflight_split_snapshot"
 
@@ -468,21 +467,21 @@ _UPDATE_HINT = (
 # identity is pinned per name, mirroring
 # tests/locks/test_sparams_split_bit_identity.py's `is` check.
 # ---------------------------------------------------------------------------
-#: Names #980 Phase 3 leg 0 moved to ``rfx.preflight._common`` and that
+#: Names Phase 3 leg 0 moved to ``rfx.preflight._common`` and that
 #: ``rfx/api/_preflight.py`` re-exports. Extend this as later legs land.
-#: Names #980 Phase 3 leg 2 moved to ``rfx.preflight.pec_geometry``. Three of
+#: Names Phase 3 leg 2 moved to ``rfx.preflight.pec_geometry``. Three of
 #: the five -- ``_CONGRUENCE_SPREAD_TOL_EDGES``, ``_CAVITY_THICKNESS_TOL`` and
 #: ``_OFF_LATTICE_EDGE_TOL`` -- are mutated in both directions by
 #: ``tests/unit/preflight/test_preflight_rasterization.py`` to prove each gate
 #: load-bearing. That patch must be aimed at the LEG module, where the readers
 #: resolve them; the re-export below exists for the namespace surface, not as
 #: a patch point.
-#: Names #980 Phase 3 leg 1 moved to ``rfx.preflight.msl``. Two of them --
+#: Names Phase 3 leg 1 moved to ``rfx.preflight.msl``. Two of them --
 #: ``_MSL_REALIZED_THICKNESS_Z0_SENSITIVITY`` and
 #: ``_MSL_REALIZED_THICKNESS_Z0_BUDGET`` -- have no reader inside the package
 #: at all; ``tests/unit/ports/test_msl_port_preflight.py`` imports them from
 #: the facade and nothing else does, so the re-export is their only path.
-#: Names #980 Phase 3 leg 3 moved to ``rfx.preflight.waveguide``. None of the
+#: Names Phase 3 leg 3 moved to ``rfx.preflight.waveguide``. None of the
 #: three is monkeypatched anywhere (AST sweep over tests/ rfx/ validation/
 #: scripts/ examples/, resolving aliases, importlib forms and string targets),
 #: so unlike leg 1 this re-export is the ONLY lookup target that has to exist
@@ -491,7 +490,7 @@ _UPDATE_HINT = (
 #: ``WAVEGUIDE_DEFAULT_NUM_PERIODS``, are read by BARE NAME from
 #: ``preflight_sparameters``, which never leaves the facade -- so this block
 #: stays load-bearing after every remaining leg has landed.
-#: The one name #980 Phase 3 leg 5 moved to ``rfx.preflight.mesh``: the #743
+#: The one name Phase 3 leg 5 moved to ``rfx.preflight.mesh``: the
 #: coarsest-cell helper, whose only reader is ``_validate_mesh_quality``. The
 #: split inventory filed it as shared with ``_CampaignStaticsContext`` and so
 #: as a ``_common`` leaf; measured, that reader imports a DIFFERENT
@@ -499,7 +498,7 @@ _UPDATE_HINT = (
 #: a different signature, and the local binding shadows the module global
 #: throughout. Nothing outside the facade imports this name and nothing
 #: patches it, so the re-export exists purely for the namespace surface above.
-#: The seven names #980 Phase 3 leg 7 -- the last motion leg -- moved to
+#: The seven names Phase 3 leg 7 -- the last motion leg -- moved to
 #: ``rfx.preflight.realization``: the three conductor-realization CLASSES and
 #: the four numpy leaves only they read. Nothing outside the facade imports
 #: any of them and nothing patches any of them (the one patch that names a
@@ -590,7 +589,7 @@ def _rasterization(name, *args, **kwargs):
 
     sim = getattr(mod, name)(*args, **kwargs)
     if name in {"_slot_sim", "_cavity_sim"}:
-        # #1138: this lock checks strict verdicts; the advisory tests opt in.
+        # this lock checks strict verdicts; the advisory tests opt in.
         sim._snap = "strict"
     return sim
 
@@ -1212,7 +1211,7 @@ def _refplane_near_field_sim():
     """
     from tests.locks.test_refplane_port_waves import _build_thru
 
-    # #1138: trace x/y +2.06%/+7%; this snapshot pins reference-plane advice.
+    # trace x/y +2.06%/+7%; this snapshot pins reference-plane advice.
     return _build_thru(reference_plane_cells=3)
 
 
@@ -1337,7 +1336,7 @@ def _source_decoupled_whole_boundary_sim():
         boundary="pec", cpml_layers=0,
     )
     # Assembly now refuses this declaration: a tangential source in a PEC
-    # wall is shorted. Issue 1075 previously covered only the advisory.
+    # wall is shorted.
     sim.add_source((0.0, 0.0075, 0.0075), component="ez",
                    amplitude_kind="field")
     return sim
@@ -1534,20 +1533,18 @@ _FIXTURES = (
     ("pec_realization_refused",
      _pec_realization_refused_sim, {}, None),                     # leg 2
     ("pec_boundary_open", _pec_boundary_open_sim, {}, None),      # leg 2/6
-    # ("tfsf_lumped_rlc", ...) leg 6 -- removed 2026-09-23 (#1163) with the
-    # check it witnessed; see the module docstring's coverage paragraph.
     ("wire_port_dead_extent",                                     # leg 6
      lambda: _inverse_design("_microstrip_sim", 1.5e-3), {}, None),
     ("ntff_small_ground_plane",                                   # ntff leg
      _ntff_small_ground_plane_sim, {}, None),
     # -- 37-38. leg 2 gap closers -------------------------------------------
-    # #980 Phase 3 leg 2 moves the ten pec_geometry checks. Twelve of their
+    # Phase 3 leg 2 moves the ten pec_geometry checks. Twelve of their
     # fourteen codes were already witnessed above; these two fixtures cover
     # the two methods that had NO witness in this corpus, so the motion is
     # gated rather than merely counted. Added BEFORE the move, on the tree
     # where the bodies still sit in the facade, which is what makes them a
     # pre-move baseline instead of a post-hoc blessing.
-    # 2026-09-15 (#1043 / PR #1047): KEPT. The check it was added for
+    # KEPT. The check it was added for
     # (``_validate_cfg_conformal_fine_dx`` / ``conformal_nan``) was
     # deleted, but this fixture is also the corpus's only witness for
     # ``port_aperture_snap``, so it stays and its snapshot loses one
@@ -1556,7 +1553,7 @@ _FIXTURES = (
     ("leontovich_thin_film_offband",                              # leg 2
      _leontovich_thin_film_offband_sim, {}, None),
     # -- 39-40. leg 3 gap closers -------------------------------------------
-    # #980 Phase 3 leg 3 moves the twelve ports_waveguide bodies. A call
+    # Phase 3 leg 3 moves the twelve ports_waveguide bodies. A call
     # census over the 46 fixtures above (each of the twelve wrapped in a
     # counter, the whole corpus rendered) found eleven of them executed and
     # one -- _check_waveguide_port_evanescent_declared_geometry -- never
@@ -1570,7 +1567,7 @@ _FIXTURES = (
     ("waveguide_layout_near_cutoff",                              # leg 3
      _waveguide_layout_near_cutoff_sim, {}, "waveguide"),
     # -- 41-42. leg 4 gap closers -------------------------------------------
-    # #980 Phase 3 leg 4 moves the eleven absorber bodies. A call census over
+    # Phase 3 leg 4 moves the eleven absorber bodies. A call census over
     # the 48 fixtures above found ALL eleven executed -- no repeat of leg 3's
     # never-entered body -- but two of them emitting on nothing: the budget
     # advisory needs a per-face BoundarySpec (no fixture had one) and the
@@ -1587,7 +1584,7 @@ _FIXTURES = (
     ("upml_nonuniform_lane",                                      # leg 4
      _upml_nonuniform_lane_sim, {"strict": False}, None),
     # -- 43-49. leg 5 gap closers -------------------------------------------
-    # #980 Phase 3 leg 5 moves the twelve mesh / non-uniform bodies. A call
+    # Phase 3 leg 5 moves the twelve mesh / non-uniform bodies. A call
     # census over the 50 fixtures above found ALL twelve executed -- the
     # family sits on _validate_simulation_config's unconditional spine, the
     # way leg 4's did -- and SIX of them emitting nothing at all. Those six
@@ -1615,7 +1612,7 @@ _FIXTURES = (
      _subgrid_unsupported_feature_sim, {}, None),
     ("floquet_nonuniform_automesh", _floquet_nonuniform_sim, {}, None),
     # -- 50-57. leg 6 gap closers -------------------------------------------
-    # #980 Phase 3 leg 6 moves the fourteen ports (lumped/wire + coax),
+    # Phase 3 leg 6 moves the fourteen ports (lumped/wire + coax),
     # sources and NTFF bodies. A call census over the 57 fixtures above found
     # thirteen of the fourteen entered -- the families sit on
     # _validate_simulation_config's unconditional spine, the way legs 4 and 5
@@ -1623,7 +1620,7 @@ _FIXTURES = (
     # seven emit nothing by construction and need no fixture:
     # _wire_port_cell_centers is a helper that returns cell centres, and
     # _validate_cfg_ntff_min_steps only wrote self._ntff_min_steps_hint
-    # (deleted by #1030; it emitted nothing, so no fixture here moves). The
+    # (deleted; it emitted nothing, so no fixture here moves). The
     # remaining five are closed here, together with the three codes of
     # already-speaking bodies that this corpus had never reached
     # (refplane_partial_optin, wire_port_end_gap_to_conductor,
@@ -1652,7 +1649,7 @@ _FIXTURES = (
      {"strict": False}, None),
     ("wire_port_end_gap", _wire_port_end_gap_sim, {"check_ntff": False}, None),
     ("wire_port_dead_cell_nu", _wire_port_dead_cell_nu_sim, {}, None),
-    # -- 58. issue #1024 ----------------------------------------------------
+    # -- 58. ----------------------------------------------------
     # NOT a leg gap-closer: the ledger above recorded waveguide_reference_plane
     # as unwitnessABLE, and it was -- its device-overlap site read the wrong
     # attribute off the geometry wrapper and swallowed the AttributeError, so
@@ -1660,7 +1657,7 @@ _FIXTURES = (
     # is the text witness that the code now emits, and the FIRST committed
     # rendering of that advisory's message.
     ("waveguide_refplane_in_slab", _waveguide_refplane_in_slab_sim, {}, None),
-    # -- 59. issue #1075 ----------------------------------------------------
+    # -- 59. ----------------------------------------------------
     # Also not a leg gap-closer: source_decoupled was already witnessed, by
     # the BoundarySpec fixture above. What was NOT witnessed is that the
     # advisory fires at all on the scalar boundary="pec" -- it did not, and
@@ -1692,7 +1689,7 @@ def _render(fixture_id, build, kwargs, calculator) -> str:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim = build()
-        # #1138: these fixtures pin other advisory codes, not sheet-size refusal.
+        # these fixtures pin other advisory codes, not sheet-size refusal.
         # Residuals below are the strict audit's free-end span differences.
         # Electric-wall spacing now judges single conductors too. These
         # deliberate off-node fixtures retain their geometry and gain one

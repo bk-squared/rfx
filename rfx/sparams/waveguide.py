@@ -16,7 +16,7 @@ from rfx.preflight.realization import release_inspection
 from rfx.model.thin_conductors import conductivity_envelope
 
 from rfx.sparams._waveguide_planes import resolve_reported_planes
-from rfx._declarations import declaration_variant
+from rfx._declarations import declaration_at_dx, declaration_variant, reset_device_declarations
 
 import jax
 import jax.numpy as jnp
@@ -774,20 +774,9 @@ def _homogeneous_reference_materials(shape, medium):
 
 def _empty_waveguide_reference(self, medium=None):
     """Build a straight guide at the resolved port medium."""
-    # Construct from mesh/boundary configuration, never from device geometry.
-    # Vacuum retains empty geometry; a fill extends through both CPML pads.
-    # Only the mesh, boundary walls and modal ports
-    # are shared; material poles, sheets and lumped elements cannot leak in.
-    from rfx.boundaries.serialization import constructor_boundary
-    reference = type(self)(
-        freq_max=self._freq_max, domain=self._domain,
-        boundary=constructor_boundary(self), cpml_layers=self._cpml_layers,
-        cpml_kappa_max=self._cpml_kappa_max, dx=self._dx,
-        dx_profile=self._dx_profile, dy_profile=self._dy_profile,
-        dz_profile=self._dz_profile, dt=self._dt_pin,
-        dt_min_cell=self._dt_min_cell, precision=self._precision,
-        snap=self._snap, nominal_profiles=self._nominal_profiles,
-    )
+    reference = declaration_at_dx(
+        self, caller="the waveguide empty-guide reference", pin_resolved_mesh=True)
+    reset_device_declarations(reference)
 
     from rfx.model.waveguide_modes import PortMedium
     if medium is not None and medium != PortMedium():

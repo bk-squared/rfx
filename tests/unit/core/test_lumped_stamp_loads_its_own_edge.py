@@ -70,7 +70,7 @@ def test_a_stamp_changes_only_its_own_component_at_its_own_node(component,
     for c in range(3):
         for name, a0, a1 in (("Ca", ca0[c], ca1[c]), ("Cb", cb0[c], cb1[c])):
             # The volume is recovered as (total - stamp), which is the
-            # background only to one rounding of the sum (#1210's record):
+            # background only to one rounding of the sum:
             # a neighbour moves by ~1 ulp (measured <= 1.3e-7 here). The
             # element moves its own Cb to 0.86x (50 ohm) and 0.057x (1 pF),
             # so 1e-5 separates the two by decades on both sides.
@@ -210,9 +210,8 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
                                    err_msg=comp)
 
 
-# The dispersive (Debye/Lorentz) coefficients are per component since #1260 and
-# load a stamp on its own edge only; they used to take the cell total for all
-# three components and warn. Pinned in
+# The dispersive (Debye/Lorentz) coefficients are per component and
+# load a stamp on its own edge only. Pinned in
 # tests/unit/materials/test_dispersive_edge_average.py
 # (test_a_lumped_stamp_loads_only_its_own_edge_on_the_dispersive_lane).
 

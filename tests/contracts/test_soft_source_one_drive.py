@@ -60,7 +60,7 @@ def test_current_drive_is_the_same_under_jit_and_vmap(native):
 @pytest.mark.parametrize('kind', ('current', None))
 def test_graded_drive_is_the_uniform_product(kind):
     # The graded single-device table and the multi-device slabs form the
-    # uniform product (1/dV)*(Cb*w) with Cb and dV kept apart (#1856, #1881).
+    # uniform product (1/dV)*(Cb*w) with Cb and dV kept apart.
     w = _samples()
     cb = np.float32(0.0216839)
     got = np.asarray(source_table(w, kind, native='cb_over_dv', coefficient=cb, volume=DV))

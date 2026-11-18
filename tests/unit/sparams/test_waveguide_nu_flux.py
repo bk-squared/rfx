@@ -56,7 +56,7 @@ def _make_wr90_nu_sim_with_slab():
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),  # solved length; #1887
+        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),  # solved length
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -131,5 +131,5 @@ def test_nu_flux_settled_is_passive_and_reflects():
     # broad-E5 ACCURACY of the flux path is proven by the properly-sized
     # GPU envelope (CPML=24, 200mm domain, settled): WR-90 NU flux
     # 16/16 cases ≤ 0.0156 vs analytic Airy, eps_r {2,4}, grading 1.0-3.0
-    # (VESSL run 369367240154; artifact registered under
+    # (artifact registered under
     # rectangular_waveguide_port).

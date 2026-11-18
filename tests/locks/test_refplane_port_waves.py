@@ -90,7 +90,7 @@ _N_STEPS = 4000
 
 def _build_thru(reference_plane_cells: int | None = None, *, snap="declared") -> Simulation:
     """The committed battery thru, optionally opted into the plane path."""
-    # #1138: trace x/y solved +2.059%/+7% off; this locks reference-plane port waves.
+    # trace x/y solved +2.059%/+7% off; this locks reference-plane port waves.
     sim = Simulation(snap=snap,
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -314,7 +314,7 @@ def test_decompose_refplane_two_port_synthetic_matched():
         freqs=s["freqs"], dt=s["dt"], dx=s["dx"],
         return_line_diagnostics=True,
     )
-    # PREDECLARE 20261108-2450-refplane-one-wave P5: closed-form thru S_jj = 0.
+    # closed-form thru S_jj = 0.
     assert np.max(np.abs(S[0, 0])) < 1e-6
     assert np.max(np.abs(S[1, 1])) < 1e-6
     for p in (0, 1):
@@ -445,7 +445,7 @@ def test_nonuniform_lane_guard_fails_loudly():
 # ===========================================================================
 
 def _raw_drive(sim, n_steps=8, drive_idx=0):
-    # The trace is a SHEET, and a sheet owns no cell (#931 §1.3), so it is
+    # The trace is a SHEET, and a sheet owns no cell, so it is
     # not in ``pec_mask``. This helper must collect it and hand it on, or
     # the reference-plane machinery scans a bare cell mask, finds no metal
     # on a perfectly healthy board and raises. ``_assemble_materials``
@@ -498,7 +498,7 @@ def test_refplane_registers_two_planes_per_port_with_phase0_geometry():
         # 2-cell integral that measured Zc = 47.9-48.6 ohm.
         assert (spec.e_lo, spec.e_hi) == (0, 2)
         assert spec.third_index == 28                # y = 10mm (padded)
-        # #931: the trace footprint is sampled CLOSED, so the drawn
+        # the trace footprint is sampled CLOSED, so the drawn
         # 5.0 mm strip realizes y-nodes 23..33 where the old half-open
         # rule stopped at 32. The whole Ampere loop follows it — the leg
         # half a cell OUTSIDE the bbox moves 33 -> 34 and the integration
@@ -540,7 +540,7 @@ def test_refplane_requires_pec_trace_at_plane():
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    # Same foil sheet as ``_build_thru`` (#931 §1.3) — see the comment
+    # Same foil sheet as ``_build_thru`` — see the comment
     # there for what the closed footprint moved and what it did not.
     sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
@@ -687,7 +687,7 @@ def test_beta_guard_rejects_nonpositive_beta():
 
 
 # ===========================================================================
-# FAST — preflight placement advisories (issue #313 Phase-0 rule)
+# FAST — preflight placement advisories
 # ===========================================================================
 
 def test_preflight_near_field_advisory_below_n10():
@@ -702,14 +702,14 @@ def test_preflight_near_field_advisory_below_n10():
 def test_preflight_partial_optin_advisory():
     """Opting in only ONE of two wire ports leaves the off-diagonals on
     the legacy path silently — preflight must say so."""
-    # #1138: trace x/y solved +2.059%/+7% off; this checks partial reference-plane advice.
+    # trace x/y solved +2.059%/+7% off; this checks partial reference-plane advice.
     sim = Simulation(snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    # Same foil sheet as ``_build_thru`` (#931 §1.3) — see the comment
+    # Same foil sheet as ``_build_thru`` — see the comment
     # there for what the closed footprint moved and what it did not.
     sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
@@ -751,14 +751,14 @@ def test_nonuniform_lane_end_to_end_raises():
     off-diagonals (end-to-end witness for the unit-level guard above)."""
     dz = np.concatenate([np.full(10, 0.4e-3), np.full(12, 0.5e-3)])
     assert abs(float(np.sum(dz)) - _DOMAIN[2]) < 1e-12
-    # #1138: trace x/y solved +2.059%/+7% off; this checks NU reference-plane admission.
+    # trace x/y solved +2.059%/+7% off; this checks NU reference-plane admission.
     sim = Simulation(snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX, dz_profile=dz,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
     )
-    # Same foil sheet as ``_build_thru`` (#931 §1.3) — see the comment
+    # Same foil sheet as ``_build_thru`` — see the comment
     # there for what the closed footprint moved and what it did not.
     sim.add_thin_conductor(
         Box((_X1 - _DX, _Y_MID - _W / 2, _H),
@@ -787,25 +787,24 @@ def test_nonuniform_lane_end_to_end_raises():
 # the Phase-0 pre-registration rule for the two-plane Zc/beta measurement.
 # The rejected first candidate N=3 (planes 3/6 cells) was measured
 # near-field contaminated (R2 stop -> placement conformed to the Phase-0
-# clean zone; one redesign, evidence-anchored). Current-code (gap-trimmed
-# V) N=3 battery numbers, 2026-07-10: beta/(w/c) 1.16-1.20 (vs mid-line
+# clean zone; one redesign, evidence-anchored). Earlier (gap-trimmed
+# V) N=3 battery numbers: beta/(w/c) 1.16-1.20 (vs mid-line
 # 1.046-1.059), Zc 52.0-53.1 ohm with Im/Re to 8.2%, |S21| closed-box
 # referee residual -3.1% at 7 GHz, row energy to 1.019.  (The pre-trim
 # driver had measured beta 1.21-1.25 / Im/Re 9.2% / resid -6.8% at the
 # same placement — same class, same verdict.)
 _REFPLANE_N = 10
 
-# Phase-0 closed-box flux referee |S21| = sqrt(P_abs/P_launch), measured
-# 2026-07-10 (leak-free 6-face boxes; issue #313 Phase-0 comment).
+# Phase-0 closed-box flux referee |S21| = sqrt(P_abs/P_launch), measured (leak-free 6-face boxes).
 _REFEREE_S21 = np.array([1.0066, 1.0052, 1.0033, 1.0007, 0.99775,
                          0.99441, 0.99093, 0.98751, 0.98431])
 
 # Measured plane-path values (THIS implementation, gap-trimmed V, N=10,
-# 4000 steps, 2026-07-10):
+# 4000 steps):
 #   |S21| = 0.98251..0.99840; |S21|/referee - 1 = -0.82%..-0.18% per bin
 #   reciprocity rel <= 0.38%; Zc Re 47.94..48.62 ohm (both ports),
 #   Im/Re <= 1.2%; beta/(w/c) = 1.0465..1.0589;
-# RE-MEASURED 2026-09-07 for #931 (VESSL 369367259283), same config, the
+# RE-MEASURED, same config, the
 # trace declared a FOIL and realizing the drawn 5.0 mm instead of 4.5:
 #   |S21| = 0.98179..0.99846; |S21|/referee = 0.99192..0.99744 (still the
 #   Phase-0 arch class); Zc Re 46.5691..47.0366 (port 0) and
@@ -813,8 +812,8 @@ _REFEREE_S21 = np.array([1.0066, 1.0052, 1.0033, 1.0007, 0.99775,
 #   1.01115..1.02432 (port 0). Five of the six physics legs pass on the
 #   UNCHANGED gates — only the beta band moved, below.
 #   |arg(S21) + beta_meas*L| <= 8.4e-4 rad; max singular value of the
-#   mixed matrix 1.0663 max (post-#318 rerun 2026-07-11; was 1.0299 —
-#   see the SV gate note); |S11|^2+|S21|^2 <= 0.99995 (post-#318).
+#   mixed matrix 1.0663 max (was 1.0299 —
+#   see the SV gate note); |S11|^2+|S21|^2 <= 0.99995.
 # Gates carry margin over these measured values and are labelled with
 # their referee anchors. They are referee-consistency + regression gates
 # on the canonical thru, NOT external cross-solver validation.
@@ -825,7 +824,7 @@ _ZC_RE_BAND = (46.0, 50.5)     # measured 47.9-48.6; Phase-0 mid-line
                                # 47.85-48.63; Phase-0 pair-dependence
                                # spread across plane pairs 44.5-51.0
 _ZC_IM_OVER_RE_MAX = 0.03      # measured <= 0.012
-# RE-DERIVED 2026-09-07 for #931 from VESSL 369367259283, and the
+# RE-DERIVED, and the
 # pre-declaration it answers was WRONG about the direction: it said beta
 # would RISE above the old band because the strip got wider. It fell.
 #
@@ -849,15 +848,15 @@ _ZC_IM_OVER_RE_MAX = 0.03      # measured <= 0.012
 #           would give, and a statement rather than a fitted number.
 #   ceiling 1.02432 + 0.0211 = 1.0454, rounded up to the 0.01 grid -> 1.05.
 #   width   0.05, IDENTICAL to the retired band's.
-# Port 1's beta was not reached in 369367259283 (port 0's assertion failed
-# first). PRE-DECLARED before the confirm run 369367259299: port 1 lands
+# Port 1's beta was not reached (port 0's assertion failed
+# first). PRE-DECLARED: port 1 lands
 # inside [1.00, 1.05] as port 0 does, and within 0.005 of it — the two Zc
 # arrays agree to 0.3 ohm, so a port asymmetry that large would be a
 # separate finding.
-_BETA_OVER_WC_BAND = (1.00, 1.05)   # #931: measured 1.01115-1.02432 (port
-# 0, VESSL 369367259283). Retired band (1.03, 1.08), measured 1.0465-1.0589
+_BETA_OVER_WC_BAND = (1.00, 1.05)   # measured 1.01115-1.02432 (port
+# 0). Retired band (1.03, 1.08), measured 1.0465-1.0589
 # on the 0.5 mm-thick trace. Mechanism
-# check (2026-07-10, one dx/2 rerun at fixed physical geometry and
+# check (one dx/2 rerun at fixed physical geometry and
 # identical physical plane locations on a shortened 12 mm line): the
 # slow-wave excess is dx-STABLE — 0.0781 (dx=0.5mm) -> 0.0756 (dx=0.25mm),
 # ratio 0.97, nowhere near the halving a staircase/dispersion owner
@@ -866,7 +865,7 @@ _BETA_OVER_WC_BAND = (1.00, 1.05)   # #931: measured 1.01115-1.02432 (port
 # fringing), not a discretization artefact. (Measured Zc showed mild dx
 # sensitivity, 48.5 -> 47.0 ohm at dx/2; beta did not.)
 _PHASE_DEEMBED_MAX_RAD = 0.02  # measured <= 8.4e-4 (~24x margin)
-# Re-baselined 2026-07-11 for issue #318: the mixed matrix pairs the
+# The mixed matrix pairs the
 # byte-frozen legacy DIAGONAL (which #318 shrank to the feed-post
 # V-shape, max|Sii| ~= 0.089, from the pre-#318 dead-cell 0.13) with the
 # plane-referenced OFF-diagonal (~0.99). The smaller diagonal re-phases
@@ -878,9 +877,9 @@ _PHASE_DEEMBED_MAX_RAD = 0.02  # measured <= 8.4e-4 (~24x margin)
 # The genuine passivity witnesses BOTH pass strictly and improved under
 # #318, so this permissive gate is not masking a real regression:
 # _ENERGY_ROW_MAX (|S11|^2+|S21|^2 = 0.99995 < 1) and the battery
-# singular-value gate (0.633 < 0.85). Stable at dx/2 (#313 arc).
+# singular-value gate (0.633 < 0.85). Stable at dx/2.
 _MIXED_SV_MAX = 1.08
-_ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 0.99995 (#318;
+_ENERGY_ROW_MAX = 1.02         # measured |S11|^2+|S21|^2 <= 0.99995 (
                                # was <= 1.0003) — dropped as the diagonal
                                # reflection shrank; gate kept unchanged
 
@@ -895,7 +894,7 @@ def refplane_thru():
     issues = [str(i) for i in report]
     for msg in issues:
         print(f"\n[refplane thru] preflight (verbatim): {msg}")
-    # Exact-plane sheets are intentionally silent (#931 section 6). The
+    # Exact-plane sheets are intentionally silent. The
     # numerical lock depends on the realized foil, not an advisory census.
     errors = [str(i) for i in report if i.severity == "error"]
     assert not errors, errors
@@ -912,7 +911,7 @@ def refplane_thru():
         print(f"[refplane thru] Zc1={diag['zc'][1]}")
         w = 2 * np.pi * _FREQS
         print(f"[refplane thru] beta0/(w/c)={diag['beta'][0] / (w / C0)}")
-        # Port 1 too (#931): the band re-derivation had only port 0 to read
+        # Port 1 too: the band re-derivation had only port 0 to read
         # because port 0's assertion failed first, and a two-port fixture
         # should print both before anything asserts.
         print(f"[refplane thru] beta1/(w/c)={diag['beta'][1] / (w / C0)}")

@@ -496,8 +496,8 @@ def differentiable_material_fit(
     if eps_inf_init < _EPS_INF_FLOOR:
         raise RfxRefusal(
             f"initial eps_inf={eps_inf_init:g} is below {_EPS_INF_FLOOR:g}; "
-            "fit_debye returns eps_inf >= 1 when fitted freely; a fit_lorentz "
-            "result may not until its bounds are fixed")
+            "fit_debye and fit_lorentz return eps_inf >= 1 when fitted freely; "
+            "older results or fits with a fixed eps_inf below 1 are not accepted")
 
     # Pad if needed
     while len(debye_init) < n_debye_poles:

@@ -76,7 +76,7 @@ def _runner_arguments(monkeypatch, sim: Simulation, lane: str, **kw) -> dict:
 def test_the_runner_absorbs_on_every_axis(monkeypatch, lane):
     seen = _runner_arguments(monkeypatch, _sim(lane), lane)
     assert seen["boundary"] == "cpml"
-    # The runner absorbs on the axes it resolves from the grid (#1494), so
+    # The runner absorbs on the axes it resolves from the grid, so
     # judge the effective axes, not the literal argument.
     from rfx.boundaries.axes import resolve_cpml_axes
     effective = resolve_cpml_axes(seen["grid"], seen["cpml_axes"])

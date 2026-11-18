@@ -79,7 +79,7 @@ LOR_DELTA = 0.1 * LOR_W0  # damping; Q = w0/(2*delta) = 5
 # the slab is lossy but nowhere a negative-eps total reflector, and it is not
 # opaque (|n| 1.22 at 6 GHz, one-pass amplitude 0.55 through 8 mm).
 #
-# f_p was 6 GHz until 2026-09-21. There the pole moved R(f) so little that
+# f_p was 6 GHz. There the pole moved R(f) so little that
 # replacing the analytic eps(w) with a flat eps_inf = 2.7 slab still passed:
 # the arm could not tell a Drude slab from a dispersionless one. At f_p = 10 GHz
 # that substitution measures mean |dR| = 0.0556 and reds (see the arm's
@@ -95,7 +95,7 @@ DRUDE_GAMMA = 2.0 * np.pi * 4e9  # collision rate gamma (rad/s); pole delta = ga
 GATE = 0.05  # mean |R_fdtd - R_analytic| over the band
 
 # The Drude arm's own gate, from its own measurement by the shared envelope rule
-# (tests/_gate_policy.py): mean |dR| measured 0.0060 on CPU 2026-09-21 -> 0.01.
+# (tests/_gate_policy.py): mean |dR| measured 0.0060 on CPU -> 0.01.
 # Under the inherited 0.05 the arm rejected a dispersionless slab by only 1.1x
 # and could not see a halved collision rate at all; under 0.01 it rejects both.
 _DRUDE_MEASURED_MEAN = 0.0060

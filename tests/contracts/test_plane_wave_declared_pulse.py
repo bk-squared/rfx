@@ -164,7 +164,7 @@ def test_p4_measured_incident_spectrum_ratio():
     n_steps, dt = 2000, 1e-12
     freqs = np.array([6e9, 7e9, 8e9, 9e9, 10e9])
     t = np.arange(n_steps) * dt
-    # The TF/SF line launches GaussianPulse's charge-free DG (#1839).
+    # The TF/SF line launches GaussianPulse's charge-free DG.
     dg = _charge_free_dg(t, TAU, DG_T0)
     mg = np.cos(2 * np.pi * 8e9 * (t - MG_T0)) * np.exp(-((t - MG_T0) / TAU)**2)
     assert abs(dg[-1]) < 1e-6 * np.max(abs(dg))
