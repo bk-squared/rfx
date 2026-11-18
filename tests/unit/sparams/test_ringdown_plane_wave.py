@@ -26,7 +26,7 @@ from tests._closed_box_plane_wave import (F0, declare, level, line, pulse_end, r
                                           same_level, slotted_box, window_class, window_starts,
                                           windows)
 from rfx import GaussianPulse, ringdown as rd
-from rfx.errors import RfxUnsupported
+from rfx.errors import RfxRefusal, RfxUnsupported
 from rfx.ringdown._admission import refuse_forward_request, refuse_run_request
 from rfx.ringdown._plane_wave import PLANE_WAVE_LABEL, PlaneWaveDrive
 from rfx.sources.sources import CustomWaveform
@@ -123,7 +123,7 @@ def test_a_traced_plane_wave_field_is_refused_upstream():
         sim = declare({"amplitude": amplitude})
         res = sim.forward(n_steps=400, ringdown=probe_spec(), skip_preflight=True)
         return jnp.sum(jnp.abs(res.ringdown.probe_spectra) ** 2)
-    with pytest.raises(ValueError, match="amplitude: differentiating with respect to the incident source is not supported"):
+    with pytest.raises(RfxRefusal, match="incident source amplitude must be concrete at declaration"):
         jax.grad(loss)(1.0)
 
 
