@@ -1483,7 +1483,7 @@ def compute_coax_msl_transition(
         else:
             sources = make_msl_port_sources(
                 grid, msl_port_driven, materials, int(n_steps),
-                mode_profile=mode_profile,
+                mode_profile=mode_profile, dtype=jnp.float32,
             )
             mag_sources = []
 

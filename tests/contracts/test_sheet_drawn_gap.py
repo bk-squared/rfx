@@ -668,7 +668,7 @@ def test_f1_tfsf_wrap_masks(touch):
             coords, sizes, grid=grid) for lo, hi in intervals]
     from rfx.sources.tfsf import init_tfsf
     cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, ny=grid.ny, nz=grid.nz,
-                       cpml_layers=8, f0=5e9, bandwidth=.3, polarization='ez', direction='+x')
+                       cpml_layers=8, f0=5e9, bandwidth=.3, polarization='ez', direction='+x', dtype='float32')
     flags, _ = boundary_flags(cfg, grid)
     assert flags == (False, True, True)
     assert 'y' not in grid.periodic_axes

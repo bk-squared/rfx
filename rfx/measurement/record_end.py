@@ -32,6 +32,8 @@ response can reach the record end.
 """
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 import numpy as np
 
 TRACED = "cannot judge: traced"
@@ -333,7 +335,7 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse, tfsf_angl
         import jax
         from rfx.floquet import floquet_port_source
         with jax.ensure_compile_time_eval():  # the declared pulse is concrete under a trace
-            center, spec = floquet_port_source(grid, pe, sim._freq_max, sim._domain, n_steps)
+            center, spec = floquet_port_source(grid, pe, sim._freq_max, sim._domain, n_steps, dtype=resolve_coefficient_dtype(sim._precision))
             table = np.asarray(spec.waveform)
         drives.append((name, table, _points_reach([np.asarray(center)])))
     tf = getattr(sim, "_tfsf", None)
@@ -345,7 +347,7 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse, tfsf_angl
         else:
             from rfx.measurement.settling import tfsf_source_drive
             from rfx.sources.tfsf import tfsf_from_declaration
-            cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps)
+            cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))
             if tfsf_angle_deg is not None:
                 from rfx.sources.tfsf_2d import with_angle
                 cfg = with_angle(cfg, tfsf_angle_deg)

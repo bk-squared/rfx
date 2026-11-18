@@ -117,7 +117,7 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             cum = jnp.concatenate([jnp.zeros((1,), dtype=d_j.dtype),
                                    jnp.cumsum(d_j)])
             nodes = cum[:-1] - cum[pad_lo]
-            return nodes.astype(jnp.float32)
+            return nodes.astype(jnp.promote_types(d_j.dtype, jnp.float32))
         # Concrete path: HOST float64, no f32 cast (a cast re-quantizes node positions and
         # can place the NU lane one plane away from the uniform lane at node-aligned
         # faces).

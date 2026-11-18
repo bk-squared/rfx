@@ -39,6 +39,7 @@ Run:  .venv/bin/python validation/research/cpml_pole_pad/eigen_scan_636.py
 from __future__ import annotations
 
 import numpy as np
+import jax.numpy as jnp
 
 EPS_0 = 8.8541878128e-12
 MU_0 = 1.25663706212e-6
@@ -80,7 +81,7 @@ def profile(n_layers: int, dt: float, dx: float, alpha_max: float,
 
 def check_profile_transcription(dt: float) -> None:
     from rfx.boundaries.cpml import _cpml_profile
-    ship = _cpml_profile(8, dt, DX)
+    ship = _cpml_profile(8, dt, DX, dtype=jnp.float32)
     s, k, a, b, c = profile(8, dt, DX, ALPHA_SHIPPED)
     for name, mine, theirs in (("sigma", s, ship.sigma), ("kappa", k, ship.kappa),
                                ("alpha", a, ship.alpha), ("b", b, ship.b),

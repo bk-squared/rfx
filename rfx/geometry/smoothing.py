@@ -1260,19 +1260,19 @@ def _has_sdf(shape: Shape) -> bool:
     return _get_sdf_fn(shape) is not None and _get_normal_fn(shape) is not None
 
 
-def _to_jax(arrays, *, host: bool, promoted: bool):
+def _to_jax(arrays, *, host: bool, promoted: bool, dtype):
     """Cast host results to the dtype the ``jax.numpy`` path returns.
 
-    The JAX path yields the active default float dtype (float32 at x64=0,
-    float64 at x64=1) whenever SDF arithmetic on the coordinate arrays
-    reached the output (``promoted``), and float32 otherwise (an all-
-    staircase or empty shape list never leaves the float32 accumulators).
-    The host path reproduces that so callers see the same dtypes they did
-    before; this is the ONE cast on the host path.
+    The existing SDF path follows the active default float dtype (float32
+    at x64=0, float64 at x64=1); staircase and empty-shape paths have a
+    float32 floor. Promote that existing choice with the run coefficient
+    dtype. This retains the old float32/mixed behavior while allowing
+    float64 staircase values; this is the ONE cast on the host path.
     """
     if not host:
         return tuple(arrays)
-    dtype = jax.dtypes.canonicalize_dtype(np.float64) if promoted else jnp.float32
+    old_dtype = jax.dtypes.canonicalize_dtype(np.float64) if promoted else jnp.float32
+    dtype = jnp.promote_types(old_dtype, dtype)
     return tuple(jnp.asarray(a, dtype=dtype) for a in arrays)
 
 
@@ -1543,9 +1543,9 @@ def _uniform_sample_coords(xp, coords, dx):
 
 
 def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks, *,
-                          nominal_h_max=None):
+                          nominal_h_max=None, dtype):
     """``compute_smoothed_eps`` body on backend ``xp``; returns ``xp`` arrays."""
-    acc_dtype = np.float64 if xp is np else jnp.float32
+    acc_dtype = np.float64 if xp is np else jnp.promote_types(jnp.float32, dtype)
     eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
     return _kottke_smooth(
         xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps, masks,
@@ -1562,6 +1562,7 @@ def compute_smoothed_eps_nonuniform(
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
     *, nominal_h_max: float | None = None,
+    dtype,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Kottke tensor-averaged ε on a NonUniformGrid (per-component).
 
@@ -1645,12 +1646,12 @@ def compute_smoothed_eps_nonuniform(
         "ez": (node_x[:, None, None], node_y[None, :, None], centre_z[None, None, :]),
     }
 
-    acc_dtype = np.float64 if host else jnp.float32
+    acc_dtype = np.float64 if host else jnp.promote_types(jnp.float32, dtype)
     eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
                 for _ in range(3))
     eps = _kottke_smooth(xp, shapes, sample, extents, eps, masks, grid=nu_grid,
                          nominal_h_max=nominal_h_max)
-    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
+    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes), dtype=dtype)
 
 
 def compute_smoothed_eps(
@@ -1658,6 +1659,7 @@ def compute_smoothed_eps(
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
     *, nominal_h_max: float | None = None,
+    dtype,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute Kottke tensor-averaged permittivity for each E-field component.
 
@@ -1692,8 +1694,8 @@ def compute_smoothed_eps(
                       *(p for s, _ in shapes for p in _shape_parameters(s)),
                       *masks.values())
     eps = _smoothed_eps_uniform(np if host else jnp, grid, coords, shapes,
-                                background_eps, masks, nominal_h_max=nominal_h_max)
-    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
+                                background_eps, masks, nominal_h_max=nominal_h_max, dtype=dtype)
+    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes), dtype=dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -1781,6 +1783,7 @@ def compute_inv_eps_tensor_diag(
     pec_shapes: list[Shape] | None = None,
     background_eps: float = 1.0,
     *, nominal_h_max: float | None = None,
+    dtype,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Stage 2 unified subpixel ε⁻¹ tensor: dielectric Kottke + PEC limit.
 
@@ -1789,6 +1792,10 @@ def compute_inv_eps_tensor_diag(
     σ→∞ limit (zero parallel-direction inverse-eps; (1−f)/ε_outside on
     the perpendicular direction). Dielectric shapes route through the
     existing Kottke isotropic Eq. (1) form.
+
+    The dielectric inverse is rounded once to the run coefficient precision
+    on either backend. The host path widens it for the PEC arithmetic, which
+    keeps the float32 image for float32 and mixed runs.
 
     Parameters
     ----------
@@ -1842,24 +1849,18 @@ def compute_inv_eps_tensor_diag(
     # Step 1: dielectric subpixel smoothing (existing Kottke path).
     if dielectric_shapes:
         eps = _smoothed_eps_uniform(xp, grid, coords, dielectric_shapes,
-                                    background_eps, diel_masks, nominal_h_max=nominal_h_max)
+                                    background_eps, diel_masks, nominal_h_max=nominal_h_max, dtype=dtype)
     else:
-        acc_dtype = np.float64 if host else jnp.float32
+        acc_dtype = np.float64 if host else jnp.promote_types(jnp.float32, dtype)
         eps = tuple(xp.full(tuple(grid.shape), background_eps, dtype=acc_dtype)
                     for _ in range(3))
 
-    # The dielectric inverse is a float32 quantity by this function's
-    # contract (downstream ``update_e_aniso_inv`` expects float32, and
-    # ``eps_r`` may arrive as a Python float), so it is rounded here on both
-    # backends and the PEC limit below is folded in on top of that value. The
-    # host path widens the rounded value back to float64 for the PEC
-    # arithmetic: x64=0 is its float32 image.
-    inv = [(1.0 / e).astype(xp.float32) for e in eps]
+    inv = [(1.0 / e).astype(jnp.promote_types(jnp.float32, dtype)) for e in eps]
     if host:
         inv = [a.astype(np.float64) for a in inv]
 
     if not pec_shapes:
-        return _to_jax(inv, host=host, promoted=False)
+        return _to_jax(inv, host=host, promoted=False, dtype=dtype)
 
     # Step 2: apply each PEC shape via Kottke PEC limit, taking the
     # elementwise minimum (union of PEC effects — the most-restrictive
@@ -1900,7 +1901,7 @@ def compute_inv_eps_tensor_diag(
             inv_c = xp.where(e_inside, 0.0, inv_c)
             inv[i] = xp.minimum(inv[i], inv_c)
 
-    return _to_jax(inv, host=host, promoted=promoted)
+    return _to_jax(inv, host=host, promoted=promoted, dtype=dtype)
 
 
 def kottke_inv_eps_from_occupancy(
@@ -1909,6 +1910,7 @@ def kottke_inv_eps_from_occupancy(
     *,
     aniso_inv_eps_baseline: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
     background_eps: float = 1.0,
+    dtype=jnp.float32,
     periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Inverse-permittivity tensor from a continuous-fill PEC occupancy.
@@ -1924,6 +1926,8 @@ def kottke_inv_eps_from_occupancy(
     continuation in between -- it still shifts a resonance (measured -3.6 %
     on a cavity's TM110 with a slab edge at a cell centre). Feed the result
     to ``update_e_aniso_inv``.
+
+    Standalone calls keep the float32 default ``dtype``.
 
     Parameters
     ----------
@@ -1976,7 +1980,8 @@ def kottke_inv_eps_from_occupancy(
     from rfx.boundaries.pec import _volume_occupancy_masks
     from rfx.model.occupancy import clip_occupancy
 
-    f = clip_occupancy(pec_occupancy.astype(jnp.float32))
+    dtype = jnp.promote_types(jnp.float32, dtype)
+    f = clip_occupancy(pec_occupancy.astype(dtype))
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
     # pinned zero.
     f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)
@@ -1986,9 +1991,9 @@ def kottke_inv_eps_from_occupancy(
     else:
         bg = 1.0 / jnp.asarray(background_eps, dtype=jnp.float32)
         inv_xx_b = inv_yy_b = inv_zz_b = bg
-    inv_xx = ((1.0 - m_x) * inv_xx_b).astype(jnp.float32)
-    inv_yy = ((1.0 - m_y) * inv_yy_b).astype(jnp.float32)
-    inv_zz = ((1.0 - m_z) * inv_zz_b).astype(jnp.float32)
+    inv_xx = ((1.0 - m_x) * inv_xx_b).astype(dtype)
+    inv_yy = ((1.0 - m_y) * inv_yy_b).astype(dtype)
+    inv_zz = ((1.0 - m_z) * inv_zz_b).astype(dtype)
     return inv_xx, inv_yy, inv_zz
 
 

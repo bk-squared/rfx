@@ -43,7 +43,7 @@ S. C. Tan and G. E. Potter, IEEE T-AP 58(9), 2010.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -196,6 +196,9 @@ def init_tfsf_2d(
     TEz mode (ey polarization): 2D grid in xz-plane, periodic in z.
     CFS-CPML on x boundaries only.
 
+    The auxiliary absorber profiles are float32 because run admission refuses
+    float64 oblique Bloch.
+
     Parameters
     ----------
     nz : int | None
@@ -265,17 +268,17 @@ def init_tfsf_2d(
     # reflection through the same law the 3-D absorber uses
     # (rfx/boundaries/cpml.py::_cpml_profile), never from a standalone
     # heuristic -- see AUX_CPML_* above.
-    profile_options = dict(
+    profile_options: dict[str, Any] = dict(
         order=AUX_CPML_ORDER if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=AUX_CPML_KAPPA_MAX if aux_cpml_kappa_max is None else float(aux_cpml_kappa_max),
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    prof = _cpml_profile(n_cpml_2d, dt, dx, **profile_options)
+    prof = _cpml_profile(n_cpml_2d, dt, dx, dtype=jnp.float32, **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_2d, dt, dx, sample_offset=0.5, **profile_options)
+        n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_2d, dt, dx, sample_offset=-0.5, **profile_options)
+        n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=-0.5, **profile_options)
     b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
     # Source waveform

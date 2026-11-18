@@ -369,13 +369,13 @@ def run(
         occupancy=pec_occupancy, periodic=periodic,
         sheet_edge_masks=_ctx["pec_static_edge_masks"],
         design=design_occupancy, shape=grid.shape,
-        keep=_ctx["materials"].edge_keep)
+        keep=_ctx["materials"].edge_keep, dtype=field_dtype or jnp.float32)
 
     # ---- magnetic source (H-field) waveform matrix ----
     if mag_sources:
         mag_src_waveforms = jnp.stack([s.waveform for s in mag_sources], axis=-1)
     else:
-        mag_src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+        mag_src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.promote_types(field_dtype or jnp.float32, jnp.float32))
 
     # ---- scan body (shared kernel; W6.1 kernel + W6.2 setup) ----
     _step_ctx = _StepContext(
@@ -1012,7 +1012,7 @@ def run_until_decay(
     # ---- precompute source waveforms up to max_steps ----
     src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, max_steps,
         occupancy=pec_occupancy, periodic=_setup.periodic, pad=True,
-        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"], keep=_setup.ctx_kwargs["materials"].edge_keep)
+        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"], keep=_setup.ctx_kwargs["materials"].edge_keep, dtype=field_dtype or jnp.float32)
 
     if mag_sources:
         mag_src_waveforms = jnp.stack(
@@ -1020,7 +1020,7 @@ def run_until_decay(
              else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
              for s in mag_sources], axis=-1)
     else:
-        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.promote_types(field_dtype or jnp.float32, jnp.float32))
 
     # ---- shared kernel (W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the

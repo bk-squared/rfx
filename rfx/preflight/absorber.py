@@ -70,6 +70,7 @@ and it reads no ``pec_geometry`` module global -- it holds only
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
 from rfx.preflight._not_judged import is_tracer_error, not_judged
 
 from rfx.preflight._subjects import finding_subjects, absorber_region
@@ -1520,7 +1521,7 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
                 from rfx.sources.tfsf import tfsf_from_declaration
                 from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
                 entry = self._tfsf
-                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True)
+                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(self._precision))
                 periodic, _ = tfsf_boundary_flags(cfg, grid)
     except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError) as _traced_exc:
         if is_tracer_error(_traced_exc):

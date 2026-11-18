@@ -35,13 +35,15 @@ def plane_wave_line(plan):
     """
     import jax
 
+    from rfx._internal._precision import resolve_coefficient_dtype
     from rfx.sources.tfsf import tfsf_from_declaration
 
     sim = plan.sim
     n = int(plan.n_steps)
     with jax.ensure_compile_time_eval():
         return tfsf_from_declaration(sim._tfsf, plan.grid, sim._freq_max, n_steps=n,
-                                     line_steps=n if plan.caller == "run" else None)
+                                     line_steps=n if plan.caller == "run" else None,
+                                     dtype=resolve_coefficient_dtype(sim._precision))
 
 
 def incident_divisors(records, bins, dt):
