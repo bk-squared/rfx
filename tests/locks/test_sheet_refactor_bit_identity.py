@@ -268,7 +268,7 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
 
     @jax.jit
     def ref_nu(st, mats, inv_dx, inv_dy, inv_dz):
-        # The graded-mesh lane installs no periodic BC (#1210 docstring).
+        # The graded-mesh lane installs no periodic BC.
         (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z) = edge_averaged_materials(
             mats.eps_r, mats.sigma, (False, False, False), cell_sizes=cell_sizes, high_wall=(False, False, False))
         out = []

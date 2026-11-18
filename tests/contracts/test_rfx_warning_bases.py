@@ -25,7 +25,7 @@ PRINT_SITES = {
     ("fidelity.py", "fidelity_report"): "explicit output API or user-flagged output",
     ("fidelity.py", "_print"): "explicit output API or user-flagged output",
     ("gpu.py", "print_benchmark"): "explicit output API or user-flagged output",
-    ("optimize.py", "_run_one"): "explicit output API or user-flagged output",
+    ("optimize.py", "_run_optimizer"): "explicit output API or user-flagged output",
     ("optimize.py", "forward"): "explicit output API or user-flagged output",
     ("optimize.py", "progressive_optimize"): "explicit output API or user-flagged output",
     ("measurement/waveguide_s.py", "_waveguide_s21_phase_residual"): "design exemption: phase residual",

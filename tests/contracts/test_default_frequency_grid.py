@@ -52,7 +52,7 @@ def test_default_grid_independent_of_outer_compile_form(form):
 def test_plane_default_bins_remain_concrete_inside_a_trace():
     import jax
     from rfx.measurement.setup import build_planes
-    # main's solved lengths on the uniform mesh (ceil); #1887
+    # Main's solved lengths on the uniform mesh (ceil)
     sim = Simulation(freq_max=15e9, domain=(.016, .009, .011), dx=.001, boundary='pec')
     sim.add_dft_plane_probe(axis='y', coordinate=.0031)
     grid = sim._build_grid()

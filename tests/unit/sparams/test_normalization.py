@@ -36,7 +36,7 @@ def _make_straight_waveguide_sim(
     n_z = math.ceil(b_wg / dx - 1e-9)
     sim = Simulation(
         freq_max=f_max, dx=dx,
-        domain=(length, n_y * dx, n_z * dx),  # solved length; #1887
+        domain=(length, n_y * dx, n_z * dx),  # solved length
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )

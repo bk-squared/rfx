@@ -50,7 +50,7 @@ def reference(grid, shape):
     tangents = [a for a in range(3) if a != normal]
     a, b = tangents
     # A DC film mask entry j is cell j, [x_j, x_j+1): sample it at the cell
-    # centre x_j + w_j/2, the last width repeated past the final node (#1958 F8).
+    # centre x_j + w_j/2, the last width repeated past the final node.
     centres = []
     for t in (a, b):
         w = np.asarray(grid.cells(t), dtype=float)
@@ -136,7 +136,7 @@ class UnknownArea:
 @pytest.mark.parametrize('radius', [2.5, 5.5])
 def test_b4_small_disc_refusal_and_declared_finding(lane, radius):
     # Canonical placement: area errors -9.7% (r 2.5, 16 cells) and -3.8% (r 5.5, 88 cells)
-    # with cell-centre sampling (#1958 F8; node sampling gave +3.4% / +1.03%).
+    # with cell-centre sampling (node sampling gave +3.4% / +1.03%).
     # B2/B3/B5 also exercise fractional, asymmetric transverse placement.
     sim, grid, shape = model(lane, radius, centre=(24, 24))
     _, area, declared = reference(grid, shape)

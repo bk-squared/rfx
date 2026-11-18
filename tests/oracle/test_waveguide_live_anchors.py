@@ -13,7 +13,7 @@ PORT_RIGHT_X = 0.09
 BAND_HZ = (5.0e9, 7.0e9)
 N_FREQS = 6
 
-# #931: the anchor's mesh is DECLARED, not auto-derived. The short below is a
+# the anchor's mesh is DECLARED, not auto-derived. The short below is a
 # metal block — a total reflector, so a VOLUME (design note §1.5) — and a
 # volume has to be an integer number of cells thick or the contract refuses it.
 # With the auto-derived dx (0.00214137 m at freq_max = 7 GHz) the old 2 mm
@@ -52,20 +52,20 @@ def _live_build_sim(freqs_hz, *, pec_short_x=None):
         # A VOLUME, RESOLVED. The short used to be drawn 2 mm thick on a mesh
         # this builder let rfx choose (~2.14 mm here) — i.e. THINNER than
         # one cell, which the lattice ownership contract refuses outright
-        # (#931 §1.5) rather than realizing to whatever the raster happened
+        # rather than realizing to whatever the raster happened
         # to give. The live mesh is now LIVE_DX = 2 mm (above), so the short
         # is exactly one cell drawn on node planes from the same front face:
         # the declaration says what the lattice can build.
         #
         # Two earlier readings of this anchor on the merged tree, both now
-        # ATTRIBUTED (2026-09-07, on the WR-90 waveguide-port case's
+        # ATTRIBUTED (on the WR-90 waveguide-port case's
         # identical set-up, per-bin dumps + port time records):
         #
         # 1. On the AUTO mesh (2.1414 mm) the one-cell volume read |S11| =
         #    [0.9663, 0.9572, 0.9741, 0.9827, 0.9847, 0.9836]. That mesh
         #    makes the guide ceil(20 / 2.1414) = 10 cells = 21.41 mm tall,
         #    and a plug drawn to DOMAIN[2] = 20 mm rounds its top face to
-        #    the nearest node (#931 §1.1) at 19.27 mm: a 2.14 mm vacuum slot
+        #    the nearest node at 19.27 mm: a 2.14 mm vacuum slot
         #    under the top wall, a parallel-plate line that carries Ez past
         #    the "short". cv11's 1 mm slot of the same origin was the whole
         #    0.0146 -> 0.0560 step (|S21| 0.22-0.33 behind the plug; closing
@@ -93,7 +93,7 @@ def _live_build_sim(freqs_hz, *, pec_short_x=None):
             material="pec",
         )
     port_freqs = jnp.asarray(freqs)
-    # #1913: with a short, the right port stands 4 cells behind its far face
+    # with a short, the right port stands 4 cells behind its far face
     # so its 3-cell reflection plane is in front of it; |S11| is bit-identical.
     right_x = (PORT_RIGHT_X if pec_short_x is None
                else pec_short_x + PEC_SHORT_THICKNESS + 4 * LIVE_DX)
@@ -115,7 +115,7 @@ def _s_matrix(sim, *, normalize, num_periods=40):
 
 
 def _assert_cpml(sim):
-    # Cheap constructor guard (echoes the boundary kwarg). NOTE (issue #395):
+    # Cheap constructor guard (echoes the boundary kwarg). NOTE:
     # the empty-guide |S11|≈0 in test_live_empty_guide_s21_anchor is NOT an
     # absorbing-boundary witness — on the flux path device==reference makes it
     # ~0 by construction regardless of CPML quality. The real waveguide-lane
@@ -191,7 +191,7 @@ def test_live_empty_guide_s21_anchor():
         f"LIVE empty-guide min|S21|={s21.min():.4f} < 0.98 — transmission "
         f"extraction regression in compute_waveguide_s_matrix"
     )
-    # By-construction determinism bound (NOT a CPML witness — issue #395).
+    # By-construction determinism bound (NOT a CPML witness).
     # On the flux path the empty-guide diagonal is
     # |S11|^2 = |F_ref - F_dev| / |F_ref| and the empty device run equals the
     # vacuum reference run bit-for-bit, so |S11| ~ 0 REGARDLESS of boundary

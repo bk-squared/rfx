@@ -107,7 +107,7 @@ def test_position_to_index_nonuniform_xy():
 
 
 # ---------------------------------------------------------------------
-# 4. coords_from_nonuniform_grid E-node positions (#562: was cell centres)
+# 4. coords_from_nonuniform_grid E-node positions
 # ---------------------------------------------------------------------
 def test_coords_from_nonuniform_grid_node_positions():
     """Coordinates are E-NODE positions (cumulative cell edges), not centres.
@@ -259,8 +259,7 @@ def test_current_source_uses_per_cell_volume():
     # On the transition node both TRANSVERSE axes are graded 1mm/0.5mm, so
     # dV_step = 0.75mm * 0.75mm * 1mm = 0.5625e-9 and the ratio against the
     # coarse node is (1/0.75)^2 = 1.7778 — not the 4 the primal-only rule
-    # would give, and not the 1 a naive "same cell size" reading would
-    # (issue #672).
+    # would give, and not the 1 a naive "same cell size" reading would.
     ratio_step = wf_step / wf_coarse
     assert abs(ratio_step - (1.0 / 0.75) ** 2) < 0.01, (
         f"expected dual-spacing dV ratio {(1.0/0.75)**2:.4f} at the grading "

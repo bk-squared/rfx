@@ -176,7 +176,7 @@ CLOSURE_ABS_DIFF_GATE = 0.02
 SETTLING_DB_MAX = -40.0
 
 # Non-vacuity: an empty guide would make the closure identity trivially true
-# at both plane pairs (#395, the contract's "never an empty guide"). The slab
+# at both plane pairs (the contract's "never an empty guide"). The slab
 # reflects; the fixture's own gate is max|S11| > 0.20 on the reflecting DUTs.
 NON_VACUITY_MIN_S11 = 0.20
 
@@ -260,7 +260,7 @@ def _run_monitor_solve(dut: str, dx: float = RUNG_DX_M) -> dict:
                 for name in (MON_IN_NAME, MON_OUT_NAME)}
         wall = time.time() - t0
     # Same accumulators, float64 host-side summation (``flux_spectrum``'s own
-    # sanctioned #304 remedy). Diagnostic only — the gate reads the default
+    # sanctioned remedy). Diagnostic only — the gate reads the default
     # path, which is the path the flux lane itself uses.
     flux_f64 = {name: np.asarray(flux_spectrum(res.flux_monitors[name], exact_f64=True),
                                  dtype=float)

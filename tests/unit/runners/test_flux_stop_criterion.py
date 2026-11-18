@@ -16,10 +16,8 @@ from rfx.api import Simulation
 from rfx.sources.sources import ModulatedGaussian
 
 # The scene this module is about needs a source WITH DC content: that is what leaves a static
-# charge behind. ``GaussianPulse(f0=4e9, bandwidth=0.8)``, used here until 2026-09-21, has
-# almost none. It only looked like flooring because the energy criterion tracked its peak from
-# ``decay_min_steps`` (fixed by #1098); once that was fixed both criteria stopped at the first
-# eligible check (701 / 700) and the two "energy floors" tests went red on the weekly lane.
+# charge behind. ``GaussianPulse(f0=4e9, bandwidth=0.8)`` has
+# almost none.
 # Measured on main 72d4b0ff with the waveform below: energy runs to its cap (6000 uniform,
 # 5000 non-uniform), the flux criterion stops at 801 and 1000. Same waveform as the static-
 # remnant fixture in tests/unit/sources/test_source_dc_floor_guards.py.
@@ -54,7 +52,7 @@ def test_flux_stops_while_energy_floors():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         rE = _stop_step(None)
-    # Pin WHY the energy run reached its cap: the run's own #388 advisory must say the energy
+    # Pin WHY the energy run reached its cap: the run's own advisory must say the energy
     # left inside is electrostatic. A cap-hit for any other reason (trapped resonance, a failing
     # absorber) would keep `nE >= 5900` green while no longer testing this scene.
     assert [w for w in caught if "relative DC" in str(w.message) and "H-share" in str(w.message)], (
@@ -89,7 +87,7 @@ def test_flux_stop_finite_and_stops_before_max():
 
 
 # --------------------------------------------------------------------------- #
-# Non-uniform (dz_profile) lane — the actual #388 fixture class is NU.
+# Non-uniform (dz_profile) lane — the actual fixture class is NU.
 # --------------------------------------------------------------------------- #
 def _nu_sim():
     nz = 40
