@@ -42,28 +42,39 @@ def still_on_message(entry, caller, ratio, tol, window) -> str:
 def plane_wave_entries(plan) -> list:
     """The plane wave's entry for ``plan``'s source-off check; empty without a plane wave.
 
-    The line is built as the runner builds it for ``plan.n_steps`` (``line_steps``
-    equal to it on run, None on forward; both bound the line at that length)
-    and stepped alone with the grid's ``dx`` and ``dt``, the values the scan's
-    TF/SF preparation receives.
+    The line is built as the runner builds it for ``plan.n_steps``
+    (:func:`rfx.ringdown._incident_norm.plane_wave_line`) and stepped alone
+    with the grid's ``dx`` and ``dt``, the values the scan's TF/SF
+    preparation receives.
     """
-    sim = plan.sim
-    if getattr(sim, "_tfsf", None) is None:
+    if getattr(plan.sim, "_tfsf", None) is None:
         return []
     import jax
 
     from rfx.core.jax_utils import is_tracer
     from rfx.measurement.record_end import plane_wave_face_level
-    from rfx._internal._precision import resolve_coefficient_dtype
-    from rfx.sources.tfsf import tfsf_from_declaration
+    from rfx.ringdown._incident_norm import plane_wave_line
     from rfx.stepping.incident_line import face_read_maxima
 
-    n = int(plan.n_steps)
+    cfg, state = plane_wave_line(plan)
     with jax.ensure_compile_time_eval():
-        cfg, state = tfsf_from_declaration(sim._tfsf, plan.grid, sim._freq_max, n_steps=n,
-                                           line_steps=n if plan.caller == "run" else None,
-                                           dtype=resolve_coefficient_dtype(sim._precision))
         maxima = face_read_maxima(cfg, state, plan.grid.dx, plan.grid.dt)
     if any(is_tracer(v) for v in maxima):
         return [PlaneWaveDrive(None)]
     return [PlaneWaveDrive(plane_wave_face_level(*(np.asarray(v) for v in maxima)))]
+
+
+def _require_source_off_rows(entries, rows, caller, probe_mode=False):
+    """Refuse the first drive whose off time cannot be judged on the host."""
+    from rfx._traced_refusal import TracedStructureRefusal
+
+    for pe, row in zip(entries, rows, strict=True):
+        if row is None:
+            label = drive_label(pe)
+            raise TracedStructureRefusal(
+                f"{caller}(ringdown=...): the {label} cannot be judged for its off time inside the "
+                "identification window: its waveform samples or the time step are traced "
+                "(a waveform parameter, or a graded mesh without dt=, under jax.grad, "
+                "jax.jvp, jax.vmap or jax.jit). Declare that waveform with concrete values "
+                + ("(a completed probe spectrum is linear in the drive: scale it outside the call)"
+                   if probe_mode else "(S does not depend on the drive's amplitude)") + ", or pin dt=.")

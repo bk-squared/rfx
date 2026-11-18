@@ -192,9 +192,6 @@ def test_forward_callback_does_not_swallow_refusal(monkeypatch):
 
 
 def test_we_refusal_preserves_synthetic_completion(monkeypatch):
-    # Stage-1 needs: main (10,), Nd=155: 1,101,714.24 bytes
-    # < bound 1,123,406.24 < smallest WE fallback (7, 2), Nd=158:
-    # 1,145,098.24 bytes. Default WE (10,), Nd=243 needs 2,709,555.20.
     main_pencil = 1.87 * 16 * (3*104*51 + 104*51 + 2*51*51 + 4*51**2)
     main_fit = 1.71 * 16 * 5 * 1750
     long_pencil = 1.87 * 16 * (3*163*80 + 163*80 + 2*80*80 + 4*80**2)
@@ -235,9 +232,6 @@ def test_we_refusal_keeps_cavity_main_s(monkeypatch, entry):
     from tests.unit.sparams.test_ringdown_run import _box, FREQS
     from rfx.ringdown import _jax as rj
 
-    # At 6000 steps both windows use (6,): main Nd=480, WE Nd=730.
-    # Stage-1 needs: main 30,103,828.48 < bound 49,806,986.24
-    # < smallest WE fallback 69,510,144.00 bytes (also the default plan).
     main = 1.87 * 16 * (3*322*158*2 + 322*316 + 2*316*158*2 + 4*316**2)
     long = 1.87 * 16 * (3*490*240*2 + 490*480 + 2*480*240*2 + 4*480**2)
     bound = (main + long) / 2

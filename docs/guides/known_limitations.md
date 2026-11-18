@@ -707,7 +707,7 @@ The field increment a source adds on its edge is the update's coefficient times 
 
 Not fixed in 2.2.0. Read absolute amplitudes from a port beside a conformal wall as high by these amounts, or put the walls on mesh nodes. Measured 2026-11-03 on the cut-cell conformal model; record kept with the project.
 
-### Port drives, lumped RLC elements, surface-impedance sheets and the Kerr term read a different permittivity on their edge than the field update.
+### Surface-impedance sheets and the Kerr term read a different permittivity on their edge than the field update.
 
 Tracker: #1961
 
@@ -720,12 +720,6 @@ another material. Each number is |a − b| / |b|, where a is the operator's quan
 from the update's permittivity, on one edge of one test scene (an εr 4 sphere or a PEC sphere, 1 mm cells, uniform mesh,
 one device; `run()` and `forward()` give the same value).
 
-- Lumped, wire and MSL port drives and lumped RLC elements (`add_port`, `add_msl_port`, `add_lumped_rlc`) read the
-  permittivity from before smoothing and before the conformal cut. The quantity is the drive's update coefficient, and
-  for an RLC element its update denominator ε/Δt + σ/2 (the inverse of a coefficient). On a smoothed edge the drives
-  differ by 0.12 to 0.26 and the RLC denominator by 0.75. With `"full_tensor"` the drives differ by 3.8×10⁻⁴ (MSL) to
-  0.18 and the RLC denominator by 0.64. On a cut edge with conformal weight 0.0037, the lumped and wire drives differ by
-  85 and 50 and the RLC denominator by 0.996; the MSL drive differs by 2.3 on a cut edge of its own, with weight 0.17.
 - A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) and the Kerr term
   (`add_material(..., chi3=...)`) read the permittivity of one cell; no option is needed for this. On an edge with one
   εr 4 cell and three εr 1 cells around it, both read 4 where the update reads 1.75. The sheet's per-step loss exponent
@@ -735,8 +729,9 @@ one device; `run()` and `forward()` give the same value).
   or conformal PEC, and the Kerr term with smoothing, are refused.
 - A rectangular-waveguide port on a conformal edge has the same fault; the entry above gives its measured effect.
 
-On a plain edge (no smoothing, no conformal cut) the port drives and RLC elements read the update's permittivity; the
-sheet and the Kerr term do too where the four cells around the edge hold one material. The effect of these differences
+Lumped, wire and MSL port drives and lumped RLC elements (`add_port`, `add_msl_port`, `add_lumped_rlc`) read the
+update's own coefficient on every edge: plain, smoothed and conformally cut. The sheet and the Kerr term read the
+update's permittivity on a plain edge where the four cells around the edge hold one material. The effect of these differences
 on S-parameters, fields and gradients is not measured. Measured 2026-11-15; record kept with the project.
 
 ### A waveguide port built without a uniform Grid is unchecked in a caller's own loop.
@@ -831,6 +826,22 @@ Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
+
+### A long identification window can be refused at stage 2, the original-rate residue fit, above the memory bound.
+
+Tracker: #2874
+
+`run(ringdown=...)` and `forward(ringdown=...)` identify poles in two stages:
+- stage 1, the pencil, runs on the decimated record;
+- stage 2 fits the residues at the original sample rate and needs `1.71 × 16 × 5 × n_win × r` bytes, where `n_win` is the window length in samples and `r` the kept rank.
+
+When that exceeds `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` (4 GiB by default), the window is refused by name with `IdentificationMemoryRefused`. The message names the stage, the dimensions, the memory needed and the bound. For example, n_win = 80,000 at r = 600 needs 6.1 GiB. No number is returned for that window.
+
+What to do:
+- raise `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` when the device has the memory;
+- or shorten the identification window.
+
+#2874 plans a streamed stage-2 fit, whose memory scales with `r²`.
 
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 

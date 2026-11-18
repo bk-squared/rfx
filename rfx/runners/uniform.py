@@ -273,11 +273,17 @@ def run_uniform(
     # this port's own clearing) is in hand.  Feed the S-param specs below.
     wire_port_live_cells = []
     wire_port_excites = []
+    frozen_drive_requests = []
     for _port_index, pe in enumerate(sim._ports):
         if pe.is_soft_source:
             # The declared kind alone decides the drive (forward() calls the same).
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, sizing_n, field_dtype=field_dtype)
+            if pe.amplitude_kind != "field":
+                from rfx._internal._grid_metric import field_index as _field_index
+                frozen_drive_requests.append((
+                    f"Soft source _ports[{_port_index}]", pe.position, pe.component,
+                    (_field_index(grid, pe.position, pe.component),)))
             continue
         if pe.extent is not None:
             # Multi-cell wire port
@@ -314,6 +320,9 @@ def run_uniform(
                 sources.defer(_simulation.make_wire_port_sources,
                     grid, wp, n_steps=sizing_n,
                     pec_edge_masks=pec_edge_masks)
+                frozen_drive_requests.append((
+                    f"Wire port _ports[{_port_index}]", pe.position, pe.component,
+                    tuple(wp._drive_stamps)))
             # No PEC clearing for a wire port:
             # a cell is LIVE exactly when the port component's own edge at
             # that index is not PEC, so releasing that component at the
@@ -332,6 +341,9 @@ def run_uniform(
             materials = setup_lumped_port(grid, lp, materials)
             if pe.excite:
                 sources.defer(_simulation.make_port_source, grid, lp, n_steps=sizing_n)
+                frozen_drive_requests.append((
+                    f"Lumped port _ports[{_port_index}]", pe.position, pe.component,
+                    tuple(lp._drive_stamps)))
             # Release the realized PEC edge the lumped port DRIVES — its
             # own component at its own cell, and nothing else (
             # corrected: the three-component form opened the conductor the
@@ -451,6 +463,9 @@ def run_uniform(
             materials = setup_msl_port(grid, mp, materials,
                                        mode_profile=mode_profile)
             if pe.excite and pe.waveform is not None:
+                frozen_drive_requests.append((
+                    f"msl_port[{_msl_port_index}]", pe.position, "ez",
+                    tuple(mp._drive_stamps)))
                 if eigenmode_data is not None:
                     # Schelkunoff J+M one-sided launch: both E and H sources
                     sources.defer(deferred_msl_sources_jm, grid, mp,
@@ -580,12 +595,15 @@ def run_uniform(
         periodic=_simulation.resolve_periodic(grid, periodic),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         field_dtype=field_dtype if field_dtype is not None else jnp.float32)
-    from rfx.model.source_coefficients import resolve_run_sources
-    sources = resolve_run_sources(sources, materials, sim, grid,
-        tensor=aniso_eps is not None or conformal_weights is not None)
-
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
+    from rfx.model.tensor_operands import attach_run_tensor
+    materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps, conformal_weights)
+    run_tensor = materials.components.tensor
+    from rfx.model.source_admission import refuse_frozen_drive_edges
+    refuse_frozen_drive_edges(run_tensor, frozen_drive_requests)
+    from rfx.model.source_coefficients import resolve_run_sources, drive_materials
+    sources = resolve_run_sources(sources, materials, sim, grid)
 
     # Thread the field storage dtype into the ADE carry, the
     # same way ``rfx.simulation.run`` threads it into the CPML psi / NTFF /
@@ -620,7 +638,8 @@ def run_uniform(
         # The run's own periodic flags (after the TFSF override above): a
         # series element's D0 is its edge's E-update coefficient.
         _rlc_periodic = _simulation.resolve_periodic(grid, periodic)
-        rlc_metas = [build_rlc_meta(grid, spec, materials, periodic=_rlc_periodic)
+        rlc_metas = [build_rlc_meta(grid, spec, drive_materials(materials, sim, grid),
+                                    periodic=_rlc_periodic)
                      for spec in sim._lumped_rlc]
         # at most one element with its own solve per realized edge.
         from rfx.lumped import refuse_stacked_solved_elements
@@ -636,8 +655,10 @@ def run_uniform(
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         validate_realized_vacuum_boundary(
             sim, grid, materials, tfsf[0], pec_edge_masks=pec_edge_masks,
-            aniso_eps=aniso_eps, aniso_inv_eps=aniso_inv_eps,
-            conformal_weights=conformal_weights, debye_spec=debye_spec,
+            aniso_eps=run_tensor.eps if run_tensor is not None else None,
+            aniso_inv_eps=run_tensor.inv_eps if run_tensor is not None else None,
+            conformal_weights=run_tensor.conformal_weights if run_tensor is not None else None,
+            debye_spec=debye_spec,
             lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3, sheet_ctx=sheet_ctx,
             rlc_indices=((m.i, m.j, m.k) for m in (rlc_metas or ())))
 
@@ -729,14 +750,11 @@ def run_uniform(
             current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
-            aniso_eps=aniso_eps,
-            aniso_inv_eps=aniso_inv_eps,
             subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
             pec_wires=pec_wires,
-            conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_port_sparams=lumped_sparam_specs or None,
             port_record_specs=record_specs,
@@ -769,14 +787,11 @@ def run_uniform(
             current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
-            aniso_eps=aniso_eps,
-            aniso_inv_eps=aniso_inv_eps,
             subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
             pec_wires=pec_wires,
-            conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_port_sparams=lumped_sparam_specs or None,
             port_record_specs=record_specs,

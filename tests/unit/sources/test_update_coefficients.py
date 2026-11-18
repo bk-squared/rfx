@@ -97,9 +97,9 @@ def test_source_first_e_update(case):
         beta = float(jnp.sum(c.debye.coefficients[1][2], axis=0)[idx])
     cb = dt / (EPS * eps + beta + sig * dt / 2)
     if case == "smooth":
-        cb = dt / (EPS * float(captured["aniso_eps"][2][idx]) + sig * dt / 2)
+        cb = dt / (EPS * float(c.tensor.eps[2][idx]) + sig * dt / 2)
     if case == "inverse":
-        inv = float(captured["aniso_inv_eps"][2][idx])
+        inv = float(c.tensor.inv_eps[2][idx])
         cb = dt * inv / EPS / (1 + sig * dt * inv / (2 * EPS))
     if case.startswith("upml"):
         from rfx.boundaries.upml import _axis_sigma_E_H

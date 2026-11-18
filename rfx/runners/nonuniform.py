@@ -1008,6 +1008,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
     materials = field_poles(materials, source_grid, debye_spec, lorentz_spec, field_dtype)
+    from rfx.model.tensor_operands import attach_run_tensor
+    materials = attach_run_tensor(materials, aniso_eps)
     sources = sources.resolve(materials)
 
     # Lumped RLC: build per-element metadata + zero-init ADE states
@@ -1176,7 +1178,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         field_dtype=field_dtype,
         design_box=design_box,
         sheet_impedance=sheet_ctx,
-        aniso_eps=aniso_eps,
         pec_mask=pec_mask,
         pec_edge_masks=pec_edge_masks,
         pec_sheets=_pec_sheets,
