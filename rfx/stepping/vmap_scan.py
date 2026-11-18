@@ -142,7 +142,7 @@ def _build_vmap_scan_fn(
         )
         import dataclasses
         from rfx.stepping import vector_pad
-        pad = vector_pad.uniform_plan(grid, periodic, path="vmap material sweep",
+        pad: vector_pad.PadPlan | None = vector_pad.uniform_plan(grid, periodic, path="vmap material sweep",
             unsupported=vector_pad.uniform_unsupported(
                 {f.name: getattr(ctx, f.name) for f in dataclasses.fields(ctx)},
                 stencil_order=2, field_dtype=fdtd.ex.dtype))

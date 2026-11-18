@@ -41,8 +41,8 @@ TARGETS = ("off", "aligned", "aligned_slow", "odd")
 _MEASURED_GAIN: dict = {("8.6", "0.10.2"): "aligned_slow"}
 
 _REQUESTED = contextvars.ContextVar("rfx_vector_pad_target", default="auto")
-_RECORDER = contextvars.ContextVar("rfx_vector_pad_recorder", default=None)
-_SEED = contextvars.ContextVar("rfx_vector_pad_seed", default=None)
+_RECORDER: contextvars.ContextVar[list | None] = contextvars.ContextVar("rfx_vector_pad_recorder", default=None)
+_SEED: contextvars.ContextVar[tuple[int, float] | None] = contextvars.ContextVar("rfx_vector_pad_seed", default=None)
 
 
 @dataclass(frozen=True)
@@ -83,17 +83,17 @@ def plan_pad(shape, *, target, periodic_axes, two_d=False) -> PadPlan:
         periodic = tuple(a in periodic_axes for a in "xyz")
     else:
         periodic = tuple(bool(v) for v in periodic_axes)
-    pad = [0, 0, 0]
+    cells = [0, 0, 0]
     for axis, n in enumerate(shape):
         if periodic[axis] or n < 2 or (axis == 2 and two_d):
             continue
         if target == "aligned" and axis == 2:
-            pad[axis] = (-n) % 4
+            cells[axis] = (-n) % 4
         elif target == "aligned_slow" and axis == 2 and (shape[0] * shape[1] * n) % 4 == 0:
-            pad[axis] = (-n) % 4
+            cells[axis] = (-n) % 4
         elif target == "odd" and n % 2 == 0:
-            pad[axis] = 1
-    pad = tuple(pad)
+            cells[axis] = 1
+    pad = tuple(cells)
     return PadPlan(shape, tuple(n + p for n, p in zip(shape, pad)), pad, target)
 
 
@@ -150,7 +150,7 @@ def force_pad(target):
 @contextlib.contextmanager
 def record_plans():
     """Collect the :class:`PadPlan` of every uniform run set up inside (tests)."""
-    plans = []
+    plans: list[PadPlan] = []
     token = _RECORDER.set(plans)
     try:
         yield plans

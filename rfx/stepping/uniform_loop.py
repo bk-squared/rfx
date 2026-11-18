@@ -339,7 +339,7 @@ def run(
     _fast_coeffs = None
 
     from rfx.stepping import vector_pad
-    _pad = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
+    _pad: vector_pad.PadPlan | None = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
         _ctx, stencil_order=stencil_order, field_dtype=carry_init["fdtd"].ex.dtype))
     _pad = _pad if _pad.active else None
     if _pad is not None:
@@ -986,7 +986,7 @@ def run_until_decay(
     init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
     from rfx.stepping import vector_pad
-    _pad = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
+    _pad: vector_pad.PadPlan | None = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
         _setup.ctx_kwargs, stencil_order=stencil_order, field_dtype=carry["fdtd"].ex.dtype))
     _pad = _pad if _pad.active else None
     if _pad is not None:

@@ -91,6 +91,8 @@ def _format_memory_with_safety(value: float, safety_factor: float) -> str:
 
 
 class _AdMemoryMixin:
+    _periodic_flags: Callable[[], tuple[bool, bool, bool]]
+
     # ---- AD memory estimation ----
 
     def _ad_memory_static_accounting(self) -> dict[str, int]:
