@@ -77,7 +77,34 @@ DIRECTIVES = (
 _DIRECTIVE = "(?:" + "|".join(DIRECTIVES) + ")"
 DIRECTIVE_TOKEN = re.compile(rf"#\s*{_DIRECTIVE}(?:\s+#\s*{_DIRECTIVE})*\s*")
 CODING_LINE = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
-SWEPT_PREFIXES: tuple[str, ...] = ()
+SWEPT_PREFIXES: tuple[str, ...] = (
+    "rfx/_gradient_witness_registry.py",
+    "rfx/_host_limits.py",
+    "rfx/_runtime_floor.py",
+    "rfx/ad_diagnostics.py",
+    "rfx/adjoint.py",
+    "rfx/animation.py",
+    "rfx/antenna.py",
+    "rfx/artifacts.py",
+    "rfx/auto_config.py",
+    "rfx/batch.py",
+    "rfx/checkpoint.py",
+    "rfx/cli.py",
+    "rfx/deembed.py",
+    "rfx/diagnostic_records.py",
+    "rfx/diagnostics.py",
+    "rfx/eigenmode.py",
+    "rfx/farfield.py",
+    "rfx/fidelity.py",
+    "rfx/grid.py",
+    "rfx/io.py",
+    "rfx/subgridding/_notice.py",
+    "rfx/subgridding/disjoint_3d.py",
+    "rfx/subgridding/sbp_sat_1d.py",
+    "rfx/subgridding/sbp_sat_2d.py",
+    "rfx/subgridding/sbp_sat_3d.py",
+    "rfx/subgridding/validation.py",
+)
 SWEPT_DESTINATION = "a name, an assertion, a test, the docstring, or a dated record"
 
 
