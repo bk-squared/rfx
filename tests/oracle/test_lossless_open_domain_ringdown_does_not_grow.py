@@ -168,17 +168,17 @@ N_CELLS_PER_H = 4             # dx = h / N_CELLS_PER_H; the resolution the recor
 F0, BW = 8.5e9, 1.6
 
 # 150 periods = 26659 steps.  A FLOOR for the gate (the healthy arm is at -34.87 dB at 120
-# periods) and, since #1136, close to a CEILING for the falsifier: the mutated arm now decays and
+# periods) and close to a CEILING for the falsifier: the mutated arm now decays and
 # is derived to cross -40 dB at about 170-187 periods.  Do not change it without re-measuring
 # both arms.  See the docstring.
 NUM_PERIODS = 150.0
 
 # Gate, two-sided.
 # (1) The shipped ring-down witness's own bar.  Shipped / both defects restored:
-#     -45.9632 / -24.4192 dB on (187, 142, 61), VESSL 369367264159.
+#     -45.9632 / -24.4192 dB on (187, 142, 61).
 SETTLING_DB_BAR = -40.0
 # (2) The late-time decay rate must be negative.  Worst rate per step, shipped /
-#     both defects restored: -2.69821e-4 / -2.94935e-5, VESSL 369367264159.
+#     both defects restored: -2.69821e-4 / -2.94935e-5.
 #     The bar sits an order of magnitude above the shipped rate, so a rate that is merely "not
 #     very negative" fails too.  It does NOT separate today's mutated arm, which passes it; the
 #     settling half does.

@@ -32,7 +32,7 @@ def _model(case):
         if case in ("lorentz", "mixed"):
             poles["lorentz_poles"] = [lorentz_pole(1., 2 * np.pi * 3e9, 1e9)]
         # mu_r != 1: XLA folds an all-equal captured array into a broadcast,
-        # which the HLO-literal gate could not see (review, 2026-09-23).
+        # which the HLO-literal gate could not see.
         sim.add_material("block", eps_r=4.4, sigma=0.02, mu_r=1.5, **poles)
         sim.add(Box((5e-3, 2e-3, 2e-3), (10e-3, 6e-3, 6e-3)), material="block")
         sim.add(Box((5e-3, 2e-3, 2e-3), (7e-3, 3e-3, 5e-3)), material="pec")
@@ -76,7 +76,7 @@ def _per_cell_captures(body):
 
 
 # "nondispersive" traces the E update without Debye/Lorentz poles, a branch the
-# dispersive model never reaches (review, 2026-09-23: a capture there passed).
+# dispersive model never reaches.
 @pytest.fixture(scope="module",
                 params=[("mixed", None, 0), ("mixed", 2, 0), ("mixed", 2, 2),
                         ("cpml", None, 0)],

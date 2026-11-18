@@ -221,7 +221,7 @@ def test_shell_nothing(tmp_path):
 
 
 def seven_files(tmp_path, failing, persistent):
-    # Reviewer run2.sh layout and timings; sentinel variant isolates lost coverage.
+    # Sentinel variant isolates lost coverage.
     crash = 'os._exit(7)' if persistent else 'time.sleep(0.1); Path("crashed").touch(); os._exit(7)'
     condition = '"PYTEST_XDIST_WORKER" in os.environ'
     if not persistent:
@@ -329,7 +329,7 @@ def test_collection_records_must_be_identical(tmp_path):
 @pytest.mark.parametrize("shrinks", [True, False], ids=["shrinking", "identical"])
 def test_real_xdist_retry_collection(tmp_path, shrinks):
     pytest.importorskip("xdist")
-    # Reviewer's envdep case: one crashed file, therefore its retry is serial.
+    # One crashed file, therefore its retry is serial.
     count = '3 if os.environ.get("PYTEST_XDIST_WORKER") else 1' if shrinks else '3'
     assertion = 'assert i == 0, "REAL FAILURE in a node only the first run collected"' if shrinks else 'pass'
     (tmp_path / "test_a.py").write_text(

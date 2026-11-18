@@ -61,7 +61,7 @@ def test_internal_pec_operator_is_symmetric():
 
 def test_internal_pec_slab_does_not_grow():
     # Unfixed HEAD e68513da7 exceeds 10x the second tenth at step 15701.
-    # 16000 steps took 6.20 s on the review Mac, including setup/compilation.
+    # 16000 steps took 6.20 s on the Mac, including setup/compilation.
     result = slab_sim().run(n_steps=16000, skip_preflight=True, subpixel_smoothing='full_tensor')
     amplitude = np.max(np.abs(np.asarray(result.time_series)), axis=1)
     assert np.all(np.isfinite(amplitude))

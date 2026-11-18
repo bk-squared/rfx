@@ -226,7 +226,11 @@ def _forward_from_materials(
     pec_wires = tuple(pec_wires or ())
     pec_mask_local = pec_mask
     pec_occupancy_local = pec_occupancy
-    conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
+    from rfx.model.source_admission import conductor_operator
+    conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(
+        self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool,
+        conductors, sheet_impedance,
+        operator=conductor_operator(smoothing=subpixel_smoothing, conformal=_conformal))
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(self, conductors, n_steps=n_steps, path=lane or 'fwd_uniform',
                        frequencies=port_s11_freqs,
@@ -549,7 +553,8 @@ def _forward_from_materials(
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=periodic_bool,
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=self._resolve_field_dtype() or jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     _, debye, lorentz = self._init_dispersion(
@@ -677,6 +682,9 @@ def _forward_from_materials(
     from rfx.stepping import prepared as prepared_step
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
+    if self._lumped_rlc:
+        from rfx.model.source_admission import LumpedRLCInputs
+        rlc_metas = LumpedRLCInputs(rlc_metas, self, stepping_product)
     from rfx.runners.uniform import assemble_wall_loss
     sheet_impedance = assemble_wall_loss(self, conductors, sheet_impedance, lane=lane or "fwd_uniform")
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(

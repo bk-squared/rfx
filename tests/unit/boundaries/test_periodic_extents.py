@@ -11,7 +11,7 @@ from rfx.boundaries.spec import BoundarySpec
 
 
 def model(dx=.001, *, snap="strict"):
-    # #1138: geometry[0]/thin_conductor[0] solved up to +35 % off; this test checks periodic seam fields.
+    # geometry[0]/thin_conductor[0] solved up to +35 % off; this test checks periodic seam fields.
     return Simulation(20e9, (.010, .006, .004), dx=dx, cpml_layers=0, snap=snap,
                       boundary=BoundarySpec(x='periodic', y='pec', z='pec'))
 

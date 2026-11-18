@@ -153,13 +153,13 @@ def _msl_thru():
     where it is drawn. Do not quote this fixture's Z0/beta as physics.
     """
     domain_y, y_c = 0.008, 0.004
-    # #1138: thin_conductor[0] y solved +11.67 % off; this test checks chunking is bit exact msl s matrix.
+    # thin_conductor[0] y solved +11.67 % off; this test checks chunking is bit exact msl s matrix.
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, domain_y, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
-    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
+    # The strip spans the two port nodes (2 and 10 mm). Drawn across the whole
     # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
     # 1.5x of the 2-18 GHz read.
     sim.add_thin_conductor(Box((0.002, y_c - 0.0006, 0.0008),
@@ -182,7 +182,7 @@ def test_msl_thru_realizes_the_trace_where_it_is_drawn():
     rz = realized(sim)
     assert rz.pec_mask is None or not bool(np.any(np.asarray(rz.pec_mask))), (
         "a sheet owns no cell")
-    # a sheet leaves the normal component live (#690); a one-cell VOLUME
+    # a sheet leaves the normal component live; a one-cell VOLUME
     # would short it — that is what the old drawing realized.
     assert not bool(np.any(np.asarray(rz.edge_masks[2])))
 
@@ -359,7 +359,7 @@ def test_chunk_boundary_carry_is_a_live_intermediate():
     )
 
     # (c) the field is ringing down, not sitting on a static remnant. A DC
-    # soft-source charge would freeze max|Ez| (issue #388 class): measured
+    # soft-source charge would freeze max|Ez|: measured
     # 2.21e-2 -> 3.14e-4, a factor ~70.
     decay = np.abs(ez_b).max() / max(np.abs(ez_e).max(), np.finfo(float).tiny)
     assert decay > 5.0, (
