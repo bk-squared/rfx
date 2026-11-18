@@ -45,8 +45,8 @@ def write(repo, path, text):
 
 def baselines(repo, compact=False, limits=None, cap=20):
     """The size gate has no writer: use its counter, validator, and check."""
-    data = {"counts": "code-lines", "cap": cap, "files": {
-        path: resolver.size.code_lines((repo / path).read_bytes())
+    data = {"counts": resolver.size.UNIT, "cap": cap, "files": {
+        path: resolver.size.ratchet_lines((repo / path).read_bytes(), path)
         for path in (X, Y) if (repo / path).exists()
     }}
     if limits is not None:
@@ -92,7 +92,9 @@ def tree():
 
 
 def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_ours=(), omit_theirs=(),
-          ours_limits=None, theirs_limits=None, ours_cap=20, theirs_cap=20):
+          ours_limits=None, theirs_limits=None, ours_cap=20, theirs_cap=20, ours_unit=None):
+    """Stop a merge of side-b into side-a; ``ours_unit`` rewrites side-a's ``counts``
+    (``"legacy"`` removes it)."""
     git(tree, "checkout", "-qb", "side-a")
     write(tree, LEFT, "def step():\n    pass\n")
     if ours is None:
@@ -102,10 +104,14 @@ def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_o
     if extra:
         write(tree, "other.txt", "ours\n")
     baselines(tree, compact=True, limits=ours_limits, cap=ours_cap)
-    if omit_ours:
+    if omit_ours or ours_unit:
         data = json.loads((tree / SIZE).read_bytes())
         for path in omit_ours:
             del data["files"][path]
+        if ours_unit == "legacy":
+            del data["counts"]
+        elif ours_unit:
+            data["counts"] = ours_unit
         write(tree, SIZE, json.dumps(data) + "\n")
     commit(tree, "Lower first baseline")
     git(tree, "checkout", "-qb", "side-b", "main")
@@ -185,7 +191,7 @@ def test_both_lowered_limits_keep_other_entries_untouched(tree):
     result = run(tree, "--base", "main")
     assert result.returncode == 0, result.stderr
     data = json.loads((tree / SIZE).read_bytes())
-    assert data == {"counts": "code-lines", "cap": 20,
+    assert data == {"counts": resolver.size.UNIT, "cap": 20,
                     "files": {**original, X: 15, Y: 17}}
     assert "lowered to" not in result.stdout
     for checker in (resolver.size, resolver.layer):
@@ -316,7 +322,7 @@ def test_nonconflicted_baseline_is_still_checked(tree):
 def test_only_layer_conflicted_keeps_size_bytes(tree):
     merge(tree)
     # Resolve size ourselves with valid, deliberately noncanonical whitespace.
-    data = {"counts": "code-lines", "cap": 20, "files": {X: 8, Y: 9}}
+    data = {"counts": resolver.size.UNIT, "cap": 20, "files": {X: 8, Y: 9}}
     write(tree, SIZE, json.dumps(data) + "\n")
     git(tree, "add", "--", SIZE)
     before = (tree / SIZE).read_bytes()
@@ -505,3 +511,27 @@ def test_entry_the_base_side_removed_is_dropped(tree):
     assert X not in json.loads((tree / SIZE).read_bytes())["files"]
     with redirect_stderr(io.StringIO()):
         assert resolver.size.check(tree, "side-b") == 0
+
+
+@pytest.mark.parametrize("unit,units", [
+    ("code-lines", "code-lines, code-lines-without-docstrings"),
+    ("legacy", "code-lines-without-docstrings, legacy"),
+])
+def test_mixed_units_refused_and_nothing_written(tree, unit, units):
+    merge(tree, ours_unit=unit)
+    before, index = snapshot(tree), git(tree, "ls-files", "--stage", "-z")
+    result = run(tree)
+    assert result.returncode == 1
+    assert (f"file_size_baseline.json: the two sides count in different units ({units}); "
+            "take main's file and lower your entries again") in result.stderr
+    unchanged(tree, before, index)
+
+
+def test_new_unit_sides_merge_without_docstrings(tree):
+    """X holds 11 code lines, 3 of them its docstring: the merged entry is 8, not 11."""
+    merge(tree, ours=lambda repo: write(repo, X, '"""Doc\nmore\n"""\n' + "value = 1\n" * 8))
+    assert resolver.size.code_lines((tree / X).read_bytes()) == 11
+    result = run(tree)
+    assert result.returncode == 0, result.stderr
+    data = json.loads((tree / SIZE).read_bytes())
+    assert data == {"counts": "code-lines-without-docstrings", "cap": 20, "files": {X: 8, Y: 9}}
