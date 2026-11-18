@@ -296,7 +296,7 @@ def test_no_lumped_record_is_bit_identical_to_the_plain_average():
 
 
 # ---------------------------------------------------------------------------
-# the DRIVE coefficient is the update's own coefficient (#1210)
+# the DRIVE coefficient is the update's own coefficient
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
@@ -314,7 +314,7 @@ def test_the_cell_helper_agrees_with_the_grid_wide_one(component):
     sigma = jnp.asarray(1e3 * rng.random(SHAPE).astype(np.float32))
     lump_z = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(77.0)
     lump_x = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(13.0)
-    # Two elements on one node, on two components (#1236).
+    # Two elements on one node, on two components.
     mats = MaterialArrays(eps, sigma + lump_x + lump_z, jnp.ones(SHAPE),
                           sigma_lumped=(lump_x, None, lump_z))
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
@@ -403,7 +403,7 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
     lumped = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
     # A non-uniform VOLUME sigma as well, so the wrap is exercised.
     vol = jnp.asarray((np.indices(SHAPE)[0] * 1.0).astype(np.float32))
-    # The element sits on Ez (#1236: the record carries its component).
+    # The element sits on Ez (the record carries its component).
     mats = MaterialArrays(jnp.ones(SHAPE, jnp.float32), sigma + vol,
                           jnp.ones(SHAPE), sigma_lumped=(None, None, lumped))
 

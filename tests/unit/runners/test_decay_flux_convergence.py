@@ -88,7 +88,7 @@ _DUMP = os.path.join(
 )
 
 # The decay predicate, as implemented at rfx/simulation.py:1958-1960, in the
-# #169 issue-body configuration. We mirror the exact integer schedule the
+# issue-body configuration. We mirror the exact integer schedule the
 # Python loop uses (>= min_steps, on a check_interval boundary, peak>0).
 _DECAY_BY = 1e-5
 _MIN_STEPS = 2000
@@ -314,7 +314,7 @@ def test_issue169_decay_reaches_flux_converged_value():
     )
     T_truth, _ = _T_peak(res_truth, meep_freqs)
 
-    # Decay run: the #169 configuration (until_decay=1e-5, ez at flux_out).
+    # Decay run: the configuration (until_decay=1e-5, ez at flux_out).
     sim_decay, _, _, _, _ = _build_guided(probe=False)
     decay_cap = int((_TRUTH_UNITS + 400.0) * (a / _C0) / dt_s) + 150
     res_decay = sim_decay.run(
@@ -342,10 +342,10 @@ def test_issue169_decay_reaches_flux_converged_value():
     #
     # The retired form of this witness was ``stop_step > 3000``, on the
     # measurement that the energy leaves this geometry at ~4351 steps. That
-    # number belonged to a DIFFERENT structure: before #1057 the smoothed lane
+    # number belonged to a DIFFERENT structure: earlier the smoothed lane
     # ended the eps=12 slab at the interior/absorber seam in a vacuum facet,
     # and the facet reflected the guided mode back into the domain. With the
-    # slab continued through its own absorber pad (#1043/#1057 — what a
+    # slab continued through its own absorber pad (what a
     # PML-terminated guide is supposed to be), the domain empties BEFORE
     # ``decay_min_steps``: measured here, the interior energy peaks at
     # 6.28e-10 near step 701 and reads 6.13e-17 at step 2001, i.e. 9.8e-8 of

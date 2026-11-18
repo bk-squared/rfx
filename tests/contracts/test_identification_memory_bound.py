@@ -192,14 +192,17 @@ def test_forward_callback_does_not_swallow_refusal(monkeypatch):
 
 
 def test_we_refusal_preserves_synthetic_completion(monkeypatch):
-    # Main Nd=178, L=58, M=120, rank=1. WE Nd=278, L=91, M=187.
-    main_pencil = 1.87 * 16 * (3*120*58 + 120*58 + 2*58*58 + 4*58**2)
-    main_fit = 1.71 * 16 * 5 * 20000
-    long_pencil = 1.87 * 16 * (3*187*91 + 187*91 + 2*91*91 + 4*91**2)
-    bound = 3_000_000
+    # Stage-1 needs: main (10,), Nd=155: 1,101,714.24 bytes
+    # < bound 1,123,406.24 < smallest WE fallback (7, 2), Nd=158:
+    # 1,145,098.24 bytes. Default WE (10,), Nd=243 needs 2,709,555.20.
+    main_pencil = 1.87 * 16 * (3*104*51 + 104*51 + 2*51*51 + 4*51**2)
+    main_fit = 1.71 * 16 * 5 * 1750
+    long_pencil = 1.87 * 16 * (3*163*80 + 163*80 + 2*80*80 + 4*80**2)
+    smallest_long_pencil = 1.87 * 16 * (3*106*52 + 106*52 + 2*52*52 + 4*52**2)
+    bound = (main_pencil + smallest_long_pencil) / 2
     assert max(main_pencil, main_fit) < bound < long_pencil
-    y, spec = record(), rd.RingdownSpec()
-    w2 = rd.two_window_witness(y, .0001, [.4], 40000, 20000, freq_max=.5)
+    y, spec = record(3500), rd.RingdownSpec()
+    w2 = rd.two_window_witness(y, .0001, [.4], 3500, 1750, freq_max=.5)
     assert w2.model.rank == 1
     expected = w2.spectra.tobytes()
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', bound)
@@ -211,12 +214,12 @@ def test_we_refusal_preserves_synthetic_completion(monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(rd, 'early_start_witness', capture)
-    judge = rd._judge_record(y, .0001, [.4], 40000, 20000, spec,
+    judge = rd._judge_record(y, .0001, [.4], 3500, 1750, spec,
                              ref_hz=.5, observable=lambda value: value)
     assert np.isnan(judge['we']) and not judge['we_ok']
     assert completed == [expected]
     plan = object.__new__(rd.RingdownRun)
-    plan.spec, plan.n_steps, plan.source_ratio_long = spec, 40000, 0.
+    plan.spec, plan.n_steps, plan.source_ratio_long = spec, 3500, 0.
     witnesses = plan._error_witnesses(y, .0001, [.4], .5, lambda value: value,
                                      ringdown_tail.plain_dft(y, .0001, [.4]), w2, {})
     we = witnesses[0]
@@ -232,16 +235,17 @@ def test_we_refusal_keeps_cavity_main_s(monkeypatch, entry):
     from tests.unit.sparams.test_ringdown_run import _box, FREQS
     from rfx.ringdown import _jax as rj
 
-    # At 1200 steps both windows reject FIR q=6 for insufficient capacity:
-    # main: n=600, C=2, L=198, M=402, k=396; WE: n=900, L=297, M=603, k=594.
-    main = 1.87 * 16 * (3*402*198*2 + 402*396 + 2*396*198*2 + 4*396**2)
-    long = 1.87 * 16 * (3*603*297*2 + 603*594 + 2*594*297*2 + 4*594**2)
+    # At 6000 steps both windows use (6,): main Nd=480, WE Nd=730.
+    # Stage-1 needs: main 30,103,828.48 < bound 49,806,986.24
+    # < smallest WE fallback 69,510,144.00 bytes (also the default plan).
+    main = 1.87 * 16 * (3*322*158*2 + 322*316 + 2*316*158*2 + 4*316**2)
+    long = 1.87 * 16 * (3*490*240*2 + 490*480 + 2*480*240*2 + 4*480**2)
     bound = (main + long) / 2
     assert 1.71 * 16 * 5 * 600 * 396 < bound
 
     def call():
         sim = _box('uniform')
-        kw = dict(n_steps=1200, skip_preflight=True, ringdown=rd.RingdownSpec())
+        kw = dict(n_steps=6000, skip_preflight=True, ringdown=rd.RingdownSpec())
         return (sim.run(compute_s_params=True, s_param_freqs=FREQS, **kw) if entry == 'run'
                 else sim.forward(port_s11_freqs=FREQS, **kw)).ringdown
 

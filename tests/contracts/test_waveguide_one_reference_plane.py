@@ -119,7 +119,7 @@ def test_c4_graded_matches_low_level(record_property):
 
 
 def test_d1b_graded_forward_crossing_refuses_like_run():
-    # forward() returns the declared waveguide records and S since #1373 D7, so
+    # forward() returns the declared waveguide records and S, so
     # it resolves the same planes as run() and refuses the same crossing port
     # with the same message (equal requests give equal results).
     messages = {}

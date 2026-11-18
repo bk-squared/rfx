@@ -19,8 +19,6 @@ class ExperimentalSubgridWarning(AccuracyWarning):
 
 def require_experimental(sim, *, diagnostics=None):
     """Use lane admission to refuse production before entering the runner."""
-    # Only a declared refinement selects the unstable lane; a direct runner
-    # call without one is left to that runner's own refusals.
     refinement = getattr(sim, "_refinement", None)
     if refinement is not None and refinement.get("validation", "production") == "production":
         from rfx.runners._admission import admit
@@ -34,8 +32,6 @@ def require_experimental(sim, *, diagnostics=None):
 def warn_experimental():
     import warnings
     import sys
-    # Attribute both public and direct/internal entry calls to the first
-    # caller outside rfx, including run() wrappers and S-matrix replays.
     stacklevel = 2
     frame = sys._getframe(1)
     try:

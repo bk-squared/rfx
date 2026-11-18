@@ -63,7 +63,7 @@ def test_lorentz_coefficients():
 
     assert abs(float(coeffs.damping[0, 2, 2, 2]) - a_exp) < 1e-6
     assert abs(float(coeffs.restoring[0, 2, 2, 2]) - b_exp) < 1e-6
-    for comp in range(3):   # c is per E component since #1260
+    for comp in range(3):   # c is per E component
         assert abs(float(coeffs.c[comp][0, 2, 2, 2]) - c_exp) / abs(c_exp) < 1e-4
 
     # State should be zeros
@@ -231,7 +231,7 @@ def test_lorentz_poles_stay_scoped_to_their_material():
     ia = tuple(np.argwhere(np.array(mask_a))[0])
     ib = tuple(np.argwhere(np.array(mask_b))[0])
 
-    for comp in range(3):   # c is per E component since #1260
+    for comp in range(3):   # c is per E component
         c = coeffs.c[comp]
         assert float(c[0][ia]) > 0.0
         assert float(c[1][ia]) == 0.0

@@ -244,8 +244,6 @@ def save_materials(path: str | Path, materials: MaterialArrays) -> None:
         grp.create_dataset("eps_r", data=np.array(materials.eps_r))
         grp.create_dataset("sigma", data=np.array(materials.sigma))
         grp.create_dataset("mu_r", data=np.array(materials.mu_r))
-        # The lumped records, per E component: without them a
-        # reloaded port load is averaged over four cells (quartered).
         for name, components in (("sigma_lumped", ("ex", "ey", "ez")),
                                  ("eps_r_lumped", ("ex", "ey", "ez")),
                                  ("sigma_film", ("ex", "ey", "ez")),

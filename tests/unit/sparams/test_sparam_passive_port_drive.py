@@ -53,7 +53,7 @@ def _default_waveform():
 
 
 # ---------------------------------------------------------------------------
-# Lumped 2-port — passive waveform-less port (latent #214-reroute leg)
+# Lumped 2-port — passive waveform-less port
 # ---------------------------------------------------------------------------
 
 def test_driver_lumped_passive_port_matches_explicit_default():
@@ -89,7 +89,7 @@ def test_driver_lumped_passive_port_matches_explicit_default():
 
 
 # ---------------------------------------------------------------------------
-# Wire 2-port — the exact #322 crash shape (config-loader fixture layout)
+# Wire 2-port — the exact crash shape (config-loader fixture layout)
 # ---------------------------------------------------------------------------
 
 def test_driver_wire_passive_port_matches_explicit_default():

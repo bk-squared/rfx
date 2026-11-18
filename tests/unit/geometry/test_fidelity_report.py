@@ -118,7 +118,7 @@ def test_remedies_are_present_and_mechanical():
 
 
 # ---------------------------------------------------------------------------
-# Adversarial traps (2026-08-27): models built to be WRONG in ways a user
+# Adversarial traps: models built to be WRONG in ways a user
 # would not notice. Every one of these was a MISS on the first implementation
 # — the tool reported "all clean" for models with invisible metal, silently
 # dropped conductivity, and conductors inside the absorber.
@@ -202,8 +202,7 @@ def test_dispersive_material_states_that_poles_are_not_verified():
 
 
 # ---------------------------------------------------------------------------
-# Readout conventions (2026-08-28). Both of these were shipped wrong and were
-# caught by an external review of the issues this tool's output produced: a
+# Readout conventions. Both of these were shipped wrong: a
 # sphere sitting dead centre of the grid it is solved on was reported as
 # "offset half a cell", and a 17 um sheet landing in its cell was reported as
 # "181% of the declared extent".
@@ -246,7 +245,7 @@ def test_sub_cell_body_is_measured_against_the_cell_not_its_own_thickness():
 
 
 # ---------------------------------------------------------------------------
-# #729 site 1: the DOMAIN row must count grid CELLS, not NODES.
+# The DOMAIN row must count grid CELLS, not NODES.
 #
 # `_node_arrays` builds one array entry per NODE (grid.shape[a] entries for
 # n cells, since an n-cell span needs n+1 nodes — rfx/grid.py's fence-post
@@ -415,11 +414,11 @@ def test_2d_not_solved_axis_note_reaches_the_printed_report(capsys):
 
 
 # ---------------------------------------------------------------------------
-# #833 item 2 (the #803 remainder): the report reads the SAME exact node line
+# The report reads the SAME exact node line
 # and cell sizes the rasterizer reads. Before, `_node_arrays` re-derived its
 # own node line by cumsumming the solver's float32 cell-size stores on the
-# non-uniform lane (a float64 np.full on the uniform lane). Measured
-# 2026-09-02 on main b5605391, both x64 flags: on a graded 0.3048 mm profile
+# non-uniform lane (a float64 np.full on the uniform lane). Measured,
+# both x64 flags: on a graded 0.3048 mm profile
 # the report's nodes sat 3.927e-10 m off the rasterizer's; a uniform-valued
 # non-uniform axis reported a declared 500.0 um cell as 500.00002374872565
 # um and a node-aligned box as realized (5000.000237, 5500.000261) um; and
@@ -651,7 +650,7 @@ def test_off_lattice_pec_box_reports_the_cell_count_the_solve_builds(lane):
     rz = realized(sim)
     # Counted inside the declared domain. The box fills the first cell layer on
     # x-lo and y-lo (0.3 dx is inside the cell whose centre is at 0.5 dx), so it
-    # continues through those two absorbers (#801), and those cells are rfx's
+    # continues through those two absorbers, and those cells are rfx's
     # continuation, not the drawing the report is about.
     g = rz.grid
     full = np.asarray(rz.pec_mask, dtype=bool)

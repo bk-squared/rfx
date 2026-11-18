@@ -23,7 +23,7 @@ import pytest
 from rfx import Box, Cylinder, Simulation
 from rfx.geometry.rasterize_grid import PadFillShortfall
 
-#: The #1070 rig: RO4003C at h = 0.787 mm, dx = h/4, cpml_layers 8. +10h
+#: The rig: RO4003C at h = 0.787 mm, dx = h/4, cpml_layers 8. +10h
 #: makes plain ceil invent a cell beyond x = 232*dx. With the #1138 band,
 #: +8h/+12h also lose two nodes at a hi face under the old sizing; the
 #: harmless-round-up test below moves its faces half a cell off the nodes.
@@ -54,7 +54,7 @@ def _size_by_plain_ceil(monkeypatch) -> None:
 
     monkeypatch.setattr(grid_mod, "cells_spanning",
                         lambda length, dx, **kw: int(math.ceil(length / dx)))
-    monkeypatch.setattr(grid_mod, "realized_cells",  # wall axes too (#1887)
+    monkeypatch.setattr(grid_mod, "realized_cells",  # wall axes too
                         lambda length, dx, kind: int(math.ceil(length / dx)))
 
 
@@ -198,7 +198,7 @@ def test_the_check_is_skipped_where_no_pad_will_be_filled(monkeypatch) -> None:
     sim._assemble_materials(grid)
 
 
-# --- PEC entries are not asked the question (review of PR #1136, C) --------
+# --- PEC entries are not asked the question --------
 
 def _pec_rig(monkeypatch, *, sheet: bool):
     """The defective sizing, with the domain-spanning body declared PEC.
@@ -242,7 +242,7 @@ def test_the_same_body_as_a_dielectric_is_still_reported(monkeypatch) -> None:
         sim._assemble_materials(sim._build_grid())
 
 
-# --- the audit path reports instead of raising (review of PR #1136, A) -----
+# --- the audit path reports instead of raising -----
 
 def test_fidelity_report_names_the_shortfall_instead_of_raising(
         monkeypatch) -> None:
@@ -278,7 +278,7 @@ def test_pad_fill_shortfall_is_a_value_error() -> None:
     assert issubclass(PadFillShortfall, ValueError)
 
 
-# --- the two pad predicates differ on purpose (review of PR #1136, B) ------
+# --- the two pad predicates differ on purpose ------
 
 def test_the_smoothing_lane_continues_a_corner_at_the_declared_face(monkeypatch) -> None:
     """Smoothing continues the Box; the material guard still rejects a cylinder."""

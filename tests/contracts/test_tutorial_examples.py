@@ -26,7 +26,7 @@ def _run_tutorial(name: str) -> str:
     # reports the result as if it were this checkout's.
     #
     # It stayed invisible until a tutorial used a symbol that exists only
-    # here: ports_and_sparams_101 imports ``realized_pec_edge_masks`` (#931)
+    # here: ports_and_sparams_101 imports ``realized_pec_edge_masks``
     # and the child raised ImportError against the installed copy.  Every
     # earlier green in this file was measured against the installed rfx.
     env = dict(os.environ)
@@ -123,7 +123,6 @@ def test_antenna_farfield_pattern_tutorial_runs():
         rows[:, 0], np.degrees(np.linspace(0.01, np.pi - 0.01, 73)), rtol=1e-6)
     assert np.all(rows[:, 1] == 0.0)
     # The console rounds to 0.001 dB; CSV rounding is below 1e-6 dB here.
-    # #1369 changes this column's old 0 dB peak to about 1.76 dBi.
     assert abs(rows[:, 6].max() - peak_directivity_dbi) < 5.1e-4
     assert 75.0 <= rows[np.argmax(rows[:, 6]), 0] <= 105.0
 
@@ -139,7 +138,7 @@ def test_ports_and_sparams_101_tutorial_runs():
         for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
         for depth in (3, 4)
     }
-    # #1138: edge-aware x/y registration removes the sheet-size refusal.
+    # Edge-aware x/y registration removes the sheet-size refusal.
     assert "solved more than 1% off their drawn size" not in output
     assert "Microstrip port setup ready: True" in output
     # The declared foils must BE the realized wall planes, and the gap between

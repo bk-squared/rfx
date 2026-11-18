@@ -55,7 +55,7 @@ def test_compiled_runner_energy_conservation():
     dx = 0.003
     0.99 * dx / (C0 * np.sqrt(3))
     # Build a minimal Grid-like object or use raw parameters
-    grid = Grid(freq_max=5e9, domain=((shape[0] + 1) * (C0 / 5e9 / 20.0), (shape[1] + 1) * (C0 / 5e9 / 20.0), (shape[2] + 1) * (C0 / 5e9 / 20.0)),  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=((shape[0] + 1) * (C0 / 5e9 / 20.0), (shape[1] + 1) * (C0 / 5e9 / 20.0), (shape[2] + 1) * (C0 / 5e9 / 20.0)),  # main's solved length
                 cpml_layers=0)
     materials = init_materials(grid.shape)
 
@@ -149,7 +149,7 @@ def test_run_until_decay_supports_upml_boundary():
 
 def test_compiled_runner_source_and_probe():
     """Compiled runner with a point source produces non-zero probe data."""
-    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
     materials = init_materials(grid.shape)
     n_steps = 200
 
@@ -172,7 +172,7 @@ def test_compiled_runner_source_and_probe():
 
 def test_compiled_runner_matches_python_loop():
     """Compiled runner should produce identical results to a Python loop."""
-    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
     materials = init_materials(grid.shape)
     n_steps = 100
 
@@ -210,7 +210,7 @@ def test_compiled_runner_matches_python_loop():
 
 def test_compiled_runner_dft_plane_matches_manual_loop():
     """Compiled runner should match manual DFT plane accumulation."""
-    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
     materials = init_materials(grid.shape)
     n_steps = 80
 
@@ -440,8 +440,8 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
     grid = Grid(freq_max=5e9, domain=(0.12, 0.12, 0.006), dx=0.004, cpml_layers=8)
     materials = init_materials(grid.shape)
     periodic = (False, True, True)
-    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau since
-    # #1831; without them the record holds 1e-5 of the pulse and the 1e-5 bar cannot fail.
+    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau;
+    # without them the record holds 1e-5 of the pulse and the 1e-5 bar cannot fail.
     n_steps = 120 + 83
 
     tfsf_cfg, tfsf_state0 = init_tfsf(
@@ -475,7 +475,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
         probes=[probe],
     )
 
-    # Detect 2D auxiliary grid for oblique incidence. #404: the oblique 2D-aux
+    # Detect 2D auxiliary grid for oblique incidence. The oblique 2D-aux
     # TFSF drives the shared solver on the COMPLEX Bloch-envelope path (the
     # compiled `run()` above does the same via _build_step_setup), so the manual
     # loop mirrors it: complex fields + per-axis roll phase + complex CPML carry.
@@ -645,7 +645,7 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
     # single propagating mode away from cutoff — near 3.75 GHz (small beta) and
     # at/above 7.5 GHz (TE20 onset) the single-mode |S11| is non-physical. This
     # test validates the S-matrix ASSEMBLY/reciprocity, so it runs in the clean
-    # single-mode band; broad-band/multimode is the normalize='flux' path (#88).
+    # single-mode band; broad-band/multimode is the normalize='flux' path.
     freqs = jnp.linspace(5.0e9, 7.0e9, 12)
     n_steps = grid.num_timesteps(num_periods=30)
 
@@ -728,12 +728,12 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
 
     # Single-mode band (a=40mm: TE10 cutoff 3.75 GHz, TE20 cutoff 7.5 GHz). The
     # non-flux V·I extractor is single-mode-only; this reciprocity check runs
-    # away from both cutoffs (broad-band/multimode is the flux path — #88).
+    # away from both cutoffs (broad-band/multimode is the flux path).
     freqs = jnp.linspace(5.0e9, 7.0e9, 10)
     n_steps = grid.num_timesteps(num_periods=30)
     padx, pady, padz = grid.axis_pads
     # Half-open slices end at the wall: the cell at 0.08 m is the sigma wall,
-    # and a port aperture holding wall material is refused (rfx#1994).
+    # and a port aperture holding wall material is refused.
     xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)))
     yslice = (pady + int(round(0.04 / dx)), pady + int(round(0.08 / dx)))
     zslice = (padz, grid.nz - padz - 1)
@@ -821,7 +821,7 @@ def test_s_matrix_two_port_reciprocity():
     Two lumped ports in a PEC cavity. Since the system is linear and
     reciprocal, S12 = S21 at all frequencies.
     """
-    grid = Grid(freq_max=5e9, domain=(17 * (C0 / 5e9 / 20.0), 17 * (C0 / 5e9 / 20.0), 9 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(17 * (C0 / 5e9 / 20.0), 17 * (C0 / 5e9 / 20.0), 9 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
     materials = init_materials(grid.shape)
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=1.0)

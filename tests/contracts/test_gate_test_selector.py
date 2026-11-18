@@ -386,7 +386,7 @@ def test_package_directory_summary_counts_only_new_candidates():
 
 
 def test_geometry_change_selects_oracle_that_imports_no_geometry():
-    # #2005 shape: rfx/geometry changed, the oracle reaches it only through rfx.Simulation.
+    # rfx/geometry changed, the oracle reaches it only through rfx.Simulation.
     sources = {
         "tests/oracle/test_leontovich.py": "from rfx import Simulation",
         "tests/oracle/test_other_oracle.py": "",
