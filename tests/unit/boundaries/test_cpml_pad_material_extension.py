@@ -91,7 +91,7 @@ def _assemble_uniform(sim):
 
 def _assemble_nu(sim):
     grid = build_nonuniform_grid(
-        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, None,
+        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, None, dtype="float32",
         dx_profile=np.full(NA, DX), dy_profile=np.full(NB, DX),
     )
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(sim, grid)

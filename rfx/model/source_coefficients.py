@@ -1,10 +1,14 @@
-"""Run-specific source coefficient selection and absorber admission."""
+"""Run-specific source coefficient selection and absorber admission.
+
+Standalone calls of ``make_current_source`` keep float32 sampling; run
+callers pass their dtype.
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from numpy.typing import ArrayLike
+    from numpy.typing import ArrayLike, DTypeLike
     from collections.abc import Callable
     from rfx.core.yee import MaterialArrays
     from collections.abc import Sequence
@@ -24,7 +28,7 @@ from rfx.grid import Grid
 from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacing_at
 
 
-def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None):
+def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None, dtype=jnp.float32):
     """Build graded increments from local realized edges in source order.
 
     Run eagerly (including eager vmap over ranks): compiling these products
@@ -56,11 +60,11 @@ def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=No
             column = column * jnp.where(owned[n], keep[axis][cell], 0.)
         columns.append(column)
     return (jnp.stack(columns, axis=-1) if columns else
-            jnp.zeros((samples.shape[0], 0), dtype=jnp.float32))
+            jnp.zeros((samples.shape[0], 0), dtype=jnp.promote_types(dtype, jnp.float32)))
 
 
 def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
-                sheet_edge_masks=None, design=None, shape=None, pad=False, keep=None):
+                sheet_edge_masks=None, design=None, shape=None, pad=False, keep=None, dtype):
     """Stack resolved drives, storing each electric edge's occupancy weight.
 
     Occupancy is the released input used by this lane's step. The optional
@@ -78,7 +82,7 @@ def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
         series = [s[:n_steps] if s.shape[0] >= n_steps else
                   jnp.pad(s, (0, n_steps - s.shape[0])) for s in series]
     table = (jnp.stack(series, axis=-1) if series else
-             jnp.zeros((n_steps, 0), dtype=jnp.float32))
+             jnp.zeros((n_steps, 0), dtype=jnp.promote_types(dtype, jnp.float32)))
     if not series or (keep is None and occupancy is None and design is None):
         return table
     if keep is None or design is not None:
@@ -128,14 +132,21 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
 
 
 def uniform_source_table(grid, cell, component, waveform, n_steps, materials,
-                         kind=None, *, native="raw", periodic=(False,) * 3):
-    """Uniform and sweep adapters share samples, edge reads and product order."""
+                         kind=None, *, native="raw", periodic=(False,) * 3, dtype=None):
+    """Uniform and sweep adapters share samples, edge reads and product order.
+
+    ``dtype=None`` takes the materials' dtype, because the frozen
+    ``simulation.make_source``, ``make_j_source``, ``make_port_source`` and
+    ``make_wire_port_sources`` callers omit it.
+    """
     import jax
     import jax.numpy as jnp
     from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
     from rfx.sources._sampling import concrete_waveform_eval
+    if dtype is None:
+        dtype = materials.eps_r.dtype if materials is not None else jnp.float32
     with concrete_waveform_eval(waveform, grid.dt):
-        times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+        times = jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * grid.dt
         samples = jax.vmap(waveform)(times)
     return source_table(
         samples, kind, native=native,
@@ -152,22 +163,22 @@ def vacuum_source_table(samples, kind, dt, volume):
                         coefficient=lambda: e_update_coeffs(1.0, 0.0, dt)[1])
 
 
-def field_source_samples(waveform, n_steps, dt):
+def field_source_samples(waveform, n_steps, dt, *, dtype):
     """Prescribed field table sampled at the supplied timestep."""
     import jax
     import jax.numpy as jnp
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(waveform, dt):
-        samples = jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.float32) * dt)
+        samples = jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * dt)
     return source_table(samples, "field")
 
 
-def current_source_samples(grid, waveform_fn, n_steps):
+def current_source_samples(grid, waveform_fn, n_steps, *, dtype):
     """The current ``I(t)`` in amperes at the ``n_steps`` step times
-    ``t = float32(n)*dt``, promoted by dt, before ``Cb/dV`` normalisation."""
+    ``t = coefficient_dtype(n)*dt``, promoted by dt, before ``Cb/dV`` normalisation."""
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(waveform_fn, grid.dt):
-        times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+        times = jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * grid.dt
         return jax.vmap(waveform_fn)(times)
 
 
@@ -241,7 +252,7 @@ def current_source_volume(grid, position_ijk, component):
 
 
 def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], component: str,
-                        waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
+                        waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None, *, dtype: DTypeLike = jnp.float32) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
     """Create a properly normalized current source for non-uniform grid.
 
     The waveform specifies CURRENT (Amperes). The E-field addition is:
@@ -275,7 +286,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], compo
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
     waveform = source_table(
-        current_source_samples(grid, waveform_fn, n_steps), amplitude_kind,
+        current_source_samples(grid, waveform_fn, n_steps, dtype=dtype), amplitude_kind,
         native="cb_over_dv", volume=dV,
         coefficient=lambda: e_update_coefficient_at(
             materials, (i, j, k), component, grid.dt, periodic=tuple(a in grid.periodic_axes for a in "xyz"), host=True, grid=grid))
@@ -364,7 +375,7 @@ def subgrid_source_tables(requests, grid, materials, n_steps, *, high_wall, nati
             sigma, unit_field = drive
             waveform = port_drive_waveform(
                 grid, cell, pe.component, pe.waveform, n_steps, materials,
-                sigma_port=sigma, unit_field=unit_field)
+                sigma_port=sigma, unit_field=unit_field, dtype='float32')
             fine.append((*cell, pe.component, np.array(waveform)))
     return fine, coarse
 

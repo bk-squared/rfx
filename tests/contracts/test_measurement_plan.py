@@ -293,7 +293,7 @@ def test_s0_owner_inventory(row):
         assert sum(o.kind == kind for o in plan.owners) == len(getattr(sim, attr))
 
 
-def msl_sim(mesh, direction='+x'):
+def msl_sim(mesh, direction='+x', *, precision="float32"):
     from rfx import Box, Simulation
     from tests.contracts.path_equivalence.builders import DX, waveform
     shape = (30, 12, 8) if direction[1] == 'x' else (12, 30, 8)
@@ -305,7 +305,7 @@ def msl_sim(mesh, direction='+x'):
                 cells[3:5] = (.9*DX, 1.1*DX)
             kw[f'd{a}_profile'] = cells
     sim = Simulation(freq_max=15e9, domain=tuple(n*DX for n in shape), dx=DX,
-                     boundary='cpml', cpml_layers=2, **kw)
+                     boundary='cpml', cpml_layers=2, precision=precision, **kw)
     sim.add(Box((0, 0, DX), (shape[0]*DX, shape[1]*DX, DX)), material='pec')
     width_lo = (3.9 - .35 * .9) * DX if mesh == 'graded' else (4 - .35) * DX
     bounds = ((0, width_lo, 3*DX), (30*DX, (8 + .35)*DX, 3*DX)) if direction[1] == 'x' else (
@@ -320,11 +320,11 @@ def msl_sim(mesh, direction='+x'):
 
 @pytest.mark.parametrize('mesh', ['uniform', 'constant', 'graded'])
 @pytest.mark.parametrize('direction', ['+x', '-x', '+y', '-y'])
-def test_msl_calculator_setup_and_projector(mesh, direction):
+def test_msl_calculator_setup_and_projector(mesh, direction, *, precision="float32"):
     import sys
     from rfx.sources.msl_port import msl_loop_current
     from rfx.sparams._common import msl_modal_voltage
-    sim = msl_sim(mesh, direction)
+    sim = msl_sim(mesh, direction, precision=precision)
     plan = measurement_plan(sim, n_steps=12, path='msl_uniform' if mesh == 'uniform' else 'msl_nonuniform',
                                 frequencies=FREQS)
     actual = {}
@@ -358,6 +358,8 @@ def test_msl_calculator_setup_and_projector(mesh, direction):
         np.testing.assert_allclose(observe(channel, fields), oracle[0], rtol=2e-6)
         assert len(channel.nodes) == lo-meta['k_lo']
         assert [n.weight for n in channel.nodes] == list(actual['dz_arr'][meta['k_lo']:lo])
+        if precision == 'float64':
+            assert all(n.weight == grid.cells('z')[n.k] for n in channel.nodes)
     stencil = actual['h_stencils'][0]
     ha, hb = (sum(w*np.take(getattr(fields, c), p, axis=prop) for p, w in
                   zip(stencil['h_indices'], stencil['weights']))[None] for c in (meta['h_a'], meta['h_b']))
@@ -369,6 +371,12 @@ def test_msl_calculator_setup_and_projector(mesh, direction):
     oracle = msl_loop_current(ha, hb, j_lo=al, j_hi=ah, k_trace_lo=bl, k_trace_hi=bh,
                               dy_arr=meta['a_arr'], dz_arr=meta['b_arr'], direction=direction)
     np.testing.assert_allclose(observe(owner.channels[-1], fields), oracle[0], rtol=2e-6, atol=1e-12)
+    if precision == 'float64':
+        interpolation = dict(zip(stencil['h_indices'], stencil['weights']))
+        for node in owner.channels[-1].nodes:
+            axis = 'xyz'.index(node.component[1])
+            index = (node.i, node.j, node.k)
+            assert abs(node.weight) == abs(interpolation[index[prop]]) * grid.cells(axis)[index[axis]]
     assert {n.component for n in owner.channels[-1].nodes} == {meta['h_a'], meta['h_b']}
     assert {getattr(n, 'ijk'[prop]) for n in owner.channels[-1].nodes} == set(stencil['h_indices'])
 

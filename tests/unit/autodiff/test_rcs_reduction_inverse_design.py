@@ -69,7 +69,7 @@ def _setup():
 def _tfsf(grid):
     return init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
                      f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
-                     direction="+x", angle_deg=0.0)
+                     direction="+x", angle_deg=0.0, dtype='float32')
 
 
 def _band_rcs(grid, e_inc, blk, sigma_scale):

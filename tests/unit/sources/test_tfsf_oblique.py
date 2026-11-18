@@ -69,7 +69,7 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
         direction="+x",
         angle_deg=angle_deg,
         ny=ny,
-    )
+    dtype='float32')
 
     materials = init_materials((nx, ny, nz))
     periodic = (False, True, True)
@@ -188,10 +188,10 @@ class TestObliqueTFSF:
         dx = 1e-3
         dt = 0.5 * dx / 3e8
 
-        cfg_1d, _ = init_tfsf(60, dx, dt, cpml_layers=8, angle_deg=0.0)
+        cfg_1d, _ = init_tfsf(60, dx, dt, cpml_layers=8, angle_deg=0.0, dtype='float32')
         assert isinstance(cfg_1d, TFSFConfig)
 
-        cfg_2d, _ = init_tfsf(60, dx, dt, cpml_layers=8, angle_deg=30.0, ny=60)
+        cfg_2d, _ = init_tfsf(60, dx, dt, cpml_layers=8, angle_deg=30.0, ny=60, dtype='float32')
         assert isinstance(cfg_2d, TFSF2DConfig)
 
     @pytest.mark.slow

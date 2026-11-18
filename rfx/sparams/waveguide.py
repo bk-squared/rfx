@@ -5,7 +5,9 @@ variants. The caller retains its declared port and observer containers.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
+from rfx._internal._precision import resolve_coefficient_dtype
 from rfx.measurement.calculator_drive import calculator_drive
 
 from rfx.sparams import _waveguide_stages
@@ -286,6 +288,7 @@ def compute_waveguide_s_matrix(
         Material rasterization is a cell-centre step test on realized nodes.
         ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
+    admit_traced_inputs("Simulation.compute_waveguide_s_matrix", locals())
     conformal_pec = _waveguide_stages._admit_waveguide_options(
         RfxUnsupported, conformal_pec, port_reference_sims, resolve_field_dtype, self, subpixel_smoothing,
     )
@@ -633,7 +636,7 @@ def compute_waveguide_s_matrix(
     settling_details = []
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
+        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium, dtype=resolve_coefficient_dtype(self._precision))
         s_params = extract_waveguide_s_matrix_flux(
             grid,
             materials,
@@ -664,7 +667,7 @@ def compute_waveguide_s_matrix(
         s_params, settling_db = s_params
     elif normalize:
         from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
+        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium, dtype=resolve_coefficient_dtype(self._precision))
         s_params = extract_waveguide_s_params_normalized(
             grid,
             materials,
@@ -764,10 +767,13 @@ def _reference_medium(cfgs, normalize):
     return media[0] if media else PortMedium()
 
 
-def _homogeneous_reference_materials(shape, medium):
-    from rfx.core.yee import init_materials
+def _homogeneous_reference_materials(shape, medium, *, dtype):
+    from rfx.core.yee import MaterialArrays
     from rfx.model.waveguide_modes import PortMedium
-    materials = init_materials(shape)
+    dtype = jnp.promote_types(jnp.float32, dtype)
+    ones = jnp.ones(shape, dtype=dtype)
+    materials = MaterialArrays(eps_r=ones, sigma=jnp.zeros(shape, dtype=dtype),
+                               mu_r=ones, sigma_film=None)
     if medium == PortMedium():
         return materials
     return materials._replace(eps_r=jnp.full(shape, medium.eps_r, dtype=materials.eps_r.dtype),

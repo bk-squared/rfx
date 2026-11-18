@@ -2,6 +2,7 @@
 import gc
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -97,6 +98,30 @@ def test_oblique_material_refused_before_scan(kind, entry, polarization, skip, m
     assert calls == []
 
 
+@pytest.mark.parametrize("kind,skip,override", [
+    pytest.param(kind, skip, override, id=f"{kind}-override-{override}-skip{skip}")
+    for kind in ("diagonal", "kottke_pec", "debye")
+    for skip in (False, True)
+    for override in ("concrete", "traced")])
+def test_forward_angle_override_keeps_material_refusal(kind, skip, override, monkeypatch):
+    """A forward angle override on a declared oblique Bloch source keeps the material refusal."""
+    calls = []
+
+    def no_scan(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("unsupported electric update reached a scan")
+
+    monkeypatch.setattr(jax.lax, "scan", no_scan)
+    sim, options = slab(kind, "forward", "ez", skip, 30)
+    with pytest.raises(RfxUnsupported) as caught:
+        if override == "concrete":
+            sim.forward(**options, tfsf_angle_override=20.0)
+        else:
+            jax.grad(lambda a: jnp.sum(sim.forward(**options, tfsf_angle_override=a).time_series))(20.0)
+    assert str(caught.value) == expected_refusal(kind)
+    assert calls == []
+
+
 class StepAdmitted(Exception):
     pass
 
@@ -137,7 +162,8 @@ def test_low_level_oblique_tensor_refused_before_scan(monkeypatch):
     cfg, state = init_tfsf(grid.nx, grid.dx, grid.dt,
                            cpml_layers=grid.cpml_layers, tfsf_margin=3,
                            f0=5e9, bandwidth=0.2, amplitude=1.0,
-                           polarization="ez", angle_deg=30.0, ny=grid.ny)
+                           polarization="ez", angle_deg=30.0, ny=grid.ny,
+                           dtype='float32')
     eps_x = materials.eps_r.at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(2.0)
     tensor = (eps_x, materials.eps_r, materials.eps_r)
     calls = []

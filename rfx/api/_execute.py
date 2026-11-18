@@ -989,6 +989,7 @@ class _ExecuteMixin:
     def forward(
         self,
         *,
+        tfsf_angle_override: object = None,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
         mu_r_override: jnp.ndarray | None = None,
@@ -1026,6 +1027,9 @@ class _ExecuteMixin:
 
         Parameters
         ----------
+        tfsf_angle_override : scalar, optional
+            Uniform Bloch incidence angle in degrees at fixed f0; supports grad/jvp/vmap/jit.
+            Declare the largest |angle| used: the cutoff warning grows with |angle|.
         subpixel_smoothing : bool or str
             False: staircase (the default); True: diagonal only, first order on curved interfaces (an eps-38 cylinder about 1 % high at 0.5 mm).
             "full_tensor": full anisotropic averaging, second order on uniform and graded one-device meshes; refusals (UPML, conformal PEC, traced eps_r, ...): support matrix.
@@ -1377,8 +1381,8 @@ class _ExecuteMixin:
             records on the concrete result using the run() diagnostic and
             underflow floor. They are host diagnostics, unavailable during
             tracing, and can be read on concrete records outside the jitted
-            objective. Other result fields keep their existing JIT
-            restrictions, including the host Grid object. Absent
+            objective. A whole result can be returned under JIT;
+            host data stays as computed during the trace. Absent
             records yield None rather than a passing value. Use
             ``settling_verdict(result.settling_db)`` for the shared -40 dB bar.
 
@@ -1478,6 +1482,7 @@ class _ExecuteMixin:
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override),
+            tfsf_angle_override=tfsf_angle_override,
         )
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
@@ -1534,14 +1539,6 @@ class _ExecuteMixin:
                 f"single-device lane, not {plan.lane!r} (which discards chi3 → silent "
                 "linear physics + linear gradient). Use a uniform mesh + single device "
                 "for differentiable nonlinear (Kerr) design."
-            )
-
-        # Both single-device lanes build TFSF; distributed lanes do not.
-        if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
-            raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward refuses distributed "
-                f"lanes, including {plan.lane!r}. Use a uniform or graded "
-                "single-device forward lane for TFSF/plane-wave inverse design."
             )
 
         # mu_r_override is wired only on the uniform lane; the NU/distributed
@@ -1749,6 +1746,7 @@ class _ExecuteMixin:
                 "pec_mask": pec_mask_override,
                 "pec_occupancy": pec_occupancy_override,
             },
+            tfsf_angle_override=tfsf_angle_override,
             lane="fwd_uniform",
             diagnostics=_solve_assembly.diagnostics,
         )
@@ -1972,8 +1970,8 @@ class _ExecuteMixin:
         -------
         Result
         """
-        from rfx.geometry.conformal import validate_conformal_min_weight
-        validate_conformal_min_weight(conformal_min_weight)
+        from rfx._traced_inputs import admit_traced_inputs
+        admit_traced_inputs("Simulation.run", locals())
         self._resolve_field_dtype()
         admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box, conformal_pec)
         from rfx.runners.run import run_after_admission

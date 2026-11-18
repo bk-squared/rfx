@@ -37,6 +37,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
                         checkpoint=False, snapshot=None, until_decay=None,
                         report_every=None, _forward_port_s11=False):
     """Use the run entry's admission, execution and S-matrix path."""
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed non-uniform" if plan.lane.endswith("_nu") else "distributed uniform")
     entry = "forward" if _forward_port_s11 else "run"
     lane = f"distributed multi-device {entry}()"
     # ---- Distributed multi-device lane ----
@@ -258,6 +260,8 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
                         checkpoint, emit_time_series, n_warmup,
                         design_box_holds_ports, subpixel_smoothing=False, **overrides):
     """Admit the fixed-model forward request, execute once, and pack observables."""
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed non-uniform" if plan.lane.endswith("_nu") else "distributed uniform")
     import jax
     from rfx.api._forward_result import pack_nu_forward_result
     from rfx.model.realization_reference import forget_kernel

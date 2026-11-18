@@ -1,7 +1,10 @@
 """Exact rational plane waves on the uniform three-dimensional Yee lattice."""
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
-from rfx.errors import AccuracyWarning
+from rfx._internal._precision import resolve_coefficient_dtype
+
+from rfx.errors import AccuracyWarning, RfxRefusal
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -83,6 +86,7 @@ class PlaneWaveConfig:
     src_fcen: float
     src_waveform: str
     custom_waveform: object
+    run_dtype: object
     source_windows: tuple = ()
     window_sigma: int = 0
     window_q1: float = 0.0
@@ -103,7 +107,7 @@ class PlaneWaveConfig:
         raise AttributeError(name)
 
 
-def _tables(shape, bounds, m, projections, dt, dx, magnetic):
+def _tables(shape, bounds, m, projections, dt, dx, magnetic, *, dtype):
     """M curl - curl M; the self-read cancels, leaving one neighbour per term."""
     result = []
     base = dt / ((MU_0 if magnetic else EPS_0) * dx)
@@ -125,7 +129,7 @@ def _tables(shape, bounds, m, projections, dt, dx, magnetic):
                     target + (3 if magnetic else 0),
                     np.ravel_multi_index(target_nodes.T, shape).astype(np.int32),
                     component, line_n,
-                    np.full(len(line_n), -curl_sign * difference * base, dtype=np.float32)))
+                    np.full(len(line_n), -curl_sign * difference * base, dtype=jnp.promote_types(jnp.float32, dtype))))
     return tuple(result)
 
 
@@ -203,7 +207,7 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                     f0=5e9, bandwidth=.5, amplitude=1., polarization="ez", direction="+x",
                     theta_deg=0., phi_deg=0., direction_tol_deg=.1, max_component=100,
                     waveform="differentiated_gaussian", n_steps=None, _zero_absorber=False,
-                    _absorber_nodes=None):
+                    _absorber_nodes=None, dtype):
     """Bound every read by a clean margin and a matched graded lossy layer."""
     from rfx.sources.sources import CustomWaveform
     from rfx.sources.tfsf import AUX_N_MARGIN_1D, AUX_SRC_OFFSET_1D
@@ -220,8 +224,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     bounds = box_bounds(shape, cpml_layers, tfsf_margin)
     projections = YEE_OFFSETS @ m
     fractions = projections % 1
-    tables_e = _tables(shape, bounds, m, projections, dt, dx, False)
-    tables_h = _tables(shape, bounds, m, projections, dt, dx, True)
+    tables_e = _tables(shape, bounds, m, projections, dt, dx, False, dtype=dtype)
+    tables_h = _tables(shape, bounds, m, projections, dt, dx, True, dtype=dtype)
     min_p = min(float(np.min(t.source_index) + fractions[t.source_component])
                 for t in tables_e + tables_h)
     radius = int(np.max(np.abs(m)))
@@ -260,20 +264,21 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     tau, t0 = pulse_timing(waveform, f0, bandwidth)
     tau = source_scalar("tau", tau)
     t0 = source_scalar("t0", t0)
-    dtype = jnp.result_type(float)
+    run_dtype = jnp.promote_types(jnp.float32, dtype)
+    dtype = jnp.promote_types(jnp.result_type(float), run_dtype)
     # CPU Yee SI coefficient factorization: yee.py:1052-1057, 1221-1228;
     # H: yee.py:496-500. Keep the array operations, not Python-folded ratios.
     one, zero = jnp.asarray(1., dtype), jnp.asarray(0., dtype)
     ca, cb = e_update_coeffs(one, zero, dt)
     ch = dt / (one * MU_0)
     line_damping = _line_damping(
-        n_nodes, absorber_nodes, fractions, dx / norm, dt, _zero_absorber)
+        n_nodes, absorber_nodes, fractions, dx / norm, dt, _zero_absorber, dtype=dtype)
     cfg = PlaneWaveConfig(tuple(map(int, m)), info, shape, bounds, origin, n_nodes,
                           int(n_steps), tuple(fractions), tuple(projections),
                           translate(tables_e), translate(tables_h),
                           tuple(map(int, source_n - origin)), tuple(map(float, delays)),
                           float(source_p), dx, dt, ca, cb, ch, amplitude, tau, t0, f0,
-                          "custom" if custom is not None else waveform, custom,
+                          "custom" if custom is not None else waveform, custom, run_dtype,
                           tuple(w._replace(nodes=(w.nodes - origin).astype(np.int32))
                                 for w in windows), sigma, q1,
                           theta_deg=theta_deg, phi_deg=phi_deg,
@@ -283,8 +288,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     return cfg, FDTDState(*fields, jnp.asarray(0, jnp.int32))
 
 
-def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False):
-    """Matched exponential loss at each component's own position."""
+def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False, *, dtype):
+    """Matched exponential loss at each component's own position, stored in the line dtype."""
     # Interfaces are at index L and n_nodes-L. Integral sigma*eta dz = ln(1e4).
     depth = length * spacing
     sigma_max = 4 * math.log(1e4) / (math.sqrt(MU_0 / EPS_0) * depth)
@@ -297,9 +302,9 @@ def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False):
         if zero_loss:
             sigma = np.zeros_like(sigma)
         factors = np.exp(-sigma * dt / EPS_0)
-        field = np.ones(n_nodes, np.float32)
+        field = np.ones(n_nodes, np.float64)
         field[:length], field[-length:] = factors[:length], factors[length:]
-        damping.append(jnp.asarray(field, jnp.float32))
+        damping.append(jnp.asarray(field, dtype))
     return tuple(damping)
 
 
@@ -334,7 +339,7 @@ def update_line_h(cfg, state, dx, dt):
 
 
 def update_line_e(cfg, state, dx, dt, t=None):
-    """yee.py:594-608,1224-1228; launch uses uniform.py:587's float32 step argument."""
+    """yee.py:594-608,1224-1228; launch casts its step to the run coefficient dtype."""
     changes = {}
     for target, (first, a, second, b) in enumerate(CURL_TERMS):
         curl = (line_difference(cfg, state, target, first + 3, a) / dx
@@ -345,11 +350,11 @@ def update_line_e(cfg, state, dx, dt, t=None):
         if weight != 0:
             window = cfg.source_windows[target] if cfg.source_windows else None
             delay = window.delays if window is not None else cfg.delays[target]
-            time = (state.step.astype(jnp.float32) - jnp.float32(delay)) * dt
+            time = (state.step.astype(cfg.run_dtype) - jnp.asarray(delay, cfg.run_dtype)) * dt
             from rfx.sources.tfsf import line_source_value
             value = line_source_value(cfg, time, cfg.src_amp * float(weight))
             if window is not None:
-                value = value * jnp.asarray(window.weights, jnp.float32)
+                value = value * jnp.asarray(window.weights, cfg.run_dtype)
                 field = field.at[jnp.asarray(window.nodes, jnp.int32)].add(value)
             else:
                 field = field.at[cfg.source_nodes[target]].add(value)
@@ -385,13 +390,26 @@ def tfsf_box_indices(sim) -> dict[str, tuple[int, int]]:
         raise ValueError("No TFSF source registered")
     from rfx.sources.tfsf import tfsf_from_declaration, tfsf_injection_planes
     grid = sim._build_grid()
-    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, bounds_only=True)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(sim._precision))
     return tfsf_injection_planes(cfg)
 
 
 def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
     """Normal-only compatibility replay; oblique phase references belong to O1b."""
     from rfx.measurement.dft import transform
+
+    record = normal_incident_record(cfg, state, n_steps, dt, reference_index)
+    return np.asarray(transform(record, freqs, dt, kind="E",
+                                time_shift=-1 if reference_index is None else 0))
+
+
+def normal_incident_record(cfg, state, n_steps, dt, reference_index):
+    """The line's E along e_hat at the E-node plane ``reference_index`` (``x_lo`` if None), per step.
+
+    Row n is the value after the E update of step n, in the line's own dtype.
+    Normal incidence only; the plane must lie inside the line's slab
+    ``x_lo..x_hi`` and ``n_steps`` within the line's step-count bound.
+    """
     from rfx.stepping.incident_line import record_incident_line
 
     if cfg.m not in ((1, 0, 0), (-1, 0, 0)):
@@ -404,9 +422,7 @@ def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
         raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
     indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
                     for c in range(3))
-    record = record_incident_line(cfg, state, n_steps, dt, indices, cfg.incidence["e_hat"])
-    return np.asarray(transform(record, freqs, dt, kind="E",
-                                time_shift=-1 if reference_index is None else 0))
+    return record_incident_line(cfg, state, n_steps, dt, indices, cfg.incidence["e_hat"])
 
 @lru_cache(maxsize=256)
 def rational_direction(theta_deg, phi_deg, direction, direction_tol_deg, max_component):
@@ -632,8 +648,16 @@ def add_tfsf_source(
         read physical fields. ``"methodB"`` currently requires
         ``polarization='ez'`` and a single-device uniform grid.
     """
+    admit_traced_inputs("Simulation.add_tfsf_source", locals())
     from rfx.runners._admission import refuse_plane_wave_with_port
     refuse_plane_wave_with_port(self, adding="plane_wave")
+    from rfx.core.jax_utils import is_tracer
+    for name, value in (("f0", f0), ("bandwidth", bandwidth), ("amplitude", amplitude),
+                        ("angle_deg", angle_deg), ("theta_deg", theta_deg),
+                        ("phi_deg", phi_deg), ("direction_tol_deg", direction_tol_deg)):
+        if is_tracer(value):
+            hint = " Use forward(tfsf_angle_override=) on the uniform Bloch line." if "deg" in name else ""
+            raise RfxRefusal(f"incident source {name} must be concrete at declaration.{hint}")
     from rfx.sources.tfsf import is_oblique, resolve_waveform
     if closed_box:
         validate_declaration(self, theta_deg, phi_deg, direction_tol_deg,
@@ -699,22 +723,7 @@ def add_tfsf_source(
             )
 
     if method == "bloch" and is_oblique(angle_deg):  # the 2D-aux dispatch test in tfsf.py
-        cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
-        if cutoff_db > -60.0:
-            import warnings
-
-            source_f0 = f0 if f0 is not None else self._freq_max / 2
-            cutoff_ghz = source_f0 * abs(math.sin(math.radians(angle_deg))) / 1e9
-            warnings.warn(
-                f"Bloch TF/SF angle={angle_deg:g} deg, bandwidth={bandwidth:g}: "
-                f"{cutoff_db:.2f} dB relative to f0 at f_c={cutoff_ghz:.6g} GHz; "
-                "a rectangular-window DFT of this path's probe time series picks up "
-                "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
-                "depends on the record length. Narrow the bandwidth, or taper "
-                "the tail of the time series before the DFT.",
-                AccuracyWarning,
-                stacklevel=2,
-            )
+        warn_bloch_cutoff(angle_deg, bandwidth, f0 if f0 is not None else self._freq_max / 2)
 
     self._tfsf = _TFSFEntry(
         f0=f0,
@@ -763,3 +772,22 @@ def document_fields(_NUM, _INT, _STR, _BOOL, _opt):
         "direction_tol_deg": _NUM,
         "max_component": _INT,
     }
+
+
+def warn_bloch_cutoff(angle_deg, bandwidth, f0):
+    """Shared concrete declaration/override cutoff advisory."""
+    cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
+    if cutoff_db > -60.0:
+        import warnings
+
+        cutoff_ghz = f0 * abs(math.sin(math.radians(angle_deg))) / 1e9
+        warnings.warn(
+            f"Bloch TF/SF angle={angle_deg:g} deg, bandwidth={bandwidth:g}: "
+            f"{cutoff_db:.2f} dB relative to f0 at f_c={cutoff_ghz:.6g} GHz; "
+            "a rectangular-window DFT of this path's probe time series picks up "
+            "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
+            "depends on the record length. Narrow the bandwidth, or taper "
+            "the tail of the time series before the DFT.",
+            AccuracyWarning,
+            stacklevel=3,
+        )

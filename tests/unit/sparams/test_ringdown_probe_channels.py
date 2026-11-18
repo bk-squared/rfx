@@ -304,7 +304,7 @@ def test_probe_bins_above_freq_max_use_one_reference(monkeypatch):
     """Physical anchor: decimation must retain modes at every requested spectral bin."""
     import importlib
 
-    _pencil = importlib.import_module("rfx.ringdown._pencil")  # the module; rd._pencil is a function
+    _pencil = importlib.import_module("rfx.ringdown._pencil")
 
     seen = []
     original = _pencil.decimation_plan
@@ -313,7 +313,6 @@ def test_probe_bins_above_freq_max_use_one_reference(monkeypatch):
         seen.append(float(freq_max))
         return original(n, dt, freq_max)
 
-    # Patch the name where the identification plan looks it up.
     monkeypatch.setattr(_pencil, "decimation_plan", capture)
     request = spec(probe_freqs=(8e9, 18e9, 20.000000123e9))
     result = box().forward(n_steps=600, ringdown=request, skip_preflight=True).ringdown

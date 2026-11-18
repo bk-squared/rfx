@@ -9,7 +9,10 @@ name here.
 from __future__ import annotations
 from rfx._warning_origin import user_stacklevel
 
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
+
+if TYPE_CHECKING:
+    from numpy.typing import DTypeLike
 
 from rfx.boundaries.depths import resolve_face_depths
 
@@ -408,7 +411,7 @@ class NonUniformGrid(NamedTuple):
 
 
 
-def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
+def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None, *, dtype):
     """Pad a 1-D cell-size profile with CPML cells on each end.
 
     ``pad_lo`` and ``pad_hi`` may differ (per-face allocation —
@@ -428,7 +431,7 @@ def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
     if pad_hi is None:
         pad_hi = pad_lo
     if is_tracer(profile):
-        prof = jnp.asarray(profile, dtype=jnp.float32)
+        prof = jnp.asarray(profile, dtype=dtype)
         lo_pad = jnp.full(pad_lo, prof[0])
         hi_pad = jnp.full(pad_hi, prof[-1])
         return jnp.concatenate([lo_pad, prof, hi_pad])
@@ -554,7 +557,7 @@ def node_positions_from_profile(profile):
     return _axis_node_positions(_append_bounding_node(profile), 0)
 
 
-def _profile_to_inv_arrays(profile_full: np.ndarray, *, periodic=False) -> tuple[jnp.ndarray, jnp.ndarray]:
+def _profile_to_inv_arrays(profile_full: np.ndarray, *, dtype, periodic=False) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Return ``(inv_d_e, inv_d_h)`` — the E-update and H-update inverse
     cell-spacing arrays for a padded 1-D cell-size profile ``d``.
 
@@ -583,14 +586,14 @@ def _profile_to_inv_arrays(profile_full: np.ndarray, *, periodic=False) -> tuple
     ``inv_dx, inv_dx_h = _profile_to_inv_arrays(...)`` unpacking: the
     first slot feeds the E update, the second feeds ``update_h_nu``.
     """
-    arr = jnp.asarray(profile_full, dtype=jnp.float32)
+    arr = jnp.asarray(profile_full, dtype=dtype)
     inv_local = 1.0 / arr                          # 1/d[k]
     if periodic:
-        inv_periodic = jnp.asarray(1.0 / np.asarray(profile_full, dtype=np.float64), dtype=jnp.float32)
+        inv_periodic = jnp.asarray(1.0 / np.asarray(profile_full, dtype=np.float64), dtype=dtype)
         return inv_periodic, inv_periodic
     inv_mean = 2.0 / (arr[:-1] + arr[1:])          # 2/(d[k]+d[k+1])
     # H update: local cell width; trailing 0 (forward-diff has no d[N]).
-    inv_d_h = jnp.concatenate([inv_local[:-1], jnp.zeros(1, dtype=jnp.float32)])
+    inv_d_h = jnp.concatenate([inv_local[:-1], jnp.zeros(1, dtype=dtype)])
     # E update: mean of (d[k-1], d[k]); leading 1/d[0] (backward-diff
     # boundary — reproduces the pre-fix value so the face cell is
     # unchanged).
@@ -804,6 +807,7 @@ def make_nonuniform_grid(
     dx: float,
     cpml_layers: int = 8,
     *,
+    dtype: DTypeLike = jnp.float32,
     dx_profile: np.ndarray | None = None,
     dy_profile: np.ndarray | None = None,
     pec_faces: set[str] | None = None,
@@ -900,13 +904,13 @@ def make_nonuniform_grid(
         # With a nominal profile the ends are not checked here: the fixed-cell
         # check holds them outside a declared window (free inside, or with no
         # window), and dx agreement is judged where a structure is resolved.
-        dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
+        dx_prof_phys = jnp.asarray(dx_profile, dtype=dtype)
         if nominal_profiles is None or "x" not in nominal_profiles:
             _assert_boundary_cells(dx_prof_phys, dx, "x")
     else:
         _assert_boundary_cells(dx_profile, dx, "x")
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
-    dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi), periodic="x" in periodic_axes)
+    dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi, dtype=dtype), periodic="x" in periodic_axes)
     if not is_tracer(dx_full):
         assert_cells_span_declared_profile(
             dx_full, pad_x_lo, pad_x_hi, dx_prof_phys, "x", periodic="x" in periodic_axes)
@@ -922,7 +926,7 @@ def make_nonuniform_grid(
         # With a nominal profile the ends are not checked here: the fixed-cell
         # check holds them outside a declared window (free inside, or with no
         # window), and dx agreement is judged where a structure is resolved.
-        dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
+        dy_prof_phys = jnp.asarray(dy_profile, dtype=dtype)
         dy_boundary = float(dx)
         if nominal_profiles is None or "y" not in nominal_profiles:
             _assert_boundary_cells(dy_prof_phys, dy_boundary, "y")
@@ -930,14 +934,14 @@ def make_nonuniform_grid(
         dy_boundary = float(dy_profile[0])
         _assert_boundary_cells(dy_profile, dy_boundary, "y", match_each_other=True)
         dy_prof_phys = np.asarray(dy_profile, dtype=np.float64)
-    dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi), periodic="y" in periodic_axes)
+    dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi, dtype=dtype), periodic="y" in periodic_axes)
     if not is_tracer(dy_full):
         assert_cells_span_declared_profile(
             dy_full, pad_y_lo, pad_y_hi, dy_prof_phys, "y", periodic="y" in periodic_axes)
     ny = int(dy_full.shape[0])
 
     # --- z profile ---
-    dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi), periodic="z" in periodic_axes)
+    dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi, dtype=dtype), periodic="z" in periodic_axes)
     if not is_tracer(dz_full):
         assert_cells_span_declared_profile(
             dz_full, pad_z_lo, pad_z_hi, dz_profile, "z", periodic="z" in periodic_axes)
@@ -970,9 +974,9 @@ def make_nonuniform_grid(
                         where=dt_caller or "make_nonuniform_grid")
 
     # --- Per-cell arrays + inverse spacings ---
-    dx_arr = jnp.asarray(dx_full, dtype=jnp.float32)
-    dy_arr = jnp.asarray(dy_full, dtype=jnp.float32)
-    dz_arr = jnp.asarray(dz_full, dtype=jnp.float32)
+    dx_arr = jnp.asarray(dx_full, dtype=dtype)
+    dy_arr = jnp.asarray(dy_full, dtype=dtype)
+    dz_arr = jnp.asarray(dz_full, dtype=dtype)
 
     # Exact float64 spine for node positions: concrete profiles
     # only — a traced profile has no host copy and its axis keeps the traced
@@ -992,11 +996,11 @@ def make_nonuniform_grid(
     traced_cells = admit_traced_windows(nominal_profiles)
     for axis, window in (traced_cells or {}).items():
         profile = (dx_profile, dy_profile, dz_profile)["xyz".index(axis)]
-        _assert_traced_cells_match_nominal(profile, nominal_cells[axis], window, axis)
+        _assert_traced_cells_match_nominal(profile, nominal_cells[axis], window, axis, dtype=dtype)
 
-    inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full, periodic="x" in periodic_axes)
-    inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full, periodic="y" in periodic_axes)
-    inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full, periodic="z" in periodic_axes)
+    inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full, dtype=dtype, periodic="x" in periodic_axes)
+    inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full, dtype=dtype, periodic="y" in periodic_axes)
+    inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full, dtype=dtype, periodic="z" in periodic_axes)
 
     return NonUniformGrid(
         nx=nx, ny=ny, nz=nz,
@@ -1017,19 +1021,19 @@ def make_nonuniform_grid(
     )
 
 
-def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
-    """Check fixed widths within four float32 eps times the nominal width.
+def _assert_traced_cells_match_nominal(profile, nominal, window, axis, *, dtype):
+    """Check fixed widths within four store-dtype eps times the nominal width.
 
     This reads values, not tangents: at the primal point a tangent outside
     the window is unseen. It is caught once values move, for example on a
     later optimisation step reusing the declaration.
     """
-    realized = jnp.asarray(profile, dtype=jnp.float32)
-    nominal32 = jnp.asarray(nominal, dtype=jnp.float32)
+    realized = jnp.asarray(profile, dtype=dtype)
+    nominal_store = jnp.asarray(nominal, dtype=dtype)
     from rfx.model.graded_admission import window_mask
     outside = ~window_mask(window, realized.shape[0])
-    tolerance = 4 * jnp.finfo(jnp.float32).eps * nominal32
-    bad = outside & ~(jnp.abs(realized - nominal32) <= tolerance)
+    tolerance = 4 * jnp.finfo(dtype).eps * nominal_store
+    bad = outside & ~(jnp.abs(realized - nominal_store) <= tolerance)
     first = jnp.argmax(bad)
 
     def _check(failed, cell, width, expected):
@@ -1040,7 +1044,7 @@ def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
                 f"outside declared traced_cells window {window!r}.")
 
     from rfx._traced_check import traced_check
-    traced_check("graded mesh", "fixed cells", _check, jnp.any(bad), first, realized[first], nominal32[first])
+    traced_check("graded mesh", "fixed cells", _check, jnp.any(bad), first, realized[first], nominal_store[first])
 
 
 def _assert_traced_window_total(profile, nominal, window, axis):

@@ -1,6 +1,7 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
 from rfx.measurement.calculator_drive import calculator_drive
 
 from rfx.errors import RfxUnsupported
@@ -40,6 +41,7 @@ def _forward_from_materials(
     diagnostics=(),
     n_steps: int,
     conductors=None,
+    tfsf_angle_override=None,
     checkpoint: bool = True,
     gradient: str = "autodiff",
     checkpoint_segments: int | None = None,
@@ -206,7 +208,10 @@ def _forward_from_materials(
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_run = tfsf_from_declaration(
             self._tfsf, grid, self._freq_max, n_steps=n_steps,
-        )
+        dtype=resolve_coefficient_dtype(self._precision))
+        if tfsf_angle_override is not None:
+            from rfx.sources.tfsf_2d import with_angle
+            tfsf_run = (with_angle(tfsf_run[0], tfsf_angle_override), tfsf_run[1])
         from dataclasses import replace
         from rfx.api._ad_memory_model import face_record_pays
         if face_record_pays(tfsf_run[0], n_steps, checkpoint=checkpoint,
@@ -547,7 +552,7 @@ def _forward_from_materials(
                     tuple(mp._drive_stamps)))
                 sources.defer(make_msl_port_sources,
                     grid, mp, n_steps=n_steps,
-                    mode_profile=mode_profile,
+                    mode_profile=mode_profile, dtype=resolve_coefficient_dtype(self._precision),
                 )
             # Clear PEC mask over the cross-section so the source/σ cells
             # are not zeroed by the PEC update.
@@ -641,7 +646,7 @@ def _forward_from_materials(
     if self._floquet_ports:
         from rfx.floquet import floquet_port_source
         for fpe in self._floquet_ports:
-            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
+            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps, dtype=resolve_coefficient_dtype(self._precision))[1])
 
     # Build the RLC metas now that all material folding (RLC + ports)
     # is complete — build_rlc_meta reads the final eps/sigma at each
@@ -842,7 +847,7 @@ def _forward_from_materials(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
         freqs=freqs_out, current_moment_monitor=current_moments_fwd,
         realized_geometry=stepping_product._realization_record,
-    )), conductors.design_findings)
+    )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 
 
 # ---------------------------------------------------------------------------

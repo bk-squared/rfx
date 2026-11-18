@@ -215,7 +215,7 @@ def tfsf_auxiliary_reflection(n_layers, face, freqs, *, far=400, reference_dista
 
     def trace(interior, distance):
         # init_tfsf adds 20 margin cells and nx-4 mapped cells.
-        cfg, state = init_tfsf(interior - 15, dx, dt, aux_n_cpml=n_layers)
+        cfg, state = init_tfsf(interior - 15, dx, dt, aux_n_cpml=n_layers, dtype='float32')
         source_index = n_layers + distance
         cfg = cfg._replace(src_idx=source_index, src_t0=60e-12,
                            src_tau=12e-12, src_amp=0.5)
@@ -308,7 +308,7 @@ def tfsf_methodb_auxiliary_reflection(theta_deg, face, freqs, *,
     dx = 1e-3
     dt = float(0.99 / np.sqrt(3) * dx / C0)
     config, zero_state = init_tfsf_methodB(
-        151, 93, dx, dt, nz=3, theta_deg=theta_deg, f0=10e9)
+        151, 93, dx, dt, nz=3, theta_deg=theta_deg, f0=10e9, dtype='float32')
     spacing, depth = config.dx_1d, config.n_cpml
     steps = int(0.9 * 2 * far * spacing / C0 / dt)
     if not 30 < far < reference_distance or steps * dt <= 120e-12 + 2 * (30 + depth) * spacing / C0:

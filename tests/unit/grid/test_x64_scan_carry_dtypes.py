@@ -244,7 +244,7 @@ def test_oblique_tfsf_2d_scan_closes_under_x64():
     cfg, st0 = init_tfsf(grid.nx, grid.dx, grid.dt,
                          cpml_layers=grid.cpml_layers, tfsf_margin=3,
                          f0=5e9, bandwidth=0.2, amplitude=1.0,
-                         polarization="ez", angle_deg=30.0, ny=grid.ny)
+                         polarization="ez", angle_deg=30.0, ny=grid.ny, dtype='float32')
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
     with enable_x64():
@@ -529,7 +529,7 @@ def test_oblique_bloch_with_dispersion_is_refused():
     cfg, st0 = init_tfsf(grid.nx, grid.dx, grid.dt,
                          cpml_layers=grid.cpml_layers, tfsf_margin=3,
                          f0=5e9, bandwidth=0.2, amplitude=1.0,
-                         polarization="ez", angle_deg=30.0, ny=grid.ny)
+                         polarization="ez", angle_deg=30.0, ny=grid.ny, dtype='float32')
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
     # Off the injection planes, so their material rule admits it

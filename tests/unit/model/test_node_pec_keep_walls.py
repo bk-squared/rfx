@@ -189,7 +189,7 @@ def test_traced_masked_coupling_warns_on_uniformity():
 
     sim = slab_scene(plane_wave=True)
     grid = sim._build_nonuniform_grid()
-    cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+    cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
     shape = grid.shape
     raw = tuple(jnp.ones((2, 2, *shape)) for _ in range(3))
 
@@ -252,7 +252,7 @@ def test_r2_uniform_raw_coupling_with_absorber_mask_refuses():
                      boundary='cpml', cpml_layers=2)
     sim.add_tfsf_source(f0=10e9, bandwidth=.8, polarization='ez', direction='+x', margin=3)
     grid = sim._build_nonuniform_grid()
-    cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+    cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
     shape = grid.shape
     materials = init_materials(shape)
     pad = np.zeros(shape, dtype=bool)

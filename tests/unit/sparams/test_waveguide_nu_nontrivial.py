@@ -301,7 +301,7 @@ def _get_nu_raw_waves():
 
     grid = build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-        sim._dz_profile,
+        sim._dz_profile, dtype="float32",
         dx_profile=sim._dx_profile,
         pec_faces=pec_set or None,
         pmc_faces=pmc_set or None,

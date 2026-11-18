@@ -14,6 +14,7 @@ import math
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx._internal._precision import resolve_coefficient_dtype
 from rfx.sources.tfsf import tfsf_from_declaration
 from rfx.sources.tfsf_discrete_plane_wave import box_bounds
 from rfx.stepping.incident_line import record_face_values
@@ -39,7 +40,8 @@ def line(sim, n, *, line_steps="run"):
     """The line the runner builds for ``n`` steps (``line_steps`` n on run, None on forward)."""
     grid = sim._build_grid()
     cfg, state = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n,
-                                       line_steps=n if line_steps == "run" else None)
+                                       line_steps=n if line_steps == "run" else None,
+                                       dtype=resolve_coefficient_dtype(sim._precision))
     return cfg, state, grid
 
 
@@ -95,14 +97,19 @@ def same_level(a, b):
     return a[2] != "off" or 0.5 <= a[1] / b[1] <= 2.0
 
 
-def slotted_box(z_fraction=0.62):
+EZ_HY = (((0.62, 0.38), "ez"), ((0.30, 0.62), "hy"))
+EZ_EZ = (((0.62, 0.38), "ez"), ((0.30, 0.70), "ez"))
+
+
+def slotted_box(z_fraction=0.62, channels=EZ_HY):
     """The reference plane wave on a lossy slotted PEC box.
 
     The walls' outer faces lie 2 cells inside the TF/SF faces; the walls are
     one cell thick. The fill puts the PEC box's lowest mode (E along z) at
     1.5 f0 with dielectric Q 300. The -x wall has a slot 3 cells along y and
-    1 along z. Returns the model, the identification probes and the interior
-    node bounds.
+    1 along z. ``channels`` holds ((x, y) interior fractions, component)
+    pairs, each at ``z_fraction``; a user probe is declared at each. Returns
+    the model, the identification probes and the interior node bounds.
     """
     sim = Simulation(freq_max=1.5e9, domain=(.055, .055, .040), dx=DX, boundary="cpml",
                      cpml_layers=8, snap="declared")
@@ -132,9 +139,8 @@ def slotted_box(z_fraction=0.62):
         sim.add(Box(lo, hi), material="pec")
     sim.add_tfsf_source(**REFERENCE)
     corner = (xi0, yi0, zi0)
-    probes = tuple((tuple(c + f * s for c, f, s in zip(corner, frac, (a_m, d_m, b_m))), comp)
-                   for frac, comp in (((0.62, 0.38, z_fraction), "ez"),
-                                      ((0.30, 0.62, z_fraction), "hy")))
+    probes = tuple((tuple(c + f * s for c, f, s in zip(corner, (*xy, z_fraction), (a_m, d_m, b_m))), comp)
+                   for xy, comp in channels)
     for position, component in probes:
         sim.add_probe(position=position, component=component)
     return sim, probes, inner

@@ -225,19 +225,6 @@ No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propa
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
 
-### `precision="float64"` still builds some model coefficients in float32
-
-Tracker: #2613
-
-A float64 run steps float64 fields, but some coefficients are still built in float32. These include the material eps,
-sigma and mu; the Debye, Lorentz and Drude pole edge weights; the CPML profiles; the graded-mesh metrics; the conformal-PEC operands; and
-the TF/SF coefficients. `tests/contracts/test_float64_model_invariant.py` names each array, and its list may only shrink.
-Those that were measured differ from a float64 build by up to about 1e-7 relative (sigma 1.03e-7, pole weights 9.8e-8
-and eps 8.3e-8 on a graded mesh; conformal-PEC operands 5.0e-8 on a uniform mesh); mu, the CPML profiles, the graded
-metrics and the TF/SF coefficients were not measured, and how far a field or S moves was not measured. float32 runs are
-not affected. UPML and an oblique Bloch TF/SF source refuse float64 (see the
-[support matrix](support_matrix.md)'s refused inputs).
-
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
 `subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
@@ -840,6 +827,22 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
+### A long identification window can be refused at stage 2, the original-rate residue fit, above the memory bound.
+
+Tracker: #2874
+
+`run(ringdown=...)` and `forward(ringdown=...)` identify poles in two stages:
+- stage 1, the pencil, runs on the decimated record;
+- stage 2 fits the residues at the original sample rate and needs `1.71 × 16 × 5 × n_win × r` bytes, where `n_win` is the window length in samples and `r` the kept rank.
+
+When that exceeds `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` (4 GiB by default), the window is refused by name with `IdentificationMemoryRefused`. The message names the stage, the dimensions, the memory needed and the bound. For example, n_win = 80,000 at r = 600 needs 6.1 GiB. No number is returned for that window.
+
+What to do:
+- raise `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` when the device has the memory;
+- or shorten the identification window.
+
+#2874 plans a streamed stage-2 fit, whose memory scales with `r²`.
+
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 
 Tracker: #1514
@@ -1022,29 +1025,6 @@ Tracker: #1373
 Tracker: #2627
 
 Every time step writes the per-step voltage and current records of lumped and wire ports, `sparam_time_records` on the `run()` and `forward()` results, under `jax.lax.stop_gradient`, on the uniform and graded meshes and on one device or several. So `jax.grad` of any quantity built from these records is exactly 0 with respect to every input, with no refusal and no warning, although a driven port's own waveform enters its V and I linearly. For the gradient of a port quantity, differentiate the S-parameters of `forward(port_s11_freqs=...)` (`ForwardResult.s_params`), which are formed from the frequency-domain accumulators, not from these records. That route runs on one device on a uniform or graded mesh, and with `distributed=True` on a graded mesh. Its gradient is refused with `distributed=True` on a uniform mesh, where the plain call runs. The route is refused when the model also has a plain source or a 0-ohm port, when one record has more than one driven port, and for a passive port with `distributed=True` on a uniform mesh. Field probes (`ForwardResult.time_series`) differentiate normally. The per-step DFT plane records, `dft_time_records` on the same results, are written the same way on one device (the multi-device paths refuse them) and carry the same zero gradient; for the gradient of a field quantity on a plane, place field probes at the cells it needs.
-
-### In float32, a reverse-mode gradient with respect to a traced Lorentz or Drude pole strength in SI units underflows.
-
-Tracker: #2561
-
-With a traced pole strength kappa = omega_p² in SI units (rad²/s²), the reverse pass forms the
-cotangent of kappa in float32. On the CPU, once |dJ/dkappa| is below 1.18e-38 the gradient is
-exactly zero, with no warning. In a synthetic reproduction (a 30 x 16 x 16 mm domain at 0.5 mm
-cells, one traced Drude pole) this happened below a source amplitude of 0.108 on a graded mesh and
-0.0153 on the uniform mesh. On a GPU (one RTX 3080 measured) the cotangent is kept as a subnormal
-number: below 1.18e-38 the gradient loses precision, and it reaches zero only near 1.4e-45. For a
-metal-like Drude pole (kappa about 2e32 rad²/s²) the CPU zero would be reached once
-|dJ/dlog kappa| is below about 2e-6, so nearly any objective in raw SI units would return a zero
-gradient (an estimate, not measured). Only kappa was traced; other pole parameters were not
-measured. What to do: declare the strength as `RelativeStrength(reference, value)`, choosing a
-reference near its largest value, so that the differentiated variable is of order 1;
-`drude_pole(omega_p, gamma, density=...)` and
-`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it; maps use `drude_pole_map(..., density=)` or `lorentz_pole_map(..., relative=True)`. Otherwise divide the objective
-by a constant of its order, such as its value at the starting design given as a Python float,
-or run with `precision="float64"` and JAX x64. An optional warning is off by default: set
-`RFX_POLE_UNDERFLOW_CHECK=1` before the first call (a cached compile keeps the old setting).
-It warns when a nonzero incoming cotangent, replayed in SI units, falls below the smallest
-normal float32 value (1.18e-38).
 
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 

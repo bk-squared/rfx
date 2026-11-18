@@ -155,7 +155,7 @@ def _make_eps(eps_base, slab, pix, alpha, rho, *, eps_bg=1.0, eps_fg=4.0,
               stop_gradient_tape: bool = False):
     eps = eps_base.at[slab].set(alpha)
     rho_arr = jnp.reshape(rho, (1, 1, 1))
-    fields = density_to_material_fields(rho_arr, eps_bg, eps_fg)
+    fields = density_to_material_fields(rho_arr, eps_bg, eps_fg, dtype='float32')
     eps = eps.at[pix[0], pix[1], pix[2]].set(fields.eps[0, 0, 0])
     if stop_gradient_tape:
         eps = jax.lax.stop_gradient(eps)
