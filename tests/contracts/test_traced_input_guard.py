@@ -235,8 +235,6 @@ def test_t9_every_static_owner_has_a_frame_case():
 @pytest.mark.parametrize("method,kwargs,exception,message", [
     ("add_source", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
      "component must be ex/ey/ez, got 'bad'"),
-    ("add_port", {"position": (.01, .005, .005), "component": "ez", "impedance": 0}, ValueError,
-     "Lumped ports are not supported together with the TFSF plane-wave source"),
     ("add_lumped_rlc", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
      "component must be ex/ey/ez, got 'bad'"),
     ("add_floquet_port", {"position": .005, "axis": "bad"}, ValueError,
@@ -251,11 +249,7 @@ def test_t9_every_static_owner_has_a_frame_case():
      "add_current_moment_monitor(block_size=0.0): the block side must be positive."),
 ])
 def test_declaration_opening_check_preserves_concrete_error(method, kwargs, exception, message):
-    if method == "add_port":
-        from tests.contracts.test_tfsf_boundary_admission import plane
-        sim = plane()
-    else:
-        sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
+    sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
     with pytest.raises(exception) as caught:
         getattr(sim, method)(**kwargs)
     assert type(caught.value) is exception

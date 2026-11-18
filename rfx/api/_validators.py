@@ -136,14 +136,6 @@ def _check_add_source(arguments):
         raise ValueError(f"component must be ex/ey/ez, got {component!r}")
 
 
-def _check_add_port(arguments):
-    self = arguments["self"]
-    if self._tfsf is not None:
-        raise ValueError(
-            "Lumped ports are not supported together with the TFSF plane-wave source"
-        )
-
-
 def _check_add_lumped_rlc(arguments):
     component = arguments["component"]
     if component not in ("ex", "ey", "ez"):
@@ -178,7 +170,6 @@ def _check_add_current_moment_monitor(arguments):
 
 _DECLARATION_CHECKS = {
     "Simulation.add_source": _check_add_source,
-    "Simulation.add_port": _check_add_port,
     "Simulation.add_lumped_rlc": _check_add_lumped_rlc,
     "Simulation.add_floquet_port": _check_add_floquet_port,
     "Simulation.add_probe": _check_add_probe,
