@@ -251,7 +251,12 @@ def test_traced_profile_non_finite_outside_support(graded):
 
 
 def test_traced_profile_completely_covered(monkeypatch):
-    """A later material removes every map cell, including its parameter dependence."""
+    """A later material removes every map cell, including its parameter dependence.
+
+    The wrapped ``sample_spec`` records assembly's realized mask before
+    sampling, without rebuilding geometry. With no cells left the objective
+    does not depend on the map's parameter, so its gradient is exactly zero.
+    """
     from rfx.core.jax_utils import is_tracer
     import rfx.materials.pole_map as pole_map
 
@@ -259,7 +264,6 @@ def test_traced_profile_completely_covered(monkeypatch):
     original = pole_map.sample_spec
 
     def sample_spec(spec, grid, shape):
-        # Observe assembly's actual mask before sampling, without rebuilding geometry.
         if spec is not None:
             poles, masks = spec
             masks = masks if isinstance(masks, (list, tuple)) else [masks] * len(poles)
@@ -288,5 +292,4 @@ def test_traced_profile_completely_covered(monkeypatch):
     assert occupied and all(count == 0 for count in occupied), occupied
     assert np.isfinite(value), float(value)
     assert np.isfinite(grad), float(grad)
-    # The map has no cells, so the objective does not depend on its parameter.
     assert float(grad) == 0.0, float(grad)

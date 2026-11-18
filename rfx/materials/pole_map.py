@@ -39,7 +39,13 @@ def refuse_maps(poles, site):
 
 
 def sample_spec(spec, grid, shape):
-    """Sample each declaration once; retain host values for concrete reductions."""
+    """Sample each declaration once; retain host values for concrete reductions.
+
+    A concrete all-False mask calls no profile (each callable value becomes
+    0); a traced mask cannot be decided at trace time and is sampled. Unoccupied centres
+    move to the first occupied one, so neither the callable nor its derivative
+    is read outside its declared support.
+    """
     if spec is None or not any(is_map(p) for p in spec[0]):
         return spec
     if grid is None:
@@ -70,12 +76,9 @@ def sample_spec(spec, grid, shape):
             continue
         relative = isinstance(pole.kappa, RelativeStrength)
         strength = pole.kappa.value if relative else pole.kappa
-        # A traced all-False mask cannot be decided at trace time.
         if mask is not None and not is_tracer(mask) and not np.any(np.asarray(mask)):
             values = [0. if callable(v) else v for v in (pole.delta, strength)]
         else:
-            # Unoccupied centres move to the first occupied one, so neither the callable
-            # nor its derivative is read outside its declared support.
             cxp = jnp if is_tracer(mask) or axp is jnp else np
             inside = cxp.ones(shape, dtype=bool) if mask is None else cxp.broadcast_to(mask, shape).astype(bool)
             first = cxp.argmax(inside.reshape(-1))
