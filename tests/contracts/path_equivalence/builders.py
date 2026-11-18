@@ -166,7 +166,7 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
         kwargs['domain'] = point(14, 12, 12)
     if row == ('_tfsf', 'plane_wave'):
         # One request on both meshes: uniform refuses explicit non-periodic
-        # side faces (#1945), so the plane wave takes the shorthand.
+        # side faces, so the plane wave takes the shorthand.
         kwargs['boundary'] = 'cpml'
     nu = lane in ('run_nonuniform', 'run_distributed_nu', 'fwd_nonuniform', 'fwd_distributed_nu') or graded
     # Off-node absorbers remain intentional; reflecting axes use whole cells.
@@ -208,7 +208,7 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
         # Addendum 5b: same x slab and eps, invariant through transverse pads.
         sim.add(Box(point(3.2, -100, -100), point(6.4, 100, 100)), material='block')
     elif row[0] == '_waveguide_ports':
-        # Beyond the port's reference plane: its section must be vacuum (rfx#1994).
+        # Beyond the port's reference plane: its section must be vacuum.
         sim.add(Box(point(6.2, 2.1, 1.3), point(8.2, 4.3, 3.2)), material='block')
     elif row[0] == '_current_moments':
         # The block's z faces must stay inside the monitor's interior (from node 2):

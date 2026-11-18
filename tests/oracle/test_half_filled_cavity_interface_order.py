@@ -74,7 +74,7 @@ def _measure(dx, steps, window, debye_block=False):
     f0 = 0.5 * (window[0] + window[1])
     sim = Simulation(freq_max=3 * f0, domain=(L, L, L), dx=dx, boundary="pec")
     if debye_block:
-        # #1260: a 1 mm Debye cube of delta_eps 1e-6 in the far corner of the
+        # a 1 mm Debye cube of delta_eps 1e-6 in the far corner of the
         # air half -- electrically nothing, but it puts the whole grid on the
         # dispersive E update.
         from rfx import Box

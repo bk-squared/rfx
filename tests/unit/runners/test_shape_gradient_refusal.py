@@ -51,7 +51,7 @@ def test_a_shape_gradient_refuses_with_preflight():
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_a_smoothed_shape_gradient_refuses(entry):
-    # The #1849 tangent guard, not the traced pad-reach refusal, answers a gradient.
+    # The tangent guard, not the traced pad-reach refusal, answers a gradient.
     with pytest.raises(NotImplementedError, match="A gradient with respect to"):
         jax.grad(lambda r: objective(r, entry, smoothing=True))(.0023)
 

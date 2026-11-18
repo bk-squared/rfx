@@ -217,7 +217,7 @@ def test_make_z_profile_no_grading_is_uniform_fine():
     _assert_invariants(z, [0.0, 1.0e-3, 3.0e-3], 1.4)
 
 
-# --- (c) #763 locks stay: see test_auto_dz_profile_preserve.py ---------------
+# --- (c) locks stay: see test_auto_dz_profile_preserve.py ---------------
 # (demo block bit-identical, dz_min 21.167 um, column 1.754 mm, air-run
 # ratio <= 1.301; generic fixture interfaces + blocks bit-identical).
 
@@ -449,7 +449,7 @@ def test_public_export():
     assert rfx.make_band_profile is make_band_profile
 
 
-# --- 2026-09-07 review findings (second pass) --------------------------------
+# --- findings (second pass) --------------------------------
 # Each test names the finding it closes and quotes the OLD number where one
 # was measured on the first-pass tree (e65542c8) or on main (d990e18c).
 
@@ -548,7 +548,7 @@ def test_long_column_seam_on_the_law_keeps_the_declared_vector(n):
     assert float(np.max(np.abs(c - decl) / decl)) <= 1e-11
     assert float(_ratios(c).max()) <= 1.4 + RTOL_RATIO
     # I1 by running sum is a RELATIVE 1e-12 at this column length (the
-    # absolute 1e-12 m holds for columns up to about 1 m; review, minor).
+    # absolute 1e-12 m holds for columns up to about 1 m).
     nodes = _nodes(c)
     assert max(float(np.min(np.abs(nodes - e))) for e in (z1, z2)) <= 1e-12 * z3
 

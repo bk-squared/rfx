@@ -38,7 +38,7 @@ def _same_result(row, actual, expected):
 
 
 def test_entry_order_preserves_graded_records_and_mesh_summary():
-    # Existing run/forward bitwise bar: tests/contracts/test_run_forward_one_pipeline.py:809-810.
+    # Existing run/forward bitwise bar: tests/contracts/test_run_forward_one_pipeline.py:808-809.
     # The entry-order spec also explicitly requires byte equality.
     sim = _dx_only_nu_sim()
     before = sim.artifact_report(n_steps=5)["mesh"]

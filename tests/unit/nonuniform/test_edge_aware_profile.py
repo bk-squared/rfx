@@ -88,7 +88,7 @@ _CHAIN_CASES = [
     pytest.param((16.35, 1.15, 16.35), d, 10.0, 10.0, id=f"coupler-dx{d}")
     for d in (1.0, 2.0, 3.0)
 ] + [
-    # Review rows (2026-10-13): the chain r goes below the first exact fit
+    # The chain r goes below the first exact fit
     # when another pair's inner stretch cannot be split inside the window.
     pytest.param((0.3717, 0.3924, 0.3717), 3.0, 20.0, 20.0, id="equal-strips-second-fit"),
     pytest.param((0.441, 0.2745, 9.6755), 2.0, 20.0, 20.0, id="unequal-second-fit"),
@@ -314,11 +314,11 @@ def _fin_resonance(dy_profile, *, snap="strict"):
     a, b, dx = 0.020, 0.010, 1e-3
     kw = {} if dy_profile is None else {"dy_profile": dy_profile}
     # The graded lane refuses mode="2d_tmz" and names the one-cell 3-D box
-    # between PEC walls, which is what it ran before, bit for bit (#1340). The
+    # between PEC walls, which is what it ran before, bit for bit. The
     # uniform arm keeps the uniform lane's own 2-D update: the 3-D box there
     # resonates 22 MHz lower (1.90 % against 1.79 % below the reference).
     mode = "2d_tmz" if dy_profile is None else "3d"
-    # #1138: geometry[0] y solved -8.4211 % off; this test checks resonance after strict refusal.
+    # geometry[0] y solved -8.4211 % off; this test checks resonance after strict refusal.
     sim = Simulation(freq_max=30e9, domain=(a, b, dx), boundary="pec", dx=dx,
                      mode=mode, snap=snap, **kw)
     sim.add(Box((a / 2, 0.0, 0.0), (a / 2, FIN_M, dx)), material="pec")
@@ -342,7 +342,7 @@ def test_a_fin_that_does_not_fit_the_grid_is_solved_at_its_drawn_length():
     rule stops working AND if the uniform grid stops showing the defect
     (which would mean the rasterizer changed and the offset needs
     re-measuring)."""
-    # #1138: first pin strict refusal, then retain the measured resonance control.
+    # First pin strict refusal, then retain the measured resonance control.
     with pytest.raises(ValueError, match="conductor sheet dimension"):
         _fin_resonance(None)
     f_uniform = _fin_resonance(None, snap="declared")

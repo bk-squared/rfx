@@ -108,7 +108,7 @@ class RealizedPec:  # noqa: D101 - documented below
         with _warnings.catch_warnings():
             _warnings.simplefilter("ignore")
             # Materials only — the realized conductors are already on
-            # ``self.inner``. The #931 collectors are passed and dropped so
+            # ``self.inner``. The collectors are passed and dropped so
             # this read states "cells only" instead of tripping the
             # assembler's refusal on a sheet model.
             if isinstance(self.grid, NonUniformGrid):

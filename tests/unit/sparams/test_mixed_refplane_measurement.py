@@ -121,7 +121,7 @@ def test_b_msl_equals_out_over_sqrt_zc_on_a_single_travelling_wave():
     correct = np.abs(out) / np.sqrt(z)
     np.testing.assert_allclose(np.abs(b_msl), correct, rtol=1e-12)
 
-    # The reviewer's ÷4-in-power form is wrong by exactly 2 in amplitude.
+    # The ÷4-in-power form is wrong by exactly 2 in amplitude.
     wrong = np.abs(out) / (2.0 * np.sqrt(z))
     ratio = np.abs(b_msl) / wrong
     np.testing.assert_allclose(ratio, np.full_like(ratio, 2.0), rtol=1e-12)
@@ -271,7 +271,7 @@ def _build_with_ladder(*, freq_max, n_probes, n_probe_offset,
     sim.add_material("sub", eps_r=m._EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, m._H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3). The driver
+    # 35 um foil -> a SHEET on the laminate face. The driver
     # script this fixture borrows its constants from still runs the
     # bisecting mesh (h_sub/dx = 254/80 = 3.175), so the sheet lands on
     # node 3 = 240 um, 14 um below the face it is drawn on; the contract
@@ -492,7 +492,7 @@ def _build_msl_thru(n_probes):
     sim.add_material("sub", eps_r=m._EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, m._H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3). The driver
+    # 35 um foil -> a SHEET on the laminate face. The driver
     # script this fixture borrows its constants from still runs the
     # bisecting mesh (h_sub/dx = 254/80 = 3.175), so the sheet lands on
     # node 3 = 240 um, 14 um below the face it is drawn on; the contract

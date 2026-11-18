@@ -215,7 +215,7 @@ def test_public_msl_driver_centres_current_at_voltage_plane(
     zref = float(hammerstad_jensen_z0_eps_eff(4 * U, 2 * U, EPS_R)[0])
     expected_s = (voltage - zref * current) / (voltage + zref * current)
     assert result.assembly == "multi_drive_solve"
-    # The wave split is formed at the line Z0 (#2014: S is then referred to
+    # The wave split is formed at the line Z0 (S is then referred to
     # the declared impedance), so it is checked on S brought back there.
     np.testing.assert_allclose(probe0_s(result, line_s(result)), expected_s, rtol=2e-6, atol=1e-7)
 

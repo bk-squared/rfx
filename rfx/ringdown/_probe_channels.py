@@ -105,7 +105,7 @@ def _complete_probe(plan, result, Y, dt, ref_hz, witnesses):
         g_f = float(np.asarray(model.s_growing)[kg].imag / (2.0 * np.pi))
     else:
         g_max, g_f = 0.0, math.nan
-    state = {}
+    state: dict[str, int] = {}
     witnesses += _error_witnesses(plan, Y, dt, ref_hz, plain, w2, state)
     src_ratio = max((r for _l, r in plan.source_off), default=0.0)
     witnesses += [

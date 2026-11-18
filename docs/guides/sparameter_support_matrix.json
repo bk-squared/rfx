@@ -193,7 +193,7 @@
         "graded-mesh evidence is limited to a WR-90 dielectric slab with normalize=flux against the closed form; no comparison with another solver on a graded mesh is in the repository",
         "dz_profile now dispatches to the nonuniform lane under the same normalize=True/flux single-mode restrictions (#811), and no dz-graded accuracy evidence exists yet (#810) -- the nonuniform Palace evidence above is graded-dy only; the nonuniform lane carries the same settling_db ring-down witness and aggregate warning as the uniform single-mode lane (#827 waveguide instance)",
         "nonuniform eps_override and sigma_override AD are implemented only for normalize=flux; only eps_override has a nonuniform AD-vs-FD regression test, and that test is not RF validation",
-        "lumped ports, TFSF, and manual periodic-axis overrides are incompatible",
+        "a lumped or wire port, or a soft source (add_source), TFSF, and manual periodic-axis overrides are incompatible",
         "branches, T-junctions, and septa require per-port matched straight-guide references and far-port placement; compact arbitrary junctions are not covered",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",
         "the E4-external leg of the rectangular_waveguide_port broad-E5 chain is current and committed, with the dielectric slab lattice-aligned and Palace slab S11 passing the committed tolerances; this is evidence for the stated uniform single-mode recipe, not a general phase/junction/nonuniform claim",

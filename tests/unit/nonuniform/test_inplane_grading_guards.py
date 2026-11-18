@@ -66,7 +66,7 @@ def test_under_resolution_uses_the_local_cell_not_the_global_minimum():
                      boundary="cpml", cpml_layers=6,
                      dx_profile=prof, dy_profile=prof)
     # A PEC volume 3 coarse cells wide, STRICTLY inside the coarse band.
-    # #931: drawn ON the coarse node planes (3.5 -> 5.0 mm), so the drawn
+    # Drawn ON the coarse node planes (3.5 -> 5.0 mm), so the drawn
     # extent IS the realized extent — walls at 3.5/4.0/4.5/5.0 mm. The old
     # corners (3.2 -> 4.7 mm) sat mid-cell and left the realized body's
     # position dependent on where the box fell between two cell centres.
@@ -77,7 +77,7 @@ def test_under_resolution_uses_the_local_cell_not_the_global_minimum():
     # the 500 um cell the body sits in, so the advisory goes quiet and this
     # test reds for a reason that has nothing to do with #931. Measured:
     # 3.0 -> 4.5 mm gives 0 under-resolution advisories, 3.5 -> 5.0 mm gives
-    # 2 (x and y), same body, same 3 coarse cells. That tie is the #743
+    # 2 (x and y), same body, same 3 coarse cells. That tie is the
     # failure mode reappearing at a band edge and belongs to preflight's
     # owner; it is recorded in docs/design_notes/931_migration/, not worked
     # around by moving the assertion.
