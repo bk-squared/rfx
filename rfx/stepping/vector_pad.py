@@ -260,10 +260,10 @@ def _cells(values, plan, value):
 def _seeded(arr, plan, keep_axis=None):
     """Zero-padded ``arr`` with its pad cells overwritten by the leak seed."""
     import jax.numpy as jnp
-    seed = _SEED.get()
-    if seed is None:
+    seeded = _SEED.get()
+    if seeded is None:
         return arr
-    seed, magnitude = seed
+    seed, magnitude = seeded
     lead = arr.ndim - 3
     inside = np.ones(arr.shape[lead:], dtype=bool)
     for axis, n in enumerate(plan.shape):
