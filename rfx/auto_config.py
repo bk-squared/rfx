@@ -276,7 +276,8 @@ class SimConfig:
         float
             Estimated memory in megabytes.
         """
-        nx, ny, nz = self.grid_shape
+        from rfx.stepping.vector_pad import planned_extents
+        nx, ny, nz = planned_extents(self.grid_shape, graded=self.dz_profile is not None)
         return _auto_memory_mb(nx * ny * nz, self.cpml_layers)
 
     @property
@@ -503,7 +504,9 @@ def auto_configure(
                             z_features, _domain[2], dx,
                             sheet_planes=sheet_planes)
                         if needs_nonuniform_z else None)
-            _nx, _ny, _nz = _auto_grid_shape(_domain, dx, _cpml, _dz_prof)
+            from rfx.stepping.vector_pad import planned_extents
+            _nx, _ny, _nz = planned_extents(_auto_grid_shape(_domain, dx, _cpml, _dz_prof),
+                                            graded=_dz_prof is not None)
             _cells = _nx * _ny * _nz
             _est_mb = _auto_memory_mb(_cells, _cpml)
             if _est_mb <= max_memory_mb:
