@@ -54,7 +54,7 @@ def test_override_refusals_are_named(row, skip, no_scan):
         expected, words = NotImplementedError, ["does not support TFSF sources"]
     if row.startswith("ringdown"):
         options["ringdown"] = RingdownSpec()
-        words = ["not supported with periodic axes" if row.endswith("periodic") else "not supported with a TFSF plane wave"]
+        words = ["not supported with periodic axes" if row.endswith("periodic") else "is measured for the closed-box plane wave (closed_box=True) only"]
     if row == "methodB":
         words += ["methodB"]
     if row == "concrete90":
