@@ -21,6 +21,7 @@ from rfx.model import conformal_rules
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.ringdown import identify
 from rfx.sources.sources import ModulatedGaussian
+from tests._cell_table_scenes import cell_table_scene
 
 
 C = 299792458.
@@ -163,6 +164,20 @@ def test_t1_exact_overlap(scene, record_property):
     record_property('wall_seconds', elapsed)
     print(json.dumps(dict(scene=scene, max_abs_table_minus_hand=largest, wall_seconds=elapsed)))
     assert largest <= 1e-12, (scene, largest, errors)
+
+
+def test_t1i_box_off_exact_overlap(record_property):
+    """The off-node Box raw table matches hand overlap on all elements, including halos."""
+    grid, boxes = cell_table_scene('box_off')
+    with jax.enable_x64():
+        table = build_cell_table(grid, boxes)
+        expected = _hand_arrays(grid, boxes)
+    errors = [float(np.max(abs(actual - hand))) for group, hands in
+              zip((table.lengths, table.areas), expected) for actual, hand in zip(group, hands)]
+    largest = max(errors)
+    record_property('max_abs_table_minus_hand', largest)
+    print(json.dumps(dict(max_abs_table_minus_hand=largest)))
+    assert largest <= 1e-12, (largest, errors)
 
 
 def test_t1_other_body_reach(record_property):
