@@ -117,7 +117,7 @@ def test_explicit_legacy_layout_overrides_marker(tmp_path):
 @pytest.mark.parametrize("n_ports", [3, 4, 5])
 def test_default_read_follows_the_marker_value(tmp_path, n_ports):
     # A file written today with layout="legacy-rfx" carries that marker; the
-    # default reader must honour its value, not just its presence (#1448 review).
+    # default reader must honour its value, not just its presence.
     values = (np.arange(n_ports * n_ports).reshape(n_ports, n_ports, 1) + 1
               + 1j * (np.arange(n_ports * n_ports).reshape(n_ports, n_ports, 1) + 50))
     path = tmp_path / f"legacy_marked.s{n_ports}p"

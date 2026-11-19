@@ -94,7 +94,7 @@ def test_the_wire_port_branch_stamps_every_live_cell():
 
     assert isinstance(mats, MaterialArrays)
     assert mats.sigma_lumped is not None
-    # The record is per E component (#1236): every stamp on the Ez record.
+    # The record is per E component: every stamp on the Ez record.
     sx, sy, sz = mats.sigma_lumped
     assert sx is None and sy is None
     assert np.count_nonzero(np.asarray(sz)) == len(cells)

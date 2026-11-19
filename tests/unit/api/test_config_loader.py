@@ -27,7 +27,7 @@ from rfx.config._waveforms import WAVEFORM_REGISTRY
 # A small microstrip-thru config (mirrors examples/config/microstrip_thru.yaml
 # but smaller / shorter so construction is instant).
 #
-# Ownership (#931 §1.5): the ground and the signal trace are FOIL, so they are
+# Ownership: the ground and the signal trace are FOIL, so they are
 # declared as sheets — zero-thickness Boxes on the two substrate faces. They
 # used to be one cell thick, which the contract reads as filled slabs with a
 # wall on each bounding plane, shortening the substrate cavity by a node plane
@@ -165,7 +165,7 @@ def test_dict_vs_direct_equivalence():
     # Grid shape is identical
     assert sim_cfg._build_grid().shape == sim_dir._build_grid().shape
 
-    # ... and so is the REALIZED conductor (#931 §1.7): both foils are sheets
+    # ... and so is the REALIZED conductor: both foils are sheets
     # on the two substrate faces, neither owns a cell, on either spelling.
     for sim, who in ((sim_cfg, "from the config"), (sim_dir, "direct")):
         assert realized(sim).pec_mask is None, (
@@ -406,7 +406,7 @@ def test_soft_source_without_amplitude_kind_means_current():
 @pytest.mark.slow
 def test_full_run_matches_direct():
     run_kwargs = execution_to_run_kwargs(_CFG["execution"])
-    # #1138: trace x/y solved +4.375%/+35% off; this tests config/direct run parity.
+    # trace x/y solved +4.375%/+35% off; this tests config/direct run parity.
     sim_cfg = simulation_from_dict({**_CFG, "snap": "declared"})
     sim_dir = _build_direct(snap="declared")
     res_cfg = sim_cfg.run(**run_kwargs)
@@ -419,7 +419,7 @@ def test_full_run_matches_direct():
 
 
 # --------------------------------------------------------------------------
-# thin_conductors — the YAML spelling of a sheet declaration (#931 §1.3)
+# thin_conductors — the YAML spelling of a sheet declaration
 # --------------------------------------------------------------------------
 
 def test_thin_conductor_entry_declares_a_sheet():

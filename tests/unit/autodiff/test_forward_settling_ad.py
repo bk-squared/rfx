@@ -54,8 +54,8 @@ def test_port_material_ad_matches_resolved_fd_with_forward_diagnostics(monkeypat
         assert np.isnan(reported.settling_db)
         assert reported.settling_witness["status"] == "undetermined"
         assert "post-source window" in reported.settling_witness["reason"]
-        # (column, component code, #1090 source-dominated flag, then the
-        # probe's cell, #1909).
+        # (column, component code, source-dominated flag, then the
+        # probe's cell).
         (item,) = reported.settling_probe_info
         assert item[:3] == (0, 2, 0) and len(item) == 6
         np.testing.assert_array_equal(reported.time_series, plain.time_series)

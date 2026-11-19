@@ -2,10 +2,6 @@
 Splitting the NU mesh across two CPU devices must preserve the single-device probe fields (#1235).
 """
 
-import os
-
-os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
-
 import jax
 import numpy as np
 import pytest

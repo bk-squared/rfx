@@ -64,7 +64,7 @@ def test_localized_updates_are_not_invariant(skip):
 
 def test_point_source_keeps_its_existing_registration_fence():
     sim = plane()
-    with pytest.raises(ValueError, match="Lumped ports are not supported together with the TFSF"):
+    with pytest.raises(ValueError, match="A TF/SF plane wave is not supported together with a lumped or wire port"):
         sim.add_port((.01, .005, .005), component="ez", impedance=0)
 
 

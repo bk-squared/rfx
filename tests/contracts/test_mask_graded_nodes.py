@@ -113,7 +113,7 @@ def test_graded_placement(kind, axis, pad, subpixel_smoothing):
 
     def material_arrays():
         if subpixel_smoothing:
-            return compute_smoothed_eps_nonuniform(grid, [(shape, 4.)])
+            return compute_smoothed_eps_nonuniform(grid, [(shape, 4.)], dtype='float32')
         materials, *_ = rasterize_geometry(
             [SimpleNamespace(shape=shape, material_name='dielectric')],
             lambda _: MaterialSpec(eps_r=4.), coords_from_nonuniform_grid(grid), grid=grid)
@@ -148,10 +148,10 @@ def test_uniform_bit_identity(kind, pad):
     assert np.asarray(shape.mask(grid)).tobytes() == expected.tobytes()
     if kind == 'curved':
         with pytest.raises(RfxRefusal, match="Material volume .*CurvedPatch.*ZERO cells"):
-            compute_smoothed_eps(grid, [(shape, 4.)])
+            compute_smoothed_eps(grid, [(shape, 4.)], dtype='float32')
         return
     if kind == 'via':
         expected = _via_material_cells(tuple(nodes + .0005 for nodes in old))
-    for eps in compute_smoothed_eps(grid, [(shape, 4.)]):
+    for eps in compute_smoothed_eps(grid, [(shape, 4.)], dtype='float32'):
         baseline = np.where(expected, 4., 1.).astype(np.asarray(eps).dtype)
         assert np.asarray(eps).tobytes() == baseline.tobytes()

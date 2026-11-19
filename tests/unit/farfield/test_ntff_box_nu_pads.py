@@ -22,9 +22,9 @@ def _sim(z_lo: str, *, lo_thickness=None):
                                            z=Boundary(lo=z_lo, hi="cpml", lo_thickness=lo_thickness)),
                      cpml_layers=6, dz_profile=np.full(20, 300e-6))
     # a solid scatterer: a VOLUME, drawn node to node (2 cells per axis at
-    # dx = 300 um) and left one. Under the ownership contract (#931 §1.2) it
+    # dx = 300 um) and left one. Under the ownership contract it
     # realizes walls on BOTH bounding planes of every axis — 3 planes per axis
-    # against the pre-#931 2 — so the cube's absolute scattered field moved.
+    # against the earlier 2 — so the cube's absolute scattered field moved.
     # Every gate in this file is a pad-index / self-consistency check, so none
     # of them reads that magnitude. The same cube is in test_farfield_chunking.
     sim.add(Box((2.7e-3, 2.7e-3, 2.7e-3), (3.3e-3, 3.3e-3, 3.3e-3)),

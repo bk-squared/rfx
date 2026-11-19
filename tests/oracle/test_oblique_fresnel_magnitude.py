@@ -36,7 +36,7 @@ def _build(theta):
     n_slab = np.sqrt(EPS_R)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n_slab))
     # + 223 steps = 2 tau (f0 5 GHz, bw 0.15, dt 3.81 ps): the Bloch pulse, and its back-face echo,
-    # arrive 2 tau later since #1831, when the pulse began to peak at 5 tau.
+    # arrive 2 tau later, when the pulse began to peak at 5 tau.
     ns = min(int(0.9 * t_back / grid.dt), 1700) + 223
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
@@ -95,8 +95,8 @@ def test_oblique_fresnel_magnitude_vs_analytic(theta, tol):
     assert abs(g - ga) / ga < tol, f"|Γ|={g:.3f} vs R_TE={ga:.3f} (θ={theta}, {abs(g-ga)/ga*100:.1f}%)"
 
 
-# highmem (issue #545): this test's own footprint is UNMEASURED in CI -- it
-# was the test killed in shard 2 (weekly run 31103127491), so its own
+# highmem: this test's own footprint is UNMEASURED in CI -- it
+# was the test killed in shard 2, so its own
 # post-test [rss] hook line never fired (the process died first). The
 # process was already at 12,187 MB *entering* this test -- that number
 # belongs to the PRECEDING msl-referee highmem test, not this one.

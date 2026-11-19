@@ -499,26 +499,6 @@ def _warn_if_nonfinite_result(result, *, context: str) -> None:
     )
 
 
-def _auto_source_decay_time(fr, waveform=None) -> float:
-    """Auto Harminv window start: twice the source pulse-completion scale.
-
-    The historical hardcode was ``2.0*3.0*tau`` — the cutoff=3
-    ``GaussianPulse`` envelope (``t0 = 3*tau``). A waveform exposing its
-    own ``t0`` (``GaussianPulse``/``ModulatedGaussian``:
-    ``t0 = cutoff*tau``) makes the window scale with the actual onset —
-    ``2*t0`` = ``9*tau`` at cutoff=4.5 — instead of assuming the cutoff=3
-    envelope. Without a waveform this returns
-    ``2.0*(3.0*tau)``, bitwise-identical to the historical
-    ``2.0*3.0*tau`` (scaling by 2.0 is exact in binary floating point),
-    with ``tau`` derived from the frequency range at the historical
-    bw=0.8.
-    """
-    f_center = (fr[0] + fr[1]) / 2
-    bw = 0.8
-    tau = 1.0 / (f_center * bw * np.pi)
-    return 2.0 * float(getattr(waveform, "t0", 3.0 * tau))
-
-
 def _frequency_vector_hz(freqs) -> np.ndarray:
     """Return stored Hz bins as a host array, preserving the absent-bin error."""
     if freqs is None:
@@ -664,7 +644,7 @@ class Result(NamedTuple):
         list of MatrixPencilMode
         """
         import warnings
-        from rfx.harminv import _ring_down_modes
+        from rfx.harminv import _auto_source_decay_time, _ring_down_modes
         ts = np.asarray(self.time_series)
         if ts.ndim == 2:
             ts = ts[:, probe_idx]
@@ -923,7 +903,7 @@ from rfx.model.realization_transport import with_forward_geometry
 
 @with_forward_geometry
 class ForwardResult(NamedTuple):
-    """Minimal differentiable simulation result.
+    """Minimal differentiable simulation result (JAX transforms: docs/public/api/results.mdx).
 
     ``realized_geometry`` carries host metadata from the prepared kernel assembly.
     ``settling_db`` and ``settling_witness`` score concrete user probes; read them on the returned
@@ -995,6 +975,7 @@ class ForwardResult(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     adjoint_settling: object = None
+    tfsf_angle_deg: object = None
     settling_source_end_index: object = None
     settling_accumulator_end_index: int | None = None
     settling_coverage: object = None
@@ -1032,8 +1013,8 @@ class ForwardResult(NamedTuple):
 
         None means absent, including during tracing. This is a diagnostic,
         not a differentiable objective. A returned JIT result can be scored
-        once its time series is concrete. Other result fields retain their
-        existing JIT restrictions (for example the host Grid object).
+        once its arrays are concrete and retain their original shapes; select
+        one element of a vmapped result (docs/public/api/results.mdx).
         Use ``settling_verdict`` to judge the diagnostic.
         """
         from rfx.sparams._record_selection import forward_settling_witness
@@ -1186,20 +1167,7 @@ class _FloquetPortEntry:
     amplitude: float
 
 
-class WaveguideSParamResult(NamedTuple):
-    """High-level calibrated waveguide S-parameter data."""
-    freqs: np.ndarray
-    s11: np.ndarray
-    s21: np.ndarray
-    calibration_preset: str
-    source_plane: float
-    measured_reference_plane: float
-    measured_probe_plane: float
-    reference_plane: float
-    probe_plane: float
-
-
-from rfx.api._waveguide_result import WaveguideSMatrixResult
+from rfx.api._waveguide_result import WaveguideSMatrixResult, WaveguideSParamResult
 
 class CoaxialLineReflectionResult(NamedTuple):
     """One-port reflection from the validated coaxial transmission-line method.
