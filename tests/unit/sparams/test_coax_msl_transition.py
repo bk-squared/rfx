@@ -98,7 +98,6 @@ channel change does not fix, each with the measurement in its marker:
 
 Both fixes are fixture changes that move what a run measures, so they belong
 with the post-contract attempt predeclaration and its GPU run, not here.
-N_STEPS_2 was raised to 45000 because the earlier estimate of 20000 measured only -12.3/-10.7 dB settling, well short of the -40 dB rule.
 """
 
 from __future__ import annotations
@@ -491,7 +490,7 @@ def test_post_review_discriminant_msl_ladder_too_short_for_pencil_fit():
     the ladder span at published frequencies elsewhere in this file.
     """
     freqs = np.array([0.6e9, 3.3e9, 6.0e9])
-    ladder_span_m = 2 * (6 - 1) * DX
+    ladder_span_m = MSL_PROBE_SPACING_CELLS * (MSL_PROBE_COUNT - 1) * DX
     beta, frac = _msl_guided_beta_and_ladder_fraction(freqs, ladder_span_m=ladder_span_m)
     assert np.all(frac < 0.05), (
         f"MSL ladder now spans {frac} of lambda_g at {freqs/1e9} GHz -- if "
@@ -513,6 +512,9 @@ def test_predeclaration_has_required_fields():
     }
 
 
+
+MSL_PROBE_SPACING_CELLS = 2
+MSL_PROBE_COUNT = 6
 
 DX = 100e-6
 PIN_R = 0.2e-3
@@ -768,7 +770,7 @@ def test_coax_msl_transition_first_fixture_diagnostic():
     )
 
     freqs = np.asarray(result.freqs)
-    ladder_span_m = 2 * (6 - 1) * DX
+    ladder_span_m = MSL_PROBE_SPACING_CELLS * (MSL_PROBE_COUNT - 1) * DX
     beta_analytic, ladder_frac = _msl_guided_beta_and_ladder_fraction(
         freqs, ladder_span_m=ladder_span_m,
     )
@@ -1204,7 +1206,7 @@ def test_settled_run_record_is_committed_unrun_and_self_consistent():
     """Fail-loud-honest invariant (mirrors the repository's own
     REPRODUCE_GATE_RECORD tests): UNRUN <=> no numbers, no log path, no
     run id.
-    Do not hand-round the result JSON numbers before comparing against a future re-run.
+    SETTLED_RUN_RECORD['measured'] preserves the run's result JSON numbers verbatim for comparison against a future re-run.
     """
     r = SETTLED_RUN_RECORD
     required = {
@@ -1253,6 +1255,7 @@ N_STEPS_2 = 45000
 def _build_coax_msl_transition_sim_attempt2():
     """Attempt 2: same junction (reuses attempt 1's own module constants
     unchanged), longer MSL ladder, wider x-CPML clearance, higher band.
+    FREQ_MAX_2 re-centers the default excitation at FREQ_MAX_2/2 = 8 GHz on the 6/8/10 GHz band.
     """
     from rfx.api import Simulation
     from rfx.boundaries.spec import BoundarySpec
@@ -1414,7 +1417,7 @@ def _attempt2_wide_kwargs(n_steps):
 def _junction_window_slices(grid, x_offset_cells, y_offset_cells):
     """Padded-array slices for JUNCTION_WINDOW_ATTEMPT2 on ``grid``, shifted
     by the given domain-node offsets (0, 0 for attempt 2 itself).
-    JUNCTION_WINDOW_ATTEMPT2 uses domain node indices with the CPML pad excluded."""
+    The (0, 40)/(0, 34) window covers the clearance disk of radius 0.4 mm, the coax outer radius of 0.6 mm and the first MSL probe plane."""
     x0, x1 = JUNCTION_WINDOW_ATTEMPT2["x"]
     y0, y1 = JUNCTION_WINDOW_ATTEMPT2["y"]
     px, py = int(grid.pad_x_lo), int(grid.pad_y_lo)
@@ -2940,6 +2943,22 @@ def _attempt3_scratch_flux_entries():
     y_c, y_s = 0.5 * (y_lo + y_hi), y_hi - y_lo
     z_c, z_s = 0.5 * (z_lo + z_hi), z_hi - z_lo
 
+    assert (5 + _attempt2_kwargs(0)["probe_start_cells"] + (_attempt2_kwargs(0)["probe_count"] - 1) * _attempt2_kwargs(0)["probe_spacing_cells"]) * DX < FLUX_COAX_Z_3 < JUNCTION_Z, (
+        'The bottom flux face must lie above the highest coax probe and below its junction reference plane for the pencil comparison.'
+    )
+
+    assert 3 * DX < FLUX_COAX_Z_3 and FEED_X_2 > x_hi, (
+        'The coax resistor and MSL loss sheet must remain outside the flux volume so its residual excludes dissipation.'
+    )
+
+    assert max(JUNCTION_X + CLEAR_R, 2 * JUNCTION_X - DX) < x_hi < float(np.min(_msl_ladder_x_coords(_build_coax_msl_transition_sim_attempt3(), count=PROBE_COUNT_2, start_cells=PROBE_START_2, spacing_cells=PROBE_SPACING_2))), (
+        'The positive-x flux face must clear the junction footprint and precede the first realized MSL probe for their power comparison.'
+    )
+
+    assert FLUX_COAX_PATCH_3 >= 2 * OUTER_R, (
+        'The coax flux patch must cover the entire dielectric cross-section carrying the coax power.'
+    )
+
     scratch.add_flux_monitor(
         axis="z", coordinate=FLUX_COAX_Z_3, freqs=FREQS_2,
         size=(FLUX_COAX_PATCH_3, FLUX_COAX_PATCH_3), center=(JUNCTION_X, Y_C),
@@ -3390,7 +3409,6 @@ def test_attempt3b_ladder_is_the_unique_maximal_count_compliant_ladder():
     Shorter compliant ladders exist (count=7, start in [15, 25]) and are
     named here so 'unique' is never read as 'the only compliant recipe' --
     3b is the unique MAXIMAL-COUNT one.
-    The standoff derivation was validated at W/h = 2 only.
     """
     sim = _build_coax_msl_transition_sim_attempt3b()
     compliant = []
@@ -3479,7 +3497,7 @@ def test_transition_default_returns_a_passive_s_unchanged():
     from rfx.sparams._common import _finalize_sparam_result
 
     good = _synthetic_transition_result(_SYNTHETIC_PASSIVE_S)
-    assert np.all(np.sum(np.abs(good.s_params) ** 2, axis=0) <= 1.10), 'Both synthetic driven-port columns must be passive to detect unconditional refusal.'
+    assert np.all(np.sum(np.abs(good.s_params) ** 2, axis=0) <= 1.10), 'Both synthetic driven-port columns must stay within the 1.10 column-power guard limit to detect unconditional refusal.'
     returned = _finalize_sparam_result(
         good, extractor="compute_coax_msl_transition",
         strict=_transition_strict_passivity_default())
