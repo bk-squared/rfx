@@ -70,7 +70,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _absorber_boundary_for_axis,
     _axis_pad_thickness_m,
-    local_cell,
+    local_cell, report_tracer_error, traced_skip,
     PreflightWarning,
     PreflightErrorWarning,
     PreflightConfigError,
@@ -295,7 +295,8 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         pos_vec[normal_idx] = entry.x_position
         plane_idx = int(
             grid.position_to_index(tuple(pos_vec))[normal_idx])
-    except (ValueError, TypeError, IndexError, AttributeError):
+    except (ValueError, TypeError, IndexError, AttributeError) as _traced_exc:
+        report_tracer_error(_traced_exc, "_port_transverse_spans")
         plane_idx = None
 
     for axis_name in axes:
@@ -1324,7 +1325,8 @@ def _validate_cfg_waveguide_reference_plane(
                         c1, c2 = g.shape.bounding_box()
                         lo_c = min(float(c1[ax_i]), float(c2[ax_i]))
                         hi_c = max(float(c1[ax_i]), float(c2[ax_i]))
-                    except (NotImplementedError, TypeError):
+                    except (NotImplementedError, TypeError) as _traced_exc:
+                        report_tracer_error(_traced_exc, "_validate_cfg_waveguide_reference_plane")
                         continue
                     if lo_c <= effective <= hi_c:
                         try:
@@ -1384,15 +1386,13 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
         return None
     nonuniform = any(getattr(self, a, None) is not None
                      for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
-    if any(p is not None and is_tracer(p) for p in
-           (getattr(self, "_dx_profile", None),
-            getattr(self, "_dy_profile", None),
-            getattr(self, "_dz_profile", None))):
+    if any(traced_skip(getattr(self, a, None), "_waveguide_setup_planes")
+           for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
         return None
     try:
         grid = (self._build_nonuniform_grid() if nonuniform
                 else self._build_grid())
-        if is_tracer(grid.dt):
+        if traced_skip(grid.dt, "_waveguide_setup_planes"):
             return None
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
@@ -1597,7 +1597,7 @@ def _validate_cfg_record_vs_far_boundary(
             return
         grid, cfgs, n_steps, dt, freq_max = built
     else:
-        if is_tracer(grid.dt):
+        if traced_skip(grid.dt, "_validate_cfg_record_vs_far_boundary"):
             return
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)

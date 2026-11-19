@@ -20,12 +20,8 @@ from rfx._radiated_power import integrate_radiated_power
 from rfx.farfield import FarFieldResult
 from rfx.core.yee import EPS_0, MU_0
 
-ETA_0 = float(np.sqrt(MU_0 / EPS_0))  # ~377 ohm
+ETA_0 = float(np.sqrt(MU_0 / EPS_0))
 
-
-# ---------------------------------------------------------------------------
-# Radiation intensity & radiated power helpers
-# ---------------------------------------------------------------------------
 
 def _radiation_intensity(ff: FarFieldResult) -> np.ndarray:
     """Radiation intensity U(theta, phi) for each frequency.
@@ -51,10 +47,6 @@ def _total_radiated_power(ff: FarFieldResult) -> np.ndarray:
     """
     return integrate_radiated_power(_radiation_intensity(ff), ff.theta, ff.phi)
 
-
-# ---------------------------------------------------------------------------
-# Antenna gain
-# ---------------------------------------------------------------------------
 
 def antenna_gain(
     ff: FarFieldResult,
@@ -104,10 +96,6 @@ def antenna_gain_dB(
     return 10.0 * np.log10(np.maximum(G, 1e-30))
 
 
-# ---------------------------------------------------------------------------
-# Radiation efficiency
-# ---------------------------------------------------------------------------
-
 def antenna_efficiency(
     ff: FarFieldResult,
     input_power: np.ndarray | float,
@@ -136,10 +124,6 @@ def antenna_efficiency(
     return P_rad / safe_P_in
 
 
-# ---------------------------------------------------------------------------
-# Half-power beamwidth (HPBW)
-# ---------------------------------------------------------------------------
-
 def half_power_beamwidth(
     ff: FarFieldResult,
     *,
@@ -162,7 +146,6 @@ def half_power_beamwidth(
     if plane.upper() == "E":
         phi_idx = 0
     elif plane.upper() == "H":
-        # Find the phi index closest to pi/2
         phi_idx = int(np.argmin(np.abs(ff.phi - np.pi / 2)))
     else:
         raise ValueError(f"plane must be 'E' or 'H', got {plane!r}")
@@ -174,25 +157,21 @@ def half_power_beamwidth(
         return float("nan")
 
     power_norm = power / peak
-    half_power = 0.5  # -3 dB in linear
+    half_power = 0.5
 
     theta_deg = np.degrees(ff.theta)
 
-    # Find where the pattern crosses the half-power level
     above = power_norm >= half_power
     if not np.any(above):
         return float("nan")
 
-    # Find first and last indices above the half-power level
     indices = np.where(above)[0]
     if len(indices) < 2:
         return float("nan")
 
-    # Interpolate the 3-dB crossing points
     left_idx = indices[0]
     right_idx = indices[-1]
 
-    # Left edge interpolation
     if left_idx > 0:
         x0, x1 = theta_deg[left_idx - 1], theta_deg[left_idx]
         y0, y1 = power_norm[left_idx - 1], power_norm[left_idx]
@@ -203,7 +182,6 @@ def half_power_beamwidth(
     else:
         theta_left = theta_deg[left_idx]
 
-    # Right edge interpolation
     if right_idx < len(theta_deg) - 1:
         x0, x1 = theta_deg[right_idx], theta_deg[right_idx + 1]
         y0, y1 = power_norm[right_idx], power_norm[right_idx + 1]
@@ -216,10 +194,6 @@ def half_power_beamwidth(
 
     return float(theta_right - theta_left)
 
-
-# ---------------------------------------------------------------------------
-# Front-to-back ratio
-# ---------------------------------------------------------------------------
 
 def front_to_back_ratio(
     ff: FarFieldResult,
@@ -241,7 +215,7 @@ def front_to_back_ratio(
     fb_dB : float
     """
     power = (np.abs(ff.E_theta[freq_idx]) ** 2
-             + np.abs(ff.E_phi[freq_idx]) ** 2)  # (n_theta, n_phi)
+             + np.abs(ff.E_phi[freq_idx]) ** 2)
     theta = ff.theta
 
     fwd_mask = theta < np.pi / 2
@@ -260,10 +234,6 @@ def front_to_back_ratio(
 
     return float(10.0 * np.log10(fwd_max / bwd_max))
 
-
-# ---------------------------------------------------------------------------
-# Impedance bandwidth from S11
-# ---------------------------------------------------------------------------
 
 class BandwidthResult(NamedTuple):
     """Impedance bandwidth extraction result.
@@ -322,7 +292,6 @@ def antenna_bandwidth(
             freq_hi=float("nan"),
         )
 
-    # Find the widest contiguous run below threshold
     best_start, best_len = 0, 0
     cur_start, cur_len = 0, 0
     for i, b in enumerate(below):
@@ -336,11 +305,9 @@ def antenna_bandwidth(
         else:
             cur_len = 0
 
-    # Interpolate edges for better accuracy
     lo_idx = best_start
     hi_idx = best_start + best_len - 1
 
-    # Left edge
     if lo_idx > 0:
         f0, f1 = freqs[lo_idx - 1], freqs[lo_idx]
         d0, d1 = s11_db[lo_idx - 1], s11_db[lo_idx]
@@ -351,7 +318,6 @@ def antenna_bandwidth(
     else:
         freq_lo = freqs[lo_idx]
 
-    # Right edge
     if hi_idx < len(freqs) - 1:
         f0, f1 = freqs[hi_idx], freqs[hi_idx + 1]
         d0, d1 = s11_db[hi_idx], s11_db[hi_idx + 1]
@@ -374,10 +340,6 @@ def antenna_bandwidth(
         freq_hi=float(freq_hi),
     )
 
-
-# ---------------------------------------------------------------------------
-# Summary plot
-# ---------------------------------------------------------------------------
 
 def plot_antenna_summary(
     ff: FarFieldResult,
@@ -419,20 +381,17 @@ def plot_antenna_summary(
 
     fig = plt.figure(figsize=(5 * n_panels, 5))
 
-    # --- Panel 1: Polar radiation pattern ---
     ax1 = fig.add_subplot(1, n_panels, 1, projection="polar")
 
-    G = antenna_gain(ff, input_power=input_power)  # (nf, nth, nph)
-    G_freq = G[freq_idx]  # (nth, nph)
+    G = antenna_gain(ff, input_power=input_power)
+    G_freq = G[freq_idx]
 
-    # E-plane (phi=0)
     G_e = G_freq[:, 0]
     G_e_dB = 10.0 * np.log10(np.maximum(G_e, 1e-30))
     G_e_plot = np.maximum(G_e_dB, np.max(G_e_dB) - 40) - (np.max(G_e_dB) - 40)
 
     ax1.plot(ff.theta, G_e_plot, label="E-plane")
 
-    # H-plane (phi closest to pi/2)
     if len(ff.phi) > 1:
         h_idx = int(np.argmin(np.abs(ff.phi - np.pi / 2)))
         G_h = G_freq[:, h_idx]
@@ -444,7 +403,6 @@ def plot_antenna_summary(
     ax1.set_title(f"Pattern ({freq_ghz:.2f} GHz)")
     ax1.legend(loc="upper right", fontsize=8)
 
-    # --- Panel 2: Gain vs theta (rectangular) ---
     ax2 = fig.add_subplot(1, n_panels, 2)
     theta_deg = np.degrees(ff.theta)
     ax2.plot(theta_deg, G_e_dB, label="E-plane")
@@ -457,7 +415,6 @@ def plot_antenna_summary(
     ax2.legend(fontsize=8)
     ax2.grid(True, alpha=0.3)
 
-    # --- Panel 3: S11 (if provided) ---
     if has_s11:
         ax3 = fig.add_subplot(1, n_panels, 3)
         s11_arr = np.asarray(s11)

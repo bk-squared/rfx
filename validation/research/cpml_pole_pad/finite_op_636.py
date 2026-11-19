@@ -26,6 +26,7 @@ Run:  .venv/bin/python validation/research/cpml_pole_pad/finite_op_636.py
 from __future__ import annotations
 
 import numpy as np
+import jax.numpy as jnp
 
 EPS_0 = 8.8541878128e-12
 MU_0 = 1.25663706212e-6
@@ -53,7 +54,7 @@ def fixture_dt() -> float:
 
 def shipped_profile(dt):
     from rfx.boundaries.cpml import _cpml_profile
-    p = _cpml_profile(N_PAD, dt, DX)
+    p = _cpml_profile(N_PAD, dt, DX, dtype=jnp.float32)
     return (np.asarray(p.b, dtype=np.float64),
             np.asarray(p.c, dtype=np.float64),
             np.asarray(p.kappa, dtype=np.float64))

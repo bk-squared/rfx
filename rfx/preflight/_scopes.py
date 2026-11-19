@@ -43,6 +43,7 @@ CODE_SCOPE = {
     'msl_port_conductor_planes': 'object',
     'msl_port_geometry': 'mixed',
     'no_sources': 'model',
+    'not_judged_traced': 'model',
     'nonuniform_cpml_thin': 'model',
     'nonuniform_refinement': 'model',
     'nonuniform_tfsf': 'model',

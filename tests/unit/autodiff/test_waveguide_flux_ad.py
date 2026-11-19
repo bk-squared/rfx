@@ -42,7 +42,7 @@ def _wr90_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )  # solved length; #1887
+    )  # solved length
     sim.add_waveguide_port(0.010, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=FREQS, f0=6e9, bandwidth=0.5, name="left")
     sim.add_waveguide_port(0.090, direction="-x", mode=(1, 0), mode_type="TE",

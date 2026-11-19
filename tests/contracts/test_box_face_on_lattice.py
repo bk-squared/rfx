@@ -229,7 +229,7 @@ def test_both_samplers_accept_traced_coordinates():
 
 def test_periodic_material_image_keeps_node_aligned_faces():
     dx = DXS[0]
-    length = 17 * dx  # domain uses solved cell counts; #1887
+    length = 17 * dx  # domain uses solved cell counts
     sim = Simulation(
         10e9, (length, 8 * dx, 6 * dx), dx=dx, cpml_layers=0,
         boundary=BoundarySpec(x="periodic", y=Boundary("pec", "pmc"), z="pec"))

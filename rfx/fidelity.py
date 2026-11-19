@@ -21,16 +21,6 @@ import numpy as np
 
 __all__ = ["fidelity_report"]
 
-# A body declared exactly one cell thick has ``declared_extent == cell``
-# only up to round-off in the user's own arithmetic: ``11 * dx - 10 * dx``
-# is 499.9999999999996 um against a 500.0 um cell, and the exact compare
-# ``ext < cell`` this replaced classed that body sub-cell on both lanes and
-# both x64 flags (measured while closing the remainder).
-# The round-off scales with the coordinate magnitude — about one float64
-# ulp of the face position, i.e. ~2e-16 * |z| / cell relative to the cell —
-# so the margin is relative to the cell: 1e-9 of a cell is 0.5 nm at
-# 500 um, far above that noise and far below any sub-cell body a user
-# would declare on purpose.
 _SUB_CELL_TIE_REL = 1e-9
 
 
@@ -73,7 +63,7 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False, reco
 def _declared_material(sim, name):
     if name == "pec":
         return dict(kind="pec")
-    try:  # registered first, then the library (as the assembler resolves it)
+    try:
         spec = sim._resolve_material(name)
     except KeyError:
         return dict(kind="unknown", name=name)
@@ -111,8 +101,6 @@ def _contract_refusals(sim, grid, nonuniform):
         if not assembled_as_pec(sim, entry):
             continue
         try:
-            # Continuation first classifies the declaration too; refusal is
-            # owned by this entry, before any port-partner lookup.
             classify_pec_entry(entry.shape, coords, centres, sizes,
                                name=entry.material_name, grid=grid)
         except ValueError as exc:
@@ -167,6 +155,9 @@ def fidelity_report(sim, print_report: bool = True):
     and the declared ``Lz`` is ignored — is not compared: that axis dict
     carries a ``note`` key (rendered by the printed report) instead of a
     finding.
+
+    A PMC domain face, realized by the odd tangential-H image, is a magnetic
+    wall on the E-node mesh plane, not on the half-cell H samples.
     """
     record = sim.realized_geometry()
     from rfx.preflight.realization import context_from_conductors
@@ -190,47 +181,17 @@ def fidelity_report(sim, print_report: bool = True):
     sigma_arr = np.asarray(conductivity_envelope(mats), dtype=float)
     pec_mask = (record.pec_mask if record.pec_mask is not None else np.zeros(eps.shape, bool))
     nodes = record.nodes
-    # The realized edge set depends on the run's flags, so the report
-    # reads the same ones the solve will.
     domain = tuple(d.declared_length_m for d in table_rows["domain"].domain_geometry)
-    # Mask/material arrays live on the PADDED grid (CPML pad cells on every
-    # side); declared coordinates are DOMAIN coordinates. The producers
-    # behind _node_arrays already place node pad_lo at exactly 0.0, so this
-    # shift is an exact no-op kept to state the convention where it is used.
     pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
     nodes = tuple(n - n[p] for n, p in zip(nodes, pads))
 
-    # Declared conductors arrive through TWO surfaces: sim.add(...,
-    # material="pec"/dielectric) and sim.add_thin_conductor(...). Auditing only
-    # the first produced an EMPTY report — a false all-clear — for models built
-    # the second way.
     entries = [("geometry", i, e) for i, e in enumerate(sim._geometry)]
     for j, tc in enumerate(getattr(sim, "_thin_conductors", ()) or ()):
         entries.append(("thin_conductor", j, tc))
 
     report = []
 
-    # The domain box IS the geometry for cavity / waveguide models (no
-    # entities at all), and the first implementation printed "0 entities, 0
-    # findings" for them — a clean bill of health for an unaudited structure
-    # (found by the crossval sweep: cv09/cv14/cv21).
-    # The domain row must read `nodes`, the SAME fence-post-correct array
-    # the entity rows read below (nodes[a][i0], nodes[a][i1 + 1]) — not
-    # `sizes`, which has one entry per NODE. Summing `sizes` counted a span
-    # of n nodes as n cells and inflated an exactly-commensurate domain's
-    # "realized" length by one cell on every axis (for example, a 21-node/20-cell span read
-    # back as 21000 um instead of
-    # 20000 um, with a false [domain-extent-quantized] finding attached).
-    # NonUniformGrid has no is_2d attribute, so `grid.is_2d` would raise on
-    # the non-uniform lane; getattr keeps that lane running. KNOWN GAP, not
-    # fixed here: Simulation(mode="2d_tmz", dz_profile=...) builds a
-    # NonUniformGrid that carries no 2D marker at all, so the not-solved
-    # guard below never fires there and that lane still compares a z it does
-    # not solve. Pre-existing (the non-uniform builder ignores `mode`); the
-    # fix belongs with the builder, not with this reporter.
     is_2d = getattr(grid, "is_2d", False)
-    # B3b: the odd tangential-H image places a magnetic wall on the
-    # E-node mesh plane. Physical half-cell H samples are not zero planes.
     dom_item = dict(entity="domain (the solved box)", findings=[], axes=[])
     dom_item["realization_table"] = record.realization_table
     if nonuniform and getattr(sim, "_interface_eps", "sampled") == "dual_average":
@@ -238,21 +199,12 @@ def fidelity_report(sim, print_report: bool = True):
     for a in range(3):
         axis_name = _axis_names()[a]
         n_int = table_rows["domain"].domain_geometry[a].n_cells
-        # mesh_extent is the NODE-to-NODE span (unchanged from before this
-        # change) -- the commensurability finding below stays keyed on it,
-        # since "does the cell size divide the declared length" is a mesh
-        # question, independent of any PMC face on this axis.
         mesh_extent = table_rows["domain"].axes[a].realized_span_m
         declared = float(domain[a]) if a < len(domain) else 0.0
-        # z is not solved in 2D (grid.nz == 1, Lz is ignored — rfx/grid.py);
-        # comparing it against the declared z would replace one meaningless
-        # number (the old node/cell miscount) with another (a 0.0 um
-        # "realized" length reported as a domain-extent-quantized finding).
         axis_not_solved = is_2d and _axis_names()[a] == "z"
         eff_lo = 0.0
         eff_hi = mesh_extent
         realized = eff_hi - eff_lo
-        # Local cell at each face for the round-off tie (see _zero_tie).
         cell_lo, cell_hi = table_rows["domain"].domain_face_cells_m[a]
         ax = dict(axis=axis_name, n_cells=int(n_int),
                   declared_um=(0.0, declared * 1e6),
@@ -284,40 +236,11 @@ def fidelity_report(sim, print_report: bool = True):
                        "cavity/guide dimension the solve actually has)"))
     report.append(dom_item)
 
-    # ``_assemble_materials`` is PEC-OR-only (``pec_mask =
-    # pec_mask | mask``; rfx/api/_compile.py) and there is no CSG
-    # subtraction shape, so a dielectric declared AFTER a conductor cannot
-    # carve it — its overlapping cells are a silent no-op. The committed
-    # coax-MSL junction fixture declared its clearance hole exactly that way
-    # (full-plane PEC ground, then a PTFE Cylinder) and the settled run
-    # measured a short (S00 = -0.9928 at 6 GHz). This is the OR of every
-    # PEC-assembled geometry entry seen so far, in declaration order; the
-    # ordered finding below reads it. Geometry entries only: thin
-    # conductors are OR-ed in after ALL geometry (a different ordering
-    # question, not audited here).
     pec_before = np.zeros(eps.shape, dtype=bool)
-    # Every PEC volume entity's realized cells, rasterized ONCE
-    # and kept as flat indices (memory scales with occupied cells, not with
-    # the grid). The ordered finding below reads this instead of
-    # re-rasterizing every earlier conductor for every overlapping
-    # dielectric, which was O(n^2) rasterizations on a 20-box ground sheet.
     pec_cells_by_entity: dict = {}
-    # Conductors whose mask could not be rasterized. They are NOT in
-    # pec_before, so the ordered check cannot see them; the failure is
-    # reported on the conductor's own row (entity name + exception class)
-    # and named again on every later dielectric row, so a skipped check
-    # never reads as a clean one (the class: "All checks passed" with
-    # a silently skipped family).
     pec_unrasterized: list = []
-    # Sheet faces are indexed by their lower in-plane corner and normal.
-    # Keep them separate from volume cells: both adjacent dielectric cells
-    # must be occupied before a face contributes to the ordered finding.
     pec_faces_by_entity: dict = {}
 
-    # Every entry's lattice-owned sheet resolution, once, and the union of the PEC
-    # sheet footprints: a sheet end that runs on into another sheet is a
-    # seam, not a free edge, in the shared solved-edge model
-    # (rfx.mesh_edges.solved_sheet_span).
     for kind_src, i, entry in entries:
         label = f"{kind_src}[{i}]"
         if table_rows[label].status.startswith("not represented:"):
@@ -351,7 +274,7 @@ def fidelity_report(sim, print_report: bool = True):
                         raise getattr(builtins, cls, ValueError)(message)
                     nb_mask = _entity_mask(entry, sim, grid, nonuniform, record=record)
                 except (TimeoutError,): raise
-                except Exception as exc:  # noqa: BLE001 - recorded in findings.exception / findings.detail
+                except Exception as exc:  # noqa: BLE001
                     pec_unrasterized.append((i, name, type(exc).__name__))
                     nb_item["findings"].append(dict(
                         kind="rasterization-failed",
@@ -372,18 +295,9 @@ def fidelity_report(sim, print_report: bool = True):
             continue
         boxlike = type(entry.shape).__name__ == "Box"
         pec_assembled = kind_src == "geometry" and assembled_as_pec(sim, entry)
-        # a SHEET owns no cell, so its realized geometry is its
-        # footprint on ONE node plane — not the cells the (node-sampled)
-        # entity mask happens to touch. Resolved before the per-axis rows so
-        # they report the plane, not a spurious one-cell z extent.
         sheet_spec = geometry.sheet
         sheet_fp = (np.asarray(sheet_spec.footprint, dtype=bool)
                     if sheet_spec is not None else None)
-        # a PEC VOLUME is realized from cell CENTRES, so the row
-        # must be sampled from centres too or the report and the solve
-        # disagree by a cell on any off-lattice conductor. Sheets carry no
-        # cell (sheet_fp above) and a refused entry never reaches the
-        # assembly, so both keep the node sampler.
         mask = _entity_mask(entry, sim, grid, nonuniform, record=record)
         mask = mask if mask is not None else np.zeros(eps.shape, bool)
         item = dict(entity=name, material=_declared_material(sim, mat_name),
@@ -405,14 +319,7 @@ def fidelity_report(sim, print_report: bool = True):
             report.append(item)
             continue
 
-        # the declared span reaches a padded hi face and the realized
-        # mask stops more than the one node the half-open rule costs it, so
-        # the CPML pad on that face is filled by replicating a vacuum column.
-        # Reported here rather than raised because
-        # this report is what a user reads to FIND such a thing.
         for _shortfall in pad_fill_findings:
-            # Match the entry by the shape object the assembly rasterized,
-            # not by material name: two entries may share a material.
             if _shortfall.get("shape") is not entry.shape:
                 continue
             item["findings"].append(dict(
@@ -437,13 +344,9 @@ def fidelity_report(sim, print_report: bool = True):
                         "declared span — rfx.grid.cells_spanning absorbs "
                         "float dust in domain/dx, so a shortfall with that "
                         "in place has another cause")))
-        # A PEC mask does not change eps, so a dielectric whose cells were
-        # later claimed by a conductor looks untouched in eps alone (trap T5).
         if mat_name not in ("pec", "lossy-sheet"):
             pec_frac = float(np.mean(pec_mask[mask]))
             _declared_sigma = float(item["material"].get("sigma", 0.0) or 0.0)
-            # A metal-like declaration realized as PEC is its own finding
-            # below; here we mean a DIELECTRIC whose cells metal took over.
             if pec_frac > 1e-9 and _declared_sigma < 1e6:
                 item["findings"].append(dict(
                     kind="claimed-by-conductor",
@@ -452,13 +355,6 @@ def fidelity_report(sim, print_report: bool = True):
                            "fraction of the declared material is not solved",
                     remedy="check the overlap against the intended stack; "
                            "shrink whichever body is over-declared"))
-        # Ordered overlap: cells shared with an EARLIER PEC
-        # volume, or complete sheet faces with dielectric on BOTH sides. claimed-by-
-        # conductor stays byte-identical (it fires for either order); this
-        # adds the statement that the assembly order makes these cells a
-        # no-op — a hole "carved" by a later dielectric does not exist in
-        # the solve. Report-only: a slab deliberately drawn through a
-        # ground sheet is a legitimate pattern and lands here too.
         if kind_src == "geometry" and not pec_assembled:
             n_cells = int(np.count_nonzero(mask & pec_before))
             flat = mask.ravel()
@@ -490,14 +386,6 @@ def fidelity_report(sim, print_report: bool = True):
                     f"({n_m} "
                     f"{'faces' if m in pec_faces_by_entity else 'cells'})"
                     for m, n_m in contributors)
-                # A VOLUME claims the cell, so the eps written there is
-                # discarded and "no-op" is literally true. A SHEET owns no
-                # cell and writes no eps: the dielectric IS
-                # solved, and what does not exist is the clearance. Both are
-                # the same defect -- a later dielectric cannot carve a
-                # conductor -- but only one of them discards material, so
-                # they get different sentences. The volume-only text is
-                # unchanged byte for byte.
                 if n_faces:
                     detail = (
                         f"{n_faces} metal faces have this entity's declared "
@@ -524,8 +412,6 @@ def fidelity_report(sim, print_report: bool = True):
                         "eps_r/sigma written there is never solved); if a "
                         "clearance/hole was intended, build the conductor "
                         "with the hole")
-                # Cells and sheet faces are different things, so each has
-                # its own key; neither count is folded into the other.
                 item["findings"].append(dict(
                     kind="dielectric-after-conductor-no-op",
                     overlap_cells=n_cells,
@@ -552,8 +438,6 @@ def fidelity_report(sim, print_report: bool = True):
                             "that conductor is still possible"),
                     remedy="fix that conductor's shape so it rasterizes, "
                            "then re-run fidelity_report"))
-        # Volumes occupy cells; sheets contribute complete metal faces.
-        # A later dielectric cannot carve a face with material on both sides.
         if pec_assembled:
             if sheet_fp is None:
                 pec_before |= mask
@@ -562,7 +446,6 @@ def fidelity_report(sim, print_report: bool = True):
                 normal = int(table_rows[geometry.label].plane[0])
                 pec_faces_by_entity[i] = (
                     normal, np.flatnonzero(_sheet_contact_faces(sheet_fp, normal)))
-        # Absorber overlap: cells outside [0, domain) live in the CPML pad.
         pad_hit = []
         for a in range(3):
             idx = np.where(mask.any(axis=tuple(x for x in range(3) if x != a)))[0]
@@ -589,17 +472,10 @@ def fidelity_report(sim, print_report: bool = True):
         for a, comparison in enumerate(table_rows[geometry.label].record_axes):
             r_lo, r_hi = comparison.bounds_m
             d_lo, d_hi = float(lo[a]), float(hi[a])
-            # A body drawn past the domain is CLIPPED by construction (a
-            # common deliberate idiom: draw big, let the rasterizer cut).
-            # Comparing the realized body against the un-clipped declaration
-            # produced 99%-residual nonsense that drowned the real findings
-            # (crossval sweep: cv18 4/6, cv19 20/30 findings).
             dom_hi = float(domain[a]) if a < len(domain) else 0.0
             if dom_hi > 0 and (d_lo < -1e-12 or d_hi > dom_hi + 1e-12):
                 clipped_axes.append(_axis_names()[a])
                 d_lo, d_hi = max(d_lo, 0.0), min(d_hi, dom_hi)
-            # Local cell size on this axis over the body's span — the scale a
-            # placement can actually be resolved to.
             cell_m = comparison.cell_size_m
             cell_um = cell_m * 1e6
             residual = comparison.face_residual_m
@@ -614,15 +490,9 @@ def fidelity_report(sim, print_report: bool = True):
                       realized_extent_um=comparison.extent_m * 1e6)
             ext = ax["declared_extent_um"]
             ax["cell_um"] = cell_um
-            # Relative margin, not an exact compare: see _SUB_CELL_TIE_REL.
             ax["sub_cell"] = bool(ext < cell_um * (1.0 - _SUB_CELL_TIE_REL))
             if ext > 0:
                 worst = max(ax["face_residual_um"])
-                # A body thinner than a cell cannot be placed more precisely
-                # than the lattice allows, so quoting its offset as a fraction
-                # of its own sub-cell thickness produces numbers like "181% of
-                # 17 um" that read as catastrophic and mean only "it landed in
-                # a cell". For those, report against the CELL.
                 if ax["sub_cell"]:
                     if worst > 0.25 * cell_um:
                         item["findings"].append(dict(
@@ -637,7 +507,7 @@ def fidelity_report(sim, print_report: bool = True):
                             remedy="place a mesh node on the declared face, or "
                                    "resolve the body with >= 1 cell, if this "
                                    "placement is load-bearing"))
-                    axes.append(ax)      # the axis record is still reported
+                    axes.append(ax)
                     continue
                 if worst > 0.005 * ext:
                     d_ext = ax["realized_extent_um"] - ext
@@ -664,9 +534,6 @@ def fidelity_report(sim, print_report: bool = True):
                                 "(non-uniform profile) or choose the cell "
                                 "size / origin commensurate with it")))
                     else:
-                        # A curved/implicit shape has no face to put a node on;
-                        # its bounding box is sampled, so the honest statement
-                        # is where the realized body sits and how big it is.
                         d_mid = (ax["declared_um"][0] + ax["declared_um"][1]) / 2
                         r_mid = (ax["realized_um"][0] + ax["realized_um"][1]) / 2
                         item["findings"].append(dict(
@@ -700,12 +567,6 @@ def fidelity_report(sim, print_report: bool = True):
                 remedy="none if the overhang is intentional; otherwise draw "
                        "the body to its physical bounds"))
 
-        # Realization class follows the ASSEMBLY, not the material name: a
-        # model may declare its metal as a named material with a finite
-        # sigma (e.g. copper 5.8e7) and the assembly may still realize it as
-        # a PEC mask. Keying on the literal name "pec" made every sheet
-        # finding invisible on exactly such a model (the CST board) — the tool's whole
-        # purpose, silently skipped.
         if kind_src == "geometry" and i in refused:
             item["realization"] = "REFUSED by the lattice ownership contract"
             item["findings"].append(dict(
@@ -721,8 +582,6 @@ def fidelity_report(sim, print_report: bool = True):
                 detail="run() would refuse this model: " + refused_tc[i],
                 remedy="draw it as a Box, or run on a uniform mesh"))
         if sheet_spec is not None:
-            # a sheet owns no cell and is not in pec_mask; it is
-            # realized on ONE node plane with a closed footprint.
             a, k = sheet_spec.normal_axis, sheet_spec.plane
             z_k = float(nodes[a][k])
             n_nodes = int(np.asarray(sheet_spec.footprint).sum())
@@ -756,13 +615,6 @@ def fidelity_report(sim, print_report: bool = True):
                        "or the sheet operator); if not, declare 'pec' so the "
                        "model states what it solves"))
         if realized_conductor:
-            # Lattice ownership contract: a PEC geometry entry is a
-            # VOLUME — every E edge incident to an occupied cell is shorted,
-            # so a body one cell thick along an axis still realizes walls on
-            # BOTH of its bounding node planes with its interior shorted.
-            # (The drawn-vs-realized wall-plane table per axis is the
-            # follow-up of this report; a zero-thickness Box is a SHEET and
-            # is not in pec_mask, so it does not reach this branch.)
             item["realized_wall_planes"] = {
                 _axis_names()[a]: dict(planes=list(planes),
                                       planes_um=[v * 1e6 for v in table_rows[geometry.label].wall_positions_m[a]])
@@ -784,8 +636,6 @@ def fidelity_report(sim, print_report: bool = True):
                 item["assembled_eps_r"] = (float(inside.min()),
                                            float(inside.max()))
                 item["assembled_matches_declared_frac"] = frac
-                # sigma is a declared input too: a dropped/zeroed conductivity
-                # is invisible in eps alone (adversarial trap T1).
                 s_in = sigma_arr[mask]
                 item["assembled_sigma"] = (float(s_in.min()), float(s_in.max()))
                 s_frac = float(np.mean(np.isclose(s_in, m["sigma"], rtol=1e-6,
@@ -823,15 +673,6 @@ def fidelity_report(sim, print_report: bool = True):
                                "unintended"))
         report.append(item)
 
-    # Node-pinned sheets (add_pinned_sheet). They own no shape and no metres,
-    # so they have no declared bounds to compare a realization against; what
-    # the report owes is the other direction — where the node indices landed
-    # on THIS mesh, in input units. Realized values come from
-    # ``pinned_sheet_realized`` (the grid's own node line), never re-derived
-    # here, and the row carries ``realized_plane`` so the §1.7 cross-check
-    # below sees the same planes the assembly produced. Without these rows a
-    # pinned board reported a sheet-report-assembly-drift finding telling the
-    # reader to trust neither realization, on a model where the two agreed.
     for j, ps in enumerate(getattr(sim, "_pinned_sheets", ()) or ()):
         geometry = rows[f"pinned_sheet[{j}]"]
         a, k, plane_m = table_rows[geometry.label].plane
@@ -868,12 +709,6 @@ def fidelity_report(sim, print_report: bool = True):
             for t in others]
         report.append(item)
 
-    # Report-vs-assembly cross-check (one source, every consumer).
-    # A plane the SOLVE will realize but no report row names, or a row naming
-    # a plane the assembly did not produce, means this report is describing a
-    # different model from the one that runs — the exact failure the single
-    # realized-edge source exists to prevent. Reported, never silently
-    # reconciled.
     reported_planes = sorted(
         (it["realized_plane"]["axis"], int(it["realized_plane"]["index"]))
         for it in report if "realized_plane" in it)
@@ -902,9 +737,6 @@ def fidelity_report(sim, print_report: bool = True):
                    "rfx.boundaries.pec.realized_pec_edge_masks / edge_is_pec "
                    "on its declared path"))
 
-    # Declared inputs this report does NOT audit — stated rather than omitted,
-    # because silence reads as coverage (crossval sweep: cv21 and the ports
-    # tutorial were 100% port-materialized geometry and reported "0 findings").
     unaudited = []
     unaudited_entities = []
     for attr, label in (("_ports", "lumped/wire port"),
@@ -962,10 +794,6 @@ def _print(report):
                   f"{ax['face_residual_um'][1]:.1f}) um"
                   f" | extent {ax['declared_extent_um']:.1f} -> "
                   f"{ax['realized_extent_um']:.1f} um")
-            # An axis carrying a note is one the report deliberately does
-            # NOT compare. Printing the row without the note leaves a
-            # displayed declared-vs-realized gap with no finding and no
-            # explanation next to it — a silent all-clear.
             if ax.get("note"):
                 print(f"       note: {ax['note']}")
             walls = it.get("realized_wall_planes", {}).get(ax["axis"])

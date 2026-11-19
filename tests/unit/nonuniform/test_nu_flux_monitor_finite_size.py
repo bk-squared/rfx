@@ -197,7 +197,7 @@ def test_nu_finite_flux_bitexact_restriction():
 
 
 # --------------------------------------------------------------------------
-# T3 — ABSOLUTE aperture-cell / cumulative-dA oracle (reviewer defect P1).
+# T3 — ABSOLUTE aperture-cell / cumulative-dA oracle.
 #      Catches a node/cell off-by-one that T2 (self-referential window) cannot.
 # --------------------------------------------------------------------------
 def test_nu_finite_flux_absolute_aperture_and_dA():
@@ -214,7 +214,7 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     # Independent expectation from the realized graded edges (axis y=1, z=2).
     dy_full, pad_y_lo, pad_y_hi, _ = _grid_axis(grid, 1)
     dz_full, pad_z_lo, pad_z_hi, _ = _grid_axis(grid, 2)
-    # #910: geometry uses the exact #931 node spine, not a cumulative sum of
+    # Geometry uses the exact node spine, not a cumulative sum of
     # solver-facing float32 spacings. Area arithmetic still uses those stores.
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
     coords = coords_from_nonuniform_grid(grid)
@@ -229,7 +229,6 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     assert (mon.lo2, mon.hi2) == (zl, zh), (
         f"z window {mon.lo2}:{mon.hi2} != independently-derived {zl}:{zh}")
 
-    # (b) cell COUNT == hi_local - lo_local (the node->cell contract, #868).
     n_y, n_z = yhl - yll, zhl - zll
     assert (mon.hi1 - mon.lo1) == n_y and (mon.hi2 - mon.lo2) == n_z, (
         f"selected cell counts ({mon.hi1-mon.lo1},{mon.hi2-mon.lo2}) != the "
@@ -380,8 +379,8 @@ def test_nu_finite_flux_generality_two_gradings():
     x_src = x_mon = None
     for tag, dz in [("fine", dz_fine), ("coarse", dz_coarse)]:
         # Sixteen absorber layers, so the cross-mesh difference is the mesh pair's own: at 9.4 GHz it reads 0.0364 with 16 and
-        # with 24 layers (VESSL 369367264472). Eight layers gave 0.0415 with the magnetic CPML profile at the Yee half cell and
-        # 0.0325 before it (#1012); the absorber's reflection moved it both ways.
+        # with 24 layers. Eight layers gave 0.0415 with the magnetic CPML profile at the Yee half cell and
+        # 0.0325 before it; the absorber's reflection moved it both ways.
         sim, grid, (Lx, Ly, Lzr) = _build_open_graded_sim(dz, add_probe=True, cpml_layers=16)
         size_y = Ly * 0.6
         cy, cz = Ly * 0.5, Lzr * 0.5
@@ -441,8 +440,7 @@ def test_nu_finite_flux_generality_two_gradings():
     # two meshes (< one coarse cell of z-extent over the full aperture). The two
     # apertures share the same y window, so the RELATIVE area difference equals
     # the relative z-extent difference and one coarse cell of z-snap is the
-    # DIMENSIONLESS fraction max(dz_coarse)/z_ext. (Until the review2 F5 fix this
-    # line also multiplied by y_ext, so the "fraction" carried units of metres.)
+    # DIMENSIONLESS fraction max(dz_coarse)/z_ext.
     coarse_cell_frac = float(np.max(dz_coarse)) / ap_area[1][1]
     assert rel_area_cross < coarse_cell_frac, (
         f"aperture areas disagree across gradings ({dA_sums}) by more than one "
@@ -457,7 +455,7 @@ def test_nu_finite_flux_generality_two_gradings():
             "truncation-contaminated (repo ring-down rule)")
 
     # (e) recovered physical power agrees across gradings within a MEASURED
-    #     ENVELOPE (review2 F6: this is NOT a derivation — do not call it one).
+    #     ENVELOPE (this is NOT a derivation — do not call it one).
     #     The cross-mesh difference is a near-field observable: a small REAL
     #     flux extracted from a large reactive field, so the resolution error is
     #     amplified by the local reactive/real ratio Q/P (measured above). The
@@ -467,7 +465,7 @@ def test_nu_finite_flux_generality_two_gradings():
     #     PREFACTOR 3.0 is NOT derived: Yee phase-velocity error carries 1/12,
     #     and 3.0 is an empirical O(1) envelope covering the two tangential
     #     quadrature directions and the face-snapping difference between the
-    #     meshes. It is an envelope that still bites (measured 2026-09-24 on this
+    #     meshes. It is an envelope that still bites (measured on this
     #     fixture with 16 absorber layers: propagating-bin rel = [0.03637, 0.03126, 0.01884, 0.02354]
     #     against bound = [0.03754, 0.05094, 0.07190, 0.09580], 3 % margin at the tightest bin;
     #     the 2026-09-05 figures, 15 % margin, were taken on the pre-#1012
@@ -502,7 +500,7 @@ def test_nu_finite_flux_generality_two_gradings():
 
 
 # --------------------------------------------------------------------------
-# T5 — CLAMPING is documented and non-silent (review2 F7). The helper does NOT
+# T5 — CLAMPING is documented and non-silent. The helper does NOT
 #      "never clamp": a window reaching outside the interior snaps to the end
 #      edges and the monitor then integrates the CLAMPED extent. Pin the
 #      documented behaviour and the warning that makes it non-silent, against
@@ -605,7 +603,7 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
         f"SILENT — the per-endpoint clamp test is gone and only the size-"
         f"difference proxy is left; caught={[str(c.message) for c in caught]}")
 
-    # (e) #910: a quarter-cell overflow is identifiable from the REQUESTED
+    # (e) a quarter-cell overflow is identifiable from the REQUESTED
     #     endpoint even when its snapped index would match an interior request.
     #     Keep the same realized window and make that clamp non-silent.
     lo_req_e = -0.25 * float(interior[0])

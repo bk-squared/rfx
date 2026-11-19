@@ -21,6 +21,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from tests._fd_minimum import assert_same_minimum_cells
+
 from validation.research.multiband_nu import e4_diff_stackup as e4
 
 LIVE_N_STEPS = 40
@@ -68,6 +70,9 @@ def _map_invariants():
 
 
 def test_live_l1_gradient_small_box():
+    """The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
+    """
     loss = e4.l1_factory(LIVE_N_STEPS, LIVE_DOMAIN_XY, e4.DXY)
     loss_j = jax.jit(loss)
     grad_j = jax.jit(jax.grad(loss))
@@ -82,6 +87,9 @@ def test_live_l1_gradient_small_box():
         pp, pm = p0.copy(), p0.copy()
         pp[i] += step
         pm[i] -= step
+        assert_same_minimum_cells(np.asarray(e4.stackup(jnp.asarray(p0))[0]), [
+            (f"{name} (+)", np.asarray(e4.stackup(jnp.asarray(pp))[0])),
+            (f"{name} (-)", np.asarray(e4.stackup(jnp.asarray(pm))[0]))])
         lp, lm = float(loss_j(jnp.asarray(pp))), float(loss_j(jnp.asarray(pm)))
         g_fd = (lp - lm) / (2 * step)
         quanta = abs(lp - lm) / ulp

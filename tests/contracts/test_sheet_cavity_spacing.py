@@ -180,7 +180,7 @@ def test_spacing_is_checked_when_electrical_measures_agree(mesh):
     assert f"drawn spacing {_fmt_len(drawn * MM)}, solved spacing 2mm" in str(row)
 
 
-# Review probes 2/3: keep the drawings explicit and independent of the census.
+# Keep the drawings explicit and independent of the census.
 _LO_XY = (2.65 * MM, 2.65 * MM, 16.35 * MM, 14.35 * MM)
 _HI_XY = (4.65 * MM, 4.65 * MM, 12.35 * MM, 10.35 * MM)
 

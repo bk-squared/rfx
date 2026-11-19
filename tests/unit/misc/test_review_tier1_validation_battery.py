@@ -66,8 +66,8 @@ def test_corec2_h_update_uses_local_cell_width():
     mats = _free_space((nx, ny, nz))
     dt = 1.0e-13
 
-    _, inv_dz_h = _profile_to_inv_arrays(np.asarray(dz))
-    _, inv_xy_h = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
+    _, inv_dz_h = _profile_to_inv_arrays(np.asarray(dz), dtype="float32")
+    _, inv_xy_h = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64), dtype="float32")
     new = update_h_nu(state, mats, dt, inv_xy_h, inv_xy_h, inv_dz_h, high_wall=(False, False, False))
 
     discrete = np.asarray(new.hx)[1, 1, :] * MU_0 / dt
@@ -94,8 +94,8 @@ def test_corec2_e_update_uses_mean_spacing():
     mats = _free_space((nx, ny, nz))
     dt = 1.0e-13
 
-    inv_dz_e, _ = _profile_to_inv_arrays(np.asarray(dz))
-    inv_xy_e, _ = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
+    inv_dz_e, _ = _profile_to_inv_arrays(np.asarray(dz), dtype="float32")
+    inv_xy_e, _ = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64), dtype="float32")
     new = update_e_nu(state, mats, dt, inv_xy_e, inv_xy_e, inv_dz_e,
                       cell_sizes=(None, None, dz), high_wall=(False, False, False))
 

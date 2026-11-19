@@ -79,7 +79,7 @@ def test_touching_traced_and_concrete_bodies_average_against_each_other():
     grid, (i, j, k) = _grid_and_index()
 
     def smoothed(eps):
-        ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, eps), (BOX_B, 2.0)], 1.0)
+        ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, eps), (BOX_B, 2.0)], 1.0, dtype='float32')
         return jnp.stack([ex[i, j, k], ey[i, j, k]])
 
     eps0 = 4.0
@@ -98,7 +98,7 @@ def test_concrete_key_is_the_value():
     assert smoothing.medium_key(4) == 4.0 and smoothing.medium_key(np.float64(2.5)) == 2.5
     grid, (i, j, k) = _grid_and_index()
     other_four = float.fromhex("0x1p2")  # an equal value, a second object
-    ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, 4.0), (BOX_B, other_four)], 1.0)
+    ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, 4.0), (BOX_B, other_four)], 1.0, dtype='float32')
     assert float(ex[i, j, k]) == 4.0 and float(ey[i, j, k]) == 4.0
 
 

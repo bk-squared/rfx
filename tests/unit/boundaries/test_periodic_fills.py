@@ -19,7 +19,7 @@ DX = L / 17
 
 
 def model():
-    # solved length; #1887
+    # solved length
     return Simulation(20e9, (L, 8 * DX, 6 * DX), dx=DX, cpml_layers=0,
                       boundary=BoundarySpec(x='periodic',
                                             y=Boundary(lo='pec', hi='pmc'), z='pec'))

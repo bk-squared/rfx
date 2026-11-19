@@ -244,7 +244,7 @@ def test_transverse_grading_keeps_the_scalar_x_line(axis):
     # Same physical extent, boundary cells, smallest cell and timestep.
     profile = np.array([1., 1.5, 1.5, 1.5, 1.5, 1.]) * _DX
     graded = model(**{f"d{axis}_profile": profile}, dt=ref_grid.dt, dt_min_cell=_DX)
-    pairs = [tfsf_from_declaration(sim._tfsf, sim._build_realized_grid(), sim._freq_max)
+    pairs = [tfsf_from_declaration(sim._tfsf, sim._build_realized_grid(), sim._freq_max, dtype='float32')
              for sim in (reference, graded)]
     lines = []
     for sim, (cfg, state) in zip((reference, graded), pairs):
