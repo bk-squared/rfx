@@ -329,7 +329,7 @@ def test_orientation_is_not_transposed_on_a_rectangular_domain():
         "-- a `keep` axis reversal would transpose these ranges")
 
 
-# --- regressions for the defects an adversarial review found ---------------
+# --- regressions ---------------
 
 def test_thin_conductor_bodies_are_outlined_not_silently_omitted():
     """add_thin_conductor() bodies live in a DIFFERENT registry.
@@ -360,7 +360,7 @@ def test_a_patterned_body_is_counted_as_skipped_not_silently_undrawn():
                      boundary="cpml")
     sim.add_material("sub", eps_r=4.0, sigma=0.0)
     sim.add(Box((0, 0, 0), (DOM[0], DOM[1], H_SUB)), material="sub")
-    # One cell ABOVE the substrate's top plane: under #931 centre sampling
+    # One cell ABOVE the substrate's top plane: under centre sampling
     # the cylinder occupies the cell whose centre it contains, and the
     # auto-picked plane must not coincide with the substrate Box's own
     # (closed) outline plane, or the dashed rectangle below is the
@@ -487,7 +487,7 @@ def test_add_refinement_warns_because_the_drawn_grid_is_coarse_only():
         plot_stack_profile(sim)
 
 
-# --- regressions for the SECOND adversarial review pass (#11-24) -----------
+# --- regressions -----------
 
 def test_far_face_wall_is_drawn_on_its_own_plane():
     """conductor_mask() is a CELL footprint; under the lattice ownership

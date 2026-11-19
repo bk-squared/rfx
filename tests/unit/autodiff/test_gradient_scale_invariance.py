@@ -45,8 +45,8 @@ from rfx.geometry.csg import Box
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import lorentz_pole
 
-# The fixtures keep the drive conventions the #1357 report used; the per-path
-# amplitude_kind deprecation (#571) and the distributed lane's opt-in notice
+# The fixtures keep the drive conventions; the per-path
+# amplitude_kind deprecation and the distributed lane's opt-in notice
 # are not what this file is about.
 pytestmark = [
     pytest.mark.filterwarnings("ignore:add_source\\(\\.\\.\\., amplitude_kind=None\\)"),
@@ -297,7 +297,7 @@ def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
 # it inside their CPML functions, from rfx.core.yee, at call time.
 _IMPORTERS = (rfx.core.yee, rfx.stepping.yee, rfx.boundaries.cpml, rfx.boundaries.upml,
               rfx.materials.thin_conductor, rfx.lumped,
-              rfx.model.dispersive_poles, rfx.materials.lorentz)
+              rfx.model.dispersive_poles)
 
 
 def _si_only(si_fn, eps_r_fn, *args):

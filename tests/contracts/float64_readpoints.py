@@ -126,6 +126,8 @@ def capture(label, *, values=None):
             for key, value in leaves(local['grid'], 'grid'):
                 keep('R2', key, value)
         if event == 'return' and name == 'init_cpml' and arg is not None:
+            if values is not None:
+                values.update(cpml=arg[0], cpml_grid=local['grid'])
             for key, value in leaves(arg[0], 'cpml'):
                 keep('R3', key, value)
         if event == 'return' and name == 'pole_component_weights' and arg is not None:

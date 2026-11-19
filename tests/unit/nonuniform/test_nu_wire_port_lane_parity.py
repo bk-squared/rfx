@@ -178,7 +178,7 @@ def _build(nu, *, extent=3e-3, excite=False, z0=50.0, port_x=8e-3,
     if load == "pec_plates":
         # Two one-cell PEC plates, one below the port and one above it,
         # each separated from the port edge by one cell of vacuum. They
-        # are VOLUMES (#931 §1.2), drawn on node planes, so each realizes
+        # are VOLUMES, drawn on node planes, so each realizes
         # walls at BOTH of its drawn faces and shorts the normal E between
         # them — the object the name "plate" always meant. Before #931 a
         # one-cell body realized ONE wall and left its normal E live, so
@@ -207,7 +207,7 @@ def _build(nu, *, extent=3e-3, excite=False, z0=50.0, port_x=8e-3,
                  waveform=(pulse if excite else None), direction=direction)
     if not excite:
         # Passive port: illuminate it with a separate source, which keeps
-        # D1 clear of the #683 ordering question entirely — a passive port's
+        # D1 clear of the ordering question entirely — a passive port's
         # V/I is untouched by the source-injection ordering, since I reads H
         # only and the source loop writes E only, at the SOURCE cell.
         sim.add_source(position=(port_x + 3 * DX, PORT_Y, PORT_Z + DX),
@@ -346,7 +346,7 @@ def test_raw_port_ratio_matches_the_analytic_admittance(extent):
     sim = _build(False, extent=extent, z0=z0)
     fr = _passive_result(sim)
     _spec, accs = fr.wire_port_sparams[0]
-    # Issue #764: the accumulator tuple grew a 4th slot (whole-port
+    # The accumulator tuple grew a 4th slot (whole-port
     # v_port_dft). This test's channels — the single-cell v_dft/i_dft and
     # every asserted value — are byte-identical; only the unpack widens.
     v_dft, i_dft = accs[0], accs[1]
@@ -463,7 +463,7 @@ def test_passive_lane_parity_across_the_domain(port_x):
 
 
 # --------------------------------------------------------------------------
-# The excited port — the #683 sampling-ordering question, DECIDED and locked.
+# The excited port — the sampling-ordering question, DECIDED and locked.
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("load", ["vacuum", "pec_plates"])

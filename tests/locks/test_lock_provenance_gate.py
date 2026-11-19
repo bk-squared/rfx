@@ -36,7 +36,7 @@ REQUIRED_KEYS = (
 
 
 #: Deleting every lock module would make this gate vacuously green, so require
-#: the population it was written for (the 2026-09-02 tier-1 move) to be there.
+#: the population it was written for to be there.
 #: #931 retired ``test_two_plane_pec_slab.py`` — it pinned the ``two_plane``
 #: extension masks, a mechanic the lattice ownership contract deleted rather
 #: than changed, so its number had no artifact left to guard — and replaced it

@@ -88,7 +88,8 @@ def accumulator_coverage(result, *, sim=None, tfsf=None, n_steps=None):
     for name, corners in records:
         end, reason, _ = injection_end(
             n_record, dt, records=corners, grid=result.grid, sim=sim, tfsf=tfsf,
-            waveguide_ports=getattr(result, "waveguide_ports", None), return_detail=True)
+            waveguide_ports=getattr(result, "waveguide_ports", None),
+            tfsf_angle_deg=getattr(result, "tfsf_angle_deg", None), return_detail=True)
         verdict = (reason if end is None else "covered" if 0 <= end < n_record else
                    f"cannot judge: the record ends at step {n_record} before the field leaves {name} (step {end})")
         entries.append((name, end, n_record, verdict))

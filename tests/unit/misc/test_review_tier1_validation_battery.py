@@ -53,7 +53,7 @@ _DZ = jnp.array([1., 1., 3., 1., 1., 3., 1., 1.], dtype=jnp.float32) * 1.0e-3
 
 
 # ===========================================================================
-# CORE-C2 — non-uniform Yee H/E spacing metrics  (FIXED 2026-05-16)
+# CORE-C2 — non-uniform Yee H/E spacing metrics  (FIXED)
 # ===========================================================================
 #
 # First-principles Yee staggering (1-D, z-axis):
@@ -89,8 +89,8 @@ def test_corec2_h_update_uses_local_cell_width():
 
     # Production wiring: _profile_to_inv_arrays -> (E array, H array);
     # the runner passes the H array (2nd) to update_h_nu.
-    _, inv_dz_h = _profile_to_inv_arrays(np.asarray(dz))
-    _, inv_xy_h = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
+    _, inv_dz_h = _profile_to_inv_arrays(np.asarray(dz), dtype="float32")
+    _, inv_xy_h = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64), dtype="float32")
     new = update_h_nu(state, mats, dt, inv_xy_h, inv_xy_h, inv_dz_h, high_wall=(False, False, False))
 
     # curl_x = dEz/dy - dEy/dz = -discrete(dEy/dz); hx = -(dt/mu)*curl_x
@@ -120,8 +120,8 @@ def test_corec2_e_update_uses_mean_spacing():
     dt = 1.0e-13
 
     # Production wiring: the runner passes the E array (1st) to update_e_nu.
-    inv_dz_e, _ = _profile_to_inv_arrays(np.asarray(dz))
-    inv_xy_e, _ = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
+    inv_dz_e, _ = _profile_to_inv_arrays(np.asarray(dz), dtype="float32")
+    inv_xy_e, _ = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64), dtype="float32")
     new = update_e_nu(state, mats, dt, inv_xy_e, inv_xy_e, inv_dz_e,
                       cell_sizes=(None, None, dz), high_wall=(False, False, False))
 
@@ -133,7 +133,7 @@ def test_corec2_e_update_uses_mean_spacing():
 
 
 # ===========================================================================
-# GEO-C1 — Kerr ADE exact implicit solve  (FIXED 2026-05-17, Stage 1)
+# GEO-C1 — Kerr ADE exact implicit solve  (FIXED, Stage 1)
 # ===========================================================================
 #
 # apply_kerr_ade previously implemented  E <- E*(1-factor)  (explicit
@@ -191,7 +191,7 @@ def test_geoc1_kerr_ade_selfconsistent_solve():
 
 
 # ===========================================================================
-# PROBE-C1 — FluxMonitor axis-aware area weighting  (FIXED 2026-05-16)
+# PROBE-C1 — FluxMonitor axis-aware area weighting  (FIXED)
 # ===========================================================================
 #
 # The pre-fix FluxMonitor stored a single scalar ``dx`` and flux_spectrum
@@ -229,8 +229,7 @@ def test_probec1_flux_area_is_axis_aware():
 # ===========================================================================
 #
 # ris._extract_reflection (probes.py fallback) runs np.interp over a
-# complex rfft spectrum. The review claimed np.interp drops the
-# imaginary part. This test adjudicates against the installed numpy.
+# complex rfft spectrum. This test adjudicates against the installed numpy.
 
 def test_risc2_np_interp_complex_part_behavior():
     xp = np.array([0.0, 1.0])
@@ -267,7 +266,7 @@ def test_optc1_falsifier_yee_matches_corrected_analytic():
     dx = 0.005
     L_eff = (N - 1) * dx
     f_corrected = (C0 / 2.0) * np.sqrt(2.0) / L_eff   # TE101 of L_eff cube
-    f_biased = (C0 / 2.0) * np.sqrt(2.0) / (N * dx)   # the pre-#338 analytic
+    f_biased = (C0 / 2.0) * np.sqrt(2.0) / (N * dx)   # the earlier analytic
 
     dt = 0.99 * dx / (C0 * np.sqrt(3.0))
     n_steps = 6000

@@ -43,7 +43,7 @@ class Scene:
 
 def describe(sim, name, count, steps, expected_nx, expected_box, expected_seams, freqs):
     grid = sim._build_grid()
-    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=steps)
+    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=steps, dtype='float32')
     layout = Slab(grid.nx, count)
     seams = [r * layout.nx_per_rank for r in range(1, count)]
     box_rows = [[getattr(cfg, f"{axis}_lo"), getattr(cfg, f"{axis}_hi")] for axis in "xyz"]

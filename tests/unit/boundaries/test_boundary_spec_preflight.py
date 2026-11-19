@@ -57,7 +57,7 @@ def test_periodic_cpml_mix_preflight_suppresses_cpml_on_periodic_axis():
     # periodic must be reflected in the legacy view for downstream code.
     assert sim._periodic_axes == "x"
     # Allocator-level check: the Grid built from this sim must have no
-    # CPML on the periodic x axis (issue #68 fix via BoundarySpec shim).
+    # CPML on the periodic x axis (via BoundarySpec shim).
     grid = sim._build_grid()
     assert "x" not in grid.cpml_axes, (
         f"CPML was allocated on the periodic x axis; got cpml_axes="

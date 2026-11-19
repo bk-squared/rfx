@@ -41,7 +41,7 @@ def _reference(grid):
 def test_incident_phase_matches_actual_3d_e_clock_and_position(polarization):
     grid, vacuum = _rig()
     cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8,
-                           f0=F0, polarization=polarization, tfsf_margin=3)
+                           f0=F0, polarization=polarization, tfsf_margin=3, dtype='float32')
     indices = [cfg.x_lo + 2, grid.nx // 2, cfg.x_hi - 2]
     probes = [ProbeSpec(i, grid.ny // 2, grid.nz // 2, polarization) for i in indices]
     result = run(grid, vacuum, STEPS, boundary="cpml", tfsf=(cfg, state), probes=probes)
@@ -93,7 +93,7 @@ def test_source_delay_cancels_from_complex_response(monkeypatch):
     times = np.arange(STEPS) * float(grid.dt)
     spectra = []
     for t0 in (cfg.src_t0, cfg.src_t0 + delay):
-        # #1839: each finite charge-free DG uses its own cutoff t0/tau.
+        # each finite charge-free DG uses its own cutoff t0/tau.
         c, u = t0 / cfg.src_tau, times / cfg.src_tau
         arg = (times - t0) / cfg.src_tau
         bare = -2.0 * arg * np.exp(-arg**2)
@@ -191,6 +191,6 @@ def test_unsupported_phase_contract_refuses_before_solving(monkeypatch, change, 
 @pytest.mark.parametrize("index", [-1, 0.5, True, 999])
 def test_incident_reference_index_refuses_outside_slab(index):
     grid, _ = _rig()
-    cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8, f0=F0)
+    cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8, f0=F0, dtype='float32')
     with pytest.raises(ValueError, match="integer E-node"):
         measure_normal_incident_spectrum(cfg, state, STEPS, FREQS, grid.dt, reference_index=index)

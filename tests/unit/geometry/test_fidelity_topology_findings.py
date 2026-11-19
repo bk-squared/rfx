@@ -246,7 +246,7 @@ PIN_REACH = PIN_R + DX / math.sqrt(2.0)
 
 # ---------------------------------------------------------------------------
 # Fixture witnesses: the two copies differ ONLY by the hole, and the hole is
-# what the findings must see. Measured on 88c49bdc (design review).
+# what the findings must see. Measured.
 # ---------------------------------------------------------------------------
 
 def test_fixture_copies_differ_only_by_the_junction_hole():
@@ -273,7 +273,7 @@ def test_fixture_copies_differ_only_by_the_junction_hole():
     annulus = (r > PIN_R + 1e-9) & (r <= CLEAR_R + 1e-9)
     assert int(annulus.sum()) == 36
     # the shorted copy: every clearance-annulus node at the junction plane
-    # carries a realized PEC wall (#589 root cause, measured 36/36)
+    # carries a realized PEC wall (root cause, measured 36/36)
     assert int((m_short & annulus).sum()) == 36
     # the open copy: the only metal left in the annulus is the pin's own
     # realized rim, all of it at r = 224 um <= PIN_REACH
@@ -426,7 +426,7 @@ def test_rule_i_lists_every_earlier_conductor_and_sums_the_union():
     assert f["conductor_entities"] == [0, 1]
     # The oracle must use the samplers the code uses, or it agrees for the
     # wrong reason: a PEC VOLUME is realized from cell CENTRES and a
-    # dielectric from NODES (#931 §1.1). On this geometry the two PEC
+    # dielectric from NODES. On this geometry the two PEC
     # samplers select DIFFERENT z layers (node 4 vs cell 3) that happen to
     # give the same count, so a node-sampled oracle here would not
     # discriminate.

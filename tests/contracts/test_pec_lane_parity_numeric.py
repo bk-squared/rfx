@@ -160,14 +160,13 @@ def test_the_vmap_sweep_fast_path_realizes_the_same_conductor():
 
 
 #: The shard_map distributed lane against the uniform lane, relative on the
-#: probe peak. Measured on this fixture at 2 virtual CPU devices (2026-09-15,
-#: jax 0.10.2, float32, 200 steps): the empty-domain LANE FLOOR is 1.472e-06
+#: probe peak. Measured on this fixture at 2 virtual CPU devices (jax 0.10.2, float32, 200 steps): the empty-domain LANE FLOOR is 1.472e-06
 #: and the ``volume`` row is 1.035e-05, so the gate carries ~190x headroom
 #: over the number it gates. It is the same 2e-3 the vmap row above uses, and
 #: for the same reason: these lanes run different kernels and different
 #: float32 fusions over the same declaration, so the contract is "same
 #: conductor", not "same arithmetic". The defect it has to reject is the one
-#: this lane shipped until #1053 — the body absent altogether, which moves
+#: this lane shipped — the body absent altogether, which moves
 #: the peak by 3.3e-01 relative (``volume`` against ``none``, measured on the
 #: uniform lane), 166x the gate.
 V2_LANE_REL_GATE = 2e-3
@@ -235,7 +234,7 @@ def test_the_subgridded_lane_refuses_a_sheet_it_cannot_realize():
         sim.add(Box((FOOT_LO[0] - 0.35 * DX, FOOT_LO[1] - 0.35 * DX, Z_PLANE),
                     (FOOT_HI[0] + 0.35 * DX, FOOT_HI[1] + 0.35 * DX, Z_PLANE)), material="pec")
         sim.add_source(position=SRC, component="ez")
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(6e-3, 14e-3), ratio=2, validation="research")
         with pytest.raises(NotImplementedError, match="PEC sheets"):
             sim.run(n_steps=4, skip_preflight=True)

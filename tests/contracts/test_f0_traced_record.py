@@ -7,13 +7,12 @@ import pytest
 from rfx import Box, Simulation
 
 
-# Computed with the review's traced_sb.py on git archive 11c7ff85e in
-# this worktree's .s2fix-review/main, before pinning these reference values.
+# Computed with traced_sb.py before pinning these reference values.
 @pytest.mark.parametrize("sigma_scale, expected", [
     (1e4, -21554.982421875), (0.25, -3342339.25),
 ], ids=["below", "above"])
 def test_f0_sigma_gradient_keeps_traced_verdict(sigma_scale, expected):
-    # Same geometry, source, probe and scalar as the S2 review's traced_sb.py.
+    # Same geometry, source, probe and scalar as the S2 traced_sb.py.
     # Like test_forward_traced_dz_with_live_dt, retain the forward record.
     observed = []
 

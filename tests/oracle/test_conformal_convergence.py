@@ -257,7 +257,7 @@ class TestConformalConvergence:
         Lz = height + 2 * margin
         center = (Lx / 2, Ly / 2, Lz / 2)
 
-        # Placement uses the declared lengths; the grid gets main's solved lengths (#1887).
+        # Placement uses the declared lengths; the grid gets main's solved lengths.
         grid = Grid(freq_max=_tm010_freq(radius) * 3,
                     domain=tuple(cells_spanning(L, dx) * dx for L in (Lx, Ly, Lz)),
                     dx=dx, cpml_layers=0)
@@ -315,7 +315,7 @@ class TestConformalConvergence:
         sim.add_port((0.03, 0.03, 0.005), "ez", waveform=GaussianPulse(f0=3e9))
         sim.add_probe((0.03, 0.045, 0.03), "ez")
 
-        # The port only excites the model; a conformal lumped S-matrix is refused (#1299).
+        # The port only excites the model; a conformal lumped S-matrix is refused.
         result_conf = sim.run(n_steps=200, conformal_pec=True, compute_s_params=False)
         result_stair = sim.run(n_steps=200)
 

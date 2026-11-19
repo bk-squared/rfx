@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 
 from rfx.core.jax_utils import is_tracer
+from rfx.errors import RfxRefusal
 
 _PREFIX = "  [PROGRESS]"
 
@@ -54,7 +55,7 @@ def validate_report_every(report_every: object, *, n_steps: int) -> int:
     simply yields one report at the end.
     """
     if is_tracer(report_every):
-        raise ValueError(_TRACED_MSG)
+        raise RfxRefusal(_TRACED_MSG)
     if isinstance(report_every, bool):
         # Python bools ARE ints, so True would silently mean "every step".
         raise ValueError(

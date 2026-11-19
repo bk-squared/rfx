@@ -89,7 +89,7 @@ def _assert_within_cross_trace_bar(x, y, what: str) -> None:
 # (a proven, currently-green fixture), with the geometry-leg design pixel
 # moved OFF the material-leg slab (x=24mm vs slab 12-18mm) so a JOINT
 # {alpha, rho} params pytree can be gated in one jacobian_fwd call without
-# the two legs' design regions overlapping (the #483-class confound the
+# the two legs' design regions overlapping (the confound the
 # design contract warns about: keep design regions off each other's and the
 # source's cells so FD and AD differentiate the same single channel).
 # ---------------------------------------------------------------------------
@@ -114,9 +114,9 @@ _FD_H_VALUES_MATERIAL = (0.01, 0.02, 0.04)
 # check the design contract asks for: a real derivative holds steady as h
 # grows past the noise floor, while a rounding-lattice coincidence would
 # not. "float32" here is this gate's storage AND compute dtype (both
-# default float32, unaffected by issue #630's storage-vs-arithmetic fix);
+# default float32, unaffected by the storage-vs-arithmetic fix);
 # it is not a claim that widening field STORAGE alone would raise this
-# floor -- pre-#630 the Yee compute dtype was pinned to float32
+# floor -- earlier the Yee compute dtype was pinned to float32
 # regardless of storage, so it wouldn't have.
 _FD_H_VALUES_GEOMETRY = (0.02, 0.04, 0.08)
 
@@ -155,7 +155,7 @@ def _make_eps(eps_base, slab, pix, alpha, rho, *, eps_bg=1.0, eps_fg=4.0,
               stop_gradient_tape: bool = False):
     eps = eps_base.at[slab].set(alpha)
     rho_arr = jnp.reshape(rho, (1, 1, 1))
-    fields = density_to_material_fields(rho_arr, eps_bg, eps_fg)
+    fields = density_to_material_fields(rho_arr, eps_bg, eps_fg, dtype='float32')
     eps = eps.at[pix[0], pix[1], pix[2]].set(fields.eps[0, 0, 0])
     if stop_gradient_tape:
         eps = jax.lax.stop_gradient(eps)
@@ -484,7 +484,7 @@ def test_g3_primal_carry_is_independent_of_n_t():
 # G4 -- value: matches a plain sim_fn(params) within the cross-trace bar for a
 # summed quantity (1e-4 of the peak). The value comes from a jvp-traced
 # program; on Apple arm64 XLA CPU it rounds differently from the plain program
-# (measured up to ~1.2e-6 of the peak at 320 steps, #1802). Bit identity holds
+# (measured up to ~1.2e-6 of the peak at 320 steps). Bit identity holds
 # on x86 CI but is not the contract.
 # ---------------------------------------------------------------------------
 
@@ -543,8 +543,6 @@ def test_g5_batched_and_sequential_agree_many_output():
 # ---------------------------------------------------------------------------
 # G6 -- fence regressions. See the module docstring's FENCE TAXONOMY for
 # why G6a is a runtime-raise gate and G6b/G6c are docstring-content gates.
-# (design_mask's former G6b fence was removed with the parameter itself,
-# issue #625 -- see the module docstring's trailing note.)
 # ---------------------------------------------------------------------------
 
 def test_g6a_uniform_distributed_raises_a_different_earlier_check():

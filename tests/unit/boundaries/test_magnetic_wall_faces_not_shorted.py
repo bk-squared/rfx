@@ -65,14 +65,14 @@ def _faces(**spec_kwargs):
 
 
 @pytest.mark.parametrize("declaration, periodic, pec_axes, want_pec, want_pmc", [
-    # the closed box: six electric walls on every lane (#1193)
+    # the closed box: six electric walls on every lane
     ({"boundary": "pec"}, (False, False, False), "xyz",
      {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}, set()),
     # run() hands None: the same six
     ({"boundary": "pec"}, (False, False, False), None,
      {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}, set()),
     # magnetic x and y faces, electric z: only z faces are electric,
-    # whatever the caller's axis string says (#1164, #1194)
+    # whatever the caller's axis string says
     ({"boundary": BoundarySpec(x=Boundary(lo="pmc", hi="pmc"),
                                y=Boundary(lo="pmc", hi="pmc"),
                                z=Boundary(lo="pec", hi="pec"))},

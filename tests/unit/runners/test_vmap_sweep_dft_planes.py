@@ -145,9 +145,9 @@ def _dft_sim(boundary: str = "cpml", eps_r: float = 4.0,
     # y/z hi bound is domain-edge + half a cell, not exactly the domain
     # edge: Box's rasterization is half-open ([lo, hi), see Box's own
     # docstring) so a hi bound landing EXACTLY on the domain edge drops
-    # that edge node from the box's own mask -- unrelated to #637, but it
-    # interacts with it post-#627 (rfx.geometry.rasterize_grid's hi-face
-    # vacuum fallback, closes-#627 fce1091). The margin was added because
+    # that edge node from the box's own mask -- it
+    # interacts with rfx.geometry.rasterize_grid's hi-face
+    # vacuum fallback. The margin was added because
     # the vmap helper did not reproduce that fallback, so every test
     # built on this fixture would otherwise have failed for a SEPARATE,
     # already-disclosed reason unrelated to what they test. #643 closed
@@ -277,10 +277,7 @@ class TestVmapDftPlaneFastPath:
         for idx, ev in enumerate(eps_values):
             ref = _dft_sim("pec", eps_r=float(ev)).run(n_steps=n_steps)
             # PEC has no CPML padding (grid.pad_*=0), so #637 never applied
-            # here -- measured exactly 0.0 at every bin both before and
-            # after the fix. Tightened alongside the cpml gate for the
-            # same reason (was sitting at a loose rtol=2e-3 with no
-            # measurement behind it).
+            # here -- measured exactly 0.0 at every bin.
             _assert_dft_planes_match(
                 {"p1": vmap_res.dft_planes["p1"][idx]},
                 ref.dft_planes, rtol=1e-6, ctx=f"pec eps_r={ev}",
@@ -409,8 +406,8 @@ class TestVmapMaterialSweepCpmlPad:
             # touches y/z faces and leaves x alone; this is the mirror.
             # y/z hi bound is domain-edge + half a cell, same reason as
             # _dft_sim above (Box's half-open-hi exclusion at an exact
-            # domain-edge coordinate, unrelated to #637 but interacting
-            # with #627's hi-face pad fallback post-rebase).
+            # domain-edge coordinate, interacting
+            # with the hi-face pad fallback).
             sim.add(Box((0.0, 0.0, 0.0), (0.008, 0.017, 0.017)),
                     material="slab")
             sim.add_source((0.016, 0.008, 0.008), "ez",
@@ -507,7 +504,7 @@ class TestVmapMaterialSweepCpmlPad:
                                      component="ez", n_freqs=4, name="p1")
             return sim
 
-        # --- precondition: this fixture really does exercise #627's
+        # --- precondition: this fixture really does exercise the
         # hi-face fallback, i.e. run()'s x-hi pad is NOT vacuum and the
         # naive source column (the last interior column) IS.
         probe_sim = sim_fn(4.0)
@@ -531,10 +528,10 @@ class TestVmapMaterialSweepCpmlPad:
         # shows the drop -- by design. Read the precondition off the box's
         # own rasterized mask instead, which is where the drop actually
         # happens and is what this guard always meant.
-        # #931 scope: the ownership contract changes how a CONDUCTOR is
+        # The ownership contract changes how a CONDUCTOR is
         # realized. DIELECTRIC sampling stays node-based and half-open
         # (design note §1.8), so this box still drops its hi-face node and
-        # the #627 pad fallback / #655 node repair stay live. Do not read
+        # the pad fallback / node repair stay live. Do not read
         # the contract as making this assert obsolete — it is fenced.
         probe_shape = probe_sim._geometry[0].shape
         raw = np.asarray(probe_shape.mask(probe_grid))
@@ -584,9 +581,7 @@ def _matrix_sim(shape_lo, shape_hi, *, boundary="cpml", cpml_layers=6,
     sim.add(Box(shape_lo, shape_hi), material="slab")
     if second_material:
         # A lossy, magnetic second material -- the ONLY way the shared
-        # helper's JOINT vacuum predicate can differ from a per-field one
-        # (#637's own note: none of its fixtures carried such a material,
-        # so the two predicates were indistinguishable there).
+        # helper's JOINT vacuum predicate can differ from a per-field one.
         sim.add_material("lossy", eps_r=1.0, sigma=0.02, mu_r=2.0)
         sim.add(Box((0.0, 0.0, 0.0), (0.006, 0.02, 0.02)), material="lossy")
     sim.add_source((0.01, 0.01, 0.01), "ez", waveform=GaussianPulse(f0=3e9))
@@ -774,7 +769,7 @@ class TestVmapBatchedPadByteIdentity:
             kw[field] = val
             sim = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02), **kw)
             box = (
-                # PEC -> a sheet: zero thickness on its normal (#931 §1.3)
+                # PEC -> a sheet: zero thickness on its normal
                 Box((0.0, 0.008, 0.010), (0.02, 0.012, 0.010))
                 if sigma_bulk >= 1.0e6 else
                 # DC fold -> a lossy volume, unchanged (§1.8)
@@ -787,7 +782,7 @@ class TestVmapBatchedPadByteIdentity:
         base_sim = sim_fn(base_value)
         grid = base_sim._build_grid()
         # eps/sigma/mu only — a PEC sheet owns no cell and writes no
-        # material, so the #931 collectors are passed and dropped here.
+        # material, so the collectors are passed and dropped here.
         base_materials, *_ = base_sim._assemble_materials(
             grid, pec_sheets=[], pec_wires=[])
         vals = np.asarray(values, dtype=np.float32)
@@ -885,7 +880,7 @@ class TestVmapBatchedPadByteIdentity:
         phx = grid.pad_x_hi
         assert phx > 0
         # Sample the transverse CENTRE of the x-hi pad. Not the whole
-        # slab: the same half-open rasterization that motivates #627's
+        # slab: the same half-open rasterization that motivates the
         # fallback also leaves genuine vacuum at the y/z hi nodes this
         # box excludes, and run() reproduces that exactly -- asserting
         # "all of the pad is the material" would be asserting something
@@ -901,9 +896,7 @@ class TestVmapBatchedPadByteIdentity:
         assert np.all(hi_col_1 == 9.0), (
             f"swept value 9.0 did not reach the x-hi pad (got {hi_col_1})"
         )
-        # ...and the two elements must actually DIFFER there, which is
-        # the property #637 + #643 together buy. On main this column read
-        # 1.0 for BOTH elements (the #643 defect).
+        # ...and the two elements must actually DIFFER there.
         assert not np.array_equal(hi_col_0, hi_col_1)
 
 
@@ -1017,7 +1010,7 @@ class TestVmapPortFamilyEligibility:
 
     def test_floquet_port_takes_sequential_fallback(self):
         Lx, Ly, Lz = 0.015, 0.015, 0.03
-        # #1138: geometry[1] x solved -3.75 % off; this test checks floquet port takes sequential fallback.
+        # geometry[1] x solved -3.75 % off; this test checks floquet port takes sequential fallback.
         sim = Simulation(snap="declared", freq_max=15e9, domain=(Lx, Ly, Lz), boundary="cpml",
                           cpml_layers=8, dx=0.001)
         sim.add_material("substrate", eps_r=2.2)
@@ -1025,7 +1018,7 @@ class TestVmapPortFamilyEligibility:
         patch_w = 0.008
         x0 = (Lx - patch_w) / 2
         y0 = (Ly - patch_w) / 2
-        # #931: the patch is a FOIL on the substrate top face, so it is a
+        # The patch is a FOIL on the substrate top face, so it is a
         # sheet (zero-thickness Box = the sheet declaration, §1.5). Drawn
         # one cell thick it is a VOLUME and realizes walls at BOTH
         # z = Lz/2 and z = Lz/2 + dx with Ez shorted between — a 1 mm
@@ -1043,13 +1036,13 @@ class TestVmapPortFamilyEligibility:
         assert res.time_series.shape[0] == 2
 
     def test_msl_port_takes_sequential_fallback(self):
-        # #1138: geometry[2] y solved +35 % off; this test checks msl port takes sequential fallback.
+        # geometry[2] y solved +35 % off; this test checks msl port takes sequential fallback.
         sim = Simulation(snap="declared", freq_max=5e9, domain=(0.02, 0.01, 0.006),
                           boundary="cpml", cpml_layers=6, dx=0.001)
         sim.add_material("sub", eps_r=4.0)
         sim.add(Box((0, 0, 0), (0.02, 0.01, 0.002)), material="sub")
         sim.add(Box((0, 0, 0), (0.02, 0.01, 0)), material="pec")
-        # #931: foil trace on the substrate top node plane -> a sheet.
+        # Foil trace on the substrate top node plane -> a sheet.
         sim.add(Box((0, 0.004, 0.002), (0.02, 0.006, 0.002)), material="pec")
         sim.add_msl_port(position=(0.003, 0.005, 0.0), width=0.002,
                           height=0.002, direction="+x", impedance=50.0)
