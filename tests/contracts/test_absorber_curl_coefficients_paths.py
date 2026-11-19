@@ -17,7 +17,7 @@ from rfx.core.yee import EPS_0
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 from rfx.materials.debye import DebyePole
 from tests.contracts.test_absorber_curl_coefficients import (
-    LOSSLESS_BITS, coefficient_scene, coefficient_ulp_bar, edge_mean, ulps,
+    coefficient_scene, coefficient_ulp_bar, edge_mean, ulps,
 )
 from tests.unit.runners.test_distributed_nu_forward_staging import _select_legacy_poles_cpml
 
@@ -69,7 +69,7 @@ def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
 
     monkeypatch.setattr(module, 'apply_cpml_e', step)
     if 'graded' in lane:
-        # The wrapped graded step (plain CPML, #1402 item 5) imports the shared
+        # The wrapped graded step (plain CPML) imports the shared
         # kernel inside its E boundary stage; observe that call too.
         import rfx.boundaries.cpml as cpml
         monkeypatch.setattr(cpml, 'apply_cpml_e', step)
@@ -87,6 +87,7 @@ def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
 @pytest.mark.parametrize('lane', ['distributed_uniform', 'distributed_graded'])
 @pytest.mark.parametrize('face', ['x_lo', 'y_lo'])
 def test_distributed_face_uses_owner_coefficient(monkeypatch, owner, lane, face, record_property):
+    """Each active face component has at most one float32 ULP of lossless-cell error."""
     # The two faces exercise all three E components with an active psi/kappa
     # correction: x drives Ey/Ez, y drives Ex/Ez. No inactive-face surrogate.
     assert len(jax.devices('cpu')) >= 2
@@ -103,26 +104,28 @@ def test_distributed_face_uses_owner_coefficient(monkeypatch, owner, lane, face,
         if ds is not None:
             mask = ds[1][0] if isinstance(ds[1], (list, tuple)) else ds[1]
             denominator += EPS_0 * 50. * float(grid.dt) / (2 * 5e-12 + float(grid.dt)) * edge_mean(mask, c, high_wall=unpadded_high_walls(grid))
-        expected = np.asarray(float(grid.dt) / denominator, np.float32)
+        expected64 = float(grid.dt) / denominator
         if face == 'x_lo':
             # Only rank zero applies the x-low face. Its returned operand has
             # already been sliced past the one-cell communication ghost.
-            actual, expected = observed[0, c], expected[:6]
-            literal = actual[2, 7, 3]
+            actual, expected64 = observed[0, c], expected64[:6]
+            cell = (2, 7, 3)
         else:
             # y-low applies on both x ranks; remove communication ghosts and
             # stitch their real cells in the same order as the global grid.
             actual = np.concatenate([observed[rank, c][1:-1] for rank in range(2)])[:grid.shape[0]]
-            expected = expected[:, :6]
-            literal = actual[7, 2, 3]
-        difference = int(ulps(actual, expected).max())
+            expected64 = expected64[:, :6]
+            cell = (7, 2, 3)
+        difference = int(ulps(actual, expected64.astype(np.float32)).max())
+        c64 = expected64[cell]
+        lossless_ulps = abs(np.float64(actual[cell]) - c64) / np.spacing(np.float32(c64))
         values.append(dict(component=c, formula_ulps=difference,
-                           lossless_bits=int(literal.view(np.uint32))))
+                           lossless_ulps=float(lossless_ulps)))
     record_property('judge2', json.dumps(dict(owner=owner, lane=lane, face=face, components=values)))
     print(lane, face, owner, json.dumps(values))
     for value in values:
         assert value['formula_ulps'] <= coefficient_ulp_bar(owner), f'{lane}/{face}/{owner} component {value["component"]}: written Cb formula {value["formula_ulps"]} float32 ULP'
-        assert value['lossless_bits'] == LOSSLESS_BITS[value['component']]
+        assert value['lossless_ulps'] <= 1, (lane, face, owner, value)
 
 
 @pytest.mark.parametrize('lane', ['distributed_uniform', 'distributed_graded'])

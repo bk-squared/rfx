@@ -216,7 +216,7 @@ def test_explain_lists_the_sheet_component():
 # ``_ad_memory_static_accounting`` wraps the grid build in ``except
 # Exception`` so a planning helper never raises, and labels the fallback
 # ``grid_source="estimated_from_domain"`` so the artifact does not present
-# the pre-#696 arithmetic as the real grid. Every test above takes the
+# the earlier arithmetic as the real grid. Every test above takes the
 # success branch, so mutating that literal to ``"built"`` — collapsing the
 # two labels into one and making the honesty field say nothing — changed no
 # result anywhere. Both tests below fail under that mutation, and they also
@@ -280,7 +280,7 @@ def test_fallback_label_and_number_both_differ_from_the_built_grid():
             fell_back["nz"]) == _legacy_shape(sim)
     assert fell_back["cells"] > built["cells"]
     # Hand arithmetic (dx=0.2mm, 4mm y extent, cpml_layers=8): the real
-    # grid has ny = 20 + 1 + 0 = 21 (PEC faces take no pad); the pre-#696
+    # grid has ny = 20 + 1 + 0 = 21 (PEC faces take no pad); the earlier
     # arithmetic adds 2*8 unconditionally for ny = 37. x and z agree, so
     # the whole over-count is 37/21.
     assert built["ny"] == 21 and fell_back["ny"] == 37

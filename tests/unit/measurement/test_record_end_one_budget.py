@@ -80,7 +80,7 @@ def test_record_check_reads_the_applied_drive_beyond_the_record(monkeypatch):
     assert drive_tail_share(drives, cfg.dt, n, cfg.freqs)[0] > 1e-2, 'a 2000-step record near cutoff leaves drive'
 
     # A config whose timing was changed without rebuilding its tables (waveguide.py copies port 0's t0 and tau):
-    # the record check must read cannot judge, not a drive the port never applied (review P2).
+    # the record check must read cannot judge, not a drive the port never applied.
     stale = _step_port(n, src_t0=cfg.src_t0*1.01)
     settling.settling_db_from_port_records((stale,))
     assert isinstance(seen['known_drives'], ValueError), seen['known_drives']

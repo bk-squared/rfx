@@ -1,5 +1,7 @@
 """Form geometry permittivity and permeability operands in array order."""
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.errors import RfxUnsupported
 from rfx._internal._precision import resolve_field_dtype
 
@@ -46,6 +48,57 @@ def attach_tensor(materials, operands):
     return materials._replace(components=replace(components, tensor=operands))
 
 
+def _same_operand(a, b):
+    """Identity of one operand field; a tuple field compares its arrays by identity.
+
+    Operands may be traced, so they are never compared by value.
+    """
+    if a is b:
+        return True
+    if isinstance(a, tuple) and isinstance(b, tuple) and len(a) == len(b):
+        return all(x is y for x, y in zip(a, b))
+    return False
+
+
+def step_tensor(materials, operands):
+    """The operand set a step setup uses: the attached one, else the arguments.
+
+    A runner attaches its finished operands to the realization before it
+    builds any drive, so the drives and the step read one object. A direct
+    low-level caller passes them as arguments instead. When both are present
+    they must be the same arrays (each array field the same object, the
+    smooth flag equal); anything else is two operand sets for one model.
+    """
+    components = getattr(materials, "components", None)
+    attached = None if components is None else components.tensor
+    if attached is None or operands is None:
+        return operands if attached is None else attached
+    same = (_same_operand(attached.eps, operands.eps)
+            and _same_operand(attached.inv_eps, operands.inv_eps)
+            and _same_operand(attached.conformal_weights, operands.conformal_weights)
+            and _same_operand(attached.node_smoothing, operands.node_smoothing)
+            and bool(attached.inv_eps_smooth) == bool(operands.inv_eps_smooth))
+    if not same:
+        raise ValueError("two tensor operand sets for one model")
+    return attached
+
+
+def attach_run_tensor(materials, aniso_eps=None, aniso_inv_eps=None, conformal_weights=None,
+                      inv_eps_smooth=False):
+    """Attach a runner's finished operands once, before any drive is built.
+
+    Returns ``materials`` unchanged when there is no operand. The attach
+    goes through the realization entry (``with_components``), which checks
+    that the realization is current and attaches by :func:`attach_tensor`.
+    """
+    operands = TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, inv_eps_smooth)
+    if operands is None:
+        return materials
+    from rfx.model import materials as model
+    return model.with_components(materials, None, periodic=materials.components.periodic,
+                                 tensor=operands)
+
+
 def smoothing_nominal_h_max(sim, grid):
     """Maximum physical width, substituting declared profiles on traced axes.
 
@@ -75,7 +128,7 @@ def full_tensor_eps(sim, grid, materials, shape_eps_pairs):
     return compute_node_tensor_eps(
         grid, shape_eps_pairs, background_eps=1.0,
         nominal_h_max=smoothing_nominal_h_max(sim, grid),
-        field_dtype=(jnp.float64 if sim._precision == 'float64' else materials.eps_r.dtype))
+        field_dtype=resolve_coefficient_dtype(sim._precision))
 
 
 def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
@@ -116,7 +169,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             pec_shapes=pec_shapes or [],
             background_eps=1.0,
             nominal_h_max=smoothing_nominal_h_max(sim, grid),
-        )
+        dtype=resolve_coefficient_dtype(sim._precision))
         # Yee-stagger correction: the Kottke union reaches inv=0
         # on Yee-staggered components only when the cell-center
         # AND the offset position are both inside the PEC shape.
@@ -158,7 +211,7 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 from rfx.geometry.smoothing import compute_smoothed_eps
                 aniso_eps = compute_smoothed_eps(
                     grid, shape_eps_pairs, background_eps=1.0,
-                    nominal_h_max=smoothing_nominal_h_max(sim, grid))
+                    nominal_h_max=smoothing_nominal_h_max(sim, grid), dtype=resolve_coefficient_dtype(sim._precision))
 
     # Conformal PEC: form node lengths, face areas, and the SC clamp.
     # Entry admission refuses this with Stage 2; keep the exclusion
@@ -237,7 +290,7 @@ def form_reference_operands(grid, materials, *, dtype, subpixel_smoothing,
             dielectric_shapes=[],
             pec_shapes=boundary_pec_shapes,
             background_eps=1.0,
-        )
+            dtype=dtype)
     reference = None
     if conformal_weights is not None:
         from rfx.geometry.cell_table import build_cell_table

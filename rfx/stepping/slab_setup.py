@@ -81,7 +81,7 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
         def arrays(a):
             return None if a is None else (a[:, None, None],)
         return drive_columns(arrays(e), arrays(s), arrays(k), scalar_cells,
-                             owners == rank, samples, volumes, dt, cb=c)
+                             owners == rank, samples, volumes, dt, cb=c, dtype=jnp.float32)
     if _realized.ACTIVE is None:
         table = jax.vmap(local)(eps, sigma, keep, cb, ranks)
     else:

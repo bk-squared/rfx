@@ -33,9 +33,14 @@ if TYPE_CHECKING:
     from rfx._internal._uniform_specs import _StepContext
 
 
-def apply_pec_faces(state, faces, *, normal_ghost_faces=()):
-    """Retain both the lane and boundary-module wall observation points."""
+def apply_pec_faces(state, faces, *, normal_ghost_faces=(), **frame):
+    """Retain both the lane and boundary-module wall observation points.
+
+    ``frame`` (only from a high-padded step) bounds each padded axis's rows.
+    """
     from rfx.boundaries import pec as pec_walls
+    if frame:
+        return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces, **frame)
     return pec_walls.apply_pec_faces(state, faces, normal_ghost_faces=normal_ghost_faces)
 
 
@@ -95,7 +100,9 @@ def make_uniform_step(
     point, or before them when slab invariants are present. The slab E
     exchange follows the PEC mask and sources because a neighbour's next H
     update reads the completed seam plane. The returned callable retains the
-    simulation runner's signature.
+    simulation runner's signature. Under a pad, attached hooks receive the
+    padded state and must address physical cells only, as the adjoint's plane
+    hooks do.
     """
     from rfx.boundaries import pec as pec_walls
     from rfx.core import drives as core_drives
@@ -109,12 +116,23 @@ def make_uniform_step(
     dt = ctx.dt
     dx = ctx.dx
     periodic = ctx.periodic
+    from rfx.core.jax_utils import is_tracer
+    bloch_args = (dict(bloch=None, bloch_operand=ctx.bloch)
+                  if ctx.bloch is not None and any(is_tracer(p) for p in ctx.bloch)
+                  else dict(bloch=ctx.bloch))
     grid = ctx.grid
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     high_wall = unpadded_high_walls(grid)
     slab = 'owns_x' in invariants
+    pad_plan = getattr(ctx, "pad_plan", None)
+    pad_frame = {} if pad_plan is None else dict(frame=pad_plan.frame)
+    if pad_plan is not None and slab:
+        raise NotImplementedError("vector padding: a slab step not padded yet")
+    from rfx.stepping.vector_pad import physical_state
+    view = ((lambda st: st) if pad_plan is None else
+            (lambda st: physical_state(st, pad_plan)))
     face_args = (dict(frame=ctx.x_face_frame, owned=invariants['owns_x'])
-                 if slab else {})
+                 if slab else pad_frame)
     if slab:
         high_wall = (False, *high_wall[1:])
     tensor = materials.components.tensor
@@ -127,7 +145,7 @@ def make_uniform_step(
         if 'cpml_x' in invariants:
             from rfx.stepping.slab_cpml import apply
             return apply(kernel, ctx, invariants, state, psi, **kwargs)
-        return kernel(state, ctx.cpml_params, psi, grid, ctx.cpml_axes, **kwargs)
+        return kernel(state, ctx.cpml_params, psi, grid, ctx.cpml_axes, **kwargs, **pad_frame)
 
     if ctx.use_sheet_impedance:
         from rfx.stepping.conductors import (
@@ -156,7 +174,7 @@ def make_uniform_step(
         # ``J = curl_h H - eps0 dE/dt`` the lattice's own current.
         # Slab-sized: the reverse-mode tape carries the slab, not the domain.
         if ctx.use_current_moments:
-            frame.e_prev_slab = _slab_e_snapshot(frame.st, ctx.current_moments)
+            frame.e_prev_slab = _slab_e_snapshot(view(frame.st), ctx.current_moments)
 
     def he_update(frame: UniformFrame):
         """Advance H and E together with conductor faces baked into coefficients."""
@@ -170,7 +188,7 @@ def make_uniform_step(
                 frame.st = ctx.apply_upml_h(frame.st, ctx.upml_coeffs, periodic=periodic)
             else:
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
-                    high_wall=high_wall, stencil_order=ctx.stencil_order, bloch=ctx.bloch,
+                    high_wall=high_wall, stencil_order=ctx.stencil_order, **bloch_args,
                     magnetic_factors=invariants["magnetic_factors"],
                     h_row_factors=invariants["h_row_factors"])
 
@@ -259,7 +277,7 @@ def make_uniform_step(
                     aniso_eps=aniso_eps,
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,
-                    bloch=ctx.bloch,
+                    **bloch_args,
                     boundary=ctx.curl_boundary,
                     **face_args,
                 )
@@ -278,6 +296,7 @@ def make_uniform_step(
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
                     boundary=ctx.curl_boundary,
+                    **pad_frame,
                 )
 
     def design(frame: UniformFrame):
@@ -388,7 +407,7 @@ def make_uniform_step(
                         frame.st, ctx.pec_faces_frozen, **face_args)
                 else:
                     frame.st = apply_pec_faces(frame.st, ctx.pec_faces_frozen,
-                                               normal_ghost_faces=ctx.wall_loss_faces)
+                                               normal_ghost_faces=ctx.wall_loss_faces, **pad_frame)
 
         if ctx.use_lumped_rlc:
             frame.st, frame.new_rlc_states = ctx.update_rlc_elements(
@@ -406,7 +425,7 @@ def make_uniform_step(
         # off-diagonal incident-wave denominator and the byte-frozen
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
-        refs = pre_injection_samples(frame.st, port_specs, lambda component, mid: dx,
+        refs = pre_injection_samples(view(frame.st), port_specs, lambda component, mid: dx,
                                      table=invariants.get('port_table'))
         frame.wire_ref_samples = [ref for spec, ref in zip(port_specs, refs) if spec[2] == 'wire']
         frame.lumped_ref_samples = [ref for spec, ref in zip(port_specs, refs) if spec[2] == 'lumped']
@@ -442,7 +461,7 @@ def make_uniform_step(
             for accs, rp_meta in zip(frame.carry["wire_refplane_accs"],
                                      ctx.wire_refplane_meta):
                 v_dft_r, im_dft_r, ip_dft_r = accs
-                v_r, im_r, ip_r = wire_refplane_step_vi(frame.st, rp_meta, dx)
+                v_r, im_r, ip_r = wire_refplane_step_vi(view(frame.st), rp_meta, dx)
                 frame.refplane_samples.append(jnp.stack((v_r, im_r, ip_r)))
                 phase_r = port_dft_phase(frame.step_idx, rp_meta.freqs, dt, dtype=v_dft_r.dtype)
                 frame.new_refplane_accs.append((
@@ -468,14 +487,15 @@ def make_uniform_step(
 
     def after_sources(frame: UniformFrame):
         """Read the completed physical fields for ports and observers."""
+        st = view(frame.st)
         frame.port_samples = []
         if port_specs:
-            dtype = frame.st.ex.dtype
+            dtype = st.ex.dtype
             table = invariants.get('port_table')
             if table is None and dtype not in port_tables:
                 port_tables[dtype] = port_table(grid, port_specs, nu=False,
                                                boundary=ctx.curl_boundary, dtype=dtype)
-            port_values = project(frame.st, port_tables[dtype] if table is None else table)
+            port_values = project(st, port_tables[dtype] if table is None else table)
             refs = (*frame.wire_ref_samples, *frame.lumped_ref_samples)
             if not ctx.port_record_vref:
                 refs = tuple(jnp.zeros_like(a) for a in refs)
@@ -515,7 +535,7 @@ def make_uniform_step(
 
         if ctx.use_waveguide_ports:
             from rfx.measurement.modal import write_waveguide_record
-            waveguide_values = project(frame.st, invariants['waveguide_table'])
+            waveguide_values = project(st, invariants['waveguide_table'])
 
             frame.new_waveguide_port_accs = []
             for port, (accs, cfg_meta) in enumerate(zip(frame.carry["waveguide_port_accs"], ctx.waveguide_meta)):
@@ -544,31 +564,31 @@ def make_uniform_step(
 
         # Probe samples
         if 'probe_table' in invariants:
-            frame.probe_out = project(frame.st, invariants['probe_table'])
+            frame.probe_out = project(st, invariants['probe_table'])
         else:
-            samples = [getattr(frame.st, pc)[pi, pj, pk]
+            samples = [getattr(st, pc)[pi, pj, pk]
                        for pi, pj, pk, pc in ctx.prb_meta]
             frame.probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
         # NTFF accumulation
         if ctx.use_ntff:
             frame.ntff_new = ctx.accumulate_ntff(
-                frame.carry["ntff"], frame.st, ctx.ntff, dt, frame.step_idx)
+                frame.carry["ntff"], st, ctx.ntff, dt, frame.step_idx)
 
         # Block current moments — same slot as the NTFF box, so the state
         # holds E at (n+1)*dt and H at (n+1/2)*dt, and the soft-source loop
         # above has already put the feed current into E.
         if ctx.use_current_moments:
             frame.cm_new = ctx.accumulate_current_moments(
-                frame.carry["current_moments"], frame.st, frame.e_prev_slab,
+                frame.carry["current_moments"], st, frame.e_prev_slab,
                 ctx.current_moments, dt, frame.step_idx)
 
         from rfx.measurement.accumulators import planes, flux
         if ctx.use_dft_planes:
             frame.new_dft_planes, frame.plane_samples = planes(
-                frame.st, frame.carry["dft_planes"], ctx.dft_meta, dt, frame.step_idx)
+                st, frame.carry["dft_planes"], ctx.dft_meta, dt, frame.step_idx)
         if ctx.use_flux_monitors:
-            frame.new_flux_accs = flux(frame.st, frame.carry["flux_monitors"], ctx.flux_meta, dt,
+            frame.new_flux_accs = flux(st, frame.carry["flux_monitors"], ctx.flux_meta, dt,
                                  frame.step_idx, window_step=frame.st.step)
 
     def step_end(frame: UniformFrame):
@@ -583,9 +603,9 @@ def make_uniform_step(
         # ---- per-step extras (caller-specific outputs) ----
         frame.extras: dict = {}
         if ctx.use_snapshot:
-            frame.extras["snap_fields"] = ctx.snapshot_extractor(frame.st)
+            frame.extras["snap_fields"] = ctx.snapshot_extractor(view(frame.st))
         if ctx.use_monitor:
-            frame.extras["monitor_val"] = getattr(frame.st, ctx.monitor_component)[
+            frame.extras["monitor_val"] = getattr(view(frame.st), ctx.monitor_component)[
                 ctx.mon_idx[0], ctx.mon_idx[1], ctx.mon_idx[2]]
 
     def finish(frame: UniformFrame):

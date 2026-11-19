@@ -18,7 +18,7 @@ from rfx import Simulation
 def _nu_sim(*, precision: str) -> Simulation:
     dz = np.full(20, 1.0e-3)
     sim = Simulation(
-        freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 0.0), dx=299792458.0 / 5.0e9 / 20.0, dz_profile=dz,  # solved length; #1887
+        freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 0.0), dx=299792458.0 / 5.0e9 / 20.0, dz_profile=dz,  # solved length
         boundary="pec", precision=precision,
     )
     sim.add_source(
@@ -32,7 +32,7 @@ def _uniform_sim(*, precision: str) -> Simulation:
     sim = Simulation(
         freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0)), dx=(299792458.0 / 5.0e9 / 20.0), boundary="pec",
         precision=precision,
-    )  # solved length; #1887
+    )  # solved length
     sim.add_source(
         position=(0.01, 0.01, 0.01), component="ez",
         amplitude_kind="current",
@@ -133,7 +133,7 @@ def _cpml_sim(*, precision: str) -> Simulation:
     sim = Simulation(
         freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0)), dx=(299792458.0 / 5.0e9 / 20.0), boundary="cpml",
         precision=precision,
-    )  # solved length; #1887
+    )  # solved length
     sim.add_source(
         position=(0.01, 0.01, 0.01), component="ez",
         amplitude_kind="current",
@@ -187,7 +187,7 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_works():
         freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0)), dx=(299792458.0 / 5.0e9 / 20.0), cpml_layers=4,
         boundary=BoundarySpec(x="pec", y="pec", z=Boundary(lo="cpml", hi="cpml")),
         precision="mixed",
-    )  # solved length; #1887
+    )  # solved length
     sim.add_source(
         position=(0.01, 0.01, 0.01), component="ez",
         amplitude_kind="current",

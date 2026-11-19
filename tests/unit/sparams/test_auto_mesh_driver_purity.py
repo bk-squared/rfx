@@ -6,10 +6,7 @@ import rfx.runners.nonuniform  # noqa: F401 - monkeypatch below targets this
                               # submodule by path, and a string target only
                               # resolves if it is already imported. Without
                               # this the test passes or fails on whatever a
-                              # sibling test happened to import first: it
-                              # was green locally and red on the VESSL image
-                              # with 'module rfx.runners has no attribute
-                              # nonuniform'.
+                              # sibling test happened to import first.
 from rfx import Box, Simulation
 from rfx.preflight.line_port_coverage import port_node_coordinate
 

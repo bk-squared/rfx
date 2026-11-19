@@ -81,11 +81,6 @@ class ArtifactBundle:
     files: tuple[Path, ...] = ()
 
 
-# ---------------------------------------------------------------------------
-# Serialization helpers
-# ---------------------------------------------------------------------------
-
-
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -119,7 +114,7 @@ def _scalar(value: Any) -> Any:
             if item is not value:
                 return _scalar(item)
     except (TimeoutError,): raise
-    except Exception:  # noqa: BLE001 - type dispatch: falls through to _array_summary
+    except Exception:  # noqa: BLE001
         pass
     return value
 
@@ -166,17 +161,16 @@ def _jsonable(value: Any, *, array_values: bool = False, max_array_values: int =
         try:
             return _jsonable(value.to_dict())
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in error
+        except Exception as exc:  # noqa: BLE001
             return {"type": type(value).__name__, "repr": repr(value),
                     "error": f"{type(exc).__name__}: {exc}"}
     if hasattr(value, "_asdict") and callable(value._asdict):
         try:
             return _jsonable(value._asdict())
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in error
+        except Exception as exc:  # noqa: BLE001
             return {"type": type(value).__name__, "repr": repr(value),
                     "error": f"{type(exc).__name__}: {exc}"}
-    # Record object identity without chasing arbitrary private state.
     return {"type": type(value).__name__, "repr": repr(value)}
 
 
@@ -198,7 +192,7 @@ def _array_summary(value: Any, *, include_peak: bool = False) -> dict[str, Any]:
             arr = _np.asarray(value)
             summary["peak"] = float(_np.max(_np.abs(arr))) if arr.size else 0.0
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in peak_error
+        except Exception as exc:  # noqa: BLE001
             summary["peak_error"] = str(exc)
     return summary
 
@@ -273,7 +267,6 @@ def _material_summary(material: Any) -> dict[str, Any]:
         "lorentz_poles": _sequence_summary(getattr(material, "lorentz_poles", None)),
     }
     if any(isinstance(p.kappa, RelativeStrength) and not is_map(p) for p in (getattr(material, "lorentz_poles", None) or ())):
-        # material_from_dict restores this declaration, including its static reference.
         out["definition"] = material_to_dict(material, preserve_relative=True)
     return out
 
@@ -285,7 +278,7 @@ def _bbox(shape: Any) -> list[list[Any]] | None:
         lo, hi = shape.bounding_box()
         return [_jsonable(lo, array_values=True), _jsonable(hi, array_values=True)]
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in bounding_box
+    except Exception as exc:  # noqa: BLE001
         return [["error", str(exc)]]
 
 
@@ -312,7 +305,7 @@ def _entry_summary(entry: Any, *, kind: str, index: int) -> dict[str, Any]:
         })
     for key, value in data.items():
         if key == "radius" and value is None and kind in ("source", "lumped-port"):
-            continue  # Keep legacy source/port records byte-for-byte shaped.
+            continue
         out[key] = _jsonable(value, array_values=True)
     return out
 
@@ -329,11 +322,6 @@ def _geometry_entities(scene: dict[str, Any]) -> list[dict[str, Any]]:
                 "material": item.get("material_name") or item.get("material"),
             })
     return entities
-
-
-# ---------------------------------------------------------------------------
-# Public builders
-# ---------------------------------------------------------------------------
 
 
 def build_scene_artifact(sim: Any, *, include_private: bool = False) -> dict[str, Any]:
@@ -393,8 +381,6 @@ def build_scene_artifact(sim: Any, *, include_private: bool = False) -> dict[str
     scene: dict[str, Any] = {
         "schema_version": SCENE_SCHEMA_VERSION,
         "simulation": simulation,
-        # Flat aliases make the scene artifact convenient for grep/review and
-        # preserve the older lightweight geometry-export ergonomics.
         "freq_max": simulation["freq_max"],
         "domain": simulation["domain"],
         "mode": simulation["mode"],
@@ -472,7 +458,7 @@ def _mesh_summary(sim: Any, *, n_steps: int | None, available_memory_gb: float |
             "dt": _safe_float(getattr(grid, "dt", None)),
         })
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in mesh.error
+    except Exception as exc:  # noqa: BLE001
         mesh["error"] = f"{type(exc).__name__}: {exc}"
 
     if hasattr(sim, "mesh_intelligence_report"):
@@ -484,7 +470,7 @@ def _mesh_summary(sim: Any, *, n_steps: int | None, available_memory_gb: float |
             mesh["audit"] = _jsonable(audit.to_dict() if hasattr(audit, "to_dict") else audit)
             mesh["audit"]["status"] = "available"
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in mesh.audit.error
+        except Exception as exc:  # noqa: BLE001
             mesh["audit"] = {"status": "unavailable", "error": f"{type(exc).__name__}: {exc}"}
     return mesh
 
@@ -503,8 +489,6 @@ def _preflight_summary(sim: Any, *, n_steps: int | None, available_memory_gb: fl
                 n_steps_for_memory=n_steps,
                 available_memory_gb=available_memory_gb,
             )
-        # `issues or []` would call bool() on the PreflightReport, which
-        # refuses it. Only the None guard was ever load-bearing.
         issues_list = [str(issue) for issue in (issues if issues is not None else [])]
         return {
             "status": "passed" if not issues_list else "issues",
@@ -513,7 +497,7 @@ def _preflight_summary(sim: Any, *, n_steps: int | None, available_memory_gb: fl
             "stdout": [line for line in stdout.getvalue().splitlines() if line.strip()],
         }
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in issues
+    except Exception as exc:  # noqa: BLE001
         return {
             "status": "error",
             "issues": [f"{type(exc).__name__}: {exc}"],
@@ -703,11 +687,6 @@ def build_runtime_report(
     return _jsonable(report)
 
 
-# ---------------------------------------------------------------------------
-# Rendering and validation
-# ---------------------------------------------------------------------------
-
-
 def _fmt(value: Any) -> str:
     if value is None:
         return "—"
@@ -862,11 +841,6 @@ def validate_artifact_report(report: dict[str, Any], *, bundle_root: str | Path 
     return errors
 
 
-# ---------------------------------------------------------------------------
-# Bundle export
-# ---------------------------------------------------------------------------
-
-
 def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True, default=str) + "\n")
 
@@ -931,7 +905,7 @@ def export_artifact_bundle(
         declared_files.append({"path": "scene.json", "role": "scene-json"})
 
     if geometry_path is not None:
-        from rfx.io import export_geometry_json  # local import avoids top-level cycles
+        from rfx.io import export_geometry_json
 
         export_geometry_json(geometry_path, sim)
         declared_files.append({"path": "geometry.json", "role": "legacy-geometry-json"})
@@ -940,7 +914,7 @@ def export_artifact_bundle(
         state = field_state if field_state is not None else getattr(result, "state", None)
         grid = field_grid if field_grid is not None else getattr(result, "grid", None)
         if state is not None and grid is not None:
-            from rfx.visualize3d import save_field_vtk  # local import; existing suffix behavior
+            from rfx.visualize3d import save_field_vtk
 
             written = Path(save_field_vtk(state, grid, str(root / "fields")))
             vtk_path = written if written.is_absolute() else root / written.name

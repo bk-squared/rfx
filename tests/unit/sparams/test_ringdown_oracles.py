@@ -351,8 +351,7 @@ def test_the_two_window_witness_is_small_on_a_clean_record_and_flags_a_short_one
     assert 0.1 <= ws.value / actual <= 10.0, (ws.value, actual)
 
 
-#: Two equal Q 400 modes at 2.5 GHz, 0.1 % apart, and a Q 60 mode at 2.03 GHz
-#: (the close pair of rfx #1254's research item R-i, panel A).
+#: Two equal Q 400 modes at 2.5 GHz, 0.1 % apart, and a Q 60 mode at 2.03 GHz.
 PAIR = (
     (2.5e9, 400.0, 0.5 * np.exp(0.2j)),
     (2.5e9 * 1.001, 400.0, 0.5 * np.exp(2.5j)),

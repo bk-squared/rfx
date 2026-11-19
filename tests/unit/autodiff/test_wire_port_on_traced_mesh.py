@@ -43,6 +43,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from tests._fd_minimum import assert_same_minimum_cells
+
 from rfx import Simulation
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry import Box
@@ -354,11 +356,18 @@ def test_s11_gradient_matches_a_central_difference_and_is_second_order():
 def test_the_step_the_run_used_is_in_the_derivative_too():
     """The unpinned lane is a different function of delta — the step moves
     with the smallest cell — and AD has to follow it there as well, or the
-    pin would be hiding an error rather than removing one."""
+    pin would be hiding an error rather than removing one.
+
+    The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
+    """
     d0 = 0.25 * DX
+    h = DX / 32
+    assert_same_minimum_cells(_prof(d0), [
+        ("delta (-)", _prof(d0 - h)), ("delta (+)", _prof(d0 + h))])
     _, ad = jax.jvp(lambda d: _obs(d, pin_dt=False), (jnp.float32(d0),),
                     (jnp.float32(1.0),))
-    fd = _fd(d0, DX / 32, pin_dt=False)
+    fd = _fd(d0, h, pin_dt=False)
     assert abs(float(ad) - fd) / abs(fd) < 2e-2, f"{float(ad)} vs {fd}"
 
 

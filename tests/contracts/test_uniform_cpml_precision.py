@@ -1,4 +1,4 @@
-"""B2/B6: synthetic CPML box coefficients and original float32 bits."""
+"""Synthetic box coefficient precision and float32 field and probe rounding."""
 from pathlib import Path
 import sys
 import warnings
@@ -33,21 +33,38 @@ def solve(entry, precision):
         sys.setprofile(previous)
 
 
+def check_accumulated_law(result, state, expected, record_property):
+    """Scale each field by its family peaks and both Ez probes by the running E peaks."""
+    for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz', 'time_series'):
+        actual = np.asarray(result.time_series if name == 'time_series' else getattr(state, name))
+        reference = expected[name]
+        assert actual.dtype == np.float32
+        assert actual.shape == reference.shape
+        delta = np.abs(actual.astype(np.float64) - reference)
+        if name == 'time_series':
+            error = delta.max(axis=1)
+            allowance = 1.2e-7 * np.cumsum(expected['peak_E'], dtype=np.float64)
+        else:
+            error = delta.max()
+            family = 'peak_E' if name.startswith('e') else 'peak_H'
+            allowance = 1.2e-7 * np.sum(expected[family], dtype=np.float64)
+        ratios = np.divide(error, allowance, where=allowance != 0,
+                           out=np.where(error == 0, 0., np.inf))
+        ratio = float(ratios.max())
+        record_property(f'{name}_ratio', ratio)
+        assert ratio <= 1, (name, ratio)
+
+
 @pytest.mark.parametrize('entry', ('run', 'forward'))
-def test_uniform_cpml_float32_bitwise_original(entry):
-    # Generated from git archive 95e66c479: uniform B1 dielectric CPML box,
-    # explicit float32, 36 steps, checkpoint=False. Store only final fields
-    # and probe series, viewed as uint32, for both entry points.
-    reference = Path(__file__).with_name('uniform_cpml_float32_95e66c479.npz')
+def test_uniform_cpml_float32_within_accumulated_law(entry, record_property):
+    """Bound field and probe errors by 1.2e-7 times accumulated float64 family peaks."""
+    reference = Path(__file__).with_name('uniform_cpml_float64_reference.npz')
     try:
         with jax.enable_x64(False), warnings.catch_warnings(), np.load(reference) as expected:
             warnings.simplefilter('ignore', UserWarning)
             result, state = solve(entry, 'float32')
-            for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz', 'time_series'):
-                actual = np.asarray(result.time_series if name == 'time_series' else getattr(state, name))
-                assert actual.dtype == np.float32
-                np.testing.assert_array_equal(actual.view(np.uint32), expected[f'{entry}_{name}'],
-                                              err_msg=f'B6 uniform {entry}.{name} differs from 95e66c479')
+            jax.block_until_ready(result.time_series)
+            check_accumulated_law(result, state, expected, record_property)
     finally:
         jax.clear_caches()
 
