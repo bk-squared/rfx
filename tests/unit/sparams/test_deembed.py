@@ -115,7 +115,6 @@ class TestDeembedPortExtension:
 
         A symmetric DUT (S11==S22, S12==S21) measured through identical feed
         lines should remain symmetric after de-embedding.
-        The S-parameter magnitudes should be unchanged (phase-only correction).
         """
         n_freqs = 30
         freqs = np.linspace(1e9, 6e9, n_freqs)

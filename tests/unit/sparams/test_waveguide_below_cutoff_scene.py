@@ -127,7 +127,7 @@ def test_e4_wr90_gradient(monkeypatch):
     sim = scene(False)
     grid = sim._build_grid()
     window = jnp.zeros(grid.shape).at[grid.index_of("x", .05):grid.index_of("x", .06), :, :].set(1.)
-    assert not np.any(np.asarray(window)[[grid.index_of("x", .01), grid.index_of("x", .09)], :, :]), 'The admitted port sections must stay outside the material perturbation'
+    assert not np.any(np.asarray(window)[[grid.index_of("x", .01), grid.index_of("x", .09)], :, :]), 'Both port planes must stay outside the material perturbation'
 
     def objective(eps, raw=False):
         waves.clear()

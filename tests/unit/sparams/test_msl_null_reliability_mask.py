@@ -109,7 +109,7 @@ def test_voltage_only_dip_remains_reliable():
 
 
 def test_unreliable_bins_emit_one_aggregate_warning():
-    """The warning's purpose includes the uncertainty caveat."""
+    """Check the warning's purpose and uncertainty caveat, not its prose."""
     reliable = np.array([[True, False, False], [True, True, False]])
     with pytest.warns(UserWarning) as recorded:
         _warn_msl_wave_split_unreliable(

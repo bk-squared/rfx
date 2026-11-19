@@ -70,7 +70,7 @@ def test_nprobe_recovers_planted_amplitudes(beta_true, n_probes):
     v = _planted_voltages(alpha, gamma, beta_true, x)[None, :]
     i1 = jnp.asarray([(alpha - gamma) / z0_true])
     beta0 = jnp.asarray([beta_true * 1.06])
-    assert np.isclose(float(beta0[0]) / beta_true, 1.06), 'The beta scan needs an analytic guess offset by six percent'
+    assert not np.isclose(float(beta0[0]), beta_true) and float(beta0[0]) * 0.65 < beta_true < float(beta0[0]) * 1.35, 'The planted beta must differ from its guess and lie inside the scan window'
 
     res = extract_msl_nprobe(v, x, i1, beta0, z0_hj=z0_true)
 

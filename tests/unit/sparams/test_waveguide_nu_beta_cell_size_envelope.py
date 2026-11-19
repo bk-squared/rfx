@@ -92,7 +92,7 @@ def test_mode_impedance_is_cell_size_independent(envelope):
 
 def test_effect_is_resolved_at_the_production_float32_precision(envelope):
     """The lane runs float32; the recorded float32 column must still show the effect.
-    A few float32 ulp per operand are far below the recorded differences.
+    Float32 beta near 1e2 rad/m carries about 1e-5 rad/m per ulp, keeping a few ulp per operand below the 1e-3 rad/m bar.
     """
     for r in envelope["rows"]:
         d32 = r["delta_beta_float32_rad_per_m"]

@@ -20,7 +20,7 @@ def _board():
 
 @pytest.mark.parametrize("auto_mesh", [False, True])
 def test_waveguide_driver_preserves_declared_mesh_on_solve_failure(monkeypatch, auto_mesh):
-    """The board is a partial fill, so section admission refuses it before the runner."""
+    """Section admission refuses the partial-fill board before the runner only when auto_mesh=True."""
     if auto_mesh:
         sim = _board()
     else:

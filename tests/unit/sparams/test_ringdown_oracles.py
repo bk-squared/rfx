@@ -36,7 +36,7 @@ MODES = (
 
 
 def _true_poles(modes=MODES):
-    """Each mode is (f Hz, Q, residue channel 0, residue channel 1)."""
+    """Each mode is (frequency in Hz, Q, one residue per channel)."""
     s, r = [], []
     for f, q, *res in modes:
         w = 2.0 * np.pi * f
