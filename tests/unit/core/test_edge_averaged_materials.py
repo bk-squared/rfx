@@ -39,10 +39,6 @@ def _cell_owned_coeffs(eps_r, sigma):
     return (ca, ca, ca), (cb, cb, cb)
 
 
-# ---------------------------------------------------------------------------
-# (ii) the coefficient ON a material face is the mean -- and the mutation
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("mutate", [False, True],
                          ids=["edge-average", "mutation-owning-cell"])
 def test_the_coefficient_on_a_dielectric_face_is_the_mean_of_the_four_cells(
@@ -56,7 +52,6 @@ def test_the_coefficient_on_a_dielectric_face_is_the_mean_of_the_four_cells(
     dt/(5 eps_0), against dt/(9 eps_0) for the owning cell.
     """
     if mutate:
-        # Restore the defect: same call, same arguments, mean -> owning cell.
         import rfx.core.yee as _yee
         monkeypatch.setattr(
             _yee, "edge_averaged_materials",
@@ -66,11 +61,8 @@ def test_the_coefficient_on_a_dielectric_face_is_the_mean_of_the_four_cells(
     eps = _half_space_eps(1.0, 9.0, axis=2, cut=4)
     sigma = jnp.zeros(SHAPE, jnp.float32)
 
-    # Read it where the solver reads it: the baked coefficients.
     coeffs = precompute_coeffs(MaterialArrays(eps, sigma, jnp.ones(SHAPE)),
                                DT, DX, high_wall=(False, False, False))
-    # Ex(i+1/2, j, k) at k = 4 is incident on cells k = 3 (eps 1) and k = 4
-    # (eps 9), twice each over the y pair.
     cb_ex_face = float(np.asarray(coeffs.cb_ex)[2, 3, 4]) * DX
     expected_mean = DT / (5.0 * EPS_0)
     expected_owner = DT / (9.0 * EPS_0)
@@ -93,6 +85,7 @@ def test_a_lossy_face_averages_the_conductance_not_the_resistance():
     two conducting cells and two lossless ones, so it conducts half: the mean
     is 5e3 S/m. A harmonic mean would be 0 (an open circuit), which is the
     NORMAL-component rule and belongs to a different component.
+    Ez keeps the owning cell's value because the step along z cannot reach its x/y average.
     """
     idx = np.indices(SHAPE)[2]
     sigma = jnp.asarray(np.where(idx < 4, 0.0, 1e4).astype(np.float32))
@@ -100,8 +93,6 @@ def test_a_lossy_face_averages_the_conductance_not_the_resistance():
     (_, _, _), (sx, sy, sz) = edge_averaged_materials(eps, sigma, high_wall=(False, False, False))
     assert float(np.asarray(sx)[2, 3, 4]) == pytest.approx(5e3, rel=1e-6)
     assert float(np.asarray(sy)[2, 3, 4]) == pytest.approx(5e3, rel=1e-6)
-    # Ez averages over x and y, both uniform here: the step along z cannot
-    # reach it, so Ez keeps the owning cell's value.
     assert float(np.asarray(sz)[2, 3, 4]) == pytest.approx(1e4, rel=1e-6)
 
 
@@ -111,6 +102,7 @@ def test_update_e_multiplies_each_component_by_its_own_coefficient():
     One step from a seeded H on the eps = 1 / eps = 9 fixture, compared against
     the cell-owned coefficients applied by hand. The two must differ exactly on
     the cells whose four incident cells are not all the same.
+    The tolerance separates float32 ordering differences (an earlier measurement was 8e-6 relative) from the 4/5 field change when interface eps goes from 9 to 5.
     """
     rng = np.random.default_rng(1210)
     fields = [jnp.asarray(rng.standard_normal(SHAPE).astype(np.float32))
@@ -126,10 +118,6 @@ def test_update_e_multiplies_each_component_by_its_own_coefficient():
     out = update_e(st, mats, DT, DX, high_wall=(False, False, False))
     _, (cb_x, cb_y, cb_z) = edge_averaged_e_update_coeffs(eps, sigma, DT, high_wall=(False, False, False))
     cx, cy, cz = curl_h(st.hx, st.hy, st.hz, DX, (False, False, False), 2, None)
-    # Not bitwise: ``update_e`` is jitted and XLA fuses the multiply-add, so
-    # the two orderings differ by a float32 ULP or two (measured 8e-6
-    # relative). The cell-owned rule is 80 % away at the interface, so the
-    # tolerance separates them by five orders of magnitude.
     for name, got, cb, curl in (("ex", out.ex, cb_x, cx),
                                 ("ey", out.ey, cb_y, cy),
                                 ("ez", out.ez, cb_z, cz)):
@@ -142,16 +130,11 @@ def test_update_e_multiplies_each_component_by_its_own_coefficient():
     owned = np.asarray(owned_cb[0] * cx)
     got = np.asarray(out.ex)
     rel = np.abs(got - owned) / np.maximum(np.abs(owned), 1e-30)
-    # eps 9 -> 5 on the interface plane is 4/5 of the owning cell's value.
     assert rel.max() > 0.5, (
         f"the per-component rule moved Ex by at most {rel.max():.2e} of the "
         f"cell-owned value on an eps = 1 / eps = 9 step -- update_e is still "
         f"cell-owned")
 
-
-# ---------------------------------------------------------------------------
-# (iii) homogeneous bit-identity
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("eps_r,sigma_v", [(1.0, 0.0), (4.2, 3.7), (12.9, 1e3)])
 def test_a_uniform_material_gives_bit_identical_coefficients(eps_r, sigma_v):
@@ -187,10 +170,6 @@ def test_a_uniform_grid_bakes_bit_identical_fast_coefficients():
         assert np.array_equal(np.asarray(got), np.asarray(cb))
 
 
-# ---------------------------------------------------------------------------
-# (iv) the boundary convention, against the PEC incidence rule
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("periodic", [
     (True, True, True), (True, False, False), (False, True, False),
     (False, False, True), (False, False, False),
@@ -216,28 +195,22 @@ def test_the_edge_average_and_the_pec_incidence_rule_cover_the_same_cells(period
 
 
 def test_a_periodic_axis_wraps_and_a_non_periodic_one_replicates():
-    """The two out-of-domain rules, read off a single conducting layer."""
+    """The two out-of-domain rules, read off a single conducting layer.
+    With x periodic, Ey at cell 0 averages the conducting last layer as (0 + 4 + 0 + 4)/4 = 2.
+    """
     idx = np.indices(SHAPE)[0]
     sigma = jnp.asarray(np.where(idx == SHAPE[0] - 1, 4.0, 0.0).astype(np.float32))
     eps = jnp.ones(SHAPE, jnp.float32)
 
     _, (_, sy_p, _) = edge_averaged_materials(eps, sigma, (True, False, False), high_wall=(False, False, False))
-    # Ey averages over x and z; with x periodic, cell 0's backward neighbour is
-    # the conducting last layer: (0 + 4 + 0 + 4)/4 = 2.
     assert float(np.asarray(sy_p)[0, 2, 3]) == pytest.approx(2.0)
 
     _, (_, sy_n, _) = edge_averaged_materials(eps, sigma, (False, False, False), high_wall=(False, False, False))
-    # Non-periodic: cell 0 replicates itself, so it stays lossless.
     assert float(np.asarray(sy_n)[0, 2, 3]) == 0.0
-    # And the eps at that same edge is 1, not 0 -- a zero pad would be a
-    # division by zero in e_update_coeffs.
     (_, ey_n, _), _ = edge_averaged_materials(eps, sigma, (False, False, False), high_wall=(False, False, False))
-    assert float(np.asarray(ey_n)[0, 2, 3]) == pytest.approx(1.0)
+    NONZERO_EDGE_PERMITTIVITY = 1.0
+    assert float(np.asarray(ey_n)[0, 2, 3]) == pytest.approx(NONZERO_EDGE_PERMITTIVITY)
 
-
-# ---------------------------------------------------------------------------
-# lumped stamps are edge-owned: they are not averaged
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 def test_a_lumped_stamp_reaches_its_own_edge_undiluted(component):
@@ -254,7 +227,8 @@ def test_a_lumped_stamp_reaches_its_own_edge_undiluted(component):
     from rfx.core.yee import component_e_materials
     from rfx.sources.sources import stamp_lumped_sigma
 
-    g = 1.0 / (50.0 * DX)          # the port_sigma of a 50 ohm cubic cell
+    PORT_RESISTANCE_OHM = 50.0
+    g = 1.0 / (PORT_RESISTANCE_OHM * DX)
     cell = (2, 3, 4)
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
     eps = jnp.ones(SHAPE, jnp.float32)
@@ -268,15 +242,12 @@ def test_a_lumped_stamp_reaches_its_own_edge_undiluted(component):
         assert float(np.asarray(arr)[cell]) == pytest.approx(want, rel=1e-6), (
             f"{name}: a stamp on {component} reads {float(np.asarray(arr)[cell])}"
             f" on {name} at its own cell, want {want}")
-    # and nowhere else
     for arr in sig_c:
         a = np.asarray(arr).copy()
         a[cell] = 0.0
         assert np.count_nonzero(a) == 0, (
             "the lumped stamp leaked onto a neighbouring edge")
 
-    # Without the record, the same sigma array is averaged: a quarter here,
-    # a quarter on each of three neighbours. That is the defect.
     plain = MaterialArrays(eps, sigma, jnp.ones(SHAPE))
     _, sig_plain = component_e_materials(plain, high_wall=unpadded_high_walls(g))
     assert float(np.asarray(sig_plain[0])[cell]) == pytest.approx(g / 4, rel=1e-6)
@@ -295,10 +266,6 @@ def test_no_lumped_record_is_bit_identical_to_the_plain_average():
         assert np.array_equal(np.asarray(a), np.asarray(b))
 
 
-# ---------------------------------------------------------------------------
-# the DRIVE coefficient is the update's own coefficient
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 def test_the_cell_helper_agrees_with_the_grid_wide_one(component):
     """One rule, two evaluations: whole grid, and one node of it.
@@ -314,7 +281,6 @@ def test_the_cell_helper_agrees_with_the_grid_wide_one(component):
     sigma = jnp.asarray(1e3 * rng.random(SHAPE).astype(np.float32))
     lump_z = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(77.0)
     lump_x = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(13.0)
-    # Two elements on one node, on two components.
     mats = MaterialArrays(eps, sigma + lump_x + lump_z, jnp.ones(SHAPE),
                           sigma_lumped=(lump_x, None, lump_z))
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
@@ -372,7 +338,6 @@ def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
     spec = _sim.make_j_source(grid, pos, "ex", lambda t: 1.0, 3, mats,
                               amplitude_kind="current")
     assert (spec.i, spec.j, spec.k) == cell, "fixture moved off the interface"
-    # make_j_source scales Cb by the cell volume; divide it back out.
     drive = float(np.asarray(spec.waveform)[0]) * (1e-3 ** 3)
     update_cb = float(np.asarray(e_component_coeffs(mats, grid.dt, high_wall=unpadded_high_walls(grid))[1][0])[cell])
     owning_cb = float(e_update_coeffs(eps, sigma, grid.dt)[1][cell])
@@ -401,9 +366,8 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
     wrapped = (SHAPE[0] - 1, 3, 4)
     sigma = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
     lumped = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
-    # A non-uniform VOLUME sigma as well, so the wrap is exercised.
     vol = jnp.asarray((np.indices(SHAPE)[0] * 1.0).astype(np.float32))
-    # The element sits on Ez (the record carries its component).
+    assert float(np.asarray(vol)[cell]) != float(np.asarray(vol)[wrapped]), "Volume conductivity must differ across the periodic seam to exercise wrapping"
     mats = MaterialArrays(jnp.ones(SHAPE, jnp.float32), sigma + vol,
                           jnp.ones(SHAPE), sigma_lumped=(None, None, lumped))
 
@@ -411,7 +375,6 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
         _, sig_c = component_e_materials(mats, periodic, high_wall=unpadded_high_walls(g))
         for name, arr in zip(("ex", "ey", "ez"), sig_c):
             a = np.asarray(arr)
-            # the volume part at this cell, computed without the stamp
             plain = MaterialArrays(jnp.ones(SHAPE, jnp.float32), vol,
                                    jnp.ones(SHAPE))
             base = np.asarray(component_e_materials(plain, periodic, high_wall=unpadded_high_walls(g))[1][
@@ -425,10 +388,6 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
                 f"{name}: the stamp wrapped onto the far face "
                 f"(periodic={periodic})")
 
-
-# ---------------------------------------------------------------------------
-# the subpixel (Kottke) lane's sigma is per-component too
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("mutate", [False, True],
                          ids=["per-component", "mutation-cell-owned-sigma"])
@@ -445,13 +404,12 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     Measured on Ex at the interface plane of a sigma = 0 / sigma = 2e4 S/m
     step along z: the edge sees 1e4 S/m, the owning cell 2e4, and Ca
     (the decay factor, with E^n the only term) differs by the ratio below.
+    Both arms compile fresh because a cached trace would hand the second arm the first arm's coefficients.
     """
     import jax
     import rfx.core.yee as _yee
     from rfx.stepping.yee import update_e_aniso_inv, update_e_nu_aniso
 
-    # Both arms compile fresh: update_e_aniso_inv is jitted, and a cached
-    # trace would hand the second arm the first arm's coefficients.
     jax.clear_caches()
     if mutate:
         import rfx.stepping.yee as _stepping_yee
@@ -467,12 +425,11 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     mats = MaterialArrays(eps, sigma, jnp.ones(SHAPE, jnp.float32))
     cell = (2, 3, 4)
 
-    # H = 0, so E^{n+1} = Ca * E^n and Ca is read directly off the field.
     one = jnp.ones(SHAPE, jnp.float32)
     zero = jnp.zeros(SHAPE, jnp.float32)
     st = FDTDState(ex=one, ey=one, ez=one, hx=zero, hy=zero, hz=zero,
                    step=jnp.array(0, jnp.int32))
-    inv = jnp.ones(SHAPE, jnp.float32)      # inv_eps = 1 -> eps_r = 1
+    inv = jnp.ones(SHAPE, jnp.float32)
 
     def ca_of(sig_value):
         """Ca = (1 - s*dt/2e) / (1 + s*dt/2e) at eps_r = 1."""
@@ -544,11 +501,9 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
     st = init_state(shape)
     lp = LumpedPort(position=pos, component="ez", impedance=50.0,
                     excitation=lambda t: 1.0)
-    # Record the port's own stamp; keep the coefficient-only material fixture.
     from rfx.sources.sources import setup_lumped_port, setup_wire_port
     setup_lumped_port(grid, lp, mats)
     out = apply_lumped_port(st, grid, lp, 0.0, mats)
-    # Drive grows by d/(R*A)=20, the measured/predicted factor.
     drive = float(np.asarray(out.ez)[cell]) * (50 * 1e-6)
     assert drive == pytest.approx(expect, rel=1e-5), (
         f"apply_lumped_port drove with {drive:.6e}; the E update multiplies "
@@ -562,7 +517,6 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
     _, _, n_live = _wire_port_live_cells(grid, wp, None)
     setup_wire_port(grid, wp, mats)
     out_w = apply_wire_port(init_state(shape), grid, wp, 0.0, mats)
-    # Norton current w/R: measured/predicted growth is 20*n_live.
     drive_w = float(np.asarray(out_w.ez)[cell]) * (50 * 1e-6)
     assert drive_w == pytest.approx(expect, rel=1e-5), (
         f"apply_wire_port drove with {drive_w:.6e} against {update_cb:.6e}")

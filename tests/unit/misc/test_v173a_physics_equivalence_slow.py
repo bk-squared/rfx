@@ -27,7 +27,6 @@ def test_v173a_drawing_and_gap_measurements_are_realized():
     sheet = rz.sheets[0]
     assert sheet.plane == node_index(rz.grid, 2, v173a._SUB_T)
     assert rz.wall_planes(2) == [sheet.plane]
-    # Independent arithmetic: every physical face is an integer node index.
     for faces in ((0., .011, .039, .05), (0., .007, .043, .05), (0., .0015, .02)):
         np.testing.assert_allclose(np.array(faces) / v173a._DX,
                                    np.rint(np.array(faces) / v173a._DX), atol=1e-12, rtol=0)
@@ -47,8 +46,7 @@ def test_v173a_drawing_and_gap_measurements_are_realized():
 
 
 def test_probe_spectrum_statistic_exposes_source_amplitude_dependence():
-    # Falsifies the retired S11 interpretation: doubling a field trace raises
-    # this statistic by 6.0206 dB. True linear reflection is scale-invariant.
+    """True linear reflection is scale-invariant."""
     dt = 1e-11
     time = np.arange(2048) * dt
     trace = np.cos(2 * np.pi * 2.1e9 * time) * np.exp(-time / 1e-8)

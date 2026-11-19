@@ -55,25 +55,24 @@ def _coeffs(mats):
 def test_a_stamp_changes_only_its_own_component_at_its_own_node(component,
                                                                   kind):
     """50 ohm (or 1 pF) on one edge: that edge's coefficient changes, at that
-    node only; the other two components are bit-identical to no stamp."""
+    node only; the other two components are bit-identical to no stamp.
+    An earlier measurement of <= 1.3e-7 relative neighbour change versus element Cb changes to 0.86x (50 ohm) and 0.057x (1 pF) places the 1e-5 cutoff decades from both.
+    """
+    RESISTANCE_OHM = 50.0
+    CAPACITANCE_F = 1e-12
     axis = COMPONENTS.index(component)
     base = _background()
     if kind == "sigma":
-        value = 1.0 / (50.0 * DX)                     # 50 ohm, cubic cell
+        value = 1.0 / (RESISTANCE_OHM * DX)
         mats = stamp_lumped_sigma(base, CELL, value, component)
     else:
-        value = 1e-12 * DX / (8.8541878128e-12 * DX * DX)   # 1 pF fold
+        value = CAPACITANCE_F * DX / (8.8541878128e-12 * DX * DX)
         mats = stamp_lumped_eps(base, CELL, value, component)
 
     ca0, cb0 = _coeffs(base)
     ca1, cb1 = _coeffs(mats)
     for c in range(3):
         for name, a0, a1 in (("Ca", ca0[c], ca1[c]), ("Cb", cb0[c], cb1[c])):
-            # The volume is recovered as (total - stamp), which is the
-            # background only to one rounding of the sum:
-            # a neighbour moves by ~1 ulp (measured <= 1.3e-7 here). The
-            # element moves its own Cb to 0.86x (50 ohm) and 0.057x (1 pF),
-            # so 1e-5 separates the two by decades on both sides.
             rel = np.abs(a1 - a0) / np.maximum(np.abs(a0), 1e-30)
             changed = np.argwhere(rel > 1e-5)
             if c == axis:
@@ -87,7 +86,6 @@ def test_a_stamp_changes_only_its_own_component_at_its_own_node(component,
                     f"{[tuple(x) for x in changed]}: a lumped element on "
                     f"{component} loads the {COMPONENTS[c]} edge too (#1236)")
 
-    # The realized edge value is the declared one, whole (not averaged).
     eps_c, sig_c = component_e_materials(mats, high_wall=(False, False, False))
     eps_b, sig_b = component_e_materials(base, high_wall=(False, False, False))
     got = (np.asarray(sig_c[axis])[CELL] - np.asarray(sig_b[axis])[CELL]
@@ -95,8 +93,6 @@ def test_a_stamp_changes_only_its_own_component_at_its_own_node(component,
            np.asarray(eps_c[axis])[CELL] - np.asarray(eps_b[axis])[CELL])
     assert got == pytest.approx(value, rel=1e-5)
 
-    # Every port / source DRIVE coefficient reads the single-node rule; it
-    # must agree with the grid-wide one for all three components.
     for c, comp in enumerate(COMPONENTS):
         ca_n, cb_n = cell_component_e_coeffs(mats, CELL, comp, DT, high_wall=(False, False, False))
         assert float(ca_n) == pytest.approx(float(ca1[c][CELL]), rel=1e-6)
@@ -160,7 +156,9 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
     own rounding. The
     random background exercises the four-cell mean; one element sits on Ez
     and one on Ey at the second slab's first real cell, whose i-1 cells are
-    the first slab's."""
+    the first slab's.
+    The two kernels spell the curl differently (division versus the jitted stencil), giving float32 rounding rather than a coefficient difference.
+    """
     from rfx.core.yee import FDTDState
     from rfx.stepping.yee import update_e
     from rfx.runners._distributed_common import (
@@ -203,17 +201,9 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
     ref = update_e(st, mats, DT, DX, high_wall=(False, False, False))
     for comp in COMPONENTS:
         b = np.asarray(getattr(ref, comp))
-        # The two kernels spell the curl differently (division vs the jitted
-        # stencil), which is float32 rounding, not a coefficient.
         np.testing.assert_allclose(np.concatenate(fields[comp]), b, rtol=2e-6,
                                    atol=1e-6 * float(np.max(np.abs(b))),
                                    err_msg=comp)
-
-
-# The dispersive (Debye/Lorentz) coefficients are per component and
-# load a stamp on its own edge only. Pinned in
-# tests/unit/materials/test_dispersive_edge_average.py
-# (test_a_lumped_stamp_loads_only_its_own_edge_on_the_dispersive_lane).
 
 
 @pytest.mark.parametrize("component", COMPONENTS)
