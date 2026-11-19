@@ -100,7 +100,7 @@ def realized(scale: float, multiband: bool = False) -> dict:
     # sits on the declared interface plane.
     pairs = [(e.shape, sim._resolve_material(e.material_name).eps_r)
              for e in sim._geometry]
-    aniso = compute_smoothed_eps_nonuniform(grid, pairs, background_eps=1.0)
+    aniso = compute_smoothed_eps_nonuniform(grid, pairs, background_eps=1.0, dtype='float32')
     comps = aniso if isinstance(aniso, (tuple, list)) else (aniso,)
     smaps = {}
     for ci, comp in enumerate(comps):

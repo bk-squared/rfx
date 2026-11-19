@@ -35,6 +35,10 @@ acyclic).
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import (
+    current_check, not_judged, report_tracer_error, traced_skip,
+)
+
 from rfx.errors import RfxRefusal, RfxWarning
 from rfx.preflight._subjects import _Region, _Selection
 
@@ -874,6 +878,8 @@ def profile_span_is_uniform(scalar_dx: float, profile,
     being told anything.
     """
     if profile is None or is_tracer(profile):
+        if is_tracer(profile):
+            not_judged(None, current_check("profile_span_is_uniform"))
         return True
     a = np.asarray(profile, dtype=float)
     if a.size == 0:

@@ -64,7 +64,7 @@ def test_returned_entries_and_witnesses(measured):
     # The oracle is the documented b/a of the raw probe-0 phasors, so S is read
     # at the MSL port's probe-0 plane (#1694 refers it to the feed plane).
     # The oracle forms the MSL waves at the line Z0; S is referred to the
-    # declared impedance (#2014), so it is brought back to line_impedances.
+    # declared impedance, so it is brought back to line_impedances.
     s = np.asarray(probe0_s(result, line_s(result, np.asarray(result.S))))
     assert np.isnan(s[:, 0]).all()
     assert np.isnan(result.s21_power_witness[:, 0]).all()

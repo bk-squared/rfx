@@ -398,7 +398,7 @@ def _memory(mode, mutation="none", legacy=False):
                 for shard in arr.addressable_shards:
                     per_device[str(shard.device)] += shard.data.nbytes
                     # Any whole-domain buffer on a device, single-device or
-                    # replicated (review: a replicated copy passed the old check).
+                    # replicated.
                     if shard.data.size >= cells:
                         whole.append({"device": str(shard.device),
                                       "shape": arr.shape, "dtype": str(arr.dtype),
@@ -444,7 +444,7 @@ def _memory(mode, mutation="none", legacy=False):
         return
     for kind, seen in extents.items():
         assert seen or kind == "state", f"{kind} initialization was not observed"
-        # one extra low input row: the product's low ghost row is the neighbour's true value (rfx #1402)
+        # one extra low input row: the product's low ghost row is the neighbour's true value
         assert all(e <= nx_local + 1 for e in seen), f"whole-domain {kind} initialization: {seen} > {nx_local + 1}"
     unexpected = [a for a in record["whole"] if not a["caller"]]
     assert not unexpected, f"whole-domain setup arrays: {unexpected}"
@@ -484,7 +484,7 @@ def _multipole_shards():
         expected = split_c(coeffs, sg, mesh), split_s(state, sg, mesh)
         actual = _completed_slabs(actual, placed, sg, grid.dt, mesh)
         checked += _check_slabs(actual, expected, sg)
-    # 36 arrays per device: per-E-component coefficient tuples since #1260 (20 before).
+    # 36 arrays per device: per-E-component coefficient tuples.
     assert checked == 36 * len(devices)
     print("RESULT " + json.dumps({"multipole_shard_arrays": checked,
                                   "version": jax.__version__}))

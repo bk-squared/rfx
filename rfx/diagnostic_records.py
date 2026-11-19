@@ -26,7 +26,6 @@ class _ImmutableValues(dict):
     __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = __ior__ = _immutable
 
     def __deepcopy__(self, memo):
-        # Validated values are immutable scalars or strings.
         return self
 
     def __reduce__(self):

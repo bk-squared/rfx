@@ -48,6 +48,7 @@ from rfx.interop import (
 from rfx.interop._design import (
     EXCLUDED_SIMULATION_ATTRS,
     EXPORTED_SIMULATION_ATTRS,
+    EXPORTED_LAZY_SIMULATION_ATTRS,
     REFUSED_SIMULATION_ATTRS,
     TRACED_ONLY_SIMULATION_ATTRS,
     _PINNED_RECORDS,
@@ -99,7 +100,7 @@ def _waveguide_with_dispersive_slab() -> Simulation:
     """Two-port WR-90-like guide loaded with Debye and Lorentz materials."""
     sim = Simulation(
         freq_max=12e9,
-        domain=(0.10, 0.02286, 0.011),  # main's solved length; #1887
+        domain=(0.10, 0.02286, 0.011),  # main's solved length
         dx=1e-3,
         boundary="cpml",
         cpml_layers=4,
@@ -461,7 +462,7 @@ def _canonical(value):
 
 def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None:
     """Diff two simulations attribute by attribute over the census inventory."""
-    # #1373: canonical current declarations do not replay a None warning.
+    # Canonical current declarations do not replay a None warning.
     # Grid construction can populate realization diagnostics on either side;
     # the document excludes them and preflight rebuilds them from declarations.
     diagnostic_attrs = {"_amplitude_kind_warned", "_realization_early_outcomes"}
@@ -471,9 +472,9 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
         f"only in rebuilt={sorted(set(vars(rebuilt)) - set(vars(original)))}"
     )
     mismatched = {}
-    # Issues #469/#681 — deliberate representational asymmetry: the
-    # document records each AUTO port's RESOLVED n_probe_offset (#469)
-    # and RESOLVED n_probe_spacing (#681) as explicit, frozen values
+    # Deliberate representational asymmetry: the
+    # document records each AUTO port's RESOLVED n_probe_offset
+    # and RESOLVED n_probe_spacing as explicit, frozen values
     # (reproducibility-first; see _msl_ports_with_resolved_offsets), so
     # the rebuilt simulation does not reconstruct the auto bookkeeping
     # and its stored entries may differ from the original's STORED (but
@@ -481,15 +482,14 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
     # probe placement equals what the original would measure with — is
     # compared directly below and pinned positively by
     # test_auto_msl_offset_is_frozen_resolved_in_the_document /
-    # test_auto_msl_spacing_is_frozen_resolved_in_the_document. The #810
+    # test_auto_msl_spacing_is_frozen_resolved_in_the_document. The
     # registration lengths follow the same rule: the rebuilt port's are
     # re-derived by add_msl_port from the rebuilt geometry.
-    # _boundary_scalar_spec (#2214) is the constructor's record that the
+    # _boundary_scalar_spec is the constructor's record that the
     # spec came from the "cpml"/"upml" scalar. It is read only with a Floquet
     # port or open TF/SF, and those documents rebuild from the scalar
     # (design_constructor_boundary), so the rebuild records it again; other
-    # documents rebuild from the spec and carry None. Before #2214 the same
-    # record rode inside _boundary and was lost the same way, unseen here.
+    # documents rebuild from the spec and carry None.
     skip_attrs = {"_msl_auto_offset_min", "_msl_auto_probe_spacing",
                   "_msl_auto_probe_lengths", "_msl_ports",
                   "_boundary_scalar_spec"} | diagnostic_attrs
@@ -556,7 +556,80 @@ def test_every_simulation_attribute_is_classified():
         "an attribute listed as excluded is set by the constructor: "
         f"{sorted(set(EXCLUDED_SIMULATION_ATTRS) & live)}"
     )
+    assert not set(EXPORTED_LAZY_SIMULATION_ATTRS) & live, (
+        "a lazy exported declaration is set by the constructor: "
+        f"{sorted(set(EXPORTED_LAZY_SIMULATION_ATTRS) & live)}"
+    )
     assert not set(EXPORTED_SIMULATION_ATTRS) & set(TRACED_ONLY_SIMULATION_ATTRS)
+
+
+def test_every_declaration_has_exactly_one_document_disposition():
+    from rfx import _declarations
+    from rfx.interop import _design
+
+    declarations = set(dict(_declarations.DECLARATIONS))
+    excluded = set(_design.EXCLUDED_SIMULATION_ATTRS)
+    inventories = (
+        _design.EXPORTED_SIMULATION_ATTRS,
+        _design.EXPORTED_LAZY_SIMULATION_ATTRS,
+        _design.TRACED_ONLY_SIMULATION_ATTRS,
+        _design.REFUSED_SIMULATION_ATTRS,
+    )
+    counts = {name: sum(name in inventory for inventory in inventories)
+              for name in declarations}
+    wrong = {name: count for name, count in counts.items() if count != 1}
+    assert not wrong, f"declarations need exactly one document disposition: {wrong}"
+    assert not declarations & excluded, f"silently excluded declarations: {declarations & excluded}"
+    assert excluded <= set(dict(_declarations.NOT_DECLARATIONS)), (
+        f"excluded state is not NOT_DECLARATIONS: {excluded - set(dict(_declarations.NOT_DECLARATIONS))}"
+    )
+
+
+def _dft_region_design():
+    sim = Simulation(freq_max=10e9, domain=(0.012, 0.010, 0.008), dx=0.001, boundary="pec")
+    sim.add_dft_plane_probe(axis="z", coordinate=0.006, component="ez",
+                            n_freqs=2, name="cropped", region=(1, 7, 2, 5))
+    sim.add_dft_plane_probe(axis="z", coordinate=0.006, component="ez",
+                            n_freqs=2, name="full")
+    return sim
+
+
+def test_dft_plane_region_round_trip_preserves_built_window():
+    from rfx.measurement.setup import build_planes
+
+    original = _dft_region_design()
+    document = json.loads(design_to_json(original))
+    rebuilt = simulation_from_design(document)
+    assert getattr(rebuilt, "_dft_plane_regions", {}) == original._dft_plane_regions == {"cropped": (1, 7, 2, 5)}
+    assert "full" not in rebuilt._dft_plane_regions
+    assert document["observables"]["dft_planes"][0]["region"] == [1, 7, 2, 5]
+    assert document["observables"]["dft_planes"][1]["region"] is None
+    source_probes = build_planes(original, original._build_grid(), 1)
+    rebuilt_probes = build_planes(rebuilt, rebuilt._build_grid(), 1)
+    assert source_probes[0].region == rebuilt_probes[0].region == (1, 7, 2, 5)
+    assert source_probes[0].accumulator.shape == rebuilt_probes[0].accumulator.shape == (2, 6, 3)
+    assert source_probes[1].region is rebuilt_probes[1].region is None
+    assert source_probes[1].accumulator.shape == rebuilt_probes[1].accumulator.shape
+
+
+def test_time_recorded_dft_plane_selection_is_refused():
+    sim = _dft_region_design()
+    sim._time_recorded_dft_planes = {"full"}
+    with pytest.raises(UnsupportedDesignFeature, match="time-recorded DFT plane"):
+        design_to_dict(sim)
+
+
+def test_legacy_dft_planes_without_region_load_as_full_planes():
+    from rfx.measurement.setup import build_planes
+
+    document = design_to_dict(_dft_region_design())
+    for entry in document["observables"]["dft_planes"]:
+        del entry["region"]
+    rebuilt = simulation_from_design(document)
+    assert getattr(rebuilt, "_dft_plane_regions", {}) == {}
+    assert all(probe.region is None for probe in build_planes(rebuilt, rebuilt._build_grid(), 1))
+    assert all(entry["region"] is None for entry in design_to_dict(rebuilt)["observables"]["dft_planes"])
+    assert all("region" not in entry for entry in document["observables"]["dft_planes"])
 
 
 def test_every_builder_method_is_covered_by_the_document():
@@ -1586,7 +1659,7 @@ _SCHEMA_ENTRY_REGISTRIES = [
     ("excitations.lumped_rlc", "_LUMPED_RLC_FIELDS"),
     ("excitations.tfsf", "_TFSF_FIELDS"),
     ("observables.probes", "_PROBE_FIELDS"),
-    ("observables.dft_planes", "_DFT_PLANE_FIELDS"),
+    ("observables.dft_planes", "_DFT_PLANE_DOCUMENT_FIELDS"),
     ("observables.flux_monitors", "_FLUX_MONITOR_FIELDS"),
     ("observables.ntff", "_NTFF_FIELDS"),
     ("observables.current_moments", "_CURRENT_MOMENT_FIELDS"),
@@ -1612,6 +1685,8 @@ def test_schema_entry_fields_match_the_emitter_registry(
     optional = {"radius"} if path == "excitations.lumped_ports" else set()
     if path in {"excitations.soft_sources", "excitations.lumped_ports", "observables.probes"}:
         optional.add("allow_in_absorber")
+    if path == "observables.dft_planes":
+        optional.add("region")
     assert set(node["required"]) == set(registry) - optional, (
         f"{path}: schema required={sorted(node['required'])} but the emitter "
         f"records {sorted(registry)}"
@@ -2006,7 +2081,6 @@ def test_auto_offset_dump_keeps_stored_edge_when_propagation_axis_is_graded():
     (port_doc,) = document["excitations"]["msl_ports"]
     assert port_doc["n_probe_offset"] == 20
     assert port_doc["n_probe_offset"] == _driver_offset(sim)
-    # and the skip is no longer silent
     assert any("interval solve SKIPPED" in str(w.message)
                for w in caught), [str(w.message) for w in caught]
 
@@ -2025,7 +2099,7 @@ def test_auto_offset_dump_solves_on_a_z_graded_stackup():
 
 
 # ---------------------------------------------------------------------------
-# Conductor ownership across the IR boundary (#931)
+# Conductor ownership across the IR boundary
 # ---------------------------------------------------------------------------
 
 def test_a_pec_sheet_and_a_one_cell_volume_round_trip_as_different_objects():

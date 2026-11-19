@@ -157,6 +157,13 @@ so on those channels the rule stays the caller's to satisfy. The rule
 does not apply to closed PEC domains (energy conservation is correct there)
 or to CW drive.
 
+For concrete `run()` and `forward()` results, record-end warnings name the
+outputs read from each record whose judgement did not pass: S-parameters,
+NTFF far fields, field-DFT planes, flux monitors, and current-moment far fields,
+as applicable. A passing source-dominated record also warns. An S record's
+pass does not guard field outputs without a probe record. These warnings do
+not complete the truncated record or refuse the returned outputs (#2030).
+
 ## 7. Interpret the requested observable, not a convenient proxy
 
 - Remove source-dominated transients before applying Harminv or an FFT to a

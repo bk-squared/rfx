@@ -1,6 +1,9 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.errors import RfxUnsupported
 
 from rfx.api._spec import ForwardResult
@@ -38,6 +41,7 @@ def _forward_from_materials(
     diagnostics=(),
     n_steps: int,
     conductors=None,
+    tfsf_angle_override=None,
     checkpoint: bool = True,
     gradient: str = "autodiff",
     checkpoint_segments: int | None = None,
@@ -204,7 +208,10 @@ def _forward_from_materials(
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_run = tfsf_from_declaration(
             self._tfsf, grid, self._freq_max, n_steps=n_steps,
-        )
+        dtype=resolve_coefficient_dtype(self._precision))
+        if tfsf_angle_override is not None:
+            from rfx.sources.tfsf_2d import with_angle
+            tfsf_run = (with_angle(tfsf_run[0], tfsf_angle_override), tfsf_run[1])
         from dataclasses import replace
         from rfx.api._ad_memory_model import face_record_pays
         if face_record_pays(tfsf_run[0], n_steps, checkpoint=checkpoint,
@@ -226,7 +233,11 @@ def _forward_from_materials(
     pec_wires = tuple(pec_wires or ())
     pec_mask_local = pec_mask
     pec_occupancy_local = pec_occupancy
-    conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
+    from rfx.model.source_admission import conductor_operator
+    conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(
+        self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool,
+        conductors, sheet_impedance,
+        operator=conductor_operator(smoothing=subpixel_smoothing, conformal=_conformal))
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(self, conductors, n_steps=n_steps, path=lane or 'fwd_uniform',
                        frequencies=port_s11_freqs,
@@ -256,13 +267,18 @@ def _forward_from_materials(
     def _excite_this_port(pe) -> bool:
         if _sparam_drive_idx is None:
             return pe.excite
-        return _sparam_port_idx == _sparam_drive_idx
+        return calculator_drive(_sparam_port_idx == _sparam_drive_idx, excite=pe.excite)
 
+    frozen_drive_requests = []
     for _port_index, pe in enumerate(self._ports):
         if pe.is_soft_source:
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, n_steps,
                               field_dtype=self._resolve_field_dtype())
+            if pe.amplitude_kind != "field":
+                frozen_drive_requests.append((
+                    f"Soft source _ports[{_port_index}]", pe.position, pe.component,
+                    (_grid_metric.field_index(grid, pe.position, pe.component),)))
             continue
 
         # Sparam-eligible lumped/wire port — advance the multi-drive index.
@@ -303,6 +319,9 @@ def _forward_from_materials(
                 sources.defer(make_wire_port_sources,
                     grid, wp, n_steps=n_steps,
                     pec_edge_masks=pec_edge_masks_local)
+                frozen_drive_requests.append((
+                    f"Wire port _ports[{_port_index}]", pe.position, pe.component,
+                    tuple(wp._drive_stamps)))
             wp_cells = _wire_port_cells(grid, wp)
             # Clear PEC mask/occupancy at LIVE wire cells only.
             # Dead extent cells stay PEC: clearing them would punch a
@@ -428,6 +447,9 @@ def _forward_from_materials(
         materials = setup_lumped_port(grid, lp, materials)
         if _drive_this_port:
             sources.defer(make_port_source, grid, lp, n_steps=n_steps)
+            frozen_drive_requests.append((
+                f"Lumped port _ports[{_port_index}]", pe.position, pe.component,
+                tuple(lp._drive_stamps)))
         idx = _grid_metric.field_index(grid, pe.position, pe.component)
         conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
         # Register a JIT-integrated S-param accumulator for this
@@ -525,9 +547,12 @@ def _forward_from_materials(
             materials = setup_msl_port(grid, mp, materials,
                                        mode_profile=mode_profile)
             if pe.excite and pe.waveform is not None:
+                frozen_drive_requests.append((
+                    f"msl_port[{_msl_port_index}]", pe.position, "ez",
+                    tuple(mp._drive_stamps)))
                 sources.defer(make_msl_port_sources,
                     grid, mp, n_steps=n_steps,
-                    mode_profile=mode_profile,
+                    mode_profile=mode_profile, dtype=resolve_coefficient_dtype(self._precision),
                 )
             # Clear PEC mask over the cross-section so the source/σ cells
             # are not zeroed by the PEC update.
@@ -603,20 +628,26 @@ def _forward_from_materials(
     # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
     # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
     # this branch — the two would double-correct at sigmoid edges.
-    pec_occupancy_for_run, aniso_inv_eps_run, occupancy_tensor = _occupancy.select_occupancy_operator(
-        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
-    from rfx.model.source_coefficients import resolve_run_sources
-    sources = resolve_run_sources(sources, materials, self, grid,
-        tensor=occupancy_tensor or aniso_eps is not None or aniso_inv_eps is not None or conformal_weights is not None)
+    pec_occupancy_for_run, aniso_inv_eps_run, _occupancy_tensor = _occupancy.select_occupancy_operator(
+        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy,
+        debye=debye, lorentz=lorentz)
+    _inv_eps_smooth = aniso_inv_eps is None and aniso_inv_eps_run is not None
+    if aniso_inv_eps is not None:
+        aniso_inv_eps_run = aniso_inv_eps
+    from rfx.model.tensor_operands import attach_run_tensor
+    materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps_run,
+                                  conformal_weights, _inv_eps_smooth)
+    from rfx.model.source_admission import refuse_frozen_drive_edges
+    _run_tensor = getattr(materials.components, "tensor", None)
+    refuse_frozen_drive_edges(_run_tensor, frozen_drive_requests)
+    from rfx.model.source_coefficients import resolve_run_sources, drive_materials
+    sources = resolve_run_sources(sources, materials, self, grid)
 
     # Floquet ports — inject soft source, same as run_uniform.py:274-327
     if self._floquet_ports:
         from rfx.floquet import floquet_port_source
         for fpe in self._floquet_ports:
-            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
-
-    if aniso_inv_eps is not None:
-        aniso_inv_eps_run = aniso_inv_eps
+            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps, dtype=resolve_coefficient_dtype(self._precision))[1])
 
     # Build the RLC metas now that all material folding (RLC + ports)
     # is complete — build_rlc_meta reads the final eps/sigma at each
@@ -632,7 +663,7 @@ def _forward_from_materials(
         for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
             _v = _rlc_ov.get(_rlc_idx, {})
             rlc_metas.append(build_rlc_meta(
-                grid, _rlc_spec, materials,
+                grid, _rlc_spec, drive_materials(materials, self, grid),
                 r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                 periodic=_rlc_periodic,
             ))
@@ -648,7 +679,8 @@ def _forward_from_materials(
         validate_realized_vacuum_boundary(
             self, grid, materials, tfsf_run[0], pec_edge_masks=pec_edge_masks_local,
             debye_spec=debye_spec, lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3,
-            aniso_inv_eps=aniso_inv_eps_run, sheet_ctx=sheet_impedance,
+            aniso_inv_eps=(_run_tensor.inv_eps if _run_tensor is not None else None),
+            sheet_ctx=sheet_impedance,
             extra_masks=(pec_occupancy_local,), design_regions=(design_box, design_occupancy),
             rlc_indices=(_grid_metric.field_index(grid, spec.position, spec.component)
                          for spec in self._lumped_rlc))
@@ -678,6 +710,9 @@ def _forward_from_materials(
     from rfx.stepping import prepared as prepared_step
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
+    if self._lumped_rlc:
+        from rfx.model.source_admission import LumpedRLCInputs
+        rlc_metas = LumpedRLCInputs(rlc_metas, self, stepping_product)
     from rfx.runners.uniform import assemble_wall_loss
     sheet_impedance = assemble_wall_loss(self, conductors, sheet_impedance, lane=lane or "fwd_uniform")
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(
@@ -706,13 +741,7 @@ def _forward_from_materials(
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
         pec_occupancy=pec_occupancy_for_run,
-        conformal_weights=conformal_weights,
-        aniso_eps=aniso_eps,
-        aniso_inv_eps=aniso_inv_eps_run,
         subpixel_smoothing=tensor_smoothing,
-        # Only the occupancy operator is smooth; the Kottke tensor keeps
-        # run()'s fenced PEC edges.
-        aniso_inv_eps_smooth=(aniso_inv_eps is None and aniso_inv_eps_run is not None),
         port_record_specs=ordered_specs(port_record_specs),
         lumped_port_sparams=lumped_port_sparam_specs or None,
         wire_port_sparams=wire_port_sparam_specs or None,
@@ -819,7 +848,7 @@ def _forward_from_materials(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
         freqs=freqs_out, current_moment_monitor=current_moments_fwd,
         realized_geometry=stepping_product._realization_record,
-    )), conductors.design_findings)
+    )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 
 
 # ---------------------------------------------------------------------------

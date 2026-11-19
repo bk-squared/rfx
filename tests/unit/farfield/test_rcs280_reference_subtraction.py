@@ -31,11 +31,11 @@ from mie_oracle import bistatic_over_pi_a2  # noqa: E402
 
 sys.path.insert(0, str(_REPO))
 
-# The v2 accuracy bar's magnitude line (#820): the corrected
+# The v2 accuracy bar's magnitude line: the corrected
 # pattern is judged against exact Mie within 2 dB, not against a window derived
 # from an earlier run. The previous bars (1.06 dB mean, from a measured 0.705 via
 # the envelope policy, and 0.5 dB at backscatter) were measured with the
-# normal-incidence denominator that was 1.135 dB too large (#820); corrected, this
+# normal-incidence denominator that was 1.135 dB too large; corrected, this
 # rig reads 1.21 dB mean and +0.73 dB at backscatter, converging toward Mie with
 # the mesh (monostatic sphere +0.73 / +0.54 / +0.38 dB at lambda/40 / 60 / 80).
 PATTERN_MEAN_BAR = 2.0
@@ -79,7 +79,7 @@ def test_corrected_pattern_shape_matches_exact_mie(fx):
     which a correlation cannot see.)"""
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
-    assert np.corrcoef(corr, mie)[0, 1] >= 0.95       # measured 1.000 (0.977 before the second-order NTFF rule, #1159)
+    assert np.corrcoef(corr, mie)[0, 1] >= 0.95       # measured 1.000
 
 
 def test_corrected_pattern_magnitude_matches_exact_mie(fx):

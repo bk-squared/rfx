@@ -70,6 +70,9 @@ and it reads no ``pec_geometry`` module global -- it holds only
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+from rfx.preflight._not_judged import is_tracer_error, not_judged
+
 from rfx.preflight._subjects import finding_subjects, absorber_region
 
 import math
@@ -246,7 +249,9 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
             continue
         try:
             c1, c2 = entry.shape.bounding_box()
-        except (NotImplementedError, TypeError):
+        except (NotImplementedError, TypeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_cfg_dispersive_pole_at_absorber_face")
             continue
         faces = []
         hi_exact = hi_over = False
@@ -909,7 +914,9 @@ def _validate_cfg_geometry_in_cpml(
                         ))
                         # Record every crossed axis so findings do not
                         # depend on axis order.
-                except (NotImplementedError, TypeError):
+                except (NotImplementedError, TypeError) as _traced_exc:
+                    if is_tracer_error(_traced_exc):
+                        not_judged(None, "_validate_cfg_geometry_in_cpml")
                     pass
 
         for ax in sorted(per_axis):
@@ -972,6 +979,7 @@ def _validate_cfg_body_flush_on_absorber(
     for ax, axis in enumerate("xyz"):
         cells = grid.cells(axis)
         if is_tracer(cells):
+            not_judged(None, "_validate_cfg_body_flush_on_absorber")
             continue
         start = getattr(grid, f"pad_{axis}_lo")
         stop = grid.shape[ax] - getattr(grid, f"pad_{axis}_hi") - 1
@@ -989,6 +997,7 @@ def _validate_cfg_body_flush_on_absorber(
         mat = self._resolve_material(entry.material_name)
         values = (mat.eps_r, mat.sigma, mat.mu_r)
         if any(is_tracer(v) for v in values):
+            not_judged(None, "_validate_cfg_body_flush_on_absorber")
             continue
         if (values[1] >= 1e6 or values == (1.0, 0.0, 1.0)
                 or mat.debye_poles or mat.lorentz_poles):
@@ -998,6 +1007,7 @@ def _validate_cfg_body_flush_on_absorber(
         except (AttributeError, NotImplementedError):
             continue
         if any(is_tracer(v) for v in (*lo, *hi)):
+            not_judged(None, "_validate_cfg_body_flush_on_absorber")
             continue
         extents = [abs(float(hi[a]) - float(lo[a])) for a in range(3)]
         box = isinstance(entry.shape, Box)
@@ -1076,6 +1086,7 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
     if is_tracer(self._dx) or any(
             p is not None and is_tracer(p) for p in profiles):
+        not_judged(None, "_validate_cfg_dielectric_at_absorber_seam")
         return
 
     try:
@@ -1152,10 +1163,13 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
         grid = self._build_realized_grid()
         coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
                   else coords_from_uniform_grid(grid))
-    except (ValueError, TypeError, IndexError, NotImplementedError):
+    except (ValueError, TypeError, IndexError, NotImplementedError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_port_conductor_continues")
         return
     nodes = (coords.x, coords.y, coords.z)
     if any(is_tracer(line) for line in nodes):
+        not_judged(None, "_validate_cfg_port_conductor_continues")
         return
     for collection, index, port in ports:
         if port_termination_references(self, collection, port, grid):
@@ -1166,7 +1180,9 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
         for ref, entry in conductor_entries(self):
             try:
                 lattice = _declared_conductor_lattice(self, grid, entry.shape, coords)
-            except (ValueError, TypeError, IndexError, NotImplementedError):
+            except (ValueError, TypeError, IndexError, NotImplementedError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_port_conductor_continues")
                 continue
             if not any(lattice_intersects_aperture(lattice, nodes, point, point)
                        for point in terminals):
@@ -1403,6 +1419,8 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
     if self._boundary not in ("cpml", "upml") or not self._geometry:
         return []
     if dx is None or dx <= 0 or is_tracer(dx) or is_tracer(self._dx):
+        if is_tracer(dx) or is_tracer(self._dx):
+            not_judged(None, "_validate_cfg_conductor_in_thin_absorber")
         return []
     if any(getattr(self, name, None) is not None
            for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
@@ -1486,6 +1504,8 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
     ) or any(
         is_tracer(profile) for profile in (self._dx_profile, self._dy_profile, self._dz_profile)
     ):
+        if absorbing and (is_tracer(self._dx) or any(is_tracer(v) for v in self._domain) or any(is_tracer(p) for p in (self._dx_profile, self._dy_profile, self._dz_profile))):
+            not_judged(None, "_validate_cfg_thin_absorber")
         return
 
     try:
@@ -1501,9 +1521,11 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
                 from rfx.sources.tfsf import tfsf_from_declaration
                 from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
                 entry = self._tfsf
-                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True)
+                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(self._precision))
                 periodic, _ = tfsf_boundary_flags(cfg, grid)
-    except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError):
+    except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_thin_absorber")
         # An unavailable grid has no realized depth to report. Keep the
         # existing configuration diagnostics; do not guess from declarations.
         return

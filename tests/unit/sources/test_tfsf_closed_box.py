@@ -57,7 +57,7 @@ def test_six_face_corrections_equal_mask_curl_commutator(polarization, direction
     dx, dt = 0.001, 1e-12
     cfg, aux = init_tfsf(shape[0], dx, dt, ny=shape[1], nz=shape[2],
                          cpml_layers=2, tfsf_margin=3, closed_box=True,
-                         polarization=polarization, direction=direction, n_steps=32)
+                         polarization=polarization, direction=direction, n_steps=32, dtype='float32')
     rng = np.random.default_rng(891)
     ec, hc = polarization, "hy" if polarization == "ez" else "hz"
     e1d = rng.normal(size=getattr(aux, ec).shape).astype(np.float32)
@@ -110,7 +110,7 @@ def _aux(sim):
                      cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
                      polarization=entry.polarization, direction=entry.direction,
                      f0=entry.f0, bandwidth=entry.bandwidth,
-                     waveform=entry.waveform, closed_box=entry.closed_box, n_steps=160)
+                     waveform=entry.waveform, closed_box=entry.closed_box, n_steps=160, dtype='float32')
 
 
 @pytest.mark.parametrize("polarization,direction", list(itertools.product(("ez", "ey"), ("+x", "-x"))))
@@ -176,7 +176,7 @@ def test_methodb_auxiliary_keeps_its_original_waveform(angle):
     from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
     cfg, aux = init_tfsf_methodB(33, 31, 0.001, 1e-12, nz=3,
                                 cpml_layers=3, tfsf_margin=3, theta_deg=angle,
-                                waveform="modulated_gaussian")
+                                waveform="modulated_gaussian", dtype='float32')
     # Method B shares this E kernel, but has no new optional source fields.
     # From zero fields its Gaussian peak is exactly the source amplitude.
     out = update_tfsf_1d_e(cfg, aux, 0.001, 1e-12, cfg.src_t0)
