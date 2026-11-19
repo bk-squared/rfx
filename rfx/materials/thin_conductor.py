@@ -233,7 +233,7 @@ class ThinConductor:
         if (self.surface_impedance_f0 is not None or
                 (not is_tracer(self.sigma_bulk) and self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)):
             if is_tracer(self.eps_r) or self.eps_r != 1:
-                raise ValueError(
+                raise RfxRefusal(
                     f"add_thin_conductor sheet in PEC / surface-impedance mode: eps_r={self.eps_r!r} "
                     "is not modelled; the sheet's update uses the permittivity of the cells it lies in. "
                     "Declare the dielectric around it with add(..., material=...); leave eps_r at 1.")
@@ -255,7 +255,7 @@ class ThinConductor:
             try:
                 return bool(self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)
             except jax.errors.TracerBoolConversionError as exc:
-                raise ValueError(
+                raise RfxRefusal(
                     'sigma_bulk: the PEC/lossy class cannot be decided for an '
                     'abstract value; keep sigma_bulk concrete or differentiate '
                     'without jit.') from exc
@@ -335,7 +335,7 @@ class PinnedSheet:
             lo, hi = (int(v) for v in getattr(self, field))
             object.__setattr__(self, field, (min(lo, hi), max(lo, hi)))
         if self.surface_impedance_f0 is not None:
-            raise ValueError(
+            raise RfxRefusal(
                 "PinnedSheet: surface_impedance_f0 (Leontovich loss) is not "
                 "supported on the node-pinned declaration — its sheet "
                 "conductivity is folded per cell from the local mesh "
@@ -349,7 +349,7 @@ class PinnedSheet:
                 "which the node-pinned declaration does not carry; declare it "
                 "with add_thin_conductor(shape, sigma_bulk=...).")
         if is_tracer(self.eps_r) or self.eps_r != 1:
-            raise ValueError(
+            raise RfxRefusal(
                 f"add_pinned_sheet: eps_r={self.eps_r!r} is not modelled; "
                 "the sheet's update uses the permittivity of the cells it lies in. "
                 "Declare the dielectric around it with add(..., material=...); leave eps_r at 1.")

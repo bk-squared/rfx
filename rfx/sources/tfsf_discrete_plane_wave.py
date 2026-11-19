@@ -4,7 +4,7 @@ from rfx._traced_inputs import admit_traced_inputs
 
 from rfx._internal._precision import resolve_coefficient_dtype
 
-from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 from dataclasses import dataclass
 from functools import lru_cache
 import math
@@ -184,7 +184,7 @@ def source_scalar(name, value):
     """Incident-source scalars are fixed inputs, including under forward AD."""
     from rfx.core.jax_utils import is_tracer
     if is_tracer(value):
-        raise ValueError(f"{name}: differentiating with respect to the incident source is not supported")
+        raise RfxRefusal(f"{name}: differentiating with respect to the incident source is not supported")
     return float(value)
 
 
@@ -198,7 +198,7 @@ def validate_run(entry, until_decay, decay_max_steps, under_transform):
     if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
         return
     if under_transform():
-        raise NotImplementedError(
+        raise RfxUnsupported(
             "CustomWaveform and closed_box TFSF cannot be passed through run() "
             "under external JAX transformations; differentiate forward() instead.")
 
