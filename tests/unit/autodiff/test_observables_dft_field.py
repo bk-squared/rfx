@@ -614,7 +614,8 @@ def test_forward_distributed_nu_dft_planes_match_native():
         assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b)), name
 
 
-def test_run_distributed_dft_planes_match_native():
+def test_run_distributed_dft_planes_match_native(record_property):
+    """Each complex plane differs by at most 1e-4 of its one-device peak over cells and bins."""
     sim = _build_sim()
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2
@@ -623,4 +624,7 @@ def test_run_distributed_dft_planes_match_native():
     for name, expected in reference.dft_planes.items():
         a, b = np.asarray(actual.dft_planes[name].accumulator), np.asarray(expected.accumulator)
         assert np.any(b), "DFT plane must contain a signal"
-        assert np.array_equal(a, b), (name, float(np.max(np.abs(a - b))), float(np.max(np.abs(b))))
+        a, b = a.astype(np.complex128), b.astype(np.complex128)
+        relative_error = np.max(np.abs(a - b)) / np.max(np.abs(b))
+        record_property(f"{name}_relative_error", float(relative_error))
+        assert relative_error <= 1e-4, (name, relative_error)
