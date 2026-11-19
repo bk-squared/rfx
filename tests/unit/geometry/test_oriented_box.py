@@ -207,8 +207,8 @@ def test_unsupported_special_operator_never_falls_back(operator):
     from rfx.geometry.conformal import compute_conformal_weights, compute_conformal_weights_sdf
     grid = _sim()._build_grid()
     calls = {
-        "smooth": lambda: compute_smoothed_eps(grid, [(_shape(), 3.25)]),
-        "inverse": lambda: compute_inv_eps_tensor_diag(grid, pec_shapes=[_shape()]),
+        "smooth": lambda: compute_smoothed_eps(grid, [(_shape(), 3.25)], dtype='float32'),
+        "inverse": lambda: compute_inv_eps_tensor_diag(grid, pec_shapes=[_shape()], dtype='float32'),
         "conformal": lambda: compute_conformal_weights_sdf(grid, [_shape()]),
         "legacy_conformal": lambda: compute_conformal_weights(grid, [_shape()]),
     }

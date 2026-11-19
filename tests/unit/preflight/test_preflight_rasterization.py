@@ -48,8 +48,8 @@ import math
 import numpy as np
 import pytest
 
-# The gate constants this file mutates live in rfx/preflight/pec_geometry.py
-# since #980 Phase 3 leg 2, and so do the ten check bodies that read them --
+# The gate constants this file mutates live in rfx/preflight/pec_geometry.py,
+# and so do the ten check bodies that read them --
 # so a bare name in a check resolves in THAT module's globals. The
 # rfx.api._preflight re-export still binds all five, but patching it would
 # rebind a name no reader consults, and the four gate-mutation tests below
@@ -227,7 +227,7 @@ def _slot_sim(slot: bool, dz_profile=None):
     ``slot=False``: the upper dielectric starts at the sheet plane and
     fills the adjacent cell, so the slot finding is silent.
     """
-    # #1138: PEC sheet x/y solved +8.75% off; this tests dielectric-slot advice.
+    # PEC sheet x/y solved +8.75% off; this tests dielectric-slot advice.
     sim = Simulation(snap="declared", domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
                      freq_max=10e9, boundary="cpml", dz_profile=dz_profile)
     sim.add_material("diel_lo", eps_r=3.5)
@@ -260,7 +260,7 @@ def _cavity_sim(faces: bool):
     4.0 mm; face-to-face 1.998 mm vs plane-to-plane 2.0 mm is +0.1% on
     both measures, inside the 1% advisory threshold.
     """
-    # #1138: both foils x/y solved +11.67% off; this tests cavity-thickness advice.
+    # Both foils x/y solved +11.67% off; this tests cavity-thickness advice.
     sim = Simulation(snap="declared",domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                      freq_max=10e9, boundary="cpml")
     sim.add_material("core", eps_r=4.0)
@@ -503,7 +503,7 @@ class TestCongruenceParity:
 
 
 # ---------------------------------------------------------------------------
-# Check 2 — sheet-slot vacuum (replaces the #702 live-edge resample guard)
+# Check 2 — sheet-slot vacuum (replaces the live-edge resample guard)
 # ---------------------------------------------------------------------------
 
 class TestSheetSlotVacuum:
@@ -659,7 +659,7 @@ class TestOffLatticeCensus:
         assert "frequency sensitivity depends on the mode" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
-    # A sheet's in-plane face is measured at its SOLVED edge since #1375
+    # A sheet's in-plane face is measured at its SOLVED edge
     # (see test_sheet_in_plane_faces_are_measured_at_the_solved_edge), not
     # at its nearest node, so only the volume case of this relation holds.
     @pytest.mark.parametrize("kind,lo,hi,z_hi,realized_mm,residual_mm", [
@@ -751,7 +751,7 @@ class TestOffLatticeCensus:
 
 
 # ---------------------------------------------------------------------------
-# #931 §3 — per-declaration realization findings
+# Per-declaration realization findings
 # ---------------------------------------------------------------------------
 
 class TestRealizationFindings:
@@ -774,7 +774,7 @@ class TestRealizationFindings:
         """Per sheet: declared mid-plane, realized node plane, offset; a
         NOTICE (info severity) so it never blocks and never counts as a
         warning. A sheet declared at 6.3 mm realizes on 6 mm: -0.300 cell."""
-        # #1138: foils x/y solved +11.67% off; this tests informational plane notices.
+        # Foils x/y solved +11.67% off; this tests informational plane notices.
         sim = Simulation(snap="declared",domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                          freq_max=10e9, boundary="cpml")
         sim.add(Box((2 * MM, 2 * MM, 5.0 * MM), (8 * MM, 8 * MM, 5.0 * MM)),
@@ -976,7 +976,7 @@ def test_uniform_dz_simulation_skips_check():
 
 
 # --------------------------------------------------------------------------- #
-# The validator MODELS the rasterizer, so it has to agree with it (#562 F2).
+# The validator MODELS the rasterizer, so it has to agree with it (F2).
 # --------------------------------------------------------------------------- #
 _AGREEMENT_CASES = [
     # (z_lo_mm, z_hi_mm): the first span covers three cell centres across
@@ -1050,14 +1050,11 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
     real = _real_rasterized_z_count(sim)
     predicted, implied = _validator_counts(sim)
 
-    # Both directions, because the SILENT one is the F2 failure mode. The
-    # first version of this test only asserted when the advisory fired, so
-    # four of six cases skipped the assertion entirely — and "validator quiet
-    # where it should warn" is exactly what F2 was (#568 item 1).
+    # Both directions, because the SILENT one is the F2 failure mode.
     implied_local = _implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3)
     under_resolved = real < math.ceil(0.5 * implied_local)
     # The validator ALSO requires `actual <= 4`. That cutoff is its policy, not
-    # this test's contract (#569 review, finding 4): hard-coding it here would
+    # this test's contract: hard-coding it here would
     # red this test the day the advisory is widened. So assert the two directions
     # the resolution condition settles, and stay silent about the band where the
     # cutoff alone decides.
@@ -1164,8 +1161,8 @@ def test_periodic_sheet_end_reports_the_unwrapped_node_span(axis, lo_mm):
     span = body['axes'][axis]
     # The node span is 9--13 mm. On a periodic axis the node at L is node 0
     # and nothing joins it from beyond, so the end at L is a free edge like
-    # its mirror at 9 mm: both get the 0.35-cell correction (#1432 Part B;
-    # before, the guards ignored the wrap and reported the L end 0.35 cell short).
+    # its mirror at 9 mm: both get the 0.35-cell correction (before,
+    # the guards ignored the wrap and reported the L end 0.35 cell short).
     expected_lo_um, expected_hi_um = (8650, 13350) if lo_mm else (0, 13000)
     np.testing.assert_allclose(span['realized_um'], [expected_lo_um, expected_hi_um],
                                rtol=0, atol=1e-9)

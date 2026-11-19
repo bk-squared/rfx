@@ -221,7 +221,7 @@ def _build_wr90_slab_nu_sim(dx_fine):
     dx_profile = smooth_grading(raw, max_ratio=1.3)
 
     sim = Simulation(
-        freq_max=12e9, domain=(float(_np.sum(dx_profile)), 23 * dx_coarse, 10 * dx_coarse),  # solved length; #1887
+        freq_max=12e9, domain=(float(_np.sum(dx_profile)), 23 * dx_coarse, 10 * dx_coarse),  # solved length
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),
@@ -288,7 +288,7 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
     """
     # εr=2, f_max=12 GHz, dx=1mm → λ_eff=17.7mm → 17.7 cells/λ_eff.
     common = dict(freq_max=12e9, domain=(0.05, 0.02286, 11 * 1e-3),
-                  dx=1e-3, cpml_layers=4)  # solved length; #1887
+                  dx=1e-3, cpml_layers=4)  # solved length
 
     # Case A: same resolution, NO S-param — should be silent (17.7 > 15).
     sim_a = Simulation(**common)
@@ -515,7 +515,7 @@ def test_inset_box_leaking_into_cpml_still_warns():
 
 
 # ---------------------------------------------------------------------------
-# FP4 — port/probe liveness is read from the REALIZED edge set (#931/#929)
+# FP4 — port/probe liveness is read from the REALIZED edge set
 # ---------------------------------------------------------------------------
 def _msl_sim_with_probe(component: str, trace: str = "sheet",
                         probe_on_plane: bool = False) -> Simulation:
@@ -666,7 +666,7 @@ def test_pec_empty_cavity_with_source_stays_silent():
 # ---------------------------------------------------------------- (a) records
 def test_preflight_returns_back_compatible_structured_issues():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     assert len(report), "expected a preflight finding for a source/probe in CPML"
@@ -689,13 +689,13 @@ def test_preflight_report_is_a_list_with_canonical_api():
     idiom (.issues/.errors/.warnings/.infos/.ok/.format()/.to_dict()/
     .to_json())."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     assert isinstance(report, PreflightReport) and isinstance(report, list)
     # list[str] ops the 65 legacy call sites rely on
     assert isinstance("\n".join(report), str)
-    # bool(report) is NOT in this list: it raises by design (#980, see
+    # bool(report) is NOT in this list: it raises by design (see
     # tests/unit/preflight/test_preflight_report_truthiness.py).
     assert len(report) == len(list(report)) and len(report) > 0
     # canonical report API
@@ -719,7 +719,7 @@ def test_codes_set_at_check_site():
     emitting check.
     """
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     absorber = report.by_code("absorber_overlap")
@@ -744,7 +744,7 @@ def test_error_severity_mapping_end_to_end():
 
 # --------------------------------------------------------- (b) conformal guard
 # The three behavioural tests for ``_validate_cfg_conformal_fine_dx`` stood
-# here and were DELETED 2026-09-15 (#1043 / PR #1047) with the check itself.
+# here and were DELETED with the check itself.
 # The check warned that conformal PEC at dx <= 2 mm is "a KNOWN NaN"; the NaN
 # was the CPML psi coefficient reading a different permittivity than the Yee
 # half of the same timestep, and it no longer happens, so the advisory had
@@ -812,14 +812,14 @@ def test_lossy_dielectric_silent():
 # ------------------------------------------------ (d) Phase A meta-coverage
 def _bad_sim_probe_in_cpml():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     return sim
 
 
 def _bad_sim_no_sources():
     # no_sources advisory
-    return Simulation(domain=(14 * (299792458.0 / 10e9 / 20.0),) * 3, freq_max=10e9, dx=299792458.0 / 10e9 / 20.0, boundary="pec")  # solved length; #1887
+    return Simulation(domain=(14 * (299792458.0 / 10e9 / 20.0),) * 3, freq_max=10e9, dx=299792458.0 / 10e9 / 20.0, boundary="pec")  # solved length
 
 
 def _bad_sim_lossless_q():
@@ -917,8 +917,8 @@ def test_strict_aggregates_all_issues_in_one_raise():
     raise), not fail-on-first — preserving the historical 'strict escalates any
     issue' contract while reporting all problems at once."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
-    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)     # in exterior CPML (#500)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node
+    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)     # in exterior CPML
     # strict=False shows >= 2 findings...
     report = sim.preflight()
     assert len(report) >= 2, f"need a multi-issue config; got {list(report)}"
@@ -1005,7 +1005,7 @@ def test_run_hard_fails_on_error_severity_and_skip_bypasses():
         sim.run(n_steps=5, skip_preflight=True)
 
 
-# ------------------------------------------------- issue #166: 2D z + units
+# ------------------------------------------------- 2D z + units
 def test_absorber_overlap_no_false_positive_on_2d_collapsed_z():
     """2D modes collapse z to a single cell with NO absorber (Grid strips z
     from cpml_axes and sets pad_z=0). Every 2D source/probe necessarily sits
@@ -1079,7 +1079,7 @@ def test_mesh_warning_uses_adaptive_units_at_optical_scale():
 # formerly tests/unit/preflight/test_preflight_guards.py
 # ===========================================================================
 
-# 2026-09-23 (#1163): this section held the ``tfsf_lumped_rlc_unstable``
+# This section held the ``tfsf_lumped_rlc_unstable``
 # advisory's guard (it warns on TFSF + lumped RLC) and two no-false-positive
 # checks for it. The advisory is deleted: the divergence it described was the
 # series RLC element's own edge coupling (it realized R - d/(D0*A), a negative

@@ -17,9 +17,12 @@ import numpy as np
 
 
 class SubgridValidationIssue(NamedTuple):
-    """One validation issue for a subgridded simulation."""
+    """One validation issue for a subgridded simulation.
 
-    severity: str  # "error", "warning", or "info"
+    ``severity`` is ``"error"``, ``"warning"`` or ``"info"``.
+    """
+
+    severity: str
     code: str
     message: str
 
@@ -166,11 +169,6 @@ def build_subgrid_region(sim, grid) -> SubgridRegion | None:
             nearest_uniform_index((sim._domain[1] - margin) / dx_c) + grid.pad_y_lo + 1,
             grid.ny - grid.pad_y_hi,
         )
-    # Fine-grid extent uses the node-aligned convention
-    # ``(hi - lo - 1) * ratio + 1`` shared with the overlap runner in
-    # ``rfx.runners.subgridded`` via ``overlap_fine_extent``.  The cell-extent
-    # ``(hi - lo) * ratio`` form over-reports the fine shape by ``ratio - 1``
-    # nodes per axis relative to the fine grid the runner actually builds.
     return SubgridRegion(
         fi_lo=fi_lo,
         fi_hi=fi_hi,
@@ -194,6 +192,10 @@ def build_stage2_disjoint_region(sim, grid) -> SubgridRegion:
     validation can check source/probe/material placement before the dedicated
     disjoint public runner lands.  The actual disjoint runner will own only the
     coarse exterior plus the fine block instead of the overlap z-slab shadow.
+
+    The Stage-2 disjoint runner contract (``build_disjoint_runner_contract``)
+    defaults to the cell-extent convention ``(hi - lo) * ratio``, and this
+    region matches that default.
     """
     ratio = int(sim._refinement["ratio"])
     z_lo, z_hi = sim._refinement["z_range"]
@@ -221,10 +223,6 @@ def build_stage2_disjoint_region(sim, grid) -> SubgridRegion:
             nearest_uniform_index((sim._domain[1] - margin) / dx_c) + grid.pad_y_lo + 1,
             grid.ny - grid.pad_y_hi,
         )
-    # The Stage-2 disjoint runner contract (``build_disjoint_runner_contract``)
-    # defaults to the cell-extent convention ``(hi - lo) * ratio``; this region
-    # matches that default.  This intentionally differs from the node-aligned
-    # overlap convention -- each topology's region matches its own runner.
     return SubgridRegion(
         fi_lo=fi_lo,
         fi_hi=fi_hi,
@@ -317,8 +315,6 @@ def _active_diagnostic_overrides(ref) -> tuple[str, ...]:
     return tuple(active)
 
 
-# Prefixes of subgrid knobs whose runner implementation was removed in the
-# jit_runner decomposition (US-10 dead-knob strip).
 _REMOVED_KNOB_PREFIXES = ("material_sat_e_h_trace_", "box_shadow_sync_")
 
 
@@ -370,8 +366,6 @@ def _material_transition_clearance_violations(
         k1 = k0 + 1
         if k1 >= grid.nz:
             continue
-        # Direct artificial-interface jumps already have more specific error
-        # codes. Keep this rule focused on nearby transitions.
         if (k0, k1) in {
             (region.fk_lo - 1, region.fk_lo),
             (region.fk_hi - 1, region.fk_hi),
@@ -388,7 +382,6 @@ def _material_transition_clearance_violations(
 
 
 def _position_inside_fine(pos, sim, region: SubgridRegion) -> bool:
-    # Use physical extents rather than relying only on rounded indices.
     z_lo, z_hi = sim._refinement["z_range"]
     tol = 0.5 * region.dx_f
     xy_margin = sim._refinement.get("xy_margin")
@@ -462,9 +455,6 @@ def _guarded_boundary_production_allowed(
         "z_lo": int(getattr(grid, "pad_z_lo", grid.cpml_layers)),
         "z_hi": int(getattr(grid, "pad_z_hi", grid.cpml_layers)),
     }
-    # Fine x/y faces have no fine-grid CPML implementation.  Keep production
-    # support to closed x/y faces; z may have an absorber only on the face not
-    # touched by the refined slab.
     if any(pads[face] > 0 for face in ("x_lo", "x_hi", "y_lo", "y_hi")):
         return False
     if pads[physical_boundary] > 0:
@@ -573,6 +563,9 @@ def validate_subgrid_setup(
     sheet-declared board supported and then watch ``run(solver='subgridded')``
     refuse it.  This lane realizes volumes only, so their presence is an
     error here, in the same words the runner uses.
+
+    The PEC interface check reads ``pec_mask`` as a cell mask, not as a mask
+    of shorted E edges.
     """
     issues: list[SubgridValidationIssue] = []
     ref = getattr(sim, "_refinement", None)
@@ -690,11 +683,6 @@ def validate_subgrid_setup(
                 )
             )
 
-    # a sheet or a sub-cell wire has no cell for this lane's two
-    # grids to carry, so run(solver='subgridded') refuses it. Say so here
-    # too — a "supported" verdict for a model the runner will refuse is
-    # the failure this report exists to prevent. Checked before the region
-    # is built, because it does not depend on one.
     if sheets or wires:
         issues.append(
             _issue(
@@ -762,10 +750,6 @@ def validate_subgrid_setup(
                     )
                 )
 
-        # Artificial z interfaces can use the material-weighted SAT only for a
-        # static material load that is continuous across the interface.  A true
-        # material discontinuity at an artificial coarse/fine interface remains
-        # fail-closed until the material-jump waveform gate passes.
         if 0 < region.fk_lo < grid.nz:
             for name, arr, tol in (
                 ("eps_r", materials.eps_r, 1e-6),
@@ -839,10 +823,6 @@ def validate_subgrid_setup(
                         )
                     )
 
-        # a CELL mask is the right reading here — this lane
-        # realizes volumes only (run() refuses sheets and wires on it),
-        # and the question below is which CELLS at the coarse/fine
-        # interface carry metal, not which E edges are shorted.
         if pec_mask is not None:
             pec = pec_mask.astype(jnp.bool_)
             pec_interface_guarded_allowed = (
@@ -1015,11 +995,6 @@ def validate_subgrid_setup(
 
     if getattr(sim, "_ntff", None) is not None:
         corner_lo, corner_hi, _ = sim._ntff
-        # NTFF accumulation itself occurs on the fine-grid surface.  Permit it
-        # in the same guarded full-x/y one-sided boundary envelope as the
-        # time-domain public path, including the narrow closed-face/opposite-z
-        # CPML lane.  This is a finite public-path claim only; external
-        # open-boundary radiation accuracy remains a separate crossval gate.
         ntff_allowed = bool(guarded_boundary_allowed)
         if not ntff_allowed or region is None:
             issues.append(
@@ -1128,7 +1103,6 @@ def validate_subgrid_setup(
                 )
             )
 
-    # opting in permits diagnostics, not a physics-support claim.
     unverified = any(issue.code == "subgrid_unstable_unverified" for issue in issues)
     supported = not unverified and not any(issue.severity == "error" for issue in issues)
     support_level = ("unsupported-unstable-unverified" if mode == "production"
@@ -1150,10 +1124,6 @@ def validate_subgrid(self, *, mode: str | None = None) -> SubgridValidationRepor
         available for research diagnostics; opting in does not confer support.
         """
     self._require_uniform_mesh("validate_subgrid")
-    # sheets and wires own no cell, so a validator handed
-    # only pec_mask cannot see them — and this lane cannot realize
-    # them (run(solver='subgridded') refuses). Collect and pass them
-    # so the report refuses the same models the runner does.
     if self._refinement is None:
         from rfx.subgridding.validation import validate_subgrid_setup
         grid = self._build_grid()
@@ -1182,12 +1152,4 @@ def validate_subgrid(self, *, mode: str | None = None) -> SubgridValidationRepor
     )
 
 
-# ---------------------------------------------------------------------------
-# ``validate_subgrid`` above was a ``def`` in ``Simulation``'s body in
-# rfx/api/__init__.py (2.0 declaration rule: that file's Simulation methods only
-# record declarations; building the grid and assembling materials belongs here).
-# It returns to ``Simulation`` by a class-body import, so its pre-move
-# ``__qualname__`` is restored explicitly: a module-level ``def`` gets the bare
-# name, and a TypeError would otherwise stop naming ``Simulation.validate_subgrid()``.
-# ---------------------------------------------------------------------------
 validate_subgrid.__qualname__ = "Simulation.validate_subgrid"

@@ -355,6 +355,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     -------
     Result
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed uniform")
     from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)

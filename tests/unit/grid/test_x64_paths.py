@@ -80,7 +80,7 @@ def exercise(path, feature):
         cfg, state = init_tfsf(grid.nx, grid.dx, grid.dt, ny=grid.ny, nz=grid.nz,
                               cpml_layers=4, tfsf_margin=2, f0=20e9,
                               bandwidth=.5, polarization='ez', direction='+x',
-                              closed_box=True, n_steps=4)
+                              closed_box=True, n_steps=4, dtype='float32')
         return measure_normal_incident_spectrum(cfg, state, 4, np.array([20e9]), grid.dt)
     return result.time_series
 

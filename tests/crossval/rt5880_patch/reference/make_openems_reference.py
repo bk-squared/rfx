@@ -1791,7 +1791,7 @@ def _one_port_features(sf, band_hz, *, with_tutorial_pick: bool = False):
 # ---------------------------------------------------------------------------
 # openEMS's own log lines, read back. The formats: openems.cpp at
 # A_TUTORIAL_OPENEMS_COMMIT, and the Sheen branch's capture of a real container
-# log (crossval/sheen-lpf-test, run 369367263401), which showed the timestep
+# log (crossval/sheen-lpf-test), which showed the timestep
 # line printing "0.00 s" -- hence dt from the Nyquist line.
 # ---------------------------------------------------------------------------
 _PROGRESS_LINE_RE = re.compile(
@@ -1820,8 +1820,7 @@ def _solver_run_summary(log_text: str, wall_s: float) -> dict:
         n, f = int(m.group(1)), float(m.group(2))
         out.update({"nyquist_steps": n, "nyquist_f_hz": f})
         if "dt_s" not in out:
-            # The pinned image prints the timestep line as "0.00 s" (the Sheen
-            # branch's capture, run 369367263401); N = floor(1 / (2 f dt)).
+            # The pinned image prints the timestep line as "0.00 s"; N = floor(1 / (2 f dt)).
             out.update({"dt_s": 1.0 / (2.0 * f * n), "dt_s_uncertainty_rel": 1.0 / n,
                         "dt_s_source": "dt = 1 / (2 f N) from openEMS's Nyquist line"})
     trace = []

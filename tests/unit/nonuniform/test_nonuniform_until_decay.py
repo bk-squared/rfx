@@ -45,7 +45,7 @@ from rfx.nonuniform import (
 )
 from rfx.sources.sources import GaussianPulse
 
-# Gate C envelope. Predeclared target was np.allclose(rtol=1e-6, atol=1e-10)
+# Gate C envelope. Target was np.allclose(rtol=1e-6, atol=1e-10)
 # (the uniform AB-identity precedent). Measured red at first run:
 #   probe series  max abs diff 2.000e+01 at scale 1.9682e7 (rel 1.0161e-6)
 #   E components  max abs diff <= 3.27e-7 of the dominant E scale
@@ -92,10 +92,9 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
     consec = 2
 
     # Twelve absorber layers, where the other gates here use four. A four-layer absorber 4 mm from the source holds the
-    # pulse's 1-4 GHz near field for a few hundred steps once its magnetic profile sits at the Yee half cell (#1012): at the
+    # pulse's 1-4 GHz near field for a few hundred steps once its magnetic profile sits at the Yee half cell: at the
     # stop step the probe keeps 1.3 % of its peak against 0.014 % in an open domain, and the stop at decay_by = 1e-4 cut that
-    # tail short by 3 %. At twelve layers the box's field energy is within 0.1 % of the open domain at the stop step
-    # (VESSL 369367264499), so this gate measures the stop rule, not the absorber.
+    # tail short by 3 %. At twelve layers the box's field energy is within 0.1 % of the open domain at the stop step, so this gate measures the stop rule, not the absorber.
     grid, materials, sources, probes = _build_nu_case(max_steps, cpml_layers=12)
     r = run_nonuniform_until_decay(
         grid, materials,
@@ -164,7 +163,7 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
     # lambda ~ 30 mm at f0), so the reference spectrum peaks at the DC
     # bin — argmax stays at k=0 even under heavy truncation, which makes
     # the two peak-bin assertions below weak frequency gates on this
-    # fixture. They are kept as predeclared; the BINDING frequency-domain
+    # fixture. They are kept; the BINDING frequency-domain
     # gate is the in-band sweep that follows.
     assert abs(k_dec - k_ref) <= 1, (
         f"peak bin moved by {abs(k_dec - k_ref)} bins (> 1); "
@@ -175,10 +174,10 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
         f"3x fixed-run reference; W trace:\n{trace}"
     )
 
-    # In-band sweep (reviewer-validated, #383 review): over every
+    # In-band sweep: over every
     # reference bin carrying >= 5% of the nonzero-bin (k >= 1) maximum,
     # the per-bin amplitude ratio must stay within 1e-2. Measured
-    # discrimination on this 12-layer fixture, #1012: 8.26e-4 at the true decay
+    # discrimination on this 12-layer fixture: 8.26e-4 at the true decay
     # stop, 8.70e-4 at 90% truncation (both pass), 7.97e-2 at 70%
     # truncation (fails).
     band = spec_ref >= 0.05 * float(np.max(spec_ref[1:]))

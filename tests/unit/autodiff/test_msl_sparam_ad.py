@@ -37,8 +37,7 @@ from tests.unit.sparams.test_msl_port_integration import (
 # Preserve these binaries. Current structural gates use manufactured data below.
 # ---------------------------------------------------------------------------
 
-# Slow end-to-end golden: a capture of the CURRENT pipeline (re-baselined
-# 2026-09-12, #726), regenerable ONLY with a written reason in
+# Slow end-to-end golden: a capture of the CURRENT pipeline (re-baselined), regenerable ONLY with a written reason in
 # test_compute_msl_s_matrix_end_to_end_matches_historical_base's docstring
 # (scripts/capture_msl_e2e_golden.py). The original "pre-change S1 capture,
 # must NOT be regenerated" contract this comment used to state was retired
@@ -68,7 +67,7 @@ def _build_thru_line_sim(*, dx=DX, ly=LY) -> Simulation:
     y_centre = ly / 2.0
     trace_y_lo = y_centre - W_TRACE / 2.0
     trace_y_hi = y_centre + W_TRACE / 2.0
-    # #931 §1.3: this one-cell foil declaration is a SHEET, not a volume.
+    # This one-cell foil declaration is a SHEET, not a volume.
     # On the current dx = H_SUB/3 mesh its midpoint is at 3.5 cells:
     # the exact half-cell tie resolves LOWER, onto the laminate face (3).
     # The historical capture uses dx = 80 um: midpoint/dx = 3.675, so
@@ -123,7 +122,7 @@ def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
         for axis, length, step in zip("xyz", E2E_DOMAIN, spacing)
     }
     profiles["dz_profile"] = np.repeat(E2E_DZ_PROFILE / refinement, refinement)
-    # #1138: trace y solved +5.83% (1x), +2.92% (2x); this tests the AD golden pair.
+    # Trace y solved +5.83% (1x), +2.92% (2x); this tests the AD golden pair.
     sim = Simulation(snap="declared",
         freq_max=F_MAX, domain=E2E_DOMAIN, dx=min(spacing),
         cpml_layers=16 * refinement,
@@ -319,7 +318,7 @@ def _fake_run_for_theta(theta: jnp.ndarray, n_probes: int = 5):
         grid = self._build_grid()
         planes = {}
         ones = jnp.ones((1, grid.ny, grid.nz), dtype=jnp.complex64)
-        # Linear z/y ramps for the Hy/Hz planes (issue #515 root cause).
+        # Linear z/y ramps for the Hy/Hz planes.
         # msl_loop_current's closed Ampere loop is
         #   I = (Hy[bottom] - Hy[top])*dy_sum + (Hz[right] - Hz[left])*dz_sum
         # A spatially UNIFORM Hy/Hz plane (the old ``ones * amp``) makes the
@@ -485,8 +484,7 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
     """
     freqs = jnp.asarray([1.0e9], dtype=jnp.float32)
 
-    # A strictly-positive floor, not merely isfinite/not-NaN (the #515
-    # defect: those assertions cannot fail on a severed tape, so the old
+    # A strictly-positive floor, not merely isfinite/not-NaN (the defect: those assertions cannot fail on a severed tape, so the old
     # test passed on a dead grad = 0.0). Derived from the measured
     # -4.681417e-03 with ~47x headroom below its magnitude.
     _GRAD_FLOOR = 1.0e-4
@@ -505,9 +503,9 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
                 # so a traced call (jax.grad) and an eager call (e.g. an FD
                 # cross-check) silently take DIFFERENT branches on this
                 # eps_override=None path and would compare two different
-                # functions (PR #468 defect class; see this test's docstring,
+                # functions (see this test's docstring,
                 # "CROSS-CHECK CORRECTION"). This flag makes objective() return
-                # the identical (raw) reduction either way. Since 2026-09-21 it
+                # the identical (raw) reduction either way. It
                 # is also the default — kept explicit anyway, because what this
                 # objective needs is a MODE-INDEPENDENT flag, not whichever
                 # value the default happens to hold.
@@ -850,7 +848,7 @@ def test_aligned_coupon_drive_covers_the_declared_measurement_band():
     for entry in sim._msl_ports:
         assert entry.waveform is E2E_WAVEFORM
         spectrum = np.abs(transform @ np.asarray(entry.waveform(times)))
-        # Predeclared 2.5x margin over the existing 10% reliability floor.
+        # 2.5x margin over the existing 10% reliability floor.
         assert np.min(spectrum / np.median(spectrum)) > .25
     old = np.abs(transform @ np.asarray(GaussianPulse(f0=F_MAX / 2, bandwidth=.8)(times)))
     np.testing.assert_array_equal(old / np.median(old) < .1,

@@ -134,7 +134,7 @@ def test_absorber_count_is_ceiling_in_both_lanes(graded, length, count):
 
 def test_synthesized_graded_z_uses_absorber_ceiling():
     grid = build_nonuniform_grid(10e9, (.006, .006, .0607), .0015, 2,
-                                None, dx_profile=np.full(4, .0015))
+                                None, dtype="float32", dx_profile=np.full(4, .0015))
     assert spans(grid)[2] == pytest.approx(41 * .0015, abs=1e-12)
 
 

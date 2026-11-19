@@ -13,7 +13,7 @@ def test_dg_line_matches_gaussian_pulse():
     """T2: expected samples come from GaussianPulse, never from the line."""
     f0, bandwidth, amplitude, dt = 8e9, 0.5, 1.7, 1.9065748695310057e-12
     cfg, _ = init_tfsf(61, 1e-3, dt, cpml_layers=8, tfsf_margin=4,
-                       f0=f0, bandwidth=bandwidth)
+                       f0=f0, bandwidth=bandwidth, dtype='float32')
     times = jnp.arange(2001, dtype=jnp.float32) * dt
     expected = jax.vmap(GaussianPulse(f0, bandwidth, amplitude, cutoff=3))(times)
     actual = jax.vmap(lambda t: line_source_value(cfg, t, amplitude))(times)
@@ -21,7 +21,7 @@ def test_dg_line_matches_gaussian_pulse():
 
 
 def test_dg_line_refuses_cutoff_below_gaussian_minimum():
-    cfg, _ = init_tfsf(61, 1e-3, 1e-12, cpml_layers=8, tfsf_margin=4)
+    cfg, _ = init_tfsf(61, 1e-3, 1e-12, cpml_layers=8, tfsf_margin=4, dtype='float32')
     cfg = cfg._replace(src_t0=2.4 * cfg.src_tau)
     with pytest.raises(ValueError, match=r"GaussianPulse cutoff=.*is below 2.5"):
         line_source_value(cfg, 0., cfg.src_amp)

@@ -139,7 +139,7 @@ LOCK_PROVENANCE = {
         "tests/unit/runners/test_distributed_nu_pec_mask_lane_parity.py"
         # "fixture" is a list of EXISTING paths (test_lock_provenance_gate.py checks each).
         # tests/unit/subgrid/test_subgrid_source_injection_dtype.py, the source of case 13 below,
-        # was removed under #1127 (in git history at a6d6fce1); the case and its baseline stay.
+        # was removed; the case and its baseline stay.
     ),
     "generator": "tests/locks/test_runner_split_bit_identity.py (RFX_RUNNER_BASELINE_CAPTURE=1)",
     "commit": "9866bafd",
@@ -286,11 +286,6 @@ def _f_nonuniform_constant_profile():
     return _constant_profile_nu_sim().run(n_steps=100)
 
 
-# --- 5/6: removed with the pmap runner (#1296). They drove
-#     ``rfx.runners.distributed.run_distributed`` directly at 2 devices, on
-#     the geometry of builder 1 widened to 10.5 mm and on
-#     tests/unit/runners/test_distributed.py's TestDistributedCPML geometry
-#     at Lx = 0.13 m. Fixture ids distributed_v1_cpml_small / _wide.
 
 
 # --- 7/9: sim.run(devices=[...]) is what the public API dispatches to
@@ -318,7 +313,7 @@ def _f_distributed_v2_nu_branch():
                                           devices=jax.devices()[:2])
 
 
-# --- 10: tests/unit/runners/test_distributed.py:464
+# --- 10: tests/unit/runners/test_distributed.py:462
 #     (test_distributed_cpml_pad_x_matches_single) geometry. Lx=0.125 realizes
 #     an ODD nx=59, so pad_x = 1 at 2 devices.
 #
@@ -578,10 +573,8 @@ def _f_distributed_v2_pec_body_interior():
 
 
 # --- 13: tests/unit/subgrid/test_subgrid_source_injection_dtype.py:123
-#     (_coarse_shadow_source_subgrid_sim), removed under #1127; in git history
-#     at a6d6fce1. Chosen over the inventory's suggestion
-#     (test_subgrid_fine_shape_parity.py's builders, also removed under #1127;
-#     in git history at a6d6fce1) because those
+#     (_coarse_shadow_source_subgrid_sim), removed. Chosen over the inventory's suggestion
+#     (test_subgrid_fine_shape_parity.py's builders, also removed) because those
 #     build a validation REGION and never call the runner at all -- its
 #     centered slab is refused by the production z-slab validator. This one
 #     runs run_subgridded_path end to end, through both the coarse-shadow
@@ -885,7 +878,7 @@ _SHARED_HELPER_BINDINGS = (
     # closures over (n_devices, n) that differed only in how they spelled the
     # two face-parallel extents (inventory §2.3(b)). Both callers are
     # setup-time, so this row guards a de-duplication with no jaxpr exposure.
-    # #1350/#1351: NU now imports the complete per-face sizing routine.
+    # NU now imports the complete per-face sizing routine.
     ("_distributed_boundary_layers", "rfx.runners.distributed_v2", "_distributed_boundary_layers"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_nu", "_distributed_boundary_layers"),
     # #1038 leg 2 -- the x-slab primitives. Not a de-duplication: these were
@@ -968,7 +961,7 @@ _SHARED_HELPER_BINDINGS = (
     # (state, db_st, lr_st) with the polarisation state passed straight
     # through -- the shared body returns the state only.
     ("update_e_nu_shmap", "rfx.runners.distributed_nu", "update_e_nu_shmap"),
-    # #1303 -- the slab view of the four-cell edge mean. Not a de-duplication:
+    # the slab view of the four-cell edge mean. Not a de-duplication:
     # one definition that both runners' CPML E corrections call (the E
     # updates reach it through the shared kernels above), so the psi
     # coefficient and the update take one rule. These rows are what says
@@ -977,7 +970,7 @@ _SHARED_HELPER_BINDINGS = (
      "slab_e_component_materials"),
     ("slab_e_component_materials", "rfx.runners.distributed_v2",
      "slab_e_component_materials"),
-    # #1303 -- the forward lane's four-cell means, built once before its
+    # the forward lane's four-cell means, built once before its
     # loop by the same helper (the uniform runner takes them in its loop body).
     ("slab_e_materials_shmap", "rfx.runners.distributed_nu",
      "slab_e_materials_shmap"),
@@ -1074,7 +1067,7 @@ def test_every_shared_helper_has_an_identity_guard():
 # back as an alias. That matters beyond tidiness --
 # tests/unit/materials/test_sheet_impedance.py keys its FENCE_REGISTRY on
 # (path, ENCLOSING FUNCTION, message) and its _fence() asserts the raising
-# TRACEBACK FRAME, so six #677 refusals (seven until #1296) must keep being
+# TRACEBACK FRAME, so six refusals must keep being
 # raised from inside run_distributed / run_uniform / run_nonuniform_path in
 # their current files.
 _RUNNER_ENTRY_POINTS = (
@@ -1088,7 +1081,7 @@ _RUNNER_ENTRY_POINTS = (
      "run_subgridded_path"),
     ("disjoint", "run_disjoint_stage2_path", "rfx.runners.disjoint",
      "run_disjoint_stage2_path"),
-    # KEPT THROUGH #1296, which removed the pmap runner: the module stays for
+    # The module stays for
     # one release, and its run_distributed is now the stub that raises with
     # the replacement named (test_the_package_no_longer_exports_run_distributed
     # calls it). It is still defined in rfx.runners.distributed, which is what
@@ -1103,8 +1096,7 @@ _RUNNER_ENTRY_POINTS = (
 
 #: rfx/runners/__init__.py's __all__.
 #:
-#: CHANGED BY #1038 leg 6 (was, at 9866bafd, this tuple plus a trailing
-#: "run_distributed"). Leg 6 retires the v1 pmap runner as a PUBLIC entry
+#: Leg 6 retires the v1 pmap runner as a PUBLIC entry
 #: point: the package-level ``run_distributed`` resolved to ``distributed.py``,
 #: which ``sim.run(devices=...)`` reaches only as v2's ``n_devices == 1`` fast
 #: path, while the runner it actually dispatches to
@@ -1125,7 +1117,7 @@ _RUNNERS_ALL = ("run_nonuniform_path", "run_subgridded_path", "run_uniform")
 #: routine for what happens when a test evicts rfx.runners from sys.modules
 #: and that chain is not what it was.
 #:
-#: CHANGED BY #1038 leg 6: ("rfx.runners.distributed", "run_distributed") was
+#: ("rfx.runners.distributed", "run_distributed") was
 #: the fourth row and is gone with the public export. That SHORTENS the eager
 #: chain twice over -- verified in a fresh interpreter, ``import rfx.runners``
 #: now loads neither ``rfx.runners.distributed`` nor, transitively,
@@ -1224,7 +1216,7 @@ def test_the_package_no_longer_exports_run_distributed():
     assert v1.run_distributed.__module__ == "rfx.runners.distributed"
     assert v2.run_distributed.__module__ == "rfx.runners.distributed_v2"
 
-    # #1296: the pmap runner is gone; its name raises and names the
+    # the pmap runner is gone; its name raises and names the
     # replacement, whatever it is called with.
     with pytest.raises(RuntimeError) as excinfo:
         v1.run_distributed(object(), n_steps=1)

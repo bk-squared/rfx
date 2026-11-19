@@ -14,6 +14,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
+from rfx.errors import RfxUnsupported
 from rfx._internal._grid_metric import half_open_volume_mask
 from rfx.grid import Grid
 
@@ -393,7 +394,7 @@ class OrientedBox:
         for name, shape in (("center", (3,)), ("size", (3,)), ("rotation", (3, 3))):
             value = getattr(self, name)
             if any(is_tracer(v) for v in jax.tree_util.tree_leaves(value)):
-                raise NotImplementedError("OrientedBox requires concrete geometry parameters")
+                raise RfxUnsupported("OrientedBox requires concrete geometry parameters")
             raw = np.asarray(value)
             if raw.shape != shape or raw.dtype.kind not in "iuf":
                 raise ValueError(f"OrientedBox {name} must be a real finite array of shape {shape}")

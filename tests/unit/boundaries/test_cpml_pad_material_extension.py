@@ -91,7 +91,7 @@ def _assemble_uniform(sim):
 
 def _assemble_nu(sim):
     grid = build_nonuniform_grid(
-        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, None,
+        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, None, dtype="float32",
         dx_profile=np.full(NA, DX), dy_profile=np.full(NB, DX),
     )
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(sim, grid)
@@ -297,7 +297,7 @@ def test_corner_pad_refuses_lo_pad_replica_promotion():
         f"fallback promoted a lo-pad REPLICA of a pole column — the "
         f"poleish replication through the pad passes is gone and the "
         f"corner realizes the #808 eps_inf-without-pole chimera")
-    # and the z-hi pad above the box's own interior stays background (#808)
+    # and the z-hi pad above the box's own interior stays background
     assert float(eps[i, ply + 4, nz - phz]) == 1.0
 
 
@@ -396,7 +396,7 @@ def test_pole_extension_stability_lock():
         f"x-hi pad pole cells={pole_pad_hi} x-lo pad pole cells={pole_pad_lo}")
 
     # Sanity check first: the shipped code must not extend pole masks at
-    # all (issue #636). If this fails, the divergence assertion below is
+    # all. If this fails, the divergence assertion below is
     # not trustworthy either way -- fix this first.
     assert pole_pad_hi == 0 and pole_pad_lo == 0, (
         f"pole cells reached a CPML pad ({pad_witness}) -- pole-mask "
@@ -451,14 +451,14 @@ class _PoleExtendedSim(Simulation):
         out = super()._assemble_materials(grid, **kw)
         materials, debye_spec, lorentz_spec, *rest = out
 
-        # #808: the shipped assembler now refuses the hi-face statics
-        # promotion for pole-carrying columns, but the #636 factorial row
+        # The shipped assembler now refuses the hi-face statics
+        # promotion for pole-carrying columns, but the factorial row
         # this harness measures is "statics AND poles both extended" —
         # without re-running the UNGATED statics extension here, the
         # variant would drift to the factorial's poles-over-vacuum-eps
         # row (measured catastrophically divergent to NaN), a different
         # documented state. Re-extending the finished arrays reproduces
-        # the pre-#808 statics extension value-for-value: the gated cells
+        # the earlier statics extension value-for-value: the gated cells
         # are exactly the ones still background, and the ungated rule
         # promotes them from the same inner columns it always used.
         if kw.get("include_cpml_pad_extension", True):

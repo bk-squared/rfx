@@ -43,8 +43,9 @@ S. C. Tan and G. E. Potter, IEEE T-AP 58(9), 2010.
 
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -195,6 +196,9 @@ def init_tfsf_2d(
     TEz mode (ey polarization): 2D grid in xz-plane, periodic in z.
     CFS-CPML on x boundaries only.
 
+    The auxiliary absorber profiles are float32 because run admission refuses
+    float64 oblique Bloch.
+
     Parameters
     ----------
     nz : int | None
@@ -218,9 +222,6 @@ def init_tfsf_2d(
     else:
         mode = "TEz"
 
-    theta = np.radians(theta_deg)
-    cos_theta = float(np.cos(theta))
-    sin_theta = float(np.sin(theta))
 
     # TFSF box boundaries in x
     offset = cpml_layers + tfsf_margin
@@ -267,17 +268,17 @@ def init_tfsf_2d(
     # reflection through the same law the 3-D absorber uses
     # (rfx/boundaries/cpml.py::_cpml_profile), never from a standalone
     # heuristic -- see AUX_CPML_* above.
-    profile_options = dict(
+    profile_options: dict[str, Any] = dict(
         order=AUX_CPML_ORDER if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=AUX_CPML_KAPPA_MAX if aux_cpml_kappa_max is None else float(aux_cpml_kappa_max),
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
-    prof = _cpml_profile(n_cpml_2d, dt, dx, **profile_options)
+    prof = _cpml_profile(n_cpml_2d, dt, dx, dtype=jnp.float32, **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_2d, dt, dx, sample_offset=0.5, **profile_options)
+        n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_2d, dt, dx, sample_offset=-0.5, **profile_options)
+        n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=-0.5, **profile_options)
     b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
     # Source waveform
@@ -300,9 +301,8 @@ def init_tfsf_2d(
     # k_y = k0·sinθ at the carrier f0; the sign is chosen so that a positive
     # angle_deg tilts the injected energy flow toward +transverse (matching the
     # legacy time-delay convention). Verified against poynting_angle.py.
-    c0 = 1.0 / np.sqrt(EPS_0 * MU_0)
-    k0 = 2.0 * np.pi * f0 / c0
-    k_transverse = -direction_sign * k0 * sin_theta
+    theta, cos_theta, sin_theta, k_transverse = oblique_angle_fields(
+        float(theta_deg), f0, direction_sign, np)
 
     config = TFSF2DConfig(
         x_lo=x_lo, x_hi=x_hi,
@@ -314,8 +314,8 @@ def init_tfsf_2d(
         src_tau=float(tau),
         src_fcen=float(f0),
         theta=float(theta),
-        cos_theta=cos_theta,
-        sin_theta=sin_theta,
+        cos_theta=float(cos_theta),
+        sin_theta=float(sin_theta),
         k_transverse=float(k_transverse),
         electric_component=electric_component,
         magnetic_component=magnetic_component,
@@ -611,3 +611,27 @@ _LAZY_EXPORTS = {
 def __getattr__(name):
     from rfx._moved_names import resolve_moved
     return resolve_moved(__name__, _LAZY_EXPORTS, name)
+
+
+def oblique_angle_fields(theta_deg, f0, direction_sign, xp):
+    """Carrier-angle fields in NumPy or JAX, with the launch direction's sign."""
+    theta = xp.radians(theta_deg)
+    cos_theta = xp.cos(theta)
+    sin_theta = xp.sin(theta)
+    c0 = 1.0 / np.sqrt(EPS_0 * MU_0)
+    k0 = 2.0 * np.pi * f0 / c0
+    k_transverse = -direction_sign * k0 * sin_theta
+    return theta, cos_theta, sin_theta, k_transverse
+
+
+def with_angle(cfg, theta_deg):
+    """Replace stepped angle fields; retain the declaration's kind and sizes."""
+    xp = jnp if isinstance(theta_deg, jax.Array) else np
+    if xp is np:
+        theta_deg = float(theta_deg)
+    theta, cosine, sine, transverse = oblique_angle_fields(
+        theta_deg, cfg.src_fcen, cfg.direction_sign, xp)
+    if xp is np:
+        theta, cosine, sine, transverse = map(float, (theta, cosine, sine, transverse))
+    return cfg._replace(theta=theta, cos_theta=cosine, sin_theta=sine,
+                        k_transverse=transverse)
