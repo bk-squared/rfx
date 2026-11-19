@@ -18,7 +18,6 @@ def _trace(smoothing):
     sim = Simulation(freq_max=20e9, domain=(0.024, 0.020, 0.016), dx=1e-3,
                      boundary="pec", cpml_layers=0)
     sim.add_material("ball", eps_r=6.0)
-    # centre and radius off the lattice: every surface cell is partly filled
     sim.add(Sphere((0.0117, 0.0103, 0.0081), 0.00437), material="ball")
     sim.add_source((0.004, 0.005, 0.004), "ez", amplitude_kind="current")
     sim.add_probe((0.019, 0.014, 0.011), "ez")
@@ -30,14 +29,12 @@ def _trace(smoothing):
 
 
 def _judge(plain, stage1, kottke):
+    """An earlier CPU reference measured stage 1 moving the probe trace by 0.1148 of its peak, kottke_pec by 0.1148, and the two differing by 3.0e-5, while a dropped tensor gives moved == 0 exactly."""
     peak = np.max(np.abs(plain))
     assert peak > 0
     moved = np.max(np.abs(kottke - plain)) / peak
     between = np.max(np.abs(kottke - stage1)) / peak
     stage1_moved = np.max(np.abs(stage1 - plain)) / peak
-    # CPU reference: stage 1 moves the probe trace by 0.1148 of its peak,
-    # kottke_pec by 0.1148, and the two differ by 3.0e-5. A dropped tensor
-    # gives moved == 0 exactly.
     assert stage1_moved > 1e-2, stage1_moved
     assert moved > 1e-2, (moved, between, stage1_moved)
     assert between < 0.5 * moved, (moved, between, stage1_moved)
@@ -113,7 +110,7 @@ def test_the_occupancy_tensor_of_forward_is_not_dropped_either(monkeypatch):
     told, _ = trace(jnp.asarray(occ))
     assert not built, "the occupancy tensor took the baked scalar-coefficient path"
     peak = np.max(np.abs(empty))
-    assert np.max(np.abs(general - empty)) / peak > 1e-2      # the conductor matters here
+    assert np.max(np.abs(general - empty)) / peak > 1e-2
     assert np.array_equal(told, general)
 
 
@@ -128,7 +125,8 @@ def test_a_waveguide_port_is_not_dropped_by_the_baked_path(monkeypatch):
     from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
 
     def peak():
-        grid = Grid(freq_max=12e9, domain=(48 * 1.27e-3, 0.02286, 0.01016), dx=1.27e-3, cpml_layers=0)  # main's solved length
+        """The x-domain length written as 48 * 1.27e-3 is a whole number of cells of dx=1.27e-3, so its solved length equals its declared length."""
+        grid = Grid(freq_max=12e9, domain=(48 * 1.27e-3, 0.02286, 0.01016), dx=1.27e-3, cpml_layers=0)
         port = WaveguidePort(x_index=8, y_slice=(0, grid.shape[1] - 1), z_slice=(0, grid.shape[2] - 1),
                              a=0.02286, b=0.01016, mode=(1, 0), mode_type="TE", direction="+x")
         cfg = init_waveguide_port(port, grid.dx, jnp.linspace(8e9, 11e9, 5), f0=10e9,

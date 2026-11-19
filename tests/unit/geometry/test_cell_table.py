@@ -22,7 +22,9 @@ BOX_OFF_CAPTURE_REFERENCE = REFERENCE.with_name('cell_table_capture_box_off_dea2
 
 
 def _declared_sets(scene, grid, shapes):
-    """Analytic closed-body membership in exact 0.1 mm units, independent of rfx geometry."""
+    """Analytic closed-body membership in exact 0.1 mm units, independent of rfx geometry.
+    One extra owner and its endpoint allow the high bounding edges of each face.
+    """
     if scene not in ('box_nodes', 'cylinder'):
         return None
 
@@ -31,7 +33,6 @@ def _declared_sets(scene, grid, shapes):
         assert scaled.denominator == 1
         return int(scaled)
 
-    # One extra owner and its endpoint allow the high bounding edges of each face.
     lines = [(np.arange(n + 2, dtype=np.int64) - getattr(grid, f'pad_{axis}_lo'))
              * units(grid.dx) for axis, n in zip('xyz', grid.shape)]
     coords = np.meshgrid(*lines, indexing='ij', sparse=True)
@@ -171,7 +172,6 @@ def test_frozen_operands(scene, rule):
 
 @pytest.mark.parametrize('rule', ('sc', 'raw', 'floor'))
 def test_node_holding_band_matches_main(rule):
-    # Main's floor and default readers have different trailing-node refusal bands.
     from rfx.geometry.conformal_cells import compute_conformal_fractions
 
     grid, _ = cell_table_scene('sphere')

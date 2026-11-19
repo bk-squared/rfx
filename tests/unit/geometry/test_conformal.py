@@ -33,12 +33,10 @@ def test_conformal_weights_pec_box():
 
     mask = np.array(box.mask(grid))
 
-    # Inside PEC: weights = 0
     assert float(jnp.max(w_ex[mask])) == 0.0, "Ex weight inside PEC should be 0"
     assert float(jnp.max(w_ey[mask])) == 0.0, "Ey weight inside PEC should be 0"
     assert float(jnp.max(w_ez[mask])) == 0.0, "Ez weight inside PEC should be 0"
 
-    # Well outside PEC (corner cells far from boundary): weights = 1
     assert float(w_ex[0, 0, 0]) == 1.0, "Far exterior Ex weight should be 1"
     assert float(w_ey[0, 0, 0]) == 1.0, "Far exterior Ey weight should be 1"
 
@@ -55,12 +53,10 @@ def test_conformal_sphere_has_fractional_weights():
     n_one = int(np.sum(w_ex_np == 1.0))
     n_frac = int(np.sum((w_ex_np > 0) & (w_ex_np < 1.0)))
 
-    # Sphere should produce fractional weights at surface cells
     assert n_zero > 0, "Should have interior PEC cells"
     assert n_one > 0, "Should have exterior cells"
     assert n_frac > 0, "Sphere should produce fractional boundary weights"
 
-    # Fractional weights should be between 0 and 1
     frac_vals = w_ex_np[(w_ex_np > 0) & (w_ex_np < 1.0)]
     assert np.all(frac_vals > 0) and np.all(frac_vals < 1.0)
 
@@ -75,7 +71,6 @@ def test_conformal_disabled_matches_original():
     pulse = GaussianPulse(f0=3e9)
     src = (grid.nx // 2, grid.ny // 2, grid.nz // 2)
 
-    # Run with conformal weights = 1 (should be identity)
     for n in range(20):
         t = n * grid.dt
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
@@ -86,7 +81,6 @@ def test_conformal_disabled_matches_original():
 
     ez_conformal = float(jnp.sum(state.ez ** 2))
 
-    # Run without conformal
     state2 = init_state(grid.shape)
     for n in range(20):
         t = n * grid.dt
@@ -101,9 +95,6 @@ def test_conformal_disabled_matches_original():
     assert diff < 1e-10, f"Conformal with w=1 should match original: diff={diff}"
 
 
-# ---------------------------------------------------------------------------
-# New tests for SDF-based conformal weights
-# ---------------------------------------------------------------------------
 
 def test_conformal_weights_sdf_sphere():
     """SDF-based conformal weights for a sphere should have fractional cells."""
@@ -167,10 +158,8 @@ def test_conformal_eps_correction_amplification():
 
     eps_ex, eps_ey, eps_ez = conformal_eps_correction(eps_r, w, ones, ones)
 
-    # eps_ex should be eps_r / 0.5 = 2.0
     assert abs(float(eps_ex[1, 1, 1]) - 2.0) < 1e-6, \
         f"Expected eps=2.0, got {float(eps_ex[1,1,1])}"
-    # eps_ey should be eps_r / 1.0 = 1.0
     assert abs(float(eps_ey[1, 1, 1]) - 1.0) < 1e-6
 
 
@@ -188,7 +177,6 @@ def test_conformal_pec_box_identical_to_staircase():
     pulse = GaussianPulse(f0=3e9)
     src = (2, 2, 2)
 
-    # Staircase run
     from rfx.boundaries.pec import apply_pec_mask
     pec_mask = box.mask(grid)
     for n in range(30):
@@ -201,7 +189,6 @@ def test_conformal_pec_box_identical_to_staircase():
 
     ez_stair = np.array(state.ez)
 
-    # Conformal run
     (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [box], field_dtype=np.float32)
     materials = finish_conformal_mu(with_components(
         materials, grid, periodic=(False,) * 3), areas)
@@ -219,7 +206,6 @@ def test_conformal_pec_box_identical_to_staircase():
 
     ez_conf = np.array(state2.ez)
 
-    # Fields should be very close (not bitwise identical due to SDF transition)
     max_diff = np.max(np.abs(ez_stair - ez_conf))
     max_field = max(np.max(np.abs(ez_stair)), 1e-30)
     rel_diff = max_diff / max_field
@@ -228,23 +214,23 @@ def test_conformal_pec_box_identical_to_staircase():
 
 
 def test_api_conformal_flag():
-    """sim.run(conformal_pec=True) should work end to end."""
+    """sim.run(conformal_pec=True) should work end to end.
+
+    The port only excites the model because a conformal lumped S-matrix is refused."""
     from rfx.api import Simulation
 
-    # Place source and probe OUTSIDE the PEC cylinder
-    # Cylinder: center=(0.025,0.025,0.025), radius=0.008, height=0.02
-    # So it spans z=[0.015, 0.035], r=0.008 from center
-    # Source at (0.005, 0.025, 0.025) is outside (x is far from center)
-    # Probe at (0.045, 0.025, 0.025) is outside
     sim = Simulation(freq_max=5e9, domain=(0.05, 0.05, 0.05), boundary="pec")
-    sim.add(Cylinder((0.025, 0.025, 0.025), 0.008, 0.02), material="pec")
-    sim.add_port((0.005, 0.025, 0.025), "ez", waveform=GaussianPulse(f0=3e9))
-    sim.add_probe((0.045, 0.025, 0.025), "ez")
+    CYLINDER_CENTER = (0.025, 0.025, 0.025)
+    CYLINDER_RADIUS = 0.008
+    SOURCE_POSITION = (0.005, 0.025, 0.025)
+    PROBE_POSITION = (0.045, 0.025, 0.025)
+    assert all(np.hypot(p[0] - CYLINDER_CENTER[0], p[1] - CYLINDER_CENTER[1]) > CYLINDER_RADIUS for p in (SOURCE_POSITION, PROBE_POSITION)), "source and probe positions must remain outside the PEC cylinder"
+    sim.add(Cylinder(CYLINDER_CENTER, CYLINDER_RADIUS, 0.02), material="pec")
+    sim.add_port(SOURCE_POSITION, "ez", waveform=GaussianPulse(f0=3e9))
+    sim.add_probe(PROBE_POSITION, "ez")
 
-    # The port only excites the model; a conformal lumped S-matrix is refused.
     result = sim.run(n_steps=50, conformal_pec=True, compute_s_params=False)
     assert result.time_series.shape == (50, 1)
-    # Signal should not be all zeros (source is outside PEC)
     assert float(jnp.max(jnp.abs(result.time_series))) > 0
 
 
@@ -262,7 +248,6 @@ def test_conformal_stability_10k_steps():
     pulse = GaussianPulse(f0=1.5e9)
     src = (grid.nx // 2, grid.ny // 2, grid.nz // 4)
 
-    # Inject source for first 200 steps, then let it ring
     max_energy = 0.0
     for n in range(10000):
         t = n * grid.dt
@@ -281,32 +266,29 @@ def test_conformal_stability_10k_steps():
 
     final_energy = float(jnp.sum(state.ex**2 + state.ey**2 + state.ez**2))
 
-    # Energy should not diverge (allow some oscillation but not growth)
-    # After source stops, energy should decay or stay bounded
     assert final_energy < max_energy * 10, \
         f"Energy diverged: final={final_energy:.6e}, max_post_source={max_energy:.6e}"
 
 
-# ---------------------------------------------------------------------------
-# Coupled advanced workflow tests (conformal + CPML / dispersive / gradients)
-# ---------------------------------------------------------------------------
 
 def test_conformal_with_cpml():
     """Conformal PEC should work with CPML boundary (no NaN, non-zero fields)."""
     from rfx.api import Simulation
 
     sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04), boundary="cpml")
-    sim.add(Cylinder((0.02, 0.02, 0.02), 0.008, 0.03, axis="z"), material="pec")
-    sim.add_source((0.005, 0.005, 0.02), component="ez")
+    CPML_CYLINDER_CENTER = (0.02, 0.02, 0.02)
+    CPML_CYLINDER_RADIUS = 0.008
+    CPML_SOURCE_POSITION = (0.005, 0.005, 0.02)
+    assert np.hypot(CPML_SOURCE_POSITION[0] - CPML_CYLINDER_CENTER[0], CPML_SOURCE_POSITION[1] - CPML_CYLINDER_CENTER[1]) > CPML_CYLINDER_RADIUS, "CPML source position must remain outside the PEC cylinder so the probe can receive a signal"
+    sim.add(Cylinder(CPML_CYLINDER_CENTER, CPML_CYLINDER_RADIUS, 0.03, axis="z"), material="pec")
+    sim.add_source(CPML_SOURCE_POSITION, component="ez")
     sim.add_probe((0.035, 0.035, 0.02), component="ez")
 
     result = sim.run(n_steps=300, conformal_pec=True)
     assert result is not None
     ts = np.array(result.time_series)
-    # Non-zero fields: source is well outside PEC cylinder, probe should see signal
     assert np.max(np.abs(ts)) > 1e-10, \
         f"Fields are essentially zero: max|ts|={np.max(np.abs(ts)):.2e}"
-    # No NaN
     assert not np.any(np.isnan(ts)), "NaN detected in time series"
 
 
@@ -319,10 +301,8 @@ def test_conformal_with_dispersive_is_refused():
     from rfx.materials.debye import DebyePole
 
     sim = Simulation(freq_max=5e9, domain=(0.04, 0.04, 0.04), boundary="pec")
-    # Fill domain with dispersive Debye medium
     sim.add_material("disp", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
     sim.add(Box((0, 0, 0), (0.04, 0.04, 0.04)), material="disp")
-    # Embed PEC cylinder (conformal)
     sim.add(Cylinder((0.02, 0.02, 0.02), 0.005, 0.03, axis="z"), material="pec")
     sim.add_source((0.005, 0.005, 0.02), component="ez")
     sim.add_probe((0.035, 0.035, 0.02), component="ez")
@@ -346,7 +326,6 @@ def test_conformal_gradient_flows():
     src = make_source(grid, (0.002, 0.002, 0.01), "ez", pulse, n_steps)
     prb = make_probe(grid, (0.018, 0.018, 0.01), "ez")
 
-    # Pre-compute conformal weights (outside the AD-traced objective)
     from rfx.geometry.conformal import (
         compute_conformal_weights_sdf,
         clamp_conformal_weights,

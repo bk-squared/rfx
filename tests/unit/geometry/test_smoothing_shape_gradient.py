@@ -63,9 +63,6 @@ from tests._gate_policy import gate_from_envelope
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Same boundary-voxel fixture as test_smoothing_coordinate_contract.py: every
-# interface voxel carries a partial fill, and the Box interior supplies the
-# all-zero-overhang sample points that produced the NaN.
 UNIFORM_FIXTURE = dict(freq_max=1.0e9, domain=(7.0e-3, 5.0e-3, 3.0e-3),
                        dx=2.54e-4, cpml_layers=2)
 BOX_LO = (1.3e-3, 1.1e-3, 0.7e-3)
@@ -75,7 +72,6 @@ SPHERE = dict(center=(3.5e-3, 2.5e-3, 1.5e-3), radius=1.1e-3)
 CYL_Z = dict(center=(3.5e-3, 2.5e-3, 1.5e-3), radius=1.3e-3, height=1.7e-3)
 CYL_X = dict(center=(3.5e-3, 2.5e-3, 1.5e-3), radius=1.0e-3, height=2.6e-3)
 
-# Central-FD step per flag (see the module docstring for why they differ).
 FD_STEP = {0: 1.0e-7, 1: 1.0e-8}
 
 FD_ENVELOPE_REL_X64 = 1.208e-08
@@ -85,9 +81,6 @@ FD_GATE_REL_F32 = gate_from_envelope(FD_ENVELOPE_REL_F32, quantum=1e4)
 CROSS_FLAG_ENVELOPE_REL = 1.151e-05
 CROSS_FLAG_GATE_REL = gate_from_envelope(CROSS_FLAG_ENVELOPE_REL, quantum=1e6)
 
-# The Sphere control was already finite and FD-validated before the fix
-# (issue #1085): it is carried here so a future change that breaks it is
-# caught by the same lock.
 CASES = ["box_shift_x", "sphere_radius", "cylz_radius", "cylz_shift_x",
          "cylx_radius", "cylx_height"]
 NAN_BEFORE_THE_FIX = {"box_shift_x", "cylz_radius", "cylz_shift_x",
