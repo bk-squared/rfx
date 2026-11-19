@@ -25,6 +25,7 @@ from rfx.core.yee import (
     EPS_0, MU_0,
 )
 from rfx.core.jax_utils import is_tracer
+from rfx.errors import RfxRefusal
 from rfx._internal._grid_metric import (
     DECLARED_SPAN_TOL_M,
     Float32WidthResolutionWarning,
@@ -300,7 +301,7 @@ class NonUniformGrid(NamedTuple):
         """
         ax, _n, pad_lo, pad_hi = self._axis_layout(axis)
         if self.is_traced(ax):
-            raise ValueError(
+            raise RfxRefusal(
                 f"index_of: axis {_axis_name(ax)!r} carries a TRACED cell "
                 "profile (mesh-as-design-variable), so a physical coordinate "
                 "cannot be resolved to an index on the host. The nominal "
@@ -662,7 +663,7 @@ def _pinned_dt(dt_pin, dt_min_cell, profiles, axis_names,
     step.
     """
     if is_tracer(dt_pin):
-        raise ValueError(
+        raise RfxRefusal(
             f"{where}(dt=...) must be a concrete float; a traced "
             "dt puts the time step itself into the derivative, which is the "
             "thing pinning it is meant to remove."
@@ -675,7 +676,7 @@ def _pinned_dt(dt_pin, dt_min_cell, profiles, axis_names,
         )
     traced_axes = [n for n, p in zip(axis_names, profiles) if is_tracer(p)]
     if traced_axes and dt_min_cell is None:
-        raise ValueError(
+        raise RfxRefusal(
             f"{where}(dt={dt_val:.6e}) with a traced "
             f"{'/'.join(traced_axes)} profile also needs dt_min_cell=: a "
             "tracer carries no host cell size, so the Courant limit of the "
@@ -685,7 +686,7 @@ def _pinned_dt(dt_pin, dt_min_cell, profiles, axis_names,
     if dt_min_cell is not None:
         if is_tracer(dt_min_cell) or not np.isfinite(float(dt_min_cell)) \
                 or float(dt_min_cell) <= 0.0:
-            raise ValueError(
+            raise RfxRefusal(
                 f"{where}(dt_min_cell=...) must be a concrete "
                 f"positive float (m), got {dt_min_cell!r}."
             )

@@ -42,6 +42,7 @@ import jax.numpy as jnp
 
 from rfx.materials.debye import per_component
 from rfx.materials.relative_strength import RelativeStrength
+from rfx.errors import RfxRefusal
 from rfx.model.dispersive_poles import (
     LorentzCoeffs,
     _judged_pole_arrays,
@@ -107,7 +108,7 @@ def drude_pole_map(omega_p: float | Callable, gamma: float | Callable, *,
     kappa: float | Callable | RelativeStrength
     if density is not None:
         if callable(omega_p) or isinstance(omega_p, jax.core.Tracer):
-            raise ValueError("drude_pole_map density requires a concrete reference omega_p")
+            raise RfxRefusal("drude_pole_map density requires a concrete reference omega_p")
         kappa = RelativeStrength(float(omega_p ** 2), density)
     else:
         kappa = (lambda x, y, z: omega_p(x, y, z) ** 2) if callable(omega_p) else omega_p ** 2
@@ -120,7 +121,7 @@ def lorentz_pole_map(delta_eps: float | Callable, omega_0: float,
     """Declare spatial oscillator strength and damping at one resonance."""
     kappa: float | Callable | RelativeStrength
     if relative and (isinstance(omega_0, jax.core.Tracer) or omega_0 <= 0):
-        raise ValueError("relative lorentz_pole_map requires concrete omega_0 > 0; use drude_pole_map for omega_0=0")
+        raise RfxRefusal("relative lorentz_pole_map requires concrete omega_0 > 0; use drude_pole_map for omega_0=0")
     if relative:
         kappa = RelativeStrength(float(omega_0 ** 2), delta_eps)
     else:
@@ -160,7 +161,7 @@ def lorentz_pole(delta_eps: float, omega_0: float, delta: float, *, relative: bo
         Use RelativeStrength(omega_0**2, delta_eps), with concrete omega_0 > 0.
     """
     if relative and (isinstance(omega_0, jax.core.Tracer) or omega_0 <= 0):
-        raise ValueError("relative lorentz_pole requires concrete omega_0 > 0; use drude_pole for omega_0=0")
+        raise RfxRefusal("relative lorentz_pole requires concrete omega_0 > 0; use drude_pole for omega_0=0")
     kappa = RelativeStrength(omega_0 ** 2, delta_eps) if relative else delta_eps * omega_0 ** 2
     return LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)
 

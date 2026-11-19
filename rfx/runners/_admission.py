@@ -1574,7 +1574,7 @@ def _no_shape_tangent(value):
 
 @_no_shape_tangent.defjvp
 def _no_shape_tangent_jvp(primals, tangents):
-    raise NotImplementedError(
+    raise RfxUnsupported(
         "A gradient with respect to a declared shape dimension (a size or position "
         "of a shape added with Simulation.add) is not supported: run() and "
         "forward() draw shapes onto grid cells, so the result is a step function "
