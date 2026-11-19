@@ -214,6 +214,6 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
     if any(isinstance(shape, Box) for shape, _ in carried):
         exact_lengths, exact_areas, edge_mask, face_mask = exact_box_overlap(
             grid, carried, lines, sample_lines, tol)
-        lengths = tuple(np.where(mask, exact, old) for mask, exact, old in zip(edge_mask, exact_lengths, lengths))
-        areas = tuple(np.where(mask, exact, old) for mask, exact, old in zip(face_mask, exact_areas, areas))
+        lengths = [np.where(mask, exact, old) for mask, exact, old in zip(edge_mask, exact_lengths, lengths)]
+        areas = [np.where(mask, exact, old) for mask, exact, old in zip(face_mask, exact_areas, areas)]
     return CellGeometryTable(tuple(lengths), tuple(areas), owner[:-1, :-1, :-1])

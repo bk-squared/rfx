@@ -25,7 +25,7 @@ def _images(grid, boxes, starts, stops, tol):
                 ranges.append(range(math.ceil((min(starts[axis]) - box.corner_hi[axis] - tol) / period),
                                     math.floor((max(stops[axis]) - box.corner_lo[axis] + tol) / period) + 1))
             else:
-                ranges.append((0,))
+                ranges.append(range(1))
         for shifts in itertools.product(*ranges):
             bounds = []
             for corner in (box.corner_lo, box.corner_hi):
@@ -55,7 +55,7 @@ def exact_box_overlap(grid, carried, lines, sample_lines, tol):
     shape = tuple(len(start) for start in starts)
     boxes = [body for body, _ in carried if isinstance(body, Box)]
     images = _images(grid, boxes, starts, stops, tol)
-    parts = []
+    parts: list = []
     indices = [np.arange(size) for size in shape]
     for axis in range(3):
         if np.all(widths[axis] == 0):
