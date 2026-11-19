@@ -1116,7 +1116,7 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
         grid,
         dielectric_shapes=[(e.shape, sim._resolve_material(e.material_name).eps_r)
                            for e in sim._geometry],
-        pec_shapes=[e.shape for e in sim._geometry], background_eps=1.0)
+        pec_shapes=[e.shape for e in sim._geometry], background_eps=1.0, dtype='float32')
 
     # the premise, measured: this edge is a FRACTIONAL Kottke edge, not a
     # frozen one — so anything that zeroes it is overwriting the model.

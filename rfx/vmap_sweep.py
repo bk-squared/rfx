@@ -31,6 +31,8 @@ Limitations
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -867,7 +869,7 @@ def vmap_material_sweep(
                 grid, field_index(grid, pe.position, pe.component), pe.component,
                 pe.waveform, n_steps, mats, pe.amplitude_kind,
                 native=native, periodic=source_periodic,
-            ) for pe in dynamic_sources]
+            dtype=resolve_coefficient_dtype(sim._precision)) for pe in dynamic_sources]
             prepared_drives.append(
                 jnp.stack(waveforms, axis=-1) if waveforms else
                 jnp.zeros((n_steps, 0), dtype=jnp.float32))

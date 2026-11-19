@@ -123,7 +123,7 @@ def scene(request):
     builder = compute_smoothed_eps if kind == 'uniform' else compute_smoothed_eps_nonuniform
 
     def build(cx):
-        return jnp.stack(builder(grid, [(_shape(kind, cx), 4.)]))
+        return jnp.stack(builder(grid, [(_shape(kind, cx), 4.)], dtype=jnp.float32))
 
     host = np.asarray(build(3 * MM))
     traced = np.asarray(jax.jit(build)(jnp.float32(3 * MM)))
@@ -176,7 +176,7 @@ def test_other_callers_host_mirrors(lane):
     grid = _grid(False)
     shape = _shape('uniform')
     if lane == 'kottke_pec':
-        values = compute_inv_eps_tensor_diag(grid, pec_shapes=[shape])
+        values = compute_inv_eps_tensor_diag(grid, pec_shapes=[shape], dtype=jnp.float32)
     elif lane == 'full_tensor':
         # Nodes and their neighboring triplets exercise the node union caller.
         shape = Cylinder((3 * MM, 6 * MM, 6 * MM), 2.1 * MM, 7.2 * MM, axis='z')
@@ -190,7 +190,7 @@ def test_other_callers_host_mirrors(lane):
                           dx=.3 * MM, cpml_layers=2).freeze_mesh()
         bounds = shape.bounding_box()
         continued = _ContinuedSheetShape(shape, (None,) * 3, bounds, ((0, 'lo', 0.),))
-        values = compute_inv_eps_tensor_diag(grid, pec_shapes=[continued])
+        values = compute_inv_eps_tensor_diag(grid, pec_shapes=[continued], dtype=jnp.float32)
     _mirror([np.asarray(v) for v in values], grid, shape, lane, require_ties=lane != 'full_tensor')
 
 
@@ -224,7 +224,7 @@ def thin_builds():
             builder = compute_smoothed_eps if mesh == 'uniform' else compute_smoothed_eps_nonuniform
             for kind in ('box', 'disc'):
                 shape = _thin_shape(kind, centers[i], thicknesses[i])
-                results.append(jnp.stack(builder(grid, [(shape, 4.)])))
+                results.append(jnp.stack(builder(grid, [(shape, 4.)], dtype=jnp.float32)))
         return jnp.stack(results)
 
     results = {}
@@ -271,7 +271,7 @@ def thin_midplane(request, thin_builds):
     p = max(0., min(hi, support_hi) - max(lo, support_lo)) / length
     expected = 1 / (p / 4 + 1 - p) if component == 2 else p * 4 + 1 - p
     with record_cell_table_capture(grid, [shape]) as captures:
-        host = np.asarray(builder(grid, [(shape, 4.)]))
+        host = np.asarray(builder(grid, [(shape, 4.)], dtype=jnp.float32))
     slot = 2 * (mesh == 'graded') + (kind == 'disc')
     traced = traced_builds[component][slot]
     return dict(mesh=mesh, kind=kind, component=component, grid=grid, shape=shape,
@@ -415,7 +415,7 @@ def test_two_dimensional_box_away_from_ties(entry, monkeypatch):
         assert captures
     else:
         grid = Grid(freq_max=12e9, domain=domain, dx=h, mode='2d_tmz', cpml_layers=0)
-        captures = [(grid, np.asarray(compute_smoothed_eps(grid, [(box, 4.)])))]
+        captures = [(grid, np.asarray(compute_smoothed_eps(grid, [(box, 4.)], dtype=jnp.float32)))]
     for grid, actual in captures:
         assert len(grid.domain) == (3 if entry == 'simulation' else 2)
         assert grid.shape[2] == 1

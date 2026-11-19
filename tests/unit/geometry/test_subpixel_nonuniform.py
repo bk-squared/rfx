@@ -120,7 +120,7 @@ def test_compute_smoothed_eps_nonuniform_interface_values():
 
     eps_ex, eps_ey, eps_ez = compute_smoothed_eps_nonuniform(
         grid, [(box, eps_bulk)], background_eps=1.0,
-    )
+    dtype='float32')
     eps_ez_np = np.asarray(eps_ez)
 
     # Bulk cells (well inside box) should hit eps_bulk; outside cells stay
@@ -172,8 +172,8 @@ def test_compute_smoothed_eps_nonuniform_reduces_to_uniform():
     assert nug.shape == ug.shape, (nug.shape, ug.shape)
 
     for comp, u_arr, n_arr in zip(("ex", "ey", "ez"),
-                                  compute_smoothed_eps(ug, shapes),
-                                  compute_smoothed_eps_nonuniform(nug, shapes)):
+                                  compute_smoothed_eps(ug, shapes, dtype='float32'),
+                                  compute_smoothed_eps_nonuniform(nug, shapes, dtype='float32')):
         worst = float(np.max(np.abs(np.asarray(u_arr) - np.asarray(n_arr))))
         assert worst < 1e-5, (
             f"{comp}: NU smoother differs from the uniform smoother by "

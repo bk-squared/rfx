@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
 
 
 def _admit_waveguide_options(
@@ -391,7 +392,7 @@ def _extract_waveguide_multimode(
     mm_pec_axes = None
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
+        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium, dtype=resolve_coefficient_dtype(self._precision))
         s_params, mode_map = extract_multimode_s_matrix_flux(
             grid,
             materials,

@@ -45,7 +45,8 @@ def report_context(plan, result, bins):
                 if is_tracer(getattr(grid, store)):
                     traced_axes += ((axis, store),)
                     fields[f"inv_d{axis}"], fields[f"inv_d{axis}_h"] = _profile_to_inv_arrays(
-                        getattr(nominal, store), periodic=axis in grid.periodic_axes)
+                        getattr(nominal, store), dtype=getattr(nominal, store).dtype,
+                        periodic=axis in grid.periodic_axes)
             if is_tracer(grid.dt):
                 fields["dt"] = None
             grid = nominal._replace(**fields) if fields else nominal
@@ -119,7 +120,7 @@ class _ForwardReportContext:
             if exact_of[store] in template._fields:
                 fields[exact_of[store]] = np.asarray(widths, dtype=np.float64)
             fields[f"inv_d{axis}"], fields[f"inv_d{axis}_h"] = _profile_to_inv_arrays(
-                widths, periodic=axis in template.periodic_axes)
+                widths, dtype=dtype, periodic=axis in template.periodic_axes)
         grid = template._replace(**fields)
         metas = self.metas
         if self.meta_traced is not None:

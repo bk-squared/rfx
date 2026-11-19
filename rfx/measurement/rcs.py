@@ -168,6 +168,8 @@ def compute_rcs(
     NTFF placement and CPML thickness, and enlarge the domain when deep pattern
     nulls matter. Compare each new target and configuration with an analytic or
     independent reference before treating the bistatic values as quantitative.
+
+    This route is float32 only: it has no run-precision argument.
     """
     # Defaults
     if theta_obs is None:
@@ -302,7 +304,7 @@ def compute_rcs(
         ny=grid.ny,
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
-    )
+        dtype=jnp.float32)
     # This calculator owns its NTFF request and bypasses Simulation dispatch.
     from rfx.boundaries.depths import FACES, grid_face_depths
     from rfx.boundaries.features import refuse_ntff_reflecting_faces

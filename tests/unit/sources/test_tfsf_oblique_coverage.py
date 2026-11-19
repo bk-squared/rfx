@@ -52,7 +52,7 @@ def _run_tfsf_leakage(nx, ny, nz, dx, dt, angle_deg, polarization, direction,
         f0=5e9, bandwidth=bandwidth, amplitude=1.0,
         polarization=polarization, direction=direction,
         angle_deg=angle_deg,
-    )
+    dtype='float32')
 
     materials = init_materials((nx, ny, nz))
     periodic = (False, True, True)
@@ -217,7 +217,7 @@ class TestObliqueTFSFCoverage:
         dt = 0.5 * dx / 3e8
         from rfx.sources.tfsf import TFSFConfig
         cfg, _ = init_tfsf(80, dx, dt, cpml_layers=10,
-                           polarization="ey", angle_deg=0.0)
+                           polarization="ey", angle_deg=0.0, dtype='float32')
         assert isinstance(cfg, TFSFConfig), "Normal ey should use 1D aux grid"
         assert cfg.electric_component == "ey"
         assert cfg.magnetic_component == "hz"
@@ -229,7 +229,7 @@ class TestObliqueTFSFCoverage:
         dt = 0.5 * dx / 3e8
         from rfx.sources.tfsf_2d import TFSF2DConfig
         cfg, _ = init_tfsf(80, dx, dt, ny=3, nz=80, cpml_layers=10,
-                           polarization="ey", angle_deg=45.0)
+                           polarization="ey", angle_deg=45.0, dtype='float32')
         assert isinstance(cfg, TFSF2DConfig), "ey oblique should use 2D aux grid"
         assert cfg.mode == "TEz"
         assert cfg.electric_component == "ey"

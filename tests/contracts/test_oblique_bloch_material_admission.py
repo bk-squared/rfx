@@ -168,7 +168,8 @@ def low_level(angle=30.):
     cfg, state = init_tfsf(grid.nx, grid.dx, grid.dt,
                            cpml_layers=grid.cpml_layers, tfsf_margin=3,
                            f0=5e9, bandwidth=.2, amplitude=1.,
-                           polarization="ez", angle_deg=angle, ny=grid.ny)
+                           polarization="ez", angle_deg=angle, ny=grid.ny,
+                           dtype='float32')
     eps_x = materials.eps_r.at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(2.)
     tensor = (eps_x, materials.eps_r, materials.eps_r)
     options = dict(boundary="cpml", cpml_axes="x", periodic=(False, True, True), tfsf=(cfg, state))
